@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atlas-camera"
+version = "0.1.0"
+description = "Still-image camera inference and projection-prep toolkit for DCC handoff workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Atlas Camera Contributors"}
+]
+keywords = [
+    "camera-solve",
+    "projection",
+    "matte-painting",
+    "dcc",
+    "usd",
+    "comfyui",
+    "matchmove",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = []
+
+[project.optional-dependencies]
+image = [
+    "pillow>=10",
+]
+vision = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+]
+usd = [
+    "usd-core>=22.11",
+]
+dev = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "pytest>=8",
+]
+ui = [
+    "fastapi>=0.110",
+    "pillow>=10",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.27",
+]
+
+[tool.setuptools.packages.find]
+include = ["atlas_camera*", "atlas*"]
+
+[tool.setuptools.package-data]
+"atlas_camera.reference_data" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

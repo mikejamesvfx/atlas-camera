@@ -1,0 +1,8 @@
+[project]
+name = "atlas"
+version = "0.1.0"
+description = "Atlas recovers the LatentCamera hidden inside an image."
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["atlas*"]

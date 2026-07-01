@@ -1,0 +1,3 @@
+# Atlas Camera core intentionally starts with no required third-party runtime
+# dependencies. Install optional extras from pyproject.toml as needed:
+#   pip install -e ".[dev,image,vision,usd]"
