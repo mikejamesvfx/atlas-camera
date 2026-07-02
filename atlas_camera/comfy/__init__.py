@@ -27,13 +27,19 @@ try:
     from atlas_camera.comfy.nodes import _ATLAS_BLOCKOUT_CACHE
 
     _routes = PromptServer.instance.routes
+    _ATLAS_ROUTE_PATH = "/atlas/camera_data/{node_id}"
 
-    @_routes.get("/atlas/camera_data/{node_id}")
-    async def _atlas_get_camera_data(request: aiohttp_web.Request) -> aiohttp_web.Response:
-        """Return the cached camera data for the given AtlasBlockoutViewport node ID."""
-        node_id = request.match_info["node_id"]
-        data = _ATLAS_BLOCKOUT_CACHE.get(node_id, {})
-        return aiohttp_web.json_response(data)
+    # Guard against double-registration: this __init__.py is loaded twice when
+    # ComfyUI loads it as a custom node (AtlasCamera) AND Python imports it as
+    # atlas_camera.comfy — both under different sys.modules keys so the cache
+    # doesn't deduplicate them.
+    if not any(getattr(r, "path", None) == _ATLAS_ROUTE_PATH for r in _routes):
+
+        @_routes.get(_ATLAS_ROUTE_PATH)
+        async def _atlas_get_camera_data(request: aiohttp_web.Request) -> aiohttp_web.Response:
+            node_id = request.match_info["node_id"]
+            data = _ATLAS_BLOCKOUT_CACHE.get(node_id, {})
+            return aiohttp_web.json_response(data)
 
 except Exception:
     # Running outside ComfyUI (tests, standalone import) — routes not needed.
