@@ -105,7 +105,8 @@ def _decode_b64_to_tensor(b64str: str, width: int, height: int):
         return torch.zeros(1, height, width, 3, dtype=torch.float32)
 
 
-def _extract_blockout_camera(solve, source_image, target_width: int, target_height: int) -> dict[str, Any]:
+def _extract_blockout_camera(solve, source_image, target_width: int, target_height: int,
+                              preview_expand: float = 1.0) -> dict[str, Any]:
     """Serialize the recovered camera into a dict the browser extension can consume."""
     cam = solve.camera
     intr = cam.intrinsics
@@ -129,9 +130,55 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         pass
 
     # Derived projection proxies (ground/walls/boxes/cylinders/backdrop) for the
-    # viewport to build; empty list when nothing was derived.
+    # viewport to build; empty list when nothing was derived. preview_expand>1
+    # dilates them outward from the camera for wider orbit coverage — display
+    # only, never mutates the primitives stored on the solve.
     from atlas_camera.core.proxy_geometry import serialize_proxy_geometry
-    proxy_geometry = serialize_proxy_geometry(solve.projection_scene)
+    proxy_geometry = serialize_proxy_geometry(
+        solve.projection_scene,
+        preview_expand=preview_expand,
+        preview_pivot=extr.camera_position,
+    )
+
+    # Vanishing points + horizon (2D image-space diagnostics — meaningful only
+    # against the flat source photo, not the 3D scene) for the viewport's
+    # layered VP/horizon/ground overlay.
+    vanishing_points = [
+        {
+            "position_px": list(vp.position_px),
+            "direction_label": vp.direction_label,
+            "confidence": float(vp.confidence),
+        }
+        for vp in (solve.vanishing_points or [])
+    ]
+    horizon_line = None
+    if solve.horizon_line is not None:
+        horizon_line = {
+            "endpoints_px": [list(p) for p in solve.horizon_line.endpoints_px]
+                            if solve.horizon_line.endpoints_px else None,
+            "line_coefficients": list(solve.horizon_line.line_coefficients),
+            "confidence": float(solve.horizon_line.confidence),
+        }
+
+    # Solved latent-camera metadata (lens, distance, provenance) for the HUD.
+    fov_h_deg = None
+    if fx > 0 and intr.image_width:
+        fov_h_deg = math.degrees(2.0 * math.atan(intr.image_width / (2.0 * fx)))
+    scene_depth_m = None
+    for prim in solve.projection_scene.proxy_geometry:
+        if prim.name == "projection_backdrop":
+            scene_depth_m = (prim.metadata or {}).get("distance_m")
+            break
+    camera_meta = {
+        "confidence": float(getattr(solve, "confidence", 0.0) or 0.0),
+        "source_method": getattr(solve, "source_method", None),
+        "scale_source": (solve.debug_metadata or {}).get("scale_source"),
+        "focal_mm": intr.focal_length_mm,
+        "sensor_mm": intr.sensor_width_mm,
+        "fov_h_deg": fov_h_deg,
+        "camera_height_m": float(extr.camera_position[1]) if extr.camera_position else None,
+        "scene_depth_m": scene_depth_m,
+    }
 
     return {
         "view_matrix": vm,
@@ -148,6 +195,9 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         "sensor_mm": intr.sensor_width_mm,
         "source_image_b64": source_b64,
         "proxy_geometry": proxy_geometry,
+        "vanishing_points": vanishing_points,
+        "horizon_line": horizon_line,
+        "camera_meta": camera_meta,
     }
 
 
@@ -800,6 +850,15 @@ class AtlasDeriveProjectionGeometry:
         keep: list = []
         if geometry_mode in ("both", "primitives"):
             keep.extend(prims)
+        else:
+            # relief_mesh-only mode still keeps the backdrop: every extractor
+            # always emits it as a far "catch-all" anchor (a plane sized to the
+            # full recovered frustum, well beyond the mesh's own coverage), and
+            # the relief mesh alone has real gaps — torn at every depth
+            # discontinuity so foreground silhouettes don't rubber-sheet. Orbit
+            # even slightly and those tears open onto empty void without this;
+            # dropping the backdrop here was a bug, not intended behavior.
+            keep.extend(p for p in prims if p.name == "projection_backdrop")
         if geometry_mode in ("both", "relief_mesh"):
             # Reuse the derivation's ground scale so the mesh matches the
             # primitives' world (ground on Y=0).
@@ -1309,10 +1368,17 @@ class AtlasBlockoutViewport:
                                "source image aspect (viewport inherits the image's aspect)."}),
                 "client_data": ("STRING", {"default": "", "multiline": False}),
             },
+            "optional": {
+                "preview_expand": ("FLOAT", {"default": 1.4, "min": 1.0, "max": 5.0, "step": 0.05,
+                    "tooltip": "Dilate derived geometry outward from the camera for wider orbit "
+                               "coverage before it disappears into unreconstructed space. "
+                               "1.0 = off (accurate geometry). Display only — never affects "
+                               "DCC exports or measured geometry."}),
+            },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    def render(self, solve, source_image, resolution, client_data, unique_id=None):
+    def render(self, solve, source_image, resolution, client_data, preview_expand=1.4, unique_id=None):
         torch = _require_torch()
 
         # Auto-adopt the source image aspect: derive W×H from the incoming image,
@@ -1322,7 +1388,8 @@ class AtlasBlockoutViewport:
 
         # Store camera data for the browser extension to fetch
         node_id = str(unique_id) if unique_id is not None else "0"
-        _blockout_cache_set(node_id, _extract_blockout_camera(solve, source_image, width, height))
+        _blockout_cache_set(node_id, _extract_blockout_camera(
+            solve, source_image, width, height, preview_expand=float(preview_expand)))
 
         # IMPORTANT: return a "ui" payload. ComfyUI only emits the "executed"
         # websocket message (which triggers node.onExecuted / the frontend's

@@ -82,11 +82,29 @@ function createOrbitControls(camera, dom) {
   const sph = { radius: 5, theta: 0, phi: Math.PI / 3 };
   let dragging = false, panning = false, lx = 0, ly = 0;
 
+  // Derived geometry (relief mesh, backdrop, fitted primitives) only ever
+  // covers what the RECOVERED camera could see — a forward-facing cone — since
+  // it's reconstructed from one photo. The orbit pivot is a nearby ground
+  // point while the scene can extend many times farther, so an unconstrained
+  // drag swings the viewing DIRECTION far more than it swings the camera
+  // position: a modest-looking rotate can easily point past that cone into
+  // space nothing was ever built for, which reads as the mesh/projection
+  // "disappearing". Clamp yaw/pitch to an arc around the recovered direction
+  // (theta0/phi0, re-anchored by syncFromCamera on every camera apply) so
+  // orbiting always keeps something in view, while still allowing enough
+  // sweep to inspect parallax and occlusion.
+  let theta0 = 0, phi0 = Math.PI / 3;
+  const MAX_YAW = THREE.MathUtils.degToRad(80);
+  const MAX_PITCH = THREE.MathUtils.degToRad(55);
+  const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
   function syncFromCamera() {
     const off = camera.position.clone().sub(target);
     sph.radius = Math.max(0.01, off.length());
     sph.theta = Math.atan2(off.x, off.z);
     sph.phi = Math.acos(Math.min(1, Math.max(-1, off.y / sph.radius)));
+    theta0 = sph.theta;
+    phi0 = sph.phi;
   }
   function apply() {
     const sp = Math.sin(sph.phi), cp = Math.cos(sph.phi);
@@ -116,8 +134,11 @@ function createOrbitControls(camera, dom) {
       const k = sph.radius * 0.0015;
       target.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
     } else {
-      sph.theta -= dx * 0.005;
-      sph.phi = Math.min(Math.PI - 0.05, Math.max(0.05, sph.phi - dy * 0.005));
+      const deltaTheta = wrapAngle(sph.theta - dx * 0.005 - theta0);
+      sph.theta = theta0 + Math.min(MAX_YAW, Math.max(-MAX_YAW, deltaTheta));
+
+      const rawPhi = Math.min(Math.PI - 0.05, Math.max(0.05, sph.phi - dy * 0.005));
+      sph.phi = Math.min(phi0 + MAX_PITCH, Math.max(phi0 - MAX_PITCH, rawPhi));
     }
     apply();
   }
@@ -495,15 +516,19 @@ async function renderAllPasses(renderer, scene, camera, width, height, exclude =
     scene.background = depthBg;
     depthMat.dispose();
 
-    // Normal: custom ShaderMaterial
-    const normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+    // Normal: custom ShaderMaterial. toneMapped:false — the exposure slider
+    // must never alter these deterministic RGB-encoded normal values (the
+    // custom depthMat above is unaffected regardless: it writes gl_FragColor
+    // directly with no <tonemapping_fragment> chunk, so tone mapping never
+    // applies to it in the first place).
+    const normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide, toneMapped: false });
     const normalB64 = renderToBase64(normalMat);
     normalMat.dispose();
 
-    // Mask: white geometry, black background
+    // Mask: white geometry, black background. Also exposure-immune.
     const bg = scene.background;
     scene.background = new THREE.Color(0x000000);
-    const maskMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    const maskMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, toneMapped: false });
     const maskB64 = renderToBase64(maskMat);
     scene.background = bg;
     maskMat.dispose();
@@ -541,16 +566,42 @@ function buildNodeUI(node, containerEl) {
     { label: "Person", type: "person" },
   ];
 
-  // Canvas
+  // Canvas, wrapped so the diagram SVG and metadata HUD can sit on top of it
+  // without blocking orbit dragging (pointer-events:none on the overlays).
+  const canvasWrap = document.createElement("div");
+  canvasWrap.style.cssText = "position:relative;width:100%;line-height:0;";
+
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   canvas.style.cssText = "display:block;width:100%;height:auto;background:#111;cursor:grab";
 
+  // Diagram overlay: layered VP / horizon / ground SVG, image-pixel-space
+  // viewBox so it aligns with the source photo regardless of canvas size.
+  const svgNS = "http://www.w3.org/2000/svg";
+  const diagramSvg = document.createElementNS(svgNS, "svg");
+  diagramSvg.setAttribute("viewBox", "0 0 1 1");
+  diagramSvg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none;";
+  const gVpLines = document.createElementNS(svgNS, "g");
+  const gHorizon = document.createElementNS(svgNS, "g");
+  const gGround = document.createElementNS(svgNS, "g");
+  gGround.style.opacity = "0.35"; gHorizon.style.opacity = "0.85"; gVpLines.style.opacity = "0.7";
+  diagramSvg.append(gGround, gVpLines, gHorizon); // ground under, horizon on top
+
+  // Metadata HUD: solved lens/distance/confidence readout.
+  const metaHud = document.createElement("div");
+  metaHud.style.cssText = "position:absolute;top:6px;left:6px;padding:6px 8px;background:rgba(10,10,14,0.72);" +
+    "color:#cde;font:10px/1.5 monospace;border-radius:4px;pointer-events:none;white-space:pre;display:none;";
+
+  canvasWrap.append(canvas, diagramSvg, metaHud);
+
   // Three.js setup
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
   renderer.setSize(W, H, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Exposure only has a visible effect with a tone-mapping operator active.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a1a);
@@ -670,6 +721,65 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(projBtn);
 
+  // 📊 Diagram toggle — layered VP / horizon / ground SVG overlay, each layer
+  // independently dimmable. Vanishing points are populated only by the
+  // classical (non-learned) solve path — the VP layer is simply empty when
+  // using AtlasLearnedSolveFromImage, which predicts focal+gravity directly
+  // rather than via vanishing points; horizon/ground still work either way.
+  let diagramOn = false;
+  const diagBtn = document.createElement("button");
+  diagBtn.textContent = "📊 Diagram";
+  diagBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  const layerSliders = [
+    { g: gVpLines, label: "VP", init: 0.7 },
+    { g: gHorizon, label: "Hz", init: 0.85 },
+    { g: gGround, label: "Gnd", init: 0.35 },
+  ].map(({ g, label, init }) => {
+    const wrap = document.createElement("span");
+    wrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;font-size:10px;color:#9ab;margin-left:4px;";
+    const lab = document.createElement("span"); lab.textContent = label;
+    const slider = document.createElement("input");
+    slider.type = "range"; slider.min = "0"; slider.max = "1"; slider.step = "0.05"; slider.value = String(init);
+    slider.style.cssText = "width:44px;vertical-align:middle;";
+    slider.disabled = true;
+    slider.oninput = () => { g.style.opacity = slider.value; };
+    wrap.append(lab, slider);
+    return wrap;
+  });
+  diagBtn.onclick = () => {
+    diagramOn = !diagramOn;
+    diagramSvg.style.display = diagramOn ? "block" : "none";
+    diagBtn.style.background = diagramOn ? "#2a3a3a" : "#2a2a2a";
+    layerSliders.forEach((w) => { w.querySelector("input").disabled = !diagramOn; });
+  };
+  toolbar.append(diagBtn, ...layerSliders);
+
+  // ℹ Info toggle — solved latent-camera metadata (lens, distance, confidence).
+  let infoOn = false;
+  const infoBtn = document.createElement("button");
+  infoBtn.textContent = "ℹ Info";
+  infoBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  infoBtn.onclick = () => {
+    infoOn = !infoOn;
+    metaHud.style.display = infoOn ? "block" : "none";
+    infoBtn.style.background = infoOn ? "#2a3a3a" : "#2a2a2a";
+  };
+  toolbar.appendChild(infoBtn);
+
+  // ☀ Exposure — tone-mapped brightness preview of the LIT (grey/shaded)
+  // geometry. Never affects the projected photo texture (the projection
+  // shader writes gl_FragColor directly with no tone-mapping chunk) or the
+  // depth/normal/mask render passes (explicitly toneMapped:false above).
+  const expWrap = document.createElement("span");
+  expWrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#ddd;margin-left:4px;";
+  const expLabel = document.createElement("span"); expLabel.textContent = "☀";
+  const expSlider = document.createElement("input");
+  expSlider.type = "range"; expSlider.min = "0.1"; expSlider.max = "3"; expSlider.step = "0.05"; expSlider.value = "1";
+  expSlider.style.cssText = "width:70px;vertical-align:middle;";
+  expSlider.oninput = () => { renderer.toneMappingExposure = parseFloat(expSlider.value); };
+  expWrap.append(expLabel, expSlider);
+  toolbar.appendChild(expWrap);
+
   // Clear button
   const clearBtn = document.createElement("button");
   clearBtn.textContent = "Clear";
@@ -722,7 +832,7 @@ function buildNodeUI(node, containerEl) {
 
   // Assemble
   containerEl.appendChild(toolbar);
-  containerEl.appendChild(canvas);
+  containerEl.appendChild(canvasWrap);
 
   // Store refs for cleanup and camera application
   node._atlasRenderer = renderer;
@@ -759,10 +869,108 @@ function buildNodeUI(node, containerEl) {
     recoveredData = data;
   }
 
+  // Layered VP / horizon / ground diagnostic diagram. viewBox uses the
+  // SOLVE's native image pixel space (not the canvas render resolution) so
+  // vanishing-point/horizon positions need no rescaling — the SVG's own
+  // aspect-preserving scaling maps it onto the canvas automatically. VP
+  // marker fan-lines run from the image corners to each VP position; a VP
+  // far outside the frame is simply clipped by the SVG's default
+  // overflow:hidden, leaving just the converging lines visible at the edge.
+  function updateDiagramOverlay(data) {
+    const iw = data.image_width || 1;
+    const ih = data.image_height || 1;
+    diagramSvg.setAttribute("viewBox", `0 0 ${iw} ${ih}`);
+    gVpLines.replaceChildren();
+    gHorizon.replaceChildren();
+    gGround.replaceChildren();
+
+    const VP_COLORS = { left: "#ff7832", right: "#32a0ff", vertical: "#50dc64" };
+    const corners = [[0, 0], [iw, 0], [iw, ih], [0, ih]];
+    const fontPx = Math.max(10, iw * 0.014);
+
+    let hzY = ih * 0.45; // fallback split if no horizon was solved
+    const hz = data.horizon_line;
+    if (hz && hz.endpoints_px) {
+      const [p0, p1] = hz.endpoints_px;
+      const line = document.createElementNS(svgNS, "line");
+      line.setAttribute("x1", p0[0]); line.setAttribute("y1", p0[1]);
+      line.setAttribute("x2", p1[0]); line.setAttribute("y2", p1[1]);
+      line.setAttribute("stroke", "#ffe050");
+      line.setAttribute("stroke-width", String(Math.max(1, iw * 0.0015)));
+      gHorizon.appendChild(line);
+      hzY = (p0[1] + p1[1]) / 2;
+
+      const label = document.createElementNS(svgNS, "text");
+      label.setAttribute("x", String(iw * 0.02));
+      label.setAttribute("y", String(Math.max(fontPx + 2, hzY - 6)));
+      label.setAttribute("fill", "#ffe050");
+      label.setAttribute("font-size", String(fontPx));
+      label.textContent = `Horizon (${Math.round((hz.confidence || 0) * 100)}%)`;
+      gHorizon.appendChild(label);
+    }
+
+    // Ground: shaded region below the horizon.
+    const groundRect = document.createElementNS(svgNS, "rect");
+    groundRect.setAttribute("x", "0"); groundRect.setAttribute("y", String(hzY));
+    groundRect.setAttribute("width", String(iw));
+    groundRect.setAttribute("height", String(Math.max(0, ih - hzY)));
+    groundRect.setAttribute("fill", "#3caa50");
+    gGround.appendChild(groundRect);
+
+    // Vanishing points. Empty on the learned (GeoCalib) solve path — it
+    // predicts focal+gravity directly rather than via classical VP detection —
+    // so this layer only populates when the solve used detect_vanishing_points.
+    (data.vanishing_points || []).forEach((vp) => {
+      const [vx, vy] = vp.position_px;
+      const color = VP_COLORS[vp.direction_label] || "#cccccc";
+      corners.forEach(([cx, cy]) => {
+        const ln = document.createElementNS(svgNS, "line");
+        ln.setAttribute("x1", String(cx)); ln.setAttribute("y1", String(cy));
+        ln.setAttribute("x2", String(vx)); ln.setAttribute("y2", String(vy));
+        ln.setAttribute("stroke", color);
+        ln.setAttribute("stroke-width", String(Math.max(0.75, iw * 0.0008)));
+        ln.setAttribute("opacity", "0.55");
+        gVpLines.appendChild(ln);
+      });
+      const dot = document.createElementNS(svgNS, "circle");
+      dot.setAttribute("cx", String(vx)); dot.setAttribute("cy", String(vy));
+      dot.setAttribute("r", String(Math.max(4, iw * 0.006)));
+      dot.setAttribute("fill", color);
+      gVpLines.appendChild(dot);
+      const lbl = document.createElementNS(svgNS, "text");
+      lbl.setAttribute("x", String(vx + iw * 0.01)); lbl.setAttribute("y", String(vy - iw * 0.01));
+      lbl.setAttribute("fill", color); lbl.setAttribute("font-size", String(fontPx));
+      lbl.textContent = `${vp.direction_label || "vp"} (${Math.round((vp.confidence || 0) * 100)}%)`;
+      gVpLines.appendChild(lbl);
+    });
+  }
+
+  // Solved latent-camera metadata HUD: lens (focal/sensor/FOV), distance
+  // (camera height, scene depth), and solve provenance/confidence.
+  function updateMetaHud(data) {
+    const m = data.camera_meta || {};
+    const lines = [];
+    if (m.focal_mm != null) {
+      const fov = m.fov_h_deg != null ? `  (FOV ${m.fov_h_deg.toFixed(1)}°)` : "";
+      lines.push(`Lens      ${m.focal_mm.toFixed(1)}mm${fov}`);
+    }
+    if (m.sensor_mm != null) lines.push(`Sensor    ${m.sensor_mm.toFixed(1)}mm`);
+    if (m.camera_height_m != null) lines.push(`Height    ${m.camera_height_m.toFixed(2)}m`);
+    if (m.scene_depth_m != null) lines.push(`Scene depth ~${m.scene_depth_m.toFixed(1)}m`);
+    if (m.confidence != null) lines.push(`Confidence  ${Math.round(m.confidence * 100)}%`);
+    if (m.source_method) lines.push(`Method    ${m.source_method}`);
+    if (m.scale_source) lines.push(`Scale     ${m.scale_source}`);
+    metaHud.textContent = lines.join("\n") || "(no camera metadata)";
+  }
+
   // Return setter so caller can apply camera and background image
   return {
     applyCamera(data) {
       applyRecoveredView(data);
+    },
+    setDiagnostics(data) {
+      updateDiagramOverlay(data);
+      updateMetaHud(data);
     },
     setProxies(data) {
       // Build the Python-derived projection proxies and (re)create the shared
@@ -851,6 +1059,7 @@ app.registerExtension({
         ui?.setBackground(cameraData.source_image_b64);
       }
       ui?.setProxies(cameraData);
+      ui?.setDiagnostics(cameraData);
     };
     node.onExecuted = refreshFromSolve;
 

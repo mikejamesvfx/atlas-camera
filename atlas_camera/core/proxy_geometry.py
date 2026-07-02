@@ -591,21 +591,148 @@ def _fit_cylinder(np, cfg, ox, oz):
 
 
 # ---------------------------------------------------------------------------
+# Preview-only dilation — widen derived geometry's orbit coverage in the
+# blockout viewport without altering the geometry used for measurement or
+# DCC export (those read the untouched AtlasProxyPrimitive objects on the
+# solve; this only ever runs at viewport-payload serialization time).
+#
+# Derived geometry only ever covers what the recovered camera could see (a
+# forward-facing cone, inherent to reconstruction from a single photo). One
+# equation widens that coverage for ANY primitive regardless of its normal:
+# for a point p with local surface normal n̂ (arbitrary — a plane's fixed
+# normal, a mesh vertex's own normal, or none for a volume), radiating from a
+# pivot (the recovered camera position):
+#
+#   p' = pivot + ((p-pivot)·n̂)n̂ + scale · [(p-pivot) - ((p-pivot)·n̂)n̂]
+#
+# Only the component of the offset-from-pivot PERPENDICULAR to n̂ is scaled;
+# the normal-aligned (depth-from-pivot) component is preserved — a plane's
+# footprint grows without drifting toward/away from the camera, a box/
+# cylinder (no single normal) dilates uniformly, and a mesh dilates per-
+# vertex using each vertex's own, genuinely arbitrary normal.
+# ---------------------------------------------------------------------------
+
+def dilate_proxy_geometry_for_preview(
+    prims: list[AtlasProxyPrimitive],
+    *,
+    pivot: Any,
+    scale: float,
+) -> list[AtlasProxyPrimitive]:
+    """Return NEW primitives dilated outward from ``pivot`` by ``scale`` (>1
+    grows). Never mutates the input; ``scale <= 1`` returns it unchanged."""
+    if scale <= 1.0 + 1e-9:
+        return list(prims)
+    np = _require_numpy()
+    pivot = np.asarray(pivot, dtype=np.float64)
+    out: list[AtlasProxyPrimitive] = []
+    for prim in prims:
+        if prim.primitive_type == "mesh":
+            out.append(_dilate_mesh_primitive(prim, pivot, scale))
+        elif prim.primitive_type == "plane":
+            out.append(_dilate_plane_primitive(prim, pivot, scale))
+        else:  # box, cylinder: no single preferred normal — uniform radial dilation
+            out.append(_dilate_volume_primitive(prim, pivot, scale))
+    return out
+
+
+def _dilate_plane_primitive(prim: AtlasProxyPrimitive, pivot: Any, scale: float) -> AtlasProxyPrimitive:
+    np = _require_numpy()
+    M = np.array(prim.transform_matrix, dtype=np.float64)
+    u, v, n, c = M[:3, 0], M[:3, 1], M[:3, 2], M[:3, 3]
+    d = c - pivot
+    d_n = float(np.dot(d, n)) * n
+    d_t = d - d_n
+    c2 = pivot + d_n + scale * d_t
+    dims = prim.dimensions
+    return AtlasProxyPrimitive(
+        name=prim.name, primitive_type=prim.primitive_type,
+        transform_matrix=_plane_transform(u, v, n, c2),
+        dimensions=(dims[0] * scale, dims[1] * scale, dims[2]),
+        material=prim.material,
+        metadata={**(prim.metadata or {}), "preview_dilated": True, "preview_scale": float(scale)},
+    )
+
+
+def _dilate_volume_primitive(prim: AtlasProxyPrimitive, pivot: Any, scale: float) -> AtlasProxyPrimitive:
+    np = _require_numpy()
+    M = np.array(prim.transform_matrix, dtype=np.float64)
+    u, v, w, c = M[:3, 0], M[:3, 1], M[:3, 2], M[:3, 3]
+    c2 = pivot + scale * (c - pivot)
+    dims = prim.dimensions
+    return AtlasProxyPrimitive(
+        name=prim.name, primitive_type=prim.primitive_type,
+        transform_matrix=_plane_transform(u, v, w, c2),
+        dimensions=tuple(dv * scale for dv in dims),
+        material=prim.material,
+        metadata={**(prim.metadata or {}), "preview_dilated": True, "preview_scale": float(scale)},
+    )
+
+
+def _dilate_mesh_primitive(prim: AtlasProxyPrimitive, pivot: Any, scale: float) -> AtlasProxyPrimitive:
+    np = _require_numpy()
+    md = prim.metadata or {}
+    verts_flat = md.get("vertices") or []
+    faces_flat = md.get("faces") or []
+    if not verts_flat or not faces_flat:
+        return prim
+    verts = np.array(verts_flat, dtype=np.float64).reshape(-1, 3)
+    faces = np.array(faces_flat, dtype=np.int64).reshape(-1, 3)
+
+    # Per-vertex normals: area-weighted average of adjacent face normals
+    # (cross-product magnitude is proportional to triangle area, so a plain
+    # sum before normalising is already area-weighted).
+    v0, v1, v2 = verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]]
+    face_normals = np.cross(v1 - v0, v2 - v0)
+    vertex_normals = np.zeros_like(verts)
+    for i in range(3):
+        np.add.at(vertex_normals, faces[:, i], face_normals)
+    norms = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
+    vertex_normals = vertex_normals / np.maximum(norms, 1e-12)
+
+    d = verts - pivot[None, :]
+    d_n = np.sum(d * vertex_normals, axis=1, keepdims=True) * vertex_normals
+    d_t = d - d_n
+    verts2 = pivot[None, :] + d_n + scale * d_t
+
+    new_meta = dict(md)
+    new_meta["vertices"] = [round(float(x), 3) for x in verts2.reshape(-1)]
+    new_meta["preview_dilated"] = True
+    new_meta["preview_scale"] = float(scale)
+    return AtlasProxyPrimitive(
+        name=prim.name, primitive_type=prim.primitive_type,
+        transform_matrix=prim.transform_matrix,  # identity; vertices are already world-space
+        dimensions=prim.dimensions, material=prim.material,
+        metadata=new_meta,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Serialization for the blockout payload
 # ---------------------------------------------------------------------------
 
-def serialize_proxy_geometry(scene: AtlasProjectionScene) -> list[dict[str, Any]]:
+def serialize_proxy_geometry(
+    scene: AtlasProjectionScene,
+    *,
+    preview_expand: float = 1.0,
+    preview_pivot: Any = None,
+) -> list[dict[str, Any]]:
     """JSON-safe payload entries for derivation proxies (role == projection_proxy).
 
     ``transform`` is the row-major 4×4 flattened to 16 floats — feed directly to
     ``THREE.Matrix4.set()``. ``mesh`` primitives (the relief mesh) additionally
     carry flat ``vertices`` / ``faces`` / ``uvs`` arrays for a Three.js
     BufferGeometry (vertices are already world-space; transform is identity).
+
+    ``preview_expand`` (>1, needs ``preview_pivot``) dilates the geometry for
+    wider blockout-viewport orbit coverage via :func:`dilate_proxy_geometry_for_preview`
+    — display-only, never touches the primitives stored on the solve.
     """
+    prims = [p for p in scene.proxy_geometry if (p.metadata or {}).get("role") == PROXY_ROLE]
+    if preview_expand > 1.0 + 1e-9 and preview_pivot is not None:
+        prims = dilate_proxy_geometry_for_preview(prims, pivot=preview_pivot, scale=preview_expand)
+
     out: list[dict[str, Any]] = []
-    for prim in scene.proxy_geometry:
-        if (prim.metadata or {}).get("role") != PROXY_ROLE:
-            continue
+    for prim in prims:
         flat = [float(v) for row in prim.transform_matrix for v in row]
         meta = {k: v for k, v in (prim.metadata or {}).items()
                 if isinstance(v, (str, int, float, bool)) or v is None}
