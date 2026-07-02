@@ -1,9 +1,8 @@
 """Blender handoff script writer.
 
-Atlas core is Y-up. Blender is Z-up, so position conversions belong in this
-adapter. Camera rotation is not converted here — the world matrix is not yet
-written to Blender's camera; artists should set the orientation manually or
-via the corresponding atlas_solve.json values.
+Atlas core is Y-up right-handed. Blender is Z-up right-handed.
+The coordinate conversion T: (x,y,z) -> (x,-z,y) is applied to the full
+4×4 world matrix so camera position AND rotation both land correctly.
 """
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm
-from atlas_camera.core.extrinsics import atlas_y_up_to_blender_z_up
 from atlas_camera.core.schema import AtlasSolve
 
 
@@ -19,7 +17,18 @@ def write_blender_scene_script(solve: AtlasSolve, output_path: str | Path) -> Pa
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    blender_position = atlas_y_up_to_blender_z_up(solve.camera.extrinsics.camera_position)
+    # Convert Atlas Y-up world matrix to Blender Z-up: M_blender = T @ M_atlas
+    # T maps (x,y,z) -> (x,-z,y), i.e. new_Y = -old_Z, new_Z = old_Y.
+    # Row 0 = Atlas row 0 (X unchanged)
+    # Row 1 = negated Atlas row 2 (Blender Y = -Atlas Z)
+    # Row 2 = Atlas row 1 (Blender Z = Atlas Y)
+    wm = solve.camera.extrinsics.camera_world_matrix
+    blender_world = [
+        [ wm[0][0],  wm[0][1],  wm[0][2],  wm[0][3]],
+        [-wm[2][0], -wm[2][1], -wm[2][2], -wm[2][3]],
+        [ wm[1][0],  wm[1][1],  wm[1][2],  wm[1][3]],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
     intrinsics = solve.camera.intrinsics
     focal = intrinsics.focal_length_mm or 35.0
     sensor_w = intrinsics.sensor_width_mm or 36.0
@@ -39,15 +48,16 @@ def write_blender_scene_script(solve: AtlasSolve, output_path: str | Path) -> Pa
 
     script = f'''"""Atlas Camera Blender review scene.
 
-Atlas core is Y-up. This script converts camera position to Blender Z-up.
-Camera rotation is not set automatically; adjust to match atlas_solve.json.
+Atlas core is Y-up right-handed. This script applies the solved world matrix
+(position + rotation) converted to Blender Z-up via matrix_world.
 
-Projection material: TexCoord(Camera) → perspective division → ImageTexture.
+Projection material: TexCoord(Camera) -> perspective division -> ImageTexture.
 Scale factors are baked from the solved focal length and sensor dimensions.
 """
 
 import os
 import bpy
+import mathutils
 
 
 def build_scene(package_dir=None):
@@ -61,9 +71,10 @@ def build_scene(package_dir=None):
     camera_data.lens = {focal!r}
     camera_data.sensor_width = {sensor_w!r}
     camera = bpy.data.objects.new({solve.camera.name!r}, camera_data)
-    camera.location = {blender_position!r}
     bpy.context.collection.objects.link(camera)
     bpy.context.scene.camera = camera
+    camera.matrix_world = mathutils.Matrix({blender_world!r})
+    bpy.context.view_layer.update()
 
     # Ground plane (40 x 40 m, Blender Z-up so it lies in the XY plane at Z=0)
     bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 0, 0))

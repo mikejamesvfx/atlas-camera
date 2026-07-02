@@ -9,7 +9,7 @@ import shutil
 from atlas_camera.core.io import save_solve_json
 from atlas_camera.core.schema import AtlasSolve
 from atlas_camera.exporters.blender_exporter import BlenderExporter
-from atlas_camera.exporters.maya_exporter import MayaExporter
+from atlas_camera.exporters.maya_exporter import MayaExporter, write_maya_mel_launcher
 from atlas_camera.exporters.nuke_exporter import NukeExporter
 from atlas_camera.exporters.usd_exporter import USDExporter
 
@@ -70,6 +70,8 @@ def build_review_package(
 
     for exporter, key, filename in _DCC_EXPORTERS:
         result.files[key] = exporter.write_scene(solve, package_dir / filename)
+
+    result.files["maya_mel_launcher"] = write_maya_mel_launcher(package_dir, review_name=package_name)
 
     if include_usd:
         exporter = USDExporter()

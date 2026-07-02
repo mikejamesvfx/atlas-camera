@@ -8,12 +8,14 @@ import {
   Layers3,
   Lock,
   ScanLine,
+  Thermometer,
   Unlock
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
-import { addProjectionGround } from "./ProjectionMaterial";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { addDepthOverlay, addProjectionGround } from "./ProjectionMaterial";
 import type {
   CameraAnalysis,
   Constraints,
@@ -123,11 +125,46 @@ function Viewport3DStage({
 
     const renderCamera = new THREE.PerspectiveCamera(46, 1, 0.05, 500);
     const target = new THREE.Vector3(0, 0.85, -2.2);
-    const orbit = {
-      yaw: viewport.display.active_mode === "side" ? Math.PI / 2 : 0.62,
-      pitch: viewport.display.active_mode === "top" ? 1.34 : 0.48,
-      distance: viewport.display.active_mode === "image_match" ? 7.1 : 6.2
-    };
+    const controls = new OrbitControls(renderCamera, renderer.domElement);
+    controls.target.copy(target);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 2.6;
+    controls.maxDistance = 18;
+    controls.screenSpacePanning = true;
+
+    const { active_mode, lock_camera_to_view } = viewport.display;
+    if (active_mode === "top") {
+      renderCamera.position.set(0, 8.2, -2.2);
+      renderCamera.up.set(0, 0, -1);
+      controls.target.set(0, 0, -2.2);
+      controls.enableRotate = false;
+    } else if (active_mode === "front") {
+      renderCamera.position.set(0, 1.25, 5.4);
+      renderCamera.up.set(0, 1, 0);
+      controls.enableRotate = false;
+    } else if (active_mode === "side") {
+      renderCamera.position.set(6.2, 1.55, -2.2);
+      renderCamera.up.set(0, 1, 0);
+      controls.enableRotate = false;
+    } else if (active_mode === "image_match") {
+      renderCamera.position.set(0, 1.55, 4.8);
+      renderCamera.up.set(0, 1, 0);
+      if (lock_camera_to_view) {
+        controls.enableRotate = false;
+        controls.enablePan = false;
+      }
+    } else {
+      const dist = 6.2;
+      renderCamera.up.set(0, 1, 0);
+      renderCamera.position.set(
+        target.x + Math.sin(0.62) * Math.cos(0.48) * dist,
+        target.y + Math.sin(0.48) * dist,
+        target.z + Math.cos(0.62) * Math.cos(0.48) * dist
+      );
+      controls.autoRotate = false;
+    }
+    controls.update();
 
     const root = new THREE.Group();
     scene.add(root);
@@ -137,7 +174,7 @@ function Viewport3DStage({
     scene.add(keyLight);
 
     let projectionCleanup: (() => void) | null = null;
-    if (viewport.display.show_projection && analysis && sourceUrl && constraints.image_width > 0 && constraints.image_height > 0) {
+    if (viewport.display.show_projection && analysis && analysis.focal_px.fx > 0 && sourceUrl && constraints.image_width > 0 && constraints.image_height > 0) {
       projectionCleanup = addProjectionGround(
         root,
         analysis,
@@ -154,6 +191,18 @@ function Viewport3DStage({
         renderer.render(scene, renderCamera);
       });
     }
+
+    let depthCleanup: (() => void) | null = null;
+    if (viewport.display.show_depth && analysis && analysis.focal_px.fx > 0 && constraints.image_width > 0 && constraints.image_height > 0) {
+      depthCleanup = addDepthOverlay(
+        root,
+        analysis,
+        constraints.image_width,
+        constraints.image_height,
+        () => { renderer.render(scene, renderCamera); }
+      );
+    }
+
     if (viewport.display.show_grid) {
       root.add(createGroundGrid(viewport.display.grid_scale));
     }
@@ -185,71 +234,24 @@ function Viewport3DStage({
     };
 
     let frameId = 0;
-    let dragging = false;
-    let lastPointer: { x: number; y: number } | null = null;
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-
-    const applyView = () => {
-      applyCameraMode(renderCamera, viewport.display.active_mode, viewport.display.lock_camera_to_view, target, orbit);
-      renderer.render(scene, renderCamera);
-    };
 
     const animate = () => {
-      if (!reducedMotion && !dragging && viewport.display.active_mode === "perspective") {
-        orbit.yaw += 0.0012;
-      }
-      applyView();
+      controls.update();
+      renderer.render(scene, renderCamera);
       frameId = window.requestAnimationFrame(animate);
     };
 
-    const handlePointerDown = (event: PointerEvent) => {
-      if (viewport.display.active_mode !== "perspective" && viewport.display.active_mode !== "image_match") return;
-      dragging = true;
-      lastPointer = { x: event.clientX, y: event.clientY };
-      renderer.domElement.setPointerCapture(event.pointerId);
-    };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!dragging || !lastPointer) return;
-      const dx = event.clientX - lastPointer.x;
-      const dy = event.clientY - lastPointer.y;
-      orbit.yaw -= dx * 0.006;
-      orbit.pitch = clamp(orbit.pitch + dy * 0.004, -0.15, 1.42);
-      lastPointer = { x: event.clientX, y: event.clientY };
-    };
-
-    const handlePointerUp = (event: PointerEvent) => {
-      dragging = false;
-      lastPointer = null;
-      if (renderer.domElement.hasPointerCapture(event.pointerId)) {
-        renderer.domElement.releasePointerCapture(event.pointerId);
-      }
-    };
-
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      orbit.distance = clamp(orbit.distance + event.deltaY * 0.006, 2.6, 18);
-    };
-
     resize();
-    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
-    renderer.domElement.addEventListener("pointermove", handlePointerMove);
-    renderer.domElement.addEventListener("pointerup", handlePointerUp);
-    renderer.domElement.addEventListener("pointercancel", handlePointerUp);
-    renderer.domElement.addEventListener("wheel", handleWheel, { passive: false });
     const observer = new ResizeObserver(resize);
     observer.observe(mount);
     animate();
 
     return () => {
       projectionCleanup?.();
+      depthCleanup?.();
       window.cancelAnimationFrame(frameId);
       observer.disconnect();
-      renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
-      renderer.domElement.removeEventListener("pointermove", handlePointerMove);
-      renderer.domElement.removeEventListener("pointerup", handlePointerUp);
-      renderer.domElement.removeEventListener("pointercancel", handlePointerUp);
-      renderer.domElement.removeEventListener("wheel", handleWheel);
+      controls.dispose();
       disposeObject(root);
       renderer.dispose();
       renderer.domElement.remove();
@@ -303,11 +305,18 @@ function Viewport3DStage({
             icon={<Box size={15} />}
           />
           <ViewportToggle
-            label={analysis ? "Project image on ground" : "Project image on ground (run Analyze first)"}
+            label={!analysis ? "Project image on ground (run Analyze first)" : !(analysis.focal_px?.fx > 0) ? "Project image on ground (draw guide lines to solve focal length)" : "Project image on ground"}
             active={viewport.display.show_projection}
-            disabled={!analysis}
+            disabled={!analysis || !(analysis.focal_px?.fx > 0)}
             onClick={() => updateDisplay({ show_projection: !viewport.display.show_projection })}
             icon={<Film size={15} />}
+          />
+          <ViewportToggle
+            label={!analysis ? "Ground depth heatmap (run Analyze first)" : !(analysis.focal_px?.fx > 0) ? "Ground depth heatmap (draw guide lines to solve focal length)" : "Ground depth heatmap"}
+            active={viewport.display.show_depth}
+            disabled={!analysis || !(analysis.focal_px?.fx > 0)}
+            onClick={() => updateDisplay({ show_depth: !viewport.display.show_depth })}
+            icon={<Thermometer size={15} />}
           />
           <ViewportToggle
             label={viewport.display.lock_camera_to_view ? "Unlock view" : "Lock view"}
@@ -592,36 +601,6 @@ function createLine(points: number[][], color: number, opacity = 1) {
   return new THREE.Line(geometry, material);
 }
 
-function applyCameraMode(
-  camera: any,
-  mode: Viewport3DMode,
-  lockCameraToView: boolean,
-  target: any,
-  orbit: { yaw: number; pitch: number; distance: number }
-) {
-  if (mode === "top") {
-    camera.position.set(0, 8.2, -2.2);
-    camera.up.set(0, 0, -1);
-  } else if (mode === "front") {
-    camera.position.set(0, 1.25, 5.4);
-    camera.up.set(0, 1, 0);
-  } else if (mode === "side") {
-    camera.position.set(6.2, 1.55, -2.2);
-    camera.up.set(0, 1, 0);
-  } else if (mode === "image_match" && lockCameraToView) {
-    camera.position.set(0, 1.55, 4.8);
-    camera.up.set(0, 1, 0);
-  } else {
-    const radius = orbit.distance;
-    camera.position.set(
-      target.x + Math.sin(orbit.yaw) * Math.cos(orbit.pitch) * radius,
-      target.y + Math.sin(orbit.pitch) * radius,
-      target.z + Math.cos(orbit.yaw) * Math.cos(orbit.pitch) * radius
-    );
-    camera.up.set(0, 1, 0);
-  }
-  camera.lookAt(target);
-}
 
 function imagePointToScene(point: number[], width: number, height: number, z: number): [number, number, number] {
   const aspect = width / height;

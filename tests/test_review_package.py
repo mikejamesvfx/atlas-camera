@@ -24,6 +24,7 @@ def test_review_package_folder_can_be_created(tmp_path):
 
     assert (result.package_dir / "atlas_solve.json").is_file()
     assert (result.package_dir / "maya_open_scene.py").is_file()
+    assert (result.package_dir / "open_atlas_review_001.mel").is_file()
     assert (result.package_dir / "report.md").is_file()
     assert (result.package_dir / "source_image.png").is_file()
     if result.warnings:

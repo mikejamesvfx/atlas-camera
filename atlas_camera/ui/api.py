@@ -14,6 +14,7 @@ except ImportError as exc:  # pragma: no cover - exercised by optional installs.
 from atlas_camera.ui.project import (
     analyze_project,
     create_project,
+    export_camera_usd,
     export_review_package,
     llm_guidance_project,
     llm_models_response,
@@ -166,6 +167,22 @@ def post_promote_scale_cue(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/export/camera-usd")
+def post_export_camera_usd(payload: dict[str, Any]) -> dict[str, Any]:
+    """Export only the solved camera as a USD file (camera.usda in the project directory).
+
+    Lighter alternative to the full review package when you only need the camera
+    asset for DCC import. Requires usd-core (`pip install -e .[usd]`).
+    """
+    project_dir = payload.get("project_dir")
+    if not project_dir:
+        raise HTTPException(status_code=400, detail="project_dir is required.")
+    try:
+        return export_camera_usd(project_dir)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/export/review-package")
 def post_export(payload: dict[str, Any]) -> dict[str, Any]:
     project_dir = payload.get("project_dir")
@@ -193,6 +210,7 @@ def get_file(
         "overlay": project.overlay_path,
         "solve": project.solve_path,
         "constraints": project.constraints_path,
+        "camera_usd": project.project_dir / "camera.usda",
         "report": project.project_dir / "review_packages" / package_name / "report.md",
     }
     path = paths.get(kind)

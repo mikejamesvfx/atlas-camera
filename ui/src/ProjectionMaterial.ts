@@ -51,6 +51,67 @@ const FRAGMENT_SHADER = `
   }
 `;
 
+const DEPTH_VERTEX_SHADER = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const DEPTH_FRAGMENT_SHADER = `
+  precision highp float;
+
+  uniform mat4  uCamToWorld;
+  uniform vec3  uCameraPos;
+  uniform float uFx;
+  uniform float uFy;
+  uniform float uCx;
+  uniform float uCy;
+  uniform vec2  uImageSize;
+  uniform float uDepthNear;
+  uniform float uDepthFar;
+  uniform float uOpacity;
+
+  varying vec2 vUv;
+
+  vec3 depthHeatmap(float t) {
+    t = clamp(t, 0.0, 1.0);
+    vec3 c0 = vec3(0.90, 0.12, 0.04);
+    vec3 c1 = vec3(0.96, 0.72, 0.08);
+    vec3 c2 = vec3(0.20, 0.84, 0.60);
+    vec3 c3 = vec3(0.08, 0.22, 0.86);
+    if (t < 0.333) return mix(c0, c1, t * 3.0);
+    if (t < 0.667) return mix(c1, c2, (t - 0.333) * 3.0);
+    return mix(c2, c3, (t - 0.667) * 3.0);
+  }
+
+  void main() {
+    if (uCameraPos.y <= 0.0) discard;
+
+    // Three.js PlaneGeometry UV: (0,0)=bottom-left; image: (0,0)=top-left
+    vec2 px = vec2(vUv.x * uImageSize.x, (1.0 - vUv.y) * uImageSize.y);
+
+    // Unproject pixel to camera-space ray (camera looks along -Z)
+    vec3 rayCam = normalize(vec3(
+      (px.x - uCx) / uFx,
+      -(px.y - uCy) / uFy,
+      -1.0
+    ));
+
+    // Rotate to world space (direction only, w=0)
+    vec3 rayWorld = normalize((uCamToWorld * vec4(rayCam, 0.0)).xyz);
+
+    // Intersect with ground plane Y=0: cameraPos.y + t * rayWorld.y = 0
+    if (abs(rayWorld.y) < 1.0e-5) discard;
+    float t = -uCameraPos.y / rayWorld.y;
+    if (t < 0.001) discard;
+
+    float normalized = clamp((t - uDepthNear) / (uDepthFar - uDepthNear), 0.0, 1.0);
+    gl_FragColor = vec4(depthHeatmap(normalized), uOpacity);
+  }
+`;
+
 function buildAtlasViewUniform(analysis: CameraAnalysis): any {
   const vm = analysis.view_matrix;
   return new THREE.Matrix4().set(
@@ -141,5 +202,61 @@ export function addProjectionGround(
     placeholder.dispose();
     activeMaterial?.dispose();
     activeTexture?.dispose();
+  };
+}
+
+export function addDepthOverlay(
+  root: any,
+  analysis: CameraAnalysis,
+  imageWidth: number,
+  imageHeight: number,
+  onReady: () => void
+): () => void {
+  const aspect = imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : 16 / 9;
+  const planeWidth = 4.6;
+  const planeHeight = planeWidth / aspect;
+
+  const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+  const viewMatrix = buildAtlasViewUniform(analysis);
+  const camToWorld = viewMatrix.clone().invert();
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uCamToWorld: { value: camToWorld },
+      uCameraPos:  { value: new THREE.Vector3(
+        analysis.camera_position[0],
+        analysis.camera_position[1],
+        analysis.camera_position[2]
+      )},
+      uFx:        { value: analysis.focal_px.fx },
+      uFy:        { value: analysis.focal_px.fy },
+      uCx:        { value: analysis.principal_point_px.cx },
+      uCy:        { value: analysis.principal_point_px.cy },
+      uImageSize: { value: new THREE.Vector2(imageWidth, imageHeight) },
+      uDepthNear: { value: 1.0 },
+      uDepthFar:  { value: 50.0 },
+      uOpacity:   { value: 0.65 }
+    },
+    vertexShader: DEPTH_VERTEX_SHADER,
+    fragmentShader: DEPTH_FRAGMENT_SHADER,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    depthTest: true
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = "depth_overlay";
+  mesh.position.set(0, planeHeight * 0.46 + 0.18, -3.85);
+  mesh.renderOrder = 2;
+  root.add(mesh);
+
+  onReady();
+
+  return () => {
+    root.remove(mesh);
+    geometry.dispose();
+    material.dispose();
   };
 }

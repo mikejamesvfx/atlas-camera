@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   analyzeProject,
   createProject,
+  exportCameraUsd,
   exportReviewPackage,
   loadLlmModels,
   loadReferences,
@@ -327,11 +328,39 @@ export function App() {
     }
   };
 
+  const handleExportUsd = async () => {
+    if (!project) return;
+    setError("");
+    setStatus("Exporting camera USD.");
+    try {
+      await exportCameraUsd(project.project_dir);
+      const link = document.createElement("a");
+      link.href = `/api/files/camera_usd?project_dir=${encodeURIComponent(project.project_dir)}`;
+      link.download = "camera.usda";
+      link.click();
+      setStatus("camera.usda downloaded.");
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : String(exc));
+    }
+  };
+
   const imagePointFromEvent = (event: React.PointerEvent): Point | null => {
     const box = canvasRef.current?.getBoundingClientRect();
     if (!box || constraints.image_width === 0 || constraints.image_height === 0) return null;
-    const x = ((event.clientX - box.left) / box.width) * constraints.image_width;
-    const y = ((event.clientY - box.top) / box.height) * constraints.image_height;
+    // The image uses object-fit:contain inside the full-stage overlay — compute the
+    // letterbox offset so click coordinates map to actual image pixels.
+    const containerAspect = box.width / box.height;
+    const imageAspect = constraints.image_width / constraints.image_height;
+    let imgLeft = 0, imgTop = 0, imgWidth = box.width, imgHeight = box.height;
+    if (containerAspect > imageAspect) {
+      imgWidth = box.height * imageAspect;
+      imgLeft = (box.width - imgWidth) / 2;
+    } else {
+      imgHeight = box.width / imageAspect;
+      imgTop = (box.height - imgHeight) / 2;
+    }
+    const x = ((event.clientX - box.left - imgLeft) / imgWidth) * constraints.image_width;
+    const y = ((event.clientY - box.top - imgTop) / imgHeight) * constraints.image_height;
     return [
       Math.max(0, Math.min(constraints.image_width, x)),
       Math.max(0, Math.min(constraints.image_height, y))
@@ -421,7 +450,6 @@ export function App() {
                   <div
                     ref={canvasRef}
                     className={guideOverlayActive ? "lineup-guide-overlay active" : "lineup-guide-overlay"}
-                    style={{ aspectRatio: `${constraints.image_width} / ${constraints.image_height}` }}
                     onPointerDown={(event) => {
                       if (!guideOverlayActive) return;
                       const point = imagePointFromEvent(event);
@@ -538,6 +566,10 @@ export function App() {
             <button className="action-button" onClick={handleExport} disabled={!project?.has_solve}>
               <Download size={15} />
               Export
+            </button>
+            <button className="action-button" onClick={handleExportUsd} disabled={!project?.has_solve} title="Export camera as USD (requires usd-core)">
+              <Box size={15} />
+              USD
             </button>
           </div>
 

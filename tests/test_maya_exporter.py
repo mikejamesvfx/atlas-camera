@@ -12,6 +12,7 @@ from atlas_camera.exporters.maya_exporter import (
     NODE_PROJECTION_GRP,
     NODE_PROJECTION_PLANE,
     NODE_REFERENCE_GRP,
+    write_maya_mel_launcher,
     write_maya_scene_script,
 )
 
@@ -95,7 +96,11 @@ def test_maya_exporter_converts_aperture_and_film_offset(tmp_path):
     assert "verticalFilmOffset\", -0.037037037037037035" in script
 
 
-def test_maya_exporter_preserves_y_up_camera_translation(tmp_path):
+def test_maya_exporter_applies_world_matrix(tmp_path):
+    # World matrix with identity rotation and position (1, 2, 3).
+    # Maya row-vector convention: 3x3 rotation transposed, translation in last row.
+    # Identity rotation is self-transposing, so flat Maya matrix is:
+    # [1,0,0,0, 0,1,0,0, 0,0,1,0, 1,2,3,1]
     solve = AtlasSolve(
         camera=AtlasCamera(
             intrinsics=build_intrinsics(
@@ -103,7 +108,15 @@ def test_maya_exporter_preserves_y_up_camera_translation(tmp_path):
                 image_height=1080,
                 focal_length_mm=35.0,
             ),
-            extrinsics=AtlasExtrinsics(camera_position=(1.0, 2.0, 3.0)),
+            extrinsics=AtlasExtrinsics(
+                camera_position=(1.0, 2.0, 3.0),
+                camera_world_matrix=(
+                    (1.0, 0.0, 0.0, 1.0),
+                    (0.0, 1.0, 0.0, 2.0),
+                    (0.0, 0.0, 1.0, 3.0),
+                    (0.0, 0.0, 0.0, 1.0),
+                ),
+            ),
         ),
         image_width=1920,
         image_height=1080,
@@ -111,9 +124,9 @@ def test_maya_exporter_preserves_y_up_camera_translation(tmp_path):
 
     script = write_maya_scene_script(solve, tmp_path / "maya_open_scene.py").read_text(encoding="utf-8")
 
-    assert 'cmds.setAttr(camera_transform + ".translateX", 1.0)' in script
-    assert 'cmds.setAttr(camera_transform + ".translateY", 2.0)' in script
-    assert 'cmds.setAttr(camera_transform + ".translateZ", 3.0)' in script
+    assert "cmds.xform(camera_transform, worldSpace=True, matrix=" in script
+    assert "1.0, 0.0, 0.0, 0.0" in script   # first row: camera right (identity)
+    assert "1.0, 2.0, 3.0, 1.0" in script   # last row: translation + homogeneous
 
 
 def test_maya_exporter_writes_projection_plane_and_shader(tmp_path):
@@ -151,6 +164,38 @@ def test_maya_exporter_rejects_missing_focal_length(tmp_path):
 
     with pytest.raises(ValueError, match="focal_length_mm"):
         write_maya_scene_script(solve, tmp_path / "maya_open_scene.py")
+
+
+def test_maya_mel_launcher_writes_file(tmp_path):
+    mel_path = write_maya_mel_launcher(tmp_path, review_name="atlas_review_001")
+    assert mel_path == tmp_path / "open_atlas_review_001.mel"
+    assert mel_path.is_file()
+
+
+def test_maya_mel_launcher_uses_forward_slashes(tmp_path):
+    mel = write_maya_mel_launcher(tmp_path, review_name="atlas_review_001").read_text(encoding="utf-8")
+    # Path inside MEL must use forward slashes only
+    assert "\\\\" not in mel
+    assert 'string $packageDir = "' in mel
+    pkg_line = next(line for line in mel.splitlines() if "string $packageDir" in line)
+    assert "\\" not in pkg_line
+
+
+def test_maya_mel_launcher_proc_name_and_call(tmp_path):
+    mel = write_maya_mel_launcher(tmp_path, review_name="atlas_review_001").read_text(encoding="utf-8")
+    assert "global proc atlas_open_atlas_review_001()" in mel
+    assert "atlas_open_atlas_review_001();" in mel
+
+
+def test_maya_mel_launcher_contains_build_scene_call(tmp_path):
+    mel = write_maya_mel_launcher(tmp_path, review_name="atlas_review_001").read_text(encoding="utf-8")
+    assert "maya_open_scene.build_scene(package_dir)" in mel
+    assert "importlib.reload(maya_open_scene)" in mel
+
+
+def test_maya_mel_launcher_sanitises_proc_name_for_special_chars(tmp_path):
+    mel = write_maya_mel_launcher(tmp_path, review_name="my-review 01!").read_text(encoding="utf-8")
+    assert "global proc atlas_open_my_review_01_(" in mel
 
 
 def test_maya_exporter_warns_for_inferred_focal(tmp_path):

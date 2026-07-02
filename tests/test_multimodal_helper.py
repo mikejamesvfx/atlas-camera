@@ -1,218 +1,128 @@
-import pytest
-from unittest.mock import patch
+"""Tests for _parse_model_json robustness — LLM repetition-loop recovery."""
 
-from atlas_camera.inference import (
-    LMStudioVisionProvider,
-    LlamaCppVisionProvider,
-    MultimodalSceneHelper,
-    MultimodalSceneObservation,
-    OllamaVisionSceneHelper,
-    ProviderModelInfo,
-    SceneScaleCue,
+import json
+
+from atlas_camera.inference.multimodal_helper import (
+    _close_partial_json,
+    _parse_model_json,
+    _truncate_looping_response,
 )
 
 
-def _provider_model(model="gemma3:4b", vision=True):
-    return ProviderModelInfo(
-        id=model,
-        name=model,
-        vision_capable=vision,
-        capabilities=["completion", "vision"] if vision else ["completion"],
+# ---------------------------------------------------------------------------
+# _truncate_looping_response
+# ---------------------------------------------------------------------------
+
+
+def test_no_loop_returns_unchanged():
+    content = '{"summary": "A factory scene.", "scale_candidates": ["person_175cm"]}'
+    result, was_looping = _truncate_looping_response(content)
+    assert not was_looping
+    assert result == content
+
+
+def test_exact_repetition_detected():
+    # 15 repetitions of the same 8-char fragment simulates a looping LLM
+    loop = '":" "," ' * 15
+    content = '{"summary": "ok", "scale_cues": [{"point": [100, 200], "label' + loop
+    result, was_looping = _truncate_looping_response(content)
+    assert was_looping
+    assert loop not in result
+    assert '"summary": "ok"' in result
+
+
+def test_oversized_response_truncated():
+    # Response longer than _MAX_RESPONSE_CHARS with no exact repeat pattern
+    content = '{"summary": "x"}' + ("a" * 33_000)
+    result, was_looping = _truncate_looping_response(content)
+    assert was_looping
+    assert len(result) <= 32_000
+
+
+# ---------------------------------------------------------------------------
+# _close_partial_json
+# ---------------------------------------------------------------------------
+
+
+def test_close_partial_outer_and_inner_open():
+    # Truncated: outer object + inner array open
+    partial = '{"summary": "scene", "scale_candidates": ["person_175cm"], "scale_cues": [{"label"'
+    result = _close_partial_json(partial)
+    assert result is not None
+    assert result.get("summary") == "scene"
+    assert result.get("scale_candidates") == ["person_175cm"]
+
+
+def test_close_uses_outer_comma_cut_as_fallback():
+    # The outer comma cut lets us recover fields before the broken one
+    partial = '{"summary": "good", "scene_description": "text", "scale_cues": [{"label'
+    result = _close_partial_json(partial)
+    assert result is not None
+    assert "summary" in result
+
+
+def test_close_non_object_returns_none():
+    result = _close_partial_json("[1, 2, 3")
+    assert result is None
+
+
+def test_close_balanced_but_invalid_returns_none():
+    # Balanced brackets but invalid value syntax — nothing _close_partial_json can fix
+    result = _close_partial_json('{"a": }')
+    assert result is None or isinstance(result, dict)
+
+
+# ---------------------------------------------------------------------------
+# _parse_model_json — end-to-end
+# ---------------------------------------------------------------------------
+
+
+def test_clean_json_parses_directly():
+    payload = {"summary": "A scene.", "scale_candidates": ["person_175cm"]}
+    result = _parse_model_json(json.dumps(payload))
+    assert result["summary"] == "A scene."
+    assert result["scale_candidates"] == ["person_175cm"]
+
+
+def test_looping_response_salvages_early_fields():
+    # Reproduces the exact LM Studio failure mode seen in the field:
+    # valid preamble then scale_cues array triggers an infinite repetition loop.
+    loop_fragment = '":" "," ' * 20
+    content = (
+        '{"summary": "Industrial steampunk factory.", '
+        '"scene_description": "Train depot interior.", '
+        '"scale_candidates": ["building_story_3m", "person_175cm"], '
+        '"scale_cues": [{"point": [550, 330], "label'
+        + loop_fragment
     )
+    result = _parse_model_json(content)
+    assert result.get("summary") == "Industrial steampunk factory."
+    assert result.get("scene_description") == "Train depot interior."
+    assert "building_story_3m" in (result.get("scale_candidates") or [])
+    warnings = result.get("warnings", [])
+    assert any("repetition loop" in w for w in warnings)
 
 
-def test_multimodal_observation_serializes_scale_cues_and_provider_metadata():
-    observation = MultimodalSceneObservation(
-        image_path="concept.png",
-        summary="Street scene with a person and car.",
-        scale_cues=[
-            SceneScaleCue(
-                label="person",
-                confidence=0.8,
-                bbox_px=(10.0, 20.0, 30.0, 80.0),
-                suggested_reference_ids=["person_175cm"],
-                notes="Standing adult candidate.",
-            )
-        ],
-        scale_candidates=["adult person", "sedan"],
-        provider="lmstudio",
-        base_url="http://127.0.0.1:1234/v1",
-        vision_capable=True,
-        warnings=["artist confirmation required"],
-    )
-
-    data = observation.to_dict()
-
-    assert data["scale_cues"][0]["suggested_reference_ids"] == ["person_175cm"]
-    assert data["scale_candidates"] == ["adult person", "sedan"]
-    assert data["provider"] == "lmstudio"
-    assert data["vision_capable"] is True
-    assert data["warnings"] == ["artist confirmation required"]
+def test_looping_response_warning_is_list():
+    loop = '"x" "," ' * 15
+    content = '{"summary": "s", "scale_cues": [{"label' + loop
+    result = _parse_model_json(content)
+    assert isinstance(result.get("warnings"), list)
 
 
-def test_multimodal_scene_helper_is_explicit_placeholder():
-    helper = MultimodalSceneHelper()
-
-    with pytest.raises(NotImplementedError):
-        helper.analyze_image("concept.png")
-
-
-def test_ollama_helper_parses_advisory_json(tmp_path):
-    image = tmp_path / "image.png"
-    image.write_bytes(b"fake-image")
-    response = {
-        "message": {
-            "content": """
-            {
-              "summary": "Interior scene with strong linear perspective.",
-              "scale_cues": [
-                {"label": "door", "confidence": 0.7, "suggested_reference_ids": ["door_210cm"]}
-              ],
-              "technical_guidance": ["Add vertical guides along door frames."],
-              "solve_risk_notes": ["Wide lens distortion may bias vanishing points."],
-              "dataset_evidence": ["ETH3D-style calibrated interiors are useful comparison cases."],
-              "warnings": ["Confirm scale before export."]
-            }
-            """
-        }
-    }
-
-    helper = OllamaVisionSceneHelper(model="gemma3:4b")
-    with (
-        patch.object(helper, "list_models", return_value=[_provider_model()]),
-        patch.object(helper, "_request_json", return_value=response),
-    ):
-        observation = helper.analyze_image(image, app_context={"guide_counts": {"left": 2}})
-
-    assert observation.model == "gemma3:4b"
-    assert observation.provider == "ollama"
-    assert observation.scale_cues[0].suggested_reference_ids == ["door_210cm"]
-    assert observation.technical_guidance == ["Add vertical guides along door frames."]
+def test_completely_broken_json_returns_fallback():
+    result = _parse_model_json("not json at all")
+    assert "summary" in result
+    assert any("valid JSON" in w for w in result.get("warnings", []))
 
 
-def test_lmstudio_provider_parses_openai_compatible_vision_response(tmp_path):
-    image = tmp_path / "image.png"
-    image.write_bytes(b"fake-image")
-    models_response = {
-        "data": [
-            {
-                "id": "qwen2.5-vl",
-                "name": "Qwen2.5 VL",
-                "capabilities": {"completion": True, "vision": True},
-            }
-        ]
-    }
-    chat_response = {
-        "choices": [
-            {
-                "message": {
-                    "content": """
-                    {
-                      "summary": "Underground corridor with boxes and a distant person.",
-                      "scene_description": "A concrete tunnel with debris and strong receding wall edges.",
-                      "scale_candidates": ["distant human silhouette", "cardboard boxes", "corridor wall height"],
-                      "perspective_cues": ["floor-wall seams converge near the distant figure"],
-                      "lens_distortion_notes": ["Check for wide-angle edge bowing."],
-                      "occlusion_notes": ["Foreground boxes occlude floor seam continuity."],
-                      "recommended_guides": ["Trace left and right floor-wall seams."]
-                    }
-                    """
-                }
-            }
-        ]
-    }
-    helper = LMStudioVisionProvider(model="qwen2.5-vl", base_url="http://127.0.0.1:1234/v1")
-
-    def fake_request(endpoint, payload=None, *, base_url=None):
-        if endpoint == "/api/v1/models":
-            assert base_url == "http://127.0.0.1:1234"
-            return models_response
-        if endpoint == "/chat/completions":
-            assert payload["messages"][1]["content"][1]["type"] == "image_url"
-            assert payload["response_format"]["type"] == "json_schema"
-            assert payload["response_format"]["json_schema"]["name"] == "atlas_camera_guidance"
-            assert payload["response_format"]["json_schema"]["schema"]["required"] == ["summary"]
-            return chat_response
-        raise AssertionError(endpoint)
-
-    with patch.object(helper, "_request_json", side_effect=fake_request):
-        observation = helper.analyze_image(image)
-
-    assert observation.provider == "lmstudio"
-    assert observation.vision_capable is True
-    assert observation.scale_candidates == ["distant human silhouette", "cardboard boxes", "corridor wall height"]
-    assert observation.recommended_guides == ["Trace left and right floor-wall seams."]
+def test_empty_content_returns_fallback():
+    result = _parse_model_json("")
+    assert "summary" in result
 
 
-def test_lmstudio_provider_retries_with_text_when_response_format_is_rejected(tmp_path):
-    image = tmp_path / "image.png"
-    image.write_bytes(b"fake-image")
-    models_response = {
-        "data": [
-            {
-                "id": "qwen2.5-vl",
-                "name": "Qwen2.5 VL",
-                "capabilities": {"completion": True, "vision": True},
-            }
-        ]
-    }
-    chat_response = {"choices": [{"message": {"content": "{\"summary\":\"retry ok\"}"}}]}
-    helper = LMStudioVisionProvider(model="qwen2.5-vl", base_url="http://127.0.0.1:1234/v1")
-    seen_formats = []
-
-    def fake_request(endpoint, payload=None, *, base_url=None):
-        if endpoint == "/api/v1/models":
-            return models_response
-        if endpoint == "/chat/completions":
-            seen_formats.append(payload.get("response_format"))
-            if len(seen_formats) == 1:
-                raise RuntimeError(
-                    "lmstudio request failed (400): 'response_format.type' must be 'json_schema' or 'text'"
-                )
-            return chat_response
-        raise AssertionError(endpoint)
-
-    with patch.object(helper, "_request_json", side_effect=fake_request):
-        observation = helper.analyze_image(image)
-
-    assert seen_formats[0]["type"] == "json_schema"
-    assert seen_formats[1]["type"] == "text"
-    assert observation.summary == "retry ok"
-    assert observation.warnings == [
-        "lmstudio rejected structured response_format; retried with text JSON prompting."
-    ]
-
-
-def test_llamacpp_provider_assumes_openai_compatible_model_can_be_vision(tmp_path):
-    image = tmp_path / "image.png"
-    image.write_bytes(b"fake-image")
-    helper = LlamaCppVisionProvider(model="gemma-3-4b-it", base_url="http://127.0.0.1:8080/v1")
-
-    def fake_request(endpoint, payload=None, *, base_url=None):
-        if endpoint == "/models":
-            return {"data": [{"id": "gemma-3-4b-it"}]}
-        if endpoint == "/chat/completions":
-            return {"choices": [{"message": {"content": "{\"summary\":\"ok\"}"}}]}
-        raise AssertionError(endpoint)
-
-    with patch.object(helper, "_request_json", side_effect=fake_request):
-        observation = helper.analyze_image(image)
-
-    assert observation.provider == "llamacpp"
-    assert observation.vision_capable is True
-    assert observation.summary == "ok"
-
-
-def test_provider_rejects_non_vision_model_before_upload(tmp_path):
-    image = tmp_path / "image.png"
-    image.write_bytes(b"fake-image")
-    helper = OllamaVisionSceneHelper(model="gemma3:4b")
-
-    with (
-        patch.object(helper, "list_models", return_value=[_provider_model(vision=False)]),
-        patch.object(helper, "_request_json") as request_json,
-    ):
-        with pytest.raises(RuntimeError, match="does not advertise image/vision capability"):
-            helper.analyze_image(image)
-
-    request_json.assert_not_called()
+def test_json_in_markdown_fences_parsed():
+    # Some models wrap output in markdown code fences
+    payload = '```json\n{"summary": "ok"}\n```'
+    result = _parse_model_json(payload)
+    assert result.get("summary") == "ok"

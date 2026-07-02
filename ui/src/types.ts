@@ -35,6 +35,7 @@ export type Viewport3DDisplay = {
   show_proxies: boolean;
   show_horizon: boolean;
   show_projection: boolean;
+  show_depth: boolean;
   image_opacity: number;
   grid_scale: number;
   lock_camera_to_view: boolean;

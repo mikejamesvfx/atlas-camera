@@ -237,6 +237,7 @@ class OpenAICompatibleVisionProvider(MultimodalProvider):
                 },
             ],
             "temperature": 0,
+            "max_tokens": 1800,
         }
         response_format = self.response_format()
         if response_format is not None:
@@ -373,6 +374,7 @@ class OllamaVisionProvider(MultimodalProvider):
                 },
             ],
             "format": "json",
+            "options": {"num_predict": 1800},
         }
         response = self._request_json("/api/chat", payload)
         content = str(response.get("message", {}).get("content", "")).strip()
@@ -532,22 +534,115 @@ def _image_data_url(path: Path) -> str:
     return f"data:{mime};base64,{_image_base64(path)}"
 
 
+_MAX_RESPONSE_CHARS = 32_000
+_LOOP_REPEAT_RE = re.compile(r"(.{4,24})\1{11,}", re.DOTALL)
+
+
+def _truncate_looping_response(content: str) -> tuple[str, bool]:
+    """Detect a repetition loop (common in local LLMs) and truncate before it starts."""
+    m = _LOOP_REPEAT_RE.search(content)
+    if m and m.start() > 0:
+        return content[: m.start()], True
+    if len(content) > _MAX_RESPONSE_CHARS:
+        return content[:_MAX_RESPONSE_CHARS], True
+    return content, False
+
+
+def _close_partial_json(text: str) -> dict[str, Any] | None:
+    """Synthesize closing brackets to parse truncated JSON from a looping model."""
+    if not text.strip().startswith("{"):
+        return None
+    stack: list[str] = []
+    in_str = False
+    esc = False
+    last_outer_comma_pos = -1
+    for i, ch in enumerate(text):
+        if esc:
+            esc = False
+            continue
+        if ch == "\\" and in_str:
+            esc = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch == "}" and stack and stack[-1] == "}":
+            stack.pop()
+        elif ch == "]" and stack and stack[-1] == "]":
+            stack.pop()
+        if ch == "," and len(stack) == 1:
+            last_outer_comma_pos = i
+    if not stack:
+        return None
+    closing = "".join(reversed(stack))
+    stripped = text.rstrip().rstrip(",").rstrip()
+    try:
+        result = json.loads(stripped + closing)
+        if isinstance(result, dict):
+            return result
+    except json.JSONDecodeError:
+        pass
+    if last_outer_comma_pos > 0:
+        try:
+            result = json.loads(text[:last_outer_comma_pos].rstrip() + "}")
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def _extend_warnings(payload: dict[str, Any], extra: list[str]) -> None:
+    if not extra:
+        return
+    existing = payload.get("warnings")
+    if isinstance(existing, list):
+        existing.extend(extra)
+    else:
+        payload["warnings"] = list(extra)
+
+
 def _parse_model_json(content: str) -> dict[str, Any]:
     try:
         parsed = json.loads(content)
         return parsed if isinstance(parsed, dict) else {"summary": str(parsed)}
     except json.JSONDecodeError:
-        start = content.find("{")
-        end = content.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                parsed = json.loads(content[start : end + 1])
-                return parsed if isinstance(parsed, dict) else {"summary": content}
-            except json.JSONDecodeError:
-                pass
+        pass
+
+    truncated, was_looping = _truncate_looping_response(content)
+    loop_warnings: list[str] = (
+        ["Model response contained a repetition loop; partial data was recovered."]
+        if was_looping
+        else []
+    )
+    working = truncated if was_looping else content
+
+    start = working.find("{")
+    end = working.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            parsed = json.loads(working[start : end + 1])
+            if isinstance(parsed, dict):
+                _extend_warnings(parsed, loop_warnings)
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    if was_looping and start >= 0:
+        recovered = _close_partial_json(working[start:])
+        if recovered is not None:
+            _extend_warnings(recovered, loop_warnings)
+            return recovered
+
     return {
-        "summary": content or "Ollama returned an empty response.",
-        "warnings": ["Model response was not valid JSON."],
+        "summary": working or "Model returned an empty response.",
+        "warnings": loop_warnings + ["Model response was not valid JSON."],
     }
 
 

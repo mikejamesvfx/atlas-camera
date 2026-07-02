@@ -70,6 +70,15 @@ export async function analyzeProject(
   return readJson(response);
 }
 
+export async function exportCameraUsd(projectDir: string): Promise<{ path: string; filename: string }> {
+  const response = await fetch("/api/export/camera-usd", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_dir: projectDir })
+  });
+  return readJson(response);
+}
+
 export async function exportReviewPackage(projectDir: string): Promise<{ package_dir: string; warnings: string[] }> {
   const response = await fetch("/api/export/review-package", {
     method: "POST",

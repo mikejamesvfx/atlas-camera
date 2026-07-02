@@ -12,6 +12,7 @@ export const defaultViewport3DState: Viewport3DState = {
     show_proxies: true,
     show_horizon: true,
     show_projection: false,
+    show_depth: false,
     image_opacity: 0.78,
     grid_scale: 1,
     lock_camera_to_view: false

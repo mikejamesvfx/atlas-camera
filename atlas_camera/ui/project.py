@@ -336,6 +336,20 @@ def export_review_package(
     return review_package_response(result)
 
 
+def export_camera_usd(project_dir: str | Path) -> dict[str, Any]:
+    project = open_project(project_dir)
+    solve = load_project_solve(project.project_dir)
+    try:
+        from atlas_camera.exporters.usd_exporter import USDExporter
+    except ImportError as exc:
+        raise RuntimeError(
+            "USD export requires usd-core. Install with: pip install -e .[usd]"
+        ) from exc
+    output_path = project.project_dir / "camera.usda"
+    USDExporter().export_camera(solve, output_path)
+    return {"path": str(output_path), "filename": output_path.name}
+
+
 def reference_response(query: str | None = None, category: str | None = None) -> dict[str, Any]:
     return {
         "categories": list_categories(),

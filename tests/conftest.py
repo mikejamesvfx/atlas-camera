@@ -18,6 +18,16 @@ def make_atlas_solve():
     def _factory(**kwargs):
         image_w = kwargs.get("image_width", 1920)
         image_h = kwargs.get("image_height", 1080)
+        pos = kwargs.get("position", (0.0, 5.0, 10.0))
+        px, py, pz = float(pos[0]), float(pos[1]), float(pos[2])
+        # Build a consistent world matrix (identity rotation + given position)
+        # so exporters that read camera_world_matrix get the right data.
+        world_matrix = (
+            (1.0, 0.0, 0.0, px),
+            (0.0, 1.0, 0.0, py),
+            (0.0, 0.0, 1.0, pz),
+            (0.0, 0.0, 0.0, 1.0),
+        )
         return AtlasSolve(
             camera=AtlasCamera(
                 intrinsics=build_intrinsics(
@@ -28,7 +38,8 @@ def make_atlas_solve():
                     principal_point_px=kwargs.get("principal_point_px"),
                 ),
                 extrinsics=AtlasExtrinsics(
-                    camera_position=kwargs.get("position", (0.0, 5.0, 10.0))
+                    camera_position=pos,
+                    camera_world_matrix=world_matrix,
                 ),
             ),
             image_width=image_w,

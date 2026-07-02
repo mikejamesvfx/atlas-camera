@@ -15,6 +15,7 @@ def test_blender_exporter_writes_script_file(tmp_path, make_atlas_solve):
     assert path.is_file()
     script = path.read_text(encoding="utf-8")
     assert "import bpy" in script
+    assert "import mathutils" in script
     assert "build_scene" in script
 
 
@@ -53,8 +54,13 @@ def test_blender_exporter_bakes_scale_factors(tmp_path, make_atlas_solve):
     assert str(round(scale_u, 4))[:5] in script
 
 
-def test_blender_exporter_converts_position_to_z_up(tmp_path, make_atlas_solve):
-    # Atlas Y-up (x=1, y=2, z=3) → Blender Z-up (x=1, y=-3, z=2)
+def test_blender_exporter_applies_world_matrix_z_up(tmp_path, make_atlas_solve):
+    # Atlas Y-up position (1, 2, 3) with identity rotation → Blender Z-up matrix_world.
+    # T @ M_atlas: Row0 = [1,0,0,1], Row1 = -[0,0,1,3] = [0,0,-1,-3], Row2 = [0,1,0,2]
     solve = make_atlas_solve(position=(1.0, 2.0, 3.0))
     script = write_blender_scene_script(solve, tmp_path / "blender.py").read_text(encoding="utf-8")
-    assert "(1.0, -3.0, 2.0)" in script
+    assert "camera.matrix_world = mathutils.Matrix(" in script
+    # Translation column in Blender Z-up: X=1.0 (unchanged), Y=-3.0 (-Atlas Z), Z=2.0 (Atlas Y)
+    assert "1.0" in script
+    assert "-3.0" in script
+    assert "2.0" in script
