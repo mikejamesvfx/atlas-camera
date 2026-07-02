@@ -36,6 +36,16 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+# Learned single-image camera prior (GeoCalib). torch is expected to already be
+# present in the host environment (e.g. ComfyUI's venv). geocalib is published
+# only on GitHub, so it is installed separately:
+#   pip install "git+https://github.com/cvg/GeoCalib.git"
+neural = [
+    "numpy>=1.24",
+    "torch>=2.0",
+    "transformers>=4.40",        # Depth Anything V2 monocular depth
+    "geocalib @ git+https://github.com/cvg/GeoCalib.git",
+]
 image = [
     "pillow>=10",
 ]
