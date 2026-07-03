@@ -1,5 +1,5 @@
 /**
- * Atlas Blockout Viewport — ComfyUI frontend extension
+ * Atlas Viewport — ComfyUI frontend extension
  *
  * Embeds a Three.js 3D scene inside the AtlasBlockoutViewport node.
  * On node execution the recovered camera is fetched from /atlas/camera_data/{nodeId}
@@ -55,16 +55,39 @@ async function loadThree() {
 // ---------------------------------------------------------------------------
 const PROXY_COLORS = { woman: 0xffddbb, sedan: 0x6688aa };
 
-// Ground point (Y=0) under the camera's view centre, so the proxy lands where the
-// camera is looking rather than at an arbitrary spot.
-function groundPointInView(camera) {
+// Ground point under the camera's view centre, so the proxy/orbit-pivot lands
+// where the camera is looking rather than at an arbitrary spot.
+//
+// lookAheadDist caps the ground-ray intersection distance and (for the
+// looking-level/up case below) sets how far along the view ray the pivot
+// sits. Near-horizontal shots (dir.y close to 0 — common for ordinary
+// eye-level photography) make -p.y/dir.y blow up to hundreds or thousands of
+// metres; when this feeds createOrbitControls' syncFromCamera, that huge
+// distance becomes the orbit sphere's radius, so even a single pixel of drag
+// swings the camera sideways by metres and the recovered geometry (which
+// only spans tens of metres) leaves frame instantly. Capping keeps the pivot
+// (and thus the orbit radius) within the scene's actual scale; callers pass
+// the solved scene depth when known.
+function groundPointInView(camera, lookAheadDist = 30) {
   const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   const p = camera.position;
   if (dir.y < -1e-3) {
-    const t = -p.y / dir.y;
-    return new THREE.Vector3(p.x + t * dir.x, 0, p.z + t * dir.z);
+    const t = Math.min(-p.y / dir.y, lookAheadDist);
+    return new THREE.Vector3(p.x + t * dir.x, p.y + t * dir.y, p.z + t * dir.z);
   }
-  return new THREE.Vector3(p.x, 0, p.z - 3);
+  // Looking level or upward — e.g. a tall building/facade shot, where the
+  // view ray never crosses the ground plane in front of the camera. The
+  // pivot used to be hardcoded to (p.x, 0, p.z - 3): a fixed point 3 units
+  // along WORLD -Z, completely ignoring which way the camera actually faced
+  // and how far away the subject really was. For an upward-looking shot of a
+  // building tens of metres away, that pivot could be both the wrong
+  // direction and absurdly close — orbiting around it swings the camera
+  // instantly off into empty space, which is exactly the "mesh disappears
+  // the moment you click to rotate" bug (confirmed live: the relief mesh —
+  // a tall building facade — only reappeared after manually zooming the
+  // orbit radius way out). Anchor along the camera's ACTUAL view direction
+  // at the same scene-depth-aware distance instead.
+  return new THREE.Vector3(p.x + lookAheadDist * dir.x, p.y + lookAheadDist * dir.y, p.z + lookAheadDist * dir.z);
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +144,18 @@ function createOrbitControls(camera, dom) {
     panning = e.button === 2 || e.shiftKey;
     lx = e.clientX; ly = e.clientY;
     dom.style.cursor = "grabbing";
+    // stopPropagation on POINTERDOWN specifically (not mousedown) is required:
+    // LiteGraph's LGraphCanvas binds its node-drag/selection handling via
+    // canvas.addEventListener('pointerdown', ...) — Pointer Events, which fire
+    // BEFORE the corresponding legacy mousedown in the same click. Stopping
+    // propagation on mousedown (as this used to) is too late; the interception
+    // already happened on pointerdown. ComfyUI's own first-party Load3D widget
+    // guards the identical case with `@pointerdown.stop` in Load3D.vue — this
+    // mirrors that. Without it, a pointerdown here starts BOTH our orbit drag
+    // and LiteGraph's own drag/selection handling on the same motion, which is
+    // what reads as "the mesh disappears the moment you click to rotate."
     e.preventDefault();
+    e.stopPropagation();
   }
   function onUp() { dragging = false; dom.style.cursor = "grab"; }
   function onMove(e) {
@@ -140,26 +174,28 @@ function createOrbitControls(camera, dom) {
       const rawPhi = Math.min(Math.PI - 0.05, Math.max(0.05, sph.phi - dy * 0.005));
       sph.phi = Math.min(phi0 + MAX_PITCH, Math.max(phi0 - MAX_PITCH, rawPhi));
     }
+    e.stopPropagation();
     apply();
   }
   function onWheel(e) {
     sph.radius = Math.max(0.05, sph.radius * (1 + Math.sign(e.deltaY) * 0.1));
     apply();
     e.preventDefault();
+    e.stopPropagation(); // don't let the graph canvas zoom underneath the widget
   }
-  dom.addEventListener("mousedown", onDown);
-  window.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onUp);
+  dom.addEventListener("pointerdown", onDown);
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
   dom.addEventListener("wheel", onWheel, { passive: false });
-  dom.addEventListener("contextmenu", (e) => e.preventDefault());
+  dom.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); });
   return {
     target,
     setTarget(v) { target.copy(v); },
     syncFromCamera,
     dispose() {
-      dom.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      dom.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
       dom.removeEventListener("wheel", onWheel);
     },
   };
@@ -202,6 +238,14 @@ function loadProxyModel(scene, modelName, camera) {
 // silhouette subtends — the image reassembles perfectly from Camera View.
 // Deviation from the ui version: depthWrite/depthTest ON so multiple proxies
 // occlude each other correctly (the ui version was a single-ground overlay).
+//
+// Conflicts with AtlasBlockoutViewport's preview_expand: dilated geometry is,
+// by construction, surface the recovered camera never actually photographed,
+// so its projected pixel always falls outside the source frame and gets
+// discarded below -> renders empty/black. This is why preview_expand now
+// defaults to 1.0 (off) node-side; raising it helps the undressed grey
+// preview orbit further, but guarantees black gaps the moment Project is on
+// and you orbit even slightly off the exact recovered viewpoint.
 // ---------------------------------------------------------------------------
 const PROJECTION_VERTEX_SHADER = `
   uniform mat4 uAtlasViewMatrix;
@@ -864,7 +908,11 @@ function buildNodeUI(node, containerEl) {
       resizeViewport(data.target_width, data.target_height);
     }
     applyRecoveredCamera(camera, data);
-    controls.setTarget(groundPointInView(camera)); // pivot on the looked-at ground point
+    // Prefer the solved scene depth (when a derive-geometry node ran) over the
+    // generic 30m default so the orbit radius matches this scene's actual scale.
+    const sceneDepth = data.camera_meta?.scene_depth_m;
+    const pivotMax = sceneDepth ? sceneDepth * 1.5 : 30;
+    controls.setTarget(groundPointInView(camera, pivotMax)); // pivot on the looked-at ground point
     controls.syncFromCamera();                     // init orbit state from recovered pose
     recoveredData = data;
   }

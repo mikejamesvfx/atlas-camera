@@ -128,8 +128,6 @@ def estimate_depth(
     if not is_metric:
         # Relative models emit disparity-like values (larger = closer). Convert to
         # a distance-like map (larger = farther), normalised to [0, 1] up to scale.
-        import numpy as np
-
         d = depth - depth.min()
         d = d / (d.max() or 1.0)
         depth = 1.0 - d  # now larger = farther, still unitless

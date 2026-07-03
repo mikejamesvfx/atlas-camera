@@ -278,7 +278,6 @@ def derive_projection_proxies(
             if len(peaks) >= max_walls * 2:  # extra candidates; filtered below
                 break
 
-        up = np.array([0.0, 1.0, 0.0])
         for b in peaks:
             if len(walls) >= max_walls:
                 break

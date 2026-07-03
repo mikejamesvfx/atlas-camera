@@ -30,6 +30,19 @@ from atlas_camera.ui.project import (
 app = FastAPI(title="Atlas Camera UI", version="0.1.0")
 
 
+def _safe_package_name(name: str) -> str:
+    """Reject path separators / traversal in a value meant to be a single folder name.
+
+    `package_name` is joined directly into a filesystem path (review-package export
+    and lookup); unlike `project_dir` — an intentionally arbitrary, user-chosen
+    location — this value has no legitimate reason to contain a path.
+    """
+    candidate = Path(name).name
+    if not candidate or candidate in (".", "..") or candidate != name:
+        raise HTTPException(status_code=400, detail=f"Invalid package_name: {name!r}")
+    return candidate
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -191,7 +204,7 @@ def post_export(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         return export_review_package(
             project_dir,
-            package_name=str(payload.get("package_name") or "atlas_review_001"),
+            package_name=_safe_package_name(str(payload.get("package_name") or "atlas_review_001")),
             include_usd=bool(payload.get("include_usd", True)),
         )
     except Exception as exc:  # noqa: BLE001
@@ -211,7 +224,7 @@ def get_file(
         "solve": project.solve_path,
         "constraints": project.constraints_path,
         "camera_usd": project.project_dir / "camera.usda",
-        "report": project.project_dir / "review_packages" / package_name / "report.md",
+        "report": project.project_dir / "review_packages" / _safe_package_name(package_name) / "report.md",
     }
     path = paths.get(kind)
     if path is None or not Path(path).is_file():

@@ -5,7 +5,6 @@ is fully testable. It then feeds resolve_reference_scale (single-view geometry).
 """
 
 import numpy as np
-import pytest
 
 from atlas_camera.inference.multimodal_helper import (
     MultimodalSceneObservation,

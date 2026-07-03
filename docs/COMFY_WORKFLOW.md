@@ -42,7 +42,7 @@ Five colour-coded groups:
 | ① Source Image | `LoadImage` |
 | ② Camera Solve | `AtlasSolveFromImage` → `AtlasDecomposeSolve` → `AtlasDecomposeCamera` |
 | ③ Analysis Passes | `AtlasGroundDepthMap`, `AtlasGroundMask`, `AtlasHorizonMask`, `AtlasVPVisualization` |
-| ④ Blockout Viewport | `AtlasBlockoutViewport` + 4× `PreviewImage` |
+| ④ Atlas Viewport | `AtlasBlockoutViewport` + 4× `PreviewImage` |
 | ⑤ DCC Exports | `AtlasExportSolveJSON`, `AtlasExportBlender`, `AtlasExportNuke`, `AtlasExportUSD`, `AtlasExportReviewPackage` |
 
 ---

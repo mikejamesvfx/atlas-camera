@@ -113,7 +113,6 @@ def extract_planes_ransac(
     stats["ground_inliers"] = gf.inliers
 
     pts_world = gf.pts_world_scaled
-    world_y = pts_world[..., 1]
     scaled_depth = depth * scale
     backdrop_d_raw = float(np.percentile(
         scaled_depth[bp.valid_depth], cfg.backdrop_depth_percentile

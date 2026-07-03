@@ -7,13 +7,11 @@ locks the view-matrix convention end-to-end.
 """
 
 import json
-import math
 
 import numpy as np
 import pytest
 
 from atlas_camera.core.proxy_geometry import (
-    ProxyDerivationConfig,
     derive_projection_proxies,
     serialize_proxy_geometry,
 )

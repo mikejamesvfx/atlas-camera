@@ -9,7 +9,6 @@ import numpy as np
 import pytest
 
 from atlas_camera.core.relief_mesh import (
-    ReliefMesh,
     build_relief_mesh,
     estimate_ground_scale,
 )
@@ -37,8 +36,7 @@ def _view_matrix(h):
 
 def _scene_depth(h=1.6, wall_z=-10.0, wall_h=3.0):
     """Analytic z-depth: min over sky, ground plane Y=0, wall at z=wall_z."""
-    uu, vv = np.meshgrid(np.arange(W, dtype=float), np.arange(H, dtype=float))
-    dx = (uu - CX) / FX
+    _, vv = np.meshgrid(np.arange(W, dtype=float), np.arange(H, dtype=float))
     dy = -(vv - CY) / FY
     depth = np.full((H, W), SKY)
 

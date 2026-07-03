@@ -137,7 +137,8 @@
         "auto",
         "relief_mesh",
         96,
-        "azimuth_walls"
+        "azimuth_walls",
+        "manual"
       ]
     },
     {
@@ -202,7 +203,7 @@
       "widgets_values": [
         768,
         "",
-        1.4
+        1.0
       ]
     },
     {
@@ -397,7 +398,7 @@
     },
     {
       "id": 4,
-      "title": "\u2463 Blockout Viewport \u2014 hit \ud83d\udcfd Project to see the camera projection",
+      "title": "\u2463 Atlas Viewport \u2014 hit \ud83d\udcfd Project to see the camera projection",
       "bounding": [
         1320,
         100,

@@ -1,24 +1,45 @@
-# Atlas Camera — Co-Worker Handoff (2026-07-02)
+# Atlas Camera — Co-Worker Handoff (updated 2026-07-02, end of session)
 
-This document is written for a fresh Claude Code instance picking up testing of the ComfyUI integration.
+This document is written for a fresh Claude Code instance picking up testing of the
+ComfyUI integration. It was originally written at the *start* of 2026-07-02 describing
+an 18-node integration; a long session of feature work followed (learned camera prior,
+metric-scale cascade, depth-derived projection geometry, matte-painting projection,
+relief-mesh export, viewport diagnostics). This revision brings it back in sync — see
+[CLAUDE.md](../CLAUDE.md) for the authoritative, continuously-maintained architecture
+reference and [docs/USER_GUIDE.md](USER_GUIDE.md) for the artist/TD-facing walkthrough
+of what the tool actually does. This file stays useful as the narrower "what's been
+manually verified inside a live ComfyUI session vs. only unit-tested" status board.
 
 ---
 
 ## What this project is
 
-**Atlas Camera** is a camera-recovery tool for VFX/3D artists. Given a still photo, it estimates the camera's focal length, position, and orientation (vanishing-point solve). Artists use this to match-move blockout geometry or set up DCC projection scenes.
+**Atlas Camera** is a camera-recovery tool for VFX/3D artists, purpose-built to be robust
+on **AI-generated images**, not just real photographs. Given a still photo, it estimates
+the camera's focal length, position, and orientation, and (via a tiered, confidence-gated
+cascade) a metric scale for the scene. From there it can derive simple 3D geometry from a
+monocular depth map and **project the source photo onto it from the recovered camera** —
+the matte-painting technique — live inside a ComfyUI viewport, or exported as a UV-baked
+mesh for Maya/Nuke/ZBrush/Blender.
 
-The ComfyUI integration adds 18 nodes so the solve can live inside a ComfyUI graph alongside Stable Diffusion, ControlNet, etc.
+The ComfyUI integration now registers **25 nodes** (see CLAUDE.md's node catalog table for
+the full, current list — do not trust a node count anywhere else, including this doc, over
+the actual `NODE_CLASS_MAPPINGS` in `atlas_camera/comfy/nodes.py`).
 
 ---
 
 ## Repository location
 
+Paths below are illustrative — substitute your own checkout/install locations. Do not bake
+absolute paths into this file again; that was a real portability bug fixed in CLAUDE.md
+during this session and it isn't worth reintroducing here.
+
 ```
-C:\Users\miike\Desktop\AtlasCamera_Claude\
+<REPO_ROOT>\                                    # this repository
+<COMFYUI_ROOT>\custom_nodes\AtlasCamera          # symlink -> <REPO_ROOT>\atlas_camera\comfy
 ```
 
-GitHub: `miikejamesburns/AtlasCamera` (main branch, up to date as of 2026-07-02).
+GitHub: `miikejamesburns/atlasCamera`.
 
 ---
 
@@ -26,33 +47,57 @@ GitHub: `miikejamesburns/AtlasCamera` (main branch, up to date as of 2026-07-02)
 
 | What | Where |
 |---|---|
-| Project repo | `C:\Users\miike\Desktop\AtlasCamera_Claude\` |
-| ComfyUI install | `C:\Users\miike\ComfyUI_V91\ComfyUI\` |
-| ComfyUI Python | `C:\Users\miike\ComfyUI_V91\ComfyUI\venv\Scripts\python.exe` |
-| Custom nodes dir | `C:\Users\miike\ComfyUI_V91\ComfyUI\custom_nodes\` |
-| Symlink | `custom_nodes\AtlasCamera` → `AtlasCamera_Claude\atlas_camera\comfy` |
+| Project repo | `<REPO_ROOT>` |
+| ComfyUI install | `<COMFYUI_ROOT>` |
+| ComfyUI Python | `<COMFYUI_ROOT>\venv\Scripts\python.exe` |
+| Custom nodes dir | `<COMFYUI_ROOT>\custom_nodes\` |
+| Symlink | `custom_nodes\AtlasCamera` → `<REPO_ROOT>\atlas_camera\comfy` |
 
-The package is installed editable in ComfyUI's venv — changes to `.py` files are live without reinstall. JS changes require ComfyUI restart.
+The package is installed editable in ComfyUI's venv — changes to `.py` files are live
+without reinstall. JS changes require a ComfyUI restart. Nodes under the `[neural]` extra
+(learned solve, Depth Anything, derive-projection-geometry, relief-mesh export) additionally
+need `pip install -e ".[neural]"` plus GeoCalib (`pip install "git+https://github.com/cvg/GeoCalib.git"`)
+in that same venv.
 
 ---
 
 ## Current state: what works, what needs testing
 
-### Confirmed working
-- All 18 nodes load without error in ComfyUI node browser
-- `AtlasSolveFromImage` runs and returns `ATLAS_SOLVE`
-- `AtlasDecomposeSolve` / `AtlasDecomposeCamera` decompose the solve correctly
-- `AtlasVPVisualization` returns image (with or without VP overlays)
-- `AtlasExport*` nodes write files to disk
-- Example workflow JSON loads cleanly: `examples/atlas_camera_full_workflow.json`
-- aiohttp double-import crash is fixed
+### Confirmed working (unit/headless-verified — `python -m pytest -q`, 159 passed / 1 skipped)
+Every node's underlying core logic (solving, scale cascade, geometry derivation, relief
+mesh, exporters) is covered by the test suite and passes. This is strong evidence the
+*math* is correct; it is not the same as confirming the *ComfyUI node UI/UX* works — see
+below for what's actually been run inside a live ComfyUI session this session.
 
-### Needs testing / not yet verified
-1. **`AtlasGroundDepthMap` producing non-black output** — requires a real photo where the solver finds `cam_y > 0`. Has only been tested with an AI-generated pipe scene (which gave `cam_y ≈ 0` → black output). Needs a real exterior photo.
-2. **`AtlasBlockoutViewport` Three.js canvas rendering** — toolbar buttons visible; canvas area dark. Unclear if Three.js initialised (dark background) or failed silently. Need to add geometry and attempt Render Passes.
-3. **Blockout source image background** — after a solve runs, the source photo should load as a reference plane behind the Three.js geometry. Not yet confirmed.
-4. **`AtlasConstrainedSolve` with scale constraint** — untested. Should fix the depth map for difficult images.
-5. **`AtlasGroundMask` / `AtlasHorizonMask`** — not yet previewed.
+### Confirmed working inside a live ComfyUI session (manually verified this session)
+- Full pipeline: `LoadImage` → `AtlasLearnedSolveFromImage` → `AtlasDeriveProjectionGeometry`
+  (relief mesh) → `AtlasBlockoutViewport` (📽 Project) → `AtlasExportReliefMesh`, using
+  `examples/atlas_camera_core_projection_workflow.json`. Two real bugs were found and fixed
+  via this live testing (not from unit tests): the blockout viewport never received solve
+  data (missing `"ui"` payload key — see the "ComfyUI's `"ui"` payload requirement" note in
+  CLAUDE.md) and the projected mesh/backdrop appearing to "disappear" on orbit (fixed via
+  always including the backdrop regardless of `geometry_mode`, plus yaw/pitch orbit clamping).
+- The original 18-node vanishing-point workflow (`examples/atlas_camera_full_workflow.json`)
+  was confirmed loading and running at the start of this session (pre-dating the work below).
+
+### Not yet manually verified in a live ComfyUI session (unit-tested only)
+These were built and pass their own test suites, but have not been confirmed by a human
+clicking through them in the actual ComfyUI UI:
+1. `AtlasReferenceScaleSolve` / `AtlasApplyScaleReferences` / `AtlasVLMScaleCues` end-to-end
+   in the node graph (the VLM node additionally needs a live local LM Studio/Ollama/llama.cpp
+   server — untested against a real one in this session).
+2. `AtlasDeriveProjectionGeometry` with `primitive_method="ransac_planes"` or `"room_cuboid"`
+   inside the live viewport (verified headlessly against real test images — see
+   `tests/test_plane_extraction.py`, `tests/test_room_layout.py` — but not clicked through
+   in ComfyUI with the `primitives`/`both` `geometry_mode`).
+3. The three viewport diagnostics added late in this session — ☀ Exposure slider, 📊 VP/
+   horizon/ground SVG diagram, ℹ camera metadata HUD — were verified via `node --check` and
+   standalone JS math simulations only (no live browser available in that part of the
+   session). Worth a real click-through, especially the VP diagram on the classical
+   vanishing-point solve path (it's expected to render empty on the learned/GeoCalib path
+   by design — see CLAUDE.md's diagnostics section).
+4. `AtlasExportReliefMesh`'s GLB output opened in an actual DCC (Maya/Nuke/ZBrush/Blender) —
+   verified structurally (valid glTF 2.0, correct binary layout) but not opened in a DCC.
 
 ---
 
@@ -60,65 +105,54 @@ The package is installed editable in ComfyUI's venv — changes to `.py` files a
 
 ### Step 1 — Verify startup
 
-Start ComfyUI. The console should show Atlas Camera loading without errors.  
-In the node browser, confirm **Atlas Camera** category exists with all 18 nodes.
+Start ComfyUI. The console should show Atlas Camera loading without errors. In the node
+browser, confirm the **Atlas Camera** category exists with 25 nodes.
 
-If you see `RuntimeError: method HEAD is already registered` → the double-import guard in `atlas_camera/comfy/__init__.py` failed. Read that file; the guard should look like:
-```python
-if not any(getattr(r, "path", None) == _ATLAS_ROUTE_PATH for r in _routes):
-    @_routes.get(_ATLAS_ROUTE_PATH)
-    ...
-```
+If you see `RuntimeError: method HEAD is already registered` → the double-import guard in
+`atlas_camera/comfy/__init__.py` failed. See CLAUDE.md's "Double-import guard (critical)"
+section — the fix pattern is `if not any(r.path == ... for r in _routes): ...` around each
+route registration, and there are now two routes guarded that way (`camera_data`,
+`proxy_model`).
 
-### Step 2 — Load and run example workflow
+### Step 2 — Load and run the minimal workflow
 
-1. Open `examples/atlas_camera_full_workflow.json` (drag into ComfyUI).
-2. In the `LoadImage` node, upload a **real exterior photo** with a visible ground plane (street level, building corner, or similar). Avoid AI-generated images.
+1. Open `examples/atlas_camera_core_projection_workflow.json` (drag into ComfyUI). This is
+   the smallest workflow that exercises the session's core contribution — see CLAUDE.md's
+   "Example workflows" section for what each of the three example workflows covers.
+2. In `LoadImage`, upload any image — the learned (GeoCalib) solve path this workflow uses
+   is specifically designed to be robust on AI-generated images, unlike the classical VP path.
 3. Queue the prompt.
 
-Expected results:
-- `AtlasVPVisualization` preview → source image with coloured VP convergence lines (orange=left VP, blue=right VP, yellow=horizon)
-- `AtlasGroundDepthMap` preview → warm-to-cool heatmap on ground area, black on sky
-- `AtlasBlockoutViewport` → dark canvas with toolbar buttons
+Expected: `AtlasBlockoutViewport` shows the source photo as a background plane with the
+recovered camera pose; clicking 📽 Project shows the derived relief mesh textured with the
+source photo, aligned from the 📷 Camera View angle.
 
-If `AtlasGroundDepthMap` is still black, debug `cam_y` by connecting `AtlasDecomposeCamera.cam_y` to a `Primitive` node and reading its value. If it is `0.0`, the auto-solve failed to find a scale reference — see Step 3.
+### Step 3 — Test the metric-scale cascade
 
-### Step 3 — Test with scale constraint (if depth map is black)
+Swap in `AtlasReferenceScaleSolve` after the solve node, or set
+`AtlasLearnedSolveFromImage`'s `height_mode` to `measure_from_depth`, to exercise scale
+tiers 1 and 2 respectively (see CLAUDE.md's "Camera height / metric scale" key design rule
+for the full tiered cascade). Check `solve.debug_metadata["scale_source"]` (via
+`AtlasDecomposeSolve`) to confirm which tier actually won.
 
-Replace `AtlasSolveFromImage` with `AtlasConstrainedSolve` and set `constraints_json` to:
+### Step 4 — Test blockout viewport diagnostics (not yet live-verified — see above)
 
-```json
-{
-  "scale_constraints": [{"type": "camera_height_m", "value": 1.6}],
-  "line_groups": [],
-  "intrinsics_hint": {}
-}
-```
-
-This tells the solver the camera was 1.6 m above ground (eye height), which forces `cam_y > 0` and makes the depth map work.
-
-### Step 4 — Test blockout viewport
-
-1. After a successful solve (Step 2 or 3), the `AtlasBlockoutViewport` node should show a dark Three.js canvas area above the toolbar.
-2. Open browser DevTools (F12) → Console. Filter by `AtlasBlockout`. If Three.js failed to load you'll see an error here.
-3. Click **Box** → a grey box should appear in the canvas.
-4. Drag to orbit the view. The ground grid should be visible.
-5. Click **Render Passes** → the prompt re-queues automatically.
-6. After re-queue, the four `PreviewImage` nodes (Shaded / Depth / Normal / Mask) should show renders of the box.
+1. After a solve, open the ☀/📊/ℹ toolbar controls on `AtlasBlockoutViewport`.
+2. ☀ Exposure should only affect the lit grey preview, never the 📽 projected photo or the
+   depth/normal/mask render passes.
+3. 📊 Diagram should overlay horizon/ground on any solve, and VP fan-lines only on the
+   classical vanishing-point path (`AtlasSolveFromImage`, `detect_vanishing_points=True`).
+4. ℹ Info HUD should show solved lens/height/confidence/scale-tier text.
 
 ### Step 5 — Verify exports
 
-After a successful queue, check that these files exist in the ComfyUI working directory (usually the ComfyUI root):
+After a successful queue, check for output files (location depends on the export node's
+`output_dir` widget, typically under the ComfyUI working directory):
 
-- `atlas_solve.json`
-- `atlas_exports/build_scene.py` (Blender)
-- `atlas_exports/camera.usda` (USD — requires `usd-core` installed in the venv)
-- `atlas_review_packages/` (review bundle)
-
-USD export will silently fail without `usd-core`. Install with:
-```powershell
-& "C:\Users\miike\ComfyUI_V91\ComfyUI\venv\Scripts\python.exe" -m pip install usd-core
-```
+- `atlas_solve.json` (`AtlasExportSolveJSON`)
+- `atlas_exports/build_scene.py` (Blender), `.../camera.usda` (USD — needs `usd-core`),
+  `.../*.obj`+`.mtl`+texture or `.glb` (`AtlasExportReliefMesh`)
+- review package bundle (`AtlasExportReviewPackage`)
 
 ---
 
@@ -126,28 +160,48 @@ USD export will silently fail without `usd-core`. Install with:
 
 | File | Purpose |
 |---|---|
-| `atlas_camera/comfy/nodes.py` | All Python node logic. `_extract_blockout_camera()` (line ~108), `_ground_depth_compute()` (line ~135), `AtlasBlockoutViewport.render()` (line ~731) |
-| `atlas_camera/comfy/__init__.py` | Route registration + double-import guard |
-| `atlas_camera/comfy/web/atlas_blockout.js` | Three.js frontend extension. `buildNodeUI()`, `applyRecoveredCamera()`, `renderAllPasses()` |
-| `atlas_camera/core/solver.py` | `solve_still_image()`, `solve_from_constraints()` |
-| `atlas_camera/core/schema.py` | `AtlasSolve`, `AtlasCamera`, `AtlasIntrinsics`, `AtlasExtrinsics` dataclasses |
+| `atlas_camera/comfy/nodes.py` | All Python node logic (25 node classes + `NODE_CLASS_MAPPINGS`). Key helpers: `_extract_blockout_camera()`, `_ground_depth_compute()`, `AtlasBlockoutViewport.render()` — grep for these rather than trusting line numbers, which drift as the file grows |
+| `atlas_camera/comfy/__init__.py` | Route registration (`/atlas/camera_data/{node_id}`, `/atlas/proxy_model/{name}`) + double-import guard |
+| `atlas_camera/comfy/web/atlas_blockout.js` | Three.js frontend extension — camera sync, orbit controls, projection material, diagnostics overlay |
+| `atlas_camera/core/solver.py` | `solve_still_image()`, `solve_still_image_learned()`, `solve_from_constraints()`, the metric-scale cascade |
+| `atlas_camera/core/proxy_geometry.py`, `depth_geometry.py`, `plane_extraction.py`, `room_layout.py`, `relief_mesh.py` | The three geometry-derivation strategies and the shared depth back-projection helpers they're built from |
+| `atlas_camera/core/schema.py` | `AtlasSolve`, `AtlasCamera`, `AtlasIntrinsics`, `AtlasExtrinsics`, `AtlasProxyPrimitive` dataclasses |
 
 ---
 
 ## Architecture notes that matter for testing
 
-**Camera convention:** Atlas uses a row-major 4×4 view matrix, camera looks along -Z, Y-up world. When applying to Three.js, the matrix is inverted (view → camToWorld), then decomposed into position/quaternion.
+**Camera convention:** always use the full 4×4 `extrinsics.camera_view_matrix`
+(`cam_to_world = inv(view_matrix)`, row-major, column-vector points), never the 3×3
+`camera_rotation_matrix` — it has a transpose ambiguity. This is CLAUDE.md's single most
+load-bearing convention; every geometry-derivation module added this session depends on it.
 
-**cam_y is the key diagnostic.** If it is 0 or negative, depth map is black. If it is a very large number (e.g. 1000), the solver picked up a degenerate scale. Good values for a 1.6 m camera height are roughly 0.8–3.0 depending on solver units.
+**Metric scale is measured, not assumed**, via the tiered cascade (reference object → depth
+ground-plane → assumed default). `solve.debug_metadata["scale_source"]` records which tier
+won — check this before trusting a solve's absolute measurements.
 
-**Blockout two-pass cycle:** First queue always outputs blank images (client_data empty). The browser extension loads the camera after `node.onExecuted`. User adds geometry, clicks Render Passes → auto-queues second pass with populated client_data → real images out.
+**Blockout viewport requires the `"ui"` payload key.** `AtlasBlockoutViewport.render()` must
+return `{"ui": {...}, "result": (...)}`, not a plain tuple, or ComfyUI never fires the
+`executed` websocket event and the frontend never receives camera data. This was a real bug
+found and fixed this session — if a future node's viewport data mysteriously never arrives,
+check this first.
 
-**`AtlasDecomposeSolve` outputs `horizon_angle_deg`** (from `solve.debug_metadata`). `AtlasDecomposeCamera` does NOT have this output — horizon data only lives on the solve, not the camera.
+**`AtlasDecomposeSolve` outputs `horizon_angle_deg`** (from `solve.debug_metadata`).
+`AtlasDecomposeCamera` does NOT have this output — horizon data only lives on the solve, not
+the camera.
 
 ---
 
 ## What NOT to change during testing
 
-- Do not modify `atlas_camera/core/` — the solver and schema are stable.
-- Do not modify `ui/src/` — the React frontend is independent of the ComfyUI work.
-- If you find a bug in `nodes.py` or `atlas_blockout.js`, fix it there and restart ComfyUI (JS) or just re-queue (Python).
+- Do not modify `ui/src/` casually — the React frontend is independent of the ComfyUI work
+  and has its own test suite (`ui/` — Vitest).
+- `atlas_camera/core/` is **no longer off-limits** — it was extended substantially and
+  correctly this session (geometry derivation, relief mesh, learned-prior solving, metric
+  scale). The earlier version of this doc said not to touch it; that guidance predates this
+  session's work and should not be followed. If you touch it, run the full suite
+  (`python -m pytest -q --ignore=tests/test_usd_exporter.py`) before and after — it should
+  stay at 159 passed / 1 skipped (the skip is a real `usd-core`-dependent test, unrelated).
+- Do not bind `python -m atlas_camera.ui` to a non-loopback host without `--allow-remote` —
+  the local UI's `project_dir` is an intentionally arbitrary client-supplied path (a file
+  picker, by design) with no further access control; see `atlas_camera/ui/__main__.py`.

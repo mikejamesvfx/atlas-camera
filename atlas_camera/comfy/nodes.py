@@ -121,7 +121,6 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
     # Encode source image as JPEG base64 so the browser can use it as background
     source_b64 = ""
     try:
-        PILImage = _require_pil()
         pil = _image_tensor_to_pil(source_image)
         buf = io.BytesIO()
         pil.save(buf, format="JPEG", quality=85)
@@ -734,6 +733,14 @@ class AtlasDeriveProjectionGeometry:
     - ``room_cuboid`` — Manhattan-aligned floor + up to 4 walls + optional
       ceiling. Best for orthogonal interiors; silently produces skewed walls
       on non-orthogonal rooms (pick a different method for those shots).
+
+    ``scene_type`` (default "manual") is a one-choice convenience preset over
+    the three widgets above, for artists who'd rather pick a shot type than
+    reason about geometry_mode/primitive_method/depth_model separately:
+    "organic" -> relief_mesh, "indoor" -> primitives+room_cuboid+Indoor depth
+    model, "outdoor" -> primitives+ransac_planes+Outdoor depth model. Purely
+    a preset — it sets the same three parameters this node already exposes,
+    never a new solving code path. "manual" leaves them untouched.
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "derive"
@@ -768,15 +775,41 @@ class AtlasDeriveProjectionGeometry:
                                 "facades) — exteriors. room_cuboid = Manhattan floor+walls"
                                 "+ceiling — orthogonal interiors. Only affects "
                                 "geometry_mode=primitives/both; max_walls is reused as the "
-                                "plane budget for ransac_planes and ignored by room_cuboid."}),
+                                "plane budget for ransac_planes and ignored by room_cuboid. "
+                                "Ignored when scene_type != manual."}),
+                "scene_type": (["manual", "organic", "indoor", "outdoor"], {"default": "manual",
+                    "tooltip": "One-choice preset over geometry_mode/primitive_method/depth_model "
+                               "for the three shot types this node already supports individually: "
+                               "organic = relief_mesh (cluttered/natural scenes, depth_model left "
+                               "as set below); indoor = primitives + room_cuboid + the Indoor depth "
+                               "model (orthogonal interiors); outdoor = primitives + ransac_planes "
+                               "+ the Outdoor depth model (exterior architecture: roofs, stepped "
+                               "facades). manual (default) leaves geometry_mode/primitive_method/"
+                               "depth_model exactly as set below — fully backward compatible. If "
+                               "AtlasLearnedSolveFromImage's height_mode=measure_from_depth, set "
+                               "its own depth_model to match by hand — this preset only reaches "
+                               "this node's depth estimation, not the upstream solve node's."}),
             },
         }
+
+    _SCENE_TYPE_PRESETS = {
+        "organic": {"geometry_mode": "relief_mesh"},
+        "indoor": {"geometry_mode": "primitives", "primitive_method": "room_cuboid",
+                   "depth_model": "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"},
+        "outdoor": {"geometry_mode": "primitives", "primitive_method": "ransac_planes",
+                    "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"},
+    }
 
     def derive(self, solve, image,
                depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                max_walls=4, max_objects=3, device="auto",
                geometry_mode="relief_mesh", relief_grid=96,
-               primitive_method="azimuth_walls"):
+               primitive_method="azimuth_walls", scene_type="manual"):
+        preset = self._SCENE_TYPE_PRESETS.get(scene_type)
+        if preset:
+            geometry_mode = preset.get("geometry_mode", geometry_mode)
+            primitive_method = preset.get("primitive_method", primitive_method)
+            depth_model = preset.get("depth_model", depth_model)
         from atlas_camera.core.plane_extraction import PlaneRansacConfig, extract_planes_ransac
         from atlas_camera.core.proxy_geometry import (
             PROXY_ROLE,
@@ -883,6 +916,7 @@ class AtlasDeriveProjectionGeometry:
         out.projection_scene.proxy_geometry.extend(keep)
         out.projection_scene.debug_metadata["proxy_derivation"] = {
             **stats, "depth_model": depth_model, "geometry_mode": geometry_mode,
+            "scene_type": scene_type,
         }
         return (out,)
 
@@ -1369,16 +1403,21 @@ class AtlasBlockoutViewport:
                 "client_data": ("STRING", {"default": "", "multiline": False}),
             },
             "optional": {
-                "preview_expand": ("FLOAT", {"default": 1.4, "min": 1.0, "max": 5.0, "step": 0.05,
+                "preview_expand": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 5.0, "step": 0.05,
                     "tooltip": "Dilate derived geometry outward from the camera for wider orbit "
                                "coverage before it disappears into unreconstructed space. "
                                "1.0 = off (accurate geometry). Display only — never affects "
-                               "DCC exports or measured geometry."}),
+                               "DCC exports or measured geometry. CAUTION: values above 1.0 "
+                               "dilate geometry beyond what the camera actually photographed, "
+                               "so with 📽 Project active the dilated fringe has no real photo "
+                               "data and renders as empty/black the moment you orbit off the "
+                               "exact recovered viewpoint — leave at 1.0 if you plan to use "
+                               "Project, raise it only for inspecting undressed blockout shapes."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    def render(self, solve, source_image, resolution, client_data, preview_expand=1.4, unique_id=None):
+    def render(self, solve, source_image, resolution, client_data, preview_expand=1.0, unique_id=None):
         torch = _require_torch()
 
         # Auto-adopt the source image aspect: derive W×H from the incoming image,
@@ -1489,5 +1528,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportBlender":         "Atlas Export Blender Scene",
     "AtlasExportNuke":            "Atlas Export Nuke Script",
     # Track 2 — blockout viewport
-    "AtlasBlockoutViewport":      "Atlas Blockout Viewport 🧊",
+    "AtlasBlockoutViewport":      "Atlas Viewport 🧊",
 }

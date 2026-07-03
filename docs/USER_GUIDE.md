@@ -130,9 +130,25 @@ distance so the parallax stays small within your working range.
 ### Where the geometry comes from
 
 `AtlasDeriveProjectionGeometry` builds the receiving surfaces for the
-projection. It has two independent choices:
+projection. The quickest way in is the **`scene_type`** widget — pick
+`organic`, `indoor`, or `outdoor` and it sets `geometry_mode`/
+`primitive_method`/`depth_model` for you (see the table below for exactly
+what each one maps to). Leave it on `manual` (the default) to control those
+three independently instead — `scene_type` doesn't add any new solving
+behavior, it's purely a shortcut over the same two choices described next.
 
-**`geometry_mode`** — what kind of geometry to build:
+| `scene_type` | Equivalent manual settings |
+|---|---|
+| `organic` | `geometry_mode=relief_mesh` |
+| `indoor` | `geometry_mode=primitives`, `primitive_method=room_cuboid`, Indoor depth model |
+| `outdoor` | `geometry_mode=primitives`, `primitive_method=ransac_planes`, Outdoor depth model |
+
+One thing `scene_type` can't reach: if `AtlasLearnedSolveFromImage` upstream
+uses `height_mode=measure_from_depth`, its own separate `depth_model` widget
+still needs to be set to match by hand — nodes don't reach across the graph
+to configure each other.
+
+**`geometry_mode`** — what kind of geometry to build (set directly, or via `scene_type` above):
 - `relief_mesh` (default) — a single triangulated mesh following the actual
   depth contours of the scene. Handles arbitrary, organic shapes (cluttered
   interiors, irregular terrain) but has real gaps ("torn" triangles) at
@@ -185,7 +201,7 @@ Two independent things address this:
 stops you from spinning into the void by accident, while leaving plenty of
 room to inspect parallax and occlusion.
 
-**`preview_expand`** (on `AtlasBlockoutViewport`, default 1.4) — dilates the
+**`preview_expand`** (on `AtlasBlockoutViewport`, default 1.0 = off) — dilates the
 geometry itself outward from the camera, so more of the visible cone is
 actually covered by real surfaces instead of gaps. This uses one equation,
 applied consistently regardless of what kind of surface it's touching. For
@@ -210,6 +226,16 @@ never touches the actual geometry used for `AtlasExportReliefMesh` or any
 DCC export, and never affects a metric measurement. Turning `preview_expand`
 up to see more of the scene while orbiting has zero effect on the accuracy
 of anything you export.
+
+**Trade-off with 📽 Project — leave this at 1.0 whenever you're using
+projection.** Dilated geometry is, by definition, surface the camera never
+actually photographed, so there's no real pixel data to project onto it —
+the projection shader correctly renders it as empty/black. Because the
+dilated fringe dominates the view away from dead-center, this shows up as
+large black regions after only a *moderate* orbit, not just at the extreme
+edge of the allowed arc. Raise `preview_expand` only when you're inspecting
+undressed grey blockout shapes and don't need Project active; the default
+of 1.0 keeps Project fully accurate at any orbit angle within the arc.
 
 ---
 
@@ -243,7 +269,7 @@ sanity-checking a solve:
 | `AtlasSolveFromImage` | Part 1 — classical vanishing-point recovery |
 | `AtlasReferenceScaleSolve`, `AtlasApplyScaleReferences` | Part 1 — scale tier 1 (reference object) |
 | `AtlasVLMScaleCues` | Part 1 — automatic reference-object suggestions (needs `confirm`) |
-| `AtlasDeriveProjectionGeometry` | Part 2 — geometry derivation (`geometry_mode`, `primitive_method`) |
+| `AtlasDeriveProjectionGeometry` | Part 2 — geometry derivation (`scene_type`, `geometry_mode`, `primitive_method`) |
 | `AtlasBlockoutViewport` (📽 Project) | Part 2 — the live camera projection |
 | `AtlasExportReliefMesh` | Part 2 — UV-baked mesh export for Maya/Nuke/ZBrush |
 | `AtlasBlockoutViewport` (`preview_expand`) | Part 3 — preview-only geometry dilation |

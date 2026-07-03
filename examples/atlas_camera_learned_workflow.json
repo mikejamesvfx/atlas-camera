@@ -259,7 +259,8 @@
         "auto",
         "relief_mesh",
         96,
-        "azimuth_walls"
+        "azimuth_walls",
+        "manual"
       ]
     },
     {
@@ -785,7 +786,7 @@
       "widgets_values": [
         768,
         "",
-        1.4
+        1.0
       ]
     },
     {
@@ -1428,7 +1429,7 @@
     },
     {
       "id": 4,
-      "title": "\u2463 Blockout Viewport \u2014 drop \ud83e\uddcd Woman / \ud83d\ude97 Sedan proxies \u00b7 render 4 passes",
+      "title": "\u2463 Atlas Viewport \u2014 drop \ud83e\uddcd Woman / \ud83d\ude97 Sedan proxies \u00b7 render 4 passes",
       "bounding": [
         1580,
         100,

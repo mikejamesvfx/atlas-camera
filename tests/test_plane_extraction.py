@@ -6,7 +6,6 @@ level camera at (0,h,0), forward-z depth via min()-composited ray casts.
 """
 
 import json
-import math
 
 import numpy as np
 import pytest

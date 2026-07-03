@@ -115,9 +115,6 @@ def extract_room_cuboid(
     pts_world = gf.pts_world_scaled
     world_y = pts_world[..., 1]
     scaled_depth = depth * scale
-    backdrop_d_raw = float(np.percentile(
-        scaled_depth[bp.valid_depth], cfg.backdrop_depth_percentile
-    )) if bp.valid_depth.any() else 60.0
 
     # -- Floor primitive (same construction as proxy_geometry's ground) --------
     if gf.inliers >= 300:
