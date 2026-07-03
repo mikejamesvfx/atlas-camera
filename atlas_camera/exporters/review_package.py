@@ -14,7 +14,6 @@ from atlas_camera.exporters.nuke_exporter import NukeExporter
 from atlas_camera.exporters.usd_exporter import USDExporter
 
 _DCC_EXPORTERS = [
-    (MayaExporter(), "maya_open_scene", "maya_open_scene.py"),
     (BlenderExporter(), "blender_open_scene", "blender_open_scene.py"),
     (NukeExporter(), "nuke_cards", "nuke_cards.py"),
 ]
@@ -48,6 +47,7 @@ def build_review_package(
     source_image_path: str | Path | None = None,
     debug_overlay_path: str | Path | None = None,
     include_usd: bool = True,
+    relief_mesh_obj_path: str | Path | None = None,
 ) -> ReviewPackageResult:
     package_dir = Path(output_dir) / package_name
     package_dir.mkdir(parents=True, exist_ok=True)
@@ -68,6 +68,9 @@ def build_review_package(
     solve_path = save_solve_json(solve, package_dir / "atlas_solve.json")
     result.files["atlas_solve"] = solve_path
 
+    result.files["maya_open_scene"] = MayaExporter().write_scene(
+        solve, package_dir / "maya_open_scene.py", relief_mesh_obj_path=relief_mesh_obj_path,
+    )
     for exporter, key, filename in _DCC_EXPORTERS:
         result.files[key] = exporter.write_scene(solve, package_dir / filename)
 

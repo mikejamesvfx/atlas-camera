@@ -476,7 +476,11 @@ def _user_prompt(
         "Analyze the image for camera-solve guidance. Identify visible scale anchors, "
         "rough object-size candidates, perspective families, horizon/depth cues, lens "
         "distortion risks, occlusions, and which additional artist guides would improve "
-        "the solve. Use this Atlas app context:\n"
+        "the solve. For every scale_cue, report bbox_px as [x0, y0, x1, y1] in pixel "
+        "coordinates (top-left corner, then bottom-right corner) tightly enclosing the "
+        "object's full visible extent — for an upright object include its base (feet/"
+        "tyres) and its top. Prefer scale anchors that stand on the ground. Use this "
+        "Atlas app context:\n"
         f"{json.dumps(app_context or {}, indent=2, sort_keys=True)}\n"
         "Candidate scale reference IDs:\n"
         f"{json.dumps(candidate_reference_ids or [], indent=2)}\n"
@@ -1019,6 +1023,79 @@ def _longest_guidance_word(value: str, index: int) -> int | None:
         if lowered.startswith(word)
     ]
     return max(matches) if matches else None
+
+
+# Keyword → scale-reference registry id, for cues whose suggested_reference_ids
+# don't already name a registry entry.
+_LABEL_TO_REFERENCE_ID = {
+    "person": "person_175cm", "man": "person_175cm", "woman": "person_175cm",
+    "human": "person_175cm", "pedestrian": "person_175cm", "figure": "person_175cm",
+    "worker": "person_175cm", "people": "person_175cm",
+    "door": "door_210cm", "doorway": "door_210cm", "entrance": "door_210cm",
+    "car": "sedan_car", "sedan": "sedan_car", "vehicle": "sedan_car",
+    "automobile": "sedan_car", "hatchback": "sedan_car",
+    "bus": "city_bus",
+    "container": "shipping_container_20ft", "shipping container": "shipping_container_20ft",
+    "hoop": "basketball_hoop_rim", "basketball hoop": "basketball_hoop_rim",
+}
+
+
+def _resolve_reference_id(cue: "SceneScaleCue") -> str | None:
+    """Best-effort map a scale cue to a scale-reference registry id."""
+    from atlas_camera.reference_data import get_scale_reference, search_scale_references
+
+    for rid in cue.suggested_reference_ids:
+        try:
+            get_scale_reference(str(rid))
+            return str(rid)
+        except KeyError:
+            continue
+    label = (cue.label or "").strip().lower()
+    if not label:
+        return None
+    if label in _LABEL_TO_REFERENCE_ID:
+        return _LABEL_TO_REFERENCE_ID[label]
+    for key, rid in _LABEL_TO_REFERENCE_ID.items():
+        if key in label:
+            return rid
+    matches = search_scale_references(label)
+    return matches[0].id if matches else None
+
+
+def scale_references_from_observation(
+    observation: "MultimodalSceneObservation",
+    *,
+    min_confidence: float = 0.0,
+) -> list[dict[str, Any]]:
+    """Convert a VLM scene observation into solver ``scale_references`` specs.
+
+    Only cues with a pixel bounding box and a resolvable real height (via a
+    registry ``reference_id`` or an explicit ``height`` on the cue) become specs.
+    The result feeds ``solve_still_image_learned(scale_references=...)`` /
+    ``apply_reference_scale`` — but adoption still requires explicit confirmation
+    (LLM cues are never auto-promoted).
+    """
+    refs: list[dict[str, Any]] = []
+    for cue in observation.scale_cues:
+        if cue.bbox_px is None or float(cue.confidence) < min_confidence:
+            continue
+        spec: dict[str, Any] = {
+            "bbox_px": [float(v) for v in cue.bbox_px],
+            "confidence": float(cue.confidence),
+            "label": cue.label,
+            "source": "vlm_scale_cue",
+        }
+        reference_id = _resolve_reference_id(cue)
+        if reference_id:
+            spec["reference_id"] = reference_id
+        else:
+            # No registry match — only usable if the cue itself carries a height.
+            raw = getattr(cue, "height_m", None)
+            if not raw:
+                continue
+            spec["height_m"] = float(raw)
+        refs.append(spec)
+    return refs
 
 
 def _scene_scale_cue_from_payload(payload: dict[str, Any], *, source: str = "multimodal_helper") -> SceneScaleCue:

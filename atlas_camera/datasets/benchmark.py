@@ -8,7 +8,6 @@ import json
 from math import acos, atan, degrees, sqrt
 from pathlib import Path
 from time import perf_counter
-from typing import Any
 
 from atlas_camera.core.schema import AtlasIntrinsics, Matrix3
 from atlas_camera.core.solver import solve_still_image

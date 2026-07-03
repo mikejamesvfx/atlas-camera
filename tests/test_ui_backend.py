@@ -300,16 +300,43 @@ def test_ui_main_accepts_custom_port(monkeypatch):
             captured.update({"app": app, "host": host, "port": port, "reload": reload})
 
     monkeypatch.setitem(sys.modules, "uvicorn", FakeUvicorn)
-    monkeypatch.setattr(sys, "argv", ["atlas-ui", "--host", "0.0.0.0", "--port", "8788", "--reload"])
+    monkeypatch.setattr(sys, "argv", ["atlas-ui", "--host", "127.0.0.1", "--port", "8788", "--reload"])
 
     main_module.main()
 
     assert captured == {
         "app": "atlas_camera.ui.api:app",
-        "host": "0.0.0.0",
+        "host": "127.0.0.1",
         "port": 8788,
         "reload": True,
     }
+
+
+def test_ui_main_rejects_non_loopback_host_without_allow_remote(monkeypatch):
+    from atlas_camera.ui import __main__ as main_module
+
+    monkeypatch.setattr(sys, "argv", ["atlas-ui", "--host", "0.0.0.0"])
+
+    with pytest.raises(SystemExit):
+        main_module.main()
+
+
+def test_ui_main_permits_non_loopback_host_with_allow_remote(monkeypatch):
+    from atlas_camera.ui import __main__ as main_module
+
+    captured = {}
+
+    class FakeUvicorn:
+        @staticmethod
+        def run(app, *, host, port, reload):
+            captured.update({"app": app, "host": host, "port": port, "reload": reload})
+
+    monkeypatch.setitem(sys.modules, "uvicorn", FakeUvicorn)
+    monkeypatch.setattr(sys, "argv", ["atlas-ui", "--host", "0.0.0.0", "--allow-remote"])
+
+    main_module.main()
+
+    assert captured["host"] == "0.0.0.0"
 
 
 def test_ui_api_smoke(synthetic_perspective_image, tmp_path):
@@ -356,6 +383,49 @@ def test_ui_api_smoke(synthetic_perspective_image, tmp_path):
     )
     assert exported.status_code == 200
     assert "report" in exported.json()["files"]
+
+
+def test_ui_api_export_rejects_path_traversal_package_name(synthetic_perspective_image, tmp_path):
+    fastapi = pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    assert fastapi
+
+    from fastapi.testclient import TestClient
+
+    from atlas_camera.ui.api import app
+
+    image_path, _ = synthetic_perspective_image
+    client = TestClient(app)
+    project_dir = tmp_path / "traversal-lineup"
+    client.post("/api/projects", data={"project_dir": str(project_dir), "image_path": str(image_path)})
+
+    for malicious in ("../../etc", "..", "sub/dir", "/abs/path"):
+        response = client.post(
+            "/api/export/review-package",
+            json={"project_dir": str(project_dir), "package_name": malicious, "include_usd": False},
+        )
+        assert response.status_code == 400, malicious
+
+
+def test_ui_api_files_rejects_path_traversal_package_name(synthetic_perspective_image, tmp_path):
+    fastapi = pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    assert fastapi
+
+    from fastapi.testclient import TestClient
+
+    from atlas_camera.ui.api import app
+
+    image_path, _ = synthetic_perspective_image
+    client = TestClient(app)
+    project_dir = tmp_path / "traversal-files-lineup"
+    client.post("/api/projects", data={"project_dir": str(project_dir), "image_path": str(image_path)})
+
+    response = client.get(
+        "/api/files/report",
+        params={"project_dir": str(project_dir), "package_name": "../../../etc"},
+    )
+    assert response.status_code == 400
 
 
 def test_ui_promote_scale_cue_converts_bbox_to_image_points(synthetic_perspective_image, tmp_path):

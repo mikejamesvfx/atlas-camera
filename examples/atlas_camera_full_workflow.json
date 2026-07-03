@@ -408,7 +408,7 @@
     },
     {
       "id": 4,
-      "title": "④ Blockout Viewport  —  place geometry · render 4 passes",
+      "title": "④ Atlas Viewport  —  place geometry · render 4 passes",
       "bounding": [1530, 110, 830, 1460],
       "color": "#6e3d7e",
       "font_size": 18,
