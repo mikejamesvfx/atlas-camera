@@ -3,7 +3,10 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 For the artist/TD-facing explanation of camera recovery, matte-painting projection,
-and preview dilation, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+and preview dilation, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md). For the full
+ecosystem map (complete node catalog, geometry-derivation strategies, multi-angle
+patch projection, the 2026-07-03/04 fixes, and the ComfyUI-OCIO VFX output
+integration), see [docs/ECOSYSTEM_GUIDE.md](docs/ECOSYSTEM_GUIDE.md).
 
 ## Commands
 

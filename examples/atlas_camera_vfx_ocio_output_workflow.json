@@ -1,0 +1,143 @@
+{
+  "last_node_id": 7,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [40, 140],
+      "size": {"0": 320, "1": 314},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [1, 2, 4, 6], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": [], "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png", "image"]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [420, 140],
+      "size": {"0": 400, "1": 210},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [{"name": "image", "type": "IMAGE", "link": 1, "slot_index": 0}],
+      "outputs": [{"name": "ATLAS_SOLVE", "type": "ATLAS_SOLVE", "links": [3], "slot_index": 0}],
+      "properties": {"Node name for S&R": "AtlasLearnedSolveFromImage"},
+      "widgets_values": ["measure_from_depth", 1.6, "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", 36.0, "pinhole", "auto"]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDeriveProjectionGeometry",
+      "pos": [880, 140],
+      "size": {"0": 400, "1": 250},
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 3, "slot_index": 0},
+        {"name": "image", "type": "IMAGE", "link": 2, "slot_index": 1}
+      ],
+      "outputs": [{"name": "ATLAS_SOLVE", "type": "ATLAS_SOLVE", "links": [5], "slot_index": 0}],
+      "properties": {"Node name for S&R": "AtlasDeriveProjectionGeometry"},
+      "widgets_values": ["depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", 4, 3, "auto", "relief_mesh", 96, "azimuth_walls", "manual"]
+    },
+    {
+      "id": 4,
+      "type": "AtlasExportReliefMesh",
+      "pos": [1340, 140],
+      "size": {"0": 400, "1": 200},
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 5, "slot_index": 0},
+        {"name": "image", "type": "IMAGE", "link": 6, "slot_index": 1}
+      ],
+      "outputs": [
+        {"name": "obj_path", "type": "STRING", "links": [], "slot_index": 0},
+        {"name": "glb_path", "type": "STRING", "links": [], "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "AtlasExportReliefMesh"},
+      "widgets_values": ["atlas_exports/vfx_ocio_demo", 128, 0.5, "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", "auto", "both"]
+    },
+    {
+      "id": 5,
+      "type": "OCIOWrite",
+      "pos": [880, 500],
+      "size": {"0": 420, "1": 480},
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 4, "slot_index": 0},
+        {"name": "alpha", "type": "MASK", "link": null, "slot_index": 1},
+        {"name": "fps", "type": "FLOAT", "link": null, "slot_index": 2, "widget": {"name": "fps"}}
+      ],
+      "outputs": [{"name": "path", "type": "STRING", "links": [], "slot_index": 0}],
+      "properties": {"Node name for S&R": "OCIOWrite"},
+      "widgets_values": [
+        "sRGB - Display", "ACEScg", "still image", "exr", "prores_4444", "16f",
+        false, 1, 0, 1, 1, false, "atlas_exports/vfx_ocio_demo", "atlas_source_plate",
+        true, true, "zip", 24.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Note",
+      "pos": [40, 500],
+      "size": [780, 420],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "properties": {"text": ""},
+      "widgets_values": [
+        "VFX OUTPUT — AtlasCamera + ComfyUI-OCIO\n\nRequires the ComfyUI-OCIO custom node pack:\n  cd ComfyUI/custom_nodes && git clone https://github.com/SlavaSexton/ComfyUI-OCIO\n  pip install opencolorio  (opencv-python-headless/tifffile/Pillow/numpy usually\n  already present from other packs)\n  set OPENCV_IO_ENABLE_OPENEXR=1  before launching ComfyUI (needed for EXR)\n\nWhy two export branches: AtlasExportReliefMesh bakes the SAME source image\nas the mesh's 8-bit sRGB albedo texture (correct convention for DCC viewport\n/ game-engine display — most OBJ/GLB viewers expect sRGB-encoded albedo, not\nlinear). OCIOWrite takes the same source image and converts it from ComfyUI's\nnative working space ('sRGB - Display' — ComfyUI holds all images this way,\nsee the OCIO pack's own README) into ACEScg (scene-linear), writing a proper\ncolor-managed EXR plate — the deliverable a comp/lighting artist actually\nwants, distinct from the 3D department's textured mesh.\n\nVerified 2026-07-04: EXR magic number confirmed (762f3101), file size\nconsistent with a 16-bit-float zip-compressed EXR at this resolution.\n\nPATH GOTCHA (found during testing): AtlasCamera's export nodes\n(AtlasExportReliefMesh, etc.) resolve output_dir relative to ComfyUI's ROOT\nworking directory. OCIOWrite resolves output_folder relative to ComfyUI's\nOUTPUT directory instead. Same relative path string ('atlas_exports/vfx_\nocio_demo') on both nodes therefore lands in TWO different places on disk —\nComfyUI/atlas_exports/vfx_ocio_demo/ for the mesh, ComfyUI/output/atlas_\nexports/vfx_ocio_demo/ for the EXR. Use absolute paths on one or both if you\nneed everything co-located.\n\nFor a full Nuke/Maya pipeline, wire OCIOColorSpace (sRGB - Display -> ACEScg)\nahead of any node that needs a linear IMAGE tensor for further ComfyUI-side\ncompositing, rather than only writing to disk via OCIOWrite."
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "IMAGE"],
+    [2, 1, 0, 3, 1, "IMAGE"],
+    [3, 2, 0, 3, 0, "ATLAS_SOLVE"],
+    [4, 1, 0, 5, 0, "IMAGE"],
+    [5, 3, 0, 4, 0, "ATLAS_SOLVE"],
+    [6, 1, 0, 4, 1, "IMAGE"]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Source + Camera Recovery + Derive Geometry",
+      "bounding": [20, 100, 1300, 300],
+      "color": "#3f789e",
+      "font_size": 16,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② 3D dept — textured mesh (sRGB albedo)",
+      "bounding": [1320, 100, 440, 260],
+      "color": "#3d7e48",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Comp / lighting dept — color-managed ACEScg EXR plate",
+      "bounding": [860, 480, 460, 500],
+      "color": "#7e4f3d",
+      "font_size": 14,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 0.6, "offset": [10, -40]}
+  },
+  "version": 0.4
+}

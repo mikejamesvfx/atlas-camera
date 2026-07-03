@@ -201,6 +201,37 @@ def ground_lookat_pivot(
     )
 
 
+def horizon_row_from_extrinsics(
+    extrinsics: AtlasExtrinsics,
+    *,
+    fy: float,
+    cy: float,
+) -> float | None:
+    """Image row where the world-horizontal plane's vanishing line falls.
+
+    Exact for any zero-roll ``look_at`` camera (which is what ``orbit_camera``
+    always builds): with world-up composed into the camera's right axis via a
+    cross product, the right axis is perfectly horizontal (its world-Y
+    component is zero), so the horizon is a single image row independent of
+    column. Solving ``world_Y(ray_cam) = 0`` for that ray's v-coordinate gives
+    ``v = cy - fy * R[1][2] / R[1][1]`` where ``R`` is ``camera_rotation_matrix``
+    (columns = camera right/up/back axes in world coordinates).
+
+    Returns ``None`` when the camera looks straight up/down (``R[1][1] == 0``,
+    degenerate — no single horizon row exists). Lets patch cameras (which are
+    *constructed*, not solved, so they carry no ``horizon_line`` of their own)
+    get the same real sky/ground split that the primary solve's derive step
+    gets from its solved horizon, instead of the generic ``height * 0.45``
+    fallback in ``relief_mesh.py`` / ``depth_geometry.py``.
+    """
+    rotation = extrinsics.camera_rotation_matrix
+    y_up = float(rotation[1][1])
+    if abs(y_up) < 1e-6:
+        return None
+    y_back = float(rotation[1][2])
+    return float(cy) - float(fy) * y_back / y_up
+
+
 def orbit_camera(
     extrinsics: AtlasExtrinsics,
     pivot: Point3D,

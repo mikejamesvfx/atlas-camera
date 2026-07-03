@@ -1086,7 +1086,11 @@ class AtlasAddPatchView:
                   flip_azimuth=False, name="patch",
                   depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                   relief_grid=96, priority=1.0, device="auto"):
-        from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+        from atlas_camera.core.camera_math import (
+            ground_lookat_pivot,
+            horizon_row_from_extrinsics,
+            orbit_camera,
+        )
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
         from atlas_camera.core.schema import (
@@ -1146,6 +1150,13 @@ class AtlasAddPatchView:
             lens_model=intr.lens_model,
         )
 
+        # The patch camera is constructed (orbited), not solved, so it carries
+        # no solve.horizon_line of its own. Derive its real horizon row exactly
+        # (see horizon_row_from_extrinsics) so sky-exclusion during meshing
+        # uses this camera's actual tilt instead of the generic height*0.45
+        # fallback in estimate_ground_scale / build_relief_mesh.
+        patch_horizon_y = horizon_row_from_extrinsics(patch_extr, fy=pfy, cy=pcy)
+
         # Depth -> relief geometry in the patch camera's frame.
         tmp = _save_image_tensor_to_tmp(patch_image)
         try:
@@ -1160,10 +1171,12 @@ class AtlasAddPatchView:
         scale, _scale_info = estimate_ground_scale(
             depth_map, view_matrix=patch_extr.camera_view_matrix,
             fx=pfx, fy=pfy, cx=pcx, cy=pcy,
+            horizon_y=patch_horizon_y,
         )
         mesh = build_relief_mesh(
             depth_map, view_matrix=patch_extr.camera_view_matrix,
             fx=pfx, fy=pfy, cx=pcx, cy=pcy,
+            horizon_y=patch_horizon_y,
             grid_long_edge=int(relief_grid),
             scale=scale,
         )
