@@ -370,9 +370,12 @@
         "Node name for S&R": "AtlasAddPatchView"
       },
       "widgets_values": [
-        35.0,
-        0.0,
-        1.0,
+        "front-right quarter view",
+        "eye-level shot",
+        "medium shot",
+        "front view",
+        "eye-level shot",
+        false,
         "patch_right",
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         96,
@@ -398,7 +401,7 @@
         "text": ""
       },
       "widgets_values": [
-        "MULTI-ANGLE PATCH - CALIBRATION PROOF\n\n1. Generate a novel view of the SAME scene ~35deg to the RIGHT of the\n   recovered camera (Qwen-Image-Edit-2511 + Multiple-Angles LoRA, prompt\n   e.g. '<sks> right side view eye-level medium shot'), or hand-make one.\n2. Load it in the 'Patch novel view' node.\n3. Keep AtlasAddPatchView azimuth_deg = 35 (match the angle asked of the\n   LoRA). elevation_deg=0. For a top patch: elevation ~35, azimuth 0.\n4. Queue, then in the Atlas Viewport hit Camera View, then Project.\n   GO/NO-GO: orbit slightly right - the patch should fill the primary's\n   occluded/grazing right side and stay aligned with it in the overlap.\n   If features line up, constructed-orbit == LoRA-angle holds and the\n   3-patch build is safe. (Needs a ComfyUI restart to load the new node,\n   and a browser refresh for the viewport JS.)"
+        "MULTI-ANGLE PATCH - CALIBRATION PROOF\n\nThe LoRA angles are ABSOLUTE (subject-relative), NOT relative to your\nsource view. So set BOTH views on the Add Patch View node:\n  source_azimuth_view = what your source photo already is (front view\n    for a straight-on shot);  patch_*_view = what you asked the LoRA for\n    (must match the Qwen Multiangle Camera node exactly).\n  Orbit applied = patch - source.\n\n1. Generate a novel view at 'front-right quarter view / eye-level shot /\n   medium shot' (Qwen-Image-Edit-2511 + Multiple-Angles LoRA, e.g. via\n   ComfyUI-qwenmultiangle). Load it in the Patch novel view node.\n2. On Add Patch View keep patch_azimuth_view = 'front-right quarter view'\n   and source_azimuth_view = 'front view' (=> +45 deg orbit).\n3. Queue, then in the Atlas Viewport: Camera View, then Project.\n   GO/NO-GO: orbit slightly right - the patch should fill the primary's\n   occluded/grazing right side and stay aligned in the overlap. If it\n   lands on the WRONG side, tick flip_azimuth. If features line up,\n   constructed-orbit == LoRA-angle holds and the 3-patch build is safe.\n   (Needs a ComfyUI restart to load the new node + a browser refresh.)"
       ]
     }
   ],

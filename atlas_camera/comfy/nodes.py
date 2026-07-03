@@ -1000,41 +1000,69 @@ class AtlasAddPatchView:
 
     Camera projection from a single photo can only texture what the recovered
     camera saw — orbit slightly and occluded/grazing areas go black. This node
-    takes a novel view of the same scene generated at a defined angle (e.g. via
-    the Qwen-Image-Edit Multiple-Angles LoRA at ~25-45° left/right/above),
-    constructs a "patch camera" by orbiting the recovered camera around the scene
-    pivot by that same angle (so it shares the primary's world frame —
-    `camera_math.orbit_camera`), derives the patch view's own relief geometry in
-    that frame (Depth Anything), and appends it to the solve as a
-    ``ProjectionSource``. Chain one per angle; the viewport/exporters layer them
+    takes a novel view of the same scene generated at a defined angle (the
+    Qwen-Image-Edit-2511 Multiple-Angles LoRA — e.g. via the ComfyUI-qwenmultiangle
+    "Qwen Multiangle Camera" node), constructs a "patch camera" by orbiting the
+    recovered camera around the scene pivot to that view (so it shares the
+    primary's world frame — `camera_math.orbit_camera`), derives the patch view's
+    own relief geometry in that frame (Depth Anything), and appends it to the
+    solve as a ``ProjectionSource``. Chain one per angle; the viewport layers them
     over the primary, filling the occluded areas. Needs the [neural] extra.
 
-    ``azimuth_deg`` orbits horizontally (+ = toward the camera's right, so use
-    +~35 for a right patch, -~35 for a left patch); ``elevation_deg`` orbits
-    vertically (+ = above, ~35 for a top-down patch); ``distance_scale`` matches
-    the LoRA's close-up (0.6) / medium (1.0) / wide (1.8). The angle you request
-    here MUST match the angle you asked the LoRA for — the patch camera is placed
-    at exactly this nominal orbit.
+    IMPORTANT — the LoRA's angles are ABSOLUTE (subject-relative), not relative to
+    your source view: "right side view" = 90° around the *subject's* front, etc.
+    So to place the patch camera correctly you must tell this node BOTH the view
+    your SOURCE photo represents (``source_*``) and the view the PATCH was
+    generated at (``patch_*``, matching what you set in the Qwen Multiangle Camera
+    node); the actual orbit = patch − source. If the source is a straight-on
+    front shot, leave ``source_azimuth_view`` = "front view" and the patch's named
+    view maps directly. ``flip_azimuth`` swaps left/right if the recovered
+    camera's handedness comes out mirrored (a one-click calibration fix).
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "add_patch"
     CATEGORY = "Atlas Camera"
 
+    # Exact named views from ComfyUI-qwenmultiangle / the Multiple-Angles LoRA,
+    # so the same choice is picked in both nodes. Azimuth is absolute about the
+    # subject's front; distance scales the orbit radius (close-up pulls in).
+    _AZIMUTH_VIEWS = {
+        "front view": 0.0, "front-right quarter view": 45.0, "right side view": 90.0,
+        "back-right quarter view": 135.0, "back view": 180.0, "back-left quarter view": 225.0,
+        "left side view": 270.0, "front-left quarter view": 315.0,
+    }
+    _ELEVATION_VIEWS = {
+        "low-angle shot": -30.0, "eye-level shot": 0.0, "elevated shot": 30.0, "high-angle shot": 60.0,
+    }
+    _DISTANCE_VIEWS = {"close-up": 0.6, "medium shot": 1.0, "wide shot": 1.8}
+
     @classmethod
     def INPUT_TYPES(cls):
+        azimuths = list(cls._AZIMUTH_VIEWS)
+        elevations = list(cls._ELEVATION_VIEWS)
+        distances = list(cls._DISTANCE_VIEWS)
         return {
             "required": {
                 "solve": ("ATLAS_SOLVE",),
                 "patch_image": ("IMAGE",),
             },
             "optional": {
-                "azimuth_deg": ("FLOAT", {"default": 35.0, "min": -180.0, "max": 180.0, "step": 1.0,
-                    "tooltip": "Horizontal orbit of the patch camera. + = camera's right "
-                               "(right patch); - = left. Must match the angle asked of the LoRA."}),
-                "elevation_deg": ("FLOAT", {"default": 0.0, "min": -85.0, "max": 85.0, "step": 1.0,
-                    "tooltip": "Vertical orbit. + = above (looking down, ~35 for a roof patch)."}),
-                "distance_scale": ("FLOAT", {"default": 1.0, "min": 0.2, "max": 3.0, "step": 0.05,
-                    "tooltip": "Orbit radius scale — LoRA close-up 0.6 / medium 1.0 / wide 1.8."}),
+                "patch_azimuth_view": (azimuths, {"default": "front-right quarter view",
+                    "tooltip": "The LoRA azimuth the patch was generated at — MUST match the "
+                               "Qwen Multiangle Camera node. Absolute about the subject's front."}),
+                "patch_elevation_view": (elevations, {"default": "eye-level shot",
+                    "tooltip": "The LoRA elevation the patch was generated at (match the LoRA node)."}),
+                "patch_distance": (distances, {"default": "medium shot",
+                    "tooltip": "The LoRA distance the patch was generated at (match the LoRA node)."}),
+                "source_azimuth_view": (azimuths, {"default": "front view",
+                    "tooltip": "Which view your SOURCE photo already is, in the LoRA's absolute "
+                               "frame. Orbit applied = patch − source. Leave 'front view' for a "
+                               "straight-on source."}),
+                "source_elevation_view": (elevations, {"default": "eye-level shot",
+                    "tooltip": "Elevation of the SOURCE photo in the LoRA's frame."}),
+                "flip_azimuth": ("BOOLEAN", {"default": False,
+                    "tooltip": "Flip left/right if the patch lands on the wrong side "
+                               "(recovered-camera handedness) — a calibration convenience."}),
                 "name": ("STRING", {"default": "patch"}),
                 "depth_model": ([
                     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
@@ -1049,8 +1077,13 @@ class AtlasAddPatchView:
             },
         }
 
-    def add_patch(self, solve, patch_image, azimuth_deg=35.0, elevation_deg=0.0,
-                  distance_scale=1.0, name="patch",
+    def add_patch(self, solve, patch_image,
+                  patch_azimuth_view="front-right quarter view",
+                  patch_elevation_view="eye-level shot",
+                  patch_distance="medium shot",
+                  source_azimuth_view="front view",
+                  source_elevation_view="eye-level shot",
+                  flip_azimuth=False, name="patch",
                   depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                   relief_grid=96, priority=1.0, device="auto"):
         from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
@@ -1077,13 +1110,22 @@ class AtlasAddPatchView:
         cx = intr.cx_px if intr.cx_px is not None else p_w / 2.0
         cy = intr.cy_px if intr.cy_px is not None else p_h / 2.0
 
+        # Absolute LoRA views -> the ACTUAL orbit delta (patch - source), since
+        # the LoRA angle is subject-relative, not relative to the source view.
+        d_azimuth = self._AZIMUTH_VIEWS[patch_azimuth_view] - self._AZIMUTH_VIEWS[source_azimuth_view]
+        d_azimuth = ((d_azimuth + 180.0) % 360.0) - 180.0   # shortest way round
+        if flip_azimuth:
+            d_azimuth = -d_azimuth
+        d_elevation = self._ELEVATION_VIEWS[patch_elevation_view] - self._ELEVATION_VIEWS[source_elevation_view]
+        distance_scale = self._DISTANCE_VIEWS[patch_distance]  # source assumed "medium shot"
+
         # Patch camera: orbit the recovered camera around the scene pivot (the
         # point it looks at) so the patch shares the primary's world frame.
         pivot = ground_lookat_pivot(extr)
         patch_extr = orbit_camera(
             extr, pivot,
-            d_azimuth_deg=float(azimuth_deg),
-            d_elevation_deg=float(elevation_deg),
+            d_azimuth_deg=float(d_azimuth),
+            d_elevation_deg=float(d_elevation),
             distance_scale=float(distance_scale),
         )
 
@@ -1142,12 +1184,17 @@ class AtlasAddPatchView:
             name=name,
             image_b64=image_b64,
             proxy_geometry=patch_geom,
-            azimuth_deg=float(azimuth_deg),
-            elevation_deg=float(elevation_deg),
+            azimuth_deg=float(d_azimuth),      # actual orbit delta applied
+            elevation_deg=float(d_elevation),
             distance_scale=float(distance_scale),
             priority=float(priority),
             metadata={
                 "source": "multi_angle_lora_patch",
+                "patch_azimuth_view": patch_azimuth_view,
+                "patch_elevation_view": patch_elevation_view,
+                "patch_distance": patch_distance,
+                "source_azimuth_view": source_azimuth_view,
+                "flip_azimuth": bool(flip_azimuth),
                 "pivot": [float(v) for v in pivot],
                 "n_vertices": mesh.stats.get("n_vertices"),
                 "n_faces": mesh.stats.get("n_faces"),

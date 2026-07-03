@@ -23,13 +23,26 @@ def test_node_registered_and_returns_solve():
     assert AtlasAddPatchView.RETURN_TYPES == ("ATLAS_SOLVE",)
 
 
-def test_input_widgets_expose_angle_controls():
+def test_input_widgets_expose_named_view_controls():
     spec = AtlasAddPatchView.INPUT_TYPES()
     assert set(spec["required"]) == {"solve", "patch_image"}
     opt = spec["optional"]
-    assert opt["azimuth_deg"][1]["default"] == 35.0
-    assert opt["elevation_deg"][1]["default"] == 0.0
-    assert opt["distance_scale"][1]["default"] == 1.0
+    # Named views match the ComfyUI-qwenmultiangle / LoRA options exactly.
+    assert "right side view" in opt["patch_azimuth_view"][0]
+    assert "front view" in opt["source_azimuth_view"][0]
+    assert opt["source_azimuth_view"][1]["default"] == "front view"
+    assert "eye-level shot" in opt["patch_elevation_view"][0]
+    assert "medium shot" in opt["patch_distance"][0]
+
+
+def test_absolute_view_maps_to_relative_orbit_delta():
+    # The LoRA angle is absolute (subject-relative). Orbit applied = patch - source.
+    az = AtlasAddPatchView._AZIMUTH_VIEWS
+    assert az["right side view"] - az["front view"] == 90.0
+    # front-right quarter from a front source = +45 orbit
+    assert az["front-right quarter view"] - az["front view"] == 45.0
+    el = AtlasAddPatchView._ELEVATION_VIEWS
+    assert el["elevated shot"] - el["eye-level shot"] == 30.0
 
 
 def _synthetic_primary():
@@ -85,20 +98,22 @@ def test_add_patch_orbits_camera_and_appends_source(monkeypatch):
     solve, pivot, eye = _synthetic_primary()
     patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
 
+    # Source = front view, patch = right side view (90° absolute) → +90° orbit.
     (out,) = AtlasAddPatchView().add_patch(
-        solve, patch_img, azimuth_deg=35.0, elevation_deg=0.0,
-        distance_scale=1.0, name="patch_right", relief_grid=48,
+        solve, patch_img,
+        patch_azimuth_view="right side view", patch_elevation_view="eye-level shot",
+        source_azimuth_view="front view", name="patch_right", relief_grid=48,
     )
 
     assert len(out.projection_sources) == 1
     src = out.projection_sources[0]
     assert src.name == "patch_right"
-    assert src.azimuth_deg == 35.0
+    assert src.azimuth_deg == 90.0                         # patch − source orbit delta
     assert src.image_b64 and src.image_b64.startswith("data:image/jpeg;base64,")
     assert any(p.primitive_type == "mesh" for p in src.proxy_geometry)
 
     # Patch camera orbited around the pivot: radius preserved, height preserved
-    # (pure azimuth), and re-aimed at the pivot (pivot in front → cam-space z<0).
+    # (eye-level→eye-level, pure azimuth), re-aimed at the pivot (pivot in front).
     r_prim = math.dist(eye, pivot)
     r_patch = math.dist(src.camera.extrinsics.camera_position, pivot)
     assert r_patch == pytest.approx(r_prim, abs=1e-3)
@@ -113,7 +128,9 @@ def test_add_patch_does_not_mutate_input_solve(monkeypatch):
     solve, _pivot, _eye = _synthetic_primary()
     patch_img = torch.rand(1, 256, 384, 3, dtype=torch.float32)
 
-    (out,) = AtlasAddPatchView().add_patch(solve, patch_img, name="patch_left", relief_grid=48)
+    (out,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="left side view", name="patch_left", relief_grid=48,
+    )
 
     assert len(solve.projection_sources) == 0      # input untouched (deep-copied)
     assert len(out.projection_sources) == 1
