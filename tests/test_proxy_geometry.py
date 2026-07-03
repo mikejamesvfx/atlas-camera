@@ -13,6 +13,7 @@ import pytest
 
 from atlas_camera.core.proxy_geometry import (
     derive_projection_proxies,
+    derive_vertical_extrusion_proxies,
     serialize_proxy_geometry,
 )
 from atlas_camera.core.schema import AtlasProjectionScene
@@ -221,3 +222,83 @@ def test_payload_is_json_safe():
         assert len(entry["dimensions"]) == 3
         assert all(isinstance(v, (str, int, float, bool)) or v is None
                    for v in entry["metadata"].values())
+
+
+# ---------------------------------------------------------------------------
+# vertical_extrusion — Photo-Pop-up-style silhouette height (see the
+# "Sky-Aware Depth + Vertical-Silhouette Extrusion" design notes in CLAUDE.md)
+# ---------------------------------------------------------------------------
+
+def _scene_depth_with_noisy_sky_and_gable(h=1.6, wall_z=-10.0, wall_h=3.0, seed=7):
+    """A wall (azimuth_walls' own documented ceiling) with a wide, smoothly
+    sloped 'gable' above it — real geometry a sloped-roof silhouette, not
+    noise — plus realistic noisy sky everywhere else, matching what Depth
+    Anything actually produces. Returns (depth, true_gable_peak_y).
+    """
+    depth = _scene_depth(h=h, wall_z=wall_z, wall_h=wall_h)
+    rng = np.random.RandomState(seed)
+    is_sky = depth >= SKY
+    depth = depth.copy()
+    depth[is_sky] += rng.uniform(-8.0, 8.0, size=int(is_sky.sum()))
+
+    rows = np.arange(H)
+    cols = np.arange(W)
+    row_mask = (rows >= 150) & (rows < 186)   # immediately above the wall's own top edge
+    col_mask = (cols >= 180) & (cols < 330)   # wide — a realistic gable width, not a thin spike
+    gable_rows, gable_cols = np.where(row_mask[:, None] & col_mask[None, :])
+    t_gable = 10.0 + 0.3 * (186 - gable_rows)  # recedes smoothly as it rises — a real slope
+    depth[gable_rows, gable_cols] = t_gable
+
+    _, vv = np.meshgrid(np.arange(W, dtype=float), np.arange(H, dtype=float))
+    dy = -(vv - CY) / FY
+    true_peak_y = float((h + dy[gable_rows, gable_cols] * t_gable).max())
+    return depth, true_peak_y
+
+
+def test_vertical_extrusion_captures_gable_height_azimuth_walls_misses():
+    # This is the exact failure mode reported on exterior_10_church:
+    # azimuth_walls' wall_normal_max filter excludes the sloped gable's
+    # points entirely, so its height reflects only the plain wall below.
+    depth, true_peak_y = _scene_depth_with_noisy_sky_and_gable()
+
+    walls_old = _by_prefix(_derive(depth)[0], "projection_wall")
+    prims_new, _ = derive_vertical_extrusion_proxies(
+        depth, view_matrix=_view_matrix(1.6), fx=FX, fy=FY, cx=CX, cy=CY,
+    )
+    walls_new = _by_prefix(prims_new, "projection_wall")
+
+    assert len(walls_old) == 1 and len(walls_new) == 1
+    height_old = walls_old[0].dimensions[1]
+    height_new = walls_new[0].dimensions[1]
+
+    assert height_old == pytest.approx(2.9, abs=0.3)          # stuck at the plain wall
+    assert height_new > height_old + 1.5                      # reaches well past it
+    assert height_new == pytest.approx(true_peak_y, abs=1.0)  # close to the real gable peak
+
+
+def test_vertical_extrusion_matches_azimuth_walls_on_a_simple_box_wall():
+    # No sloped/complex feature above the wall — both methods should agree
+    # closely on a plain box building (vertical_extrusion isn't a worse fit
+    # for the common case just because it computes height differently).
+    depth = _scene_depth(wall_z=-10.0, wall_h=3.0)
+
+    walls_old = _by_prefix(_derive(depth)[0], "projection_wall")
+    prims_new, _ = derive_vertical_extrusion_proxies(
+        depth, view_matrix=_view_matrix(1.6), fx=FX, fy=FY, cx=CX, cy=CY,
+    )
+    walls_new = _by_prefix(prims_new, "projection_wall")
+
+    assert len(walls_old) == 1 and len(walls_new) == 1
+    assert walls_new[0].dimensions[1] == pytest.approx(walls_old[0].dimensions[1], abs=0.5)
+
+
+def test_vertical_extrusion_payload_is_json_safe():
+    depth, _ = _scene_depth_with_noisy_sky_and_gable()
+    prims, _ = derive_vertical_extrusion_proxies(
+        depth, view_matrix=_view_matrix(1.6), fx=FX, fy=FY, cx=CX, cy=CY,
+    )
+    scene = AtlasProjectionScene()
+    scene.proxy_geometry.extend(prims)
+    payload = serialize_proxy_geometry(scene)
+    assert payload
+    assert json.dumps(payload)

@@ -129,6 +129,7 @@ def build_relief_mesh(
     floor_clamp: float | None = -0.25,
     smooth_iterations: int = 2,
     max_edge_factor: float = 12.0,
+    horizon_y: float | None = None,
 ) -> ReliefMesh:
     """Triangulate a forward-z depth map into a world-space relief mesh.
 
@@ -140,12 +141,26 @@ def build_relief_mesh(
     a 3×3 median (kills single-pixel spikes) and smoothed edge-aware for
     ``smooth_iterations`` rounds. Depths above ``far_clip_percentile`` are
     clamped so the sky becomes a smooth distant shell.
+
+    ``horizon_y`` (image row, defaults to ``height * 0.45`` matching
+    ``depth_geometry.fit_ground_and_scale``'s own fallback) feeds
+    ``depth_geometry.detect_sky_mask``: pixels flagged as noisy/incoherent sky
+    are excluded from triangulation entirely (a hole, like any other depth
+    discontinuity) rather than merely distance-clamped — without this, noisy
+    monocular depth in feature-less sky/cloud regions gets torn into a jagged,
+    spatially-huge "mountain" that dwarfs the actual photographed geometry.
     """
+    from atlas_camera.core.depth_geometry import detect_sky_mask
+
     np = _require_numpy()
     depth = np.asarray(depth, dtype=np.float64).copy()
     height, width = depth.shape
 
+    if horizon_y is None:
+        horizon_y = height * 0.45
+
     valid_full = np.isfinite(depth) & (depth > 1e-4)
+    valid_full &= ~detect_sky_mask(depth, horizon_y=horizon_y)
     if far_clip_percentile and valid_full.any():
         far = float(np.percentile(depth[valid_full], far_clip_percentile))
         np.minimum(depth, far, out=depth)

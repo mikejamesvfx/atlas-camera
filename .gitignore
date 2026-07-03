@@ -28,6 +28,7 @@ external_datasets/
 local_datasets/
 atlas_ui_projects/
 atlas_camera.egg-info/
+atlas_exports/
 examples/review_packages/*
 !examples/review_packages/.gitkeep
 

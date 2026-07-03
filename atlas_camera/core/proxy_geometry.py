@@ -104,6 +104,150 @@ def _wall_axes(np: Any, n: Any) -> tuple[Any, Any, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Shared wall-orientation clustering (azimuth_walls AND vertical_extrusion)
+# ---------------------------------------------------------------------------
+
+def _cluster_walls_by_azimuth(
+    np: Any,
+    cfg: "ProxyDerivationConfig",
+    *,
+    pts_world: Any,
+    normals: Any,
+    valid_normal: Any,
+    ground_inlier: Any,
+    scaled_depth: Any,
+    backdrop_d_raw: float,
+    cam_pos: Any,
+    max_walls: int,
+    height: int,
+    width: int,
+) -> tuple[list[dict[str, Any]], Any]:
+    """Cluster near-vertical-normal pixels into wall planes by azimuth peak-picking.
+
+    Extracted verbatim from ``derive_projection_proxies`` (step 5) so both the
+    default ``azimuth_walls`` strategy and ``vertical_extrusion`` (which only
+    replaces the *height* computation below — see that function) agree on
+    wall orientation/distance instead of duplicating this clustering twice.
+
+    Returns ``(walls, wall_inlier_total)``. Each wall dict has
+    ``n``/``d``/``u``/``a_mid``/``b_mid``/``w``/``h``/``inliers``/``med_depth``/``cols``
+    — ``h``/``b_mid`` come from a 2nd-98th percentile clip of *that wall's own*
+    3D inlier points. This is ``azimuth_walls``'s known limitation: normals
+    off a sloped roof or spire never pass the ``wall_normal_max`` filter, so
+    the height only ever reflects the lower straight wall section. ``cols``
+    (each inlier's original image column) exists purely so
+    ``vertical_extrusion`` can look up, per column, the silhouette top —
+    ``azimuth_walls`` itself ignores it.
+    """
+    n_y = normals[..., 1]
+    wall_inlier_total = np.zeros((height, width), dtype=bool)
+    wall_cand = (valid_normal & (np.abs(n_y) < cfg.wall_normal_max)
+                 & (scaled_depth < backdrop_d_raw * 0.95) & ~ground_inlier)
+    n_pixels = height * width
+    inlier_floor = max(cfg.min_wall_inliers, int(0.003 * n_pixels))
+    walls: list[dict[str, Any]] = []
+    col_idx_full = np.tile(np.arange(width, dtype=np.int64), (height, 1))
+
+    if int(wall_cand.sum()) >= inlier_floor and max_walls > 0:
+        nx = normals[..., 0][wall_cand].copy()
+        nz = normals[..., 2][wall_cand].copy()
+        pw = pts_world[wall_cand]
+        cols = col_idx_full[wall_cand]
+        # Flip each normal toward the camera, zero Y, renormalise.
+        to_cam = cam_pos[None, :] - pw
+        flip = (nx * to_cam[:, 0] + normals[..., 1][wall_cand] * to_cam[:, 1]
+                + nz * to_cam[:, 2]) < 0
+        nx[flip] = -nx[flip]
+        nz[flip] = -nz[flip]
+        h_norm = np.sqrt(nx ** 2 + nz ** 2)
+        ok = h_norm > 1e-6
+        nx, nz, pw, cols = nx[ok] / h_norm[ok], nz[ok] / h_norm[ok], pw[ok], cols[ok]
+
+        azimuth = np.arctan2(nx, nz)  # [-pi, pi]
+        bins = cfg.azimuth_bins
+        bin_idx = ((azimuth + math.pi) / (2 * math.pi) * bins).astype(int) % bins
+        hist = np.bincount(bin_idx, minlength=bins).astype(np.float64)
+        # Circular [1,2,1] smoothing.
+        hist_s = (np.roll(hist, 1) + 2 * hist + np.roll(hist, -1)) / 4.0
+
+        # NMS peak-picking.
+        order = np.argsort(hist_s)[::-1]
+        suppressed = np.zeros(bins, dtype=bool)
+        peaks: list[int] = []
+        for b in order:
+            if suppressed[b] or hist_s[b] < inlier_floor:
+                continue
+            peaks.append(int(b))
+            for off in range(-2, 3):
+                suppressed[(b + off) % bins] = True
+            if len(peaks) >= max_walls * 2:  # extra candidates; filtered below
+                break
+
+        for b in peaks:
+            if len(walls) >= max_walls:
+                break
+            # Cluster: pixels within ±1.5 bins of the peak azimuth (wraparound).
+            centre = -math.pi + (b + 0.5) * 2 * math.pi / bins
+            dang = np.abs(np.arctan2(np.sin(azimuth - centre), np.cos(azimuth - centre)))
+            sel = dang < (1.5 * 2 * math.pi / bins)
+            if int(sel.sum()) < inlier_floor:
+                continue
+            n_mean = np.array([np.mean(nx[sel]), 0.0, np.mean(nz[sel])])
+            n_len = np.linalg.norm(n_mean)
+            if n_len < 1e-6:
+                continue
+            n_mean = n_mean / n_len
+            p_sel = pw[sel]
+            cols_sel = cols[sel]
+            offs = p_sel @ n_mean
+            d_off = float(np.median(offs))
+            med_depth = float(np.median(scaled_depth[wall_cand][ok][sel])) if sel.any() else 5.0
+            tol = max(0.15, 0.02 * med_depth)
+            inl = np.abs(offs - d_off) < tol
+            if int(inl.sum()) < inlier_floor:
+                continue
+            p_in = p_sel[inl]
+            cols_in = cols_sel[inl]
+            u_ax, v_ax, _ = _wall_axes(np, n_mean)
+            a = p_in @ u_ax
+            b_y = np.clip(p_in[:, 1], -0.1, None)
+            p_lo, p_hi = cfg.extent_percentiles
+            a0, a1 = np.percentile(a, [p_lo, p_hi])
+            b0, b1 = np.percentile(b_y, [p_lo, p_hi])
+            b0 = max(b0, -0.1)
+            w_m, h_m = float(a1 - a0), float(b1 - b0)
+            if w_m < cfg.min_wall_size_m or h_m < cfg.min_wall_size_m:
+                continue
+            if w_m < cfg.wall_min_width_m:
+                continue  # narrow vertical fit — an object, not a wall
+            walls.append({
+                "n": n_mean, "d": d_off, "u": u_ax,
+                "a_mid": 0.5 * (a0 + a1), "b_mid": 0.5 * (b0 + b1),
+                "w": w_m, "h": h_m, "inliers": int(inl.sum()),
+                "med_depth": med_depth, "cols": cols_in,
+            })
+            # Mark inlier pixels so the object stage skips them.
+            plane_dist = np.abs(pts_world @ n_mean - d_off)
+            wall_inlier_total |= wall_cand & (plane_dist < tol)
+
+        # Merge near-duplicates (azimuth < 15° apart AND offsets agree).
+        merged: list[dict[str, Any]] = []
+        for w in sorted(walls, key=lambda d: -d["inliers"]):
+            dup = False
+            for m in merged:
+                cosang = float(np.dot(w["n"], m["n"]))
+                if cosang > math.cos(math.radians(15.0)) and \
+                        abs(w["d"] - m["d"]) < max(0.3, 0.05 * m["med_depth"]):
+                    dup = True
+                    break
+            if not dup:
+                merged.append(w)
+        walls = merged[:max_walls]
+
+    return walls, wall_inlier_total
+
+
+# ---------------------------------------------------------------------------
 # Main derivation
 # ---------------------------------------------------------------------------
 
@@ -237,105 +381,12 @@ def derive_projection_proxies(
         ))
 
     # -- Step 5: wall primitives ------------------------------------------------
-    wall_inlier_total = np.zeros((height, width), dtype=bool)
-    wall_cand = (valid_normal & (np.abs(n_y) < cfg.wall_normal_max)
-                 & (scaled_depth < backdrop_d_raw * 0.95) & ~ground_inlier)
-    n_pixels = height * width
-    inlier_floor = max(cfg.min_wall_inliers, int(0.003 * n_pixels))
-    walls: list[dict[str, Any]] = []
-
-    if int(wall_cand.sum()) >= inlier_floor and max_walls > 0:
-        nx = normals[..., 0][wall_cand].copy()
-        nz = normals[..., 2][wall_cand].copy()
-        pw = pts_world[wall_cand]
-        # Flip each normal toward the camera, zero Y, renormalise.
-        to_cam = cam_pos[None, :] - pw
-        flip = (nx * to_cam[:, 0] + normals[..., 1][wall_cand] * to_cam[:, 1]
-                + nz * to_cam[:, 2]) < 0
-        nx[flip] = -nx[flip]
-        nz[flip] = -nz[flip]
-        h_norm = np.sqrt(nx ** 2 + nz ** 2)
-        ok = h_norm > 1e-6
-        nx, nz, pw = nx[ok] / h_norm[ok], nz[ok] / h_norm[ok], pw[ok]
-
-        azimuth = np.arctan2(nx, nz)  # [-pi, pi]
-        bins = cfg.azimuth_bins
-        bin_idx = ((azimuth + math.pi) / (2 * math.pi) * bins).astype(int) % bins
-        hist = np.bincount(bin_idx, minlength=bins).astype(np.float64)
-        # Circular [1,2,1] smoothing.
-        hist_s = (np.roll(hist, 1) + 2 * hist + np.roll(hist, -1)) / 4.0
-
-        # NMS peak-picking.
-        order = np.argsort(hist_s)[::-1]
-        suppressed = np.zeros(bins, dtype=bool)
-        peaks: list[int] = []
-        for b in order:
-            if suppressed[b] or hist_s[b] < inlier_floor:
-                continue
-            peaks.append(int(b))
-            for off in range(-2, 3):
-                suppressed[(b + off) % bins] = True
-            if len(peaks) >= max_walls * 2:  # extra candidates; filtered below
-                break
-
-        for b in peaks:
-            if len(walls) >= max_walls:
-                break
-            # Cluster: pixels within ±1.5 bins of the peak azimuth (wraparound).
-            centre = -math.pi + (b + 0.5) * 2 * math.pi / bins
-            dang = np.abs(np.arctan2(np.sin(azimuth - centre), np.cos(azimuth - centre)))
-            sel = dang < (1.5 * 2 * math.pi / bins)
-            if int(sel.sum()) < inlier_floor:
-                continue
-            n_mean = np.array([np.mean(nx[sel]), 0.0, np.mean(nz[sel])])
-            n_len = np.linalg.norm(n_mean)
-            if n_len < 1e-6:
-                continue
-            n_mean = n_mean / n_len
-            p_sel = pw[sel]
-            offs = p_sel @ n_mean
-            d_off = float(np.median(offs))
-            med_depth = float(np.median(scaled_depth[wall_cand][ok][sel])) if sel.any() else 5.0
-            tol = max(0.15, 0.02 * med_depth)
-            inl = np.abs(offs - d_off) < tol
-            if int(inl.sum()) < inlier_floor:
-                continue
-            p_in = p_sel[inl]
-            u_ax, v_ax, _ = _wall_axes(np, n_mean)
-            a = p_in @ u_ax
-            b_y = np.clip(p_in[:, 1], -0.1, None)
-            p_lo, p_hi = cfg.extent_percentiles
-            a0, a1 = np.percentile(a, [p_lo, p_hi])
-            b0, b1 = np.percentile(b_y, [p_lo, p_hi])
-            b0 = max(b0, -0.1)
-            w_m, h_m = float(a1 - a0), float(b1 - b0)
-            if w_m < cfg.min_wall_size_m or h_m < cfg.min_wall_size_m:
-                continue
-            if w_m < cfg.wall_min_width_m:
-                continue  # narrow vertical fit — an object, not a wall
-            walls.append({
-                "n": n_mean, "d": d_off, "u": u_ax,
-                "a_mid": 0.5 * (a0 + a1), "b_mid": 0.5 * (b0 + b1),
-                "w": w_m, "h": h_m, "inliers": int(inl.sum()),
-                "med_depth": med_depth,
-            })
-            # Mark inlier pixels so the object stage skips them.
-            plane_dist = np.abs(pts_world @ n_mean - d_off)
-            wall_inlier_total |= wall_cand & (plane_dist < tol)
-
-        # Merge near-duplicates (azimuth < 15° apart AND offsets agree).
-        merged: list[dict[str, Any]] = []
-        for w in sorted(walls, key=lambda d: -d["inliers"]):
-            dup = False
-            for m in merged:
-                cosang = float(np.dot(w["n"], m["n"]))
-                if cosang > math.cos(math.radians(15.0)) and \
-                        abs(w["d"] - m["d"]) < max(0.3, 0.05 * m["med_depth"]):
-                    dup = True
-                    break
-            if not dup:
-                merged.append(w)
-        walls = merged[:max_walls]
+    walls, wall_inlier_total = _cluster_walls_by_azimuth(
+        np, cfg, pts_world=pts_world, normals=normals, valid_normal=valid_normal,
+        ground_inlier=ground_inlier, scaled_depth=scaled_depth,
+        backdrop_d_raw=backdrop_d_raw, cam_pos=cam_pos, max_walls=max_walls,
+        height=height, width=width,
+    )
 
     for i, w in enumerate(walls):
         u_ax, v_ax, n_ax = _wall_axes(np, w["n"])
@@ -413,6 +464,165 @@ def derive_projection_proxies(
         material="atlas_projection_proxy",
         metadata={"role": PROXY_ROLE, "source": "depth_derivation",
                   "distance_m": float(D), "depth_scale_applied": scale},
+    ))
+
+    stats["primitives"] = len(prims)
+    return prims, stats
+
+
+# ---------------------------------------------------------------------------
+# Vertical-billboard extrusion (Photo-Pop-up-style silhouette height)
+# ---------------------------------------------------------------------------
+
+def derive_vertical_extrusion_proxies(
+    depth: Any,
+    *,
+    view_matrix: Any,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    max_walls: int = 4,
+    horizon_y: float | None = None,
+    config: ProxyDerivationConfig | None = None,
+) -> tuple[list[AtlasProxyPrimitive], dict[str, Any]]:
+    """Vertical-billboard wall fitter — Photo-Pop-up-style silhouette extrusion.
+
+    Reuses ``azimuth_walls``'s wall ORIENTATION/DISTANCE clustering (that part
+    isn't broken) via the shared ``_cluster_walls_by_azimuth`` helper, but
+    replaces its HEIGHT computation. ``azimuth_walls`` sets wall height from a
+    percentile clip of 3D points that individually pass the near-vertical
+    ``wall_normal_max`` filter — a sloped roof, spire, or bell tower never
+    qualifies (its surface genuinely isn't vertical), so the wall only ever
+    reflects the lower straight section.
+
+    Instead, per Hoiem/Efros/Hebert's "Automatic Photo Pop-up" (SIGGRAPH
+    2005): classify the image as ground / vertical / sky
+    (``depth_geometry.detect_sky_mask`` supplies the sky half), then for each
+    wall's own image-column range, find the topmost *non-sky* pixel per
+    column and take *that pixel's own* back-projected world height — not
+    filtered by its local surface normal at all — as a per-column height
+    sample. A robust (95th-percentile) height across those columns becomes
+    the wall's extruded top, reaching the real silhouette (tower/roofline)
+    instead of stopping at the plain wall below it.
+
+    Ground/backdrop/objects are unchanged from ``derive_projection_proxies``;
+    only wall height differs. Still emits ``primitive_type="plane"`` — no
+    downstream consumer (viewport, Maya/USD exporters) needs to change.
+    """
+    from atlas_camera.core.depth_geometry import (
+        back_project_normals,
+        build_backdrop_primitive,
+        detect_sky_mask,
+        fit_ground_and_scale,
+    )
+
+    np = _require_numpy()
+    cfg = config or ProxyDerivationConfig()
+    depth = np.asarray(depth, dtype=np.float64)
+    height, width = depth.shape
+    if horizon_y is None:
+        horizon_y = height * 0.45
+
+    stats: dict[str, Any] = {"walls": 0, "boxes": 0, "cylinders": 0}
+    prims: list[AtlasProxyPrimitive] = []
+
+    bp = back_project_normals(depth, view_matrix=view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+                               depth_edge_rel=cfg.depth_edge_rel)
+    gf = fit_ground_and_scale(bp, horizon_y=horizon_y, ground_normal_min=cfg.ground_normal_min)
+    scale = gf.scale
+    pts_world = gf.pts_world_scaled
+    ground_inlier = gf.ground_inlier
+    stats["ground_scale"] = scale
+    stats["ground_inliers"] = gf.inliers
+
+    scaled_depth = depth * scale
+    valid_depth = bp.valid_depth
+    backdrop_d_raw = float(np.percentile(
+        scaled_depth[valid_depth], cfg.backdrop_depth_percentile
+    )) if valid_depth.any() else 60.0
+
+    sky_mask = detect_sky_mask(depth, horizon_y=horizon_y)
+    not_sky = ~sky_mask
+
+    # -- ground primitive (identical to derive_projection_proxies) ------------
+    if int(ground_inlier.sum()) >= 300:
+        gx = pts_world[..., 0][ground_inlier]
+        gz = pts_world[..., 2][ground_inlier]
+        p_lo, p_hi = cfg.extent_percentiles
+        x0, x1 = np.percentile(gx, [p_lo, p_hi])
+        z0, z1 = np.percentile(gz, [p_lo, p_hi])
+        cx_w, cz_w = 0.5 * (x0 + x1), 0.5 * (z0 + z1)
+        ex = max((x1 - x0) * cfg.ground_padding, cfg.ground_min_extent_m)
+        ez = max((z1 - z0) * cfg.ground_padding, cfg.ground_min_extent_m)
+        u_g = np.array([1.0, 0.0, 0.0])
+        n_g = np.array([0.0, 1.0, 0.0])
+        v_g = np.array([0.0, 0.0, -1.0])
+        prims.append(AtlasProxyPrimitive(
+            name="projection_ground",
+            primitive_type="plane",
+            transform_matrix=_plane_transform(u_g, v_g, n_g, (cx_w, 0.0, cz_w)),
+            dimensions=(float(ex), float(ez), 0.0),
+            material="atlas_projection_proxy",
+            metadata={"role": PROXY_ROLE, "source": "depth_derivation",
+                      "inliers": int(ground_inlier.sum()), "depth_scale_applied": scale},
+        ))
+
+    # -- walls: shared orientation/distance clustering, silhouette height ----
+    walls, wall_inlier_total = _cluster_walls_by_azimuth(
+        np, cfg, pts_world=pts_world, normals=bp.normals, valid_normal=bp.valid_normal,
+        ground_inlier=ground_inlier, scaled_depth=scaled_depth,
+        backdrop_d_raw=backdrop_d_raw, cam_pos=bp.cam_pos, max_walls=max_walls,
+        height=height, width=width,
+    )
+
+    for i, w in enumerate(walls):
+        base_y = max(w["b_mid"] - 0.5 * w["h"], -0.1)
+        top_ys: list[float] = []
+        for col in np.unique(w["cols"]):
+            rows = np.where(not_sky[:, col] & valid_depth[:, col])[0]
+            if rows.size:
+                top_ys.append(float(pts_world[int(rows.min()), col, 1]))
+        if top_ys:
+            top_y = float(np.percentile(top_ys, 95.0))
+            h_m = max(top_y - base_y, cfg.min_wall_size_m)
+        else:
+            h_m = w["h"]  # no usable column — fall back to the clusterer's own height
+        b_mid = base_y + 0.5 * h_m
+
+        u_ax, v_ax, n_ax = _wall_axes(np, w["n"])
+        c = w["d"] * n_ax + w["a_mid"] * u_ax + b_mid * v_ax
+        prims.append(AtlasProxyPrimitive(
+            name=f"projection_wall_{i + 1:02d}",
+            primitive_type="plane",
+            transform_matrix=_plane_transform(u_ax, v_ax, n_ax, c),
+            dimensions=(w["w"], h_m, 0.0),
+            material="atlas_projection_proxy",
+            metadata={"role": PROXY_ROLE, "source": "depth_derivation",
+                      "inliers": w["inliers"],
+                      "yaw_deg": float(math.degrees(math.atan2(w["n"][0], w["n"][2]))),
+                      "distance_m": float(w["d"]),
+                      "depth_scale_applied": scale,
+                      "method": "vertical_extrusion"},
+        ))
+    stats["walls"] = len(walls)
+
+    # -- objects (identical to derive_projection_proxies) --------------------
+    if cfg.max_objects > 0:
+        inner_mask = np.zeros((height, width), dtype=bool)
+        inner_mask[1:-1, 1:-1] = True
+        obj_cand = (valid_depth & inner_mask & ~ground_inlier & ~wall_inlier_total
+                    & (scaled_depth < backdrop_d_raw * 0.9)
+                    & (pts_world[..., 1] > 0.05))
+        prims.extend(_derive_objects(
+            np, cfg, stats, pts_world, bp.normals, obj_cand, bp.valid_normal, scale))
+
+    # -- backdrop (always), via the shared depth_geometry.py helper ----------
+    prims.append(build_backdrop_primitive(
+        bp=bp, scaled_depth=scaled_depth, valid_depth=valid_depth,
+        fx=fx, fy=fy, cx=cx, cy=cy, width=width, height=height, scale=scale,
+        backdrop_depth_percentile=cfg.backdrop_depth_percentile,
+        backdrop_margin=cfg.backdrop_margin,
     ))
 
     stats["primitives"] = len(prims)

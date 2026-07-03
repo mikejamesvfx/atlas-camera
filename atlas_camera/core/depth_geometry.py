@@ -169,6 +169,77 @@ def fit_ground_and_scale(
     )
 
 
+def detect_sky_mask(
+    depth: Any,
+    *,
+    horizon_y: float,
+    far_clip_percentile: float = 97.0,
+    roughness_window: int = 5,
+    roughness_factor: float = 8.0,
+) -> Any:
+    """Heuristic sky mask: pixels above the horizon whose depth is unreliable.
+
+    Monocular depth (Depth Anything and similar) has no strong cue on
+    featureless sky/cloud regions and often hallucinates noisy,
+    spatially-incoherent depth there instead of a smooth "far" value.
+    Triangulating that noise produces jagged, distorted geometry (see
+    ``relief_mesh.build_relief_mesh``) and can even get mistaken for real
+    wall height by the primitive fitters. A pixel qualifies as sky when it is
+    **above the solved horizon line** AND *either*:
+
+    - its depth is at/beyond ``far_clip_percentile`` of all depth in the
+      image (plausibly "very far"), OR
+    - its local **roughness** — mean squared discrete Laplacian
+      (``depth[i,j] - average of its 4 neighbours``) over a
+      ``roughness_window`` x ``roughness_window`` neighborhood
+      (``roughness_window`` must be odd) — exceeds ``roughness_factor`` x the
+      median roughness found *below* the horizon.
+
+    Roughness, not raw variance, is deliberate: a real sloped surface (a roof,
+    a ramp) has a *constant* local gradient, so its Laplacian is ~0 even
+    though its raw variance in a window can be large — plain variance would
+    misclassify real sloped architecture as sky. Genuine per-pixel model
+    noise has no such coherent gradient, so its Laplacian stays large. This
+    is self-calibrated per image (relative to the below-horizon baseline)
+    rather than a fixed absolute threshold, so it also catches noisy sky
+    before the far-clip percentile alone would.
+
+    Returns a boolean array (``True`` = sky), same shape as ``depth``.
+    Numpy-only — no training data or new dependency, reuses the horizon line
+    the camera solve already produced.
+    """
+    np = _require_numpy()
+    depth = np.asarray(depth, dtype=np.float64)
+    height, width = depth.shape
+    valid = np.isfinite(depth) & (depth > 1e-4)
+
+    vv = np.arange(height, dtype=np.float64)[:, None] * np.ones((1, width))
+    above = vv < horizon_y
+
+    if not valid.any() or not above.any():
+        return np.zeros((height, width), dtype=bool)
+
+    far_thresh = float(np.percentile(depth[valid], far_clip_percentile))
+    far = depth >= far_thresh
+
+    lap = np.zeros_like(depth)
+    lap[1:-1, 1:-1] = depth[1:-1, 1:-1] - 0.25 * (
+        depth[:-2, 1:-1] + depth[2:, 1:-1] + depth[1:-1, :-2] + depth[1:-1, 2:]
+    )
+    sq = lap ** 2
+
+    pad = roughness_window // 2
+    padded = np.pad(sq, pad, mode="edge")
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (roughness_window, roughness_window))
+    roughness = windows.mean(axis=(-2, -1))
+
+    below = ~above & valid
+    baseline_roughness = float(np.median(roughness[below])) if below.any() else 0.0
+    noisy = roughness > max(roughness_factor * baseline_roughness, 1e-9)
+
+    return above & valid & (far | noisy)
+
+
 def plane_transform(u: Any, v: Any, n: Any, c: Any) -> tuple:
     """Row-major 4×4 with columns = local axes (u, v, n) and translation c.
 

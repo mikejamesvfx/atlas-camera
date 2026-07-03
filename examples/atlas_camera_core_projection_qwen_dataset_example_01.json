@@ -1,0 +1,262 @@
+{
+  "2": {
+    "inputs": {
+      "height_mode": "measure_from_depth",
+      "camera_height_m": 1.6,
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "sensor_width_mm": 36,
+      "weights": "pinhole",
+      "device": "auto",
+      "image": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "AtlasLearnedSolveFromImage",
+    "_meta": {
+      "title": "Atlas Learned Solve (GeoCalib) 🧠"
+    }
+  },
+  "3": {
+    "inputs": {
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "max_walls": 4,
+      "max_objects": 3,
+      "device": "auto",
+      "geometry_mode": "relief_mesh",
+      "relief_grid": 96,
+      "primitive_method": "azimuth_walls",
+      "scene_type": "manual",
+      "solve": [
+        "2",
+        0
+      ],
+      "image": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "AtlasDeriveProjectionGeometry",
+    "_meta": {
+      "title": "Atlas Derive Projection Geometry 📽"
+    }
+  },
+  "4": {
+    "inputs": {
+      "resolution": 768,
+      "client_data": "",
+      "preview_expand": 1,
+      "solve": [
+        "3",
+        0
+      ],
+      "source_image": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "AtlasBlockoutViewport",
+    "_meta": {
+      "title": "Atlas Viewport 🧊"
+    }
+  },
+  "5": {
+    "inputs": {
+      "images": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Blockout — Shaded"
+    }
+  },
+  "6": {
+    "inputs": {
+      "output_dir": "atlas_exports",
+      "grid_long_edge": 128,
+      "depth_edge_rel": 0.5,
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "device": "auto",
+      "format": "both",
+      "solve": [
+        "3",
+        0
+      ],
+      "image": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "AtlasExportReliefMesh",
+    "_meta": {
+      "title": "Atlas Export Relief Mesh (OBJ) 🗻"
+    }
+  },
+  "7": {
+    "inputs": {
+      "filename_prefix": "Qwen_2512_Image",
+      "images": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "9": {
+    "inputs": {
+      "vae": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "10": {
+    "inputs": {
+      "text": "fire escapes",
+      "clip": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "11": {
+    "inputs": {
+      "shift": 3.2,
+      "model": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
+    }
+  },
+  "12": {
+    "inputs": {
+      "text": "photorealistic cinematic city photograph, maintaining the architecture of a a red and white streetcar along a rain soaked city street at early evening. The destination sign  “504 BROADVIEW STN” on the top front, and the vehicle number “4161” is visible on the front and side. Headlights are on casting a glare and gentle lens flare and warm interior lighting reveals seated passengers through large windows. Advertising on the tram side for \"Matts Great AI Videos\".\n\nRain falls steadily with visible streaks. Every pedestrian on the sidewalk is holding an umbrella, standing or walking in the rain. The wet street reflects the streetcar’s red body, headlights, brake lights from the car behind it, streetlights, and illuminated building windows.\n\nThe scene includes brick and modern buildings, storefronts, residential windows with warm light, wet street trees, wires, cables, fine details,  streetlights casting soft light through the rain. A dark colored car waits behind the streetcar with glowing red brake lights.  \n\nThe street has concrete and metal tracks, and old asphalt pavement, the sidewalk is concrete\n\nEarly evening dusk lighting with cool ambient tones balanced by warm interior and street lighting and cinematic muted tones. realistic materials, physically accurate reflections, subtle depth of field and motion blur, chromatic aberration",
+      "clip": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "13": {
+    "inputs": {
+      "width": 1920,
+      "height": 1088,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  },
+  "14": {
+    "inputs": {
+      "unet_name": "qwen_image_2512_fp8_e4m3fn.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "15": {
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "16": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "17": {
+    "inputs": {
+      "lora_name": "Qwen\\Wuli-Qwen-Image-2512-Turbo-LoRA-4steps-V1.0-bf16_ComfyUi.safetensors",
+      "strength_model": 0.98,
+      "model": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "18": {
+    "inputs": {
+      "seed": 667099001508555,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "bong_tangent",
+      "denoise": 1,
+      "model": [
+        "11",
+        0
+      ],
+      "positive": [
+        "12",
+        0
+      ],
+      "negative": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "19": {
+    "inputs": {
+      "samples": [
+        "18",
+        0
+      ],
+      "vae": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  }
+}

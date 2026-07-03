@@ -3,7 +3,14 @@ import ast
 import pytest
 
 from atlas_camera.core.intrinsics import build_intrinsics
-from atlas_camera.core.schema import AtlasCamera, AtlasExtrinsics, AtlasSolve
+from atlas_camera.core.proxy_geometry import PROXY_ROLE
+from atlas_camera.core.schema import (
+    AtlasCamera,
+    AtlasExtrinsics,
+    AtlasProjectionScene,
+    AtlasProxyPrimitive,
+    AtlasSolve,
+)
 from atlas_camera.core.solver import solve_from_vanishing_points
 from atlas_camera.exporters.maya_exporter import (
     NODE_CAMERA,
@@ -15,6 +22,21 @@ from atlas_camera.exporters.maya_exporter import (
     write_maya_mel_launcher,
     write_maya_scene_script,
 )
+
+
+def _solve_with_proxies(proxies):
+    return AtlasSolve(
+        camera=AtlasCamera(
+            intrinsics=build_intrinsics(
+                image_width=1920,
+                image_height=1080,
+                focal_length_mm=35.0,
+            )
+        ),
+        image_width=1920,
+        image_height=1080,
+        projection_scene=AtlasProjectionScene(proxy_geometry=proxies),
+    )
 
 
 def test_maya_exporter_script_is_valid_python(tmp_path):
@@ -211,3 +233,115 @@ def test_maya_exporter_warns_for_inferred_focal(tmp_path):
 
     assert "cmds.warning" in script
     assert solve.camera.focal_length_inferred is True
+
+
+def test_maya_exporter_exports_box_proxy_with_dimensions_and_transform(tmp_path):
+    box = AtlasProxyPrimitive(
+        name="atlas_box_01",
+        primitive_type="box",
+        transform_matrix=(
+            (1.0, 0.0, 0.0, 5.0),
+            (0.0, 1.0, 0.0, 0.5),
+            (0.0, 0.0, 1.0, -2.0),
+            (0.0, 0.0, 0.0, 1.0),
+        ),
+        dimensions=(2.0, 3.0, 4.0),
+        metadata={"role": PROXY_ROLE},
+    )
+    solve = _solve_with_proxies([box])
+
+    script = write_maya_scene_script(solve, tmp_path / "maya_open_scene.py").read_text(encoding="utf-8")
+    ast.parse(script)
+
+    assert "'name': 'atlas_box_01'" in script
+    assert "'type': 'box'" in script
+    assert "'dimensions': [2.0, 3.0, 4.0]" in script
+    assert "cmds.polyCube(name=spec[\"name\"], width=dx, height=dy, depth=dz)" in script
+    assert "5.0, 0.5, -2.0, 1.0" in script  # translation row of the converted matrix
+
+
+def test_maya_exporter_exports_cylinder_proxy(tmp_path):
+    cylinder = AtlasProxyPrimitive(
+        name="atlas_cyl_01",
+        primitive_type="cylinder",
+        dimensions=(1.0, 2.0, 1.0),
+        metadata={"role": PROXY_ROLE},
+    )
+    solve = _solve_with_proxies([cylinder])
+
+    script = write_maya_scene_script(solve, tmp_path / "maya_open_scene.py").read_text(encoding="utf-8")
+    ast.parse(script)
+
+    assert "'name': 'atlas_cyl_01'" in script
+    assert "'type': 'cylinder'" in script
+    assert "cmds.polyCylinder(name=spec[\"name\"], radius=dx / 2.0, height=dy)" in script
+
+
+def test_maya_exporter_exports_plane_proxy(tmp_path):
+    plane = AtlasProxyPrimitive(
+        name="projection_backdrop",
+        primitive_type="plane",
+        dimensions=(40.0, 20.0, 0.0),
+        metadata={"role": PROXY_ROLE},
+    )
+    solve = _solve_with_proxies([plane])
+
+    script = write_maya_scene_script(solve, tmp_path / "maya_open_scene.py").read_text(encoding="utf-8")
+    ast.parse(script)
+
+    assert "'name': 'projection_backdrop'" in script
+    assert "'type': 'plane'" in script
+    assert "cmds.polyPlane(name=spec[\"name\"], width=dx, height=dz)" in script
+
+
+def test_maya_exporter_excludes_non_projection_proxy_role(tmp_path):
+    other = AtlasProxyPrimitive(
+        name="some_debug_helper",
+        primitive_type="box",
+        dimensions=(1.0, 1.0, 1.0),
+        metadata={"role": "not_a_projection_proxy"},
+    )
+    solve = _solve_with_proxies([other])
+
+    script = write_maya_scene_script(solve, tmp_path / "maya_open_scene.py").read_text(encoding="utf-8")
+
+    assert "some_debug_helper" not in script
+
+
+def test_maya_exporter_imports_relief_mesh_obj_when_path_given(tmp_path):
+    mesh = AtlasProxyPrimitive(
+        name="projection_relief_mesh",
+        primitive_type="mesh",
+        metadata={"role": PROXY_ROLE, "vertices": [0.0, 0.0, 0.0], "faces": [0, 0, 0]},
+    )
+    solve = _solve_with_proxies([mesh])
+    obj_path = tmp_path / "atlas_relief_mesh.obj"
+    obj_path.write_text("# fake obj\n", encoding="utf-8")
+
+    script = write_maya_scene_script(
+        solve, tmp_path / "maya_open_scene.py", relief_mesh_obj_path=obj_path,
+    ).read_text(encoding="utf-8")
+    ast.parse(script)
+
+    assert "cmds.file(" in script
+    # Compare against the repr'd form actually embedded in the generated
+    # script (repr() escapes backslashes on Windows paths, so comparing
+    # against the raw str(obj_path) would spuriously fail there).
+    assert repr(str(obj_path)) in script
+    assert 'type="OBJ"' in script
+    # The mesh entry itself must never appear in the placeholder box/cylinder/plane loop.
+    assert "'type': 'mesh'" not in script
+
+
+def test_maya_exporter_skips_relief_mesh_import_when_no_path(tmp_path):
+    mesh = AtlasProxyPrimitive(
+        name="projection_relief_mesh",
+        primitive_type="mesh",
+        metadata={"role": PROXY_ROLE, "vertices": [0.0, 0.0, 0.0], "faces": [0, 0, 0]},
+    )
+    solve = _solve_with_proxies([mesh])
+
+    script = write_maya_scene_script(solve, tmp_path / "maya_open_scene.py").read_text(encoding="utf-8")
+    ast.parse(script)
+
+    assert "relief_mesh_obj_path = None" in script

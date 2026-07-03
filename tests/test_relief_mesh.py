@@ -63,6 +63,18 @@ def _build(depth, h=1.6, **kw):
     )
 
 
+def _scene_depth_with_noisy_sky(h=1.6, wall_z=-10.0, wall_h=3.0, seed=3):
+    """Same analytic scene, but the flat SKY constant is replaced with noisy,
+    spatially-incoherent depth — the exact failure mode Depth Anything shows
+    on feature-less sky/clouds (see test_depth_geometry.py).
+    """
+    depth = _scene_depth(h=h, wall_z=wall_z, wall_h=wall_h).copy()
+    rng = np.random.RandomState(seed)
+    is_sky = depth >= SKY
+    depth[is_sky] = SKY + rng.uniform(-20.0, 20.0, size=int(is_sky.sum()))
+    return depth
+
+
 def test_mesh_is_well_formed():
     mesh = _build(_scene_depth(wall_z=-10.0))
     assert len(mesh.vertices) > 100
@@ -83,6 +95,21 @@ def test_no_face_spans_a_silhouette():
     ratio = tri.max(axis=1) / np.maximum(tri.min(axis=1), 1e-6)
     assert float(ratio.max()) <= 1.0 + EDGE_REL + 0.05
     assert mesh.stats["torn_fraction"] > 0.0  # the silhouette actually tore
+
+
+def test_noisy_sky_is_excluded_not_triangulated():
+    # Tearing (above) already stops noisy sky from rubber-sheeting onto the
+    # wall, but without sky masking the sky pixels still get triangulated
+    # into their own separate, jagged mesh chunk. With horizon_y given they
+    # should be excluded from the mesh entirely (a hole, not geometry).
+    h = 1.6
+    depth = _scene_depth_with_noisy_sky(h=h, wall_z=-10.0, wall_h=3.0)
+    mesh = _build(depth, h=h, horizon_y=CY)
+    cam = np.array([0.0, h, 0.0])
+    dist = np.linalg.norm(mesh.vertices - cam, axis=1)
+    # True scene tops out at the wall distance (10m); noisy sky spans
+    # roughly 40-80m — none of that should survive into the mesh.
+    assert float(dist.max()) < 20.0
 
 
 def test_ground_lands_on_y_zero_and_nothing_below():

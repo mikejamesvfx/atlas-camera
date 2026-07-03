@@ -10,7 +10,8 @@ from pathlib import Path
 import re
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm, mm_to_inches, pixel_offset_to_normalized_film_offset
-from atlas_camera.core.schema import AtlasSolve
+from atlas_camera.core.proxy_geometry import PROXY_ROLE
+from atlas_camera.core.schema import AtlasSolve, Matrix4
 
 NODE_CAMERA = "atlas_CAMERA"
 NODE_PROJECTION_GRP = "atlas_PROJECTION_GRP"
@@ -20,11 +21,27 @@ NODE_REFERENCE_GRP = "atlas_REFERENCE_GRP"
 NODE_PROJECTION_PLANE = "atlas_PROJECTION_PLANE"
 
 
+def _maya_matrix_from_atlas(matrix: Matrix4) -> list[float]:
+    """Atlas column-vector row-major 4x4 -> Maya row-vector convention.
+
+    Transpose the 3x3 rotation block and put translation in the last row.
+    Both systems are Y-up right-handed so no coordinate-axis swap is needed.
+    Shared by the camera and every proxy primitive transform below.
+    """
+    return [
+        matrix[0][0], matrix[1][0], matrix[2][0], 0.0,
+        matrix[0][1], matrix[1][1], matrix[2][1], 0.0,
+        matrix[0][2], matrix[1][2], matrix[2][2], 0.0,
+        matrix[0][3], matrix[1][3], matrix[2][3], 1.0,
+    ]
+
+
 def write_maya_scene_script(
     solve: AtlasSolve,
     output_path: str | Path,
     *,
     source_image_name: str = "source_image.png",
+    relief_mesh_obj_path: str | Path | None = None,
 ) -> Path:
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +68,29 @@ def write_maya_scene_script(
         aperture_mm=sensor_height_mm,
         image_size_px=intrinsics.image_height,
     )
-    proxy_names = [primitive.name for primitive in solve.projection_scene.proxy_geometry]
+    # Only projection-derived proxies (AtlasDeriveProjectionGeometry output) —
+    # excludes debug/reference helpers that live elsewhere in proxy_geometry.
+    proxies = [p for p in solve.projection_scene.proxy_geometry
+               if (p.metadata or {}).get("role") == PROXY_ROLE]
+    # box/cylinder/plane get real dimensions + transform via cmds.polyCube/
+    # polyCylinder/polyPlane + cmds.xform. The relief mesh ("mesh" type) is
+    # NOT reconstructed here — its vertices/faces live in the primitive's
+    # metadata and are already exported as a textured OBJ by
+    # AtlasExportReliefMesh; importing that proven file is far more robust
+    # than re-deriving mesh construction in generated MEL/Python. Skipped
+    # here regardless of whether relief_mesh_obj_path was supplied to the
+    # caller (that import happens in a separate script block below).
+    proxy_specs = [
+        {
+            "name": p.name,
+            "type": p.primitive_type,
+            "dimensions": [float(v) for v in p.dimensions],
+            "matrix": _maya_matrix_from_atlas(p.transform_matrix),
+        }
+        for p in proxies if p.primitive_type != "mesh"
+    ]
+    relief_mesh_obj_path_str = str(relief_mesh_obj_path) if relief_mesh_obj_path else None
+
     focal_warning = ""
     if solve.camera.focal_length_inferred:
         focal_warning = (
@@ -59,16 +98,7 @@ def write_maya_scene_script(
             "review atlas_solve.json before final handoff.\")"
         )
 
-    # Convert Atlas column-vector world matrix to Maya row-vector convention:
-    # Transpose the 3×3 rotation block and put translation in the last row.
-    # Both systems are Y-up right-handed so no coordinate-axis swap is needed.
-    wm = solve.camera.extrinsics.camera_world_matrix
-    maya_matrix = [
-        wm[0][0], wm[1][0], wm[2][0], 0.0,
-        wm[0][1], wm[1][1], wm[2][1], 0.0,
-        wm[0][2], wm[1][2], wm[2][2], 0.0,
-        wm[0][3], wm[1][3], wm[2][3], 1.0,
-    ]
+    maya_matrix = _maya_matrix_from_atlas(solve.camera.extrinsics.camera_world_matrix)
 
     script = f'''"""Open an Atlas Camera review scene in Maya.
 
@@ -158,11 +188,36 @@ def build_scene(package_dir=None):
         cmds.hyperShade(assign=shader)
         cmds.parent(cube, debug_group)
 
-    for proxy_name in {proxy_names!r}:
-        if proxy_name == "ground_plane":
-            continue
-        proxy = cmds.polyCube(name=proxy_name)[0]
+    for spec in {proxy_specs!r}:
+        dx, dy, dz = spec["dimensions"]
+        ptype = spec["type"]
+        if ptype == "cylinder":
+            proxy = cmds.polyCylinder(name=spec["name"], radius=dx / 2.0, height=dy)[0]
+        elif ptype == "plane":
+            proxy = cmds.polyPlane(name=spec["name"], width=dx, height=dz)[0]
+        else:
+            proxy = cmds.polyCube(name=spec["name"], width=dx, height=dy, depth=dz)[0]
+        cmds.xform(proxy, worldSpace=True, matrix=spec["matrix"])
         cmds.parent(proxy, geometry_group)
+
+    # Relief mesh: vertices are already world-space (identity transform), so
+    # importing the OBJ that AtlasExportReliefMesh already wrote needs no
+    # extra positioning.
+    relief_mesh_obj_path = {relief_mesh_obj_path_str!r}
+    if relief_mesh_obj_path and os.path.exists(relief_mesh_obj_path):
+        if not cmds.pluginInfo("objExport", query=True, loaded=True):
+            cmds.loadPlugin("objExport")
+        imported_nodes = cmds.file(
+            relief_mesh_obj_path, i=True, type="OBJ", returnNewNodes=True,
+            groupReference=True, groupName="atlas_relief_mesh_grp",
+            mergeNamespacesOnClash=False, namespace="atlas_relief",
+        )
+        for node in imported_nodes or []:
+            if node.endswith("atlas_relief_mesh_grp") and cmds.nodeType(node) == "transform":
+                cmds.parent(node, geometry_group)
+                break
+    elif relief_mesh_obj_path:
+        cmds.warning("Atlas relief mesh OBJ not found at: " + relief_mesh_obj_path)
 
     cmds.lookThru(camera_transform)
     return camera_transform
@@ -176,8 +231,14 @@ if __name__ == "__main__":
 
 
 class MayaExporter:
-    def write_scene(self, solve: AtlasSolve, output_path: str | Path) -> Path:
-        return write_maya_scene_script(solve, output_path)
+    def write_scene(
+        self,
+        solve: AtlasSolve,
+        output_path: str | Path,
+        *,
+        relief_mesh_obj_path: str | Path | None = None,
+    ) -> Path:
+        return write_maya_scene_script(solve, output_path, relief_mesh_obj_path=relief_mesh_obj_path)
 
 
 def _mel_safe_path(path: Path) -> str:

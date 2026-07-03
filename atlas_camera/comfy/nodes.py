@@ -311,6 +311,7 @@ class AtlasExportReviewPackage:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
     CATEGORY = "Atlas Camera"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -330,6 +331,7 @@ class AtlasExportSolveJSON:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
     CATEGORY = "Atlas Camera"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -348,6 +350,7 @@ class AtlasExportMayaReviewScene:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
     CATEGORY = "Atlas Camera"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -355,11 +358,21 @@ class AtlasExportMayaReviewScene:
             "required": {
                 "solve": ("ATLAS_SOLVE",),
                 "output_dir": ("STRING", {"default": "review_packages"}),
-            }
+            },
+            "optional": {
+                "relief_mesh_obj_path": ("STRING", {"default": "",
+                    "tooltip": "Optional obj_path output from AtlasExportReliefMesh. When set, the "
+                               "relief mesh is imported into the Maya scene instead of being omitted — "
+                               "wire AtlasExportReliefMesh's obj_path here to see real derived geometry "
+                               "(not just the camera) when opening the scene."}),
+            },
         }
 
-    def export(self, solve, output_dir):
-        result = build_review_package(solve, output_dir, include_usd=False)
+    def export(self, solve, output_dir, relief_mesh_obj_path=""):
+        result = build_review_package(
+            solve, output_dir, include_usd=False,
+            relief_mesh_obj_path=relief_mesh_obj_path or None,
+        )
         return (str(result.files["maya_open_scene"]),)
 
 
@@ -727,12 +740,26 @@ class AtlasDeriveProjectionGeometry:
     ``primitive_method`` selects how "primitives" mode derives geometry
     (only relevant when ``geometry_mode`` includes "primitives"):
     - ``azimuth_walls`` (default) — vertical walls only, general-purpose.
+      Height comes from a percentile clip of the 3D points that individually
+      pass a near-vertical-normal filter — a sloped roof, spire, or tower
+      never qualifies, so on complex facades the wall only ever reflects the
+      plain section below it (confirmed on real church/tower photos).
     - ``ransac_planes`` — any-orientation planes (sloped roofs, stepped/angled
       facades) via sequential RANSAC seeded by a 2D normal-orientation
       histogram. Best for exterior/architectural shots.
     - ``room_cuboid`` — Manhattan-aligned floor + up to 4 walls + optional
       ceiling. Best for orthogonal interiors; silently produces skewed walls
       on non-orthogonal rooms (pick a different method for those shots).
+    - ``vertical_extrusion`` — same wall orientation/distance detection as
+      ``azimuth_walls``, but height comes from the image-space silhouette
+      instead: the topmost non-sky pixel per column (see
+      ``depth_geometry.detect_sky_mask``), back-projected at that pixel's own
+      depth regardless of its local surface normal. A flat vertical
+      "billboard" extruded to the real silhouette top, per Hoiem/Efros/
+      Hebert's "Automatic Photo Pop-up" (SIGGRAPH 2005) — reaches sloped
+      roofs, spires, and towers that ``azimuth_walls`` truncates. Best for
+      complex exterior architecture where a single flat wall height is the
+      wrong shape but full RANSAC plane-fitting is overkill.
 
     ``scene_type`` (default "manual") is a one-choice convenience preset over
     the three widgets above, for artists who'd rather pick a shot type than
@@ -768,12 +795,17 @@ class AtlasDeriveProjectionGeometry:
                                "overlaps the two on the same surfaces (enclosure + z-shimmer)."}),
                 "relief_grid": ("INT", {"default": 96, "min": 16, "max": 256,
                     "tooltip": "Viewport relief-mesh density (long-edge grid columns)."}),
-                "primitive_method": (["azimuth_walls", "ransac_planes", "room_cuboid"],
+                "primitive_method": (["azimuth_walls", "ransac_planes", "room_cuboid",
+                                       "vertical_extrusion"],
                     {"default": "azimuth_walls",
-                     "tooltip": "azimuth_walls (default) = vertical walls only. "
+                     "tooltip": "azimuth_walls (default) = vertical walls only, height clipped "
+                                "to the plain wall (truncates sloped roofs/spires/towers). "
                                 "ransac_planes = any-orientation planes (roofs, stepped "
                                 "facades) — exteriors. room_cuboid = Manhattan floor+walls"
-                                "+ceiling — orthogonal interiors. Only affects "
+                                "+ceiling — orthogonal interiors. vertical_extrusion = same wall "
+                                "orientation as azimuth_walls but height extruded to the real "
+                                "image-space silhouette top (reaches towers/spires/sloped roofs "
+                                "azimuth_walls truncates). Only affects "
                                 "geometry_mode=primitives/both; max_walls is reused as the "
                                 "plane budget for ransac_planes and ignored by room_cuboid. "
                                 "Ignored when scene_type != manual."}),
@@ -815,6 +847,7 @@ class AtlasDeriveProjectionGeometry:
             PROXY_ROLE,
             ProxyDerivationConfig,
             derive_projection_proxies,
+            derive_vertical_extrusion_proxies,
             relief_mesh_primitive,
         )
         from atlas_camera.core.relief_mesh import build_relief_mesh
@@ -868,6 +901,16 @@ class AtlasDeriveProjectionGeometry:
                 horizon_y=horizon_y,
                 config=RoomCuboidConfig(),
             )
+        elif primitive_method == "vertical_extrusion":
+            cfg = ProxyDerivationConfig(max_objects=int(max_objects))
+            prims, stats = derive_vertical_extrusion_proxies(
+                depth_map,
+                view_matrix=extr.camera_view_matrix,
+                fx=fx, fy=fy, cx=cx, cy=cy,
+                max_walls=int(max_walls),
+                horizon_y=horizon_y,
+                config=cfg,
+            )
         else:
             cfg = ProxyDerivationConfig(max_objects=int(max_objects))
             prims, stats = derive_projection_proxies(
@@ -900,6 +943,7 @@ class AtlasDeriveProjectionGeometry:
                 fx=fx, fy=fy, cx=cx, cy=cy,
                 grid_long_edge=int(relief_grid),
                 scale=float(stats.get("ground_scale", 1.0)),
+                horizon_y=horizon_y,
             )
             keep.append(relief_mesh_primitive(mesh))
             stats["relief_mesh"] = {
@@ -935,6 +979,7 @@ class AtlasExportReliefMesh:
     RETURN_NAMES = ("obj_path", "glb_path")
     FUNCTION = "export"
     CATEGORY = "Atlas Camera/Export"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -995,9 +1040,15 @@ class AtlasExportReliefMesh:
         if depth_map.shape != (height, width):
             depth_map = _resize_depth(depth_map, width, height)
 
+        horizon_y = None
+        if solve.horizon_line and solve.horizon_line.endpoints_px:
+            p1, p2 = solve.horizon_line.endpoints_px
+            horizon_y = 0.5 * (float(p1[1]) + float(p2[1]))
+
         scale, scale_info = estimate_ground_scale(
             depth_map, view_matrix=extr.camera_view_matrix,
             fx=fx, fy=fy, cx=cx, cy=cy,
+            horizon_y=horizon_y,
         )
         mesh = build_relief_mesh(
             depth_map, view_matrix=extr.camera_view_matrix,
@@ -1005,6 +1056,7 @@ class AtlasExportReliefMesh:
             grid_long_edge=int(grid_long_edge),
             depth_edge_rel=float(depth_edge_rel),
             scale=scale,
+            horizon_y=horizon_y,
         )
         texture = _image_tensor_to_pil(image)
         obj_path = glb_path = ""
@@ -1301,6 +1353,7 @@ class AtlasExportUSD:
     RETURN_NAMES = ("usd_path",)
     FUNCTION = "export"
     CATEGORY = "Atlas Camera/Export"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1326,6 +1379,7 @@ class AtlasExportBlender:
     RETURN_NAMES = ("script_path",)
     FUNCTION = "export"
     CATEGORY = "Atlas Camera/Export"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1350,6 +1404,7 @@ class AtlasExportNuke:
     RETURN_NAMES = ("script_path",)
     FUNCTION = "export"
     CATEGORY = "Atlas Camera/Export"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
     def INPUT_TYPES(cls):
