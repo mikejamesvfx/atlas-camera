@@ -255,8 +255,12 @@ const PROJECTION_VERTEX_SHADER = `
   uniform float uCy;
   varying vec2 vImagePx;
   varying float vCamZ;
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
   void main() {
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
     vec4 cam = uAtlasViewMatrix * worldPos;
     vCamZ = cam.z;
     float depth = -cam.z;   // Atlas camera looks along -Z
@@ -269,22 +273,38 @@ const PROJECTION_VERTEX_SHADER = `
   }
 `;
 
+// uFacingThreshold: discard fragments whose surface is more grazing to THIS
+// projector than the threshold (|normal . dir-to-camera| < threshold). This is
+// the dot-product occlusion / facing-ratio mask from gs_mptk — patch cameras
+// use a positive threshold so they only paint surfaces they see reasonably
+// head-on (letting the primary / other patches fill grazing areas). The primary
+// passes a negative threshold so it never facing-discards (it always has
+// priority where it can see). |.| is used so mesh winding / DoubleSide is
+// irrelevant.
 const PROJECTION_FRAGMENT_SHADER = `
   uniform sampler2D uTexture;
   uniform vec2 uImageSize;
   uniform float uOpacity;
+  uniform vec3 uCamPos;
+  uniform float uFacingThreshold;
   varying vec2 vImagePx;
   varying float vCamZ;
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
   void main() {
-    if (vCamZ >= 0.0) discard;                    // behind the recovered camera
+    if (vCamZ >= 0.0) discard;                    // behind the projector camera
     vec2 uv = vImagePx / uImageSize;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+    vec3 toCam = normalize(uCamPos - vWorldPos);
+    float facing = abs(dot(normalize(vWorldNormal), toCam));
+    if (facing < uFacingThreshold) discard;       // too grazing for this projector
     vec4 col = texture2D(uTexture, uv);
     gl_FragColor = vec4(col.rgb, col.a * uOpacity);
   }
 `;
 
-function makeProjectionMaterial(data, texture) {
+function makeProjectionMaterial(data, texture, opts) {
+  const options = opts || {};
   const flat = data.view_matrix.flat();
   const vm = new THREE.Matrix4();
   vm.set(
@@ -293,6 +313,7 @@ function makeProjectionMaterial(data, texture) {
     flat[8], flat[9], flat[10], flat[11],
     flat[12], flat[13], flat[14], flat[15]
   );
+  const camPos = data.camera_position || [0, 0, 0];
   return new THREE.ShaderMaterial({
     uniforms: {
       uAtlasViewMatrix: { value: vm },
@@ -303,6 +324,9 @@ function makeProjectionMaterial(data, texture) {
       uTexture: { value: texture },
       uImageSize: { value: new THREE.Vector2(data.image_width || 1, data.image_height || 1) },
       uOpacity: { value: 1.0 },
+      uCamPos: { value: new THREE.Vector3(camPos[0], camPos[1], camPos[2]) },
+      // Primary: -1 (never facing-discards). Patches: positive (fill head-on only).
+      uFacingThreshold: { value: options.facingThreshold ?? -1.0 },
     },
     vertexShader: PROJECTION_VERTEX_SHADER,
     fragmentShader: PROJECTION_FRAGMENT_SHADER,
@@ -310,6 +334,16 @@ function makeProjectionMaterial(data, texture) {
     transparent: false,
     depthWrite: true,
     depthTest: true,
+  });
+}
+
+function loadTextureFromB64(b64, cb) {
+  if (!b64) return;
+  const loader = new THREE.TextureLoader();
+  loader.load(b64, (tex) => {
+    tex.flipY = false;                // shader UV origin is top-left
+    tex.colorSpace = THREE.SRGBColorSpace;
+    cb(tex);
   });
 }
 
@@ -379,6 +413,83 @@ function buildDerivedProxies(scene, data) {
   }
   scene.add(group);
   return group;
+}
+
+// Build one proxy entry's THREE geometry (relief mesh / box / cylinder / plane).
+// Shared by the primary derived proxies and the multi-angle patch sources.
+function proxyEntryToGeometry(e) {
+  const d = e.dimensions || [1, 1, 1];
+  if (e.type === "mesh") {
+    if (!e.vertices?.length || !e.faces?.length) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(e.vertices), 3));
+    if (e.uvs?.length) {
+      geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(e.uvs), 2));
+    }
+    geo.setIndex(new THREE.BufferAttribute(new Uint32Array(e.faces), 1));
+    geo.computeVertexNormals();
+    return geo;
+  }
+  if (e.type === "box") return new THREE.BoxGeometry(d[0], d[1], d[2]);
+  if (e.type === "cylinder") return new THREE.CylinderGeometry(d[0] / 2, d[0] / 2, d[1], 24);
+  return new THREE.PlaneGeometry(d[0], d[1]);
+}
+
+// Build the multi-angle patch sources (AtlasAddPatchView). Each source is its
+// own camera + AI novel-view image + geometry; each mesh carries its OWN
+// projection material (bound to that source's camera+image, with a facing-ratio
+// mask) in userData._projMaterial, so applyProjection layers it over the
+// primary. Patch geometry is Python-owned (regenerated each execution), so —
+// like the derived group — Clear leaves it alone.
+function buildPatchSources(scene, data, onSourceReady) {
+  const stale = [];
+  scene.traverse((c) => { if (c.userData?.atlasPatchGroup) stale.push(c); });
+  for (const g of stale) {
+    g.traverse((m) => {
+      m.geometry?.dispose?.();
+      if (m.material?.isMeshStandardMaterial) m.material.dispose();
+      if (m.userData?._prevMaterial?.isMeshStandardMaterial) m.userData._prevMaterial.dispose();
+      const pm = m.userData?._projMaterial;
+      if (pm) { pm.uniforms?.uTexture?.value?.dispose?.(); pm.dispose?.(); }
+    });
+    scene.remove(g);
+  }
+
+  const sources = data.projection_sources || [];
+  sources.forEach((src, idx) => {
+    const group = new THREE.Group();
+    group.name = `atlas_patch_${idx}`;
+    group.userData.atlasPatchGroup = true;
+    const meshes = [];
+    for (const e of (src.proxy_geometry || [])) {
+      const geo = proxyEntryToGeometry(e);
+      if (!geo) continue;
+      const mat = new THREE.MeshStandardMaterial({ color: 0x8a9a80, roughness: 0.85, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.set(...e.transform);
+      mesh.userData.atlasPatch = true;
+      mesh.name = e.name || `patch_${idx}`;
+      group.add(mesh);
+      meshes.push(mesh);
+    }
+    scene.add(group);
+    // Load this patch's novel view and build its projection material. Patches
+    // only paint surfaces they see reasonably head-on (facingThreshold > 0), so
+    // grazing/occluded areas fall through to the primary or other patches.
+    loadTextureFromB64(src.image_b64, (tex) => {
+      const patchMat = makeProjectionMaterial(src, tex, { facingThreshold: 0.2 });
+      for (const m of meshes) {
+        const prev = m.userData._projMaterial;
+        if (prev && prev !== patchMat) {
+          prev.uniforms?.uTexture?.value?.dispose?.();
+          prev.dispose?.();
+        }
+        m.userData._projMaterial = patchMat;
+      }
+      if (typeof onSourceReady === "function") onSourceReady();
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -729,7 +840,7 @@ function buildNodeUI(node, containerEl) {
 
   function isProjectable(c) {
     if (!c.isMesh || c === bgMesh) return false;
-    if (c.userData?.atlasDerived || c.userData?.atlasUserGeo) return true;
+    if (c.userData?.atlasDerived || c.userData?.atlasUserGeo || c.userData?.atlasPatch) return true;
     // OBJ-proxy children: any ancestor tagged atlasProxy.
     let p = c.parent;
     while (p) {
@@ -742,11 +853,14 @@ function buildNodeUI(node, containerEl) {
   function applyProjection(on) {
     scene.traverse((c) => {
       if (!isProjectable(c)) return;
-      if (on && projMaterial) {
+      // Patch meshes carry their OWN projection material (their source's
+      // camera+image+facing mask); everything else uses the shared primary one.
+      const mat = c.userData._projMaterial || projMaterial;
+      if (on && mat) {
         // Stash the ORIGINAL material only once — re-applying with a rebuilt
         // projection material must not overwrite it with the stale one.
         if (!c.userData._prevMaterial) c.userData._prevMaterial = c.material;
-        c.material = projMaterial;
+        c.material = mat;
       } else if (c.userData._prevMaterial) {
         c.material = c.userData._prevMaterial;
         delete c.userData._prevMaterial;
@@ -1030,7 +1144,11 @@ function buildNodeUI(node, containerEl) {
         if (projectionOn) applyProjection(true);
         if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
       });
-      if (projectionOn) applyProjection(true); // grey until texture arrives
+      // Multi-angle patch sources: each builds its own geometry + a projection
+      // material (bound to its camera+image, facing-masked) that layers over
+      // the primary to fill areas the primary camera couldn't see.
+      buildPatchSources(scene, data, () => { if (projectionOn) applyProjection(true); });
+      if (projectionOn) applyProjection(true); // grey until textures arrive
     },
     setBackground(imgBase64) {
       if (!imgBase64 || !THREE) return;

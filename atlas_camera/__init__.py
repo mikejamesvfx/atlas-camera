@@ -17,6 +17,7 @@ from atlas_camera.core.schema import (
     LatentCamera,
     LatentComponent,
     LatentScene,
+    ProjectionSource,
 )
 from atlas_camera.core.confidence import ConfidenceModel
 from atlas_camera.core.solver import solve_still_image
@@ -92,6 +93,7 @@ __all__ = [
     "LatentCamera",
     "LatentComponent",
     "LatentScene",
+    "ProjectionSource",
     "recover",
 ]
 

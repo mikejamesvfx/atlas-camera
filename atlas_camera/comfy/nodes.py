@@ -139,6 +139,35 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         preview_pivot=extr.camera_position,
     )
 
+    # Multi-angle patch sources (AtlasAddPatchView): each is its own camera +
+    # novel-view image + geometry, layered over the primary to fill areas the
+    # primary camera couldn't see. Serialized like the primary so the viewport
+    # can bind a projection material per source. Empty for single-camera solves.
+    from atlas_camera.core.schema import AtlasProjectionScene
+    projection_sources = []
+    for src in (getattr(solve, "projection_sources", None) or []):
+        s_intr = src.camera.intrinsics
+        s_extr = src.camera.extrinsics
+        s_fx = s_intr.fx_px or 0.0
+        s_fy = s_intr.fy_px or s_fx
+        s_cx = s_intr.cx_px if s_intr.cx_px is not None else (s_intr.image_width or 1) / 2.0
+        s_cy = s_intr.cy_px if s_intr.cy_px is not None else (s_intr.image_height or 1) / 2.0
+        projection_sources.append({
+            "name": src.name,
+            "view_matrix": [list(row) for row in s_extr.camera_view_matrix],
+            "camera_position": list(s_extr.camera_position),
+            "fx": s_fx, "fy": s_fy, "cx": s_cx, "cy": s_cy,
+            "image_width": s_intr.image_width,
+            "image_height": s_intr.image_height,
+            "image_b64": src.image_b64 or "",
+            "priority": float(src.priority),
+            "azimuth_deg": float(src.azimuth_deg),
+            "elevation_deg": float(src.elevation_deg),
+            "proxy_geometry": serialize_proxy_geometry(
+                AtlasProjectionScene(proxy_geometry=list(src.proxy_geometry)),
+            ),
+        })
+
     # Vanishing points + horizon (2D image-space diagnostics — meaningful only
     # against the flat source photo, not the 3D scene) for the viewport's
     # layered VP/horizon/ground overlay.
@@ -194,6 +223,7 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         "sensor_mm": intr.sensor_width_mm,
         "source_image_b64": source_b64,
         "proxy_geometry": proxy_geometry,
+        "projection_sources": projection_sources,
         "vanishing_points": vanishing_points,
         "horizon_line": horizon_line,
         "camera_meta": camera_meta,
@@ -965,6 +995,171 @@ class AtlasDeriveProjectionGeometry:
         return (out,)
 
 
+class AtlasAddPatchView:
+    """Add an AI novel-view "patch" to fill areas the primary camera can't see.
+
+    Camera projection from a single photo can only texture what the recovered
+    camera saw — orbit slightly and occluded/grazing areas go black. This node
+    takes a novel view of the same scene generated at a defined angle (e.g. via
+    the Qwen-Image-Edit Multiple-Angles LoRA at ~25-45° left/right/above),
+    constructs a "patch camera" by orbiting the recovered camera around the scene
+    pivot by that same angle (so it shares the primary's world frame —
+    `camera_math.orbit_camera`), derives the patch view's own relief geometry in
+    that frame (Depth Anything), and appends it to the solve as a
+    ``ProjectionSource``. Chain one per angle; the viewport/exporters layer them
+    over the primary, filling the occluded areas. Needs the [neural] extra.
+
+    ``azimuth_deg`` orbits horizontally (+ = toward the camera's right, so use
+    +~35 for a right patch, -~35 for a left patch); ``elevation_deg`` orbits
+    vertically (+ = above, ~35 for a top-down patch); ``distance_scale`` matches
+    the LoRA's close-up (0.6) / medium (1.0) / wide (1.8). The angle you request
+    here MUST match the angle you asked the LoRA for — the patch camera is placed
+    at exactly this nominal orbit.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE",)
+    FUNCTION = "add_patch"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "patch_image": ("IMAGE",),
+            },
+            "optional": {
+                "azimuth_deg": ("FLOAT", {"default": 35.0, "min": -180.0, "max": 180.0, "step": 1.0,
+                    "tooltip": "Horizontal orbit of the patch camera. + = camera's right "
+                               "(right patch); - = left. Must match the angle asked of the LoRA."}),
+                "elevation_deg": ("FLOAT", {"default": 0.0, "min": -85.0, "max": 85.0, "step": 1.0,
+                    "tooltip": "Vertical orbit. + = above (looking down, ~35 for a roof patch)."}),
+                "distance_scale": ("FLOAT", {"default": 1.0, "min": 0.2, "max": 3.0, "step": 0.05,
+                    "tooltip": "Orbit radius scale — LoRA close-up 0.6 / medium 1.0 / wide 1.8."}),
+                "name": ("STRING", {"default": "patch"}),
+                "depth_model": ([
+                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
+                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "relief_grid": ("INT", {"default": 96, "min": 16, "max": 256,
+                    "tooltip": "Patch relief-mesh density (long-edge grid columns)."}),
+                "priority": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 1.0,
+                    "tooltip": "Blend priority among patches (higher wins). The primary photo "
+                               "is always highest; patches only fill where it can't see."}),
+                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+            },
+        }
+
+    def add_patch(self, solve, patch_image, azimuth_deg=35.0, elevation_deg=0.0,
+                  distance_scale=1.0, name="patch",
+                  depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                  relief_grid=96, priority=1.0, device="auto"):
+        from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+        from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
+        from atlas_camera.core.schema import (
+            AtlasIntrinsics,
+            AtlasSolve,
+            LatentCamera,
+            ProjectionSource,
+        )
+        from atlas_camera.core.solver import _resize_depth
+        from atlas_camera.inference.depth_estimator import estimate_depth
+
+        intr = solve.camera.intrinsics
+        extr = solve.camera.extrinsics
+        p_w = int(intr.image_width or 0)
+        p_h = int(intr.image_height or 0)
+        fx = intr.fx_px or 0.0
+        fy = intr.fy_px or fx
+        if fx <= 0 or p_w <= 0:
+            # No focal / dims on the primary — can't place a patch; pass through.
+            return (solve,)
+        cx = intr.cx_px if intr.cx_px is not None else p_w / 2.0
+        cy = intr.cy_px if intr.cy_px is not None else p_h / 2.0
+
+        # Patch camera: orbit the recovered camera around the scene pivot (the
+        # point it looks at) so the patch shares the primary's world frame.
+        pivot = ground_lookat_pivot(extr)
+        patch_extr = orbit_camera(
+            extr, pivot,
+            d_azimuth_deg=float(azimuth_deg),
+            d_elevation_deg=float(elevation_deg),
+            distance_scale=float(distance_scale),
+        )
+
+        # Patch image dimensions + intrinsics (same angular FOV as the primary,
+        # scaled to the patch resolution; principal point centered).
+        patch_h = int(patch_image.shape[1])
+        patch_w = int(patch_image.shape[2])
+        pfx = fx * (patch_w / p_w)
+        pfy = fy * (patch_h / p_h)
+        pcx = patch_w / 2.0
+        pcy = patch_h / 2.0
+        patch_intr = AtlasIntrinsics(
+            image_width=patch_w,
+            image_height=patch_h,
+            focal_length_mm=intr.focal_length_mm,
+            sensor_width_mm=intr.sensor_width_mm,
+            fx_px=pfx, fy_px=pfy, cx_px=pcx, cy_px=pcy,
+            lens_model=intr.lens_model,
+        )
+
+        # Depth -> relief geometry in the patch camera's frame.
+        tmp = _save_image_tensor_to_tmp(patch_image)
+        try:
+            result = estimate_depth(tmp, model_id=depth_model,
+                                    device=None if device == "auto" else device)
+        finally:
+            os.unlink(tmp)
+        depth_map = result.depth
+        if depth_map.shape != (patch_h, patch_w):
+            depth_map = _resize_depth(depth_map, patch_w, patch_h)
+
+        scale, _scale_info = estimate_ground_scale(
+            depth_map, view_matrix=patch_extr.camera_view_matrix,
+            fx=pfx, fy=pfy, cx=pcx, cy=pcy,
+        )
+        mesh = build_relief_mesh(
+            depth_map, view_matrix=patch_extr.camera_view_matrix,
+            fx=pfx, fy=pfy, cx=pcx, cy=pcy,
+            grid_long_edge=int(relief_grid),
+            scale=scale,
+        )
+        patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
+
+        # Encode the novel view as a JPEG data-URI (viewport texture).
+        image_b64 = ""
+        try:
+            pil = _image_tensor_to_pil(patch_image)
+            buf = io.BytesIO()
+            pil.save(buf, format="JPEG", quality=88)
+            image_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+        except Exception:
+            pass
+
+        source = ProjectionSource(
+            camera=LatentCamera(intrinsics=patch_intr, extrinsics=patch_extr, name=name),
+            name=name,
+            image_b64=image_b64,
+            proxy_geometry=patch_geom,
+            azimuth_deg=float(azimuth_deg),
+            elevation_deg=float(elevation_deg),
+            distance_scale=float(distance_scale),
+            priority=float(priority),
+            metadata={
+                "source": "multi_angle_lora_patch",
+                "pivot": [float(v) for v in pivot],
+                "n_vertices": mesh.stats.get("n_vertices"),
+                "n_faces": mesh.stats.get("n_faces"),
+                "depth_model": depth_model,
+            },
+        )
+
+        out = AtlasSolve.from_dict(solve.to_dict())
+        out.projection_sources.append(source)
+        return (out,)
+
+
 class AtlasExportReliefMesh:
     """Export a depth relief mesh (OBJ + MTL + texture) for Maya / Nuke / ZBrush.
 
@@ -1532,6 +1727,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
+    "AtlasAddPatchView":          AtlasAddPatchView,
     "AtlasConstrainedSolve":      AtlasConstrainedSolve,
     "AtlasLoadSolveJSON":         AtlasLoadSolveJSON,
     # Track 1 — decompose
@@ -1566,6 +1762,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",
+    "AtlasAddPatchView":          "Atlas Add Patch View (multi-angle) 🩹",
     "AtlasConstrainedSolve":      "Atlas Constrained Solve",
     "AtlasLoadSolveJSON":         "Atlas Load Solve JSON",
     # Track 1 — decompose

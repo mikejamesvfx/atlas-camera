@@ -250,6 +250,47 @@ class AtlasProjectionScene:
 
 
 @dataclass(slots=True)
+class ProjectionSource:
+    """An extra camera + AI novel-view image + its own geometry, layered as a
+    projection patch to texture areas the primary recovered camera could not see.
+
+    Built by ``AtlasAddPatchView``: the ``camera`` is orbit-constructed around the
+    scene pivot (``camera_math.orbit_camera``) so it shares the primary's world
+    frame; ``image_b64`` is the multi-angle-LoRA novel view for that angle (a
+    data-URI, kept JSON-safe like the relief mesh already is); ``proxy_geometry``
+    is that view's own depth-derived geometry in the patch camera's frame.
+    ``priority`` orders blending (higher wins; the primary is implicitly highest).
+    """
+
+    camera: LatentCamera
+    name: str = "patch"
+    image_b64: str | None = None
+    proxy_geometry: list[AtlasProxyPrimitive] = field(default_factory=list)
+    azimuth_deg: float = 0.0
+    elevation_deg: float = 0.0
+    distance_scale: float = 1.0
+    priority: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ProjectionSource":
+        return cls(
+            camera=LatentCamera.from_dict(data["camera"]),
+            name=data.get("name", "patch"),
+            image_b64=data.get("image_b64"),
+            proxy_geometry=[
+                AtlasProxyPrimitive.from_dict(item)
+                for item in data.get("proxy_geometry", [])
+            ],
+            azimuth_deg=float(data.get("azimuth_deg", 0.0)),
+            elevation_deg=float(data.get("elevation_deg", 0.0)),
+            distance_scale=float(data.get("distance_scale", 1.0)),
+            priority=float(data.get("priority", 0.0)),
+            metadata=dict(data.get("metadata", {})),
+        )
+
+
+@dataclass(slots=True)
 class LatentComponent:
     """Future scene component slot with explicit recovery metadata."""
 
@@ -289,6 +330,7 @@ class LatentScene:
     known_intrinsics_used: bool = False
     projection_scene: AtlasProjectionScene = field(default_factory=AtlasProjectionScene)
     projection_workspace: AtlasProjectionScene | None = None
+    projection_sources: list[ProjectionSource] = field(default_factory=list)
     depth: LatentComponent = field(default_factory=LatentComponent)
     geometry: LatentComponent = field(default_factory=LatentComponent)
     lighting: LatentComponent = field(default_factory=LatentComponent)
@@ -345,6 +387,10 @@ class LatentScene:
             known_intrinsics_used=bool(data.get("known_intrinsics_used", False)),
             projection_scene=AtlasProjectionScene.from_dict(projection_scene_data),
             projection_workspace=AtlasProjectionScene.from_dict(projection_workspace_data),
+            projection_sources=[
+                ProjectionSource.from_dict(item)
+                for item in data.get("projection_sources", [])
+            ],
             depth=LatentComponent.from_dict(data.get("depth")),
             geometry=LatentComponent.from_dict(data.get("geometry")),
             lighting=LatentComponent.from_dict(data.get("lighting")),
