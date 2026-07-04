@@ -995,6 +995,41 @@ class AtlasDeriveProjectionGeometry:
         return (out,)
 
 
+# Exact named views from ComfyUI-qwenmultiangle / the Multiple-Angles LoRA, shared
+# by every node that places a patch/target camera relative to a source photo
+# (`AtlasAddPatchView`, `AtlasOcclusionMask`) so the same choice is picked
+# everywhere and the two nodes' camera placement can never drift apart. Azimuth
+# is absolute about the subject's front; distance scales the orbit radius
+# (close-up pulls in).
+_AZIMUTH_VIEWS = {
+    "front view": 0.0, "front-right quarter view": 45.0, "right side view": 90.0,
+    "back-right quarter view": 135.0, "back view": 180.0, "back-left quarter view": 225.0,
+    "left side view": 270.0, "front-left quarter view": 315.0,
+}
+_ELEVATION_VIEWS = {
+    "low-angle shot": -30.0, "eye-level shot": 0.0, "elevated shot": 30.0, "high-angle shot": 60.0,
+}
+_DISTANCE_VIEWS = {"close-up": 0.6, "medium shot": 1.0, "wide shot": 1.8}
+
+
+def _named_view_orbit_delta(
+    patch_azimuth_view, patch_elevation_view, patch_distance,
+    source_azimuth_view, source_elevation_view, flip_azimuth,
+):
+    """Resolve absolute (subject-relative) LoRA named views into the actual
+    orbit delta to apply to the recovered/source camera: ``patch - source``.
+
+    Returns ``(d_azimuth_deg, d_elevation_deg, distance_scale)``.
+    """
+    d_azimuth = _AZIMUTH_VIEWS[patch_azimuth_view] - _AZIMUTH_VIEWS[source_azimuth_view]
+    d_azimuth = ((d_azimuth + 180.0) % 360.0) - 180.0   # shortest way round
+    if flip_azimuth:
+        d_azimuth = -d_azimuth
+    d_elevation = _ELEVATION_VIEWS[patch_elevation_view] - _ELEVATION_VIEWS[source_elevation_view]
+    distance_scale = _DISTANCE_VIEWS[patch_distance]  # source assumed "medium shot"
+    return float(d_azimuth), float(d_elevation), float(distance_scale)
+
+
 class AtlasAddPatchView:
     """Add an AI novel-view "patch" to fill areas the primary camera can't see.
 
@@ -1023,18 +1058,12 @@ class AtlasAddPatchView:
     FUNCTION = "add_patch"
     CATEGORY = "Atlas Camera"
 
-    # Exact named views from ComfyUI-qwenmultiangle / the Multiple-Angles LoRA,
-    # so the same choice is picked in both nodes. Azimuth is absolute about the
-    # subject's front; distance scales the orbit radius (close-up pulls in).
-    _AZIMUTH_VIEWS = {
-        "front view": 0.0, "front-right quarter view": 45.0, "right side view": 90.0,
-        "back-right quarter view": 135.0, "back view": 180.0, "back-left quarter view": 225.0,
-        "left side view": 270.0, "front-left quarter view": 315.0,
-    }
-    _ELEVATION_VIEWS = {
-        "low-angle shot": -30.0, "eye-level shot": 0.0, "elevated shot": 30.0, "high-angle shot": 60.0,
-    }
-    _DISTANCE_VIEWS = {"close-up": 0.6, "medium shot": 1.0, "wide shot": 1.8}
+    # Aliases onto the shared module-level dicts (see above) — kept as class
+    # attributes since tests/test_add_patch_view.py references
+    # AtlasAddPatchView._AZIMUTH_VIEWS/_ELEVATION_VIEWS directly.
+    _AZIMUTH_VIEWS = _AZIMUTH_VIEWS
+    _ELEVATION_VIEWS = _ELEVATION_VIEWS
+    _DISTANCE_VIEWS = _DISTANCE_VIEWS
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1116,12 +1145,10 @@ class AtlasAddPatchView:
 
         # Absolute LoRA views -> the ACTUAL orbit delta (patch - source), since
         # the LoRA angle is subject-relative, not relative to the source view.
-        d_azimuth = self._AZIMUTH_VIEWS[patch_azimuth_view] - self._AZIMUTH_VIEWS[source_azimuth_view]
-        d_azimuth = ((d_azimuth + 180.0) % 360.0) - 180.0   # shortest way round
-        if flip_azimuth:
-            d_azimuth = -d_azimuth
-        d_elevation = self._ELEVATION_VIEWS[patch_elevation_view] - self._ELEVATION_VIEWS[source_elevation_view]
-        distance_scale = self._DISTANCE_VIEWS[patch_distance]  # source assumed "medium shot"
+        d_azimuth, d_elevation, distance_scale = _named_view_orbit_delta(
+            patch_azimuth_view, patch_elevation_view, patch_distance,
+            source_azimuth_view, source_elevation_view, flip_azimuth,
+        )
 
         # Patch camera: orbit the recovered camera around the scene pivot (the
         # point it looks at) so the patch shares the primary's world frame.
@@ -1218,6 +1245,177 @@ class AtlasAddPatchView:
         out = AtlasSolve.from_dict(solve.to_dict())
         out.projection_sources.append(source)
         return (out,)
+
+
+class AtlasOcclusionMask:
+    """Mask where a target/patch novel view has geometry the PRIMARY camera
+    could not validly project onto (behind-camera, outside-frame, or too
+    grazing) — white = primary is missing there, so a patch/composite should
+    fill it; black = primary already has valid, sufficiently head-on coverage.
+
+    Places the target/patch camera identically to ``AtlasAddPatchView``
+    (same named-view widgets, same ``camera_math.orbit_camera`` construction —
+    see ``_named_view_orbit_delta``), so the mask lines up with whatever patch
+    geometry that node will later derive from the same image. Intended
+    pipeline: ``Solve -> AtlasOcclusionMask -> ImageCompositeMasked (primary
+    projected image + this target image) -> AtlasAddPatchView``. This is a
+    Phase 1 ("simple") mask — frustum/frame/facing-angle only, not true
+    depth-shadow occlusion (an object hiding another object from the primary's
+    view but still projecting inside its frame/angle limits is not detected
+    yet). Pure backend/numpy — no browser round-trip, runs headlessly.
+    """
+    RETURN_TYPES = ("MASK", "MASK")
+    RETURN_NAMES = ("occlusion_mask", "coverage_mask")
+    FUNCTION = "generate"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        azimuths = list(_AZIMUTH_VIEWS)
+        elevations = list(_ELEVATION_VIEWS)
+        distances = list(_DISTANCE_VIEWS)
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "target_image": ("IMAGE",),
+            },
+            "optional": {
+                "patch_azimuth_view": (azimuths, {"default": "front-right quarter view",
+                    "tooltip": "The LoRA azimuth target_image was generated at — should match "
+                               "whatever you'll later pass to AtlasAddPatchView for this image."}),
+                "patch_elevation_view": (elevations, {"default": "eye-level shot",
+                    "tooltip": "The LoRA elevation target_image was generated at."}),
+                "patch_distance": (distances, {"default": "medium shot",
+                    "tooltip": "The LoRA distance target_image was generated at."}),
+                "source_azimuth_view": (azimuths, {"default": "front view",
+                    "tooltip": "Which view your SOURCE photo already is, in the LoRA's absolute "
+                               "frame. Must match the value you'll use in AtlasAddPatchView."}),
+                "source_elevation_view": (elevations, {"default": "eye-level shot",
+                    "tooltip": "Elevation of the SOURCE photo in the LoRA's frame."}),
+                "flip_azimuth": ("BOOLEAN", {"default": False,
+                    "tooltip": "Must match the AtlasAddPatchView setting for this patch."}),
+                "depth_model": ([
+                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
+                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "angle_threshold": ("FLOAT", {"default": 90.0, "min": 0.0, "max": 90.0, "step": 1.0,
+                    "tooltip": "Facing-angle gate in degrees for the PRIMARY camera's coverage. "
+                               "90 (default) = only frustum/behind-camera/out-of-frame failures are "
+                               "masked. Lower values also mask surfaces too grazing to the primary."}),
+                "dilate_px": ("INT", {"default": 0, "min": 0, "max": 200,
+                    "tooltip": "Expand the white (missing) mask region by this many pixels."}),
+                "soft_edge_px": ("INT", {"default": 0, "min": 0, "max": 200,
+                    "tooltip": "Blur the dilated mask edge by this many pixels, for compositing."}),
+                "power": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 8.0, "step": 0.1,
+                    "tooltip": "Gamma remap after blur; > 1 makes the patch contribution more solid "
+                               "near the feathered edge."}),
+            },
+        }
+
+    def generate(self, solve, target_image,
+                 patch_azimuth_view="front-right quarter view",
+                 patch_elevation_view="eye-level shot",
+                 patch_distance="medium shot",
+                 source_azimuth_view="front view",
+                 source_elevation_view="eye-level shot",
+                 flip_azimuth=False,
+                 depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                 device="auto",
+                 angle_threshold=90.0, dilate_px=0, soft_edge_px=0, power=1.0):
+        np = _require_numpy()
+        torch = _require_torch()
+        from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+        from atlas_camera.core.depth_geometry import back_project_normals, primary_camera_validity_mask
+        from atlas_camera.inference.depth_estimator import estimate_depth
+
+        intr = solve.camera.intrinsics
+        extr = solve.camera.extrinsics
+        p_w = int(intr.image_width or 0)
+        p_h = int(intr.image_height or 0)
+        fx = intr.fx_px or 0.0
+        fy = intr.fy_px or fx
+        target_h = int(target_image.shape[1])
+        target_w = int(target_image.shape[2])
+        if fx <= 0 or p_w <= 0:
+            # No focal/dims on the primary — nothing to test against; treat
+            # as fully missing so downstream compositing still gets a signal.
+            mask = torch.ones(1, target_h, target_w, dtype=torch.float32)
+            return (mask, 1.0 - mask)
+        cx = intr.cx_px if intr.cx_px is not None else p_w / 2.0
+        cy = intr.cy_px if intr.cy_px is not None else p_h / 2.0
+
+        d_azimuth, d_elevation, distance_scale = _named_view_orbit_delta(
+            patch_azimuth_view, patch_elevation_view, patch_distance,
+            source_azimuth_view, source_elevation_view, flip_azimuth,
+        )
+        pivot = ground_lookat_pivot(extr)
+        target_extr = orbit_camera(
+            extr, pivot,
+            d_azimuth_deg=d_azimuth, d_elevation_deg=d_elevation,
+            distance_scale=distance_scale,
+        )
+
+        tfx = fx * (target_w / p_w)
+        tfy = fy * (target_h / p_h)
+        tcx = target_w / 2.0
+        tcy = target_h / 2.0
+
+        tmp = _save_image_tensor_to_tmp(target_image)
+        try:
+            result = estimate_depth(tmp, model_id=depth_model,
+                                    device=None if device == "auto" else device)
+        finally:
+            os.unlink(tmp)
+        depth_map = result.depth
+        if depth_map.shape != (target_h, target_w):
+            from atlas_camera.core.solver import _resize_depth
+            depth_map = _resize_depth(depth_map, target_w, target_h)
+
+        bp = back_project_normals(
+            depth_map, view_matrix=target_extr.camera_view_matrix,
+            fx=tfx, fy=tfy, cx=tcx, cy=tcy,
+        )
+        invalid = primary_camera_validity_mask(
+            bp.pts_world, bp.valid_depth, bp.normals, bp.valid_normal,
+            primary_view_matrix=extr.camera_view_matrix,
+            primary_fx=fx, primary_fy=fy, primary_cx=cx, primary_cy=cy,
+            primary_width=p_w, primary_height=p_h,
+            angle_threshold_deg=float(angle_threshold),
+        )
+        mask = invalid.astype(np.float32)
+
+        # 4-connected binary dilation, one pixel per iteration. np.roll wraps
+        # at the image border rather than clamping — negligible in practice
+        # since dilate_px is capped at 200 and target images are typically
+        # much larger, but a very small image + large dilate_px could wrap.
+        for _ in range(int(dilate_px)):
+            grown = mask.copy()
+            grown = np.maximum(grown, np.roll(mask, 1, axis=0))
+            grown = np.maximum(grown, np.roll(mask, -1, axis=0))
+            grown = np.maximum(grown, np.roll(mask, 1, axis=1))
+            grown = np.maximum(grown, np.roll(mask, -1, axis=1))
+            mask = grown
+
+        soft_edge_px = int(soft_edge_px)
+        if soft_edge_px > 0:
+            # Separable 2D box blur via cumulative sums (horizontal pass then
+            # vertical) — numpy-only, no scipy (matches core/ convention).
+            radius = soft_edge_px
+            for axis in (1, 0):
+                padded = np.pad(mask, [(radius, radius) if a == axis else (0, 0)
+                                       for a in (0, 1)], mode="edge")
+                csum = np.cumsum(padded, axis=axis)
+                csum = np.insert(csum, 0, 0, axis=axis)
+                n = 2 * radius + 1
+                lo = np.take(csum, range(0, csum.shape[axis] - n), axis=axis)
+                hi = np.take(csum, range(n, csum.shape[axis]), axis=axis)
+                mask = (hi - lo) / n
+
+        mask = np.clip(mask, 0.0, 1.0) ** float(power)
+        mask_t = torch.from_numpy(mask.astype(np.float32)).unsqueeze(0)
+        coverage_t = torch.from_numpy((1.0 - mask).astype(np.float32)).unsqueeze(0)
+        return (mask_t, coverage_t)
 
 
 class AtlasExportReliefMesh:
@@ -1788,6 +1986,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
     "AtlasAddPatchView":          AtlasAddPatchView,
+    "AtlasOcclusionMask":         AtlasOcclusionMask,
     "AtlasConstrainedSolve":      AtlasConstrainedSolve,
     "AtlasLoadSolveJSON":         AtlasLoadSolveJSON,
     # Track 1 — decompose
@@ -1823,6 +2022,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",
     "AtlasAddPatchView":          "Atlas Add Patch View (multi-angle) 🩹",
+    "AtlasOcclusionMask":         "Atlas Occlusion Mask 🕳",
     "AtlasConstrainedSolve":      "Atlas Constrained Solve",
     "AtlasLoadSolveJSON":         "Atlas Load Solve JSON",
     # Track 1 — decompose

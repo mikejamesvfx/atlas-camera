@@ -303,6 +303,36 @@ const PROJECTION_FRAGMENT_SHADER = `
   }
 `;
 
+// ---------------------------------------------------------------------------
+// Patch-priority ordering (ProjectionSource.priority — "higher wins; the
+// primary is implicitly highest", core/schema.py). Real z-buffering already
+// resolves most overlap between the primary and patch geometry (or between
+// two patches) by actual depth; these two mechanisms only disambiguate the
+// band where depth is coincident or near-coincident (independently-derived
+// meshes rarely align exactly):
+//   - renderOrder makes EXACT depth ties deterministic (Three sorts opaque
+//     renderables by renderOrder before the per-object depth test) instead
+//     of scene-graph/load-order-dependent.
+//   - polygonOffsetUnits biases the effective depth-buffer value by a small,
+//     priority-scaled amount so a higher-priority mesh wins within that
+//     epsilon window, while a genuinely-nearer mesh (real gap larger than the
+//     bias) still wins the normal z-test.
+// The primary is never a ProjectionSource (no priority field) and is given a
+// sentinel renderOrder above any patch, satisfying "implicitly highest"
+// without a synthetic number. Discards (behind-camera / out-of-UV / facing-
+// threshold, in the fragment shader below) happen before any depth write, so
+// this is independent of the separate preview_expand/Project dilation
+// tradeoff documented above.
+const PATCH_PRIORITY_CEILING = 100; // matches nodes.py AtlasAddPatchView widget max
+const PATCH_OFFSET_STEP = 4;        // depth-bias units; tuned visually in-viewport
+function priorityToRenderOrder(p) {
+  return 1 + Math.round(Math.max(0, p || 0));
+}
+function priorityToOffsetUnits(p) {
+  const c = Math.min(PATCH_PRIORITY_CEILING, Math.max(0, p || 0));
+  return PATCH_OFFSET_STEP * (1 - c / PATCH_PRIORITY_CEILING) + 0.5; // always > 0
+}
+
 function makeProjectionMaterial(data, texture, opts) {
   const options = opts || {};
   const flat = data.view_matrix.flat();
@@ -314,7 +344,7 @@ function makeProjectionMaterial(data, texture, opts) {
     flat[12], flat[13], flat[14], flat[15]
   );
   const camPos = data.camera_position || [0, 0, 0];
-  return new THREE.ShaderMaterial({
+  const mat = new THREE.ShaderMaterial({
     uniforms: {
       uAtlasViewMatrix: { value: vm },
       uFx: { value: data.fx || 1 },
@@ -335,6 +365,14 @@ function makeProjectionMaterial(data, texture, opts) {
     depthWrite: true,
     depthTest: true,
   });
+  // Priority-driven depth bias (patches only — options.priority is unset for
+  // the primary, which relies solely on its renderOrder sentinel instead).
+  if (options.priority !== undefined) {
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = 0;
+    mat.polygonOffsetUnits = priorityToOffsetUnits(options.priority);
+  }
+  return mat;
 }
 
 function loadTextureFromB64(b64, cb) {
@@ -409,6 +447,10 @@ function buildDerivedProxies(scene, data) {
     mesh.matrix.set(...e.transform);
     mesh.userData.atlasDerived = true;
     mesh.name = e.name || "derived_proxy";
+    // Sentinel above any patch renderOrder (see priorityToRenderOrder) — the
+    // primary is implicitly highest priority per ProjectionSource's contract,
+    // with no synthetic priority number needed.
+    mesh.renderOrder = 100000;
     group.add(mesh);
   }
   scene.add(group);
@@ -465,11 +507,17 @@ function buildPatchSources(scene, data, onSourceReady) {
       const geo = proxyEntryToGeometry(e);
       if (!geo) continue;
       const mat = new THREE.MeshStandardMaterial({ color: 0x8a9a80, roughness: 0.85, side: THREE.DoubleSide });
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = 0;
+      mat.polygonOffsetUnits = priorityToOffsetUnits(src.priority);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.matrixAutoUpdate = false;
       mesh.matrix.set(...e.transform);
       mesh.userData.atlasPatch = true;
       mesh.name = e.name || `patch_${idx}`;
+      // Deterministic overlap ordering from ProjectionSource.priority — see
+      // priorityToRenderOrder/priorityToOffsetUnits above makeProjectionMaterial.
+      mesh.renderOrder = priorityToRenderOrder(src.priority);
       group.add(mesh);
       meshes.push(mesh);
     }
@@ -478,7 +526,7 @@ function buildPatchSources(scene, data, onSourceReady) {
     // only paint surfaces they see reasonably head-on (facingThreshold > 0), so
     // grazing/occluded areas fall through to the primary or other patches.
     loadTextureFromB64(src.image_b64, (tex) => {
-      const patchMat = makeProjectionMaterial(src, tex, { facingThreshold: 0.2 });
+      const patchMat = makeProjectionMaterial(src, tex, { facingThreshold: 0.2, priority: src.priority });
       for (const m of meshes) {
         const prev = m.userData._projMaterial;
         if (prev && prev !== patchMat) {

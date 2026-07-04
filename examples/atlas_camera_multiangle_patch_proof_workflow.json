@@ -1,6 +1,6 @@
 {
-  "last_node_id": 9,
-  "last_link_id": 11,
+  "last_node_id": 15,
+  "last_link_id": 20,
   "nodes": [
     {
       "id": 1,
@@ -71,7 +71,8 @@
           "name": "ATLAS_SOLVE",
           "type": "ATLAS_SOLVE",
           "links": [
-            2
+            2,
+            12
           ],
           "slot_index": 0
         }
@@ -309,7 +310,9 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            10
+            10,
+            13,
+            18
           ],
           "slot_index": 0
         },
@@ -353,7 +356,7 @@
         {
           "name": "patch_image",
           "type": "IMAGE",
-          "link": 10
+          "link": 20
         }
       ],
       "outputs": [
@@ -388,11 +391,11 @@
       "type": "Note",
       "pos": [
         420,
-        760
+        1520
       ],
       "size": [
-        520,
-        220
+        700,
+        420
       ],
       "flags": {},
       "order": 12,
@@ -401,7 +404,259 @@
         "text": ""
       },
       "widgets_values": [
-        "MULTI-ANGLE PATCH - CALIBRATION PROOF\n\nThe LoRA angles are ABSOLUTE (subject-relative), NOT relative to your\nsource view. So set BOTH views on the Add Patch View node:\n  source_azimuth_view = what your source photo already is (front view\n    for a straight-on shot);  patch_*_view = what you asked the LoRA for\n    (must match the Qwen Multiangle Camera node exactly).\n  Orbit applied = patch - source.\n\n1. Generate a novel view at 'front-right quarter view / eye-level shot /\n   medium shot' (Qwen-Image-Edit-2511 + Multiple-Angles LoRA, e.g. via\n   ComfyUI-qwenmultiangle). Load it in the Patch novel view node.\n2. On Add Patch View keep patch_azimuth_view = 'front-right quarter view'\n   and source_azimuth_view = 'front view' (=> +45 deg orbit).\n3. Queue, then in the Atlas Viewport: Camera View, then Project.\n   GO/NO-GO: orbit slightly right - the patch should fill the primary's\n   occluded/grazing right side and stay aligned in the overlap. If it\n   lands on the WRONG side, tick flip_azimuth. If features line up,\n   constructed-orbit == LoRA-angle holds and the 3-patch build is safe.\n   (Needs a ComfyUI restart to load the new node + a browser refresh.)"
+        "MULTI-ANGLE PATCH - CALIBRATION PROOF (now with occlusion-mask precheck)\n\nThe LoRA angles are ABSOLUTE (subject-relative), NOT relative to your\nsource view. So set BOTH views on the Add Patch View node:\n  source_azimuth_view = what your source photo already is (front view\n    for a straight-on shot);  patch_*_view = what you asked the LoRA for\n    (must match the Qwen Multiangle Camera node exactly).\n  Orbit applied = patch - source.\n\n1. Generate a novel view at 'front-right quarter view / eye-level shot /\n   medium shot' (Qwen-Image-Edit-2511 + Multiple-Angles LoRA, e.g. via\n   ComfyUI-qwenmultiangle). Load it in the Patch novel view node.\n2. On Add Patch View keep patch_azimuth_view = 'front-right quarter view'\n   and source_azimuth_view = 'front view' (=> +45 deg orbit).\n3. Queue, then in the Atlas Viewport: Camera View, then Project.\n   GO/NO-GO: orbit slightly right - the patch should fill the primary's\n   occluded/grazing right side and stay aligned in the overlap. If it\n   lands on the WRONG side, tick flip_azimuth. If features line up,\n   constructed-orbit == LoRA-angle holds and the 3-patch build is safe.\n   (Needs a ComfyUI restart to load the new node + a browser refresh.)\n\nNEW - Atlas Occlusion Mask precheck (nodes to the right of the novel-view\nLoadImage, below the relief-mesh export):\n  CRITICAL: AtlasOcclusionMask's named-view widgets\n  (patch_azimuth_view/patch_elevation_view/patch_distance/\n  source_azimuth_view/source_elevation_view/flip_azimuth) are set\n  IDENTICAL to Add Patch View's — they independently reconstruct the SAME\n  orbit camera. If you change the angle on one node, change it on the\n  other too, or the mask will describe a different view than the patch\n  actually uses.\n  - Before judging the Add Patch View / Project result, check the\n    Occlusion Mask preview: WHITE should land on grazing walls, the\n    backside, and anything outside the primary photo's frame - exactly\n    where you'd expect the recovered camera couldn't have seen from this\n    new angle. The Coverage Mask preview should look like its exact\n    inverse.\n  - The novel-view image now flows through ImageCompositeMasked before\n    reaching Add Patch View. Here that composite is a PLACEHOLDER\n    (destination and source are both the same novel-view image, so it's\n    a no-op) - it only proves the wiring runs end-to-end. Swap in a\n    genuinely different destination/source image later (e.g. an\n    independently inpainted/refined version) to make the mask actually\n    select between two candidates instead of compositing an image with\n    itself."
+      ]
+    },
+    {
+      "id": 10,
+      "type": "AtlasOcclusionMask",
+      "pos": [
+        800,
+        760
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "title": "Atlas Occlusion Mask (precheck)",
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 12,
+          "slot_index": 0
+        },
+        {
+          "name": "target_image",
+          "type": "IMAGE",
+          "link": 13,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "occlusion_mask",
+          "type": "MASK",
+          "links": [
+            14,
+            19
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "coverage_mask",
+          "type": "MASK",
+          "links": [
+            15
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasOcclusionMask"
+      },
+      "widgets_values": [
+        "front-right quarter view",
+        "eye-level shot",
+        "medium shot",
+        "front view",
+        "eye-level shot",
+        false,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        90.0,
+        0,
+        0,
+        1.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "MaskToImage",
+      "pos": [
+        1240,
+        740
+      ],
+      "size": [
+        220,
+        60
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 14,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 12,
+      "type": "PreviewImage",
+      "pos": [
+        1240,
+        820
+      ],
+      "size": [
+        260,
+        280
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 16,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🕳 Occlusion Mask — WHITE = primary can't cover this angle"
+    },
+    {
+      "id": 13,
+      "type": "MaskToImage",
+      "pos": [
+        1240,
+        1140
+      ],
+      "size": [
+        220,
+        60
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 15,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 14,
+      "type": "PreviewImage",
+      "pos": [
+        1240,
+        1220
+      ],
+      "size": [
+        260,
+        280
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 17,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "✅ Coverage Mask — WHITE = primary already sees this (inverse check)"
+    },
+    {
+      "id": 15,
+      "type": "ImageCompositeMasked",
+      "pos": [
+        1860,
+        460
+      ],
+      "size": [
+        280,
+        140
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "title": "Composite (placeholder — see Note)",
+      "inputs": [
+        {
+          "name": "destination",
+          "type": "IMAGE",
+          "link": 10,
+          "slot_index": 0
+        },
+        {
+          "name": "source",
+          "type": "IMAGE",
+          "link": 18,
+          "slot_index": 1
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 19,
+          "slot_index": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            20
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageCompositeMasked"
+      },
+      "widgets_values": [
+        0,
+        0,
+        false
       ]
     }
   ],
@@ -474,8 +729,8 @@
       10,
       7,
       0,
-      8,
-      1,
+      15,
+      0,
       "IMAGE"
     ],
     [
@@ -485,6 +740,78 @@
       4,
       0,
       "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      2,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      7,
+      0,
+      10,
+      1,
+      "IMAGE"
+    ],
+    [
+      14,
+      10,
+      0,
+      11,
+      0,
+      "MASK"
+    ],
+    [
+      15,
+      10,
+      1,
+      13,
+      0,
+      "MASK"
+    ],
+    [
+      16,
+      11,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ],
+    [
+      17,
+      13,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      7,
+      0,
+      15,
+      1,
+      "IMAGE"
+    ],
+    [
+      19,
+      10,
+      0,
+      15,
+      2,
+      "MASK"
+    ],
+    [
+      20,
+      15,
+      0,
+      8,
+      1,
+      "IMAGE"
     ]
   ],
   "groups": [
@@ -552,12 +879,38 @@
       "color": "#7e6e3d",
       "font_size": 15,
       "locked": false
+    },
+    {
+      "id": 6,
+      "title": "⑥ NEW — Occlusion Mask precheck (must mirror Add Patch View's named views)",
+      "bounding": [
+        780,
+        700,
+        740,
+        820
+      ],
+      "color": "#7e3d3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 7,
+      "title": "⑦ NEW — Composite (placeholder) → Add Patch View",
+      "bounding": [
+        1840,
+        400,
+        320,
+        220
+      ],
+      "color": "#3d5e7e",
+      "font_size": 14,
+      "locked": false
     }
   ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.75,
+      "scale": 0.55,
       "offset": [
         10,
         -40
