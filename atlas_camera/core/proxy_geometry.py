@@ -69,6 +69,7 @@ class ProxyDerivationConfig:
     min_object_inliers: int = 1200
     object_cell_m: float = 0.25          # occupancy-grid cell for blob clustering
     object_min_cell_pixels: int = 12     # occupancy threshold per cell
+    object_max_height_m: float = 6.0     # plausibility ceiling — see its use site
     cylinder_azimuth_spread_deg: float = 90.0
     cylinder_max_residual: float = 0.15  # × radius
     cylinder_radius_range: tuple[float, float] = (0.1, 5.0)
@@ -693,6 +694,30 @@ def _derive_objects(np, cfg, stats, pts_world, normals, obj_cand, valid_normal,
         h_obj = float(np.percentile(oy, 98.0))
         if h_obj < 0.2:
             continue
+        if h_obj > cfg.object_max_height_m:
+            # XZ-only occupancy clustering has no notion of height, so a
+            # foreground object's footprint can spuriously merge with an
+            # unrelated tall structure behind/above it (a distant wall or
+            # machinery that wasn't caught by wall-fitting) that happens to
+            # share the same X/Z cell — the 98th-percentile height then
+            # reflects that tall structure, not the actual foreground
+            # object, producing an implausible box (confirmed empirically:
+            # a real photo produced a ~14m "foreground" box because points
+            # from a background structure leaked into the cluster). Refit
+            # using only the points below the plausibility ceiling — this
+            # is the same "reject and refit/drop" pattern _fit_cylinder
+            # already uses for cylinder_radius_range, just applied to height
+            # instead of radius.
+            low = oy <= cfg.object_max_height_m
+            if int(low.sum()) < cfg.min_object_inliers:
+                continue
+            sel_idx = np.flatnonzero(sel)[low]
+            sel = np.zeros_like(sel)
+            sel[sel_idx] = True
+            ox, oy, oz = px[sel], py[sel], pz[sel]
+            h_obj = float(np.percentile(oy, 98.0))
+            if h_obj < 0.2:
+                continue
 
         # Cylinder test: vertical-normal azimuth spread (curved surface sweeps
         # azimuth; a flat face is constant).

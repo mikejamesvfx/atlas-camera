@@ -6,8 +6,12 @@ def test_projection_scene_defaults_to_y_up():
 
     assert scene.up_axis == "Y"
     assert scene.coordinate_system == "right_handed"
-    assert scene.proxy_geometry[0].name == "ground_plane"
-    assert scene.proxy_geometry[0].metadata["up_axis"] == "Y"
+    # No placeholder geometry: the old "ground_plane" (role="ground") entry
+    # was removed — it had no downstream consumer (serialize_proxy_geometry
+    # only ever sends role=="projection_proxy" primitives to the viewport)
+    # and its name collided confusingly with the real, rendered
+    # "projection_ground" primitive derive nodes produce.
+    assert scene.proxy_geometry == []
 
 
 def test_projection_scene_can_add_proxy_geometry_and_guides():

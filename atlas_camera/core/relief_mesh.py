@@ -14,6 +14,7 @@ Convention: same as proxy_geometry — the full 4×4 ``camera_view_matrix``
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -183,7 +184,13 @@ def build_relief_mesh(
         for dc in (-1, 0, 1):
             cc = np.clip(cols + dc, 0, width - 1)
             samples.append(depth_nan[np.ix_(rr, cc)])
-    with np.errstate(all="ignore"):
+    # All-NaN grid cells are expected whenever a cell's full 3x3 neighbourhood
+    # falls entirely in sky/invalid regions — handled below via vgrid, not an
+    # error. np.errstate only silences FPU-flag warnings; nanmedian's "All-NaN
+    # slice" warning goes through the separate `warnings` module, so it needs
+    # its own suppression.
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         d = np.nanmedian(np.stack(samples), axis=0)
     vgrid = np.isfinite(d) & (d > 1e-4)
     d = np.where(vgrid, d, 0.0)

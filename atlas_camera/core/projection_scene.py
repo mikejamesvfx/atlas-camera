@@ -6,23 +6,28 @@ from atlas_camera.core.schema import AtlasProjectionScene, AtlasProxyPrimitive, 
 
 
 def create_default_projection_scene() -> AtlasProjectionScene:
-    scene = AtlasProjectionScene(
+    """An empty projection scene with just the coordinate-convention metadata.
+
+    Used to previously seed a placeholder "ground_plane" primitive
+    (role="ground") here, but it had no downstream consumer anywhere in the
+    codebase — serialize_proxy_geometry only ever sends role=="projection_proxy"
+    (PROXY_ROLE) primitives to the viewport, so it was never rendered, never
+    exported, and up_axis/coordinate_system are already exposed as their own
+    fields on AtlasProjectionScene, making its metadata redundant too. Its one
+    real effect was confusion: a real, rendered "projection_ground" primitive
+    (PROXY_ROLE, from AtlasDeriveWalls/derive_projection_proxies) has an
+    almost-identical name, and AtlasMergeGeometry originally duplicated this
+    placeholder across merged branches before that bug was found and fixed
+    (see AtlasMergeGeometry's docstring) — removed rather than renamed, since
+    nothing needs it.
+    """
+    return AtlasProjectionScene(
         coordinate_system="right_handed",
         up_axis="Y",
         debug_metadata={
             "convention": "Atlas core uses right-handed Y-up coordinates.",
         },
     )
-    scene.proxy_geometry.append(
-        AtlasProxyPrimitive(
-            name="ground_plane",
-            primitive_type="plane",
-            dimensions=(10.0, 0.0, 10.0),
-            material="atlas_ground",
-            metadata={"role": "ground", "up_axis": "Y"},
-        )
-    )
-    return scene
 
 
 def proxy_box(

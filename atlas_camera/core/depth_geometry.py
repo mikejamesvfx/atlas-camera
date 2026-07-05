@@ -18,6 +18,7 @@ points, translation in column 3) and its inverse — never the 3×3
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -103,6 +104,70 @@ def back_project_normals(
         pts_world=pts_world, normals=normals, valid_normal=valid_normal,
         valid_depth=valid_depth, R_cw=R_cw, cam_pos=cam_pos, vv=vv,
     )
+
+
+def primary_camera_validity_mask(
+    pts_world: Any,
+    valid_depth: Any,
+    normals: Any,
+    valid_normal: Any,
+    *,
+    primary_view_matrix: Any,
+    primary_fx: float,
+    primary_fy: float,
+    primary_cx: float,
+    primary_cy: float,
+    primary_width: int,
+    primary_height: int,
+    angle_threshold_deg: float = 90.0,
+) -> Any:
+    """Test a field of world points against a SECOND ("primary") camera's
+    projection validity — behind-camera, outside-frame, or too-grazing.
+
+    ``pts_world``/``valid_depth``/``normals``/``valid_normal`` are typically a
+    :class:`BackProjection` from a *different* (target/patch) camera's own
+    depth map — the primary camera here is only used as the thing being
+    projected INTO, not the camera the points were derived from. Mirrors the
+    facing-ratio mask in ``atlas_blockout.js``'s projection shader
+    (``facing = abs(dot(normal, toCam))``) and this repo's universal "-Z
+    forward" view-matrix convention (row-major, world->cam,
+    ``cam_to_world = inv(view_matrix)``).
+
+    Returns an ``(H, W)`` bool array — ``True`` where the primary camera's
+    projection is INVALID at that point (should be filled by another source).
+    """
+    np = _require_numpy()
+    vm = np.asarray(primary_view_matrix, dtype=np.float64)
+    cam_to_world = np.linalg.inv(vm)
+    primary_cam_pos = cam_to_world[:3, 3]
+
+    pts_world = np.asarray(pts_world, dtype=np.float64)
+    R = vm[:3, :3]
+    t = vm[:3, 3]
+    cam_pts = pts_world @ R.T + t  # world -> primary camera space
+
+    cam_z = cam_pts[..., 2]
+    behind = cam_z >= 0.0  # "-Z forward" convention
+
+    depth = np.where(behind, np.nan, -cam_z)
+    px = primary_cx + primary_fx * cam_pts[..., 0] / depth
+    py = primary_cy - primary_fy * cam_pts[..., 1] / depth
+    out_of_frame = ~np.isfinite(px) | ~np.isfinite(py) | \
+        (px < 0) | (px >= primary_width) | (py < 0) | (py >= primary_height)
+
+    to_primary = primary_cam_pos - pts_world
+    to_primary = to_primary / np.maximum(
+        np.linalg.norm(to_primary, axis=-1, keepdims=True), 1e-12
+    )
+    facing = np.abs(np.sum(np.asarray(normals, dtype=np.float64) * to_primary, axis=-1))
+    # facing is always >= 0, so an explicit -1.0 at the 90-degree ceiling
+    # guarantees "never facing-excludes" exactly, immune to cos(90 deg) not
+    # being exactly 0 in floating point.
+    threshold_cos = -1.0 if angle_threshold_deg >= 90.0 else math.cos(math.radians(angle_threshold_deg))
+    grazing = facing < threshold_cos
+
+    return behind | out_of_frame | grazing | ~np.asarray(valid_depth, dtype=bool) \
+        | ~np.asarray(valid_normal, dtype=bool)
 
 
 @dataclass(slots=True)

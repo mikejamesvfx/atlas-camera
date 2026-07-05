@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from atlas_camera.core.schema import AtlasIntrinsics
+from atlas_camera.core.schema import AtlasIntrinsics, AtlasShotCam
 
 
 def derive_sensor_height_mm(
@@ -73,4 +73,43 @@ def build_intrinsics(
         fy_px=fy_px,
         cx_px=principal_point_px[0],
         cy_px=principal_point_px[1],
+    )
+
+
+def _fit_aspect_to_long_edge(
+    width_mm: float,
+    height_mm: float,
+    long_edge_px: int,
+    multiple: int = 8,
+) -> tuple[int, int]:
+    """Pixel (width, height) preserving the sensor's mm aspect ratio, with the
+    longer side set to ``long_edge_px`` (rounded to a multiple of 8, matching
+    the ComfyUI node's own ``_fit_long_edge`` convention for GPU-friendly
+    dimensions)."""
+    if width_mm <= 0 or height_mm <= 0:
+        raise ValueError("Sensor dimensions must be positive.")
+    if long_edge_px <= 0:
+        raise ValueError("Long edge must be positive.")
+    scale = long_edge_px / float(max(width_mm, height_mm))
+
+    def _round(v: float) -> int:
+        return max(multiple, int(round(v / multiple)) * multiple)
+
+    return _round(width_mm * scale), _round(height_mm * scale)
+
+
+def intrinsics_from_shot_cam(shot_cam: AtlasShotCam) -> AtlasIntrinsics:
+    """Canonical pinhole intrinsics for a project-level shot format —
+    independent of any particular photographed image. Used to conform the
+    render/export camera to a shot's own sensor/lens/resolution regardless
+    of what any individual solved photo's aspect ratio happened to be."""
+    width_px, height_px = _fit_aspect_to_long_edge(
+        shot_cam.sensor_width_mm, shot_cam.sensor_height_mm, shot_cam.resolution_long_edge_px
+    )
+    return build_intrinsics(
+        image_width=width_px,
+        image_height=height_px,
+        focal_length_mm=shot_cam.focal_length_mm,
+        sensor_width_mm=shot_cam.sensor_width_mm,
+        sensor_height_mm=shot_cam.sensor_height_mm,
     )

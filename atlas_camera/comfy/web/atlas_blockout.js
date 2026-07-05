@@ -19,6 +19,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 let THREE;
 let OBJLoader;
+let FBXLoader;
 
 async function loadThree() {
   if (THREE) return;
@@ -44,6 +45,18 @@ async function loadThree() {
   } catch (e) {
     console.warn("[AtlasBlockout] OBJLoader unavailable; proxy models disabled:", e);
     OBJLoader = null;
+  }
+  try {
+    // Used by 🎥 Camera Path's "Import Camera FBX" — reads a DCC-authored
+    // camera animation client-side only (never touches atlas_camera.core, same
+    // rule as OBJLoader above). Same CDN-fallback + graceful-degrade pattern.
+    const fbxMod = await import(
+      "https://unpkg.com/three@0.163.0/examples/jsm/loaders/FBXLoader.js"
+    );
+    FBXLoader = fbxMod.FBXLoader;
+  } catch (e) {
+    console.warn("[AtlasBlockout] FBXLoader unavailable; FBX camera import disabled:", e);
+    FBXLoader = null;
   }
 }
 
@@ -104,6 +117,9 @@ function createOrbitControls(camera, dom) {
   const target = new THREE.Vector3(0, 1, 0);
   const sph = { radius: 5, theta: 0, phi: Math.PI / 3 };
   let dragging = false, panning = false, lx = 0, ly = 0;
+  // Disabled while Camera Path fly-mode is active (createFlyControls) so the
+  // two controllers never fight over the same pointer/wheel events.
+  let enabled = true;
 
   // Derived geometry (relief mesh, backdrop, fitted primitives) only ever
   // covers what the RECOVERED camera could see — a forward-facing cone — since
@@ -140,6 +156,7 @@ function createOrbitControls(camera, dom) {
     camera.lookAt(target);
   }
   function onDown(e) {
+    if (!enabled) return;
     dragging = true;
     panning = e.button === 2 || e.shiftKey;
     lx = e.clientX; ly = e.clientY;
@@ -159,7 +176,7 @@ function createOrbitControls(camera, dom) {
   }
   function onUp() { dragging = false; dom.style.cursor = "grab"; }
   function onMove(e) {
-    if (!dragging) return;
+    if (!enabled || !dragging) return;
     const dx = e.clientX - lx, dy = e.clientY - ly;
     lx = e.clientX; ly = e.clientY;
     if (panning) {
@@ -178,6 +195,7 @@ function createOrbitControls(camera, dom) {
     apply();
   }
   function onWheel(e) {
+    if (!enabled) return;
     sph.radius = Math.max(0.05, sph.radius * (1 + Math.sign(e.deltaY) * 0.1));
     apply();
     e.preventDefault();
@@ -192,11 +210,104 @@ function createOrbitControls(camera, dom) {
     target,
     setTarget(v) { target.copy(v); },
     syncFromCamera,
+    setEnabled(v) { enabled = v; if (!v) dragging = false; dom.style.cursor = v ? "grab" : "default"; },
     dispose() {
       dom.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       dom.removeEventListener("wheel", onWheel);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fly-mode controller for Camera Path authoring.
+//
+// The orbit controller above is deliberately clamped to a small arc around
+// the recovered camera's own direction (see its comment) because derived
+// geometry only covers what that camera actually photographed. Authoring a
+// dolly/pan camera move is the opposite case — leaving that cone is the
+// whole point of testing how projection degrades under motion — so this is
+// a separate, UNCLAMPED free-fly controller (RMB-hold + WASD/QE, mirroring
+// spiritform/comfyblockout's fly nav), only active while Camera Path mode is on.
+// ---------------------------------------------------------------------------
+function createFlyControls(camera, dom) {
+  let enabled = false;
+  let dragging = false, lx = 0, ly = 0;
+  let yaw = 0, pitch = 0;
+  const keys = new Set();
+  const MOVE_UNITS_PER_SEC = 4;
+
+  function syncFromCamera() {
+    const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, "YXZ");
+    yaw = euler.y;
+    pitch = euler.x;
+  }
+  function applyLook() {
+    camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+  }
+  function onDown(e) {
+    if (!enabled || e.button !== 2) return;
+    dragging = true;
+    lx = e.clientX; ly = e.clientY;
+    dom.style.cursor = "grabbing";
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  function onUp() {
+    dragging = false;
+    keys.clear();
+    if (enabled) dom.style.cursor = "crosshair";
+  }
+  function onMove(e) {
+    if (!enabled || !dragging) return;
+    const dx = e.clientX - lx, dy = e.clientY - ly;
+    lx = e.clientX; ly = e.clientY;
+    yaw -= dx * 0.004;
+    pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch - dy * 0.004));
+    applyLook();
+    e.stopPropagation();
+  }
+  function onKeyDown(e) { if (enabled && dragging) keys.add(e.key.toLowerCase()); }
+  function onKeyUp(e) { keys.delete(e.key.toLowerCase()); }
+  function onContext(e) { if (enabled) { e.preventDefault(); e.stopPropagation(); } }
+
+  function tick(dt) {
+    if (!enabled || !dragging || keys.size === 0) return;
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const step = MOVE_UNITS_PER_SEC * dt;
+    if (keys.has("w")) camera.position.addScaledVector(forward, step);
+    if (keys.has("s")) camera.position.addScaledVector(forward, -step);
+    if (keys.has("d")) camera.position.addScaledVector(right, step);
+    if (keys.has("a")) camera.position.addScaledVector(right, -step);
+    if (keys.has("e")) camera.position.y += step;
+    if (keys.has("q")) camera.position.y -= step;
+  }
+
+  dom.addEventListener("pointerdown", onDown);
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  dom.addEventListener("contextmenu", onContext);
+
+  return {
+    tick,
+    setEnabled(v) {
+      enabled = v;
+      dragging = false;
+      keys.clear();
+      dom.style.cursor = v ? "crosshair" : "grab";
+      if (v) syncFromCamera();
+    },
+    dispose() {
+      dom.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      dom.removeEventListener("contextmenu", onContext);
     },
   };
 }
@@ -255,8 +366,12 @@ const PROJECTION_VERTEX_SHADER = `
   uniform float uCy;
   varying vec2 vImagePx;
   varying float vCamZ;
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
   void main() {
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
     vec4 cam = uAtlasViewMatrix * worldPos;
     vCamZ = cam.z;
     float depth = -cam.z;   // Atlas camera looks along -Z
@@ -269,22 +384,68 @@ const PROJECTION_VERTEX_SHADER = `
   }
 `;
 
+// uFacingThreshold: discard fragments whose surface is more grazing to THIS
+// projector than the threshold (|normal . dir-to-camera| < threshold). This is
+// the dot-product occlusion / facing-ratio mask from gs_mptk — patch cameras
+// use a positive threshold so they only paint surfaces they see reasonably
+// head-on (letting the primary / other patches fill grazing areas). The primary
+// passes a negative threshold so it never facing-discards (it always has
+// priority where it can see). |.| is used so mesh winding / DoubleSide is
+// irrelevant.
 const PROJECTION_FRAGMENT_SHADER = `
   uniform sampler2D uTexture;
   uniform vec2 uImageSize;
   uniform float uOpacity;
+  uniform vec3 uCamPos;
+  uniform float uFacingThreshold;
   varying vec2 vImagePx;
   varying float vCamZ;
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
   void main() {
-    if (vCamZ >= 0.0) discard;                    // behind the recovered camera
+    if (vCamZ >= 0.0) discard;                    // behind the projector camera
     vec2 uv = vImagePx / uImageSize;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+    vec3 toCam = normalize(uCamPos - vWorldPos);
+    float facing = abs(dot(normalize(vWorldNormal), toCam));
+    if (facing < uFacingThreshold) discard;       // too grazing for this projector
     vec4 col = texture2D(uTexture, uv);
     gl_FragColor = vec4(col.rgb, col.a * uOpacity);
   }
 `;
 
-function makeProjectionMaterial(data, texture) {
+// ---------------------------------------------------------------------------
+// Patch-priority ordering (ProjectionSource.priority — "higher wins; the
+// primary is implicitly highest", core/schema.py). Real z-buffering already
+// resolves most overlap between the primary and patch geometry (or between
+// two patches) by actual depth; these two mechanisms only disambiguate the
+// band where depth is coincident or near-coincident (independently-derived
+// meshes rarely align exactly):
+//   - renderOrder makes EXACT depth ties deterministic (Three sorts opaque
+//     renderables by renderOrder before the per-object depth test) instead
+//     of scene-graph/load-order-dependent.
+//   - polygonOffsetUnits biases the effective depth-buffer value by a small,
+//     priority-scaled amount so a higher-priority mesh wins within that
+//     epsilon window, while a genuinely-nearer mesh (real gap larger than the
+//     bias) still wins the normal z-test.
+// The primary is never a ProjectionSource (no priority field) and is given a
+// sentinel renderOrder above any patch, satisfying "implicitly highest"
+// without a synthetic number. Discards (behind-camera / out-of-UV / facing-
+// threshold, in the fragment shader below) happen before any depth write, so
+// this is independent of the separate preview_expand/Project dilation
+// tradeoff documented above.
+const PATCH_PRIORITY_CEILING = 100; // matches nodes.py AtlasAddPatchView widget max
+const PATCH_OFFSET_STEP = 4;        // depth-bias units; tuned visually in-viewport
+function priorityToRenderOrder(p) {
+  return 1 + Math.round(Math.max(0, p || 0));
+}
+function priorityToOffsetUnits(p) {
+  const c = Math.min(PATCH_PRIORITY_CEILING, Math.max(0, p || 0));
+  return PATCH_OFFSET_STEP * (1 - c / PATCH_PRIORITY_CEILING) + 0.5; // always > 0
+}
+
+function makeProjectionMaterial(data, texture, opts) {
+  const options = opts || {};
   const flat = data.view_matrix.flat();
   const vm = new THREE.Matrix4();
   vm.set(
@@ -293,7 +454,8 @@ function makeProjectionMaterial(data, texture) {
     flat[8], flat[9], flat[10], flat[11],
     flat[12], flat[13], flat[14], flat[15]
   );
-  return new THREE.ShaderMaterial({
+  const camPos = data.camera_position || [0, 0, 0];
+  const mat = new THREE.ShaderMaterial({
     uniforms: {
       uAtlasViewMatrix: { value: vm },
       uFx: { value: data.fx || 1 },
@@ -303,6 +465,9 @@ function makeProjectionMaterial(data, texture) {
       uTexture: { value: texture },
       uImageSize: { value: new THREE.Vector2(data.image_width || 1, data.image_height || 1) },
       uOpacity: { value: 1.0 },
+      uCamPos: { value: new THREE.Vector3(camPos[0], camPos[1], camPos[2]) },
+      // Primary: -1 (never facing-discards). Patches: positive (fill head-on only).
+      uFacingThreshold: { value: options.facingThreshold ?? -1.0 },
     },
     vertexShader: PROJECTION_VERTEX_SHADER,
     fragmentShader: PROJECTION_FRAGMENT_SHADER,
@@ -310,6 +475,24 @@ function makeProjectionMaterial(data, texture) {
     transparent: false,
     depthWrite: true,
     depthTest: true,
+  });
+  // Priority-driven depth bias (patches only — options.priority is unset for
+  // the primary, which relies solely on its renderOrder sentinel instead).
+  if (options.priority !== undefined) {
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = 0;
+    mat.polygonOffsetUnits = priorityToOffsetUnits(options.priority);
+  }
+  return mat;
+}
+
+function loadTextureFromB64(b64, cb) {
+  if (!b64) return;
+  const loader = new THREE.TextureLoader();
+  loader.load(b64, (tex) => {
+    tex.flipY = false;                // shader UV origin is top-left
+    tex.colorSpace = THREE.SRGBColorSpace;
+    cb(tex);
   });
 }
 
@@ -375,10 +558,97 @@ function buildDerivedProxies(scene, data) {
     mesh.matrix.set(...e.transform);
     mesh.userData.atlasDerived = true;
     mesh.name = e.name || "derived_proxy";
+    // Sentinel above any patch renderOrder (see priorityToRenderOrder) — the
+    // primary is implicitly highest priority per ProjectionSource's contract,
+    // with no synthetic priority number needed.
+    mesh.renderOrder = 100000;
     group.add(mesh);
   }
   scene.add(group);
   return group;
+}
+
+// Build one proxy entry's THREE geometry (relief mesh / box / cylinder / plane).
+// Shared by the primary derived proxies and the multi-angle patch sources.
+function proxyEntryToGeometry(e) {
+  const d = e.dimensions || [1, 1, 1];
+  if (e.type === "mesh") {
+    if (!e.vertices?.length || !e.faces?.length) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(e.vertices), 3));
+    if (e.uvs?.length) {
+      geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(e.uvs), 2));
+    }
+    geo.setIndex(new THREE.BufferAttribute(new Uint32Array(e.faces), 1));
+    geo.computeVertexNormals();
+    return geo;
+  }
+  if (e.type === "box") return new THREE.BoxGeometry(d[0], d[1], d[2]);
+  if (e.type === "cylinder") return new THREE.CylinderGeometry(d[0] / 2, d[0] / 2, d[1], 24);
+  return new THREE.PlaneGeometry(d[0], d[1]);
+}
+
+// Build the multi-angle patch sources (AtlasAddPatchView). Each source is its
+// own camera + AI novel-view image + geometry; each mesh carries its OWN
+// projection material (bound to that source's camera+image, with a facing-ratio
+// mask) in userData._projMaterial, so applyProjection layers it over the
+// primary. Patch geometry is Python-owned (regenerated each execution), so —
+// like the derived group — Clear leaves it alone.
+function buildPatchSources(scene, data, onSourceReady) {
+  const stale = [];
+  scene.traverse((c) => { if (c.userData?.atlasPatchGroup) stale.push(c); });
+  for (const g of stale) {
+    g.traverse((m) => {
+      m.geometry?.dispose?.();
+      if (m.material?.isMeshStandardMaterial) m.material.dispose();
+      if (m.userData?._prevMaterial?.isMeshStandardMaterial) m.userData._prevMaterial.dispose();
+      const pm = m.userData?._projMaterial;
+      if (pm) { pm.uniforms?.uTexture?.value?.dispose?.(); pm.dispose?.(); }
+    });
+    scene.remove(g);
+  }
+
+  const sources = data.projection_sources || [];
+  sources.forEach((src, idx) => {
+    const group = new THREE.Group();
+    group.name = `atlas_patch_${idx}`;
+    group.userData.atlasPatchGroup = true;
+    const meshes = [];
+    for (const e of (src.proxy_geometry || [])) {
+      const geo = proxyEntryToGeometry(e);
+      if (!geo) continue;
+      const mat = new THREE.MeshStandardMaterial({ color: 0x8a9a80, roughness: 0.85, side: THREE.DoubleSide });
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = 0;
+      mat.polygonOffsetUnits = priorityToOffsetUnits(src.priority);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.set(...e.transform);
+      mesh.userData.atlasPatch = true;
+      mesh.name = e.name || `patch_${idx}`;
+      // Deterministic overlap ordering from ProjectionSource.priority — see
+      // priorityToRenderOrder/priorityToOffsetUnits above makeProjectionMaterial.
+      mesh.renderOrder = priorityToRenderOrder(src.priority);
+      group.add(mesh);
+      meshes.push(mesh);
+    }
+    scene.add(group);
+    // Load this patch's novel view and build its projection material. Patches
+    // only paint surfaces they see reasonably head-on (facingThreshold > 0), so
+    // grazing/occluded areas fall through to the primary or other patches.
+    loadTextureFromB64(src.image_b64, (tex) => {
+      const patchMat = makeProjectionMaterial(src, tex, { facingThreshold: 0.2, priority: src.priority });
+      for (const m of meshes) {
+        const prev = m.userData._projMaterial;
+        if (prev && prev !== patchMat) {
+          prev.uniforms?.uTexture?.value?.dispose?.();
+          prev.dispose?.();
+        }
+        m.userData._projMaterial = patchMat;
+      }
+      if (typeof onSourceReady === "function") onSourceReady();
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -428,9 +698,18 @@ function applyRecoveredCamera(threeCamera, data) {
     threeCamera.scale
   );
 
-  // FOV from fy and image height
-  const imageH = data.image_height || 1080;
-  const fy = data.fy || 1;
+  // FOV from fy and image height. Deliberately NOT data.fy/data.image_height
+  // directly — those are also read by makeProjectionMaterial() for the
+  // PRIMARY source's own texture-sampling uniforms (this same `data` object
+  // feeds both applyCamera() and setProxies() from the same execution), so
+  // overriding them for a project-level ShotCam would corrupt how the photo
+  // gets projected onto geometry. render_fy/render_image_height are a
+  // separate pair the Python side always sets — equal to fy/image_height
+  // when no ShotCam is wired in (so this is a no-op then), or the shot
+  // format's own values when one is (AtlasDefineShotCam + AtlasBlockoutViewport's
+  // shot_cam input / a solve with .shot_cam attached by AtlasMergeGeometry).
+  const imageH = data.render_image_height ?? data.image_height ?? 1080;
+  const fy = data.render_fy ?? data.fy ?? 1;
   const fovYRad = 2 * Math.atan(imageH / (2 * fy));
   threeCamera.fov = fovYRad * (180 / Math.PI);
   const aspect = (data.target_width || 512) / (data.target_height || 512);
@@ -612,13 +891,47 @@ function buildNodeUI(node, containerEl) {
 
   // Canvas, wrapped so the diagram SVG and metadata HUD can sit on top of it
   // without blocking orbit dragging (pointer-events:none on the overlays).
+  //
+  // flex:1;min-height:0 (canvasWrap, a flex child of `container` below) +
+  // height:100% (canvas, of canvasWrap) deliberately does NOT derive layout
+  // height from the canvas's own intrinsic width/height attributes (no
+  // `height:auto`) — dragging the node's corner just gives canvasWrap more
+  // flex space, which the canvas fills via a plain CSS/browser rescale of
+  // whatever's already in its WebGL buffer. No JS resize hook is involved:
+  // an earlier attempt hooked node.onResize to call resizeViewport (which
+  // sets canvas.width/height) to re-render at the new size, but that fed
+  // back into ComfyUI's own DOM-widget layout math (which WAS keyed off the
+  // canvas's auto-derived height) and froze the tab. This CSS-only approach
+  // can't create that loop since resizing never touches canvas.width/height.
   const canvasWrap = document.createElement("div");
-  canvasWrap.style.cssText = "position:relative;width:100%;line-height:0;";
+  // min-width:0 overrides flexbox's default min-width:auto — without it, a
+  // flex item's floor is its content's min-content size, and for a <canvas>
+  // (a "replaced element") that's its INTRINSIC width (the `width` ATTRIBUTE,
+  // e.g. 768px — `width:100%` in CSS only affects the USED size, not this
+  // floor). That silently forced canvasWrap, and the node containing it, to
+  // never shrink below the canvas's intrinsic pixel width regardless of the
+  // node's actual size — surfacing as the node snapping/stretching wider on
+  // the first interaction that triggered a relayout (e.g. mousedown to orbit).
+  canvasWrap.style.cssText = "position:relative;width:100%;flex:1;min-height:0;min-width:0;line-height:0;background:#111;";
 
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
-  canvas.style.cssText = "display:block;width:100%;height:auto;background:#111;cursor:grab";
+  // object-fit:contain letterboxes/pillarboxes the canvas's intrinsic
+  // width/height (its render resolution, e.g. the aspect a ShotCam
+  // resolves to) within whatever box width:100%/height:100% gives it,
+  // instead of stretching/squashing the WebGL content to fill a mismatched
+  // container shape. `object-fit` applies to <canvas> like any other
+  // replaced element and needs no JS — same CSS-only, no-new-resize-hook
+  // constraint as the rest of this block (see the comment above canvasWrap).
+  // KNOWN LIMITATION, not fixed here: the diagram/HUD SVG overlays below
+  // are absolutely positioned to the full canvasWrap box (inset:0;100%),
+  // so they'll misalign with the now-letterboxed canvas content whenever
+  // its aspect doesn't match the container's — narrow (only visible with
+  // 📊 Diagram/ℹ Info toggled on AND a significant aspect mismatch, e.g.
+  // from AtlasDefineShotCam), left for a follow-up rather than risking a
+  // flexbox+aspect-ratio rewrite in a spot with 3 prior documented bugs.
+  canvas.style.cssText = "display:block;width:100%;height:100%;object-fit:contain;background:#111;cursor:grab";
 
   // Diagram overlay: layered VP / horizon / ground SVG, image-pixel-space
   // viewBox so it aligns with the source photo regardless of canvas size.
@@ -670,15 +983,31 @@ function buildNodeUI(node, containerEl) {
   controls.setTarget(new THREE.Vector3(0, 1, 0));
   controls.syncFromCamera();
 
+  // Fly controls for Camera Path authoring (disabled until that mode is toggled on).
+  const fly = createFlyControls(camera, canvas);
+
   // Background reference image (loaded after camera data is set)
   let bgMesh = null;
   // The exact recovered camera pose, stored so "Camera View" can snap back to it.
   let recoveredData = null;
 
   // Animation loop — assign to node._atlasRafId each frame so cancelAnimationFrame works.
-  // The orbit controller updates the camera on input events, so we only render here.
+  // The orbit/fly controllers update the camera on input events; pathPlayback
+  // (set by the Camera Path "Play" button, below) drives it during path preview.
+  let pathPlayback = null; // { startTime, durationSec, onDone }
+  let applyPathPoseAtT = null; // assigned once the Camera Path block below runs
+  let lastTickTime = performance.now();
   function animate() {
     node._atlasRafId = requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - lastTickTime) / 1000);
+    lastTickTime = now;
+    fly.tick(dt);
+    if (pathPlayback) {
+      const t = Math.min(1, (now - pathPlayback.startTime) / 1000 / pathPlayback.durationSec);
+      applyPathPoseAtT(t);
+      if (t >= 1) { const done = pathPlayback.onDone; pathPlayback = null; done?.(); }
+    }
     renderer.render(scene, camera);
   }
   node._atlasRafId = requestAnimationFrame(animate);
@@ -729,7 +1058,7 @@ function buildNodeUI(node, containerEl) {
 
   function isProjectable(c) {
     if (!c.isMesh || c === bgMesh) return false;
-    if (c.userData?.atlasDerived || c.userData?.atlasUserGeo) return true;
+    if (c.userData?.atlasDerived || c.userData?.atlasUserGeo || c.userData?.atlasPatch) return true;
     // OBJ-proxy children: any ancestor tagged atlasProxy.
     let p = c.parent;
     while (p) {
@@ -742,11 +1071,14 @@ function buildNodeUI(node, containerEl) {
   function applyProjection(on) {
     scene.traverse((c) => {
       if (!isProjectable(c)) return;
-      if (on && projMaterial) {
+      // Patch meshes carry their OWN projection material (their source's
+      // camera+image+facing mask); everything else uses the shared primary one.
+      const mat = c.userData._projMaterial || projMaterial;
+      if (on && mat) {
         // Stash the ORIGINAL material only once — re-applying with a rebuilt
         // projection material must not overwrite it with the stale one.
         if (!c.userData._prevMaterial) c.userData._prevMaterial = c.material;
-        c.material = projMaterial;
+        c.material = mat;
       } else if (c.userData._prevMaterial) {
         c.material = c.userData._prevMaterial;
         delete c.userData._prevMaterial;
@@ -764,6 +1096,587 @@ function buildNodeUI(node, containerEl) {
     applyProjection(projectionOn);
   };
   toolbar.appendChild(projBtn);
+
+  // 🎬 Backdrop toggle — every primitive-fitting derivation strategy
+  // (azimuth_walls, vertical_extrusion, ransac_planes, room_cuboid — never
+  // relief_mesh) always emits one extra flat "projection_backdrop" plane
+  // (proxy_geometry.py / depth_geometry.build_backdrop_primitive) sized to
+  // cover the whole frustum at the far-depth percentile, as a catch-all so
+  // 📽 Project never shows raw background behind the fitted primitives. When
+  // geometry_mode is "both" (relief_mesh + primitives) that backdrop plane
+  // is also projectable and sits behind/around the actual relief mesh,
+  // receiving its own copy of the projected texture — this hides it (a
+  // plain visibility toggle handles both the grey preview AND 📽 Project,
+  // since an invisible mesh never renders regardless of material) so
+  // Project only paints the generated mesh. Re-applied in setProxies()
+  // below since buildDerivedProxies rebuilds fresh mesh objects (default
+  // visible=true) on every execution.
+  let backdropVisible = true;
+  const backdropBtn = document.createElement("button");
+  backdropBtn.textContent = "🎬 Backdrop";
+  backdropBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  function setBackdropVisible(v) {
+    backdropVisible = v;
+    backdropBtn.style.background = v ? "#2a2a2a" : "#3a1a1a";
+    backdropBtn.style.color = v ? "#ddd" : "#faa";
+    scene.traverse((c) => { if (c.name === "projection_backdrop") c.visible = v; });
+  }
+  backdropBtn.onclick = () => setBackdropVisible(!backdropVisible);
+  toolbar.appendChild(backdropBtn);
+
+  // ---------------------------------------------------------------------------
+  // 🎥 Camera Path — author a keyframed camera move (fly nav, unclamped) to
+  // test how 📽 Project holds up while the camera moves, then bake it to an
+  // IMAGE batch (path_frames) for a core Video Combine node, or hand the raw
+  // keyframes (camera_path) to AtlasExportCameraPathUSD for a DCC-facing
+  // animated camera. See camera_path.py's sample_camera_path — the functions
+  // below (catmullRom3JS/applyEasingJS/sampleKeyframePoseAtFrame) MUST stay in
+  // sync with it; they exist here (rather than round-tripping to Python) so
+  // Play can scrub live at 60fps.
+  // ---------------------------------------------------------------------------
+  let pathMode = false;
+  let pathKeyframes = []; // [{frame_index, position:{x,y,z}, target:{x,y,z}, up:{x,y,z}, easing}]
+  let pathFrameCount = 48;
+  let pathFps = 24;
+  const pathGroup = new THREE.Group();
+  pathGroup.userData.atlasHelper = true; // excluded from render passes like the grid
+  pathGroup.visible = false;
+  scene.add(pathGroup);
+
+  function catmullRom3JS(p0, p1, p2, p3, t) {
+    const t2 = t * t, t3 = t2 * t;
+    const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+    return { x: f(p0.x, p1.x, p2.x, p3.x), y: f(p0.y, p1.y, p2.y, p3.y), z: f(p0.z, p1.z, p2.z, p3.z) };
+  }
+  function applyEasingJS(t, easing) {
+    if (easing === "ease_in") return t * t;
+    if (easing === "ease_out") return 1 - (1 - t) * (1 - t);
+    if (easing === "ease_in_out") return 3 * t * t - 2 * t * t * t;
+    return t;
+  }
+  function sampleKeyframePoseAtFrame(frame) {
+    const kfs = pathKeyframes;
+    if (kfs.length === 0) return null;
+    if (kfs.length === 1) return { position: kfs[0].position, target: kfs[0].target };
+    const positions = [kfs[0].position, ...kfs.map((k) => k.position), kfs[kfs.length - 1].position];
+    const targets = [kfs[0].target, ...kfs.map((k) => k.target), kfs[kfs.length - 1].target];
+    const frameIdx = kfs.map((k) => k.frame_index);
+    const easings = kfs.map((k) => k.easing);
+    let seg, localT;
+    if (frame <= frameIdx[0]) { seg = 0; localT = 0; }
+    else if (frame >= frameIdx[frameIdx.length - 1]) { seg = frameIdx.length - 2; localT = 1; }
+    else {
+      seg = 0;
+      for (let i = 0; i < frameIdx.length - 1; i++) {
+        if (frameIdx[i] <= frame && frame <= frameIdx[i + 1]) { seg = i; break; }
+      }
+      const span = frameIdx[seg + 1] - frameIdx[seg];
+      localT = span ? (frame - frameIdx[seg]) / span : 0;
+    }
+    const easedT = applyEasingJS(localT, easings[seg]);
+    return {
+      position: catmullRom3JS(positions[seg], positions[seg + 1], positions[seg + 2], positions[seg + 3], easedT),
+      target: catmullRom3JS(targets[seg], targets[seg + 1], targets[seg + 2], targets[seg + 3], easedT),
+    };
+  }
+  // Exposed to the shared animate() loop above via the outer `applyPathPoseAtT` name.
+  applyPathPoseAtT = function (t) {
+    const frame = t * Math.max(0, pathFrameCount - 1);
+    const pose = sampleKeyframePoseAtFrame(frame);
+    if (!pose) return;
+    camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
+  };
+
+  function rebuildPathVisualization() {
+    pathGroup.children.forEach((c) => { c.geometry?.dispose?.(); c.material?.dispose?.(); });
+    pathGroup.clear();
+    if (pathKeyframes.length === 0) return;
+    const markerGeo = new THREE.SphereGeometry(0.08, 12, 8);
+    pathKeyframes.forEach((kf) => {
+      const marker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0xffaa33 }));
+      marker.position.set(kf.position.x, kf.position.y, kf.position.z);
+      pathGroup.add(marker);
+    });
+    if (pathKeyframes.length >= 2) {
+      // Built-in CatmullRomCurve3 for the visual line only — a close-enough
+      // preview of the route; the eased/phantom-endpoint math above (which
+      // mirrors camera_path.py exactly) is what actually drives Play/Bake.
+      const curve = new THREE.CatmullRomCurve3(
+        pathKeyframes.map((k) => new THREE.Vector3(k.position.x, k.position.y, k.position.z))
+      );
+      const pts = curve.getPoints(Math.max(2, pathKeyframes.length * 16));
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({ color: 0xffaa33 })
+      );
+      pathGroup.add(line);
+    }
+  }
+
+  // Vec3-object <-> array boundary conversion: pathKeyframes keeps {x,y,z}
+  // objects internally (convenient for camera.position.set(...) etc.), but
+  // schema.py's AtlasCameraKeyframe.from_dict iterates position/target/up as
+  // plain [x,y,z] arrays (matching every other Point3D in this codebase) —
+  // must convert both ways at the JSON boundary or Python's float(v) blows up
+  // trying to convert the dict keys "x"/"y"/"z" themselves.
+  function kfToJSON(kf) {
+    const v3 = (v) => [v.x, v.y, v.z];
+    return { frame_index: kf.frame_index, position: v3(kf.position), target: v3(kf.target), up: v3(kf.up), easing: kf.easing };
+  }
+  function kfFromJSON(data) {
+    const obj = (a) => ({ x: a[0], y: a[1], z: a[2] });
+    return { frame_index: data.frame_index, position: obj(data.position), target: obj(data.target), up: obj(data.up || [0, 1, 0]), easing: data.easing || "linear" };
+  }
+
+  function persistPathToClientData() {
+    const widget = node.widgets?.find((w) => w.name === "client_data");
+    if (!widget) return;
+    let existing = {};
+    try { existing = widget.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
+    existing.camera_path = { keyframes: pathKeyframes.map(kfToJSON), fps: pathFps, frame_count: pathFrameCount };
+    widget.value = JSON.stringify(existing);
+    widget.callback?.(widget.value);
+  }
+
+  function restorePathFromClientData() {
+    const widget = node.widgets?.find((w) => w.name === "client_data");
+    if (!widget?.value) return;
+    try {
+      const existing = JSON.parse(widget.value);
+      const cp = existing.camera_path;
+      if (cp?.keyframes) {
+        pathKeyframes = cp.keyframes.map(kfFromJSON);
+        pathFps = cp.fps || 24;
+        pathFrameCount = cp.frame_count || 48;
+      }
+    } catch (_) { /* no persisted path yet */ }
+  }
+  restorePathFromClientData();
+
+  const pathBtn = document.createElement("button");
+  pathBtn.textContent = "🎥 Camera Path";
+  pathBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  pathBtn.onclick = () => {
+    pathMode = !pathMode;
+    pathBtn.style.background = pathMode ? "#3a2a1a" : "#2a2a2a";
+    pathGroup.visible = pathMode;
+    pathPanel.style.display = pathMode ? "flex" : "none";
+    controls.setEnabled(!pathMode);
+    fly.setEnabled(pathMode);
+    if (!pathMode) pathPlayback = null;
+  };
+  toolbar.appendChild(pathBtn);
+
+  // Camera Path panel — keyframe list + timeline controls. Its own row below
+  // the toolbar (see the "Assemble" section), hidden until 🎥 Camera Path is on.
+  const pathPanel = document.createElement("div");
+  pathPanel.style.cssText = "display:none;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 6px;background:#181818;border-top:1px solid #333;font-size:11px;color:#ccc";
+
+  const kfListEl = document.createElement("div");
+  kfListEl.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;";
+
+  function renderKeyframeList() {
+    kfListEl.replaceChildren();
+    pathKeyframes
+      .slice()
+      .sort((a, b) => a.frame_index - b.frame_index)
+      .forEach((kf) => {
+        const row = document.createElement("span");
+        row.style.cssText = "display:inline-flex;align-items:center;gap:3px;background:#242424;border:1px solid #3a3a3a;border-radius:3px;padding:1px 4px;";
+        const label = document.createElement("span");
+        label.textContent = `#${kf.frame_index}`;
+        const easingSel = document.createElement("select");
+        easingSel.style.cssText = "font-size:10px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
+        ["linear", "ease_in", "ease_out", "ease_in_out"].forEach((opt) => {
+          const o = document.createElement("option");
+          o.value = opt; o.textContent = opt;
+          if (opt === kf.easing) o.selected = true;
+          easingSel.appendChild(o);
+        });
+        easingSel.onchange = () => { kf.easing = easingSel.value; persistPathToClientData(); };
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "✕";
+        delBtn.style.cssText = "font-size:10px;cursor:pointer;background:none;color:#f88;border:none;";
+        delBtn.onclick = () => {
+          pathKeyframes = pathKeyframes.filter((k) => k !== kf);
+          renderKeyframeList();
+          rebuildPathVisualization();
+          persistPathToClientData();
+        };
+        row.append(label, easingSel, delBtn);
+        kfListEl.appendChild(row);
+      });
+  }
+  renderKeyframeList();
+  rebuildPathVisualization();
+
+  // Current camera pose as a {position, target} pair (target = a point straight
+  // ahead at the solved scene depth, or a 10m fallback) — shared by "+ Keyframe"
+  // and the presets below so both capture the camera identically.
+  function captureCurrentPose() {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const captureDist = recoveredData?.camera_meta?.scene_depth_m || 10;
+    const target = camera.position.clone().addScaledVector(forward, captureDist);
+    return {
+      position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+      target: { x: target.x, y: target.y, z: target.z },
+    };
+  }
+
+  const addKfBtn = document.createElement("button");
+  addKfBtn.textContent = "+ Keyframe";
+  addKfBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a3a2a;color:#cfc;border:1px solid #464;border-radius:3px";
+  addKfBtn.onclick = () => {
+    const pose = captureCurrentPose();
+    const nextFrame = pathKeyframes.length
+      ? Math.max(...pathKeyframes.map((k) => k.frame_index)) + Math.max(1, Math.round(pathFrameCount / 4))
+      : 0;
+    pathKeyframes.push({
+      frame_index: Math.min(nextFrame, Math.max(0, pathFrameCount - 1)),
+      position: pose.position,
+      target: pose.target,
+      up: { x: 0, y: 1, z: 0 },
+      easing: "linear",
+    });
+    renderKeyframeList();
+    rebuildPathVisualization();
+    persistPathToClientData();
+  };
+
+  // ---------------------------------------------------------------------------
+  // Presets — quick-start 2-keyframe moves (start = current pose, end = the
+  // same pose transformed) instead of hand-placing keyframes with fly nav
+  // every time. Pan rotates the TARGET around the (fixed) camera position —
+  // the camera swivels in place, like a real pan. Orbit moves the POSITION
+  // around the (fixed) target — the camera arcs around the subject. Dolly
+  // moves the POSITION toward/away from the (fixed) target along the view
+  // axis. All three are plain vector math (no Euler/yaw sign ambiguity):
+  // "right"/"left" and "in"/"out" are derived directly from the camera's own
+  // forward/right vectors at the moment the preset is applied, so they're
+  // unambiguous regardless of world orientation.
+  // ---------------------------------------------------------------------------
+  function computePresetEndPose(basePose, presetKey, angleDeg, distanceFrac) {
+    const E = basePose.position, T = basePose.target;
+    const fwd = { x: T.x - E.x, y: T.y - E.y, z: T.z - E.z };
+    const dist = Math.hypot(fwd.x, fwd.y, fwd.z) || 1;
+    const fwdN = { x: fwd.x / dist, y: fwd.y / dist, z: fwd.z / dist };
+    // right = normalize(cross(forward, world-up)) — matches THREE's camera-right
+    // convention; cross(v, (0,1,0)) simplifies to (-v.z, 0, v.x).
+    const right = { x: -fwdN.z, y: 0, z: fwdN.x };
+    const rightLen = Math.hypot(right.x, right.y, right.z) || 1;
+    const rightN = { x: right.x / rightLen, y: right.y / rightLen, z: right.z / rightLen };
+    const a = THREE.MathUtils.degToRad(angleDeg) * (presetKey.endsWith("_left") ? -1 : 1);
+
+    if (presetKey === "pan_left" || presetKey === "pan_right") {
+      const newFwd = {
+        x: fwdN.x * Math.cos(a) + rightN.x * Math.sin(a),
+        y: fwdN.y * Math.cos(a) + rightN.y * Math.sin(a),
+        z: fwdN.z * Math.cos(a) + rightN.z * Math.sin(a),
+      };
+      return { position: { ...E }, target: { x: E.x + newFwd.x * dist, y: E.y + newFwd.y * dist, z: E.z + newFwd.z * dist } };
+    }
+    if (presetKey === "orbit_left" || presetKey === "orbit_right") {
+      const off = { x: E.x - T.x, y: E.y - T.y, z: E.z - T.z };
+      const cos = Math.cos(a), sin = Math.sin(a);
+      const rotated = { x: off.x * cos + off.z * sin, y: off.y, z: -off.x * sin + off.z * cos };
+      return { position: { x: T.x + rotated.x, y: T.y + rotated.y, z: T.z + rotated.z }, target: { ...T } };
+    }
+    // dolly_in / dolly_out — move along the view axis toward/away from the fixed target.
+    const scale = presetKey === "dolly_in" ? Math.max(0.05, 1 - distanceFrac) : 1 + distanceFrac;
+    const newDist = dist * scale;
+    return {
+      position: { x: T.x - fwdN.x * newDist, y: T.y - fwdN.y * newDist, z: T.z - fwdN.z * newDist },
+      target: { ...T },
+    };
+  }
+
+  // Directional presets (Pan/Orbit) are framed as "arrive at my current
+  // vantage from the other side" rather than "leave from here" — Pan Left
+  // starts with the geo/subject swung to the right of frame and sweeps to
+  // center (camera position never moves for a true pan, only the view
+  // direction); Orbit Left starts with the camera itself physically
+  // positioned to the right of the pivot and arcs to center (position DOES
+  // move for orbit). Both are built the same way: compute the START pose by
+  // running the OPPOSITE preset (e.g. pan_right for a pan_left request) on
+  // the current pose, then set the END to the current pose unchanged — so
+  // applying a preset always finishes on whatever you're currently looking
+  // at, arriving from the named side. Dolly has no left/right, so it keeps
+  // the original current-pose-is-the-start shape.
+  const PRESET_OPPOSITE = {
+    pan_left: "pan_right", pan_right: "pan_left",
+    orbit_left: "orbit_right", orbit_right: "orbit_left",
+  };
+
+  const PRESET_OPTIONS = [
+    { key: "", label: "— Preset —" },
+    { key: "pan_left", label: "Pan Left" },
+    { key: "pan_right", label: "Pan Right" },
+    { key: "orbit_left", label: "Orbit Left" },
+    { key: "orbit_right", label: "Orbit Right" },
+    { key: "dolly_in", label: "Dolly In" },
+    { key: "dolly_out", label: "Dolly Out" },
+  ];
+  const presetSelect = document.createElement("select");
+  presetSelect.style.cssText = "font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
+  PRESET_OPTIONS.forEach(({ key, label }) => {
+    const o = document.createElement("option");
+    o.value = key; o.textContent = label;
+    presetSelect.appendChild(o);
+  });
+  const presetAngleInput = document.createElement("input");
+  presetAngleInput.type = "number"; presetAngleInput.min = "1"; presetAngleInput.max = "180"; presetAngleInput.value = "30";
+  presetAngleInput.title = "angle (degrees) — used by Pan/Orbit presets";
+  presetAngleInput.style.cssText = "width:38px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
+  const presetAmountInput = document.createElement("input");
+  presetAmountInput.type = "number"; presetAmountInput.min = "0.05"; presetAmountInput.max = "0.9"; presetAmountInput.step = "0.05"; presetAmountInput.value = "0.4";
+  presetAmountInput.title = "distance fraction — used by Dolly In/Out presets";
+  presetAmountInput.style.cssText = "width:42px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
+  const applyPresetBtn = document.createElement("button");
+  applyPresetBtn.textContent = "Apply Preset";
+  applyPresetBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
+  applyPresetBtn.onclick = () => {
+    const presetKey = presetSelect.value;
+    if (!presetKey) return;
+    const basePose = captureCurrentPose();
+    const angleDeg = parseFloat(presetAngleInput.value) || 30;
+    const amountFrac = parseFloat(presetAmountInput.value) || 0.4;
+
+    let startPose, endPose;
+    const opposite = PRESET_OPPOSITE[presetKey];
+    if (opposite) {
+      startPose = computePresetEndPose(basePose, opposite, angleDeg, amountFrac);
+      endPose = basePose;
+    } else {
+      startPose = basePose;
+      endPose = computePresetEndPose(basePose, presetKey, angleDeg, amountFrac);
+    }
+
+    const endFrame = Math.max(1, pathFrameCount - 1);
+    // Replaces any existing keyframes — presets are a fresh quick-start, not
+    // an addition to hand-placed ones (which would rarely combine sensibly).
+    pathKeyframes = [
+      { frame_index: 0, position: startPose.position, target: startPose.target, up: { x: 0, y: 1, z: 0 }, easing: "ease_in_out" },
+      { frame_index: endFrame, position: endPose.position, target: endPose.target, up: { x: 0, y: 1, z: 0 }, easing: "linear" },
+    ];
+    renderKeyframeList();
+    rebuildPathVisualization();
+    persistPathToClientData();
+  };
+
+  const frameCountInput = document.createElement("input");
+  frameCountInput.type = "number"; frameCountInput.min = "1"; frameCountInput.max = "2000";
+  frameCountInput.value = String(pathFrameCount);
+  frameCountInput.style.cssText = "width:48px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
+  frameCountInput.title = "frame_count";
+  frameCountInput.onchange = () => { pathFrameCount = Math.max(1, parseInt(frameCountInput.value, 10) || 48); persistPathToClientData(); };
+
+  const fpsInput = document.createElement("input");
+  fpsInput.type = "number"; fpsInput.min = "1"; fpsInput.max = "240";
+  fpsInput.value = String(pathFps);
+  fpsInput.style.cssText = "width:40px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
+  fpsInput.title = "fps";
+  fpsInput.onchange = () => { pathFps = Math.max(1, parseFloat(fpsInput.value) || 24); persistPathToClientData(); };
+
+  const playBtn = document.createElement("button");
+  playBtn.textContent = "▶ Play";
+  playBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
+  playBtn.onclick = () => {
+    if (pathKeyframes.length === 0) return;
+    pathPlayback = {
+      startTime: performance.now(),
+      durationSec: Math.max(0.2, pathFrameCount / pathFps),
+      onDone: () => { if (recoveredData) applyRecoveredView(recoveredData); },
+    };
+  };
+
+  const bakeBtn = document.createElement("button");
+  bakeBtn.textContent = "⏺ Bake Path";
+  bakeBtn.style.cssText = "padding:2px 8px;font-size:11px;cursor:pointer;background:#3a1a2a;color:#fac;border:1px solid #645;border-radius:3px";
+  bakeBtn.onclick = async () => {
+    if (pathKeyframes.length === 0) return;
+    bakeBtn.disabled = true;
+    bakeBtn.textContent = "Baking...";
+    const savedPos = camera.position.clone();
+    const savedQuat = camera.quaternion.clone();
+    const wasPlaying = !!pathPlayback;
+    pathPlayback = null;
+    pathGroup.visible = false; // exclude keyframe markers/line from baked frames
+    try {
+      const frames = [];
+      for (let frame = 0; frame < pathFrameCount; frame++) {
+        const pose = sampleKeyframePoseAtFrame(frame);
+        if (!pose) break;
+        camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
+        renderer.render(scene, camera);
+        frames.push(canvas.toDataURL("image/png").split(",")[1]);
+      }
+      const widget = node.widgets?.find((w) => w.name === "client_data");
+      let existing = {};
+      try { existing = widget?.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
+      existing.path_frames = frames;
+      existing.camera_path = { keyframes: pathKeyframes.map(kfToJSON), fps: pathFps, frame_count: pathFrameCount };
+      if (widget) {
+        widget.value = JSON.stringify(existing);
+        widget.callback?.(widget.value);
+      }
+      app.queuePrompt(0, 1);
+    } finally {
+      camera.position.copy(savedPos);
+      camera.quaternion.copy(savedQuat);
+      pathGroup.visible = pathMode;
+      bakeBtn.disabled = false;
+      bakeBtn.textContent = "⏺ Bake Path";
+      if (wasPlaying) playBtn.onclick();
+    }
+  };
+
+  const fcWrap = document.createElement("span");
+  fcWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;";
+  fcWrap.append(document.createTextNode("frames"), frameCountInput);
+  const fpsWrap = document.createElement("span");
+  fpsWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;";
+  fpsWrap.append(document.createTextNode("fps"), fpsInput);
+
+  const presetWrap = document.createElement("span");
+  presetWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;padding-left:6px;border-left:1px solid #333;";
+  presetWrap.append(presetSelect, presetAngleInput, presetAmountInput, applyPresetBtn);
+
+  // ---------------------------------------------------------------------------
+  // Import Camera FBX (Phase B) — a DCC-authored camera move (Blender/Maya
+  // export) sampled client-side via FBXLoader + AnimationMixer, no Python FBX
+  // parsing (same "Three.js is frontend-only" rule OBJLoader already follows).
+  //
+  // An FBX export has no ground-truth relationship to Atlas's world frame —
+  // same problem AtlasAddPatchView solves for a single static offset via a
+  // constructed (not solved) patch camera. This applies the same principle to
+  // a full animation curve: treat it as a RELATIVE move from wherever the
+  // viewport camera currently is, aligning the FBX camera's own frame-0
+  // forward vector to the current base forward (captureCurrentPose()) so
+  // "dolly 2m and pan 15°" transfers even though the FBX's absolute axes
+  // don't correspond to Atlas's scene at all. Verified numerically for pure
+  // translation and pure level-pan (both reproduce exactly — see git history).
+  // Known limitation: alignQuat is a single minimal rotation (its axis is
+  // whatever cross(fbxForward0, baseForward) happens to be), which only
+  // commutes with the FBX clip's OWN rotation when both cameras are
+  // reasonably level (near-zero pitch/roll, the same assumption
+  // horizon_row_from_extrinsics already makes elsewhere) — a level FBX pan
+  // transfers its exact angle regardless of the two cameras' absolute yaw
+  // offset, but a steeply pitched FBX camera aligned to a very differently-
+  // pitched base view can pick up some rotational "swim" beyond a pure
+  // yaw/pitch transfer. Acceptable for a first pass; recalibrate by eye
+  // (same principle as AtlasAddPatchView's flip_azimuth) if it looks off.
+  // ---------------------------------------------------------------------------
+  const importFbxInput = document.createElement("input");
+  importFbxInput.type = "file";
+  importFbxInput.accept = ".fbx";
+  importFbxInput.style.display = "none";
+
+  const importStatusEl = document.createElement("span");
+  importStatusEl.style.cssText = "font-size:10px;color:#9ab;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+
+  const importSamplesInput = document.createElement("input");
+  importSamplesInput.type = "number"; importSamplesInput.min = "2"; importSamplesInput.max = "300"; importSamplesInput.value = "30";
+  importSamplesInput.title = "samples to take across the FBX clip's duration";
+  importSamplesInput.style.cssText = "width:42px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
+
+  const importScaleInput = document.createElement("input");
+  importScaleInput.type = "number"; importScaleInput.min = "0.001"; importScaleInput.step = "0.01"; importScaleInput.value = "1.0";
+  importScaleInput.title = "position scale — FBX units (often cm) vs. the solved metric scene rarely match; adjust by eye if the imported move looks too big/small";
+  importScaleInput.style.cssText = "width:46px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
+
+  async function importCameraFBX(file) {
+    if (!FBXLoader) { importStatusEl.textContent = "FBXLoader unavailable"; return; }
+    importStatusEl.textContent = "Parsing...";
+    try {
+      const buffer = await file.arrayBuffer();
+      const group = new FBXLoader().parse(buffer, "");
+      let camObj = null;
+      group.traverse((o) => { if (o.isCamera && !camObj) camObj = o; });
+      if (!camObj) { importStatusEl.textContent = "No camera found in FBX"; return; }
+      const clip = group.animations?.[0];
+      if (!clip) { importStatusEl.textContent = "No animation clip on the FBX camera"; return; }
+
+      const sampleCount = Math.max(2, parseInt(importSamplesInput.value, 10) || 30);
+      const scale = parseFloat(importScaleInput.value) || 1.0;
+      const mixer = new THREE.AnimationMixer(group);
+      mixer.clipAction(clip, camObj).play();
+
+      const basePose = captureCurrentPose();
+      const baseForward = new THREE.Vector3(
+        basePose.target.x - basePose.position.x,
+        basePose.target.y - basePose.position.y,
+        basePose.target.z - basePose.position.z
+      );
+      const baseCaptureDist = baseForward.length() || 10;
+      baseForward.normalize();
+
+      const samples = [];
+      const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), scl = new THREE.Vector3();
+      for (let s = 0; s < sampleCount; s++) {
+        mixer.setTime((clip.duration * s) / (sampleCount - 1));
+        group.updateMatrixWorld(true);
+        camObj.matrixWorld.decompose(pos, quat, scl);
+        samples.push({
+          position: pos.clone(),
+          forward: new THREE.Vector3(0, 0, -1).applyQuaternion(quat),
+        });
+      }
+
+      const alignQuat = new THREE.Quaternion().setFromUnitVectors(samples[0].forward, baseForward);
+      const pos0 = samples[0].position;
+      const basePos = new THREE.Vector3(basePose.position.x, basePose.position.y, basePose.position.z);
+
+      pathKeyframes = samples.map((sample, i) => {
+        const alignedForward = sample.forward.clone().applyQuaternion(alignQuat);
+        const posDelta = sample.position.clone().sub(pos0).applyQuaternion(alignQuat).multiplyScalar(scale);
+        const newPos = basePos.clone().add(posDelta);
+        const newTarget = newPos.clone().addScaledVector(alignedForward, baseCaptureDist);
+        return {
+          frame_index: i,
+          position: { x: newPos.x, y: newPos.y, z: newPos.z },
+          target: { x: newTarget.x, y: newTarget.y, z: newTarget.z },
+          up: { x: 0, y: 1, z: 0 },
+          easing: "linear",
+        };
+      });
+
+      pathFrameCount = sampleCount;
+      frameCountInput.value = String(pathFrameCount);
+      if (clip.duration > 0) {
+        pathFps = Math.max(1, Math.round(sampleCount / clip.duration));
+        fpsInput.value = String(pathFps);
+      }
+      renderKeyframeList();
+      rebuildPathVisualization();
+      persistPathToClientData();
+      importStatusEl.textContent = `Imported ${sampleCount} kf from "${clip.name || "FBX clip"}"`;
+    } catch (e) {
+      console.error("[AtlasBlockout] FBX camera import failed:", e);
+      importStatusEl.textContent = "Import failed — see console";
+    }
+  }
+  importFbxInput.onchange = () => {
+    const file = importFbxInput.files?.[0];
+    if (file) importCameraFBX(file);
+    importFbxInput.value = "";
+  };
+
+  const importBtn = document.createElement("button");
+  importBtn.textContent = "📥 Import Camera FBX";
+  importBtn.disabled = !FBXLoader;
+  importBtn.title = FBXLoader ? "Import a camera animation from an FBX file (Blender/Maya export)" : "FBXLoader failed to load in this browser";
+  importBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px" + (importBtn.disabled ? ";opacity:0.5;cursor:not-allowed" : "");
+  importBtn.onclick = () => importFbxInput.click();
+
+  const importWrap = document.createElement("span");
+  importWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;padding-left:6px;border-left:1px solid #333;";
+  importWrap.append(importBtn, importFbxInput, importSamplesInput, importScaleInput, importStatusEl);
+
+  pathPanel.append(addKfBtn, presetWrap, importWrap, kfListEl, fcWrap, fpsWrap, playBtn, bakeBtn);
 
   // 📊 Diagram toggle — layered VP / horizon / ground SVG overlay, each layer
   // independently dimmable. Vanishing points are populated only by the
@@ -859,10 +1772,14 @@ function buildNodeUI(node, containerEl) {
     try {
       const passes = await renderAllPasses(renderer, scene, camera, W, H, [bgMesh]);
       if (!passes) return;
-      // Write to client_data widget
+      // Merge into client_data rather than overwrite — preserves a previously
+      // baked camera_path/path_frames (same widget, see ⏺ Bake Path) instead
+      // of wiping it out.
       const widget = node.widgets?.find((w) => w.name === "client_data");
       if (widget) {
-        widget.value = JSON.stringify(passes);
+        let existing = {};
+        try { existing = widget.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
+        widget.value = JSON.stringify({ ...existing, ...passes });
         widget.callback?.(widget.value);
       }
       // Re-queue the prompt so Python receives the frames
@@ -874,8 +1791,23 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(renderBtn);
 
-  // Assemble
-  containerEl.appendChild(toolbar);
+  // Assemble. toolbar/pathPanel go wherever mountControls() decides (a linked
+  // AtlasViewportControls node's container, or here as a fallback) — called
+  // once below and again on every connection change, so this node stays
+  // perspective-only whenever a Controls node is attached. canvasWrap always
+  // stays local: mountControls() runs first so the fallback ordering
+  // (toolbar, pathPanel, canvas) still matches the pre-split layout when no
+  // Controls node is connected.
+  let _atlasMountTarget = null;
+  function mountControls() {
+    const controlsNode = getLinkedControlsNode(node);
+    const target = controlsNode?._atlasControlsContainer || containerEl;
+    if (target === _atlasMountTarget) return; // already mounted here — avoid redundant DOM churn
+    _atlasMountTarget = target;
+    target.appendChild(toolbar);
+    target.appendChild(pathPanel);
+  }
+  mountControls();
   containerEl.appendChild(canvasWrap);
 
   // Store refs for cleanup and camera application
@@ -883,6 +1815,7 @@ function buildNodeUI(node, containerEl) {
   node._atlasScene = scene;
   node._atlasCamera = camera;
   node._atlasControls = controls;
+  node._atlasFly = fly;
   node._atlasBgMesh = null;
   node._atlasW = W;
   node._atlasH = H;
@@ -915,6 +1848,31 @@ function buildNodeUI(node, containerEl) {
     controls.setTarget(groundPointInView(camera, pivotMax)); // pivot on the looked-at ground point
     controls.syncFromCamera();                     // init orbit state from recovered pose
     recoveredData = data;
+  }
+
+  // Bounding-box centroid of the DERIVED geometry (relief mesh and/or fitted
+  // primitives) — excludes "projection_backdrop" (the always-emitted flat
+  // catch-all far plane, same one 🎬 Backdrop toggles; see its comment
+  // above), since including that would drag the centroid out toward the
+  // frustum's far edge instead of the actual reconstructed subject. Called
+  // once buildDerivedProxies has real geometry to measure (setProxies,
+  // below) to REPLACE applyRecoveredView's ground-point-in-view fallback —
+  // that fallback is a generic heuristic (where the camera's forward ray
+  // crosses Y=0) that only coincidentally matches the geometry's actual
+  // centre; this is exact. Returns null when there's no derived geometry yet
+  // (e.g. the workflow never ran AtlasDeriveProjectionGeometry), in which
+  // case the ground-point fallback is left in place.
+  function computeGeometryPivot() {
+    const group = scene.getObjectByName("atlas_derived_proxies");
+    if (!group?.children?.length) return null;
+    const box = new THREE.Box3();
+    let any = false;
+    group.children.forEach((mesh) => {
+      if (mesh.name === "projection_backdrop") return;
+      box.expandByObject(mesh);
+      any = true;
+    });
+    return any && !box.isEmpty() ? box.getCenter(new THREE.Vector3()) : null;
   }
 
   // Layered VP / horizon / ground diagnostic diagram. viewBox uses the
@@ -1013,6 +1971,7 @@ function buildNodeUI(node, containerEl) {
 
   // Return setter so caller can apply camera and background image
   return {
+    mountControls,
     applyCamera(data) {
       applyRecoveredView(data);
     },
@@ -1024,13 +1983,28 @@ function buildNodeUI(node, containerEl) {
       // Build the Python-derived projection proxies and (re)create the shared
       // projection material from the recovered camera + source photo.
       buildDerivedProxies(scene, data);
+      setBackdropVisible(backdropVisible); // reapply — fresh meshes default to visible
+      // Recentre the orbit pivot on the actual generated geometry now that it
+      // exists (replaces applyRecoveredView's ground-point fallback). Only
+      // re-syncs the orbit SPHERE PARAMETERS from wherever the camera already
+      // is — never moves the camera itself, so this can't disrupt an
+      // in-progress inspection even on a re-execution (e.g. ⏺ Bake Path).
+      const geometryPivot = computeGeometryPivot();
+      if (geometryPivot) {
+        controls.setTarget(geometryPivot);
+        controls.syncFromCamera();
+      }
       loadProjectionTexture(data, (tex) => {
         const old = projMaterial;
         projMaterial = makeProjectionMaterial(data, tex);
         if (projectionOn) applyProjection(true);
         if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
       });
-      if (projectionOn) applyProjection(true); // grey until texture arrives
+      // Multi-angle patch sources: each builds its own geometry + a projection
+      // material (bound to its camera+image, facing-masked) that layers over
+      // the primary to fill areas the primary camera couldn't see.
+      buildPatchSources(scene, data, () => { if (projectionOn) applyProjection(true); });
+      if (projectionOn) applyProjection(true); // grey until textures arrive
     },
     setBackground(imgBase64) {
       if (!imgBase64 || !THREE) return;
@@ -1062,6 +2036,37 @@ function buildNodeUI(node, containerEl) {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-node linking: AtlasBlockoutViewport <-> AtlasViewportControls.
+//
+// The `controls` input/output carries no real data — its only job is to let
+// a graph LINK exist between the two nodes so each side's frontend JS can
+// find the other's live node instance (via node.graph, not app.graph, so
+// this keeps working inside subgraphs) and either reparent DOM into it
+// (viewport -> controls) or trigger a reparent on it (controls -> viewport).
+// This is a normal graph connection for wiring purposes only; nothing about
+// it depends on ComfyUI ever actually executing/transmitting a value.
+// ---------------------------------------------------------------------------
+function getLinkedControlsNode(viewportNode) {
+  const idx = viewportNode.findInputSlot?.("controls") ?? -1;
+  const linkId = idx >= 0 ? viewportNode.inputs?.[idx]?.link : null;
+  if (linkId == null) return null;
+  const graph = viewportNode.graph;
+  const link = graph?.links?.[linkId];
+  return link ? graph.getNodeById(link.origin_id) : null;
+}
+
+function getLinkedViewportNodes(controlsNode) {
+  const linkIds = controlsNode.outputs?.[0]?.links;
+  if (!linkIds?.length) return [];
+  const graph = controlsNode.graph;
+  return linkIds
+    .map((id) => graph?.links?.[id])
+    .filter(Boolean)
+    .map((link) => graph.getNodeById(link.target_id))
+    .filter(Boolean);
+}
+
+// ---------------------------------------------------------------------------
 // ComfyUI extension registration
 // ---------------------------------------------------------------------------
 app.registerExtension({
@@ -1073,6 +2078,30 @@ app.registerExtension({
   },
 
   async nodeCreated(node) {
+    if (node.comfyClass === "AtlasViewportControls") {
+      // Wait one tick for ComfyUI to finish building the node DOM.
+      await new Promise((r) => setTimeout(r, 0));
+      const container = document.createElement("div");
+      container.style.cssText = "width:100%;display:flex;flex-direction:column;gap:0;";
+      node.addDOMWidget("atlas_viewport_controls", "div", container, {
+        serialize: false,
+        getValue() { return null; },
+        setValue() {},
+      });
+      node._atlasControlsContainer = container;
+      // Nudge any already-created, already-linked viewport(s) to reparent
+      // into us now that our container exists — covers the case where the
+      // viewport node's own nodeCreated ran first (creation order isn't
+      // guaranteed when a saved workflow loads both nodes at once).
+      getLinkedViewportNodes(node).forEach((vp) => vp._atlasRemount?.());
+      const prevOnConnectionsChange = node.onConnectionsChange;
+      node.onConnectionsChange = function (...args) {
+        prevOnConnectionsChange?.apply(this, args);
+        getLinkedViewportNodes(node).forEach((vp) => vp._atlasRemount?.());
+      };
+      return;
+    }
+
     if (node.comfyClass !== "AtlasBlockoutViewport") return;
     await loadThree();
     if (!THREE) return;
@@ -1085,17 +2114,38 @@ app.registerExtension({
     const resWidget = node.widgets?.find((w) => w.name === "resolution");
     node._atlasResolution = resWidget?.value ?? 768;
 
-    // Create a DOM container widget
+    // Create a DOM container widget. height:100% (not the default natural-
+    // content-height sizing) is what actually lets the canvas inside grow
+    // when the node is resized — see canvasWrap's comment above for why.
+    // min-width:0 for the same reason as canvasWrap's — defense in depth in
+    // case ComfyUI's own widget-hosting layout is flex too.
     const container = document.createElement("div");
-    container.style.cssText = "width:100%;display:flex;flex-direction:column;gap:0;";
+    container.style.cssText = "width:100%;height:100%;min-width:0;display:flex;flex-direction:column;gap:0;";
 
     const domWidget = node.addDOMWidget("atlas_viewport", "div", container, {
       serialize: false,
       getValue() { return null; },
       setValue() {},
+      // Sanctioned sizing hooks (DOMWidgetOptions.getMinHeight/getMaxHeight,
+      // scripts/domWidget.ts) instead of leaving LiteGraph's own layout math
+      // to fall back to its hardcoded 50px default — gives it an accurate
+      // floor without a ceiling, so dragging larger is never fought.
+      getMinHeight() { return 240; },
     });
 
     const ui = buildNodeUI(node, container);
+
+    // Reparent the toolbar/panel into a connected AtlasViewportControls node
+    // (leaving this node perspective-only), or fall back to appending them
+    // locally when nothing is connected — fully backward-compatible with
+    // workflows saved before AtlasViewportControls existed.
+    node._atlasRemount = ui?.mountControls;
+    ui?.mountControls();
+    const prevOnConnectionsChange = node.onConnectionsChange;
+    node.onConnectionsChange = function (...args) {
+      prevOnConnectionsChange?.apply(this, args);
+      ui?.mountControls();
+    };
 
     // On node execution complete: apply recovered camera + source image +
     // derived projection proxies.
@@ -1130,6 +2180,7 @@ app.registerExtension({
       cancelAnimationFrame(node._atlasRafId);
       node._atlasRenderer?.dispose();
       node._atlasControls?.dispose();
+      node._atlasFly?.dispose();
     };
   },
 });

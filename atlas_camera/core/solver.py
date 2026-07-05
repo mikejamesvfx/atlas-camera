@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -576,6 +577,33 @@ _HEIGHT_ADOPT_CONFIDENCE = 0.30
 _REFERENCE_ADOPT_CONFIDENCE = 0.20
 
 
+def _median_filter_3x3(depth: Any, valid: Any) -> Any:
+    """Edge-clamped 3x3 median of ``depth`` over ``valid`` pixels (invalid ignored).
+
+    Kills the single-pixel depth spikes common in monocular/AI-image depth
+    before they get turned into per-pixel surface normals — a raw ±1-pixel
+    finite difference (see ``estimate_ground_height_from_depth``) amplifies
+    exactly this kind of noise. Same technique ``relief_mesh.py`` already uses
+    for its own 3x3 median sampling; median chosen over Gaussian because it
+    doesn't blur the ground/wall boundary the normal-alignment filter depends on.
+    """
+    np = _require_numpy()
+    height, width = depth.shape
+    depth_nan = np.where(valid, depth, np.nan)
+    samples = []
+    rows = np.arange(height)
+    cols = np.arange(width)
+    for dr in (-1, 0, 1):
+        rr = np.clip(rows + dr, 0, height - 1)
+        for dc in (-1, 0, 1):
+            cc = np.clip(cols + dc, 0, width - 1)
+            samples.append(depth_nan[np.ix_(rr, cc)])
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        filtered = np.nanmedian(np.stack(samples), axis=0)
+    return np.where(np.isfinite(filtered), filtered, 0.0)
+
+
 def estimate_ground_height_from_depth(
     depth: Any,
     *,
@@ -586,6 +614,7 @@ def estimate_ground_height_from_depth(
     cy: float,
     horizon_y: float | None = None,
     plane_tolerance: float | None = None,
+    depth_edge_rel: float = 0.05,
 ) -> dict[str, Any]:
     """Measure camera height above the ground by fitting the ground plane in 3D.
 
@@ -598,6 +627,36 @@ def estimate_ground_height_from_depth(
     map (metres for a metric model, else up-to-scale). Returns a dict with
     ``camera_height``, ``confidence`` (inlier fraction), ``ground_mask`` and the
     number of ground pixels.
+
+    Two noise-robustness passes, both borrowed from elsewhere in this codebase
+    rather than invented fresh: the depth map is 3x3-median-filtered first
+    (``relief_mesh.py``'s own fix for single-pixel AI-depth spikes), and pixels
+    near a depth discontinuity are excluded before they can vote on the ground
+    plane (the edge-rejection ``depth_geometry.back_project_normals`` already
+    does for the primitive-fitting paths, but this function's own copy of the
+    normal computation lacked). Raw ±1-pixel finite differences are inherently
+    noise-sensitive; both passes target that without changing the downstream
+    histogram-mode / bottom-band-confidence logic at all.
+
+    Known limitation this function CANNOT fix, confirmed by direct instrumentation
+    2026-07-03 (deep single-point-perspective street scene, sea horizon at the
+    vanishing point): ``confidence`` here measures whether the candidate pixels
+    agree on *a* consistent plane (bottom-band ground coverage) — it says nothing
+    about whether the depth map's *absolute metric scale* is trustworthy. On that
+    test scene the classifier correctly picked the true near-camera ground (visually
+    confirmed) with confidence 0.374 (> the 0.30 adopt threshold), yet the resulting
+    height was ~70% too large, because the metric depth model itself reported the
+    foreground as several metres farther away than the framing implies — a systematic
+    depth-model scale bias on AI-generated imagery, not a classification error. No
+    amount of candidate filtering here can detect that from a single depth map with
+    no external anchor. A plausibility penalty on the output height was considered
+    and rejected: this toolkit explicitly supports non-eye-level cameras (see
+    ``AtlasAddPatchView``'s elevation vocabulary — low-angle/elevated/high-angle
+    shots), so penalizing "unusual" heights would misfire on legitimate elevated or
+    drone shots. The actual fix for scenes where absolute scale matters is tier 1
+    (``resolve_reference_scale`` / ``AtlasReferenceScaleSolve``) — a known-size
+    reference object anchors real-world scale independent of the depth model's own
+    calibration; prefer it whenever available rather than trusting this tier alone.
     """
     np = _require_numpy()
     depth = np.asarray(depth, dtype=np.float64)
@@ -609,6 +668,9 @@ def estimate_ground_height_from_depth(
         "camera_height": None, "confidence": 0.0, "ground_pixels": 0,
         "ground_mask": np.zeros((height, width), dtype=bool),
     }
+
+    valid_depth = np.isfinite(depth) & (depth > 1e-4)
+    depth = _median_filter_3x3(depth, valid_depth)
 
     uu, vv = np.meshgrid(np.arange(width, dtype=np.float64),
                          np.arange(height, dtype=np.float64))
@@ -635,13 +697,23 @@ def estimate_ground_height_from_depth(
     inner = np.zeros((height, width), dtype=bool)
     inner[1:-1, 1:-1] = True
 
+    # Depth-discontinuity rejection (same technique + default threshold as
+    # depth_geometry.back_project_normals): a normal computed straddling a
+    # silhouette edge is meaningless, and un-rejected it can pull the ground
+    # histogram toward a wrong offset.
+    ddx = np.abs(depth[:, 2:] - depth[:, :-2])
+    ddy = np.abs(depth[2:, :] - depth[:-2, :])
+    edge = np.zeros((height, width), dtype=bool)
+    edge[:, 1:-1] |= ddx > depth_edge_rel * 2.0 * np.maximum(depth[:, 1:-1], 1e-6)
+    edge[1:-1, :] |= ddy > depth_edge_rel * 2.0 * np.maximum(depth[1:-1, :], 1e-6)
+
     if horizon_y is None:
         horizon_y = height * 0.45
     below = (vv > horizon_y)
 
     horizontal = np.zeros((height, width), dtype=bool)
     horizontal[1:-1, 1:-1] = up_align > 0.90          # near-horizontal surfaces
-    candidate = inner & below & horizontal & np.isfinite(world_y) & (depth > 0)
+    candidate = inner & below & horizontal & ~edge & np.isfinite(world_y) & (depth > 0)
     n_below = int((inner & below & (depth > 0)).sum())
     if candidate.sum() < 200 or n_below < 200:
         return empty

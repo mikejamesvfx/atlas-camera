@@ -1,0 +1,572 @@
+{
+  "last_node_id": 9,
+  "last_link_id": 10,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        140
+      ],
+      "size": {
+        "0": 320,
+        "1": 314
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            3,
+            5
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        140
+      ],
+      "size": {
+        "0": 400,
+        "1": 210
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDeriveProjectionGeometry",
+      "pos": [
+        880,
+        140
+      ],
+      "size": {
+        "0": 400,
+        "1": 250
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 2,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            4,
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveProjectionGeometry"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        4,
+        3,
+        "auto",
+        "relief_mesh",
+        96,
+        "custom",
+        0.5,
+        "azimuth_walls",
+        "manual"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1340,
+        140
+      ],
+      "size": {
+        "0": 460,
+        "1": 460
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 5,
+          "slot_index": 1
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": 10,
+          "slot_index": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [
+            9
+          ],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [
+            8
+          ],
+          "slot_index": 5
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "AtlasViewportControls",
+      "pos": [
+        1340,
+        620
+      ],
+      "size": {
+        "0": 460,
+        "1": 720
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasViewportControls"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 5,
+      "type": "PreviewImage",
+      "pos": [
+        1860,
+        140
+      ],
+      "size": {
+        "0": 260,
+        "1": 280
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 6,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "Blockout — Shaded"
+    },
+    {
+      "id": 6,
+      "type": "PreviewImage",
+      "pos": [
+        1860,
+        460
+      ],
+      "size": {
+        "0": 260,
+        "1": 280
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 9,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "Baked Camera Path — frame batch (swap for a Video Combine node, e.g. VideoHelperSuite's VHS_VideoCombine, to get an actual video file)"
+    },
+    {
+      "id": 7,
+      "type": "AtlasExportCameraPathUSD",
+      "pos": [
+        880,
+        460
+      ],
+      "size": {
+        "0": 400,
+        "1": 140
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 7,
+          "slot_index": 0
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": 8,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "usd_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportCameraPathUSD"
+      },
+      "widgets_values": [
+        "atlas_exports"
+      ],
+      "title": "Export Camera Path (USD) — muted by default; bake a path in the viewport first, then right-click → Mode → Always to enable"
+    },
+    {
+      "id": 8,
+      "type": "Note",
+      "pos": [
+        40,
+        480
+      ],
+      "size": [
+        780,
+        420
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "CAMERA PATH PRESETS (Phase A quick-start)\n\nNode ④ is now the perspective render ONLY —\nevery button/panel below lives in node ⑦ (AtlasViewportControls) instead.\nConnect ⑦'s output to ④'s new 'controls' input (already wired in this\nexample) and they act as one viewport; leave it unconnected on a node\nyou don't want split and all controls stay local to it as before.\n\n1. Queue once first so the viewport opens with the recovered camera and\n   derived geometry loaded (you need a real solved scene before a preset\n   means anything).\n2. Click 🎥 Camera Path to enter path-authoring mode. This swaps the\n   normal (clamped) orbit drag for an UNCLAMPED fly camera — RMB-hold +\n   drag to look, WASD to move, Q/E for down/up — fly to whatever you\n   want the shot to END on. Presets always finish on your CURRENT\n   framing when you click Apply and arrive there FROM the named side,\n   so frame up the final shot first, not the starting one.\n3. Pick a preset from the dropdown next to '+ Keyframe':\n     Pan Left / Pan Right   — position stays put (true pan); Pan Left\n                              starts with its gaze offset to the RIGHT\n                              of the subject and sweeps to center\n                              (your framing), Pan Right starts offset\n                              LEFT (angle field, degrees).\n     Orbit Left / Orbit Right — camera itself starts physically\n                              positioned to the RIGHT of the subject\n                              (Orbit Left) or LEFT (Orbit Right) and\n                              arcs in to your framing, always looking\n                              at the subject (angle field, degrees).\n     Dolly In / Dolly Out   — camera moves toward/away from the\n                              subject along the view axis, ending at\n                              your framing (amount field, 0.05–0.9 =\n                              fraction of the current distance).\n4. Set the angle / amount field for the preset you picked, then click\n   'Apply Preset'. This REPLACES whatever keyframes already exist with\n   a clean 2-keyframe move: keyframe 0 = the computed starting pose\n   (from the named side), keyframe (frame_count-1) = your current\n   pose, eased in/out. Hand-edit or add more keyframes afterward if\n   you want a multi-stage move.\n5. Click ▶ Play to preview the move live — with 📽 Project on, watch how\n   the projected photo holds up as the camera leaves its recovered\n   viewpoint (some black/undefined regions beyond the recovered camera's\n   cone are expected, not a bug — see 'Orbit coverage' in CLAUDE.md).\n6. Click ⏺ Bake Path to render every frame and fill node ④'s path_frames\n   (→ node ⑥'s preview; swap for a real Video Combine node for an actual\n   video file) and camera_path (→ node ⑦, muted until you bake — enable\n   it via right-click → Mode → Always to export a time-sampled USD\n   camera for a DCC).\n\nTip: try Dolly In followed by hand-adding one more keyframe for a small\nOrbit at the end — presets are just a fast starting point, not a limit."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      3,
+      1,
+      0,
+      3,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      1,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      6,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      3,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      8,
+      4,
+      5,
+      7,
+      1,
+      "ATLAS_CAMERA_PATH"
+    ],
+    [
+      9,
+      4,
+      4,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      9,
+      0,
+      4,
+      2,
+      "ATLAS_VIEWPORT_LINK"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Source",
+      "bounding": [
+        20,
+        100,
+        350,
+        380
+      ],
+      "color": "#3f789e",
+      "font_size": 20,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② Camera Recovery (GeoCalib)",
+      "bounding": [
+        400,
+        100,
+        420,
+        280
+      ],
+      "color": "#3d7e48",
+      "font_size": 18,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Derive Projection Geometry (relief mesh)",
+      "bounding": [
+        860,
+        100,
+        420,
+        320
+      ],
+      "color": "#7e4f3d",
+      "font_size": 16,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "④ Atlas Viewport — perspective render only now. All buttons live in ⑦ (resolution widget controls render size; node-corner-drag resize was tried and reverted, see CLAUDE.md)",
+      "bounding": [
+        1320,
+        100,
+        500,
+        520
+      ],
+      "color": "#6e3d7e",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 5,
+      "title": "⑤ Export Camera Path (USD) — muted until you bake a path (needs a camera_path first)",
+      "bounding": [
+        860,
+        440,
+        420,
+        180
+      ],
+      "color": "#7e6e3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 6,
+      "title": "⑥ How to use the camera path presets",
+      "bounding": [
+        20,
+        460,
+        820,
+        460
+      ],
+      "color": "#3d5e7e",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 7,
+      "title": "⑦ Viewport Controls — primitives, 📽 Project / 📊 Diagram / ℹ Info, 🎥 Camera Path + presets + FBX import, Render Passes — all moved off node ④",
+      "bounding": [
+        1320,
+        600,
+        500,
+        760
+      ],
+      "color": "#4a6e5e",
+      "font_size": 13,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.75,
+      "offset": [
+        10,
+        -40
+      ]
+    }
+  },
+  "version": 0.4
+}
