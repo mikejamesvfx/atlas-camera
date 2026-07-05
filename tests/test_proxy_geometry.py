@@ -194,6 +194,25 @@ def test_derives_box_for_compact_object():
     assert max(boxes[0].dimensions[0], boxes[0].dimensions[2]) == pytest.approx(1.0, abs=0.4)
 
 
+def test_object_height_capped_at_plausibility_ceiling():
+    # Regression test for a bug found via live browser verification (not
+    # unit tests): a real photo's foreground-object clustering (XZ occupancy
+    # grid, no height awareness) merged a genuine foreground object's
+    # footprint with an unrelated tall background structure that wasn't
+    # caught by wall-fitting, producing an implausible ~14m "foreground" box
+    # that filled the entire viewport. A 10m box here exceeds
+    # ProxyDerivationConfig's default object_max_height_m=6.0 — the fit
+    # should clip to the plausible ceiling (refitting from only the points
+    # below it) rather than passing an unbounded height through.
+    depth = _scene_depth(box=(0.0, -6.0, 0.5, 10.0))
+    prims, stats = _derive(depth)
+    boxes = _by_prefix(prims, "projection_box")
+    assert len(boxes) == 1
+    from atlas_camera.core.proxy_geometry import ProxyDerivationConfig
+    assert boxes[0].dimensions[1] <= ProxyDerivationConfig().object_max_height_m + 1e-6
+    assert boxes[0].dimensions[1] > 0.2  # still produced a real object, not degenerate
+
+
 def test_derives_cylinder_for_curved_object():
     depth = _scene_depth(cyl=(0.0, -8.0, 1.0, 3.0))
     prims, stats = _derive(depth)

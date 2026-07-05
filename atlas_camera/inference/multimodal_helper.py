@@ -773,12 +773,23 @@ def _provider_diagnostic_status(models: list[ProviderModelInfo], selected: Provi
 
 
 def _model_info_from_lmstudio(payload: dict[str, Any]) -> ProviderModelInfo:
-    model_id = str(payload.get("id") or payload.get("model") or payload.get("name") or "unknown")
+    # LM Studio's own /api/v1/models (confirmed live 2026-07-04, LM Studio serving
+    # google/gemma-4-12b-qat) uses "key" as the model identifier and "display_name"
+    # for the human label -- it has neither "id" nor "model" nor "name". Without
+    # "key" first, every model here resolves to the "unknown" fallback, which then
+    # fails validate_vision_model()'s lookup against any requested model name and
+    # makes AtlasVLMScaleCues fail soft to an empty scale_references list even
+    # with a real, running, vision-capable model loaded. The OpenAI-compatible
+    # /v1/models endpoint (used by list_models() for other providers) does use
+    # "id", so both are kept as fallbacks for older/other LM Studio API surfaces.
+    model_id = str(
+        payload.get("key") or payload.get("id") or payload.get("model") or payload.get("name") or "unknown"
+    )
     capabilities = payload.get("capabilities")
     capability_names, vision_capable = _capability_info(capabilities)
     return ProviderModelInfo(
         id=model_id,
-        name=str(payload.get("name") or model_id),
+        name=str(payload.get("display_name") or payload.get("name") or model_id),
         vision_capable=vision_capable,
         capabilities=capability_names,
         raw=payload,

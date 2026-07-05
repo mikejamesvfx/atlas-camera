@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm
-from atlas_camera.core.schema import AtlasSolve
+from atlas_camera.core.camera_path import sample_camera_path
+from atlas_camera.core.schema import AtlasCameraPath, AtlasIntrinsics, AtlasSolve
 
 
 def _import_pxr() -> tuple[Any, Any]:
@@ -40,12 +41,20 @@ def _import_pxr_full() -> tuple[Any, Any, Any, Any, Any, Any]:
 
 
 def _gf_mat4(world_mat: Any, Gf: Any) -> Any:
-    """Build a Gf.Matrix4d from a 4×4 row-major tuple."""
+    """Build a Gf.Matrix4d from a 4×4 row-major, column-vector-convention (Atlas)
+    matrix — Atlas stores translation in the last COLUMN (``world_point = M @
+    point``); USD's Gf.Matrix4d is row-vector (``p' = p @ M``) and expects
+    translation in the last ROW instead, so this transposes on the way in.
+    Caught by test_usd_export_camera_animation_has_time_sampled_transform,
+    which was the first test in this file to actually check a placed camera's
+    ExtractTranslation() rather than just its op count — every USD export
+    before that fix silently placed cameras/prims at the origin.
+    """
     return Gf.Matrix4d(
-        world_mat[0][0], world_mat[0][1], world_mat[0][2], world_mat[0][3],
-        world_mat[1][0], world_mat[1][1], world_mat[1][2], world_mat[1][3],
-        world_mat[2][0], world_mat[2][1], world_mat[2][2], world_mat[2][3],
-        world_mat[3][0], world_mat[3][1], world_mat[3][2], world_mat[3][3],
+        world_mat[0][0], world_mat[1][0], world_mat[2][0], world_mat[3][0],
+        world_mat[0][1], world_mat[1][1], world_mat[2][1], world_mat[3][1],
+        world_mat[0][2], world_mat[1][2], world_mat[2][2], world_mat[3][2],
+        world_mat[0][3], world_mat[1][3], world_mat[2][3], world_mat[3][3],
     )
 
 
@@ -157,6 +166,45 @@ class USDExporter:
         camera = UsdGeom.Camera.Define(stage, "/AtlasCamera/Camera")
         _set_camera_intrinsics(camera, solve.camera.intrinsics, Gf)
         camera.AddTransformOp().Set(_gf_mat4(solve.camera.extrinsics.camera_world_matrix, Gf))
+
+        stage.GetRootLayer().Save()
+        return destination
+
+    def export_camera_animation(
+        self,
+        camera_path: AtlasCameraPath,
+        intrinsics: AtlasIntrinsics,
+        output_path: str | Path,
+        *,
+        fps: float | None = None,
+    ) -> Path:
+        """Time-sampled USD camera from a keyframed ``AtlasCameraPath``.
+
+        USD's ``Xformable`` already supports time-sampled transforms natively
+        (``attr.Set(value, time_code)``); ``export_camera`` never uses that
+        because it only ever wrote one static pose. This mirrors it, sampling
+        the path once via ``camera_path.sample_camera_path`` (the single
+        source of truth also used by the blockout viewport's baked preview)
+        and writing one time sample per frame onto the same transform op.
+        """
+        Gf, Sdf, Usd, UsdGeom, UsdShade, Vt = _import_pxr_full()
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+
+        frames = sample_camera_path(camera_path)
+
+        stage = Usd.Stage.CreateNew(str(destination))
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.y)
+
+        camera = UsdGeom.Camera.Define(stage, "/AtlasCamera/Camera")
+        _set_camera_intrinsics(camera, intrinsics, Gf)
+        transform_op = camera.AddTransformOp()
+        for frame_index, extrinsics in enumerate(frames):
+            transform_op.Set(_gf_mat4(extrinsics.camera_world_matrix, Gf), Usd.TimeCode(frame_index))
+
+        stage.SetStartTimeCode(0)
+        stage.SetEndTimeCode(max(0, len(frames) - 1))
+        stage.SetFramesPerSecond(float(fps or camera_path.fps))
 
         stage.GetRootLayer().Save()
         return destination

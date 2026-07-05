@@ -12,11 +12,13 @@ from atlas_camera.core.schema import (
     AtlasIntrinsics,
     AtlasProjectionScene,
     AtlasProxyPrimitive,
+    AtlasShotCam,
     AtlasSolve,
     AtlasVanishingPoint,
     LatentCamera,
     LatentComponent,
     LatentScene,
+    ProjectionSource,
 )
 from atlas_camera.core.confidence import ConfidenceModel
 from atlas_camera.core.solver import solve_still_image
@@ -86,12 +88,14 @@ __all__ = [
     "AtlasIntrinsics",
     "AtlasProjectionScene",
     "AtlasProxyPrimitive",
+    "AtlasShotCam",
     "AtlasSolve",
     "AtlasVanishingPoint",
     "ConfidenceModel",
     "LatentCamera",
     "LatentComponent",
     "LatentScene",
+    "ProjectionSource",
     "recover",
 ]
 

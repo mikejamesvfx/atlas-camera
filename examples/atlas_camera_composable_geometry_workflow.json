@@ -1,0 +1,579 @@
+{
+  "last_node_id": 9,
+  "last_link_id": 10,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        140
+      ],
+      "size": {
+        "0": 320,
+        "1": 314
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        140
+      ],
+      "size": {
+        "0": 400,
+        "1": 210
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            3,
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        420,
+        400
+      ],
+      "size": {
+        "0": 400,
+        "1": 100
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            5,
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasDeriveWalls",
+      "pos": [
+        880,
+        140
+      ],
+      "size": {
+        "0": 380,
+        "1": 150
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 5,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveWalls"
+      },
+      "widgets_values": [
+        4,
+        6
+      ],
+      "title": "Foreground — Walls + Buildings (boxes)"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        880,
+        340
+      ],
+      "size": {
+        "0": 380,
+        "1": 150
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 6,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "medium",
+        0.5
+      ],
+      "title": "Background — Terrain/Treeline (relief mesh)"
+    },
+    {
+      "id": 6,
+      "type": "AtlasMergeGeometry",
+      "pos": [
+        1340,
+        240
+      ],
+      "size": {
+        "0": 260,
+        "1": 80
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve_a",
+          "type": "ATLAS_SOLVE",
+          "link": 7,
+          "slot_index": 0
+        },
+        {
+          "name": "solve_b",
+          "type": "ATLAS_SOLVE",
+          "link": 9,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMergeGeometry"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 7,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1660,
+        140
+      ],
+      "size": {
+        "0": 460,
+        "1": 460
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 8,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [],
+          "slot_index": 5
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "PreviewImage",
+      "pos": [
+        2140,
+        140
+      ],
+      "size": {
+        "0": 260,
+        "1": 280
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 11,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "Merged — Shaded"
+    },
+    {
+      "id": 9,
+      "type": "Note",
+      "pos": [
+        40,
+        520
+      ],
+      "size": [
+        800,
+        420
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "COMPOSABLE GEOMETRY DERIVATION — Nuke-style, wired instead of a preset\n\nThe alternative to AtlasDeriveProjectionGeometry's scene_type presets: instead\nof one node with a combo that silently locks/hides other widgets, each\nderivation strategy is its own single-purpose node with only the parameters\nthat actually apply to it. Compose a shot by wiring nodes together, like a\nNuke script, and use ④ AtlasMergeGeometry (a real Merge node, not implicit\nchaining) to combine branches.\n\n1. ③ AtlasDepthMap estimates depth ONCE from the source photo — every\n   derivation node downstream shares this SAME depth estimate. This matters\n   for correctness, not just speed: if two branches each ran their own depth\n   pass, their independently-fitted ground scales could disagree slightly,\n   and the merged geometry wouldn't line up.\n\n2. This example forks into two branches from the same solve + depth:\n     ① Foreground (node ④, AtlasDeriveWalls) — vertical walls + foreground\n        boxes/cylinders (buildings). max_objects is bumped to 6 here since\n        this branch is meant to catch buildings.\n     ② Background (node ⑤, AtlasDeriveReliefMesh) — continuous relief mesh\n        for terrain/treeline, at 'medium' quality.\n   Swap either for AtlasDeriveTowersSpires / AtlasDeriveRoofsFacades /\n   AtlasDeriveInteriorRoom depending on the shot — every one of these nodes\n   takes the same solve + depth inputs.\n\n3. IMPORTANT: derive nodes never chain on their own — each one strips any\n   prior derived geometry from the solve before adding its own (so re-running\n   one never silently piles up stale geometry). That means you CANNOT wire\n   node ④'s output directly into node ⑤'s solve input and expect both\n   branches to survive — node ⑤ would erase node ④'s walls. This is exactly\n   why node ⑥ (AtlasMergeGeometry) exists: it's the one explicit place two\n   branches' geometry actually combines. Chain multiple AtlasMergeGeometry\n   nodes for 3+-way combination (Merge(fg,bg) -> Merge(that, a third branch)).\n\n4. AtlasMergeGeometry also dedupes the always-emitted 'projection_backdrop'\n   plane (every derivation strategy emits exactly one) so you don't get two\n   overlapping backdrop planes — it keeps solve_a's.\n\n5. Node ⑥'s merged solve feeds the viewport exactly like any other solve —\n   no viewport-side changes needed. Hit 📽 Project (in the viewport, or in an\n   AtlasViewportControls node if you've split it out) to see both branches'\n   geometry textured from the recovered camera at once.\n\nNote: solve_a (wired to AtlasMergeGeometry's first input) provides the\nmerged solve's camera/intrinsics — both branches here come from the same\nupstream AtlasLearnedSolveFromImage, so they already share a camera."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      2,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      6,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      7,
+      4,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      8,
+      1,
+      0,
+      7,
+      1,
+      "IMAGE"
+    ],
+    [
+      9,
+      5,
+      0,
+      6,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      10,
+      6,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      7,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Source + Solve",
+      "bounding": [
+        20,
+        100,
+        780,
+        380
+      ],
+      "color": "#3f789e",
+      "font_size": 18,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② Foreground — AtlasDeriveWalls (buildings)",
+      "bounding": [
+        860,
+        100,
+        420,
+        220
+      ],
+      "color": "#7e4f3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Background — AtlasDeriveReliefMesh (terrain)",
+      "bounding": [
+        860,
+        300,
+        420,
+        220
+      ],
+      "color": "#3d7e48",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "④ Merge — the explicit Nuke-Merge-node equivalent",
+      "bounding": [
+        1320,
+        190,
+        320,
+        180
+      ],
+      "color": "#6e3d7e",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 5,
+      "title": "⑤ Viewport — hit 📽 Project to see both branches composited",
+      "bounding": [
+        1640,
+        100,
+        780,
+        340
+      ],
+      "color": "#7e6e3d",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 6,
+      "title": "⑥ How composable geometry derivation works",
+      "bounding": [
+        20,
+        500,
+        820,
+        460
+      ],
+      "color": "#3d5e7e",
+      "font_size": 15,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.65,
+      "offset": [
+        10,
+        -40
+      ]
+    }
+  },
+  "version": 0.4
+}

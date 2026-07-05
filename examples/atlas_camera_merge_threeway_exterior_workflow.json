@@ -1,0 +1,706 @@
+{
+  "last_node_id": 11,
+  "last_link_id": 15,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        140
+      ],
+      "size": {
+        "0": 320,
+        "1": 314
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            3
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        140
+      ],
+      "size": {
+        "0": 400,
+        "1": 210
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            4,
+            5,
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        420,
+        400
+      ],
+      "size": {
+        "0": 400,
+        "1": 100
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            7,
+            8,
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasDeriveRoofsFacades",
+      "pos": [
+        880,
+        40
+      ],
+      "size": {
+        "0": 380,
+        "1": 120
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 7,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveRoofsFacades"
+      },
+      "widgets_values": [
+        8
+      ],
+      "title": "Branch A — Sloped roofs/stepped facades (RANSAC)"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDeriveWalls",
+      "pos": [
+        880,
+        220
+      ],
+      "size": {
+        "0": 380,
+        "1": 150
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 5,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 8,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveWalls"
+      },
+      "widgets_values": [
+        4,
+        6
+      ],
+      "title": "Branch B — Foreground street objects (walls/boxes)"
+    },
+    {
+      "id": 6,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        880,
+        420
+      ],
+      "size": {
+        "0": 380,
+        "1": 150
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 6,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 9,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "medium",
+        0.5
+      ],
+      "title": "Branch C — Distant background (relief mesh)"
+    },
+    {
+      "id": 7,
+      "type": "AtlasMergeGeometry",
+      "pos": [
+        1320,
+        140
+      ],
+      "size": {
+        "0": 280,
+        "1": 90
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve_a",
+          "type": "ATLAS_SOLVE",
+          "link": 10,
+          "slot_index": 0
+        },
+        {
+          "name": "solve_b",
+          "type": "ATLAS_SOLVE",
+          "link": 11,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMergeGeometry"
+      },
+      "widgets_values": [],
+      "title": "Merge 1 — A + B"
+    },
+    {
+      "id": 8,
+      "type": "AtlasMergeGeometry",
+      "pos": [
+        1660,
+        260
+      ],
+      "size": {
+        "0": 280,
+        "1": 90
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve_a",
+          "type": "ATLAS_SOLVE",
+          "link": 12,
+          "slot_index": 0
+        },
+        {
+          "name": "solve_b",
+          "type": "ATLAS_SOLVE",
+          "link": 13,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMergeGeometry"
+      },
+      "widgets_values": [],
+      "title": "Merge 2 — (A+B) + C"
+    },
+    {
+      "id": 9,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2000,
+        140
+      ],
+      "size": {
+        "0": 460,
+        "1": 460
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 14,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 3,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [],
+          "slot_index": 5
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "PreviewImage",
+      "pos": [
+        2480,
+        140
+      ],
+      "size": {
+        "0": 260,
+        "1": 280
+      },
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 15,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "Merged — Shaded"
+    },
+    {
+      "id": 11,
+      "type": "Note",
+      "pos": [
+        40,
+        520
+      ],
+      "size": {
+        "0": 800,
+        "1": 500
+      },
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "MERGE #3 — Three-way chained merge: Roofs/Facades + Walls + Relief Mesh\n\nScenario: a complex exterior architecture shot with sloped roofs,\nforeground street-level objects, AND a distant background that\nnone of the single-purpose derive nodes covers alone. This is the\n'chain multiple AtlasMergeGeometry instances for 3+-way combination'\ncase referenced in the node's own docstring — worth demonstrating\nexplicitly since the other 2 merge examples are both binary.\n\n1. Branch A (node 4) — AtlasDeriveRoofsFacades: any-orientation\n   planes via sequential RANSAC. Best for sloped roofs/ramps/\n   stepped facades that a flat vertical wall can't represent.\n2. Branch B (node 5) — AtlasDeriveWalls: foreground boxes/\n   cylinders (cars, street furniture, etc.).\n3. Branch C (node 6) — AtlasDeriveReliefMesh: the distant\n   background (sky-adjacent terrain, far rooftops).\n4. Merge 1 (node 7) — combines A + B. solve_a=A provides the\n   camera for this intermediate solve.\n5. Merge 2 (node 8) — combines (A+B) + C. solve_a is the already-\n   merged solve from step 4, so its camera (originally A's) is\n   what survives into the final merged output.\n\nAll three branches read from the SAME AtlasDepthMap (node 3) output\n— this is required for correctness, not just speed: if each branch\nran its own depth pass, their independently-fitted ground scales\ncould disagree slightly, misaligning the merged result."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      9,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      2,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      6,
+      2,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      8,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      9,
+      3,
+      0,
+      6,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      10,
+      4,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      5,
+      0,
+      7,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      7,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      6,
+      0,
+      8,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      14,
+      8,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      15,
+      9,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Source + Solve",
+      "bounding": [
+        20,
+        0,
+        780,
+        480
+      ],
+      "color": "#3f789e",
+      "font_size": 18,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② Branch A — AtlasDeriveRoofsFacades",
+      "bounding": [
+        860,
+        0,
+        420,
+        140
+      ],
+      "color": "#7e4f3d",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Branch B — AtlasDeriveWalls",
+      "bounding": [
+        860,
+        180,
+        420,
+        210
+      ],
+      "color": "#3d7e48",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "④ Branch C — AtlasDeriveReliefMesh",
+      "bounding": [
+        860,
+        400,
+        420,
+        210
+      ],
+      "color": "#4d5e7e",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 5,
+      "title": "⑤ Chained Merge (A+B, then +C)",
+      "bounding": [
+        1300,
+        100,
+        660,
+        280
+      ],
+      "color": "#6e3d7e",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 6,
+      "title": "⑥ Viewport",
+      "bounding": [
+        1980,
+        100,
+        780,
+        340
+      ],
+      "color": "#7e6e3d",
+      "font_size": 14,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6,
+      "offset": [
+        10,
+        -40
+      ]
+    }
+  },
+  "version": 0.4
+}
