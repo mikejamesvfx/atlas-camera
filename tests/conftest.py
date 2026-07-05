@@ -7,10 +7,9 @@ from atlas_camera.core.intrinsics import build_intrinsics
 from atlas_camera.core.schema import AtlasCamera, AtlasExtrinsics, AtlasSolve
 
 
-os.environ.setdefault(
-    "PYTEST_DEBUG_TEMPROOT",
-    str(Path(__file__).resolve().parents[1] / ".pytest_tmp"),
-)
+_PYTEST_TEMPROOT = Path(__file__).resolve().parents[1] / ".pytest_tmp"
+_PYTEST_TEMPROOT.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(_PYTEST_TEMPROOT))
 
 
 @pytest.fixture()

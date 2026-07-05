@@ -106,7 +106,12 @@ def estimate_depth(
     from PIL import Image
 
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
 
     processor, model = _get_model(model_id, device)
     image = Image.open(image_path).convert("RGB")

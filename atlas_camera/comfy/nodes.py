@@ -552,7 +552,7 @@ class AtlasLearnedSolveFromImage:
                 "sensor_width_mm": ("FLOAT", {"default": 36.0, "min": 0.01}),
                 "weights": (["pinhole", "simple_radial"], {"default": "pinhole",
                     "tooltip": "pinhole = no lens distortion (best for clean AI renders)."}),
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
             },
         }
 
@@ -600,7 +600,7 @@ class AtlasDepthAnything:
                     "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
                     "depth-anything/Depth-Anything-V2-Small-hf",
                 ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
             },
         }
 
@@ -841,7 +841,7 @@ class AtlasDeriveProjectionGeometry:
                 "max_walls": ("INT", {"default": 4, "min": 0, "max": 8}),
                 "max_objects": ("INT", {"default": 3, "min": 0, "max": 6,
                                         "tooltip": "Max foreground boxes/cylinders."}),
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "geometry_mode": (["relief_mesh", "primitives", "both"], {"default": "relief_mesh",
                     "tooltip": "What the viewport receives. relief_mesh = contoured depth mesh "
                                "(recommended); primitives = flat blockout planes/boxes; both "
@@ -1177,7 +1177,7 @@ class AtlasDepthMap:
                     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                     "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
                 ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
             },
         }
 
@@ -1675,7 +1675,7 @@ class AtlasAddPatchView:
                 "priority": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 1.0,
                     "tooltip": "Blend priority among patches (higher wins). The primary photo "
                                "is always highest; patches only fill where it can't see."}),
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
             },
         }
 
@@ -1871,7 +1871,7 @@ class AtlasOcclusionMask:
                     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                     "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
                 ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "angle_threshold": ("FLOAT", {"default": 90.0, "min": 0.0, "max": 90.0, "step": 1.0,
                     "tooltip": "Facing-angle gate in degrees for the PRIMARY camera's coverage. "
                                "90 (default) = only frustum/behind-camera/out-of-frame failures are "
@@ -2024,7 +2024,7 @@ class AtlasExportReliefMesh:
                     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                     "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
                 ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "format": (["both", "obj", "glb"], {"default": "both"}),
             },
         }
