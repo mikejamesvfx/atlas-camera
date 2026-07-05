@@ -207,6 +207,39 @@ class AtlasHorizon:
 
 
 @dataclass(slots=True)
+class AtlasShotCam:
+    """Project-level render/output camera format — sensor + lens + target
+    resolution, analogous to Nuke/Resolve project settings. Intrinsics-only
+    (no position): it describes what the FINAL render/export should look
+    like, decoupled from whatever sensor/lens/aspect any individual solved
+    photo happened to imply. Never touches how a photo gets projected onto
+    geometry — see AtlasMergeGeometry/AtlasBlockoutViewport for how this is
+    consumed without disturbing per-source texture-sampling cameras.
+    """
+    sensor_width_mm: float = 36.0
+    sensor_height_mm: float = 24.0
+    focal_length_mm: float = 35.0
+    resolution_long_edge_px: int = 1920
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "sensor_width_mm": self.sensor_width_mm,
+            "sensor_height_mm": self.sensor_height_mm,
+            "focal_length_mm": self.focal_length_mm,
+            "resolution_long_edge_px": self.resolution_long_edge_px,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AtlasShotCam":
+        return cls(
+            sensor_width_mm=float(data.get("sensor_width_mm", 36.0)),
+            sensor_height_mm=float(data.get("sensor_height_mm", 24.0)),
+            focal_length_mm=float(data.get("focal_length_mm", 35.0)),
+            resolution_long_edge_px=int(data.get("resolution_long_edge_px", 1920)),
+        )
+
+
+@dataclass(slots=True)
 class AtlasProxyPrimitive:
     name: str
     primitive_type: str
@@ -291,6 +324,64 @@ class ProjectionSource:
 
 
 @dataclass(slots=True)
+class AtlasCameraKeyframe:
+    """One waypoint of a ``AtlasCameraPath`` — an eye/target/up pose plus timing.
+
+    Authored client-side in the blockout viewport's Camera Path mode (fly nav,
+    not the clamped orbit control) and sampled server-side by
+    ``camera_path.sample_camera_path`` via Catmull-Rom + easing into a full
+    ``AtlasExtrinsics`` per output frame, reusing ``camera_math.look_at_view_matrix``
+    so every sampled pose shares the same view/world matrix convention as the
+    rest of Atlas.
+    """
+
+    frame_index: int
+    position: Point3D
+    target: Point3D
+    up: Point3D = (0.0, 1.0, 0.0)
+    fov_deg: float | None = None
+    easing: str = "linear"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AtlasCameraKeyframe":
+        return cls(
+            frame_index=int(data["frame_index"]),
+            position=tuple(float(v) for v in data["position"]),  # type: ignore[arg-type]
+            target=tuple(float(v) for v in data["target"]),  # type: ignore[arg-type]
+            up=tuple(float(v) for v in data.get("up", (0.0, 1.0, 0.0))),  # type: ignore[arg-type]
+            fov_deg=data.get("fov_deg"),
+            easing=data.get("easing", "linear"),
+        )
+
+
+@dataclass(slots=True)
+class AtlasCameraPath:
+    """A keyframed camera move (orbit/dolly/pan) for testing projection under motion.
+
+    ``keyframes`` must be sorted by ``frame_index`` (ascending, no duplicates)
+    for ``camera_path.sample_camera_path`` to interpolate correctly.
+    """
+
+    keyframes: list[AtlasCameraKeyframe] = field(default_factory=list)
+    fps: float = 24.0
+    frame_count: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_ready(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AtlasCameraPath":
+        return cls(
+            keyframes=[
+                AtlasCameraKeyframe.from_dict(item)
+                for item in sorted(data.get("keyframes", []), key=lambda k: k["frame_index"])
+            ],
+            fps=float(data.get("fps", 24.0)),
+            frame_count=int(data.get("frame_count", 0)),
+        )
+
+
+@dataclass(slots=True)
 class LatentComponent:
     """Future scene component slot with explicit recovery metadata."""
 
@@ -337,6 +428,7 @@ class LatentScene:
     semantics: LatentComponent = field(default_factory=LatentComponent)
     landmarks: list[dict[str, Any]] = field(default_factory=list)
     debug_metadata: dict[str, Any] = field(default_factory=dict)
+    shot_cam: AtlasShotCam | None = None
     schema_version: ClassVar[str] = "0.2"
 
     def __post_init__(self) -> None:
@@ -397,6 +489,7 @@ class LatentScene:
             semantics=LatentComponent.from_dict(data.get("semantics")),
             landmarks=list(data.get("landmarks", [])),
             debug_metadata=dict(data.get("debug_metadata", {})),
+            shot_cam=AtlasShotCam.from_dict(data["shot_cam"]) if data.get("shot_cam") else None,
         )
 
     @classmethod

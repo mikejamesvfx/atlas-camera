@@ -1,0 +1,752 @@
+{
+  "last_node_id": 12,
+  "last_link_id": 16,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        140
+      ],
+      "size": {
+        "0": 320,
+        "1": 314
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        40
+      ],
+      "size": {
+        "0": 400,
+        "1": 210
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto"
+      ],
+      "title": "Solve (fed to BOTH branches below)"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDefineShotCam",
+      "pos": [
+        420,
+        300
+      ],
+      "size": {
+        "0": 360,
+        "1": 170
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "links": [
+            6,
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDefineShotCam"
+      },
+      "widgets_values": [
+        36.0,
+        20.25,
+        50.0,
+        1920
+      ],
+      "title": "① ONE ShotCam, wired to BOTH entry points"
+    },
+    {
+      "id": 4,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        860,
+        40
+      ],
+      "size": {
+        "0": 420,
+        "1": 420
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 5,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 2,
+          "slot_index": 1
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": 6,
+          "slot_index": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [],
+          "slot_index": 5
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ],
+      "title": "② Entry point A — shot_cam wired DIRECTLY"
+    },
+    {
+      "id": 5,
+      "type": "PreviewImage",
+      "pos": [
+        1320,
+        40
+      ],
+      "size": {
+        "0": 260,
+        "1": 280
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 8,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "A — Shaded (1920x1080 render)"
+    },
+    {
+      "id": 6,
+      "type": "AtlasDepthMap",
+      "pos": [
+        420,
+        520
+      ],
+      "size": {
+        "0": 400,
+        "1": 100
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            9,
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "AtlasDeriveWalls",
+      "pos": [
+        860,
+        500
+      ],
+      "size": {
+        "0": 360,
+        "1": 150
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 9,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveWalls"
+      },
+      "widgets_values": [
+        4,
+        3
+      ]
+    },
+    {
+      "id": 8,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        860,
+        680
+      ],
+      "size": {
+        "0": 360,
+        "1": 150
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 12,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 10,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "medium",
+        0.5
+      ]
+    },
+    {
+      "id": 9,
+      "type": "AtlasMergeGeometry",
+      "pos": [
+        1260,
+        580
+      ],
+      "size": {
+        "0": 300,
+        "1": 100
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve_a",
+          "type": "ATLAS_SOLVE",
+          "link": 13,
+          "slot_index": 0
+        },
+        {
+          "name": "solve_b",
+          "type": "ATLAS_SOLVE",
+          "link": 14,
+          "slot_index": 0
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": 7,
+          "slot_index": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMergeGeometry"
+      },
+      "widgets_values": [],
+      "title": "③ Entry point B — shot_cam ATTACHED here"
+    },
+    {
+      "id": 10,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1600,
+        500
+      ],
+      "size": {
+        "0": 420,
+        "1": 420
+      },
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 15,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 4,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [],
+          "slot_index": 5
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ],
+      "title": "④ No direct shot_cam wire — inherits solve.shot_cam"
+    },
+    {
+      "id": 11,
+      "type": "PreviewImage",
+      "pos": [
+        2060,
+        500
+      ],
+      "size": {
+        "0": 260,
+        "1": 280
+      },
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 16,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "B — Shaded (same 1920x1080 format, inherited)"
+    },
+    {
+      "id": 12,
+      "type": "Note",
+      "pos": [
+        40,
+        780
+      ],
+      "size": {
+        "0": 820,
+        "1": 480
+      },
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "SHOTCAM — a project-level render/output camera format\n\nA ShotCam (sensor width/height mm + lens mm + resolution) is like a Nuke/Resolve project format setting: it conforms the FINAL render/export to one canonical format, regardless of what aspect ratio any individual source photo or derived branch happened to have. It is intrinsics-only — no position; camera placement always still comes from whichever solve's own recovered pose is in play.\n\nThis workflow demonstrates BOTH ways to apply the SAME ShotCam:\n\n① AtlasDefineShotCam — defined ONCE, wired to both entry points below.\n\n② Entry point A (direct): wired straight into AtlasBlockoutViewport's own shot_cam input. An explicit direct wire always wins over an inherited one.\n\n③ Entry point B (attach at merge): wired into AtlasMergeGeometry's shot_cam input instead. This does NOT touch solve_a's camera or either branch's geometry — it just attaches the format onto the merged solve (out.shot_cam = shot_cam) so it flows downstream automatically without needing to be re-wired.\n\n④ This second AtlasBlockoutViewport has NO direct shot_cam wire at all — it inherits the merged solve's attached shot_cam and conforms to it anyway. Both viewports render at the SAME 1920x1080 (16:9) format despite the two branches starting from completely different geometry-derivation pipelines.\n\nIMPORTANT — what ShotCam does NOT change: it never touches how the source photo gets projected onto geometry (fx/fy/cx/cy/image_width/image_height, used by the projection shader's texture-sampling, stay exactly the solve's own values). Only the RENDER/VIEWING camera's format (resolution, aspect, FOV) conforms — 📽 Project still paints the original photo correctly regardless."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      1,
+      0,
+      10,
+      1,
+      "IMAGE"
+    ],
+    [
+      5,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      6,
+      3,
+      0,
+      4,
+      2,
+      "ATLAS_SHOT_CAM"
+    ],
+    [
+      7,
+      3,
+      0,
+      9,
+      2,
+      "ATLAS_SHOT_CAM"
+    ],
+    [
+      8,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      6,
+      0,
+      7,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      10,
+      6,
+      0,
+      8,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      11,
+      2,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      2,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      7,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      14,
+      8,
+      0,
+      9,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      15,
+      9,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      16,
+      10,
+      0,
+      11,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Source + Solve",
+      "bounding": [
+        20,
+        20,
+        780,
+        220
+      ],
+      "color": "#3f789e",
+      "font_size": 16,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "① Define ShotCam ONCE",
+      "bounding": [
+        400,
+        280,
+        400,
+        210
+      ],
+      "color": "#7e4f3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "② Entry point A — direct wire",
+      "bounding": [
+        840,
+        20,
+        760,
+        320
+      ],
+      "color": "#3d7e48",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "③④ Entry point B — attach at merge, inherited by viewport",
+      "bounding": [
+        840,
+        480,
+        1500,
+        320
+      ],
+      "color": "#6e3d7e",
+      "font_size": 14,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.55,
+      "offset": [
+        10,
+        -20
+      ]
+    }
+  },
+  "version": 0.4
+}

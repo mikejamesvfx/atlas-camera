@@ -106,8 +106,23 @@ def _decode_b64_to_tensor(b64str: str, width: int, height: int):
 
 
 def _extract_blockout_camera(solve, source_image, target_width: int, target_height: int,
-                              preview_expand: float = 1.0) -> dict[str, Any]:
-    """Serialize the recovered camera into a dict the browser extension can consume."""
+                              preview_expand: float = 1.0, shot_intrinsics=None) -> dict[str, Any]:
+    """Serialize the recovered camera into a dict the browser extension can consume.
+
+    `shot_intrinsics` (optional, from AtlasShotCam via intrinsics_from_shot_cam)
+    conforms the RENDER/VIEWING camera to a project-level shot format. It must
+    stay entirely separate from `fx`/`fy`/`cx`/`cy` below: those are also read
+    by the frontend's makeProjectionMaterial() for the PRIMARY source's own
+    texture-sampling (applyCamera(data) and setProxies(data) — which builds
+    the primary's projection material — both consume this SAME dict), so
+    overwriting them would corrupt how the actual photo gets projected onto
+    geometry. Only `render_fy`/`render_image_height` (read solely by
+    applyRecoveredCamera for the live orbit camera's FOV) carry the
+    shot-conformed values; `target_width`/`target_height` are always already
+    independent of `image_width`/`image_height` (routinely resized via
+    resolution/_fit_long_edge regardless of shot_cam), so they're set
+    directly from the shot format by the caller with no separate key needed.
+    """
     cam = solve.camera
     intr = cam.intrinsics
     extr = cam.extrinsics
@@ -115,6 +130,12 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
     fy = intr.fy_px or fx
     cx = intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0
     cy = intr.cy_px if intr.cy_px is not None else intr.image_height / 2.0
+    if shot_intrinsics is not None:
+        render_fy = shot_intrinsics.fy_px or shot_intrinsics.fx_px or fy
+        render_image_height = shot_intrinsics.image_height
+    else:
+        render_fy = fy
+        render_image_height = intr.image_height
     # view_matrix is the Atlas camera_view_matrix (4×4, row-major)
     vm = [list(row) for row in extr.camera_view_matrix]
 
@@ -219,6 +240,8 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         "image_height": intr.image_height,
         "target_width": target_width,
         "target_height": target_height,
+        "render_fy": render_fy,
+        "render_image_height": render_image_height,
         "focal_mm": intr.focal_length_mm,
         "sensor_mm": intr.sensor_width_mm,
         "source_image_b64": source_b64,
@@ -823,8 +846,26 @@ class AtlasDeriveProjectionGeometry:
                     "tooltip": "What the viewport receives. relief_mesh = contoured depth mesh "
                                "(recommended); primitives = flat blockout planes/boxes; both "
                                "overlaps the two on the same surfaces (enclosure + z-shimmer)."}),
-                "relief_grid": ("INT", {"default": 96, "min": 16, "max": 256,
-                    "tooltip": "Viewport relief-mesh density (long-edge grid columns)."}),
+                "relief_grid": ("INT", {"default": 128, "min": 16, "max": 1024,
+                    "tooltip": "Viewport relief-mesh density (long-edge grid columns). Higher = "
+                               "fewer/smaller torn holes on noisy AI-image depth (each quad spans "
+                               "less real-world area, so it's less likely to straddle a spurious "
+                               "depth jump) at the cost of a larger mesh payload sent to the "
+                               "browser and a slower/heavier viewport. Overridden by "
+                               "relief_quality unless that's set to 'custom'."}),
+                "relief_quality": (["custom", "low", "medium", "high", "ultra"], {"default": "custom",
+                    "tooltip": "Quick-pick override for relief_grid: low=64, medium=256, high=512, "
+                               "ultra=1024. 'custom' (default) leaves relief_grid exactly as set "
+                               "above — fully backward compatible. Same convenience-preset "
+                               "pattern as scene_type: this only sets relief_grid, no new solving "
+                               "path. 'ultra' produces a much larger mesh — expect a slower "
+                               "viewport and bigger solve JSON exports."}),
+                "depth_edge_rel": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 5.0, "step": 0.05,
+                    "tooltip": "Relative depth jump that tears the mesh into a silhouette hole. "
+                               "Lower = tears more readily (cleaner silhouettes, more holes on "
+                               "noisy depth); higher = tears less (fewer holes, more risk of "
+                               "rubber-sheeting a real silhouette onto the background). Same "
+                               "parameter and default as AtlasExportReliefMesh."}),
                 "primitive_method": (["azimuth_walls", "ransac_planes", "room_cuboid",
                                        "vertical_extrusion"],
                     {"default": "azimuth_walls",
@@ -839,16 +880,42 @@ class AtlasDeriveProjectionGeometry:
                                 "geometry_mode=primitives/both; max_walls is reused as the "
                                 "plane budget for ransac_planes and ignored by room_cuboid. "
                                 "Ignored when scene_type != manual."}),
-                "scene_type": (["manual", "organic", "indoor", "outdoor"], {"default": "manual",
-                    "tooltip": "One-choice preset over geometry_mode/primitive_method/depth_model "
-                               "for the three shot types this node already supports individually: "
-                               "organic = relief_mesh (cluttered/natural scenes, depth_model left "
-                               "as set below); indoor = primitives + room_cuboid + the Indoor depth "
-                               "model (orthogonal interiors); outdoor = primitives + ransac_planes "
-                               "+ the Outdoor depth model (exterior architecture: roofs, stepped "
-                               "facades). manual (default) leaves geometry_mode/primitive_method/"
-                               "depth_model exactly as set below — fully backward compatible. If "
-                               "AtlasLearnedSolveFromImage's height_mode=measure_from_depth, set "
+                "scene_type": ([
+                    "manual", "organic", "mountains", "forests", "aerial",
+                    "indoor", "outdoor", "simple_walls", "towers_spires",
+                ], {"default": "manual",
+                    "tooltip": "The one choice that matters — picks a complete, self-consistent "
+                               "combination of geometry_mode/primitive_method/relief_quality/"
+                               "depth_edge_rel/max_objects/depth_model for a named shot type, so "
+                               "you never have to know which of those five widgets actually does "
+                               "anything for your scene (e.g. primitive_method is silently ignored "
+                               "whenever geometry_mode=relief_mesh — this picks a combination where "
+                               "that can't happen). When this is anything but 'manual', the widgets "
+                               "below it grey out and show the values this preset is using.\n"
+                               "  organic = smooth relief mesh, general-purpose natural/cluttered "
+                               "scenes.\n"
+                               "  mountains = relief mesh at high density (terrain/ridgelines need "
+                               "more grid resolution than the default to read as continuous rather "
+                               "than faceted).\n"
+                               "  forests = relief mesh at high density with a relaxed tear "
+                               "threshold — dense canopy depth is genuinely noisy at a small scale, "
+                               "so the default threshold shreds it into holes; this trades a little "
+                               "silhouette accuracy for a filled-in canopy instead of swiss cheese.\n"
+                               "  aerial = relief mesh AND primitives together (geometry_mode=both) "
+                               "with more foreground objects allowed — buildings read as boxes "
+                               "sitting on/above the relief-mesh ground and treeline, the drone/"
+                               "top-down shot case.\n"
+                               "  indoor = primitives + room_cuboid + the Indoor depth model "
+                               "(orthogonal interiors).\n"
+                               "  outdoor = primitives + ransac_planes + the Outdoor depth model "
+                               "(sloped roofs, stepped facades).\n"
+                               "  simple_walls = primitives + azimuth_walls (fast flat-wall "
+                               "blockout, general exteriors).\n"
+                               "  towers_spires = primitives + vertical_extrusion (reaches tall/"
+                               "sloped silhouettes azimuth_walls truncates).\n"
+                               "  manual (default) leaves every widget below exactly as set — fully "
+                               "backward compatible with workflows saved before this widget existed. "
+                               "If AtlasLearnedSolveFromImage's height_mode=measure_from_depth, set "
                                "its own depth_model to match by hand — this preset only reaches "
                                "this node's depth estimation, not the upstream solve node's."}),
             },
@@ -856,22 +923,35 @@ class AtlasDeriveProjectionGeometry:
 
     _SCENE_TYPE_PRESETS = {
         "organic": {"geometry_mode": "relief_mesh"},
+        "mountains": {"geometry_mode": "relief_mesh", "relief_quality": "high"},
+        "forests": {"geometry_mode": "relief_mesh", "relief_quality": "high", "depth_edge_rel": 1.0},
+        "aerial": {"geometry_mode": "both", "primitive_method": "azimuth_walls",
+                   "relief_quality": "medium", "max_objects": 6},
         "indoor": {"geometry_mode": "primitives", "primitive_method": "room_cuboid",
                    "depth_model": "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"},
         "outdoor": {"geometry_mode": "primitives", "primitive_method": "ransac_planes",
                     "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"},
+        "simple_walls": {"geometry_mode": "primitives", "primitive_method": "azimuth_walls"},
+        "towers_spires": {"geometry_mode": "primitives", "primitive_method": "vertical_extrusion"},
     }
+    _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
     def derive(self, solve, image,
                depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                max_walls=4, max_objects=3, device="auto",
-               geometry_mode="relief_mesh", relief_grid=96,
+               geometry_mode="relief_mesh", relief_grid=128, relief_quality="custom",
+               depth_edge_rel=0.5,
                primitive_method="azimuth_walls", scene_type="manual"):
         preset = self._SCENE_TYPE_PRESETS.get(scene_type)
         if preset:
             geometry_mode = preset.get("geometry_mode", geometry_mode)
             primitive_method = preset.get("primitive_method", primitive_method)
             depth_model = preset.get("depth_model", depth_model)
+            relief_quality = preset.get("relief_quality", relief_quality)
+            depth_edge_rel = preset.get("depth_edge_rel", depth_edge_rel)
+            max_objects = preset.get("max_objects", max_objects)
+        if relief_quality in self._RELIEF_QUALITY_PRESETS:
+            relief_grid = self._RELIEF_QUALITY_PRESETS[relief_quality]
         from atlas_camera.core.plane_extraction import PlaneRansacConfig, extract_planes_ransac
         from atlas_camera.core.proxy_geometry import (
             PROXY_ROLE,
@@ -972,6 +1052,7 @@ class AtlasDeriveProjectionGeometry:
                 depth_map, view_matrix=extr.camera_view_matrix,
                 fx=fx, fy=fy, cx=cx, cy=cy,
                 grid_long_edge=int(relief_grid),
+                depth_edge_rel=float(depth_edge_rel),
                 scale=float(stats.get("ground_scale", 1.0)),
                 horizon_y=horizon_y,
             )
@@ -990,9 +1071,501 @@ class AtlasDeriveProjectionGeometry:
         out.projection_scene.proxy_geometry.extend(keep)
         out.projection_scene.debug_metadata["proxy_derivation"] = {
             **stats, "depth_model": depth_model, "geometry_mode": geometry_mode,
-            "scene_type": scene_type,
+            "scene_type": scene_type, "depth_edge_rel": float(depth_edge_rel),
+            "relief_grid": int(relief_grid), "relief_quality": relief_quality,
+            "max_objects": int(max_objects),
         }
         return (out,)
+
+
+# ---------------------------------------------------------------------------
+# Track 5 — composable geometry derivation (shared depth + single-purpose
+# derive nodes + an explicit merge), an alternative to AtlasDeriveProjectionGeometry's
+# scene_type presets for scenes that mix strategies (e.g. foreground buildings
+# over background terrain) — see the "Composable geometry derivation" key
+# design rule in CLAUDE.md for the full rationale. AtlasDeriveProjectionGeometry
+# itself is untouched; these are additive.
+# ---------------------------------------------------------------------------
+
+def _solve_camera_params(solve, depth_result):
+    """fx/fy/cx/cy/width/height for a solve, falling back to the depth
+    estimate's own resolution — same fallback logic AtlasDeriveProjectionGeometry
+    uses (there falling back to the source IMAGE tensor's shape instead, since
+    that node takes an image directly; these nodes take an ATLAS_DEPTH_MAP,
+    which already carries its own width/height from DepthResult).
+    Returns None when there's no usable focal length (caller should return the
+    solve unchanged, matching AtlasDeriveProjectionGeometry's own behavior).
+    """
+    intr = solve.camera.intrinsics
+    width = int(intr.image_width or depth_result.image_width)
+    height = int(intr.image_height or depth_result.image_height)
+    fx = intr.fx_px or 0.0
+    fy = intr.fy_px or fx
+    if fx <= 0:
+        return None
+    cx = intr.cx_px if intr.cx_px is not None else width / 2.0
+    cy = intr.cy_px if intr.cy_px is not None else height / 2.0
+    return width, height, fx, fy, cx, cy
+
+
+def _horizon_y_from_solve(solve):
+    """Image row of the solved horizon, or None — same extraction
+    AtlasDeriveProjectionGeometry already does from solve.horizon_line."""
+    if solve.horizon_line and solve.horizon_line.endpoints_px:
+        p1, p2 = solve.horizon_line.endpoints_px
+        return 0.5 * (float(p1[1]) + float(p2[1]))
+    return None
+
+
+def _depth_map_for_solve(depth_result, width, height):
+    """The depth estimate's raw array, resized to match the solve's
+    intrinsics resolution if they disagree (same as AtlasDeriveProjectionGeometry)."""
+    from atlas_camera.core.solver import _resize_depth
+    depth_map = depth_result.depth
+    if depth_map.shape != (height, width):
+        depth_map = _resize_depth(depth_map, width, height)
+    return depth_map
+
+
+def _replace_proxy_role_geometry(solve, new_prims, stats, extra_metadata):
+    """Deep-copy `solve`, strip any prior PROXY_ROLE-tagged geometry, and
+    replace it with `new_prims` — the exact pattern AtlasDeriveProjectionGeometry
+    and AtlasAddPatchView already use before mutating a solve's geometry lists.
+    This is why derive nodes never chain (each call clobbers the previous
+    derivation's output) — AtlasMergeGeometry is the explicit, visible place
+    two branches' geometry actually combines."""
+    from atlas_camera.core.proxy_geometry import PROXY_ROLE
+    from atlas_camera.core.schema import AtlasSolve
+    out = AtlasSolve.from_dict(solve.to_dict())
+    out.projection_scene.proxy_geometry = [
+        p for p in out.projection_scene.proxy_geometry
+        if (p.metadata or {}).get("role") != PROXY_ROLE
+    ]
+    out.projection_scene.proxy_geometry.extend(new_prims)
+    out.projection_scene.debug_metadata["proxy_derivation"] = {**stats, **extra_metadata}
+    return out
+
+
+class AtlasDepthMap:
+    """Shared metric depth estimate — wire this into one or more of
+    AtlasDeriveReliefMesh / AtlasDeriveWalls / AtlasDeriveTowersSpires /
+    AtlasDeriveRoofsFacades / AtlasDeriveInteriorRoom so a photo's depth is
+    estimated ONCE and shared, instead of each derivation node re-running
+    Depth-Anything independently. This matters for correctness, not just
+    speed: every extraction strategy fits its own ground plane from whatever
+    depth map it's given, so two branches fed slightly different depth
+    estimates could disagree on metric scale and merge inconsistently.
+    Requires the [neural] extra.
+
+    Distinct from AtlasDepthAnything: that node's IMAGE output is a lossy,
+    per-image min-max-normalized preview — the real near/far distances and
+    is_metric flag are computed then discarded, so it cannot be used for
+    metric geometry. This node keeps the full DepthResult (raw array +
+    provenance) intact for the geometry nodes to consume.
+    """
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP",)
+    RETURN_NAMES = ("depth",)
+    FUNCTION = "estimate"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"image": ("IMAGE",)},
+            "optional": {
+                "depth_model": ([
+                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
+                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+            },
+        }
+
+    def estimate(self, image, depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                 device="auto"):
+        from atlas_camera.inference.depth_estimator import estimate_depth
+        tmp = _save_image_tensor_to_tmp(image)
+        try:
+            result = estimate_depth(tmp, model_id=depth_model,
+                                    device=None if device == "auto" else device)
+        finally:
+            os.unlink(tmp)
+        return (result,)
+
+
+class AtlasDeriveReliefMesh:
+    """Continuous depth-following relief mesh — one job, so there's no
+    geometry_mode/primitive_method combination that silently ignores this
+    node's own widgets. Takes an already-estimated ATLAS_DEPTH_MAP
+    (AtlasDepthMap) instead of an image, so it can share one depth pass with
+    sibling derivation nodes wired from the same photo (see AtlasMergeGeometry
+    to combine their outputs). Fits its own ground scale/backdrop directly
+    (relief_mesh.estimate_ground_scale + depth_geometry.build_backdrop_primitive)
+    rather than borrowing them from a primitive-fitting pass — a relief mesh
+    alone never needed the wall/object derivation AtlasDeriveProjectionGeometry's
+    relief_mesh mode runs internally just to get those two numbers.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE",)
+    FUNCTION = "derive"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+            },
+            "optional": {
+                "relief_grid": ("INT", {"default": 128, "min": 16, "max": 1024,
+                    "tooltip": "Mesh density (long-edge grid columns). Higher = fewer/"
+                               "smaller torn holes on noisy AI-image depth, at the cost "
+                               "of a larger mesh payload and a heavier viewport."}),
+                "relief_quality": (["custom", "low", "medium", "high", "ultra"], {"default": "custom",
+                    "tooltip": "Quick-pick override for relief_grid: low=64, medium=256, "
+                               "high=512, ultra=1024. 'custom' leaves relief_grid as set above."}),
+                "depth_edge_rel": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 5.0, "step": 0.05,
+                    "tooltip": "Relative depth jump that tears the mesh into a silhouette "
+                               "hole. Lower = tears more readily; higher = tears less but "
+                               "risks rubber-sheeting a real silhouette onto the background."}),
+            },
+        }
+
+    _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
+
+    def derive(self, solve, depth, relief_grid=128, relief_quality="custom", depth_edge_rel=0.5):
+        if relief_quality in self._RELIEF_QUALITY_PRESETS:
+            relief_grid = self._RELIEF_QUALITY_PRESETS[relief_quality]
+        from atlas_camera.core.depth_geometry import back_project_normals, build_backdrop_primitive
+        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+        from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
+
+        params = _solve_camera_params(solve, depth)
+        if params is None:
+            return (solve,)
+        width, height, fx, fy, cx, cy = params
+        depth_map = _depth_map_for_solve(depth, width, height)
+        horizon_y = _horizon_y_from_solve(solve)
+        extr = solve.camera.extrinsics
+
+        scale, ground_info = estimate_ground_scale(
+            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            horizon_y=horizon_y)
+        bp = back_project_normals(depth_map, view_matrix=extr.camera_view_matrix,
+                                   fx=fx, fy=fy, cx=cx, cy=cy)
+        scaled_depth = depth_map * scale
+        backdrop = build_backdrop_primitive(
+            bp=bp, scaled_depth=scaled_depth, valid_depth=bp.valid_depth,
+            fx=fx, fy=fy, cx=cx, cy=cy, width=width, height=height, scale=scale)
+        mesh = build_relief_mesh(
+            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
+            scale=scale, horizon_y=horizon_y)
+        prims = [backdrop, relief_mesh_primitive(mesh)]
+        stats = {
+            "ground_scale": scale, "ground_fit": ground_info,
+            "relief_mesh": {"n_vertices": mesh.stats["n_vertices"], "n_faces": mesh.stats["n_faces"]},
+        }
+        out = _replace_proxy_role_geometry(solve, prims, stats, {
+            "relief_grid": int(relief_grid), "relief_quality": relief_quality,
+            "depth_edge_rel": float(depth_edge_rel), "derive_node": "AtlasDeriveReliefMesh",
+        })
+        return (out,)
+
+
+class AtlasDeriveWalls:
+    """Vertical wall planes + foreground boxes/cylinders (azimuth_walls) — one
+    job, general-purpose exterior blockout. Height is clipped to whatever 3D
+    points individually pass a near-vertical-normal filter, so it truncates
+    sloped roofs/spires/towers — use AtlasDeriveTowersSpires for those.
+    Set max_objects=0 for walls/ground/backdrop only (no foreground boxes)."""
+    RETURN_TYPES = ("ATLAS_SOLVE",)
+    FUNCTION = "derive"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+            },
+            "optional": {
+                "max_walls": ("INT", {"default": 4, "min": 0, "max": 8}),
+                "max_objects": ("INT", {"default": 3, "min": 0, "max": 6,
+                    "tooltip": "Max foreground boxes/cylinders (e.g. buildings, in an "
+                               "aerial/top-down shot). 0 = walls/ground/backdrop only."}),
+            },
+        }
+
+    def derive(self, solve, depth, max_walls=4, max_objects=3):
+        from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_projection_proxies
+        params = _solve_camera_params(solve, depth)
+        if params is None:
+            return (solve,)
+        width, height, fx, fy, cx, cy = params
+        depth_map = _depth_map_for_solve(depth, width, height)
+        horizon_y = _horizon_y_from_solve(solve)
+        extr = solve.camera.extrinsics
+        cfg = ProxyDerivationConfig(max_objects=int(max_objects))
+        prims, stats = derive_projection_proxies(
+            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            max_walls=int(max_walls), horizon_y=horizon_y, config=cfg)
+        out = _replace_proxy_role_geometry(solve, prims, stats, {
+            "primitive_method": "azimuth_walls", "derive_node": "AtlasDeriveWalls",
+        })
+        return (out,)
+
+
+class AtlasDeriveTowersSpires:
+    """Vertical wall planes extruded to the real image-space silhouette top
+    (vertical_extrusion) — one job, reaches towers/spires/sloped roofs that
+    AtlasDeriveWalls' azimuth_walls truncates. Per Hoiem/Efros/Hebert's
+    "Automatic Photo Pop-up" (SIGGRAPH 2005) billboard-cutout technique."""
+    RETURN_TYPES = ("ATLAS_SOLVE",)
+    FUNCTION = "derive"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+            },
+            "optional": {
+                "max_walls": ("INT", {"default": 4, "min": 0, "max": 8}),
+                "max_objects": ("INT", {"default": 3, "min": 0, "max": 6,
+                                        "tooltip": "Max foreground boxes/cylinders."}),
+            },
+        }
+
+    def derive(self, solve, depth, max_walls=4, max_objects=3):
+        from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_vertical_extrusion_proxies
+        params = _solve_camera_params(solve, depth)
+        if params is None:
+            return (solve,)
+        width, height, fx, fy, cx, cy = params
+        depth_map = _depth_map_for_solve(depth, width, height)
+        horizon_y = _horizon_y_from_solve(solve)
+        extr = solve.camera.extrinsics
+        cfg = ProxyDerivationConfig(max_objects=int(max_objects))
+        prims, stats = derive_vertical_extrusion_proxies(
+            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            max_walls=int(max_walls), horizon_y=horizon_y, config=cfg)
+        out = _replace_proxy_role_geometry(solve, prims, stats, {
+            "primitive_method": "vertical_extrusion", "derive_node": "AtlasDeriveTowersSpires",
+        })
+        return (out,)
+
+
+class AtlasDeriveRoofsFacades:
+    """Any-orientation planes via sequential RANSAC (ransac_planes) — one
+    job, sloped roofs and stepped/angled facades. Best for exterior
+    architecture where a single flat wall height is the wrong shape."""
+    RETURN_TYPES = ("ATLAS_SOLVE",)
+    FUNCTION = "derive"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+            },
+            "optional": {
+                "max_planes": ("INT", {"default": 8, "min": 1, "max": 16,
+                    "tooltip": "Plane budget (roofs, facades, ramps)."}),
+            },
+        }
+
+    def derive(self, solve, depth, max_planes=8):
+        from atlas_camera.core.plane_extraction import PlaneRansacConfig, extract_planes_ransac
+        params = _solve_camera_params(solve, depth)
+        if params is None:
+            return (solve,)
+        width, height, fx, fy, cx, cy = params
+        depth_map = _depth_map_for_solve(depth, width, height)
+        horizon_y = _horizon_y_from_solve(solve)
+        extr = solve.camera.extrinsics
+        prims, stats = extract_planes_ransac(
+            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            max_planes=int(max_planes), horizon_y=horizon_y, config=PlaneRansacConfig())
+        out = _replace_proxy_role_geometry(solve, prims, stats, {
+            "primitive_method": "ransac_planes", "derive_node": "AtlasDeriveRoofsFacades",
+        })
+        return (out,)
+
+
+class AtlasDeriveInteriorRoom:
+    """Manhattan-aligned floor + up to 4 walls + optional ceiling
+    (room_cuboid) — one job, orthogonal interiors. Produces confidently
+    wrong/skewed results on non-orthogonal rooms — pick a different node
+    for those shots."""
+    RETURN_TYPES = ("ATLAS_SOLVE",)
+    FUNCTION = "derive"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+            },
+        }
+
+    def derive(self, solve, depth):
+        from atlas_camera.core.room_layout import RoomCuboidConfig, extract_room_cuboid
+        params = _solve_camera_params(solve, depth)
+        if params is None:
+            return (solve,)
+        width, height, fx, fy, cx, cy = params
+        depth_map = _depth_map_for_solve(depth, width, height)
+        horizon_y = _horizon_y_from_solve(solve)
+        extr = solve.camera.extrinsics
+        prims, stats = extract_room_cuboid(
+            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            horizon_y=horizon_y, config=RoomCuboidConfig())
+        out = _replace_proxy_role_geometry(solve, prims, stats, {
+            "primitive_method": "room_cuboid", "derive_node": "AtlasDeriveInteriorRoom",
+        })
+        return (out,)
+
+
+class AtlasMergeGeometry:
+    """Explicit combinator for two independently-derived solves' geometry —
+    the Nuke-Merge-node equivalent for AtlasDeriveWalls/AtlasDeriveReliefMesh/
+    etc. Chain multiple instances for 3+-way combination
+    (Merge(fg, bg) -> Merge(that, sky)).
+
+    solve_a's camera/intrinsics become the merged solve's camera — wire both
+    branches from the SAME upstream solve so they share a camera; this node
+    does not check for or correct a mismatch between solve_a and solve_b.
+
+    Derive nodes never chain on their own (each one strips any prior
+    PROXY_ROLE-tagged geometry before adding its own, specifically so a
+    re-run never silently accumulates stale geometry) — this node is the one
+    explicit, visible place two branches' geometry actually combines.
+
+    Only merges solve_b's PROXY_ROLE-tagged geometry — i.e. only what
+    solve_b's own derive node actually added — never solve_b's full
+    proxy_geometry list. This was found empirically (live end-to-end run,
+    not reasoned in the original design): both branches used to inherit a
+    "ground_plane" pass-through entry from their shared upstream solve
+    (projection_scene.create_default_projection_scene()'s placeholder,
+    tagged role="ground", not PROXY_ROLE) that neither derive node touched
+    — naively concatenating solve_b's entire list duplicated that inherited
+    entry on top of solve_a's own copy of the exact same thing, even though
+    solve_a already provides it via `out`. That specific placeholder has
+    since been removed for being confusingly named and having no consumer,
+    but this filter stays as the correct general contract: a merge should
+    only ever combine what each side's own derive node actually produced.
+
+    Also deduplicates the always-emitted "projection_backdrop" plane: every
+    derivation strategy emits exactly one, so merging two PROXY_ROLE lists
+    that each have one would still produce two overlapping backdrop planes.
+    Keeps solve_a's.
+
+    Optional `shot_cam` (ATLAS_SHOT_CAM, from AtlasDefineShotCam): when
+    connected, attached onto the merged solve as `out.shot_cam` — a pure
+    attachment, never a mutation of `out.camera`. Geometry is world-space and
+    doesn't care about sensor/lens format; only the FINAL render/export
+    camera does, and this just lets that format ride along with the merged
+    result so it reaches AtlasBlockoutViewport/exporters without having to
+    be re-wired in separately. solve_a's own camera intrinsics/extrinsics —
+    what any of its projection sources actually use to sample their own
+    photos — are completely untouched either way.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE",)
+    FUNCTION = "merge"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve_a": ("ATLAS_SOLVE",),
+                "solve_b": ("ATLAS_SOLVE",),
+            },
+            "optional": {
+                "shot_cam": ("ATLAS_SHOT_CAM", {
+                    "tooltip": "Optional project/shot camera format (AtlasDefineShotCam) — "
+                               "attached to the merged solve for AtlasBlockoutViewport/exporters "
+                               "to conform to. Never affects this merge's own geometry/camera."}),
+            },
+        }
+
+    def merge(self, solve_a, solve_b, shot_cam=None):
+        from atlas_camera.core.proxy_geometry import PROXY_ROLE
+        from atlas_camera.core.schema import AtlasSolve
+        out = AtlasSolve.from_dict(solve_a.to_dict())
+        seen_backdrop = any(p.name == "projection_backdrop" for p in out.projection_scene.proxy_geometry)
+        merged_from_b = 0
+        for p in solve_b.projection_scene.proxy_geometry:
+            if (p.metadata or {}).get("role") != PROXY_ROLE:
+                continue  # pass-through geometry solve_b inherited, not something its derive node added
+            if p.name == "projection_backdrop":
+                if seen_backdrop:
+                    continue
+                seen_backdrop = True
+            out.projection_scene.proxy_geometry.append(p)
+            merged_from_b += 1
+        out.projection_scene.debug_metadata["proxy_derivation_merge"] = {
+            "solve_a_prims": len(solve_a.projection_scene.proxy_geometry),
+            "solve_b_prims_merged": merged_from_b,
+            "merged_prims_total": len(out.projection_scene.proxy_geometry),
+        }
+        if shot_cam is not None:
+            out.shot_cam = shot_cam
+        return (out,)
+
+
+class AtlasDefineShotCam:
+    """Project-level render/output camera format — sensor width/height (mm)
+    + lens (focal length mm) + target resolution, analogous to a Nuke/Resolve
+    project format setting. Wire its output into AtlasMergeGeometry (to
+    attach it onto a merged solve so it flows downstream automatically) or
+    directly into AtlasBlockoutViewport (an explicit direct wire always wins
+    over an inherited one) to conform the FINAL render/export to this format,
+    regardless of what aspect ratio any individual source photo happened to
+    have. Intrinsics-only — no position; camera placement still comes from
+    whichever solve's own recovered pose is already in play. Never affects
+    how any photo gets projected onto geometry — see AtlasShotCam's own
+    docstring in schema.py for why that's safe.
+    """
+    RETURN_TYPES = ("ATLAS_SHOT_CAM",)
+    RETURN_NAMES = ("shot_cam",)
+    FUNCTION = "define"
+    CATEGORY = "Atlas Camera/Project"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "sensor_width_mm": ("FLOAT", {"default": 36.0, "min": 1.0, "max": 1000.0,
+                    "tooltip": "Shot format sensor width in mm (with sensor_height_mm, defines "
+                               "the output aspect ratio — e.g. 36x24 for 3:2, 36x20.25 for 16:9)."}),
+                "sensor_height_mm": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 1000.0}),
+                "focal_length_mm": ("FLOAT", {"default": 35.0, "min": 1.0, "max": 2000.0,
+                    "tooltip": "Shot format lens — the FINAL render/export camera's focal length, "
+                               "independent of any individual source photo's own solved lens."}),
+                "resolution": ("INT", {"default": 1920, "min": 128, "max": 8192, "step": 8,
+                    "tooltip": "Long-edge output resolution; the short edge follows the sensor "
+                               "aspect above (same long-edge convention as AtlasBlockoutViewport's "
+                               "own resolution widget)."}),
+            },
+        }
+
+    def define(self, sensor_width_mm=36.0, sensor_height_mm=24.0, focal_length_mm=35.0, resolution=1920):
+        from atlas_camera.core.schema import AtlasShotCam
+        return (AtlasShotCam(
+            sensor_width_mm=float(sensor_width_mm),
+            sensor_height_mm=float(sensor_height_mm),
+            focal_length_mm=float(focal_length_mm),
+            resolution_long_edge_px=int(resolution),
+        ),)
 
 
 # Exact named views from ComfyUI-qwenmultiangle / the Multiple-Angles LoRA, shared
@@ -1877,8 +2450,76 @@ class AtlasExportNuke:
 
 
 # ---------------------------------------------------------------------------
+# Track 3 — camera path animation (see AtlasBlockoutViewport's Camera Path mode)
+# ---------------------------------------------------------------------------
+
+class AtlasExportCameraPathUSD:
+    """Export a keyframed camera path as a time-sampled USD camera (.usda).
+
+    Separate from AtlasExportUSD because it takes a different required input
+    (ATLAS_CAMERA_PATH, produced by AtlasBlockoutViewport's Camera Path mode)
+    rather than a single static solve pose.
+    """
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("usd_path",)
+    FUNCTION = "export"
+    CATEGORY = "Atlas Camera/Export"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "camera_path": ("ATLAS_CAMERA_PATH",),
+                "output_dir": ("STRING", {"default": "atlas_exports"}),
+            }
+        }
+
+    def export(self, solve, camera_path, output_dir):
+        from atlas_camera.exporters.usd_exporter import USDExporter
+        if camera_path is None or not camera_path.keyframes:
+            raise ValueError(
+                "No camera path yet — open AtlasBlockoutViewport, use 🎥 Camera Path "
+                "to add at least one keyframe, then click ⏺ Bake Path before queuing "
+                "this export node."
+            )
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        dest = out / "camera_path.usda"
+        USDExporter().export_camera_animation(camera_path, solve.camera.intrinsics, dest)
+        return (str(dest),)
+
+
+# ---------------------------------------------------------------------------
 # Track 2 — AtlasBlockout viewport node
 # ---------------------------------------------------------------------------
+
+class AtlasViewportControls:
+    """Detached toolbar/panel for AtlasBlockoutViewport — connect its output to
+    that node's `controls` input to move every button and panel (primitives,
+    📽 Project / 📊 Diagram / ℹ Info, 🎥 Camera Path + presets + FBX import,
+    Render Passes) off the viewport node, leaving it perspective-only and
+    freely resizable.
+
+    Carries no real data: the single output exists only so the two nodes'
+    frontend JS extensions can find each other via the graph link (see
+    atlas_blockout.js — the viewport reparents its toolbar DOM into this
+    node's container when connected). Python does nothing but return an
+    empty placeholder string.
+    """
+    RETURN_TYPES = ("ATLAS_VIEWPORT_LINK",)
+    RETURN_NAMES = ("controls",)
+    FUNCTION = "noop"
+    CATEGORY = "Atlas Camera/Blockout"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {}}
+
+    def noop(self):
+        return ("",)
+
 
 class AtlasBlockoutViewport:
     """
@@ -1892,9 +2533,26 @@ class AtlasBlockoutViewport:
     3. Place primitive geometry (box, plane, person card, etc.).
     4. Click "Render Passes" in the viewport — fills client_data and re-queues.
     5. Four IMAGE outputs are now available for ControlNet or compositing.
+    6. Optional: use 🎥 Camera Path mode to author a keyframed camera move (fly
+       nav, unclamped — leaving the recovered cone is expected here), then
+       click "⏺ Bake Path" to fill client_data with a rendered frame sequence.
+       `path_frames` (an IMAGE batch) feeds a core Video Combine node directly;
+       `camera_path` (the raw keyframes) feeds AtlasExportCameraPathUSD for a
+       DCC-facing animated camera. Frames sampled outside the recovered
+       camera's cone will show the same documented black/undefined regions as
+       orbiting past it under 📽 Project — expected, not a bug.
+    7. Optional: connect an AtlasViewportControls node to `controls` to move
+       every button/panel (primitives, Project/Diagram/Info, Camera Path +
+       presets + FBX import, Render Passes) OUT of this node — this node then
+       shows the perspective render only, and can be freely resized by
+       dragging its corner. `controls` carries no real data (a link exists
+       purely so the two nodes' frontend JS can find each other); Python
+       ignores it. With nothing connected, all controls still appear locally
+       here, unchanged — fully backward-compatible with saved workflows that
+       predate AtlasViewportControls.
     """
-    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("shaded", "depth", "normal", "mask")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "ATLAS_CAMERA_PATH")
+    RETURN_NAMES = ("shaded", "depth", "normal", "mask", "path_frames", "camera_path")
     FUNCTION = "render"
     CATEGORY = "Atlas Camera/Blockout"
     OUTPUT_NODE = True  # kept alive even without downstream connections
@@ -1907,7 +2565,8 @@ class AtlasBlockoutViewport:
                 "source_image": ("IMAGE",),
                 "resolution": ("INT", {"default": 768, "min": 128, "max": 4096, "step": 8,
                     "tooltip": "Long-edge render resolution; the short side auto-follows the "
-                               "source image aspect (viewport inherits the image's aspect)."}),
+                               "source image aspect (viewport inherits the image's aspect). "
+                               "Also settable by dragging the node's own resize handle."}),
                 "client_data": ("STRING", {"default": "", "multiline": False}),
             },
             "optional": {
@@ -1921,22 +2580,44 @@ class AtlasBlockoutViewport:
                                "data and renders as empty/black the moment you orbit off the "
                                "exact recovered viewpoint — leave at 1.0 if you plan to use "
                                "Project, raise it only for inspecting undressed blockout shapes."}),
+                "controls": ("ATLAS_VIEWPORT_LINK", {
+                    "tooltip": "Connect an AtlasViewportControls node here to move all buttons/"
+                               "panels off this node (perspective-only, freely resizable). Carries "
+                               "no real data — Python ignores it; the link only lets the two "
+                               "nodes' frontend JS find each other."}),
+                "shot_cam": ("ATLAS_SHOT_CAM", {
+                    "tooltip": "Optional project/shot camera format (AtlasDefineShotCam) — conforms "
+                               "the render resolution/aspect and viewing-camera FOV to this format "
+                               "instead of auto-following source_image's own aspect. A direct wire "
+                               "here wins over one attached to `solve` by AtlasMergeGeometry. Never "
+                               "affects how the source photo is projected onto geometry."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    def render(self, solve, source_image, resolution, client_data, preview_expand=1.0, unique_id=None):
+    def render(self, solve, source_image, resolution, client_data, preview_expand=1.0, controls=None,
+               shot_cam=None, unique_id=None):
         torch = _require_torch()
 
-        # Auto-adopt the source image aspect: derive W×H from the incoming image,
-        # scaled so the long edge is `resolution`.
-        src_h, src_w = int(source_image.shape[1]), int(source_image.shape[2])
-        width, height = _fit_long_edge(src_w, src_h, int(resolution))
+        # A direct shot_cam wire wins over one inherited from the solve (e.g.
+        # attached earlier by AtlasMergeGeometry) — explicit beats inherited.
+        resolved_shot_cam = shot_cam if shot_cam is not None else getattr(solve, "shot_cam", None)
+        shot_intrinsics = None
+        if resolved_shot_cam is not None:
+            from atlas_camera.core.intrinsics import intrinsics_from_shot_cam
+            shot_intrinsics = intrinsics_from_shot_cam(resolved_shot_cam)
+            width, height = shot_intrinsics.image_width, shot_intrinsics.image_height
+        else:
+            # Auto-adopt the source image aspect: derive W×H from the incoming
+            # image, scaled so the long edge is `resolution`.
+            src_h, src_w = int(source_image.shape[1]), int(source_image.shape[2])
+            width, height = _fit_long_edge(src_w, src_h, int(resolution))
 
         # Store camera data for the browser extension to fetch
         node_id = str(unique_id) if unique_id is not None else "0"
         _blockout_cache_set(node_id, _extract_blockout_camera(
-            solve, source_image, width, height, preview_expand=float(preview_expand)))
+            solve, source_image, width, height, preview_expand=float(preview_expand),
+            shot_intrinsics=shot_intrinsics))
 
         # IMPORTANT: return a "ui" payload. ComfyUI only emits the "executed"
         # websocket message (which triggers node.onExecuted / the frontend's
@@ -1947,19 +2628,34 @@ class AtlasBlockoutViewport:
 
         if not client_data.strip():
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
-            return {"ui": ui_payload, "result": (blank, blank, blank, blank)}
+            return {"ui": ui_payload, "result": (blank, blank, blank, blank, blank, None)}
 
         try:
             data = json.loads(client_data)
         except json.JSONDecodeError:
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
-            return {"ui": ui_payload, "result": (blank, blank, blank, blank)}
+            return {"ui": ui_payload, "result": (blank, blank, blank, blank, blank, None)}
 
         shaded = _decode_b64_to_tensor(data.get("shaded", ""), width, height)
         depth  = _decode_b64_to_tensor(data.get("depth",  ""), width, height)
         normal = _decode_b64_to_tensor(data.get("normal", ""), width, height)
         mask   = _decode_b64_to_tensor(data.get("mask",   ""), width, height)
-        return {"ui": ui_payload, "result": (shaded, depth, normal, mask)}
+
+        path_frames_b64 = data.get("path_frames") or []
+        if path_frames_b64:
+            path_frames = torch.cat(
+                [_decode_b64_to_tensor(b64, width, height) for b64 in path_frames_b64], dim=0
+            )
+        else:
+            path_frames = torch.zeros(1, height, width, 3, dtype=torch.float32)
+
+        camera_path_data = data.get("camera_path")
+        camera_path = None
+        if camera_path_data:
+            from atlas_camera.core.schema import AtlasCameraPath
+            camera_path = AtlasCameraPath.from_dict(camera_path_data)
+
+        return {"ui": ui_payload, "result": (shaded, depth, normal, mask, path_frames, camera_path)}
 
     @classmethod
     def IS_CHANGED(cls, client_data="", **_):
@@ -2004,7 +2700,20 @@ NODE_CLASS_MAPPINGS = {
     "AtlasExportBlender":         AtlasExportBlender,
     "AtlasExportNuke":            AtlasExportNuke,
     # Track 2 — blockout viewport
+    "AtlasViewportControls":      AtlasViewportControls,
     "AtlasBlockoutViewport":      AtlasBlockoutViewport,
+    # Track 3 — camera path animation
+    "AtlasExportCameraPathUSD":   AtlasExportCameraPathUSD,
+    # Track 5 — composable geometry derivation
+    "AtlasDepthMap":              AtlasDepthMap,
+    "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
+    "AtlasDeriveWalls":           AtlasDeriveWalls,
+    "AtlasDeriveTowersSpires":    AtlasDeriveTowersSpires,
+    "AtlasDeriveRoofsFacades":    AtlasDeriveRoofsFacades,
+    "AtlasDeriveInteriorRoom":    AtlasDeriveInteriorRoom,
+    "AtlasMergeGeometry":         AtlasMergeGeometry,
+    # Track 6 — shot format
+    "AtlasDefineShotCam":         AtlasDefineShotCam,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -2040,5 +2749,18 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportBlender":         "Atlas Export Blender Scene",
     "AtlasExportNuke":            "Atlas Export Nuke Script",
     # Track 2 — blockout viewport
+    "AtlasViewportControls":      "Atlas Viewport Controls 🎛",
     "AtlasBlockoutViewport":      "Atlas Viewport 🧊",
+    # Track 3 — camera path animation
+    "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
+    # Track 5 — composable geometry derivation
+    "AtlasDepthMap":              "Atlas Depth Map 🌊",
+    "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
+    "AtlasDeriveWalls":           "Atlas Derive Walls 🧱",
+    "AtlasDeriveTowersSpires":    "Atlas Derive Towers & Spires 🗼",
+    "AtlasDeriveRoofsFacades":    "Atlas Derive Roofs & Facades 🏛",
+    "AtlasDeriveInteriorRoom":    "Atlas Derive Interior Room 🛋",
+    "AtlasMergeGeometry":         "Atlas Merge Geometry 🔀",
+    # Track 6 — shot format
+    "AtlasDefineShotCam":         "Atlas Define Shot Cam 🎬",
 }

@@ -6,6 +6,7 @@ API uses pytest.importorskip("pxr") to skip cleanly when it is absent.
 
 import pytest
 
+from atlas_camera.core.schema import AtlasCameraKeyframe, AtlasCameraPath
 from atlas_camera.exporters.usd_exporter import USDExporter
 
 
@@ -197,3 +198,63 @@ def test_usd_export_projection_scene_plane_is_bound_to_material(tmp_path, make_a
     binding_api = UsdShade.MaterialBindingAPI(plane_prim)
     bound_mat, _ = binding_api.ComputeBoundMaterial()
     assert bound_mat.GetPath() == "/AtlasProjection/Materials/ProjectionMat"
+
+
+# ---------------------------------------------------------------------------
+# export_camera_animation
+# ---------------------------------------------------------------------------
+
+def _two_keyframe_path(frame_count=11):
+    return AtlasCameraPath(
+        keyframes=[
+            AtlasCameraKeyframe(frame_index=0, position=(0.0, 5.0, 10.0), target=(0.0, 0.0, 0.0)),
+            AtlasCameraKeyframe(frame_index=frame_count - 1, position=(10.0, 5.0, 0.0), target=(0.0, 0.0, 0.0)),
+        ],
+        fps=24.0,
+        frame_count=frame_count,
+    )
+
+
+def test_usd_export_camera_animation_writes_file(tmp_path, make_atlas_solve):
+    pytest.importorskip("pxr")
+    solve = make_atlas_solve()
+    path = USDExporter().export_camera_animation(
+        _two_keyframe_path(), solve.camera.intrinsics, tmp_path / "camera_path.usda"
+    )
+    assert path.is_file()
+
+
+def test_usd_export_camera_animation_sets_time_codes(tmp_path, make_atlas_solve):
+    from pxr import Usd
+    pytest.importorskip("pxr")
+    solve = make_atlas_solve()
+    frame_count = 11
+    path = USDExporter().export_camera_animation(
+        _two_keyframe_path(frame_count), solve.camera.intrinsics, tmp_path / "camera_path.usda"
+    )
+    stage = Usd.Stage.Open(str(path))
+    assert stage.GetStartTimeCode() == pytest.approx(0.0)
+    assert stage.GetEndTimeCode() == pytest.approx(float(frame_count - 1))
+    assert stage.GetFramesPerSecond() == pytest.approx(24.0)
+
+
+def test_usd_export_camera_animation_has_time_sampled_transform(tmp_path, make_atlas_solve):
+    from pxr import Usd, UsdGeom
+    pytest.importorskip("pxr")
+    solve = make_atlas_solve()
+    frame_count = 11
+    path = USDExporter().export_camera_animation(
+        _two_keyframe_path(frame_count), solve.camera.intrinsics, tmp_path / "camera_path.usda"
+    )
+    stage = Usd.Stage.Open(str(path))
+    prim = stage.GetPrimAtPath("/AtlasCamera/Camera")
+    xform = UsdGeom.Xformable(prim)
+    ops = xform.GetOrderedXformOps()
+    assert len(ops) == 1
+    time_samples = ops[0].GetTimeSamples()
+    assert len(time_samples) == frame_count
+
+    first_matrix = ops[0].Get(Usd.TimeCode(0))
+    last_matrix = ops[0].Get(Usd.TimeCode(frame_count - 1))
+    assert first_matrix.ExtractTranslation() == pytest.approx((0.0, 5.0, 10.0))
+    assert last_matrix.ExtractTranslation() == pytest.approx((10.0, 5.0, 0.0))
