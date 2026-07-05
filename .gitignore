@@ -40,6 +40,13 @@ examples/review_packages/*
 *.ma
 *.mb
 
+# Model weights / checkpoints — never commit these to a ComfyUI node repo
+*.safetensors
+*.ckpt
+*.pth
+*.onnx
+*.gguf
+
 # Large or generated images should stay out of git. Small hand-written fixtures
 # in tests/fixtures are allowed.
 *.png
