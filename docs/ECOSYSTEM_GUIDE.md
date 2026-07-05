@@ -70,7 +70,7 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (26 nodes, category "Atlas Camera")
+## 2. The Node Catalog (37 nodes, category "Atlas Camera")
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in.
@@ -103,6 +103,25 @@ actually wire them in.
 | `AtlasAddPatchView` | Adds an AI-generated novel-view "patch" to fill areas the primary camera couldn't see. See §3.4 — this is the most involved node in the pack. |
 | `AtlasDepthAnything` | Standalone monocular depth (Depth Anything V2), metric or relative — mostly useful for inspection/diagnostics. |
 
+### Composable derive & merge (mix strategies per scene region)
+
+An alternative to `AtlasDeriveProjectionGeometry`'s single `scene_type` preset:
+estimate depth once and derive each region with the strategy that fits it, then
+combine explicitly.
+
+| Node | What it does |
+|---|---|
+| `AtlasDepthMap` | Shared metric depth estimate (`ATLAS_DEPTH_MAP`) — run **once**, feed the derive nodes below so they agree on metric scale. Distinct from `AtlasDepthAnything` (a lossy preview IMAGE). |
+| `AtlasDeriveReliefMesh` · `AtlasDeriveWalls` · `AtlasDeriveTowersSpires` · `AtlasDeriveRoofsFacades` · `AtlasDeriveInteriorRoom` | Per-strategy derive nodes (relief mesh · azimuth walls · vertical-extrusion towers/spires · RANSAC roofs/facades · Manhattan room cuboid). Each consumes a shared `AtlasDepthMap`. |
+| `AtlasMergeGeometry` | **Nuke-Merge-node equivalent** — combines two derived solves' proxy geometry (e.g. foreground walls + background relief mesh). `solve_a`'s camera wins; chain instances for 3+-way. Optional `shot_cam` rides along onto the merged solve. |
+| `AtlasOcclusionMask` | Frustum / frame / facing-angle validity mask used by multi-angle patch projection (§3.4). |
+
+### Shot format
+
+| Node | What it does |
+|---|---|
+| `AtlasDefineShotCam` | A project-level render/output camera format (sensor W×H mm + lens mm + long-edge resolution) — like a Nuke/Resolve project setting. Intrinsics-only, no position. Wire into `AtlasMergeGeometry` (attaches to the merged solve) or directly into `AtlasBlockoutViewport` so the render/export conforms to one shot format instead of each photo's own aspect. |
+
 ### Decompose / analyze
 
 | Node | What it does |
@@ -118,7 +137,8 @@ actually wire them in.
 
 | Node | What it does |
 |---|---|
-| `AtlasBlockoutViewport` | The live Three.js viewport: 📷 Camera View, 📽 Project (matte-painting mode), ☀ Exposure, 📊 VP/horizon/ground diagram, ℹ camera HUD, 4 render passes (shaded/depth/normal/mask). See USER_GUIDE.md Parts 2–3 for the concepts. |
+| `AtlasBlockoutViewport` | The live Three.js viewport: 📷 Camera View, 📽 Project (matte-painting mode), ☀ Exposure, 📊 VP/horizon/ground diagram, ℹ camera HUD, 🎥 camera-path authoring, 4 render passes (shaded/depth/normal/mask). Optional `shot_cam` input conforms the render to a shot format. See USER_GUIDE.md Parts 2–3 for the concepts. |
+| `AtlasViewportControls` | Optional companion node — moves the viewport's toolbar/panels onto its own node to declutter the viewport (carries no data; a pure UI link). |
 
 ### Export
 
@@ -127,6 +147,7 @@ actually wire them in.
 | `AtlasExportSolveJSON` | Raw solve JSON. |
 | `AtlasExportReliefMesh` | OBJ+MTL+texture and/or self-contained GLB, projection baked into UVs — imports pre-projected into Maya/Nuke/ZBrush/Blender with zero setup. |
 | `AtlasExportBlender` / `AtlasExportNuke` / `AtlasExportUSD` | DCC scene-builder scripts / USD camera. |
+| `AtlasExportCameraPathUSD` | Exports the viewport's authored camera-path keyframes as an animated USD camera. |
 | `AtlasExportMayaReviewScene` | Maya scene + image card; wire in `AtlasExportReliefMesh`'s `obj_path` to include the real relief mesh instead of placeholder proxies. |
 | `AtlasExportReviewPackage` | Full bundle (report + all DCC scripts) for handing off to another artist. |
 | `AtlasUSDCameraLoader` | Load a camera back out of a `.usda`. |
