@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mike James — Atlas Camera Breakdown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #0c0a08;
+    --bg-page: #161310;
+    --bg-card: #1d1916;
+    --text-primary: #ebe5db;
+    --text-secondary: #a39989;
+    --text-muted: #6b6356;
+    --accent: #c9985c;
+    --accent-deep: #8b5e2a;
+    --rule: #2a251f;
+    --image-bg: #2a2520;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
+  }
+
+  /* A4 landscape page proportions — 297×210mm = 1.414:1 */
+  .page-wrapper { max-width: 1180px; margin: 24px auto; padding: 0 16px; }
+
+  .page {
+    background: var(--bg-page);
+    aspect-ratio: 1.414 / 1;
+    width: 100%;
+    padding: 36px 48px 28px 48px;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto auto;
+    gap: 18px;
+    border: 1px solid var(--rule);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Subtle grain texture overlay */
+  .page::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    opacity: 0.6;
+    mix-blend-mode: overlay;
+  }
+
+  /* ─── TOP META STRIP ───────────────────────────────── */
+  .top-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+  .top-strip .index { color: var(--accent); }
+  .top-strip .meta-right { display: flex; gap: 28px; }
+
+  /* ─── TITLE BLOCK ──────────────────────────────────── */
+  .title-block { padding-top: 4px; }
+  .project-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 400;
+    font-size: 44px;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+  .project-title em { color: var(--accent); font-style: italic; font-weight: 500; }
+  .tagline {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    letter-spacing: 0.01em;
+  }
+
+  /* ─── HERO IMAGE ───────────────────────────────────── */
+  .hero {
+    position: relative;
+    background: linear-gradient(135deg, #2a2520 0%, #1a1612 50%, #221d18 100%);
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    border: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  /* Drop-in media: replace the ::after placeholder by uncommenting an <img>/<video> inside .hero */
+  .hero img, .hero video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero:empty::after,
+  .hero.placeholder::after {
+    content: '[ HERO — THE APPROACH · baked camera move ]';
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+  }
+  .hero-caption {
+    position: absolute;
+    bottom: 10px;
+    right: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    background: rgba(12, 10, 8, 0.55);
+    padding: 2px 6px;
+  }
+
+  /* ─── PROCESS STRIP ────────────────────────────────── */
+  .process-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .process-cell {
+    aspect-ratio: 16/9;
+    background: var(--image-bg);
+    border: 1px solid var(--rule);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .process-cell .label {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    text-transform: uppercase;
+    background: rgba(12, 10, 8, 0.7);
+    padding: 2px 6px;
+    z-index: 2;
+  }
+  .process-cell .placeholder {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 0 8px;
+  }
+  .process-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .process-cell.plate    { background: linear-gradient(180deg, #1f1a15 0%, #2c241c 100%); }
+  .process-cell.proxy    { background: linear-gradient(180deg, #1a1f24 0%, #1c2530 100%); }
+  .process-cell.inference{ background: linear-gradient(180deg, #2a1f25 0%, #3a2530 100%); }
+  .process-cell.final    { background: linear-gradient(180deg, #2a2520 0%, #1a1612 100%); }
+
+  /* ─── COMMENTARY + SIDEBAR ─────────────────────────── */
+  .body-block { display: grid; grid-template-columns: 1.7fr 1fr; gap: 32px; padding-top: 6px; }
+
+  .approach h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .approach p {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--text-primary);
+    margin-bottom: 7px;
+    max-width: 56ch;
+  }
+  .approach p em { color: var(--accent); font-style: normal; font-weight: 500; }
+
+  .sidebar { padding-left: 24px; border-left: 1px solid var(--rule); }
+  .sidebar h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .spec-row {
+    display: grid;
+    grid-template-columns: 78px 1fr;
+    gap: 12px;
+    padding: 5px 0;
+    border-bottom: 1px dotted var(--rule);
+  }
+  .spec-row:last-child { border-bottom: none; }
+  .spec-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .spec-value {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-primary);
+    line-height: 1.4;
+  }
+
+  /* ─── BOTTOM RULE / FOOTER ─────────────────────────── */
+  .footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+  .footer .name { color: var(--text-secondary); }
+
+  /* ─── OFF-PAGE USAGE NOTES ─────────────────────────── */
+  .design-notes { max-width: 1180px; margin: 32px auto 60px; padding: 0 24px; font-family: 'DM Sans', sans-serif; }
+  .design-notes h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 400; font-size: 28px; color: var(--accent);
+    margin-bottom: 14px; letter-spacing: -0.01em;
+  }
+  .design-notes h3 {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--accent); margin: 24px 0 10px;
+  }
+  .design-notes p, .design-notes li { font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 8px; }
+  .design-notes ul { padding-left: 18px; }
+  .design-notes code {
+    font-family: 'JetBrains Mono', monospace; background: var(--bg-card); color: var(--accent);
+    padding: 1px 5px; font-size: 12px; border: 1px solid var(--rule);
+  }
+  @media print { .design-notes { display: none; } .page-wrapper { margin: 0; } body { background: var(--bg-page); } }
+  @media (max-width: 800px) {
+    .page { padding: 18px 20px 14px 20px; }
+    .project-title { font-size: 28px; }
+    .body-block { grid-template-columns: 1fr; gap: 16px; }
+    .sidebar { padding-left: 0; border-left: none; border-top: 1px solid var(--rule); padding-top: 14px; }
+    .process-strip { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     ATLAS CAMERA — BREAKDOWN PAGE  (matches the master design system)
+     ═══════════════════════════════════════════════════════════════ -->
+
+<div class="page-wrapper">
+  <div class="page">
+
+    <!-- Top meta strip -->
+    <div class="top-strip">
+      <span><span class="index">07</span> <span style="color:var(--text-muted);">/ TOOL</span></span>
+      <div class="meta-right">
+        <span>Tool / R&amp;D</span>
+        <span>2026</span>
+        <span>Creative Technologist</span>
+      </div>
+    </div>
+
+    <!-- Title block -->
+    <div class="title-block">
+      <div class="project-title">
+        Atlas Camera<em> · </em>Single Still to Moving Shot
+      </div>
+      <div class="tagline">
+        A ComfyUI toolset I built to recover a 3D camera from one image and matte-paint-project it into a real camera move — no video model
+      </div>
+    </div>
+
+    <!-- Hero image (drop your baked move / final frame here) -->
+    <div class="hero placeholder">
+      <!-- Replace with:  <video src="atlas_the_approach.mp4" autoplay muted loop playsinline></video>
+                     or:  <img src="atlas_hero.jpg" alt="Atlas final projected move"> -->
+      <span class="hero-caption">Final · "The Approach" · aerial forest → castle · parallax from 1 still</span>
+    </div>
+
+    <!-- 4-up process strip: the real Atlas pipeline -->
+    <div class="process-strip">
+      <div class="process-cell plate">
+        <span class="label">01 · Source Still</span>
+        <span class="placeholder">one image (photo or AI)</span>
+      </div>
+      <div class="process-cell proxy">
+        <span class="label">02 · Camera Solve</span>
+        <span class="placeholder">focal · horizon · VP diagram</span>
+      </div>
+      <div class="process-cell inference">
+        <span class="label">03 · Derived Geometry</span>
+        <span class="placeholder">depth → relief mesh</span>
+      </div>
+      <div class="process-cell final">
+        <span class="label">04 · Projection + Move</span>
+        <span class="placeholder">2.5D parallax · USD / Nuke</span>
+      </div>
+    </div>
+
+    <!-- Commentary + sidebar -->
+    <div class="body-block">
+
+      <div class="approach">
+        <h3>The Approach</h3>
+        <p>
+          Every matte painter knows the wall: project a painting onto geometry and it only holds from the camera that shot it — push in and the hidden edges tear to black. The traditional fix is hand-built projection setups and painted clean plates. I wanted to see how much of that a single still could give up <em>on its own</em>.
+        </p>
+        <p>
+          Atlas Camera recovers the camera — focal length, tilt, horizon, metric height — from one image using a learned prior, then turns monocular depth into projectable geometry (relief mesh, walls, RANSAC planes). The plate is projected back through the recovered camera in a real-time viewport, so a push or an orbit reads with true parallax. Depth-layer inpainting fills what the foreground hid, so the move holds — <em>no video model in the loop.</em>
+        </p>
+        <p>
+          It's built as 41 composable ComfyUI nodes (~14K lines of Python, 300+ tests) that wire learned camera calibration, monocular depth, and vision-language scale cues into one graph — and it exports straight to Maya, Nuke, and USD. The matte-painting tradition stays intact; the tool just does the projection maths so the artist keeps their eye on the frame.
+        </p>
+      </div>
+
+      <div class="sidebar">
+        <h3>Project</h3>
+        <div class="spec-row">
+          <span class="spec-label">Role</span>
+          <span class="spec-value">Sole architect &amp; developer</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-label">Type</span>
+          <span class="spec-value">Independent R&amp;D — camera-projection matte-painting toolset</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-label">Year</span>
+          <span class="spec-value">2026 · active development</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-label">Stack</span>
+          <span class="spec-value">Python · ComfyUI · Three.js / GLSL · FastAPI · GeoCalib · Depth Anything V2</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-label">Pipeline</span>
+          <span class="spec-value">Single-image camera solve · depth→geometry · projection · 2.5D clean-plate parallax · Maya / Nuke / USD / glTF export</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-label">Scale</span>
+          <span class="spec-value">41 nodes · ~14K LOC · 300+ tests</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <span class="name">Mike James — Creative Technologist / Digital Matte Painter</span>
+      <span>miikejamesburns.myportfolio.com</span>
+      <span>Atlas Camera</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HOW TO USE THIS PAGE  (screen-only; hidden when printed to PDF)
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="design-notes">
+  <h2>Dropping in your media</h2>
+  <p>This page is built on your existing breakdown design system — same grid, palette, and type — so it slots straight into the PDF as an R&amp;D / tool page alongside the six production pages.</p>
+  <ul>
+    <li><strong>Hero:</strong> inside <code>&lt;div class="hero placeholder"&gt;</code>, remove <code>placeholder</code> and drop in <code>&lt;video src="…" autoplay muted loop playsinline&gt;</code> (your baked "The Approach" move) or <code>&lt;img src="…"&gt;</code> for a still. Anamorphic crop lands best.</li>
+    <li><strong>Process strip:</strong> replace each cell's <code>&lt;span class="placeholder"&gt;</code> with <code>&lt;img src="…"&gt;</code> — the four stages are Source Still → Camera Solve (drop the 📊 VP/horizon diagram screenshot) → Derived Geometry (grey shaded mesh) → Projection + Move.</li>
+    <li><strong>Export:</strong> print to PDF from the browser (the notes below auto-hide via <code>@media print</code>). A4 landscape, background graphics on.</li>
+  </ul>
+  <h3>Two audiences, one page</h3>
+  <ul>
+    <li><strong>Film / DMP reels</strong> (Crafty Apes, DNEG, AltVFX) — reads as "a DMP who built the projection tool," the AI-native signal a senior reviewer will clock immediately.</li>
+    <li><strong>AI roles</strong> (Canva, Havas, Tomoro) — the sidebar's stack + "41 nodes · 14K LOC · 300+ tests" line is the proof-of-building evidence; link it to the repo.</li>
+  </ul>
+  <h3>Before you ship</h3>
+  <ul>
+    <li>Add the real repo / reel URL to the footer once public.</li>
+    <li>Grab the four process frames straight from the ComfyUI graph + Atlas viewport (📊 Diagram and 📽 Project make clean captures).</li>
+  </ul>
+</div>
+
+</body>
+</html>
