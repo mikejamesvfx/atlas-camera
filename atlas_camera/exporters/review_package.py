@@ -8,6 +8,7 @@ import shutil
 
 from atlas_camera.core.io import save_solve_json
 from atlas_camera.core.schema import AtlasSolve
+from atlas_camera.exporters._plate import primary_plate_path
 from atlas_camera.exporters.blender_exporter import BlenderExporter
 from atlas_camera.exporters.maya_exporter import MayaExporter, write_maya_mel_launcher
 from atlas_camera.exporters.nuke_exporter import NukeExporter
@@ -38,13 +39,6 @@ def _copy_if_present(source: str | Path | None, destination: Path) -> Path | Non
     return destination
 
 
-def _primary_plate_path(solve: AtlasSolve) -> str | Path | None:
-    plate = getattr(solve, "source_plate", None)
-    if plate and plate.image_path and not plate.is_proxy:
-        return plate.image_path
-    return solve.image_path
-
-
 def build_review_package(
     solve: AtlasSolve,
     output_dir: str | Path,
@@ -60,7 +54,7 @@ def build_review_package(
 
     result = ReviewPackageResult(package_dir=package_dir)
 
-    source_source = source_image_path or _primary_plate_path(solve)
+    source_source = source_image_path or primary_plate_path(solve)
     source_suffix = Path(source_source).suffix if source_source else ".png"
     source_image_name = f"source_image{source_suffix or '.png'}"
     source_copy = _copy_if_present(

@@ -59,6 +59,26 @@ def test_nuke_exporter_embeds_world_matrix(tmp_path, make_atlas_solve):
     assert "1.0" in script
 
 
+def test_nuke_exporter_escapes_source_image_name_with_quote_character(tmp_path, make_atlas_solve):
+    # Regression test: source_image_name is interpolated into the generated
+    # script's source_path expression. It must use !r (repr) escaping like
+    # every other interpolated value in this f-string — without it, a
+    # filename containing a double-quote breaks out of the string literal
+    # and injects arbitrary Python that Nuke would execute when the artist
+    # opens the review scene.
+    solve = make_atlas_solve()
+    malicious_name = 'evil".os.system("calc")#.png'
+
+    script = write_nuke_projection_script(
+        solve, tmp_path / "nuke_cards.py", source_image_name=malicious_name,
+    ).read_text(encoding="utf-8")
+
+    ast.parse(script)  # must still be syntactically valid
+    assert repr(malicious_name) in script
+    without_safe_repr = script.replace(repr(malicious_name), "")
+    assert "os.system(" not in without_safe_repr
+
+
 def test_nuke_exporter_sets_camera_translate(tmp_path, make_atlas_solve):
     solve = make_atlas_solve(position=(1.0, 2.0, 3.0))
     script = write_nuke_projection_script(solve, tmp_path / "nuke_cards.py").read_text(encoding="utf-8")

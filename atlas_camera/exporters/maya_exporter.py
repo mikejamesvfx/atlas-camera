@@ -12,6 +12,7 @@ import re
 from atlas_camera.core.camera_math import derive_sensor_height_mm, mm_to_inches, pixel_offset_to_normalized_film_offset
 from atlas_camera.core.proxy_geometry import PROXY_ROLE
 from atlas_camera.core.schema import AtlasSolve, Matrix4
+from atlas_camera.exporters._plate import primary_plate_colorspace, primary_plate_path
 
 NODE_CAMERA = "atlas_CAMERA"
 NODE_PROJECTION_GRP = "atlas_PROJECTION_GRP"
@@ -35,22 +36,6 @@ def _maya_matrix_from_atlas(matrix: Matrix4) -> list[float]:
         matrix[0][3], matrix[1][3], matrix[2][3], 1.0,
     ]
 
-
-def _primary_plate_path(solve: AtlasSolve) -> str | None:
-    plate = getattr(solve, "source_plate", None)
-    if plate and plate.image_path and not plate.is_proxy:
-        return str(plate.image_path)
-    return solve.image_path
-
-
-def _primary_plate_colorspace(solve: AtlasSolve) -> str | None:
-    plate = getattr(solve, "source_plate", None)
-    if plate and plate.colorspace:
-        return str(plate.colorspace)
-    profile = getattr(solve, "output_profile", None)
-    if profile and profile.working_colorspace:
-        return str(profile.working_colorspace)
-    return None
 
 
 def write_maya_scene_script(
@@ -108,8 +93,8 @@ def write_maya_scene_script(
         for p in proxies if p.primitive_type != "mesh"
     ]
     relief_mesh_obj_path_str = str(relief_mesh_obj_path) if relief_mesh_obj_path else None
-    source_plate_path = None if use_package_source else _primary_plate_path(solve)
-    source_colorspace = _primary_plate_colorspace(solve)
+    source_plate_path = None if use_package_source else primary_plate_path(solve)
+    source_colorspace = primary_plate_colorspace(solve)
     output_profile = getattr(solve, "output_profile", None)
     ocio_summary = (
         output_profile.to_dict() if output_profile and hasattr(output_profile, "to_dict") else None
@@ -156,7 +141,7 @@ def build_scene(package_dir=None):
     cmds.xform(camera_transform, worldSpace=True, matrix={maya_matrix!r})
     {focal_warning}
 
-    image_path = {source_plate_path!r} or os.path.join(package_dir, "{source_image_name}")
+    image_path = {source_plate_path!r} or os.path.join(package_dir, {source_image_name!r})
     source_colorspace = {source_colorspace!r}
     ocio_summary = {str(ocio_summary)!r}
     if os.path.exists(image_path):

@@ -99,3 +99,64 @@ def test_reference_above_horizon_is_rejected():
     out = metric_height_from_reference((512, 300), (512, 100), 1.75,
                                        rotation=R, fx=800, fy=800, cx=512, cy=512)
     assert out["camera_height"] is None
+
+
+def test_apply_reference_scale_with_pitched_camera_solve():
+    """Regression test for a real cam->world/world->cam mixup at
+    apply_reference_scale's call site: it used to pass
+    solve.camera.extrinsics.camera_rotation_matrix (cam->world, per
+    look_at_view_matrix's own docstring) directly to resolve_reference_scale,
+    which — like metric_height_from_reference — expects a world->cam rotation
+    and transposes it internally to get cam->world. Passing the wrong one
+    silently double-transposes the ray direction.
+
+    Needs genuine PITCH, not just yaw: a pure yaw-about-world-Y rotation's
+    middle row/column is [0,1,0] in both R and R.T (rotation purely within the
+    horizontal plane never touches the vertical axis), and the height solve
+    depends only on the ray's Y-component — so a yaw-only camera fails to
+    exercise this bug at all (confirmed directly: R vs R.T gave the identical
+    recovered height for a yaw-only setup). A camera with real pitch (looking
+    down at a target well below eye height) mixes Y into X/Z under rotation,
+    and R vs R.T then diverge sharply — confirmed directly for the exact setup
+    below: 1.6 m (correct, world->cam) vs 0.57 m (buggy, cam->world passed
+    where world->cam is expected).
+
+    This test goes through the actual production entry point
+    (apply_reference_scale), not the lower-level functions the other tests in
+    this file already cover correctly with hand-constructed world->cam
+    rotations.
+    """
+    from atlas_camera.core.camera_math import look_at_view_matrix
+    from atlas_camera.core.schema import AtlasExtrinsics, AtlasIntrinsics, AtlasSolve, LatentCamera
+    from atlas_camera.core.solver import apply_reference_scale
+
+    true_height = 1.6
+    obj_height = 1.75
+    fx = fy = 800.0
+    W = H = 1024
+    cx = cy = W / 2.0
+
+    # Pitched AND yawed: eye above and to the side, looking down and across at
+    # a nearer, much-lower target — real off-diagonal rotation terms that mix
+    # the vertical axis, unlike a level/yaw-only camera.
+    eye = (3.0, true_height, 0.0)
+    target = (0.0, 0.3, -6.0)
+    view, world, rot3 = look_at_view_matrix(eye, target)
+    R_world_to_cam = np.array([list(row[:3]) for row in view[:3]])
+
+    base_px, top_px, _ = _scene(true_height, obj_height, R_world_to_cam, fx=fx, fy=fy, W=W, H=H)
+
+    intr = AtlasIntrinsics(image_width=W, image_height=H, fx_px=fx, fy_px=fy, cx_px=cx, cy_px=cy)
+    extr = AtlasExtrinsics(
+        camera_position=eye,
+        camera_rotation_matrix=rot3,   # cam->world, as real solvers store it
+        camera_world_matrix=world,
+        camera_view_matrix=view,
+    )
+    solve = AtlasSolve(camera=LatentCamera(intrinsics=intr, extrinsics=extr))
+
+    apply_reference_scale(solve, [{"height_m": obj_height, "base_px": base_px, "top_px": top_px}])
+
+    detail = solve.debug_metadata["reference_scale"]
+    assert detail["adopted"] is True
+    assert solve.camera.extrinsics.camera_position[1] == pytest.approx(true_height, abs=0.05)

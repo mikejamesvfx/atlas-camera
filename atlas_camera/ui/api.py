@@ -96,7 +96,13 @@ def post_solve(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="project_dir is required.")
     try:
         return solve_project(project_dir)
-    except Exception as exc:  # noqa: BLE001 - API boundary should report structured failures.
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        # These are the exception types project.py/solver.py/multimodal_helper.py
+        # actually raise for expected, client-input-shaped failures (bad project
+        # state, missing optional deps, invalid input) — reported as a structured
+        # 400. Anything else (TypeError, AttributeError, etc.) indicates a genuine
+        # internal bug and should propagate as an unhandled 500, not be masked as
+        # a client error.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -122,7 +128,7 @@ def post_analyze(payload: dict[str, Any]) -> dict[str, Any]:
             enable_preanalysis=bool(payload.get("enable_preanalysis", True)),
             timeout_seconds=float(payload.get("timeout_seconds") or 120.0),
         )
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -148,7 +154,7 @@ def post_llm_guidance(payload: dict[str, Any]) -> dict[str, Any]:
             prompt=payload.get("prompt"),
             timeout_seconds=float(payload.get("timeout_seconds") or 120.0),
         )
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -161,7 +167,7 @@ def post_llm_models(payload: dict[str, Any]) -> dict[str, Any]:
             base_url=str(payload.get("base_url") or "http://127.0.0.1:1234/v1"),
             api_key=payload.get("api_key"),
         )
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -176,7 +182,7 @@ def post_promote_scale_cue(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="bbox_px must be a list of 4 numbers [x1, y1, x2, y2].")
     try:
         return promote_scale_cue(project_dir, reference_id, bbox_px)
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -192,7 +198,7 @@ def post_export_camera_usd(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="project_dir is required.")
     try:
         return export_camera_usd(project_dir)
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -207,7 +213,7 @@ def post_export(payload: dict[str, Any]) -> dict[str, Any]:
             package_name=_safe_package_name(str(payload.get("package_name") or "atlas_review_001")),
             include_usd=bool(payload.get("include_usd", True)),
         )
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

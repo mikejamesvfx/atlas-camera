@@ -19,9 +19,12 @@ global scale.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from atlas_camera.inference._common import bounded_cache_set, resolve_device
 
 
 # Model ids that emit metric (meters) depth rather than up-to-scale relative depth.
@@ -77,7 +80,19 @@ class DepthResult:
         }
 
 
-_MODEL_CACHE: dict[str, tuple[Any, Any]] = {}
+_MODEL_CACHE: dict[tuple[str, str], tuple[Any, Any]] = {}
+_MODEL_CACHE_MAX = 4  # each entry holds a full loaded depth model; bound VRAM growth
+
+# Cross-call depth-RESULT cache (distinct from _MODEL_CACHE above, which only
+# caches loaded weights). Several ComfyUI nodes independently call
+# estimate_depth() on the same photo with no way to share a result across
+# nodes (only AtlasDepthMap-based composable nodes share via the ATLAS_DEPTH_MAP
+# type) — e.g. the project's own simplest example workflow runs full
+# depth-model inference twice on the identical image. Keyed by image content
+# hash (not path — nodes routinely save the same tensor to a fresh temp file
+# per call, so path-based caching would never hit) + model + device.
+_DEPTH_RESULT_CACHE: dict[tuple[str, str, str], "DepthResult"] = {}
+_DEPTH_RESULT_CACHE_MAX = 8
 
 
 def _get_model(model_id: str, device: str):
@@ -87,7 +102,7 @@ def _get_model(model_id: str, device: str):
     torch, AutoImageProcessor, AutoModelForDepthEstimation = _require_depth_backend()
     processor = AutoImageProcessor.from_pretrained(model_id)
     model = AutoModelForDepthEstimation.from_pretrained(model_id).to(device).eval()
-    _MODEL_CACHE[(model_id, device)] = (processor, model)
+    bounded_cache_set(_MODEL_CACHE, (model_id, device), (processor, model), _MODEL_CACHE_MAX)
     return processor, model
 
 
@@ -105,13 +120,13 @@ def estimate_depth(
     torch, _, _ = _require_depth_backend()
     from PIL import Image
 
-    if device is None:
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif torch.backends.mps.is_available():
-            device = "mps"
-        else:
-            device = "cpu"
+    device = resolve_device(device, torch)
+
+    content_hash = hashlib.sha256(Path(image_path).read_bytes()).hexdigest()
+    cache_key = (content_hash, model_id, device)
+    cached_result = _DEPTH_RESULT_CACHE.get(cache_key)
+    if cached_result is not None:
+        return cached_result
 
     processor, model = _get_model(model_id, device)
     image = Image.open(image_path).convert("RGB")
@@ -139,7 +154,7 @@ def estimate_depth(
 
     near = float(depth.min())
     far = float(depth.max())
-    return DepthResult(
+    result = DepthResult(
         depth=depth,
         is_metric=is_metric,
         model_id=model_id,
@@ -149,3 +164,5 @@ def estimate_depth(
         far=far,
         metadata={"device": device},
     )
+    bounded_cache_set(_DEPTH_RESULT_CACHE, cache_key, result, _DEPTH_RESULT_CACHE_MAX)
+    return result
