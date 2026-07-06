@@ -2944,7 +2944,12 @@ class AtlasDepthLayerMask:
                 "far_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10000.0, "step": 0.1,
                     "tooltip": "Band far edge in metres. 0 = auto (use far_pct percentile)."}),
                 "near_pct": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "tooltip": "Used when near_m==0: percentile of valid metric depth."}),
+                    "tooltip": "Used when near_m==0: percentile of valid metric depth. LOWER = "
+                               "smaller/closer near threshold = TIGHTER occlusion (isolates just "
+                               "the true near-camera foreground). Higher near_pct occludes MORE of "
+                               "the frame, not less — try 0.05-0.15 for a typical foreground object; "
+                               "a photo with one large nearby structure filling the frame may need "
+                               "an even lower value."}),
                 "far_pct": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": "Used when far_m==0: percentile of valid metric depth. "
                                "0 means no upper bound (+inf), not a degenerate empty band."}),
@@ -3052,8 +3057,15 @@ class AtlasCleanPlateLayer:
                     "tooltip": "MUST match the AtlasDepthLayerMask band that produced plate_image."}),
                 "far_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10000.0, "step": 0.1,
                     "tooltip": "MUST match the AtlasDepthLayerMask band that produced plate_image."}),
-                "near_pct": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "far_pct": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "near_pct": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "Must resolve to the same band as the AtlasDepthLayerMask that "
+                               "produced plate_image (both call the shared _resolve_depth_band "
+                               "helper, so identical near_m/far_m/near_pct/far_pct here and there "
+                               "always agree). LOWER near_pct = tighter occlusion, not looser — "
+                               "see AtlasDepthLayerMask's near_pct tooltip for the worked example."}),
+                "far_pct": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "Must resolve to the same band as the AtlasDepthLayerMask that "
+                               "produced plate_image. 0 means no upper bound (+inf)."}),
                 "name": ("STRING", {"default": "layer"}),
                 "priority": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 1.0,
                     "tooltip": "Blend priority among layers (higher wins) — nearer bands should "

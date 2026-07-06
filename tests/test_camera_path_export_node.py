@@ -25,12 +25,12 @@ def test_node_registered_and_return_types():
 
 def test_export_raises_clear_error_when_camera_path_is_none(tmp_path, make_atlas_solve):
     solve = make_atlas_solve()
-    with pytest.raises(ValueError, match="Bake Path"):
+    with pytest.raises(ValueError, match="Bake Proxy Path"):
         AtlasExportCameraPathUSD().export(solve, None, str(tmp_path))
 
 
 def test_export_raises_clear_error_when_camera_path_has_no_keyframes(tmp_path, make_atlas_solve):
     solve = make_atlas_solve()
     empty_path = AtlasCameraPath(keyframes=[], fps=24.0, frame_count=0)
-    with pytest.raises(ValueError, match="Bake Path"):
+    with pytest.raises(ValueError, match="Bake Proxy Path"):
         AtlasExportCameraPathUSD().export(solve, empty_path, str(tmp_path))

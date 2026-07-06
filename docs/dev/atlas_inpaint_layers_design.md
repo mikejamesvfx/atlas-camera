@@ -133,6 +133,28 @@ RETURN_NAMES = ("layer_mask", "occlusion_mask")
 - `occlusion_mask` = pixels **nearer** than `near` (i.e. everything that occludes
   this band) — this is what must be inpainted in this band's plate. Feed it into
   `INPAINT_ExpandMask` (grow ~16–32) → `INPAINT_InpaintWithModel`.
+
+**`near_pct`/`far_pct` direction, stated explicitly (do not skip this):** these
+are percentiles of the valid metric-depth distribution, not "how tight the
+near cutoff is." **Lower `near_pct` → smaller near threshold → tighter
+occlusion**, isolating only the closest few % of pixels (the true near-camera
+foreground — a person, a car, a lamppost). **Higher `near_pct` → larger near
+threshold → occlusion swallows more of the frame.** This is the opposite of
+the naive first guess ("raise near_pct to shrink the occluded region") and
+that exact mistake was made live during implementation: `near_pct=0.85` was
+tried expecting a *tighter* mask and instead occluded almost the entire
+frame; `near_pct=0.1` was the value that correctly isolated just the
+foreground occluders. Worked example, confirmed on a real photo (a church
+facade with two parked cars and a pedestrian in front of it):
+```
+Given: near_pct=0.1, far_pct=1.0
+Then:  occlusion_mask ≈ 15% of frame — just the cars + nearest ground strip
+       layer_mask ≈ the rest — the facade + sky, ready to clean-plate
+```
+A good starting default is `near_pct` in the 0.05–0.15 range for a typical
+foreground-occluder-in-front-of-background-plane shot; there is no single
+default that works for every scene topology (see the `far_pct` example note
+in §7 below, and the honesty note in §9).
 - Metric depth via the same path `AtlasDeriveReliefMesh` uses: `_depth_map_for_solve`
   + the ground `scale` from `relief_mesh.estimate_ground_scale` (so bands are in real
   metres, consistent with geometry). Reuse `_solve_camera_params` /
@@ -150,13 +172,30 @@ INPUT_TYPES:
     depth        : ATLAS_DEPTH_MAP
     plate_image  : IMAGE          # inpainted clean plate for THIS layer (from InpaintWithModel)
   optional:
-    near_m/far_m/near_pct/far_pct : (same as 4a — MUST match the mask node's band)
+    near_m/far_m/near_pct/far_pct : (same as 4a)
     name         : STRING  default "layer"
     priority     : FLOAT   default 0.0   # set nearer bands higher
     relief_grid  : INT     default 128
     depth_edge_rel : FLOAT default 0.5
 RETURN_TYPES = ("ATLAS_SOLVE",)
 ```
+
+**Band-matching mechanism — a shared function, not an artist-discipline reminder.**
+This node's band and `AtlasDepthLayerMask`'s band must resolve identically
+(the mesh clip and the mask must agree on what "occluded" means), and the
+original draft of this doc handled that by simply repeating "MUST match the
+mask node's band" wherever the parameters appear — i.e. asking the artist to
+remember to pass the same four numbers to two different nodes. That's a
+manual-sync requirement that will drift in production the first time someone
+edits one node's widgets and forgets the other. **Implement it instead as one
+private, shared helper** —
+`_resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct) -> (near, far)`,
+called by both `AtlasDepthLayerMask.generate()` and
+`AtlasCleanPlateLayer.add_layer()` — so the two nodes' bands are identical *by
+construction*, not by convention. The artist still has to type the same
+widget values into both nodes (there's no cross-node data binding in ComfyUI),
+but at least the two nodes can never interpret "near_pct=0.1" two different
+ways.
 
 Behaviour (mirrors `AtlasAddPatchView`, minus the orbit):
 
@@ -252,6 +291,16 @@ Success criterion: with 📽 Project on, dolly in — the gap the foreground unc
 shows inpainted background, not black. Compare against the same graph without the bg
 clean-plate layer (today's behaviour = black reveal).
 
+**`near_pct=0.35` here is scene-dependent, not a universal default** — confirmed
+live on 3 varied photos. It worked cleanly on a street scene where the
+foreground (parked cars, a pedestrian) is small relative to the frame. It
+failed on a photo dominated by one large nearby building filling most of the
+frame with no distinct separate background plane: `0.35` occluded almost the
+entire facade, and LaMa visibly struggled (streaky artifacts) trying to erase
+that much structure in one pass. `near_pct=0.1` was needed there instead. Pick
+`near_pct` per-photo based on how much of the frame the true foreground
+occluder actually covers — see the direction note in §4a.
+
 For the hard-disocclusion variant, swap `INPAINT_InpaintWithModel` for a **LanPaint
 KSampler** subgraph (VAE encode → Set Latent Noise Mask(expanded occlusion) →
 LanPaint KSampler → VAE decode) and feed its decoded image in as `plate_bg`.
@@ -263,6 +312,15 @@ LanPaint KSampler → VAE decode) and feed its decoded image in as `plate_bg`.
 2. **Node 4a `AtlasDepthLayerMask`:** metric-depth banding → two MASK outputs.
    Test with a synthetic solve + depth (see `tests/test_derive_geometry_nodes.py`
    for the fixture pattern). Assert band membership + occlusion = "nearer than near".
+   **Include a boundary/edge-touching test as its own category, not just band
+   membership** — any per-pixel mask/mesh-clip operation on a grid is prone to
+   boundary bugs, and this one shipped with a real one the first time around:
+   `feather_px`'s dilation used `np.roll`, which wraps around image borders, so
+   an occlusion region touching the bottom of frame (the common case — a
+   foreground object almost always does) bled onto the *opposite* edge. Every
+   band-membership test passed; nothing caught this until an independent
+   review pass. Test explicitly: build a mask with occlusion only at one edge,
+   feather it, and assert the *opposite* edge did not turn on.
 3. **Node 4b `AtlasCleanPlateLayer`:** append a `ProjectionSource` with
    `projection_mode="clean_plate"`. Test: given a solve + depth + dummy plate, output
    solve has one extra `projection_source`, camera equals primary (identity orbit),
