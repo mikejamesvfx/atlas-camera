@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlas-camera"
-version = "0.1.0"
+version = "0.2.0"
 description = "Still-image camera inference and projection-prep toolkit for DCC handoff workflows."
 readme = "README.md"
 requires-python = ">=3.10"

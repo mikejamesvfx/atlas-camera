@@ -27,7 +27,7 @@ from atlas_camera.ui.project import (
     solve_project,
 )
 
-app = FastAPI(title="Atlas Camera UI", version="0.1.0")
+app = FastAPI(title="Atlas Camera UI", version="0.2.0")
 
 
 def _safe_package_name(name: str) -> str:
