@@ -39,7 +39,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.jpg",
+        "atlas_jungle_temple.png",
         "image"
       ]
     },
@@ -83,7 +83,7 @@
         "measure_from_depth",
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
+        36,
         "pinhole",
         "auto"
       ]
@@ -341,7 +341,7 @@
       "widgets_values": [
         768,
         "",
-        1.0
+        1
       ]
     },
     {

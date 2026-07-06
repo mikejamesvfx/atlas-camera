@@ -532,16 +532,48 @@ const PROJECTION_VERTEX_SHADER = `
 // passes a negative threshold so it never facing-discards (it always has
 // priority where it can see). |.| is used so mesh winding / DoubleSide is
 // irrelevant.
+// uLight{1,2}Intensity default to 0 (movableLights start off — see "Movable
+// point lights" below), which keeps this a strict no-op: relight == vec3(1.0)
+// == the original texture-only output, so every workflow authored before this
+// feature renders pixel-identical unless an artist explicitly dials a light
+// up. This is a stylized dodge-and-burn multiply, NOT physically-correct
+// relighting — the source photo already carries its own real-world lighting;
+// there is no normal-lighting term here to "correct", only to bias by eye.
 const PROJECTION_FRAGMENT_SHADER = `
   uniform sampler2D uTexture;
   uniform vec2 uImageSize;
   uniform float uOpacity;
   uniform vec3 uCamPos;
   uniform float uFacingThreshold;
+  uniform vec3 uLight1Pos;
+  uniform vec3 uLight1Color;
+  uniform float uLight1Intensity;
+  uniform vec3 uLight2Pos;
+  uniform vec3 uLight2Color;
+  uniform float uLight2Intensity;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
+  float atlasRelightTerm(vec3 lightPos, vec3 lightColor, float intensity, vec3 worldPos, vec3 worldNormal) {
+    if (intensity <= 0.0) return 0.0;
+    vec3 toLight = lightPos - worldPos;
+    float dist = length(toLight);
+    float ndotl = max(dot(normalize(worldNormal), normalize(toLight)), 0.0);
+    float atten = 1.0 / (1.0 + 0.05 * dist * dist);
+    return intensity * ndotl * atten;
+  }
+  // Matches THREE.ShaderChunk's own LinearTosRGB (r0.41666 ~= 1/2.4). uTexture
+  // is tagged colorSpace=SRGBColorSpace, so the GPU already decodes it to
+  // LINEAR on sample — texture2D() below returns linear, not display sRGB.
+  // Built-in materials (MeshStandardMaterial etc.) get Three's own
+  // colorspace_fragment chunk auto-appended for the reverse encode before
+  // output; a raw ShaderMaterial like this one never does, so without this
+  // explicit encode the whole projected photo silently renders too dark/
+  // desaturated (linear values written straight into an sRGB framebuffer).
+  vec3 atlasLinearToSRGB(vec3 value) {
+    return mix(pow(value, vec3(0.41666)) * 1.055 - vec3(0.055), value * 12.92, vec3(lessThanEqual(value, vec3(0.0031308))));
+  }
   void main() {
     if (vCamZ >= 0.0) discard;                    // behind the projector camera
     vec2 uv = vImagePx / uImageSize;
@@ -550,7 +582,11 @@ const PROJECTION_FRAGMENT_SHADER = `
     float facing = abs(dot(normalize(vWorldNormal), toCam));
     if (facing < uFacingThreshold) discard;       // too grazing for this projector
     vec4 col = texture2D(uTexture, uv);
-    gl_FragColor = vec4(col.rgb, col.a * uOpacity);
+    vec3 relight = vec3(1.0)
+      + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, vWorldNormal)
+      + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, vWorldNormal);
+    vec3 outColor = atlasLinearToSRGB(clamp(col.rgb * relight, 0.0, 1.0));
+    gl_FragColor = vec4(outColor, col.a * uOpacity);
   }
 `;
 
@@ -608,6 +644,16 @@ function makeProjectionMaterial(data, texture, opts) {
       uCamPos: { value: new THREE.Vector3(camPos[0], camPos[1], camPos[2]) },
       // Primary: -1 (never facing-discards). Patches: positive (fill head-on only).
       uFacingThreshold: { value: options.facingThreshold ?? -1.0 },
+      // Movable point lights (💡) — kept at intensity 0 here; synced live each
+      // frame from the shared `movableLights` rig by syncProjectionLightUniforms()
+      // so every projection material (primary + every patch/clean-plate source)
+      // stays in lockstep without needing to be rebuilt when a light moves.
+      uLight1Pos: { value: new THREE.Vector3() },
+      uLight1Color: { value: new THREE.Color(0xffffff) },
+      uLight1Intensity: { value: 0 },
+      uLight2Pos: { value: new THREE.Vector3() },
+      uLight2Color: { value: new THREE.Color(0xffffff) },
+      uLight2Intensity: { value: 0 },
     },
     vertexShader: PROJECTION_VERTEX_SHADER,
     fragmentShader: PROJECTION_FRAGMENT_SHADER,
@@ -1157,6 +1203,44 @@ function buildNodeUI(node, containerEl) {
   key.position.set(4, 6, 3);
   scene.add(key);
 
+  // Movable point lights (💡 Lights panel) — added alongside the fixed hemi/key
+  // lights above, never replacing them. Default intensity 0 so no existing
+  // workflow's look changes until an artist explicitly raises one; real
+  // THREE.PointLights so they light the grey/shaded MeshStandardMaterial
+  // preview and the "shaded" render pass exactly like any other scene light,
+  // with zero extra wiring needed there. Their position/color/intensity also
+  // drive a stylized multiply-only "relight" term in the projection shader
+  // (see PROJECTION_FRAGMENT_SHADER) — kept in sync every frame by
+  // syncProjectionLightUniforms() below rather than at material-creation time,
+  // since projection materials are frequently rebuilt (every execution, every
+  // patch/clean-plate source) and must not go stale.
+  const movableLights = [
+    new THREE.PointLight(0xffffff, 0, 0, 2),
+    new THREE.PointLight(0xffffff, 0, 0, 2),
+  ];
+  movableLights[0].position.set(2, 3, 2);
+  movableLights[1].position.set(-2, 3, -2);
+  movableLights.forEach((l) => scene.add(l));
+  let _lightsWereActive = false;
+  function syncProjectionLightUniforms() {
+    const active = movableLights.some((l) => l.intensity > 0);
+    // Skip the traverse entirely while both lights have always been off (the
+    // default), but still run once on the on->off transition so any material
+    // that previously picked up a nonzero uLightNIntensity gets zeroed out.
+    if (!active && !_lightsWereActive) return;
+    _lightsWereActive = active;
+    scene.traverse((obj) => {
+      const mat = obj.material;
+      if (!mat?.isShaderMaterial || !mat.uniforms?.uLight1Pos) return;
+      movableLights.forEach((l, i) => {
+        const n = i + 1;
+        mat.uniforms[`uLight${n}Pos`].value.copy(l.position);
+        mat.uniforms[`uLight${n}Color`].value.copy(l.color);
+        mat.uniforms[`uLight${n}Intensity`].value = l.intensity;
+      });
+    });
+  }
+
   // Ground grid (viewport helper — excluded from render passes)
   const grid = new THREE.GridHelper(20, 20, 0x444444, 0x333333);
   grid.userData.atlasHelper = true;
@@ -1192,6 +1276,7 @@ function buildNodeUI(node, containerEl) {
       applyPathPoseAtT(t);
       if (t >= 1) { const done = pathPlayback.onDone; pathPlayback = null; done?.(); }
     }
+    syncProjectionLightUniforms();
     renderer.render(scene, camera);
   }
   node._atlasRafId = requestAnimationFrame(animate);
@@ -1935,6 +2020,59 @@ function buildNodeUI(node, containerEl) {
   expWrap.append(expLabel, expSlider);
   toolbar.appendChild(expWrap);
 
+  // 💡 Lights — up to 2 movable THREE.PointLights. Unlike ☀ Exposure (which is
+  // genuinely immune to the projection shader by construction), a light's
+  // intensity IS wired into the shader's relight term above — but only once an
+  // artist raises it off its default-0, so today's Project output is unaffected
+  // until this panel is actually used.
+  let lightsOn = false;
+  const lightBtn = document.createElement("button");
+  lightBtn.textContent = "💡 Lights";
+  lightBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  lightBtn.onclick = () => {
+    lightsOn = !lightsOn;
+    lightBtn.style.background = lightsOn ? "#3a2a1a" : "#2a2a2a";
+    lightPanel.style.display = lightsOn ? "flex" : "none";
+  };
+  toolbar.appendChild(lightBtn);
+
+  const lightPanel = document.createElement("div");
+  lightPanel.style.cssText = "display:none;flex-wrap:wrap;align-items:center;gap:10px;padding:4px 6px;background:#181818;border-top:1px solid #333;font-size:11px;color:#ccc";
+  movableLights.forEach((light, idx) => {
+    const group = document.createElement("span");
+    group.style.cssText = "display:inline-flex;align-items:center;gap:4px;";
+    const label = document.createElement("span");
+    label.textContent = `Light ${idx + 1}`;
+    label.style.cssText = "color:#ddd;font-weight:600;";
+    group.appendChild(label);
+    ["x", "y", "z"].forEach((axis) => {
+      const axisLabel = document.createElement("span");
+      axisLabel.textContent = axis.toUpperCase();
+      axisLabel.style.cssText = "color:#888;";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.step = "0.1";
+      input.value = light.position[axis].toFixed(1);
+      input.style.cssText = "width:52px;background:#1e1e1e;color:#ddd;border:1px solid #444;border-radius:3px;padding:1px 3px;";
+      input.oninput = () => { light.position[axis] = parseFloat(input.value) || 0; };
+      group.append(axisLabel, input);
+    });
+    const intLabel = document.createElement("span");
+    intLabel.textContent = "Intensity";
+    intLabel.style.cssText = "color:#888;margin-left:4px;";
+    const intSlider = document.createElement("input");
+    intSlider.type = "range"; intSlider.min = "0"; intSlider.max = "5"; intSlider.step = "0.05"; intSlider.value = "0";
+    intSlider.style.cssText = "width:70px;vertical-align:middle;";
+    intSlider.oninput = () => { light.intensity = parseFloat(intSlider.value) || 0; };
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.value = `#${light.color.getHexString()}`;
+    colorInput.style.cssText = "width:22px;height:18px;padding:0;border:1px solid #444;background:none;cursor:pointer;";
+    colorInput.oninput = () => { light.color.set(colorInput.value); };
+    group.append(intLabel, intSlider, colorInput);
+    lightPanel.appendChild(group);
+  });
+
   // Clear button
   const clearBtn = document.createElement("button");
   clearBtn.textContent = "Clear";
@@ -2012,11 +2150,13 @@ function buildNodeUI(node, containerEl) {
   containerEl.appendChild(canvasWrap);
   let _atlasToolbarMountTarget = null;
   let _atlasPathMountTarget = null;
+  let _atlasLightMountTarget = null;
   function mountControls() {
     const controlsNode = getLinkedControlsNode(node);
     const externalTarget = controlsNode?._atlasControlsContainer || null;
     const toolbarTarget = controlsNode?._atlasToolbarContainer || externalTarget || localControlsLayer;
     const pathTarget = controlsNode?._atlasPathContainer || toolbarTarget;
+    const lightTarget = controlsNode?._atlasLightContainer || toolbarTarget;
     localControlsLayer.style.display = externalTarget ? "none" : "flex";
     if (toolbarTarget !== _atlasToolbarMountTarget) {
       _atlasToolbarMountTarget = toolbarTarget;
@@ -2025,6 +2165,10 @@ function buildNodeUI(node, containerEl) {
     if (pathTarget !== _atlasPathMountTarget) {
       _atlasPathMountTarget = pathTarget;
       pathTarget.appendChild(pathPanel);
+    }
+    if (lightTarget !== _atlasLightMountTarget) {
+      _atlasLightMountTarget = lightTarget;
+      lightTarget.appendChild(lightPanel);
     }
     if (recoveredData) updateLinkedOutputDesk(recoveredData);
   }
@@ -2245,9 +2389,22 @@ function buildNodeUI(node, containerEl) {
     },
     setBackground(imgBase64) {
       if (!imgBase64 || !THREE) return;
-      if (bgMesh) { scene.remove(bgMesh); bgMesh.geometry.dispose(); bgMesh.material.dispose(); }
       const loader = new THREE.TextureLoader();
       loader.load(imgBase64, (tex) => {
+        // Swap the OLD bgMesh out here, at callback time — reading the live
+        // `bgMesh` closure variable right before reassigning it — rather than
+        // at call time (before this async load even started). refreshFromSolve
+        // deliberately fires twice per execution (node.onExecuted + the
+        // api "executed" listener, for cross-version robustness), so two
+        // overlapping setBackground calls are the normal case, not an edge
+        // case. Checking/disposing at call time meant neither of two
+        // in-flight loads ever saw the other's finished mesh, so each left
+        // its predecessor orphaned in the scene — permanently, since nothing
+        // still referenced it — frozen at that execution's old camera pose.
+        // Reading the current value inside this (synchronous, non-interleaved)
+        // callback body instead means each completed load always tears down
+        // whatever is currently in the scene, regardless of firing order.
+        if (bgMesh) { scene.remove(bgMesh); bgMesh.geometry.dispose(); bgMesh.material.map?.dispose(); bgMesh.material.dispose(); }
         tex.colorSpace = THREE.SRGBColorSpace;
         // Size a plane to exactly fill the recovered camera's frustum at distance D
         // and place it along the view axis, so the photo aligns with the 3D scene
@@ -2398,6 +2555,7 @@ function buildAtlasOutputDesk(node, container) {
   const color = makePanel("Color");
   const passes = makePanel("Passes");
   const path = makePanel("Path");
+  const lights = makePanel("Lights");
 
   const toolbarSlot = document.createElement("div");
   toolbarSlot.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:4px;width:100%;";
@@ -2453,11 +2611,20 @@ function buildAtlasOutputDesk(node, container) {
   pathSlot.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:4px;width:100%;";
   path.panel.appendChild(pathSlot);
 
+  const lightSlot = document.createElement("div");
+  lightSlot.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:4px;width:100%;";
+  lights.panel.appendChild(lightSlot);
+  const lightInfo = document.createElement("div");
+  lightInfo.textContent = "Movable point lights: always relight the grey/shaded preview; only affect 📽 Project once a light's intensity is raised above 0.";
+  lightInfo.style.cssText = "width:100%;padding:5px 6px;border-radius:4px;background:#1d2130;color:#b8c4ff;";
+  lights.panel.appendChild(lightInfo);
+
   container.append(header, tabBar, panelWrap);
   view.btn.click();
 
   node._atlasToolbarContainer = toolbarSlot;
   node._atlasPathContainer = pathSlot;
+  node._atlasLightContainer = lightSlot;
   node._atlasControlsContainer = toolbarSlot;
   node._atlasOutputDeskUpdate = (data = {}) => {
     const width = data.target_width || data.width || data.output_width;

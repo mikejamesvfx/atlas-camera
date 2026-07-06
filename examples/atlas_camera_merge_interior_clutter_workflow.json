@@ -39,7 +39,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.jpg",
+        "atlas_cathedral_nave.png",
         "image"
       ]
     },
@@ -83,7 +83,7 @@
         "measure_from_depth",
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
-        36.0,
+        36,
         "pinhole",
         "auto"
       ]
@@ -215,7 +215,7 @@
         "Node name for S&R": "AtlasDeriveReliefMesh"
       },
       "widgets_values": [
-        256,
+        128,
         "medium",
         0.4
       ],
@@ -338,7 +338,7 @@
       "widgets_values": [
         768,
         "",
-        1.0
+        1
       ]
     },
     {

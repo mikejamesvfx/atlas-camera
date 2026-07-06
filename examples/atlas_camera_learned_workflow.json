@@ -43,7 +43,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.jpg",
+        "atlas_cathedral_nave.png",
         "image"
       ]
     },
@@ -86,7 +86,7 @@
         "measure_from_depth",
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
+        36,
         "pinhole",
         "auto"
       ]
@@ -148,8 +148,9 @@
         "Node name for S&R": "AtlasApplyScaleReferences"
       },
       "widgets_values": [
+        "[]",
         false,
-        0.0
+        0
       ]
     },
     {
@@ -197,7 +198,7 @@
         "ollama",
         "",
         "",
-        0.0
+        0
       ]
     },
     {
@@ -258,9 +259,11 @@
         3,
         "auto",
         "relief_mesh",
-        96,
+        128,
         "azimuth_walls",
-        "manual"
+        "indoor",
+        "custom",
+        0.5
       ]
     },
     {
@@ -503,8 +506,8 @@
       "widgets_values": [
         0,
         0,
-        1.0,
-        50.0
+        1,
+        50
       ]
     },
     {
@@ -786,7 +789,7 @@
       "widgets_values": [
         768,
         "",
-        1.0
+        1
       ]
     },
     {
@@ -816,7 +819,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Blockout \u2014 Shaded"
+      "title": "Blockout — Shaded"
     },
     {
       "id": 20,
@@ -845,7 +848,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Blockout \u2014 Depth"
+      "title": "Blockout — Depth"
     },
     {
       "id": 21,
@@ -874,7 +877,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Blockout \u2014 Normal"
+      "title": "Blockout — Normal"
     },
     {
       "id": 22,
@@ -903,7 +906,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Blockout \u2014 Mask"
+      "title": "Blockout — Mask"
     },
     {
       "id": 12,
@@ -1087,7 +1090,7 @@
         "Node name for S&R": "AtlasExportReviewPackage"
       },
       "widgets_values": [
-        "atlas_review_packages"
+        "review_packages"
       ]
     },
     {
@@ -1390,7 +1393,7 @@
   "groups": [
     {
       "id": 1,
-      "title": "\u2460 Source Image + VLM Scale Cues (needs local VLM server; fail-soft)",
+      "title": "① Source Image + VLM Scale Cues (needs local VLM server; fail-soft)",
       "bounding": [
         20,
         100,
@@ -1403,7 +1406,7 @@
     },
     {
       "id": 2,
-      "title": "\u2461 Learned Solve \u2192 Apply Scale Refs \u2192 Derive Projection Geometry \u2192 Decompose",
+      "title": "② Learned Solve → Apply Scale Refs → Derive Projection Geometry → Decompose",
       "bounding": [
         410,
         100,
@@ -1416,7 +1419,7 @@
     },
     {
       "id": 3,
-      "title": "\u2462 Analysis \u2014 Depth Anything V2 \u00b7 Ground Depth \u00b7 Ground/Horizon Masks \u00b7 VP/Horizon",
+      "title": "③ Analysis — Depth Anything V2 · Ground Depth · Ground/Horizon Masks · VP/Horizon",
       "bounding": [
         860,
         100,
@@ -1429,7 +1432,7 @@
     },
     {
       "id": 4,
-      "title": "\u2463 Atlas Viewport \u2014 drop \ud83e\uddcd Woman / \ud83d\ude97 Sedan proxies \u00b7 render 4 passes",
+      "title": "④ Atlas Viewport — drop 🧍 Woman / 🚗 Sedan proxies · render 4 passes",
       "bounding": [
         1580,
         100,
@@ -1442,7 +1445,7 @@
     },
     {
       "id": 5,
-      "title": "\u2464 DCC Exports \u2014 JSON \u00b7 Blender \u00b7 Nuke \u00b7 USD \u00b7 Review \u00b7 Relief Mesh (OBJ)",
+      "title": "⑤ DCC Exports — JSON · Blender · Nuke · USD · Review · Relief Mesh (OBJ)",
       "bounding": [
         20,
         1280,

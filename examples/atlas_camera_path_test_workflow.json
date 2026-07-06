@@ -39,7 +39,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.jpg",
+        "atlas_ghost_town.png",
         "image"
       ]
     },
@@ -82,7 +82,7 @@
         "measure_from_depth",
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
+        36,
         "pinhole",
         "auto"
       ]
@@ -135,11 +135,11 @@
         3,
         "auto",
         "relief_mesh",
-        96,
-        "custom",
-        0.5,
+        128,
         "azimuth_walls",
-        "manual"
+        "manual",
+        "custom",
+        0.5
       ]
     },
     {
@@ -226,7 +226,7 @@
       "widgets_values": [
         768,
         "",
-        1.0
+        1
       ]
     },
     {
@@ -257,7 +257,19 @@
       "properties": {
         "Node name for S&R": "AtlasViewportControls"
       },
-      "widgets_values": []
+      "widgets_values": [
+        "ACES 2.0 / Studio",
+        "",
+        "ACEScg",
+        "ACES - ACEScg",
+        "sRGB - Display",
+        "ACES 2.0 SDR-video",
+        "None",
+        "",
+        0,
+        1,
+        1
+      ]
     },
     {
       "id": 5,
@@ -315,7 +327,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Baked Camera Path — frame batch (swap for a Video Combine node, e.g. VideoHelperSuite's VHS_VideoCombine, to get an actual video file)"
+      "title": "Baked Camera Path — frame batch"
     },
     {
       "id": 7,
@@ -359,7 +371,7 @@
       "widgets_values": [
         "atlas_exports"
       ],
-      "title": "Export Camera Path (USD) — muted by default; bake a path in the viewport first, then right-click → Mode → Always to enable"
+      "title": "Export Camera Path (USD) — muted by default"
     },
     {
       "id": 8,
@@ -507,7 +519,7 @@
     },
     {
       "id": 4,
-      "title": "④ Atlas Viewport — perspective render only now. All buttons live in ⑦ (resolution widget controls render size; node-corner-drag resize was tried and reverted, see CLAUDE.md)",
+      "title": "④ Atlas Viewport",
       "bounding": [
         1320,
         100,
@@ -520,7 +532,7 @@
     },
     {
       "id": 5,
-      "title": "⑤ Export Camera Path (USD) — muted until you bake a path (needs a camera_path first)",
+      "title": "⑤ Export Camera Path (USD)",
       "bounding": [
         860,
         440,
@@ -546,7 +558,7 @@
     },
     {
       "id": 7,
-      "title": "⑦ Viewport Controls — primitives, 📽 Project / 📊 Diagram / ℹ Info, 🎥 Camera Path + presets + FBX import, Render Passes — all moved off node ④",
+      "title": "⑦ Viewport Controls",
       "bounding": [
         1320,
         600,

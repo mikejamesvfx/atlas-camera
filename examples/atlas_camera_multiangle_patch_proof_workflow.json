@@ -40,7 +40,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.jpg",
+        "atlas_alpine_village.png",
         "image"
       ]
     },
@@ -84,7 +84,7 @@
         "measure_from_depth",
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
+        36,
         "pinhole",
         "auto"
       ]
@@ -137,9 +137,11 @@
         3,
         "auto",
         "relief_mesh",
-        96,
+        128,
         "azimuth_walls",
-        "manual"
+        "manual",
+        "custom",
+        0.5
       ]
     },
     {
@@ -204,7 +206,7 @@
       "widgets_values": [
         768,
         "",
-        1.0
+        1
       ]
     },
     {
@@ -382,7 +384,7 @@
         "patch_right",
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         96,
-        1.0,
+        1,
         "auto"
       ]
     },
@@ -467,10 +469,10 @@
         false,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         "auto",
-        90.0,
+        90,
         0,
         0,
-        1.0
+        1
       ]
     },
     {

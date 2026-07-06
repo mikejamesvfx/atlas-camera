@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import base64
+import copy
 import io
 import json
 import math
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from atlas_camera.core.io import load_solve_json, save_solve_json
 from atlas_camera.core.solver import solve_from_constraints, solve_still_image
@@ -120,9 +121,16 @@ def _output_profile_to_dict(output_profile) -> dict[str, Any] | None:
 
 
 def _clone_solve_with_metadata(solve, *, source_plate=None, output_profile=None):
-    from atlas_camera.core.schema import AtlasOutputProfile, AtlasPlateRef, AtlasSolve
+    from atlas_camera.core.schema import AtlasOutputProfile, AtlasPlateRef
 
-    out = AtlasSolve.from_dict(solve.to_dict())
+    # copy.deepcopy, not AtlasSolve.from_dict(solve.to_dict()): the JSON
+    # round-trip walks every nested array (relief-mesh vertices/faces/uvs can
+    # be hundreds of thousands of floats) through _json_ready and back twice —
+    # once serializing, once reconstructing — purely to get an independent
+    # copy for in-process mutation. deepcopy is the C-optimized recursive
+    # copy for exactly this case; to_dict()/from_dict() remain the right tool
+    # at actual serialization boundaries (file export, cache keys).
+    out = copy.deepcopy(solve)
     if source_plate is not None:
         out.source_plate = source_plate if isinstance(source_plate, AtlasPlateRef) else AtlasPlateRef.from_dict(source_plate)
         if out.source_plate and out.source_plate.image_path and not out.source_plate.is_proxy:
@@ -983,19 +991,6 @@ class AtlasDeriveProjectionGeometry:
                                "depth jump) at the cost of a larger mesh payload sent to the "
                                "browser and a slower/heavier viewport. Overridden by "
                                "relief_quality unless that's set to 'custom'."}),
-                "relief_quality": (["custom", "low", "medium", "high", "ultra"], {"default": "custom",
-                    "tooltip": "Quick-pick override for relief_grid: low=64, medium=256, high=512, "
-                               "ultra=1024. 'custom' (default) leaves relief_grid exactly as set "
-                               "above — fully backward compatible. Same convenience-preset "
-                               "pattern as scene_type: this only sets relief_grid, no new solving "
-                               "path. 'ultra' produces a much larger mesh — expect a slower "
-                               "viewport and bigger solve JSON exports."}),
-                "depth_edge_rel": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 5.0, "step": 0.05,
-                    "tooltip": "Relative depth jump that tears the mesh into a silhouette hole. "
-                               "Lower = tears more readily (cleaner silhouettes, more holes on "
-                               "noisy depth); higher = tears less (fewer holes, more risk of "
-                               "rubber-sheeting a real silhouette onto the background). Same "
-                               "parameter and default as AtlasExportReliefMesh."}),
                 "primitive_method": (["azimuth_walls", "ransac_planes", "room_cuboid",
                                        "vertical_extrusion"],
                     {"default": "azimuth_walls",
@@ -1048,6 +1043,24 @@ class AtlasDeriveProjectionGeometry:
                                "If AtlasLearnedSolveFromImage's height_mode=measure_from_depth, set "
                                "its own depth_model to match by hand — this preset only reaches "
                                "this node's depth estimation, not the upstream solve node's."}),
+                # Appended at the end (not inserted earlier in this dict) so that
+                # ComfyUI's positional widgets_values array stays backward
+                # compatible: a workflow saved before these two existed just gets
+                # its own defaults filled in for these trailing slots, instead of
+                # every later value shifting into the wrong widget.
+                "relief_quality": (["custom", "low", "medium", "high", "ultra"], {"default": "custom",
+                    "tooltip": "Quick-pick override for relief_grid: low=64, medium=256, high=512, "
+                               "ultra=1024. 'custom' (default) leaves relief_grid exactly as set "
+                               "above — fully backward compatible. Same convenience-preset "
+                               "pattern as scene_type: this only sets relief_grid, no new solving "
+                               "path. 'ultra' produces a much larger mesh — expect a slower "
+                               "viewport and bigger solve JSON exports."}),
+                "depth_edge_rel": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 5.0, "step": 0.05,
+                    "tooltip": "Relative depth jump that tears the mesh into a silhouette hole. "
+                               "Lower = tears more readily (cleaner silhouettes, more holes on "
+                               "noisy depth); higher = tears less (fewer holes, more risk of "
+                               "rubber-sheeting a real silhouette onto the background). Same "
+                               "parameter and default as AtlasExportReliefMesh."}),
             },
         }
 
@@ -1092,7 +1105,6 @@ class AtlasDeriveProjectionGeometry:
         )
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.room_layout import RoomCuboidConfig, extract_room_cuboid
-        from atlas_camera.core.schema import AtlasSolve
         from atlas_camera.core.solver import _resize_depth
         from atlas_camera.inference.depth_estimator import estimate_depth
 
@@ -1192,8 +1204,9 @@ class AtlasDeriveProjectionGeometry:
                 "n_faces": mesh.stats["n_faces"],
             }
 
-        # Deep-copy: never mutate the upstream node's cached ATLAS_SOLVE.
-        out = AtlasSolve.from_dict(solve.to_dict())
+        # Deep-copy (not to_dict()/from_dict() — see _clone_solve_with_metadata's
+        # comment): never mutate the upstream node's cached ATLAS_SOLVE.
+        out = copy.deepcopy(solve)
         out.projection_scene.proxy_geometry = [
             p for p in out.projection_scene.proxy_geometry
             if (p.metadata or {}).get("role") != PROXY_ROLE
@@ -1265,8 +1278,7 @@ def _replace_proxy_role_geometry(solve, new_prims, stats, extra_metadata):
     derivation's output) — AtlasMergeGeometry is the explicit, visible place
     two branches' geometry actually combines."""
     from atlas_camera.core.proxy_geometry import PROXY_ROLE
-    from atlas_camera.core.schema import AtlasSolve
-    out = AtlasSolve.from_dict(solve.to_dict())
+    out = copy.deepcopy(solve)
     out.projection_scene.proxy_geometry = [
         p for p in out.projection_scene.proxy_geometry
         if (p.metadata or {}).get("role") != PROXY_ROLE
@@ -1274,6 +1286,56 @@ def _replace_proxy_role_geometry(solve, new_prims, stats, extra_metadata):
     out.projection_scene.proxy_geometry.extend(new_prims)
     out.projection_scene.debug_metadata["proxy_derivation"] = {**stats, **extra_metadata}
     return out
+
+
+class _MetricDepthSetup(NamedTuple):
+    width: int
+    height: int
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    extr: Any
+    depth_map: Any
+    scale: float
+    horizon_y: float
+    metric: Any
+    valid: Any
+
+
+def _metric_depth_and_validity(solve, depth) -> "_MetricDepthSetup | None":
+    """Shared metric-depth + validity-mask setup for the inpaint-layers nodes.
+
+    Was previously inlined identically in both ``AtlasDepthLayerMask.generate``
+    and ``AtlasCleanPlateLayer.add_layer`` (~15 lines each) — extracted here so
+    the two nodes can never disagree about what "metric depth" or "a valid,
+    non-sky pixel" means for a given solve, the same reasoning that motivated
+    the separate ``_resolve_depth_band`` extraction just below. Returns
+    ``None`` when the solve has no usable focal length (caller should pass
+    the input through/return zero masks, matching the existing per-node
+    no-focal-length conventions).
+    """
+    np = _require_numpy()
+    from atlas_camera.core.depth_geometry import detect_sky_mask
+    from atlas_camera.core.relief_mesh import estimate_ground_scale
+
+    params = _solve_camera_params(solve, depth)
+    if params is None:
+        return None
+    width, height, fx, fy, cx, cy = params
+    depth_map = _depth_map_for_solve(depth, width, height)
+    horizon_y = _horizon_y_from_solve(solve)
+    if horizon_y is None:
+        horizon_y = height * 0.45  # same fallback build_relief_mesh uses internally
+    extr = solve.camera.extrinsics
+
+    scale, _ground_info = estimate_ground_scale(
+        depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+        horizon_y=horizon_y)
+    metric = depth_map.astype(np.float64) * scale
+    valid = (np.isfinite(depth_map) & (depth_map > 1e-4)
+             & ~detect_sky_mask(depth_map, horizon_y=horizon_y))
+    return _MetricDepthSetup(width, height, fx, fy, cx, cy, extr, depth_map, scale, horizon_y, metric, valid)
 
 
 def _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct):
@@ -1661,8 +1723,7 @@ class AtlasMergeGeometry:
 
     def merge(self, solve_a, solve_b, shot_cam=None):
         from atlas_camera.core.proxy_geometry import PROXY_ROLE
-        from atlas_camera.core.schema import AtlasSolve
-        out = AtlasSolve.from_dict(solve_a.to_dict())
+        out = copy.deepcopy(solve_a)
         seen_backdrop = any(p.name == "projection_backdrop" for p in out.projection_scene.proxy_geometry)
         merged_from_b = 0
         for p in solve_b.projection_scene.proxy_geometry:
@@ -1862,7 +1923,6 @@ class AtlasAddPatchView:
         from atlas_camera.core.schema import (
             AtlasIntrinsics,
             AtlasPlateRef,
-            AtlasSolve,
             LatentCamera,
             ProjectionSource,
         )
@@ -1981,7 +2041,7 @@ class AtlasAddPatchView:
             },
         )
 
-        out = AtlasSolve.from_dict(solve.to_dict())
+        out = copy.deepcopy(solve)
         out.projection_sources.append(source)
         return (out,)
 
@@ -2963,27 +3023,13 @@ class AtlasDepthLayerMask:
     def generate(self, solve, depth, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5, feather_px=4):
         np = _require_numpy()
         torch = _require_torch()
-        from atlas_camera.core.depth_geometry import detect_sky_mask
-        from atlas_camera.core.relief_mesh import estimate_ground_scale
 
-        params = _solve_camera_params(solve, depth)
-        if params is None:
+        setup = _metric_depth_and_validity(solve, depth)
+        if setup is None:
             h, w = int(depth.image_height), int(depth.image_width)
             zero = torch.zeros(1, h, w, dtype=torch.float32)
             return (zero, zero.clone())
-        width, height, fx, fy, cx, cy = params
-        depth_map = _depth_map_for_solve(depth, width, height)
-        horizon_y = _horizon_y_from_solve(solve)
-        if horizon_y is None:
-            horizon_y = height * 0.45  # same fallback build_relief_mesh uses internally
-        extr = solve.camera.extrinsics
-
-        scale, _ground_info = estimate_ground_scale(
-            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-            horizon_y=horizon_y)
-        metric = depth_map.astype(np.float64) * scale
-        valid = (np.isfinite(depth_map) & (depth_map > 1e-4)
-                 & ~detect_sky_mask(depth_map, horizon_y=horizon_y))
+        metric, valid = setup.metric, setup.valid
 
         near, far = _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct)
 
@@ -3081,29 +3127,17 @@ class AtlasCleanPlateLayer:
 
     def add_layer(self, solve, depth, plate_image, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5,
                   name="layer", priority=0.0, plate_ref=None, relief_grid=128, depth_edge_rel=0.5):
-        np = _require_numpy()
-        from atlas_camera.core.depth_geometry import detect_sky_mask
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
-        from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
-        from atlas_camera.core.schema import AtlasPlateRef, AtlasSolve, ProjectionSource
+        from atlas_camera.core.relief_mesh import build_relief_mesh
+        from atlas_camera.core.schema import AtlasPlateRef, ProjectionSource
 
-        params = _solve_camera_params(solve, depth)
-        if params is None:
+        setup = _metric_depth_and_validity(solve, depth)
+        if setup is None:
             return (solve,)
-        width, height, fx, fy, cx, cy = params
-        depth_map = _depth_map_for_solve(depth, width, height)
-        horizon_y = _horizon_y_from_solve(solve)
-        if horizon_y is None:
-            horizon_y = height * 0.45  # same fallback build_relief_mesh uses internally
-        extr = solve.camera.extrinsics
-
-        scale, _ground_info = estimate_ground_scale(
-            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-            horizon_y=horizon_y)
-        metric = depth_map.astype(np.float64) * scale
-        valid = (np.isfinite(depth_map) & (depth_map > 1e-4)
-                 & ~detect_sky_mask(depth_map, horizon_y=horizon_y))
-        near, far = _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct)
+        fx, fy, cx, cy = setup.fx, setup.fy, setup.cx, setup.cy
+        extr, depth_map = setup.extr, setup.depth_map
+        scale, horizon_y = setup.scale, setup.horizon_y
+        near, far = _resolve_depth_band(setup.metric, setup.valid, near_m, far_m, near_pct, far_pct)
 
         mesh = build_relief_mesh(
             depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
@@ -3139,7 +3173,7 @@ class AtlasCleanPlateLayer:
             },
         )
 
-        out = AtlasSolve.from_dict(solve.to_dict())
+        out = copy.deepcopy(solve)
         out.projection_sources.append(source)
         return (out,)
 

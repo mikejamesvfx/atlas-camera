@@ -40,7 +40,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.jpg",
+        "atlas_seacliff_castle.png",
         "image"
       ]
     },
@@ -83,7 +83,7 @@
         "measure_from_depth",
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
+        36,
         "pinhole",
         "auto"
       ],
@@ -119,9 +119,9 @@
         "Node name for S&R": "AtlasDefineShotCam"
       },
       "widgets_values": [
-        36.0,
+        36,
         20.25,
-        50.0,
+        50,
         1920
       ],
       "title": "① ONE ShotCam, wired to BOTH entry points"
@@ -206,7 +206,7 @@
       "widgets_values": [
         768,
         "",
-        1.0
+        1
       ],
       "title": "② Entry point A — shot_cam wired DIRECTLY"
     },
@@ -497,7 +497,7 @@
       "widgets_values": [
         768,
         "",
-        1.0
+        1
       ],
       "title": "④ No direct shot_cam wire — inherits solve.shot_cam"
     },

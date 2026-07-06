@@ -40,7 +40,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.jpg",
+        "atlas_scifi_hangar.png",
         "image"
       ]
     },
@@ -83,7 +83,7 @@
         "measure_from_depth",
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
+        36,
         "pinhole",
         "auto"
       ]
@@ -136,9 +136,11 @@
         3,
         "auto",
         "relief_mesh",
-        96,
+        128,
         "azimuth_walls",
-        "manual"
+        "manual",
+        "custom",
+        0.5
       ]
     },
     {
@@ -203,7 +205,7 @@
       "widgets_values": [
         768,
         "",
-        1.0
+        1
       ]
     },
     {
@@ -233,7 +235,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Blockout \u2014 Shaded"
+      "title": "Blockout — Shaded"
     },
     {
       "id": 6,
@@ -359,7 +361,7 @@
   "groups": [
     {
       "id": 1,
-      "title": "\u2460 Source",
+      "title": "① Source",
       "bounding": [
         20,
         100,
@@ -372,7 +374,7 @@
     },
     {
       "id": 2,
-      "title": "\u2461 Camera Recovery (GeoCalib)",
+      "title": "② Camera Recovery (GeoCalib)",
       "bounding": [
         400,
         100,
@@ -385,7 +387,7 @@
     },
     {
       "id": 3,
-      "title": "\u2462 Derive Projection Geometry (relief mesh)",
+      "title": "③ Derive Projection Geometry (relief mesh)",
       "bounding": [
         860,
         100,
@@ -398,7 +400,7 @@
     },
     {
       "id": 4,
-      "title": "\u2463 Atlas Viewport \u2014 hit \ud83d\udcfd Project to see the camera projection",
+      "title": "④ Atlas Viewport — hit 📽 Project to see the camera projection",
       "bounding": [
         1320,
         100,
@@ -411,7 +413,7 @@
     },
     {
       "id": 5,
-      "title": "\u2464 Export Relief Mesh \u2014 OBJ/GLB, ready for Maya \u00b7 Nuke \u00b7 ZBrush",
+      "title": "⑤ Export Relief Mesh — OBJ/GLB, ready for Maya · Nuke · ZBrush",
       "bounding": [
         860,
         440,
