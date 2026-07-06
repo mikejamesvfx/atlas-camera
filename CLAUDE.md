@@ -97,7 +97,7 @@ The package is installed in editable mode in ComfyUI's venv so `import atlas_cam
 
 Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/{node_id}` to be registered twice, which raises `RuntimeError: method HEAD is already registered`. The fix in `__init__.py` checks `if not any(r.path == ... for r in _routes)` before registering.
 
-### Node catalog (25 nodes)
+### Node catalog (41 nodes)
 
 **Category: Atlas Camera**
 
@@ -142,6 +142,13 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 | `AtlasExportReviewPackage` | ATLAS_SOLVE, output_dir | STRING | Full review bundle |
 | `AtlasExportMayaReviewScene` | ATLAS_SOLVE, output_dir, ±relief_mesh_obj_path | STRING | Maya scene + image card. Box/cylinder/plane proxies get real dimensions + transforms; wire `AtlasExportReliefMesh`'s `obj_path` into `relief_mesh_obj_path` to also import the real relief mesh (otherwise it's silently omitted, not placeholder-cubed) |
 | `AtlasUSDCameraLoader` | usd_path | ATLAS_CAMERA | Load camera from USD |
+
+**Category: Atlas Camera/Color** ("Output Desk" — float-safe plate tracking for final DCC/OCIO handoff)
+
+| Node class | Inputs | Outputs | Notes |
+|---|---|---|---|
+| `AtlasRegisterPlate` | image (IMAGE), ±plate_path, ±colorspace, ±bit_depth, ±role, ±lut_path | image (IMAGE), plate_ref (ATLAS_PLATE_REF) | Pass-through IMAGE; the `ATLAS_PLATE_REF` carries a durable file path/colorspace/bit-depth/LUT for Nuke/Maya/OCIO handoff. Leave `plate_path` blank and it's marked `is_proxy=True` so exporters never mistake a browser/JPEG preview for final EXR data. `bit_depth="auto"` infers `16f/32f` for `.exr` paths, else `8-bit/proxy` |
+| `AtlasAttachSourcePlate` | ATLAS_SOLVE, plate_ref (ATLAS_PLATE_REF) | ATLAS_SOLVE | Attaches a registered plate ref onto a solve (`solve.source_plate`) — pure metadata attachment, deep-copies the solve, never touches camera/geometry. Downstream exporters can read `source_plate` for the original/final colorspace instead of assuming the ComfyUI preview |
 
 ### Frontend extension (`atlas_camera/comfy/web/atlas_blockout.js`)
 

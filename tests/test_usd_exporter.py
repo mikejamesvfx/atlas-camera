@@ -23,8 +23,8 @@ def test_usd_export_camera_writes_file(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_camera_sets_focal_and_aperture(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve(focal=50.0, sensor_w=36.0, image_width=1920, image_height=1080)
     path = USDExporter().export_camera(solve, tmp_path / "camera.usda")
     stage = Usd.Stage.Open(str(path))
@@ -34,8 +34,8 @@ def test_usd_export_camera_sets_focal_and_aperture(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_camera_sets_vertical_aperture_from_aspect(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve(focal=35.0, sensor_w=36.0, image_width=1920, image_height=1080)
     path = USDExporter().export_camera(solve, tmp_path / "camera.usda")
     stage = Usd.Stage.Open(str(path))
@@ -45,8 +45,8 @@ def test_usd_export_camera_sets_vertical_aperture_from_aspect(tmp_path, make_atl
 
 
 def test_usd_export_camera_sets_principal_point_offsets(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     # cx is 10px right of centre on a 1920-wide frame
     solve = make_atlas_solve(
         image_width=1920, image_height=1080,
@@ -63,8 +63,8 @@ def test_usd_export_camera_sets_principal_point_offsets(tmp_path, make_atlas_sol
 
 
 def test_usd_export_camera_writes_world_transform(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve(position=(1.0, 2.0, 3.0))
     path = USDExporter().export_camera(solve, tmp_path / "camera.usda")
     stage = Usd.Stage.Open(str(path))
@@ -86,8 +86,8 @@ def test_usd_export_proxy_scene_writes_file(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_proxy_scene_has_ground_plane(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve()
     path = USDExporter().export_proxy_scene(solve, tmp_path / "proxy.usda")
     stage = Usd.Stage.Open(str(path))
@@ -99,8 +99,8 @@ def test_usd_export_proxy_scene_has_ground_plane(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_proxy_scene_ground_plane_is_40m(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve()
     path = USDExporter().export_proxy_scene(solve, tmp_path / "proxy.usda")
     stage = Usd.Stage.Open(str(path))
@@ -112,8 +112,8 @@ def test_usd_export_proxy_scene_ground_plane_is_40m(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_proxy_scene_ground_plane_has_st_primvar(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve()
     path = USDExporter().export_proxy_scene(solve, tmp_path / "proxy.usda")
     stage = Usd.Stage.Open(str(path))
@@ -137,8 +137,8 @@ def test_usd_export_projection_scene_writes_file(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_projection_scene_has_camera(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve(focal=35.0)
     path = USDExporter().export_projection_scene(solve, tmp_path / "projection.usda")
     stage = Usd.Stage.Open(str(path))
@@ -147,8 +147,8 @@ def test_usd_export_projection_scene_has_camera(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_projection_scene_has_ground_plane(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve()
     path = USDExporter().export_projection_scene(solve, tmp_path / "projection.usda")
     stage = Usd.Stage.Open(str(path))
@@ -159,8 +159,8 @@ def test_usd_export_projection_scene_has_ground_plane(tmp_path, make_atlas_solve
 
 
 def test_usd_export_projection_scene_has_material(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdShade
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdShade
     solve = make_atlas_solve()
     path = USDExporter().export_projection_scene(solve, tmp_path / "projection.usda")
     stage = Usd.Stage.Open(str(path))
@@ -174,8 +174,8 @@ def test_usd_export_projection_scene_has_material(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_projection_scene_material_references_source_image(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdShade
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdShade
     solve = make_atlas_solve()
     path = USDExporter().export_projection_scene(
         solve, tmp_path / "projection.usda", source_image_name="source_image.png"
@@ -189,8 +189,8 @@ def test_usd_export_projection_scene_material_references_source_image(tmp_path, 
 
 
 def test_usd_export_projection_scene_plane_is_bound_to_material(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdShade
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdShade
     solve = make_atlas_solve()
     path = USDExporter().export_projection_scene(solve, tmp_path / "projection.usda")
     stage = Usd.Stage.Open(str(path))
@@ -225,8 +225,8 @@ def test_usd_export_camera_animation_writes_file(tmp_path, make_atlas_solve):
 
 
 def test_usd_export_camera_animation_sets_time_codes(tmp_path, make_atlas_solve):
-    from pxr import Usd
     pytest.importorskip("pxr")
+    from pxr import Usd
     solve = make_atlas_solve()
     frame_count = 11
     path = USDExporter().export_camera_animation(
@@ -239,8 +239,8 @@ def test_usd_export_camera_animation_sets_time_codes(tmp_path, make_atlas_solve)
 
 
 def test_usd_export_camera_animation_has_time_sampled_transform(tmp_path, make_atlas_solve):
-    from pxr import Usd, UsdGeom
     pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
     solve = make_atlas_solve()
     frame_count = 11
     path = USDExporter().export_camera_animation(
