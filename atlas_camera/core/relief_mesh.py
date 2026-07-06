@@ -131,6 +131,8 @@ def build_relief_mesh(
     smooth_iterations: int = 2,
     max_edge_factor: float = 12.0,
     horizon_y: float | None = None,
+    band_min_m: float | None = None,
+    band_max_m: float | None = None,
 ) -> ReliefMesh:
     """Triangulate a forward-z depth map into a world-space relief mesh.
 
@@ -150,6 +152,14 @@ def build_relief_mesh(
     discontinuity) rather than merely distance-clamped — without this, noisy
     monocular depth in feature-less sky/cloud regions gets torn into a jagged,
     spatially-huge "mountain" that dwarfs the actual photographed geometry.
+
+    ``band_min_m``/``band_max_m`` (metres, default ``None`` = no clip) exclude
+    pixels whose *metric* depth (``depth * scale``) falls outside the band from
+    triangulation entirely — the same "exclude the pixel, don't clamp it" hole
+    mechanism sky/silhouette exclusion already uses. This is how a single depth
+    map is split into independent per-layer meshes for the inpaint-layers
+    feature (see ``AtlasCleanPlateLayer``): each layer's mesh only contains its
+    own band, so overlapping layers never fight over the same texels.
     """
     from atlas_camera.core.depth_geometry import detect_sky_mask
 
@@ -162,6 +172,12 @@ def build_relief_mesh(
 
     valid_full = np.isfinite(depth) & (depth > 1e-4)
     valid_full &= ~detect_sky_mask(depth, horizon_y=horizon_y)
+    if band_min_m is not None or band_max_m is not None:
+        metric = depth * float(scale)
+        if band_min_m is not None:
+            valid_full &= metric >= band_min_m
+        if band_max_m is not None:
+            valid_full &= metric <= band_max_m
     if far_clip_percentile and valid_full.any():
         far = float(np.percentile(depth[valid_full], far_clip_percentile))
         np.minimum(depth, far, out=depth)

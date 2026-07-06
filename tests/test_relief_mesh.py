@@ -97,6 +97,40 @@ def test_no_face_spans_a_silhouette():
     assert mesh.stats["torn_fraction"] > 0.0  # the silhouette actually tore
 
 
+def test_band_clip_keeps_only_near_pixels():
+    # band_max_m below the wall's distance (10m) should exclude the wall and
+    # any far ground pixels, keeping only the near-ground band.
+    h = 1.6
+    depth = _scene_depth(h=h, wall_z=-10.0, wall_h=3.0)
+    mesh = _build(depth, h=h, band_min_m=0.0, band_max_m=5.0)
+    cam = np.array([0.0, h, 0.0])
+    dist = np.linalg.norm(mesh.vertices - cam, axis=1)
+    assert float(dist.max()) <= 5.0 + EDGE_REL + 0.5
+    assert len(mesh.vertices) > 20
+
+
+def test_band_clip_keeps_only_far_pixels():
+    # band_min_m above the near ground should exclude the ground, keeping
+    # only the wall band (~10m).
+    h = 1.6
+    depth = _scene_depth(h=h, wall_z=-10.0, wall_h=3.0)
+    mesh = _build(depth, h=h, band_min_m=8.0, band_max_m=12.0)
+    cam = np.array([0.0, h, 0.0])
+    dist = np.linalg.norm(mesh.vertices - cam, axis=1)
+    assert len(mesh.vertices) > 0
+    assert float(dist.min()) >= 8.0 - EDGE_REL - 0.5
+
+
+def test_no_band_clip_is_backward_compatible():
+    # Default band_min_m/band_max_m=None must reproduce today's mesh exactly.
+    depth = _scene_depth(wall_z=-10.0)
+    baseline = _build(depth)
+    clipped = _build(depth, band_min_m=None, band_max_m=None)
+    assert len(baseline.vertices) == len(clipped.vertices)
+    assert len(baseline.faces) == len(clipped.faces)
+    np.testing.assert_array_equal(baseline.vertices, clipped.vertices)
+
+
 def test_noisy_sky_is_excluded_not_triangulated():
     # Tearing (above) already stops noisy sky from rubber-sheeting onto the
     # wall, but without sky masking the sky pixels still get triangulated
@@ -221,6 +255,24 @@ def test_obj_export_round_trip(tmp_path):
     assert "map_Kd" in mtl_text
     import os
     assert os.path.isfile(paths["texture"])
+
+
+def test_obj_export_can_reference_external_exr_plate(tmp_path):
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    mesh = _build(_scene_depth(wall_z=-10.0), grid_long_edge=48)
+    texture = Image.new("RGB", (64, 64), (200, 150, 100))
+    plate = tmp_path / "source_plate.exr"
+    plate.write_bytes(b"fake exr")
+
+    paths = export_relief_mesh(mesh, tmp_path, texture=texture, texture_path=plate)
+
+    mtl_text = open(paths["mtl"], encoding="utf-8").read()
+    assert f"map_Kd {plate.as_posix()}" in mtl_text
+    assert paths["texture"] == str(plate)
+    assert paths["texture_external"] == "true"
+    assert not (tmp_path / "atlas_relief_mesh_diffuse.png").exists()
 
 
 def test_relief_mesh_rides_the_proxy_payload():

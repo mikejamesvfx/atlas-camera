@@ -15,7 +15,6 @@ from atlas_camera.exporters.usd_exporter import USDExporter
 
 _DCC_EXPORTERS = [
     (BlenderExporter(), "blender_open_scene", "blender_open_scene.py"),
-    (NukeExporter(), "nuke_cards", "nuke_cards.py"),
 ]
 
 
@@ -39,6 +38,13 @@ def _copy_if_present(source: str | Path | None, destination: Path) -> Path | Non
     return destination
 
 
+def _primary_plate_path(solve: AtlasSolve) -> str | Path | None:
+    plate = getattr(solve, "source_plate", None)
+    if plate and plate.image_path and not plate.is_proxy:
+        return plate.image_path
+    return solve.image_path
+
+
 def build_review_package(
     solve: AtlasSolve,
     output_dir: str | Path,
@@ -54,12 +60,16 @@ def build_review_package(
 
     result = ReviewPackageResult(package_dir=package_dir)
 
+    source_source = source_image_path or _primary_plate_path(solve)
+    source_suffix = Path(source_source).suffix if source_source else ".png"
+    source_image_name = f"source_image{source_suffix or '.png'}"
     source_copy = _copy_if_present(
-        source_image_path or solve.image_path,
-        package_dir / "source_image.png",
+        source_source,
+        package_dir / source_image_name,
     )
     if source_copy:
         result.files["source_image"] = source_copy
+        source_image_name = source_copy.name
 
     overlay_copy = _copy_if_present(debug_overlay_path, package_dir / "debug_overlay.png")
     if overlay_copy:
@@ -69,7 +79,17 @@ def build_review_package(
     result.files["atlas_solve"] = solve_path
 
     result.files["maya_open_scene"] = MayaExporter().write_scene(
-        solve, package_dir / "maya_open_scene.py", relief_mesh_obj_path=relief_mesh_obj_path,
+        solve,
+        package_dir / "maya_open_scene.py",
+        source_image_name=source_image_name,
+        relief_mesh_obj_path=relief_mesh_obj_path,
+        use_package_source=True,
+    )
+    result.files["nuke_cards"] = NukeExporter().write_scene(
+        solve,
+        package_dir / "nuke_cards.py",
+        source_image_name=source_image_name,
+        use_package_source=True,
     )
     for exporter, key, filename in _DCC_EXPORTERS:
         result.files[key] = exporter.write_scene(solve, package_dir / filename)
@@ -87,7 +107,7 @@ def build_review_package(
             result.files["projection_scene_usda"] = exporter.export_projection_scene(
                 solve,
                 package_dir / "projection_scene.usda",
-                source_image_name="source_image.png",
+                source_image_name=source_image_name,
             )
         except RuntimeError as exc:
             result.warnings.append(str(exc))

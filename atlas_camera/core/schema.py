@@ -240,6 +240,90 @@ class AtlasShotCam:
 
 
 @dataclass(slots=True)
+class AtlasPlateRef:
+    """Durable projection plate reference.
+
+    ``preview_b64`` is for browser/UI preview only. ``image_path`` plus
+    ``colorspace`` are the final handoff data that exporters should prefer
+    when present, so float EXR plates never have to pass through Atlas's
+    PNG/JPEG preview transport.
+    """
+
+    image_path: str | None = None
+    preview_b64: str | None = None
+    colorspace: str = "sRGB - Display"
+    bit_depth: str = "unknown"
+    role: str = "source"
+    is_proxy: bool = True
+    lut_path: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_ready(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "AtlasPlateRef | None":
+        if not data:
+            return None
+        return cls(
+            image_path=data.get("image_path"),
+            preview_b64=data.get("preview_b64"),
+            colorspace=data.get("colorspace", "sRGB - Display"),
+            bit_depth=data.get("bit_depth", "unknown"),
+            role=data.get("role", "source"),
+            is_proxy=bool(data.get("is_proxy", True)),
+            lut_path=data.get("lut_path"),
+            metadata=dict(data.get("metadata", {})),
+        )
+
+
+@dataclass(slots=True)
+class AtlasOutputProfile:
+    """OCIO-style output intent for viewport preview and DCC handoff.
+
+    Browser preview is display-inferred and intentionally non-authoritative.
+    Final color management belongs to OCIO Write, Nuke, Maya, Resolve, etc.
+    """
+
+    config_label: str = "ACES 2.0 / Studio"
+    config_path: str | None = None
+    working_colorspace: str = "sRGB - Display"
+    output_colorspace: str = "ACEScg"
+    display: str = "sRGB - Display"
+    view: str = "ACES 2.0 SDR-video"
+    look: str = "None"
+    lut_path: str | None = None
+    exposure: float = 0.0
+    gamma: float = 1.0
+    display_trim: float = 1.0
+    preview_only: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_ready(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "AtlasOutputProfile | None":
+        if not data:
+            return None
+        return cls(
+            config_label=data.get("config_label", "ACES 2.0 / Studio"),
+            config_path=data.get("config_path"),
+            working_colorspace=data.get("working_colorspace", "sRGB - Display"),
+            output_colorspace=data.get("output_colorspace", "ACEScg"),
+            display=data.get("display", "sRGB - Display"),
+            view=data.get("view", "ACES 2.0 SDR-video"),
+            look=data.get("look", "None"),
+            lut_path=data.get("lut_path"),
+            exposure=float(data.get("exposure", 0.0)),
+            gamma=float(data.get("gamma", 1.0)),
+            display_trim=float(data.get("display_trim", 1.0)),
+            preview_only=bool(data.get("preview_only", True)),
+            metadata=dict(data.get("metadata", {})),
+        )
+
+
+@dataclass(slots=True)
 class AtlasProxyPrimitive:
     name: str
     primitive_type: str
@@ -289,8 +373,8 @@ class ProjectionSource:
 
     Built by ``AtlasAddPatchView``: the ``camera`` is orbit-constructed around the
     scene pivot (``camera_math.orbit_camera``) so it shares the primary's world
-    frame; ``image_b64`` is the multi-angle-LoRA novel view for that angle (a
-    data-URI, kept JSON-safe like the relief mesh already is); ``proxy_geometry``
+    frame; ``image_b64`` is a browser-preview data URI, while ``plate_ref`` is
+    the float-safe final source reference when one exists; ``proxy_geometry``
     is that view's own depth-derived geometry in the patch camera's frame.
     ``priority`` orders blending (higher wins; the primary is implicitly highest).
     """
@@ -298,6 +382,7 @@ class ProjectionSource:
     camera: LatentCamera
     name: str = "patch"
     image_b64: str | None = None
+    plate_ref: AtlasPlateRef | None = None
     proxy_geometry: list[AtlasProxyPrimitive] = field(default_factory=list)
     azimuth_deg: float = 0.0
     elevation_deg: float = 0.0
@@ -311,6 +396,7 @@ class ProjectionSource:
             camera=LatentCamera.from_dict(data["camera"]),
             name=data.get("name", "patch"),
             image_b64=data.get("image_b64"),
+            plate_ref=AtlasPlateRef.from_dict(data.get("plate_ref")),
             proxy_geometry=[
                 AtlasProxyPrimitive.from_dict(item)
                 for item in data.get("proxy_geometry", [])
@@ -429,6 +515,8 @@ class LatentScene:
     landmarks: list[dict[str, Any]] = field(default_factory=list)
     debug_metadata: dict[str, Any] = field(default_factory=dict)
     shot_cam: AtlasShotCam | None = None
+    source_plate: AtlasPlateRef | None = None
+    output_profile: AtlasOutputProfile | None = None
     schema_version: ClassVar[str] = "0.2"
 
     def __post_init__(self) -> None:
@@ -490,6 +578,8 @@ class LatentScene:
             landmarks=list(data.get("landmarks", [])),
             debug_metadata=dict(data.get("debug_metadata", {})),
             shot_cam=AtlasShotCam.from_dict(data["shot_cam"]) if data.get("shot_cam") else None,
+            source_plate=AtlasPlateRef.from_dict(data.get("source_plate")),
+            output_profile=AtlasOutputProfile.from_dict(data.get("output_profile")),
         )
 
     @classmethod

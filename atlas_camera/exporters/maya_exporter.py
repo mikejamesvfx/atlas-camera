@@ -36,12 +36,30 @@ def _maya_matrix_from_atlas(matrix: Matrix4) -> list[float]:
     ]
 
 
+def _primary_plate_path(solve: AtlasSolve) -> str | None:
+    plate = getattr(solve, "source_plate", None)
+    if plate and plate.image_path and not plate.is_proxy:
+        return str(plate.image_path)
+    return solve.image_path
+
+
+def _primary_plate_colorspace(solve: AtlasSolve) -> str | None:
+    plate = getattr(solve, "source_plate", None)
+    if plate and plate.colorspace:
+        return str(plate.colorspace)
+    profile = getattr(solve, "output_profile", None)
+    if profile and profile.working_colorspace:
+        return str(profile.working_colorspace)
+    return None
+
+
 def write_maya_scene_script(
     solve: AtlasSolve,
     output_path: str | Path,
     *,
     source_image_name: str = "source_image.png",
     relief_mesh_obj_path: str | Path | None = None,
+    use_package_source: bool = False,
 ) -> Path:
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -90,6 +108,12 @@ def write_maya_scene_script(
         for p in proxies if p.primitive_type != "mesh"
     ]
     relief_mesh_obj_path_str = str(relief_mesh_obj_path) if relief_mesh_obj_path else None
+    source_plate_path = None if use_package_source else _primary_plate_path(solve)
+    source_colorspace = _primary_plate_colorspace(solve)
+    output_profile = getattr(solve, "output_profile", None)
+    ocio_summary = (
+        output_profile.to_dict() if output_profile and hasattr(output_profile, "to_dict") else None
+    )
 
     focal_warning = ""
     if solve.camera.focal_length_inferred:
@@ -132,11 +156,15 @@ def build_scene(package_dir=None):
     cmds.xform(camera_transform, worldSpace=True, matrix={maya_matrix!r})
     {focal_warning}
 
-    image_path = os.path.join(package_dir, "{source_image_name}")
+    image_path = {source_plate_path!r} or os.path.join(package_dir, "{source_image_name}")
+    source_colorspace = {source_colorspace!r}
+    ocio_summary = {str(ocio_summary)!r}
     if os.path.exists(image_path):
         image_plane = cmds.imagePlane(camera=camera_shape, fileName=image_path)[0]
         cmds.setAttr(image_plane + ".displayMode", 3)
         cmds.parent(image_plane, reference_group)
+    else:
+        cmds.warning("Atlas source plate not found: " + image_path)
 
     cmds.grid(size=12, spacing=1)
 
@@ -151,6 +179,15 @@ def build_scene(package_dir=None):
     proj_file = cmds.shadingNode("file", asTexture=True, isColorManaged=True, name="atlas_proj_file")
     cmds.setAttr(proj_file + ".fileTextureName", image_path, type="string")
     cmds.setAttr(proj_file + ".ignoreColorSpaceFileRules", True)
+    if source_colorspace and cmds.attributeQuery("colorSpace", node=proj_file, exists=True):
+        try:
+            cmds.setAttr(proj_file + ".colorSpace", source_colorspace, type="string")
+        except Exception:
+            cmds.warning("Atlas could not set Maya file colorSpace to: " + source_colorspace)
+    cmds.addAttr(proj_file, longName="atlasSourceColorspace", dataType="string")
+    cmds.setAttr(proj_file + ".atlasSourceColorspace", source_colorspace or "", type="string")
+    cmds.addAttr(proj_file, longName="atlasOutputProfile", dataType="string")
+    cmds.setAttr(proj_file + ".atlasOutputProfile", ocio_summary, type="string")
 
     proj_tex = cmds.shadingNode("projection", asTexture=True, name="atlas_proj_texture")
     cmds.setAttr(proj_tex + ".projType", 8)  # 8 = perspective projection
@@ -236,9 +273,17 @@ class MayaExporter:
         solve: AtlasSolve,
         output_path: str | Path,
         *,
+        source_image_name: str = "source_image.png",
         relief_mesh_obj_path: str | Path | None = None,
+        use_package_source: bool = False,
     ) -> Path:
-        return write_maya_scene_script(solve, output_path, relief_mesh_obj_path=relief_mesh_obj_path)
+        return write_maya_scene_script(
+            solve,
+            output_path,
+            source_image_name=source_image_name,
+            relief_mesh_obj_path=relief_mesh_obj_path,
+            use_package_source=use_package_source,
+        )
 
 
 def _mel_safe_path(path: Path) -> str:

@@ -19,7 +19,30 @@ from atlas_camera.core.schema import AtlasSolve
 _SOURCE_IMAGE_NAME = "source_image.png"
 
 
-def write_nuke_projection_script(solve: AtlasSolve, output_path: str | Path) -> Path:
+def _primary_plate_path(solve: AtlasSolve) -> str | None:
+    plate = getattr(solve, "source_plate", None)
+    if plate and plate.image_path and not plate.is_proxy:
+        return str(plate.image_path)
+    return solve.image_path
+
+
+def _primary_plate_colorspace(solve: AtlasSolve) -> str | None:
+    plate = getattr(solve, "source_plate", None)
+    if plate and plate.colorspace:
+        return str(plate.colorspace)
+    profile = getattr(solve, "output_profile", None)
+    if profile and profile.working_colorspace:
+        return str(profile.working_colorspace)
+    return None
+
+
+def write_nuke_projection_script(
+    solve: AtlasSolve,
+    output_path: str | Path,
+    *,
+    source_image_name: str = _SOURCE_IMAGE_NAME,
+    use_package_source: bool = False,
+) -> Path:
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
@@ -41,6 +64,12 @@ def write_nuke_projection_script(solve: AtlasSolve, output_path: str | Path) -> 
 
     # Camera world matrix, row-major flat list (Nuke Camera2 matrix knob format).
     flat_world = [v for row in solve.camera.extrinsics.camera_world_matrix for v in row]
+    source_plate_path = None if use_package_source else _primary_plate_path(solve)
+    source_colorspace = _primary_plate_colorspace(solve)
+    output_profile = getattr(solve, "output_profile", None)
+    ocio_summary = (
+        output_profile.to_dict() if output_profile and hasattr(output_profile, "to_dict") else None
+    )
 
     inferred_warning = ""
     if solve.camera.focal_length_inferred:
@@ -76,11 +105,26 @@ def build_projection(package_dir=None):
     nuke.scriptClear()
     {inferred_warning}
 
-    # Source plate
+    # Source plate. Browser/viewport previews may be JPEG/PNG proxies; this
+    # Read points at the registered float plate when Atlas has one.
+    source_path = {source_plate_path!r} or os.path.join(package_dir, "{source_image_name}")
     read = nuke.createNode("Read", inpanel=False)
-    read["file"].setValue(os.path.join(package_dir, "{_SOURCE_IMAGE_NAME}"))
+    read["file"].setValue(source_path)
     read["first"].setValue(1)
     read["last"].setValue(1)
+    source_colorspace = {source_colorspace!r}
+    if source_colorspace and "colorspace" in read.knobs():
+        try:
+            read["colorspace"].setValue(source_colorspace)
+        except Exception:
+            nuke.tprint("Atlas: could not set Read colorspace to " + source_colorspace)
+
+    ocio_note = nuke.createNode("StickyNote", inpanel=False)
+    ocio_note["label"].setValue(
+        "Atlas color handoff\\n"
+        "Source colorspace: " + str(source_colorspace or "unspecified") + "\\n"
+        "Output profile: " + {str(ocio_summary)!r}
+    )
 
     # Solved camera — world matrix in row-major order
     cam = nuke.createNode("Camera2", inpanel=False)
@@ -128,5 +172,17 @@ if __name__ == "__main__":
 
 
 class NukeExporter:
-    def write_scene(self, solve: AtlasSolve, output_path: str | Path) -> Path:
-        return write_nuke_projection_script(solve, output_path)
+    def write_scene(
+        self,
+        solve: AtlasSolve,
+        output_path: str | Path,
+        *,
+        source_image_name: str = _SOURCE_IMAGE_NAME,
+        use_package_source: bool = False,
+    ) -> Path:
+        return write_nuke_projection_script(
+            solve,
+            output_path,
+            source_image_name=source_image_name,
+            use_package_source=use_package_source,
+        )

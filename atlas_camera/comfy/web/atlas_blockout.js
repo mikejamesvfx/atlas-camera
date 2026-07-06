@@ -6,8 +6,9 @@
  * and applied to the Three.js camera so the scene is pre-aligned to the source photo.
  *
  * The user places primitive geometry (Box, Plane, Cylinder, Person Card), then
- * clicks "Render Passes" to produce shaded / depth / normal / mask images that
- * are base64-encoded into the client_data STRING widget and sent back to Python.
+ * clicks "Render Proxy Passes" to produce proxy/LDR shaded / depth / normal /
+ * mask images that are base64-encoded into the client_data STRING widget and
+ * sent back to Python.
  */
 
 import { app } from "../../scripts/app.js";
@@ -67,6 +68,145 @@ async function loadThree() {
 // car is the fastest visual check that the solve and camera height are right.
 // ---------------------------------------------------------------------------
 const PROXY_COLORS = { woman: 0xffddbb, sedan: 0x6688aa };
+const ATLAS_VIEWPORT_PREVIEW_MAX_LONG_EDGE = 1280;
+
+function atlasFitLongEdge(width, height, maxLongEdge) {
+  const w = Math.max(16, Math.round(width || maxLongEdge || 1280));
+  const h = Math.max(16, Math.round(height || maxLongEdge || 720));
+  const longEdge = Math.max(w, h);
+  const limit = Math.max(16, Math.round(maxLongEdge || longEdge));
+  if (longEdge <= limit) return { width: w, height: h };
+  const scale = limit / longEdge;
+  return {
+    width: Math.max(16, Math.round(w * scale)),
+    height: Math.max(16, Math.round(h * scale)),
+  };
+}
+
+function atlasViewportPreviewSize(width, height) {
+  return atlasFitLongEdge(width, height, ATLAS_VIEWPORT_PREVIEW_MAX_LONG_EDGE);
+}
+
+function atlasViewportSizeTraceEnabled() {
+  try {
+    return typeof localStorage !== "undefined" &&
+      localStorage.getItem("ATLAS_VIEWPORT_SIZE_TRACE") === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function installViewportSizeTrace(node, domWidget, element) {
+  if (!atlasViewportSizeTraceEnabled() || node._atlasSizeTraceInstalled) return;
+  node._atlasSizeTraceInstalled = true;
+
+  const label = `[AtlasBlockout size trace node ${node.id ?? "?"}]`;
+  const rawToProxy = new WeakMap();
+  const proxies = new WeakSet();
+  const observers = [];
+
+  function canvasState() {
+    const resizingNode = app?.canvas?.resizing_node;
+    return {
+      node_size: Array.isArray(node.size) ? [node.size[0], node.size[1]] : node.size,
+      resizing_node: resizingNode?.id ?? null,
+      resizing_this_node: resizingNode === node,
+      pointer_down: Boolean(app?.canvas?.pointer_is_down || app?.canvas?.pointerDown),
+    };
+  }
+
+  function trace(kind, detail) {
+    console.groupCollapsed?.(`${label} ${kind}`);
+    console.log(`${label} ${kind}`, detail, canvasState());
+    console.trace?.(`${label} ${kind}`);
+    console.groupEnd?.();
+  }
+
+  function suspiciousSizeWrite(prop, prev, next) {
+    const from = Number(prev);
+    const to = Number(next);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || Math.abs(to - from) < 1) {
+      return false;
+    }
+    const resizingThisNode = app?.canvas?.resizing_node === node;
+    return !resizingThisNode || to < from - 8 || (prop === "0" && to < 320);
+  }
+
+  function wrapSizeArray(size) {
+    if (!size || typeof size !== "object") return size;
+    if (proxies.has(size)) return size;
+    if (rawToProxy.has(size)) return rawToProxy.get(size);
+    const proxy = new Proxy(size, {
+      set(target, prop, value, receiver) {
+        const prev = target[prop];
+        const ok = Reflect.set(target, prop, value, receiver);
+        if ((prop === "0" || prop === "1") && suspiciousSizeWrite(prop, prev, value)) {
+          trace(`node.size[${prop}] write`, {
+            axis: prop === "0" ? "width" : "height",
+            from: prev,
+            to: value,
+            raw_size: [target[0], target[1]],
+          });
+        }
+        return ok;
+      },
+    });
+    rawToProxy.set(size, proxy);
+    proxies.add(proxy);
+    return proxy;
+  }
+
+  try {
+    let currentSize = wrapSizeArray(node.size);
+    Object.defineProperty(node, "size", {
+      configurable: true,
+      enumerable: true,
+      get() { return currentSize; },
+      set(next) {
+        const prev = currentSize;
+        currentSize = wrapSizeArray(next);
+        trace("node.size replace", {
+          from: Array.isArray(prev) ? [prev[0], prev[1]] : prev,
+          to: Array.isArray(currentSize) ? [currentSize[0], currentSize[1]] : currentSize,
+        });
+      },
+    });
+  } catch (e) {
+    console.warn(`${label} could not install node.size proxy`, e);
+  }
+
+  function observeResize(target, name) {
+    if (!target || typeof ResizeObserver === "undefined") return;
+    let last = null;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const rect = entry.contentRect;
+        const next = { width: Math.round(rect.width), height: Math.round(rect.height) };
+        if (last) {
+          const dw = next.width - last.width;
+          const dh = next.height - last.height;
+          const resizingThisNode = app?.canvas?.resizing_node === node;
+          const suspicious = !resizingThisNode || dw < -8 || next.width < 320 || Math.abs(dh) > 8;
+          if (suspicious && (dw || dh)) {
+            trace("DOM-widget resize delta", { target: name, from: last, to: next, delta: { width: dw, height: dh } });
+          }
+        }
+        last = next;
+      }
+    });
+    observer.observe(target);
+    observers.push(observer);
+  }
+
+  observeResize(element, "widget-element");
+  if (domWidget?.element && domWidget.element !== element) {
+    observeResize(domWidget.element, "dom-widget-element");
+  }
+  requestAnimationFrame(() => observeResize(element?.parentElement, "widget-host"));
+
+  node._atlasSizeTraceCleanup = () => observers.forEach((observer) => observer.disconnect());
+  console.info(`${label} tracing enabled. Set localStorage.ATLAS_VIEWPORT_SIZE_TRACE = "0" to disable.`);
+}
 
 // Ground point under the camera's view centre, so the proxy/orbit-pivot lands
 // where the camera is looking rather than at an arbitrary spot.
@@ -637,7 +777,14 @@ function buildPatchSources(scene, data, onSourceReady) {
     // only paint surfaces they see reasonably head-on (facingThreshold > 0), so
     // grazing/occluded areas fall through to the primary or other patches.
     loadTextureFromB64(src.image_b64, (tex) => {
-      const patchMat = makeProjectionMaterial(src, tex, { facingThreshold: 0.2, priority: src.priority });
+      // Clean-plate layers (AtlasCleanPlateLayer) are same-camera plates, not
+      // novel angles — they must paint head-on AND grazing surfaces, exactly
+      // like the primary (facingThreshold -1 = never facing-discards), relying
+      // on depth + priority alone to order overlapping layers. Ordinary
+      // multi-angle patches keep the grazing-discard behavior so they only
+      // fill surfaces they see reasonably head-on.
+      const facingThreshold = src.projection_mode === "clean_plate" ? -1 : 0.2;
+      const patchMat = makeProjectionMaterial(src, tex, { facingThreshold, priority: src.priority });
       for (const m of meshes) {
         const prev = m.userData._projMaterial;
         if (prev && prev !== patchMat) {
@@ -755,6 +902,48 @@ function createPrimitive(type) {
   return mesh;
 }
 
+function atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height) {
+  const buffer = new Uint8Array(width * height * 4);
+  renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, buffer);
+
+  // Flip Y (WebGL origin is bottom-left, canvas is top-left).
+  const flipped = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const srcRow = (height - 1 - y) * width * 4;
+    const dstRow = y * width * 4;
+    flipped.set(buffer.subarray(srcRow, srcRow + width * 4), dstRow);
+  }
+
+  const offscreen = document.createElement("canvas");
+  offscreen.width = width;
+  offscreen.height = height;
+  const ctx = offscreen.getContext("2d");
+  const imageData = ctx.createImageData(width, height);
+  imageData.data.set(flipped);
+  ctx.putImageData(imageData, 0, 0);
+  return offscreen.toDataURL("image/png").split(",")[1];
+}
+
+function atlasRenderSceneToBase64(renderer, scene, camera, width, height, options = {}) {
+  if (!THREE) return null;
+  const renderTarget = options.renderTarget || new THREE.WebGLRenderTarget(width, height);
+  const ownsRenderTarget = !options.renderTarget;
+  const hasOverrideMaterial = Object.prototype.hasOwnProperty.call(options, "overrideMaterial");
+  const prevOverrideMaterial = scene.overrideMaterial;
+
+  try {
+    if (hasOverrideMaterial) scene.overrideMaterial = options.overrideMaterial;
+    renderer.setRenderTarget(renderTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    return atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height);
+  } finally {
+    renderer.setRenderTarget(null);
+    if (hasOverrideMaterial) scene.overrideMaterial = prevOverrideMaterial;
+    if (ownsRenderTarget) renderTarget.dispose();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Render all passes to base64-encoded PNG strings
 // ---------------------------------------------------------------------------
@@ -772,38 +961,15 @@ async function renderAllPasses(renderer, scene, camera, width, height, exclude =
 
   const rt = new THREE.WebGLRenderTarget(width, height);
 
-  // Helper: render scene to RT, read pixels, return base64
   function renderToBase64(overrideMat) {
-    if (overrideMat) scene.overrideMaterial = overrideMat;
-    renderer.setRenderTarget(rt);
-    renderer.render(scene, camera);
-    renderer.setRenderTarget(null);
-    scene.overrideMaterial = null;
-
-    const buffer = new Uint8Array(width * height * 4);
-    renderer.readRenderTargetPixels(rt, 0, 0, width, height, buffer);
-
-    // Flip Y (WebGL origin is bottom-left, canvas is top-left)
-    const flipped = new Uint8Array(width * height * 4);
-    for (let y = 0; y < height; y++) {
-      const srcRow = (height - 1 - y) * width * 4;
-      const dstRow = y * width * 4;
-      flipped.set(buffer.subarray(srcRow, srcRow + width * 4), dstRow);
-    }
-
-    const offscreen = document.createElement("canvas");
-    offscreen.width = width;
-    offscreen.height = height;
-    const ctx = offscreen.getContext("2d");
-    const imageData = ctx.createImageData(width, height);
-    imageData.data.set(flipped);
-    ctx.putImageData(imageData, 0, 0);
-    return offscreen.toDataURL("image/png").split(",")[1];
+    const options = { renderTarget: rt };
+    if (arguments.length) options.overrideMaterial = overrideMat;
+    return atlasRenderSceneToBase64(renderer, scene, camera, width, height, options);
   }
 
   try {
     // Shaded: standard PBR render (or the projection material if 📽 is on)
-    const shadedB64 = renderToBase64(null);
+    const shadedB64 = renderToBase64();
 
     // Depth: linear view-space depth normalised to the visible scene extent —
     // MeshDepthMaterial over the default 0.01..1000 range has no usable contrast.
@@ -872,11 +1038,16 @@ function buildNodeUI(node, containerEl) {
     return;
   }
 
-  // Render dimensions. These start square and are resized to the source image's
-  // aspect on execution (resizeViewport), so the viewport inherits the image aspect.
+  // Output dimensions. These start square and are resized on execution to the
+  // source image / ShotCam aspect. The visible canvas uses a capped preview
+  // backbuffer with the same aspect, so UI responsiveness does not limit final
+  // Render Proxy Passes or Camera Path proxy frames.
   node._atlasW = node._atlasW || node._atlasResolution || 768;
   node._atlasH = node._atlasH || node._atlasResolution || 768;
   let W = node._atlasW, H = node._atlasH;
+  let previewSize = atlasViewportPreviewSize(W, H);
+  let previewW = previewSize.width, previewH = previewSize.height;
+  node._atlasPreviewW = previewW; node._atlasPreviewH = previewH;
 
   // Toolbar
   const toolbar = document.createElement("div");
@@ -912,14 +1083,14 @@ function buildNodeUI(node, containerEl) {
   // never shrink below the canvas's intrinsic pixel width regardless of the
   // node's actual size — surfacing as the node snapping/stretching wider on
   // the first interaction that triggered a relayout (e.g. mousedown to orbit).
-  canvasWrap.style.cssText = "position:relative;width:100%;flex:1;min-height:0;min-width:0;line-height:0;background:#111;";
+  canvasWrap.style.cssText = "position:relative;width:100%;max-width:100%;align-self:stretch;flex:1;min-height:0;min-width:0;line-height:0;background:#111;overflow:hidden;";
 
   const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = previewW;
+  canvas.height = previewH;
   // object-fit:contain letterboxes/pillarboxes the canvas's intrinsic
-  // width/height (its render resolution, e.g. the aspect a ShotCam
-  // resolves to) within whatever box width:100%/height:100% gives it,
+  // width/height (the capped preview backbuffer, with the same aspect a
+  // ShotCam/source resolves to) within whatever box width:100%/height:100% gives it,
   // instead of stretching/squashing the WebGL content to fill a mismatched
   // container shape. `object-fit` applies to <canvas> like any other
   // replaced element and needs no JS — same CSS-only, no-new-resize-hook
@@ -950,15 +1121,28 @@ function buildNodeUI(node, containerEl) {
   metaHud.style.cssText = "position:absolute;top:6px;left:6px;padding:6px 8px;background:rgba(10,10,14,0.72);" +
     "color:#cde;font:10px/1.5 monospace;border-radius:4px;pointer-events:none;white-space:pre;display:none;";
 
-  canvasWrap.append(canvas, diagramSvg, metaHud);
+  const localControlsLayer = document.createElement("div");
+  localControlsLayer.style.cssText =
+    "position:absolute;left:0;right:0;bottom:0;z-index:8;display:flex;flex-direction:column;align-items:stretch;gap:0;" +
+    "background:rgba(16,16,22,0.88);pointer-events:auto;line-height:normal;";
+
+  canvasWrap.append(canvas, diagramSvg, metaHud, localControlsLayer);
 
   // Three.js setup
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setSize(W, H, false);
+  renderer.setSize(previewW, previewH, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   // Exposure only has a visible effect with a tone-mapping operator active.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
+
+  function applyOutputProfilePreview(profile = {}) {
+    const exposureStops = Number(profile.exposure ?? 0) || 0;
+    const trim = Math.max(0, Number(profile.display_trim ?? 1) || 1);
+    const gamma = Math.max(0.1, Number(profile.gamma ?? 1) || 1);
+    renderer.toneMappingExposure = Math.pow(2, exposureStops) * trim;
+    canvas.style.filter = gamma !== 1 ? `brightness(${trim}) contrast(${Math.max(0.1, 1 / gamma)})` : `brightness(${trim})`;
+  }
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a1a);
@@ -1492,44 +1676,58 @@ function buildNodeUI(node, containerEl) {
   };
 
   const bakeBtn = document.createElement("button");
-  bakeBtn.textContent = "⏺ Bake Path";
+  bakeBtn.textContent = "⏺ Bake Proxy Path";
   bakeBtn.style.cssText = "padding:2px 8px;font-size:11px;cursor:pointer;background:#3a1a2a;color:#fac;border:1px solid #645;border-radius:3px";
   bakeBtn.onclick = async () => {
     if (pathKeyframes.length === 0) return;
     bakeBtn.disabled = true;
-    bakeBtn.textContent = "Baking...";
+    bakeBtn.textContent = "Baking Proxy...";
     const savedPos = camera.position.clone();
     const savedQuat = camera.quaternion.clone();
+    const savedAspect = camera.aspect;
     const wasPlaying = !!pathPlayback;
+    let outputRt = null;
     pathPlayback = null;
     pathGroup.visible = false; // exclude keyframe markers/line from baked frames
     try {
       const frames = [];
+      outputRt = new THREE.WebGLRenderTarget(W, H);
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
       for (let frame = 0; frame < pathFrameCount; frame++) {
         const pose = sampleKeyframePoseAtFrame(frame);
         if (!pose) break;
         camera.position.set(pose.position.x, pose.position.y, pose.position.z);
         camera.up.set(0, 1, 0);
         camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
-        renderer.render(scene, camera);
-        frames.push(canvas.toDataURL("image/png").split(",")[1]);
+        frames.push(atlasRenderSceneToBase64(renderer, scene, camera, W, H, { renderTarget: outputRt }));
       }
       const widget = node.widgets?.find((w) => w.name === "client_data");
       let existing = {};
       try { existing = widget?.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
       existing.path_frames = frames;
       existing.camera_path = { keyframes: pathKeyframes.map(kfToJSON), fps: pathFps, frame_count: pathFrameCount };
+      existing.atlas_proxy_path = {
+        transport: "png_base64_proxy_ldr",
+        width: W,
+        height: H,
+        fps: pathFps,
+        frame_count: pathFrameCount,
+      };
       if (widget) {
         widget.value = JSON.stringify(existing);
         widget.callback?.(widget.value);
       }
       app.queuePrompt(0, 1);
     } finally {
+      outputRt?.dispose();
       camera.position.copy(savedPos);
       camera.quaternion.copy(savedQuat);
+      camera.aspect = savedAspect;
+      camera.updateProjectionMatrix();
       pathGroup.visible = pathMode;
       bakeBtn.disabled = false;
-      bakeBtn.textContent = "⏺ Bake Path";
+      bakeBtn.textContent = "⏺ Bake Proxy Path";
       if (wasPlaying) playBtn.onclick();
     }
   };
@@ -1762,53 +1960,75 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(clearBtn);
 
-  // Render Passes button
+  // Render Proxy Passes button
   const renderBtn = document.createElement("button");
-  renderBtn.textContent = "⬛ Render Passes";
+  renderBtn.textContent = "⬛ Render Proxy Passes";
   renderBtn.style.cssText = "padding:3px 10px;font-size:11px;cursor:pointer;background:#1a3a1a;color:#afa;border:1px solid #464;border-radius:3px;margin-left:auto";
   renderBtn.onclick = async () => {
     renderBtn.disabled = true;
-    renderBtn.textContent = "Rendering...";
+    renderBtn.textContent = "Rendering Proxy...";
+    const savedAspect = camera.aspect;
     try {
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
       const passes = await renderAllPasses(renderer, scene, camera, W, H, [bgMesh]);
       if (!passes) return;
       // Merge into client_data rather than overwrite — preserves a previously
-      // baked camera_path/path_frames (same widget, see ⏺ Bake Path) instead
+      // baked camera_path/path_frames (same widget, see ⏺ Bake Proxy Path) instead
       // of wiping it out.
       const widget = node.widgets?.find((w) => w.name === "client_data");
       if (widget) {
         let existing = {};
         try { existing = widget.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
-        widget.value = JSON.stringify({ ...existing, ...passes });
+        widget.value = JSON.stringify({
+          ...existing,
+          ...passes,
+          atlas_proxy_passes: {
+            transport: "png_base64_proxy_ldr",
+            width: W,
+            height: H,
+            passes: ["shaded", "depth", "normal", "mask"],
+          },
+        });
         widget.callback?.(widget.value);
       }
       // Re-queue the prompt so Python receives the frames
       app.queuePrompt(0, 1);
     } finally {
+      camera.aspect = savedAspect;
+      camera.updateProjectionMatrix();
       renderBtn.disabled = false;
-      renderBtn.textContent = "⬛ Render Passes";
+      renderBtn.textContent = "⬛ Render Proxy Passes";
     }
   };
   toolbar.appendChild(renderBtn);
 
-  // Assemble. toolbar/pathPanel go wherever mountControls() decides (a linked
-  // AtlasViewportControls node's container, or here as a fallback) — called
-  // once below and again on every connection change, so this node stays
-  // perspective-only whenever a Controls node is attached. canvasWrap always
-  // stays local: mountControls() runs first so the fallback ordering
-  // (toolbar, pathPanel, canvas) still matches the pre-split layout when no
-  // Controls node is connected.
-  let _atlasMountTarget = null;
+  // Assemble. The DOM widget's normal flow must remain canvas-only: ComfyUI's
+  // DOMWidget layout currently reports minWidth:0, so putting toolbar/pathPanel
+  // beside the canvas in flex flow can collapse the widget width on relayout.
+  // With no AtlasViewportControls node connected, controls live in an absolute
+  // overlay inside canvasWrap. With a controls node connected, the same DOM
+  // elements are reparented there and the local overlay is hidden/empty.
+  containerEl.appendChild(canvasWrap);
+  let _atlasToolbarMountTarget = null;
+  let _atlasPathMountTarget = null;
   function mountControls() {
     const controlsNode = getLinkedControlsNode(node);
-    const target = controlsNode?._atlasControlsContainer || containerEl;
-    if (target === _atlasMountTarget) return; // already mounted here — avoid redundant DOM churn
-    _atlasMountTarget = target;
-    target.appendChild(toolbar);
-    target.appendChild(pathPanel);
+    const externalTarget = controlsNode?._atlasControlsContainer || null;
+    const toolbarTarget = controlsNode?._atlasToolbarContainer || externalTarget || localControlsLayer;
+    const pathTarget = controlsNode?._atlasPathContainer || toolbarTarget;
+    localControlsLayer.style.display = externalTarget ? "none" : "flex";
+    if (toolbarTarget !== _atlasToolbarMountTarget) {
+      _atlasToolbarMountTarget = toolbarTarget;
+      toolbarTarget.appendChild(toolbar);
+    }
+    if (pathTarget !== _atlasPathMountTarget) {
+      _atlasPathMountTarget = pathTarget;
+      pathTarget.appendChild(pathPanel);
+    }
+    if (recoveredData) updateLinkedOutputDesk(recoveredData);
   }
   mountControls();
-  containerEl.appendChild(canvasWrap);
 
   // Store refs for cleanup and camera application
   node._atlasRenderer = renderer;
@@ -1819,6 +2039,7 @@ function buildNodeUI(node, containerEl) {
   node._atlasBgMesh = null;
   node._atlasW = W;
   node._atlasH = H;
+  node._atlasApplyOutputProfilePreview = applyOutputProfilePreview;
 
   // Resize the render target + canvas so the viewport matches the source image
   // aspect (target_width/target_height come from the Python node, derived from the
@@ -1828,10 +2049,24 @@ function buildNodeUI(node, containerEl) {
     h = Math.max(16, Math.round(h || H));
     W = w; H = h;
     node._atlasW = w; node._atlasH = h;
-    canvas.width = w; canvas.height = h;
-    renderer.setSize(w, h, false);
+    previewSize = atlasViewportPreviewSize(w, h);
+    previewW = previewSize.width; previewH = previewSize.height;
+    node._atlasPreviewW = previewW; node._atlasPreviewH = previewH;
+    canvas.width = previewW; canvas.height = previewH;
+    renderer.setSize(previewW, previewH, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+  }
+
+  function updateLinkedOutputDesk(data = {}) {
+    const controlsNode = getLinkedControlsNode(node);
+    controlsNode?._atlasOutputDeskUpdate?.({
+      ...data,
+      target_width: W,
+      target_height: H,
+      preview_width: previewW,
+      preview_height: previewH,
+    });
   }
 
   // Apply the recovered camera and initialise the orbit controller *from* it, so
@@ -1848,6 +2083,8 @@ function buildNodeUI(node, containerEl) {
     controls.setTarget(groundPointInView(camera, pivotMax)); // pivot on the looked-at ground point
     controls.syncFromCamera();                     // init orbit state from recovered pose
     recoveredData = data;
+    applyOutputProfilePreview(data.output_profile || atlasOutputProfileFromWidgets(getLinkedControlsNode(node) || {}));
+    updateLinkedOutputDesk(data);
   }
 
   // Bounding-box centroid of the DERIVED geometry (relief mesh and/or fitted
@@ -1988,7 +2225,7 @@ function buildNodeUI(node, containerEl) {
       // exists (replaces applyRecoveredView's ground-point fallback). Only
       // re-syncs the orbit SPHERE PARAMETERS from wherever the camera already
       // is — never moves the camera itself, so this can't disrupt an
-      // in-progress inspection even on a re-execution (e.g. ⏺ Bake Path).
+      // in-progress inspection even on a re-execution (e.g. ⏺ Bake Proxy Path).
       const geometryPivot = computeGeometryPivot();
       if (geometryPivot) {
         controls.setTarget(geometryPivot);
@@ -2066,6 +2303,187 @@ function getLinkedViewportNodes(controlsNode) {
     .filter(Boolean);
 }
 
+function atlasWidget(node, name) {
+  return node.widgets?.find((w) => w.name === name) || null;
+}
+
+function atlasWidgetValue(node, name, fallback = "") {
+  const widget = atlasWidget(node, name);
+  return widget?.value ?? fallback;
+}
+
+function atlasSetWidgetValue(node, name, value) {
+  const widget = atlasWidget(node, name);
+  if (!widget) return;
+  widget.value = value;
+  widget.callback?.(widget.value);
+}
+
+function atlasOutputProfileFromWidgets(node) {
+  return {
+    config_label: atlasWidgetValue(node, "config_label", "ACES 2.0 / Studio"),
+    config_path: atlasWidgetValue(node, "config_path", ""),
+    working_colorspace: atlasWidgetValue(node, "working_colorspace", "ACEScg"),
+    output_colorspace: atlasWidgetValue(node, "output_colorspace", "ACES - ACEScg"),
+    display: atlasWidgetValue(node, "display", "sRGB - Display"),
+    view: atlasWidgetValue(node, "view", "ACES 2.0 SDR-video"),
+    look: atlasWidgetValue(node, "look", "None"),
+    lut_path: atlasWidgetValue(node, "lut_path", ""),
+    exposure: Number(atlasWidgetValue(node, "exposure", 0)) || 0,
+    gamma: Number(atlasWidgetValue(node, "gamma", 1)) || 1,
+    display_trim: Number(atlasWidgetValue(node, "display_trim", 1)) || 1,
+    preview_only: true,
+  };
+}
+
+function buildAtlasOutputDesk(node, container) {
+  container.innerHTML = "";
+  container.style.cssText =
+    "width:100%;display:flex;flex-direction:column;gap:0;background:#111318;color:#d7dce5;" +
+    "border:1px solid #333846;border-radius:6px;overflow:hidden;font:11px/1.35 system-ui,sans-serif;";
+
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 8px;background:#191d25;border-bottom:1px solid #303642;";
+  const title = document.createElement("strong");
+  title.textContent = "Atlas Output Desk";
+  title.style.cssText = "font-size:12px;color:#f0f4ff;";
+  const badges = document.createElement("div");
+  badges.style.cssText = "display:flex;gap:5px;flex-wrap:wrap;margin-left:auto;";
+  function badge(text, tone = "neutral") {
+    const el = document.createElement("span");
+    const colors = {
+      neutral: ["#242a34", "#8b96a8"],
+      proxy: ["#332716", "#f0b65a"],
+      shot: ["#153024", "#6ee7a8"],
+      ocio: ["#222545", "#aeb8ff"],
+    }[tone] || ["#242a34", "#8b96a8"];
+    el.textContent = text;
+    el.style.cssText = `padding:2px 6px;border-radius:999px;background:${colors[0]};color:${colors[1]};border:1px solid rgba(255,255,255,.08);`;
+    return el;
+  }
+  const proxyBadge = badge("Proxy/LDR", "proxy");
+  const resBadge = badge("Output --", "neutral");
+  const shotBadge = badge("ShotCam --", "shot");
+  const ocioBadge = badge("OCIO preview", "ocio");
+  badges.append(proxyBadge, resBadge, shotBadge, ocioBadge);
+  header.append(title, badges);
+
+  const tabBar = document.createElement("div");
+  tabBar.style.cssText = "display:flex;gap:1px;background:#0d0f14;border-bottom:1px solid #2e3440;";
+  const panels = {};
+  const panelWrap = document.createElement("div");
+  panelWrap.style.cssText = "min-height:96px;background:#151820;";
+
+  function makePanel(name) {
+    const panel = document.createElement("div");
+    panel.style.cssText = "display:none;padding:6px;gap:6px;flex-wrap:wrap;align-items:center;";
+    panelWrap.appendChild(panel);
+    panels[name] = panel;
+    const btn = document.createElement("button");
+    btn.textContent = name;
+    btn.style.cssText = "flex:1;padding:5px 6px;border:0;background:#171b23;color:#aeb6c5;font-size:11px;cursor:pointer;";
+    btn.onclick = () => {
+      for (const [key, p] of Object.entries(panels)) p.style.display = key === name ? "flex" : "none";
+      [...tabBar.children].forEach((child) => {
+        child.style.background = child === btn ? "#252b37" : "#171b23";
+        child.style.color = child === btn ? "#f4f7ff" : "#aeb6c5";
+      });
+    };
+    tabBar.appendChild(btn);
+    return { panel, btn };
+  }
+
+  const view = makePanel("View");
+  makePanel("Plates");
+  const color = makePanel("Color");
+  const passes = makePanel("Passes");
+  const path = makePanel("Path");
+
+  const toolbarSlot = document.createElement("div");
+  toolbarSlot.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:4px;width:100%;";
+  view.panel.appendChild(toolbarSlot);
+
+  const plateInfo = document.createElement("div");
+  plateInfo.style.cssText = "display:grid;grid-template-columns:auto 1fr;gap:4px 8px;width:100%;color:#b8c0cf;";
+  panels.Plates.appendChild(plateInfo);
+
+  function addColorField(label, widgetName, type = "text", attrs = {}) {
+    const wrap = document.createElement("label");
+    wrap.style.cssText = "display:grid;grid-template-columns:92px minmax(120px,1fr);align-items:center;gap:6px;width:100%;";
+    const lab = document.createElement("span");
+    lab.textContent = label;
+    lab.style.cssText = "color:#9aa5b8;";
+    const input = document.createElement("input");
+    input.type = type;
+    input.value = atlasWidgetValue(node, widgetName, attrs.defaultValue ?? "");
+    input.style.cssText = "min-width:0;background:#0d1016;color:#edf2ff;border:1px solid #343b4a;border-radius:4px;padding:3px 5px;font-size:11px;";
+    Object.assign(input, attrs);
+    input.onchange = input.oninput = () => {
+      atlasSetWidgetValue(node, widgetName, type === "number" ? Number(input.value) : input.value);
+      const profile = atlasOutputProfileFromWidgets(node);
+      getLinkedViewportNodes(node).forEach((vp) => vp._atlasApplyOutputProfilePreview?.(profile));
+      node._atlasOutputDeskUpdate?.({ output_profile: profile });
+    };
+    wrap.append(lab, input);
+    color.panel.appendChild(wrap);
+    return input;
+  }
+  addColorField("Config", "config_label");
+  addColorField("Config path", "config_path");
+  addColorField("Working", "working_colorspace");
+  addColorField("Output", "output_colorspace");
+  addColorField("Display", "display");
+  addColorField("View", "view");
+  addColorField("Look", "look");
+  addColorField("LUT", "lut_path");
+  addColorField("Exposure", "exposure", "number", { step: "0.1" });
+  addColorField("Gamma", "gamma", "number", { step: "0.05", min: "0.1" });
+  addColorField("Trim", "display_trim", "number", { step: "0.05", min: "0" });
+  const previewNote = document.createElement("div");
+  previewNote.textContent = "Display-inferred preview only. Final OCIO/LUT fidelity belongs to OCIO Write, Nuke, Maya, or Resolve.";
+  previewNote.style.cssText = "width:100%;padding:5px 6px;border-radius:4px;background:#1d2130;color:#b8c4ff;";
+  color.panel.appendChild(previewNote);
+
+  const passInfo = document.createElement("div");
+  passInfo.textContent = "Proxy/LDR passes: shaded, depth, normal, mask. Use OCIO/DCC for final float EXR renders.";
+  passInfo.style.cssText = "width:100%;padding:5px 6px;border-radius:4px;background:#211d14;color:#f0c177;";
+  passes.panel.appendChild(passInfo);
+
+  const pathSlot = document.createElement("div");
+  pathSlot.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:4px;width:100%;";
+  path.panel.appendChild(pathSlot);
+
+  container.append(header, tabBar, panelWrap);
+  view.btn.click();
+
+  node._atlasToolbarContainer = toolbarSlot;
+  node._atlasPathContainer = pathSlot;
+  node._atlasControlsContainer = toolbarSlot;
+  node._atlasOutputDeskUpdate = (data = {}) => {
+    const width = data.target_width || data.width || data.output_width;
+    const height = data.target_height || data.height || data.output_height;
+    resBadge.textContent = width && height ? `Output ${Math.round(width)}x${Math.round(height)}` : "Output --";
+    shotBadge.textContent = data.shot_cam ? "ShotCam on" : "ShotCam/profile";
+    const profile = data.output_profile || {};
+    ocioBadge.textContent = profile.output_colorspace ? `OCIO ${profile.output_colorspace}` : "OCIO preview";
+    const plate = data.source_plate || {};
+    plateInfo.innerHTML = "";
+    const rows = [
+      ["Plate", plate.image_path || "Proxy preview only"],
+      ["Colorspace", plate.colorspace || "unspecified"],
+      ["Bit depth", plate.bit_depth || "unknown"],
+      ["Role", plate.role || "source"],
+      ["Status", plate.is_proxy === false ? "File-backed final plate" : "Proxy/LDR preview"],
+    ];
+    for (const [k, v] of rows) {
+      const key = document.createElement("span"); key.textContent = k; key.style.cssText = "color:#7f8a9c;";
+      const val = document.createElement("span"); val.textContent = String(v); val.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      plateInfo.append(key, val);
+    }
+  };
+  node._atlasOutputDeskUpdate();
+}
+
 // ---------------------------------------------------------------------------
 // ComfyUI extension registration
 // ---------------------------------------------------------------------------
@@ -2088,7 +2506,7 @@ app.registerExtension({
         getValue() { return null; },
         setValue() {},
       });
-      node._atlasControlsContainer = container;
+      buildAtlasOutputDesk(node, container);
       // Nudge any already-created, already-linked viewport(s) to reparent
       // into us now that our container exists — covers the case where the
       // viewport node's own nodeCreated ran first (creation order isn't
@@ -2120,7 +2538,7 @@ app.registerExtension({
     // min-width:0 for the same reason as canvasWrap's — defense in depth in
     // case ComfyUI's own widget-hosting layout is flex too.
     const container = document.createElement("div");
-    container.style.cssText = "width:100%;height:100%;min-width:0;display:flex;flex-direction:column;gap:0;";
+    container.style.cssText = "width:100%;height:100%;min-width:0;display:flex;flex-direction:column;gap:0;overflow:hidden;";
 
     const domWidget = node.addDOMWidget("atlas_viewport", "div", container, {
       serialize: false,
@@ -2129,9 +2547,12 @@ app.registerExtension({
       // Sanctioned sizing hooks (DOMWidgetOptions.getMinHeight/getMaxHeight,
       // scripts/domWidget.ts) instead of leaving LiteGraph's own layout math
       // to fall back to its hardcoded 50px default — gives it an accurate
-      // floor without a ceiling, so dragging larger is never fought.
+      // floor and a practical ceiling, so dragging larger is never fought.
       getMinHeight() { return 240; },
+      getMaxHeight() { return 8192; },
     });
+
+    installViewportSizeTrace(node, domWidget, container);
 
     const ui = buildNodeUI(node, container);
 
@@ -2177,6 +2598,7 @@ app.registerExtension({
     // Cleanup on node removal
     node.onRemoved = () => {
       api.removeEventListener("executed", onApiExecuted);
+      node._atlasSizeTraceCleanup?.();
       cancelAnimationFrame(node._atlasRafId);
       node._atlasRenderer?.dispose();
       node._atlasControls?.dispose();

@@ -1,6 +1,8 @@
 from atlas_camera.core.intrinsics import build_intrinsics
 from atlas_camera.core.schema import (
     AtlasCamera,
+    AtlasOutputProfile,
+    AtlasPlateRef,
     AtlasProxyPrimitive,
     AtlasSolve,
     ProjectionSource,
@@ -111,3 +113,50 @@ def test_projection_source_round_trips_through_json():
     assert len(got.proxy_geometry) == 1
     assert got.proxy_geometry[0].primitive_type == "mesh"
     assert got.camera.intrinsics.image_width == 1920
+
+
+def test_plate_refs_and_output_profile_round_trip_through_solve_json():
+    intrinsics = build_intrinsics(image_width=1920, image_height=1080, focal_length_mm=35.0)
+    plate = AtlasPlateRef(
+        image_path="plates/hero.exr",
+        preview_b64="data:image/jpeg;base64,AAAA",
+        colorspace="ACEScg",
+        bit_depth="16f",
+        role="source",
+        is_proxy=False,
+        lut_path="luts/show.cube",
+        metadata={"shot": "A010"},
+    )
+    profile = AtlasOutputProfile(
+        config_label="ACES 2.0 / Studio",
+        working_colorspace="ACEScg",
+        output_colorspace="ACES - ACEScg",
+        display="sRGB - Display",
+        view="ACES 2.0 SDR-video",
+        look="None",
+        preview_only=True,
+    )
+    solve = AtlasSolve(
+        camera=AtlasCamera(intrinsics=intrinsics),
+        source_plate=plate,
+        output_profile=profile,
+    )
+    solve.projection_sources.append(
+        ProjectionSource(
+            camera=AtlasCamera(intrinsics=intrinsics),
+            name="clean_plate",
+            image_b64="data:image/jpeg;base64,BBBB",
+            plate_ref=plate,
+        )
+    )
+
+    restored = AtlasSolve.from_json(solve.to_json())
+
+    assert restored.source_plate.image_path == "plates/hero.exr"
+    assert restored.source_plate.is_proxy is False
+    assert restored.source_plate.bit_depth == "16f"
+    assert restored.source_plate.metadata["shot"] == "A010"
+    assert restored.output_profile.working_colorspace == "ACEScg"
+    assert restored.output_profile.output_colorspace == "ACES - ACEScg"
+    assert restored.projection_sources[0].plate_ref.image_path == "plates/hero.exr"
+    assert restored.projection_sources[0].image_b64.startswith("data:image/jpeg")

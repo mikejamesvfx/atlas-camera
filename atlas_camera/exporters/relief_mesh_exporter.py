@@ -22,14 +22,16 @@ def export_relief_mesh(
     output_dir: str | Path,
     *,
     texture: Any | None = None,
+    texture_path: str | Path | None = None,
     name: str = "atlas_relief_mesh",
 ) -> dict[str, str]:
     """Write ``{name}.obj`` + ``{name}.mtl`` (+ texture PNG) to ``output_dir``.
 
-    ``texture`` is an optional PIL Image (the source photo); when given it is
-    saved next to the OBJ and referenced as ``map_Kd``. Returns the written
-    paths. Coordinates are Atlas world (right-handed, Y-up, metres) — Maya and
-    Nuke default conventions.
+    ``texture_path`` references an existing source plate directly, preserving
+    EXR/float file-backed workflows. If no path is supplied, ``texture`` is an
+    optional PIL Image saved next to the OBJ as a PNG preview and referenced as
+    ``map_Kd``. Returns the written paths. Coordinates are Atlas world
+    (right-handed, Y-up, metres) — Maya and Nuke default conventions.
     """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -37,10 +39,12 @@ def export_relief_mesh(
     mtl_path = out / f"{name}.mtl"
     material = "atlas_relief_projection"
 
-    tex_path: Path | None = None
-    if texture is not None:
+    tex_path: Path | None = Path(texture_path) if texture_path else None
+    tex_written = False
+    if tex_path is None and texture is not None:
         tex_path = out / f"{name}_diffuse.png"
         texture.save(tex_path)
+        tex_written = True
 
     lines: list[str] = [
         "# Atlas Camera relief mesh — Y-up, metres.",
@@ -71,12 +75,15 @@ def export_relief_mesh(
         "illum 1",
     ]
     if tex_path is not None:
-        mtl_lines.append(f"map_Kd {tex_path.name}")
+        map_path = tex_path.name if tex_written else tex_path.as_posix()
+        mtl_lines.append(f"map_Kd {map_path}")
     mtl_path.write_text("\n".join(mtl_lines) + "\n", encoding="utf-8")
 
     result = {"obj": str(obj_path), "mtl": str(mtl_path)}
     if tex_path is not None:
         result["texture"] = str(tex_path)
+        if not tex_written:
+            result["texture_external"] = "true"
     return result
 
 

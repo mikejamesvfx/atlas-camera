@@ -127,12 +127,49 @@ Draws VP convergence lines (left VP = orange, right VP = blue, vertical VP = gre
 2. The Three.js viewport initialises inside the node with the recovered camera applied.
 3. The source photo appears as a background reference plane in the 3D scene.
 4. Click **Box / Plane / Cylinder / Person** to place geometry. Orbit with mouse drag, zoom with scroll.
-5. Click **Render Passes** → four WebGL passes are base64-encoded into `client_data` and the prompt is re-queued automatically.
-6. `shaded / depth / normal / mask` IMAGE outputs are now populated.
+5. Click **Render Proxy Passes** → four browser/WebGL proxy passes are base64-encoded into `client_data` and the prompt is re-queued automatically.
+6. `shaded / depth / normal / mask` IMAGE outputs are now populated as proxy/LDR outputs.
 
 **First run:** All four outputs are black placeholder tensors (expected — `client_data` is empty until step 5).
 
+**Camera paths:** Use 🎥 Camera Path mode in the viewport, add keyframes, then click **Bake Proxy Path**. The `path_frames` output is an IMAGE batch for editorial/video-preview workflows; `camera_path` is the raw keyframe data for `AtlasExportCameraPathUSD`.
+
+**Output Desk:** Add `AtlasViewportControls` and connect its first output to the viewport's `controls` input to move the toolbar/panels out of the viewport. The same node's second output, `output_profile`, carries OCIO-style metadata for labels, preview trims, and DCC/export handoff.
+
+**Proxy warning:** viewport passes and baked path frames are browser preview data. Use `AtlasRegisterPlate` / `AtlasAttachSourcePlate` when the final source image exists as an EXR or other high-bit-depth plate.
+
 **Three.js loading:** The extension tries ComfyUI's bundled Three.js (`../../lib/three.module.js`) first, then falls back to CDN (`unpkg.com/three@0.163.0`). Internet access is required if the bundled version is absent.
+
+### `AtlasRegisterPlate`
+
+Passes an `IMAGE` through unchanged and emits an `ATLAS_PLATE_REF` containing:
+
+- the original file path, when supplied;
+- a JPEG preview for the browser;
+- colorspace, bit-depth, role, LUT path, and metadata;
+- an explicit `is_proxy` flag when no final file path is available.
+
+Use this before `AtlasAttachSourcePlate` for source plates, or feed the
+`plate_ref` into patch/clean-plate nodes so DCC exporters can use the real
+EXR/high-bit-depth file instead of the browser preview.
+
+### `AtlasAttachSourcePlate`
+
+Attaches an `ATLAS_PLATE_REF` to a solve. Exporters prefer this file-backed
+plate path over copied PNG/JPEG previews, while the viewport continues to use
+the lightweight preview payload.
+
+### `AtlasViewportControls` / Atlas Output Desk
+
+This node has two outputs:
+
+| Output | Type | Notes |
+|---|---|---|
+| `controls` | ATLAS_VIEWPORT_LINK | Backward-compatible link used by the browser extension to relocate viewport controls. |
+| `output_profile` | ATLAS_OUTPUT_PROFILE | OCIO-style intent: config, working/output colorspace, display/view/look, LUT, exposure, gamma, and display trim. |
+
+The browser preview is display-inferred only. Final OCIO/LUT fidelity belongs
+to ComfyUI-OCIO, Nuke, Maya, Resolve, or another color-managed tool.
 
 ### Export nodes
 
@@ -145,6 +182,11 @@ All export nodes write files to disk and return the path as a STRING. They produ
 | `AtlasExportNuke` | `camera_projection.py` | `output_dir/` |
 | `AtlasExportUSD` | `camera.usda` | `output_dir/camera.usda` |
 | `AtlasExportReviewPackage` | Full bundle dir | `output_dir/` |
+
+Nuke/Maya/review exports prefer attached file-backed plate refs when present
+and annotate colorspace/output-profile intent. `AtlasExportReliefMesh` can
+reference an external EXR plate from its OBJ/MTL; GLB remains a proxy format
+with embedded PNG-style texture data.
 
 ---
 

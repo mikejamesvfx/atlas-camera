@@ -239,6 +239,77 @@ of 1.0 keeps Project fully accurate at any orbit angle within the arc.
 
 ---
 
+## Part 4 — Output Desk, Proxy Preview, and Float-Safe Plates
+
+Atlas now separates the interactive viewer from final delivery data:
+
+- **Viewer** — `AtlasBlockoutViewport`, the browser-side Three.js preview.
+  It is for orbiting, placing geometry, checking projection, authoring camera
+  paths, and generating proxy/LDR render passes.
+- **Output Desk** — `AtlasViewportControls`, still compatible with the old
+  detached-controls link, but now presented as an NLE-style control surface
+  with `View`, `Plates`, `Color`, `Passes`, and `Path` tabs.
+- **Plate references** — file-backed source/patch/clean plates registered by
+  `AtlasRegisterPlate` and attached to a solve with `AtlasAttachSourcePlate`.
+  These are the final source of truth for EXR/float workflows.
+
+The browser viewport is intentionally **not** the final render path. Its
+`Render Proxy Passes` and `Bake Proxy Path` actions still fill the usual
+`shaded`, `depth`, `normal`, `mask`, and `path_frames` IMAGE outputs, but
+those images travel through ComfyUI as 8-bit-ish browser/base64 preview data.
+They are useful for editorial previews, ControlNet references, quick review,
+and feeding a video-combine node. They are not a substitute for a final EXR
+projection render in Nuke, Maya, Resolve, or an OCIO-aware writer.
+
+### Registering final plates
+
+Use `AtlasRegisterPlate` when the source image also exists on disk as a real
+plate, especially an EXR:
+
+1. Feed it the same ComfyUI `IMAGE` used by the solve.
+2. Set `plate_path` to the original plate path, for example
+   `D:/show/shot010/plates/hero_main.exr`.
+3. Set `colorspace` to the plate's real working colorspace, commonly
+   `ACEScg`, `ACES2065-1`, or the camera/log colorspace you intend to manage
+   downstream.
+4. Feed `plate_ref` into `AtlasAttachSourcePlate`.
+5. Use the attached solve for viewport/export nodes.
+
+If `plate_path` is left blank, Atlas marks the plate as **proxy-only**. The
+browser still has a JPEG preview, but exporters will not pretend that preview
+is final float image data.
+
+Patch and clean-plate projection sources follow the same model. Their
+`image_b64` preview keeps the viewport interactive, while the optional
+`plate_ref` tells Nuke/Maya/export nodes which original EXR or high-bit-depth
+file should be used for final projection.
+
+### Color controls are preview intent, not full OCIO
+
+The Output Desk's Color tab stores an `ATLAS_OUTPUT_PROFILE`: config label or
+path, working colorspace, output colorspace, display, view, look, LUT path,
+exposure, gamma, and display trim. The browser uses that information for
+labels and lightweight display-inferred preview trims only. It does **not**
+run a full OpenColorIO processor in WebGL.
+
+Final color fidelity belongs downstream:
+
+- Nuke exporters create Read nodes from the original plate path when one is
+  available and annotate/set the intended colorspace.
+- Maya exporters point projection file nodes at the original plate path when
+  one is available and store the color-management hints on the node.
+- `AtlasExportReliefMesh` writes OBJ/MTL projection UVs and references the
+  original file-backed plate when available. GLB remains a preview/proxy
+  format with embedded PNG-style texture data.
+- ComfyUI-OCIO's `OCIOWrite` can still consume proxy `path_frames` for
+  editorial previews, while final float renders should be produced from the
+  registered plates and exported cameras/geometry in a DCC or comp package.
+
+The practical rule: **browser output is for deciding and previewing; plate
+refs plus output profiles are for final handoff.**
+
+---
+
 ## Reading the diagnostics
 
 The blockout viewport toolbar has three diagnostic controls, useful for
@@ -273,4 +344,6 @@ sanity-checking a solve:
 | `AtlasBlockoutViewport` (📽 Project) | Part 2 — the live camera projection |
 | `AtlasExportReliefMesh` | Part 2 — UV-baked mesh export for Maya/Nuke/ZBrush |
 | `AtlasBlockoutViewport` (`preview_expand`) | Part 3 — preview-only geometry dilation |
+| `AtlasRegisterPlate`, `AtlasAttachSourcePlate` | Part 4 — file-backed float-safe source plates |
+| `AtlasViewportControls` | Part 4 — Atlas Output Desk and OCIO-style output profile |
 | `AtlasBlockoutViewport` (☀ / 📊 / ℹ) | Diagnostics — exposure, VP/horizon diagram, camera HUD |

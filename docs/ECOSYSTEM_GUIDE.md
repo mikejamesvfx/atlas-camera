@@ -121,6 +121,16 @@ combine explicitly.
 | Node | What it does |
 |---|---|
 | `AtlasDefineShotCam` | A project-level render/output camera format (sensor W×H mm + lens mm + long-edge resolution) — like a Nuke/Resolve project setting. Intrinsics-only, no position. Wire into `AtlasMergeGeometry` (attaches to the merged solve) or directly into `AtlasBlockoutViewport` so the render/export conforms to one shot format instead of each photo's own aspect. |
+| `AtlasRegisterPlate` | Registers a source/patch/clean plate as a durable `ATLAS_PLATE_REF`: original path, browser preview, colorspace, bit depth, role, proxy flag, optional LUT metadata. This is the float-safe bridge from ComfyUI preview tensors to final EXR/high-bit-depth plate files. |
+| `AtlasAttachSourcePlate` | Attaches a registered plate ref to a solve so viewport/export nodes can keep using browser previews while Nuke/Maya/review/OBJ exporters prefer the original plate path for final projection. |
+| `AtlasViewportControls` / Atlas Output Desk | Optional companion/output node. Output 0 remains the legacy detached-controls link; output 1 is `ATLAS_OUTPUT_PROFILE` with OCIO-style intent (config, working/output colorspace, display/view/look, LUT, exposure/gamma/display trim). |
+
+### Inpaint layers (2.5D clean-plate parallax — see §3.5)
+
+| Node | What it does |
+|---|---|
+| `AtlasDepthLayerMask` | One metric depth band → `(layer_mask, occlusion_mask)`. `occlusion_mask` feeds an external inpaint graph (`INPAINT_ExpandMask` → `INPAINT_InpaintWithModel`) to build that band's clean plate. |
+| `AtlasCleanPlateLayer` | Inpainted clean plate + the same depth band → appends a `ProjectionSource` (camera = primary, unchanged; mesh clipped to the band). Chain one per layer. |
 
 ### Decompose / analyze
 
@@ -137,8 +147,8 @@ combine explicitly.
 
 | Node | What it does |
 |---|---|
-| `AtlasBlockoutViewport` | The live Three.js viewport: 📷 Camera View, 📽 Project (matte-painting mode), ☀ Exposure, 📊 VP/horizon/ground diagram, ℹ camera HUD, 🎥 camera-path authoring, 4 render passes (shaded/depth/normal/mask). Optional `shot_cam` input conforms the render to a shot format. See USER_GUIDE.md Parts 2–3 for the concepts. |
-| `AtlasViewportControls` | Optional companion node — moves the viewport's toolbar/panels onto its own node to declutter the viewport (carries no data; a pure UI link). |
+| `AtlasBlockoutViewport` | The live Three.js viewport: 📷 Camera View, 📽 Project (matte-painting mode), ☀ Exposure, 📊 VP/horizon/ground diagram, ℹ camera HUD, 🎥 camera-path authoring, and proxy/LDR render passes (shaded/depth/normal/mask). Optional `shot_cam` input conforms the render to a shot format. See USER_GUIDE.md Parts 2–4 for the concepts. |
+| `AtlasViewportControls` | Atlas Output Desk — moves the viewport toolbar/panels onto its own node and emits `ATLAS_OUTPUT_PROFILE` metadata for display-inferred preview and DCC/OCIO handoff. |
 
 ### Export
 
@@ -235,6 +245,56 @@ model isn't constrained to be exactly 2.10m the way a real door is. Reference-ob
 scale (tier 1) is the most reliable *method*, but its accuracy on synthetic
 imagery is bounded by whether the generator actually rendered the reference at
 plausible real-world proportions — verified directly this session (§4.3).
+
+### 3.5 Inpaint layers — 2.5D clean-plate parallax (`AtlasDepthLayerMask` + `AtlasCleanPlateLayer`)
+
+The classic VFX matte-painting move: split a solved photo into depth layers,
+inpaint the region each layer's foreground occluder hides into a **clean
+plate**, then project each clean plate onto its own depth-banded geometry. On
+a dolly/orbit move, the background layer now reveals inpainted pixels instead
+of black holes — solving the orbit-coverage limitation (§3.3's black-reveal
+problem) for the *same* camera, with **no angle calibration needed**, unlike
+`AtlasAddPatchView`'s multi-angle patches which fill gaps via novel views at
+*other* angles.
+
+The design deliberately reuses `ProjectionSource` rather than inventing new
+schema — the viewport's per-source projection material already does
+everything needed, so these two nodes are pure orchestration:
+
+- `AtlasDepthLayerMask` turns one metric depth band into `(layer_mask,
+  occlusion_mask)`. `occlusion_mask` (nearer than the band's near edge) feeds
+  an external `INPAINT_ExpandMask` → `INPAINT_InpaintWithModel` graph to build
+  that band's clean plate.
+- `AtlasCleanPlateLayer` takes the resulting plate and the *same* band,
+  clips `build_relief_mesh` to `[near, far]` metres (new `band_min_m`/
+  `band_max_m` params — the same "exclude the pixel, don't clamp" hole
+  mechanism sky/silhouette exclusion already uses), and appends a
+  `ProjectionSource` tagged `metadata["projection_mode"] = "clean_plate"`.
+  The camera is the **primary, unchanged** — no `orbit_camera` call anywhere
+  in this node, the whole simplification versus patch views.
+
+Both nodes share a private `_resolve_depth_band()` helper so their bands can
+never drift apart (the design requires the mask's band and the mesh clip to
+match exactly). The one frontend distinction from patch views: ordinary
+patches only paint surfaces they see reasonably head-on (`facingThreshold:
+0.2`, discarding grazing fragments); a clean-plate layer must paint head-on
+*and* grazing exactly like the primary, so `atlas_blockout.js`'s
+`buildPatchSources` branches on the serialized `projection_mode` to pass
+`facingThreshold: -1` instead, relying on depth + `priority` alone (not
+facing angle) to order overlapping layers.
+
+**GPL boundary, deliberately kept clean:** masking/inpainting is never
+implemented in `atlas_camera` — it's delegated to external ComfyUI node packs
+wired into the graph (`Acly/comfyui-inpaint-nodes`, GPL-3.0; `scraed/LanPaint`,
+optional generative tier for hard disocclusions a LaMa/MAT pass smears on).
+See `INSTALL.md`'s "Optional Inpaint Integration" section. Graph-level
+composition is not linking, so this doesn't touch Atlas's own license.
+
+**Caveats, stated honestly:** inpaint quality is the ceiling (LaMa continues
+texture excellently but smears on complex disocclusions — route those to
+LanPaint/SDXL); band boundaries are only as good as monocular depth; this is
+2.5D parallax, not full 3D reconstruction, so it shines on moderate
+dolly/orbit moves and shows its billboard-ish flatness on very large ones.
 
 ---
 
@@ -347,14 +407,27 @@ pipeline completed cleanly, producing all outputs: solve JSON, Blender
 
 ### Why
 
-Atlas Camera's relief-mesh export bakes the source image as an 8-bit,
-display-referred sRGB texture — the correct convention for DCC viewports and
-game engines, but not what a real VFX comp/lighting pipeline wants. Those
-departments work in scene-linear color spaces (typically **ACEScg**) and
-expect a properly color-managed EXR plate, not a raw sRGB PNG. ComfyUI itself
-has no color management at all — it holds every `IMAGE` tensor as plain
-gamma-encoded sRGB in `0..1` (this is documented as ComfyUI-OCIO's own stated
-assumption, and matches Atlas Camera's own texture-baking behavior).
+Atlas has two deliberately separate image paths:
+
+- **browser/proxy path** — `AtlasBlockoutViewport` uses JPEG/base64 previews
+  and writes proxy/LDR `IMAGE` outputs from `Render Proxy Passes` and
+  `Bake Proxy Path`;
+- **final plate path** — `AtlasRegisterPlate` records the original EXR or
+  high-bit-depth file path, colorspace, role, bit depth, optional LUT, and a
+  proxy flag inside `ATLAS_PLATE_REF`, then `AtlasAttachSourcePlate` carries
+  that reference on the solve.
+
+That split is what keeps the viewport fast without pretending a browser
+canvas is a professional render writer. Comp/lighting departments usually
+work in scene-linear color spaces (typically **ACEScg**) and expect the
+original float plate to survive into Nuke/Maya/Resolve. Atlas exporters now
+prefer file-backed plate refs when available, while falling back to preview
+textures only when no durable plate path exists.
+
+ComfyUI itself still has no color management — it holds every `IMAGE` tensor
+as plain gamma-encoded sRGB in `0..1` (this is documented as ComfyUI-OCIO's
+own stated assumption). Atlas treats those tensors as preview/editorial data
+unless a plate ref says otherwise.
 
 [ComfyUI-OCIO](https://github.com/SlavaSexton/ComfyUI-OCIO) (by Slava Sexton)
 adds eight Nuke-style OpenColorIO nodes on top of ComfyUI's plain sRGB
@@ -394,20 +467,49 @@ need nothing beyond the pip install above.
 
 ### The Atlas Camera integration pattern
 
-Because ComfyUI's own working space (`"sRGB - Display"`) is exactly
-`OCIOWrite`'s own default `from_colorspace`, no separate `OCIOColorSpace`
-conversion step is needed — feed the same source `IMAGE` into both branches:
+Use the Atlas Output Desk (`AtlasViewportControls`) to store the intended
+output profile: config label/path, working colorspace, output colorspace,
+display/view/look, LUT path, exposure, gamma, and display trim. The browser
+preview is display-inferred only; final OCIO/LUT fidelity belongs to
+ComfyUI-OCIO, Nuke, Maya, Resolve, or another color-managed tool.
+
+For simple ComfyUI-side EXR previews, `OCIOWrite` can consume Atlas proxy
+outputs directly. Because ComfyUI's own working space (`"sRGB - Display"`) is
+exactly `OCIOWrite`'s own default `from_colorspace`, no separate
+`OCIOColorSpace` conversion step is needed for that preview branch:
 
 ```
-                          ┌─ AtlasExportReliefMesh ─→ sRGB albedo texture (3D dept)
+                          ┌─ AtlasBlockoutViewport ─→ Render/Bake Proxy outputs (editorial)
 LoadImage ─→ solve ─→ derive ─┤
-                          └─ OCIOWrite (sRGB - Display → ACEScg, EXR, 16f) ─→ plate (comp/lighting dept)
+                          └─ OCIOWrite (sRGB - Display → ACEScg, EXR, 16f) ─→ proxy EXR preview
 ```
 
-This produces two complementary, correctly-targeted deliverables from one
-graph, instead of overloading a single sRGB texture for both purposes.
-Validated end-to-end this session: submitted directly to a live ComfyUI
-instance, confirmed successful, and the resulting file's OpenEXR magic number
+For final projection handoff, register the real source plate and carry that
+metadata through the solve:
+
+```
+LoadImage ─┬─ AtlasLearnedSolveFromImage ─→ AtlasAttachSourcePlate ─→ derive / viewport / exports
+           └─ AtlasRegisterPlate (plate_path=...exr, colorspace=ACEScg) ───────┘
+
+AtlasViewportControls.output_profile ─→ AtlasBlockoutViewport / AtlasExportNuke / AtlasExportMayaReviewScene
+```
+
+Exporter behavior with a file-backed plate ref:
+
+- `AtlasExportNuke` creates the Read node from the original plate path and
+  annotates/sets colorspace when possible.
+- `AtlasExportMayaReviewScene` and the Maya exporter point file nodes at the
+  original plate path and store Atlas colorspace/output-profile metadata.
+- `AtlasExportReviewPackage` preserves the original source file extension and
+  passes the packaged file name through to Maya/Nuke scripts.
+- `AtlasExportReliefMesh` writes projection UVs and lets OBJ/MTL reference
+  the original EXR/high-bit-depth plate. GLB remains preview/proxy because
+  common glTF workflows expect embedded PNG/JPEG-style image payloads.
+
+The older "write a separate OCIO EXR next to an sRGB preview texture" pattern
+is still useful for editorial or quick comp checks, and was validated
+end-to-end this session: submitted directly to a live ComfyUI instance,
+confirmed successful, and the resulting file's OpenEXR magic number
 (`76 2f 31 01`) checked byte-for-byte on disk.
 
 **Path gotcha, worth knowing before you wire this up:** Atlas Camera's export
@@ -444,6 +546,7 @@ ComfyUI's browser canvas for interactive, click-around testing:
 | `atlas_camera_reference_scale_workflow.json` **(new)** | Tier-1 reference-object scale demo, with an in-canvas caution note about AI-generated-image limitations (§3.4). |
 | `atlas_camera_vlm_scale_cues_workflow.json` **(new)** | `AtlasVLMScaleCues` preset for the now-fixed LM Studio path, with the quantized-model reliability caveat (§4.4) documented in-canvas. |
 | `atlas_camera_vfx_ocio_output_workflow.json` **(new)** | The VFX/OCIO integration from §5. |
+| `atlas_camera_inpaint_layers_workflow.json` **(new)** | 2.5D clean-plate parallax (§3.5) — in-repo Atlas nodes only; the external inpaint step is a documented placeholder note, wire it in by hand per `INSTALL.md`. |
 
 `examples/api_format/*.json` **(new)** — ComfyUI's raw **API format**
 (node-id → `{class_type, inputs}`), no layout data, **cannot be opened in the
@@ -502,8 +605,11 @@ instance and confirmed successful:
 | `AtlasVLMScaleCues` | Scale tier 1 — automatic suggestions (needs `confirm`) |
 | `AtlasDeriveProjectionGeometry` | Derive — relief mesh / primitives, 4 fitting strategies (§3.1) |
 | `AtlasAddPatchView` | Derive — multi-angle patch projection (§3.3) |
+| `AtlasDepthLayerMask`, `AtlasCleanPlateLayer` | Derive — inpaint layers, 2.5D clean-plate parallax (§3.5) |
 | `AtlasBlockoutViewport` (📽 Project) | The live camera projection |
 | `AtlasExportReliefMesh` | UV-baked mesh export for Maya/Nuke/ZBrush |
 | `AtlasBlockoutViewport` (`preview_expand`) | Preview-only geometry dilation |
 | `AtlasBlockoutViewport` (☀ / 📊 / ℹ) | Diagnostics — exposure, VP/horizon diagram, camera HUD |
+| `AtlasRegisterPlate`, `AtlasAttachSourcePlate` | Output — file-backed float-safe plate references (§5) |
+| `AtlasViewportControls` | Output — Atlas Output Desk, detached controls, OCIO-style profile (§5) |
 | `OCIOWrite`, `OCIOColorSpace` | VFX output — ACEScg EXR plates alongside DCC exports (§5) |
