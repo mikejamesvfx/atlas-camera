@@ -15,7 +15,7 @@ from typing import Any, NamedTuple
 from atlas_camera.core.io import load_solve_json, save_solve_json
 from atlas_camera.core.solver import solve_from_constraints, solve_still_image
 from atlas_camera.exporters.blender_exporter import write_blender_scene_script
-from atlas_camera.exporters.nuke_exporter import write_nuke_projection_script
+from atlas_camera.exporters.nuke_exporter import write_nuke_native_script, write_nuke_projection_script
 from atlas_camera.exporters.review_package import build_review_package
 from atlas_camera.importers.usd_camera_loader import USDCameraLoader
 
@@ -2667,9 +2667,25 @@ class AtlasExportBlender:
 
 
 class AtlasExportNuke:
-    """Export a Nuke Python projection script for the recovered camera."""
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("script_path",)
+    """Export a Nuke Python projection script, plus a native .nk scene, for
+    the recovered camera.
+
+    Both files describe the identical camera-projection graph (Read ->
+    Project3D2 -> Card or ReadGeo2 -> ScanlineRender, Camera2 feeding both
+    the projection and the render camera); the .py needs a Script Editor
+    (`exec(open(...).read()); build_projection()`), the .nk opens directly
+    via File > Open or drag-and-drop. Both were verified by actually
+    building and rendering this graph in Nuke (16.1v3) rather than only
+    reading documentation — see nuke_exporter.py's module docstring and
+    CLAUDE.md's "Nuke camera-projection topology" note for what that caught
+    (Card3D has no xsize/ysize, ScanlineRender has no format knob, and the
+    real obj/cam input indices are 1/2, not 0/1) and for the relief-mesh
+    case specifically (ReadGeo2 imports OBJ/FBX natively, but does NOT
+    auto-apply the OBJ/MTL's own texture — it still needs the live
+    Project3D2 projection wired into its own image input, same as Card).
+    """
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("script_path", "nk_path")
     FUNCTION = "export"
     CATEGORY = "Atlas Camera/Export"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
@@ -2682,19 +2698,31 @@ class AtlasExportNuke:
                 "output_dir": ("STRING", {"default": "atlas_exports"}),
             },
             "optional": {
+                "relief_mesh_obj_path": ("STRING", {"default": "",
+                    "tooltip": "Optional obj_path output from AtlasExportReliefMesh. When set, the real "
+                               "derived relief mesh is imported (ReadGeo2) and live-projected onto instead "
+                               "of the default flat 40x40m ground card — wire AtlasExportReliefMesh's "
+                               "obj_path here to see real derived geometry in Nuke."}),
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata for Read/colorspace annotations."}),
             },
         }
 
-    def export(self, solve, output_dir, output_profile=None):
+    def export(self, solve, output_dir, relief_mesh_obj_path="", output_profile=None):
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
-        dest = out / "nuke_projection.py"
-        write_nuke_projection_script(solve, dest)
-        return (str(dest),)
+        py_dest = out / "nuke_projection.py"
+        nk_dest = out / "nuke_projection.nk"
+        # AtlasExportReliefMesh's obj_path is relative to ComfyUI's own
+        # working directory (same convention as this node's own output_dir),
+        # not to wherever an artist eventually launches Nuke from - resolve
+        # to absolute so the generated script/scene stays portable.
+        mesh_path = str(Path(relief_mesh_obj_path).resolve()) if relief_mesh_obj_path else None
+        write_nuke_projection_script(solve, py_dest, relief_mesh_obj_path=mesh_path)
+        write_nuke_native_script(solve, nk_dest, relief_mesh_obj_path=mesh_path)
+        return (str(py_dest), str(nk_dest))
 
 
 # ---------------------------------------------------------------------------

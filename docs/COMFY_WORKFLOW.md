@@ -179,7 +179,7 @@ All export nodes write files to disk and return the path as a STRING. They produ
 |---|---|---|
 | `AtlasExportSolveJSON` | `atlas_solve.json` | `file_path` widget |
 | `AtlasExportBlender` | `build_scene.py` | `output_dir/build_scene.py` |
-| `AtlasExportNuke` | `camera_projection.py` | `output_dir/` |
+| `AtlasExportNuke` | `nuke_projection.py` + `nuke_projection.nk` | `output_dir/` |
 | `AtlasExportUSD` | `camera.usda` | `output_dir/camera.usda` |
 | `AtlasExportReviewPackage` | Full bundle dir | `output_dir/` |
 
