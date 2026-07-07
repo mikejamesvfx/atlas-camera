@@ -15,8 +15,17 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 // ---------------------------------------------------------------------------
-// Three.js — loaded from CDN so there is no build step needed.
-// ComfyUI ships its own Three.js; we try to import it first.
+// Three.js — vendored local bundle (lib/atlas-three.bundle.js): three core
+// r185 + OBJLoader + FBXLoader in one self-contained ESM file, built by
+// `npm run build:comfy-three` in ui/ (entry: ui/bundle/atlas-three-entry.js)
+// and committed so users never need npm or a network connection.
+//
+// This replaced a CDN-based chain that was quietly broken: ComfyUI does NOT
+// expose its internal three build at ../../lib/three.module.js (it's a hashed
+// Vite chunk with no import surface), so the old first-choice import always
+// failed over to unpkg; and the unpkg examples/jsm loaders use a bare
+// `import "three"` specifier that never resolves without an import map, so
+// OBJLoader/FBXLoader silently never loaded at all (verified live 2026-07-07).
 // ---------------------------------------------------------------------------
 let THREE;
 let OBJLoader;
@@ -25,39 +34,15 @@ let FBXLoader;
 async function loadThree() {
   if (THREE) return;
   try {
-    // ComfyUI bundles Three.js at this path in recent versions
-    const mod = await import("../../lib/three.module.js");
+    // The bundle re-exports the full three namespace at the top level, so the
+    // module object itself serves as THREE; the loaders ride along as extra
+    // named exports (they aren't part of the core namespace — no collisions).
+    const mod = await import("./lib/atlas-three.bundle.js");
     THREE = mod;
-  } catch (_) {
-    try {
-      const mod = await import(
-        "https://unpkg.com/three@0.163.0/build/three.module.js"
-      );
-      THREE = mod;
-    } catch (e) {
-      console.error("[AtlasBlockout] Failed to load Three.js:", e);
-    }
-  }
-  try {
-    const objMod = await import(
-      "https://unpkg.com/three@0.163.0/examples/jsm/loaders/OBJLoader.js"
-    );
-    OBJLoader = objMod.OBJLoader;
+    OBJLoader = mod.OBJLoader;
+    FBXLoader = mod.FBXLoader;
   } catch (e) {
-    console.warn("[AtlasBlockout] OBJLoader unavailable; proxy models disabled:", e);
-    OBJLoader = null;
-  }
-  try {
-    // Used by 🎥 Camera Path's "Import Camera FBX" — reads a DCC-authored
-    // camera animation client-side only (never touches atlas_camera.core, same
-    // rule as OBJLoader above). Same CDN-fallback + graceful-degrade pattern.
-    const fbxMod = await import(
-      "https://unpkg.com/three@0.163.0/examples/jsm/loaders/FBXLoader.js"
-    );
-    FBXLoader = fbxMod.FBXLoader;
-  } catch (e) {
-    console.warn("[AtlasBlockout] FBXLoader unavailable; FBX camera import disabled:", e);
-    FBXLoader = null;
+    console.error("[AtlasBlockout] Failed to load Three.js bundle:", e);
   }
 }
 
@@ -69,6 +54,45 @@ async function loadThree() {
 // ---------------------------------------------------------------------------
 const PROXY_COLORS = { woman: 0xffddbb, sedan: 0x6688aa };
 const ATLAS_VIEWPORT_PREVIEW_MAX_LONG_EDGE = 1280;
+
+// Default node size for FRESHLY ADDED viewport nodes only (saved workflows
+// keep whatever size they stored — see the onConfigure tracker in
+// nodeCreated). LiteGraph's own computed default is a cramped ~270×438;
+// this is double the 460px the example workflows historically shipped at,
+// so the 3D preview is usable without an immediate manual resize.
+// Display-only: render resolution is still governed solely by the
+// `resolution` widget (a 768 render shown at 960 wide is a mild CSS upscale —
+// bump `resolution` for a sharper image at this size).
+const ATLAS_VIEWPORT_DEFAULT_WIDTH = 960;
+const ATLAS_VIEWPORT_DEFAULT_HEIGHT = 720;
+
+// Pin a DOM widget's `width` property to permanently-undefined. ComfyUI's
+// per-frame DOM-widget layout (DomWidgets.vue updateWidgets, read from the
+// frontend 1.45.20 sourcemaps) sizes the widget's host element as
+// `widget.width ?? node.width` — for a full-width widget like ours the
+// correct steady state is `undefined` (fall through to the live node width).
+// Observed live (2026-07-07): something writes a one-shot stale pixel width
+// onto the widget object (~394 = this node type's pre-configure computed
+// width), after which the 3D canvas box permanently collapses to that width
+// on the next interaction that re-syncs widget style (mouseup/click →
+// DomWidget.vue's selectOn:['focus','click'] listener → selectNode →
+// style recompute) while the node itself stays big. The writer was never
+// caught in the act (it is sporadic — likely a frontend transient or another
+// extension), so instead of chasing it, make the property unwritable-by-
+// anyone: reads always yield undefined, writes are swallowed. LiteGraph's
+// own uses (`widget.width || nodeWidth` in hit-testing/drawing) fall through
+// to node width identically, so this is behavior-neutral everywhere else.
+function pinDomWidgetFullWidth(domWidget) {
+  try {
+    Object.defineProperty(domWidget, "width", {
+      configurable: true,
+      get() { return undefined; },
+      set() {},
+    });
+  } catch (e) {
+    console.warn("[AtlasBlockout] could not pin DOM widget width:", e);
+  }
+}
 
 function atlasFitLongEdge(width, height, maxLongEdge) {
   const w = Math.max(16, Math.round(width || maxLongEdge || 1280));
@@ -1277,6 +1301,12 @@ function buildNodeUI(node, containerEl) {
       if (t >= 1) { const done = pathPlayback.onDone; pathPlayback = null; done?.(); }
     }
     syncProjectionLightUniforms();
+    // Deferred aspect snap: execution can finish while the node is scrolled
+    // off-screen, where ComfyUI hides the DOM widget and every rect measures
+    // 0 — snapNodeHeightToRenderAspect stashes the aspect instead, and this
+    // retries it once the widget is visible/laid out again. No-op (one null
+    // check) on every other frame.
+    if (pendingSnapAspect != null) snapNodeHeightToRenderAspect(pendingSnapAspect);
     renderer.render(scene, camera);
   }
   node._atlasRafId = requestAnimationFrame(animate);
@@ -2200,6 +2230,42 @@ function buildNodeUI(node, containerEl) {
     renderer.setSize(previewW, previewH, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    snapNodeHeightToRenderAspect(w / h);
+  }
+
+  // Snap the NODE height so the canvas box's shape matches the render aspect —
+  // then object-fit:contain has nothing to letterbox and the preview fills the
+  // full node width edge-to-edge (artist request 2026-07-07: previously a node
+  // dragged wide showed the render pillarboxed in #111 dead space, which reads
+  // as a "small preview" no matter how big the node is). Runs only from
+  // resizeViewport (i.e. on execution, when the authoritative render dims
+  // arrive) — deliberately NOT from a node.onResize hook, preserving the
+  // "no JS resize hooks" rule this node earned the hard way (see the resize
+  // history in CLAUDE.md); between executions a hand-dragged shape may
+  // letterbox, and the next Queue snaps it back. Chrome height (title bar +
+  // widget rows + any locally-mounted toolbar) is measured from the live
+  // layout rather than hardcoded, so the detached-Output-Desk and local-
+  // toolbar cases both come out exact.
+  let pendingSnapAspect = null;
+  function snapNodeHeightToRenderAspect(renderAspect) {
+    if (!renderAspect || !isFinite(renderAspect)) return;
+    const scale = app.canvas?.ds?.scale || 1;
+    const wrapRect = canvasWrap.getBoundingClientRect();
+    if (!(wrapRect.width > 0) || !(wrapRect.height > 0)) {
+      // Node is off-screen/hidden — rects are unmeasurable. Defer to the
+      // animate() loop, which retries until the widget is laid out again.
+      pendingSnapAspect = renderAspect;
+      return;
+    }
+    pendingSnapAspect = null;
+    const wrapW = wrapRect.width / scale;   // node units (host style px track node size 1:1)
+    const wrapH = wrapRect.height / scale;
+    const chrome = node.size[1] - wrapH;    // everything above/around the canvas box
+    const desiredH = Math.min(4096, Math.max(120, chrome + wrapW / renderAspect));
+    if (Math.abs(desiredH - node.size[1]) > 4) {
+      node.setSize([node.size[0], desiredH]);
+      node.graph?.setDirtyCanvas(true, true);
+    }
   }
 
   function updateLinkedOutputDesk(data = {}) {
@@ -2668,11 +2734,11 @@ app.registerExtension({
       await new Promise((r) => setTimeout(r, 0));
       const container = document.createElement("div");
       container.style.cssText = "width:100%;display:flex;flex-direction:column;gap:0;";
-      node.addDOMWidget("atlas_viewport_controls", "div", container, {
+      pinDomWidgetFullWidth(node.addDOMWidget("atlas_viewport_controls", "div", container, {
         serialize: false,
         getValue() { return null; },
         setValue() {},
-      });
+      }));
       buildAtlasOutputDesk(node, container);
       // Nudge any already-created, already-linked viewport(s) to reparent
       // into us now that our container exists — covers the case where the
@@ -2688,6 +2754,19 @@ app.registerExtension({
     }
 
     if (node.comfyClass !== "AtlasBlockoutViewport") return;
+
+    // Track whether this node is being restored from a saved workflow.
+    // onConfigure fires only for deserialized nodes, and it fires during
+    // graph.configure — i.e. after this handler's first await suspends — so
+    // the hook MUST be installed here, synchronously, to catch it. This is
+    // what lets the default-size bump below apply only to fresh nodes.
+    let restoredFromSave = false;
+    const prevOnConfigure = node.onConfigure;
+    node.onConfigure = function (...args) {
+      restoredFromSave = true;
+      return prevOnConfigure?.apply(this, args);
+    };
+
     await loadThree();
     if (!THREE) return;
 
@@ -2718,6 +2797,7 @@ app.registerExtension({
       getMinHeight() { return 240; },
       getMaxHeight() { return 8192; },
     });
+    pinDomWidgetFullWidth(domWidget);
 
     installViewportSizeTrace(node, domWidget, container);
 
@@ -2729,6 +2809,17 @@ app.registerExtension({
     // workflows saved before AtlasViewportControls existed.
     node._atlasRemount = ui?.mountControls;
     ui?.mountControls();
+
+    // Freshly added nodes default to a large preview (see the constants'
+    // comment); nodes restored from a save keep their stored size. Math.max
+    // so a future larger computed default is never shrunk.
+    if (!restoredFromSave) {
+      node.setSize([
+        Math.max(node.size[0], ATLAS_VIEWPORT_DEFAULT_WIDTH),
+        Math.max(node.size[1], ATLAS_VIEWPORT_DEFAULT_HEIGHT),
+      ]);
+      node.graph?.setDirtyCanvas(true, true);
+    }
     const prevOnConnectionsChange = node.onConnectionsChange;
     node.onConnectionsChange = function (...args) {
       prevOnConnectionsChange?.apply(this, args);

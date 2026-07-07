@@ -138,7 +138,7 @@ Draws VP convergence lines (left VP = orange, right VP = blue, vertical VP = gre
 
 **Proxy warning:** viewport passes and baked path frames are browser preview data. Use `AtlasRegisterPlate` / `AtlasAttachSourcePlate` when the final source image exists as an EXR or other high-bit-depth plate.
 
-**Three.js loading:** The extension tries ComfyUI's bundled Three.js (`../../lib/three.module.js`) first, then falls back to CDN (`unpkg.com/three@0.163.0`). Internet access is required if the bundled version is absent.
+**Three.js loading:** The extension imports a vendored local bundle, `atlas_camera/comfy/web/lib/atlas-three.bundle.js` — three.js r185 core plus `OBJLoader`/`FBXLoader` in one self-contained ESM file, committed to the repo. No internet access or npm step is needed at runtime. To upgrade three.js: bump `three` in `ui/package.json`, then `cd ui && npm install && npm run build:comfy-three` (entry: `ui/bundle/atlas-three-entry.js`) and commit the rebuilt bundle.
 
 ### `AtlasRegisterPlate`
 
@@ -247,7 +247,7 @@ Cache is capped at 64 entries (LRU-evict oldest) to prevent unbounded growth in 
 **Symptom:** The `AtlasBlockoutViewport` node shows the button toolbar but no 3D canvas above it.
 
 **Likely causes:**
-- Three.js failed to load (no internet, CDN blocked, bundled version path mismatch)
+- Three.js bundle failed to load (`lib/atlas-three.bundle.js` missing from the extension's web dir — e.g. a partial checkout; rebuild with `cd ui && npm run build:comfy-three`)
 - `addDOMWidget` not supported in this version of ComfyUI (requires ComfyUI ≥ 0.2.x)
 - JavaScript console error during `buildNodeUI()`
 
