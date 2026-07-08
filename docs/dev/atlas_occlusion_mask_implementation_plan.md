@@ -1,3 +1,12 @@
+> **STATUS (2026-07-08): Phase 1 shipped earlier; Phase 2 is DONE** — but not
+> via the browser render pass this plan assumed. The primary camera's own
+> depth map IS the shadow map (`primary_camera_validity_mask`'s
+> `primary_depth_map`/`depth_bias_rel` params; `AtlasOcclusionMask`'s
+> `occlusion_mode="depth_shadow"` + `primary_depth` input), pure numpy and
+> headless. Both sides ground-pin via `estimate_ground_scale` so the depth
+> comparison happens in one metric space. See CLAUDE.md's depth-shadow
+> design rule.
+
 # Atlas Occlusion Mask Implementation Plan
 
 ## Context

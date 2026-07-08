@@ -614,3 +614,85 @@ instance and confirmed successful:
 | `AtlasRegisterPlate`, `AtlasAttachSourcePlate` | Output — file-backed float-safe plate references (§5) |
 | `AtlasViewportControls` | Output — Atlas Output Desk, detached controls, OCIO-style profile (§5) |
 | `OCIOWrite`, `OCIOColorSpace` | VFX output — ACEScg EXR plates alongside DCC exports (§5) |
+
+---
+
+## Addendum — the 2026-07-08 session: the complete DMP pipeline
+
+This session closed the loop from "detect where projection fails" to "fix it
+end-to-end and hand off to both DCCs." Everything below ships in the hero
+workflow `examples/atlas_camera_master_dmp_workflow.json`. Node count is now
+45.
+
+### Hole masks and exclusion masks
+`ReliefMesh.hole_mask` surfaces the mesh's own gap data (sky/invalid/band
+exclusions plus rasterized torn quads, at full plate resolution) as a MASK
+output on every relief-mesh node — the literal "where will 📽 Project show
+black" signal, available on `AtlasDepthLayerMask` (opt-in
+`compute_hole_mask`) BEFORE inpainting so it can drive the inpaint region.
+Every relief-mesh node also takes an external `exclude_mask` (e.g. a
+ComfyUI-RMBG `SAM3Segment` sky segmentation) which **replaces** the internal
+sky heuristic — the heuristic eats tall geometry above the horizon (37% of
+monument valley's buttes), a real segmentation doesn't.
+
+### Sky dome (`AtlasSkyDomeLayer` ☁)
+The classic DMP sky separation: the SAM sky mask drives a flat far card
+(constant forward-Z, `radius_m`) with the segmentation embedded as a
+per-pixel edge matte. `edge_extend_px` deterministically smears sky colors
+past silhouettes (Nuke-style edge-extend — no inpaint model needed for
+narrow reveals); `frame_outpaint_px` pads the plate past the FRAME edges and
+widens this one source's camera so small orbits never hit the plate
+boundary.
+
+### The edge doctrine: matte + overhang
+Geometry silhouettes tear at grid resolution; the fix is per-pixel
+**edge mattes** (`ProjectionSource.mask_b64`, cut in the projection shader
+at the same projected pixel as the photo) plus **boundary overhang**
+(`edge_overhang_cells` — meshes overshoot their mask/band edge so the matte
+has something to cut; skyline coverage went 0.475 → 0.001 uncovered).
+`AtlasCleanPlateLayer.embed_matte` auto-computes band mattes; mattes ride
+into both DCC exports as plate alpha + standalone PNGs.
+
+### Disocclusion fill (`fill_occluded`)
+Band clips leave a hole where the foreground occluder stood — the inpainted
+plate had pixels there but no geometry. `fill_occluded` diffusion-fills the
+depth across the footprint on the decimated grid, so orbit/dolly reveals
+inpainted content **on real geometry**. Band layers now default to
+`relief_grid=384` / `depth_edge_rel=1.5` (the hangar calibration).
+
+### True depth-shadow occlusion (`AtlasOcclusionMask` Phase 2)
+`occlusion_mode="depth_shadow"`: the primary camera's own depth map IS its
+shadow map — no render pass, pure numpy. Wire the shared `AtlasDepthMap`
+into `primary_depth`; both sides ground-pin to one metric space.
+
+### 📐 Extract Angle + execution pauses
+Orbit the viewport to the view a patch should be generated at, click
+📐 Extract Angle: the orbit delta is measured about the SAME pivot the
+backend's `orbit_camera` uses and snapped to the Qwen Multiple-Angles named
+views. The viewport's four `patch_*` STRING outputs stay **paused**
+(ExecutionBlocker) until an extraction exists — and extractions are
+fingerprinted against the solve+image, so swapping the photo re-arms the
+pause instead of running a stale angle. `patch_prompt` feeds the Qwen
+generation directly; `patch_view_override` feeds `AtlasAddPatchView`/
+`AtlasOcclusionMask` as one wire (ComfyUI's backend rejects STRING→combo
+links).
+
+### VLM pre-flight (`AtlasAssessImage` 🧭)
+A local VLM (Ollama/LM Studio/llama.cpp) analyzes the photo against an
+expert prompt encoding Atlas's full settings knowledge and reports a setup
+plan (scene type, depth model, band splits, camera-move viability with a
+max-orbit estimate) directly on the node. The whole graph pauses behind it
+until ▶ Continue Workflow — the first Queue costs only the assessment.
+Advisory-only; works (and resumes) fine with no VLM running.
+
+### All-in-one DCC layer exports
+`AtlasExportNukeLayers` 🎞 and `AtlasExportMayaLayers` 🧊 export EVERY
+projection layer (sky/plates/patches, each with its own camera) as ONE .nk /
+ONE .ma respectively, sharing a single layer-collection path so the two can
+never drift. The Maya scene was **verified live in Maya 2027** (mayapy,
+37 checks) — which caught and fixed two real bugs: Maya's `projection` node
+takes its frustum from `linkedCamera` (it has no focal/aperture attrs), and
+Maya's OBJ importer always lands values as centimeters (imported groups get
+×100). The same verification repaired the older Maya review-scene exporter,
+which carried the same latent projection bug.
+

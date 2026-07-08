@@ -94,27 +94,33 @@ def _all_tagged(out_solve):
 
 
 def test_all_five_nodes_registered():
-    for name in ["AtlasDeriveReliefMesh", "AtlasDeriveWalls", "AtlasDeriveTowersSpires",
+    # AtlasDeriveReliefMesh additionally exposes the relief mesh's own
+    # hole_mask (see relief_mesh.ReliefMesh.hole_mask); the other four are
+    # primitive-only derivers and have no mesh to have holes in.
+    for name in ["AtlasDeriveWalls", "AtlasDeriveTowersSpires",
                  "AtlasDeriveRoofsFacades", "AtlasDeriveInteriorRoom"]:
         assert name in NODE_CLASS_MAPPINGS
         assert NODE_CLASS_MAPPINGS[name].RETURN_TYPES == ("ATLAS_SOLVE",)
+    assert "AtlasDeriveReliefMesh" in NODE_CLASS_MAPPINGS
+    assert NODE_CLASS_MAPPINGS["AtlasDeriveReliefMesh"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK")
 
 
 def test_relief_mesh_produces_mesh_and_backdrop():
     solve = _solve()
     depth = _depth_result(_room_depth())
-    (out,) = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
+    out, hole_mask = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
 
     names = _proxy_names(out)
     assert "projection_relief_mesh" in names
     assert "projection_backdrop" in names
     assert _all_tagged(out)
+    assert tuple(hole_mask.shape) == (1, H, W)
 
 
 def test_relief_quality_overrides_relief_grid():
     solve = _solve()
     depth = _depth_result(_room_depth())
-    (out,) = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32, relief_quality="low")
+    out, _hole_mask = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32, relief_quality="low")
     assert out.projection_scene.debug_metadata["proxy_derivation"]["relief_grid"] == 64
 
 

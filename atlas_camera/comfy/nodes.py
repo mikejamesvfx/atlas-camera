@@ -90,6 +90,77 @@ def _save_image_tensor_to_tmp(image_tensor) -> str:
         return f.name
 
 
+def _extend_edge_colors(rgb, valid, px):
+    """Deterministic edge-extend (the classic Nuke premult->dilate trick):
+    push ``valid`` pixels' colors outward into the invalid region by ``px``
+    pixels via iterative neighbor-mean propagation. Returns (rgb, mask) with
+    the extension applied and the validity dilated to match.
+
+    Runs the propagation at quarter resolution (sky is low-frequency; a
+    smeared gradient is exactly the desired look) and composites the
+    extension back only where the original was invalid - original pixels are
+    never touched. Pure numpy, no scipy/cv2. This is deliberately NOT an
+    inpaint: for narrow disocclusion slivers of smooth sky it is
+    indistinguishable from one at a fraction of the cost; large structured
+    reveals (clouds behind a building) still want the LaMa/inpaint chain on
+    plate_image instead.
+    """
+    np = _require_numpy()
+    rgb = np.asarray(rgb, dtype=np.float32)
+    valid = np.asarray(valid, dtype=bool)
+    H, W = valid.shape
+    ds = 4
+    small = rgb[::ds, ::ds].copy()
+    v = valid[::ds, ::ds].copy()
+    steps = max(1, int(round(px / ds)))
+    for _ in range(steps):
+        acc = np.zeros_like(small)
+        cnt = np.zeros(v.shape, dtype=np.float32)
+        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            sh = np.zeros_like(small)
+            shv = np.zeros_like(v)
+            if dr == 1:
+                sh[1:], shv[1:] = small[:-1], v[:-1]
+            elif dr == -1:
+                sh[:-1], shv[:-1] = small[1:], v[1:]
+            elif dc == 1:
+                sh[:, 1:], shv[:, 1:] = small[:, :-1], v[:, :-1]
+            else:
+                sh[:, :-1], shv[:, :-1] = small[:, 1:], v[:, 1:]
+            acc += np.where(shv[..., None], sh, 0.0)
+            cnt += shv
+        newly = ~v & (cnt > 0)
+        if not newly.any():
+            break
+        small[newly] = acc[newly] / cnt[newly, None]
+        v |= newly
+    # Upsample the extension and composite only into originally-invalid pixels.
+    up = np.repeat(np.repeat(small, ds, axis=0), ds, axis=1)[:H, :W]
+    upv = np.repeat(np.repeat(v, ds, axis=0), ds, axis=1)[:H, :W]
+    out = rgb.copy()
+    fill = ~valid & upv
+    out[fill] = up[fill]
+    return out, valid | fill
+
+
+def _mask_to_b64_png(mask_arr) -> str:
+    """(H,W) bool/float numpy array -> grayscale PNG data URI, for
+    ProjectionSource.mask_b64 (the per-pixel edge matte the projection shader
+    samples). PNG (lossless), not JPEG — a matte's 0.5 threshold must not
+    pick up ringing artifacts at the exact edge being cut. Fails soft to ""
+    like the image_b64 encoders."""
+    try:
+        np = _require_numpy()
+        PILImage = _require_pil()
+        arr = (np.asarray(mask_arr, dtype=np.float32).clip(0.0, 1.0) * 255).astype("uint8")
+        pil = PILImage.fromarray(arr, mode="L")
+        buf = io.BytesIO()
+        pil.save(buf, format="PNG", optimize=True)
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
 def _image_tensor_to_preview_b64(image_tensor, *, quality: int = 85) -> str:
     try:
         pil = _image_tensor_to_pil(image_tensor)
@@ -159,9 +230,52 @@ def _decode_b64_to_tensor(b64str: str, width: int, height: int):
         return torch.zeros(1, height, width, 3, dtype=torch.float32)
 
 
+def _solve_fingerprint(solve, source_image) -> str:
+    """Short identity hash of (recovered camera, source image) — stamped into
+    📐 Extract Angle's client_data.patch_angle by the frontend and validated
+    by AtlasBlockoutViewport.render(): an extraction from a DIFFERENT solve/
+    image than the current one is treated as not-extracted, so swapping the
+    input photo re-arms the patch-branch pause instead of silently running
+    the previous image's stale angle. Image identity uses a 16x-subsampled
+    tensor digest (full 4K hashing per execution is needless cost; a swapped
+    photo always changes the subsample)."""
+    import hashlib
+
+    h = hashlib.md5()
+    extr = solve.camera.extrinsics
+    intr = solve.camera.intrinsics
+    h.update(repr(extr.camera_view_matrix).encode())
+    h.update(repr((intr.fx_px, intr.fy_px, intr.cx_px, intr.cy_px,
+                   intr.image_width, intr.image_height)).encode())
+    arr = source_image[0, ::16, ::16].cpu().numpy()
+    h.update(repr(arr.shape).encode())
+    h.update(arr.tobytes())
+    return h.hexdigest()[:16]
+
+
+def _execution_blocker():
+    """ComfyUI's ExecutionBlocker sentinel (silent variant), or None outside a
+    ComfyUI runtime. Returning it on an OUTPUT makes every downstream node
+    that consumes it skip silently — the native "pause this branch" mechanism
+    (used by AtlasBlockoutViewport's patch_* outputs until 📐 Extract Angle
+    runs). Import is guarded because atlas_camera.comfy imports cleanly with
+    no ComfyUI installed (tests, plain python) — callers fall back to plain
+    default values when this returns None.
+    """
+    try:
+        from comfy_execution.graph import ExecutionBlocker
+        return ExecutionBlocker(None)
+    except ImportError:
+        try:
+            from comfy.graph import ExecutionBlocker  # pre-2024 layout
+            return ExecutionBlocker(None)
+        except ImportError:
+            return None
+
+
 def _extract_blockout_camera(solve, source_image, target_width: int, target_height: int,
                               preview_expand: float = 1.0, shot_intrinsics=None,
-                              output_profile=None) -> dict[str, Any]:
+                              output_profile=None, solve_fingerprint: str = "") -> dict[str, Any]:
     """Serialize the recovered camera into a dict the browser extension can consume.
 
     `shot_intrinsics` (optional, from AtlasShotCam via intrinsics_from_shot_cam)
@@ -193,6 +307,12 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         render_image_height = intr.image_height
     # view_matrix is the Atlas camera_view_matrix (4×4, row-major)
     vm = [list(row) for row in extr.camera_view_matrix]
+
+    try:
+        from atlas_camera.core.camera_math import ground_lookat_pivot
+        orbit_pivot = [float(v) for v in ground_lookat_pivot(extr)]
+    except Exception:
+        orbit_pivot = [0.0, 0.0, 0.0]
 
     # Encode source image as JPEG base64 so the browser can use it as background
     source_b64 = _image_tensor_to_preview_b64(source_image, quality=85)
@@ -232,6 +352,7 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
             "image_width": s_intr.image_width,
             "image_height": s_intr.image_height,
             "image_b64": src.image_b64 or "",
+            "mask_b64": getattr(src, "mask_b64", None) or "",
             "plate_ref": _plate_ref_to_dict(getattr(src, "plate_ref", None)),
             "priority": float(src.priority),
             "azimuth_deg": float(src.azimuth_deg),
@@ -296,6 +417,15 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         "shot_cam": shot_intrinsics is not None,
         "render_fy": render_fy,
         "render_image_height": render_image_height,
+        # ground_lookat_pivot: the EXACT pivot orbit_camera uses to construct
+        # patch cameras backend-side. The 📐 Extract Angle button computes its
+        # orbit delta about this (not the viewport's own geometry-centroid
+        # orbit pivot, which differs) so extracted angles round-trip exactly
+        # through AtlasAddPatchView/AtlasOcclusionMask's orbit_camera call.
+        "orbit_pivot": orbit_pivot,
+        # Identity of this solve+image — 📐 Extract Angle echoes it back so a
+        # stale extraction (different photo) can never drive the patch branch.
+        "solve_fingerprint": solve_fingerprint,
         "focal_mm": intr.focal_length_mm,
         "sensor_mm": intr.sensor_width_mm,
         "source_image_b64": source_b64,
@@ -815,6 +945,115 @@ class AtlasReferenceScaleSolve:
         return (solve, float(solve.camera.extrinsics.camera_position[1]))
 
 
+class AtlasAssessImage:
+    """VLM pre-flight for the whole DMP pipeline — wire it directly after
+    LoadImage, BEFORE anything else consumes the photo.
+
+    A local vision-language model (Ollama / LM Studio / llama.cpp — the same
+    provider layer as `AtlasVLMScaleCues`) analyzes the photo against an
+    expert instruction prompt encoding Atlas Camera's full settings knowledge
+    (`inference.assessor.ATLAS_ASSESSMENT_SYSTEM_PROMPT`): scene type /
+    depth-model choice, sky separation, depth-band layer design, disocclusion
+    fill, edge mattes, relief tuning, scale-reference opportunities, and an
+    honest camera-move viability rubric (score + max orbit degrees + what
+    breaks first). The `report` output is human-readable (wire to a
+    Show Text node); `settings_json` is the machine-readable
+    recommended_settings block.
+
+    EXECUTION PAUSE: while `proceed` is False (default) the `image` output
+    returns ExecutionBlocker — everything downstream of the photo is silently
+    skipped, so the first Queue costs only the assessment. Read the report,
+    apply the recommended settings to the graph, then click ▶ Continue
+    Workflow (sets `proceed` and re-queues; the assessment itself is cached
+    per image+provider so continuing doesn't re-run the VLM). Same native
+    pause mechanism as the viewport's 📐 Extract Angle gating.
+
+    Advisory only, per the LLM-confirm principle: the VLM never changes a
+    setting itself — it recommends, the artist decides. Fails soft to a
+    "provider unreachable" report; `proceed` still works without an
+    assessment.
+    """
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("image", "report", "settings_json")
+    FUNCTION = "assess"
+    CATEGORY = "Atlas Camera"
+    # OUTPUT_NODE so the assessment ALWAYS runs and shows its report on the
+    # node itself (ui.text, rendered by atlas_assess.js) — without this, a
+    # graph where nothing consumed `report` gave zero visible output (found
+    # live: "the VLM did nothing").
+    OUTPUT_NODE = True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+            },
+            "optional": {
+                "provider": (["ollama", "lmstudio", "llamacpp"], {"default": "ollama",
+                    "tooltip": "Local VLM server. Blank model/base_url use each provider's own "
+                               "defaults (same conventions as AtlasVLMScaleCues)."}),
+                "model": ("STRING", {"default": "",
+                    "tooltip": "Vision model id; blank = provider default (ollama: gemma3:4b)."}),
+                "base_url": ("STRING", {"default": ""}),
+                "extra_instructions": ("STRING", {"default": "", "multiline": True,
+                    "tooltip": "Optional artist notes appended to the assessment request — e.g. "
+                               "'the camera move is a slow dolly-in on the tower'. The VLM tailors "
+                               "band/patch advice to the intended move."}),
+                "proceed": ("BOOLEAN", {"default": False,
+                    "tooltip": "OFF = the image output is paused (downstream skipped) so you can "
+                               "read the report and apply settings first. Turn ON (or click "
+                               "▶ Continue Workflow) and re-queue to run the full pipeline."}),
+            },
+        }
+
+    def assess(self, image, provider="ollama", model="", base_url="",
+               extra_instructions="", proceed=False, **_extra):
+        # **_extra: API-format exports can serialize the ▶ Continue Workflow
+        # BUTTON widget as a bogus input key — tolerate unknown kwargs.
+        import hashlib
+
+        from atlas_camera.inference.assessor import assess_image
+
+        # Cache per image+provider settings so flipping `proceed` (which
+        # re-executes this node) doesn't re-run a 30-120s VLM call.
+        key_src = image.cpu().numpy().tobytes()
+        key = hashlib.md5(key_src).hexdigest() + f"|{provider}|{model}|{base_url}|{extra_instructions}"
+        cached = _ATLAS_ASSESS_CACHE.get(key)
+        if cached is None:
+            tmp = _save_image_tensor_to_tmp(image)
+            try:
+                cached = assess_image(
+                    tmp, provider=provider, model=model,
+                    base_url=base_url.strip() or None,
+                    extra_instructions=extra_instructions)
+            finally:
+                os.unlink(tmp)
+            # Never cache FAILED assessments: the user typically starts the
+            # provider after seeing the failure report — the retry must
+            # actually retry.
+            if cached.ok:
+                if len(_ATLAS_ASSESS_CACHE) >= 8:
+                    _ATLAS_ASSESS_CACHE.pop(next(iter(_ATLAS_ASSESS_CACHE)))
+                _ATLAS_ASSESS_CACHE[key] = cached
+
+        settings_json = json.dumps(
+            (cached.payload or {}).get("recommended_settings", {}), indent=1) if cached.ok else "{}"
+
+        if proceed:
+            img_out = image
+        else:
+            blocker = _execution_blocker()
+            img_out = blocker if blocker is not None else image
+        # ui.text renders the report directly on the node (atlas_assess.js),
+        # so no separate text-display node is ever required.
+        return {"ui": {"text": [cached.report]},
+                "result": (img_out, cached.report, settings_json)}
+
+
+_ATLAS_ASSESS_CACHE: dict = {}
+
+
 class AtlasVLMScaleCues:
     """Detect scale-reference objects with a local vision-language model.
 
@@ -959,8 +1198,15 @@ class AtlasDeriveProjectionGeometry:
     model, "outdoor" -> primitives+ransac_planes+Outdoor depth model. Purely
     a preset — it sets the same three parameters this node already exposes,
     never a new solving code path. "manual" leaves them untouched.
+
+    ``hole_mask`` mirrors the relief mesh's own discarded hole/tear data
+    (`ReliefMesh.hole_mask`) whenever ``geometry_mode`` builds one ("both"/
+    "relief_mesh") - full source-image resolution, white where no triangle
+    covers that pixel. A zero mask when ``geometry_mode="primitives"``, since
+    no relief mesh is built to have holes in that mode.
     """
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
+    RETURN_NAMES = ("solve", "hole_mask")
     FUNCTION = "derive"
     CATEGORY = "Atlas Camera"
 
@@ -1061,6 +1307,13 @@ class AtlasDeriveProjectionGeometry:
                                "noisy depth); higher = tears less (fewer holes, more risk of "
                                "rubber-sheeting a real silhouette onto the background). Same "
                                "parameter and default as AtlasExportReliefMesh."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Optional external exclusion (e.g. a real sky segmentation from "
+                               "SAM/RMBG) ORed on top of the internal sky heuristic before "
+                               "triangulation - never replaces it, only excludes more. Only "
+                               "affects the relief_mesh branch (geometry_mode both/relief_mesh); "
+                               "the primitives/wall-fitting branch is unaffected. Any resolution - "
+                               "resized to match depth."}),
             },
         }
 
@@ -1084,7 +1337,9 @@ class AtlasDeriveProjectionGeometry:
                max_walls=4, max_objects=3, device="auto",
                geometry_mode="relief_mesh", relief_grid=128, relief_quality="custom",
                depth_edge_rel=0.5,
-               primitive_method="azimuth_walls", scene_type="manual"):
+               primitive_method="azimuth_walls", scene_type="manual", exclude_mask=None):
+        torch = _require_torch()
+        np = _require_numpy()
         preset = self._SCENE_TYPE_PRESETS.get(scene_type)
         if preset:
             geometry_mode = preset.get("geometry_mode", geometry_mode)
@@ -1123,9 +1378,11 @@ class AtlasDeriveProjectionGeometry:
         fy = intr.fy_px or fx
         if fx <= 0:
             # No focal — cannot back-project; return the solve untouched.
-            return (solve,)
+            zero = torch.zeros(1, int(image.shape[1]), int(image.shape[2]), dtype=torch.float32)
+            return (solve, zero)
         cx = intr.cx_px if intr.cx_px is not None else width / 2.0
         cy = intr.cy_px if intr.cy_px is not None else height / 2.0
+        resolved_exclude = _resolve_exclude_mask(exclude_mask, height, width)
 
         depth_map = result.depth
         if depth_map.shape != (height, width):
@@ -1175,6 +1432,7 @@ class AtlasDeriveProjectionGeometry:
             )
         stats["primitive_method"] = primitive_method
 
+        hole_mask_arr = np.zeros((height, width), dtype=np.float32)
         keep: list = []
         if geometry_mode in ("both", "primitives"):
             keep.extend(prims)
@@ -1197,12 +1455,15 @@ class AtlasDeriveProjectionGeometry:
                 depth_edge_rel=float(depth_edge_rel),
                 scale=float(stats.get("ground_scale", 1.0)),
                 horizon_y=horizon_y,
+                exclude_mask=resolved_exclude,
+                apply_sky_heuristic=resolved_exclude is None,
             )
             keep.append(relief_mesh_primitive(mesh))
             stats["relief_mesh"] = {
                 "n_vertices": mesh.stats["n_vertices"],
                 "n_faces": mesh.stats["n_faces"],
             }
+            hole_mask_arr = mesh.hole_mask.astype(np.float32)
 
         # Deep-copy (not to_dict()/from_dict() — see _clone_solve_with_metadata's
         # comment): never mutate the upstream node's cached ATLAS_SOLVE.
@@ -1218,7 +1479,8 @@ class AtlasDeriveProjectionGeometry:
             "relief_grid": int(relief_grid), "relief_quality": relief_quality,
             "max_objects": int(max_objects),
         }
-        return (out,)
+        hole_t = torch.from_numpy(hole_mask_arr).unsqueeze(0)
+        return (out, hole_t)
 
 
 # ---------------------------------------------------------------------------
@@ -1301,9 +1563,31 @@ class _MetricDepthSetup(NamedTuple):
     horizon_y: float
     metric: Any
     valid: Any
+    exclude_mask: Any  # resolved (H,W) bool numpy array, or None if not supplied
 
 
-def _metric_depth_and_validity(solve, depth) -> "_MetricDepthSetup | None":
+def _resolve_exclude_mask(mask_tensor, height, width):
+    """Convert an optional ComfyUI MASK tensor (any resolution, values 0..1)
+    into a (height, width) bool numpy array - True = exclude this pixel from
+    the mesh, same semantics as depth_geometry.detect_sky_mask's own output
+    (e.g. a real sky segmentation from SAM/RMBG run upstream, since the
+    internal detect_sky_mask heuristic is often wrong on complex real photos).
+    Resized via the same nearest-neighbour path _resize_depth already uses
+    for depth (no cv2 dependency). Returns None when no mask was supplied -
+    callers OR this into their own validity mask, never replace it, so an
+    absent mask is always a no-op.
+    """
+    if mask_tensor is None:
+        return None
+    np = _require_numpy()
+    from atlas_camera.core.solver import _resize_depth
+    arr = mask_tensor[0].detach().cpu().numpy().astype(np.float64)
+    if arr.shape != (height, width):
+        arr = _resize_depth(arr, width, height)
+    return arr > 0.5
+
+
+def _metric_depth_and_validity(solve, depth, exclude_mask=None) -> "_MetricDepthSetup | None":
     """Shared metric-depth + validity-mask setup for the inpaint-layers nodes.
 
     Was previously inlined identically in both ``AtlasDepthLayerMask.generate``
@@ -1314,6 +1598,12 @@ def _metric_depth_and_validity(solve, depth) -> "_MetricDepthSetup | None":
     ``None`` when the solve has no usable focal length (caller should pass
     the input through/return zero masks, matching the existing per-node
     no-focal-length conventions).
+
+    ``exclude_mask`` (optional ComfyUI MASK tensor) ORs an external exclusion
+    on top of the internal sky heuristic — see ``_resolve_exclude_mask``. The
+    resolved (H,W) bool array is also returned on the setup so callers can
+    pass the identical mask into their own ``build_relief_mesh`` call without
+    resolving it twice.
     """
     np = _require_numpy()
     from atlas_camera.core.depth_geometry import detect_sky_mask
@@ -1333,9 +1623,21 @@ def _metric_depth_and_validity(solve, depth) -> "_MetricDepthSetup | None":
         depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
         horizon_y=horizon_y)
     metric = depth_map.astype(np.float64) * scale
-    valid = (np.isfinite(depth_map) & (depth_map > 1e-4)
-             & ~detect_sky_mask(depth_map, horizon_y=horizon_y))
-    return _MetricDepthSetup(width, height, fx, fy, cx, cy, extr, depth_map, scale, horizon_y, metric, valid)
+    resolved_exclude = _resolve_exclude_mask(exclude_mask, height, width)
+    valid = np.isfinite(depth_map) & (depth_map > 1e-4)
+    if resolved_exclude is not None:
+        # An explicit segmentation REPLACES the internal sky heuristic. The
+        # heuristic flags above-horizon far/rough pixels as sky, which eats
+        # real tall geometry (buttes, towers, spires) that a real SAM mask
+        # correctly leaves alone — found live: ~50% of monument valley's
+        # butte silhouettes were heuristic-excluded despite a perfect SAM sky
+        # mask being wired in. Need both signals? OR the sky into your
+        # exclusion mask externally.
+        valid &= ~resolved_exclude
+    else:
+        valid &= ~detect_sky_mask(depth_map, horizon_y=horizon_y)
+    return _MetricDepthSetup(width, height, fx, fy, cx, cy, extr, depth_map, scale, horizon_y, metric, valid,
+                              resolved_exclude)
 
 
 def _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct):
@@ -1428,8 +1730,14 @@ class AtlasDeriveReliefMesh:
     rather than borrowing them from a primitive-fitting pass — a relief mesh
     alone never needed the wall/object derivation AtlasDeriveProjectionGeometry's
     relief_mesh mode runs internally just to get those two numbers.
+
+    ``hole_mask`` mirrors `build_relief_mesh`'s own discarded hole/tear data
+    (see `ReliefMesh.hole_mask`) - full source-image resolution, white where
+    no triangle covers that pixel (sky/invalid/silhouette tear). This is the
+    literal "where will Project show black" signal, not a heuristic.
     """
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
+    RETURN_NAMES = ("solve", "hole_mask")
     FUNCTION = "derive"
     CATEGORY = "Atlas Camera/Derive Geometry"
 
@@ -1452,12 +1760,20 @@ class AtlasDeriveReliefMesh:
                     "tooltip": "Relative depth jump that tears the mesh into a silhouette "
                                "hole. Lower = tears more readily; higher = tears less but "
                                "risks rubber-sheeting a real silhouette onto the background."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Optional external exclusion (e.g. a real sky segmentation from "
+                               "SAM/RMBG) ORed on top of the internal sky heuristic before "
+                               "triangulation - never replaces it, only excludes more. Any "
+                               "resolution - resized to match depth."}),
             },
         }
 
     _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
-    def derive(self, solve, depth, relief_grid=128, relief_quality="custom", depth_edge_rel=0.5):
+    def derive(self, solve, depth, relief_grid=128, relief_quality="custom", depth_edge_rel=0.5,
+               exclude_mask=None):
+        torch = _require_torch()
+        np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
             relief_grid = self._RELIEF_QUALITY_PRESETS[relief_quality]
         from atlas_camera.core.depth_geometry import back_project_normals, build_backdrop_primitive
@@ -1466,11 +1782,13 @@ class AtlasDeriveReliefMesh:
 
         params = _solve_camera_params(solve, depth)
         if params is None:
-            return (solve,)
+            h, w = int(depth.image_height), int(depth.image_width)
+            return (solve, torch.zeros(1, h, w, dtype=torch.float32))
         width, height, fx, fy, cx, cy = params
         depth_map = _depth_map_for_solve(depth, width, height)
         horizon_y = _horizon_y_from_solve(solve)
         extr = solve.camera.extrinsics
+        resolved_exclude = _resolve_exclude_mask(exclude_mask, height, width)
 
         scale, ground_info = estimate_ground_scale(
             depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
@@ -1484,7 +1802,8 @@ class AtlasDeriveReliefMesh:
         mesh = build_relief_mesh(
             depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
             grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
-            scale=scale, horizon_y=horizon_y)
+            scale=scale, horizon_y=horizon_y, exclude_mask=resolved_exclude,
+            apply_sky_heuristic=resolved_exclude is None)
         prims = [backdrop, relief_mesh_primitive(mesh)]
         stats = {
             "ground_scale": scale, "ground_fit": ground_info,
@@ -1494,7 +1813,8 @@ class AtlasDeriveReliefMesh:
             "relief_grid": int(relief_grid), "relief_quality": relief_quality,
             "depth_edge_rel": float(depth_edge_rel), "derive_node": "AtlasDeriveReliefMesh",
         })
-        return (out,)
+        hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
+        return (out, hole_t)
 
 
 class AtlasDeriveWalls:
@@ -1808,6 +2128,37 @@ _ELEVATION_VIEWS = {
 _DISTANCE_VIEWS = {"close-up": 0.6, "medium shot": 1.0, "wide shot": 1.8}
 
 
+def _parse_view_prompt(text):
+    """Parse a Multiple-Angles LoRA prompt — "<sks> [azimuth] [elevation]
+    [distance]", the exact string 📐 Extract Angle's `patch_prompt` output
+    emits — back into the three named views. Returns (azimuth, elevation,
+    distance) or None when the text doesn't match the vocabulary.
+
+    Exists because ComfyUI's backend REJECTS a STRING link into a combo-list
+    input ("received_type(STRING) mismatch input_type([...])" at prompt
+    validation), so the viewport's per-view STRING outputs can't wire into
+    the named-view dropdowns directly — instead one `patch_view_override`
+    STRING socket takes the whole prompt and this parses it. The names
+    contain spaces, so parsing is greedy prefix-matching against the known
+    vocabularies (longest first), which is unambiguous because the LoRA's
+    view names are a fixed, non-overlapping set.
+    """
+    rest = (text or "").strip()
+    if rest.startswith("<sks>"):
+        rest = rest[len("<sks>"):].strip()
+    parsed = []
+    for table in (_AZIMUTH_VIEWS, _ELEVATION_VIEWS, _DISTANCE_VIEWS):
+        match = next((name for name in sorted(table, key=len, reverse=True)
+                      if rest.startswith(name)), None)
+        if match is None:
+            return None
+        parsed.append(match)
+        rest = rest[len(match):].strip()
+    if rest:
+        return None
+    return tuple(parsed)
+
+
 def _named_view_orbit_delta(
     patch_azimuth_view, patch_elevation_view, patch_distance,
     source_azimuth_view, source_elevation_view, flip_azimuth,
@@ -1901,6 +2252,15 @@ class AtlasAddPatchView:
                 "plate_ref": ("ATLAS_PLATE_REF", {
                     "tooltip": "Optional registered final plate reference. Browser still uses image_b64 preview; exporters use this for EXR/float-safe handoff."}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+                "patch_view_override": ("STRING", {"forceInput": True,
+                    "tooltip": "Optional: wire AtlasBlockoutViewport's patch_prompt output here "
+                               "(the '<sks> [azimuth] [elevation] [distance]' string from 📐 "
+                               "Extract Angle) — when connected it OVERRIDES the three patch_* "
+                               "dropdowns above, so the extracted angle drives both the Qwen "
+                               "generation and this node identically with one wire. (A single "
+                               "STRING socket because ComfyUI's backend rejects STRING links "
+                               "into combo dropdowns.) Errors loudly if the string doesn't "
+                               "parse, rather than silently patching at the wrong angle."}),
             },
         }
 
@@ -1912,7 +2272,17 @@ class AtlasAddPatchView:
                   source_elevation_view="eye-level shot",
                   flip_azimuth=False, name="patch",
                   depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                  relief_grid=96, priority=1.0, plate_ref=None, device="auto"):
+                  relief_grid=96, priority=1.0, plate_ref=None, device="auto",
+                  patch_view_override=""):
+        if patch_view_override and patch_view_override.strip():
+            parsed = _parse_view_prompt(patch_view_override)
+            if parsed is None:
+                raise ValueError(
+                    f"patch_view_override {patch_view_override!r} does not parse as "
+                    "'<sks> [azimuth] [elevation] [distance]' — wire AtlasBlockoutViewport's "
+                    "patch_prompt output here, or disconnect to use the dropdowns."
+                )
+            patch_azimuth_view, patch_elevation_view, patch_distance = parsed
         from atlas_camera.core.camera_math import (
             ground_lookat_pivot,
             horizon_row_from_extrinsics,
@@ -2057,11 +2427,25 @@ class AtlasOcclusionMask:
     see ``_named_view_orbit_delta``), so the mask lines up with whatever patch
     geometry that node will later derive from the same image. Intended
     pipeline: ``Solve -> AtlasOcclusionMask -> ImageCompositeMasked (primary
-    projected image + this target image) -> AtlasAddPatchView``. This is a
-    Phase 1 ("simple") mask — frustum/frame/facing-angle only, not true
-    depth-shadow occlusion (an object hiding another object from the primary's
-    view but still projecting inside its frame/angle limits is not detected
-    yet). Pure backend/numpy — no browser round-trip, runs headlessly.
+    projected image + this target image) -> AtlasAddPatchView``.
+
+    ``occlusion_mode="simple"`` (default) is the Phase-1 mask — frustum/
+    frame/facing-angle only. ``occlusion_mode="depth_shadow"`` additionally
+    detects true MPTK-style self-occlusion — a surface hidden behind NEARER
+    geometry from the primary's view despite projecting inside its frame/
+    angle limits — by treating the primary camera as a light and its own
+    depth map as the shadow map (`primary_camera_validity_mask`'s
+    ``primary_depth_map``; no rasterizer/render pass, still pure numpy and
+    headless). Requires ``primary_depth`` connected (an `AtlasDepthMap` run
+    on the PRIMARY/source photo — the same shared depth the derive nodes
+    use); falls back to simple when it isn't. Both the primary shadow map
+    and the target back-projection are ground-pinned to metric via
+    `estimate_ground_scale` in this mode, so the depth comparison happens in
+    one consistent world scale (simple mode's math is left byte-identical to
+    before). ``depth_bias`` is the relative tolerance against depth-precision
+    false positives — a point counts as shadowed only when it is more than
+    ``depth_bias`` (fraction) farther than the stored primary depth at its
+    pixel.
     """
     RETURN_TYPES = ("MASK", "MASK")
     RETURN_NAMES = ("occlusion_mask", "coverage_mask")
@@ -2109,6 +2493,25 @@ class AtlasOcclusionMask:
                 "power": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 8.0, "step": 0.1,
                     "tooltip": "Gamma remap after blur; > 1 makes the patch contribution more solid "
                                "near the feathered edge."}),
+                "occlusion_mode": (["simple", "depth_shadow"], {"default": "simple",
+                    "tooltip": "simple = Phase-1 frustum/frame/facing tests only (unchanged). "
+                               "depth_shadow = additionally detect surfaces hidden behind NEARER "
+                               "geometry from the primary's view (true MPTK camera-as-light "
+                               "shadow test, using primary_depth as the shadow map). Falls back "
+                               "to simple when primary_depth isn't connected."}),
+                "primary_depth": ("ATLAS_DEPTH_MAP", {
+                    "tooltip": "AtlasDepthMap run on the PRIMARY/source photo — the shadow map "
+                               "for depth_shadow mode. Wire the same shared AtlasDepthMap the "
+                               "derive nodes already use."}),
+                "depth_bias": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "depth_shadow only: relative depth tolerance before a point counts "
+                               "as shadowed — guards against monocular depth-precision false "
+                               "positives. 0.05 = must be 5% farther than the stored depth."}),
+                "patch_view_override": ("STRING", {"forceInput": True,
+                    "tooltip": "Optional: wire AtlasBlockoutViewport's patch_prompt output here — "
+                               "overrides the three patch_* dropdowns with 📐 Extract Angle's "
+                               "snapped views, keeping this mask aligned with the same "
+                               "AtlasAddPatchView wiring. Errors loudly if unparseable."}),
             },
         }
 
@@ -2121,10 +2524,21 @@ class AtlasOcclusionMask:
                  flip_azimuth=False,
                  depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                  device="auto",
-                 angle_threshold=90.0, dilate_px=0, soft_edge_px=0, power=1.0):
+                 angle_threshold=90.0, dilate_px=0, soft_edge_px=0, power=1.0,
+                 occlusion_mode="simple", primary_depth=None, depth_bias=0.05,
+                 patch_view_override=""):
+        if patch_view_override and patch_view_override.strip():
+            parsed = _parse_view_prompt(patch_view_override)
+            if parsed is None:
+                raise ValueError(
+                    f"patch_view_override {patch_view_override!r} does not parse as "
+                    "'<sks> [azimuth] [elevation] [distance]' — wire AtlasBlockoutViewport's "
+                    "patch_prompt output here, or disconnect to use the dropdowns."
+                )
+            patch_azimuth_view, patch_elevation_view, patch_distance = parsed
         np = _require_numpy()
         torch = _require_torch()
-        from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+        from atlas_camera.core.camera_math import ground_lookat_pivot, horizon_row_from_extrinsics, orbit_camera
         from atlas_camera.core.depth_geometry import back_project_normals, primary_camera_validity_mask
         from atlas_camera.inference.depth_estimator import estimate_depth
 
@@ -2171,6 +2585,28 @@ class AtlasOcclusionMask:
             from atlas_camera.core.solver import _resize_depth
             depth_map = _resize_depth(depth_map, target_w, target_h)
 
+        # depth_shadow mode: ground-pin BOTH sides to one metric world so the
+        # shadow comparison (in the primary's camera space) is meaningful —
+        # the same estimate_ground_scale reconciliation AtlasAddPatchView
+        # applies to its patch geometry. simple mode's math stays
+        # byte-identical to the original Phase-1 behavior.
+        primary_metric_map = None
+        if occlusion_mode == "depth_shadow" and primary_depth is not None:
+            from atlas_camera.core.relief_mesh import estimate_ground_scale
+
+            t_horizon = horizon_row_from_extrinsics(target_extr, fy=tfy, cy=tcy)
+            t_scale, _ = estimate_ground_scale(
+                depth_map, view_matrix=target_extr.camera_view_matrix,
+                fx=tfx, fy=tfy, cx=tcx, cy=tcy, horizon_y=t_horizon)
+            depth_map = depth_map * float(t_scale)
+
+            p_map = _depth_map_for_solve(primary_depth, p_w, p_h)
+            p_scale, _ = estimate_ground_scale(
+                p_map, view_matrix=extr.camera_view_matrix,
+                fx=fx, fy=fy, cx=cx, cy=cy,
+                horizon_y=_horizon_y_from_solve(solve))
+            primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
+
         bp = back_project_normals(
             depth_map, view_matrix=target_extr.camera_view_matrix,
             fx=tfx, fy=tfy, cx=tcx, cy=tcy,
@@ -2181,6 +2617,8 @@ class AtlasOcclusionMask:
             primary_fx=fx, primary_fy=fy, primary_cx=cx, primary_cy=cy,
             primary_width=p_w, primary_height=p_h,
             angle_threshold_deg=float(angle_threshold),
+            primary_depth_map=primary_metric_map,
+            depth_bias_rel=float(depth_bias),
         )
         mask = invalid.astype(np.float32)
 
@@ -2725,6 +3163,107 @@ class AtlasExportNuke:
         return (str(py_dest), str(nk_dest))
 
 
+class AtlasExportNukeLayers:
+    """Export EVERY projection layer on a solve (sky dome, clean-plate bands,
+    multi-angle patches — each `ProjectionSource`) as ONE native .nk scene:
+    per-layer Read (plate) + Camera2 (that layer's own camera) + Project3D2 +
+    ReadGeo2 (that layer's mesh, written as OBJ+MTL alongside), all merged
+    through a single Scene node into one ScanlineRender rendered from the
+    PRIMARY solved camera.
+
+    This is the DCC handoff for the viewport's layered 📽 Project — the same
+    stacked-projections model, except layer overlap is resolved by Nuke's
+    real z-buffer instead of priority/facing masks (true depth wins; for
+    spatially-exclusive layers — bands, sky at radius_m — that matches the
+    viewport's result). Plate images come from each source's registered
+    non-proxy `plate_ref` when present (float/EXR-safe), else the browser
+    preview is decoded to a PNG next to the .nk. Complements — never
+    replaces — `AtlasExportNuke`, which stays the single-projection
+    (primary camera + one mesh/card) exporter.
+
+    Sources without mesh geometry or a plate are skipped (summarized in the
+    second output). Errors loudly when NO exportable layer exists — chain at
+    least one AtlasSkyDomeLayer / AtlasCleanPlateLayer / AtlasAddPatchView
+    first.
+    """
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("nk_path", "summary")
+    FUNCTION = "export"
+    CATEGORY = "Atlas Camera/Export"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "output_dir": ("STRING", {"default": "atlas_exports/nuke_layers"}),
+            },
+            "optional": {
+                "output_profile": ("ATLAS_OUTPUT_PROFILE", {
+                    "tooltip": "Optional OCIO-style output/profile metadata for annotations."}),
+            },
+        }
+
+    def export(self, solve, output_dir, output_profile=None):
+        from atlas_camera.exporters.nuke_exporter import write_nuke_layers_script
+        if output_profile is not None:
+            solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
+        result = write_nuke_layers_script(solve, output_dir)
+        summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
+        if result["skipped"]:
+            summary += f" | skipped: {'; '.join(result['skipped'])}"
+        return (result["nk_path"], summary)
+
+
+class AtlasExportMayaLayers:
+    """Export EVERY projection layer on a solve (sky dome, clean-plate bands,
+    multi-angle patches — each `ProjectionSource`) as ONE Maya ASCII scene:
+    per-layer projector cameras as native .ma nodes, plus an embedded on-open
+    scriptNode that imports each layer's OBJ and builds the proven
+    camera-projection shading network (place3dTexture parented to that
+    layer's camera -> projection.pm, projType 8 — the same verified setup as
+    AtlasExportMayaReviewScene's single projection).
+
+    The Maya twin of `AtlasExportNukeLayers`: identical shared layer
+    collection and on-disk assets (plates with edge mattes embedded in
+    ALPHA + standalone matte PNGs + OBJ meshes), so a layer that exports to
+    Nuke always exports to Maya the same way. Edge mattes drive
+    lambert.transparency via the plate's alpha (the mesh's baked UVs match
+    the plate frame by construction). Drag/File > Open the .ma; if Maya's
+    script security blocks the on-open scriptNode, the OBJs sit next to the
+    .ma for manual import.
+    """
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("ma_path", "summary")
+    FUNCTION = "export"
+    CATEGORY = "Atlas Camera/Export"
+    OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "output_dir": ("STRING", {"default": "atlas_exports/maya_layers"}),
+            },
+            "optional": {
+                "output_profile": ("ATLAS_OUTPUT_PROFILE", {
+                    "tooltip": "Optional OCIO-style output/profile metadata for annotations."}),
+            },
+        }
+
+    def export(self, solve, output_dir, output_profile=None):
+        from atlas_camera.exporters.maya_exporter import write_maya_layers_scene
+        if output_profile is not None:
+            solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
+        result = write_maya_layers_scene(solve, output_dir)
+        summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
+        if result["skipped"]:
+            summary += f" | skipped: {'; '.join(result['skipped'])}"
+        return (result["ma_path"], summary)
+
+
 # ---------------------------------------------------------------------------
 # Track 3 — camera path animation (see AtlasBlockoutViewport's Camera Path mode)
 # ---------------------------------------------------------------------------
@@ -2855,9 +3394,29 @@ class AtlasBlockoutViewport:
        ignores it. With nothing connected, all controls still appear locally
        here, unchanged — fully backward-compatible with saved workflows that
        predate AtlasViewportControls.
+    8. Optional: 📐 Extract Angle — orbit/fly to the view you want a patch
+       generated at (e.g. the last frame of an intended camera move, MPTK
+       style), click 📐, and the measured orbit delta from the RECOVERED
+       camera is snapped to the Qwen Multiple-Angles LoRA's nearest named
+       views (assuming the source photo is "front view"/"eye-level shot")
+       and re-queued into four STRING outputs: `patch_azimuth_view`/
+       `patch_elevation_view`/`patch_distance` (wire into AtlasAddPatchView/
+       AtlasOcclusionMask's widgets converted-to-inputs) and `patch_prompt`
+       (the ready-to-use "<sks> ..." LoRA prompt for generating the novel
+       view). The delta is computed about `camera_math.ground_lookat_pivot`
+       — the SAME pivot orbit_camera uses backend-side — so the snapped
+       views round-trip exactly through those nodes' own camera
+       construction. UNTIL an angle is extracted these outputs return
+       ExecutionBlocker — downstream nodes wired to them (the Qwen
+       generation, AtlasAddPatchView, exports) are silently PAUSED rather
+       than running a wasted zero-orbit patch; clicking 📐 re-queues and the
+       branch resumes automatically. Outside a ComfyUI runtime they fall
+       back to the zero-orbit named-view defaults.
     """
-    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "ATLAS_CAMERA_PATH")
-    RETURN_NAMES = ("shaded", "depth", "normal", "mask", "path_frames", "camera_path")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "ATLAS_CAMERA_PATH",
+                    "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("shaded", "depth", "normal", "mask", "path_frames", "camera_path",
+                    "patch_azimuth_view", "patch_elevation_view", "patch_distance", "patch_prompt")
     FUNCTION = "render"
     CATEGORY = "Atlas Camera/Blockout"
     OUTPUT_NODE = True  # kept alive even without downstream connections
@@ -2926,9 +3485,11 @@ class AtlasBlockoutViewport:
 
         # Store camera data for the browser extension to fetch
         node_id = str(unique_id) if unique_id is not None else "0"
+        solve_fingerprint = _solve_fingerprint(solve, source_image)
         _blockout_cache_set(node_id, _extract_blockout_camera(
             solve, source_image, width, height, preview_expand=float(preview_expand),
-            shot_intrinsics=shot_intrinsics, output_profile=output_profile))
+            shot_intrinsics=shot_intrinsics, output_profile=output_profile,
+            solve_fingerprint=solve_fingerprint))
 
         # IMPORTANT: return a "ui" payload. ComfyUI only emits the "executed"
         # websocket message (which triggers node.onExecuted / the frontend's
@@ -2937,15 +3498,51 @@ class AtlasBlockoutViewport:
         # and never fetches the camera data / background / proxies.
         ui_payload = {"atlas_ready": [node_id]}
 
+        # 📐 Extract Angle results (written into client_data by the viewport's
+        # Extract Angle button). UNTIL an angle has been extracted, the four
+        # patch_* outputs return ComfyUI's ExecutionBlocker sentinel — any
+        # downstream node wired to them (the Qwen generation, AtlasAddPatchView,
+        # the Nuke layers export) is silently SKIPPED rather than running a
+        # wasted zero-orbit no-op patch. Extract Angle already re-queues on
+        # click, so the paused branch resumes by itself the moment the artist
+        # picks an angle — an automatic pause/resume, no manual resume node.
+        # Outside a ComfyUI runtime (unit tests, plain-python imports) the
+        # blocker class doesn't exist, so the zero-orbit named-view defaults
+        # are returned instead — those also remain the fallback semantics if
+        # a future ComfyUI ever drops ExecutionBlocker.
+        _pa_defaults = ("front view", "eye-level shot", "medium shot",
+                        "<sks> front view eye-level shot medium shot")
+
+        def _patch_angle_strings(parsed):
+            pa = (parsed or {}).get("patch_angle") or {}
+            # A stale extraction — made from a DIFFERENT solve/image than the
+            # one now wired in (or from before fingerprints existed) — must
+            # re-arm the pause, not silently patch at the old image's angle.
+            if pa and pa.get("fingerprint") != solve_fingerprint:
+                pa = {}
+            if not pa:
+                blocker = _execution_blocker()
+                if blocker is not None:
+                    return (blocker,) * 4
+                return _pa_defaults
+            return (
+                str(pa.get("azimuth_view") or _pa_defaults[0]),
+                str(pa.get("elevation_view") or _pa_defaults[1]),
+                str(pa.get("distance_view") or _pa_defaults[2]),
+                str(pa.get("prompt") or _pa_defaults[3]),
+            )
+
         if not client_data.strip():
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
-            return {"ui": ui_payload, "result": (blank, blank, blank, blank, blank, None)}
+            return {"ui": ui_payload,
+                    "result": (blank, blank, blank, blank, blank, None) + _patch_angle_strings(None)}
 
         try:
             data = json.loads(client_data)
         except json.JSONDecodeError:
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
-            return {"ui": ui_payload, "result": (blank, blank, blank, blank, blank, None)}
+            return {"ui": ui_payload,
+                    "result": (blank, blank, blank, blank, blank, None) + _patch_angle_strings(None)}
 
         shaded = _decode_b64_to_tensor(data.get("shaded", ""), width, height)
         depth  = _decode_b64_to_tensor(data.get("depth",  ""), width, height)
@@ -2966,7 +3563,9 @@ class AtlasBlockoutViewport:
             from atlas_camera.core.schema import AtlasCameraPath
             camera_path = AtlasCameraPath.from_dict(camera_path_data)
 
-        return {"ui": ui_payload, "result": (shaded, depth, normal, mask, path_frames, camera_path)}
+        return {"ui": ui_payload,
+                "result": (shaded, depth, normal, mask, path_frames, camera_path)
+                + _patch_angle_strings(data)}
 
     @classmethod
     def IS_CHANGED(cls, client_data="", **_):
@@ -3013,9 +3612,28 @@ class AtlasDepthLayerMask:
     geometry `AtlasCleanPlateLayer` builds from the identical band settings —
     the two nodes share `_resolve_depth_band` internally so their bands can't
     drift apart; always pass matching near/far/pct values to both.
+
+    ``hole_mask`` (opt-in via ``compute_hole_mask``) is a THIRD, independent
+    signal: this band's mesh's own discarded hole/tear data
+    (`ReliefMesh.hole_mask`) - white wherever this layer's relief mesh will
+    show black under Project (sky/invalid depth/silhouette tear), regardless
+    of whether that pixel is nearer or farther than the band. `occlusion_mask`
+    only answers "is something nearer in the way"; it's blind to a tear
+    *inside* the band itself (e.g. a noisy-depth patch or a silhouette edge
+    on the subject). Computing it here - rather than only reading it off
+    `AtlasCleanPlateLayer` afterward - is what lets it drive the inpaint step
+    instead of just reporting on it after the fact; it necessarily duplicates
+    `AtlasCleanPlateLayer`'s own later mesh build for the same band (that
+    node's mesh can only be built once `plate_image` already exists), which
+    is why it's off by default. Not auto-combined into `occlusion_mask` -
+    union them explicitly with a mask-max node before `INPAINT_ExpandMask`
+    if you want both signals to drive inpainting, same pattern as
+    `AtlasOcclusionMask`'s separate `occlusion_mask`/`coverage_mask`.
+    Requires `relief_grid`/`depth_edge_rel` matching whatever
+    `AtlasCleanPlateLayer` will use downstream for the two to agree.
     """
-    RETURN_TYPES = ("MASK", "MASK")
-    RETURN_NAMES = ("layer_mask", "occlusion_mask")
+    RETURN_TYPES = ("MASK", "MASK", "MASK")
+    RETURN_NAMES = ("layer_mask", "occlusion_mask", "hole_mask")
     FUNCTION = "generate"
     CATEGORY = "Atlas Camera/Inpaint Layers"
 
@@ -3045,24 +3663,69 @@ class AtlasDepthLayerMask:
                     "tooltip": "Dilate occlusion_mask's edge by this many pixels — a small "
                                "safety margin on top of whatever grow INPAINT_ExpandMask "
                                "applies downstream."}),
+                "compute_hole_mask": ("BOOLEAN", {"default": False,
+                    "tooltip": "Build this band's own relief mesh (same as AtlasCleanPlateLayer "
+                               "will do later) to derive hole_mask - the mesh's real tear/sky "
+                               "hole data, not a depth-band heuristic. Off by default: this is "
+                               "a real (duplicate) mesh build, not free like the other two masks."}),
+                "relief_grid": ("INT", {"default": 384, "min": 16, "max": 1024,
+                    "tooltip": "Only used when compute_hole_mask=True. MUST match the "
+                               "AtlasCleanPlateLayer call downstream for hole_mask to reflect "
+                               "the actual final mesh (default 384 = the band-layer calibration)."}),
+                "depth_edge_rel": ("FLOAT", {"default": 1.5, "min": 0.05, "max": 5.0, "step": 0.05,
+                    "tooltip": "Only used when compute_hole_mask=True. MUST match the "
+                               "AtlasCleanPlateLayer call downstream for hole_mask to reflect "
+                               "the actual final mesh (default 1.5 = the band-layer calibration)."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Optional external exclusion (e.g. a real sky segmentation from "
+                               "SAM/RMBG) ORed on top of the internal sky heuristic - never "
+                               "replaces it, only excludes more. Affects layer_mask/occlusion_mask "
+                               "(excluded pixels can't belong to any band) AND hole_mask when "
+                               "compute_hole_mask=True. Any resolution - resized to match depth."}),
+                "fill_occluded": ("BOOLEAN", {"default": False,
+                    "tooltip": "Only used when compute_hole_mask=True. MUST match the "
+                               "AtlasCleanPlateLayer setting downstream for hole_mask to reflect "
+                               "the actual final mesh - when the layer will diffusion-fill the "
+                               "occluder footprint, that footprint is no longer a hole here "
+                               "either."}),
             },
         }
 
-    def generate(self, solve, depth, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5, feather_px=4):
+    def generate(self, solve, depth, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5, feather_px=4,
+                 compute_hole_mask=False, relief_grid=384, depth_edge_rel=1.5, exclude_mask=None,
+                 fill_occluded=False):
         np = _require_numpy()
         torch = _require_torch()
 
-        setup = _metric_depth_and_validity(solve, depth)
+        setup = _metric_depth_and_validity(solve, depth, exclude_mask=exclude_mask)
         if setup is None:
             h, w = int(depth.image_height), int(depth.image_width)
             zero = torch.zeros(1, h, w, dtype=torch.float32)
-            return (zero, zero.clone())
+            return (zero, zero.clone(), zero.clone())
         metric, valid = setup.metric, setup.valid
 
         near, far = _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct)
 
         layer_mask = valid & (metric >= near) & (metric <= far)
         occlusion_mask = valid & (metric < near)
+
+        hole_mask_arr = np.zeros_like(metric, dtype=np.float32)
+        if compute_hole_mask:
+            from atlas_camera.core.relief_mesh import build_relief_mesh
+            fill = (valid & (metric < near)) if fill_occluded else None
+            mesh = build_relief_mesh(
+                setup.depth_map, view_matrix=setup.extr.camera_view_matrix,
+                fx=setup.fx, fy=setup.fy, cx=setup.cx, cy=setup.cy,
+                grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
+                scale=setup.scale, horizon_y=setup.horizon_y,
+                band_min_m=near, band_max_m=(None if far == float("inf") else far),
+                exclude_mask=setup.exclude_mask, fill_mask=fill,
+                apply_sky_heuristic=setup.exclude_mask is None)
+            # No edge overhang here, deliberately: the layer's mesh only
+            # overhangs when embed_matte is on (this node can't know that),
+            # and a PESSIMISTIC hole_mask (a couple of boundary cells extra)
+            # over-inpaints safely, while an optimistic one under-inpaints.
+            hole_mask_arr = mesh.hole_mask.astype(np.float32)
 
         if feather_px > 0 and occlusion_mask.any():
             grown = occlusion_mask.copy()
@@ -3080,7 +3743,8 @@ class AtlasDepthLayerMask:
 
         layer_t = torch.from_numpy(layer_mask.astype(np.float32)).unsqueeze(0)
         occ_t = torch.from_numpy(occlusion_mask.astype(np.float32)).unsqueeze(0)
-        return (layer_t, occ_t)
+        hole_t = torch.from_numpy(hole_mask_arr).unsqueeze(0)
+        return (layer_t, occ_t, hole_t)
 
 
 class AtlasCleanPlateLayer:
@@ -3113,8 +3777,17 @@ class AtlasCleanPlateLayer:
     those layers through a LanPaint/SDXL generative pass instead. Band
     boundaries are also only as good as monocular depth; expose `near_m`/
     `far_m` for manual metric control on troublesome scenes.
+
+    ``hole_mask`` surfaces this layer's own mesh's discarded hole/tear data
+    (`ReliefMesh.hole_mask`) - a post-hoc QA signal for whether `plate_image`
+    actually covers everywhere this layer will show black under Project.
+    Computed from the same `build_relief_mesh` call this node already makes,
+    so it's free - but it necessarily runs AFTER inpainting already produced
+    `plate_image`, so it can't drive the inpaint step itself. For that, see
+    `AtlasDepthLayerMask`'s own optional `compute_hole_mask`.
     """
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
+    RETURN_NAMES = ("solve", "hole_mask")
     FUNCTION = "add_layer"
     CATEGORY = "Atlas Camera/Inpaint Layers"
 
@@ -3148,30 +3821,72 @@ class AtlasCleanPlateLayer:
                                "unlike multi-angle patches)."}),
                 "plate_ref": ("ATLAS_PLATE_REF", {
                     "tooltip": "Optional registered final clean-plate reference. Browser still uses image_b64 preview; exporters use this for EXR/float-safe handoff."}),
-                "relief_grid": ("INT", {"default": 128, "min": 16, "max": 1024}),
-                "depth_edge_rel": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 5.0, "step": 0.05}),
+                "relief_grid": ("INT", {"default": 384, "min": 16, "max": 1024,
+                    "tooltip": "Band-clipped meshes tear at band boundaries ON TOP OF normal "
+                               "silhouette tearing, so per-layer meshes want more density than "
+                               "the generic 128 default - 384/1.5 is the empirically-calibrated "
+                               "band-layer setting (hangar + monument valley)."}),
+                "depth_edge_rel": ("FLOAT", {"default": 1.5, "min": 0.05, "max": 5.0, "step": 0.05,
+                    "tooltip": "Looser than the generic 0.5: safe WITHIN a band because the band "
+                               "clip already bounds the mesh's depth range."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Optional external exclusion (e.g. a real sky segmentation from "
+                               "SAM/RMBG). When connected it REPLACES the internal sky heuristic "
+                               "(which otherwise eats tall geometry above the horizon) - should match "
+                               "whatever was passed to the AtlasDepthLayerMask call that produced "
+                               "plate_image, for hole_mask/band resolution to stay in lockstep."}),
+                "fill_occluded": ("BOOLEAN", {"default": False,
+                    "tooltip": "Diffusion-fill this band's mesh across the foreground occluder's "
+                               "footprint (the band clip otherwise leaves a hole exactly there) so "
+                               "the INPAINTED plate content lands on real geometry instead of a "
+                               "hole - the disocclusion 'shadow ray' mesh. Synthesized depth is a "
+                               "smooth interpolation of the surrounding background, reported in "
+                               "metadata as n_filled_cells. Excluded (sky) regions are never "
+                               "filled."}),
+                "embed_matte": ("BOOLEAN", {"default": False,
+                    "tooltip": "Embed a full-resolution per-pixel edge matte on this layer "
+                               "(ProjectionSource.mask_b64) - the projection shader then cuts the "
+                               "TRUE band silhouette per-pixel instead of the mesh's blocky "
+                               "grid-resolution tear edge, and the Nuke layers export writes it "
+                               "into the plate's alpha. Auto-computed from this band (in-band "
+                               "pixels, plus the filled occluder footprint when fill_occluded is "
+                               "on, minus exclude_mask); wire layer_matte to override with a "
+                               "hand/SAM matte."}),
+                "layer_matte": ("MASK", {
+                    "tooltip": "Optional explicit edge matte (overrides the auto-computed band "
+                               "matte when embed_matte is on) - e.g. a SAM segmentation of this "
+                               "layer's subject for a crisper edge than depth banding gives."}),
             },
         }
 
     def add_layer(self, solve, depth, plate_image, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5,
-                  name="layer", priority=0.0, plate_ref=None, relief_grid=128, depth_edge_rel=0.5):
+                  name="layer", priority=0.0, plate_ref=None, relief_grid=384, depth_edge_rel=1.5,
+                  exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import AtlasPlateRef, ProjectionSource
 
-        setup = _metric_depth_and_validity(solve, depth)
+        torch = _require_torch()
+        np = _require_numpy()
+
+        setup = _metric_depth_and_validity(solve, depth, exclude_mask=exclude_mask)
         if setup is None:
-            return (solve,)
+            h, w = int(depth.image_height), int(depth.image_width)
+            return (solve, torch.zeros(1, h, w, dtype=torch.float32))
         fx, fy, cx, cy = setup.fx, setup.fy, setup.cx, setup.cy
         extr, depth_map = setup.extr, setup.depth_map
         scale, horizon_y = setup.scale, setup.horizon_y
         near, far = _resolve_depth_band(setup.metric, setup.valid, near_m, far_m, near_pct, far_pct)
 
+        fill = (setup.valid & (setup.metric < near)) if fill_occluded else None
         mesh = build_relief_mesh(
             depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
             grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
             scale=scale, horizon_y=horizon_y,
-            band_min_m=near, band_max_m=(None if far == float("inf") else far))
+            band_min_m=near, band_max_m=(None if far == float("inf") else far),
+            exclude_mask=setup.exclude_mask, fill_mask=fill,
+            apply_sky_heuristic=setup.exclude_mask is None,
+            edge_overhang_cells=2 if embed_matte else 0)
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
 
         image_b64 = ""
@@ -3198,12 +3913,248 @@ class AtlasCleanPlateLayer:
                 "ground_scale": scale,
                 "n_vertices": mesh.stats.get("n_vertices"),
                 "n_faces": mesh.stats.get("n_faces"),
+                "n_filled_cells": mesh.stats.get("n_filled_cells", 0),
+            },
+        )
+
+        # Optional per-pixel edge matte: geometry tears at grid-quad
+        # resolution; the matte cuts the true band silhouette in the shader.
+        if embed_matte:
+            if layer_matte is not None:
+                matte = _resolve_exclude_mask(layer_matte, setup.height, setup.width)
+            else:
+                matte = setup.valid & (setup.metric <= far)
+                if not fill_occluded:
+                    # Without disocclusion fill the occluder footprint has no
+                    # geometry, so the matte matches the band exactly; with it,
+                    # the filled footprint must stay INSIDE the matte (the
+                    # inpainted plate content lives there).
+                    matte = matte & (setup.metric >= near)
+            source.mask_b64 = _mask_to_b64_png(matte) or None
+
+        out = copy.deepcopy(solve)
+        out.projection_sources.append(source)
+        hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
+        return (out, hole_t)
+
+
+class AtlasSkyDomeLayer:
+    """Same-camera sky clean-plate, projected onto a simple constant-depth
+    card instead of a depth-following relief mesh — the standard DMP move
+    (Nuke and similar): separate sky from real geometry so it clean-plates
+    and projects without fighting noisy monocular sky depth, or tearing at a
+    boundary that's really just "where the segmentation mask ends," not a
+    genuine depth discontinuity.
+
+    Unlike `AtlasCleanPlateLayer` (which clips a REAL relief mesh to a
+    metric depth band), this node ignores actual depth VALUES entirely for
+    the card's own shape — `sky_mask` (from a real segmenter, e.g.
+    ComfyUI-RMBG's SAM3 Segmentation prompted with "sky") is the sole
+    authority on which pixels belong to it. `depth`/`solve` are still
+    required, purely for camera intrinsics/extrinsics via the same shared
+    `_metric_depth_and_validity` setup `AtlasDepthLayerMask`/
+    `AtlasCleanPlateLayer` use — the real depth array itself is never read.
+
+    Geometrically this is a flat card at a constant forward-Z depth
+    (`radius_m`), the same convention `build_relief_mesh` uses everywhere
+    else (and the same convention every extractor's own `projection_backdrop`
+    plane already uses) — not a literal sphere/hemisphere. For any normal
+    camera FOV this is visually equivalent to a dome; a true sphere would
+    need different (unreused) triangulation math for real benefit only at
+    extreme wide-angle/360 coverage. See `relief_mesh.build_sky_dome_mesh`.
+
+    `plate_image` should be a CLEAN sky plate: invert `sky_mask` (ComfyUI's
+    `InvertMask`, or SAM3's own `invert_output`) to get the mask of
+    everything occluding the sky, feed that through `INPAINT_ExpandMask` ->
+    `INPAINT_InpaintWithModel` on the original photo, and wire the result
+    here — the same external-inpaint chain the other inpaint-layers nodes
+    use (see INSTALL.md's "Optional Inpaint Integration").
+
+    Camera is the PRIMARY camera UNCHANGED, same as `AtlasCleanPlateLayer` —
+    no orbit, since this is a same-camera plate. Chain alongside
+    `AtlasCleanPlateLayer`/`AtlasDeriveReliefMesh` layers; default `priority`
+    is low (-10) since `sky_mask` makes this layer spatially exclusive from
+    ground/foreground layers in practice — priority only matters if masks
+    overlap. `hole_mask` mirrors the other inpaint-layers nodes: white where
+    `sky_mask`'s own boundary didn't survive onto the grid (QA signal, not
+    something to feed back into inpainting).
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
+    RETURN_NAMES = ("solve", "hole_mask")
+    FUNCTION = "add_layer"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+                "sky_mask": ("MASK", {
+                    "tooltip": "Real segmentation marking sky pixels (e.g. ComfyUI-RMBG's SAM3 "
+                               "Segmentation prompted with 'sky'). Sole authority on this layer's "
+                               "shape — real depth values are never read for the card's geometry."}),
+                "plate_image": ("IMAGE", {
+                    "tooltip": "A CLEAN sky plate — invert sky_mask, run it through an external "
+                               "inpaint chain (INPAINT_ExpandMask -> INPAINT_InpaintWithModel) on "
+                               "the original photo, wire the result here."}),
+            },
+            "optional": {
+                "radius_m": ("FLOAT", {"default": 300.0, "min": 1.0, "max": 100000.0, "step": 1.0,
+                    "tooltip": "Card distance in metres (forward-Z, same convention as every "
+                               "other relief mesh here) — should comfortably exceed the scene's "
+                               "own derived backdrop distance (AtlasDeriveReliefMesh's backdrop, "
+                               "or the Info HUD's scene depth) so it never intersects real "
+                               "geometry. Distance doesn't affect appearance (texel assignment is "
+                               "by ray, not depth) — only how far you can dolly before it reveals "
+                               "itself as flat, which at typical FOV is a very long way."}),
+                "relief_grid": ("INT", {"default": 96, "min": 16, "max": 512,
+                    "tooltip": "Card mesh density (long-edge grid columns). A flat, constant-depth "
+                               "card needs far less density than real geometry — default is lower "
+                               "than AtlasDeriveReliefMesh's."}),
+                "name": ("STRING", {"default": "sky"}),
+                "priority": ("FLOAT", {"default": -10.0, "min": -100.0, "max": 100.0, "step": 1.0,
+                    "tooltip": "Blend priority among layers (higher wins). Low by default since "
+                               "sky_mask makes this layer spatially exclusive from ground/"
+                               "foreground layers in practice."}),
+                "plate_ref": ("ATLAS_PLATE_REF", {
+                    "tooltip": "Optional registered final clean-plate reference. Browser still uses image_b64 preview; exporters use this for EXR/float-safe handoff."}),
+                "edge_extend_px": ("INT", {"default": 48, "min": 0, "max": 512, "step": 4,
+                    "tooltip": "Deterministic edge-extend (the classic Nuke premult->dilate trick, "
+                               "NOT an inpaint): smears the sky's edge colors this many pixels past "
+                               "the silhouette into the plate, dilates the matte to match, and "
+                               "overhangs the dome mesh accordingly - so orbiting reveals plausible "
+                               "gradient sky behind foreground silhouettes instead of black slivers. "
+                               "Enough for narrow disocclusions of smooth sky; large structured "
+                               "reveals (clouds behind a building) still want a real LaMa/inpaint "
+                               "chain on plate_image. 0 = off."}),
+                "frame_outpaint_px": ("INT", {"default": 64, "min": 0, "max": 1024, "step": 8,
+                    "tooltip": "Outpaint the sky past the FRAME edges by this many pixels (edge-"
+                               "replicated then smeared, same deterministic trick as "
+                               "edge_extend_px) so a small orbit/pan doesn't slam into the plate "
+                               "boundary. The sky source gets its own enlarged canvas + widened "
+                               "intrinsics (cx/cy shifted, W/H grown), and the dome mesh extends "
+                               "past the original frustum to carry it. Purely this layer's "
+                               "camera - the primary solve and every other layer are untouched. "
+                               "0 = off."}),
+            },
+        }
+
+    def add_layer(self, solve, depth, sky_mask, plate_image, radius_m=300.0, relief_grid=96,
+                  name="sky", priority=-10.0, plate_ref=None, edge_extend_px=48,
+                  frame_outpaint_px=64):
+        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+        from atlas_camera.core.relief_mesh import build_sky_dome_mesh
+        from atlas_camera.core.schema import AtlasIntrinsics, AtlasPlateRef, LatentCamera, ProjectionSource
+
+        torch = _require_torch()
+        np = _require_numpy()
+
+        setup = _metric_depth_and_validity(solve, depth)
+        if setup is None:
+            h, w = int(depth.image_height), int(depth.image_width)
+            return (solve, torch.zeros(1, h, w, dtype=torch.float32))
+
+        mask_arr = _resolve_exclude_mask(sky_mask, setup.height, setup.width)
+        if mask_arr is None or not mask_arr.any():
+            return (solve, torch.zeros(1, setup.height, setup.width, dtype=torch.float32))
+
+        # Everything below works at PLATE resolution in ONE padded pixel space:
+        # frame outpaint (pad the canvas, shift cx/cy - the sky source gets
+        # its own wider-FOV camera so a small orbit never hits the plate
+        # boundary), then the silhouette edge-extend, then the dome mesh -
+        # all sharing the same coordinates, so plate/matte/mesh stay aligned.
+        plate_np = (plate_image[0].cpu().numpy() * 255.0)
+        Hp, Wp = plate_np.shape[:2]
+        if (Hp, Wp) != mask_arr.shape:
+            from atlas_camera.core.solver import _resize_depth
+            m = _resize_depth(mask_arr.astype(np.float64), Wp, Hp) > 0.5
+        else:
+            m = mask_arr
+        sx, sy = Wp / float(setup.width), Hp / float(setup.height)
+        fx_p, fy_p = setup.fx * sx, setup.fy * sy
+        cx_p, cy_p = setup.cx * sx, setup.cy * sy
+
+        pad = max(0, int(frame_outpaint_px))
+        if pad:
+            plate_np = np.pad(plate_np, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+            m = np.pad(m, pad, mode="edge")
+            cx_p += pad
+            cy_p += pad
+
+        matte_arr = m
+        plate_arr = plate_np if pad else None  # padded canvas always re-encodes
+        step = max(1, int(round(max(m.shape) / max(int(relief_grid), 2))))
+        overhang_cells = 2
+        if edge_extend_px and int(edge_extend_px) > 0:
+            plate_arr, matte_arr = _extend_edge_colors(plate_np, m, int(edge_extend_px))
+            overhang_cells = 2 + int(np.ceil(int(edge_extend_px) / step))
+
+        mesh = build_sky_dome_mesh(
+            m, view_matrix=setup.extr.camera_view_matrix,
+            fx=fx_p, fy=fy_p, cx=cx_p, cy=cy_p,
+            radius_m=float(radius_m), grid_long_edge=int(relief_grid),
+            edge_overhang_cells=overhang_cells)
+        patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_dome_mesh")]
+
+        # This source's OWN camera: same pose as the primary (no orbit), but
+        # with the padded/rescaled intrinsics so the outpainted canvas is
+        # real texture space for the projection shader and the Nuke export
+        # (each ProjectionSource carries its own camera by design).
+        src_camera = solve.camera
+        if pad or (Hp, Wp) != (setup.height, setup.width):
+            src_camera = LatentCamera(
+                intrinsics=AtlasIntrinsics(
+                    image_width=Wp + 2 * pad, image_height=Hp + 2 * pad,
+                    sensor_width_mm=solve.camera.intrinsics.sensor_width_mm,
+                    fx_px=fx_p, fy_px=fy_p, cx_px=cx_p, cy_px=cy_p),
+                extrinsics=setup.extr)
+
+        image_b64 = ""
+        try:
+            if plate_arr is not None:
+                PILImage = _require_pil()
+                pil = PILImage.fromarray(plate_arr.clip(0, 255).astype("uint8"), mode="RGB")
+            else:
+                pil = _image_tensor_to_pil(plate_image)
+            buf = io.BytesIO()
+            pil.save(buf, format="JPEG", quality=88)
+            image_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+        except Exception:
+            pass
+
+        source = ProjectionSource(
+            camera=src_camera,  # primary POSE unchanged; intrinsics widened when outpainted
+            name=name,
+            image_b64=image_b64,
+            plate_ref=plate_ref if isinstance(plate_ref, AtlasPlateRef) else AtlasPlateRef.from_dict(plate_ref),
+            proxy_geometry=patch_geom,
+            priority=float(priority),
+            # The SAM/segmentation mask IS the perfect full-resolution edge
+            # matte for this layer — embed it so the projection shader cuts
+            # the true sky silhouette per-pixel instead of the card mesh's
+            # grid-resolution staircase edge. With edge_extend_px the matte
+            # is the DILATED mask, exposing the smeared extension on
+            # disocclusion.
+            mask_b64=_mask_to_b64_png(matte_arr) or None,
+            metadata={
+                "projection_mode": "clean_plate",
+                "source": "sky_dome",
+                "radius_m": float(radius_m),
+                "edge_extend_px": int(edge_extend_px),
+                "frame_outpaint_px": pad,
+                "n_vertices": mesh.stats.get("n_vertices"),
+                "n_faces": mesh.stats.get("n_faces"),
             },
         )
 
         out = copy.deepcopy(solve)
         out.projection_sources.append(source)
-        return (out,)
+        # hole_mask output stays in the ORIGINAL plate frame (crop the pad) so
+        # downstream previews/composites line up with the source photo.
+        hole = mesh.hole_mask[pad:pad + Hp, pad:pad + Wp] if pad else mesh.hole_mask
+        hole_t = torch.from_numpy(hole.astype(np.float32)).unsqueeze(0)
+        return (out, hole_t)
 
 
 # ---------------------------------------------------------------------------
@@ -3224,6 +4175,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasLearnedSolveFromImage": AtlasLearnedSolveFromImage,
     "AtlasReferenceScaleSolve":   AtlasReferenceScaleSolve,
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
+    "AtlasAssessImage":           AtlasAssessImage,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
     "AtlasAddPatchView":          AtlasAddPatchView,
@@ -3244,6 +4196,8 @@ NODE_CLASS_MAPPINGS = {
     "AtlasExportUSD":             AtlasExportUSD,
     "AtlasExportBlender":         AtlasExportBlender,
     "AtlasExportNuke":            AtlasExportNuke,
+    "AtlasExportNukeLayers":      AtlasExportNukeLayers,
+    "AtlasExportMayaLayers":      AtlasExportMayaLayers,
     # Track 2 — blockout viewport
     "AtlasViewportControls":      AtlasViewportControls,
     "AtlasBlockoutViewport":      AtlasBlockoutViewport,
@@ -3262,6 +4216,7 @@ NODE_CLASS_MAPPINGS = {
     # Track 7 — inpaint layers
     "AtlasDepthLayerMask":        AtlasDepthLayerMask,
     "AtlasCleanPlateLayer":       AtlasCleanPlateLayer,
+    "AtlasSkyDomeLayer":          AtlasSkyDomeLayer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -3277,6 +4232,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasSolveFromImage":        "Atlas Solve Camera from Image",
     "AtlasLearnedSolveFromImage": "Atlas Learned Solve (GeoCalib) 🧠",
     "AtlasReferenceScaleSolve":   "Atlas Reference-Object Scale 📏",
+    "AtlasAssessImage":           "Atlas Assess Image 🧭",
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",
@@ -3298,6 +4254,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportUSD":             "Atlas Export USD",
     "AtlasExportBlender":         "Atlas Export Blender Scene",
     "AtlasExportNuke":            "Atlas Export Nuke Script",
+    "AtlasExportNukeLayers":      "Atlas Export Nuke Layers 🎞",
+    "AtlasExportMayaLayers":      "Atlas Export Maya Layers 🧊",
     # Track 2 — blockout viewport
     "AtlasViewportControls":      "Atlas Output Desk 🎛",
     "AtlasBlockoutViewport":      "Atlas Viewport 🧊",
@@ -3316,4 +4274,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # Track 7 — inpaint layers
     "AtlasDepthLayerMask":        "Atlas Depth Layer Mask 🎭",
     "AtlasCleanPlateLayer":       "Atlas Clean Plate Layer 🖼",
+    "AtlasSkyDomeLayer":          "Atlas Sky Dome Layer ☁",
 }

@@ -10,6 +10,7 @@ import pytest
 
 from atlas_camera.core.relief_mesh import (
     build_relief_mesh,
+    build_sky_dome_mesh,
     estimate_ground_scale,
 )
 from atlas_camera.exporters.relief_mesh_exporter import (
@@ -95,6 +96,55 @@ def test_no_face_spans_a_silhouette():
     ratio = tri.max(axis=1) / np.maximum(tri.min(axis=1), 1e-6)
     assert float(ratio.max()) <= 1.0 + EDGE_REL + 0.05
     assert mesh.stats["torn_fraction"] > 0.0  # the silhouette actually tore
+
+
+def test_hole_mask_nonempty_when_mesh_is_torn():
+    mesh = _build(_scene_depth(wall_z=-10.0, wall_h=3.0))
+    assert mesh.stats["torn_fraction"] > 0.0
+    assert mesh.hole_mask.any()
+    assert 0.0 < float(mesh.hole_mask.mean()) < 1.0  # some holes, not everything
+
+
+def test_hole_mask_shape_is_full_resolution_regardless_of_grid():
+    depth = _scene_depth(wall_z=-10.0, wall_h=3.0)
+    coarse = _build(depth, grid_long_edge=32)
+    fine = _build(depth, grid_long_edge=256)
+    assert coarse.hole_mask.shape == depth.shape
+    assert fine.hole_mask.shape == depth.shape
+
+
+def test_hole_mask_flags_invalid_depth_pixels():
+    depth = _scene_depth(wall_z=-10.0, wall_h=3.0).copy()
+    depth[100:110, 100:110] = 0.0  # fails the > 1e-4 valid-depth test
+    mesh = _build(depth)
+    assert mesh.hole_mask[100:110, 100:110].all()
+    # a flat, non-torn ground pixel near the camera should not be a hole
+    assert not bool(mesh.hole_mask[H - 5, W // 2])
+
+
+def test_exclude_mask_removes_pixels_the_internal_heuristic_would_keep():
+    # A flat, valid ground patch near the camera - detect_sky_mask/valid-depth
+    # would never flag it on its own. An external exclude_mask (e.g. a real
+    # SAM/RMBG sky segmentation) must still remove it from the mesh.
+    depth = _scene_depth(wall_z=-10.0, wall_h=3.0)
+    exclude = np.zeros(depth.shape, dtype=bool)
+    exclude[H - 20:H - 5, W // 2 - 10:W // 2 + 10] = True
+
+    baseline = _build(depth)
+    assert not baseline.hole_mask[H - 10, W // 2]  # normally NOT a hole
+
+    excluded = _build(depth, exclude_mask=exclude)
+    assert excluded.hole_mask[H - 10, W // 2]  # now excluded by the mask
+    # untouched region elsewhere is unaffected
+    assert not excluded.hole_mask[H - 10, 10]
+
+
+def test_exclude_mask_none_is_backward_compatible():
+    depth = _scene_depth(wall_z=-10.0, wall_h=3.0)
+    baseline = _build(depth)
+    explicit_none = _build(depth, exclude_mask=None)
+    assert len(baseline.vertices) == len(explicit_none.vertices)
+    np.testing.assert_array_equal(baseline.hole_mask, explicit_none.hole_mask)
 
 
 def test_band_clip_keeps_only_near_pixels():
@@ -342,3 +392,124 @@ def test_glb_export_is_valid_gltf2(tmp_path):
                    bin_off + 8 + uv_bv["byteOffset"] + uv_bv["byteLength"]]
     uvs = np.frombuffer(uv_bytes, dtype=np.float32).reshape(-1, 2)
     assert np.allclose(uvs[:, 1], 1.0 - mesh.uvs[:, 1], atol=1e-6)
+
+
+# --- fill_mask (occluded-depth diffusion fill) --------------------------------
+
+def _occluder_scene(h=1.6, far_wall_z=-10.0, far_wall_h=3.0,
+                    near_wall_z=-3.0, near_wall_h=2.0, col_lo=200, col_hi=320):
+    """Ground + far wall + a finite-width near occluder (columns col_lo..col_hi)."""
+    uu, vv = np.meshgrid(np.arange(W, dtype=float), np.arange(H, dtype=float))
+    dy = -(vv - CY) / FY
+    depth = np.full((H, W), SKY)
+    tg = np.full((H, W), np.inf)
+    ld = dy < -1e-6
+    tg[ld] = -h / dy[ld]
+
+    def _wall(z, wh):
+        t = -z
+        y = h + dy * t
+        return t, (y >= 0.0) & (y <= wh)
+
+    tf, vf = _wall(far_wall_z, far_wall_h)
+    tn, vn = _wall(near_wall_z, near_wall_h)
+    vn = vn & (uu >= col_lo) & (uu <= col_hi)
+    return np.stack([depth, np.where(np.isfinite(tg), tg, SKY),
+                     np.where(vf, tf, SKY), np.where(vn, tn, SKY)]).min(axis=0)
+
+
+def test_fill_mask_fills_the_occluder_footprint():
+    depth = _occluder_scene()
+    occl = depth < 5.0
+    base = _build(depth, band_min_m=5.0, band_max_m=12.0, grid_long_edge=64)
+    filled = _build(depth, band_min_m=5.0, band_max_m=12.0, grid_long_edge=64,
+                    fill_mask=occl)
+    assert filled.stats["n_filled_cells"] > 0
+    assert len(filled.vertices) > len(base.vertices)
+    # The hole shrinks, and filled_mask lands on the occluder footprint.
+    assert float(filled.hole_mask.mean()) < float(base.hole_mask.mean())
+    assert filled.filled_mask is not None and filled.filled_mask.any()
+    overlap = (filled.filled_mask & occl).sum() / max(occl.sum(), 1)
+    assert overlap > 0.4
+    # Filled pixels are NOT holes (they carry geometry now).
+    assert not (filled.filled_mask & filled.hole_mask).any()
+
+
+def test_fill_mask_synthesized_geometry_stays_plausible():
+    depth = _occluder_scene()
+    occl = depth < 5.0
+    filled = _build(depth, band_min_m=5.0, band_max_m=12.0, grid_long_edge=64,
+                    fill_mask=occl)
+    # Nothing below the floor clamp (synthesized ground rides the existing
+    # clamp-along-view-ray), nothing beyond the band's far edge.
+    assert float(filled.vertices[:, 1].min()) >= -0.3
+    assert float((-filled.vertices[:, 2]).max()) <= 12.5
+
+
+def test_fill_mask_none_is_backward_compatible():
+    depth = _occluder_scene()
+    base = _build(depth, band_min_m=5.0, band_max_m=12.0, grid_long_edge=64)
+    explicit = _build(depth, band_min_m=5.0, band_max_m=12.0, grid_long_edge=64,
+                      fill_mask=None)
+    assert len(base.vertices) == len(explicit.vertices)
+    np.testing.assert_array_equal(base.hole_mask, explicit.hole_mask)
+    assert explicit.filled_mask is None
+    assert explicit.stats["n_filled_cells"] == 0
+
+
+def test_fill_mask_unreachable_region_stays_a_hole():
+    # A fill region with NO valid neighbors anywhere (entire frame invalid
+    # except the fill request) cannot be filled — must degrade gracefully.
+    depth = np.zeros((H, W))  # all invalid
+    fill = np.zeros((H, W), dtype=bool)
+    fill[100:200, 100:200] = True
+    mesh = _build(depth, fill_mask=fill)
+    assert mesh.stats["n_filled_cells"] == 0
+    assert mesh.filled_mask is None or not mesh.filled_mask.any()
+    assert mesh.hole_mask.all()
+
+
+# --- build_sky_dome_mesh ------------------------------------------------------
+
+def test_sky_dome_produces_geometry_only_where_masked():
+    mask = np.zeros((H, W), dtype=bool)
+    mask[:200, :] = True  # top ~40% "sky"
+    mesh = build_sky_dome_mesh(mask, view_matrix=_view_matrix(1.6), fx=FX, fy=FY, cx=CX, cy=CY,
+                                radius_m=300.0, grid_long_edge=64)
+    assert len(mesh.vertices) > 50
+    assert len(mesh.faces) > 0
+
+
+def test_sky_dome_internal_sky_heuristic_does_not_eat_its_own_geometry():
+    # This is the exact failure mode apply_sky_heuristic=False exists to avoid:
+    # a constant-depth field is precisely what detect_sky_mask is designed to
+    # flag, so if the heuristic ran it would re-exclude everything and the
+    # dome would come back empty.
+    mask = np.ones((H, W), dtype=bool)
+    mesh = build_sky_dome_mesh(mask, view_matrix=_view_matrix(1.6), fx=FX, fy=FY, cx=CX, cy=CY,
+                                radius_m=300.0, grid_long_edge=32)
+    assert len(mesh.vertices) > 0
+    assert float(mesh.hole_mask.mean()) < 0.1  # fully-masked input -> ~no holes
+
+
+def test_sky_dome_is_a_flat_card_at_constant_forward_z():
+    # Same forward-Z convention as build_relief_mesh everywhere else (and the
+    # existing projection_backdrop plane) — a flat card, not a literal sphere.
+    mask = np.zeros((H, W), dtype=bool)
+    mask[:150, 100:400] = True
+    mesh = build_sky_dome_mesh(mask, view_matrix=_view_matrix(1.6), fx=FX, fy=FY, cx=CX, cy=CY,
+                                radius_m=300.0, grid_long_edge=64)
+    forward_z = mesh.vertices[:, 2]
+    assert np.allclose(forward_z, -300.0, atol=2.0)
+
+
+def test_sky_dome_mask_boundary_becomes_a_hole_not_a_stretched_shard():
+    mask = np.zeros((H, W), dtype=bool)
+    mask[:200, :] = True
+    mesh = build_sky_dome_mesh(mask, view_matrix=_view_matrix(1.6), fx=FX, fy=FY, cx=CX, cy=CY,
+                                radius_m=300.0, grid_long_edge=64)
+    # roughly matches the masked fraction of the frame (~39%), within the
+    # coarseness of a 64-grid boundary snap
+    frac = float(mask.mean())
+    hole_frac = float(mesh.hole_mask.mean())
+    assert abs((1.0 - hole_frac) - frac) < 0.05

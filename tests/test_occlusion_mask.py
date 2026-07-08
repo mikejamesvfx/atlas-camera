@@ -156,6 +156,83 @@ def test_angle_threshold_affects_masking(monkeypatch):
     assert mask_30.sum().item() >= mask_90.sum().item()
 
 
+def test_depth_shadow_widgets_registered():
+    opt = AtlasOcclusionMask.INPUT_TYPES()["optional"]
+    assert opt["occlusion_mode"][0] == ["simple", "depth_shadow"]
+    assert opt["occlusion_mode"][1]["default"] == "simple"
+    assert opt["primary_depth"][0] == "ATLAS_DEPTH_MAP"
+    assert opt["depth_bias"][1]["default"] == 0.05
+
+
+def _primary_depth_result(depth_map, size=128):
+    from atlas_camera.inference.depth_estimator import DepthResult
+
+    return DepthResult(
+        depth=depth_map, is_metric=True, model_id="fake",
+        image_width=size, image_height=size,
+        near=float(depth_map.min()), far=float(depth_map.max()),
+    )
+
+
+def test_depth_shadow_mode_flags_points_hidden_behind_near_geometry(monkeypatch):
+    torch = pytest.importorskip("torch")
+    np = pytest.importorskip("numpy")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    target_img = torch.rand(1, 128, 128, 3, dtype=torch.float32)
+    kwargs = dict(patch_azimuth_view="front view", source_azimuth_view="front view")
+
+    # Primary shadow map: a very near constant surface (0.1m) right in front
+    # of the lens — every real scene point is far behind it, so from the
+    # primary's view EVERYTHING the target sees is in shadow. The simple mask
+    # (zero orbit) is mostly black; depth_shadow must flip it mostly white.
+    near_wall = np.full((128, 128), 0.1, dtype=np.float32)
+    mask_simple, _ = AtlasOcclusionMask().generate(solve, target_img, **kwargs)
+    mask_shadow, _ = AtlasOcclusionMask().generate(
+        solve, target_img, occlusion_mode="depth_shadow",
+        primary_depth=_primary_depth_result(near_wall), **kwargs)
+
+    assert mask_simple.mean().item() < 0.10
+    assert mask_shadow.mean().item() > 0.85
+    assert mask_shadow.sum().item() > mask_simple.sum().item()
+
+
+def test_depth_shadow_falls_back_to_simple_without_primary_depth(monkeypatch):
+    torch = pytest.importorskip("torch")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    target_img = torch.rand(1, 128, 128, 3, dtype=torch.float32)
+    kwargs = dict(patch_azimuth_view="front view", source_azimuth_view="front view")
+
+    mask_simple, _ = AtlasOcclusionMask().generate(solve, target_img, **kwargs)
+    mask_fallback, _ = AtlasOcclusionMask().generate(
+        solve, target_img, occlusion_mode="depth_shadow", primary_depth=None, **kwargs)
+    assert torch.equal(mask_simple, mask_fallback)
+
+
+def test_patch_view_override_matches_explicit_dropdowns(monkeypatch):
+    """Wiring 📐 Extract Angle's patch_prompt into patch_view_override must
+    produce the identical mask as setting the three dropdowns by hand."""
+    torch = pytest.importorskip("torch")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    target_img = torch.rand(1, 128, 128, 3, dtype=torch.float32)
+
+    explicit, _ = AtlasOcclusionMask().generate(
+        solve, target_img,
+        patch_azimuth_view="back view", patch_elevation_view="elevated shot",
+        patch_distance="wide shot", source_azimuth_view="front view")
+    overridden, _ = AtlasOcclusionMask().generate(
+        solve, target_img,
+        patch_azimuth_view="front view",  # dropdowns say zero-orbit...
+        source_azimuth_view="front view",
+        patch_view_override="<sks> back view elevated shot wide shot")  # ...override wins
+    assert torch.equal(explicit, overridden)
+
+
 def test_passes_through_full_white_when_primary_has_no_focal():
     torch = pytest.importorskip("torch")
     from atlas_camera.core.schema import AtlasIntrinsics, AtlasSolve, LatentCamera

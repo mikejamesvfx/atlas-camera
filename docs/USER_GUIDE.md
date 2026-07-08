@@ -347,3 +347,21 @@ sanity-checking a solve:
 | `AtlasRegisterPlate`, `AtlasAttachSourcePlate` | Part 4 — file-backed float-safe source plates |
 | `AtlasViewportControls` | Part 4 — Atlas Output Desk and OCIO-style output profile |
 | `AtlasBlockoutViewport` (☀ / 📊 / ℹ) | Diagnostics — exposure, VP/horizon diagram, camera HUD |
+
+---
+
+## What's new (2026-07-08) — the complete DMP workflow
+
+This guide's three mental models still hold. On top of them, the hero
+workflow (`examples/atlas_camera_master_dmp_workflow.json`) now assembles the
+full matte-painting pipeline: a **VLM pre-flight** that assesses your photo
+and recommends settings (the graph pauses until you click ▶ Continue), **sky
+separation** onto a far card driven by a SAM segmentation (with deterministic
+edge-extend and frame outpaint so orbits don't reveal black), **depth-band
+clean plates** with per-pixel edge mattes and disocclusion fill, **📐 Extract
+Angle** (orbit to the view you want a patch at; the Qwen novel-view
+generation, patch placement, and exports all pick up your extracted angle
+automatically), and **all-in-one layer exports** to Nuke (.nk) and Maya
+(.ma, verified in Maya 2027). See ECOSYSTEM_GUIDE.md's 2026-07-08 addendum
+for how each piece works and why.
+

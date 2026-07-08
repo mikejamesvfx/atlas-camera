@@ -147,6 +147,31 @@ SD1.5) via a masked latent (`Set Latent Noise Mask` / `InpaintModelConditioning`
 KSampler → VAE decode subgraph instead, and feed its output into
 `AtlasCleanPlateLayer` as `plate_image`.
 
+
+## Optional Master-Workflow Integrations (2026-07-08)
+
+The hero workflow `examples/atlas_camera_master_dmp_workflow.json` uses three
+optional external pieces — each fails soft or has a documented placeholder:
+
+- **Sky segmentation** — [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)
+  provides the `SAM3Segment` node (prompt it with `sky`). Its MASK output
+  feeds `AtlasSkyDomeLayer.sky_mask` AND every layer node's `exclude_mask`
+  (a real segmentation replaces Atlas's internal sky heuristic).
+- **VLM pre-flight** — `AtlasAssessImage` talks to a local vision-language
+  server: Ollama (`ollama run gemma3:4b`, default `http://127.0.0.1:11434`),
+  LM Studio (default `http://127.0.0.1:1234/v1`), or llama.cpp
+  (`http://127.0.0.1:8080/v1`). No server running → the node reports how to
+  start one and ▶ Continue Workflow still works. The report displays on the
+  node itself; the optional Show Text wiring uses
+  [pythongosssss custom-scripts](https://github.com/pythongosssss/ComfyUI-Custom-Scripts).
+- **Multi-angle patch generation** — the embedded Qwen Image Edit 2511
+  subgraph needs `qwen_image_edit_2511_fp8_e4m3fn.safetensors`,
+  `qwen_2.5_vl_7b_fp8_scaled.safetensors`, `qwen_image_vae.safetensors`, the
+  Lightning 4-step LoRA, and the `qwen-image-edit-2511-multiple-angles-lora`
+  (see `examples/atlas_qwen_image_edit_2511_multiangle_camera.json`). The
+  branch stays paused (ExecutionBlocker) until 📐 Extract Angle runs, so the
+  rest of the workflow works without these models installed.
+
 ## ComfyUI Adapter
 
 The `atlas_camera.comfy` package is scaffolded, but this first pass does not yet

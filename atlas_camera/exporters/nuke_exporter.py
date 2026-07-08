@@ -393,6 +393,181 @@ ScanlineRender {{
     return destination
 
 
+# Shared with maya_exporter.write_maya_layers_scene — one collection walk
+# materializes every ProjectionSource identically for both DCCs.
+from atlas_camera.exporters._layers import (  # noqa: E402
+    collect_projection_layers,
+    decode_plate_b64 as _decode_plate_b64,
+    layer_focal_mm as _layer_focal_mm,
+    mesh_from_primitive as _mesh_from_primitive,
+)
+
+
+def write_nuke_layers_script(
+    solve: AtlasSolve,
+    output_dir: str | Path,
+    *,
+    name: str = "nuke_layers",
+) -> dict:
+    """Export EVERY projection layer on a solve — each ``ProjectionSource``
+    (sky dome, clean-plate bands, multi-angle patches) — as one native ``.nk``
+    scene: per-layer Read (plate) + Camera2 (that layer's own camera) +
+    Project3D2 + ReadGeo2 (that layer's own mesh, written as OBJ alongside),
+    all merged through a single ``Scene`` node into one ``ScanlineRender``
+    whose render camera is the PRIMARY solved camera.
+
+    This is the DCC handoff for the ComfyUI viewport's layered 📽 Project:
+    the same stacked-projections mental model (each plate stays anchored to
+    the camera that "photographed" it), except layer ordering is resolved by
+    Nuke's real z-buffer rather than the viewport's priority/facing-ratio
+    masks — true depth wins, which for spatially-exclusive layers (bands, sky
+    at radius_m) matches the viewport's result.
+
+    Assets are written next to the ``.nk``: ``{layer}_plate.png`` decoded
+    from each source's ``image_b64`` preview — unless the source carries a
+    registered non-proxy ``plate_ref``, in which case the Read points at the
+    REAL plate path (float/EXR-safe, same display-proxy-vs-real-plate split
+    every other exporter here honors) — and ``{layer}_mesh.obj`` rebuilt from
+    the mesh primitive each layer already carries. Sources without a mesh or
+    plate are skipped with a note in the returned summary.
+
+    The ``.nk`` text uses the exact push/pop layout the single-projection
+    writer (`write_nuke_native_script`) empirically verified in real Nuke:
+    explicit pushes feed each Project3D2 (img=0, cam=1), each ReadGeo2
+    consumes its Project3D2 implicitly from the stack top, and the render
+    camera -> ScanlineRender(cam) link — the one connection the text stack
+    model can't express reliably — is completed by Root's ``onScriptLoad``
+    callback, keeping it a single self-contained file.
+    """
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    nk_path = out / f"{name}.nk"
+
+    from atlas_camera.exporters.relief_mesh_exporter import export_relief_mesh
+
+    intr = solve.camera.intrinsics
+    image_w = intr.image_width or 1920
+    image_h = intr.image_height or 1080
+    fmt_name = f"atlas_{image_w}x{image_h}"
+
+    layers, skipped = collect_projection_layers(solve, out)
+
+    if not layers:
+        raise ValueError(
+            "No exportable projection layers on this solve — add layers with "
+            "AtlasSkyDomeLayer / AtlasCleanPlateLayer / AtlasAddPatchView first "
+            f"(skipped: {skipped or 'none'})."
+        )
+
+    # --- assemble the .nk text -------------------------------------------
+    def _camera_block(cam, node_name, xpos, ypos):
+        c_intr = cam.intrinsics
+        c_extr = cam.extrinsics
+        focal = _layer_focal_mm(c_intr)
+        sensor_w = c_intr.sensor_width_mm or 36.0
+        sensor_h = derive_sensor_height_mm(c_intr)
+        w = c_intr.image_width or image_w
+        h = c_intr.image_height or image_h
+        ccx = c_intr.cx_px if c_intr.cx_px is not None else w / 2.0
+        ccy = c_intr.cy_px if c_intr.cy_px is not None else h / 2.0
+        win_tx = (ccx - w / 2.0) / w
+        win_ty = -((ccy - h / 2.0) / h)
+        tx, ty, tz = c_extr.camera_position
+        matrix_block = "\n".join(
+            "     {" + " ".join(repr(float(v)) for v in row) + "}"
+            for row in c_extr.camera_world_matrix
+        )
+        return f'''Camera2 {{
+ inputs 0
+ translate {{{tx!r} {ty!r} {tz!r}}}
+ useMatrix true
+ matrix {{
+{matrix_block}
+ }}
+ focal {focal!r}
+ haperture {sensor_w!r}
+ vaperture {sensor_h!r}
+ win_translate {{{win_tx!r} {win_ty!r}}}
+ name {node_name}
+ xpos {xpos}
+ ypos {ypos}
+}}'''
+
+    blocks = []
+    blocks.append(f'''Root {{
+ format "{image_w} {image_h} 0 0 {image_w} {image_h} 1 {fmt_name}"
+ onScriptLoad "nuke.toNode('ScanlineRender1').setInput(2, nuke.toNode('RenderCam1'))"
+ name "{nk_path.name}"
+}}''')
+    blocks.append(f'''StickyNote {{
+ inputs 0
+ name StickyNote1
+ label "Atlas layered camera projection\\n{len(layers)} layer(s): {', '.join(l['name'] for l in layers)}\\nRender camera = primary solve; layer order resolved by real z-depth."
+ xpos -220
+ ypos -120
+}}''')
+    # Render camera (primary pose) — consumed ONLY via onScriptLoad, never
+    # pushed, so the stack resolver can't mis-place it.
+    blocks.append(_camera_block(solve.camera, "RenderCam1", 600, -120))
+
+    for i, layer in enumerate(layers, start=1):
+        suffix = Path(layer["plate_path"]).suffix.lower().lstrip(".") or "png"
+        colorspace_line = f' colorspace {layer["colorspace"]}\n' if layer["colorspace"] else ""
+        x = (i - 1) * 260
+        blocks.append(f'''Read {{
+ inputs 0
+ file_type {suffix}
+ file "{layer['plate_path']}"
+ first 1
+ last 1
+{colorspace_line} name Read_{layer['name']}
+ xpos {x}
+ ypos 0
+}}
+set N_read{i} [stack 0]''')
+        blocks.append(_camera_block(layer["camera"], f"ProjCam_{layer['name']}", x + 120, 0))
+        blocks.append(f'''set N_cam{i} [stack 0]
+push $N_cam{i}
+push $N_read{i}
+Project3D2 {{
+ inputs 2
+ name Project3D_{layer['name']}
+ xpos {x}
+ ypos 100
+}}
+ReadGeo2 {{
+ file "{layer['obj_path']}"
+ name Geo_{layer['name']}
+ xpos {x}
+ ypos 200
+}}
+set N_geo{i} [stack 0]''')
+
+    pushes = "\n".join(f"push $N_geo{i}" for i in range(1, len(layers) + 1))
+    blocks.append(f'''{pushes}
+Scene {{
+ inputs {len(layers)}
+ name Scene1
+ xpos 0
+ ypos 320
+}}
+set N_scene [stack 0]
+push $N_scene
+ScanlineRender {{
+ inputs 3
+ name ScanlineRender1
+ xpos 0
+ ypos 420
+}}''')
+
+    nk_path.write_text("\n".join(blocks) + "\n", encoding="utf-8")
+    return {
+        "nk_path": str(nk_path),
+        "layers": [l["name"] for l in layers],
+        "skipped": skipped,
+    }
+
+
 class NukeExporter:
     def write_scene(
         self,

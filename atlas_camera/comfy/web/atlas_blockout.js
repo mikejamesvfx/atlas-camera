@@ -565,6 +565,8 @@ const PROJECTION_VERTEX_SHADER = `
 // there is no normal-lighting term here to "correct", only to bias by eye.
 const PROJECTION_FRAGMENT_SHADER = `
   uniform sampler2D uTexture;
+  uniform sampler2D uMatte;
+  uniform float uHasMatte;
   uniform vec2 uImageSize;
   uniform float uOpacity;
   uniform vec3 uCamPos;
@@ -602,6 +604,11 @@ const PROJECTION_FRAGMENT_SHADER = `
     if (vCamZ >= 0.0) discard;                    // behind the projector camera
     vec2 uv = vImagePx / uImageSize;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+    // Per-pixel edge matte (ProjectionSource.mask_b64) — the classic DMP move:
+    // geometry silhouettes tear at grid-quad resolution (blocky staircases),
+    // so the full-resolution matte cuts the TRUE edge instead. Sampled at the
+    // same projected pixel as the photo itself, so it needs no separate UVs.
+    if (uHasMatte > 0.5 && texture2D(uMatte, uv).r < 0.5) discard;
     vec3 toCam = normalize(uCamPos - vWorldPos);
     float facing = abs(dot(normalize(vWorldNormal), toCam));
     if (facing < uFacingThreshold) discard;       // too grazing for this projector
@@ -666,6 +673,10 @@ function makeProjectionMaterial(data, texture, opts) {
       uImageSize: { value: new THREE.Vector2(data.image_width || 1, data.image_height || 1) },
       uOpacity: { value: 1.0 },
       uCamPos: { value: new THREE.Vector3(camPos[0], camPos[1], camPos[2]) },
+      // Optional per-pixel edge matte (see PROJECTION_FRAGMENT_SHADER). The
+      // uniform-gated branch means a null sampler is never actually read.
+      uMatte: { value: options.matteTexture || null },
+      uHasMatte: { value: options.matteTexture ? 1.0 : 0.0 },
       // Primary: -1 (never facing-discards). Patches: positive (fill head-on only).
       uFacingThreshold: { value: options.facingThreshold ?? -1.0 },
       // Movable point lights (💡) — kept at intensity 0 here; synced live each
@@ -703,6 +714,30 @@ function loadTextureFromB64(b64, cb) {
     tex.flipY = false;                // shader UV origin is top-left
     tex.colorSpace = THREE.SRGBColorSpace;
     cb(tex);
+  }, undefined, (err) => {
+    // A layer whose plate never loads stays grey in 📽 Project — make that
+    // diagnosable instead of silent.
+    console.warn("[AtlasBlockout] projection texture failed to load (layer stays grey):", err);
+  });
+}
+
+// Edge mattes are DATA, not color: tagging them SRGBColorSpace would make the
+// GPU sRGB-decode on sample (a gray 128 would read ~0.216 linear, silently
+// shifting the 0.5 threshold). NoColorSpace keeps stored bytes = sampled
+// values; the default linear mag filter gives a soft half-pixel edge.
+// ALWAYS calls cb — with null on missing/failed matte — so a broken matte
+// degrades to an unmatted projection instead of leaving the layer grey
+// forever (the projection material only builds inside this callback).
+function loadMatteFromB64(b64, cb) {
+  if (!b64) { cb(null); return; }
+  const loader = new THREE.TextureLoader();
+  loader.load(b64, (tex) => {
+    tex.flipY = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    cb(tex);
+  }, undefined, (err) => {
+    console.warn("[AtlasBlockout] edge matte failed to load — projecting unmatted:", err);
+    cb(null);
   });
 }
 
@@ -813,7 +848,11 @@ function buildPatchSources(scene, data, onSourceReady) {
       if (m.material?.isMeshStandardMaterial) m.material.dispose();
       if (m.userData?._prevMaterial?.isMeshStandardMaterial) m.userData._prevMaterial.dispose();
       const pm = m.userData?._projMaterial;
-      if (pm) { pm.uniforms?.uTexture?.value?.dispose?.(); pm.dispose?.(); }
+      if (pm) {
+        pm.uniforms?.uTexture?.value?.dispose?.();
+        pm.uniforms?.uMatte?.value?.dispose?.();
+        pm.dispose?.();
+      }
     });
     scene.remove(g);
   }
@@ -854,16 +893,24 @@ function buildPatchSources(scene, data, onSourceReady) {
       // multi-angle patches keep the grazing-discard behavior so they only
       // fill surfaces they see reasonably head-on.
       const facingThreshold = src.projection_mode === "clean_plate" ? -1 : 0.2;
-      const patchMat = makeProjectionMaterial(src, tex, { facingThreshold, priority: src.priority });
-      for (const m of meshes) {
-        const prev = m.userData._projMaterial;
-        if (prev && prev !== patchMat) {
-          prev.uniforms?.uTexture?.value?.dispose?.();
-          prev.dispose?.();
+      const build = (matteTexture) => {
+        const patchMat = makeProjectionMaterial(src, tex,
+          { facingThreshold, priority: src.priority, matteTexture });
+        for (const m of meshes) {
+          const prev = m.userData._projMaterial;
+          if (prev && prev !== patchMat) {
+            prev.uniforms?.uTexture?.value?.dispose?.();
+            prev.uniforms?.uMatte?.value?.dispose?.();
+            prev.dispose?.();
+          }
+          m.userData._projMaterial = patchMat;
         }
-        m.userData._projMaterial = patchMat;
-      }
-      if (typeof onSourceReady === "function") onSourceReady();
+        if (typeof onSourceReady === "function") onSourceReady();
+      };
+      // Per-pixel edge matte (ProjectionSource.mask_b64): geometry stays
+      // coarse; the matte cuts the true silhouette in the shader.
+      // loadMatteFromB64 always calls back (null on missing/failed matte).
+      loadMatteFromB64(src.mask_b64, build);
     });
   });
 }
@@ -1422,6 +1469,136 @@ function buildNodeUI(node, containerEl) {
   }
   backdropBtn.onclick = () => setBackdropVisible(!backdropVisible);
   toolbar.appendChild(backdropBtn);
+
+  // ---------------------------------------------------------------------------
+  // 📐 Extract Angle — orbit/fly to the view you want a patch generated at
+  // (e.g. the last frame of an intended camera move, MPTK style), click, and
+  // the orbit delta from the RECOVERED camera is measured about the payload's
+  // `orbit_pivot` (camera_math.ground_lookat_pivot — the SAME pivot
+  // orbit_camera uses backend-side, NOT this viewport's own geometry-centroid
+  // orbit pivot, so the result round-trips exactly through
+  // AtlasAddPatchView/AtlasOcclusionMask's camera construction), snapped to
+  // the Qwen Multiple-Angles LoRA's nearest named views, written into
+  // client_data.patch_angle, and re-queued so the node's four STRING outputs
+  // (patch_azimuth_view/patch_elevation_view/patch_distance/patch_prompt) go
+  // live. Assumes the source photo is "front view"/"eye-level shot" (set
+  // source_* downstream accordingly) and measures in the true world frame —
+  // leave flip_azimuth OFF downstream for extracted angles.
+  //
+  // ATLAS_NAMED_VIEWS mirrors nodes.py's _AZIMUTH_VIEWS/_ELEVATION_VIEWS/
+  // _DISTANCE_VIEWS — same accepted hand-sync duplication as
+  // SCENE_TYPE_PRESETS in atlas_derive_geometry.js and catmullRom3JS here;
+  // keep all three tables in sync with nodes.py by hand.
+  // ---------------------------------------------------------------------------
+  const ATLAS_AZIMUTH_VIEWS = [
+    ["front view", 0], ["front-right quarter view", 45], ["right side view", 90],
+    ["back-right quarter view", 135], ["back view", 180], ["back-left quarter view", 225],
+    ["left side view", 270], ["front-left quarter view", 315],
+  ];
+  const ATLAS_ELEVATION_VIEWS = [
+    ["low-angle shot", -30], ["eye-level shot", 0], ["elevated shot", 30], ["high-angle shot", 60],
+  ];
+  const ATLAS_DISTANCE_VIEWS = [["close-up", 0.6], ["medium shot", 1.0], ["wide shot", 1.8]];
+
+  const angleHud = document.createElement("div");
+  angleHud.style.cssText = "position:absolute;top:6px;right:6px;padding:6px 8px;background:rgba(10,10,14,0.82);" +
+    "color:#dec;font:10px/1.5 monospace;border-radius:4px;pointer-events:auto;white-space:pre;display:none;z-index:9;";
+  canvasWrap.appendChild(angleHud);
+
+  function extractPatchAngle() {
+    if (!recoveredData?.camera_position) return null;
+    const pv = recoveredData.orbit_pivot;
+    if (!pv) return { error: "no orbit_pivot in payload — re-queue the graph once to refresh" };
+    const pivot = new THREE.Vector3(pv[0], pv[1], pv[2]);
+    const p0 = recoveredData.camera_position;
+    const o0 = new THREE.Vector3(p0[0], p0[1], p0[2]).sub(pivot);
+    const o1 = camera.position.clone().sub(pivot);
+    const r0 = Math.max(o0.length(), 1e-9);
+    const r1 = Math.max(o1.length(), 1e-9);
+    // Mirrors camera_math.orbit_camera exactly: azimuth = atan2(x, z) about
+    // world +Y, elevation = asin(y / r), radius scaled by distance_scale.
+    const az0 = Math.atan2(o0.x, o0.z), az1 = Math.atan2(o1.x, o1.z);
+    const el0 = Math.asin(Math.max(-1, Math.min(1, o0.y / r0)));
+    const el1 = Math.asin(Math.max(-1, Math.min(1, o1.y / r1)));
+    const wrapDeg = (d) => ((d + 180) % 360 + 360) % 360 - 180;
+    const dAz = wrapDeg((az1 - az0) * 180 / Math.PI);
+    const dEl = (el1 - el0) * 180 / Math.PI;
+    const distScale = r1 / r0;
+
+    // Snap to the LoRA's absolute named views, assuming source = front view /
+    // eye-level shot (patch = source + delta).
+    const patchAzAbs = ((dAz % 360) + 360) % 360;
+    let azName = ATLAS_AZIMUTH_VIEWS[0], azErr = 1e9;
+    for (const [name, deg] of ATLAS_AZIMUTH_VIEWS) {
+      const err = Math.abs(wrapDeg(patchAzAbs - deg));
+      if (err < azErr) { azErr = err; azName = [name, deg]; }
+    }
+    let elName = ATLAS_ELEVATION_VIEWS[1], elErr = 1e9;
+    for (const [name, deg] of ATLAS_ELEVATION_VIEWS) {
+      const err = Math.abs(dEl - deg);
+      if (err < elErr) { elErr = err; elName = [name, deg]; }
+    }
+    let distName = ATLAS_DISTANCE_VIEWS[1], distErr = 1e9;
+    for (const [name, s] of ATLAS_DISTANCE_VIEWS) {
+      const err = Math.abs(Math.log(distScale / s)); // nearest in log space
+      if (err < distErr) { distErr = err; distName = [name, s]; }
+    }
+    const prompt = `<sks> ${azName[0]} ${elName[0]} ${distName[0]}`;
+    return {
+      dAz, dEl, distScale,
+      azimuth_view: azName[0], azSnapDeg: azName[1], azErr,
+      elevation_view: elName[0], elSnapDeg: elName[1], elErr,
+      distance_view: distName[0], distSnapScale: distName[1],
+      prompt,
+    };
+  }
+
+  function persistPatchAngleToClientData(r) {
+    const widget = node.widgets?.find((w) => w.name === "client_data");
+    if (!widget) return;
+    let existing = {};
+    try { existing = widget.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
+    // Merge (like camera_path / render passes) so the buttons never clobber
+    // each other's results.
+    existing.patch_angle = {
+      azimuth_view: r.azimuth_view,
+      elevation_view: r.elevation_view,
+      distance_view: r.distance_view,
+      prompt: r.prompt,
+      raw: { d_azimuth_deg: r.dAz, d_elevation_deg: r.dEl, distance_scale: r.distScale },
+      // Identity of the solve+image this was extracted FROM — the backend
+      // re-arms the patch-branch pause when it no longer matches (e.g. the
+      // artist swapped the input photo), instead of running a stale angle.
+      fingerprint: recoveredData?.solve_fingerprint || "",
+    };
+    widget.value = JSON.stringify(existing);
+    widget.callback?.(widget.value);
+  }
+
+  const angleBtn = document.createElement("button");
+  angleBtn.textContent = "📐 Extract Angle";
+  angleBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  angleBtn.title = "Orbit/fly to the view you want a patch at, then click: measures the orbit " +
+    "delta from the recovered camera, snaps it to the Qwen Multiple-Angles named views, and " +
+    "re-queues so the patch_* STRING outputs go live.";
+  angleBtn.onclick = () => {
+    const r = extractPatchAngle();
+    if (!r) { angleHud.textContent = "(no solve yet — queue the graph first)"; angleHud.style.display = "block"; return; }
+    if (r.error) { angleHud.textContent = r.error; angleHud.style.display = "block"; return; }
+    const f1 = (v) => (v >= 0 ? "+" : "") + v.toFixed(1);
+    angleHud.textContent =
+      `📐 Patch angle (source = front view)\n` +
+      `Δaz  ${f1(r.dAz)}°  → ${r.azimuth_view} (${r.azErr.toFixed(0)}° off)\n` +
+      `Δel  ${f1(r.dEl)}°  → ${r.elevation_view} (${r.elErr.toFixed(0)}° off)\n` +
+      `dist ×${r.distScale.toFixed(2)} → ${r.distance_view}\n` +
+      `${r.prompt}\n` +
+      `(re-queued — patch_* outputs are live)      [✕]`;
+    angleHud.style.display = "block";
+    angleHud.onclick = (e) => { angleHud.style.display = "none"; e.stopPropagation(); };
+    persistPatchAngleToClientData(r);
+    app.queuePrompt(0, 1);
+  };
+  toolbar.appendChild(angleBtn);
 
   // ---------------------------------------------------------------------------
   // 🎥 Camera Path — author a keyframed camera move (fly nav, unclamped) to
@@ -2293,6 +2470,28 @@ function buildNodeUI(node, containerEl) {
     controls.setTarget(groundPointInView(camera, pivotMax)); // pivot on the looked-at ground point
     controls.syncFromCamera();                     // init orbit state from recovered pose
     recoveredData = data;
+    // Stale-extraction cleanup: if the persisted patch_angle was extracted
+    // from a DIFFERENT solve/image than the one that just executed, clear it
+    // from the widget (the backend already refuses it — this keeps the UI
+    // honest) and tell the artist to re-extract.
+    try {
+      const widget = node.widgets?.find((w) => w.name === "client_data");
+      if (widget?.value) {
+        const existing = JSON.parse(widget.value);
+        const pa = existing.patch_angle;
+        if (pa && data.solve_fingerprint && pa.fingerprint !== data.solve_fingerprint) {
+          delete existing.patch_angle;
+          widget.value = JSON.stringify(existing);
+          widget.callback?.(widget.value);
+          angleHud.textContent =
+            "📐 Patch angle cleared — the source image/solve changed.\n" +
+            "The patch branch is paused again; orbit to your view and\n" +
+            "click 📐 Extract Angle to re-arm it.      [✕]";
+          angleHud.style.display = "block";
+          angleHud.onclick = (e) => { angleHud.style.display = "none"; e.stopPropagation(); };
+        }
+      }
+    } catch (_) { /* malformed client_data — leave it to the backend guard */ }
     applyOutputProfilePreview(data.output_profile || atlasOutputProfileFromWidgets(getLinkedControlsNode(node) || {}));
     updateLinkedOutputDesk(data);
   }

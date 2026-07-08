@@ -156,3 +156,79 @@ def test_validity_mask_angle_threshold_gates_grazing_surfaces():
         primary_view_matrix=view, angle_threshold_deg=60.0, **_PRIMARY_KWARGS,
     )
     assert mask_60[0, 0]
+
+
+# --- depth-shadow (primary_depth_map, MPTK camera-as-light) -------------------
+# The point at (0,0,0) with the eye at (0,0,5) sits at primary depth 5.0 and
+# projects to the exact principal point (cx=50, cy=40).
+
+def _shadow_args():
+    view = _primary_camera()
+    pts, valid_depth, normals, valid_normal = _single_point((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))
+    return view, pts, valid_depth, normals, valid_normal
+
+
+def test_depth_shadow_flags_point_behind_nearer_geometry():
+    view, pts, vd, nm, vn = _shadow_args()
+    shadow_map = np.full((80, 100), 3.0)  # wall at 3m hides the 5m point
+    mask = primary_camera_validity_mask(
+        pts, vd, nm, vn, primary_view_matrix=view, angle_threshold_deg=90.0,
+        primary_depth_map=shadow_map, **_PRIMARY_KWARGS)
+    assert mask[0, 0]
+
+
+def test_depth_shadow_passes_point_at_stored_depth():
+    view, pts, vd, nm, vn = _shadow_args()
+    shadow_map = np.full((80, 100), 5.0)  # the point IS the frontmost surface
+    mask = primary_camera_validity_mask(
+        pts, vd, nm, vn, primary_view_matrix=view, angle_threshold_deg=90.0,
+        primary_depth_map=shadow_map, **_PRIMARY_KWARGS)
+    assert not mask[0, 0]
+
+
+def test_depth_shadow_bias_tolerates_small_depth_mismatch():
+    view, pts, vd, nm, vn = _shadow_args()
+    # Stored depth 4.9 vs point depth 5.0: within the 5% default bias
+    # (5.0 <= 4.9 * 1.05), so NOT shadowed.
+    shadow_map = np.full((80, 100), 4.9)
+    mask = primary_camera_validity_mask(
+        pts, vd, nm, vn, primary_view_matrix=view, angle_threshold_deg=90.0,
+        primary_depth_map=shadow_map, **_PRIMARY_KWARGS)
+    assert not mask[0, 0]
+    # A tighter bias flags it.
+    mask_tight = primary_camera_validity_mask(
+        pts, vd, nm, vn, primary_view_matrix=view, angle_threshold_deg=90.0,
+        primary_depth_map=shadow_map, depth_bias_rel=0.01, **_PRIMARY_KWARGS)
+    assert mask_tight[0, 0]
+
+
+def test_depth_shadow_invalid_sample_counts_as_missing():
+    view, pts, vd, nm, vn = _shadow_args()
+    shadow_map = np.zeros((80, 100))  # no valid primary data anywhere (e.g. sky)
+    mask = primary_camera_validity_mask(
+        pts, vd, nm, vn, primary_view_matrix=view, angle_threshold_deg=90.0,
+        primary_depth_map=shadow_map, **_PRIMARY_KWARGS)
+    assert mask[0, 0]
+
+
+def test_depth_shadow_map_resolution_is_rescaled():
+    view, pts, vd, nm, vn = _shadow_args()
+    # Quarter-resolution shadow map (20x25 for a 100x80 frame): the point's
+    # pixel (50, 40) rescales to (12.5, 10) -> nearest (12, 10).
+    shadow_map = np.full((20, 25), 9.0)  # far everywhere -> not shadowed
+    shadow_map[10, 12] = 3.0             # nearer exactly at the sampled cell
+    mask = primary_camera_validity_mask(
+        pts, vd, nm, vn, primary_view_matrix=view, angle_threshold_deg=90.0,
+        primary_depth_map=shadow_map, **_PRIMARY_KWARGS)
+    assert mask[0, 0]
+
+
+def test_depth_shadow_none_map_matches_simple_mode():
+    view, pts, vd, nm, vn = _shadow_args()
+    a = primary_camera_validity_mask(
+        pts, vd, nm, vn, primary_view_matrix=view, angle_threshold_deg=90.0,
+        **_PRIMARY_KWARGS)
+    b = primary_camera_validity_mask(
+        pts, vd, nm, vn, primary_view_matrix=view, angle_threshold_deg=90.0,
+        primary_depth_map=None, **_PRIMARY_KWARGS)
+    np.testing.assert_array_equal(a, b)

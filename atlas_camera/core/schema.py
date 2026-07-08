@@ -389,6 +389,13 @@ class ProjectionSource:
     distance_scale: float = 1.0
     priority: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Optional full-resolution edge matte (data-URI PNG, same camera frame as
+    # image_b64) — the classic DMP move: geometry stays coarse (silhouettes
+    # tear at grid-quad resolution), and this per-PIXEL matte cuts the exact
+    # edge instead. The viewport's projection shader discards fragments whose
+    # projected pixel falls outside it; the Nuke layers export writes it into
+    # the plate's alpha channel.
+    mask_b64: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProjectionSource":
@@ -406,6 +413,7 @@ class ProjectionSource:
             distance_scale=float(data.get("distance_scale", 1.0)),
             priority=float(data.get("priority", 0.0)),
             metadata=dict(data.get("metadata", {})),
+            mask_b64=data.get("mask_b64"),
         )
 
 
