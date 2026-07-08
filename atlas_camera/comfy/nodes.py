@@ -4166,16 +4166,33 @@ class AtlasCleanPlateLayer:
                                "tear edge. Try 1.0–2.0 with edge_extend_px: the smeared colors "
                                "land on the receding skirt and the extend matte marks them for "
                                "regrain."}),
+                "frame_outpaint_px": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8,
+                    "tooltip": "Outpaint THIS layer past the FRAME edges by this many pixels — "
+                               "the same per-source widened-camera trick the sky dome uses: the "
+                               "plate canvas is padded edge-replicated, this source gets its OWN "
+                               "camera with shifted cx/cy and grown W/H (the primary solve and "
+                               "every other layer are untouched), and the band mesh extends past "
+                               "the original frustum to carry it. Closes the frame-edge reveal "
+                               "that 🧭 Safe Zone measurements show is the binding constraint on "
+                               "wide scenes (ground layers used to end exactly at the photo "
+                               "boundary). The ring is INVENTED pixels: it lands in extend_mask / "
+                               "{layer}_extend_matte.png for downstream regrain, and turns on "
+                               "embed_matte implicitly. 0 = off."}),
             },
         }
 
     def add_layer(self, solve, depth, plate_image, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5,
                   name="layer", priority=0.0, plate_ref=None, relief_grid=384, depth_edge_rel=1.5,
                   exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None,
-                  edge_extend_px=0, skirt_bevel=0.0):
+                  edge_extend_px=0, skirt_bevel=0.0, frame_outpaint_px=0):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
-        from atlas_camera.core.schema import AtlasPlateRef, ProjectionSource
+        from atlas_camera.core.schema import (
+            AtlasIntrinsics,
+            AtlasPlateRef,
+            LatentCamera,
+            ProjectionSource,
+        )
 
         torch = _require_torch()
         np = _require_numpy()
@@ -4193,22 +4210,62 @@ class AtlasCleanPlateLayer:
         scale, horizon_y = setup.scale, setup.horizon_y
         near, far = _resolve_depth_band(setup.metric, setup.valid, near_m, far_m, near_pct, far_pct)
 
+        # Frame outpaint (the sky dome's proven widened-camera trick, applied
+        # per band layer): pad EVERYTHING edge-replicated into one padded
+        # pixel space — depth (so the mesh extends past the original frustum),
+        # the band arrays, the plate, and this source's OWN intrinsics
+        # (cx/cy + P, W/H + 2P; pose and every other layer untouched). Closes
+        # the frame-edge reveal 🧭 Safe Zone measures as the binding
+        # constraint on wide scenes. The ring is invented → matted + declared.
+        pad = max(0, int(frame_outpaint_px))
+        if pad:
+            embed_matte = True
         fill = (setup.valid & (setup.metric < near)) if fill_occluded else None
+        depth_m, metric_m, valid_m = depth_map, setup.metric, setup.valid
+        exclude_m, fill_m = setup.exclude_mask, fill
+        cx_m, cy_m, horizon_m = cx, cy, horizon_y
+        Hp, Wp = setup.height, setup.width
+        if pad:
+            depth_m = np.pad(depth_map, pad, mode="edge")
+            metric_m = np.pad(setup.metric, pad, mode="edge")
+            valid_m = np.pad(setup.valid, pad, mode="edge")
+            if exclude_m is not None:
+                exclude_m = np.pad(exclude_m, pad, mode="edge")
+            if fill_m is not None:
+                fill_m = np.pad(fill_m, pad, mode="edge")
+            cx_m, cy_m = cx + pad, cy + pad
+            if horizon_m is not None:
+                horizon_m = float(horizon_m) + pad
+            Hp, Wp = Hp + 2 * pad, Wp + 2 * pad
+
         mesh = build_relief_mesh(
-            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            depth_m, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx_m, cy=cy_m,
             grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
-            scale=scale, horizon_y=horizon_y,
+            scale=scale, horizon_y=horizon_m,
             band_min_m=near, band_max_m=(None if far == float("inf") else far),
-            exclude_mask=setup.exclude_mask, fill_mask=fill,
-            apply_sky_heuristic=setup.exclude_mask is None,
+            exclude_mask=exclude_m, fill_mask=fill_m,
+            apply_sky_heuristic=exclude_m is None,
             overhang_bevel_rel=float(skirt_bevel),
             edge_overhang_cells=(
                 (2 + int(np.ceil(int(edge_extend_px) /
-                                 max(1, int(round(max(setup.height, setup.width)
+                                 max(1, int(round(max(Hp, Wp)
                                                   / max(int(relief_grid), 2))))))
                  if edge_extend_px and int(edge_extend_px) > 0 else 2)
                 if embed_matte else 0))
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
+
+        # This source's OWN camera: same pose, widened intrinsics when
+        # outpainted (per-ProjectionSource cameras make this free — exactly
+        # the sky dome's pattern).
+        src_camera = solve.camera
+        if pad:
+            src_camera = LatentCamera(
+                intrinsics=AtlasIntrinsics(
+                    image_width=Wp, image_height=Hp,
+                    focal_length_mm=solve.camera.intrinsics.focal_length_mm,
+                    sensor_width_mm=solve.camera.intrinsics.sensor_width_mm,
+                    fx_px=fx, fy_px=fy, cx_px=cx_m, cy_px=cy_m),
+                extrinsics=extr)
 
         # Per-layer edge extend (same deterministic trick as the sky dome's):
         # computed on the auto/explicit matte below, so the plate encode is
@@ -4218,15 +4275,28 @@ class AtlasCleanPlateLayer:
 
         image_b64 = ""
         try:
-            pil = _image_tensor_to_pil(plate_image)
+            if pad:
+                plate_np0 = np.asarray(
+                    _image_tensor_to_pil(plate_image).convert("RGB"), dtype=np.float32)
+                if plate_np0.shape[:2] != (setup.height, setup.width):
+                    PILImage = _require_pil()
+                    plate_np0 = np.asarray(
+                        PILImage.fromarray(plate_np0.astype("uint8")).resize(
+                            (setup.width, setup.height)), dtype=np.float32)
+                plate_padded = np.pad(plate_np0, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+                PILImage = _require_pil()
+                pil = PILImage.fromarray(plate_padded.clip(0, 255).astype("uint8"), mode="RGB")
+            else:
+                plate_padded = None
+                pil = _image_tensor_to_pil(plate_image)
             buf = io.BytesIO()
             pil.save(buf, format="JPEG", quality=88)
             image_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
         except Exception:
-            pass
+            plate_padded = None
 
         source = ProjectionSource(
-            camera=solve.camera,  # UNCHANGED — no orbit; same-camera clean plate
+            camera=src_camera,  # primary POSE unchanged; intrinsics widened when outpainted
             name=name,
             image_b64=image_b64,
             plate_ref=plate_ref if isinstance(plate_ref, AtlasPlateRef) else AtlasPlateRef.from_dict(plate_ref),
@@ -4247,29 +4317,41 @@ class AtlasCleanPlateLayer:
 
         # Optional per-pixel edge matte: geometry tears at grid-quad
         # resolution; the matte cuts the true band silhouette in the shader.
+        # Everything below works in the (possibly padded) plate pixel space.
         if embed_matte:
             if layer_matte is not None:
                 matte = _resolve_exclude_mask(layer_matte, setup.height, setup.width)
+                if pad:
+                    matte = np.pad(matte, pad, mode="edge")
             else:
-                matte = setup.valid & (setup.metric <= far)
+                matte = valid_m & (metric_m <= far)
                 if not fill_occluded:
                     # Without disocclusion fill the occluder footprint has no
                     # geometry, so the matte matches the band exactly; with it,
                     # the filled footprint must stay INSIDE the matte (the
                     # inpainted plate content lives there).
-                    matte = matte & (setup.metric >= near)
+                    matte = matte & (metric_m >= near)
+            # Real (photographed) pixels: the interior only — the outpaint
+            # ring is invented even where the matte covers it.
+            if pad:
+                original_matte = np.zeros_like(matte)
+                original_matte[pad:-pad, pad:-pad] = matte[pad:-pad, pad:-pad]
+                source.metadata["frame_outpaint_px"] = pad
+            else:
+                original_matte = matte
             if edge_extend_px and int(edge_extend_px) > 0:
-                plate_np = np.asarray(_image_tensor_to_pil(plate_image).convert("RGB"),
-                                      dtype=np.float32)
-                if plate_np.shape[:2] != matte.shape:
-                    PILImage = _require_pil()
-                    plate_np = np.asarray(
-                        PILImage.fromarray(plate_np.astype("uint8")).resize(
-                            (matte.shape[1], matte.shape[0])), dtype=np.float32)
-                extended_plate, dilated = _extend_edge_colors(
+                if plate_padded is not None:
+                    plate_np = plate_padded
+                else:
+                    plate_np = np.asarray(_image_tensor_to_pil(plate_image).convert("RGB"),
+                                          dtype=np.float32)
+                    if plate_np.shape[:2] != matte.shape:
+                        PILImage = _require_pil()
+                        plate_np = np.asarray(
+                            PILImage.fromarray(plate_np.astype("uint8")).resize(
+                                (matte.shape[1], matte.shape[0])), dtype=np.float32)
+                extended_plate, matte = _extend_edge_colors(
                     plate_np, matte, int(edge_extend_px))
-                extend_region = dilated & ~matte
-                matte = dilated
                 source.metadata["edge_extend_px"] = int(edge_extend_px)
                 # Re-encode the plate WITH the extension baked in.
                 try:
@@ -4282,16 +4364,27 @@ class AtlasCleanPlateLayer:
                                         + base64.b64encode(buf.getvalue()).decode("ascii"))
                 except Exception:
                     pass
+            # Invented pixels = smears + the outpaint ring (whatever the final
+            # matte exposes beyond real photographed content).
+            extend_region = matte & ~original_matte
+            if extend_region.any():
                 source.extend_mask_b64 = _mask_to_b64_png(extend_region) or None
+            else:
+                extend_region = None
             source.mask_b64 = _mask_to_b64_png(matte) or None
 
         out = copy.deepcopy(solve)
         out.projection_sources.append(source)
-        hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
+        # hole_mask output stays in the ORIGINAL plate frame (crop the pad) so
+        # downstream previews line up with the source photo; extend_mask stays
+        # in the padded PLATE frame (it describes the exported plate's pixels)
+        # — both matching the sky dome's conventions.
+        hole = mesh.hole_mask[pad:-pad, pad:-pad] if pad else mesh.hole_mask
+        hole_t = torch.from_numpy(hole.astype(np.float32)).unsqueeze(0)
         if extend_region is not None:
             ext_t = torch.from_numpy(extend_region.astype(np.float32)).unsqueeze(0)
         else:
-            ext_t = torch.zeros(1, setup.height, setup.width, dtype=torch.float32)
+            ext_t = torch.zeros(1, Hp, Wp, dtype=torch.float32)
         return (out, hole_t, ext_t)
 
 

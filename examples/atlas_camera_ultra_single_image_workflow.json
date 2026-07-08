@@ -24,7 +24,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "ATLAS ULTRA — single-image solve, maximum quality (no exports)\n\nThe shipping-MVP method at full quality: solve → shared depth → SAM3 sky → sky dome +\ntwo band clean-plate layers, all with the complete edge doctrine ON:\n  · relief_grid 1024 (ultra) + depth_edge_rel 1.5 on both band meshes\n  · edge_extend_px: plate colors smeared past every matte edge (sky 96 / bg 64 / fg 48)\n  · skirt_bevel 1.5: mesh boundaries RECEDE away from camera (45°+ beveled skirts) —\n    the extended colors land on the receding geometry instead of a hole or a cliff\n  · fill_occluded on bg: disocclusion depth synthesized behind the foreground\n  · sky frame_outpaint 128: orbits don't slam into the plate boundary\n  · exclude_mask (SAM sky) wired into EVERY layer — replaces the sky heuristic\n\nUSE: Queue once (1024-grid meshes on a 4K solve take a while) → in the viewport hit\n🧭 Safe Zone to MEASURE this scene's hole-free camera envelope (the orbit clamps to it)\n→ author your move inside those angles. 📽 Project is on by default.\n\nQA previews: bg hole_mask (where projection would show black) and bg extend_mask\n(invented/smeared pixels — in a DCC export these ship as {layer}_extend_matte.png).\n\nNOTES: swap the bg plate wire for a LaMa-inpainted clean plate for real disocclusion\ncontent (this graph projects the source photo as every plate). Two 1024-grid meshes\nare heavy in the browser — drop relief_grid to 512 if orbiting stutters. Indoor photo?\nSet BOTH depth_model widgets to the Indoor model."
+        "ATLAS ULTRA — single-image solve, maximum quality (no exports)\n\nThe shipping-MVP method at full quality: solve → shared depth → SAM3 sky → sky dome +\ntwo band clean-plate layers, all with the complete edge doctrine ON:\n  · relief_grid 1024 (ultra) + depth_edge_rel 1.5 on both band meshes\n  · edge_extend_px: plate colors smeared past every matte edge (sky 96 / bg 64 / fg 48)\n  · skirt_bevel 1.5: mesh boundaries RECEDE away from camera (45°+ beveled skirts) —\n    the extended colors land on the receding geometry instead of a hole or a cliff\n  · fill_occluded on bg: disocclusion depth synthesized behind the foreground\n  · sky frame_outpaint 128: orbits don't slam into the plate boundary\n  · exclude_mask (SAM sky) wired into EVERY layer — replaces the sky heuristic\n\nUSE: Queue once (1024-grid meshes on a 4K solve take a while) → in the viewport hit\n🧭 Safe Zone to MEASURE this scene's hole-free camera envelope (the orbit clamps to it)\n→ author your move inside those angles. 📽 Project is on by default.\n\nQA previews: bg hole_mask (where projection would show black) and bg extend_mask\n(invented/smeared pixels — in a DCC export these ship as {layer}_extend_matte.png).\n\nNOTES: swap the bg plate wire for a LaMa-inpainted clean plate for real disocclusion\ncontent (this graph projects the source photo as every plate). Two 1024-grid meshes\nare heavy in the browser — drop relief_grid to 512 if orbiting stutters. Indoor photo?\nSet BOTH depth_model widgets to the Indoor model.\n\nUPDATE: band layers now carry frame_outpaint_px (bg 128 / fg 64) — the ground geometry + plate extend past the photo edges with their own widened cameras, closing the frame-edge reveal that capped the Safe Zone at ~2.5 deg of yaw. Re-run 🧭 after a queue to measure the widened envelope."
       ]
     },
     {
@@ -389,9 +389,10 @@
         true,
         true,
         64,
-        1.5
+        1.5,
+        128
       ],
-      "title": "⑤ BG band — ULTRA grid 1024 · fill_occluded · extend 64 · bevel 1.5"
+      "title": "⑤ BG band — ULTRA grid 1024 · fill_occluded · extend 64 · bevel 1.5 · outpaint 128"
     },
     {
       "id": 7,
@@ -479,9 +480,10 @@
         false,
         true,
         48,
-        1.5
+        1.5,
+        64
       ],
-      "title": "⑥ FG band — ULTRA grid 1024 · extend 48 · bevel 1.5"
+      "title": "⑥ FG band — ULTRA grid 1024 · extend 48 · bevel 1.5 · outpaint 64"
     },
     {
       "id": 8,

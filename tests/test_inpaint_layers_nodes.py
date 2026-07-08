@@ -742,3 +742,65 @@ def test_layers_collector_writes_extend_matte(tmp_path):
     nk = (tmp_path / "nuke_layers.nk").read_text(encoding="utf-8")
     assert "ExtendMatte_sky" in nk and "ExtendMatte_bg" in nk
     assert "regrain" in nk
+
+
+def test_clean_plate_frame_outpaint_widens_camera_and_mesh():
+    """frame_outpaint_px on a band layer: this source gets its OWN widened
+    camera (cx/cy+P, W/H+2P; primary untouched), the mesh extends past the
+    original frustum, the ring lands in extend_mask, and the hole output is
+    cropped back to the source frame."""
+    import numpy as np
+
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    plate = torch.rand(1, H, W, 3, dtype=torch.float32)
+    P = 32
+
+    out, hole, ext = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=5.0, far_m=40.0, relief_grid=32,
+        frame_outpaint_px=P)
+
+    src = out.projection_sources[0]
+    intr = src.camera.intrinsics
+    assert (intr.image_width, intr.image_height) == (W + 2 * P, H + 2 * P)
+    assert intr.cx_px == pytest.approx(CX + P)
+    assert intr.cy_px == pytest.approx(CY + P)
+    # Primary solve camera untouched.
+    assert out.camera.intrinsics.image_width == W
+    assert src.metadata["frame_outpaint_px"] == P
+    assert src.mask_b64  # embed_matte implied
+
+    # Mesh extends past the ORIGINAL frustum: project vertices with the
+    # original intrinsics; some must land outside [0, W) x [0, H).
+    mesh_prim = next(p for p in src.proxy_geometry if p.primitive_type == "mesh")
+    verts = np.asarray(mesh_prim.metadata["vertices"], dtype=np.float64).reshape(-1, 3)
+    vm = np.asarray(solve.camera.extrinsics.camera_view_matrix, dtype=np.float64)
+    cam = verts @ vm[:3, :3].T + vm[:3, 3]
+    z = -cam[:, 2]
+    ok = z > 1e-6
+    px = CX + FX * cam[ok, 0] / z[ok]
+    py = CY - FY * cam[ok, 1] / z[ok]
+    outside = (px < 0) | (px >= W) | (py < 0) | (py >= H)
+    assert outside.mean() > 0.05  # a real ring of geometry beyond the frame
+
+    # extend_mask is in the PADDED plate frame and flags the ring; hole
+    # output is cropped back to the source frame.
+    assert tuple(ext.shape[1:]) == (H + 2 * P, W + 2 * P)
+    assert float(ext.sum()) > 0
+    assert tuple(hole.shape[1:]) == (H, W)
+    assert src.extend_mask_b64
+
+
+def test_clean_plate_frame_outpaint_composes_with_edge_extend():
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    plate = torch.rand(1, H, W, 3, dtype=torch.float32)
+    out, _hole, ext = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=5.0, far_m=40.0, relief_grid=32,
+        frame_outpaint_px=32, edge_extend_px=16)
+    src = out.projection_sources[0]
+    assert src.metadata["frame_outpaint_px"] == 32
+    assert src.metadata["edge_extend_px"] == 16
+    # Ring + smears both flagged as invented.
+    assert float(ext.sum()) > 0
+    assert src.extend_mask_b64
