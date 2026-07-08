@@ -153,6 +153,7 @@ def build_relief_mesh(
     apply_sky_heuristic: bool = True,
     fill_mask: Any = None,
     edge_overhang_cells: int = 0,
+    overhang_bevel_rel: float = 0.0,
 ) -> ReliefMesh:
     """Triangulate a forward-z depth map into a world-space relief mesh.
 
@@ -195,6 +196,19 @@ def build_relief_mesh(
     the heuristic would otherwise re-exclude that same region, since a
     constant-depth field is precisely what it's designed to flag).
 
+    ``overhang_bevel_rel`` (default 0.0 = flat) makes the overhang skirt
+    RECEDE away from the camera: each extension ring's depth is multiplied
+    by ``1 + bevel * (step/fx)`` — i.e. the bevel is a SLOPE in units of
+    the local cell size (1.0 recedes one cell per ring = a 45° skirt,
+    scale-invariant at any depth/focal/grid because the lateral cell world
+    size is also proportional to depth). Physically motivated — an occluded
+    surface continues away from the camera behind its silhouette, so a
+    receding beveled skirt is the least-wrong geometry at a tear edge
+    (holes read as broken; a sharp cliff reads as a wall) — and it can
+    never trip the world-edge tear check, since ring-to-ring 3D edges stay
+    ~sqrt(1+bevel²) cell lengths. Pairs with the plate edge-extend: the
+    smeared colors land on the receding skirt and the extend matte marks
+    them for downstream regrain.
     ``edge_overhang_cells`` (default 0 = off) extends every mesh boundary
     OUTWARD into invalid regions by N grid cells, copying the nearest valid
     depth. Only meaningful together with a per-pixel edge matte
@@ -327,7 +341,11 @@ def build_relief_mesh(
     # fill (fills are legitimate interior geometry, not boundary) and before
     # smoothing (so the skirt relaxes with everything else).
     if edge_overhang_cells and int(edge_overhang_cells) > 0:
-        for _ in range(int(edge_overhang_cells)):
+        # Per-ring multiplicative recession: constant slope in cell units
+        # (compounds naturally because each ring copies the previous ring's
+        # already-receded depth — no ring index bookkeeping needed).
+        bevel_gain = 1.0 + max(0.0, float(overhang_bevel_rel)) * (step / max(float(fx), 1e-6))
+        for _ring in range(int(edge_overhang_cells)):
             acc = np.zeros_like(d)
             cnt = np.zeros_like(d)
             for shift_r, shift_c in ((1, 0), (-1, 0), (0, 1), (0, -1)):
@@ -348,7 +366,10 @@ def build_relief_mesh(
             newly = ~vgrid & (cnt > 0)
             if not newly.any():
                 break
-            d[newly] = (acc / np.maximum(cnt, 1))[newly]
+            # Beveled skirt: multiplying forward-Z depth pushes the point
+            # away from the camera along its own view ray by construction
+            # of the back-projection.
+            d[newly] = (acc / np.maximum(cnt, 1))[newly] * bevel_gain
             vgrid |= newly
 
     # Edge-aware smoothing of the sampled grid: average with neighbours that are

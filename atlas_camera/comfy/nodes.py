@@ -4157,13 +4157,22 @@ class AtlasCleanPlateLayer:
                                "(regrain, blur, replace). Smeared pixels are plausible only for "
                                "narrow slivers — large reveals still want a real inpainted plate. "
                                "Turns on embed_matte implicitly (an extension needs a matte edge)."}),
+                "skirt_bevel": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 4.0, "step": 0.25,
+                    "tooltip": "Bevel the mesh's boundary skirt AWAY from the camera, as a slope "
+                               "in local cell units: 1.0 recedes one cell per extension ring (a "
+                               "45° skirt), 0 = today's flat skirt. Physically motivated — an "
+                               "occluded surface continues away from the camera behind its "
+                               "silhouette, so a receding bevel is the least-wrong geometry at a "
+                               "tear edge. Try 1.0–2.0 with edge_extend_px: the smeared colors "
+                               "land on the receding skirt and the extend matte marks them for "
+                               "regrain."}),
             },
         }
 
     def add_layer(self, solve, depth, plate_image, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5,
                   name="layer", priority=0.0, plate_ref=None, relief_grid=384, depth_edge_rel=1.5,
                   exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None,
-                  edge_extend_px=0):
+                  edge_extend_px=0, skirt_bevel=0.0):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import AtlasPlateRef, ProjectionSource
@@ -4192,6 +4201,7 @@ class AtlasCleanPlateLayer:
             band_min_m=near, band_max_m=(None if far == float("inf") else far),
             exclude_mask=setup.exclude_mask, fill_mask=fill,
             apply_sky_heuristic=setup.exclude_mask is None,
+            overhang_bevel_rel=float(skirt_bevel),
             edge_overhang_cells=(
                 (2 + int(np.ceil(int(edge_extend_px) /
                                  max(1, int(round(max(setup.height, setup.width)
@@ -4231,6 +4241,7 @@ class AtlasCleanPlateLayer:
                 "n_vertices": mesh.stats.get("n_vertices"),
                 "n_faces": mesh.stats.get("n_faces"),
                 "n_filled_cells": mesh.stats.get("n_filled_cells", 0),
+                "skirt_bevel": float(skirt_bevel),
             },
         )
 

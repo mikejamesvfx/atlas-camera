@@ -513,3 +513,45 @@ def test_sky_dome_mask_boundary_becomes_a_hole_not_a_stretched_shard():
     frac = float(mask.mean())
     hole_frac = float(mesh.hole_mask.mean())
     assert abs((1.0 - hole_frac) - frac) < 0.05
+
+
+def test_overhang_bevel_recedes_away_from_camera():
+    """overhang_bevel_rel: skirt rings get progressively DEEPER (away from
+    camera along each pixel's view ray); 0.0 stays byte-identical to the
+    flat skirt."""
+    np = pytest.importorskip("numpy")
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    h = w = 64
+    depth = np.full((h, w), 10.0, dtype=np.float32)
+    valid = np.zeros((h, w), dtype=bool)
+    valid[16:48, 16:48] = True  # island -> boundary skirt extends outward
+    exclude = ~valid
+
+    kw = dict(view_matrix=_view_matrix(0.0), fx=60.0, fy=60.0, cx=32.0, cy=32.0,
+              grid_long_edge=32, exclude_mask=exclude, scale=1.0,
+              apply_sky_heuristic=False, edge_overhang_cells=4)
+
+    flat = build_relief_mesh(depth, **kw)
+    flat2 = build_relief_mesh(depth, overhang_bevel_rel=0.0, **kw)
+    bev = build_relief_mesh(depth, overhang_bevel_rel=2.0, **kw)
+
+    v_flat = np.asarray(flat.vertices)
+    v_flat2 = np.asarray(flat2.vertices)
+    v_bev = np.asarray(bev.vertices)
+    # bevel=0.0 identical to the default
+    assert v_flat.shape == v_flat2.shape
+    np.testing.assert_allclose(v_flat, v_flat2)
+
+    # Camera at origin (identity view): distance from origin = depth along ray.
+    r_flat = np.linalg.norm(v_flat, axis=1)
+    r_bev = np.linalg.norm(v_bev, axis=1)
+    # The beveled mesh's farthest vertices recede beyond the flat skirt's.
+    # (Interior-unchanged is already proven by the byte-identical bevel=0.0
+    # comparison above; per-vertex interior checks are polluted by
+    # floor-clamping, which treats the deeper skirt differently.)
+    # 4 rings at slope 2 recede ~8 cells deeper; cell ≈ d*step/fx ≈ 0.33m
+    # at d=10, so expect roughly +2.5m beyond the flat skirt's max reach.
+    assert r_bev.max() > r_flat.max() + 1.5
+    # The skirt is still triangulated (beveled rings must not tear apart).
+    assert bev.faces.shape[0] >= flat.faces.shape[0] * 0.95

@@ -1766,7 +1766,8 @@
               1.5,
               true,
               true,
-              0
+              0,
+              0.0
             ],
             "title": "Clean Plate — background (fill_occluded + matte)"
           },
@@ -1849,7 +1850,8 @@
               1.5,
               false,
               true,
-              0
+              0,
+              0.0
             ],
             "title": "Clean Plate — foreground (original pixels)"
           }
