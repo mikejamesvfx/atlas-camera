@@ -3932,6 +3932,68 @@ class AtlasBlockoutViewport:
 # no inpainting/segmentation code lives in atlas_camera.
 # ---------------------------------------------------------------------------
 
+class AtlasDepthBandSplit:
+    """One authoritative fg/bg depth boundary, shared by every band node.
+
+    The split is a POSITION ALONG THE SCENE'S LOG-DEPTH RANGE (the same
+    exponential / inverse-log mapping `_resolve_depth_band` uses: 0.5 = the
+    geometric mean of the scene's depth range), so the SAME split value
+    adapts per solve — 0.55 means "just past mid-scene" on any image,
+    resolving to different metres per scene. `split_m` (metres) overrides
+    when nonzero.
+
+    Wire the output into `AtlasCleanPlateLayer`/`AtlasDepthLayerMask`'s
+    `band_split` input and set each node's `band_side` (foreground /
+    background): fg becomes [0, split), bg becomes [split, +inf) — one wire,
+    the two layers' bands can never drift apart (previously the boundary
+    lived in TWO widgets, bg.near_pct and fg.far_pct, kept in lockstep by
+    hand). Config-carrier node: no computation, same in-process pattern as
+    `AtlasDefineShotCam`.
+    """
+    RETURN_TYPES = ("ATLAS_BAND_SPLIT",)
+    RETURN_NAMES = ("band_split",)
+    FUNCTION = "define"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {},
+            "optional": {
+                "split": ("FLOAT", {"default": 0.55, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "The fg/bg boundary as a position along the scene's LOG-depth "
+                               "range (0.5 = geometric mean of the depth range = perceptually "
+                               "mid-scene). Scene-relative: the same value adapts to each "
+                               "solve's own depth distribution."}),
+                "split_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10000.0, "step": 0.1,
+                    "tooltip": "Absolute boundary in metres — overrides `split` when nonzero "
+                               "(for when you've measured the scene and want a hard number)."}),
+            },
+        }
+
+    def define(self, split=0.55, split_m=0.0):
+        return ({"split": float(split), "split_m": float(split_m)},)
+
+
+def _apply_band_split(band_split, band_side, metric, valid,
+                      near_m, far_m, near_pct, far_pct):
+    """Resolve the effective band, honoring a connected `band_split`.
+
+    With a split connected and a side chosen, the node's own near/far widgets
+    are ignored: foreground = [0, split), background = [split, +inf). Both
+    sides resolve the boundary through the same `_resolve_depth_band` log
+    mapping, so fg and bg partition EXACTLY (shared helper = no drift).
+    """
+    if band_split is None or band_side == "manual":
+        return _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct)
+    s_pct = float(band_split.get("split", 0.55))
+    s_m = float(band_split.get("split_m", 0.0))
+    boundary, _ = _resolve_depth_band(metric, valid, s_m, 0.0, s_pct, 0.0)
+    if band_side == "foreground":
+        return 0.0, boundary
+    return boundary, float("inf")
+
+
 class AtlasDepthLayerMask:
     """One depth band -> (layer_mask, occlusion_mask). Composable: instantiate
     once per background layer you plan to clean-plate.
@@ -4027,12 +4089,20 @@ class AtlasDepthLayerMask:
                                "the actual final mesh - when the layer will diffusion-fill the "
                                "occluder footprint, that footprint is no longer a hole here "
                                "either."}),
+                "band_side": (["manual", "foreground", "background"], {"default": "manual",
+                    "tooltip": "With band_split connected: foreground = [0, split), background "
+                               "= [split, +inf) — the node's own near/far widgets are ignored. "
+                               "manual = use this node's own near/far settings."}),
+                "band_split": ("ATLAS_BAND_SPLIT", {
+                    "tooltip": "Wire ONE AtlasDepthBandSplit into every band node (with "
+                               "band_side set) so the fg/bg boundary lives in exactly one "
+                               "widget and the layers can never drift apart."}),
             },
         }
 
     def generate(self, solve, depth, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5, feather_px=4,
                  compute_hole_mask=False, relief_grid=384, depth_edge_rel=1.5, exclude_mask=None,
-                 fill_occluded=False):
+                 fill_occluded=False, band_side="manual", band_split=None):
         np = _require_numpy()
         torch = _require_torch()
 
@@ -4043,7 +4113,7 @@ class AtlasDepthLayerMask:
             return (zero, zero.clone(), zero.clone())
         metric, valid = setup.metric, setup.valid
 
-        near, far = _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct)
+        near, far = _apply_band_split(band_split, band_side, metric, valid, near_m, far_m, near_pct, far_pct)
 
         layer_mask = valid & (metric >= near) & (metric <= far)
         occlusion_mask = valid & (metric < near)
@@ -4236,6 +4306,14 @@ class AtlasCleanPlateLayer:
                                "boundary skirt regrows the ring with clean neighbor depth: same "
                                "coverage, geometry hugging the true surface. Raise for sloppier "
                                "segmentation masks; 0 disables."}),
+                "band_side": (["manual", "foreground", "background"], {"default": "manual",
+                    "tooltip": "With band_split connected: foreground = [0, split), background "
+                               "= [split, +inf) — the node's own near/far widgets are ignored. "
+                               "manual = use this node's own near/far settings."}),
+                "band_split": ("ATLAS_BAND_SPLIT", {
+                    "tooltip": "Wire ONE AtlasDepthBandSplit into every band node (with "
+                               "band_side set) so the fg/bg boundary lives in exactly one "
+                               "widget and the layers can never drift apart."}),
             },
         }
 
@@ -4243,7 +4321,7 @@ class AtlasCleanPlateLayer:
                   name="layer", priority=0.0, plate_ref=None, relief_grid=384, depth_edge_rel=1.5,
                   exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None,
                   edge_extend_px=0, skirt_bevel=0.0, frame_outpaint_px=0,
-                  exclude_choke_cells=2):
+                  exclude_choke_cells=2, band_side="manual", band_split=None):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import (
@@ -4267,7 +4345,8 @@ class AtlasCleanPlateLayer:
         fx, fy, cx, cy = setup.fx, setup.fy, setup.cx, setup.cy
         extr, depth_map = setup.extr, setup.depth_map
         scale, horizon_y = setup.scale, setup.horizon_y
-        near, far = _resolve_depth_band(setup.metric, setup.valid, near_m, far_m, near_pct, far_pct)
+        near, far = _apply_band_split(band_split, band_side, setup.metric, setup.valid,
+                                      near_m, far_m, near_pct, far_pct)
 
         # Frame outpaint (the sky dome's proven widened-camera trick, applied
         # per band layer): pad EVERYTHING edge-replicated into one padded
@@ -4762,6 +4841,7 @@ NODE_CLASS_MAPPINGS = {
     # Track 6 — shot format
     "AtlasDefineShotCam":         AtlasDefineShotCam,
     # Track 7 — inpaint layers
+    "AtlasDepthBandSplit":        AtlasDepthBandSplit,
     "AtlasDepthLayerMask":        AtlasDepthLayerMask,
     "AtlasCleanPlateLayer":       AtlasCleanPlateLayer,
     "AtlasSkyDomeLayer":          AtlasSkyDomeLayer,
@@ -4820,6 +4900,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # Track 6 — shot format
     "AtlasDefineShotCam":         "Atlas Define Shot Cam 🎬",
     # Track 7 — inpaint layers
+    "AtlasDepthBandSplit":        "Atlas Depth Band Split 🎚",
     "AtlasDepthLayerMask":        "Atlas Depth Layer Mask 🎭",
     "AtlasCleanPlateLayer":       "Atlas Clean Plate Layer 🖼",
     "AtlasSkyDomeLayer":          "Atlas Sky Dome Layer ☁",

@@ -1683,7 +1683,8 @@
               true,
               384,
               1.5,
-              true
+              true,
+              "manual"
             ],
             "title": "BG band mask (hole/inpaint signals)"
           },
@@ -1769,7 +1770,8 @@
               0,
               0.0,
               0,
-              2
+              2,
+              "manual"
             ],
             "title": "Clean Plate — background (fill_occluded + matte)"
           },
@@ -1855,7 +1857,8 @@
               0,
               0.0,
               0,
-              2
+              2,
+              "manual"
             ],
             "title": "Clean Plate — foreground (original pixels)"
           }

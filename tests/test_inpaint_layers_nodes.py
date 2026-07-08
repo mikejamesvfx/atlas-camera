@@ -857,3 +857,53 @@ def test_band_positions_are_log_depth_not_pixel_percentile():
     assert far_cap == float("inf")
     near_m, far_m = _resolve_depth_band(metric, valid, 5.0, 40.0, 0.5, 0.5)
     assert (near_m, far_m) == (5.0, 40.0)
+
+
+def test_band_split_partitions_fg_bg_exactly():
+    """One AtlasDepthBandSplit wired into both band nodes: fg = [0, split),
+    bg = [split, +inf) — the boundary resolves through the same log mapping
+    on both sides, so the partition is exact and the nodes' own near/far
+    widgets are ignored."""
+    from atlas_camera.comfy.nodes import (
+        NODE_CLASS_MAPPINGS,
+        AtlasDepthBandSplit,
+        _apply_band_split,
+    )
+    import numpy as np
+
+    assert NODE_CLASS_MAPPINGS["AtlasDepthBandSplit"] is AtlasDepthBandSplit
+    (split,) = AtlasDepthBandSplit().define(split=0.6)
+
+    rng = np.random.default_rng(3)
+    metric = rng.uniform(2.0, 60.0, (64, 64))
+    valid = np.ones_like(metric, dtype=bool)
+
+    # Deliberately conflicting per-node widget values — must be ignored.
+    fg = _apply_band_split(split, "foreground", metric, valid, 0.0, 0.0, 0.9, 0.1)
+    bg = _apply_band_split(split, "background", metric, valid, 3.0, 7.0, 0.2, 0.3)
+    assert fg[0] == 0.0
+    assert bg[1] == float("inf")
+    assert fg[1] == pytest.approx(bg[0])   # exact shared boundary
+    assert 2.0 < fg[1] < 60.0
+
+    # split_m overrides; manual falls through to the node's own widgets.
+    (split_m,) = AtlasDepthBandSplit().define(split=0.6, split_m=25.0)
+    fg_m = _apply_band_split(split_m, "foreground", metric, valid, 0, 0, 0, 0)
+    assert fg_m[1] == 25.0
+    manual = _apply_band_split(split, "manual", metric, valid, 5.0, 40.0, 0, 0)
+    assert manual == (5.0, 40.0)
+
+    # End-to-end through both nodes: same solve, one split, two sides.
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    plate = _plate_image()
+    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, name="bg", relief_grid=32,
+        band_side="background", band_split=split)
+    out, _h2, _e2 = AtlasCleanPlateLayer().add_layer(
+        out, depth, plate, name="fg", relief_grid=32,
+        band_side="foreground", band_split=split)
+    bgs = next(s for s in out.projection_sources if s.name == "bg")
+    fgs = next(s for s in out.projection_sources if s.name == "fg")
+    assert bgs.metadata["far_m"] is None                 # +inf
+    assert fgs.metadata["far_m"] == pytest.approx(bgs.metadata["near_m"])
