@@ -738,7 +738,10 @@
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         96,
         1.0,
-        "auto"
+        "auto",
+        true,
+        16,
+        "reuse_scene"
       ],
       "title": "Add Patch View — angle from 📐 Extract Angle"
     },

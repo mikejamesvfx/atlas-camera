@@ -518,7 +518,9 @@
         300,
         96,
         "sky",
-        -10
+        -10,
+        48,
+        64
       ]
     },
     {
@@ -1054,7 +1056,10 @@
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         96,
         1.0,
-        "auto"
+        "auto",
+        true,
+        16,
+        "reuse_scene"
       ],
       "title": "Add Patch View — angles wired from the viewport's Extract Angle"
     },

@@ -294,3 +294,99 @@ def test_exclude_mask_removes_patch_sky_geometry(monkeypatch):
                     if p.primitive_type == "mesh")
         return mesh.metadata["n_vertices"]
     assert n_verts(masked) < n_verts(plain)
+
+
+def _solve_with_geometry():
+    """Primary solve carrying one PROXY_ROLE primitive (a stand-in for the
+    scene's derived/band geometry)."""
+    from atlas_camera.core.proxy_geometry import PROXY_ROLE
+    from atlas_camera.core.schema import AtlasProxyPrimitive
+
+    solve, pivot, eye = _synthetic_primary()
+    solve.projection_scene.proxy_geometry.append(AtlasProxyPrimitive(
+        name="projection_ground", primitive_type="plane",
+        dimensions=(20.0, 20.0, 0.0),
+        transform_matrix=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 5.0), (0, 0, 0, 1)),
+        metadata={"role": PROXY_ROLE},
+    ))
+    return solve, pivot, eye
+
+
+def test_reuse_scene_projects_onto_existing_geometry_without_depth(monkeypatch):
+    """Default reuse_scene mode: the patch derives NO geometry — it reuses
+    copies of the scene's own primitives (already in the primary's world by
+    construction) and never invokes the depth model at all."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+
+    def boom(*a, **k):
+        raise AssertionError("estimate_depth must NOT run in reuse_scene mode")
+    import atlas_camera.inference.depth_estimator as de
+    monkeypatch.setattr(de, "estimate_depth", boom)
+
+    solve, _pivot, _eye = _solve_with_geometry()
+    patch_img = torch.rand(1, 256, 256, 3, dtype=torch.float32)
+    (out,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view")
+
+    src = out.projection_sources[0]
+    assert src.metadata["scale_source"] == "reuse_scene"
+    assert src.metadata["n_reused_primitives"] == 1
+    assert len(src.proxy_geometry) == 1
+    assert src.proxy_geometry[0].name.endswith("projection_ground")
+    assert src.proxy_geometry[0].primitive_type == "plane"
+    # The ORIGINAL solve geometry is untouched (deep copies).
+    assert solve.projection_scene.proxy_geometry[0].name == "projection_ground"
+
+
+def test_reuse_scene_falls_back_to_own_depth_without_geometry(monkeypatch):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()  # no geometry anywhere
+    patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
+    (out,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view",
+        relief_grid=48)
+    src = out.projection_sources[0]
+    assert src.metadata["geometry_fallback"] == "no scene geometry to reuse"
+    assert src.metadata["scale_source"] in ("ground_fit", "primary_registration")
+    assert any(p.primitive_type == "mesh" for p in src.proxy_geometry)
+
+
+def test_reuse_scene_splat_matte_scales_with_orbit(monkeypatch):
+    """The reuse-mode matte comes from forward-splatting the PRIMARY's real
+    metric points into the patch view: a same-pose patch is almost fully
+    covered (tiny unseen), a far-side patch mostly uncovered."""
+    torch = pytest.importorskip("torch")
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    from atlas_camera.inference.depth_estimator import DepthResult
+
+    def boom(*a, **k):
+        raise AssertionError("estimate_depth must NOT run in reuse_scene mode")
+    import atlas_camera.inference.depth_estimator as de
+    monkeypatch.setattr(de, "estimate_depth", boom)
+    import atlas_camera.core.relief_mesh as rm
+    monkeypatch.setattr(rm, "estimate_ground_scale",
+                        lambda *a, **k: (1.0, {"reason": "test"}))
+
+    solve, _pivot, _eye = _solve_with_geometry()
+    h = w = 512
+    ramp = (np.linspace(30.0, 5.0, h)[:, None] * np.ones((1, w))).astype(np.float32)
+    primary_dr = DepthResult(depth=ramp, is_metric=True, model_id="fake",
+                             image_width=w, image_height=h, near=5.0, far=30.0)
+    patch_img = torch.rand(1, h, w, 3, dtype=torch.float32)
+
+    (same,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front view",
+        primary_depth=primary_dr, unseen_dilate_px=0)
+    (back,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="back view",
+        primary_depth=primary_dr, unseen_dilate_px=0)
+
+    m_same = _decode_matte(same.projection_sources[0].mask_b64)
+    m_back = _decode_matte(back.projection_sources[0].mask_b64)
+    assert m_same.mean() < 0.2
+    assert m_back.mean() > 2 * m_same.mean()

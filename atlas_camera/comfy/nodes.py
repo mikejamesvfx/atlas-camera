@@ -2319,11 +2319,24 @@ class AtlasAddPatchView:
                                "depth-shadow term in the unseen matte."}),
                 "exclude_mask": ("MASK", {
                     "tooltip": "Segmentation of the PATCH image's sky (run SAM3Segment on the "
-                               "generated novel view, prompt 'sky'). REPLACES the internal sky "
-                               "heuristic, same rule as every other relief-mesh node — without "
-                               "it, hallucinated near-depth sky in the AI view gets triangulated "
-                               "into geometry bulging toward the camera. The sky dome layer owns "
-                               "the sky; a patch should never contribute sky geometry."}),
+                               "generated novel view, prompt 'sky'). In reuse_scene mode it keeps "
+                               "the patch from painting sky onto scene geometry; in own_depth "
+                               "mode it REPLACES the internal sky heuristic during meshing "
+                               "(hallucinated near-depth sky otherwise triangulates into "
+                               "geometry bulging toward the camera)."}),
+                "geometry_source": (["reuse_scene", "own_depth"], {"default": "reuse_scene",
+                    "tooltip": "reuse_scene (recommended): the patch derives NO geometry of its "
+                               "own — it becomes a pure texture projector onto copies of the "
+                               "geometry already in the solve (sky dome, band meshes, derived "
+                               "proxies), exactly how a DMP artist projects new paint from a "
+                               "second camera onto the SAME geo in Nuke. The scale/registration "
+                               "problem dissolves: that geometry is in the primary's world by "
+                               "construction, and Qwen scene mismatch shows only as texture "
+                               "misalignment, never floating geometry. No depth model runs. "
+                               "own_depth: the previous behavior (Depth Anything on the patch + "
+                               "overlap registration) — for patches revealing genuinely NEW "
+                               "terrain no existing geometry covers. Auto-falls back to "
+                               "own_depth when the solve carries no geometry to reuse."}),
             },
         }
 
@@ -2337,7 +2350,7 @@ class AtlasAddPatchView:
                   depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                   relief_grid=96, priority=1.0, plate_ref=None, device="auto",
                   patch_view_override="", mask_unseen_only=True, unseen_dilate_px=16,
-                  primary_depth=None, exclude_mask=None):
+                  primary_depth=None, exclude_mask=None, geometry_source="reuse_scene"):
         if patch_view_override and patch_view_override.strip():
             parsed = _parse_view_prompt(patch_view_override)
             if parsed is None:
@@ -2416,24 +2429,51 @@ class AtlasAddPatchView:
         # fallback in estimate_ground_scale / build_relief_mesh.
         patch_horizon_y = horizon_row_from_extrinsics(patch_extr, fy=pfy, cy=pcy)
 
-        # Depth -> relief geometry in the patch camera's frame.
-        tmp = _save_image_tensor_to_tmp(patch_image)
-        try:
-            result = estimate_depth(tmp, model_id=depth_model,
-                                    device=None if device == "auto" else device)
-        finally:
-            os.unlink(tmp)
-        depth_map = result.depth
-        if depth_map.shape != (patch_h, patch_w):
-            depth_map = _resize_depth(depth_map, patch_w, patch_h)
-
         np = _require_numpy()
         from atlas_camera.core.depth_geometry import (
             back_project_normals,
             primary_camera_validity_mask,
         )
+        from atlas_camera.core.proxy_geometry import PROXY_ROLE
 
         resolved_exclude = _resolve_exclude_mask(exclude_mask, patch_h, patch_w)
+
+        # --- reuse_scene: the patch is a TEXTURE PROJECTOR onto the geometry
+        # the scene already has — the DMP move (project new paint from a
+        # second camera onto the SAME geo). Deriving geometry from monocular
+        # depth on a HALLUCINATED image can never reliably land in the
+        # primary's metric world (scale+shift error plus genuine scene
+        # mismatch — per-pixel registration confirmed insufficient in Nuke),
+        # so we stop trying: reused geometry is in the primary's world by
+        # construction, and any Qwen mismatch shows as texture misalignment,
+        # never floating geometry.
+        reused_geom = []
+        fallback_reason = None
+        if geometry_source == "reuse_scene":
+            for prim in solve.projection_scene.proxy_geometry:
+                if (prim.metadata or {}).get("role") == PROXY_ROLE:
+                    reused_geom.append(copy.deepcopy(prim))
+            for prev in solve.projection_sources:
+                for prim in prev.proxy_geometry:
+                    reused_geom.append(copy.deepcopy(prim))
+            for i, prim in enumerate(reused_geom):
+                prim.name = f"{name}_reuse{i}_{prim.name}"
+            if not reused_geom:
+                geometry_source = "own_depth"
+                fallback_reason = "no scene geometry to reuse"
+
+        depth_map = None
+        if geometry_source == "own_depth":
+            # Depth -> relief geometry in the patch camera's frame.
+            tmp = _save_image_tensor_to_tmp(patch_image)
+            try:
+                result = estimate_depth(tmp, model_id=depth_model,
+                                        device=None if device == "auto" else device)
+            finally:
+                os.unlink(tmp)
+            depth_map = result.depth
+            if depth_map.shape != (patch_h, patch_w):
+                depth_map = _resize_depth(depth_map, patch_w, patch_h)
 
         # --- Patch scale: REGISTER against the primary's metric world when the
         # shared primary depth is available; ground-fit is only the fallback.
@@ -2454,6 +2494,64 @@ class AtlasAddPatchView:
                 fx=fx, fy=fy, cx=cx, cy=cy,
                 horizon_y=_horizon_y_from_solve(solve))
             primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
+
+        if geometry_source == "reuse_scene":
+            patch_geom = reused_geom
+            mesh = None
+            scale = 1.0
+            scale_source = "reuse_scene"
+            # Unseen matte by FORWARD SPLAT of the primary's real metric
+            # points into the patch view — coverage means "the primary has
+            # trusted data that lands on this patch pixel"; no hallucinated
+            # patch depth is involved at all.
+            mask_b64 = None
+            if mask_unseen_only and primary_metric_map is not None:
+                stride = max(1, int(np.ceil(max(p_w, p_h) / 1536.0)))
+                sub = primary_metric_map[::stride, ::stride]
+                bp_p = back_project_normals(
+                    sub, view_matrix=extr.camera_view_matrix,
+                    fx=fx / stride, fy=fy / stride,
+                    cx=cx / stride, cy=cy / stride)
+                pts = bp_p.pts_world[bp_p.valid_depth]
+                qvm = np.asarray(patch_extr.camera_view_matrix, dtype=np.float64)
+                Rq, tq = qvm[:3, :3], qvm[:3, 3]
+                cam_q = pts @ Rq.T + tq
+                zq = -cam_q[:, 2]
+                front = zq > 1e-6
+                with np.errstate(all="ignore"):
+                    uq = pcx + pfx * cam_q[:, 0] / np.where(front, zq, np.nan)
+                    vq = pcy - pfy * cam_q[:, 1] / np.where(front, zq, np.nan)
+                hit = front & np.isfinite(uq) & np.isfinite(vq) & \
+                    (uq >= 0) & (uq < patch_w) & (vq >= 0) & (vq < patch_h)
+                coverage = np.zeros((patch_h, patch_w), dtype=bool)
+                coverage[vq[hit].astype(np.int64), uq[hit].astype(np.int64)] = True
+                # Close splat sparsity (patch pixels between projected
+                # samples) so 'seen' isn't undercounted — an undercounted
+                # coverage would let the AI patch overwrite real pixels.
+                close_px = max(2, int(round(2.0 * patch_w * stride / p_w)))
+                for _ in range(close_px):
+                    up = np.zeros_like(coverage); up[:-1, :] = coverage[1:, :]
+                    dn = np.zeros_like(coverage); dn[1:, :] = coverage[:-1, :]
+                    lf = np.zeros_like(coverage); lf[:, :-1] = coverage[:, 1:]
+                    rt = np.zeros_like(coverage); rt[:, 1:] = coverage[:, :-1]
+                    coverage = coverage | up | dn | lf | rt
+                unseen = ~coverage
+                if resolved_exclude is not None:
+                    unseen &= ~resolved_exclude  # never paint sky onto geometry
+                for _ in range(int(unseen_dilate_px)):
+                    up = np.zeros_like(unseen); up[:-1, :] = unseen[1:, :]
+                    dn = np.zeros_like(unseen); dn[1:, :] = unseen[:-1, :]
+                    lf = np.zeros_like(unseen); lf[:, :-1] = unseen[:, 1:]
+                    rt = np.zeros_like(unseen); rt[:, 1:] = unseen[:, :-1]
+                    unseen = unseen | up | dn | lf | rt
+                mask_b64 = _mask_to_b64_png(unseen) or None
+            return self._finish_patch(
+                solve, patch_image, patch_intr, patch_extr, patch_geom, mesh,
+                mask_b64, plate_ref, name, priority,
+                d_azimuth, d_elevation, distance_scale,
+                patch_azimuth_view, patch_elevation_view, patch_distance,
+                source_azimuth_view, flip_azimuth, pivot, depth_model,
+                scale_source, scale, fallback_reason)
 
         scale = None
         scale_source = "ground_fit"
@@ -2534,6 +2632,22 @@ class AtlasAddPatchView:
                 unseen = unseen | up | dn | lf | rt
             mask_b64 = _mask_to_b64_png(unseen) or None
 
+        return self._finish_patch(
+            solve, patch_image, patch_intr, patch_extr, patch_geom, mesh,
+            mask_b64, plate_ref, name, priority,
+            d_azimuth, d_elevation, distance_scale,
+            patch_azimuth_view, patch_elevation_view, patch_distance,
+            source_azimuth_view, flip_azimuth, pivot, depth_model,
+            scale_source, scale, fallback_reason)
+
+    def _finish_patch(self, solve, patch_image, patch_intr, patch_extr,
+                      patch_geom, mesh, mask_b64, plate_ref, name, priority,
+                      d_azimuth, d_elevation, distance_scale,
+                      patch_azimuth_view, patch_elevation_view, patch_distance,
+                      source_azimuth_view, flip_azimuth, pivot, depth_model,
+                      scale_source, scale, fallback_reason):
+        from atlas_camera.core.schema import AtlasPlateRef, LatentCamera, ProjectionSource
+
         # Encode the novel view as a JPEG data-URI (viewport texture).
         image_b64 = ""
         try:
@@ -2543,6 +2657,24 @@ class AtlasAddPatchView:
             image_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
         except Exception:
             pass
+
+        metadata = {
+            "source": "multi_angle_lora_patch",
+            "patch_azimuth_view": patch_azimuth_view,
+            "patch_elevation_view": patch_elevation_view,
+            "patch_distance": patch_distance,
+            "source_azimuth_view": source_azimuth_view,
+            "flip_azimuth": bool(flip_azimuth),
+            "pivot": [float(v) for v in pivot],
+            "n_vertices": mesh.stats.get("n_vertices") if mesh is not None else None,
+            "n_faces": mesh.stats.get("n_faces") if mesh is not None else None,
+            "depth_model": depth_model,
+            "scale_source": scale_source,
+            "scale": float(scale),
+            "n_reused_primitives": len(patch_geom) if scale_source == "reuse_scene" else 0,
+        }
+        if fallback_reason:
+            metadata["geometry_fallback"] = fallback_reason
 
         source = ProjectionSource(
             camera=LatentCamera(intrinsics=patch_intr, extrinsics=patch_extr, name=name),
@@ -2555,20 +2687,7 @@ class AtlasAddPatchView:
             elevation_deg=float(d_elevation),
             distance_scale=float(distance_scale),
             priority=float(priority),
-            metadata={
-                "source": "multi_angle_lora_patch",
-                "patch_azimuth_view": patch_azimuth_view,
-                "patch_elevation_view": patch_elevation_view,
-                "patch_distance": patch_distance,
-                "source_azimuth_view": source_azimuth_view,
-                "flip_azimuth": bool(flip_azimuth),
-                "pivot": [float(v) for v in pivot],
-                "n_vertices": mesh.stats.get("n_vertices"),
-                "n_faces": mesh.stats.get("n_faces"),
-                "depth_model": depth_model,
-                "scale_source": scale_source,
-                "scale": float(scale),
-            },
+            metadata=metadata,
         )
 
         out = copy.deepcopy(solve)
