@@ -804,3 +804,22 @@ def test_clean_plate_frame_outpaint_composes_with_edge_extend():
     # Ring + smears both flagged as invented.
     assert float(ext.sum()) > 0
     assert src.extend_mask_b64
+
+
+def test_border_flood_heals_segmenter_fade():
+    """_flood_mask_to_frame_borders: a mask faded at the frame border floods
+    to it (sky at row 40 means sky at rows 0-39); content genuinely cut by
+    the frame (no mask within the margin) is untouched."""
+    import numpy as np
+
+    from atlas_camera.comfy.nodes import _flood_mask_to_frame_borders
+
+    m = np.zeros((200, 200), dtype=bool)
+    m[40:100, :100] = True        # sky region, faded above row 40 (left half)
+    # right half: no mask within the top margin at all (a "spire" to the top)
+    out = _flood_mask_to_frame_borders(m, margin_px=64)
+    assert out[0:40, :100].all()          # flooded to the top border
+    assert not out[0:40, 100:].any()      # spire columns untouched
+    assert (out[40:100, :100] == m[40:100, :100]).all()  # interior unchanged
+    # empty mask passes through
+    assert not _flood_mask_to_frame_borders(np.zeros((50, 50), bool), 16).any()

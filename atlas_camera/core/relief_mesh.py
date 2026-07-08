@@ -154,6 +154,7 @@ def build_relief_mesh(
     fill_mask: Any = None,
     edge_overhang_cells: int = 0,
     overhang_bevel_rel: float = 0.0,
+    exclude_choke_cells: int = 0,
 ) -> ReliefMesh:
     """Triangulate a forward-z depth map into a world-space relief mesh.
 
@@ -209,6 +210,16 @@ def build_relief_mesh(
     ~sqrt(1+bevel²) cell lengths. Pairs with the plate edge-extend: the
     smeared colors land on the receding skirt and the extend matte marks
     them for downstream regrain.
+    ``exclude_choke_cells`` (default 0 = off) erodes the layer's validity
+    this many grid cells away from the EXCLUSION edge before the overhang
+    runs — the classic matte choke-and-reskirt. Segmentation and depth
+    edges never align exactly, leaving a ribbon of cells that the mask
+    calls "not sky" but whose depth IS sky: they back-project high above
+    the real silhouette as a jagged floating band (found live). Choking
+    removes the contaminated ribbon; the overhang then regrows it with
+    clean neighbor (rock) depth, so coverage is preserved but the boundary
+    geometry hugs the true surface. Only applies when ``exclude_mask``
+    is provided.
     ``edge_overhang_cells`` (default 0 = off) extends every mesh boundary
     OUTWARD into invalid regions by N grid cells, copying the nearest valid
     depth. Only meaningful together with a per-pixel edge matte
@@ -340,11 +351,39 @@ def build_relief_mesh(
     # cuts back to the true silhouette per-pixel. Runs after the diffusion
     # fill (fills are legitimate interior geometry, not boundary) and before
     # smoothing (so the skirt relaxes with everything else).
+    # Choke-and-reskirt against the exclusion edge (see docstring): remove
+    # grid cells within N cells of the exclusion — their depth is suspect
+    # (segmentation/depth edge misalignment) — and let the overhang below
+    # regrow them from clean neighbor depth.
+    excl_grid = None
+    if exclude_mask is not None:
+        excl_grid = np.asarray(exclude_mask, dtype=bool)[np.ix_(rows, cols)]
+    if excl_grid is not None and exclude_choke_cells and int(exclude_choke_cells) > 0:
+        near_excl = excl_grid.copy()
+        for _ in range(int(exclude_choke_cells)):
+            grown = near_excl.copy()
+            grown[1:, :] |= near_excl[:-1, :]
+            grown[:-1, :] |= near_excl[1:, :]
+            grown[:, 1:] |= near_excl[:, :-1]
+            grown[:, :-1] |= near_excl[:, 1:]
+            near_excl = grown
+        # Drop the contaminated ring: near the exclusion but not excluded
+        # (excluded cells are already invalid via valid_full).
+        vgrid[near_excl & ~excl_grid] = False
+
     if edge_overhang_cells and int(edge_overhang_cells) > 0:
         # Per-ring multiplicative recession: constant slope in cell units
         # (compounds naturally because each ring copies the previous ring's
         # already-receded depth — no ring index bookkeeping needed).
         bevel_gain = 1.0 + max(0.0, float(overhang_bevel_rel)) * (step / max(float(fx), 1e-6))
+        # Excluded regions (sky) are a HARD boundary for skirt growth: the
+        # sky belongs to the sky layer, and a rock layer's skirt growing
+        # upward past the skyline carries replicated SKY pixels on receding
+        # rock geometry — a jagged floating band above the silhouette
+        # (found live on monument valley: 14% of bg vertices had grown into
+        # the sky region). Band-clip / frame-ring / tear regions still grow.
+        forbid_grid = excl_grid  # original exclusion: the choked ring regrows,
+        # true sky never does.
         for _ring in range(int(edge_overhang_cells)):
             acc = np.zeros_like(d)
             cnt = np.zeros_like(d)
@@ -364,6 +403,8 @@ def build_relief_mesh(
                 acc += np.where(ok, nb, 0.0)
                 cnt += ok
             newly = ~vgrid & (cnt > 0)
+            if forbid_grid is not None:
+                newly &= ~forbid_grid
             if not newly.any():
                 break
             # Beveled skirt: multiplying forward-Z depth pushes the point

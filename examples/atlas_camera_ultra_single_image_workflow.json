@@ -390,7 +390,8 @@
         true,
         64,
         1.5,
-        128
+        128,
+        2
       ],
       "title": "⑤ BG band — ULTRA grid 1024 · fill_occluded · extend 64 · bevel 1.5 · outpaint 128"
     },
@@ -481,7 +482,8 @@
         true,
         48,
         1.5,
-        64
+        64,
+        2
       ],
       "title": "⑥ FG band — ULTRA grid 1024 · extend 48 · bevel 1.5 · outpaint 64"
     },

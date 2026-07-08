@@ -523,13 +523,14 @@ def test_overhang_bevel_recedes_away_from_camera():
     from atlas_camera.core.relief_mesh import build_relief_mesh
 
     h = w = 64
-    depth = np.full((h, w), 10.0, dtype=np.float32)
-    valid = np.zeros((h, w), dtype=bool)
-    valid[16:48, 16:48] = True  # island -> boundary skirt extends outward
-    exclude = ~valid
+    # Island of valid depth in an INVALID (zero-depth) surround — invalid, not
+    # EXCLUDED: exclusion is now a hard boundary the skirt must not grow into
+    # (the sky rule), while plain invalid regions still receive the skirt.
+    depth = np.zeros((h, w), dtype=np.float32)
+    depth[16:48, 16:48] = 10.0
 
     kw = dict(view_matrix=_view_matrix(0.0), fx=60.0, fy=60.0, cx=32.0, cy=32.0,
-              grid_long_edge=32, exclude_mask=exclude, scale=1.0,
+              grid_long_edge=32, scale=1.0,
               apply_sky_heuristic=False, edge_overhang_cells=4)
 
     flat = build_relief_mesh(depth, **kw)
@@ -555,3 +556,33 @@ def test_overhang_bevel_recedes_away_from_camera():
     assert r_bev.max() > r_flat.max() + 1.5
     # The skirt is still triangulated (beveled rings must not tear apart).
     assert bev.faces.shape[0] >= flat.faces.shape[0] * 0.95
+
+
+def test_overhang_never_grows_into_excluded_region():
+    """Exclusion (sky) is a HARD boundary for the skirt: growth happens into
+    plain-invalid regions but never into excluded cells — a rock layer's
+    skirt must not climb past the skyline into the sky layer's territory."""
+    np = pytest.importorskip("numpy")
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    h = w = 64
+    depth = np.zeros((h, w), dtype=np.float32)
+    depth[16:48, 16:48] = 10.0
+    # Exclude everything ABOVE the island (the "sky"): rows 0..15.
+    exclude = np.zeros((h, w), dtype=bool)
+    exclude[:16, :] = True
+
+    kw = dict(view_matrix=_view_matrix(0.0), fx=60.0, fy=60.0, cx=32.0, cy=32.0,
+              grid_long_edge=32, scale=1.0,
+              apply_sky_heuristic=False, edge_overhang_cells=4)
+    mesh = build_relief_mesh(depth, exclude_mask=exclude, **kw)
+
+    # Project vertices back: none may land in the excluded sky rows (above
+    # y_px = 16, with a one-cell tolerance for the grid node at the boundary).
+    v = np.asarray(mesh.vertices)
+    z = -(v @ np.asarray(_view_matrix(0.0))[:3, :3].T + np.asarray(_view_matrix(0.0))[:3, 3])[:, 2]
+    py = 32.0 - 60.0 * v[:, 1] / np.maximum(z, 1e-6)
+    cell = 2.0  # grid step in px
+    assert (py >= 16 - cell).all()
+    # Sanity: the skirt DID grow somewhere (below/sides are plain invalid).
+    assert (py > 48).any()

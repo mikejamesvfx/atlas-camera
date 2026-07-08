@@ -1602,6 +1602,36 @@ class _MetricDepthSetup(NamedTuple):
     exclude_mask: Any  # resolved (H,W) bool numpy array, or None if not supplied
 
 
+# Segmentation masks (SAM and similar) systematically FADE at frame borders
+# (measured live: SAM3 sky coverage 5.9% at row 0, 29% at row 5, 100% by row
+# 50 on a clear-sky plate) — so any border-touching mechanism (frame
+# outpaint's edge replication, the sky card's own ring) sees a boundary row
+# that lies about its content. Floods within this margin of each border.
+_BORDER_FLOOD_PX = 64
+
+
+def _flood_mask_to_frame_borders(mask, margin_px=_BORDER_FLOOD_PX):
+    """Flood a boolean mask to the frame borders wherever it touches within
+    ``margin_px``: a column with sky at row 40 is sky at rows 0-39 too (the
+    segmenter faded, physics didn't). Content genuinely cut by the frame (a
+    spire reaching the top edge) has no mask in the margin and is untouched.
+    Applied per border, perpendicular fill only."""
+    np = _require_numpy()
+    m = np.asarray(mask, dtype=bool).copy()
+    k = int(margin_px)
+    if k <= 0 or not m.any():
+        return m
+    # top: propagate True upward within the margin slice
+    m[:k] |= np.flip(np.logical_or.accumulate(np.flip(m[:k], axis=0), axis=0), axis=0)
+    # bottom
+    m[-k:] |= np.logical_or.accumulate(m[-k:], axis=0)
+    # left
+    m[:, :k] |= np.flip(np.logical_or.accumulate(np.flip(m[:, :k], axis=1), axis=1), axis=1)
+    # right
+    m[:, -k:] |= np.logical_or.accumulate(m[:, -k:], axis=1)
+    return m
+
+
 def _resolve_exclude_mask(mask_tensor, height, width):
     """Convert an optional ComfyUI MASK tensor (any resolution, values 0..1)
     into a (height, width) bool numpy array - True = exclude this pixel from
@@ -4178,13 +4208,23 @@ class AtlasCleanPlateLayer:
                                "boundary). The ring is INVENTED pixels: it lands in extend_mask / "
                                "{layer}_extend_matte.png for downstream regrain, and turns on "
                                "embed_matte implicitly. 0 = off."}),
+                "exclude_choke_cells": ("INT", {"default": 2, "min": 0, "max": 16,
+                    "tooltip": "Choke-and-reskirt against the exclude_mask edge: segmentation "
+                               "and depth edges never align exactly, leaving a ribbon of cells "
+                               "the mask calls rock but whose depth IS sky — they back-project "
+                               "high above the real silhouette as a jagged floating band. This "
+                               "erodes the layer N grid cells away from the exclusion, then the "
+                               "boundary skirt regrows the ring with clean neighbor depth: same "
+                               "coverage, geometry hugging the true surface. Raise for sloppier "
+                               "segmentation masks; 0 disables."}),
             },
         }
 
     def add_layer(self, solve, depth, plate_image, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5,
                   name="layer", priority=0.0, plate_ref=None, relief_grid=384, depth_edge_rel=1.5,
                   exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None,
-                  edge_extend_px=0, skirt_bevel=0.0, frame_outpaint_px=0):
+                  edge_extend_px=0, skirt_bevel=0.0, frame_outpaint_px=0,
+                  exclude_choke_cells=2):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import (
@@ -4223,6 +4263,14 @@ class AtlasCleanPlateLayer:
         fill = (setup.valid & (setup.metric < near)) if fill_occluded else None
         depth_m, metric_m, valid_m = depth_map, setup.metric, setup.valid
         exclude_m, fill_m = setup.exclude_mask, fill
+        if exclude_m is not None:
+            # Border-flood the segmentation (see _flood_mask_to_frame_borders)
+            # and re-derive validity from the healed mask: the faded border
+            # rows carry sky depth that otherwise builds a floating ring at
+            # the top of frame (found live — 86% of the bg layer's
+            # above-skyline vertices projected into the top outpaint ring).
+            exclude_m = _flood_mask_to_frame_borders(exclude_m)
+            valid_m = valid_m & ~exclude_m
         cx_m, cy_m, horizon_m = cx, cy, horizon_y
         Hp, Wp = setup.height, setup.width
         if pad:
@@ -4238,6 +4286,15 @@ class AtlasCleanPlateLayer:
                 horizon_m = float(horizon_m) + pad
             Hp, Wp = Hp + 2 * pad, Wp + 2 * pad
 
+        choke = int(exclude_choke_cells) if exclude_m is not None else 0
+        overhang_cells = 0
+        if embed_matte:
+            overhang_cells = 2
+            if edge_extend_px and int(edge_extend_px) > 0:
+                cell_px = max(1, int(round(max(Hp, Wp) / max(int(relief_grid), 2))))
+                overhang_cells = 2 + int(np.ceil(int(edge_extend_px) / cell_px))
+            # The skirt must regrow the choked ring fully before extending.
+            overhang_cells += choke
         mesh = build_relief_mesh(
             depth_m, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx_m, cy=cy_m,
             grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
@@ -4246,12 +4303,8 @@ class AtlasCleanPlateLayer:
             exclude_mask=exclude_m, fill_mask=fill_m,
             apply_sky_heuristic=exclude_m is None,
             overhang_bevel_rel=float(skirt_bevel),
-            edge_overhang_cells=(
-                (2 + int(np.ceil(int(edge_extend_px) /
-                                 max(1, int(round(max(Hp, Wp)
-                                                  / max(int(relief_grid), 2))))))
-                 if edge_extend_px and int(edge_extend_px) > 0 else 2)
-                if embed_matte else 0))
+            exclude_choke_cells=choke,
+            edge_overhang_cells=overhang_cells)
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
 
         # This source's OWN camera: same pose, widened intrinsics when
@@ -4364,6 +4417,11 @@ class AtlasCleanPlateLayer:
                                         + base64.b64encode(buf.getvalue()).decode("ascii"))
                 except Exception:
                     pass
+            # The excluded region (sky) is a hard boundary for the matte too:
+            # dilation/smear exposure must not paint this layer over the sky
+            # layer's territory (same rule as the mesh skirt).
+            if exclude_m is not None:
+                matte = matte & ~exclude_m
             # Invented pixels = smears + the outpaint ring (whatever the final
             # matte exposes beyond real photographed content).
             extend_region = matte & ~original_matte
@@ -4507,6 +4565,11 @@ class AtlasSkyDomeLayer:
             return (solve, blank, blank)
 
         mask_arr = _resolve_exclude_mask(sky_mask, setup.height, setup.width)
+        if mask_arr is not None:
+            # Heal the segmenter's border fade (see _flood_mask_to_frame_borders):
+            # without it the card's outpaint ring inherits a mostly-false top
+            # row and doesn't cover above the skyline.
+            mask_arr = _flood_mask_to_frame_borders(mask_arr)
         if mask_arr is None or not mask_arr.any():
             blank = torch.zeros(1, setup.height, setup.width, dtype=torch.float32)
             return (solve, blank, blank)
