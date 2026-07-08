@@ -75,7 +75,10 @@ prompt is normally "sky"; suggest a different prompt for unusual cases
 use_sky_dome false).
 
 bands (depth layering) — the most important judgment call:
-- Default 2-band split: foreground 0.0-0.35, background 0.35-1.0 (percentiles
+- near_pct/far_pct are positions along the scene's LOG-depth range (0.5 = the
+  geometric mean of the depth range, i.e. perceptually mid-scene) — NOT pixel
+  percentiles.
+- Default 2-band split: foreground 0.0-0.55, background 0.55-1.0 (log-depth
   of the depth distribution).
 - Add a third band when there is a distinct midground subject (e.g. a
   building between near ground and far mountains): fg 0-0.20, mid 0.20-0.65,
@@ -126,7 +129,7 @@ OUTPUT FORMAT — respond with ONLY this JSON object, no prose outside it:
   },
   "layers": [
     {"name": "sky", "role": "sky", "notes": "..."},
-    {"name": "bg", "role": "background", "near_pct": 0.35, "far_pct": 1.0,
+    {"name": "bg", "role": "background", "near_pct": 0.55, "far_pct": 1.0,
      "needs_inpaint": true, "fill_occluded": true, "notes": "..."}
   ],
   "recommended_settings": {

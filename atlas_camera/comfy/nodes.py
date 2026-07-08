@@ -1708,14 +1708,16 @@ def _metric_depth_and_validity(solve, depth, exclude_mask=None) -> "_MetricDepth
 
 def _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct):
     """Resolve a metric depth band from explicit metres (``near_m``/``far_m``,
-    0 = unset) or, as a fallback, percentiles (``near_pct``/``far_pct``, 0..1)
-    over the valid (non-sky) metric depth distribution.
+    0 = unset) or, as a fallback, POSITIONS ALONG THE SCENE'S LOG-DEPTH RANGE
+    (``near_pct``/``far_pct``, 0..1; 0.5 = the geometric mean of the robust
+    depth range — see ``log_depth_position`` below for why this replaced
+    pixel-count percentiles).
 
     Shared by ``AtlasDepthLayerMask`` and ``AtlasCleanPlateLayer`` so the two
     nodes' bands can never drift apart — the inpaint-layers design requires the
     mask node's band and the clean-plate node's mesh clip to match exactly.
     ``far_pct<=0`` is a deliberate explicit "no upper bound" (+inf) rather than
-    a degenerate 0th-percentile far edge, since ``near_pct``/``far_pct`` share
+    a degenerate zero-position far edge, since ``near_pct``/``far_pct`` share
     the same 0..1 range but mean different things at 0 (near defaults to the
     very nearest pixels; far defaults to "no cap" via ``far_pct=0.5``, and an
     artist setting ``far_pct=0`` clearly means "no upper band edge", not
@@ -1723,16 +1725,32 @@ def _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct):
     """
     np = _require_numpy()
     values = metric[valid] if valid.any() else None
+
+    def log_depth_position(t):
+        # LOG-DEPTH interpolation, not a pixel-count percentile: metric depth
+        # is hugely skewed (near ground dominates the pixel count, the whole
+        # far scene compresses into the top percentiles), so a linear
+        # percentile slider wasted 0-0.9 on the foreground (user-measured:
+        # useful bg splits landed at 0.9-0.95). Position t along the scene's
+        # log depth range is perceptually linear: 0.5 = the geometric mean of
+        # the (robust, 1st-99th percentile) depth range. t>=0.995 = no cap.
+        import math
+        d_lo = float(np.percentile(values, 1.0))
+        d_hi = float(np.percentile(values, 99.0))
+        if not (d_hi > d_lo > 0):
+            return float(np.percentile(values, t * 100.0))  # degenerate scene
+        return math.exp(math.log(d_lo) + t * (math.log(d_hi) - math.log(d_lo)))
+
     if near_m and near_m > 0:
         near = float(near_m)
     elif values is not None and near_pct > 0:
-        near = float(np.percentile(values, near_pct * 100.0))
+        near = log_depth_position(min(float(near_pct), 1.0))
     else:
         near = 0.0
     if far_m and far_m > 0:
         far = float(far_m)
-    elif values is not None and far_pct > 0:
-        far = float(np.percentile(values, far_pct * 100.0))
+    elif values is not None and 0 < far_pct < 0.995:
+        far = log_depth_position(float(far_pct))
     else:
         far = float("inf")
     return near, far
@@ -3966,19 +3984,20 @@ class AtlasDepthLayerMask:
             },
             "optional": {
                 "near_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10000.0, "step": 0.1,
-                    "tooltip": "Band near edge in metres. 0 = auto (use near_pct percentile)."}),
+                    "tooltip": "Band near edge in metres. 0 = auto (use near_pct)."}),
                 "far_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10000.0, "step": 0.1,
-                    "tooltip": "Band far edge in metres. 0 = auto (use far_pct percentile)."}),
+                    "tooltip": "Band far edge in metres. 0 = auto (use far_pct)."}),
                 "near_pct": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "tooltip": "Used when near_m==0: percentile of valid metric depth. LOWER = "
-                               "smaller/closer near threshold = TIGHTER occlusion (isolates just "
-                               "the true near-camera foreground). Higher near_pct occludes MORE of "
-                               "the frame, not less — try 0.05-0.15 for a typical foreground object; "
-                               "a photo with one large nearby structure filling the frame may need "
-                               "an even lower value."}),
+                    "tooltip": "Used when near_m==0: POSITION ALONG THE SCENE'S LOG-DEPTH "
+                               "RANGE, not a pixel percentile (depth is skewed — pixel percentiles "
+                               "wasted 0-0.9 on the foreground; 0.5 here = the geometric mean of "
+                               "the scene's depth range, perceptually mid-scene). LOWER = closer "
+                               "near threshold = tighter occlusion. Try 0.2-0.4 for a typical "
+                               "foreground object."}),
                 "far_pct": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "tooltip": "Used when far_m==0: percentile of valid metric depth. "
-                               "0 means no upper bound (+inf), not a degenerate empty band."}),
+                    "tooltip": "Used when far_m==0: position along the scene's LOG-depth "
+                               "range (see near_pct). 0 means no upper bound (+inf); values at or "
+                               "above ~1.0 also mean no cap."}),
                 "feather_px": ("INT", {"default": 4, "min": 0, "max": 64,
                     "tooltip": "Dilate occlusion_mask's edge by this many pixels — a small "
                                "safety margin on top of whatever grow INPAINT_ExpandMask "

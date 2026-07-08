@@ -823,3 +823,37 @@ def test_border_flood_heals_segmenter_fade():
     assert (out[40:100, :100] == m[40:100, :100]).all()  # interior unchanged
     # empty mask passes through
     assert not _flood_mask_to_frame_borders(np.zeros((50, 50), bool), 16).any()
+
+
+def test_band_positions_are_log_depth_not_pixel_percentile():
+    """near_pct/far_pct interpolate the scene's LOG-depth range: on a skewed
+    distribution (90% of pixels at ~2m, 10% at ~80m — the typical ground-
+    dominated photo) t=0.5 must land near the geometric mean of the depth
+    range (~13m), NOT at the pixel median (~2m), and the useful bg split no
+    longer hides at 0.9+."""
+    import math
+
+    import numpy as np
+
+    from atlas_camera.comfy.nodes import _resolve_depth_band
+
+    rng = np.random.default_rng(7)
+    metric = np.concatenate([
+        rng.uniform(1.8, 2.2, 9000),    # dominant near ground
+        rng.uniform(70.0, 90.0, 1000),  # distant scene
+    ]).reshape(100, 100)
+    valid = np.ones_like(metric, dtype=bool)
+
+    near, far = _resolve_depth_band(metric, valid, 0.0, 0.0, 0.5, 0.0)
+    d_lo = float(np.percentile(metric, 1.0))
+    d_hi = float(np.percentile(metric, 99.0))
+    geo_mean = math.exp((math.log(d_lo) + math.log(d_hi)) / 2)
+    assert near == pytest.approx(geo_mean, rel=0.05)
+    assert near > 8.0                       # far from the ~2m pixel median
+    assert far == float("inf")
+
+    # far_pct at/above ~1.0 = no cap; explicit metres still win outright.
+    _, far_cap = _resolve_depth_band(metric, valid, 0.0, 0.0, 0.0, 1.0)
+    assert far_cap == float("inf")
+    near_m, far_m = _resolve_depth_band(metric, valid, 5.0, 40.0, 0.5, 0.5)
+    assert (near_m, far_m) == (5.0, 40.0)
