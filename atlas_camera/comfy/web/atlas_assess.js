@@ -25,6 +25,14 @@ app.registerExtension({
           w.value = true;
           w.callback?.(true);
         }
+        // Approvals are per-image: stamp the fingerprint of the LAST-ASSESSED
+        // image (delivered via ui.fingerprint in onExecuted) so a swapped
+        // input photo re-arms the gate instead of running a stale approval.
+        const af = this.widgets?.find((x) => x.name === "approved_for");
+        if (af && this._atlasAssessFingerprint) {
+          af.value = this._atlasAssessFingerprint;
+          af.callback?.(af.value);
+        }
         app.queuePrompt(0, 1);
       });
       // Buttons must never serialize — an API-format export otherwise turns
@@ -37,6 +45,8 @@ app.registerExtension({
     const origExec = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {
       origExec?.apply(this, arguments);
+      const fp = Array.isArray(message?.fingerprint) ? message.fingerprint[0] : message?.fingerprint;
+      if (fp) this._atlasAssessFingerprint = fp;
       const text = Array.isArray(message?.text) ? message.text.join("\n") : message?.text;
       if (!text) return;
       let w = this.widgets?.find((x) => x.name === "assessment_report");

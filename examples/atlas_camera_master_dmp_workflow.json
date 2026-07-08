@@ -1260,7 +1260,8 @@
         "",
         "",
         "",
-        false
+        false,
+        ""
       ],
       "title": "🧭 Assess Image — VLM setup advisor (PAUSES the graph until ▶ Continue)"
     },

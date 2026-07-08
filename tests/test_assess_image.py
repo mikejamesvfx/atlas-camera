@@ -132,6 +132,46 @@ def test_node_falls_back_to_passthrough_outside_comfy(monkeypatch):
     assert img_out is image  # no ExecutionBlocker importable in the test env
 
 
+def test_stale_approval_from_a_different_image_rearms_the_gate(monkeypatch):
+    """▶ Continue approves THIS image only: a persisted proceed=True whose
+    approved_for fingerprint doesn't match the current image must block again
+    (found live — a new image sailed through the previous image's approval)."""
+    import sys
+    import types
+
+    _canned(monkeypatch)
+
+    class FakeBlocker:
+        def __init__(self, message):
+            self.message = message
+
+    fake_graph = types.ModuleType("comfy_execution.graph")
+    fake_graph.ExecutionBlocker = FakeBlocker
+    fake_pkg = types.ModuleType("comfy_execution")
+    fake_pkg.graph = fake_graph
+    monkeypatch.setitem(sys.modules, "comfy_execution", fake_pkg)
+    monkeypatch.setitem(sys.modules, "comfy_execution.graph", fake_graph)
+
+    from atlas_camera.comfy.nodes import _image_fingerprint
+    old_image = torch.rand(1, 32, 32, 3)
+    new_image = torch.rand(1, 32, 32, 3)
+    old_fp = _image_fingerprint(old_image)
+
+    # Approval matches -> flows.
+    out_ok = AtlasAssessImage().assess(old_image, proceed=True, approved_for=old_fp)
+    assert out_ok["result"][0] is old_image
+    assert out_ok["ui"]["fingerprint"] == [old_fp]
+
+    # Same persisted approval, different image -> blocked + report says why.
+    out_stale = AtlasAssessImage().assess(new_image, proceed=True, approved_for=old_fp)
+    assert isinstance(out_stale["result"][0], FakeBlocker)
+    assert "GATE RE-ARMED" in out_stale["result"][1]
+
+    # Manual override: proceed=True with EMPTY approved_for is unconditional.
+    out_manual = AtlasAssessImage().assess(new_image, proceed=True, approved_for="")
+    assert out_manual["result"][0] is new_image
+
+
 def test_node_tolerates_serialized_button_input(monkeypatch):
     # API-format exports can serialize the ▶ Continue Workflow BUTTON widget
     # as a bogus input key — found in the user's exported workflow.

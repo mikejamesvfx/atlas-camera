@@ -2470,26 +2470,40 @@ function buildNodeUI(node, containerEl) {
     controls.setTarget(groundPointInView(camera, pivotMax)); // pivot on the looked-at ground point
     controls.syncFromCamera();                     // init orbit state from recovered pose
     recoveredData = data;
-    // Stale-extraction cleanup: if the persisted patch_angle was extracted
-    // from a DIFFERENT solve/image than the one that just executed, clear it
-    // from the widget (the backend already refuses it — this keeps the UI
-    // honest) and tell the artist to re-extract.
+    // Stale-extraction cleanup + pause visibility: if the persisted
+    // patch_angle was extracted from a DIFFERENT solve/image than the one
+    // that just executed, clear it from the widget (the backend already
+    // refuses it — this keeps the UI honest). And whenever the patch branch
+    // is paused (no valid extraction) while patch_* outputs are actually
+    // wired, SAY SO — a silently-skipped branch otherwise reads as "the
+    // workflow ran and produced nothing" (reported live).
     try {
       const widget = node.widgets?.find((w) => w.name === "client_data");
+      let pa = null;
+      let cleared = false;
       if (widget?.value) {
         const existing = JSON.parse(widget.value);
-        const pa = existing.patch_angle;
+        pa = existing.patch_angle || null;
         if (pa && data.solve_fingerprint && pa.fingerprint !== data.solve_fingerprint) {
           delete existing.patch_angle;
           widget.value = JSON.stringify(existing);
           widget.callback?.(widget.value);
-          angleHud.textContent =
-            "📐 Patch angle cleared — the source image/solve changed.\n" +
-            "The patch branch is paused again; orbit to your view and\n" +
-            "click 📐 Extract Angle to re-arm it.      [✕]";
-          angleHud.style.display = "block";
-          angleHud.onclick = (e) => { angleHud.style.display = "none"; e.stopPropagation(); };
+          pa = null;
+          cleared = true;
         }
+      }
+      const patchWired = (node.outputs || []).slice(6, 10)
+        .some((o) => (o.links || []).length > 0);
+      if (!pa && patchWired) {
+        angleHud.textContent =
+          (cleared
+            ? "📐 Patch angle cleared — the source image/solve changed.\n"
+            : "📐 No patch angle extracted for this image.\n") +
+          "The patch branch (Qwen generation / AddPatchView / exports)\n" +
+          "is PAUSED — orbit to your target view and click\n" +
+          "📐 Extract Angle to run it.      [✕]";
+        angleHud.style.display = "block";
+        angleHud.onclick = (e) => { angleHud.style.display = "none"; e.stopPropagation(); };
       }
     } catch (_) { /* malformed client_data — leave it to the backend guard */ }
     applyOutputProfilePreview(data.output_profile || atlasOutputProfileFromWidgets(getLinkedControlsNode(node) || {}));

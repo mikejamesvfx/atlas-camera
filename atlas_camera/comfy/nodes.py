@@ -230,6 +230,21 @@ def _decode_b64_to_tensor(b64str: str, width: int, height: int):
         return torch.zeros(1, height, width, 3, dtype=torch.float32)
 
 
+def _image_fingerprint(image) -> str:
+    """Short identity hash of an IMAGE tensor (16x-subsampled digest) — the
+    approval token for AtlasAssessImage's ▶ Continue: proceed only applies to
+    the image it was clicked FOR, so swapping the input photo re-arms the
+    assessment gate instead of sailing through a stale approval (the same
+    staleness class as 📐 Extract Angle's solve fingerprint)."""
+    import hashlib
+
+    arr = image[0, ::16, ::16].cpu().numpy()
+    h = hashlib.md5()
+    h.update(repr(arr.shape).encode())
+    h.update(arr.tobytes())
+    return h.hexdigest()[:16]
+
+
 def _solve_fingerprint(solve, source_image) -> str:
     """Short identity hash of (recovered camera, source image) — stamped into
     📐 Extract Angle's client_data.patch_angle by the frontend and validated
@@ -1003,12 +1018,20 @@ class AtlasAssessImage:
                 "proceed": ("BOOLEAN", {"default": False,
                     "tooltip": "OFF = the image output is paused (downstream skipped) so you can "
                                "read the report and apply settings first. Turn ON (or click "
-                               "▶ Continue Workflow) and re-queue to run the full pipeline."}),
+                               "▶ Continue Workflow) and re-queue to run the full pipeline. "
+                               "A ▶ Continue click approves THIS image only (see approved_for); "
+                               "a manual toggle here is an unconditional override."}),
+                "approved_for": ("STRING", {"default": "",
+                    "tooltip": "Managed by ▶ Continue Workflow: the fingerprint of the image the "
+                               "current proceed=True was approved for. When the input image "
+                               "changes, the gate re-arms automatically instead of running a "
+                               "stale approval. Leave empty when toggling proceed by hand "
+                               "(empty = unconditional)."}),
             },
         }
 
     def assess(self, image, provider="ollama", model="", base_url="",
-               extra_instructions="", proceed=False, **_extra):
+               extra_instructions="", proceed=False, approved_for="", **_extra):
         # **_extra: API-format exports can serialize the ▶ Continue Workflow
         # BUTTON widget as a bogus input key — tolerate unknown kwargs.
         import hashlib
@@ -1040,15 +1063,28 @@ class AtlasAssessImage:
         settings_json = json.dumps(
             (cached.payload or {}).get("recommended_settings", {}), indent=1) if cached.ok else "{}"
 
-        if proceed:
+        # ▶ Continue approvals are per-image: a non-empty approved_for that
+        # doesn't match the CURRENT image re-arms the gate (found live — the
+        # proceed widget persists, so a new image sailed through the previous
+        # image's approval). An empty approved_for with proceed=True is the
+        # manual unconditional override.
+        img_fp = _image_fingerprint(image)
+        report = cached.report
+        effective_proceed = bool(proceed) and (not approved_for or approved_for == img_fp)
+        if proceed and approved_for and approved_for != img_fp:
+            report = ("*** GATE RE-ARMED: the input image changed since ▶ Continue was "
+                      "clicked — review the fresh assessment below, then ▶ Continue "
+                      "again for this image. ***\n\n" + report)
+
+        if effective_proceed:
             img_out = image
         else:
             blocker = _execution_blocker()
             img_out = blocker if blocker is not None else image
-        # ui.text renders the report directly on the node (atlas_assess.js),
-        # so no separate text-display node is ever required.
-        return {"ui": {"text": [cached.report]},
-                "result": (img_out, cached.report, settings_json)}
+        # ui.text renders the report directly on the node (atlas_assess.js);
+        # ui.fingerprint is what the ▶ button stamps into approved_for.
+        return {"ui": {"text": [report], "fingerprint": [img_fp]},
+                "result": (img_out, report, settings_json)}
 
 
 _ATLAS_ASSESS_CACHE: dict = {}
@@ -3497,6 +3533,10 @@ class AtlasBlockoutViewport:
         # without this the browser extension never learns the solve is ready
         # and never fetches the camera data / background / proxies.
         ui_payload = {"atlas_ready": [node_id]}
+        # Filled in below once client_data is parsed — lets the frontend show
+        # a "patch branch paused — 📐 Extract Angle" hint instead of the
+        # paused branch silently looking like a failed run.
+        _patch_state = {"paused": True}
 
         # 📐 Extract Angle results (written into client_data by the viewport's
         # Extract Angle button). UNTIL an angle has been extracted, the four
@@ -3520,6 +3560,7 @@ class AtlasBlockoutViewport:
             # re-arm the pause, not silently patch at the old image's angle.
             if pa and pa.get("fingerprint") != solve_fingerprint:
                 pa = {}
+            _patch_state["paused"] = not pa
             if not pa:
                 blocker = _execution_blocker()
                 if blocker is not None:
@@ -3534,15 +3575,19 @@ class AtlasBlockoutViewport:
 
         if not client_data.strip():
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
+            pa_strings = _patch_angle_strings(None)
+            ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
             return {"ui": ui_payload,
-                    "result": (blank, blank, blank, blank, blank, None) + _patch_angle_strings(None)}
+                    "result": (blank, blank, blank, blank, blank, None) + pa_strings}
 
         try:
             data = json.loads(client_data)
         except json.JSONDecodeError:
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
+            pa_strings = _patch_angle_strings(None)
+            ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
             return {"ui": ui_payload,
-                    "result": (blank, blank, blank, blank, blank, None) + _patch_angle_strings(None)}
+                    "result": (blank, blank, blank, blank, blank, None) + pa_strings}
 
         shaded = _decode_b64_to_tensor(data.get("shaded", ""), width, height)
         depth  = _decode_b64_to_tensor(data.get("depth",  ""), width, height)
@@ -3563,9 +3608,11 @@ class AtlasBlockoutViewport:
             from atlas_camera.core.schema import AtlasCameraPath
             camera_path = AtlasCameraPath.from_dict(camera_path_data)
 
+        pa_strings = _patch_angle_strings(data)
+        ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
         return {"ui": ui_payload,
                 "result": (shaded, depth, normal, mask, path_frames, camera_path)
-                + _patch_angle_strings(data)}
+                + pa_strings}
 
     @classmethod
     def IS_CHANGED(cls, client_data="", **_):
