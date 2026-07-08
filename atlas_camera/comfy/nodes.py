@@ -1266,7 +1266,7 @@ class AtlasDeriveProjectionGeometry:
                     "tooltip": "What the viewport receives. relief_mesh = contoured depth mesh "
                                "(recommended); primitives = flat blockout planes/boxes; both "
                                "overlaps the two on the same surfaces (enclosure + z-shimmer)."}),
-                "relief_grid": ("INT", {"default": 128, "min": 16, "max": 1024,
+                "relief_grid": ("INT", {"default": 128, "min": 16, "max": 4096,
                     "tooltip": "Viewport relief-mesh density (long-edge grid columns). Higher = "
                                "fewer/smaller torn holes on noisy AI-image depth (each quad spans "
                                "less real-world area, so it's less likely to straddle a spurious "
@@ -1785,7 +1785,7 @@ class AtlasDeriveReliefMesh:
                 "depth": ("ATLAS_DEPTH_MAP",),
             },
             "optional": {
-                "relief_grid": ("INT", {"default": 128, "min": 16, "max": 1024,
+                "relief_grid": ("INT", {"default": 128, "min": 16, "max": 4096,
                     "tooltip": "Mesh density (long-edge grid columns). Higher = fewer/"
                                "smaller torn holes on noisy AI-image depth, at the cost "
                                "of a larger mesh payload and a heavier viewport."}),
@@ -2280,7 +2280,7 @@ class AtlasAddPatchView:
                     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                     "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
                 ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
-                "relief_grid": ("INT", {"default": 96, "min": 16, "max": 256,
+                "relief_grid": ("INT", {"default": 96, "min": 16, "max": 4096,
                     "tooltip": "Patch relief-mesh density (long-edge grid columns)."}),
                 "priority": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 1.0,
                     "tooltip": "Blend priority among patches (higher wins). The primary photo "
@@ -2960,7 +2960,7 @@ class AtlasExportReliefMesh:
                 "output_dir": ("STRING", {"default": "atlas_exports"}),
             },
             "optional": {
-                "grid_long_edge": ("INT", {"default": 128, "min": 16, "max": 512,
+                "grid_long_edge": ("INT", {"default": 128, "min": 16, "max": 4096,
                     "tooltip": "Mesh density: grid columns along the longest image edge."}),
                 "depth_edge_rel": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 5.0, "step": 0.05,
                     "tooltip": "Relative depth jump that tears the mesh (silhouette holes)."}),
@@ -3958,7 +3958,7 @@ class AtlasDepthLayerMask:
                                "will do later) to derive hole_mask - the mesh's real tear/sky "
                                "hole data, not a depth-band heuristic. Off by default: this is "
                                "a real (duplicate) mesh build, not free like the other two masks."}),
-                "relief_grid": ("INT", {"default": 384, "min": 16, "max": 1024,
+                "relief_grid": ("INT", {"default": 384, "min": 16, "max": 4096,
                     "tooltip": "Only used when compute_hole_mask=True. MUST match the "
                                "AtlasCleanPlateLayer call downstream for hole_mask to reflect "
                                "the actual final mesh (default 384 = the band-layer calibration)."}),
@@ -4111,7 +4111,7 @@ class AtlasCleanPlateLayer:
                                "unlike multi-angle patches)."}),
                 "plate_ref": ("ATLAS_PLATE_REF", {
                     "tooltip": "Optional registered final clean-plate reference. Browser still uses image_b64 preview; exporters use this for EXR/float-safe handoff."}),
-                "relief_grid": ("INT", {"default": 384, "min": 16, "max": 1024,
+                "relief_grid": ("INT", {"default": 384, "min": 16, "max": 4096,
                     "tooltip": "Band-clipped meshes tear at band boundaries ON TOP OF normal "
                                "silhouette tearing, so per-layer meshes want more density than "
                                "the generic 128 default - 384/1.5 is the empirically-calibrated "
@@ -4365,7 +4365,7 @@ class AtlasSkyDomeLayer:
                                "geometry. Distance doesn't affect appearance (texel assignment is "
                                "by ray, not depth) — only how far you can dolly before it reveals "
                                "itself as flat, which at typical FOV is a very long way."}),
-                "relief_grid": ("INT", {"default": 96, "min": 16, "max": 512,
+                "relief_grid": ("INT", {"default": 96, "min": 16, "max": 4096,
                     "tooltip": "Card mesh density (long-edge grid columns). A flat, constant-depth "
                                "card needs far less density than real geometry — default is lower "
                                "than AtlasDeriveReliefMesh's."}),
