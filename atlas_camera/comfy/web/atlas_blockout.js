@@ -1678,6 +1678,12 @@ function buildNodeUI(node, containerEl) {
     const prevAlpha = renderer.getClearAlpha();
     const gridWas = grid.visible;
     const bgWas = bgMesh ? bgMesh.visible : false;
+    // scene.background overrides the clear color at render() time — it was
+    // silently repainting every probe frame #1a1a1a, burying the sentinel
+    // (found live: baseline read 0 holes at every angle, so the scan always
+    // ran to the hard max and the clamp never changed). Null it for the probe.
+    const sceneBgWas = scene.background;
+    scene.background = null;
     grid.visible = false;
     if (bgMesh) bgMesh.visible = false;
     try {
@@ -1699,6 +1705,7 @@ function buildNodeUI(node, containerEl) {
       renderer.setClearColor(prevColor, prevAlpha);
       grid.visible = gridWas;
       if (bgMesh) bgMesh.visible = bgWas;
+      scene.background = sceneBgWas;
     }
   }
 
@@ -1734,7 +1741,10 @@ function buildNodeUI(node, containerEl) {
     if (!wasOn) applyProjection(true);
     try {
       const baseline = measureHoleFractionAt(0, 0);
-      const tol = baseline + 0.004;
+      // Allow 2% of the frame beyond baseline before calling a pose unsafe —
+      // the baseline itself is nonzero on torn meshes (~4% on the hangar),
+      // and sub-2% hole slivers read as minor edge artifacts, not failures.
+      const tol = baseline + 0.02;
       return {
         baseline,
         yawPlusDeg: scanDirection((r) => measureHoleFractionAt(+r, 0), 80, tol),
@@ -1766,6 +1776,12 @@ function buildNodeUI(node, containerEl) {
     widget.callback?.(widget.value);
   }
 
+  // Debug surface (console): node._atlasProbe(dThetaRad, dPhiRad) -> hole
+  // fraction; node._atlasScene/_atlasCamera for inspection.
+  node._atlasProbe = measureHoleFractionAt;
+  node._atlasScene = scene;
+  node._atlasCamera = camera;
+
   const envBtn = document.createElement("button");
   envBtn.textContent = "🧭 Safe Zone";
   envBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
@@ -1782,7 +1798,7 @@ function buildNodeUI(node, containerEl) {
     applyEnvelopeLimits(env);
     persistEnvelopeToClientData(env);
     angleHud.textContent =
-      `🧭 Safe camera envelope (measured, holes ≤ ${(env.baseline * 100 + 0.4).toFixed(1)}%)
+      `🧭 Safe camera envelope (measured, holes ≤ ${(env.baseline * 100 + 2).toFixed(1)}%)
 ` +
       `yaw   +${env.yawPlusDeg.toFixed(1)}° / −${env.yawMinusDeg.toFixed(1)}°
 ` +
