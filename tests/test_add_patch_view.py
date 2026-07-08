@@ -215,3 +215,82 @@ def test_unseen_matte_dilation_and_opt_out(monkeypatch):
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         relief_grid=48, mask_unseen_only=False)
     assert off.projection_sources[0].mask_b64 is None
+
+
+def test_scale_registers_against_primary_overlap(monkeypatch):
+    """When primary_depth is wired, the patch's metric scale is REGISTERED to
+    the primary through the overlap, not independently ground-fit: a same-pose
+    patch whose raw depth is exactly 2x the primary's must come out at scale
+    0.5 (closed-form: with z_cam=0 at zero orbit, s = m / z_p)."""
+    torch = pytest.importorskip("torch")
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    from dataclasses import dataclass
+
+    from atlas_camera.inference.depth_estimator import DepthResult
+
+    solve, _pivot, _eye = _synthetic_primary()
+    h = w = 512
+    primary_ramp = (np.linspace(30.0, 5.0, h)[:, None] * np.ones((1, w))).astype(np.float32)
+
+    @dataclass
+    class _FakeDepth:
+        depth: object
+        is_metric: bool = True
+        model_id: str = "fake"
+
+    def fake(image_path, *, model_id=None, device=None):
+        return _FakeDepth(depth=primary_ramp * 2.0)  # patch depth = 2x primary
+
+    import atlas_camera.inference.depth_estimator as de
+    monkeypatch.setattr(de, "estimate_depth", fake)
+
+    # Primary metric map delivered via the shared-depth input. Its own
+    # ground fit must come out at 1.0 for the closed-form expectation --
+    # monkeypatch estimate_ground_scale to isolate the registration math.
+    import atlas_camera.core.relief_mesh as rm
+    real_egs = rm.estimate_ground_scale
+    monkeypatch.setattr(rm, "estimate_ground_scale",
+                        lambda *a, **k: (1.0, {"reason": "test"}))
+
+    primary_dr = DepthResult(depth=primary_ramp, is_metric=True, model_id="fake",
+                             image_width=w, image_height=h,
+                             near=5.0, far=30.0)
+    patch_img = torch.rand(1, h, w, 3, dtype=torch.float32)
+
+    (out,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front view",
+        source_azimuth_view="front view", relief_grid=48,
+        primary_depth=primary_dr, unseen_dilate_px=0)
+
+    meta = out.projection_sources[0].metadata
+    assert meta["scale_source"] == "primary_registration"
+    assert meta["scale"] == pytest.approx(0.5, rel=0.02)
+
+
+def test_exclude_mask_removes_patch_sky_geometry(monkeypatch):
+    """A SAM mask of the PATCH image's sky must keep those pixels out of the
+    patch mesh entirely -- hallucinated near-depth sky otherwise triangulates
+    into geometry bulging toward the camera (found live)."""
+    torch = pytest.importorskip("torch")
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
+    sky = torch.zeros(1, 512, 512, dtype=torch.float32)
+    sky[0, :200, :] = 1.0  # top 200 rows are "sky"
+
+    (plain,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view",
+        relief_grid=48)
+    (masked,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view",
+        relief_grid=48, exclude_mask=sky)
+
+    def n_verts(s):
+        mesh = next(p for p in s.projection_sources[0].proxy_geometry
+                    if p.primitive_type == "mesh")
+        return mesh.metadata["n_vertices"]
+    assert n_verts(masked) < n_verts(plain)

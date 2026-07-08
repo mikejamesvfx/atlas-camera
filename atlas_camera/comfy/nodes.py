@@ -2310,11 +2310,20 @@ class AtlasAddPatchView:
                     "tooltip": "Dilate the unseen matte so the patch slightly overlaps the "
                                "primary's coverage edge (hides hairline seams at the boundary)."}),
                 "primary_depth": ("ATLAS_DEPTH_MAP", {
-                    "tooltip": "Optional: the shared AtlasDepthMap of the SOURCE photo. Adds the "
-                               "true depth-shadow term to the unseen matte (surfaces hidden "
-                               "behind nearer geometry from the primary's view, not just "
-                               "frustum/frame misses). Both sides are ground-pinned to one "
-                               "metric space, same as AtlasOcclusionMask's depth_shadow mode."}),
+                    "tooltip": "STRONGLY RECOMMENDED: the shared AtlasDepthMap of the SOURCE "
+                               "photo. Enables (1) overlap-based scale REGISTRATION — the patch "
+                               "mesh's metric scale is solved by matching its depth against the "
+                               "primary's in the mutually-visible region, so the patch actually "
+                               "sits in the primary's world instead of trusting an independent "
+                               "(and fragile, on AI-generated views) ground fit; and (2) the true "
+                               "depth-shadow term in the unseen matte."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Segmentation of the PATCH image's sky (run SAM3Segment on the "
+                               "generated novel view, prompt 'sky'). REPLACES the internal sky "
+                               "heuristic, same rule as every other relief-mesh node — without "
+                               "it, hallucinated near-depth sky in the AI view gets triangulated "
+                               "into geometry bulging toward the camera. The sky dome layer owns "
+                               "the sky; a patch should never contribute sky geometry."}),
             },
         }
 
@@ -2328,7 +2337,7 @@ class AtlasAddPatchView:
                   depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                   relief_grid=96, priority=1.0, plate_ref=None, device="auto",
                   patch_view_override="", mask_unseen_only=True, unseen_dilate_px=16,
-                  primary_depth=None):
+                  primary_depth=None, exclude_mask=None):
         if patch_view_override and patch_view_override.strip():
             parsed = _parse_view_prompt(patch_view_override)
             if parsed is None:
@@ -2418,17 +2427,82 @@ class AtlasAddPatchView:
         if depth_map.shape != (patch_h, patch_w):
             depth_map = _resize_depth(depth_map, patch_w, patch_h)
 
-        scale, _scale_info = estimate_ground_scale(
-            depth_map, view_matrix=patch_extr.camera_view_matrix,
-            fx=pfx, fy=pfy, cx=pcx, cy=pcy,
-            horizon_y=patch_horizon_y,
+        np = _require_numpy()
+        from atlas_camera.core.depth_geometry import (
+            back_project_normals,
+            primary_camera_validity_mask,
         )
+
+        resolved_exclude = _resolve_exclude_mask(exclude_mask, patch_h, patch_w)
+
+        # --- Patch scale: REGISTER against the primary's metric world when the
+        # shared primary depth is available; ground-fit is only the fallback.
+        # An independent estimate_ground_scale on an AI-generated novel view is
+        # fragile — when it misfits, the whole patch mesh lands at the wrong
+        # world scale ("the patch doesn't sit with the main geometry", found
+        # live). Registration exploits the OVERLAP both cameras see: scaling
+        # about the patch camera makes each point's depth in the PRIMARY
+        # camera affine in the scale s — z(s) = z_cam + s·(z_p − z_cam) — so
+        # each overlap pixel yields a closed-form s = (m − z_cam)/(z_p − z_cam)
+        # against the primary's stored metric depth m, and the median over
+        # thousands of pixels is a robust one-parameter alignment.
+        primary_metric_map = None
+        if primary_depth is not None:
+            p_map = _depth_map_for_solve(primary_depth, p_w, p_h)
+            p_scale, _ = estimate_ground_scale(
+                p_map, view_matrix=extr.camera_view_matrix,
+                fx=fx, fy=fy, cx=cx, cy=cy,
+                horizon_y=_horizon_y_from_solve(solve))
+            primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
+
+        scale = None
+        scale_source = "ground_fit"
+        if primary_metric_map is not None:
+            bp_raw = back_project_normals(
+                depth_map, view_matrix=patch_extr.camera_view_matrix,
+                fx=pfx, fy=pfy, cx=pcx, cy=pcy)
+            pvm = np.asarray(extr.camera_view_matrix, dtype=np.float64)
+            R, t = pvm[:3, :3], pvm[:3, 3]
+            cam_pts = bp_raw.pts_world @ R.T + t
+            z_p = -cam_pts[..., 2]
+            patch_cam = np.asarray(
+                [float(v) for v in patch_extr.camera_position], dtype=np.float64)
+            z_cam = float(-(R @ patch_cam + t)[2])
+            with np.errstate(all="ignore"):
+                px = cx + fx * cam_pts[..., 0] / np.where(z_p > 1e-6, z_p, np.nan)
+                py = cy - fy * cam_pts[..., 1] / np.where(z_p > 1e-6, z_p, np.nan)
+            in_frame = np.isfinite(px) & np.isfinite(py) & \
+                (px >= 0) & (px < p_w) & (py >= 0) & (py < p_h)
+            sx = np.clip(np.where(in_frame, px, 0.0), 0, primary_metric_map.shape[1] - 1).astype(np.int64)
+            sy = np.clip(np.where(in_frame, py, 0.0), 0, primary_metric_map.shape[0] - 1).astype(np.int64)
+            m = primary_metric_map[sy, sx]
+            denom = z_p - z_cam
+            ok = bp_raw.valid_depth & in_frame & (z_p > 1e-6) & \
+                np.isfinite(m) & (m > 1e-4) & (np.abs(denom) > 1e-3)
+            if resolved_exclude is not None:
+                ok &= ~resolved_exclude  # sky pixels are noise for registration
+            with np.errstate(all="ignore"):
+                s_samples = (m - z_cam) / denom
+            ok &= np.isfinite(s_samples) & (s_samples > 1e-3) & (s_samples < 1e3)
+            if int(ok.sum()) >= 500:
+                scale = float(np.median(s_samples[ok]))
+                scale_source = "primary_registration"
+
+        if scale is None:
+            scale, _scale_info = estimate_ground_scale(
+                depth_map, view_matrix=patch_extr.camera_view_matrix,
+                fx=pfx, fy=pfy, cx=pcx, cy=pcy,
+                horizon_y=patch_horizon_y,
+            )
+
         mesh = build_relief_mesh(
             depth_map, view_matrix=patch_extr.camera_view_matrix,
             fx=pfx, fy=pfy, cx=pcx, cy=pcy,
             horizon_y=patch_horizon_y,
             grid_long_edge=int(relief_grid),
             scale=scale,
+            exclude_mask=resolved_exclude,
+            apply_sky_heuristic=resolved_exclude is None,
         )
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
 
@@ -2438,27 +2512,13 @@ class AtlasAddPatchView:
         # novel view fills only genuine gaps. Same math as AtlasOcclusionMask
         # (frustum/frame + optional depth-shadow), embedded directly as this
         # source's per-pixel edge matte instead of a separate composite step.
+        # Uses the REGISTERED scale so the depth-shadow comparison happens in
+        # the same metric world the mesh lives in.
         mask_b64 = None
         if mask_unseen_only:
-            np = _require_numpy()
-            from atlas_camera.core.depth_geometry import (
-                back_project_normals,
-                primary_camera_validity_mask,
-            )
-
-            # Metric world points of the patch view (ground-pinned via the
-            # same scale the mesh build used).
             bp = back_project_normals(
                 depth_map * float(scale), view_matrix=patch_extr.camera_view_matrix,
                 fx=pfx, fy=pfy, cx=pcx, cy=pcy)
-            primary_metric_map = None
-            if primary_depth is not None:
-                p_map = _depth_map_for_solve(primary_depth, p_w, p_h)
-                p_scale, _ = estimate_ground_scale(
-                    p_map, view_matrix=extr.camera_view_matrix,
-                    fx=fx, fy=fy, cx=cx, cy=cy,
-                    horizon_y=_horizon_y_from_solve(solve))
-                primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
             unseen = primary_camera_validity_mask(
                 bp.pts_world, bp.valid_depth, bp.normals, bp.valid_normal,
                 primary_view_matrix=extr.camera_view_matrix,
@@ -2506,6 +2566,8 @@ class AtlasAddPatchView:
                 "n_vertices": mesh.stats.get("n_vertices"),
                 "n_faces": mesh.stats.get("n_faces"),
                 "depth_model": depth_model,
+                "scale_source": scale_source,
+                "scale": float(scale),
             },
         )
 

@@ -1,8 +1,8 @@
 {
   "id": "1666ed3d-be35-4cf0-8df1-71d7dd496110",
   "revision": 0,
-  "last_node_id": 28,
-  "last_link_id": 45,
+  "last_node_id": 29,
+  "last_link_id": 48,
   "nodes": [
     {
       "id": 1,
@@ -126,7 +126,8 @@
             8,
             11,
             16,
-            21
+            21,
+            48
           ]
         }
       ],
@@ -924,7 +925,8 @@
           "type": "IMAGE",
           "links": [
             31,
-            32
+            32,
+            46
           ],
           "slot_index": 0
         }
@@ -1012,6 +1014,18 @@
           "shape": 7,
           "type": "STRING",
           "link": 34
+        },
+        {
+          "name": "exclude_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 47
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 48
         }
       ],
       "outputs": [
@@ -1351,6 +1365,68 @@
         "atlas_exports/maya_layers"
       ],
       "title": "Maya Layers Export — ALL layers in one .ma"
+    },
+    {
+      "id": 29,
+      "type": "SAM3Segment",
+      "pos": [
+        1720,
+        1780
+      ],
+      "size": [
+        380,
+        320
+      ],
+      "flags": {},
+      "order": 98,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 46
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            47
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "MASK_IMAGE",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SAM3Segment"
+      },
+      "widgets_values": [
+        "sky",
+        "Merged",
+        0.3,
+        0,
+        0,
+        0,
+        0,
+        "Auto",
+        false,
+        false,
+        "Alpha",
+        "#222222"
+      ],
+      "title": "SAM3 on the PATCH image — sky out of the patch mesh"
     }
   ],
   "links": [
@@ -1673,6 +1749,30 @@
       28,
       0,
       "ATLAS_SOLVE"
+    ],
+    [
+      46,
+      21,
+      0,
+      29,
+      0,
+      "IMAGE"
+    ],
+    [
+      47,
+      29,
+      1,
+      23,
+      4,
+      "MASK"
+    ],
+    [
+      48,
+      3,
+      0,
+      23,
+      5,
+      "ATLAS_DEPTH_MAP"
     ]
   ],
   "groups": [
