@@ -1526,18 +1526,34 @@ function buildNodeUI(node, containerEl) {
     const distScale = r1 / r0;
 
     // Snap to the LoRA's absolute named views, assuming source = front view /
-    // eye-level shot (patch = source + delta).
-    const patchAzAbs = ((dAz % 360) + 360) % 360;
-    let azName = ATLAS_AZIMUTH_VIEWS[0], azErr = 1e9;
+    // eye-level shot (patch = source + delta). DIRECTIONAL snapping: beyond a
+    // small deadband, always advance at least one named view IN THE DIRECTION
+    // of the orbit — never collapse back to the source view. Nearest-snap
+    // rounded a deliberate 15° orbit back to "front view" (the azimuth grid
+    // is 45°), generating a patch identical to the source photo (found live).
+    const AZ_DEADBAND = 5, EL_DEADBAND = 10;
+    let azTargetDeg = 0;
+    if (Math.abs(dAz) >= AZ_DEADBAND) {
+      azTargetDeg = Math.sign(dAz) * 45 * Math.max(1, Math.round(Math.abs(dAz) / 45));
+    }
+    const patchAzAbs = ((azTargetDeg % 360) + 360) % 360;
+    let azName = ATLAS_AZIMUTH_VIEWS[0];
     for (const [name, deg] of ATLAS_AZIMUTH_VIEWS) {
-      const err = Math.abs(wrapDeg(patchAzAbs - deg));
-      if (err < azErr) { azErr = err; azName = [name, deg]; }
+      if (deg === patchAzAbs) { azName = [name, deg]; break; }
     }
-    let elName = ATLAS_ELEVATION_VIEWS[1], elErr = 1e9;
+    const azErr = Math.abs(wrapDeg(azTargetDeg - dAz));
+
+    // Elevation views sit at -30/0/30/60: same outward rule (one negative
+    // step available, two positive).
+    let elTargetDeg = 0;
+    if (Math.abs(dEl) >= EL_DEADBAND) {
+      elTargetDeg = dEl > 0 ? (dEl < 45 ? 30 : 60) : -30;
+    }
+    let elName = ATLAS_ELEVATION_VIEWS[1];
     for (const [name, deg] of ATLAS_ELEVATION_VIEWS) {
-      const err = Math.abs(dEl - deg);
-      if (err < elErr) { elErr = err; elName = [name, deg]; }
+      if (deg === elTargetDeg) { elName = [name, deg]; break; }
     }
+    const elErr = Math.abs(dEl - elTargetDeg);
     let distName = ATLAS_DISTANCE_VIEWS[1], distErr = 1e9;
     for (const [name, s] of ATLAS_DISTANCE_VIEWS) {
       const err = Math.abs(Math.log(distScale / s)); // nearest in log space
@@ -1594,9 +1610,10 @@ function buildNodeUI(node, containerEl) {
     const zeroOrbit = r.azimuth_view === "front view"
       && r.elevation_view === "eye-level shot" && r.distance_view === "medium shot";
     const warn = zeroOrbit
-      ? `\n⚠ ZERO-ORBIT: this snaps to the SOURCE view — the generated\n` +
-        `patch will just match the photo. Orbit further (past ±22.5°\n` +
-        `to reach the next named view) and click 📐 again.`
+      ? `\n⚠ ZERO-ORBIT: the camera is within the snap deadband of the\n` +
+        `source view — the generated patch would just match the photo.\n` +
+        `Orbit deliberately (any move past ~5° advances to the next\n` +
+        `named view in that direction) and click 📐 again.`
       : "";
     angleHud.textContent =
       `📐 Patch angle (source = front view)\n` +
