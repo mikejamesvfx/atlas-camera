@@ -81,9 +81,9 @@ def _layered_solve():
     depth = _depth_result(depth_map)
     plate = torch.rand(1, H, W, 3, dtype=torch.float32)
     sky = torch.from_numpy((depth_map >= SKY - 1e-6).astype(np.float32)).unsqueeze(0)
-    out, _ = AtlasSkyDomeLayer().add_layer(solve, depth, sky, plate, relief_grid=32,
+    out, _, _ext = AtlasSkyDomeLayer().add_layer(solve, depth, sky, plate, relief_grid=32,
                                            name="sky", edge_extend_px=0, frame_outpaint_px=0)
-    out, _ = AtlasCleanPlateLayer().add_layer(out, depth, plate, near_m=5.0, far_m=12.0,
+    out, _, _ext = AtlasCleanPlateLayer().add_layer(out, depth, plate, near_m=5.0, far_m=12.0,
                                               relief_grid=32, name="bg")
     return out
 

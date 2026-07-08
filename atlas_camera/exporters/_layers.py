@@ -105,6 +105,17 @@ def collect_projection_layers(solve, output_dir: str | Path) -> tuple[list[dict[
             if matte_pil is not None:
                 matte = matte_pil.convert("L")
                 matte.save(out / f"{safe}_matte.png")
+        # Invented-pixels mask (edge-extend smears / frame-outpaint ring):
+        # written as its own file so compositors can regrain/process the
+        # extension separately from photographed content.
+        extend_matte_path = None
+        extend_b64 = getattr(src, "extend_mask_b64", None) or ""
+        if extend_b64:
+            ext_pil = decode_plate_b64(extend_b64)
+            if ext_pil is not None:
+                ext_file = out / f"{safe}_extend_matte.png"
+                ext_pil.convert("L").save(ext_file)
+                extend_matte_path = str(ext_file.resolve()).replace("\\", "/")
         plate_path = None
         colorspace = None
         if plate_ref is not None and getattr(plate_ref, "plate_path", None) \
@@ -133,5 +144,6 @@ def collect_projection_layers(solve, output_dir: str | Path) -> tuple[list[dict[
             "colorspace": colorspace,
             "obj_path": str(Path(written["obj"]).resolve()).replace("\\", "/"),
             "has_matte": matte is not None,
+            "extend_matte_path": extend_matte_path,
         })
     return layers, skipped

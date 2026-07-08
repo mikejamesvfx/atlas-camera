@@ -396,6 +396,11 @@ class ProjectionSource:
     # projected pixel falls outside it; the Nuke layers export writes it into
     # the plate's alpha channel.
     mask_b64: str | None = None
+    # Mask of INVENTED pixels: regions filled by deterministic edge-extend /
+    # frame outpaint rather than photographed or generated content. Exported
+    # by the DCC layer writers as {layer}_extend_matte.png so compositors can
+    # process the extension separately (regrain, blur, replace).
+    extend_mask_b64: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProjectionSource":
@@ -414,6 +419,7 @@ class ProjectionSource:
             priority=float(data.get("priority", 0.0)),
             metadata=dict(data.get("metadata", {})),
             mask_b64=data.get("mask_b64"),
+            extend_mask_b64=data.get("extend_mask_b64"),
         )
 
 

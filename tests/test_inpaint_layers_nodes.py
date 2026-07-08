@@ -108,8 +108,8 @@ def _plate_image():
 
 def test_nodes_registered():
     assert NODE_CLASS_MAPPINGS["AtlasDepthLayerMask"].RETURN_TYPES == ("MASK", "MASK", "MASK")
-    assert NODE_CLASS_MAPPINGS["AtlasCleanPlateLayer"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK")
-    assert NODE_CLASS_MAPPINGS["AtlasSkyDomeLayer"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK")
+    assert NODE_CLASS_MAPPINGS["AtlasCleanPlateLayer"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK", "MASK")
+    assert NODE_CLASS_MAPPINGS["AtlasSkyDomeLayer"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK", "MASK")
 
 
 # --- AtlasDepthLayerMask -----------------------------------------------------
@@ -244,7 +244,7 @@ def test_clean_plate_layer_appends_one_source_with_unchanged_camera():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out, _hole_mask = AtlasCleanPlateLayer().add_layer(
+    out, _hole_mask, _ext = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, name="bg", priority=0.0, relief_grid=32)
 
     assert len(solve.projection_sources) == 0        # input untouched
@@ -268,7 +268,7 @@ def test_clean_plate_layer_round_trips_through_solve_dict():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out, _hole_mask = AtlasCleanPlateLayer().add_layer(solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
+    out, _hole_mask, _ext = AtlasCleanPlateLayer().add_layer(solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
     reloaded = AtlasSolve.from_dict(out.to_dict())
 
     assert len(reloaded.projection_sources) == 1
@@ -281,7 +281,7 @@ def test_clean_plate_layer_passes_through_when_primary_has_no_focal():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out, hole_mask = AtlasCleanPlateLayer().add_layer(solve, depth, plate)
+    out, hole_mask, _ext = AtlasCleanPlateLayer().add_layer(solve, depth, plate)
     assert out is solve
     assert len(out.projection_sources) == 0
     assert float(hole_mask.sum()) == 0.0
@@ -296,7 +296,7 @@ def test_mask_band_and_clean_plate_mesh_stay_in_lockstep():
     plate = _plate_image()
 
     layer_mask, _occ, _hole = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0)
-    out, _hole_mask = AtlasCleanPlateLayer().add_layer(
+    out, _hole_mask, _ext = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
 
     src = out.projection_sources[0]
@@ -320,9 +320,9 @@ def test_fill_occluded_covers_the_occluder_footprint():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out_base, hole_base = AtlasCleanPlateLayer().add_layer(
+    out_base, hole_base, _ext = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
-    out_fill, hole_fill = AtlasCleanPlateLayer().add_layer(
+    out_fill, hole_fill, _ext = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
         fill_occluded=True)
 
@@ -349,7 +349,7 @@ def test_fill_occluded_keeps_mask_node_in_lockstep():
     _l, _o, hole_mask_node = AtlasDepthLayerMask().generate(
         solve, depth, near_m=5.0, far_m=12.0, feather_px=0,
         compute_hole_mask=True, relief_grid=32, fill_occluded=True)
-    _out, hole_layer_node = AtlasCleanPlateLayer().add_layer(
+    _out, hole_layer_node, _ext = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
         fill_occluded=True)
     assert torch.equal(hole_mask_node, hole_layer_node)
@@ -371,7 +371,7 @@ def test_sky_dome_layer_appends_source_with_unchanged_camera():
     sky_mask = _sky_mask_tensor(depth_map)
     plate = _plate_image()
 
-    out, hole_mask = AtlasSkyDomeLayer().add_layer(
+    out, hole_mask, _ext = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, radius_m=300.0, relief_grid=32, name="sky")
 
     assert len(solve.projection_sources) == 0        # input untouched
@@ -395,7 +395,7 @@ def test_sky_dome_layer_mesh_is_flat_card_at_radius():
     sky_mask = _sky_mask_tensor(depth_map)
     plate = _plate_image()
 
-    out, _hole_mask = AtlasSkyDomeLayer().add_layer(
+    out, _hole_mask, _ext = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, radius_m=300.0, relief_grid=32)
 
     src = out.projection_sources[0]
@@ -414,7 +414,7 @@ def test_sky_dome_layer_empty_mask_passes_through_unchanged():
     empty_mask = torch.zeros(1, H, W, dtype=torch.float32)
     plate = _plate_image()
 
-    out, hole_mask = AtlasSkyDomeLayer().add_layer(solve, depth, empty_mask, plate)
+    out, hole_mask, _ext = AtlasSkyDomeLayer().add_layer(solve, depth, empty_mask, plate)
     assert out is solve
     assert len(out.projection_sources) == 0
     assert float(hole_mask.sum()) == 0.0
@@ -428,7 +428,7 @@ def test_sky_dome_layer_passes_through_when_primary_has_no_focal():
     sky_mask = _sky_mask_tensor(depth_map)
     plate = _plate_image()
 
-    out, hole_mask = AtlasSkyDomeLayer().add_layer(solve, depth, sky_mask, plate)
+    out, hole_mask, _ext = AtlasSkyDomeLayer().add_layer(solve, depth, sky_mask, plate)
     assert out is solve
     assert len(out.projection_sources) == 0
 
@@ -456,9 +456,9 @@ def test_sky_dome_edge_extend_smears_plate_and_dilates_matte():
     def _decode(b64):
         return np.asarray(Image.open(io.BytesIO(base64.b64decode(b64.split(",", 1)[1]))))
 
-    out_off, _ = AtlasSkyDomeLayer().add_layer(
+    out_off, _, _ext = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, relief_grid=32, edge_extend_px=0)
-    out_on, _ = AtlasSkyDomeLayer().add_layer(
+    out_on, _, _ext = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, relief_grid=32, edge_extend_px=32)
 
     matte_off = _decode(out_off.projection_sources[0].mask_b64)
@@ -497,7 +497,7 @@ def test_sky_dome_frame_outpaint_widens_the_source_camera():
     plate = _plate_image()
     PAD = 32
 
-    out, hole = AtlasSkyDomeLayer().add_layer(
+    out, hole, _ext = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, relief_grid=32,
         edge_extend_px=0, frame_outpaint_px=PAD)
     src = out.projection_sources[0]
@@ -538,7 +538,7 @@ def test_sky_dome_embeds_its_segmentation_as_edge_matte():
     sky_mask = _sky_mask_tensor(depth_map)
     plate = _plate_image()
 
-    out, _ = AtlasSkyDomeLayer().add_layer(solve, depth, sky_mask, plate, relief_grid=32)
+    out, _, _ext = AtlasSkyDomeLayer().add_layer(solve, depth, sky_mask, plate, relief_grid=32)
     src = out.projection_sources[0]
     assert src.mask_b64 and src.mask_b64.startswith("data:image/png;base64,")
     # Round-trips through solve JSON.
@@ -551,11 +551,11 @@ def test_clean_plate_embed_matte_is_opt_in():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out_off, _ = AtlasCleanPlateLayer().add_layer(
+    out_off, _, _ext = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
     assert out_off.projection_sources[0].mask_b64 is None
 
-    out_on, _ = AtlasCleanPlateLayer().add_layer(
+    out_on, _, _ext = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32, embed_matte=True)
     matte_b64 = out_on.projection_sources[0].mask_b64
     assert matte_b64 and matte_b64.startswith("data:image/png;base64,")
@@ -575,7 +575,7 @@ def test_clean_plate_matte_includes_filled_footprint_when_fill_occluded():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out, _ = AtlasCleanPlateLayer().add_layer(
+    out, _, _ext = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
         embed_matte=True, fill_occluded=True)
     import base64
@@ -593,7 +593,7 @@ def test_blockout_payload_carries_mask_b64():
     solve = _solve()
     depth_map = _occluder_depth()
     depth = _depth_result(depth_map)
-    out, _ = AtlasSkyDomeLayer().add_layer(
+    out, _, _ext = AtlasSkyDomeLayer().add_layer(
         solve, depth, _sky_mask_tensor(depth_map), _plate_image(), relief_grid=32)
 
     image = torch.rand(1, H, W, 3, dtype=torch.float32)
@@ -607,7 +607,7 @@ def test_serialization_includes_projection_mode_for_clean_plate():
     solve = _solve()
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
-    out, _hole_mask = AtlasCleanPlateLayer().add_layer(solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
+    out, _hole_mask, _ext = AtlasCleanPlateLayer().add_layer(solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
 
     image = torch.rand(1, H, W, 3, dtype=torch.float32)
     payload = _extract_blockout_camera(out, image, target_width=W, target_height=H)
@@ -625,3 +625,120 @@ def test_serialization_projection_mode_is_none_for_ordinary_patch():
     payload = _extract_blockout_camera(solve, image, target_width=W, target_height=H)
 
     assert payload["projection_sources"][0]["projection_mode"] is None
+
+
+def test_clean_plate_edge_extend_smears_colors_and_reports_mask():
+    """edge_extend_px on a band layer: plate colors pushed past the matte
+    edge, embedded matte dilated to expose them, and the invented region
+    reported both as the extend_mask output and ProjectionSource.extend_mask_b64."""
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    # Plate: solid red so smeared pixels are unmistakable.
+    plate = torch.zeros(1, H, W, 3, dtype=torch.float32)
+    plate[..., 0] = 1.0
+
+    out, _hole, ext = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
+        edge_extend_px=24)
+
+    src = out.projection_sources[0]
+    assert src.mask_b64 and src.extend_mask_b64
+    assert src.metadata["edge_extend_px"] == 24
+
+    def decode(b64):
+        return np.asarray(Image.open(io.BytesIO(
+            base64.b64decode(b64.split(",", 1)[1]))).convert("L"),
+            dtype=np.float32) / 255.0
+
+    matte = decode(src.mask_b64)
+    extend = decode(src.extend_mask_b64)
+    ext_np = ext[0].numpy()
+    # Extension exists, sits INSIDE the dilated matte, OUTSIDE nothing else.
+    assert extend.sum() > 0
+    assert ((extend > 0.5) & ~(matte > 0.5)).sum() == 0
+    # Output mask matches the embedded one.
+    assert np.allclose(ext_np > 0.5, extend > 0.5)
+    # The re-encoded plate carries red into (some of) the extended region.
+    from atlas_camera.exporters._layers import decode_plate_b64
+    pil = decode_plate_b64(src.image_b64)
+    rgb = np.asarray(pil, dtype=np.float32)
+    ys, xs = np.nonzero(extend > 0.5)
+    reds = rgb[ys, xs, 0]
+    assert reds.mean() > 128  # smeared red, not black
+
+
+def test_clean_plate_edge_extend_off_by_default():
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    plate = torch.rand(1, H, W, 3, dtype=torch.float32)
+    out, _hole, ext = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
+        embed_matte=True)
+    src = out.projection_sources[0]
+    assert src.extend_mask_b64 is None
+    assert float(ext.sum()) == 0.0
+
+
+def test_sky_dome_extend_mask_covers_extension_and_outpaint_ring():
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    plate = torch.rand(1, H, W, 3, dtype=torch.float32)
+    sky = torch.zeros(1, H, W, dtype=torch.float32)
+    sky[0, :H // 3, :] = 1.0
+
+    out, _hole, ext = AtlasSkyDomeLayer().add_layer(
+        solve, depth, sky, plate, relief_grid=32,
+        edge_extend_px=16, frame_outpaint_px=32)
+    src = out.projection_sources[0]
+    assert src.extend_mask_b64
+    extend = np.asarray(Image.open(io.BytesIO(base64.b64decode(
+        src.extend_mask_b64.split(",", 1)[1]))).convert("L"), dtype=np.float32) / 255.0
+    # Padded plate frame: W+2*32 x H+2*32.
+    assert extend.shape == (H + 64, W + 64)
+    assert extend.sum() > 0
+    # The outpaint ring above the horizon (sky region, edge-replicated pad)
+    # is invented: the top-left pad corner pixel must be flagged.
+    assert extend[0, 0] > 0.5
+    # extend_mask output is in the same padded plate frame.
+    assert tuple(ext.shape[1:]) == (H + 64, W + 64)
+
+
+def test_layers_collector_writes_extend_matte(tmp_path):
+    from atlas_camera.exporters._layers import collect_projection_layers
+
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    plate = torch.rand(1, H, W, 3, dtype=torch.float32)
+    sky = torch.zeros(1, H, W, dtype=torch.float32)
+    sky[0, :H // 3, :] = 1.0
+    out, _h, _e = AtlasSkyDomeLayer().add_layer(
+        solve, depth, sky, plate, relief_grid=32, name="sky",
+        edge_extend_px=16, frame_outpaint_px=0)
+    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        out, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32, name="bg",
+        edge_extend_px=24)
+
+    layers, skipped = collect_projection_layers(out, tmp_path)
+    assert not skipped
+    by_name = {l["name"]: l for l in layers}
+    for lname in ("sky", "bg"):
+        assert by_name[lname]["extend_matte_path"]
+        assert (tmp_path / f"{lname}_extend_matte.png").exists()
+
+    from atlas_camera.exporters.nuke_exporter import write_nuke_layers_script
+    result = write_nuke_layers_script(out, tmp_path)
+    nk = (tmp_path / "nuke_layers.nk").read_text(encoding="utf-8")
+    assert "ExtendMatte_sky" in nk and "ExtendMatte_bg" in nk
+    assert "regrain" in nk

@@ -542,6 +542,29 @@ ReadGeo2 {{
  ypos 200
 }}
 set N_geo{i} [stack 0]''')
+        if layer.get("extend_matte_path"):
+            # Deliberately UNWIRED: the extension matte marks INVENTED pixels
+            # (edge-extend smears / the frame-outpaint ring) — the compositor
+            # decides how to treat them (regrain, blur, replace), so it ships
+            # as a labeled Read beside the layer's column rather than being
+            # baked into the render tree.
+            blocks.append(f'''Read {{
+ inputs 0
+ file_type png
+ file "{layer['extend_matte_path']}"
+ first 1
+ last 1
+ name ExtendMatte_{layer['name']}
+ xpos {x + 120}
+ ypos 60
+}}
+StickyNote {{
+ inputs 0
+ name Note_extend_{layer['name']}
+ label "{layer['name']}: extended/invented pixels\\n(deterministic edge-extend, not photographed)\\nuse as a mask to regrain / degrade / replace"
+ xpos {x + 120}
+ ypos 130
+}}''')
 
     pushes = "\n".join(f"push $N_geo{i}" for i in range(1, len(layers) + 1))
     blocks.append(f'''{pushes}

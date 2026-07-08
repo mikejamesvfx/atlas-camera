@@ -4076,8 +4076,8 @@ class AtlasCleanPlateLayer:
     `plate_image`, so it can't drive the inpaint step itself. For that, see
     `AtlasDepthLayerMask`'s own optional `compute_hole_mask`.
     """
-    RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
-    RETURN_NAMES = ("solve", "hole_mask")
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK")
+    RETURN_NAMES = ("solve", "hole_mask", "extend_mask")
     FUNCTION = "add_layer"
     CATEGORY = "Atlas Camera/Inpaint Layers"
 
@@ -4146,12 +4146,24 @@ class AtlasCleanPlateLayer:
                     "tooltip": "Optional explicit edge matte (overrides the auto-computed band "
                                "matte when embed_matte is on) - e.g. a SAM segmentation of this "
                                "layer's subject for a crisper edge than depth banding gives."}),
+                "edge_extend_px": ("INT", {"default": 0, "min": 0, "max": 512, "step": 4,
+                    "tooltip": "Deterministic edge-extend for THIS layer, same trick as the sky "
+                               "dome's: smear the plate's colors past the matte edge by this many "
+                               "pixels (quarter-res neighbor propagation — NOT an inpaint), dilate "
+                               "the embedded matte to expose the extension on disocclusion, and "
+                               "grow the mesh's boundary skirt to receive it. The invented region "
+                               "is reported on the extend_mask output AND exported to Nuke/Maya as "
+                               "{layer}_extend_matte.png so it can be processed downstream "
+                               "(regrain, blur, replace). Smeared pixels are plausible only for "
+                               "narrow slivers — large reveals still want a real inpainted plate. "
+                               "Turns on embed_matte implicitly (an extension needs a matte edge)."}),
             },
         }
 
     def add_layer(self, solve, depth, plate_image, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5,
                   name="layer", priority=0.0, plate_ref=None, relief_grid=384, depth_edge_rel=1.5,
-                  exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None):
+                  exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None,
+                  edge_extend_px=0):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import AtlasPlateRef, ProjectionSource
@@ -4162,7 +4174,11 @@ class AtlasCleanPlateLayer:
         setup = _metric_depth_and_validity(solve, depth, exclude_mask=exclude_mask)
         if setup is None:
             h, w = int(depth.image_height), int(depth.image_width)
-            return (solve, torch.zeros(1, h, w, dtype=torch.float32))
+            blank = torch.zeros(1, h, w, dtype=torch.float32)
+            return (solve, blank, blank)
+        # An extension needs a matte edge to extend past.
+        if edge_extend_px and int(edge_extend_px) > 0:
+            embed_matte = True
         fx, fy, cx, cy = setup.fx, setup.fy, setup.cx, setup.cy
         extr, depth_map = setup.extr, setup.depth_map
         scale, horizon_y = setup.scale, setup.horizon_y
@@ -4176,8 +4192,19 @@ class AtlasCleanPlateLayer:
             band_min_m=near, band_max_m=(None if far == float("inf") else far),
             exclude_mask=setup.exclude_mask, fill_mask=fill,
             apply_sky_heuristic=setup.exclude_mask is None,
-            edge_overhang_cells=2 if embed_matte else 0)
+            edge_overhang_cells=(
+                (2 + int(np.ceil(int(edge_extend_px) /
+                                 max(1, int(round(max(setup.height, setup.width)
+                                                  / max(int(relief_grid), 2))))))
+                 if edge_extend_px and int(edge_extend_px) > 0 else 2)
+                if embed_matte else 0))
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
+
+        # Per-layer edge extend (same deterministic trick as the sky dome's):
+        # computed on the auto/explicit matte below, so the plate encode is
+        # deferred until the matte exists.
+        extended_plate = None
+        extend_region = None
 
         image_b64 = ""
         try:
@@ -4220,12 +4247,41 @@ class AtlasCleanPlateLayer:
                     # the filled footprint must stay INSIDE the matte (the
                     # inpainted plate content lives there).
                     matte = matte & (setup.metric >= near)
+            if edge_extend_px and int(edge_extend_px) > 0:
+                plate_np = np.asarray(_image_tensor_to_pil(plate_image).convert("RGB"),
+                                      dtype=np.float32)
+                if plate_np.shape[:2] != matte.shape:
+                    PILImage = _require_pil()
+                    plate_np = np.asarray(
+                        PILImage.fromarray(plate_np.astype("uint8")).resize(
+                            (matte.shape[1], matte.shape[0])), dtype=np.float32)
+                extended_plate, dilated = _extend_edge_colors(
+                    plate_np, matte, int(edge_extend_px))
+                extend_region = dilated & ~matte
+                matte = dilated
+                source.metadata["edge_extend_px"] = int(edge_extend_px)
+                # Re-encode the plate WITH the extension baked in.
+                try:
+                    PILImage = _require_pil()
+                    pil = PILImage.fromarray(
+                        extended_plate.clip(0, 255).astype("uint8"), mode="RGB")
+                    buf = io.BytesIO()
+                    pil.save(buf, format="JPEG", quality=88)
+                    source.image_b64 = ("data:image/jpeg;base64,"
+                                        + base64.b64encode(buf.getvalue()).decode("ascii"))
+                except Exception:
+                    pass
+                source.extend_mask_b64 = _mask_to_b64_png(extend_region) or None
             source.mask_b64 = _mask_to_b64_png(matte) or None
 
         out = copy.deepcopy(solve)
         out.projection_sources.append(source)
         hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
-        return (out, hole_t)
+        if extend_region is not None:
+            ext_t = torch.from_numpy(extend_region.astype(np.float32)).unsqueeze(0)
+        else:
+            ext_t = torch.zeros(1, setup.height, setup.width, dtype=torch.float32)
+        return (out, hole_t, ext_t)
 
 
 class AtlasSkyDomeLayer:
@@ -4269,8 +4325,8 @@ class AtlasSkyDomeLayer:
     `sky_mask`'s own boundary didn't survive onto the grid (QA signal, not
     something to feed back into inpainting).
     """
-    RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
-    RETURN_NAMES = ("solve", "hole_mask")
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK")
+    RETURN_NAMES = ("solve", "hole_mask", "extend_mask")
     FUNCTION = "add_layer"
     CATEGORY = "Atlas Camera/Inpaint Layers"
 
@@ -4343,11 +4399,13 @@ class AtlasSkyDomeLayer:
         setup = _metric_depth_and_validity(solve, depth)
         if setup is None:
             h, w = int(depth.image_height), int(depth.image_width)
-            return (solve, torch.zeros(1, h, w, dtype=torch.float32))
+            blank = torch.zeros(1, h, w, dtype=torch.float32)
+            return (solve, blank, blank)
 
         mask_arr = _resolve_exclude_mask(sky_mask, setup.height, setup.width)
         if mask_arr is None or not mask_arr.any():
-            return (solve, torch.zeros(1, setup.height, setup.width, dtype=torch.float32))
+            blank = torch.zeros(1, setup.height, setup.width, dtype=torch.float32)
+            return (solve, blank, blank)
 
         # Everything below works at PLATE resolution in ONE padded pixel space:
         # frame outpaint (pad the canvas, shift cx/cy - the sky source gets
@@ -4376,9 +4434,18 @@ class AtlasSkyDomeLayer:
         plate_arr = plate_np if pad else None  # padded canvas always re-encodes
         step = max(1, int(round(max(m.shape) / max(int(relief_grid), 2))))
         overhang_cells = 2
+        # Invented pixels: the frame-outpaint ring (edge-replicated pad) is
+        # synthetic wherever the matte exposes it, and the silhouette extend
+        # below adds more. Both land in extend_mask for downstream regrain.
+        original_matte = np.zeros_like(m)
+        if pad:
+            original_matte[pad:-pad, pad:-pad] = m[pad:-pad, pad:-pad]
+        else:
+            original_matte[:] = m
         if edge_extend_px and int(edge_extend_px) > 0:
             plate_arr, matte_arr = _extend_edge_colors(plate_np, m, int(edge_extend_px))
             overhang_cells = 2 + int(np.ceil(int(edge_extend_px) / step))
+        extend_region = matte_arr & ~original_matte
 
         mesh = build_sky_dome_mesh(
             m, view_matrix=setup.extr.camera_view_matrix,
@@ -4427,6 +4494,7 @@ class AtlasSkyDomeLayer:
             # is the DILATED mask, exposing the smeared extension on
             # disocclusion.
             mask_b64=_mask_to_b64_png(matte_arr) or None,
+            extend_mask_b64=_mask_to_b64_png(extend_region) or None,
             metadata={
                 "projection_mode": "clean_plate",
                 "source": "sky_dome",
@@ -4444,7 +4512,11 @@ class AtlasSkyDomeLayer:
         # downstream previews/composites line up with the source photo.
         hole = mesh.hole_mask[pad:pad + Hp, pad:pad + Wp] if pad else mesh.hole_mask
         hole_t = torch.from_numpy(hole.astype(np.float32)).unsqueeze(0)
-        return (out, hole_t)
+        # extend_mask output stays in the padded PLATE frame (it describes the
+        # exported plate's pixels, unlike hole_mask which previews against the
+        # source photo).
+        ext_t = torch.from_numpy(extend_region.astype(np.float32)).unsqueeze(0)
+        return (out, hole_t, ext_t)
 
 
 # ---------------------------------------------------------------------------
