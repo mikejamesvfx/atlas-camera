@@ -2297,6 +2297,24 @@ class AtlasAddPatchView:
                                "STRING socket because ComfyUI's backend rejects STRING links "
                                "into combo dropdowns.) Errors loudly if the string doesn't "
                                "parse, rather than silently patching at the wrong angle."}),
+                "mask_unseen_only": ("BOOLEAN", {"default": True,
+                    "tooltip": "Embed an UNSEEN-AREAS matte on the patch (ProjectionSource."
+                               "mask_b64): the patch only paints where the PRIMARY camera's "
+                               "projection is invalid at the patch view (behind-camera, out-of-"
+                               "frame, and — when primary_depth is wired — hidden behind nearer "
+                               "geometry, the true MPTK depth-shadow test). Everywhere the "
+                               "primary CAN see keeps the primary's real pixels; the AI patch "
+                               "fills only genuine gaps. Also rides into the Nuke/Maya exports "
+                               "as the patch plate's alpha."}),
+                "unseen_dilate_px": ("INT", {"default": 16, "min": 0, "max": 200,
+                    "tooltip": "Dilate the unseen matte so the patch slightly overlaps the "
+                               "primary's coverage edge (hides hairline seams at the boundary)."}),
+                "primary_depth": ("ATLAS_DEPTH_MAP", {
+                    "tooltip": "Optional: the shared AtlasDepthMap of the SOURCE photo. Adds the "
+                               "true depth-shadow term to the unseen matte (surfaces hidden "
+                               "behind nearer geometry from the primary's view, not just "
+                               "frustum/frame misses). Both sides are ground-pinned to one "
+                               "metric space, same as AtlasOcclusionMask's depth_shadow mode."}),
             },
         }
 
@@ -2309,7 +2327,8 @@ class AtlasAddPatchView:
                   flip_azimuth=False, name="patch",
                   depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                   relief_grid=96, priority=1.0, plate_ref=None, device="auto",
-                  patch_view_override=""):
+                  patch_view_override="", mask_unseen_only=True, unseen_dilate_px=16,
+                  primary_depth=None):
         if patch_view_override and patch_view_override.strip():
             parsed = _parse_view_prompt(patch_view_override)
             if parsed is None:
@@ -2413,6 +2432,48 @@ class AtlasAddPatchView:
         )
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
 
+        # Unseen-areas matte: the patch should only paint where the PRIMARY
+        # camera's projection is invalid at this patch view — everywhere the
+        # primary CAN see keeps its real photographed pixels, and the AI
+        # novel view fills only genuine gaps. Same math as AtlasOcclusionMask
+        # (frustum/frame + optional depth-shadow), embedded directly as this
+        # source's per-pixel edge matte instead of a separate composite step.
+        mask_b64 = None
+        if mask_unseen_only:
+            np = _require_numpy()
+            from atlas_camera.core.depth_geometry import (
+                back_project_normals,
+                primary_camera_validity_mask,
+            )
+
+            # Metric world points of the patch view (ground-pinned via the
+            # same scale the mesh build used).
+            bp = back_project_normals(
+                depth_map * float(scale), view_matrix=patch_extr.camera_view_matrix,
+                fx=pfx, fy=pfy, cx=pcx, cy=pcy)
+            primary_metric_map = None
+            if primary_depth is not None:
+                p_map = _depth_map_for_solve(primary_depth, p_w, p_h)
+                p_scale, _ = estimate_ground_scale(
+                    p_map, view_matrix=extr.camera_view_matrix,
+                    fx=fx, fy=fy, cx=cx, cy=cy,
+                    horizon_y=_horizon_y_from_solve(solve))
+                primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
+            unseen = primary_camera_validity_mask(
+                bp.pts_world, bp.valid_depth, bp.normals, bp.valid_normal,
+                primary_view_matrix=extr.camera_view_matrix,
+                primary_fx=fx, primary_fy=fy, primary_cx=cx, primary_cy=cy,
+                primary_width=p_w, primary_height=p_h,
+                angle_threshold_deg=90.0,
+                primary_depth_map=primary_metric_map)
+            for _ in range(int(unseen_dilate_px)):
+                up = np.zeros_like(unseen); up[:-1, :] = unseen[1:, :]
+                dn = np.zeros_like(unseen); dn[1:, :] = unseen[:-1, :]
+                lf = np.zeros_like(unseen); lf[:, :-1] = unseen[:, 1:]
+                rt = np.zeros_like(unseen); rt[:, 1:] = unseen[:, :-1]
+                unseen = unseen | up | dn | lf | rt
+            mask_b64 = _mask_to_b64_png(unseen) or None
+
         # Encode the novel view as a JPEG data-URI (viewport texture).
         image_b64 = ""
         try:
@@ -2427,6 +2488,7 @@ class AtlasAddPatchView:
             camera=LatentCamera(intrinsics=patch_intr, extrinsics=patch_extr, name=name),
             name=name,
             image_b64=image_b64,
+            mask_b64=mask_b64,
             plate_ref=plate_ref if isinstance(plate_ref, AtlasPlateRef) else AtlasPlateRef.from_dict(plate_ref),
             proxy_geometry=patch_geom,
             azimuth_deg=float(d_azimuth),      # actual orbit delta applied

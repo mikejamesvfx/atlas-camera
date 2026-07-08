@@ -1396,11 +1396,16 @@ function buildNodeUI(node, containerEl) {
 
   // 📽 Project toggle — camera-project the source photo onto ALL geometry
   // (derived proxies, user primitives, OBJ proxies) from the recovered camera.
-  let projectionOn = false;
+  // Defaults ON (beta UX request): the projected photo is the product; the
+  // grey mesh is the diagnostic view, reached by toggling 📽 OFF. Textures
+  // load async, and every load-completion path already re-applies via
+  // `if (projectionOn) applyProjection(true)` — starting true just makes
+  // those paths fire when the first texture lands.
+  let projectionOn = true;
   let projMaterial = null;
   const projBtn = document.createElement("button");
   projBtn.textContent = "📽 Project";
-  projBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
+  projBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#3a2a5a;color:#dcf;border:1px solid #546;border-radius:3px";
 
   function isProjectable(c) {
     if (!c.isMesh || c === bgMesh) return false;

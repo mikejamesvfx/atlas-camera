@@ -152,3 +152,66 @@ def test_add_patch_passes_through_when_primary_has_no_focal(monkeypatch):
     (out,) = AtlasAddPatchView().add_patch(solve, patch_img)
     assert out is solve
     assert len(out.projection_sources) == 0
+
+
+def _decode_matte(mask_b64):
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+    return np.asarray(Image.open(io.BytesIO(
+        base64.b64decode(mask_b64.split(",", 1)[1]))), dtype=np.float32) / 255.0
+
+
+def test_unseen_matte_embedded_and_scales_with_orbit(monkeypatch):
+    """mask_unseen_only embeds a matte of where the PRIMARY can't project at
+    the patch view: near-zero for a same-view patch (primary sees it all),
+    majority for a 180-degree patch (primary sees almost none of it)."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
+
+    (same,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front view",
+        source_azimuth_view="front view", relief_grid=48, unseen_dilate_px=0)
+    (back,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="back view",
+        source_azimuth_view="front view", relief_grid=48, unseen_dilate_px=0)
+
+    m_same = _decode_matte(same.projection_sources[0].mask_b64)
+    m_back = _decode_matte(back.projection_sources[0].mask_b64)
+    # Same-view patch: primary covers essentially everything (only the
+    # back-projection border rim is invalid).
+    assert m_same.mean() < 0.15
+    # Far-side patch: substantially more unseen area than the same view.
+    # (The absolute fraction depends on scene geometry — frustum-only
+    # invalidity on a synthetic ground ramp is modest; the depth-shadow term
+    # via primary_depth is what catches true hidden surfaces on real scenes.)
+    assert m_back.mean() > 2 * m_same.mean()
+    assert m_back.mean() > 0.08
+
+
+def test_unseen_matte_dilation_and_opt_out(monkeypatch):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+    solve, _pivot, _eye = _synthetic_primary()
+    patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
+
+    (d0,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view",
+        relief_grid=48, unseen_dilate_px=0)
+    (d16,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view",
+        relief_grid=48, unseen_dilate_px=16)
+    assert _decode_matte(d16.projection_sources[0].mask_b64).sum() \
+        >= _decode_matte(d0.projection_sources[0].mask_b64).sum()
+
+    (off,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view",
+        relief_grid=48, mask_unseen_only=False)
+    assert off.projection_sources[0].mask_b64 is None
