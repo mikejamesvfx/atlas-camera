@@ -1,0 +1,944 @@
+{
+  "id": "atlas-ultra-single-image",
+  "revision": 0,
+  "last_node_id": 13,
+  "last_link_id": 21,
+  "nodes": [
+    {
+      "id": 13,
+      "type": "Note",
+      "pos": [
+        40,
+        -520
+      ],
+      "size": [
+        1560,
+        440
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "ATLAS ULTRA — single-image solve, maximum quality (no exports)\n\nThe shipping-MVP method at full quality: solve → shared depth → SAM3 sky → sky dome +\ntwo band clean-plate layers, all with the complete edge doctrine ON:\n  · relief_grid 1024 (ultra) + depth_edge_rel 1.5 on both band meshes\n  · edge_extend_px: plate colors smeared past every matte edge (sky 96 / bg 64 / fg 48)\n  · skirt_bevel 1.5: mesh boundaries RECEDE away from camera (45°+ beveled skirts) —\n    the extended colors land on the receding geometry instead of a hole or a cliff\n  · fill_occluded on bg: disocclusion depth synthesized behind the foreground\n  · sky frame_outpaint 128: orbits don't slam into the plate boundary\n  · exclude_mask (SAM sky) wired into EVERY layer — replaces the sky heuristic\n\nUSE: Queue once (1024-grid meshes on a 4K solve take a while) → in the viewport hit\n🧭 Safe Zone to MEASURE this scene's hole-free camera envelope (the orbit clamps to it)\n→ author your move inside those angles. 📽 Project is on by default.\n\nQA previews: bg hole_mask (where projection would show black) and bg extend_mask\n(invented/smeared pixels — in a DCC export these ship as {layer}_extend_matte.png).\n\nNOTES: swap the bg plate wire for a LaMa-inpainted clean plate for real disocclusion\ncontent (this graph projects the source photo as every plate). Two 1024-grid meshes\nare heavy in the browser — drop relief_grid to 512 if orbiting stutters. Indoor photo?\nSet BOTH depth_model widgets to the Indoor model."
+      ]
+    },
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        314
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            17
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "atlas_monument_valley.png",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        40
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36,
+        "pinhole",
+        "auto"
+      ],
+      "title": "① Solve — GeoCalib + measured height"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        420,
+        320
+      ],
+      "size": [
+        400,
+        120
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            8,
+            11,
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto"
+      ],
+      "title": "② Shared metric depth (one estimate, all layers)"
+    },
+    {
+      "id": 4,
+      "type": "SAM3Segment",
+      "pos": [
+        420,
+        500
+      ],
+      "size": [
+        400,
+        330
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            9,
+            12,
+            15
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "MASK_IMAGE",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SAM3Segment"
+      },
+      "widgets_values": [
+        "sky",
+        "Merged",
+        0.3,
+        0,
+        0,
+        0,
+        0,
+        "Auto",
+        false,
+        false,
+        "Alpha",
+        "#222222"
+      ],
+      "title": "③ SAM3 sky — drives dome + every exclude_mask"
+    },
+    {
+      "id": 5,
+      "type": "AtlasSkyDomeLayer",
+      "pos": [
+        900,
+        40
+      ],
+      "size": [
+        420,
+        340
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 7
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 8
+        },
+        {
+          "name": "sky_mask",
+          "type": "MASK",
+          "link": 9
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSkyDomeLayer"
+      },
+      "widgets_values": [
+        300.0,
+        256,
+        "sky",
+        -10.0,
+        96,
+        128
+      ],
+      "title": "④ Sky dome — extend 96 / outpaint 128"
+    },
+    {
+      "id": 6,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1400,
+        40
+      ],
+      "size": [
+        440,
+        420
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 11
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": 12,
+          "shape": 7
+        },
+        {
+          "name": "layer_matte",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [
+            18
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": [
+            20
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.35,
+        1.0,
+        "bg",
+        0.0,
+        1024,
+        1.5,
+        true,
+        true,
+        64,
+        1.5
+      ],
+      "title": "⑤ BG band — ULTRA grid 1024 · fill_occluded · extend 64 · bevel 1.5"
+    },
+    {
+      "id": 7,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1920,
+        40
+      ],
+      "size": [
+        440,
+        420
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 13
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 14
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": 15,
+          "shape": 7
+        },
+        {
+          "name": "layer_matte",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.35,
+        "fg",
+        10.0,
+        1024,
+        1.5,
+        false,
+        true,
+        48,
+        1.5
+      ],
+      "title": "⑥ FG band — ULTRA grid 1024 · extend 48 · bevel 1.5"
+    },
+    {
+      "id": 8,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2440,
+        40
+      ],
+      "size": [
+        560,
+        700
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 16
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 17
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": null
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        1600,
+        "",
+        1
+      ],
+      "title": "⑦ Viewport 1600px — hit 🧭 Safe Zone, then author inside it"
+    },
+    {
+      "id": 9,
+      "type": "MaskToImage",
+      "pos": [
+        1400,
+        540
+      ],
+      "size": [
+        220,
+        60
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            19
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 10,
+      "type": "PreviewImage",
+      "pos": [
+        1400,
+        660
+      ],
+      "size": [
+        280,
+        280
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 19
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "bg hole_mask (QA)"
+    },
+    {
+      "id": 11,
+      "type": "MaskToImage",
+      "pos": [
+        1720,
+        540
+      ],
+      "size": [
+        220,
+        60
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            21
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 12,
+      "type": "PreviewImage",
+      "pos": [
+        1720,
+        660
+      ],
+      "size": [
+        280,
+        280
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "bg extend_mask — invented pixels (QA)"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      1,
+      0,
+      5,
+      3,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      0,
+      6,
+      2,
+      "IMAGE"
+    ],
+    [
+      6,
+      1,
+      0,
+      7,
+      2,
+      "IMAGE"
+    ],
+    [
+      7,
+      2,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      8,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      9,
+      4,
+      1,
+      5,
+      2,
+      "MASK"
+    ],
+    [
+      10,
+      5,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      3,
+      0,
+      6,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      12,
+      4,
+      1,
+      6,
+      4,
+      "MASK"
+    ],
+    [
+      13,
+      6,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      14,
+      3,
+      0,
+      7,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      15,
+      4,
+      1,
+      7,
+      4,
+      "MASK"
+    ],
+    [
+      16,
+      7,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      17,
+      1,
+      0,
+      8,
+      1,
+      "IMAGE"
+    ],
+    [
+      18,
+      6,
+      1,
+      9,
+      0,
+      "MASK"
+    ],
+    [
+      19,
+      9,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ],
+    [
+      20,
+      6,
+      2,
+      11,
+      0,
+      "MASK"
+    ],
+    [
+      21,
+      11,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Solve + Shared Depth + SAM3",
+      "bounding": [
+        400,
+        -20,
+        440,
+        860
+      ],
+      "color": "#3d7e48",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② Layers — ultra grids, edge extend, beveled skirts",
+      "bounding": [
+        880,
+        -20,
+        1500,
+        980
+      ],
+      "color": "#7e4f3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Viewport — 🧭 Safe Zone",
+      "bounding": [
+        2420,
+        -20,
+        600,
+        780
+      ],
+      "color": "#6e3d7e",
+      "font_size": 15,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.35,
+      "offset": [
+        40,
+        560
+      ]
+    }
+  },
+  "version": 0.4
+}
