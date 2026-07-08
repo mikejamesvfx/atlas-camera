@@ -696,3 +696,21 @@ Maya's OBJ importer always lands values as centimeters (imported groups get
 ×100). The same verification repaired the older Maya review-scene exporter,
 which carried the same latent projection bug.
 
+### Addendum 2 — same-day follow-up session (MVP pivot)
+
+Product decision: **v1 ships without diffusion patches.** Instead the camera
+move is restricted to measured coverage — the viewport's **🧭 Safe Zone**
+button probe-renders the projected scene (magenta-sentinel hole counting,
+exact to the shader) and clamps the orbit to the scene's real hole-free
+envelope. Supporting that: patches became pure **texture projectors onto
+existing scene geometry** (`reuse_scene` — the scale-registration problem
+dissolves), every plate layer gained the sky's **deterministic edge-extend**
+plus an **invented-pixels matte** exported to Nuke for regrain, and mesh
+boundary skirts now **recede away from camera with a bevel** (slope in cell
+units, 1.0 = 45°). Gate approvals and viewport navigation are
+fingerprint-stable across image swaps. Hero recipe:
+`examples/atlas_camera_ultra_single_image_workflow.json`. Next planned
+lever: `frame_outpaint_px` for band layers (the sky's widened-camera trick),
+since Safe Zone measurements show the frame edge — not silhouettes — is the
+binding constraint on wide scenes.
+
