@@ -1586,12 +1586,24 @@ function buildNodeUI(node, containerEl) {
     if (!r) { angleHud.textContent = "(no solve yet — queue the graph first)"; angleHud.style.display = "block"; return; }
     if (r.error) { angleHud.textContent = r.error; angleHud.style.display = "block"; return; }
     const f1 = (v) => (v >= 0 ? "+" : "") + v.toFixed(1);
+    // Zero-orbit extraction = the patch will just reproduce the source photo.
+    // The LoRA's named views snap on a 45° azimuth grid, so any orbit under
+    // ±22.5° lands back on "front view" — and an execution used to reset the
+    // camera to the recovered pose, making accidental zero-orbit extractions
+    // easy (found live). Warn loudly instead of silently generating a no-op.
+    const zeroOrbit = r.azimuth_view === "front view"
+      && r.elevation_view === "eye-level shot" && r.distance_view === "medium shot";
+    const warn = zeroOrbit
+      ? `\n⚠ ZERO-ORBIT: this snaps to the SOURCE view — the generated\n` +
+        `patch will just match the photo. Orbit further (past ±22.5°\n` +
+        `to reach the next named view) and click 📐 again.`
+      : "";
     angleHud.textContent =
       `📐 Patch angle (source = front view)\n` +
       `Δaz  ${f1(r.dAz)}°  → ${r.azimuth_view} (${r.azErr.toFixed(0)}° off)\n` +
       `Δel  ${f1(r.dEl)}°  → ${r.elevation_view} (${r.elErr.toFixed(0)}° off)\n` +
       `dist ×${r.distScale.toFixed(2)} → ${r.distance_view}\n` +
-      `${r.prompt}\n` +
+      `${r.prompt}${warn}\n` +
       `(re-queued — patch_* outputs are live)      [✕]`;
     angleHud.style.display = "block";
     angleHud.onclick = (e) => { angleHud.style.display = "none"; e.stopPropagation(); };
@@ -2462,13 +2474,25 @@ function buildNodeUI(node, containerEl) {
     if (data.target_width && data.target_height) {
       resizeViewport(data.target_width, data.target_height);
     }
-    applyRecoveredCamera(camera, data);
-    // Prefer the solved scene depth (when a derive-geometry node ran) over the
-    // generic 30m default so the orbit radius matches this scene's actual scale.
-    const sceneDepth = data.camera_meta?.scene_depth_m;
-    const pivotMax = sceneDepth ? sceneDepth * 1.5 : 30;
-    controls.setTarget(groundPointInView(camera, pivotMax)); // pivot on the looked-at ground point
-    controls.syncFromCamera();                     // init orbit state from recovered pose
+    // Only RESET the viewing camera when the solve/image actually changed.
+    // Every execution used to snap the camera back to the recovered pose,
+    // which became load-bearing-bad once 📐 Extract Angle re-queues the
+    // graph: the artist's orbited view was wiped mid-flow, and a second 📐
+    // click from the reset pose silently overwrote their real extraction
+    // with a zero-orbit "front view" (found live). Same-solve re-executions
+    // now preserve navigation; 📷 Camera View remains the explicit reset.
+    const sameSolve = !!(node._atlasLastSolveFp && data.solve_fingerprint
+      && node._atlasLastSolveFp === data.solve_fingerprint);
+    node._atlasLastSolveFp = data.solve_fingerprint || null;
+    if (!sameSolve) {
+      applyRecoveredCamera(camera, data);
+      // Prefer the solved scene depth (when a derive-geometry node ran) over the
+      // generic 30m default so the orbit radius matches this scene's actual scale.
+      const sceneDepth = data.camera_meta?.scene_depth_m;
+      const pivotMax = sceneDepth ? sceneDepth * 1.5 : 30;
+      controls.setTarget(groundPointInView(camera, pivotMax)); // pivot on the looked-at ground point
+      controls.syncFromCamera();                     // init orbit state from recovered pose
+    }
     recoveredData = data;
     // Stale-extraction cleanup + pause visibility: if the persisted
     // patch_angle was extracted from a DIFFERENT solve/image than the one
