@@ -299,6 +299,12 @@ function createOrbitControls(camera, dom) {
   let theta0 = 0, phi0 = Math.PI / 3;
   const MAX_YAW = THREE.MathUtils.degToRad(80);
   const MAX_PITCH = THREE.MathUtils.degToRad(55);
+  // Asymmetric, per-scene clamp limits (radians, relative to theta0/phi0).
+  // Defaults reproduce the historical ±80°/±55° arc; 🧭 Safe Zone replaces
+  // them with MEASURED limits (see findSafeEnvelope) so the artist can't
+  // orbit into holes at all.
+  let limits = { thetaMin: -MAX_YAW, thetaMax: MAX_YAW,
+                 phiMin: -MAX_PITCH, phiMax: MAX_PITCH };
   const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
   function syncFromCamera() {
@@ -350,10 +356,10 @@ function createOrbitControls(camera, dom) {
       target.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
     } else {
       const deltaTheta = wrapAngle(sph.theta - dx * 0.005 - theta0);
-      sph.theta = theta0 + Math.min(MAX_YAW, Math.max(-MAX_YAW, deltaTheta));
+      sph.theta = theta0 + Math.min(limits.thetaMax, Math.max(limits.thetaMin, deltaTheta));
 
       const rawPhi = Math.min(Math.PI - 0.05, Math.max(0.05, sph.phi - dy * 0.005));
-      sph.phi = Math.min(phi0 + MAX_PITCH, Math.max(phi0 - MAX_PITCH, rawPhi));
+      sph.phi = Math.min(phi0 + limits.phiMax, Math.max(phi0 + limits.phiMin, rawPhi));
     }
     e.stopPropagation();
     apply();
@@ -374,6 +380,16 @@ function createOrbitControls(camera, dom) {
     target,
     setTarget(v) { target.copy(v); },
     syncFromCamera,
+    // Measured (or default) orbit limits — pass null to restore defaults.
+    setLimits(l) {
+      limits = l ? { ...l }
+        : { thetaMin: -MAX_YAW, thetaMax: MAX_YAW,
+            phiMin: -MAX_PITCH, phiMax: MAX_PITCH };
+    },
+    // Recovered-pose anchors + orbit sphere, for the 🧭 probe renders.
+    getFrame() {
+      return { theta0, phi0, radius: sph.radius, target: target.clone() };
+    },
     setEnabled(v) { enabled = v; if (!v) dragging = false; dom.style.cursor = v ? "grab" : "default"; },
     dispose() {
       dom.removeEventListener("pointerdown", onDown);
@@ -1635,6 +1651,152 @@ function buildNodeUI(node, containerEl) {
   toolbar.appendChild(angleBtn);
 
   // ---------------------------------------------------------------------------
+  // 🧭 Safe Zone — MEASURE the scene's actual safe camera envelope and clamp
+  // the orbit to it, so the artist cannot move into holes at all. This is the
+  // no-diffusion MVP answer to coverage: instead of generating patches for
+  // unseen areas, restrict the move to what the projection actually covers.
+  // Method: probe renders with the projection materials active into a small
+  // offscreen target whose clear color is a pure-magenta sentinel — every
+  // pixel the projection discards (out-of-frame, matte, facing, tears) shows
+  // the sentinel, so counting magenta pixels IS the exact per-pose hole
+  // fraction as the real renderer sees it, every shader rule included. Scan
+  // each direction from the recovered pose in 2.5° steps until the hole
+  // fraction exceeds baseline + 0.4%, then clamp the orbit controller to the
+  // measured arc. Envelope persists in client_data with the solve
+  // fingerprint (same staleness rule as 📐 extractions).
+  function renderProbe(probeCam) {
+    const W = 160;
+    const H = Math.max(8, Math.round(W / (camera.aspect || 1.7778)));
+    if (!node._atlasProbeRT || node._atlasProbeRT.width !== W || node._atlasProbeRT.height !== H) {
+      node._atlasProbeRT?.dispose();
+      node._atlasProbeRT = new THREE.WebGLRenderTarget(W, H);
+    }
+    const rt = node._atlasProbeRT;
+    const prevTarget = renderer.getRenderTarget();
+    const prevColor = new THREE.Color();
+    renderer.getClearColor(prevColor);
+    const prevAlpha = renderer.getClearAlpha();
+    const gridWas = grid.visible;
+    const bgWas = bgMesh ? bgMesh.visible : false;
+    grid.visible = false;
+    if (bgMesh) bgMesh.visible = false;
+    try {
+      probeCam.aspect = W / H;
+      probeCam.updateProjectionMatrix();
+      renderer.setRenderTarget(rt);
+      renderer.setClearColor(0xff00ff, 1);
+      renderer.clear();
+      renderer.render(scene, probeCam);
+      const buf = new Uint8Array(W * H * 4);
+      renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
+      let holes = 0;
+      for (let i = 0; i < buf.length; i += 4) {
+        if (buf[i] > 240 && buf[i + 1] < 16 && buf[i + 2] > 240) holes++;
+      }
+      return holes / (W * H);
+    } finally {
+      renderer.setRenderTarget(prevTarget);
+      renderer.setClearColor(prevColor, prevAlpha);
+      grid.visible = gridWas;
+      if (bgMesh) bgMesh.visible = bgWas;
+    }
+  }
+
+  function measureHoleFractionAt(dTheta, dPhi) {
+    const f = controls.getFrame();
+    const th = f.theta0 + dTheta;
+    const ph = Math.min(Math.PI - 0.05, Math.max(0.05, f.phi0 + dPhi));
+    const probeCam = camera.clone();
+    probeCam.position.set(
+      f.target.x + f.radius * Math.sin(ph) * Math.sin(th),
+      f.target.y + f.radius * Math.cos(ph),
+      f.target.z + f.radius * Math.sin(ph) * Math.cos(th));
+    probeCam.up.set(0, 1, 0);
+    probeCam.lookAt(f.target);
+    probeCam.updateMatrixWorld(true);
+    return renderProbe(probeCam);
+  }
+
+  function scanDirection(fn, hardMaxDeg, tol) {
+    // Linear 2.5° scan (not binary search): hole fraction need not be
+    // monotonic in angle, and ~32 probes at 160px are near-instant.
+    let lastGood = 0;
+    for (let a = 2.5; a <= hardMaxDeg + 1e-6; a += 2.5) {
+      if (fn(THREE.MathUtils.degToRad(a)) > tol) break;
+      lastGood = a;
+    }
+    return lastGood;
+  }
+
+  function findSafeEnvelope() {
+    if (!projMaterial) return null;
+    const wasOn = projectionOn;
+    if (!wasOn) applyProjection(true);
+    try {
+      const baseline = measureHoleFractionAt(0, 0);
+      const tol = baseline + 0.004;
+      return {
+        baseline,
+        yawPlusDeg: scanDirection((r) => measureHoleFractionAt(+r, 0), 80, tol),
+        yawMinusDeg: scanDirection((r) => measureHoleFractionAt(-r, 0), 80, tol),
+        phiPlusDeg: scanDirection((r) => measureHoleFractionAt(0, +r), 55, tol),
+        phiMinusDeg: scanDirection((r) => measureHoleFractionAt(0, -r), 55, tol),
+      };
+    } finally {
+      if (!wasOn) applyProjection(false);
+    }
+  }
+
+  function applyEnvelopeLimits(env) {
+    controls.setLimits({
+      thetaMin: -THREE.MathUtils.degToRad(env.yawMinusDeg),
+      thetaMax: THREE.MathUtils.degToRad(env.yawPlusDeg),
+      phiMin: -THREE.MathUtils.degToRad(env.phiMinusDeg),
+      phiMax: THREE.MathUtils.degToRad(env.phiPlusDeg),
+    });
+  }
+
+  function persistEnvelopeToClientData(env) {
+    const widget = node.widgets?.find((w) => w.name === "client_data");
+    if (!widget) return;
+    let existing = {};
+    try { existing = widget.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
+    existing.envelope = { ...env, fingerprint: recoveredData?.solve_fingerprint || "" };
+    widget.value = JSON.stringify(existing);
+    widget.callback?.(widget.value);
+  }
+
+  const envBtn = document.createElement("button");
+  envBtn.textContent = "🧭 Safe Zone";
+  envBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  envBtn.title = "Measure this scene's actual safe camera envelope (probe renders count " +
+    "projection holes per pose) and clamp orbiting to it — the no-patch way to guarantee " +
+    "a hole-free camera move.";
+  envBtn.onclick = () => {
+    const env = findSafeEnvelope();
+    if (!env) {
+      angleHud.textContent = "(no solve yet — queue the graph first)";
+      angleHud.style.display = "block";
+      return;
+    }
+    applyEnvelopeLimits(env);
+    persistEnvelopeToClientData(env);
+    angleHud.textContent =
+      `🧭 Safe camera envelope (measured, holes ≤ ${(env.baseline * 100 + 0.4).toFixed(1)}%)
+` +
+      `yaw   +${env.yawPlusDeg.toFixed(1)}° / −${env.yawMinusDeg.toFixed(1)}°
+` +
+      `pitch +${env.phiMinusDeg.toFixed(1)}° up / −${env.phiPlusDeg.toFixed(1)}° down
+` +
+      `Orbit is now clamped to this zone. Keep camera-path
+` +
+      `moves inside these angles for a hole-free shot.      [✕]`;
+    angleHud.style.display = "block";
+    angleHud.onclick = (e) => { angleHud.style.display = "none"; e.stopPropagation(); };
+  };
+  toolbar.appendChild(envBtn);
+
+  // ---------------------------------------------------------------------------
   // 🎥 Camera Path — author a keyframed camera move (fly nav, unclamped) to
   // test how 📽 Project holds up while the camera moves, then bake it to an
   // IMAGE batch (path_frames) for a core Video Combine node, or hand the raw
@@ -2536,6 +2698,26 @@ function buildNodeUI(node, containerEl) {
           widget.callback?.(widget.value);
           pa = null;
           cleared = true;
+        }
+        // 🧭 Safe-zone envelope follows the same staleness rule: re-apply a
+        // matching measurement on every execution (the clamp lives on the
+        // controller instance and dies with the page otherwise); clear it and
+        // restore the default clamp when the solve/image changed.
+        const env = existing.envelope || null;
+        if (env) {
+          if (data.solve_fingerprint && env.fingerprint !== data.solve_fingerprint) {
+            delete existing.envelope;
+            widget.value = JSON.stringify(existing);
+            widget.callback?.(widget.value);
+            controls.setLimits(null);
+          } else if (typeof env.yawPlusDeg === "number") {
+            controls.setLimits({
+              thetaMin: -THREE.MathUtils.degToRad(env.yawMinusDeg),
+              thetaMax: THREE.MathUtils.degToRad(env.yawPlusDeg),
+              phiMin: -THREE.MathUtils.degToRad(env.phiMinusDeg),
+              phiMax: THREE.MathUtils.degToRad(env.phiPlusDeg),
+            });
+          }
         }
       }
       const patchWired = (node.outputs || []).slice(6, 10)
