@@ -1725,10 +1725,12 @@ function buildNodeUI(node, containerEl) {
   }
 
   function scanDirection(fn, hardMaxDeg, tol) {
-    // Linear 2.5° scan (not binary search): hole fraction need not be
-    // monotonic in angle, and ~32 probes at 160px are near-instant.
+    // Linear 1° scan (not binary search): hole fraction need not be
+    // monotonic in angle, probes are ~7ms at 160px, and the coarser 2.5°
+    // step measurably undersold real limits (a 4.3° true limit read as
+    // 2.5° — verified live against the fine-grained hole curve).
     let lastGood = 0;
-    for (let a = 2.5; a <= hardMaxDeg + 1e-6; a += 2.5) {
+    for (let a = 1; a <= hardMaxDeg + 1e-6; a += 1) {
       if (fn(THREE.MathUtils.degToRad(a)) > tol) break;
       lastGood = a;
     }
