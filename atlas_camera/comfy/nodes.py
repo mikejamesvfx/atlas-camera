@@ -1851,6 +1851,148 @@ class AtlasDepthMap:
         return (result,)
 
 
+class AtlasPredictHiddenGeometry:
+    """🔬 EXPERIMENTAL, RESEARCH-ONLY — "X-ray" depth map via LaRI layered ray
+    intersections.
+
+    Predicts the surfaces HIDDEN behind foreground occluders (per pixel, the
+    first ray intersection that clears the visible surface) and returns a
+    patched copy of the input ATLAS_DEPTH_MAP with occluder pixels replaced by
+    that predicted hidden depth — a depth map of "the world with the occluders
+    removed". Wire the ORIGINAL depth into foreground band layers and this
+    node's output into BACKGROUND band layers so disocclusion reveals get
+    predicted geometry instead of diffusion-smoothed guesses.
+
+    Hidden depth is a HYPOTHESIS, never a measurement: the report output
+    carries registration quality + coverage, and `hidden_mask` marks every
+    substituted pixel for provenance. Works best on indoor/architectural
+    scenes (the model's training domain — see
+    docs/dev/hidden_geometry_training_free_research.md); outdoor terrain can
+    collapse to near-zero coverage, in which case the depth passes through
+    almost unchanged.
+
+    Requires a user-cloned LaRI repository (github.com/ruili3/lari — NO
+    upstream license, research use only; atlas_camera bundles none of it).
+    Point `lari_path` (or the ATLAS_LARI_PATH env var) at the clone.
+    """
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "MASK", "STRING")
+    RETURN_NAMES = ("depth", "hidden_mask", "report")
+    FUNCTION = "predict"
+    CATEGORY = "Atlas Camera/Experimental"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "depth": ("ATLAS_DEPTH_MAP",),
+                "image": ("IMAGE",),
+            },
+            "optional": {
+                "lari_path": ("STRING", {"default": "", "tooltip":
+                    "Path to your clone of github.com/ruili3/lari (research-only, "
+                    "unlicensed upstream). Blank = the ATLAS_LARI_PATH env var."}),
+                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "clear_rel": ("FLOAT", {"default": 0.15, "min": 0.01, "max": 1.0,
+                    "step": 0.01, "tooltip":
+                    "A hidden layer must be at least this fraction of the visible "
+                    "depth BEHIND it to count as a separate surface (occluder back "
+                    "faces are closer than this and get skipped)."}),
+                "min_clear_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0,
+                    "step": 0.1, "tooltip":
+                    "Absolute clearance floor in the depth map's units. 0 = auto "
+                    "(2% of the median visible depth) — the scene-adaptive margin "
+                    "shallow scenes need."}),
+                "restrict_mask": ("MASK", {"tooltip":
+                    "Optional — only substitute hidden depth inside this mask "
+                    "(e.g. a foreground band's layer_mask). Without it, every "
+                    "confidently-detected occluder is replaced."}),
+            },
+        }
+
+    def predict(self, depth, image, lari_path="", device="auto",
+                clear_rel=0.15, min_clear_m=0.0, restrict_mask=None):
+        np = _require_numpy()
+        torch = _require_torch()
+        from atlas_camera.core.hidden_geometry import select_hidden_surface
+        from atlas_camera.inference.depth_estimator import DepthResult
+        from atlas_camera.inference.lari_hidden_geometry import predict_layered_depth
+
+        tmp = _save_image_tensor_to_tmp(image)
+        try:
+            layered = predict_layered_depth(
+                tmp, lari_path=lari_path,
+                device=None if device == "auto" else device)
+        finally:
+            os.unlink(tmp)
+
+        raw = np.asarray(depth.depth, dtype=np.float64)
+        H, W = raw.shape
+        lt = torch.from_numpy(layered.layers).permute(2, 0, 1)[None]  # (1,L,h,w)
+        layers_up = torch.nn.functional.interpolate(
+            lt, size=(H, W), mode="bilinear", align_corners=False
+        )[0].permute(1, 2, 0).numpy().astype(np.float64)
+
+        hidden, hidden_valid, stats = select_hidden_surface(
+            layers_up, raw, clear_rel=clear_rel,
+            min_clear=(min_clear_m if min_clear_m > 0 else None))
+
+        if restrict_mask is not None:
+            m = restrict_mask
+            if m.dim() == 3:
+                m = m[0]
+            m = torch.nn.functional.interpolate(
+                m[None, None].float(), size=(H, W), mode="nearest"
+            )[0, 0].numpy() > 0.5
+            hidden_valid = hidden_valid & m
+            stats["restricted_coverage"] = float(hidden_valid.mean())
+
+        patched = raw.copy()
+        patched[hidden_valid] = hidden[hidden_valid]
+
+        scalar_stats = {k: v for k, v in stats.items()
+                        if isinstance(v, (int, float, str))}
+        out = DepthResult(
+            depth=patched.astype(np.float32),
+            is_metric=depth.is_metric,
+            model_id=f"{depth.model_id}+lari_hidden",
+            image_width=depth.image_width,
+            image_height=depth.image_height,
+            near=float(patched.min()),
+            far=float(patched.max()),
+            metadata={**depth.metadata, "research_only": True,
+                      **{f"hidden_{k}": v for k, v in scalar_stats.items()}},
+        )
+        mask_t = torch.from_numpy(hidden_valid.astype(np.float32))[None]
+
+        rel_mad = stats.get("registration_rel_mad", float("inf"))
+        quality = ("good" if rel_mad < 0.2 else
+                   "shaky" if rel_mad < 0.5 else "poor")
+        report = (
+            "🔬 RESEARCH-ONLY hidden-geometry prediction (LaRI — upstream repo "
+            "has NO license; do not use commercially).\n"
+            f"registration: scale {stats.get('scale', 0):.3f}, rel MAD "
+            f"{rel_mad:.3f} ({quality})\n"
+            f"substituted pixels: {int(hidden_valid.sum())} "
+            f"({100.0 * float(hidden_valid.mean()):.1f}% of frame)\n"
+            f"median hidden-vs-visible separation: "
+            f"{stats.get('median_separation') if stats.get('median_separation') is not None else 'n/a'}\n"
+            f"layer histogram (index of first clearing layer): "
+            f"{stats.get('layer_used_histogram')}\n"
+            + ("warning: " + stats["warning"] + "\n" if "warning" in stats else "")
+            + ("warning: no restrict_mask wired — substitution covers "
+               f"{100.0 * float(hidden_valid.mean()):.0f}% of the frame, "
+               "including VISIBLE background surfaces (LaRI predicts "
+               "through-wall structure there). For band workflows wire the "
+               "foreground band's layer_mask into restrict_mask so only real "
+               "occluders are replaced.\n"
+               if restrict_mask is None and float(hidden_valid.mean()) > 0.25
+               else "")
+            + "Hidden depth is a hypothesis — best on indoor/architectural "
+              "scenes; verify by orbiting the projected result."
+        )
+        return (out, mask_t, report)
+
+
 class AtlasDeriveReliefMesh:
     """Continuous depth-following relief mesh — one job, so there's no
     geometry_mode/primitive_method combination that silently ignores this
@@ -4884,6 +5026,8 @@ NODE_CLASS_MAPPINGS = {
     "AtlasExportCameraPathUSD":   AtlasExportCameraPathUSD,
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              AtlasDepthMap,
+    # Experimental (research-only)
+    "AtlasPredictHiddenGeometry": AtlasPredictHiddenGeometry,
     "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
     "AtlasDeriveWalls":           AtlasDeriveWalls,
     "AtlasDeriveTowersSpires":    AtlasDeriveTowersSpires,
@@ -4943,6 +5087,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              "Atlas Depth Map 🌊",
+    "AtlasPredictHiddenGeometry": "Atlas Predict Hidden Geometry 🔬 (research)",
     "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
     "AtlasDeriveWalls":           "Atlas Derive Walls 🧱",
     "AtlasDeriveTowersSpires":    "Atlas Derive Towers & Spires 🗼",

@@ -1,0 +1,418 @@
+{
+  "last_node_id": 18,
+  "last_link_id": 26,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [40, 140],
+      "size": {"0": 320, "1": 314},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [1, 2, 7, 14, 18], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": [], "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["atlas_cathedral_nave.png", "image"]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [420, 140],
+      "size": {"0": 400, "1": 210},
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "IMAGE", "link": 1, "slot_index": 0}
+      ],
+      "outputs": [
+        {"name": "ATLAS_SOLVE", "type": "ATLAS_SOLVE", "links": [3, 4, 9], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "AtlasLearnedSolveFromImage"},
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/DA3METRIC-LARGE",
+        36,
+        "pinhole",
+        "auto"
+      ],
+      "title": "Solve (GeoCalib + DA3 height)"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [420, 420],
+      "size": {"0": 400, "1": 120},
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "IMAGE", "link": 2, "slot_index": 0},
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 3, "slot_index": 1}
+      ],
+      "outputs": [
+        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "links": [5, 6, 10], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "AtlasDepthMap"},
+      "widgets_values": ["depth-anything/DA3METRIC-LARGE", "auto"],
+      "title": "Shared DA3 depth (solved focal)"
+    },
+    {
+      "id": 4,
+      "type": "SolidMask",
+      "pos": [420, 620],
+      "size": {"0": 320, "1": 110},
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "MASK", "type": "MASK", "links": [11, 15], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "SolidMask"},
+      "widgets_values": [0.0, 64, 64],
+      "title": "Empty exclude — interior, NO sky heuristic"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDepthBandSplit",
+      "pos": [420, 790],
+      "size": {"0": 320, "1": 100},
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "band_split", "type": "ATLAS_BAND_SPLIT", "links": [16], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "AtlasDepthBandSplit"},
+      "widgets_values": [0.55, 0.0],
+      "title": "X-ray band boundary (log-depth 0.55)"
+    },
+    {
+      "id": 6,
+      "type": "AtlasDepthLayerMask",
+      "pos": [880, 140],
+      "size": {"0": 400, "1": 280},
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 4, "slot_index": 0},
+        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "link": 5, "slot_index": 1}
+      ],
+      "outputs": [
+        {"name": "layer_mask", "type": "MASK", "links": [8, 24], "slot_index": 0},
+        {"name": "occlusion_mask", "type": "MASK", "links": [], "slot_index": 1},
+        {"name": "hole_mask", "type": "MASK", "links": [], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AtlasDepthLayerMask"},
+      "widgets_values": [0.0, 0.0, 0.0, 0.3, 4, false, 384, 1.5, false, "manual"],
+      "title": "X-ray restrict: NEAREST columns only (manual, far_pct 0.30)"
+    },
+    {
+      "id": 7,
+      "type": "AtlasPredictHiddenGeometry",
+      "pos": [880, 480],
+      "size": {"0": 400, "1": 220},
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "link": 6, "slot_index": 0},
+        {"name": "image", "type": "IMAGE", "link": 7, "slot_index": 1},
+        {"name": "restrict_mask", "type": "MASK", "link": 8, "slot_index": 2}
+      ],
+      "outputs": [
+        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "links": [13], "slot_index": 0},
+        {"name": "hidden_mask", "type": "MASK", "links": [22], "slot_index": 1},
+        {"name": "report", "type": "STRING", "links": [26], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AtlasPredictHiddenGeometry"},
+      "widgets_values": ["", "auto", 0.3, 0.0],
+      "title": "🔬 X-ray depth (LaRI; lari_path blank = ATLAS_LARI_PATH)"
+    },
+    {
+      "id": 8,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [1360, 140],
+      "size": {"0": 400, "1": 200},
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 9, "slot_index": 0},
+        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "link": 10, "slot_index": 1},
+        {"name": "exclude_mask", "type": "MASK", "link": 11, "slot_index": 2}
+      ],
+      "outputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "links": [12], "slot_index": 0},
+        {"name": "hole_mask", "type": "MASK", "links": [], "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "AtlasDeriveReliefMesh"},
+      "widgets_values": [384, "custom", 1.5],
+      "title": "BASE mesh + backdrop — full depth, ORIGINAL (covers camera view)"
+    },
+    {
+      "id": 9,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [1360, 420],
+      "size": {"0": 400, "1": 420},
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 12, "slot_index": 0},
+        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "link": 13, "slot_index": 1},
+        {"name": "plate_image", "type": "IMAGE", "link": 14, "slot_index": 2},
+        {"name": "exclude_mask", "type": "MASK", "link": 15, "slot_index": 3},
+        {"name": "band_split", "type": "ATLAS_BAND_SPLIT", "link": 16, "slot_index": 4}
+      ],
+      "outputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "links": [17, 20], "slot_index": 0},
+        {"name": "hole_mask", "type": "MASK", "links": [], "slot_index": 1},
+        {"name": "extend_mask", "type": "MASK", "links": [], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AtlasCleanPlateLayer"},
+      "widgets_values": [0.0, 0.0, 0.0, 0.5, "bg_xray", 0.0, 384, 1.5, true, true, 24, 1.5, 64, 2, "background"],
+      "title": "X-RAY band — predicted geometry BEHIND the columns"
+    },
+    {
+      "id": 10,
+      "type": "AtlasBlockoutViewport",
+      "pos": [1840, 140],
+      "size": {"0": 800, "1": 640},
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 17, "slot_index": 0},
+        {"name": "source_image", "type": "IMAGE", "link": 18, "slot_index": 1}
+      ],
+      "outputs": [
+        {"name": "shaded", "type": "IMAGE", "links": [], "slot_index": 0},
+        {"name": "depth", "type": "IMAGE", "links": [], "slot_index": 1},
+        {"name": "normal", "type": "IMAGE", "links": [], "slot_index": 2},
+        {"name": "mask", "type": "IMAGE", "links": [], "slot_index": 3},
+        {"name": "path_frames", "type": "IMAGE", "links": [19], "slot_index": 4},
+        {"name": "camera_path", "type": "ATLAS_CAMERA_PATH", "links": [21], "slot_index": 5},
+        {"name": "patch_azimuth_view", "type": "STRING", "links": [], "slot_index": 6},
+        {"name": "patch_elevation_view", "type": "STRING", "links": [], "slot_index": 7},
+        {"name": "patch_distance", "type": "STRING", "links": [], "slot_index": 8},
+        {"name": "patch_prompt", "type": "STRING", "links": [], "slot_index": 9}
+      ],
+      "properties": {"Node name for S&R": "AtlasBlockoutViewport"},
+      "widgets_values": [960, "", 1],
+      "title": "Viewport — 🎥 Camera Path → Dolly In preset → ⏺ Bake"
+    },
+    {
+      "id": 11,
+      "type": "VideoCombinePlus",
+      "pos": [2680, 140],
+      "size": {"0": 360, "1": 340},
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 19, "slot_index": 0}
+      ],
+      "outputs": [
+        {"name": "Filenames", "type": "VHS_FILENAMES", "links": [], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VideoCombinePlus"},
+      "widgets_values": [24.0, "mp4", "atlas_cathedral_dolly", 1.0, false, true],
+      "title": "Dolly video (fills after ⏺ Bake Proxy Path)"
+    },
+    {
+      "id": 12,
+      "type": "AtlasExportCameraPathUSD",
+      "pos": [2680, 560],
+      "size": {"0": 360, "1": 120},
+      "flags": {},
+      "order": 12,
+      "mode": 2,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 20, "slot_index": 0},
+        {"name": "camera_path", "type": "ATLAS_CAMERA_PATH", "link": 21, "slot_index": 1}
+      ],
+      "outputs": [
+        {"name": "usd_path", "type": "STRING", "links": [], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "AtlasExportCameraPathUSD"},
+      "widgets_values": ["atlas_exports_cathedral"],
+      "title": "Camera path → USD (MUTED — unmute after ⏺ Bake)"
+    },
+    {
+      "id": 13,
+      "type": "MaskToImage",
+      "pos": [880, 760],
+      "size": {"0": 210, "1": 50},
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {"name": "mask", "type": "MASK", "link": 22, "slot_index": 0}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [23], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "MaskToImage"},
+      "widgets_values": []
+    },
+    {
+      "id": 14,
+      "type": "PreviewImage",
+      "pos": [880, 860],
+      "size": {"0": 260, "1": 280},
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 23, "slot_index": 0}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "PreviewImage"},
+      "widgets_values": [],
+      "title": "X-rayed pixels"
+    },
+    {
+      "id": 15,
+      "type": "MaskToImage",
+      "pos": [1160, 760],
+      "size": {"0": 210, "1": 50},
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {"name": "mask", "type": "MASK", "link": 24, "slot_index": 0}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [25], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "MaskToImage"},
+      "widgets_values": []
+    },
+    {
+      "id": 16,
+      "type": "PreviewImage",
+      "pos": [1160, 860],
+      "size": {"0": 260, "1": 280},
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 25, "slot_index": 0}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "PreviewImage"},
+      "widgets_values": [],
+      "title": "Restrict mask (nearest columns)"
+    },
+    {
+      "id": 17,
+      "type": "ShowText|pysssss",
+      "pos": [1440, 900],
+      "size": {"0": 400, "1": 200},
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {"name": "text", "type": "STRING", "link": 26, "widget": {"name": "text"}, "slot_index": 0}
+      ],
+      "outputs": [
+        {"name": "STRING", "type": "STRING", "links": [], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "ShowText|pysssss"},
+      "widgets_values": [""],
+      "title": "Hidden-geometry confidence report"
+    },
+    {
+      "id": 18,
+      "type": "Note",
+      "pos": [40, 940],
+      "size": [780, 720],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "properties": {"text": ""},
+      "widgets_values": [
+        "🔬 HIDDEN GEOMETRY TECH DEMO — X-ray behind the cathedral columns + DOLLY-IN\nEXPERIMENTAL / RESEARCH-ONLY (upstream LaRI repo has NO license)\n\nSETUP (once): clone LaRI + point at it —\n    git clone https://github.com/ruili3/lari.git\nBlank lari_path uses the ATLAS_LARI_PATH env var if set; else paste the clone\npath into the 🔬 node. Weights (~1.3GB) download from HuggingFace on first\nrun. Needs CUDA; no PyTorch3D. See INSTALL.md 'Hidden-Geometry Prediction'.\n\nARCHITECTURE (calibrated 2026-07-09 — measured, not guessed):\n1. ONE solve + ONE shared DA3 depth (solved focal).\n2. BASE GEOMETRY: AtlasDeriveReliefMesh on the ORIGINAL depth — a full-depth\n   relief mesh PLUS its projection_backdrop catch-all plane. This is what\n   guarantees no black tearing at/near the recovered camera view. (An\n   earlier fg/bg-banded version of this graph had NO base mesh — the deep\n   colonnade shredded into 20-35% black. Banding suits scenes with separated\n   depth clusters; a cathedral is one CONTINUOUS recession.)\n3. SolidMask 0 → exclude_mask on BOTH geometry nodes: this is an interior —\n   an explicit empty mask REPLACES the internal sky heuristic, which\n   otherwise eats the vault ('above horizon + far' = classic false sky).\n4. X-RAY: AtlasDepthLayerMask in MANUAL mode, far_pct 0.30 = only the\n   NEAREST columns feed the 🔬 node's restrict_mask (restricting to the\n   whole near half made LaRI push visible walls/floor deep — measured\n   worse). clear_rel 0.30 = conservative surface acceptance.\n5. The bg_xray band (background side of the 0.55 split) builds its mesh\n   from the PATCHED depth: real predicted geometry sits BEHIND the columns,\n   layered behind the base mesh, waiting to be revealed.\n\nSLIDER NOTE (answers 'what should near/far be?'): when a band_split wire is\nconnected AND band_side is foreground/background, the near/far sliders are\nIGNORED — the split node is the single authority. Sliders only matter in\nband_side=manual (that's exactly how the restrict-mask node above uses\nfar_pct 0.30).\n\n🎥 THE DOLLY-IN DEMO\n1. Queue once (viewport shows the projected nave; report shows registration).\n2. In the viewport: 🎥 Camera Path → 'Dolly In' preset → Apply Preset →\n   ▶ Play to preview. The dolly drives the RENDER camera between the\n   columns; the projection stays anchored to the recovered camera, so\n   disocclusions open at the column silhouettes — and land on the X-ray\n   band's PREDICTED geometry instead of black.\n3. ⏺ Bake Proxy Path — re-queues automatically; the baked frames flow into\n   VideoCombine Plus → atlas_cathedral_dolly.mp4 in ComfyUI's output folder.\n4. For the DCC handoff, UNMUTE the AtlasExportCameraPathUSD node (muted by\n   default because it errors — deliberately — when no path is baked yet)\n   and re-queue: camera_path.usda alongside.\n\nA/B: mute the 🔬 node (Ctrl+M) and rewire the bg_xray band's depth to the\nAtlasDepthMap to compare diffusion-only reveals on the same dolly."
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "IMAGE"],
+    [2, 1, 0, 3, 0, "IMAGE"],
+    [3, 2, 0, 3, 1, "ATLAS_SOLVE"],
+    [4, 2, 0, 6, 0, "ATLAS_SOLVE"],
+    [5, 3, 0, 6, 1, "ATLAS_DEPTH_MAP"],
+    [6, 3, 0, 7, 0, "ATLAS_DEPTH_MAP"],
+    [7, 1, 0, 7, 1, "IMAGE"],
+    [8, 6, 0, 7, 2, "MASK"],
+    [9, 2, 0, 8, 0, "ATLAS_SOLVE"],
+    [10, 3, 0, 8, 1, "ATLAS_DEPTH_MAP"],
+    [11, 4, 0, 8, 2, "MASK"],
+    [12, 8, 0, 9, 0, "ATLAS_SOLVE"],
+    [13, 7, 0, 9, 1, "ATLAS_DEPTH_MAP"],
+    [14, 1, 0, 9, 2, "IMAGE"],
+    [15, 4, 0, 9, 3, "MASK"],
+    [16, 5, 0, 9, 4, "ATLAS_BAND_SPLIT"],
+    [17, 9, 0, 10, 0, "ATLAS_SOLVE"],
+    [18, 1, 0, 10, 1, "IMAGE"],
+    [19, 10, 4, 11, 0, "IMAGE"],
+    [20, 9, 0, 12, 0, "ATLAS_SOLVE"],
+    [21, 10, 5, 12, 1, "ATLAS_CAMERA_PATH"],
+    [22, 7, 1, 13, 0, "MASK"],
+    [23, 13, 0, 14, 0, "IMAGE"],
+    [24, 6, 0, 15, 0, "MASK"],
+    [25, 15, 0, 16, 0, "IMAGE"],
+    [26, 7, 2, 17, 0, "STRING"]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Source + Solve + Depth + interior exclude + split",
+      "bounding": [20, 100, 820, 820],
+      "color": "#3f789e",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② 🔬 X-ray: nearest-columns restrict → LaRI hidden depth",
+      "bounding": [860, 100, 460, 1060],
+      "color": "#7e4f3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Geometry: BASE mesh + backdrop (original) + X-ray band (patched)",
+      "bounding": [1340, 100, 440, 1020],
+      "color": "#3d7e48",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "④ Dolly-in demo: viewport → baked frames → mp4 + USD",
+      "bounding": [1820, 100, 1240, 700],
+      "color": "#7e6e3d",
+      "font_size": 15,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.38,
+      "offset": [10, -40]
+    }
+  },
+  "version": 0.4
+}

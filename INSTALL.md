@@ -142,6 +142,28 @@ recommended: DA3's inference autocasts to bf16/fp16 by device type.
 For the V2-vs-DA3 accuracy comparison protocol, see
 `docs/dev/da3_backend_test_plan.md` and `tools/compare_depth_backends.py`.
 
+## Experimental: Hidden-Geometry Prediction (research-only)
+
+`AtlasPredictHiddenGeometry` 🔬 predicts the surfaces hidden behind foreground
+occluders (LaRI layered ray intersections) and outputs an "X-ray" copy of an
+`ATLAS_DEPTH_MAP` with occluders replaced by predicted hidden depth — wire it
+into background band layers so disocclusion reveals get predicted geometry
+instead of diffusion-smoothed guesses. Best on indoor/architectural scenes;
+see `docs/dev/hidden_geometry_training_free_research.md` for measured limits.
+
+**The upstream LaRI repository has NO license (all rights reserved) — research
+use only, and atlas_camera bundles none of it.** You must clone it yourself:
+
+```powershell
+git clone https://github.com/ruili3/lari.git C:\path\to\lari
+```
+
+then set the node's `lari_path` widget (or the `ATLAS_LARI_PATH` env var) to
+that folder. Inference needs only the `[neural]` extra + CUDA — **no
+PyTorch3D** (that's only in LaRI's dataset tooling) and none of LaRI's pinned
+requirements. Weights (~1.3GB) download from HuggingFace (`ruili3/LaRI`) on
+first use. Without a clone the node fails with these instructions.
+
 ## Optional Inpaint Integration
 
 The inpaint-layers feature (`AtlasDepthLayerMask` + `AtlasCleanPlateLayer`,
