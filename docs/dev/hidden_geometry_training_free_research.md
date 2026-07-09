@@ -198,6 +198,44 @@ background pixels — for band workflows always wire the foreground band's
 `layer_mask` into `restrict_mask` so only real occluders are substituted.
 Tests: `tests/test_hidden_geometry.py` (7, all mocked/pure-numpy).
 
+## BUILT (2026-07-09, same day): World Tracing as the second backend — LIVE-VERIFIED
+
+The watch-list successor arrived faster than expected: WT's code released with
+a proper package (`pip`-structured `wt` module), the user's HF access to the
+gated scene checkpoint (r69l_v2_evermotion_ithappy_840_opp, iter 76k) was
+granted same-day, and the backend swap validated the contract exactly as
+designed — `inference/wt_hidden_geometry.py` mirrors the LaRI wrapper
+(clone-path guard via `wt_path`/`ATLAS_WT_PATH`), the node grew a `model`
+combo + `steps`/`seed` diffusion widgets, and **nothing downstream changed**.
+WT additionally supplies a per-layer validity mask (zeroed into the stack —
+the `z > valid_min` skip consumes it naturally), which LaRI's scene model
+lacks.
+
+**Cathedral A/B (RTX 5090, Windows — upstream only tested Linux; worked
+unmodified, no flash-attn):**
+
+| | LaRI scene | WT r69l (20 steps, seed 42) |
+|---|---|---|
+| registration rel-MAD | 0.118 | **0.061** |
+| substitution (unrestricted) | 56.9% | 47.6% |
+| median hidden separation | 5.1 (model units × reg) | 7.2 |
+| first-clear layer histogram | [–, 1.74M, 1.62M, 0.82M, 0.53M] | [–, **0.14M**, 1.41M, 0.83M, 1.04M, 0.53M] |
+| runtime | ~0.6s forward | ~17s diffusion (158s first call incl. 1.5B load) |
+| VRAM peak | 3.6 GB | 12.3 GB |
+
+Read: WT's visible layer agrees with DA3 nearly 2× better (cleaner
+registration), and its first clearing layer is rarely the occluder's thin
+back-face — the "better occluded-surface modeling" claim holds on this scene.
+Cost: ~30× slower and generative (seed-pinned). Sensible default remains LaRI
+for iteration speed; switch to WT for final-quality hidden geometry.
+Licensing: CC BY-NC-ND 4.0 + HF-gated checkpoints — research-only, per-user
+access, nothing vendored (see INSTALL.md).
+
+Also landed same-day: the cathedral workflow's bg band now consumes a **LaMa
+clean plate** (hidden_mask → INPAINT_ExpandMask 48/16 → big-lama.pt →
+plate_image) so reveals get real pixels matching the predicted geometry —
+verified live; the plate inpaints exactly the X-rayed regions.
+
 **Licensing blocker for shipping:** the LaRI repo has **NO license file** —
 default all-rights-reserved, stricter than CC BY-NC. We cannot vendor or
 redistribute code/weights. The only shippable shape is the GeoCalib pattern:

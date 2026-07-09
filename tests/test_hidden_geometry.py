@@ -131,6 +131,68 @@ def test_node_patches_depth_and_reports(monkeypatch, tmp_path):
     assert bool(mask2[0, 20:, :].max() == 0)  # nothing below row 16
 
 
+def test_wt_backend_dispatch_and_report(monkeypatch, tmp_path):
+    """model='world-tracing-scene' routes to the WT backend (LaRI loader must
+    never be touched), produces the same patched-depth contract, and the
+    report carries WT's license + diffusion params."""
+    torch = pytest.importorskip("torch")
+
+    from atlas_camera.comfy.nodes import AtlasPredictHiddenGeometry
+    from atlas_camera.inference.depth_estimator import DepthResult
+    import atlas_camera.inference.lari_hidden_geometry as lhg
+    import atlas_camera.inference.wt_hidden_geometry as whg
+
+    H = W = 32
+    visible, layers, fg = _synthetic_scene(H, W, model_scale=0.5)
+
+    def fake_wt(image_path, *, wt_path=None, device=None, steps=20, seed=0):
+        assert steps == 7 and seed == 123  # widgets must thread through
+        return lhg.LayeredDepthResult(
+            layers=layers.astype(np.float32), image_width=W, image_height=H,
+            metadata={"backend": "world-tracing", "research_only": True})
+
+    def exploding_lari(*a, **k):
+        raise AssertionError("LaRI backend touched for a world-tracing run")
+
+    monkeypatch.setattr(whg, "predict_layered_depth_wt", fake_wt)
+    monkeypatch.setattr(lhg, "predict_layered_depth", exploding_lari)
+
+    depth_in = DepthResult(
+        depth=visible.astype(np.float32), is_metric=True, model_id="fake",
+        image_width=W, image_height=H, near=2.0, far=10.0)
+    image = torch.rand(1, H, W, 3, dtype=torch.float32)
+
+    out, mask, report = AtlasPredictHiddenGeometry().predict(
+        depth_in, image, clear_rel=0.2,
+        model="world-tracing-scene", steps=7, seed=123)
+
+    np.testing.assert_allclose(out.depth[fg], 10.0, rtol=1e-5)
+    assert "World Tracing" in report and "CC BY-NC-ND" in report
+    assert "steps 7" in report and "seed 123" in report
+
+    # And the default model still routes to LaRI (WT must not be touched).
+    def exploding_wt(*a, **k):
+        raise AssertionError("WT backend touched for a lari run")
+
+    def fake_lari(image_path, *, lari_path=None, device=None):
+        return lhg.LayeredDepthResult(
+            layers=layers.astype(np.float32), image_width=W, image_height=H,
+            metadata={"backend": "lari", "research_only": True})
+
+    monkeypatch.setattr(whg, "predict_layered_depth_wt", exploding_wt)
+    monkeypatch.setattr(lhg, "predict_layered_depth", fake_lari)
+    out2, _, report2 = AtlasPredictHiddenGeometry().predict(
+        depth_in, image, clear_rel=0.2)
+    assert "LaRI" in report2
+
+
+def test_wt_require_raises_informative_error_without_clone():
+    from atlas_camera.inference.wt_hidden_geometry import _resolve_wt_root
+
+    with pytest.raises(RuntimeError, match="CC BY-NC-ND"):
+        _resolve_wt_root("C:/definitely/not/a/wt/clone")
+
+
 def test_node_registered():
     from atlas_camera.comfy.nodes import (
         NODE_CLASS_MAPPINGS,

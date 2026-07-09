@@ -139,6 +139,24 @@ If the import fails on a missing small dependency (e.g. `einops`, `omegaconf`,
 Model weights download from Hugging Face on first use. A GPU (cuda) is
 recommended: DA3's inference autocasts to bf16/fp16 by device type.
 
+### Second backend: World Tracing (diffusion, also research-only)
+
+The node's `model` combo can select `world-tracing-scene` — WT-DiT's r69l
+scene model (840×840, 6 layers, ~17s at 20 diffusion steps; generative, so pin
+the `seed` widget for reproducibility). Setup mirrors LaRI:
+
+```powershell
+git clone https://github.com/haoz19/world-tracing.git C:\path\to\world-tracing
+```
+
+then set the node's `wt_path` widget (or `ATLAS_WT_PATH`). Two extra
+requirements beyond LaRI's: the small `jaxtyping` package
+(`pip install --no-deps jaxtyping` into the ComfyUI venv), and the checkpoint
+is **HF-gated** — request access on the `haoz19` model pages, then
+authenticate the machine once (`huggingface-cli login` / `hf auth login` with
+a read token) so the first-use download works. License: **CC BY-NC-ND 4.0**
+(non-commercial research, no redistributed derivatives).
+
 For the V2-vs-DA3 accuracy comparison protocol, see
 `docs/dev/da3_backend_test_plan.md` and `tools/compare_depth_backends.py`.
 

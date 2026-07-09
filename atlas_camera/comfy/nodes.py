@@ -1906,22 +1906,49 @@ class AtlasPredictHiddenGeometry:
                     "Optional — only substitute hidden depth inside this mask "
                     "(e.g. a foreground band's layer_mask). Without it, every "
                     "confidently-detected occluder is replaced."}),
+                "model": (["lari-scene", "world-tracing-scene"],
+                    {"default": "lari-scene", "tooltip":
+                    "Layered-ray-intersection backend. lari-scene = LaRI (fast "
+                    "regression, ~0.2s, unlicensed upstream). world-tracing-scene "
+                    "= WT-DiT r69l (diffusion, ~17s/20 steps, CC BY-NC-ND 4.0, "
+                    "HF-gated checkpoint). Both are research-only."}),
+                "wt_path": ("STRING", {"default": "", "tooltip":
+                    "Path to your clone of github.com/haoz19/world-tracing "
+                    "(only used by the world-tracing-scene backend). Blank = the "
+                    "ATLAS_WT_PATH env var."}),
+                "steps": ("INT", {"default": 20, "min": 1, "max": 100, "tooltip":
+                    "Diffusion sampling steps (world-tracing backend only)."}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1,
+                    "tooltip": "Diffusion seed (world-tracing backend only — "
+                    "WT is generative; pin this for reproducible hidden geometry)."}),
             },
         }
 
     def predict(self, depth, image, lari_path="", device="auto",
-                clear_rel=0.15, min_clear_m=0.0, restrict_mask=None):
+                clear_rel=0.15, min_clear_m=0.0, restrict_mask=None,
+                model="lari-scene", wt_path="", steps=20, seed=0):
         np = _require_numpy()
         torch = _require_torch()
         from atlas_camera.core.hidden_geometry import select_hidden_surface
         from atlas_camera.inference.depth_estimator import DepthResult
-        from atlas_camera.inference.lari_hidden_geometry import predict_layered_depth
 
         tmp = _save_image_tensor_to_tmp(image)
         try:
-            layered = predict_layered_depth(
-                tmp, lari_path=lari_path,
-                device=None if device == "auto" else device)
+            if model == "world-tracing-scene":
+                from atlas_camera.inference.wt_hidden_geometry import (
+                    predict_layered_depth_wt,
+                )
+                layered = predict_layered_depth_wt(
+                    tmp, wt_path=wt_path,
+                    device=None if device == "auto" else device,
+                    steps=steps, seed=seed)
+            else:
+                from atlas_camera.inference.lari_hidden_geometry import (
+                    predict_layered_depth,
+                )
+                layered = predict_layered_depth(
+                    tmp, lari_path=lari_path,
+                    device=None if device == "auto" else device)
         finally:
             os.unlink(tmp)
 
@@ -1967,9 +1994,14 @@ class AtlasPredictHiddenGeometry:
         rel_mad = stats.get("registration_rel_mad", float("inf"))
         quality = ("good" if rel_mad < 0.2 else
                    "shaky" if rel_mad < 0.5 else "poor")
+        backend_line = (
+            "World Tracing r69l — CC BY-NC-ND 4.0, non-commercial; "
+            f"diffusion steps {steps}, seed {seed}"
+            if model == "world-tracing-scene"
+            else "LaRI — upstream repo has NO license; do not use commercially"
+        )
         report = (
-            "🔬 RESEARCH-ONLY hidden-geometry prediction (LaRI — upstream repo "
-            "has NO license; do not use commercially).\n"
+            f"🔬 RESEARCH-ONLY hidden-geometry prediction ({backend_line}).\n"
             f"registration: scale {stats.get('scale', 0):.3f}, rel MAD "
             f"{rel_mad:.3f} ({quality})\n"
             f"substituted pixels: {int(hidden_valid.sum())} "
