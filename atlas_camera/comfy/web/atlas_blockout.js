@@ -570,6 +570,8 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform float uHasHiddenMask;
   uniform float uDebugHidden;
   uniform vec3 uHiddenTint;
+  uniform float uLayerDebug;
+  uniform vec3 uLayerTint;
   uniform vec2 uImageSize;
   uniform float uOpacity;
   uniform vec3 uCamPos;
@@ -629,6 +631,13 @@ const PROJECTION_FRAGMENT_SHADER = `
     if (uDebugHidden > 0.5 && uHasHiddenMask > 0.5 && texture2D(uHiddenMask, uv).r > 0.5) {
       outColor = mix(outColor, uHiddenTint, 0.5);
     }
+    // 🎨 layer-debug overlay: tint EVERYTHING this projection source paints
+    // with its own identifying color (base/primary + each ProjectionSource
+    // get distinct palette entries at material build; legend in the toolbar).
+    // Strong mix so layer coverage reads at a glance; display-space like 🩻.
+    if (uLayerDebug > 0.5) {
+      outColor = mix(outColor, uLayerTint, 0.65);
+    }
     gl_FragColor = vec4(outColor, col.a * uOpacity);
   }
 `;
@@ -653,6 +662,19 @@ const PROJECTION_FRAGMENT_SHADER = `
 // threshold, in the fragment shader below) happen before any depth write, so
 // this is independent of the separate preview_expand/Project dilation
 // tradeoff documented above.
+// 🎨 layer-debug identity palette: primary/base gets its own fixed color;
+// each ProjectionSource takes palette[index % length]. Chosen for mutual
+// distinguishability at the shader's 0.65 mix over arbitrary photos.
+const LAYER_DEBUG_PRIMARY = 0x2fd6c3;               // teal — base mesh + backdrop
+const LAYER_DEBUG_PALETTE = [
+  0xff6a3d, // orange — typically the fg layer
+  0x3d8bff, // blue   — typically the X-ray/bg layer
+  0xffd23d, // yellow
+  0xc95aff, // violet
+  0x6aff5a, // green
+  0xff5aa8, // pink
+];
+
 const PATCH_PRIORITY_CEILING = 100; // matches nodes.py AtlasAddPatchView widget max
 const PATCH_OFFSET_STEP = 4;        // depth-bias units; tuned visually in-viewport
 function priorityToRenderOrder(p) {
@@ -696,6 +718,10 @@ function makeProjectionMaterial(data, texture, opts) {
       uHasHiddenMask: { value: options.hiddenMaskTexture ? 1.0 : 0.0 },
       uDebugHidden: { value: 0 },
       uHiddenTint: { value: options.hiddenTint || new THREE.Color(1.0, 0.15, 0.15) },
+      // 🎨 layer-debug identity color (fixed per source at build; toggle is
+      // uLayerDebug, live-synced like uDebugHidden/the light uniforms).
+      uLayerDebug: { value: 0 },
+      uLayerTint: { value: options.layerTint || new THREE.Color(LAYER_DEBUG_PRIMARY) },
       // Primary: -1 (never facing-discards). Patches: positive (fill head-on only).
       uFacingThreshold: { value: options.facingThreshold ?? -1.0 },
       // Movable point lights (💡) — kept at intensity 0 here; synced live each
@@ -920,7 +946,9 @@ function buildPatchSources(scene, data, onSourceReady) {
           : new THREE.Color(1.0, 0.15, 0.15);
         const patchMat = makeProjectionMaterial(src, tex,
           { facingThreshold, priority: src.priority, matteTexture,
-            hiddenMaskTexture, hiddenTint });
+            hiddenMaskTexture, hiddenTint,
+            layerTint: new THREE.Color(
+              LAYER_DEBUG_PALETTE[idx % LAYER_DEBUG_PALETTE.length]) });
         for (const m of meshes) {
           const prev = m.userData._projMaterial;
           if (prev && prev !== patchMat) {
@@ -1288,8 +1316,10 @@ function buildNodeUI(node, containerEl) {
   // projection material by the same live mechanism as the lights (materials
   // are rebuilt on every execution, so a set-once approach would go stale).
   let debugHiddenOn = false;
+  let layerDebugOn = false; // 🎨 per-layer identity tint toggle
   function syncProjectionLightUniforms() {
-    const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn;
+    const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn
+      || layerDebugOn;
     // Skip the traverse entirely while both lights have always been off (the
     // default), but still run once on the on->off transition so any material
     // that previously picked up a nonzero uLightNIntensity gets zeroed out.
@@ -1306,6 +1336,9 @@ function buildNodeUI(node, containerEl) {
       });
       if (mat.uniforms.uDebugHidden) {
         mat.uniforms.uDebugHidden.value = debugHiddenOn ? 1 : 0;
+      }
+      if (mat.uniforms.uLayerDebug) {
+        mat.uniforms.uLayerDebug.value = layerDebugOn ? 1 : 0;
       }
     });
   }
@@ -1458,6 +1491,45 @@ function buildNodeUI(node, containerEl) {
     dbgHiddenBtn.style.color = debugHiddenOn ? "#fac" : "#ddd";
   };
   toolbar.appendChild(dbgHiddenBtn);
+
+  // 🎨 Layers — per-layer identity overlay: tints EVERYTHING each projection
+  // source paints with its own color (base/primary teal; each
+  // ProjectionSource takes the module palette by index), with an on-canvas
+  // legend of layer names. Generalizes "show fg / mid / bg" to any layer
+  // stack. Projection-mode only, like 🩻 — same live uniform sync.
+  const layerLegend = document.createElement("div");
+  layerLegend.style.cssText = "position:absolute;left:6px;bottom:6px;padding:6px 8px;" +
+    "background:rgba(10,10,14,0.78);color:#cde;font:10px/1.6 monospace;" +
+    "border-radius:4px;pointer-events:none;display:none;z-index:7;";
+  canvasWrap.appendChild(layerLegend);
+  function refreshLayerLegend() {
+    const hex = (c) => "#" + c.toString(16).padStart(6, "0");
+    const rows = [[hex(LAYER_DEBUG_PRIMARY), "base mesh + backdrop (primary)"]];
+    (recoveredData?.projection_sources || []).forEach((s, i) => {
+      rows.push([hex(LAYER_DEBUG_PALETTE[i % LAYER_DEBUG_PALETTE.length]),
+                 s.name || `layer ${i}`]);
+    });
+    layerLegend.replaceChildren(...rows.map(([c, label]) => {
+      const row = document.createElement("div");
+      const sw = document.createElement("span");
+      sw.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:2px;` +
+        `background:${c};margin-right:6px;vertical-align:middle;`;
+      row.append(sw, document.createTextNode(label));
+      return row;
+    }));
+  }
+  const layerBtn = document.createElement("button");
+  layerBtn.textContent = "🎨 Layers";
+  layerBtn.title = "Tint each projection layer a distinct color (with legend)";
+  layerBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  layerBtn.onclick = () => {
+    layerDebugOn = !layerDebugOn;
+    layerBtn.style.background = layerDebugOn ? "#2a3a1a" : "#2a2a2a";
+    layerBtn.style.color = layerDebugOn ? "#cfa" : "#ddd";
+    if (layerDebugOn) refreshLayerLegend();
+    layerLegend.style.display = layerDebugOn ? "block" : "none";
+  };
+  toolbar.appendChild(layerBtn);
 
   // ---------------------------------------------------------------------------
   // 📐 Extract Angle — orbit/fly to the view you want a patch generated at

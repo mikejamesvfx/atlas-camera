@@ -1,6 +1,6 @@
 {
-  "last_node_id": 22,
-  "last_link_id": 35,
+  "last_node_id": 23,
+  "last_link_id": 38,
   "nodes": [
     {
       "id": 1,
@@ -26,7 +26,7 @@
             2,
             7,
             24,
-            30,
+            33,
             16
           ],
           "slot_index": 0
@@ -258,7 +258,7 @@
           "type": "MASK",
           "links": [
             12,
-            28
+            31
           ],
           "slot_index": 1
         },
@@ -266,7 +266,7 @@
           "name": "report",
           "type": "STRING",
           "links": [
-            35
+            38
           ],
           "slot_index": 2
         },
@@ -275,7 +275,7 @@
           "type": "MASK",
           "links": [
             22,
-            33
+            36
           ],
           "slot_index": 3
         }
@@ -573,7 +573,7 @@
           "type": "ATLAS_SOLVE",
           "links": [
             23,
-            26
+            29
           ],
           "slot_index": 0
         },
@@ -636,7 +636,7 @@
         {
           "name": "source_image",
           "type": "IMAGE",
-          "link": 24,
+          "link": 27,
           "slot_index": 1
         }
       ],
@@ -669,7 +669,7 @@
           "name": "path_frames",
           "type": "IMAGE",
           "links": [
-            25
+            28
           ],
           "slot_index": 4
         },
@@ -677,7 +677,7 @@
           "name": "camera_path",
           "type": "ATLAS_CAMERA_PATH",
           "links": [
-            27
+            30
           ],
           "slot_index": 5
         },
@@ -734,7 +734,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 25,
+          "link": 28,
           "slot_index": 0
         }
       ],
@@ -777,13 +777,13 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 26,
+          "link": 29,
           "slot_index": 0
         },
         {
           "name": "camera_path",
           "type": "ATLAS_CAMERA_PATH",
-          "link": 27,
+          "link": 30,
           "slot_index": 1
         }
       ],
@@ -821,19 +821,19 @@
         {
           "name": "inpaint_model",
           "type": "INPAINT_MODEL",
-          "link": 29,
+          "link": 32,
           "slot_index": 0
         },
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 30,
+          "link": 33,
           "slot_index": 1
         },
         {
           "name": "mask",
           "type": "MASK",
-          "link": 31,
+          "link": 34,
           "slot_index": 2
         }
       ],
@@ -843,7 +843,8 @@
           "type": "IMAGE",
           "links": [
             20,
-            32
+            35,
+            25
           ],
           "slot_index": 0
         }
@@ -875,7 +876,7 @@
         {
           "name": "mask",
           "type": "MASK",
-          "link": 28,
+          "link": 31,
           "slot_index": 0
         }
       ],
@@ -884,7 +885,8 @@
           "name": "mask",
           "type": "MASK",
           "links": [
-            31
+            34,
+            26
           ],
           "slot_index": 0
         }
@@ -919,7 +921,7 @@
           "name": "inpaint model",
           "type": "INPAINT_MODEL",
           "links": [
-            29
+            32
           ],
           "slot_index": 0
         }
@@ -950,7 +952,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 32,
+          "link": 35,
           "slot_index": 0
         }
       ],
@@ -979,7 +981,7 @@
         {
           "name": "mask",
           "type": "MASK",
-          "link": 33,
+          "link": 36,
           "slot_index": 0
         }
       ],
@@ -988,7 +990,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            34
+            37
           ],
           "slot_index": 0
         }
@@ -1016,7 +1018,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 34,
+          "link": 37,
           "slot_index": 0
         }
       ],
@@ -1045,7 +1047,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 35,
+          "link": 38,
           "widget": {
             "name": "text"
           },
@@ -1105,6 +1107,60 @@
       "title": "Interior: sky heuristic OFF"
     },
     {
+      "id": 23,
+      "type": "ImageCompositeMasked",
+      "pos": [
+        1840,
+        1220
+      ],
+      "size": {
+        "0": 300,
+        "1": 130
+      },
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "destination",
+          "type": "IMAGE",
+          "link": 24,
+          "slot_index": 0
+        },
+        {
+          "name": "source",
+          "type": "IMAGE",
+          "link": 25,
+          "slot_index": 1
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 26,
+          "slot_index": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            27
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageCompositeMasked"
+      },
+      "widgets_values": [
+        0,
+        0,
+        false
+      ],
+      "title": "BG plate: clean plate feathered over occluders"
+    },
+    {
       "id": 19,
       "type": "Note",
       "pos": [
@@ -1124,7 +1180,7 @@
         "text": ""
       },
       "widgets_values": [
-        "\ud83d\udd2c HIDDEN GEOMETRY \u2014 SPACE HANGAR \u2014 World Tracing backend (INTERIOR, shallow scene)\n\nSweep 2026-07-09: WT registers cleanly (rel MAD 0.105); the scene\nis SHALLOW (fg ~15m, bg ~23m) so the gentle clear_rel 0.10 margin\nis what lets predictions register as separate surfaces. Final\ncalibration: hole-in-paint 0.07 \u2014 the cleanest X-ray of the set.\n\nARCHITECTURE \u2014 MASK-MEMBERSHIP X-RAY (v2, calibrated 2026-07-09):\n1. ONE solve + ONE shared DA3 depth (solved focal).\n2. BASE: AtlasDeriveReliefMesh on the ORIGINAL depth + its\n   projection_backdrop \u2014 guarantees no black at camera view.\n3. RESTRICT: AtlasDepthLayerMask (manual, far_pct = nearest occluders)\n   feeds the \ud83d\udd2c node's restrict_mask.\n4. \ud83d\udd2c X-RAY: predicts per-ray hidden surfaces, then makes them COHERENT \u2014\n   fill_gaps diffuses the fragmented predictions into ONE surface across\n   the restrict region and smooth_px gaussian-smooths the seams (both\n   essential: fragmented/steppy depth shreds the layer mesh via the\n   world-edge check, IMMUNE to depth_edge_rel \u2014 measured).\n5. FOREGROUND layer: a matted AtlasCleanPlateLayer on the ORIGINAL\n   photo/depth (band = the restrict range, embed_matte + skirts,\n   priority 10) cleanly covers the occluders' own silhouettes at camera\n   view. Without it, base-mesh tears at silhouettes let the X-ray's\n   INPAINTED plate peek through at camera view (artist-caught: inpaint\n   content visible where the normal image should cover).\n6. THE X-RAY LAYER: AtlasCleanPlateLayer with NO depth band at all\n   (manual, far uncapped \u2014 a depth split cannot hold near-field hidden\n   geometry; measured: every split loses 76-97% of predictions). Its\n   geometry region = hidden_mask via GrowMask(32) \u2192 InvertMask \u2192\n   exclude_mask; its PAINT = the \ud83d\udd2c paint_matte (only where the hidden\n   surface is genuinely behind a nearer occluder \u2014 see-through gaps\n   discard in the shader and show the base mesh's real far content).\n7. PLATE: LaMa inpaints the occluders out (hidden_mask grown 48px), so\n   reveals get real pixels. Swap LanPaint/FLUX for hero shots.\n8. Viewport: \ud83d\udcfd Project on; \ud83e\ude7b X-ray toggles the provenance tint (red =\n   LaRI / blue = World Tracing, = the paint matte); dolly demo via\n   \ud83c\udfa5 Camera Path \u2192 Dolly In \u2192 \u23fa Bake \u2192 VideoCombine Plus mp4; unmute\n   the USD node after baking.\n\n\ud83d\udd2c EXPERIMENTAL / RESEARCH-ONLY. LaRI: unlicensed upstream (clone +\nlari_path / ATLAS_LARI_PATH). World Tracing: CC BY-NC-ND 4.0, HF-gated\ncheckpoint (clone + wt_path / ATLAS_WT_PATH + huggingface login). Seeds\nship PINNED (control_after_generate=fixed) \u2014 WT is diffusion; a\nrandomized seed re-rolls the hidden geometry every queue. See INSTALL.md\n+ docs/dev/hidden_geometry_training_free_research.md."
+        "\ud83d\udd2c HIDDEN GEOMETRY \u2014 SPACE HANGAR \u2014 World Tracing backend (INTERIOR, shallow scene)\n\nSweep 2026-07-09: WT registers cleanly (rel MAD 0.105); the scene\nis SHALLOW (fg ~15m, bg ~23m) so the gentle clear_rel 0.10 margin\nis what lets predictions register as separate surfaces. Final\ncalibration: hole-in-paint 0.07 \u2014 the cleanest X-ray of the set.\n\nARCHITECTURE \u2014 MASK-MEMBERSHIP X-RAY (v2, calibrated 2026-07-09):\n1. ONE solve + ONE shared DA3 depth (solved focal).\n2. BASE: AtlasDeriveReliefMesh on the ORIGINAL depth + its\n   projection_backdrop \u2014 guarantees no black at camera view.\n3. RESTRICT: AtlasDepthLayerMask (manual, far_pct = nearest occluders)\n   feeds the \ud83d\udd2c node's restrict_mask.\n4. \ud83d\udd2c X-RAY: predicts per-ray hidden surfaces, then makes them COHERENT \u2014\n   fill_gaps diffuses the fragmented predictions into ONE surface across\n   the restrict region and smooth_px gaussian-smooths the seams (both\n   essential: fragmented/steppy depth shreds the layer mesh via the\n   world-edge check, IMMUNE to depth_edge_rel \u2014 measured).\n5. FOREGROUND layer: a matted AtlasCleanPlateLayer on the ORIGINAL\n   photo/depth (band = the restrict range, embed_matte + skirts,\n   priority 10) cleanly covers the occluders' own silhouettes at camera\n   view. Without it, base-mesh tears at silhouettes let the X-ray's\n   INPAINTED plate peek through at camera view (artist-caught: inpaint\n   content visible where the normal image should cover).\n6. THE X-RAY LAYER: AtlasCleanPlateLayer with NO depth band at all\n   (manual, far uncapped \u2014 a depth split cannot hold near-field hidden\n   geometry; measured: every split loses 76-97% of predictions). Its\n   geometry region = hidden_mask via GrowMask(32) \u2192 InvertMask \u2192\n   exclude_mask; its PAINT = the \ud83d\udd2c paint_matte (only where the hidden\n   surface is genuinely behind a nearer occluder \u2014 see-through gaps\n   discard in the shader and show the base mesh's real far content).\n7. PLATE: LaMa inpaints the occluders out (hidden_mask grown 48px), so\n   reveals get real pixels. Swap LanPaint/FLUX for hero shots.\n8. BG PROJECTION: the viewport's source_image is the ORIGINAL with\n   the clean plate feathered in over the occluder region\n   (ImageCompositeMasked, mask = hidden_mask grown 48 / blurred 16) \u2014\n   background geometry never carries baked-in occluder pixels at\n   reveals; the FOREGROUND layer still projects the pure original.\n9. SKY (outdoor variants): SAM3Segment(sky) drives an AtlasSkyDomeLayer\n   (clean skyline matte at pixel resolution - no staircase tears at the\n   terrain/sky boundary) with its own LaMa CLEAN SKY plate, and the same\n   SAM mask REPLACES the sky heuristic on the base+fg meshes - the\n   heuristic otherwise eats above-skyline subjects (artist-caught: a\n   ridge figure went black). Interiors use SolidMask 0 instead.\n10. Viewport: \ud83d\udcfd Project on; \ud83e\ude7b X-ray toggles the provenance tint (red =\n   LaRI / blue = World Tracing, = the paint matte); dolly demo via\n   \ud83c\udfa5 Camera Path \u2192 Dolly In \u2192 \u23fa Bake \u2192 VideoCombine Plus mp4; unmute\n   the USD node after baking.\n\n\ud83d\udd2c EXPERIMENTAL / RESEARCH-ONLY. LaRI: unlicensed upstream (clone +\nlari_path / ATLAS_LARI_PATH). World Tracing: CC BY-NC-ND 4.0, HF-gated\ncheckpoint (clone + wt_path / ATLAS_WT_PATH + huggingface login). Seeds\nship PINNED (control_after_generate=fixed) \u2014 WT is diffusion; a\nrandomized seed re-rolls the hidden geometry every queue. See INSTALL.md\n+ docs/dev/hidden_geometry_training_free_research.md."
       ],
       "title": "README"
     }
@@ -1318,12 +1374,36 @@
       24,
       1,
       0,
+      23,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      12,
+      0,
+      23,
+      1,
+      "IMAGE"
+    ],
+    [
+      26,
+      13,
+      0,
+      23,
+      2,
+      "MASK"
+    ],
+    [
+      27,
+      23,
+      0,
       9,
       1,
       "IMAGE"
     ],
     [
-      25,
+      28,
       9,
       4,
       10,
@@ -1331,7 +1411,7 @@
       "IMAGE"
     ],
     [
-      26,
+      29,
       8,
       0,
       11,
@@ -1339,7 +1419,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      27,
+      30,
       9,
       5,
       11,
@@ -1347,7 +1427,7 @@
       "ATLAS_CAMERA_PATH"
     ],
     [
-      28,
+      31,
       6,
       1,
       13,
@@ -1355,7 +1435,7 @@
       "MASK"
     ],
     [
-      29,
+      32,
       14,
       0,
       12,
@@ -1363,7 +1443,7 @@
       "INPAINT_MODEL"
     ],
     [
-      30,
+      33,
       1,
       0,
       12,
@@ -1371,7 +1451,7 @@
       "IMAGE"
     ],
     [
-      31,
+      34,
       13,
       0,
       12,
@@ -1379,7 +1459,7 @@
       "MASK"
     ],
     [
-      32,
+      35,
       12,
       0,
       15,
@@ -1387,7 +1467,7 @@
       "IMAGE"
     ],
     [
-      33,
+      36,
       6,
       3,
       16,
@@ -1395,7 +1475,7 @@
       "MASK"
     ],
     [
-      34,
+      37,
       16,
       0,
       17,
@@ -1403,7 +1483,7 @@
       "IMAGE"
     ],
     [
-      35,
+      38,
       6,
       2,
       18,
