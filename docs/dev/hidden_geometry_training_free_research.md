@@ -236,6 +236,26 @@ clean plate** (hidden_mask → INPAINT_ExpandMask 48/16 → big-lama.pt →
 plate_image) so reveals get real pixels matching the predicted geometry —
 verified live; the plate inpaints exactly the X-rayed regions.
 
+## HERO SWEEP (2026-07-09 pm): backend choice is PER-SCENE
+
+Both backends, per-scene configs, all 4 hero images (restrict `far_pct` /
+`clear_rel` swept; WT at 20 steps, seed 42):
+
+| Hero | winner | settings | rel-MAD | band coverage | loser's failure |
+|---|---|---|---|---|---|
+| cathedral (indoor) | LaRI | 0.30/0.30 | 0.118 | 99% | WT fine too (0.061) but 34s |
+| steep ridge (pitch 22°) | LaRI | 0.40/0.20 | 0.134 | 85% | WT misregisters (0.305) |
+| canyon | **WT** | 0.40/0.20 | **0.113** | 96% | LaRI misregisters (0.639 — would corrupt the band) |
+| wide valley | WT (weak) | 0.30/0.30 | 0.139 | **2%** | LaRI 0.597 unusable; WT registers but barely fires — X-ray ≈ no-op, diffusion carries it |
+
+Neither model dominates: LaRI wins steep-perspective outdoor and (on speed)
+indoor; WT wins the canyon outright — its OOD claim is real but not uniform.
+The registration rel-MAD is a trustworthy live go/no-go: every misregistered
+case self-reported "poor". Saved as per-scene example workflows with the
+optimal settings baked in:
+`examples/atlas_camera_hidden_geometry_{cathedral,steep_ridge,canyon,wide_valley}_workflow.json`
+(outdoor variant keeps the sky heuristic — no SolidMask exclude).
+
 **Licensing blocker for shipping:** the LaRI repo has **NO license file** —
 default all-rights-reserved, stricter than CC BY-NC. We cannot vendor or
 redistribute code/weights. The only shippable shape is the GeoCalib pattern:

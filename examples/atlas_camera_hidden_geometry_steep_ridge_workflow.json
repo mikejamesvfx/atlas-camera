@@ -1,0 +1,1236 @@
+{
+  "last_node_id": 19,
+  "last_link_id": 27,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        140
+      ],
+      "size": {
+        "0": 320,
+        "1": 314
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            7,
+            16,
+            22
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "atlas_4k_testimages/img-2026-07-06 11-50-46-0001.png",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        140
+      ],
+      "size": {
+        "0": 400,
+        "1": 210
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            3,
+            4,
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/DA3METRIC-LARGE",
+        36,
+        "pinhole",
+        "auto"
+      ],
+      "title": "Solve (GeoCalib + DA3 height)"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        420,
+        420
+      ],
+      "size": {
+        "0": 400,
+        "1": 120
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2,
+          "slot_index": 0
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 3,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            5,
+            6,
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/DA3METRIC-LARGE",
+        "auto"
+      ],
+      "title": "Shared DA3 depth (solved focal)"
+    },
+    {
+      "id": 4,
+      "type": "AtlasDepthBandSplit",
+      "pos": [
+        420,
+        600
+      ],
+      "size": {
+        "0": 320,
+        "1": 100
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "band_split",
+          "type": "ATLAS_BAND_SPLIT",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthBandSplit"
+      },
+      "widgets_values": [
+        0.55,
+        0.0
+      ],
+      "title": "X-ray band boundary (log-depth 0.55)"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDepthLayerMask",
+      "pos": [
+        880,
+        140
+      ],
+      "size": {
+        "0": 400,
+        "1": 280
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 5,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "layer_mask",
+          "type": "MASK",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "occlusion_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthLayerMask"
+      },
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.4,
+        4,
+        false,
+        384,
+        1.5,
+        false,
+        "manual"
+      ],
+      "title": "X-ray restrict: nearest occluders (manual, far_pct 0.40)"
+    },
+    {
+      "id": 6,
+      "type": "AtlasPredictHiddenGeometry",
+      "pos": [
+        880,
+        480
+      ],
+      "size": {
+        "0": 400,
+        "1": 280
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 6,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 7,
+          "slot_index": 1
+        },
+        {
+          "name": "restrict_mask",
+          "type": "MASK",
+          "link": 8,
+          "slot_index": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hidden_mask",
+          "type": "MASK",
+          "links": [
+            20,
+            25
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            27
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasPredictHiddenGeometry"
+      },
+      "widgets_values": [
+        "",
+        "auto",
+        0.2,
+        0.0,
+        "lari-scene",
+        "",
+        20,
+        42
+      ],
+      "title": "\ud83d\udd2c X-ray depth \u2014 lari-scene"
+    },
+    {
+      "id": 7,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        1360,
+        140
+      ],
+      "size": {
+        "0": 400,
+        "1": 200
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 9,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 10,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        384,
+        "custom",
+        1.5
+      ],
+      "title": "BASE mesh + backdrop \u2014 ORIGINAL depth (sky heuristic ON)"
+    },
+    {
+      "id": 8,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1360,
+        420
+      ],
+      "size": {
+        "0": 400,
+        "1": 420
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 12,
+          "slot_index": 1
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 13,
+          "slot_index": 2
+        },
+        {
+          "name": "band_split",
+          "type": "ATLAS_BAND_SPLIT",
+          "link": 14,
+          "slot_index": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            15,
+            18
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        "bg_xray",
+        0.0,
+        384,
+        1.5,
+        true,
+        true,
+        24,
+        1.5,
+        64,
+        2,
+        "background"
+      ],
+      "title": "X-RAY band \u2014 predicted geometry, LaMa plate"
+    },
+    {
+      "id": 9,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1840,
+        140
+      ],
+      "size": {
+        "0": 800,
+        "1": 640
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 15,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 16,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [
+            17
+          ],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [
+            19
+          ],
+          "slot_index": 5
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 6
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 7
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 8
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 9
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        960,
+        "",
+        1
+      ],
+      "title": "Viewport \u2014 \ud83c\udfa5 Camera Path \u2192 Dolly In \u2192 \u23fa Bake"
+    },
+    {
+      "id": 10,
+      "type": "VideoCombinePlus",
+      "pos": [
+        2680,
+        140
+      ],
+      "size": {
+        "0": 360,
+        "1": 340
+      },
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 17,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VideoCombinePlus"
+      },
+      "widgets_values": [
+        24.0,
+        "mp4",
+        "atlas_steep_ridge_dolly",
+        1.0,
+        false,
+        true
+      ],
+      "title": "Dolly video (fills after \u23fa Bake)"
+    },
+    {
+      "id": 11,
+      "type": "AtlasExportCameraPathUSD",
+      "pos": [
+        2680,
+        560
+      ],
+      "size": {
+        "0": 360,
+        "1": 120
+      },
+      "flags": {},
+      "order": 11,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 18,
+          "slot_index": 0
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": 19,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "usd_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportCameraPathUSD"
+      },
+      "widgets_values": [
+        "atlas_exports_steep_ridge"
+      ],
+      "title": "Camera path \u2192 USD (MUTED \u2014 unmute after \u23fa Bake)"
+    },
+    {
+      "id": 12,
+      "type": "INPAINT_InpaintWithModel",
+      "pos": [
+        1180,
+        1200
+      ],
+      "size": {
+        "0": 300,
+        "1": 140
+      },
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "inpaint_model",
+          "type": "INPAINT_MODEL",
+          "link": 21,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 22,
+          "slot_index": 1
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 23,
+          "slot_index": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inpainted image",
+          "type": "IMAGE",
+          "links": [
+            13,
+            24
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "INPAINT_InpaintWithModel"
+      },
+      "widgets_values": [
+        0
+      ],
+      "title": "Clean plate \u2014 occluders removed (LaMa)"
+    },
+    {
+      "id": 13,
+      "type": "INPAINT_ExpandMask",
+      "pos": [
+        860,
+        1320
+      ],
+      "size": {
+        "0": 280,
+        "1": 130
+      },
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 20,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            23
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "INPAINT_ExpandMask"
+      },
+      "widgets_values": [
+        48,
+        16,
+        "gaussian"
+      ],
+      "title": "Grow reveal mask"
+    },
+    {
+      "id": 14,
+      "type": "INPAINT_LoadInpaintModel",
+      "pos": [
+        860,
+        1200
+      ],
+      "size": {
+        "0": 280,
+        "1": 60
+      },
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "inpaint model",
+          "type": "INPAINT_MODEL",
+          "links": [
+            21
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "INPAINT_LoadInpaintModel"
+      },
+      "widgets_values": [
+        "big-lama.pt"
+      ],
+      "title": "LaMa"
+    },
+    {
+      "id": 15,
+      "type": "PreviewImage",
+      "pos": [
+        1180,
+        1400
+      ],
+      "size": {
+        "0": 300,
+        "1": 280
+      },
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 24,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "Clean plate preview"
+    },
+    {
+      "id": 16,
+      "type": "MaskToImage",
+      "pos": [
+        880,
+        820
+      ],
+      "size": {
+        "0": 210,
+        "1": 50
+      },
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 25,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            26
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 17,
+      "type": "PreviewImage",
+      "pos": [
+        880,
+        920
+      ],
+      "size": {
+        "0": 260,
+        "1": 280
+      },
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 26,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "X-rayed pixels"
+    },
+    {
+      "id": 18,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1440,
+        900
+      ],
+      "size": {
+        "0": 400,
+        "1": 200
+      },
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 27,
+          "widget": {
+            "name": "text"
+          },
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "Hidden-geometry confidence report"
+    },
+    {
+      "id": 19,
+      "type": "Note",
+      "pos": [
+        40,
+        780
+      ],
+      "size": {
+        "0": 780,
+        "1": 700
+      },
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "\ud83d\udd2c HIDDEN GEOMETRY \u2014 STEEP RIDGE (pitch ~22\u00b0) \u2014 LaRI backend, restrict 0.40 / clear 0.20\n\nSweep 2026-07-09: LaRI registers well here (rel MAD 0.134) and\ncovers 85% of the occluder band at these settings; World Tracing\nmisregisters (0.305) on this steep outdoor shot \u2014 indoor-trained.\nBackend choice is PER-SCENE: see the canyon workflow for the\nopposite outcome.\n\nARCHITECTURE (same as the calibrated cathedral demo, outdoor variant):\nbase AtlasDeriveReliefMesh on ORIGINAL depth (+ its projection_backdrop \u2014\nno black at camera view) with the X-ray band LAYERED BEHIND on the\npatched depth; the internal sky heuristic stays ON here (outdoor \u2014 no\nSolidMask exclude, unlike the interior cathedral). The bg band's plate is\nLaMa-inpainted from the \ud83d\udd2c hidden_mask so reveals get real pixels.\nSliders reminder: with band_split wired + band_side fg/bg the near/far\nwidgets are IGNORED; the restrict DLM uses band_side=manual on purpose.\n\nDOLLY DEMO: Queue \u2192 \ud83c\udfa5 Camera Path \u2192 Dolly In \u2192 Apply \u2192 \u25b6 Play \u2192\n\u23fa Bake Proxy Path (auto re-queues; mp4 via VideoCombine Plus). Unmute the\nUSD node after baking for the DCC camera.\n\n\ud83d\udd2c EXPERIMENTAL / RESEARCH-ONLY. LaRI: unlicensed upstream (clone +\nlari_path / ATLAS_LARI_PATH). World Tracing: CC BY-NC-ND 4.0, HF-gated\ncheckpoint (clone + wt_path / ATLAS_WT_PATH + huggingface login).\nSee INSTALL.md 'Hidden-Geometry Prediction' and\ndocs/dev/hidden_geometry_training_free_research.md for measured limits."
+      ],
+      "title": "README"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      2,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      6,
+      3,
+      0,
+      6,
+      0,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      7,
+      1,
+      0,
+      6,
+      1,
+      "IMAGE"
+    ],
+    [
+      8,
+      5,
+      0,
+      6,
+      2,
+      "MASK"
+    ],
+    [
+      9,
+      2,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      10,
+      3,
+      0,
+      7,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      11,
+      7,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      6,
+      0,
+      8,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      13,
+      12,
+      0,
+      8,
+      2,
+      "IMAGE"
+    ],
+    [
+      14,
+      4,
+      0,
+      8,
+      3,
+      "ATLAS_BAND_SPLIT"
+    ],
+    [
+      15,
+      8,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      16,
+      1,
+      0,
+      9,
+      1,
+      "IMAGE"
+    ],
+    [
+      17,
+      9,
+      4,
+      10,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      8,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      19,
+      9,
+      5,
+      11,
+      1,
+      "ATLAS_CAMERA_PATH"
+    ],
+    [
+      20,
+      6,
+      1,
+      13,
+      0,
+      "MASK"
+    ],
+    [
+      21,
+      14,
+      0,
+      12,
+      0,
+      "INPAINT_MODEL"
+    ],
+    [
+      22,
+      1,
+      0,
+      12,
+      1,
+      "IMAGE"
+    ],
+    [
+      23,
+      13,
+      0,
+      12,
+      2,
+      "MASK"
+    ],
+    [
+      24,
+      12,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      6,
+      1,
+      16,
+      0,
+      "MASK"
+    ],
+    [
+      26,
+      16,
+      0,
+      17,
+      0,
+      "IMAGE"
+    ],
+    [
+      27,
+      6,
+      2,
+      18,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "\u2460 Source + Solve + Depth + split",
+      "bounding": [
+        20,
+        100,
+        820,
+        620
+      ],
+      "color": "#3f789e",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "\u2461 \ud83d\udd2c X-ray (lari-scene) + previews",
+      "bounding": [
+        860,
+        100,
+        460,
+        1120
+      ],
+      "color": "#7e4f3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "\u2462 BASE mesh + X-ray band (LaMa plate)",
+      "bounding": [
+        1340,
+        100,
+        440,
+        1020
+      ],
+      "color": "#3d7e48",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "\u2463 Dolly demo: mp4 + USD",
+      "bounding": [
+        1820,
+        100,
+        1240,
+        700
+      ],
+      "color": "#7e6e3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 5,
+      "title": "\u2464 LaMa clean plate",
+      "bounding": [
+        840,
+        1170,
+        660,
+        540
+      ],
+      "color": "#5e3d7e",
+      "font_size": 15,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.38,
+      "offset": [
+        10,
+        -40
+      ]
+    }
+  },
+  "version": 0.4
+}

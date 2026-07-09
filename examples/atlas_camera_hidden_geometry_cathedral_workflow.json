@@ -134,7 +134,7 @@
         {"name": "report", "type": "STRING", "links": [26], "slot_index": 2}
       ],
       "properties": {"Node name for S&R": "AtlasPredictHiddenGeometry"},
-      "widgets_values": ["", "auto", 0.3, 0.0],
+      "widgets_values": ["", "auto", 0.3, 0.0, "lari-scene", "", 20, 0],
       "title": "🔬 X-ray depth (LaRI; lari_path blank = ATLAS_LARI_PATH)"
     },
     {
