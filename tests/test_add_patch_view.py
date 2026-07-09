@@ -81,7 +81,7 @@ def _patch_estimate_depth(monkeypatch):
         is_metric: bool = True
         model_id: str = "fake"
 
-    def fake(image_path, *, model_id=None, device=None):
+    def fake(image_path, *, model_id=None, device=None, focal_px=None):
         h = w = 512
         ramp = np.linspace(30.0, 5.0, h)[:, None] * np.ones((1, w))
         return _FakeDepth(depth=ramp.astype(np.float32))
@@ -239,7 +239,7 @@ def test_scale_registers_against_primary_overlap(monkeypatch):
         is_metric: bool = True
         model_id: str = "fake"
 
-    def fake(image_path, *, model_id=None, device=None):
+    def fake(image_path, *, model_id=None, device=None, focal_px=None):
         return _FakeDepth(depth=primary_ramp * 2.0)  # patch depth = 2x primary
 
     import atlas_camera.inference.depth_estimator as de

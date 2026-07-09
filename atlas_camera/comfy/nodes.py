@@ -19,6 +19,20 @@ from atlas_camera.exporters.nuke_exporter import write_nuke_native_script, write
 from atlas_camera.exporters.review_package import build_review_package
 from atlas_camera.importers.usd_camera_loader import USDCameraLoader
 
+# Shared depth_model combo choices. APPEND-ONLY: ComfyUI serializes combo VALUES,
+# so adding entries is safe; removing/renaming breaks saved workflows.
+# DA3 models need the [neural-da3] extra. DA3METRIC converts canonical depth to
+# metres using the solve's focal when the node has one (else an assumed
+# normal-lens focal — it predicts no intrinsics itself; ground-pinning
+# re-normalizes downstream). DA3NESTED is CC BY-NC 4.0 — non-commercial license.
+_DEPTH_MODEL_CHOICES = [
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
+    "depth-anything/DA3METRIC-LARGE",
+    "depth-anything/DA3MONO-LARGE",
+    "depth-anything/DA3NESTED-GIANT-LARGE-1.1",
+]
+
 # Module-level cache: node_id → camera_data dict, populated by AtlasBlockoutViewport.render()
 # Capped at 64 entries to prevent unbounded growth in long ComfyUI sessions.
 _ATLAS_BLOCKOUT_CACHE: dict[str, dict[str, Any]] = {}
@@ -36,6 +50,28 @@ def _blockout_cache_set(node_id: str, data: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _solve_focal_px_for_image(solve, image):
+    """Solved focal expressed in the wired IMAGE tensor's pixel scale, or None.
+
+    Backs the image-only depth nodes' optional ``solve`` input: DA3METRIC's
+    canonical→metric conversion prefers the solved focal (focal_source="solve")
+    over its assumed normal-lens fallback. The solve's focal comes from
+    GeoCalib/VP — independent of whichever depth model the solve node used —
+    so it is valid for any depth backend. V2 models ignore focal_px entirely.
+    """
+    if solve is None:
+        return None
+    try:
+        intr = solve.camera.intrinsics
+    except AttributeError:
+        return None
+    fx = intr.fx_px or 0.0
+    if fx <= 0:
+        return None
+    width = int(intr.image_width or image.shape[2])
+    return float(fx) * (int(image.shape[2]) / max(width, 1))
+
 
 def _require_numpy():
     try:
@@ -827,11 +863,12 @@ class AtlasLearnedSolveFromImage:
                                "(no assumed eye height); assume = use camera_height_m."}),
                 "camera_height_m": ("FLOAT", {"default": 1.6, "min": 0.01, "max": 1000.0,
                     "tooltip": "Fallback / assumed camera height when not measured or low-confidence."}),
-                "depth_model": ([
-                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
-                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                    "tooltip": "Metric depth model for height measurement (Outdoor=exteriors, Indoor=interiors)."}),
+                "depth_model": (list(_DEPTH_MODEL_CHOICES),
+                    {"default": "depth-anything/DA3METRIC-LARGE",
+                    "tooltip": "Metric depth model for height measurement (Outdoor=exteriors, "
+                               "Indoor=interiors). DA3* = Depth Anything 3, needs the [neural-da3] "
+                               "extra; DA3METRIC uses the solved focal; DA3NESTED is non-commercial "
+                               "(CC BY-NC)."}),
                 "sensor_width_mm": ("FLOAT", {"default": 36.0, "min": 0.01}),
                 "weights": (["pinhole", "simple_radial"], {"default": "pinhole",
                     "tooltip": "pinhole = no lens distortion (best for clean AI renders)."}),
@@ -840,7 +877,7 @@ class AtlasLearnedSolveFromImage:
         }
 
     def solve(self, image, height_mode="measure_from_depth", camera_height_m=1.6,
-              depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+              depth_model="depth-anything/DA3METRIC-LARGE",
               sensor_width_mm=36.0, weights="pinhole", device="auto"):
         from atlas_camera.core.solver import solve_still_image_learned
         tmp = _save_image_tensor_to_tmp(image)
@@ -878,24 +915,27 @@ class AtlasDepthAnything:
                 "image": ("IMAGE",),
             },
             "optional": {
-                "depth_model": ([
-                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
-                    "depth-anything/Depth-Anything-V2-Small-hf",
-                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "depth_model": (
+                    list(_DEPTH_MODEL_CHOICES) + ["depth-anything/Depth-Anything-V2-Small-hf"],
+                    {"default": "depth-anything/DA3METRIC-LARGE"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+                "solve": ("ATLAS_SOLVE", {"tooltip": "Optional — supplies the SOLVED focal "
+                          "(GeoCalib/VP) for DA3METRIC's canonical→metric conversion "
+                          "(focal_source='solve' instead of the assumed normal-lens fallback). "
+                          "Ignored by V2 models."}),
             },
         }
 
-    def estimate(self, image, depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                 device="auto"):
+    def estimate(self, image, depth_model="depth-anything/DA3METRIC-LARGE",
+                 device="auto", solve=None):
         from atlas_camera.inference.depth_estimator import estimate_depth
         np = _require_numpy()
         torch = _require_torch()
         tmp = _save_image_tensor_to_tmp(image)
         try:
             result = estimate_depth(tmp, model_id=depth_model,
-                                    device=None if device == "auto" else device)
+                                    device=None if device == "auto" else device,
+                                    focal_px=_solve_focal_px_for_image(solve, image))
             d = result.depth.astype(np.float32)
             # Normalize for viewing: near=bright, far=dark.
             lo, hi = float(d.min()), float(d.max())
@@ -1254,10 +1294,8 @@ class AtlasDeriveProjectionGeometry:
                 "image": ("IMAGE",),
             },
             "optional": {
-                "depth_model": ([
-                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
-                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "depth_model": (list(_DEPTH_MODEL_CHOICES),
+                    {"default": "depth-anything/DA3METRIC-LARGE"}),
                 "max_walls": ("INT", {"default": 4, "min": 0, "max": 8}),
                 "max_objects": ("INT", {"default": 3, "min": 0, "max": 6,
                                         "tooltip": "Max foreground boxes/cylinders."}),
@@ -1359,17 +1397,20 @@ class AtlasDeriveProjectionGeometry:
         "forests": {"geometry_mode": "relief_mesh", "relief_quality": "high", "depth_edge_rel": 1.0},
         "aerial": {"geometry_mode": "both", "primitive_method": "azimuth_walls",
                    "relief_quality": "medium", "max_objects": 6},
+        # indoor/outdoor both use DA3METRIC since the 2026-07-09 default flip —
+        # one focal-conditioned metric model serves both, no more V2 indoor/
+        # outdoor split (A/B evidence: docs/dev/da3_backend_test_plan.md).
         "indoor": {"geometry_mode": "primitives", "primitive_method": "room_cuboid",
-                   "depth_model": "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"},
+                   "depth_model": "depth-anything/DA3METRIC-LARGE"},
         "outdoor": {"geometry_mode": "primitives", "primitive_method": "ransac_planes",
-                    "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"},
+                    "depth_model": "depth-anything/DA3METRIC-LARGE"},
         "simple_walls": {"geometry_mode": "primitives", "primitive_method": "azimuth_walls"},
         "towers_spires": {"geometry_mode": "primitives", "primitive_method": "vertical_extrusion"},
     }
     _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
     def derive(self, solve, image,
-               depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+               depth_model="depth-anything/DA3METRIC-LARGE",
                max_walls=4, max_objects=3, device="auto",
                geometry_mode="relief_mesh", relief_grid=128, relief_quality="custom",
                depth_edge_rel=0.5,
@@ -1399,19 +1440,23 @@ class AtlasDeriveProjectionGeometry:
         from atlas_camera.core.solver import _resize_depth
         from atlas_camera.inference.depth_estimator import estimate_depth
 
-        tmp = _save_image_tensor_to_tmp(image)
-        try:
-            result = estimate_depth(tmp, model_id=depth_model,
-                                    device=None if device == "auto" else device)
-        finally:
-            os.unlink(tmp)
-
         intr = solve.camera.intrinsics
         extr = solve.camera.extrinsics
         width = int(intr.image_width or image.shape[2])
         height = int(intr.image_height or image.shape[1])
         fx = intr.fx_px or 0.0
         fy = intr.fy_px or fx
+
+        tmp = _save_image_tensor_to_tmp(image)
+        try:
+            result = estimate_depth(tmp, model_id=depth_model,
+                                    device=None if device == "auto" else device,
+                                    # fx is in solve-image pixels; the tmp file is the
+                                    # wired tensor's resolution (usually identical).
+                                    focal_px=(fx * (image.shape[2] / width)) if fx > 0 else None)
+        finally:
+            os.unlink(tmp)
+
         if fx <= 0:
             # No focal — cannot back-project; return the solve untouched.
             zero = torch.zeros(1, int(image.shape[1]), int(image.shape[2]), dtype=torch.float32)
@@ -1783,21 +1828,24 @@ class AtlasDepthMap:
         return {
             "required": {"image": ("IMAGE",)},
             "optional": {
-                "depth_model": ([
-                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
-                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "depth_model": (list(_DEPTH_MODEL_CHOICES),
+                    {"default": "depth-anything/DA3METRIC-LARGE"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+                "solve": ("ATLAS_SOLVE", {"tooltip": "Optional — supplies the SOLVED focal "
+                          "(GeoCalib/VP) for DA3METRIC's canonical→metric conversion "
+                          "(focal_source='solve' instead of the assumed normal-lens fallback). "
+                          "Ignored by V2 models."}),
             },
         }
 
-    def estimate(self, image, depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                 device="auto"):
+    def estimate(self, image, depth_model="depth-anything/DA3METRIC-LARGE",
+                 device="auto", solve=None):
         from atlas_camera.inference.depth_estimator import estimate_depth
         tmp = _save_image_tensor_to_tmp(image)
         try:
             result = estimate_depth(tmp, model_id=depth_model,
-                                    device=None if device == "auto" else device)
+                                    device=None if device == "auto" else device,
+                                    focal_px=_solve_focal_px_for_image(solve, image))
         finally:
             os.unlink(tmp)
         return (result,)
@@ -2324,10 +2372,8 @@ class AtlasAddPatchView:
                     "tooltip": "Flip left/right if the patch lands on the wrong side "
                                "(recovered-camera handedness) — a calibration convenience."}),
                 "name": ("STRING", {"default": "patch"}),
-                "depth_model": ([
-                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
-                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "depth_model": (list(_DEPTH_MODEL_CHOICES),
+                    {"default": "depth-anything/DA3METRIC-LARGE"}),
                 "relief_grid": ("INT", {"default": 96, "min": 16, "max": 4096,
                     "tooltip": "Patch relief-mesh density (long-edge grid columns)."}),
                 "priority": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 1.0,
@@ -2395,7 +2441,7 @@ class AtlasAddPatchView:
                   source_azimuth_view="front view",
                   source_elevation_view="eye-level shot",
                   flip_azimuth=False, name="patch",
-                  depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                  depth_model="depth-anything/DA3METRIC-LARGE",
                   relief_grid=96, priority=1.0, plate_ref=None, device="auto",
                   patch_view_override="", mask_unseen_only=True, unseen_dilate_px=16,
                   primary_depth=None, exclude_mask=None, geometry_source="reuse_scene"):
@@ -2516,7 +2562,8 @@ class AtlasAddPatchView:
             tmp = _save_image_tensor_to_tmp(patch_image)
             try:
                 result = estimate_depth(tmp, model_id=depth_model,
-                                        device=None if device == "auto" else device)
+                                        device=None if device == "auto" else device,
+                                        focal_px=pfx)  # patch-image pixels
             finally:
                 os.unlink(tmp)
             depth_map = result.depth
@@ -2804,10 +2851,8 @@ class AtlasOcclusionMask:
                     "tooltip": "Elevation of the SOURCE photo in the LoRA's frame."}),
                 "flip_azimuth": ("BOOLEAN", {"default": False,
                     "tooltip": "Must match the AtlasAddPatchView setting for this patch."}),
-                "depth_model": ([
-                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
-                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "depth_model": (list(_DEPTH_MODEL_CHOICES),
+                    {"default": "depth-anything/DA3METRIC-LARGE"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "angle_threshold": ("FLOAT", {"default": 90.0, "min": 0.0, "max": 90.0, "step": 1.0,
                     "tooltip": "Facing-angle gate in degrees for the PRIMARY camera's coverage. "
@@ -2849,7 +2894,7 @@ class AtlasOcclusionMask:
                  source_azimuth_view="front view",
                  source_elevation_view="eye-level shot",
                  flip_azimuth=False,
-                 depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                 depth_model="depth-anything/DA3METRIC-LARGE",
                  device="auto",
                  angle_threshold=90.0, dilate_px=0, soft_edge_px=0, power=1.0,
                  occlusion_mode="simple", primary_depth=None, depth_bias=0.05,
@@ -2904,7 +2949,8 @@ class AtlasOcclusionMask:
         tmp = _save_image_tensor_to_tmp(target_image)
         try:
             result = estimate_depth(tmp, model_id=depth_model,
-                                    device=None if device == "auto" else device)
+                                    device=None if device == "auto" else device,
+                                    focal_px=tfx)  # target-image pixels
         finally:
             os.unlink(tmp)
         depth_map = result.depth
@@ -3012,10 +3058,8 @@ class AtlasExportReliefMesh:
                     "tooltip": "Mesh density: grid columns along the longest image edge."}),
                 "depth_edge_rel": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 5.0, "step": 0.05,
                     "tooltip": "Relative depth jump that tears the mesh (silhouette holes)."}),
-                "depth_model": ([
-                    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                    "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
-                ], {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
+                "depth_model": (list(_DEPTH_MODEL_CHOICES),
+                    {"default": "depth-anything/DA3METRIC-LARGE"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "format": (["both", "obj", "glb"], {"default": "both"}),
             },
@@ -3023,7 +3067,7 @@ class AtlasExportReliefMesh:
 
     def export(self, solve, image, output_dir="atlas_exports", grid_long_edge=128,
                depth_edge_rel=0.5,
-               depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+               depth_model="depth-anything/DA3METRIC-LARGE",
                device="auto", format="both"):
         from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
         from atlas_camera.core.solver import _resize_depth
@@ -3032,13 +3076,6 @@ class AtlasExportReliefMesh:
             export_relief_mesh_glb,
         )
         from atlas_camera.inference.depth_estimator import estimate_depth
-
-        tmp = _save_image_tensor_to_tmp(image)
-        try:
-            result = estimate_depth(tmp, model_id=depth_model,
-                                    device=None if device == "auto" else device)
-        finally:
-            os.unlink(tmp)
 
         intr = solve.camera.intrinsics
         extr = solve.camera.extrinsics
@@ -3053,6 +3090,16 @@ class AtlasExportReliefMesh:
             )
         cx = intr.cx_px if intr.cx_px is not None else width / 2.0
         cy = intr.cy_px if intr.cy_px is not None else height / 2.0
+
+        tmp = _save_image_tensor_to_tmp(image)
+        try:
+            result = estimate_depth(tmp, model_id=depth_model,
+                                    device=None if device == "auto" else device,
+                                    # fx is in solve-image pixels; the tmp file is the
+                                    # wired tensor's resolution (usually identical).
+                                    focal_px=fx * (image.shape[2] / width))
+        finally:
+            os.unlink(tmp)
 
         depth_map = result.depth
         if depth_map.shape != (height, width):

@@ -46,6 +46,15 @@ neural = [
     "transformers>=4.40",        # Depth Anything V2 monocular depth
     "geocalib @ git+https://github.com/cvg/GeoCalib.git",
 ]
+# Depth Anything 3 backend (opt-in). GitHub-only package whose own dependency
+# list is heavy and includes xformers and numpy<2 — installing this extra into
+# an existing ComfyUI venv can downgrade/clobber torch or numpy. For ComfyUI
+# venvs prefer the --no-deps route documented in INSTALL.md.
+neural-da3 = [
+    "numpy>=1.24",
+    "torch>=2.0",
+    "depth-anything-3 @ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git",
+]
 image = [
     "pillow>=10",
 ]

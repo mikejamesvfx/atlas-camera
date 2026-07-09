@@ -99,6 +99,49 @@ pip install -e ".[usd]"
 If `usd-core` is not installed, requesting USD export or import raises a clear
 runtime error.
 
+## Optional Depth Anything 3 Backend
+
+Depth Anything 3 (DA3) is a second depth backend selected per node via the
+`depth_model` combo (`depth-anything/DA3METRIC-LARGE`, `DA3MONO-LARGE`,
+`DA3NESTED-GIANT-LARGE-1.1`). **Since 2026-07-09, `DA3METRIC-LARGE` is the
+default for newly added nodes** (measured A/B: ~3× fewer relief-mesh tears,
+much stronger metric ground fits — see `docs/dev/da3_backend_test_plan.md`).
+Existing saved workflows keep their stored V2 values, and every V2 model
+remains in the combo. Without the `[neural-da3]` extra installed, a node left
+on the DA3 default fails with an informative install hint — switch it to a V2
+model or install the extra below. `DA3METRIC-LARGE` converts canonical depth to
+metres using the *solved* focal length when the node has one (`focal_source:
+"solve"` in the depth summary); on image-only nodes it falls back to an
+assumed normal-lens focal (`"assumed"` — the metric model is a depth-only
+head and predicts no camera; downstream ground-pinning re-normalizes the
+scale anyway). Note `DA3NESTED-GIANT-LARGE-1.1` is licensed CC BY-NC 4.0
+(non-commercial).
+
+Into a fresh/dedicated venv the extra works directly:
+
+```powershell
+pip install -e ".[neural-da3]"
+```
+
+**Into an existing ComfyUI venv, do NOT install with dependencies.** The
+`depth-anything-3` package hard-requires `xformers` and `numpy<2` and pins
+`moviepy==1.0.3` — a full dependency install can downgrade or clobber ComfyUI's
+torch/numpy. Install the package alone and let it use what ComfyUI already has:
+
+```powershell
+& "<COMFYUI_ROOT>\venv\Scripts\python.exe" -m pip install --no-deps "git+https://github.com/ByteDance-Seed/Depth-Anything-3.git"
+# Then verify the import and that torch/numpy were untouched:
+& "<COMFYUI_ROOT>\venv\Scripts\python.exe" -c "import torch, numpy; print(torch.__version__, numpy.__version__); from depth_anything_3.api import DepthAnything3; print('DA3 OK')"
+```
+
+If the import fails on a missing small dependency (e.g. `einops`, `omegaconf`,
+`safetensors`), install just that package — never the full dependency set.
+Model weights download from Hugging Face on first use. A GPU (cuda) is
+recommended: DA3's inference autocasts to bf16/fp16 by device type.
+
+For the V2-vs-DA3 accuracy comparison protocol, see
+`docs/dev/da3_backend_test_plan.md` and `tools/compare_depth_backends.py`.
+
 ## Optional Inpaint Integration
 
 The inpaint-layers feature (`AtlasDepthLayerMask` + `AtlasCleanPlateLayer`,

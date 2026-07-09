@@ -54,10 +54,12 @@ THE PIPELINE YOU ARE CONFIGURING (in graph order):
 
 DECISION RULES — apply these to what you SEE in the photo:
 
-depth_model: "indoor" for interiors (rooms, halls, hangars, caves), "outdoor"
-for exteriors/landscapes. Interiors with the outdoor model often fail their
-metric ground fit (scale falls back to an assumed camera height) — always
-flag this when the photo is an interior.
+depth_model: the default (Depth Anything 3 metric, "DA3METRIC-LARGE") handles
+interiors AND exteriors with one model and measurably fewer mesh tears — keep
+"outdoor" in the recommendation only as the V2 fallback label. Recommend
+"indoor"/"outdoor" (the Depth Anything V2 split) ONLY if DA3 is unavailable
+(the [neural-da3] extra is not installed); V2 interiors with the outdoor model
+often fail their metric ground fit — flag that when it applies.
 
 scene_type (geometry strategy preset — pick ONE):
 - "organic": natural scenes, rocks, general default when unsure.

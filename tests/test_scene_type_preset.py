@@ -18,18 +18,20 @@ def test_organic_preset_only_overrides_geometry_mode():
     assert preset == {"geometry_mode": "relief_mesh"}
 
 
-def test_indoor_preset_selects_room_cuboid_and_indoor_depth_model():
+def test_indoor_preset_selects_room_cuboid_and_metric_depth_model():
+    # Since the 2026-07-09 default flip, indoor/outdoor both use DA3METRIC —
+    # one focal-conditioned metric model, no more V2 indoor/outdoor split.
     preset = AtlasDeriveProjectionGeometry._SCENE_TYPE_PRESETS["indoor"]
     assert preset["geometry_mode"] == "primitives"
     assert preset["primitive_method"] == "room_cuboid"
-    assert "Indoor" in preset["depth_model"]
+    assert preset["depth_model"] == "depth-anything/DA3METRIC-LARGE"
 
 
-def test_outdoor_preset_selects_ransac_planes_and_outdoor_depth_model():
+def test_outdoor_preset_selects_ransac_planes_and_metric_depth_model():
     preset = AtlasDeriveProjectionGeometry._SCENE_TYPE_PRESETS["outdoor"]
     assert preset["geometry_mode"] == "primitives"
     assert preset["primitive_method"] == "ransac_planes"
-    assert "Outdoor" in preset["depth_model"]
+    assert preset["depth_model"] == "depth-anything/DA3METRIC-LARGE"
 
 
 def test_scene_type_widget_exposed_with_manual_default():
@@ -122,7 +124,7 @@ def test_preset_resolution_matches_derive_override_logic():
     for scene_type in ("organic", "indoor", "outdoor"):
         geometry_mode, primitive_method, depth_model = (
             "relief_mesh", "azimuth_walls",
-            "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+            "depth-anything/DA3METRIC-LARGE",
         )
         preset = node._SCENE_TYPE_PRESETS.get(scene_type)
         if preset:

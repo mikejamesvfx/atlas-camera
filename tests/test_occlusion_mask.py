@@ -69,7 +69,7 @@ def _patch_estimate_depth(monkeypatch, size=128):
         is_metric: bool = True
         model_id: str = "fake"
 
-    def fake(image_path, *, model_id=None, device=None):
+    def fake(image_path, *, model_id=None, device=None, focal_px=None):
         ramp = np.linspace(30.0, 5.0, size)[:, None] * np.ones((1, size))
         return _FakeDepth(depth=ramp.astype(np.float32))
 

@@ -988,7 +988,10 @@ def solve_still_image_learned(
         )
 
         depth_result = estimate_depth(
-            image_path, model_id=depth_model or DEFAULT_METRIC_OUTDOOR, device=device
+            image_path, model_id=depth_model or DEFAULT_METRIC_OUTDOOR, device=device,
+            # prior.focal_px is at the prior's native image size — the resolution
+            # estimate_depth itself opens — not the resized `fx` local above.
+            focal_px=prior.focal_px,
         )
         depth_map = depth_result.depth
         if depth_map.shape != (height, width):
