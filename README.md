@@ -7,9 +7,10 @@ by a single image. The current milestone focuses on the first recoverable
 component, the `LatentCamera`, and packages it with projection evidence,
 confidence, proxy geometry, and DCC handoff data.
 
-> **Status: beta (`v0.1.0-beta`).** Deterministic core + a 37-node ComfyUI pack
-> for single-image camera recovery, matte-painting projection, and DCC handoff.
-> See [Current Status](#current-status) for what's implemented vs. placeholder.
+> **Status: beta (`release/beta-0.2`, v0.3.0).** Deterministic core + a 47-node
+> ComfyUI pack for single-image camera recovery, matte-painting projection,
+> layered 2.5D clean-plate rigs, and DCC handoff. See
+> [Current Status](#current-status) for what's implemented vs. placeholder.
 
 It is designed for:
 
@@ -194,7 +195,7 @@ geometry. They do not yet solve metric depth from a single image.
 
 ## ComfyUI Node Pack
 
-The flagship interface is a **37-node ComfyUI pack** (category **Atlas Camera**)
+The flagship interface is a **47-node ComfyUI pack** (category **Atlas Camera**)
 that runs the whole pipeline as a graph. Install it into ComfyUI's own venv
 (editable, so source changes are live):
 
@@ -204,9 +205,14 @@ that runs the whole pipeline as a graph. Install it into ComfyUI's own venv
 & "<COMFYUI>\venv\Scripts\python.exe" -m pip install -e ".[neural]"
 ```
 
-The `[neural]` extra adds Depth-Anything V2 + the GeoCalib learned prior (GeoCalib
-is GitHub-only: `pip install "git+https://github.com/cvg/GeoCalib.git"`; torch is
-expected from ComfyUI's env).
+The `[neural]` extra adds the Depth Anything V2 depth models + the GeoCalib
+learned prior (GeoCalib is GitHub-only:
+`pip install "git+https://github.com/cvg/GeoCalib.git"`; torch is expected from
+ComfyUI's env). **Depth Anything 3 is the default depth model** since v0.3 —
+measurably fewer relief-mesh tears and focal-conditioned metric depth using the
+*solved* focal; it needs the separate `[neural-da3]` extra (see
+[INSTALL.md](INSTALL.md) — into a ComfyUI venv install `--no-deps`). Every
+`depth_model` combo keeps the V2 models available.
 
 **Core through-line — recover → derive → project → hand off:**
 
@@ -232,18 +238,41 @@ Node tracks:
 - **Shot format** — `AtlasDefineShotCam` sets a project-level render/output
   camera (sensor + lens + resolution), attachable via `AtlasMergeGeometry` so the
   viewport/exporters conform to one shot format.
+- **DMP layer stack** — the classic 2.5D clean-plate rig as nodes:
+  `AtlasSkyDomeLayer` (SAM-driven sky separation with deterministic
+  edge-extend/frame-outpaint), `AtlasDepthLayerMask` + `AtlasCleanPlateLayer`
+  (depth-banded clean-plate layers with disocclusion fill, per-pixel edge
+  mattes, beveled skirts), `AtlasDepthBandSplit` (one authoritative fg/bg
+  boundary), and hole masks everywhere (the literal "where projection shows
+  black" signal). Inpainting stays graph-level (LaMa/LanPaint/FLUX packs).
 - **Viewport** — `AtlasBlockoutViewport`: browser-side Three.js preview with a
   recovered-camera inherit, **📽 Project** (matte-painting projection onto
-  geometry), scale-reference proxies, camera-path authoring, and 4 render passes.
+  geometry), 🎥 camera-path authoring with presets + baked-frame output,
+  🧭 measured safe-zone orbit clamps, 📐 patch-angle extraction, 💡 relight
+  preview, 🩻 hidden-geometry provenance overlay, and 4 render passes.
 - **Multi-angle fill** — `AtlasAddPatchView` / `AtlasOcclusionMask` project
   extra LoRA-generated views to fill what the single recovered camera can't see.
-- **Export** — Relief mesh (OBJ/GLB, projection baked into UVs), Blender, Nuke,
-  USD, Maya review scene, camera-path USD, and a full review package.
+- **🔬 Experimental hidden geometry** — `AtlasPredictHiddenGeometry` predicts
+  the surfaces *behind* occluders (layered ray intersections: LaRI, fast
+  regression, or World Tracing, generative diffusion — both research-only,
+  user-installed) and patches them into an "X-ray" depth map that band layers
+  turn into real reveal geometry. See
+  [docs/dev/hidden_geometry_training_free_research.md](docs/dev/hidden_geometry_training_free_research.md).
+- **Pre-flight** — `AtlasAssessImage` gates the graph behind a local-VLM
+  scene assessment (advisory, ▶ Continue to proceed).
+- **Output desk** — `AtlasRegisterPlate` / `AtlasAttachSourcePlate` track the
+  real float plate (EXR/ACEScg) past the browser preview into every exporter.
+- **Export** — Relief mesh (OBJ/GLB, projection baked into UVs), Blender, Nuke
+  (.py + native .nk), per-layer Nuke/Maya scene exports, USD, Maya review
+  scene, camera-path USD, and a full review package.
 
 Ready-to-load example workflows are in [`examples/`](examples/) — start with
-`atlas_camera_core_projection_workflow.json` (the 6-node core) or
-`atlas_camera_learned_workflow.json` (full pipeline). See
-[docs/ECOSYSTEM_GUIDE.md](docs/ECOSYSTEM_GUIDE.md) for the full node catalog.
+`atlas_camera_core_projection_workflow.json` (the 6-node core),
+`atlas_camera_learned_workflow.json` (full pipeline), or the calibrated
+per-scene `atlas_camera_hidden_geometry_*_workflow.json` demos (cathedral /
+hangar / jungle / canyon / ridge / valley — X-ray reveals + dolly-in camera
+move + mp4 bake). See [docs/ECOSYSTEM_GUIDE.md](docs/ECOSYSTEM_GUIDE.md) for
+the full node catalog.
 
 ## Current Status
 
@@ -272,12 +301,21 @@ Implemented:
 - Optional FastAPI + React local UI for artist-guided still-image lineup,
   constraint editing, Three.js 3D camera/proxy inspection, solve review, local
   multimodal guidance, and review-package export.
-- **37-node ComfyUI pack** (category "Atlas Camera") covering the full
-  recover → derive → project → export pipeline as a graph.
+- **47-node ComfyUI pack** (category "Atlas Camera") covering the full
+  recover → derive → layer → project → export pipeline as a graph.
 - **Learned camera recovery** (GeoCalib prior, `method="learned"`) — robust on
   AI-generated images where geometric vanishing points fail.
-- **Depth-Anything V2** monocular depth + ground-plane camera-height measurement
-  (`camera_height="auto"`), with sky-aware masking.
+- **Depth Anything 3 (default) + Depth Anything V2** monocular depth backends +
+  ground-plane camera-height measurement (`camera_height="auto"`), with
+  sky-aware masking. DA3 converts canonical depth to metres with the *solved*
+  focal (measured: ~3× fewer relief-mesh tears vs V2 on the test set).
+- **Layered 2.5D DMP rig** — sky dome, depth-band clean-plate layers with
+  disocclusion fill, per-pixel edge mattes, edge-extend/frame-outpaint,
+  hole-mask honesty signals, and one authoritative band split.
+- **🔬 Experimental hidden-geometry prediction** (research-only): LaRI /
+  World Tracing layered ray intersections → "X-ray" depth maps → real reveal
+  geometry behind occluders, with a viewport provenance overlay and six
+  calibrated per-scene demo workflows.
 - **Composable projection-geometry derivation** (shared depth map + per-strategy
   derive nodes: relief mesh, walls, towers/spires, roofs/facades, interior room)
   combined with a **merge node**, plus a project-level **shot-camera** format.
@@ -300,11 +338,17 @@ Placeholder:
 
 ## Documentation
 
+- [Install guide](INSTALL.md) — including the `[neural-da3]` and
+  research-only hidden-geometry setup
+- [User guide](docs/USER_GUIDE.md)
+- [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md) — full node catalog
 - [Project vision](docs/PROJECT_VISION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [UI workbench](docs/UI_WORKBENCH.md)
 - [DCC exports](docs/DCC_EXPORTS.md)
 - [Comfy workflow](docs/COMFY_WORKFLOW.md)
+- [Hidden-geometry research](docs/dev/hidden_geometry_training_free_research.md)
+- [DA3 depth-backend test plan](docs/dev/da3_backend_test_plan.md)
 - [Gaussian splats](docs/GAUSSIAN_SPLATS.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Migration notes](docs/MIGRATION_NOTES.md)

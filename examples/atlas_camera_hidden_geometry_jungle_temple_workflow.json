@@ -42,7 +42,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "atlas_4k_testimages/img-2026-07-06 11-50-46-0001.png",
+        "atlas_jungle_temple.png",
         "image"
       ]
     },
@@ -200,7 +200,7 @@
         0.0,
         0.0,
         0.0,
-        0.4,
+        0.3,
         4,
         false,
         384,
@@ -208,7 +208,7 @@
         false,
         "manual"
       ],
-      "title": "X-ray restrict: nearest occluders (manual, far_pct 0.40)"
+      "title": "X-ray restrict: nearest occluders (manual, far_pct 0.30)"
     },
     {
       "id": 6,
@@ -286,9 +286,9 @@
       "widgets_values": [
         "",
         "auto",
-        0.2,
+        0.3,
         0.0,
-        "lari-scene",
+        "world-tracing-scene",
         "",
         20,
         42,
@@ -296,7 +296,7 @@
         31,
         true
       ],
-      "title": "\ud83d\udd2c X-ray \u2014 lari-scene (fill_gaps + smooth ON)"
+      "title": "\ud83d\udd2c X-ray \u2014 world-tracing-scene (fill_gaps + smooth ON)"
     },
     {
       "id": 4,
@@ -494,7 +494,7 @@
         0.0,
         0.0,
         0.0,
-        0.4,
+        0.3,
         "fg_occluders",
         10.0,
         384,
@@ -740,7 +740,7 @@
       "widgets_values": [
         24.0,
         "mp4",
-        "atlas_steep_ridge_dolly",
+        "atlas_jungle_temple_dolly",
         1.0,
         false,
         true
@@ -787,7 +787,7 @@
         "Node name for S&R": "AtlasExportCameraPathUSD"
       },
       "widgets_values": [
-        "atlas_exports_steep_ridge"
+        "atlas_exports_jungle_temple"
       ],
       "title": "Camera path \u2192 USD (MUTED \u2014 unmute after \u23fa Bake)"
     },
@@ -1076,7 +1076,7 @@
         "text": ""
       },
       "widgets_values": [
-        "\ud83d\udd2c HIDDEN GEOMETRY \u2014 STEEP RIDGE (pitch ~22\u00b0) \u2014 LaRI backend\n\nSweep 2026-07-09: LaRI registers well (rel MAD 0.134, 85% of the\noccluder band); World Tracing misregisters (0.305) on this steep\noutdoor shot \u2014 the mirror image of the canyon. Backend per scene.\n\nARCHITECTURE \u2014 MASK-MEMBERSHIP X-RAY (v2, calibrated 2026-07-09):\n1. ONE solve + ONE shared DA3 depth (solved focal).\n2. BASE: AtlasDeriveReliefMesh on the ORIGINAL depth + its\n   projection_backdrop \u2014 guarantees no black at camera view.\n3. RESTRICT: AtlasDepthLayerMask (manual, far_pct = nearest occluders)\n   feeds the \ud83d\udd2c node's restrict_mask.\n4. \ud83d\udd2c X-RAY: predicts per-ray hidden surfaces, then makes them COHERENT \u2014\n   fill_gaps diffuses the fragmented predictions into ONE surface across\n   the restrict region and smooth_px gaussian-smooths the seams (both\n   essential: fragmented/steppy depth shreds the layer mesh via the\n   world-edge check, IMMUNE to depth_edge_rel \u2014 measured).\n5. FOREGROUND layer: a matted AtlasCleanPlateLayer on the ORIGINAL\n   photo/depth (band = the restrict range, embed_matte + skirts,\n   priority 10) cleanly covers the occluders' own silhouettes at camera\n   view. Without it, base-mesh tears at silhouettes let the X-ray's\n   INPAINTED plate peek through at camera view (artist-caught: inpaint\n   content visible where the normal image should cover).\n6. THE X-RAY LAYER: AtlasCleanPlateLayer with NO depth band at all\n   (manual, far uncapped \u2014 a depth split cannot hold near-field hidden\n   geometry; measured: every split loses 76-97% of predictions). Its\n   geometry region = hidden_mask via GrowMask(32) \u2192 InvertMask \u2192\n   exclude_mask; its PAINT = the \ud83d\udd2c paint_matte (only where the hidden\n   surface is genuinely behind a nearer occluder \u2014 see-through gaps\n   discard in the shader and show the base mesh's real far content).\n7. PLATE: LaMa inpaints the occluders out (hidden_mask grown 48px), so\n   reveals get real pixels. Swap LanPaint/FLUX for hero shots.\n8. Viewport: \ud83d\udcfd Project on; \ud83e\ude7b X-ray toggles the provenance tint (red =\n   LaRI / blue = World Tracing, = the paint matte); dolly demo via\n   \ud83c\udfa5 Camera Path \u2192 Dolly In \u2192 \u23fa Bake \u2192 VideoCombine Plus mp4; unmute\n   the USD node after baking.\n\n\ud83d\udd2c EXPERIMENTAL / RESEARCH-ONLY. LaRI: unlicensed upstream (clone +\nlari_path / ATLAS_LARI_PATH). World Tracing: CC BY-NC-ND 4.0, HF-gated\ncheckpoint (clone + wt_path / ATLAS_WT_PATH + huggingface login). Seeds\nship PINNED (control_after_generate=fixed) \u2014 WT is diffusion; a\nrandomized seed re-rolls the hidden geometry every queue. See INSTALL.md\n+ docs/dev/hidden_geometry_training_free_research.md."
+        "\ud83d\udd2c HIDDEN GEOMETRY \u2014 JUNGLE TEMPLE \u2014 World Tracing backend (fragmented-mask stress case)\n\nSweep + 6 calibration rounds 2026-07-09: dense foliage fragments\nthe predictions, which originally shredded the layer mesh\n(hole-in-paint 0.67!). The node's fill_gaps diffusion + gaussian\nsmoothing and this mask-membership wiring bring it to ~0.26 \u2014\nusable but still the honest hard case. WT registration 0.186.\n\nARCHITECTURE \u2014 MASK-MEMBERSHIP X-RAY (v2, calibrated 2026-07-09):\n1. ONE solve + ONE shared DA3 depth (solved focal).\n2. BASE: AtlasDeriveReliefMesh on the ORIGINAL depth + its\n   projection_backdrop \u2014 guarantees no black at camera view.\n3. RESTRICT: AtlasDepthLayerMask (manual, far_pct = nearest occluders)\n   feeds the \ud83d\udd2c node's restrict_mask.\n4. \ud83d\udd2c X-RAY: predicts per-ray hidden surfaces, then makes them COHERENT \u2014\n   fill_gaps diffuses the fragmented predictions into ONE surface across\n   the restrict region and smooth_px gaussian-smooths the seams (both\n   essential: fragmented/steppy depth shreds the layer mesh via the\n   world-edge check, IMMUNE to depth_edge_rel \u2014 measured).\n5. FOREGROUND layer: a matted AtlasCleanPlateLayer on the ORIGINAL\n   photo/depth (band = the restrict range, embed_matte + skirts,\n   priority 10) cleanly covers the occluders' own silhouettes at camera\n   view. Without it, base-mesh tears at silhouettes let the X-ray's\n   INPAINTED plate peek through at camera view (artist-caught: inpaint\n   content visible where the normal image should cover).\n6. THE X-RAY LAYER: AtlasCleanPlateLayer with NO depth band at all\n   (manual, far uncapped \u2014 a depth split cannot hold near-field hidden\n   geometry; measured: every split loses 76-97% of predictions). Its\n   geometry region = hidden_mask via GrowMask(32) \u2192 InvertMask \u2192\n   exclude_mask; its PAINT = the \ud83d\udd2c paint_matte (only where the hidden\n   surface is genuinely behind a nearer occluder \u2014 see-through gaps\n   discard in the shader and show the base mesh's real far content).\n7. PLATE: LaMa inpaints the occluders out (hidden_mask grown 48px), so\n   reveals get real pixels. Swap LanPaint/FLUX for hero shots.\n8. Viewport: \ud83d\udcfd Project on; \ud83e\ude7b X-ray toggles the provenance tint (red =\n   LaRI / blue = World Tracing, = the paint matte); dolly demo via\n   \ud83c\udfa5 Camera Path \u2192 Dolly In \u2192 \u23fa Bake \u2192 VideoCombine Plus mp4; unmute\n   the USD node after baking.\n\n\ud83d\udd2c EXPERIMENTAL / RESEARCH-ONLY. LaRI: unlicensed upstream (clone +\nlari_path / ATLAS_LARI_PATH). World Tracing: CC BY-NC-ND 4.0, HF-gated\ncheckpoint (clone + wt_path / ATLAS_WT_PATH + huggingface login). Seeds\nship PINNED (control_after_generate=fixed) \u2014 WT is diffusion; a\nrandomized seed re-rolls the hidden geometry every queue. See INSTALL.md\n+ docs/dev/hidden_geometry_training_free_research.md."
       ],
       "title": "README"
     }
@@ -1363,7 +1363,7 @@
     },
     {
       "id": 2,
-      "title": "\u2461 \ud83d\udd2c X-ray (lari-scene) \u2192 region/paint masks",
+      "title": "\u2461 \ud83d\udd2c X-ray (world-tracing-scene) \u2192 region/paint masks",
       "bounding": [
         860,
         100,

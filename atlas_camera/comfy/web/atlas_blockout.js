@@ -5,10 +5,12 @@
  * On node execution the recovered camera is fetched from /atlas/camera_data/{nodeId}
  * and applied to the Three.js camera so the scene is pre-aligned to the source photo.
  *
- * The user places primitive geometry (Box, Plane, Cylinder, Person Card), then
- * clicks "Render Proxy Passes" to produce proxy/LDR shaded / depth / normal /
- * mask images that are base64-encoded into the client_data STRING widget and
- * sent back to Python.
+ * The viewport renders the solve's Python-derived geometry (relief meshes,
+ * fitted primitives, patch/clean-plate sources) with 📽 camera projection;
+ * "Render Proxy Passes" produces shaded / depth / normal / mask images that
+ * are base64-encoded into the client_data STRING widget and sent to Python.
+ * (The old in-browser primitive/OBJ-proxy placement toolbar was removed
+ * 2026-07-09 — see the note above the projection-material section.)
  */
 
 import { app } from "../../scripts/app.js";
@@ -52,7 +54,6 @@ async function loadThree() {
 // that the recovered camera + ground plane live in — a correctly-sized human or
 // car is the fastest visual check that the solve and camera height are right.
 // ---------------------------------------------------------------------------
-const PROXY_COLORS = { woman: 0xffddbb, sedan: 0x6688aa };
 const ATLAS_VIEWPORT_PREVIEW_MAX_LONG_EDGE = 1280;
 
 // Default node size for FRESHLY ADDED viewport nodes only (saved workflows
@@ -492,32 +493,14 @@ function createFlyControls(camera, dom) {
   };
 }
 
-function loadProxyModel(scene, modelName, camera) {
-  if (!THREE || !OBJLoader) {
-    console.warn("[AtlasBlockout] OBJLoader not ready; cannot add proxy:", modelName);
-    return;
-  }
-  const loader = new OBJLoader();
-  loader.load(
-    `/atlas/proxy_model/${modelName}.obj`,
-    (obj) => {
-      obj.scale.setScalar(0.01); // centimetres -> metres
-      const mat = new THREE.MeshStandardMaterial({
-        color: PROXY_COLORS[modelName] ?? 0xaaaaaa,
-        roughness: 0.75,
-      });
-      obj.traverse((c) => { if (c.isMesh) c.material = mat; });
-      const g = groundPointInView(camera);
-      obj.position.set(g.x, 0, g.z);
-      // Yaw the proxy to face the camera (cosmetic; keeps it upright).
-      obj.rotation.y = Math.atan2(camera.position.x - g.x, camera.position.z - g.z);
-      obj.userData.atlasProxy = true;
-      scene.add(obj);
-    },
-    undefined,
-    (err) => console.error("[AtlasBlockout] Failed to load proxy", modelName, err)
-  );
-}
+// NOTE (2026-07-09): the primitive toolbar (Box/Plane/Cylinder/Person) and the
+// 🧍/🚗 OBJ scale-proxy buttons were removed — browser-only meshes that never
+// persisted to the solve or any export ("void functions", artist-confirmed
+// unused; scale checks are covered by the tiered cascade + ℹ Info HUD). The
+// /atlas/proxy_model route and examples/models/*.obj remain server-side; if
+// hand-placed proxy geometry is ever wanted again, build it as a NODE writing
+// a real PROXY_ROLE primitive, not ephemeral viewport meshes (see git history
+// for the removed loadProxyModel/createPrimitive implementations).
 
 // ---------------------------------------------------------------------------
 // Camera-projection material (matte-painting projection).
@@ -583,6 +566,10 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform sampler2D uTexture;
   uniform sampler2D uMatte;
   uniform float uHasMatte;
+  uniform sampler2D uHiddenMask;
+  uniform float uHasHiddenMask;
+  uniform float uDebugHidden;
+  uniform vec3 uHiddenTint;
   uniform vec2 uImageSize;
   uniform float uOpacity;
   uniform vec3 uCamPos;
@@ -633,6 +620,15 @@ const PROJECTION_FRAGMENT_SHADER = `
       + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, vWorldNormal)
       + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, vWorldNormal);
     vec3 outColor = atlasLinearToSRGB(clamp(col.rgb * relight, 0.0, 1.0));
+    // 🩻 hidden-geometry provenance overlay (debug): tint the surface region
+    // whose depth was SUBSTITUTED by AtlasPredictHiddenGeometry (the node's
+    // hidden_mask, threaded through the ProjectionSource) — red = LaRI,
+    // blue = World Tracing (uHiddenTint set per-source at material build).
+    // Sampled at the same projected uv as the photo/matte; applied after the
+    // sRGB encode since it's a display-space annotation, not scene color.
+    if (uDebugHidden > 0.5 && uHasHiddenMask > 0.5 && texture2D(uHiddenMask, uv).r > 0.5) {
+      outColor = mix(outColor, uHiddenTint, 0.5);
+    }
     gl_FragColor = vec4(outColor, col.a * uOpacity);
   }
 `;
@@ -693,6 +689,13 @@ function makeProjectionMaterial(data, texture, opts) {
       // uniform-gated branch means a null sampler is never actually read.
       uMatte: { value: options.matteTexture || null },
       uHasMatte: { value: options.matteTexture ? 1.0 : 0.0 },
+      // 🩻 hidden-geometry provenance mask + tint (debug overlay; uDebugHidden
+      // is synced live by syncProjectionLightUniforms like the light uniforms,
+      // since projection materials are rebuilt on every execution).
+      uHiddenMask: { value: options.hiddenMaskTexture || null },
+      uHasHiddenMask: { value: options.hiddenMaskTexture ? 1.0 : 0.0 },
+      uDebugHidden: { value: 0 },
+      uHiddenTint: { value: options.hiddenTint || new THREE.Color(1.0, 0.15, 0.15) },
       // Primary: -1 (never facing-discards). Patches: positive (fill head-on only).
       uFacingThreshold: { value: options.facingThreshold ?? -1.0 },
       // Movable point lights (💡) — kept at intensity 0 here; synced live each
@@ -867,6 +870,7 @@ function buildPatchSources(scene, data, onSourceReady) {
       if (pm) {
         pm.uniforms?.uTexture?.value?.dispose?.();
         pm.uniforms?.uMatte?.value?.dispose?.();
+        pm.uniforms?.uHiddenMask?.value?.dispose?.();
         pm.dispose?.();
       }
     });
@@ -909,14 +913,20 @@ function buildPatchSources(scene, data, onSourceReady) {
       // multi-angle patches keep the grazing-discard behavior so they only
       // fill surfaces they see reasonably head-on.
       const facingThreshold = src.projection_mode === "clean_plate" ? -1 : 0.2;
-      const build = (matteTexture) => {
+      const build = (matteTexture, hiddenMaskTexture) => {
+        // 🩻 provenance tint per backend: red = LaRI, blue = World Tracing.
+        const hiddenTint = src.hidden_backend === "world-tracing"
+          ? new THREE.Color(0.2, 0.4, 1.0)
+          : new THREE.Color(1.0, 0.15, 0.15);
         const patchMat = makeProjectionMaterial(src, tex,
-          { facingThreshold, priority: src.priority, matteTexture });
+          { facingThreshold, priority: src.priority, matteTexture,
+            hiddenMaskTexture, hiddenTint });
         for (const m of meshes) {
           const prev = m.userData._projMaterial;
           if (prev && prev !== patchMat) {
             prev.uniforms?.uTexture?.value?.dispose?.();
             prev.uniforms?.uMatte?.value?.dispose?.();
+            prev.uniforms?.uHiddenMask?.value?.dispose?.();
             prev.dispose?.();
           }
           m.userData._projMaterial = patchMat;
@@ -926,7 +936,14 @@ function buildPatchSources(scene, data, onSourceReady) {
       // Per-pixel edge matte (ProjectionSource.mask_b64): geometry stays
       // coarse; the matte cuts the true silhouette in the shader.
       // loadMatteFromB64 always calls back (null on missing/failed matte).
-      loadMatteFromB64(src.mask_b64, build);
+      loadMatteFromB64(src.mask_b64, (matteTexture) => {
+        if (src.hidden_mask_b64) {
+          loadMatteFromB64(src.hidden_mask_b64,
+            (hm) => build(matteTexture, hm));
+        } else {
+          build(matteTexture, null);
+        }
+      });
     });
   });
 }
@@ -1000,41 +1017,6 @@ function applyRecoveredCamera(threeCamera, data) {
 // ---------------------------------------------------------------------------
 // Primitive helper
 // ---------------------------------------------------------------------------
-function createPrimitive(type) {
-  if (!THREE) return null;
-  let geometry, material;
-  const mat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.8 });
-
-  switch (type) {
-    case "box":
-      geometry = new THREE.BoxGeometry(1, 1, 1);
-      material = new THREE.MeshStandardMaterial({ color: 0x8899bb, roughness: 0.7 });
-      break;
-    case "plane":
-      geometry = new THREE.PlaneGeometry(4, 4);
-      material = new THREE.MeshStandardMaterial({ color: 0x88aa88, roughness: 0.9, side: THREE.DoubleSide });
-      break;
-    case "cylinder":
-      geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
-      material = new THREE.MeshStandardMaterial({ color: 0xbbaa88, roughness: 0.7 });
-      break;
-    case "person":
-      // 0.55×1.75×0.02 card (matches Atlas proxy defaults)
-      geometry = new THREE.BoxGeometry(0.55, 1.75, 0.02);
-      material = new THREE.MeshStandardMaterial({ color: 0xffddbb, roughness: 0.6 });
-      break;
-    default:
-      geometry = new THREE.BoxGeometry(1, 1, 1);
-      material = mat;
-  }
-
-  const mesh = new THREE.Mesh(geometry, material);
-  // Position in front of camera at ground level
-  mesh.position.set(0, (type === "plane" ? 0 : 0.5), -3);
-  if (type === "plane") mesh.rotation.x = -Math.PI / 2;
-  return mesh;
-}
-
 function atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height) {
   const buffer = new Uint8Array(width * height * 4);
   renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, buffer);
@@ -1186,13 +1168,6 @@ function buildNodeUI(node, containerEl) {
   const toolbar = document.createElement("div");
   toolbar.style.cssText = "display:flex;gap:4px;padding:4px;background:#1a1a1a;flex-wrap:wrap";
 
-  const primitives = [
-    { label: "Box", type: "box" },
-    { label: "Plane", type: "plane" },
-    { label: "Cylinder", type: "cylinder" },
-    { label: "Person", type: "person" },
-  ];
-
   // Canvas, wrapped so the diagram SVG and metadata HUD can sit on top of it
   // without blocking orbit dragging (pointer-events:none on the overlays).
   //
@@ -1309,8 +1284,12 @@ function buildNodeUI(node, containerEl) {
   movableLights[1].position.set(-2, 3, -2);
   movableLights.forEach((l) => scene.add(l));
   let _lightsWereActive = false;
+  // 🩻 hidden-geometry provenance overlay toggle — synced into every
+  // projection material by the same live mechanism as the lights (materials
+  // are rebuilt on every execution, so a set-once approach would go stale).
+  let debugHiddenOn = false;
   function syncProjectionLightUniforms() {
-    const active = movableLights.some((l) => l.intensity > 0);
+    const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn;
     // Skip the traverse entirely while both lights have always been off (the
     // default), but still run once on the on->off transition so any material
     // that previously picked up a nonzero uLightNIntensity gets zeroed out.
@@ -1325,6 +1304,9 @@ function buildNodeUI(node, containerEl) {
         mat.uniforms[`uLight${n}Color`].value.copy(l.color);
         mat.uniforms[`uLight${n}Intensity`].value = l.intensity;
       });
+      if (mat.uniforms.uDebugHidden) {
+        mat.uniforms.uDebugHidden.value = debugHiddenOn ? 1 : 0;
+      }
     });
   }
 
@@ -1345,6 +1327,9 @@ function buildNodeUI(node, containerEl) {
   let bgMesh = null;
   // The exact recovered camera pose, stored so "Camera View" can snap back to it.
   let recoveredData = null;
+  // Last geometry-derived orbit pivot (median-depth, from setProxies) — reused
+  // by 📷 Camera View so a reset never regresses to the ground-point heuristic.
+  let lastGeometryPivot = null;
 
   // Animation loop — assign to node._atlasRafId each frame so cancelAnimationFrame works.
   // The orbit/fly controllers update the camera on input events; pathPlayback
@@ -1374,44 +1359,15 @@ function buildNodeUI(node, containerEl) {
   }
   node._atlasRafId = requestAnimationFrame(animate);
 
-  // Primitive buttons
-  primitives.forEach(({ label, type }) => {
-    const btn = document.createElement("button");
-    btn.textContent = label;
-    btn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
-    btn.onclick = () => {
-      const mesh = createPrimitive(type);
-      if (mesh) {
-        mesh.userData.atlasUserGeo = true;
-        scene.add(mesh);
-        if (projectionOn) applyProjection(true); // new geometry catches the projection
-      }
-    };
-    toolbar.appendChild(btn);
-  });
-
-  // Scale-reference proxy buttons (real, correctly-sized meshes on the ground).
-  const proxies = [
-    { label: "🧍 Woman", model: "woman" },
-    { label: "🚗 Sedan", model: "sedan" },
-  ];
-  proxies.forEach(({ label, model }) => {
-    const btn = document.createElement("button");
-    btn.textContent = label;
-    btn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#22322a;color:#cfd;border:1px solid #465;border-radius:3px";
-    btn.onclick = () => loadProxyModel(scene, model, camera);
-    toolbar.appendChild(btn);
-  });
-
   // Camera View button — snap the orbit camera back to the recovered perspective.
   const camBtn = document.createElement("button");
   camBtn.textContent = "📷 Camera View";
   camBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2f3a;color:#cde;border:1px solid #456;border-radius:3px";
-  camBtn.onclick = () => { if (recoveredData) applyRecoveredView(recoveredData); };
+  camBtn.onclick = () => { if (recoveredData) applyRecoveredView(recoveredData, { force: true }); };
   toolbar.appendChild(camBtn);
 
   // 📽 Project toggle — camera-project the source photo onto ALL geometry
-  // (derived proxies, user primitives, OBJ proxies) from the recovered camera.
+  // (derived proxies + patch/clean-plate sources) from the recovered camera.
   // Defaults ON (beta UX request): the projected photo is the product; the
   // grey mesh is the diagnostic view, reached by toggling 📽 OFF. Textures
   // load async, and every load-completion path already re-applies via
@@ -1425,14 +1381,10 @@ function buildNodeUI(node, containerEl) {
 
   function isProjectable(c) {
     if (!c.isMesh || c === bgMesh) return false;
-    if (c.userData?.atlasDerived || c.userData?.atlasUserGeo || c.userData?.atlasPatch) return true;
-    // OBJ-proxy children: any ancestor tagged atlasProxy.
-    let p = c.parent;
-    while (p) {
-      if (p.userData?.atlasProxy) return true;
-      p = p.parent;
-    }
-    return false;
+    // atlasUserGeo/atlasProxy branches removed with the primitive/proxy
+    // buttons (2026-07-09) — only Python-derived geometry and patch sources
+    // exist in the scene now.
+    return !!(c.userData?.atlasDerived || c.userData?.atlasPatch);
   }
 
   function applyProjection(on) {
@@ -1490,6 +1442,22 @@ function buildNodeUI(node, containerEl) {
   }
   backdropBtn.onclick = () => setBackdropVisible(!backdropVisible);
   toolbar.appendChild(backdropBtn);
+
+  // 🩻 X-ray provenance overlay — tints the surface region whose depth was
+  // SUBSTITUTED by AtlasPredictHiddenGeometry (red = LaRI, blue = World
+  // Tracing) at 50% over the projected photo. Only visible under 📽 Project
+  // (the tint lives in the projection shader) and only when a hidden-geometry
+  // workflow threaded a hidden_mask into a ProjectionSource.
+  const dbgHiddenBtn = document.createElement("button");
+  dbgHiddenBtn.textContent = "🩻 X-ray";
+  dbgHiddenBtn.title = "Highlight predicted hidden geometry (red = LaRI, blue = World Tracing)";
+  dbgHiddenBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  dbgHiddenBtn.onclick = () => {
+    debugHiddenOn = !debugHiddenOn;
+    dbgHiddenBtn.style.background = debugHiddenOn ? "#4a1a2a" : "#2a2a2a";
+    dbgHiddenBtn.style.color = debugHiddenOn ? "#fac" : "#ddd";
+  };
+  toolbar.appendChild(dbgHiddenBtn);
 
   // ---------------------------------------------------------------------------
   // 📐 Extract Angle — orbit/fly to the view you want a patch generated at
@@ -2177,7 +2145,7 @@ function buildNodeUI(node, containerEl) {
     pathPlayback = {
       startTime: performance.now(),
       durationSec: Math.max(0.2, pathFrameCount / pathFps),
-      onDone: () => { if (recoveredData) applyRecoveredView(recoveredData); },
+      onDone: () => { if (recoveredData) applyRecoveredView(recoveredData, { force: true }); },
     };
   };
 
@@ -2494,30 +2462,8 @@ function buildNodeUI(node, containerEl) {
     lightPanel.appendChild(group);
   });
 
-  // Clear button
-  const clearBtn = document.createElement("button");
-  clearBtn.textContent = "Clear";
-  clearBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#3a1a1a;color:#faa;border:1px solid #644;border-radius:3px";
-  clearBtn.onclick = () => {
-    // Remove user geometry and OBJ proxies; derived projection proxies are
-    // Python-owned and regenerate on execution, so Clear leaves them alone.
-    const toRemove = scene.children.filter(
-      (c) => (c.isMesh || c.userData?.atlasProxy) && c !== bgMesh
-        && !c.userData?.atlasDerivedGroup
-    );
-    toRemove.forEach((c) => {
-      scene.remove(c);
-      // Dispose meshes (including those inside a loaded OBJ group). Never
-      // dispose the shared projection material.
-      c.traverse?.((m) => {
-        m.geometry?.dispose?.();
-        if (m.material !== projMaterial) m.material?.dispose?.();
-      });
-      c.geometry?.dispose?.();
-      if (c.material !== projMaterial) c.material?.dispose?.();
-    });
-  };
-  toolbar.appendChild(clearBtn);
+  // (Clear button removed 2026-07-09 along with the primitive/proxy buttons —
+  // its only job was removing the user meshes those buttons created.)
 
   // Render Proxy Passes button
   const renderBtn = document.createElement("button");
@@ -2672,7 +2618,7 @@ function buildNodeUI(node, containerEl) {
 
   // Apply the recovered camera and initialise the orbit controller *from* it, so
   // the default view is the camera's own perspective (matching the source photo).
-  function applyRecoveredView(data) {
+  function applyRecoveredView(data, opts = {}) {
     if (data.target_width && data.target_height) {
       resizeViewport(data.target_width, data.target_height);
     }
@@ -2683,16 +2629,31 @@ function buildNodeUI(node, containerEl) {
     // click from the reset pose silently overwrote their real extraction
     // with a zero-orbit "front view" (found live). Same-solve re-executions
     // now preserve navigation; 📷 Camera View remains the explicit reset.
+    // EXPLICIT resets (📷 button, ▶ Play's end-of-playback snap-back) pass
+    // { force: true } — without it this guard silently swallowed the click,
+    // because on an unchanged solve sameSolve is always true (reported live:
+    // "Camera View doesn't work anymore").
     const sameSolve = !!(node._atlasLastSolveFp && data.solve_fingerprint
       && node._atlasLastSolveFp === data.solve_fingerprint);
     node._atlasLastSolveFp = data.solve_fingerprint || null;
-    if (!sameSolve) {
+    if (opts.force || !sameSolve) {
       applyRecoveredCamera(camera, data);
-      // Prefer the solved scene depth (when a derive-geometry node ran) over the
-      // generic 30m default so the orbit radius matches this scene's actual scale.
-      const sceneDepth = data.camera_meta?.scene_depth_m;
-      const pivotMax = sceneDepth ? sceneDepth * 1.5 : 30;
-      controls.setTarget(groundPointInView(camera, pivotMax)); // pivot on the looked-at ground point
+      if (!sameSolve) lastGeometryPivot = null; // new scene — stale pivot invalid
+      // Reuse the geometry pivot when we have one (median-depth pivot from
+      // setProxies) — 📷 Camera View used to fall back to the ground-point
+      // heuristic here, which stomped the good pivot with one capped at
+      // 1.5× scene depth, so the FIRST re-orbit after a reset swung around a
+      // point way behind the subject (artist-reported 2026-07-09). The
+      // heuristic remains only the no-geometry-yet fallback.
+      if (lastGeometryPivot) {
+        controls.setTarget(lastGeometryPivot);
+      } else {
+        // Prefer the solved scene depth (when a derive-geometry node ran) over
+        // the generic 30m default so the orbit radius matches this scene.
+        const sceneDepth = data.camera_meta?.scene_depth_m;
+        const pivotMax = sceneDepth ? sceneDepth * 1.5 : 30;
+        controls.setTarget(groundPointInView(camera, pivotMax));
+      }
       controls.syncFromCamera();                     // init orbit state from recovered pose
     }
     recoveredData = data;
@@ -2756,29 +2717,64 @@ function buildNodeUI(node, containerEl) {
     updateLinkedOutputDesk(data);
   }
 
-  // Bounding-box centroid of the DERIVED geometry (relief mesh and/or fitted
-  // primitives) — excludes "projection_backdrop" (the always-emitted flat
-  // catch-all far plane, same one 🎬 Backdrop toggles; see its comment
-  // above), since including that would drag the centroid out toward the
-  // frustum's far edge instead of the actual reconstructed subject. Called
-  // once buildDerivedProxies has real geometry to measure (setProxies,
-  // below) to REPLACE applyRecoveredView's ground-point-in-view fallback —
-  // that fallback is a generic heuristic (where the camera's forward ray
-  // crosses Y=0) that only coincidentally matches the geometry's actual
-  // centre; this is exact. Returns null when there's no derived geometry yet
-  // (e.g. the workflow never ran AtlasDeriveProjectionGeometry), in which
-  // case the ground-point fallback is left in place.
-  function computeGeometryPivot() {
+  // Orbit pivot from the DERIVED geometry: the recovered camera's central
+  // view ray at the MEDIAN sampled vertex depth (was a Box3 bounding-box
+  // center until 2026-07-09 — see the inline comment for why that parked the
+  // pivot deep behind the subject on full-scene relief meshes). Excludes
+  // "projection_backdrop" (the always-emitted flat catch-all far plane, same
+  // one 🎬 Backdrop toggles); patch/clean-plate sources live in their own
+  // atlas_patch_N groups and are never included. Called once
+  // buildDerivedProxies has real geometry to measure (setProxies, below) to
+  // REPLACE applyRecoveredView's ground-point-in-view fallback. Returns null
+  // when there's no derived geometry yet, in which case that fallback stays.
+  function computeGeometryPivot(data) {
     const group = scene.getObjectByName("atlas_derived_proxies");
     if (!group?.children?.length) return null;
-    const box = new THREE.Box3();
-    let any = false;
+    // Recovered camera origin + forward from the payload — NOT the live
+    // camera: the pivot is recomputed on every execution and must not depend
+    // on wherever the user has orbited to.
+    let origin, forward;
+    if (data?.view_matrix) {
+      const flat = data.view_matrix.flat();
+      const vm = new THREE.Matrix4();
+      vm.set(flat[0], flat[1], flat[2], flat[3], flat[4], flat[5], flat[6],
+             flat[7], flat[8], flat[9], flat[10], flat[11], flat[12], flat[13],
+             flat[14], flat[15]);
+      const c2w = vm.clone().invert();
+      origin = new THREE.Vector3().setFromMatrixPosition(c2w);
+      // Camera looks down -Z in camera space -> world forward = -(3rd column).
+      forward = new THREE.Vector3(
+        -c2w.elements[8], -c2w.elements[9], -c2w.elements[10]).normalize();
+    } else {
+      origin = camera.position.clone();
+      forward = camera.getWorldDirection(new THREE.Vector3());
+    }
+    // Pivot = the central view ray at the MEDIAN sampled vertex depth — not
+    // the bounding-box center. A Box3 center is (min+max)/2, i.e. dominated
+    // by tails: a single full-scene relief mesh (the hidden-geometry
+    // workflows' base geometry) spans near-foreground to the far clip plus
+    // fill/outpaint skirts, which parked the pivot deep behind the subject
+    // (artist-reported 2026-07-09). The median vertex depth is the depth of
+    // the middle of the visible surface AREA (relief grids sample the image
+    // uniformly), which matches "the middle of what the photo shows".
+    const depths = [];
+    group.updateMatrixWorld(true);
+    const v = new THREE.Vector3();
     group.children.forEach((mesh) => {
       if (mesh.name === "projection_backdrop") return;
-      box.expandByObject(mesh);
-      any = true;
+      const pos = mesh.geometry?.attributes?.position;
+      if (!pos?.count) return;
+      const stride = Math.max(1, Math.floor(pos.count / 800));
+      for (let i = 0; i < pos.count; i += stride) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+        const d = v.sub(origin).dot(forward);
+        if (d > 0 && Number.isFinite(d)) depths.push(d);
+      }
     });
-    return any && !box.isEmpty() ? box.getCenter(new THREE.Vector3()) : null;
+    if (!depths.length) return null;
+    depths.sort((a, b) => a - b);
+    const median = depths[Math.floor(depths.length / 2)];
+    return origin.clone().addScaledVector(forward, median);
   }
 
   // Layered VP / horizon / ground diagnostic diagram. viewBox uses the
@@ -2895,8 +2891,9 @@ function buildNodeUI(node, containerEl) {
       // re-syncs the orbit SPHERE PARAMETERS from wherever the camera already
       // is — never moves the camera itself, so this can't disrupt an
       // in-progress inspection even on a re-execution (e.g. ⏺ Bake Proxy Path).
-      const geometryPivot = computeGeometryPivot();
+      const geometryPivot = computeGeometryPivot(data);
       if (geometryPivot) {
+        lastGeometryPivot = geometryPivot;
         controls.setTarget(geometryPivot);
         controls.syncFromCamera();
       }

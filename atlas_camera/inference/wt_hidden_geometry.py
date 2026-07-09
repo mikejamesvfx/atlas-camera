@@ -130,13 +130,20 @@ def predict_layered_depth_wt(
     device = resolve_device(device, torch)
     _require_wt(wt_path)
     model, cfg = _get_wt_model(wt_path, device)
-    from wt.data import load_rgba_image, preprocess_rgba_for_model  # type: ignore
+    from wt.data import preprocess_rgba_for_model  # type: ignore
     from wt.inference import (  # type: ignore
         _bypass_activation_checkpointing,
         inference_diffusion,
     )
+    from PIL import Image
 
-    rgba = load_rgba_image(Path(image_path), auto_alpha=False)
+    # Build the RGBA ourselves with an explicit OPAQUE alpha: scene mode is
+    # full-frame-as-foreground BY DESIGN (wt's own infer_scene.py), but their
+    # shared loader prints a scary "no alpha channel / ghost geometry" warning
+    # written for the object pipeline — handing it a real alpha says what we
+    # mean and keeps the ComfyUI log clean.
+    rgb = np.asarray(Image.open(image_path).convert("RGB"), dtype=np.uint8)
+    rgba = np.dstack([rgb, np.full(rgb.shape[:2], 255, dtype=np.uint8)])
     h, w = rgba.shape[:2]
     rgb_t, mask_t, intr_t = preprocess_rgba_for_model(
         rgba,

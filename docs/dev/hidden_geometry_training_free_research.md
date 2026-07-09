@@ -253,8 +253,50 @@ indoor; WT wins the canyon outright — its OOD claim is real but not uniform.
 The registration rel-MAD is a trustworthy live go/no-go: every misregistered
 case self-reported "poor". Saved as per-scene example workflows with the
 optimal settings baked in:
-`examples/atlas_camera_hidden_geometry_{cathedral,steep_ridge,canyon,wide_valley}_workflow.json`
-(outdoor variant keeps the sky heuristic — no SolidMask exclude).
+`examples/atlas_camera_hidden_geometry_{cathedral,steep_ridge,canyon,wide_valley,space_hangar,jungle_temple}_workflow.json`
+(outdoor variant keeps the sky heuristic — no SolidMask exclude; interiors —
+cathedral, hangar — wire SolidMask 0). Second WT sweep (hangar + jungle):
+hangar rel-MAD 0.105 but SHALLOW — coverage 3%→25% needed clear_rel 0.10
+(gentlest margin; partial by nature, diffusion carries the rest); jungle
+96–99% at every config, rel-MAD 0.186 — chose the CONSERVATIVE 0.30/0.30
+(4.2m median separations) over the loosest (2.1m) to avoid near-duplicate
+foliage-layer geometry in dense canopy.
+
+## V2: THE MASK-MEMBERSHIP X-RAY LAYER (2026-07-09 evening, 6 calibration rounds)
+
+Artist-reported "very little X-ray is built" on the jungle led to the deepest
+calibration of the day and a superseding architecture:
+
+1. **Depth bands can't hold near-field hidden geometry.** Predicted surfaces
+   behind NEAR occluders are themselves near (jungle: p50 4.7m off 3–8m
+   foliage). Measured: every split value 0.30–0.55 lost 76–97% of predictions
+   to the bg band's near boundary. Fix: layer membership by MASK, not depth —
+   `hidden_mask → GrowMask(32) → InvertMask → exclude_mask` (geometry region),
+   `paint_matte → layer_matte` (paint), band uncapped. 100% kept by
+   construction; the band-split node left the graphs entirely.
+2. **Fragmented predictions shred the mesh via the world-edge check** —
+   measured IMMUNE to `depth_edge_rel` (identical at 1.5 vs 3.0), grid, and
+   dilation. At 4m depth a 10px mesh cell is ~1cm laterally, so ~15cm steps
+   between adjacent layer-selections trip `max_edge_factor` everywhere. Fixes
+   at the SOURCE (node coherence pass): `fill_gaps` — dual-field Jacobi
+   diffusion of the predictions into ONE surface across the restrict region
+   (`core/hidden_geometry.fill_hidden_gaps`) — and `smooth_px` **gaussian**
+   smoothing. Median was measured USELESS here (0.455 vs gaussian 0.260):
+   median filters are edge-preserving and keep exactly the steps that tear.
+3. **Geometry ≠ paint.** Clamping filled depth out to a farther visible
+   surface (see-through gaps) re-created the seams — so the surface stays
+   continuous and a separate `paint_matte` (4th node output: only pixels
+   genuinely behind a nearer occluder) drives the layer matte + 🩻 tint;
+   gaps discard in the shader and show the base mesh's real content.
+4. **Pin the seed**: ComfyUI auto-adds a randomize control to widgets named
+   `seed` — WT's generative geometry silently re-rolled every queue until the
+   workflows shipped `control_after_generate="fixed"`.
+
+Final hole-in-paint (fraction of the painted hidden surface with no geometry):
+hangar **0.07**, canyon **0.19**, jungle **0.26** (from 0.67 at the start of
+the session). Jungle's residue is genuinely fragmented canopy — the honest
+floor without exposing `max_edge_factor` (noted as a possible core follow-up).
+All six workflows regenerated on this architecture.
 
 **Licensing blocker for shipping:** the LaRI repo has **NO license file** —
 default all-rights-reserved, stricter than CC BY-NC. We cannot vendor or

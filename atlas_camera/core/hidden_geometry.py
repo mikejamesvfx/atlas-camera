@@ -61,6 +61,77 @@ def register_layers_to_depth(
     return scale, rel_mad, valid
 
 
+def fill_hidden_gaps(
+    hidden: Any,
+    hidden_valid: Any,
+    region: Any,
+    *,
+    downsample: int = 8,
+    iterations: int = 300,
+) -> tuple[Any, Any]:
+    """Diffuse sparse hidden-depth predictions across ``region`` -> one
+    coherent surface.
+
+    Per-pixel layer selection produces FRAGMENTED predictions (dense foliage:
+    adjacent pixels pick different layers or none), and fragmented depth
+    shreds the downstream relief mesh via its world-edge check regardless of
+    ``depth_edge_rel`` (measured — see the 2026-07-09 calibration). This
+    treats the valid predictions as Dirichlet samples of a single hidden
+    surface and Jacobi-diffuses them across the rest of ``region`` on a
+    ``downsample``d grid (dual-field trick: diffuse value*weight and weight,
+    divide) — the same "invent smooth depth from trusted samples" move as
+    ``build_relief_mesh``'s fill_occluded.
+
+    Returns ``(hidden_out, valid_out)``: ``hidden_out`` has diffused values on
+    reached region pixels (original predictions kept verbatim), ``valid_out``
+    = predictions ∪ reached fill. Unreachable pixels stay invalid.
+    """
+    np = _require_numpy()
+    hidden = np.asarray(hidden, dtype=np.float64)
+    hidden_valid = np.asarray(hidden_valid, dtype=bool)
+    region = np.asarray(region, dtype=bool)
+    H, W = hidden.shape
+    ds = max(1, int(downsample))
+    hs, ws = (H + ds - 1) // ds, (W + ds - 1) // ds
+    padH, padW = hs * ds - H, ws * ds - W
+    hp = np.pad(hidden, ((0, padH), (0, padW)))
+    vp = np.pad(hidden_valid, ((0, padH), (0, padW)))
+    rp = np.pad(region, ((0, padH), (0, padW)))
+    # Block pooling: seed value = mean of valid predictions per block.
+    vb = vp.reshape(hs, ds, ws, ds)
+    hb = (hp * vp).reshape(hs, ds, ws, ds)
+    cnt = vb.sum(axis=(1, 3)).astype(np.float64)
+    seed = np.divide(hb.sum(axis=(1, 3)), cnt, out=np.zeros((hs, ws)),
+                     where=cnt > 0)
+    seeded = cnt > 0
+    reg_s = rp.reshape(hs, ds, ws, ds).any(axis=(1, 3))
+
+    # Dual-field Jacobi: diffuse (value*weight) and (weight) together, keep
+    # seeds pinned; weight > eps marks cells the diffusion actually reached.
+    val = np.where(seeded, seed, 0.0)
+    wgt = seeded.astype(np.float64)
+    inside = reg_s & ~seeded
+    for _ in range(int(iterations)):
+        nv = (np.roll(val, 1, 0) + np.roll(val, -1, 0)
+              + np.roll(val, 1, 1) + np.roll(val, -1, 1)) * 0.25
+        nw = (np.roll(wgt, 1, 0) + np.roll(wgt, -1, 0)
+              + np.roll(wgt, 1, 1) + np.roll(wgt, -1, 1)) * 0.25
+        val = np.where(inside, nv, val)
+        wgt = np.where(inside, nw, wgt)
+    reached = seeded | (inside & (wgt > 1e-6))
+    filled_s = np.divide(val, np.maximum(wgt, 1e-12))
+    filled_s = np.where(reached, filled_s, 0.0)
+
+    # Nearest-upsample back (blocks << the downstream mesh grid cell size;
+    # the node's median smoothing softens block edges further).
+    up = np.repeat(np.repeat(filled_s, ds, 0), ds, 1)[:H, :W]
+    reached_up = np.repeat(np.repeat(reached, ds, 0), ds, 1)[:H, :W]
+    fill_px = region & reached_up & ~hidden_valid
+    hidden_out = np.where(fill_px, up, hidden)
+    valid_out = hidden_valid | fill_px
+    return hidden_out, valid_out
+
+
 def select_hidden_surface(
     layered_z: Any,
     visible_depth: Any,

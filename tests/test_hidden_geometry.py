@@ -111,7 +111,7 @@ def test_node_patches_depth_and_reports(monkeypatch, tmp_path):
         image_width=W, image_height=H, near=2.0, far=10.0)
     image = torch.rand(1, H, W, 3, dtype=torch.float32)
 
-    out, mask, report = AtlasPredictHiddenGeometry().predict(
+    out, mask, report, paint = AtlasPredictHiddenGeometry().predict(
         depth_in, image, clear_rel=0.2)
 
     assert out.model_id.endswith("+lari_hidden")
@@ -126,7 +126,7 @@ def test_node_patches_depth_and_reports(monkeypatch, tmp_path):
     # restrict_mask limits substitution
     restrict = torch.zeros(1, H, W)
     restrict[0, :16, :] = 1.0
-    out2, mask2, _ = AtlasPredictHiddenGeometry().predict(
+    out2, mask2, _, _ = AtlasPredictHiddenGeometry().predict(
         depth_in, image, clear_rel=0.2, restrict_mask=restrict)
     assert bool(mask2[0, 20:, :].max() == 0)  # nothing below row 16
 
@@ -162,7 +162,7 @@ def test_wt_backend_dispatch_and_report(monkeypatch, tmp_path):
         image_width=W, image_height=H, near=2.0, far=10.0)
     image = torch.rand(1, H, W, 3, dtype=torch.float32)
 
-    out, mask, report = AtlasPredictHiddenGeometry().predict(
+    out, mask, report, paint = AtlasPredictHiddenGeometry().predict(
         depth_in, image, clear_rel=0.2,
         model="world-tracing-scene", steps=7, seed=123)
 
@@ -181,7 +181,7 @@ def test_wt_backend_dispatch_and_report(monkeypatch, tmp_path):
 
     monkeypatch.setattr(whg, "predict_layered_depth_wt", exploding_wt)
     monkeypatch.setattr(lhg, "predict_layered_depth", fake_lari)
-    out2, _, report2 = AtlasPredictHiddenGeometry().predict(
+    out2, _, report2, _ = AtlasPredictHiddenGeometry().predict(
         depth_in, image, clear_rel=0.2)
     assert "LaRI" in report2
 
@@ -191,6 +191,67 @@ def test_wt_require_raises_informative_error_without_clone():
 
     with pytest.raises(RuntimeError, match="CC BY-NC-ND"):
         _resolve_wt_root("C:/definitely/not/a/wt/clone")
+
+
+def test_fill_hidden_gaps_diffuses_sparse_predictions():
+    """Sparse predictions inside a region diffuse into one coherent surface;
+    pixels outside the region are untouched; originals kept verbatim."""
+    from atlas_camera.core.hidden_geometry import fill_hidden_gaps
+
+    H = W = 64
+    hidden = np.zeros((H, W))
+    valid = np.zeros((H, W), bool)
+    region = np.zeros((H, W), bool)
+    region[8:56, 8:56] = True
+    # two sparse prediction islands at 10.0 and 12.0
+    hidden[10:14, 10:14] = 10.0; valid[10:14, 10:14] = True
+    hidden[46:50, 46:50] = 12.0; valid[46:50, 46:50] = True
+
+    out, valid_out = fill_hidden_gaps(hidden, valid, region, downsample=4,
+                                      iterations=400)
+    # originals verbatim
+    np.testing.assert_allclose(out[11, 11], 10.0)
+    np.testing.assert_allclose(out[47, 47], 12.0)
+    # gap filled with values between the two islands
+    assert valid_out[30, 30]
+    assert 9.0 < out[30, 30] < 13.0
+    # region coverage grew massively; outside untouched
+    assert valid_out[region].mean() > 0.9
+    assert not valid_out[~region].any()
+    assert out[0, 0] == 0.0
+
+
+def test_hidden_provenance_metadata_on_patched_depth(monkeypatch, tmp_path):
+    """The patched depth carries hidden_mask_b64 (JSON-safe PNG data URI) +
+    hidden_backend, and _b64_png_to_mask round-trips the mask exactly."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+
+    from atlas_camera.comfy.nodes import AtlasPredictHiddenGeometry, _b64_png_to_mask
+    from atlas_camera.inference.depth_estimator import DepthResult
+    import atlas_camera.inference.lari_hidden_geometry as lhg
+
+    H = W = 32
+    visible, layers, fg = _synthetic_scene(H, W)
+
+    monkeypatch.setattr(lhg, "predict_layered_depth", lambda p, **k: lhg.LayeredDepthResult(
+        layers=layers.astype(np.float32), image_width=W, image_height=H,
+        metadata={}))
+
+    depth_in = DepthResult(
+        depth=visible.astype(np.float32), is_metric=True, model_id="fake",
+        image_width=W, image_height=H, near=2.0, far=10.0)
+    image = torch.rand(1, H, W, 3, dtype=torch.float32)
+
+    out, mask, _, paint = AtlasPredictHiddenGeometry().predict(depth_in, image, clear_rel=0.2)
+    assert out.metadata["hidden_backend"] == "lari"
+    hb64 = out.metadata["hidden_mask_b64"]
+    assert hb64.startswith("data:image/png;base64,")
+    decoded = _b64_png_to_mask(hb64)
+    np.testing.assert_array_equal(decoded, mask[0].numpy() > 0.5)
+    # metadata must stay JSON-serializable (DepthResult.summary contract)
+    import json
+    json.dumps(out.metadata)
 
 
 def test_node_registered():

@@ -179,6 +179,21 @@ def _extend_edge_colors(rgb, valid, px):
     return out, valid | fill
 
 
+def _b64_png_to_mask(b64: str):
+    """Inverse of _mask_to_b64_png: PNG data URI -> (H,W) bool numpy array.
+    Used to thread AtlasPredictHiddenGeometry's hidden_mask (stored JSON-safe
+    in the patched depth's metadata) into a band layer's ProjectionSource.
+    Fails soft to None."""
+    try:
+        np = _require_numpy()
+        PILImage = _require_pil()
+        raw = base64.b64decode(b64.split(",", 1)[1] if "," in b64 else b64)
+        arr = np.asarray(PILImage.open(io.BytesIO(raw)).convert("L"))
+        return arr > 127
+    except Exception:
+        return None
+
+
 def _mask_to_b64_png(mask_arr) -> str:
     """(H,W) bool/float numpy array -> grayscale PNG data URI, for
     ProjectionSource.mask_b64 (the per-pixel edge matte the projection shader
@@ -409,6 +424,10 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
             "azimuth_deg": float(src.azimuth_deg),
             "elevation_deg": float(src.elevation_deg),
             "projection_mode": (src.metadata or {}).get("projection_mode"),
+            # 🩻 hidden-geometry provenance (AtlasPredictHiddenGeometry via a
+            # band layer) — drives the viewport's debug tint overlay.
+            "hidden_mask_b64": (src.metadata or {}).get("hidden_mask_b64") or "",
+            "hidden_backend": (src.metadata or {}).get("hidden_backend") or "",
             "proxy_geometry": serialize_proxy_geometry(
                 AtlasProjectionScene(proxy_geometry=list(src.proxy_geometry)),
             ),
@@ -1875,8 +1894,8 @@ class AtlasPredictHiddenGeometry:
     upstream license, research use only; atlas_camera bundles none of it).
     Point `lari_path` (or the ATLAS_LARI_PATH env var) at the clone.
     """
-    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "MASK", "STRING")
-    RETURN_NAMES = ("depth", "hidden_mask", "report")
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "MASK", "STRING", "MASK")
+    RETURN_NAMES = ("depth", "hidden_mask", "report", "paint_matte")
     FUNCTION = "predict"
     CATEGORY = "Atlas Camera/Experimental"
 
@@ -1921,12 +1940,27 @@ class AtlasPredictHiddenGeometry:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1,
                     "tooltip": "Diffusion seed (world-tracing backend only — "
                     "WT is generative; pin this for reproducible hidden geometry)."}),
+                "smooth_px": ("INT", {"default": 31, "min": 0, "max": 201,
+                    "tooltip": "Gaussian-smooth the substituted hidden depth "
+                    "(sigma ≈ 0.75×this, px). Layer-switch seams and fill-block "
+                    "steps shred the downstream relief mesh via its world-edge "
+                    "check (immune to depth_edge_rel — measured; and a MEDIAN "
+                    "filter preserves exactly those steps, also measured). "
+                    "0 = off."}),
+                "fill_gaps": ("BOOLEAN", {"default": True,
+                    "tooltip": "Diffuse the predictions across the WHOLE "
+                    "restrict_mask region (needs restrict_mask wired): treats "
+                    "scattered per-pixel predictions as samples of ONE coherent "
+                    "hidden surface, so the X-ray layer meshes continuously "
+                    "instead of shredding on fragmented masks (foliage). "
+                    "Filled depth is clamped to stay BEHIND the visible surface."}),
             },
         }
 
     def predict(self, depth, image, lari_path="", device="auto",
                 clear_rel=0.15, min_clear_m=0.0, restrict_mask=None,
-                model="lari-scene", wt_path="", steps=20, seed=0):
+                model="lari-scene", wt_path="", steps=20, seed=0,
+                smooth_px=31, fill_gaps=True):
         np = _require_numpy()
         torch = _require_torch()
         from atlas_camera.core.hidden_geometry import select_hidden_surface
@@ -1963,6 +1997,7 @@ class AtlasPredictHiddenGeometry:
             layers_up, raw, clear_rel=clear_rel,
             min_clear=(min_clear_m if min_clear_m > 0 else None))
 
+        region = None
         if restrict_mask is not None:
             m = restrict_mask
             if m.dim() == 3:
@@ -1972,24 +2007,73 @@ class AtlasPredictHiddenGeometry:
             )[0, 0].numpy() > 0.5
             hidden_valid = hidden_valid & m
             stats["restricted_coverage"] = float(hidden_valid.mean())
+            region = m & (raw > 1e-6)
+
+        # Coherence pass (see the smooth_px/fill_gaps tooltips): fragmented
+        # per-pixel predictions shred the downstream relief mesh via its
+        # world-edge check, so (a) diffuse the predictions into ONE surface
+        # across the restrict region, (b) median-smooth the layer-switch
+        # seams, (c) clamp the result to stay BEHIND the visible surface.
+        if fill_gaps and region is not None and hidden_valid.any():
+            from atlas_camera.core.hidden_geometry import fill_hidden_gaps
+            n_pred = int(hidden_valid.sum())
+            hidden, hidden_valid = fill_hidden_gaps(hidden, hidden_valid, region)
+            stats["filled_fraction"] = float(
+                (int(hidden_valid.sum()) - n_pred) / max(int(hidden_valid.sum()), 1))
+        if smooth_px and int(smooth_px) > 1 and hidden_valid.any():
+            try:
+                # GAUSSIAN, not median (calibrated 2026-07-09): median is
+                # edge-preserving, so it kept the fill's block steps intact and
+                # the mesh kept shredding (jungle hole-in-paint 0.455 median vs
+                # 0.260 gaussian). The diffusion fill already handles outliers.
+                from scipy.ndimage import gaussian_filter
+                field = np.where(hidden_valid, hidden, raw)
+                hidden = gaussian_filter(field, sigma=0.75 * float(smooth_px))
+                stats["smooth_px"] = int(smooth_px)
+            except ImportError:
+                stats["warning_smooth"] = "scipy unavailable — smoothing skipped"
+        # Geometry vs paint are SEPARATE concerns (jungle calibration lesson):
+        # the substituted surface must stay CONTINUOUS to mesh (no clamping —
+        # clamping filled depth out to a farther visible surface at see-through
+        # gaps re-creates the metre-scale seams the fill just removed), while
+        # PAINTING is only correct where the hidden surface is genuinely behind
+        # a nearer occluder. paint_matte = those pixels; wire it into the
+        # X-ray band's layer_matte so see-through gaps discard in the shader
+        # (revealing the base mesh's real far content) without fragmenting
+        # the geometry.
+        paint = hidden_valid & (hidden > raw * 1.02)
+        stats["paint_fraction"] = float(paint.mean())
 
         patched = raw.copy()
         patched[hidden_valid] = hidden[hidden_valid]
 
         scalar_stats = {k: v for k, v in stats.items()
                         if isinstance(v, (int, float, str))}
+        backend = "world-tracing" if model == "world-tracing-scene" else "lari"
+        # Provenance for the viewport's 🩻 debug overlay: WHICH pixels were
+        # substituted and by WHICH backend, threaded (JSON-safe PNG data URI —
+        # DepthResult.metadata must stay summary()-serializable) through
+        # AtlasCleanPlateLayer into the ProjectionSource payload.
+        provenance = {"hidden_backend": backend}
+        if paint.any():
+            # The 🩻 tint marks PAINTED hidden surface (paint matte), not the
+            # full continuity-filled region — see the geometry-vs-paint note.
+            hb64 = _mask_to_b64_png(paint)
+            if hb64:
+                provenance["hidden_mask_b64"] = hb64
         out = DepthResult(
             depth=patched.astype(np.float32),
             is_metric=depth.is_metric,
-            model_id=f"{depth.model_id}+lari_hidden",
+            model_id=f"{depth.model_id}+{backend}_hidden",
             image_width=depth.image_width,
             image_height=depth.image_height,
             near=float(patched.min()),
             far=float(patched.max()),
-            metadata={**depth.metadata, "research_only": True,
+            metadata={**depth.metadata, "research_only": True, **provenance,
                       **{f"hidden_{k}": v for k, v in scalar_stats.items()}},
         )
         mask_t = torch.from_numpy(hidden_valid.astype(np.float32))[None]
+        paint_t = torch.from_numpy(paint.astype(np.float32))[None]
 
         rel_mad = stats.get("registration_rel_mad", float("inf"))
         quality = ("good" if rel_mad < 0.2 else
@@ -2022,7 +2106,7 @@ class AtlasPredictHiddenGeometry:
             + "Hidden depth is a hypothesis — best on indoor/architectural "
               "scenes; verify by orbiting the projected result."
         )
-        return (out, mask_t, report)
+        return (out, mask_t, report, paint_t)
 
 
 class AtlasDeriveReliefMesh:
@@ -4754,6 +4838,28 @@ class AtlasCleanPlateLayer:
             else:
                 extend_region = None
             source.mask_b64 = _mask_to_b64_png(matte) or None
+
+        # 🩻 Hidden-geometry provenance pass-through: when the wired depth was
+        # patched by AtlasPredictHiddenGeometry, its metadata carries the
+        # substitution mask + backend — ride them into this ProjectionSource so
+        # the viewport's debug overlay can tint the invented surface region.
+        # Resized/padded to this source's (possibly frame-outpainted) plate/uv
+        # space, matching the embedded matte's conventions.
+        dmeta = getattr(depth, "metadata", None) or {}
+        if dmeta.get("hidden_mask_b64"):
+            hm = _b64_png_to_mask(dmeta["hidden_mask_b64"])
+            if hm is not None:
+                from atlas_camera.core.solver import _resize_depth
+                if hm.shape != (setup.height, setup.width):
+                    hm = _resize_depth(
+                        hm.astype(np.float32), setup.width, setup.height) > 0.5
+                if pad:
+                    hm = np.pad(hm, pad, mode="edge")
+                enc = _mask_to_b64_png(hm)
+                if enc:
+                    source.metadata["hidden_mask_b64"] = enc
+                    source.metadata["hidden_backend"] = (
+                        dmeta.get("hidden_backend") or "lari")
 
         out = copy.deepcopy(solve)
         out.projection_sources.append(source)
