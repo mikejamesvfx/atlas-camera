@@ -27,6 +27,19 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   and the solve gate ships closed. Verified: a bg-band-only session (all
   other stages bypassed) runs end-to-end.
 
+### Staged master workflow v4: per-layer SAM3 scoping
+
+- A depth band alone cuts through objects (e.g. background trees share a band
+  with everything else at that distance). The staged master gained a
+  "SAM SCOPE" group with one row per band: `SAM3Segment` (prompt per shot) →
+  `GrowMask(16)` → `InvertMask` → `MaskComposite(add)` with the sky mask → a
+  `scope_*` rail feeding that stage's `exclude_mask` inputs. The layer's mesh
+  and auto paint matte then keep only band ∩ segment — the same
+  mask-membership pattern as the X-ray layer, built entirely from existing
+  nodes. Un-bypass a row's `MaskComposite` to activate it; bypassed rows fall
+  back to sky-only (plain band) behavior. Ships with the far row active
+  (prompt "trees") as the worked example.
+
 ### Two distributions: `main` (working) vs `experimental` (🔬 enabled)
 
 - Experimental nodes (`AtlasRenderFix`, `AtlasPredictHiddenGeometry`) now
