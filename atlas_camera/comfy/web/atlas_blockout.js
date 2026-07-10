@@ -3078,10 +3078,14 @@ function atlasOutputProfileFromWidgets(node) {
     output_colorspace: atlasWidgetValue(node, "output_colorspace", "ACES - ACEScg"),
     display: atlasWidgetValue(node, "display", "sRGB - Display"),
     view: atlasWidgetValue(node, "view", "ACES 2.0 SDR-video"),
-    look: atlasWidgetValue(node, "look", "None"),
-    lut_path: atlasWidgetValue(node, "lut_path", ""),
-    exposure: Number(atlasWidgetValue(node, "exposure", 0)) || 0,
-    gamma: Number(atlasWidgetValue(node, "gamma", 1)) || 1,
+    // look/lut_path/exposure/gamma widgets removed 2026-07-10 (redundant on
+    // the node — exposure duplicated the viewport's own ☀ control); the
+    // profile keys stay at neutral defaults so applyOutputProfilePreview and
+    // downstream consumers keep their contract unchanged.
+    look: "None",
+    lut_path: "",
+    exposure: 0,
+    gamma: 1,
     display_trim: Number(atlasWidgetValue(node, "display_trim", 1)) || 1,
     preview_only: true,
   };
@@ -3186,10 +3190,6 @@ function buildAtlasOutputDesk(node, container) {
   addColorField("Output", "output_colorspace");
   addColorField("Display", "display");
   addColorField("View", "view");
-  addColorField("Look", "look");
-  addColorField("LUT", "lut_path");
-  addColorField("Exposure", "exposure", "number", { step: "0.1" });
-  addColorField("Gamma", "gamma", "number", { step: "0.05", min: "0.1" });
   addColorField("Trim", "display_trim", "number", { step: "0.05", min: "0" });
   const previewNote = document.createElement("div");
   previewNote.textContent = "Display-inferred preview only. Final OCIO/LUT fidelity belongs to OCIO Write, Nuke, Maya, or Resolve.";

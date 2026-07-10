@@ -4311,10 +4311,16 @@ class AtlasViewportControls:
                 "output_colorspace": ("STRING", {"default": "ACES - ACEScg"}),
                 "display": ("STRING", {"default": "sRGB - Display"}),
                 "view": ("STRING", {"default": "ACES 2.0 SDR-video"}),
-                "look": ("STRING", {"default": "None"}),
-                "lut_path": ("STRING", {"default": ""}),
-                "exposure": ("FLOAT", {"default": 0.0, "min": -10.0, "max": 10.0, "step": 0.1}),
-                "gamma": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}),
+                # look/lut_path/exposure/gamma widgets removed 2026-07-10
+                # (user: redundant — exposure duplicated the viewport's own ☀
+                # control, gamma was a crude CSS filter, look/lut were inert
+                # metadata) to make room on the Output Desk. profile() still
+                # accepts them as kwargs and the AtlasOutputProfile schema
+                # keeps the fields defaulted, so old prompts/API workflows and
+                # every downstream consumer are unaffected. NOTE: this is the
+                # one sanctioned widget REMOVAL — display_trim moved from
+                # widgets_values index 10 to 6, and every shipped example
+                # carrying this node was re-saved in the same commit.
                 "display_trim": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05}),
             },
         }
