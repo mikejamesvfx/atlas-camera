@@ -3256,8 +3256,40 @@ app.registerExtension({
     await loadThree();
   },
 
+  // Migration shim: workflows saved before 2026-07-10 serialized 11 (or 12,
+  // with a trailing DOM-widget placeholder) widgets_values on
+  // AtlasViewportControls — look/lut_path/exposure/gamma sat at indices 6-9
+  // ahead of display_trim. After those widgets were removed, a stale array
+  // feeds the old `look` string ("None") into display_trim and the prompt
+  // fails FLOAT validation. widgets_values is positional, so heal it here,
+  // BEFORE litegraph assigns widget values (onConfigure fires too late for
+  // that). New-layout arrays (length 7/8) pass through untouched.
+  beforeConfigureGraph(graphData) {
+    for (const n of graphData?.nodes ?? []) {
+      if (n.type !== "AtlasViewportControls") continue;
+      const wv = n.widgets_values;
+      if (Array.isArray(wv) && wv.length >= 11) {
+        wv.splice(6, 4);
+        console.log("[AtlasCamera] migrated stale AtlasViewportControls widgets_values (node", n.id, ")");
+      }
+    }
+  },
+
   async nodeCreated(node) {
     if (node.comfyClass === "AtlasViewportControls") {
+      // Second half of the widgets_values migration: a node PASTED from an
+      // old clipboard bypasses beforeConfigureGraph, and litegraph assigns
+      // widget values before onConfigure — so sanitize AFTER configure runs.
+      // display_trim is the only numeric widget; a stale array shifts the
+      // old `look` string into it (NaN). Install synchronously, before the
+      // await below, or configure fires first and we miss it.
+      const prevControlsConfigure = node.onConfigure;
+      node.onConfigure = function (...args) {
+        const out = prevControlsConfigure?.apply(this, args);
+        const dt = this.widgets?.find((w) => w.name === "display_trim");
+        if (dt && !Number.isFinite(Number(dt.value))) dt.value = 1;
+        return out;
+      };
       // Wait one tick for ComfyUI to finish building the node DOM.
       await new Promise((r) => setTimeout(r, 0));
       const container = document.createElement("div");
