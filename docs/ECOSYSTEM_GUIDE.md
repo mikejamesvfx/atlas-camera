@@ -548,11 +548,10 @@ ComfyUI's browser canvas for interactive, click-around testing:
 | `atlas_camera_learned_workflow.json` | The full 26-node learned pipeline — every analysis node, viewport, and all 5 DCC export formats. |
 | `atlas_camera_full_workflow.json` | Original 20-node vanishing-point workflow (no neural deps). |
 | `atlas_camera_multiangle_patch_proof_workflow.json` | Multi-angle patch calibration proof (§3.3). |
-| `atlas_camera_vertical_extrusion_comparison_workflow.json` | Primitive-method comparison. |
+| `api_format/atlas_camera_vertical_extrusion_comparison_workflow.json` | Primitive-method comparison (API format). |
 | `atlas_camera_reference_scale_workflow.json` **(new)** | Tier-1 reference-object scale demo, with an in-canvas caution note about AI-generated-image limitations (§3.4). |
 | `atlas_camera_vlm_scale_cues_workflow.json` **(new)** | `AtlasVLMScaleCues` preset for the now-fixed LM Studio path, with the quantized-model reliability caveat (§4.4) documented in-canvas. |
 | `atlas_camera_vfx_ocio_output_workflow.json` **(new)** | The VFX/OCIO integration from §5. |
-| `atlas_camera_luminance_stack_acescg_workflow.json` **(new)** | Five-stop Luminance Stack Processor HDR merge → OCIO `Linear Rec.709 (sRGB)` to `ACEScg` → 16f EXR plate for `AtlasRegisterPlate`. |
 | `atlas_camera_inpaint_layers_workflow.json` **(new)** | 2.5D clean-plate parallax (§3.5) — in-repo Atlas nodes only; the external inpaint step is a documented placeholder note, wire it in by hand per `INSTALL.md`. |
 
 `examples/api_format/*.json` **(new)** — ComfyUI's raw **API format**

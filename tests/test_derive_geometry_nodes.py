@@ -106,6 +106,7 @@ def test_all_five_nodes_registered():
 
 
 def test_relief_mesh_produces_mesh_and_backdrop():
+    pytest.importorskip("torch")  # hole_mask output tensor needs torch
     solve = _solve()
     depth = _depth_result(_room_depth())
     out, hole_mask = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
@@ -118,6 +119,7 @@ def test_relief_mesh_produces_mesh_and_backdrop():
 
 
 def test_relief_quality_overrides_relief_grid():
+    pytest.importorskip("torch")  # hole_mask output tensor needs torch
     solve = _solve()
     depth = _depth_result(_room_depth())
     out, _hole_mask = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32, relief_quality="low")
