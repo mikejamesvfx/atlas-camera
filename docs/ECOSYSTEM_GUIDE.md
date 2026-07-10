@@ -70,10 +70,16 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (37 nodes, category "Atlas Camera")
+## 2. The Node Catalog (47 nodes, category "Atlas Camera")
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in.
+
+> Count refreshed 2026-07-09. The tables below predate the newest additions —
+> the shared-depth layer nodes (`AtlasDepthMap`, `AtlasCleanPlateLayer`,
+> `AtlasDepthLayerMask`, `AtlasSkyDomeLayer`), `AtlasAssessImage`, and
+> `AtlasPredictHiddenGeometry` 🔬 — which are covered in the dated addenda at
+> the end of this guide and, in full, in CLAUDE.md's catalog.
 
 ### Solve
 
@@ -714,3 +720,106 @@ lever: `frame_outpaint_px` for band layers (the sky's widened-camera trick),
 since Safe Zone measurements show the frame edge — not silhouettes — is the
 binding constraint on wide scenes.
 
+
+
+## Addendum — the 2026-07-09 session: DA3, the X-ray track, and the five-layer stack
+
+### Depth Anything 3 is the default
+
+`inference/depth_estimator.py` dispatches any `depth-anything/DA3*` model id
+to a second backend alongside the transformers V2 path. DA3METRIC emits
+*canonical* depth converted to metres as `focal_px_at_processed_res x out / 300`
+— and the focal comes from the **camera solve** (GeoCalib or vanishing
+points), closing a loop V2's fixed-FOV metric heads structurally can't. All
+solve-bearing call sites thread the solved focal; the image-only nodes take
+an optional `solve` input for the same. Measured (see
+`docs/dev/da3_backend_test_plan.md` and the chart below): ~3x fewer relief
+tears on 2 of 4 scenes, a usable mesh where V2 shattered to 0 faces, ground
+confidence to 0.96. Combo VALUES are append-only (they serialize into saved
+workflows); core-library defaults deliberately stay V2 so `[neural]`-only
+installs keep working.
+
+![DA3 vs V2 torn fraction](images/chart_da3_vs_v2.svg)
+
+### The experimental hidden-geometry track (research-only)
+
+`AtlasPredictHiddenGeometry` 🔬 predicts per-pixel layered ray intersections
+(the surfaces each camera ray pierces), registers the stack to the pipeline
+depth via layer-0 median scale, and substitutes the first layer that clears
+the occluder by a scene-adaptive margin. Two backends, one contract:
+**LaRI** (regression, ~0.2 s, no upstream license — user-cloned only) and
+**World Tracing** (diffusion, ~20-34 s, HF-gated, CC BY-NC-ND) — backend
+choice is per-scene and flips both ways (canyon: WT 0.113 vs LaRI 0.639;
+steep ridge: LaRI 0.134 vs WT 0.305). The node prints registration rel MAD
+every run; under 0.2 = trust it.
+
+The v2 architecture (6 calibration rounds) is **mask-membership, not depth
+bands**: predicted surfaces behind near occluders are themselves near, so
+every band split tried lost 76-97% of predictions. The X-ray layer's
+geometry region is the `hidden_mask` (GrowMask -> InvertMask ->
+`exclude_mask`), its paint is the `paint_matte`, band uncapped. Fragmented
+predictions shred the layer mesh via the world-edge check (immune to
+`depth_edge_rel`/grid/dilation — all measured no-ops); the node's coherence
+pass fixes it at the source: `fill_gaps` (dual-field Jacobi) + `smooth_px`
+**gaussian** smoothing (a median filter is edge-preserving and keeps exactly
+the steps that tear: 0.455 vs 0.260 measured). Final hole-in-paint: hangar
+0.07, canyon 0.19, jungle 0.26 (from 0.67).
+
+### The five-layer stack (what the six hero workflows build)
+
+![The layer stack](images/layer_stack.svg)
+
+Base relief mesh + backdrop (plate = the **feathered clean-plate composite**
+via ImageCompositeMasked, so background geometry never bakes in occluder
+pixels) -> matted **foreground layer** from the original photo (SAM x band
+mattes where band edges step) -> **X-ray layer** (LaMa-inpainted plate on
+predicted geometry) -> **sky dome** on outdoor scenes. Interiors disable the
+sky heuristic (SolidMask 0 -> `exclude_mask`). Seeds ship pinned
+(`control_after_generate="fixed"` — ComfyUI silently randomizes any widget
+named `seed` otherwise).
+
+Band-layer meshes stay at the calibrated 384 / 1.5 defaults. The measured
+tear curve explains both numbers — finer grids reduce spurious tears until
+cells approach pixel scale, and the looser edge threshold is safe inside a
+band because the band clip already bounds the depth range:
+
+![Torn fraction vs grid density](images/chart_torn_vs_grid.svg)
+
+### Viewport additions
+
+- **🎨 Layers** — opaque per-layer identity tints + legend; black = nothing
+  paints, always a finding.
+- **🩻 X-ray** — tints invented-geometry pixels (red = LaRI, blue = WT),
+  only under 📽 Project.
+- Orbit pivot is now the median sampled vertex depth on the camera's central
+  ray (a bounding-box center was tail-dominated on full-scene relief
+  meshes); 📷 Camera View resets via `{force:true}` (the fingerprint guard
+  had silently swallowed explicit resets); the dead primitive/proxy toolbar
+  buttons (Box/Plane/Cylinder/Person/Woman/Sedan) were removed.
+
+### The six hero scenes
+
+| | | |
+|---|---|---|
+| ![cathedral](images/scene_cathedral_nave.jpg) `cathedral` — LaRI, interior | ![hangar](images/scene_scifi_hangar.jpg) `space_hangar` — WT, shallow (clear_rel 0.10) | ![jungle](images/scene_jungle_temple.jpg) `jungle_temple` — WT, sky + SAM fg |
+| ![canyon](images/scene_canyon.jpg) `canyon` — WT wins (LaRI misregisters) | ![ridge](images/scene_steep_ridge.jpg) `steep_ridge` — LaRI wins (WT misregisters) | ![valley](images/scene_wide_valley.jpg) `wide_valley` — honest weak case |
+
+The remaining curated scenes (`docs/images/scene_*.jpg`: monument valley,
+ghost town, alpine village, sea-cliff castle, snow-capped peaks, the
+mountain-ridge figure) anchor the rest of the example catalog — each was
+chosen to stress one failure mode; the
+[🎞 Examples Catalog](https://claude.ai/code/artifact/186c3a6a-a778-40f0-8f39-fe29cfa6aace)
+maps every workflow to its scene.
+
+### Where the full story lives
+
+Three companion pages (same design system, published 2026-07-09):
+the [🥞 Build-Up Guide](https://claude.ai/code/artifact/77b10784-a6d5-4def-89bd-84cbfaabc21e)
+(the stack taught stage by stage), the
+[🎞 Examples Catalog](https://claude.ai/code/artifact/186c3a6a-a778-40f0-8f39-fe29cfa6aace)
+(every shipping workflow, scenes, settings, dependencies, professional/OCIO
+output), and [📊 Technical Details](https://claude.ai/code/artifact/4781289c-50dd-47fc-8571-1ef67513b7ba)
+(the measured numbers as charts). Repo-side: CLAUDE.md (full catalog +
+design rules), `docs/dev/hidden_geometry_training_free_research.md` (the
+complete research/calibration saga), `docs/dev/da3_backend_test_plan.md`,
+and THIRD_PARTY.md (license boundaries).

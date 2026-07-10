@@ -82,6 +82,7 @@ include = ["atlas_camera*", "atlas*"]
 
 [tool.setuptools.package-data]
 "atlas_camera.reference_data" = ["*.json"]
+"atlas_camera.inference" = ["fixer_shim/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

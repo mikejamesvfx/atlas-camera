@@ -1,8 +1,15 @@
 # Atlas Camera — ComfyUI Integration
 
+> **Vintage note (2026-07-09):** this page's two-track mental model is still
+> correct, but the catalog has grown to **47 nodes** — including the shared-depth
+> layer nodes, the sky dome, the Output Desk color track, and the experimental
+> hidden-geometry 🔬 node — and the default depth model is now DA3METRIC-LARGE.
+> For the current catalog see CLAUDE.md; for the layered-workflow story see
+> USER_GUIDE.md's 2026-07-09 section and ECOSYSTEM_GUIDE.md's addenda.
+
 ## Overview
 
-The `atlas_camera.comfy` package adds 18 ComfyUI nodes split across two tracks:
+The `atlas_camera.comfy` package adds ComfyUI nodes split across two tracks:
 
 - **Track 1 — Python-only nodes**: Solve, decompose, analysis masks, VP visualization, per-DCC exports. No browser dependency.
 - **Track 2 — AtlasBlockoutViewport**: A Three.js viewport embedded in the ComfyUI node panel. The recovered camera is applied to the Three.js camera so the scene pre-aligns with the source photo. Artist places blockout geometry, clicks Render Passes, and four IMAGE outputs (shaded / depth / normal / mask) flow into the graph.

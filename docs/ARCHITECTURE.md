@@ -123,6 +123,33 @@ interfaces should follow the same rule: produce suggestions with confidence and
 uncertainty, but do not directly alter the deterministic camera solve without
 artist or pipeline confirmation.
 
+As of 2026-07-09 the layer hosts four model families behind guarded imports:
+GeoCalib (learned camera prior), Depth Anything V2 and **Depth Anything 3**
+(monocular depth — DA3 is the default; its canonical depth is converted to
+metres with the *solved* focal), and the experimental layered-ray backends
+(LaRI, World Tracing — user-cloned, research-only; see THIRD_PARTY.md). Each
+wrapper returns torch-free dataclasses so torch never leaks into
+`atlas_camera.core`.
+
+## The ProjectionSource layer model (2026-07 addition)
+
+A solve is no longer just a camera plus derived geometry: `LatentScene` carries
+a list of `ProjectionSource` entries — each one a **camera + plate + optional
+per-pixel mattes + optional own geometry + priority**. This single schema
+object powers every layered workflow:
+
+- **clean-plate bands** (same camera as the primary, depth-band-clipped mesh,
+  inpainted plate),
+- **sky domes** (same pose, widened outpaint camera, SAM matte),
+- **X-ray layers** (patched hidden depth, LaMa plate, prediction mattes),
+- **multi-angle patches** (constructed orbit camera, novel-view plate).
+
+The viewport builds one projection material per source (facing-ratio and matte
+discards, priority ordering), and the DCC layer exporters materialise the same
+list through one shared collection (`exporters/_layers.py`) so Nuke and Maya
+can never drift. The design rule: new layer types should be new *metadata* on
+`ProjectionSource`, not new schema classes.
+
 ## LatentScene Direction
 
 The first concrete recovered object is the camera. Future scene components

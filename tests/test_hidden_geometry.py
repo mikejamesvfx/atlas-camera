@@ -254,11 +254,14 @@ def test_hidden_provenance_metadata_on_patched_depth(monkeypatch, tmp_path):
     json.dumps(out.metadata)
 
 
-def test_node_registered():
+def test_node_registered_in_experimental_tier():
+    # Experimental nodes live behind the ATLAS_EXPERIMENTAL gate (default off
+    # on main so a stock ComfyUI's menu stays universal) — registration is
+    # asserted against the experimental mapping, which the gate merges in.
     from atlas_camera.comfy.nodes import (
-        NODE_CLASS_MAPPINGS,
-        NODE_DISPLAY_NAME_MAPPINGS,
+        EXPERIMENTAL_NODE_CLASS_MAPPINGS,
+        EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS,
         AtlasPredictHiddenGeometry,
     )
-    assert NODE_CLASS_MAPPINGS["AtlasPredictHiddenGeometry"] is AtlasPredictHiddenGeometry
-    assert "research" in NODE_DISPLAY_NAME_MAPPINGS["AtlasPredictHiddenGeometry"]
+    assert EXPERIMENTAL_NODE_CLASS_MAPPINGS["AtlasPredictHiddenGeometry"] is AtlasPredictHiddenGeometry
+    assert "research" in EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS["AtlasPredictHiddenGeometry"]

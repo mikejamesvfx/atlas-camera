@@ -312,8 +312,8 @@ refs plus output profiles are for final handoff.**
 
 ## Reading the diagnostics
 
-The blockout viewport toolbar has three diagnostic controls, useful for
-sanity-checking a solve:
+The blockout viewport toolbar has a set of diagnostic controls, useful for
+sanity-checking a solve and, since 2026-07-09, for tuning the layer stack:
 
 - **☀ Exposure** — a tone-mapped brightness slider for the lit (grey)
   preview material. Has no effect on the projected photo itself (which is
@@ -329,6 +329,16 @@ sanity-checking a solve:
   confidence, which solving method was used, and which scale tier was
   adopted. Useful for quickly checking "did this solve pick up a real
   camera height, or is it still on the assumed default?"
+- **🎨 Layers** — opaque per-layer identity tints with an on-canvas legend:
+  which layer (base, foreground, X-ray, sky, patches) paints each pixel.
+  **Black means nothing paints — always a finding.** The single most useful
+  toggle when tuning a multi-layer graph.
+- **🩻 X-ray** — tints exactly the pixels whose geometry was *invented* by a
+  hidden-geometry backend (red = LaRI, blue = World Tracing), only under
+  📽 Project. At camera view it should show nothing at all.
+- **💡 Lights** — two movable point lights (default intensity 0 = no effect)
+  for a stylised relight bias on the projected photo and real lighting on
+  the grey preview.
 
 ---
 
@@ -346,7 +356,11 @@ sanity-checking a solve:
 | `AtlasBlockoutViewport` (`preview_expand`) | Part 3 — preview-only geometry dilation |
 | `AtlasRegisterPlate`, `AtlasAttachSourcePlate` | Part 4 — file-backed float-safe source plates |
 | `AtlasViewportControls` | Part 4 — Atlas Output Desk and OCIO-style output profile |
-| `AtlasBlockoutViewport` (☀ / 📊 / ℹ) | Diagnostics — exposure, VP/horizon diagram, camera HUD |
+| `AtlasBlockoutViewport` (☀ / 📊 / ℹ / 🎨 / 🩻) | Diagnostics — exposure, VP/horizon diagram, camera HUD, layer identity, invented-geometry provenance |
+| `AtlasDepthMap` | One shared metric depth estimate, fanned out to every layer node |
+| `AtlasDeriveReliefMesh` | The base mesh + backdrop under every layered workflow |
+| `AtlasCleanPlateLayer` / `AtlasDepthLayerMask` / `AtlasSkyDomeLayer` | The layer stack (see the 2026-07-09 section below) |
+| `AtlasPredictHiddenGeometry` 🔬 | Experimental X-ray depth — predicted geometry behind occluders |
 
 ---
 
@@ -364,4 +378,65 @@ generation, patch placement, and exports all pick up your extracted angle
 automatically), and **all-in-one layer exports** to Nuke (.nk) and Maya
 (.ma, verified in Maya 2027). See ECOSYSTEM_GUIDE.md's 2026-07-08 addendum
 for how each piece works and why.
+
+---
+
+## What's new (2026-07-09) — the five-layer stack and the X-ray track
+
+Two things changed: the default depth model, and how layered workflows are
+architected. If you use the shipped hero workflows you get both automatically.
+
+### The depth model is now DA3
+
+`depth-anything/DA3METRIC-LARGE` replaced Depth Anything V2 as the default
+everywhere. DA3 emits *canonical* depth that Atlas converts to metres using
+the **focal length the camera solve already recovered** — so depth scale
+inherits the solve's accuracy instead of guessing a lens. Measured on the 4K
+test set: ~3× fewer relief-mesh tears on two of four scenes, and a usable
+mesh on a pitched shot where V2's shattered to zero faces. V2 remains
+selectable in every depth combo.
+
+### Every hidden-geometry workflow is the same sandwich
+
+![The layer stack, back to front](images/layer_stack.svg)
+
+Back to front: a **sky dome** (outdoor scenes — a SAM "sky" mask drives a far
+card with clean skyline mattes), the **base relief mesh + backdrop** (its
+plate is the clean-plate composite, feathered over the occluders so
+background geometry never carries baked-in foreground pixels), the **X-ray
+layer** (predicted hidden geometry painted with a LaMa-inpainted plate —
+only visible at true reveals), and the **foreground layer** (the original
+photo, matte-cut at the real silhouettes — this is what keeps camera view
+honest). Tears in the base mesh are *load-bearing*: they're the openings the
+deeper layers show through.
+
+Tuning loop: queue at defaults → **🎨 Layers** and fix any black or
+wrong-color region by adjusting the foreground band (and SAM prompts) until
+subjects are solid orange → read the 🔬 node's report (registration rel MAD
+under 0.2 = trust it; above = switch backends) → orbit with **🩻** to judge
+reveals. One knob per queue.
+
+### The X-ray track (experimental, research-only)
+
+`AtlasPredictHiddenGeometry` 🔬 predicts, per pixel, the stack of surfaces
+each camera ray pierces (LaRI or World Tracing backends — both are
+user-installed clones with non-commercial terms; see THIRD_PARTY.md), and
+substitutes hidden depth behind your foreground occluders so a dolly-in
+reveals *predicted geometry with inpainted pixels* instead of holes. Backend
+choice is per-scene, not per-taste — the node prints its registration
+quality every run, and the shipped heroes encode the measured winner per
+scene:
+
+![Registration quality by scene and backend](images/chart_relmad_backends.svg)
+
+Six calibrated per-scene workflows ship in `examples/`
+(`atlas_camera_hidden_geometry_*_workflow.json`) — cathedral, space hangar,
+jungle temple, canyon, steep ridge, wide valley — each with a dolly-in bake
+wired to video. Start from the one whose scene most resembles your shot.
+
+### Where to read more
+
+- [🥞 Build-Up Guide](https://claude.ai/code/artifact/77b10784-a6d5-4def-89bd-84cbfaabc21e) — the layer stack taught stage by stage, with tuning tables.
+- [🎞 Examples Catalog](https://claude.ai/code/artifact/186c3a6a-a778-40f0-8f39-fe29cfa6aace) — every shipping workflow with its scene, settings, and dependencies.
+- [📊 Technical Details](https://claude.ai/code/artifact/4781289c-50dd-47fc-8571-1ef67513b7ba) — the measured numbers behind every default on this page.
 

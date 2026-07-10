@@ -7,10 +7,27 @@ by a single image. The current milestone focuses on the first recoverable
 component, the `LatentCamera`, and packages it with projection evidence,
 confidence, proxy geometry, and DCC handoff data.
 
-> **Status: beta (`release/beta-0.2`, v0.3.0).** Deterministic core + a 47-node
+> **Status: beta (`release/beta-0.2`, v0.3.0).** Deterministic core + a 46-node
 > ComfyUI pack for single-image camera recovery, matte-painting projection,
 > layered 2.5D clean-plate rigs, and DCC handoff. See
 > [Current Status](#current-status) for what's implemented vs. placeholder.
+
+## Two distributions
+
+- **`main` — the working version.** Everything above the experimental line:
+  camera solve, geometry derivation, the layered DMP rig, viewport, and all
+  DCC exporters. Runs on any ComfyUI install — the core package has zero
+  required runtime dependencies, and the vision/depth features need only the
+  `[neural]` extra. No Docker, no research-licensed models.
+- **`experimental` — the 🔬 tier enabled.** Same codebase with two extra
+  nodes registered by default: `AtlasRenderFix` (NVIDIA Fixer render repair —
+  needs Docker + an NVIDIA GPU) and `AtlasPredictHiddenGeometry` (LaRI /
+  World Tracing X-ray depth — research-only upstream licenses, user-cloned).
+  Their setup lives in [INSTALL.md](INSTALL.md).
+
+The switch is one env var: `ATLAS_EXPERIMENTAL=1` before launching ComfyUI
+registers the experimental nodes on *any* branch (`=0` hides them on
+`experimental`). The branches differ only in that default.
 
 It is designed for:
 
@@ -340,12 +357,17 @@ Placeholder:
 
 - [Install guide](INSTALL.md) — including the `[neural-da3]` and
   research-only hidden-geometry setup
-- [User guide](docs/USER_GUIDE.md)
+- [Changelog](CHANGELOG.md) — release notes per beta branch
+- [Third-party notices](THIRD_PARTY.md) — license boundaries, incl. the
+  research-only hidden-geometry backends
+- [User guide](docs/USER_GUIDE.md) — now with the 2026-07-09 five-layer-stack
+  section
 - [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md) — full node catalog
 - [Project vision](docs/PROJECT_VISION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [UI workbench](docs/UI_WORKBENCH.md)
-- [DCC exports](docs/DCC_EXPORTS.md)
+- [DCC exports](docs/DCC_EXPORTS.md) — rewritten 2026-07-09 around the
+  verified Nuke/Maya topology
 - [Comfy workflow](docs/COMFY_WORKFLOW.md)
 - [Hidden-geometry research](docs/dev/hidden_geometry_training_free_research.md)
 - [DA3 depth-backend test plan](docs/dev/da3_backend_test_plan.md)

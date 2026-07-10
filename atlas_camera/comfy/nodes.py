@@ -2109,6 +2109,120 @@ class AtlasPredictHiddenGeometry:
         return (out, mask_t, report, paint_t)
 
 
+class AtlasRenderFix:
+    """🔬 EXPERIMENTAL — repair projected-render artifacts with NVIDIA Fixer.
+
+    Runs the pretrained Fixer model (single-step diffusion, the Difix3D+
+    successor, trained to fix rendered-novel-view artifacts) over an IMAGE
+    batch — typically `AtlasBlockoutViewport`'s baked `path_frames` before a
+    Video Combine node. Spike-verified on this repo's own baked orbits
+    (2026-07-10): fills ~1/3 of hard black tear pixels on a bare relief
+    mesh, softens stretched-texel smears on the full DMP rig, adds no
+    temporal flicker, ~0.3–0.45 s/frame on an RTX 5090 (plus ~1 min model
+    load/warmup per queue). Costs/limits: mild overall softening (single-step
+    regeneration at an internal 576×1024), and it does NOT outpaint large
+    frame-edge reveals — band-layer frame outpainting stays the answer there.
+
+    Unlike the LaRI/WT experimental nodes this runs in a DOCKER CONTAINER
+    (the cosmos/transformer_engine stack has no native Windows build):
+    build the image once from docker/fixer/Dockerfile, clone
+    github.com/nv-tlabs/Fixer (Apache-2.0) with its weights (NVIDIA Open
+    Model License — commercial use permitted), and point `fixer_path` (or
+    ATLAS_FIXER_PATH) at the clone. See INSTALL.md 'Experimental: Fixer
+    Render Repair'. Fails loud with actionable errors when docker/image/
+    weights are missing.
+    """
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("images", "report")
+    FUNCTION = "fix"
+    CATEGORY = "Atlas Camera/Experimental"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip":
+                    "Frames to repair — e.g. AtlasBlockoutViewport's baked "
+                    "path_frames. Fixer works internally at 576×1024; frames "
+                    "near that resolution round-trip with the least "
+                    "softening."}),
+            },
+            "optional": {
+                "fixer_path": ("STRING", {"default": "", "tooltip":
+                    "Path to your clone of github.com/nv-tlabs/Fixer with "
+                    "weights downloaded into models/ (hf download nvidia/Fixer "
+                    "--local-dir models). Blank = the ATLAS_FIXER_PATH env "
+                    "var."}),
+                "docker_image": ("STRING", {"default": "fixer-spike-env",
+                    "tooltip": "Inference container image — build once with: "
+                    "docker build -t fixer-spike-env -f docker/fixer/Dockerfile "
+                    "docker/fixer/"}),
+                "timestep": ("INT", {"default": 250, "min": 1, "max": 999,
+                    "tooltip": "Fixer's single denoising timestep (upstream "
+                    "default 250; the older difix checkpoint used 199)."}),
+                "timeout_s": ("INT", {"default": 900, "min": 60, "max": 7200,
+                    "tooltip": "Kill the container after this many seconds. "
+                    "Budget ~1 min load/warmup + ~0.5 s/frame."}),
+            },
+        }
+
+    def fix(self, images, fixer_path="", docker_image="fixer-spike-env",
+            timestep=250, timeout_s=900):
+        import shutil
+        import time
+        np = _require_numpy()
+        torch = _require_torch()
+        PILImage = _require_pil()
+        from atlas_camera.inference.fixer_render_fix import (
+            resolve_fixer_root, run_fixer_on_dir,
+        )
+
+        root = resolve_fixer_root(fixer_path)
+        exchange = Path(tempfile.mkdtemp(prefix="atlas_fixer_"))
+        in_dir = exchange / "in"
+        out_dir = exchange / "out"
+        in_dir.mkdir()
+        try:
+            frames = images.cpu().numpy()  # (B,H,W,3) float 0-1
+            for i in range(frames.shape[0]):
+                arr = (frames[i] * 255.0).clip(0, 255).astype("uint8")
+                PILImage.fromarray(arr, mode="RGB").save(
+                    in_dir / f"frame_{i:05d}.png")
+            t0 = time.time()
+            log_tail = run_fixer_on_dir(
+                in_dir, out_dir, root, docker_image=docker_image,
+                timestep=timestep, timeout_s=timeout_s)
+            elapsed = time.time() - t0
+            outs = sorted(out_dir.glob("*.png"))
+            fixed = []
+            for i, f in enumerate(outs):
+                arr = np.array(PILImage.open(f).convert("RGB"),
+                               dtype=np.float32) / 255.0
+                # Fixer returns input resolution, but guard against drift so a
+                # mismatched frame can't crash the stack() below.
+                if arr.shape[:2] != frames.shape[1:3]:
+                    pil = PILImage.fromarray(
+                        (arr * 255).astype("uint8")).resize(
+                        (frames.shape[2], frames.shape[1]), PILImage.LANCZOS)
+                    arr = np.array(pil, dtype=np.float32) / 255.0
+                fixed.append(arr)
+            out_t = torch.from_numpy(np.stack(fixed, axis=0))
+            report = (
+                "🔬 EXPERIMENTAL Fixer render repair (weights: NVIDIA Open "
+                "Model License; single-step diffusion in Docker).\n"
+                f"{len(fixed)} frame(s) at "
+                f"{frames.shape[2]}x{frames.shape[1]} in {elapsed:.1f}s "
+                f"({elapsed / max(len(fixed), 1):.2f}s/frame incl. "
+                f"load+warmup), timestep {timestep}.\n"
+                "Known costs: mild softening; large frame-edge reveals are "
+                "not outpainted (use band-layer frame outpainting for "
+                "those).\n--- container log tail ---\n" + log_tail
+            )
+            return (out_t, report)
+        finally:
+            shutil.rmtree(exchange, ignore_errors=True)
+
+
 class AtlasDeriveReliefMesh:
     """Continuous depth-following relief mesh — one job, so there's no
     geometry_mode/primitive_method combination that silently ignores this
@@ -2549,6 +2663,30 @@ def _parse_view_prompt(text):
     return tuple(parsed)
 
 
+def _parse_exact_view(text):
+    """Parse an EXACT orbit delta — "azimuth_deg=<f> elevation_deg=<f>
+    distance_scale=<f>", the string 📐 Extract Angle's `patch_exact` output
+    emits (raw measured floats, BEFORE named-view snapping). Returns
+    (d_azimuth_deg, d_elevation_deg, distance_scale) or None when the text
+    doesn't carry all three keys.
+
+    The render-conditioned patch loop needs this precision: a frame baked at
+    the artist's real orbit must be projected back from the IDENTICAL pose —
+    snapping to the LoRA's 45° azimuth grid would misregister the projection.
+    Key=value format (any order, comma or space separated) so the string is
+    self-documenting in Show Text nodes and export logs.
+    """
+    import re
+
+    vals = dict(re.findall(
+        r"(azimuth_deg|elevation_deg|distance_scale)\s*=\s*(-?\d+(?:\.\d+)?)",
+        text or ""))
+    if set(vals) != {"azimuth_deg", "elevation_deg", "distance_scale"}:
+        return None
+    return (float(vals["azimuth_deg"]), float(vals["elevation_deg"]),
+            float(vals["distance_scale"]))
+
+
 def _named_view_orbit_delta(
     patch_azimuth_view, patch_elevation_view, patch_distance,
     source_azimuth_view, source_elevation_view, flip_azimuth,
@@ -2649,6 +2787,17 @@ class AtlasAddPatchView:
                                "STRING socket because ComfyUI's backend rejects STRING links "
                                "into combo dropdowns.) Errors loudly if the string doesn't "
                                "parse, rather than silently patching at the wrong angle."}),
+                "exact_view_override": ("STRING", {"forceInput": True,
+                    "tooltip": "Optional: wire AtlasBlockoutViewport's patch_exact output here "
+                               "('azimuth_deg=.. elevation_deg=.. distance_scale=..' — 📐's RAW "
+                               "measured orbit, before named-view snapping). When connected it "
+                               "WINS over patch_view_override AND the dropdowns, and "
+                               "flip_azimuth is ignored (the raw delta is already in "
+                               "orbit_camera's own convention). This is the render-conditioned "
+                               "patch loop's channel: a frame baked at the artist's real orbit "
+                               "(then repaired by AtlasRenderFix) must project back from the "
+                               "IDENTICAL pose — the 45° named-view grid would misregister it. "
+                               "Errors loudly if unparseable."}),
                 "mask_unseen_only": ("BOOLEAN", {"default": True,
                     "tooltip": "Embed an UNSEEN-AREAS matte on the patch (ProjectionSource."
                                "mask_b64): the patch only paints where the PRIMARY camera's "
@@ -2702,8 +2851,18 @@ class AtlasAddPatchView:
                   depth_model="depth-anything/DA3METRIC-LARGE",
                   relief_grid=96, priority=1.0, plate_ref=None, device="auto",
                   patch_view_override="", mask_unseen_only=True, unseen_dilate_px=16,
-                  primary_depth=None, exclude_mask=None, geometry_source="reuse_scene"):
-        if patch_view_override and patch_view_override.strip():
+                  primary_depth=None, exclude_mask=None, geometry_source="reuse_scene",
+                  exact_view_override=""):
+        exact_delta = None
+        if exact_view_override and exact_view_override.strip():
+            exact_delta = _parse_exact_view(exact_view_override)
+            if exact_delta is None:
+                raise ValueError(
+                    f"exact_view_override {exact_view_override!r} does not parse as "
+                    "'azimuth_deg=<f> elevation_deg=<f> distance_scale=<f>' — wire "
+                    "AtlasBlockoutViewport's patch_exact output here, or disconnect it."
+                )
+        elif patch_view_override and patch_view_override.strip():
             parsed = _parse_view_prompt(patch_view_override)
             if parsed is None:
                 raise ValueError(
@@ -2742,10 +2901,15 @@ class AtlasAddPatchView:
 
         # Absolute LoRA views -> the ACTUAL orbit delta (patch - source), since
         # the LoRA angle is subject-relative, not relative to the source view.
-        d_azimuth, d_elevation, distance_scale = _named_view_orbit_delta(
-            patch_azimuth_view, patch_elevation_view, patch_distance,
-            source_azimuth_view, source_elevation_view, flip_azimuth,
-        )
+        # An exact override (📐's raw measured floats) is already that delta in
+        # orbit_camera's own convention — no view arithmetic, no flip.
+        if exact_delta is not None:
+            d_azimuth, d_elevation, distance_scale = exact_delta
+        else:
+            d_azimuth, d_elevation, distance_scale = _named_view_orbit_delta(
+                patch_azimuth_view, patch_elevation_view, patch_distance,
+                source_azimuth_view, source_elevation_view, flip_azimuth,
+            )
 
         # Patch camera: orbit the recovered camera around the scene pivot (the
         # point it looks at) so the patch shares the primary's world frame.
@@ -2904,7 +3068,8 @@ class AtlasAddPatchView:
                 d_azimuth, d_elevation, distance_scale,
                 patch_azimuth_view, patch_elevation_view, patch_distance,
                 source_azimuth_view, flip_azimuth, pivot, depth_model,
-                scale_source, scale, fallback_reason)
+                scale_source, scale, fallback_reason, exact_view_override,
+                exact_delta)
 
         scale = None
         scale_source = "ground_fit"
@@ -2991,14 +3156,16 @@ class AtlasAddPatchView:
             d_azimuth, d_elevation, distance_scale,
             patch_azimuth_view, patch_elevation_view, patch_distance,
             source_azimuth_view, flip_azimuth, pivot, depth_model,
-            scale_source, scale, fallback_reason)
+            scale_source, scale, fallback_reason, exact_view_override,
+            exact_delta)
 
     def _finish_patch(self, solve, patch_image, patch_intr, patch_extr,
                       patch_geom, mesh, mask_b64, plate_ref, name, priority,
                       d_azimuth, d_elevation, distance_scale,
                       patch_azimuth_view, patch_elevation_view, patch_distance,
                       source_azimuth_view, flip_azimuth, pivot, depth_model,
-                      scale_source, scale, fallback_reason):
+                      scale_source, scale, fallback_reason,
+                      exact_view_override="", exact_delta=None):
         from atlas_camera.core.schema import AtlasPlateRef, LatentCamera, ProjectionSource
 
         # Encode the novel view as a JPEG data-URI (viewport texture).
@@ -3012,12 +3179,15 @@ class AtlasAddPatchView:
             pass
 
         metadata = {
-            "source": "multi_angle_lora_patch",
+            "source": ("exact_render_patch" if exact_delta is not None
+                       else "multi_angle_lora_patch"),
             "patch_azimuth_view": patch_azimuth_view,
             "patch_elevation_view": patch_elevation_view,
             "patch_distance": patch_distance,
             "source_azimuth_view": source_azimuth_view,
-            "flip_azimuth": bool(flip_azimuth),
+            "exact_view_override": (exact_view_override.strip()
+                                    if exact_delta is not None else None),
+            "flip_azimuth": bool(flip_azimuth) if exact_delta is None else None,
             "pivot": [float(v) for v in pivot],
             "n_vertices": mesh.stats.get("n_vertices") if mesh is not None else None,
             "n_faces": mesh.stats.get("n_faces") if mesh is not None else None,
@@ -3142,6 +3312,13 @@ class AtlasOcclusionMask:
                                "overrides the three patch_* dropdowns with 📐 Extract Angle's "
                                "snapped views, keeping this mask aligned with the same "
                                "AtlasAddPatchView wiring. Errors loudly if unparseable."}),
+                "exact_view_override": ("STRING", {"forceInput": True,
+                    "tooltip": "Optional: wire AtlasBlockoutViewport's patch_exact output here "
+                               "(📐's RAW orbit floats) — wins over patch_view_override and the "
+                               "dropdowns, flip_azimuth ignored, placing this mask's target "
+                               "camera IDENTICALLY to an AtlasAddPatchView driven by the same "
+                               "string (the shared never-drift contract). Errors loudly if "
+                               "unparseable."}),
             },
         }
 
@@ -3156,8 +3333,17 @@ class AtlasOcclusionMask:
                  device="auto",
                  angle_threshold=90.0, dilate_px=0, soft_edge_px=0, power=1.0,
                  occlusion_mode="simple", primary_depth=None, depth_bias=0.05,
-                 patch_view_override=""):
-        if patch_view_override and patch_view_override.strip():
+                 patch_view_override="", exact_view_override=""):
+        exact_delta = None
+        if exact_view_override and exact_view_override.strip():
+            exact_delta = _parse_exact_view(exact_view_override)
+            if exact_delta is None:
+                raise ValueError(
+                    f"exact_view_override {exact_view_override!r} does not parse as "
+                    "'azimuth_deg=<f> elevation_deg=<f> distance_scale=<f>' — wire "
+                    "AtlasBlockoutViewport's patch_exact output here, or disconnect it."
+                )
+        elif patch_view_override and patch_view_override.strip():
             parsed = _parse_view_prompt(patch_view_override)
             if parsed is None:
                 raise ValueError(
@@ -3188,10 +3374,13 @@ class AtlasOcclusionMask:
         cx = intr.cx_px if intr.cx_px is not None else p_w / 2.0
         cy = intr.cy_px if intr.cy_px is not None else p_h / 2.0
 
-        d_azimuth, d_elevation, distance_scale = _named_view_orbit_delta(
-            patch_azimuth_view, patch_elevation_view, patch_distance,
-            source_azimuth_view, source_elevation_view, flip_azimuth,
-        )
+        if exact_delta is not None:
+            d_azimuth, d_elevation, distance_scale = exact_delta
+        else:
+            d_azimuth, d_elevation, distance_scale = _named_view_orbit_delta(
+                patch_azimuth_view, patch_elevation_view, patch_distance,
+                source_azimuth_view, source_elevation_view, flip_azimuth,
+            )
         pivot = ground_lookat_pivot(extr)
         target_extr = orbit_camera(
             extr, pivot,
@@ -4046,9 +4235,10 @@ class AtlasBlockoutViewport:
        back to the zero-orbit named-view defaults.
     """
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "ATLAS_CAMERA_PATH",
-                    "STRING", "STRING", "STRING", "STRING")
+                    "STRING", "STRING", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("shaded", "depth", "normal", "mask", "path_frames", "camera_path",
-                    "patch_azimuth_view", "patch_elevation_view", "patch_distance", "patch_prompt")
+                    "patch_azimuth_view", "patch_elevation_view", "patch_distance", "patch_prompt",
+                    "patch_exact")
     FUNCTION = "render"
     CATEGORY = "Atlas Camera/Blockout"
     OUTPUT_NODE = True  # kept alive even without downstream connections
@@ -4147,7 +4337,34 @@ class AtlasBlockoutViewport:
         # are returned instead — those also remain the fallback semantics if
         # a future ComfyUI ever drops ExecutionBlocker.
         _pa_defaults = ("front view", "eye-level shot", "medium shot",
-                        "<sks> front view eye-level shot medium shot")
+                        "<sks> front view eye-level shot medium shot",
+                        "azimuth_deg=0.0 elevation_deg=0.0 distance_scale=1.0")
+
+        def _patch_exact_string(pa):
+            # 📐 stores the RAW measured orbit floats alongside the snapped
+            # named views (client_data.patch_angle.raw) — the exact-angle
+            # channel the render-conditioned patch loop needs (bake a frame
+            # at the artist's real orbit, fix it, project it back from the
+            # IDENTICAL pose via AtlasAddPatchView's exact_view_override; a
+            # 45°-grid named view would misregister the projection). Records
+            # without `raw` fall back to the snapped named views' own delta,
+            # so the string is always a pose AddPatchView can reproduce.
+            raw = pa.get("raw") or {}
+            try:
+                d_az = float(raw["d_azimuth_deg"])
+                d_el = float(raw["d_elevation_deg"])
+                dist = float(raw["distance_scale"])
+            except (KeyError, TypeError, ValueError):
+                try:
+                    d_az, d_el, dist = _named_view_orbit_delta(
+                        str(pa.get("azimuth_view") or _pa_defaults[0]),
+                        str(pa.get("elevation_view") or _pa_defaults[1]),
+                        str(pa.get("distance_view") or _pa_defaults[2]),
+                        "front view", "eye-level shot", False)
+                except KeyError:
+                    return _pa_defaults[4]
+            return (f"azimuth_deg={d_az:.4f} elevation_deg={d_el:.4f} "
+                    f"distance_scale={dist:.4f}")
 
         def _patch_angle_strings(parsed):
             pa = (parsed or {}).get("patch_angle") or {}
@@ -4160,13 +4377,14 @@ class AtlasBlockoutViewport:
             if not pa:
                 blocker = _execution_blocker()
                 if blocker is not None:
-                    return (blocker,) * 4
+                    return (blocker,) * 5
                 return _pa_defaults
             return (
                 str(pa.get("azimuth_view") or _pa_defaults[0]),
                 str(pa.get("elevation_view") or _pa_defaults[1]),
                 str(pa.get("distance_view") or _pa_defaults[2]),
                 str(pa.get("prompt") or _pa_defaults[3]),
+                _patch_exact_string(pa),
             )
 
         if not client_data.strip():
@@ -5165,7 +5383,6 @@ NODE_CLASS_MAPPINGS = {
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              AtlasDepthMap,
     # Experimental (research-only)
-    "AtlasPredictHiddenGeometry": AtlasPredictHiddenGeometry,
     "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
     "AtlasDeriveWalls":           AtlasDeriveWalls,
     "AtlasDeriveTowersSpires":    AtlasDeriveTowersSpires,
@@ -5225,7 +5442,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              "Atlas Depth Map 🌊",
-    "AtlasPredictHiddenGeometry": "Atlas Predict Hidden Geometry 🔬 (research)",
     "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
     "AtlasDeriveWalls":           "Atlas Derive Walls 🧱",
     "AtlasDeriveTowersSpires":    "Atlas Derive Towers & Spires 🗼",
@@ -5240,3 +5456,34 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasCleanPlateLayer":       "Atlas Clean Plate Layer 🖼",
     "AtlasSkyDomeLayer":          "Atlas Sky Dome Layer ☁",
 }
+
+# ---------------------------------------------------------------------------
+# Experimental tier (🔬) — heavier external requirements than the core node
+# set (user-cloned upstream repos, Docker, CUDA-class GPUs). Registered only
+# when the ATLAS_EXPERIMENTAL env var is truthy, so the standard install's
+# node menu stays universal and nothing here can confuse a stock ComfyUI.
+# The `experimental` branch ships ATLAS_EXPERIMENTAL_DEFAULT = "1" (that one
+# line is the entire branch delta); on any branch, setting
+# ATLAS_EXPERIMENTAL=1 (or 0) before launching ComfyUI overrides the default.
+ATLAS_EXPERIMENTAL_DEFAULT = "0"
+
+EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
+    "AtlasPredictHiddenGeometry": AtlasPredictHiddenGeometry,
+    "AtlasRenderFix": AtlasRenderFix,
+}
+
+EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
+    "AtlasPredictHiddenGeometry": "Atlas Predict Hidden Geometry 🔬 (research)",
+    "AtlasRenderFix": "Atlas Render Fix 🔬 (experimental)",
+}
+
+
+def _experimental_enabled() -> bool:
+    v = os.environ.get("ATLAS_EXPERIMENTAL", ATLAS_EXPERIMENTAL_DEFAULT)
+    return v.strip().lower() not in ("", "0", "false", "off", "no")
+
+
+if _experimental_enabled():
+    NODE_CLASS_MAPPINGS.update(EXPERIMENTAL_NODE_CLASS_MAPPINGS)
+    NODE_DISPLAY_NAME_MAPPINGS.update(EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS)
+

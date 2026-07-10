@@ -56,3 +56,14 @@ examples/review_packages/*
 *.tiff
 !tests/fixtures/*
 !examples/images/.gitkeep
+
+# Session/tooling artifacts
+.playwright-mcp/
+.pytest_tmp_atlas_output_desk*/
+
+# Personal documents — never publish
+docs/applications/
+
+# Doc-embedded scene thumbnails are the exception to the *.jpg ban
+!docs/images/*.jpg
+!docs/images/*.svg

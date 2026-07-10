@@ -161,6 +161,8 @@ For the V2-vs-DA3 accuracy comparison protocol, see
 `docs/dev/da3_backend_test_plan.md` and `tools/compare_depth_backends.py`.
 
 ## Experimental: Hidden-Geometry Prediction (research-only)
+> **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI (the `experimental` branch enables it by default; `main` hides it so the node menu stays universal).
+
 
 `AtlasPredictHiddenGeometry` 🔬 predicts the surfaces hidden behind foreground
 occluders (LaRI layered ray intersections) and outputs an "X-ray" copy of an
@@ -181,6 +183,43 @@ that folder. Inference needs only the `[neural]` extra + CUDA — **no
 PyTorch3D** (that's only in LaRI's dataset tooling) and none of LaRI's pinned
 requirements. Weights (~1.3GB) download from HuggingFace (`ruili3/LaRI`) on
 first use. Without a clone the node fails with these instructions.
+
+## Experimental: Fixer Render Repair (Docker)
+> **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI (the `experimental` branch enables it by default; `main` hides it so the node menu stays universal).
+
+
+`AtlasRenderFix` 🔬 repairs projected-render artifacts (torn silhouettes,
+stretched texels, hard tear-holes) in an IMAGE batch with NVIDIA **Fixer**
+(the Difix3D+ successor, single-step diffusion) — typically wired between
+`AtlasBlockoutViewport`'s baked `path_frames` and a Video Combine node.
+Licensing is friendlier than the hidden-geometry track: the Fixer repo is
+Apache-2.0 and the `nvidia/Fixer` weights ship under the NVIDIA Open Model
+License (commercial use permitted).
+
+**Inference runs in Docker** — Fixer's `cosmos-predict2`/`transformer_engine`
+stack has no native Windows build, so this node shells out to a container
+instead of importing torch in-process. Three setup steps, each once:
+
+```powershell
+# 1. Clone Fixer and download its weights (~5.2GB, ungated)
+git clone https://github.com/nv-tlabs/Fixer.git C:\path\to\Fixer
+cd C:\path\to\Fixer
+hf download nvidia/Fixer --local-dir models
+
+# 2. Build the inference image (public NGC PyTorch base, ~35GB; the official
+#    cosmos container is auth-locked on nvcr.io, this recipe reproduces it)
+docker build -t fixer-spike-env -f docker/fixer/Dockerfile docker/fixer/
+
+# 3. Point the node at the clone
+#    (fixer_path widget, or the ATLAS_FIXER_PATH env var)
+```
+
+Docker Desktop with GPU support (WSL2 backend) must be running when the node
+executes. Budget ~1 minute model load/warmup per queue plus ~0.5 s/frame;
+frames near Fixer's native 576×1024 round-trip with the least softening.
+Known limits (spike-measured): mild overall softening, and large frame-edge
+reveals are not outpainted. Without docker/image/weights the node fails with
+these instructions.
 
 ## Optional Inpaint Integration
 
