@@ -1315,9 +1315,9 @@ class AtlasDeriveProjectionGeometry:
             "optional": {
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
                     {"default": "depth-anything/DA3METRIC-LARGE"}),
-                "max_walls": ("INT", {"default": 4, "min": 0, "max": 8}),
-                "max_objects": ("INT", {"default": 3, "min": 0, "max": 6,
-                                        "tooltip": "Max foreground boxes/cylinders."}),
+                "max_walls": ("INT", {"default": 4, "min": 0, "max": 64}),
+                "max_objects": ("INT", {"default": 3, "min": 0, "max": 32,
+                                        "tooltip": "Max foreground boxes/cylinders. Street-level scenes: try 0 — the 2D occupancy clustering merges cars/fences/trees into oversized near-camera boxes that dominate any orbit."}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "geometry_mode": (["relief_mesh", "primitives", "both"], {"default": "relief_mesh",
                     "tooltip": "What the viewport receives. relief_mesh = contoured depth mesh "
@@ -2339,14 +2339,37 @@ class AtlasDeriveWalls:
                 "depth": ("ATLAS_DEPTH_MAP",),
             },
             "optional": {
-                "max_walls": ("INT", {"default": 4, "min": 0, "max": 8}),
-                "max_objects": ("INT", {"default": 3, "min": 0, "max": 6,
+                "max_walls": ("INT", {"default": 4, "min": 0, "max": 64}),
+                "max_objects": ("INT", {"default": 3, "min": 0, "max": 32,
                     "tooltip": "Max foreground boxes/cylinders (e.g. buildings, in an "
                                "aerial/top-down shot). 0 = walls/ground/backdrop only."}),
+                "distance_modes": ("INT", {"default": 1, "min": 1, "max": 16,
+                    "tooltip": "Walls per azimuth DIRECTION. 1 = classic: one plane at "
+                               "the median distance of everything facing that way. A "
+                               "street-grid skyline has ~2 facing directions but many "
+                               "depths — raise this (with max_walls) so each direction "
+                               "splits into one wall per depth mode (building row) "
+                               "instead of collapsing the skyline into one slab."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Remove these pixels from wall/object fitting (e.g. a SAM "
+                               "segment of everything EXCEPT one building — invert per "
+                               "branch to scope each derive to one structure, then chain "
+                               "AtlasMergeGeometry). Ground fit/scale/backdrop stay "
+                               "full-frame so masked branches share one metric world."}),
+                "ground_anchor": ("BOOLEAN", {"default": False,
+                    "tooltip": "Wall DISTANCE from ray-through-base-pixel x the analytic "
+                               "Y=0 ground plane — pure geometry, immune to monocular "
+                               "depth's low-frequency 'banana' warp on tall structures. "
+                               "Assumes the building's ground contact is VISIBLE: for "
+                               "best accuracy inpaint cars/fences off the ground line "
+                               "before solving (most street/architectural photos show "
+                               "enough contact as-is; occluded bases are detected and "
+                               "fall back to the classic depth-median distance)."}),
             },
         }
 
-    def derive(self, solve, depth, max_walls=4, max_objects=3):
+    def derive(self, solve, depth, max_walls=4, max_objects=3, distance_modes=1,
+               exclude_mask=None, ground_anchor=False):
         from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_projection_proxies
         params = _solve_camera_params(solve, depth)
         if params is None:
@@ -2355,12 +2378,17 @@ class AtlasDeriveWalls:
         depth_map = _depth_map_for_solve(depth, width, height)
         horizon_y = _horizon_y_from_solve(solve)
         extr = solve.camera.extrinsics
-        cfg = ProxyDerivationConfig(max_objects=int(max_objects))
+        cfg = ProxyDerivationConfig(max_objects=int(max_objects),
+                                    wall_distance_modes=int(distance_modes),
+                                    ground_anchor=bool(ground_anchor))
         prims, stats = derive_projection_proxies(
             depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-            max_walls=int(max_walls), horizon_y=horizon_y, config=cfg)
+            max_walls=int(max_walls), horizon_y=horizon_y, config=cfg,
+            exclude_mask=_resolve_exclude_mask(exclude_mask, height, width))
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "primitive_method": "azimuth_walls", "derive_node": "AtlasDeriveWalls",
+            "distance_modes": int(distance_modes),
+            "ground_anchor": bool(ground_anchor),
         })
         return (out,)
 
@@ -2382,13 +2410,42 @@ class AtlasDeriveTowersSpires:
                 "depth": ("ATLAS_DEPTH_MAP",),
             },
             "optional": {
-                "max_walls": ("INT", {"default": 4, "min": 0, "max": 8}),
-                "max_objects": ("INT", {"default": 3, "min": 0, "max": 6,
-                                        "tooltip": "Max foreground boxes/cylinders."}),
+                "max_walls": ("INT", {"default": 4, "min": 0, "max": 64}),
+                "max_objects": ("INT", {"default": 3, "min": 0, "max": 32,
+                                        "tooltip": "Max foreground boxes/cylinders. Street-level scenes: try 0 — the 2D occupancy clustering merges cars/fences/trees into oversized near-camera boxes that dominate any orbit."}),
+                "distance_modes": ("INT", {"default": 1, "min": 1, "max": 16,
+                    "tooltip": "Walls per azimuth DIRECTION. 1 = classic: one plane at "
+                               "the median distance of everything facing that way. A "
+                               "street-grid skyline has ~2 facing directions but many "
+                               "depths — raise this (with max_walls) so each direction "
+                               "splits into one wall per depth mode (building row) "
+                               "instead of collapsing the skyline into one slab."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Remove these pixels from wall/object fitting (e.g. a SAM "
+                               "segment of everything EXCEPT one building — invert per "
+                               "branch to scope each derive to one structure, then chain "
+                               "AtlasMergeGeometry). Ground fit/scale/backdrop stay "
+                               "full-frame so masked branches share one metric world."}),
+                "ground_anchor": ("BOOLEAN", {"default": False,
+                    "tooltip": "Wall DISTANCE from ray-through-base-pixel x the analytic "
+                               "Y=0 ground plane — pure geometry, immune to monocular "
+                               "depth's low-frequency 'banana' warp on tall structures. "
+                               "Assumes the building's ground contact is VISIBLE: for "
+                               "best accuracy inpaint cars/fences off the ground line "
+                               "before solving (most street/architectural photos show "
+                               "enough contact as-is; occluded bases are detected and "
+                               "fall back to the classic depth-median distance)."}),
+                "roofline_split": ("BOOLEAN", {"default": False,
+                    "tooltip": "Split each wall cluster at silhouette-height steps: a "
+                               "row of buildings becomes one plane per roofline (each "
+                               "cut to its own top, and with ground_anchor each gets "
+                               "its own footprint distance) instead of one rectangle "
+                               "spanning sky above the shorter buildings."}),
             },
         }
 
-    def derive(self, solve, depth, max_walls=4, max_objects=3):
+    def derive(self, solve, depth, max_walls=4, max_objects=3, distance_modes=1,
+               exclude_mask=None, ground_anchor=False, roofline_split=False):
         from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_vertical_extrusion_proxies
         params = _solve_camera_params(solve, depth)
         if params is None:
@@ -2397,12 +2454,19 @@ class AtlasDeriveTowersSpires:
         depth_map = _depth_map_for_solve(depth, width, height)
         horizon_y = _horizon_y_from_solve(solve)
         extr = solve.camera.extrinsics
-        cfg = ProxyDerivationConfig(max_objects=int(max_objects))
+        cfg = ProxyDerivationConfig(max_objects=int(max_objects),
+                                    wall_distance_modes=int(distance_modes),
+                                    ground_anchor=bool(ground_anchor),
+                                    roofline_split=bool(roofline_split))
         prims, stats = derive_vertical_extrusion_proxies(
             depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-            max_walls=int(max_walls), horizon_y=horizon_y, config=cfg)
+            max_walls=int(max_walls), horizon_y=horizon_y, config=cfg,
+            exclude_mask=_resolve_exclude_mask(exclude_mask, height, width))
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "primitive_method": "vertical_extrusion", "derive_node": "AtlasDeriveTowersSpires",
+            "distance_modes": int(distance_modes),
+            "ground_anchor": bool(ground_anchor),
+            "roofline_split": bool(roofline_split),
         })
         return (out,)
 
