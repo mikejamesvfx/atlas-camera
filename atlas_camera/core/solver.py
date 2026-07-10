@@ -225,7 +225,9 @@ class CameraFromVanishingPoints:
         rotation = np.column_stack([right, up, forward])
         if np.linalg.det(rotation) < 0:
             rotation = np.column_stack([right, up, -forward])
-        return rotation
+        # VP direction signs are arbitrary — canonicalize the facing so DCC
+        # imports arrive forward, same convention as the learned path.
+        return _face_camera_toward_negative_z(rotation, np)
 
     @staticmethod
     def estimate_horizon_line(vp1: Any, vp2: Any) -> tuple[float, float, float]:
@@ -433,12 +435,37 @@ def solve_from_vanishing_points(
     )
 
 
+def _face_camera_toward_negative_z(rotation: Any, np: Any) -> Any:
+    """Canonicalize the arbitrary yaw: the recovered camera faces world -Z.
+
+    Yaw is unobservable from a single image, so which world direction the
+    camera faces is a free convention — and Maya/Nuke default cameras look
+    down -Z, so any other choice makes every DCC import arrive "backwards"
+    (found by a real Maya lineup: each Atlas scene needed a manual -180 deg Y
+    rotation before this). If the camera's forward, expressed in world
+    coordinates, points toward +Z, rotate the WORLD 180 deg about +Y —
+    gravity (+Y) and right-handedness are preserved exactly.
+    """
+    # Pipeline convention (see the view-matrix construction sites): the
+    # world math everywhere uses cam_to_world = inv(view_matrix), whose
+    # rotation block is exactly this ``rotation`` — so the camera's forward
+    # in WORLD coords is rotation @ [0,0,-1], and a world-side rotation
+    # LEFT-multiplies. (The first cut of this helper measured and flipped on
+    # the transposed side, which rotates in the CAMERA frame and inverts
+    # pitch — caught by test_learned_solve_ground_plane_faces_camera_when_looking_down.)
+    fwd_world = rotation @ np.array([0.0, 0.0, -1.0])
+    if fwd_world[2] > 0:
+        rotation = np.diag([-1.0, 1.0, -1.0]) @ rotation  # RotY(180), world side
+    return rotation
+
+
 def _rotation_from_up_vector(up: Any) -> Any:
     """Build a world->cam rotation (Atlas Y-up) from the world-up direction in cam coords.
 
-    Yaw is unobservable from a single up-vector, so world +Z (forward) is chosen as
-    the camera's forward projected onto the horizontal plane. Columns are the world
-    axes [right(+X), up(+Y), forward(+Z)] expressed in camera coordinates.
+    Yaw is unobservable from a single up-vector; the camera's horizontal
+    forward is canonicalized to world -Z (DCC default forward — see
+    _face_camera_toward_negative_z). Columns are the world axes
+    [right(+X), up(+Y), forward(+Z)] expressed in camera coordinates.
     """
     np = _require_numpy()
     up = np.asarray(up, dtype=np.float64)
@@ -456,7 +483,7 @@ def _rotation_from_up_vector(up: Any) -> Any:
     rotation = np.column_stack([right, up, forward])
     if np.linalg.det(rotation) < 0:
         rotation = np.column_stack([-right, up, forward])
-    return rotation
+    return _face_camera_toward_negative_z(rotation, np)
 
 
 def _learned_prior_confidence(prior: Any) -> tuple[float, float, float]:

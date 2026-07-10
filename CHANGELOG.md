@@ -48,6 +48,37 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   back from the identical pose onto the same geometry (`reuse_scene`,
   unseen-masked). Example: `atlas_camera_render_fix_v2_loop_workflow.json`.
 
+### Recovered camera now faces DCC-default forward (−Z)
+
+- Both solve paths canonicalize the (unobservable) yaw so the recovered
+  camera looks down world −Z — Maya/Nuke default forward. Imported Atlas
+  scenes no longer need the manual −180° Y rotation a real Maya lineup
+  exposed. Gravity/pitch are provably untouched by the flip.
+
+### Ground-anchored extrusion + roofline segmentation
+
+- `ground_anchor` on both wall-derive nodes: building footprints from
+  ray-through-base-pixel x the analytic ground plane — pure geometry, immune
+  to monocular depth's "banana" warp; anchored buildings sit on the ground
+  and get banana-immune heights (ray x anchored plane). Four safety gates
+  (wide base pool, contact band, occlusion poison-gate, and a contamination
+  gate so the anchor refines but never teleports to street clutter).
+  Assumes visible ground contact — inpaint occluders off the ground line
+  for best accuracy. Measured on a real street photo: rooftop heights
+  130-140m -> 27-30m on anchored far facades.
+- `roofline_split` (Towers & Spires): one plane per silhouette step — a row
+  of buildings stops sharing a single rectangle that spans sky above its
+  shorter members; each segment re-anchors on its own base.
+
+### Skyline walls: distance modes + mask-scoped derives
+
+- `AtlasDeriveWalls` / `AtlasDeriveTowersSpires` gained `distance_modes`
+  (split each facing direction into one wall per depth mode — a city grid
+  stops collapsing into two slabs; measured 2 → 7 walls on a 6K skyline
+  plate) and `exclude_mask` (scope wall/object fitting to a SAM segment per
+  branch and merge; ground fit stays full-frame so branches share one
+  metric world). Wall/object caps raised to 64/32.
+
 ### Fixer fine-tune groundwork
 
 - `tools/generate_fixer_training_pairs.py` packages

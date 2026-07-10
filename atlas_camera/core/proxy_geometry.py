@@ -73,6 +73,33 @@ class ProxyDerivationConfig:
     cylinder_azimuth_spread_deg: float = 90.0
     cylinder_max_residual: float = 0.15  # × radius
     cylinder_radius_range: tuple[float, float] = (0.1, 5.0)
+    # Walls per azimuth DIRECTION (1 = classic behavior: one plane at the
+    # median distance of everything facing that way). A street-grid skyline
+    # has ~2 dominant azimuths but MANY depths — raise this so each azimuth
+    # peak splits into one wall per depth mode (building row) instead of
+    # collapsing thirty facades into one slab at the median depth.
+    wall_distance_modes: int = 1
+    # Ground-anchored walls: the wall's DISTANCE comes from ray-through-
+    # base-pixel ∩ the analytic Y=0 ground plane — pure geometry, immune to
+    # monocular depth's low-frequency "banana" warp (the depth model is
+    # demoted to grouping pixels). Requires VISIBLE ground contact; walls
+    # whose base is occluded or too near the horizon fall back smoothly to
+    # the depth-median distance (see anchor_horizon_frac).
+    ground_anchor: bool = False
+    # Base pixels within this fraction of the below-horizon image span are
+    # ill-conditioned (ray nearly parallel to ground) — the geometric
+    # distance fades toward the depth median across this band.
+    anchor_horizon_frac: float = 0.15
+    # Only refit the wall's ORIENTATION from the base contact line when the
+    # footprint spans at least this many metres (short/noisy base lines keep
+    # the normal-cluster azimuth and anchor distance only).
+    anchor_min_line_m: float = 2.0
+    # Roofline segmentation (vertical_extrusion only): split a wall cluster
+    # at silhouette-height steps bigger than this fraction of the wall's
+    # median height, so a row of buildings becomes one plane per roofline
+    # instead of one rectangle spanning sky above the shorter buildings.
+    roofline_split: bool = False
+    roofline_split_rel: float = 0.25
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +135,151 @@ def _wall_axes(np: Any, n: Any) -> tuple[Any, Any, Any]:
 # Shared wall-orientation clustering (azimuth_walls AND vertical_extrusion)
 # ---------------------------------------------------------------------------
 
+
+def _anchor_wall_to_ground(np: Any, cfg: "ProxyDerivationConfig", wall: dict,
+                           cam_pos: Any, horizon_y: float | None,
+                           height: int) -> dict:
+    """Ground-anchor one wall: distance (and, when well-conditioned,
+    orientation) from ray-through-base-pixel ∩ the analytic Y=0 plane.
+
+    The ray DIRECTION through a pixel is exact regardless of depth error, so
+    where the building visibly meets the ground the footprint drops out of
+    pure geometry — monocular depth's low-frequency "banana" never enters.
+    Three safeties, each with a reason:
+
+    1. **Occlusion poison-gate** (critical): if the true contact is hidden
+       (car/fence), the lowest VISIBLE wall pixel sits above the ground and
+       its ray lands far BEHIND the building — a 1.5 m occluder at eye
+       height overshoots by hundreds of metres, not a little. Any base point
+       whose ray-ground distance exceeds 1.6x its own depth-space distance
+       is treated as occluded and dropped; too few survivors = no anchor.
+    2. **Horizon conditioning**: rays through pixels near the horizon are
+       nearly parallel to the ground — the geometric distance fades toward
+       the depth median across cfg.anchor_horizon_frac of the below-horizon
+       span, so far facades degrade to today's behavior instead of blowing up.
+    3. **Conservative orientation**: the footprint line only replaces the
+       normal-cluster azimuth when it spans >= cfg.anchor_min_line_m with a
+       tight lateral fit; short/noisy contact lines anchor distance only.
+
+    Returns the wall dict (mutated) with ``anchored``/``anchor_weight`` set.
+    Early returns leave any EXISTING anchor state untouched: a roofline
+    segment whose own re-anchor can't gather enough clean contact keeps its
+    parent cluster's anchor (a failed refinement is not a failed anchor).
+    """
+    wall.setdefault("anchored", False)
+    p_in = wall["pts"]
+    cols_in = wall.get("base_cols", wall["cols"])
+    rows_in = wall.get("base_rows", wall["rows"])
+    p_base = wall.get("base_pts", p_in)
+    if cols_in.size < 8 or cam_pos[1] <= 1e-3:
+        return wall
+    # Per-column base pixel = the lowest pool pixel (largest image row).
+    order = np.lexsort((rows_in, cols_in))
+    c_s, r_s, p_s = cols_in[order], rows_in[order], p_base[order]
+    last = np.r_[c_s[1:] != c_s[:-1], True]
+    base_rows, base_pts = r_s[last], p_s[last]
+    n_base_cols = int(base_rows.size)
+
+    # Keep only genuine contact candidates: junction filtering (ground
+    # inliers, depth-edge invalidation) eats base pixels COLUMN-WISE, and a
+    # column whose lowest surviving pixel sits a metre up would poison the
+    # gate below. The anchor doesn't need every column — just enough clean
+    # contact — so restrict to the lowest 0.6 m band of visible bases and
+    # let the coverage fraction feed the fusion weight instead.
+    if base_pts.size:
+        y_lo = float(np.min(base_pts[:, 1]))
+        band = base_pts[:, 1] < y_lo + 0.6
+        base_rows, base_pts = base_rows[band], base_pts[band]
+    if base_rows.size < 8:
+        return wall
+
+    dirs = base_pts - cam_pos[None, :]
+    dn = np.linalg.norm(dirs, axis=1)
+    ok = dn > 1e-9
+    dirs, dn, base_rows = dirs[ok] / dn[ok, None], dn[ok], base_rows[ok]
+    down = dirs[:, 1] < -1e-4          # ray must descend to reach Y=0
+    if int(down.sum()) < 8:
+        return wall
+    dirs, dn, base_rows = dirs[down], dn[down], base_rows[down]
+    t = -cam_pos[1] / dirs[:, 1]
+    sane = t < 1.6 * dn                # occlusion poison-gate (see above)
+    if int(sane.sum()) < 8:
+        return wall
+    g = cam_pos[None, :] + t[sane, None] * dirs[sane]
+    base_rows = base_rows[sane]
+
+    hy = horizon_y if horizon_y is not None else 0.45 * height
+    span = max(float(height) - hy, 1.0)
+    cond = np.clip((base_rows - hy) / max(cfg.anchor_horizon_frac * span, 1e-6),
+                   0.0, 1.0)
+    coverage = float(sane.sum()) / max(float(n_base_cols), 1.0)
+    w_geo = float(np.median(cond)) * min(1.0, 2.0 * coverage)
+    if w_geo <= 1e-3:
+        return wall
+
+    n = np.asarray(wall["n"], dtype=np.float64)
+    # Orientation refit from the footprint line (plan-view PCA), gated.
+    gx, gz = g[:, 0], g[:, 2]
+    cx_, cz_ = float(np.mean(gx)), float(np.mean(gz))
+    X = np.column_stack([gx - cx_, gz - cz_])
+    if X.shape[0] >= 8:
+        cov = X.T @ X / X.shape[0]
+        evals, evecs = np.linalg.eigh(cov)
+        line_dir = evecs[:, -1]        # principal (along-wall) direction
+        length = float(np.ptp(X @ line_dir))
+        lateral_rms = float(np.sqrt(max(evals[0], 0.0)))
+        if length >= cfg.anchor_min_line_m and lateral_rms < max(0.15 * length, 0.3):
+            n_new = np.array([-line_dir[1], 0.0, line_dir[0]])
+            n_new /= np.linalg.norm(n_new) or 1.0
+            to_cam = np.array([cam_pos[0] - cx_, 0.0, cam_pos[2] - cz_])
+            if float(n_new @ to_cam) < 0:
+                n_new = -n_new
+            # keep the cluster azimuth unless the refit stays within 25 deg
+            if float(n_new @ n) > math.cos(math.radians(25.0)):
+                n = n_new
+    d_geo = float(np.median(g @ n))
+    d_depth = float(np.median(p_in @ n))
+    # Contamination gate — the anchor REFINES, it never teleports: street
+    # clutter (cars, fences) sharing the wall's azimuth donates its own base
+    # pixels, and without this gate a 12 m facade "anchors" to the 2 m car
+    # row in front of it (found live on a real street photo). The geometric
+    # footprint must land within ±50% of the depth fit or it is rejected as
+    # foreign contact.
+    if not (0.5 * abs(d_depth) <= abs(d_geo) <= 1.5 * abs(d_depth)):
+        return wall
+    d_final = w_geo * d_geo + (1.0 - w_geo) * d_depth
+
+    u_ax, v_ax, _ = _wall_axes(np, n)
+    b_y = np.clip(p_in[:, 1], -0.1, None)
+    p_lo, p_hi = cfg.extent_percentiles
+    # The anchored wall's WIDTH comes from its footprint too: the cluster's
+    # pixel extents can span same-facing surfaces far beyond this building,
+    # and an over-wide plane at a near distance sweeps right up to the
+    # camera (found live: a 5.7m facade's slab reached across the street).
+    # The base contact line knows where the building starts and ends. Only
+    # trusted when contact coverage is decent — poor coverage keeps the
+    # classic pixel extents.
+    if w_geo >= 0.5:
+        a_base = g @ u_ax
+        a0, a1 = np.percentile(a_base, [p_lo, p_hi])
+        a0, a1 = float(a0) - 0.5, float(a1) + 0.5  # roofs overhang bases a bit
+    else:
+        a = p_in @ u_ax
+        a0, a1 = np.percentile(a, [p_lo, p_hi])
+    _b0, b1 = np.percentile(b_y, [p_lo, p_hi])
+    # An anchored building SITS ON the ground: extrude from Y=0, not from the
+    # lowest surviving wall pixel (near-base pixels are routinely eaten by
+    # ground-inlier/depth-edge filtering, leaving walls floating ~1m up).
+    b0 = 0.0
+    wall.update({
+        "n": n, "d": d_final, "u": u_ax,
+        "a_mid": 0.5 * float(a0 + a1), "b_mid": 0.5 * float(b0 + b1),
+        "w": float(a1 - a0), "h": float(b1 - b0),
+        "anchored": True, "anchor_weight": round(w_geo, 3),
+    })
+    return wall
+
+
 def _cluster_walls_by_azimuth(
     np: Any,
     cfg: "ProxyDerivationConfig",
@@ -122,6 +294,7 @@ def _cluster_walls_by_azimuth(
     max_walls: int,
     height: int,
     width: int,
+    horizon_y: float | None = None,
 ) -> tuple[list[dict[str, Any]], Any]:
     """Cluster near-vertical-normal pixels into wall planes by azimuth peak-picking.
 
@@ -148,12 +321,14 @@ def _cluster_walls_by_azimuth(
     inlier_floor = max(cfg.min_wall_inliers, int(0.003 * n_pixels))
     walls: list[dict[str, Any]] = []
     col_idx_full = np.tile(np.arange(width, dtype=np.int64), (height, 1))
+    row_idx_full = np.tile(np.arange(height, dtype=np.int64)[:, None], (1, width))
 
     if int(wall_cand.sum()) >= inlier_floor and max_walls > 0:
         nx = normals[..., 0][wall_cand].copy()
         nz = normals[..., 2][wall_cand].copy()
         pw = pts_world[wall_cand]
         cols = col_idx_full[wall_cand]
+        rows = row_idx_full[wall_cand]
         # Flip each normal toward the camera, zero Y, renormalise.
         to_cam = cam_pos[None, :] - pw
         flip = (nx * to_cam[:, 0] + normals[..., 1][wall_cand] * to_cam[:, 1]
@@ -162,7 +337,8 @@ def _cluster_walls_by_azimuth(
         nz[flip] = -nz[flip]
         h_norm = np.sqrt(nx ** 2 + nz ** 2)
         ok = h_norm > 1e-6
-        nx, nz, pw, cols = nx[ok] / h_norm[ok], nz[ok] / h_norm[ok], pw[ok], cols[ok]
+        nx, nz = nx[ok] / h_norm[ok], nz[ok] / h_norm[ok]
+        pw, cols, rows = pw[ok], cols[ok], rows[ok]
 
         azimuth = np.arctan2(nx, nz)  # [-pi, pi]
         bins = cfg.azimuth_bins
@@ -200,45 +376,120 @@ def _cluster_walls_by_azimuth(
             n_mean = n_mean / n_len
             p_sel = pw[sel]
             cols_sel = cols[sel]
+            rows_sel = rows[sel]
             offs = p_sel @ n_mean
-            d_off = float(np.median(offs))
-            med_depth = float(np.median(scaled_depth[wall_cand][ok][sel])) if sel.any() else 5.0
-            tol = max(0.15, 0.02 * med_depth)
-            inl = np.abs(offs - d_off) < tol
-            if int(inl.sum()) < inlier_floor:
-                continue
-            p_in = p_sel[inl]
-            cols_in = cols_sel[inl]
-            u_ax, v_ax, _ = _wall_axes(np, n_mean)
-            a = p_in @ u_ax
-            b_y = np.clip(p_in[:, 1], -0.1, None)
-            p_lo, p_hi = cfg.extent_percentiles
-            a0, a1 = np.percentile(a, [p_lo, p_hi])
-            b0, b1 = np.percentile(b_y, [p_lo, p_hi])
-            b0 = max(b0, -0.1)
-            w_m, h_m = float(a1 - a0), float(b1 - b0)
-            if w_m < cfg.min_wall_size_m or h_m < cfg.min_wall_size_m:
-                continue
-            if w_m < cfg.wall_min_width_m:
-                continue  # narrow vertical fit — an object, not a wall
-            walls.append({
-                "n": n_mean, "d": d_off, "u": u_ax,
-                "a_mid": 0.5 * (a0 + a1), "b_mid": 0.5 * (b0 + b1),
-                "w": w_m, "h": h_m, "inliers": int(inl.sum()),
-                "med_depth": med_depth, "cols": cols_in,
-            })
-            # Mark inlier pixels so the object stage skips them.
-            plane_dist = np.abs(pts_world @ n_mean - d_off)
-            wall_inlier_total |= wall_cand & (plane_dist < tol)
+            depth_sel = scaled_depth[wall_cand][ok][sel]
+
+            def _fit_wall_at(d_off, med_depth):
+                """Fit/append one plane at offset ``d_off`` (shared tail of the
+                classic single-plane path and each distance mode). Returns True
+                when a wall was appended."""
+                nonlocal wall_inlier_total
+                tol = max(0.15, 0.02 * med_depth)
+                inl = np.abs(offs - d_off) < tol
+                if int(inl.sum()) < inlier_floor:
+                    return False
+                p_in = p_sel[inl]
+                cols_in = cols_sel[inl]
+                rows_in = rows_sel[inl]
+                u_ax, v_ax, _ = _wall_axes(np, n_mean)
+                a = p_in @ u_ax
+                b_y = np.clip(p_in[:, 1], -0.1, None)
+                p_lo, p_hi = cfg.extent_percentiles
+                a0, a1 = np.percentile(a, [p_lo, p_hi])
+                b0, b1 = np.percentile(b_y, [p_lo, p_hi])
+                b0 = max(b0, -0.1)
+                w_m, h_m = float(a1 - a0), float(b1 - b0)
+                if w_m < cfg.min_wall_size_m or h_m < cfg.min_wall_size_m:
+                    return False
+                if w_m < cfg.wall_min_width_m:
+                    return False  # narrow vertical fit — an object, not a wall
+                # Anchor pool: a much wider offset band than the fit slab.
+                # A banana-biased fit centers away from the true footprint,
+                # and its ±2% inlier slab then EXCLUDES the very base pixels
+                # the ground anchor needs (found by instrumenting the gates:
+                # every pooled ray overshot and the poison-gate refused).
+                pool = np.abs(offs - d_off) < max(6.0 * tol, 0.6)
+                wall = {
+                    "n": n_mean, "d": d_off, "u": u_ax,
+                    "a_mid": 0.5 * (a0 + a1), "b_mid": 0.5 * (b0 + b1),
+                    "w": w_m, "h": h_m, "inliers": int(inl.sum()),
+                    "med_depth": med_depth, "cols": cols_in,
+                    "rows": rows_in, "pts": p_in, "anchored": False,
+                    "base_cols": cols_sel[pool], "base_rows": rows_sel[pool],
+                    "base_pts": p_sel[pool],
+                }
+                if cfg.ground_anchor:
+                    wall = _anchor_wall_to_ground(
+                        np, cfg, wall, cam_pos, horizon_y, height)
+                walls.append(wall)
+                # Mark inlier pixels so the object stage skips them.
+                plane_dist = np.abs(pts_world @ n_mean - d_off)
+                wall_inlier_total |= wall_cand & (plane_dist < tol)
+                return True
+
+            modes = max(1, int(getattr(cfg, "wall_distance_modes", 1)))
+            if modes == 1:
+                # Classic behavior, bit-identical: ONE plane per azimuth peak
+                # at the median offset of everything facing this way.
+                d_off = float(np.median(offs))
+                med_depth = float(np.median(depth_sel)) if sel.any() else 5.0
+                _fit_wall_at(d_off, med_depth)
+            else:
+                # Skyline mode: same-facing facades at different depths are
+                # separate walls. Histogram the plane offsets and fit one
+                # plane per mode (NMS peak-picking, mirroring the azimuth
+                # stage), biggest-mass modes first so dominant facades win
+                # the max_walls budget.
+                lo_o, hi_o = np.percentile(offs, [1.0, 99.0])
+                if hi_o - lo_o < 1e-6:
+                    _fit_wall_at(float(np.median(offs)),
+                                 float(np.median(depth_sel)) if sel.any() else 5.0)
+                else:
+                    nb = 64
+                    o_hist, o_edges = np.histogram(offs, bins=nb, range=(lo_o, hi_o))
+                    o_sm = o_hist.astype(np.float64).copy()
+                    o_sm[1:-1] = (o_hist[:-2] + 2 * o_hist[1:-1] + o_hist[2:]) / 4.0
+                    order_o = np.argsort(o_sm)[::-1]
+                    supp_o = np.zeros(nb, dtype=bool)
+                    centers: list[float] = []
+                    for ob in order_o:
+                        if supp_o[ob] or o_hist[ob] <= 0:
+                            continue
+                        centers.append(0.5 * (o_edges[ob] + o_edges[ob + 1]))
+                        for off_i in range(ob - 2, ob + 3):
+                            if 0 <= off_i < nb:
+                                supp_o[off_i] = True
+                        if len(centers) >= modes:
+                            break
+                    bin_w = (hi_o - lo_o) / nb
+                    for c in centers:
+                        if len(walls) >= max_walls:
+                            break
+                        gather = np.abs(offs - c) < max(2.0 * bin_w, 0.15)
+                        if int(gather.sum()) < max(64, inlier_floor // 8):
+                            continue
+                        d_off = float(np.median(offs[gather]))
+                        med_depth = float(np.median(depth_sel[gather]))
+                        _fit_wall_at(d_off, med_depth)
 
         # Merge near-duplicates (azimuth < 15° apart AND offsets agree).
+        # In distance-modes mode the dedupe distance tightens to the plane
+        # fit's own inlier tolerance — anything closer genuinely IS the same
+        # plane, anything farther is a deliberate depth mode. The classic
+        # 0.3m/5% threshold would re-merge the very building rows the mode
+        # split just separated on depth-compressed scenes (mono-depth crams
+        # a whole skyline's far field into a metre or two).
+        modes_active = max(1, int(getattr(cfg, "wall_distance_modes", 1))) > 1
         merged: list[dict[str, Any]] = []
         for w in sorted(walls, key=lambda d: -d["inliers"]):
             dup = False
             for m in merged:
                 cosang = float(np.dot(w["n"], m["n"]))
+                dedupe_d = (max(0.15, 0.02 * m["med_depth"]) if modes_active
+                            else max(0.3, 0.05 * m["med_depth"]))
                 if cosang > math.cos(math.radians(15.0)) and \
-                        abs(w["d"] - m["d"]) < max(0.3, 0.05 * m["med_depth"]):
+                        abs(w["d"] - m["d"]) < dedupe_d:
                     dup = True
                     break
             if not dup:
@@ -263,8 +514,15 @@ def derive_projection_proxies(
     max_walls: int = 4,
     horizon_y: float | None = None,
     config: ProxyDerivationConfig | None = None,
+    exclude_mask: Any | None = None,
 ) -> tuple[list[AtlasProxyPrimitive], dict[str, Any]]:
     """Derive proxy geometry from a forward-z depth map and the recovered camera.
+
+    ``exclude_mask`` ((H,W) bool, aligned to ``depth``) removes pixels from the
+    WALL and OBJECT stages only — the ground fit / metric scale / backdrop
+    always use the full depth map, so several mask-scoped derive branches (one
+    SAM segment per building, merged afterwards) land in the SAME metric world
+    instead of each branch fitting a different ground scale.
 
     Returns ``(primitives, debug_stats)``. Always emits the backdrop; ground,
     walls, boxes and cylinders drop out gracefully when their fits are poor.
@@ -382,11 +640,18 @@ def derive_projection_proxies(
         ))
 
     # -- Step 5: wall primitives ------------------------------------------------
+    wall_valid = valid_normal
+    if exclude_mask is not None:
+        excl = np.asarray(exclude_mask, dtype=bool)
+        if excl.shape != (height, width):
+            raise ValueError(
+                f"exclude_mask shape {excl.shape} != depth shape {(height, width)}")
+        wall_valid = valid_normal & ~excl
     walls, wall_inlier_total = _cluster_walls_by_azimuth(
-        np, cfg, pts_world=pts_world, normals=normals, valid_normal=valid_normal,
+        np, cfg, pts_world=pts_world, normals=normals, valid_normal=wall_valid,
         ground_inlier=ground_inlier, scaled_depth=scaled_depth,
         backdrop_d_raw=backdrop_d_raw, cam_pos=cam_pos, max_walls=max_walls,
-        height=height, width=width,
+        height=height, width=width, horizon_y=horizon_y,
     )
 
     for i, w in enumerate(walls):
@@ -402,7 +667,9 @@ def derive_projection_proxies(
                       "inliers": w["inliers"],
                       "yaw_deg": float(math.degrees(math.atan2(w["n"][0], w["n"][2]))),
                       "distance_m": float(w["d"]),
-                      "depth_scale_applied": scale},
+                      "depth_scale_applied": scale,
+                      "ground_anchored": bool(w.get("anchored", False)),
+                      "anchor_weight": w.get("anchor_weight")},
         ))
     stats["walls"] = len(walls)
 
@@ -411,6 +678,8 @@ def derive_projection_proxies(
         obj_cand = (valid_depth & inner & ~ground_inlier & ~wall_inlier_total
                     & (scaled_depth < backdrop_d_raw * 0.9)
                     & (world_y > 0.05))
+        if exclude_mask is not None:
+            obj_cand = obj_cand & ~np.asarray(exclude_mask, dtype=bool)
         prims.extend(_derive_objects(
             np, cfg, stats, pts_world, normals, obj_cand, valid_normal, scale))
 
@@ -486,8 +755,13 @@ def derive_vertical_extrusion_proxies(
     max_walls: int = 4,
     horizon_y: float | None = None,
     config: ProxyDerivationConfig | None = None,
+    exclude_mask: Any | None = None,
 ) -> tuple[list[AtlasProxyPrimitive], dict[str, Any]]:
     """Vertical-billboard wall fitter — Photo-Pop-up-style silhouette extrusion.
+
+    ``exclude_mask`` semantics match ``derive_projection_proxies``: walls and
+    objects only; ground fit / scale / backdrop stay full-frame so masked
+    branches share one metric world.
 
     Reuses ``azimuth_walls``'s wall ORIENTATION/DISTANCE clustering (that part
     isn't broken) via the shared ``_cluster_walls_by_azimuth`` helper, but
@@ -570,43 +844,138 @@ def derive_vertical_extrusion_proxies(
         ))
 
     # -- walls: shared orientation/distance clustering, silhouette height ----
+    wall_valid = bp.valid_normal
+    if exclude_mask is not None:
+        excl = np.asarray(exclude_mask, dtype=bool)
+        if excl.shape != (height, width):
+            raise ValueError(
+                f"exclude_mask shape {excl.shape} != depth shape {(height, width)}")
+        wall_valid = bp.valid_normal & ~excl
     walls, wall_inlier_total = _cluster_walls_by_azimuth(
-        np, cfg, pts_world=pts_world, normals=bp.normals, valid_normal=bp.valid_normal,
+        np, cfg, pts_world=pts_world, normals=bp.normals, valid_normal=wall_valid,
         ground_inlier=ground_inlier, scaled_depth=scaled_depth,
         backdrop_d_raw=backdrop_d_raw, cam_pos=bp.cam_pos, max_walls=max_walls,
-        height=height, width=width,
+        height=height, width=width, horizon_y=horizon_y,
     )
 
-    for i, w in enumerate(walls):
+    wall_no = 0
+    for w in walls:
         base_y = max(w["b_mid"] - 0.5 * w["h"], -0.1)
-        top_ys: list[float] = []
-        for col in np.unique(w["cols"]):
+        u_cols = np.unique(w["cols"])
+        col_tops: dict[int, float] = {}
+        for col in u_cols:
             rows = np.where(not_sky[:, col] & valid_depth[:, col])[0]
             if rows.size:
-                top_ys.append(float(pts_world[int(rows.min()), col, 1]))
-        if top_ys:
-            top_y = float(np.percentile(top_ys, 95.0))
-            h_m = max(top_y - base_y, cfg.min_wall_size_m)
-        else:
-            h_m = w["h"]  # no usable column — fall back to the clusterer's own height
-        b_mid = base_y + 0.5 * h_m
+                col_tops[int(col)] = float(pts_world[int(rows.min()), col, 1])
 
-        u_ax, v_ax, n_ax = _wall_axes(np, w["n"])
-        c = w["d"] * n_ax + w["a_mid"] * u_ax + b_mid * v_ax
-        prims.append(AtlasProxyPrimitive(
-            name=f"projection_wall_{i + 1:02d}",
-            primitive_type="plane",
-            transform_matrix=_plane_transform(u_ax, v_ax, n_ax, c),
-            dimensions=(w["w"], h_m, 0.0),
-            material="atlas_projection_proxy",
-            metadata={"role": PROXY_ROLE, "source": "depth_derivation",
-                      "inliers": w["inliers"],
-                      "yaw_deg": float(math.degrees(math.atan2(w["n"][0], w["n"][2]))),
-                      "distance_m": float(w["d"]),
-                      "depth_scale_applied": scale,
-                      "method": "vertical_extrusion"},
-        ))
-    stats["walls"] = len(walls)
+        # Column segments: one per roofline when enabled (split at silhouette
+        # height steps), else the whole cluster as a single segment — a row of
+        # buildings then stops sharing one rectangle that spans sky above its
+        # shorter members.
+        segments: list[Any] = []
+        if cfg.roofline_split and len(col_tops) >= 8:
+            sc = np.array(sorted(col_tops))
+            tops = np.array([col_tops[int(c)] for c in sc])
+            k = 5  # light moving-median so window AC units don't split walls
+            sm = np.array([float(np.median(tops[max(0, j - k // 2):j + k // 2 + 1]))
+                           for j in range(len(tops))])
+            med_h = max(float(np.median(sm - base_y)), cfg.min_wall_size_m)
+            step = np.abs(np.diff(sm))
+            cuts = np.where(step > max(cfg.roofline_split_rel * med_h, 1.0))[0]
+            lo = 0
+            for cut in list(cuts) + [len(sc) - 1]:
+                segments.append(sc[lo:cut + 1])
+                lo = cut + 1
+            segments = [seg for seg in segments if seg.size >= 4]
+        if not segments:
+            segments = [u_cols]
+
+        for seg_cols in segments:
+            seg_set = np.isin(w["cols"], seg_cols)
+            if not seg_set.any():
+                continue
+            p_seg = w["pts"][seg_set]
+            u_ax, v_ax, n_ax = _wall_axes(np, w["n"])
+            seg_w = w.copy()
+            if len(segments) > 1:
+                # Per-segment extents (and re-anchor: each building's own
+                # base contact line gives its own footprint distance).
+                a = p_seg @ u_ax
+                p_lo, p_hi = cfg.extent_percentiles
+                a0, a1 = np.percentile(a, [p_lo, p_hi])
+                if float(a1 - a0) < cfg.wall_min_width_m:
+                    continue
+                base_set = np.isin(w.get("base_cols", w["cols"]), seg_cols)
+                seg_w.update({"a_mid": 0.5 * float(a0 + a1),
+                              "w": float(a1 - a0),
+                              "cols": w["cols"][seg_set],
+                              "rows": w["rows"][seg_set],
+                              "pts": p_seg,
+                              "base_cols": w.get("base_cols", w["cols"])[base_set],
+                              "base_rows": w.get("base_rows", w["rows"])[base_set],
+                              "base_pts": w.get("base_pts", w["pts"])[base_set],
+                              "inliers": int(seg_set.sum())})
+                if cfg.ground_anchor:
+                    seg_w = _anchor_wall_to_ground(
+                        np, cfg, seg_w, bp.cam_pos, horizon_y, height)
+            # Anchored buildings sit ON the ground (near-base pixels are
+            # routinely eaten by ground-inlier/depth-edge filtering, leaving
+            # unanchored walls floating — keep their measured base).
+            seg_base_y = 0.0 if seg_w.get("anchored") else base_y
+            if seg_w.get("anchored"):
+                # Banana-immune heights: the silhouette top PIXEL is reliable
+                # but its own back-projected depth is not (a warped far depth
+                # inflated rooftops to 100 m+ on a real street photo, in both
+                # variants). Intersect each top pixel's ray with the ANCHORED
+                # wall plane instead — like the footprint, height becomes
+                # pure geometry.
+                n_pl = np.asarray(seg_w["n"], dtype=np.float64)
+                d_pl = float(seg_w["d"])
+                seg_tops = []
+                for cc in seg_cols:
+                    ci = int(cc)
+                    if ci not in col_tops:
+                        continue
+                    rr = np.where(not_sky[:, ci] & valid_depth[:, ci])[0]
+                    if not rr.size:
+                        continue
+                    p_top = pts_world[int(rr.min()), ci]
+                    ray = p_top - bp.cam_pos
+                    rn = float(ray @ n_pl)
+                    if abs(rn) < 1e-9:
+                        continue
+                    t_pl = (d_pl - float(bp.cam_pos @ n_pl)) / rn
+                    if t_pl <= 0:
+                        continue
+                    seg_tops.append(float(bp.cam_pos[1] + t_pl * ray[1]))
+            else:
+                seg_tops = [col_tops[int(c)] for c in seg_cols if int(c) in col_tops]
+            if seg_tops:
+                top_y = float(np.percentile(seg_tops, 95.0))
+                h_m = max(top_y - seg_base_y, cfg.min_wall_size_m)
+            else:
+                h_m = w["h"]  # no usable column — clusterer's own height
+            b_mid = seg_base_y + 0.5 * h_m
+            u_ax, v_ax, n_ax = _wall_axes(np, seg_w["n"])
+            c = seg_w["d"] * n_ax + seg_w["a_mid"] * u_ax + b_mid * v_ax
+            wall_no += 1
+            prims.append(AtlasProxyPrimitive(
+                name=f"projection_wall_{wall_no:02d}",
+                primitive_type="plane",
+                transform_matrix=_plane_transform(u_ax, v_ax, n_ax, c),
+                dimensions=(seg_w["w"], h_m, 0.0),
+                material="atlas_projection_proxy",
+                metadata={"role": PROXY_ROLE, "source": "depth_derivation",
+                          "inliers": seg_w["inliers"],
+                          "yaw_deg": float(math.degrees(math.atan2(seg_w["n"][0], seg_w["n"][2]))),
+                          "distance_m": float(seg_w["d"]),
+                          "depth_scale_applied": scale,
+                          "ground_anchored": bool(seg_w.get("anchored", False)),
+                          "anchor_weight": seg_w.get("anchor_weight"),
+                          "roofline_segment": len(segments) > 1,
+                          "method": "vertical_extrusion"},
+            ))
+    stats["walls"] = wall_no
 
     # -- objects (identical to derive_projection_proxies) --------------------
     if cfg.max_objects > 0:
@@ -615,6 +984,8 @@ def derive_vertical_extrusion_proxies(
         obj_cand = (valid_depth & inner_mask & ~ground_inlier & ~wall_inlier_total
                     & (scaled_depth < backdrop_d_raw * 0.9)
                     & (pts_world[..., 1] > 0.05))
+        if exclude_mask is not None:
+            obj_cand = obj_cand & ~np.asarray(exclude_mask, dtype=bool)
         prims.extend(_derive_objects(
             np, cfg, stats, pts_world, bp.normals, obj_cand, bp.valid_normal, scale))
 
