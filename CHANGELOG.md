@@ -38,7 +38,10 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   mask-membership pattern as the X-ray layer, built entirely from existing
   nodes. Un-bypass a row's `MaskComposite` to activate it; bypassed rows fall
   back to sky-only (plain band) behavior. Ships with the far row active
-  (prompt "trees") as the worked example.
+  (prompt "rock formations", matching the shipped plate) as the worked
+  example. Note a prompt that matches nothing excludes the whole band —
+  the layer builds zero mesh and the DCC exports skip it with a
+  "no mesh geometry" note rather than erroring.
 
 ### Two distributions: `main` (working) vs `experimental` (🔬 enabled)
 
