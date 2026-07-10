@@ -129,7 +129,7 @@ combine explicitly.
 | `AtlasDefineShotCam` | A project-level render/output camera format (sensor W×H mm + lens mm + long-edge resolution) — like a Nuke/Resolve project setting. Intrinsics-only, no position. Wire into `AtlasMergeGeometry` (attaches to the merged solve) or directly into `AtlasBlockoutViewport` so the render/export conforms to one shot format instead of each photo's own aspect. |
 | `AtlasRegisterPlate` | Registers a source/patch/clean plate as a durable `ATLAS_PLATE_REF`: original path, browser preview, colorspace, bit depth, role, proxy flag, optional LUT metadata. This is the float-safe bridge from ComfyUI preview tensors to final EXR/high-bit-depth plate files. |
 | `AtlasAttachSourcePlate` | Attaches a registered plate ref to a solve so viewport/export nodes can keep using browser previews while Nuke/Maya/review/OBJ exporters prefer the original plate path for final projection. |
-| `AtlasViewportControls` / Atlas Output Desk | Optional companion/output node. Output 0 remains the legacy detached-controls link; output 1 is `ATLAS_OUTPUT_PROFILE` with OCIO-style intent (config, working/output colorspace, display/view/look, LUT, exposure/gamma/display trim). |
+| `AtlasViewportControls` / Atlas Output Desk | Optional companion/output node. Output 0 remains the legacy detached-controls link; output 1 is `ATLAS_OUTPUT_PROFILE` with OCIO-style intent (config, working/output colorspace, display/view, display trim; the schema still carries look/LUT/exposure/gamma at neutral defaults — the widgets were removed 2026-07-10 as redundant). |
 
 ### Inpaint layers (2.5D clean-plate parallax — see §3.5)
 
@@ -475,7 +475,7 @@ need nothing beyond the pip install above.
 
 Use the Atlas Output Desk (`AtlasViewportControls`) to store the intended
 output profile: config label/path, working colorspace, output colorspace,
-display/view/look, LUT path, exposure, gamma, and display trim. The browser
+display/view, and display trim. The browser
 preview is display-inferred only; final OCIO/LUT fidelity belongs to
 ComfyUI-OCIO, Nuke, Maya, Resolve, or another color-managed tool.
 

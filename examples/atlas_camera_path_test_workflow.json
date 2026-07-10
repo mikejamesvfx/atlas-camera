@@ -264,10 +264,6 @@
         "ACES - ACEScg",
         "sRGB - Display",
         "ACES 2.0 SDR-video",
-        "None",
-        "",
-        0,
-        1,
         1
       ]
     },
@@ -298,7 +294,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Blockout — Shaded"
+      "title": "Blockout \u2014 Shaded"
     },
     {
       "id": 6,
@@ -327,7 +323,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Baked Camera Path — frame batch"
+      "title": "Baked Camera Path \u2014 frame batch"
     },
     {
       "id": 7,
@@ -371,7 +367,7 @@
       "widgets_values": [
         "atlas_exports"
       ],
-      "title": "Export Camera Path (USD) — muted by default"
+      "title": "Export Camera Path (USD) \u2014 muted by default"
     },
     {
       "id": 8,
@@ -391,7 +387,7 @@
         "text": ""
       },
       "widgets_values": [
-        "CAMERA PATH PRESETS (Phase A quick-start)\n\nNode ④ is now the perspective render ONLY —\nevery button/panel below lives in node ⑦ (AtlasViewportControls) instead.\nConnect ⑦'s output to ④'s new 'controls' input (already wired in this\nexample) and they act as one viewport; leave it unconnected on a node\nyou don't want split and all controls stay local to it as before.\n\n1. Queue once first so the viewport opens with the recovered camera and\n   derived geometry loaded (you need a real solved scene before a preset\n   means anything).\n2. Click 🎥 Camera Path to enter path-authoring mode. This swaps the\n   normal (clamped) orbit drag for an UNCLAMPED fly camera — RMB-hold +\n   drag to look, WASD to move, Q/E for down/up — fly to whatever you\n   want the shot to END on. Presets always finish on your CURRENT\n   framing when you click Apply and arrive there FROM the named side,\n   so frame up the final shot first, not the starting one.\n3. Pick a preset from the dropdown next to '+ Keyframe':\n     Pan Left / Pan Right   — position stays put (true pan); Pan Left\n                              starts with its gaze offset to the RIGHT\n                              of the subject and sweeps to center\n                              (your framing), Pan Right starts offset\n                              LEFT (angle field, degrees).\n     Orbit Left / Orbit Right — camera itself starts physically\n                              positioned to the RIGHT of the subject\n                              (Orbit Left) or LEFT (Orbit Right) and\n                              arcs in to your framing, always looking\n                              at the subject (angle field, degrees).\n     Dolly In / Dolly Out   — camera moves toward/away from the\n                              subject along the view axis, ending at\n                              your framing (amount field, 0.05–0.9 =\n                              fraction of the current distance).\n4. Set the angle / amount field for the preset you picked, then click\n   'Apply Preset'. This REPLACES whatever keyframes already exist with\n   a clean 2-keyframe move: keyframe 0 = the computed starting pose\n   (from the named side), keyframe (frame_count-1) = your current\n   pose, eased in/out. Hand-edit or add more keyframes afterward if\n   you want a multi-stage move.\n5. Click ▶ Play to preview the move live — with 📽 Project on, watch how\n   the projected photo holds up as the camera leaves its recovered\n   viewpoint (some black/undefined regions beyond the recovered camera's\n   cone are expected, not a bug — see 'Orbit coverage' in CLAUDE.md).\n6. Click ⏺ Bake Path to render every frame and fill node ④'s path_frames\n   (→ node ⑥'s preview; swap for a real Video Combine node for an actual\n   video file) and camera_path (→ node ⑦, muted until you bake — enable\n   it via right-click → Mode → Always to export a time-sampled USD\n   camera for a DCC).\n\nTip: try Dolly In followed by hand-adding one more keyframe for a small\nOrbit at the end — presets are just a fast starting point, not a limit."
+        "CAMERA PATH PRESETS (Phase A quick-start)\n\nNode \u2463 is now the perspective render ONLY \u2014\nevery button/panel below lives in node \u2466 (AtlasViewportControls) instead.\nConnect \u2466's output to \u2463's new 'controls' input (already wired in this\nexample) and they act as one viewport; leave it unconnected on a node\nyou don't want split and all controls stay local to it as before.\n\n1. Queue once first so the viewport opens with the recovered camera and\n   derived geometry loaded (you need a real solved scene before a preset\n   means anything).\n2. Click \ud83c\udfa5 Camera Path to enter path-authoring mode. This swaps the\n   normal (clamped) orbit drag for an UNCLAMPED fly camera \u2014 RMB-hold +\n   drag to look, WASD to move, Q/E for down/up \u2014 fly to whatever you\n   want the shot to END on. Presets always finish on your CURRENT\n   framing when you click Apply and arrive there FROM the named side,\n   so frame up the final shot first, not the starting one.\n3. Pick a preset from the dropdown next to '+ Keyframe':\n     Pan Left / Pan Right   \u2014 position stays put (true pan); Pan Left\n                              starts with its gaze offset to the RIGHT\n                              of the subject and sweeps to center\n                              (your framing), Pan Right starts offset\n                              LEFT (angle field, degrees).\n     Orbit Left / Orbit Right \u2014 camera itself starts physically\n                              positioned to the RIGHT of the subject\n                              (Orbit Left) or LEFT (Orbit Right) and\n                              arcs in to your framing, always looking\n                              at the subject (angle field, degrees).\n     Dolly In / Dolly Out   \u2014 camera moves toward/away from the\n                              subject along the view axis, ending at\n                              your framing (amount field, 0.05\u20130.9 =\n                              fraction of the current distance).\n4. Set the angle / amount field for the preset you picked, then click\n   'Apply Preset'. This REPLACES whatever keyframes already exist with\n   a clean 2-keyframe move: keyframe 0 = the computed starting pose\n   (from the named side), keyframe (frame_count-1) = your current\n   pose, eased in/out. Hand-edit or add more keyframes afterward if\n   you want a multi-stage move.\n5. Click \u25b6 Play to preview the move live \u2014 with \ud83d\udcfd Project on, watch how\n   the projected photo holds up as the camera leaves its recovered\n   viewpoint (some black/undefined regions beyond the recovered camera's\n   cone are expected, not a bug \u2014 see 'Orbit coverage' in CLAUDE.md).\n6. Click \u23fa Bake Path to render every frame and fill node \u2463's path_frames\n   (\u2192 node \u2465's preview; swap for a real Video Combine node for an actual\n   video file) and camera_path (\u2192 node \u2466, muted until you bake \u2014 enable\n   it via right-click \u2192 Mode \u2192 Always to export a time-sampled USD\n   camera for a DCC).\n\nTip: try Dolly In followed by hand-adding one more keyframe for a small\nOrbit at the end \u2014 presets are just a fast starting point, not a limit."
       ]
     }
   ],
@@ -480,7 +476,7 @@
   "groups": [
     {
       "id": 1,
-      "title": "① Source",
+      "title": "\u2460 Source",
       "bounding": [
         20,
         100,
@@ -493,7 +489,7 @@
     },
     {
       "id": 2,
-      "title": "② Camera Recovery (GeoCalib)",
+      "title": "\u2461 Camera Recovery (GeoCalib)",
       "bounding": [
         400,
         100,
@@ -506,7 +502,7 @@
     },
     {
       "id": 3,
-      "title": "③ Derive Projection Geometry (relief mesh)",
+      "title": "\u2462 Derive Projection Geometry (relief mesh)",
       "bounding": [
         860,
         100,
@@ -519,7 +515,7 @@
     },
     {
       "id": 4,
-      "title": "④ Atlas Viewport",
+      "title": "\u2463 Atlas Viewport",
       "bounding": [
         1320,
         100,
@@ -532,7 +528,7 @@
     },
     {
       "id": 5,
-      "title": "⑤ Export Camera Path (USD)",
+      "title": "\u2464 Export Camera Path (USD)",
       "bounding": [
         860,
         440,
@@ -545,7 +541,7 @@
     },
     {
       "id": 6,
-      "title": "⑥ How to use the camera path presets",
+      "title": "\u2465 How to use the camera path presets",
       "bounding": [
         20,
         460,
@@ -558,7 +554,7 @@
     },
     {
       "id": 7,
-      "title": "⑦ Viewport Controls",
+      "title": "\u2466 Viewport Controls",
       "bounding": [
         1320,
         600,

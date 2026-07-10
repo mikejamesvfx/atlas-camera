@@ -287,8 +287,11 @@ file should be used for final projection.
 ### Color controls are preview intent, not full OCIO
 
 The Output Desk's Color tab stores an `ATLAS_OUTPUT_PROFILE`: config label or
-path, working colorspace, output colorspace, display, view, look, LUT path,
-exposure, gamma, and display trim. The browser uses that information for
+path, working colorspace, output colorspace, display, view, and display trim.
+(Look, LUT path, exposure, and gamma widgets were removed as redundant — the
+viewport's own ☀ Exposure control covers preview brightness; the profile
+schema still carries those fields at neutral defaults for downstream
+compatibility.) The browser uses that information for
 labels and lightweight display-inferred preview trims only. It does **not**
 run a full OpenColorIO processor in WebGL.
 

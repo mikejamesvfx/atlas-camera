@@ -476,10 +476,6 @@
         "ACES - ACEScg",
         "sRGB - Display",
         "ACES 2.0 SDR-video",
-        "None",
-        "",
-        0,
-        1,
         1
       ]
     },
@@ -639,7 +635,7 @@
           "links": null
         }
       ],
-      "title": "Blockout — Shaded",
+      "title": "Blockout \u2014 Shaded",
       "properties": {
         "cnr_id": "comfy-core",
         "ver": "0.27.0",
@@ -708,7 +704,7 @@
   "groups": [
     {
       "id": 1,
-      "title": "① Source",
+      "title": "\u2460 Source",
       "bounding": [
         20,
         100,
@@ -721,7 +717,7 @@
     },
     {
       "id": 2,
-      "title": "② Solve → Derive Projection Geometry",
+      "title": "\u2461 Solve \u2192 Derive Projection Geometry",
       "bounding": [
         400,
         100,
@@ -734,7 +730,7 @@
     },
     {
       "id": 3,
-      "title": "③ AtlasViewportControls — detached Output Desk (View/Color/Passes/Path/Lights tabs)",
+      "title": "\u2462 AtlasViewportControls \u2014 detached Output Desk (View/Color/Passes/Path/Lights tabs)",
       "bounding": [
         400,
         460,
@@ -747,7 +743,7 @@
     },
     {
       "id": 4,
-      "title": "④ Atlas Viewport — 💡 Lights + full Output Desk live",
+      "title": "\u2463 Atlas Viewport \u2014 \ud83d\udca1 Lights + full Output Desk live",
       "bounding": [
         1240,
         100,

@@ -305,7 +305,7 @@
         0,
         4
       ],
-      "title": "Depth Layer Mask — BG band (0.65 → +inf)"
+      "title": "Depth Layer Mask \u2014 BG band (0.65 \u2192 +inf)"
     },
     {
       "id": 7,
@@ -361,7 +361,7 @@
         0.65,
         4
       ],
-      "title": "Depth Layer Mask — MID band (0.20 → 0.65)"
+      "title": "Depth Layer Mask \u2014 MID band (0.20 \u2192 0.65)"
     },
     {
       "id": 8,
@@ -427,7 +427,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "BG occlusion — what the bg inpaint must fill"
+      "title": "BG occlusion \u2014 what the bg inpaint must fill"
     },
     {
       "id": 10,
@@ -493,7 +493,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "MID occlusion — what the mid inpaint must fill"
+      "title": "MID occlusion \u2014 what the mid inpaint must fill"
     },
     {
       "id": 12,
@@ -558,7 +558,7 @@
         384,
         1.5
       ],
-      "title": "Clean Plate Layer — BG (placeholder plate, wire inpaint here)"
+      "title": "Clean Plate Layer \u2014 BG (placeholder plate, wire inpaint here)"
     },
     {
       "id": 13,
@@ -623,7 +623,7 @@
         384,
         1.5
       ],
-      "title": "Clean Plate Layer — MID (placeholder plate, wire inpaint here)"
+      "title": "Clean Plate Layer \u2014 MID (placeholder plate, wire inpaint here)"
     },
     {
       "id": 14,
@@ -692,7 +692,7 @@
         384,
         1.5
       ],
-      "title": "Clean Plate Layer — FG (original pixels, no inpaint needed)"
+      "title": "Clean Plate Layer \u2014 FG (original pixels, no inpaint needed)"
     },
     {
       "id": 15,
@@ -738,13 +738,9 @@
         "ACES - ACEScg",
         "sRGB - Display",
         "ACES 2.0 SDR-video",
-        "None",
-        "",
-        0.0,
-        1.0,
         1.0
       ],
-      "title": "Output Desk — View · Plates · Color · Passes · Path · Lights"
+      "title": "Output Desk \u2014 View \u00b7 Plates \u00b7 Color \u00b7 Passes \u00b7 Path \u00b7 Lights"
     },
     {
       "id": 16,
@@ -870,7 +866,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "Blockout — Shaded"
+      "title": "Blockout \u2014 Shaded"
     },
     {
       "id": 18,
@@ -979,7 +975,7 @@
         "auto",
         "obj"
       ],
-      "title": "Export relief mesh (OBJ) — feeds AtlasExportNuke below"
+      "title": "Export relief mesh (OBJ) \u2014 feeds AtlasExportNuke below"
     },
     {
       "id": 19,
@@ -1107,7 +1103,7 @@
         "text": ""
       },
       "widgets_values": [
-        "ATLAS OCIO ACEScg FULL-FLOAT PLATE WORKFLOW — sci-fi hangar (third version in this series)\n\nExtends atlas_camera_inpaint_layers_hangar_workflow.json (the 3-band clean-plate sequel) with a genuine float-safe source plate and DCC export verification:\n\n  1. OCIORead loads examples/images/OCIO/atlasSpaceHangar_32bit_AcesCG.exr directly (32-bit float, ACEScg scene-linear) and converts ACEScg -> sRGB - Display for the ComfyUI-side tensor used to solve the camera and populate the viewport preview — the SAME 'display proxy vs. real float plate' split every exporter here already assumes (see nuke_exporter.py's Read-node comment).\n  2. AtlasRegisterPlate registers that SAME EXR path (colorspace=ACEScg, bit_depth=32f, role=source) as the durable plate_ref — is_proxy is False because a real, non-blank plate_path was supplied.\n  3. AtlasAttachSourcePlate attaches it onto the solve immediately after the learned solve, so it rides through every downstream deep-copy (AtlasCleanPlateLayer x3 all copy.deepcopy(solve) and only touch projection_sources/proxy_geometry — source_plate is untouched, confirmed by reading nodes.py).\n  4. The SAME three clean-plate bands as the previous hangar workflow (bg/mid/fg, tuned relief_grid 384 + depth_edge_rel 1.5) chain on top of the plated solve — nothing about the plate changes the clean-plate mechanics, it is pure metadata carried alongside.\n  5. Bake a camera move in the viewport (🎥 Camera Path -> pick a preset -> Apply Preset -> ⏺ Bake Proxy Path) to populate the camera_path output, then AtlasExportCameraPathUSD writes a time-sampled animated camera .usda from it.\n  6. AtlasExportNuke reads solve.source_plate (via exporters/_plate.py's primary_plate_path/primary_plate_colorspace helpers) to point its Read node at the REAL EXR with colorspace=ACEScg instead of a browser JPEG/PNG proxy — this is the actual full-float verification: open the generated script and confirm the Read node's file/colorspace knobs.\n  7. The detached AtlasViewportControls Output Desk feeds output_profile into BOTH the viewport and AtlasExportNuke directly (a direct optional-input wire, not an attach node) — its defaults are already ACEScg-flavored (working_colorspace=ACEScg, output_colorspace='ACES - ACEScg').\n  8. AtlasExportReliefMesh derives the real hangar geometry (OBJ) and feeds its obj_path into AtlasExportNuke's relief_mesh_obj_path input (same wiring pattern as AtlasExportMayaReviewScene) — both the .py and .nk Nuke exports then live-project the recovered camera onto that REAL mesh via ReadGeo2, instead of the default flat 40x40m ground card. Confirmed live (Nuke 16.1v3): ReadGeo2 reads the OBJ fine but does NOT auto-apply its MTL's own texture reference — the live Project3D2 projection wired into ReadGeo2's own image input (same topology as the Card case) is what actually textures it, which is also why this stays a genuine camera projection rather than a static UV bake even though the mesh's own baked UVs would technically make the raw photo 'look right' too.\n\nPATH GOTCHA (same caveat as atlas_camera_vfx_ocio_output_workflow.json): the OCIORead source and AtlasRegisterPlate plate_path widgets are hardcoded to this machine's absolute path (C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\OCIO\\atlasSpaceHangar_32bit_AcesCG.exr). Point both widgets at your own local copy of the EXR before running — OCIORead accepts any absolute path 'anywhere on disk' (its own tooltip), it does not need to live under ComfyUI/input.\n\nRequires the ComfyUI-OCIO custom node pack (OCIORead) — see atlas_camera_vfx_ocio_output_workflow.json's own note for install steps. Needs [neural] for the learned solve + depth model.\n\nVERIFIED LIVE 2026-07-07 (full pipeline, not just reasoned through):\n  - OCIORead loads the real 3840x2160 32-bit-float ACEScg EXR and converts to sRGB - Display; AtlasLearnedSolveFromImage solves cleanly on that preview.\n  - Exported atlas_hangar_ocio_solve.json's source_plate: image_path = the real .exr, colorspace = ACEScg, bit_depth = 32f, is_proxy = false, metadata.path_exists = true.\n  - Baked a camera path in the real browser UI (Camera Path -> Orbit Left preset -> Apply Preset -> Bake Proxy Path) and re-queued; AtlasExportCameraPathUSD's camera_path.usda came out correctly time-sampled: startTimeCode=0, endTimeCode=47, framesPerSecond=24 (48 keyframe samples, matching frame_count=48/fps=24), upAxis=Y, and the pose arcs from an off-angle start to the recovered camera's own straight-on pose at frame 47 — exactly the documented Orbit Left 'arrive at the current vantage' behavior.\n  - AtlasExportNuke's nuke_projection.py Read node points at the SAME real EXR path with colorspace='ACEScg' (not the ComfyUI-side sRGB-Display preview), and its StickyNote carries the full output_profile dict from the Output Desk (working_colorspace=ACEScg, output_colorspace='ACES - ACEScg') — confirming AtlasExportNuke's optional output_profile input attaches onto the solve before export, per nodes.py's _clone_solve_with_metadata call.\n  - Without a bake, AtlasExportCameraPathUSD correctly raises 'No camera path yet...' rather than silently no-op'ing or crashing — verified by running the graph once before baking."
+        "ATLAS OCIO ACEScg FULL-FLOAT PLATE WORKFLOW \u2014 sci-fi hangar (third version in this series)\n\nExtends atlas_camera_inpaint_layers_hangar_workflow.json (the 3-band clean-plate sequel) with a genuine float-safe source plate and DCC export verification:\n\n  1. OCIORead loads examples/images/OCIO/atlasSpaceHangar_32bit_AcesCG.exr directly (32-bit float, ACEScg scene-linear) and converts ACEScg -> sRGB - Display for the ComfyUI-side tensor used to solve the camera and populate the viewport preview \u2014 the SAME 'display proxy vs. real float plate' split every exporter here already assumes (see nuke_exporter.py's Read-node comment).\n  2. AtlasRegisterPlate registers that SAME EXR path (colorspace=ACEScg, bit_depth=32f, role=source) as the durable plate_ref \u2014 is_proxy is False because a real, non-blank plate_path was supplied.\n  3. AtlasAttachSourcePlate attaches it onto the solve immediately after the learned solve, so it rides through every downstream deep-copy (AtlasCleanPlateLayer x3 all copy.deepcopy(solve) and only touch projection_sources/proxy_geometry \u2014 source_plate is untouched, confirmed by reading nodes.py).\n  4. The SAME three clean-plate bands as the previous hangar workflow (bg/mid/fg, tuned relief_grid 384 + depth_edge_rel 1.5) chain on top of the plated solve \u2014 nothing about the plate changes the clean-plate mechanics, it is pure metadata carried alongside.\n  5. Bake a camera move in the viewport (\ud83c\udfa5 Camera Path -> pick a preset -> Apply Preset -> \u23fa Bake Proxy Path) to populate the camera_path output, then AtlasExportCameraPathUSD writes a time-sampled animated camera .usda from it.\n  6. AtlasExportNuke reads solve.source_plate (via exporters/_plate.py's primary_plate_path/primary_plate_colorspace helpers) to point its Read node at the REAL EXR with colorspace=ACEScg instead of a browser JPEG/PNG proxy \u2014 this is the actual full-float verification: open the generated script and confirm the Read node's file/colorspace knobs.\n  7. The detached AtlasViewportControls Output Desk feeds output_profile into BOTH the viewport and AtlasExportNuke directly (a direct optional-input wire, not an attach node) \u2014 its defaults are already ACEScg-flavored (working_colorspace=ACEScg, output_colorspace='ACES - ACEScg').\n  8. AtlasExportReliefMesh derives the real hangar geometry (OBJ) and feeds its obj_path into AtlasExportNuke's relief_mesh_obj_path input (same wiring pattern as AtlasExportMayaReviewScene) \u2014 both the .py and .nk Nuke exports then live-project the recovered camera onto that REAL mesh via ReadGeo2, instead of the default flat 40x40m ground card. Confirmed live (Nuke 16.1v3): ReadGeo2 reads the OBJ fine but does NOT auto-apply its MTL's own texture reference \u2014 the live Project3D2 projection wired into ReadGeo2's own image input (same topology as the Card case) is what actually textures it, which is also why this stays a genuine camera projection rather than a static UV bake even though the mesh's own baked UVs would technically make the raw photo 'look right' too.\n\nPATH GOTCHA (same caveat as atlas_camera_vfx_ocio_output_workflow.json): the OCIORead source and AtlasRegisterPlate plate_path widgets are hardcoded to this machine's absolute path (C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\OCIO\\atlasSpaceHangar_32bit_AcesCG.exr). Point both widgets at your own local copy of the EXR before running \u2014 OCIORead accepts any absolute path 'anywhere on disk' (its own tooltip), it does not need to live under ComfyUI/input.\n\nRequires the ComfyUI-OCIO custom node pack (OCIORead) \u2014 see atlas_camera_vfx_ocio_output_workflow.json's own note for install steps. Needs [neural] for the learned solve + depth model.\n\nVERIFIED LIVE 2026-07-07 (full pipeline, not just reasoned through):\n  - OCIORead loads the real 3840x2160 32-bit-float ACEScg EXR and converts to sRGB - Display; AtlasLearnedSolveFromImage solves cleanly on that preview.\n  - Exported atlas_hangar_ocio_solve.json's source_plate: image_path = the real .exr, colorspace = ACEScg, bit_depth = 32f, is_proxy = false, metadata.path_exists = true.\n  - Baked a camera path in the real browser UI (Camera Path -> Orbit Left preset -> Apply Preset -> Bake Proxy Path) and re-queued; AtlasExportCameraPathUSD's camera_path.usda came out correctly time-sampled: startTimeCode=0, endTimeCode=47, framesPerSecond=24 (48 keyframe samples, matching frame_count=48/fps=24), upAxis=Y, and the pose arcs from an off-angle start to the recovered camera's own straight-on pose at frame 47 \u2014 exactly the documented Orbit Left 'arrive at the current vantage' behavior.\n  - AtlasExportNuke's nuke_projection.py Read node points at the SAME real EXR path with colorspace='ACEScg' (not the ComfyUI-side sRGB-Display preview), and its StickyNote carries the full output_profile dict from the Output Desk (working_colorspace=ACEScg, output_colorspace='ACES - ACEScg') \u2014 confirming AtlasExportNuke's optional output_profile input attaches onto the solve before export, per nodes.py's _clone_solve_with_metadata call.\n  - Without a bake, AtlasExportCameraPathUSD correctly raises 'No camera path yet...' rather than silently no-op'ing or crashing \u2014 verified by running the graph once before baking."
       ]
     },
     {
@@ -1130,7 +1126,7 @@
         "text": ""
       },
       "widgets_values": [
-        "EXTERNAL INPAINT STEP (not included — needs Acly/comfyui-inpaint-nodes, GPL-3.0):\n\nThe links feeding the BG and MID AtlasCleanPlateLayer plate_image inputs are PLACEHOLDERS — they reuse OCIORead's sRGB-Display preview directly so this graph stays valid/runnable without the external pack installed.\n\nFor each of the two occluded bands, replace that link with:\n  AtlasDepthLayerMask.occlusion_mask\n    -> INPAINT_ExpandMask (grow ~16-32)\n    -> INPAINT_InpaintWithModel (image = OCIORead's image output, inpaint_model = INPAINT_LoadInpaintModel loading big-lama.pt)\n    -> AtlasCleanPlateLayer.plate_image\n\nThe FG layer needs no inpainting — it is wired to the original photo by design, since nothing occludes the frontmost band.\n\nEach AtlasCleanPlateLayer also exposes its own optional plate_ref (ATLAS_PLATE_REF) input, left unconnected here — wire an AtlasRegisterPlate per band if a real per-layer float clean plate ever exists (e.g. a separately rendered background pass); it is independent of the solve-level source_plate this workflow demonstrates."
+        "EXTERNAL INPAINT STEP (not included \u2014 needs Acly/comfyui-inpaint-nodes, GPL-3.0):\n\nThe links feeding the BG and MID AtlasCleanPlateLayer plate_image inputs are PLACEHOLDERS \u2014 they reuse OCIORead's sRGB-Display preview directly so this graph stays valid/runnable without the external pack installed.\n\nFor each of the two occluded bands, replace that link with:\n  AtlasDepthLayerMask.occlusion_mask\n    -> INPAINT_ExpandMask (grow ~16-32)\n    -> INPAINT_InpaintWithModel (image = OCIORead's image output, inpaint_model = INPAINT_LoadInpaintModel loading big-lama.pt)\n    -> AtlasCleanPlateLayer.plate_image\n\nThe FG layer needs no inpainting \u2014 it is wired to the original photo by design, since nothing occludes the frontmost band.\n\nEach AtlasCleanPlateLayer also exposes its own optional plate_ref (ATLAS_PLATE_REF) input, left unconnected here \u2014 wire an AtlasRegisterPlate per band if a real per-layer float clean plate ever exists (e.g. a separately rendered background pass); it is independent of the solve-level source_plate this workflow demonstrates."
       ]
     },
     {
@@ -1153,7 +1149,7 @@
         "text": ""
       },
       "widgets_values": [
-        "VIEWPORT + EXPORT CHECKS (Output Desk holds all the viewport buttons — the viewport node itself is render-only):\n\n1. Hit 📽 Project, then dolly/orbit in — the hangar reassembles from the three chained clean-plate bands exactly like the previous example.\n2. Camera Path: click 🎥 Camera Path, pick a preset (e.g. Orbit Left) from the dropdown, click Apply Preset, then ⏺ Bake Proxy Path. This fills the viewport's camera_path/path_frames outputs and re-queues automatically — AtlasExportCameraPathUSD downstream needs this to have run at least once (camera_path is None until a bake has happened; the export node no-ops and passes the solve through unchanged if camera_path.keyframes is empty).\n3. AtlasExportCameraPathUSD writes camera_path.usda — a time-sampled Usd.TimeCode-keyed animated camera, importable straight into Maya/Houdini/Blender's USD stage.\n4. AtlasExportNuke writes a Nuke Python script whose Read node points at the real ACEScg EXR (not this graph's ComfyUI-side sRGB-Display preview) — open the generated .py and confirm the file/colorspace knobs before treating this as verified.\n5. AtlasExportSolveJSON's output JSON should contain a populated \"source_plate\" object (image_path = the EXR, colorspace = ACEScg, bit_depth = 32f, is_proxy = false) plus all three clean-plate ProjectionSources — the same full pipeline validated end to end from a single JSON.\n6. Open nuke_projection.nk (or .py) in Nuke: ScanlineRender should show the real hangar geometry (torn at depth discontinuities), not a flat floor — confirms AtlasExportReliefMesh's obj_path reached AtlasExportNuke's relief_mesh_obj_path input and ReadGeo2 is live-projected onto correctly."
+        "VIEWPORT + EXPORT CHECKS (Output Desk holds all the viewport buttons \u2014 the viewport node itself is render-only):\n\n1. Hit \ud83d\udcfd Project, then dolly/orbit in \u2014 the hangar reassembles from the three chained clean-plate bands exactly like the previous example.\n2. Camera Path: click \ud83c\udfa5 Camera Path, pick a preset (e.g. Orbit Left) from the dropdown, click Apply Preset, then \u23fa Bake Proxy Path. This fills the viewport's camera_path/path_frames outputs and re-queues automatically \u2014 AtlasExportCameraPathUSD downstream needs this to have run at least once (camera_path is None until a bake has happened; the export node no-ops and passes the solve through unchanged if camera_path.keyframes is empty).\n3. AtlasExportCameraPathUSD writes camera_path.usda \u2014 a time-sampled Usd.TimeCode-keyed animated camera, importable straight into Maya/Houdini/Blender's USD stage.\n4. AtlasExportNuke writes a Nuke Python script whose Read node points at the real ACEScg EXR (not this graph's ComfyUI-side sRGB-Display preview) \u2014 open the generated .py and confirm the file/colorspace knobs before treating this as verified.\n5. AtlasExportSolveJSON's output JSON should contain a populated \"source_plate\" object (image_path = the EXR, colorspace = ACEScg, bit_depth = 32f, is_proxy = false) plus all three clean-plate ProjectionSources \u2014 the same full pipeline validated end to end from a single JSON.\n6. Open nuke_projection.nk (or .py) in Nuke: ScanlineRender should show the real hangar geometry (torn at depth discontinuities), not a flat floor \u2014 confirms AtlasExportReliefMesh's obj_path reached AtlasExportNuke's relief_mesh_obj_path input and ReadGeo2 is live-projected onto correctly."
       ]
     }
   ],
@@ -1442,7 +1438,7 @@
   "groups": [
     {
       "id": 1,
-      "title": "① OCIO Source Plate — ACEScg 32-bit float EXR",
+      "title": "\u2460 OCIO Source Plate \u2014 ACEScg 32-bit float EXR",
       "bounding": [
         20,
         100,
@@ -1455,7 +1451,7 @@
     },
     {
       "id": 2,
-      "title": "② Solve + Attach Float Plate + Shared Depth",
+      "title": "\u2461 Solve + Attach Float Plate + Shared Depth",
       "bounding": [
         900,
         100,
@@ -1468,7 +1464,7 @@
     },
     {
       "id": 3,
-      "title": "③ Depth-Band Masks + occlusion previews",
+      "title": "\u2462 Depth-Band Masks + occlusion previews",
       "bounding": [
         1720,
         100,
@@ -1481,7 +1477,7 @@
     },
     {
       "id": 4,
-      "title": "④ Clean-Plate Layers — chained bg → mid → fg onto the plated solve",
+      "title": "\u2463 Clean-Plate Layers \u2014 chained bg \u2192 mid \u2192 fg onto the plated solve",
       "bounding": [
         2440,
         100,
@@ -1494,7 +1490,7 @@
     },
     {
       "id": 5,
-      "title": "⑤ Atlas Viewport + detached Output Desk — bake a camera path here",
+      "title": "\u2464 Atlas Viewport + detached Output Desk \u2014 bake a camera path here",
       "bounding": [
         2900,
         100,
@@ -1507,7 +1503,7 @@
     },
     {
       "id": 6,
-      "title": "⑥ DCC Exports — Nuke (full-float + real relief mesh) + Camera Path USD + Solve JSON",
+      "title": "\u2465 DCC Exports \u2014 Nuke (full-float + real relief mesh) + Camera Path USD + Solve JSON",
       "bounding": [
         3920,
         440,

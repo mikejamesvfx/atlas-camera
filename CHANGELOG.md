@@ -5,6 +5,28 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
 ## Unreleased
 
+### Output Desk slimmed: look/LUT/exposure/gamma widgets removed
+
+- `AtlasViewportControls` dropped its `look`, `lut_path`, `exposure`, and
+  `gamma` widgets (artist-requested: redundant — exposure duplicated the
+  viewport's own ☀ control, gamma was a crude CSS-filter preview, look/LUT
+  were inert metadata — and they crowded the Output Desk). `display_trim`
+  stays. The `ATLAS_OUTPUT_PROFILE` schema still carries all four fields at
+  neutral defaults, and `profile()` still accepts them as kwargs, so
+  downstream exporters and old API prompts are unaffected. Every shipped
+  example carrying the node was re-saved in the same commit (widgets_values
+  is positional — see CLAUDE.md's append-only rule; this is the one
+  sanctioned removal, done with a coordinated workflow repair).
+
+### Staged master workflow v3
+
+- `examples/atlas_camera_staged_master_workflow.json` updated to v3: the
+  rgthree Fast Groups Bypasser now targets only stage groups
+  (`matchTitle: '^[1-6] ·'`), SAM3 sky segmentation moved into the always-on
+  SHARED group (so starting at any band stage still gets the sky mask rail),
+  and the solve gate ships closed. Verified: a bg-band-only session (all
+  other stages bypassed) runs end-to-end.
+
 ### Two distributions: `main` (working) vs `experimental` (🔬 enabled)
 
 - Experimental nodes (`AtlasRenderFix`, `AtlasPredictHiddenGeometry`) now
