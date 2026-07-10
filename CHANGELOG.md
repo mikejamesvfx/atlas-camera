@@ -62,6 +62,11 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   30-60/0-30% with real LaMa clean plates -> assemble + Nuke/Maya layer
   exports), organized as titled groups driven by rgthree's Fast Groups
   Bypasser so artists work one layer at a time with the solve chain intact.
+  v2: KJ Get/Set rails replace the shared-signal wiring, every stage has
+  its own preview viewport (the stack up to that layer), and the shipped
+  gate is closed. Also requires ComfyUI-KJNodes.
+- Viewports now restore from the server payload cache on creation — no
+  more empty grid after a page reload or a fully-cached re-queue.
 
 ### Solve-confirm gate
 

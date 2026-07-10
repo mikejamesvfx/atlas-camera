@@ -3368,6 +3368,15 @@ app.registerExtension({
     };
     node.onExecuted = refreshFromSolve;
 
+    // Restore from the SERVER's payload cache on creation: after a page
+    // reload (or when ComfyUI serves this node from its execution cache and
+    // never emits "executed"), the viewport would otherwise sit on an empty
+    // grid even though a perfectly good solve exists — chronic in the staged
+    // master workflow, whose whole rhythm is re-queues with an unchanged
+    // stage 0. /atlas/camera_data/{id} is LRU-kept server-side across
+    // queues, so a miss is harmless and a hit repopulates instantly.
+    setTimeout(() => { refreshFromSolve(); }, 300);
+
     // node.onExecuted only fires when ComfyUI delivers a "ui" payload for this
     // node — subscribe to the api-level executed event too, so the viewport
     // refreshes regardless of frontend version quirks.
