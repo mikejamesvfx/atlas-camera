@@ -1,8 +1,8 @@
 {
   "id": "3a115c93-dd03-417c-b6c0-b47bf6f3e710",
   "revision": 0,
-  "last_node_id": 90,
-  "last_link_id": 89,
+  "last_node_id": 119,
+  "last_link_id": 113,
   "nodes": [
     {
       "id": 1,
@@ -1664,13 +1664,13 @@
           ]
         }
       ],
-      "title": "Get_sky_mask",
+      "title": "Get_scope_far",
       "properties": {
         "Node name for S&R": "GetNode",
         "aux_id": "kijai/ComfyUI-KJNodes"
       },
       "widgets_values": [
-        "sky_mask"
+        "scope_far"
       ],
       "color": "#1c5715",
       "bgcolor": "#1f401b"
@@ -2199,13 +2199,13 @@
           ]
         }
       ],
-      "title": "Get_sky_mask",
+      "title": "Get_scope_far",
       "properties": {
         "Node name for S&R": "GetNode",
         "aux_id": "kijai/ComfyUI-KJNodes"
       },
       "widgets_values": [
-        "sky_mask"
+        "scope_far"
       ],
       "color": "#1c5715",
       "bgcolor": "#1f401b"
@@ -2560,13 +2560,13 @@
           ]
         }
       ],
-      "title": "Get_sky_mask",
+      "title": "Get_scope_bg",
       "properties": {
         "Node name for S&R": "GetNode",
         "aux_id": "kijai/ComfyUI-KJNodes"
       },
       "widgets_values": [
-        "sky_mask"
+        "scope_bg"
       ],
       "color": "#1c5715",
       "bgcolor": "#1f401b"
@@ -3095,13 +3095,13 @@
           ]
         }
       ],
-      "title": "Get_sky_mask",
+      "title": "Get_scope_bg",
       "properties": {
         "Node name for S&R": "GetNode",
         "aux_id": "kijai/ComfyUI-KJNodes"
       },
       "widgets_values": [
-        "sky_mask"
+        "scope_bg"
       ],
       "color": "#1c5715",
       "bgcolor": "#1f401b"
@@ -3456,13 +3456,13 @@
           ]
         }
       ],
-      "title": "Get_sky_mask",
+      "title": "Get_scope_mid",
       "properties": {
         "Node name for S&R": "GetNode",
         "aux_id": "kijai/ComfyUI-KJNodes"
       },
       "widgets_values": [
-        "sky_mask"
+        "scope_mid"
       ],
       "color": "#1c5715",
       "bgcolor": "#1f401b"
@@ -3991,13 +3991,13 @@
           ]
         }
       ],
-      "title": "Get_sky_mask",
+      "title": "Get_scope_mid",
       "properties": {
         "Node name for S&R": "GetNode",
         "aux_id": "kijai/ComfyUI-KJNodes"
       },
       "widgets_values": [
-        "sky_mask"
+        "scope_mid"
       ],
       "color": "#1c5715",
       "bgcolor": "#1f401b"
@@ -4352,13 +4352,13 @@
           ]
         }
       ],
-      "title": "Get_sky_mask",
+      "title": "Get_scope_fg",
       "properties": {
         "Node name for S&R": "GetNode",
         "aux_id": "kijai/ComfyUI-KJNodes"
       },
       "widgets_values": [
-        "sky_mask"
+        "scope_fg"
       ],
       "color": "#1c5715",
       "bgcolor": "#1f401b"
@@ -4890,13 +4890,13 @@
           ]
         }
       ],
-      "title": "Get_sky_mask",
+      "title": "Get_scope_fg",
       "properties": {
         "Node name for S&R": "GetNode",
         "aux_id": "kijai/ComfyUI-KJNodes"
       },
       "widgets_values": [
-        "sky_mask"
+        "scope_fg"
       ],
       "color": "#1c5715",
       "bgcolor": "#1f401b"
@@ -6479,6 +6479,1186 @@
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159"
+    },
+    {
+      "id": 91,
+      "type": "Note",
+      "pos": [
+        40,
+        2020
+      ],
+      "size": [
+        1260,
+        150
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "PER-LAYER SAM3 SCOPE \u2014 a depth band alone cuts through objects; each row here makes a band layer keep ONLY its segmented content (band \u2229 segment). exclude_mask becomes sky \u222a NOT(grown segment), and the layer's auto paint matte follows (in-band minus exclude). Per shot: type each row's prompt, then UN-BYPASS that row's MaskComposite (Ctrl+B) to activate. A bypassed row passes the plain sky mask through = band-only behavior. The 'far' row ships ACTIVE with prompt 'trees' as the worked example. GrowMask 16px keeps silhouettes from clipping."
+      ],
+      "title": "SAM scope doctrine"
+    },
+    {
+      "id": 92,
+      "type": "GetNode",
+      "pos": [
+        40,
+        2220
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            90
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes"
+      },
+      "widgets_values": [
+        "plate"
+      ],
+      "title": "Get_plate",
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 93,
+      "type": "SAM3Segment",
+      "pos": [
+        40,
+        2300
+      ],
+      "size": [
+        340,
+        394
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 90
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            91
+          ]
+        },
+        {
+          "name": "MASK_IMAGE",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-rmbg",
+        "ver": "3.0.0",
+        "Node name for S&R": "SAM3Segment"
+      },
+      "widgets_values": [
+        "trees",
+        "Merged",
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        "Auto",
+        false,
+        false,
+        "Alpha",
+        "#222222"
+      ],
+      "title": "SAM scope \u00b7 far"
+    },
+    {
+      "id": 94,
+      "type": "GrowMask",
+      "pos": [
+        420,
+        2300
+      ],
+      "size": [
+        210,
+        80
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 91
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            92
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GrowMask"
+      },
+      "widgets_values": [
+        16,
+        true
+      ]
+    },
+    {
+      "id": 95,
+      "type": "InvertMask",
+      "pos": [
+        420,
+        2430
+      ],
+      "size": [
+        210,
+        30
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 92
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            94
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 96,
+      "type": "GetNode",
+      "pos": [
+        420,
+        2220
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            93
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes"
+      },
+      "widgets_values": [
+        "sky_mask"
+      ],
+      "title": "Get_sky_mask",
+      "color": "#1c5715",
+      "bgcolor": "#1f401b"
+    },
+    {
+      "id": 97,
+      "type": "MaskComposite",
+      "pos": [
+        680,
+        2300
+      ],
+      "size": [
+        230,
+        102
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "destination",
+          "type": "MASK",
+          "link": 93
+        },
+        {
+          "name": "source",
+          "type": "MASK",
+          "link": 94
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            95
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskComposite"
+      },
+      "widgets_values": [
+        0,
+        0,
+        "add"
+      ],
+      "title": "scope far: sky \u222a NOT(segment)"
+    },
+    {
+      "id": 98,
+      "type": "SetNode",
+      "pos": [
+        960,
+        2300
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "link": 95
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes",
+        "previousName": "scope_far"
+      },
+      "widgets_values": [
+        "scope_far"
+      ],
+      "title": "Set_scope_far",
+      "color": "#1c5715",
+      "bgcolor": "#1f401b"
+    },
+    {
+      "id": 99,
+      "type": "GetNode",
+      "pos": [
+        40,
+        2750
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            96
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes"
+      },
+      "widgets_values": [
+        "plate"
+      ],
+      "title": "Get_plate",
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 100,
+      "type": "SAM3Segment",
+      "pos": [
+        40,
+        2830
+      ],
+      "size": [
+        340,
+        394
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 96
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            97
+          ]
+        },
+        {
+          "name": "MASK_IMAGE",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-rmbg",
+        "ver": "3.0.0",
+        "Node name for S&R": "SAM3Segment"
+      },
+      "widgets_values": [
+        "buildings",
+        "Merged",
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        "Auto",
+        false,
+        false,
+        "Alpha",
+        "#222222"
+      ],
+      "title": "SAM scope \u00b7 bg"
+    },
+    {
+      "id": 101,
+      "type": "GrowMask",
+      "pos": [
+        420,
+        2830
+      ],
+      "size": [
+        210,
+        80
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 97
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            98
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GrowMask"
+      },
+      "widgets_values": [
+        16,
+        true
+      ]
+    },
+    {
+      "id": 102,
+      "type": "InvertMask",
+      "pos": [
+        420,
+        2960
+      ],
+      "size": [
+        210,
+        30
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 98
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            100
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 103,
+      "type": "GetNode",
+      "pos": [
+        420,
+        2750
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            99
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes"
+      },
+      "widgets_values": [
+        "sky_mask"
+      ],
+      "title": "Get_sky_mask",
+      "color": "#1c5715",
+      "bgcolor": "#1f401b"
+    },
+    {
+      "id": 104,
+      "type": "MaskComposite",
+      "pos": [
+        680,
+        2830
+      ],
+      "size": [
+        230,
+        102
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "destination",
+          "type": "MASK",
+          "link": 99
+        },
+        {
+          "name": "source",
+          "type": "MASK",
+          "link": 100
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            101
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskComposite"
+      },
+      "widgets_values": [
+        0,
+        0,
+        "add"
+      ],
+      "title": "scope bg: sky \u222a NOT(segment)"
+    },
+    {
+      "id": 105,
+      "type": "SetNode",
+      "pos": [
+        960,
+        2830
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "link": 101
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes",
+        "previousName": "scope_bg"
+      },
+      "widgets_values": [
+        "scope_bg"
+      ],
+      "title": "Set_scope_bg",
+      "color": "#1c5715",
+      "bgcolor": "#1f401b"
+    },
+    {
+      "id": 106,
+      "type": "GetNode",
+      "pos": [
+        40,
+        3280
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            102
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes"
+      },
+      "widgets_values": [
+        "plate"
+      ],
+      "title": "Get_plate",
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 107,
+      "type": "SAM3Segment",
+      "pos": [
+        40,
+        3360
+      ],
+      "size": [
+        340,
+        394
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 102
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            103
+          ]
+        },
+        {
+          "name": "MASK_IMAGE",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-rmbg",
+        "ver": "3.0.0",
+        "Node name for S&R": "SAM3Segment"
+      },
+      "widgets_values": [
+        "rocks",
+        "Merged",
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        "Auto",
+        false,
+        false,
+        "Alpha",
+        "#222222"
+      ],
+      "title": "SAM scope \u00b7 mid"
+    },
+    {
+      "id": 108,
+      "type": "GrowMask",
+      "pos": [
+        420,
+        3360
+      ],
+      "size": [
+        210,
+        80
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 103
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            104
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GrowMask"
+      },
+      "widgets_values": [
+        16,
+        true
+      ]
+    },
+    {
+      "id": 109,
+      "type": "InvertMask",
+      "pos": [
+        420,
+        3490
+      ],
+      "size": [
+        210,
+        30
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 104
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            106
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 110,
+      "type": "GetNode",
+      "pos": [
+        420,
+        3280
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            105
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes"
+      },
+      "widgets_values": [
+        "sky_mask"
+      ],
+      "title": "Get_sky_mask",
+      "color": "#1c5715",
+      "bgcolor": "#1f401b"
+    },
+    {
+      "id": 111,
+      "type": "MaskComposite",
+      "pos": [
+        680,
+        3360
+      ],
+      "size": [
+        230,
+        102
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "destination",
+          "type": "MASK",
+          "link": 105
+        },
+        {
+          "name": "source",
+          "type": "MASK",
+          "link": 106
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            107
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskComposite"
+      },
+      "widgets_values": [
+        0,
+        0,
+        "add"
+      ],
+      "title": "scope mid: sky \u222a NOT(segment)"
+    },
+    {
+      "id": 112,
+      "type": "SetNode",
+      "pos": [
+        960,
+        3360
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "link": 107
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes",
+        "previousName": "scope_mid"
+      },
+      "widgets_values": [
+        "scope_mid"
+      ],
+      "title": "Set_scope_mid",
+      "color": "#1c5715",
+      "bgcolor": "#1f401b"
+    },
+    {
+      "id": 113,
+      "type": "GetNode",
+      "pos": [
+        40,
+        3810
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            108
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes"
+      },
+      "widgets_values": [
+        "plate"
+      ],
+      "title": "Get_plate",
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 114,
+      "type": "SAM3Segment",
+      "pos": [
+        40,
+        3890
+      ],
+      "size": [
+        340,
+        394
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 108
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            109
+          ]
+        },
+        {
+          "name": "MASK_IMAGE",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-rmbg",
+        "ver": "3.0.0",
+        "Node name for S&R": "SAM3Segment"
+      },
+      "widgets_values": [
+        "person",
+        "Merged",
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        "Auto",
+        false,
+        false,
+        "Alpha",
+        "#222222"
+      ],
+      "title": "SAM scope \u00b7 fg"
+    },
+    {
+      "id": 115,
+      "type": "GrowMask",
+      "pos": [
+        420,
+        3890
+      ],
+      "size": [
+        210,
+        80
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 109
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            110
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GrowMask"
+      },
+      "widgets_values": [
+        16,
+        true
+      ]
+    },
+    {
+      "id": 116,
+      "type": "InvertMask",
+      "pos": [
+        420,
+        4020
+      ],
+      "size": [
+        210,
+        30
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 110
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            112
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 117,
+      "type": "GetNode",
+      "pos": [
+        420,
+        3810
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            111
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes"
+      },
+      "widgets_values": [
+        "sky_mask"
+      ],
+      "title": "Get_sky_mask",
+      "color": "#1c5715",
+      "bgcolor": "#1f401b"
+    },
+    {
+      "id": 118,
+      "type": "MaskComposite",
+      "pos": [
+        680,
+        3890
+      ],
+      "size": [
+        230,
+        102
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "destination",
+          "type": "MASK",
+          "link": 111
+        },
+        {
+          "name": "source",
+          "type": "MASK",
+          "link": 112
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            113
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskComposite"
+      },
+      "widgets_values": [
+        0,
+        0,
+        "add"
+      ],
+      "title": "scope fg: sky \u222a NOT(segment)"
+    },
+    {
+      "id": 119,
+      "type": "SetNode",
+      "pos": [
+        960,
+        3890
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "link": 113
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SetNode",
+        "aux_id": "kijai/ComfyUI-KJNodes",
+        "previousName": "scope_fg"
+      },
+      "widgets_values": [
+        "scope_fg"
+      ],
+      "title": "Set_scope_fg",
+      "color": "#1c5715",
+      "bgcolor": "#1f401b"
     }
   ],
   "links": [
@@ -7193,6 +8373,198 @@
       89,
       1,
       "IMAGE"
+    ],
+    [
+      90,
+      92,
+      0,
+      93,
+      0,
+      "IMAGE"
+    ],
+    [
+      91,
+      93,
+      1,
+      94,
+      0,
+      "MASK"
+    ],
+    [
+      92,
+      94,
+      0,
+      95,
+      0,
+      "MASK"
+    ],
+    [
+      93,
+      96,
+      0,
+      97,
+      0,
+      "MASK"
+    ],
+    [
+      94,
+      95,
+      0,
+      97,
+      1,
+      "MASK"
+    ],
+    [
+      95,
+      97,
+      0,
+      98,
+      0,
+      "MASK"
+    ],
+    [
+      96,
+      99,
+      0,
+      100,
+      0,
+      "IMAGE"
+    ],
+    [
+      97,
+      100,
+      1,
+      101,
+      0,
+      "MASK"
+    ],
+    [
+      98,
+      101,
+      0,
+      102,
+      0,
+      "MASK"
+    ],
+    [
+      99,
+      103,
+      0,
+      104,
+      0,
+      "MASK"
+    ],
+    [
+      100,
+      102,
+      0,
+      104,
+      1,
+      "MASK"
+    ],
+    [
+      101,
+      104,
+      0,
+      105,
+      0,
+      "MASK"
+    ],
+    [
+      102,
+      106,
+      0,
+      107,
+      0,
+      "IMAGE"
+    ],
+    [
+      103,
+      107,
+      1,
+      108,
+      0,
+      "MASK"
+    ],
+    [
+      104,
+      108,
+      0,
+      109,
+      0,
+      "MASK"
+    ],
+    [
+      105,
+      110,
+      0,
+      111,
+      0,
+      "MASK"
+    ],
+    [
+      106,
+      109,
+      0,
+      111,
+      1,
+      "MASK"
+    ],
+    [
+      107,
+      111,
+      0,
+      112,
+      0,
+      "MASK"
+    ],
+    [
+      108,
+      113,
+      0,
+      114,
+      0,
+      "IMAGE"
+    ],
+    [
+      109,
+      114,
+      1,
+      115,
+      0,
+      "MASK"
+    ],
+    [
+      110,
+      115,
+      0,
+      116,
+      0,
+      "MASK"
+    ],
+    [
+      111,
+      117,
+      0,
+      118,
+      0,
+      "MASK"
+    ],
+    [
+      112,
+      116,
+      0,
+      118,
+      1,
+      "MASK"
+    ],
+    [
+      113,
+      118,
+      0,
+      119,
+      0,
+      "MASK"
     ]
   ],
   "groups": [
@@ -7302,6 +8674,19 @@
         420
       ],
       "color": "#753",
+      "flags": {}
+    },
+    {
+      "id": 10,
+      "title": "SAM SCOPE (optional) \u2014 per-layer semantic masks; un-bypass a row's MaskComposite to activate",
+      "bounding": [
+        20,
+        1980,
+        1340,
+        2420
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
       "flags": {}
     }
   ],
