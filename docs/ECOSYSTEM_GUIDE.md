@@ -70,10 +70,16 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (37 nodes, category "Atlas Camera")
+## 2. The Node Catalog (47 nodes, category "Atlas Camera")
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in.
+
+> Count refreshed 2026-07-09. The tables below predate the newest additions —
+> the shared-depth layer nodes (`AtlasDepthMap`, `AtlasCleanPlateLayer`,
+> `AtlasDepthLayerMask`, `AtlasSkyDomeLayer`), `AtlasAssessImage`, and
+> `AtlasPredictHiddenGeometry` 🔬 — which are covered in the dated addenda at
+> the end of this guide and, in full, in CLAUDE.md's catalog.
 
 ### Solve
 
@@ -546,6 +552,7 @@ ComfyUI's browser canvas for interactive, click-around testing:
 | `atlas_camera_reference_scale_workflow.json` **(new)** | Tier-1 reference-object scale demo, with an in-canvas caution note about AI-generated-image limitations (§3.4). |
 | `atlas_camera_vlm_scale_cues_workflow.json` **(new)** | `AtlasVLMScaleCues` preset for the now-fixed LM Studio path, with the quantized-model reliability caveat (§4.4) documented in-canvas. |
 | `atlas_camera_vfx_ocio_output_workflow.json` **(new)** | The VFX/OCIO integration from §5. |
+| `atlas_camera_luminance_stack_acescg_workflow.json` **(new)** | Five-stop Luminance Stack Processor HDR merge → OCIO `Linear Rec.709 (sRGB)` to `ACEScg` → 16f EXR plate for `AtlasRegisterPlate`. |
 | `atlas_camera_inpaint_layers_workflow.json` **(new)** | 2.5D clean-plate parallax (§3.5) — in-repo Atlas nodes only; the external inpaint step is a documented placeholder note, wire it in by hand per `INSTALL.md`. |
 
 `examples/api_format/*.json` **(new)** — ComfyUI's raw **API format**
@@ -613,3 +620,206 @@ instance and confirmed successful:
 | `AtlasRegisterPlate`, `AtlasAttachSourcePlate` | Output — file-backed float-safe plate references (§5) |
 | `AtlasViewportControls` | Output — Atlas Output Desk, detached controls, OCIO-style profile (§5) |
 | `OCIOWrite`, `OCIOColorSpace` | VFX output — ACEScg EXR plates alongside DCC exports (§5) |
+
+---
+
+## Addendum — the 2026-07-08 session: the complete DMP pipeline
+
+This session closed the loop from "detect where projection fails" to "fix it
+end-to-end and hand off to both DCCs." Everything below ships in the hero
+workflow `examples/atlas_camera_master_dmp_workflow.json`. Node count is now
+45.
+
+### Hole masks and exclusion masks
+`ReliefMesh.hole_mask` surfaces the mesh's own gap data (sky/invalid/band
+exclusions plus rasterized torn quads, at full plate resolution) as a MASK
+output on every relief-mesh node — the literal "where will 📽 Project show
+black" signal, available on `AtlasDepthLayerMask` (opt-in
+`compute_hole_mask`) BEFORE inpainting so it can drive the inpaint region.
+Every relief-mesh node also takes an external `exclude_mask` (e.g. a
+ComfyUI-RMBG `SAM3Segment` sky segmentation) which **replaces** the internal
+sky heuristic — the heuristic eats tall geometry above the horizon (37% of
+monument valley's buttes), a real segmentation doesn't.
+
+### Sky dome (`AtlasSkyDomeLayer` ☁)
+The classic DMP sky separation: the SAM sky mask drives a flat far card
+(constant forward-Z, `radius_m`) with the segmentation embedded as a
+per-pixel edge matte. `edge_extend_px` deterministically smears sky colors
+past silhouettes (Nuke-style edge-extend — no inpaint model needed for
+narrow reveals); `frame_outpaint_px` pads the plate past the FRAME edges and
+widens this one source's camera so small orbits never hit the plate
+boundary.
+
+### The edge doctrine: matte + overhang
+Geometry silhouettes tear at grid resolution; the fix is per-pixel
+**edge mattes** (`ProjectionSource.mask_b64`, cut in the projection shader
+at the same projected pixel as the photo) plus **boundary overhang**
+(`edge_overhang_cells` — meshes overshoot their mask/band edge so the matte
+has something to cut; skyline coverage went 0.475 → 0.001 uncovered).
+`AtlasCleanPlateLayer.embed_matte` auto-computes band mattes; mattes ride
+into both DCC exports as plate alpha + standalone PNGs.
+
+### Disocclusion fill (`fill_occluded`)
+Band clips leave a hole where the foreground occluder stood — the inpainted
+plate had pixels there but no geometry. `fill_occluded` diffusion-fills the
+depth across the footprint on the decimated grid, so orbit/dolly reveals
+inpainted content **on real geometry**. Band layers now default to
+`relief_grid=384` / `depth_edge_rel=1.5` (the hangar calibration).
+
+### True depth-shadow occlusion (`AtlasOcclusionMask` Phase 2)
+`occlusion_mode="depth_shadow"`: the primary camera's own depth map IS its
+shadow map — no render pass, pure numpy. Wire the shared `AtlasDepthMap`
+into `primary_depth`; both sides ground-pin to one metric space.
+
+### 📐 Extract Angle + execution pauses
+Orbit the viewport to the view a patch should be generated at, click
+📐 Extract Angle: the orbit delta is measured about the SAME pivot the
+backend's `orbit_camera` uses and snapped to the Qwen Multiple-Angles named
+views. The viewport's four `patch_*` STRING outputs stay **paused**
+(ExecutionBlocker) until an extraction exists — and extractions are
+fingerprinted against the solve+image, so swapping the photo re-arms the
+pause instead of running a stale angle. `patch_prompt` feeds the Qwen
+generation directly; `patch_view_override` feeds `AtlasAddPatchView`/
+`AtlasOcclusionMask` as one wire (ComfyUI's backend rejects STRING→combo
+links).
+
+### VLM pre-flight (`AtlasAssessImage` 🧭)
+A local VLM (Ollama/LM Studio/llama.cpp) analyzes the photo against an
+expert prompt encoding Atlas's full settings knowledge and reports a setup
+plan (scene type, depth model, band splits, camera-move viability with a
+max-orbit estimate) directly on the node. The whole graph pauses behind it
+until ▶ Continue Workflow — the first Queue costs only the assessment.
+Advisory-only; works (and resumes) fine with no VLM running.
+
+### All-in-one DCC layer exports
+`AtlasExportNukeLayers` 🎞 and `AtlasExportMayaLayers` 🧊 export EVERY
+projection layer (sky/plates/patches, each with its own camera) as ONE .nk /
+ONE .ma respectively, sharing a single layer-collection path so the two can
+never drift. The Maya scene was **verified live in Maya 2027** (mayapy,
+37 checks) — which caught and fixed two real bugs: Maya's `projection` node
+takes its frustum from `linkedCamera` (it has no focal/aperture attrs), and
+Maya's OBJ importer always lands values as centimeters (imported groups get
+×100). The same verification repaired the older Maya review-scene exporter,
+which carried the same latent projection bug.
+
+### Addendum 2 — same-day follow-up session (MVP pivot)
+
+Product decision: **v1 ships without diffusion patches.** Instead the camera
+move is restricted to measured coverage — the viewport's **🧭 Safe Zone**
+button probe-renders the projected scene (magenta-sentinel hole counting,
+exact to the shader) and clamps the orbit to the scene's real hole-free
+envelope. Supporting that: patches became pure **texture projectors onto
+existing scene geometry** (`reuse_scene` — the scale-registration problem
+dissolves), every plate layer gained the sky's **deterministic edge-extend**
+plus an **invented-pixels matte** exported to Nuke for regrain, and mesh
+boundary skirts now **recede away from camera with a bevel** (slope in cell
+units, 1.0 = 45°). Gate approvals and viewport navigation are
+fingerprint-stable across image swaps. Hero recipe:
+`examples/atlas_camera_ultra_single_image_workflow.json`. Next planned
+lever: `frame_outpaint_px` for band layers (the sky's widened-camera trick),
+since Safe Zone measurements show the frame edge — not silhouettes — is the
+binding constraint on wide scenes.
+
+
+
+## Addendum — the 2026-07-09 session: DA3, the X-ray track, and the five-layer stack
+
+### Depth Anything 3 is the default
+
+`inference/depth_estimator.py` dispatches any `depth-anything/DA3*` model id
+to a second backend alongside the transformers V2 path. DA3METRIC emits
+*canonical* depth converted to metres as `focal_px_at_processed_res x out / 300`
+— and the focal comes from the **camera solve** (GeoCalib or vanishing
+points), closing a loop V2's fixed-FOV metric heads structurally can't. All
+solve-bearing call sites thread the solved focal; the image-only nodes take
+an optional `solve` input for the same. Measured (see
+`docs/dev/da3_backend_test_plan.md` and the chart below): ~3x fewer relief
+tears on 2 of 4 scenes, a usable mesh where V2 shattered to 0 faces, ground
+confidence to 0.96. Combo VALUES are append-only (they serialize into saved
+workflows); core-library defaults deliberately stay V2 so `[neural]`-only
+installs keep working.
+
+![DA3 vs V2 torn fraction](images/chart_da3_vs_v2.svg)
+
+### The experimental hidden-geometry track (research-only)
+
+`AtlasPredictHiddenGeometry` 🔬 predicts per-pixel layered ray intersections
+(the surfaces each camera ray pierces), registers the stack to the pipeline
+depth via layer-0 median scale, and substitutes the first layer that clears
+the occluder by a scene-adaptive margin. Two backends, one contract:
+**LaRI** (regression, ~0.2 s, no upstream license — user-cloned only) and
+**World Tracing** (diffusion, ~20-34 s, HF-gated, CC BY-NC-ND) — backend
+choice is per-scene and flips both ways (canyon: WT 0.113 vs LaRI 0.639;
+steep ridge: LaRI 0.134 vs WT 0.305). The node prints registration rel MAD
+every run; under 0.2 = trust it.
+
+The v2 architecture (6 calibration rounds) is **mask-membership, not depth
+bands**: predicted surfaces behind near occluders are themselves near, so
+every band split tried lost 76-97% of predictions. The X-ray layer's
+geometry region is the `hidden_mask` (GrowMask -> InvertMask ->
+`exclude_mask`), its paint is the `paint_matte`, band uncapped. Fragmented
+predictions shred the layer mesh via the world-edge check (immune to
+`depth_edge_rel`/grid/dilation — all measured no-ops); the node's coherence
+pass fixes it at the source: `fill_gaps` (dual-field Jacobi) + `smooth_px`
+**gaussian** smoothing (a median filter is edge-preserving and keeps exactly
+the steps that tear: 0.455 vs 0.260 measured). Final hole-in-paint: hangar
+0.07, canyon 0.19, jungle 0.26 (from 0.67).
+
+### The five-layer stack (what the six hero workflows build)
+
+![The layer stack](images/layer_stack.svg)
+
+Base relief mesh + backdrop (plate = the **feathered clean-plate composite**
+via ImageCompositeMasked, so background geometry never bakes in occluder
+pixels) -> matted **foreground layer** from the original photo (SAM x band
+mattes where band edges step) -> **X-ray layer** (LaMa-inpainted plate on
+predicted geometry) -> **sky dome** on outdoor scenes. Interiors disable the
+sky heuristic (SolidMask 0 -> `exclude_mask`). Seeds ship pinned
+(`control_after_generate="fixed"` — ComfyUI silently randomizes any widget
+named `seed` otherwise).
+
+Band-layer meshes stay at the calibrated 384 / 1.5 defaults. The measured
+tear curve explains both numbers — finer grids reduce spurious tears until
+cells approach pixel scale, and the looser edge threshold is safe inside a
+band because the band clip already bounds the depth range:
+
+![Torn fraction vs grid density](images/chart_torn_vs_grid.svg)
+
+### Viewport additions
+
+- **🎨 Layers** — opaque per-layer identity tints + legend; black = nothing
+  paints, always a finding.
+- **🩻 X-ray** — tints invented-geometry pixels (red = LaRI, blue = WT),
+  only under 📽 Project.
+- Orbit pivot is now the median sampled vertex depth on the camera's central
+  ray (a bounding-box center was tail-dominated on full-scene relief
+  meshes); 📷 Camera View resets via `{force:true}` (the fingerprint guard
+  had silently swallowed explicit resets); the dead primitive/proxy toolbar
+  buttons (Box/Plane/Cylinder/Person/Woman/Sedan) were removed.
+
+### The six hero scenes
+
+| | | |
+|---|---|---|
+| ![cathedral](images/scene_cathedral_nave.jpg) `cathedral` — LaRI, interior | ![hangar](images/scene_scifi_hangar.jpg) `space_hangar` — WT, shallow (clear_rel 0.10) | ![jungle](images/scene_jungle_temple.jpg) `jungle_temple` — WT, sky + SAM fg |
+| ![canyon](images/scene_canyon.jpg) `canyon` — WT wins (LaRI misregisters) | ![ridge](images/scene_steep_ridge.jpg) `steep_ridge` — LaRI wins (WT misregisters) | ![valley](images/scene_wide_valley.jpg) `wide_valley` — honest weak case |
+
+The remaining curated scenes (`docs/images/scene_*.jpg`: monument valley,
+ghost town, alpine village, sea-cliff castle, snow-capped peaks, the
+mountain-ridge figure) anchor the rest of the example catalog — each was
+chosen to stress one failure mode; the
+[🎞 Examples Catalog](https://claude.ai/code/artifact/186c3a6a-a778-40f0-8f39-fe29cfa6aace)
+maps every workflow to its scene.
+
+### Where the full story lives
+
+Three companion pages (same design system, published 2026-07-09):
+the [🥞 Build-Up Guide](https://claude.ai/code/artifact/77b10784-a6d5-4def-89bd-84cbfaabc21e)
+(the stack taught stage by stage), the
+[🎞 Examples Catalog](https://claude.ai/code/artifact/186c3a6a-a778-40f0-8f39-fe29cfa6aace)
+(every shipping workflow, scenes, settings, dependencies, professional/OCIO
+output), and [📊 Technical Details](https://claude.ai/code/artifact/4781289c-50dd-47fc-8571-1ef67513b7ba)
+(the measured numbers as charts). Repo-side: CLAUDE.md (full catalog +
+design rules), `docs/dev/hidden_geometry_training_free_research.md` (the
+complete research/calibration saga), `docs/dev/da3_backend_test_plan.md`,
+and THIRD_PARTY.md (license boundaries).

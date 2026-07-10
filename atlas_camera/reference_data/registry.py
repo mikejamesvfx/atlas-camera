@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from importlib import resources
 import json
 from typing import Any
@@ -60,7 +61,16 @@ class ScaleReference:
         }
 
 
+@lru_cache(maxsize=1)
 def load_scale_references() -> list[ScaleReference]:
+    """The registry JSON is small and static for the process lifetime — this
+    was previously re-read and re-parsed from disk on every single call.
+    get_scale_reference/list_categories/search_scale_references all call this
+    fresh each time, and multimodal_helper.py's per-VLM-scale-cue resolution
+    can call it in a loop, so an un-cached read repeated the same file I/O +
+    JSON parse for every cue in a scene. ScaleReference is a frozen dataclass,
+    so the cached list's elements can't be mutated by a caller even though
+    the list itself is a single shared object."""
     data_path = resources.files(__package__).joinpath("common_scale_references.json")
     payload = json.loads(data_path.read_text(encoding="utf-8"))
     return [ScaleReference.from_dict(item) for item in payload]

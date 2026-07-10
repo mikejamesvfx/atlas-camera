@@ -1,0 +1,22 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 860 300' font-family='Consolas,monospace'>
+<rect x='0' y='0' width='860' height='300' rx='8' fill='#16181a'/>
+<line x1='60' y1='272' x2='820' y2='272' stroke='#33383d'/>
+<text x='60' y='292' fill='#6b736d' font-size='11'>near</text>
+<text x='790' y='292' fill='#6b736d' font-size='11'>far</text>
+<polygon points='38,128 68,143 38,158' fill='none' stroke='#d5dad3' stroke-width='1.6'/>
+<rect x='18' y='133' width='20' height='20' rx='3' fill='none' stroke='#d5dad3' stroke-width='1.6'/>
+<text x='12' y='180' fill='#9aa39c' font-size='11'>recovered</text>
+<text x='12' y='193' fill='#9aa39c' font-size='11'>camera</text>
+<line x1='68' y1='143' x2='828' y2='30' stroke='#3a4045' stroke-dasharray='3 4'/>
+<line x1='68' y1='143' x2='828' y2='262' stroke='#3a4045' stroke-dasharray='3 4'/>
+<path d='M 218 96 q 14 34 -4 66 q 18 30 8 66' fill='none' stroke='#ff6a3d' stroke-width='4' stroke-linecap='round'/>
+<text x='196' y='82' fill='#ff6a3d' font-size='12'>foreground</text>
+<path d='M 330 118 q 10 36 -6 60 q 14 26 6 56' fill='none' stroke='#3d8bff' stroke-width='4' stroke-linecap='round' stroke-dasharray='7 5'/>
+<text x='306' y='104' fill='#3d8bff' font-size='12'>x-ray (hidden)</text>
+<path d='M 150 250 L 300 236 Q 420 220 470 160 Q 520 96 640 84 L 758 66' fill='none' stroke='#2fd6c3' stroke-width='4' stroke-linecap='round'/>
+<text x='480' y='210' fill='#2fd6c3' font-size='12'>base mesh + backdrop</text>
+<path d='M 792 34 L 792 258' fill='none' stroke='#a8cfe0' stroke-width='4' stroke-linecap='round'/>
+<text x='736' y='24' fill='#a8cfe0' font-size='12'>sky dome</text>
+<text x='96' y='120' fill='#6b736d' font-size='11'>one photo,</text>
+<text x='96' y='133' fill='#6b736d' font-size='11'>projected &#8594;</text>
+</svg>

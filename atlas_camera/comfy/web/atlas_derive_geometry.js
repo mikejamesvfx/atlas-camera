@@ -25,13 +25,15 @@ const SCENE_TYPE_PRESETS = {
     geometry_mode: "both", primitive_method: "azimuth_walls",
     relief_quality: "medium", max_objects: 6,
   },
+  // indoor/outdoor both use DA3METRIC since the 2026-07-09 default flip —
+  // mirrors nodes.py's _SCENE_TYPE_PRESETS (keep in sync by hand).
   indoor: {
     geometry_mode: "primitives", primitive_method: "room_cuboid",
-    depth_model: "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
+    depth_model: "depth-anything/DA3METRIC-LARGE",
   },
   outdoor: {
     geometry_mode: "primitives", primitive_method: "ransac_planes",
-    depth_model: "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    depth_model: "depth-anything/DA3METRIC-LARGE",
   },
   simple_walls: { geometry_mode: "primitives", primitive_method: "azimuth_walls" },
   towers_spires: { geometry_mode: "primitives", primitive_method: "vertical_extrusion" },

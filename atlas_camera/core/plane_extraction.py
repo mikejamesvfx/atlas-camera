@@ -159,8 +159,11 @@ def extract_planes_ransac(
 
         az_idx = az_idx_full[pool]
         el_idx = el_idx_full[pool]
-        hist2d = np.zeros((ab, eb), dtype=np.float64)
-        np.add.at(hist2d, (az_idx, el_idx), 1)
+        # np.bincount on raveled indices, not np.add.at (numpy's known-slow
+        # unbuffered scatter-add path) — same fix as proxy_geometry.py's
+        # object-clustering histogram.
+        flat_idx = az_idx * eb + el_idx
+        hist2d = np.bincount(flat_idx, minlength=ab * eb).astype(np.float64).reshape(ab, eb)
 
         # Smooth: 3x3 box, circular in azimuth, edge-clamped in elevation.
         smoothed = hist2d.copy()
@@ -194,6 +197,12 @@ def extract_planes_ransac(
                 break
 
         pts_pool = pts_world[pool]
+        # Hoisted out of the peaks/RANSAC loops below: normals[pool] is
+        # invariant across every iteration (up to ~max_planes*2 peaks x
+        # max_ransac_iters_per_peak inner iterations) but was previously
+        # recomputed as a fresh boolean-mask gather over the full normals
+        # array on every single iteration.
+        normals_pool = normals[pool]
         claimed = np.zeros(int(pool.sum()), dtype=bool)
         depth_pool = scaled_depth[pool]
 
@@ -215,7 +224,7 @@ def extract_planes_ransac(
                 avail = ~claimed
                 if int(avail.sum()) < inlier_floor:
                     break
-                cand_normals = normals[pool][avail]
+                cand_normals = normals_pool[avail]
                 dots = cand_normals @ peak_n
                 sel_local = dots > tol_cos
                 if int(sel_local.sum()) < inlier_floor:
@@ -224,7 +233,7 @@ def extract_planes_ransac(
                 avail_idx = np.where(avail)[0]
                 sel_idx = avail_idx[sel_local]
                 p_sel = pts_pool[sel_idx]
-                n_sel = normals[pool][sel_idx]
+                n_sel = normals_pool[sel_idx]
                 n_mean = n_sel.mean(axis=0)
                 n_len = np.linalg.norm(n_mean)
                 if n_len < 1e-6:

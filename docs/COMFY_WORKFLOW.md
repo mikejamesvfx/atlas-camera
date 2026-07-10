@@ -1,8 +1,15 @@
 # Atlas Camera — ComfyUI Integration
 
+> **Vintage note (2026-07-09):** this page's two-track mental model is still
+> correct, but the catalog has grown to **47 nodes** — including the shared-depth
+> layer nodes, the sky dome, the Output Desk color track, and the experimental
+> hidden-geometry 🔬 node — and the default depth model is now DA3METRIC-LARGE.
+> For the current catalog see CLAUDE.md; for the layered-workflow story see
+> USER_GUIDE.md's 2026-07-09 section and ECOSYSTEM_GUIDE.md's addenda.
+
 ## Overview
 
-The `atlas_camera.comfy` package adds 18 ComfyUI nodes split across two tracks:
+The `atlas_camera.comfy` package adds ComfyUI nodes split across two tracks:
 
 - **Track 1 — Python-only nodes**: Solve, decompose, analysis masks, VP visualization, per-DCC exports. No browser dependency.
 - **Track 2 — AtlasBlockoutViewport**: A Three.js viewport embedded in the ComfyUI node panel. The recovered camera is applied to the Three.js camera so the scene pre-aligns with the source photo. Artist places blockout geometry, clicks Render Passes, and four IMAGE outputs (shaded / depth / normal / mask) flow into the graph.
@@ -138,7 +145,7 @@ Draws VP convergence lines (left VP = orange, right VP = blue, vertical VP = gre
 
 **Proxy warning:** viewport passes and baked path frames are browser preview data. Use `AtlasRegisterPlate` / `AtlasAttachSourcePlate` when the final source image exists as an EXR or other high-bit-depth plate.
 
-**Three.js loading:** The extension tries ComfyUI's bundled Three.js (`../../lib/three.module.js`) first, then falls back to CDN (`unpkg.com/three@0.163.0`). Internet access is required if the bundled version is absent.
+**Three.js loading:** The extension imports a vendored local bundle, `atlas_camera/comfy/web/lib/atlas-three.bundle.js` — three.js r185 core plus `OBJLoader`/`FBXLoader` in one self-contained ESM file, committed to the repo. No internet access or npm step is needed at runtime. To upgrade three.js: bump `three` in `ui/package.json`, then `cd ui && npm install && npm run build:comfy-three` (entry: `ui/bundle/atlas-three-entry.js`) and commit the rebuilt bundle.
 
 ### `AtlasRegisterPlate`
 
@@ -179,7 +186,7 @@ All export nodes write files to disk and return the path as a STRING. They produ
 |---|---|---|
 | `AtlasExportSolveJSON` | `atlas_solve.json` | `file_path` widget |
 | `AtlasExportBlender` | `build_scene.py` | `output_dir/build_scene.py` |
-| `AtlasExportNuke` | `camera_projection.py` | `output_dir/` |
+| `AtlasExportNuke` | `nuke_projection.py` + `nuke_projection.nk` | `output_dir/` |
 | `AtlasExportUSD` | `camera.usda` | `output_dir/camera.usda` |
 | `AtlasExportReviewPackage` | Full bundle dir | `output_dir/` |
 
@@ -247,7 +254,7 @@ Cache is capped at 64 entries (LRU-evict oldest) to prevent unbounded growth in 
 **Symptom:** The `AtlasBlockoutViewport` node shows the button toolbar but no 3D canvas above it.
 
 **Likely causes:**
-- Three.js failed to load (no internet, CDN blocked, bundled version path mismatch)
+- Three.js bundle failed to load (`lib/atlas-three.bundle.js` missing from the extension's web dir — e.g. a partial checkout; rebuild with `cd ui && npm run build:comfy-three`)
 - `addDOMWidget` not supported in this version of ComfyUI (requires ComfyUI ≥ 0.2.x)
 - JavaScript console error during `buildNodeUI()`
 

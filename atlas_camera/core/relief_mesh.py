@@ -36,12 +36,28 @@ class ReliefMesh:
     ``vertices`` (N,3) float32; ``faces`` (M,3) int32, counter-clockwise when
     seen from the recovered camera; ``uvs`` (N,2) float32 with OBJ convention
     (origin bottom-left) — each vertex maps to its own source-image pixel.
+
+    ``hole_mask`` (H,W) bool, always at full source-image resolution
+    regardless of ``grid_long_edge`` decimation — ``True`` where no triangle
+    covers that pixel (sky/invalid/band-excluded, or the pixel's grid quad
+    was torn by the ``depth_edge_rel``/``max_edge_factor`` silhouette test).
+    This is the literal answer to "where will 📽 Project show black" — the
+    mesh's own hole data, otherwise discarded once triangulation finishes.
+
+    ``filled_mask`` (H,W) bool or None — pixels whose depth was SYNTHESIZED
+    by the ``fill_mask`` diffusion fill (see ``build_relief_mesh``) rather
+    than measured. These pixels carry real geometry (they are NOT in
+    ``hole_mask``), but the depth there is a smooth interpolation of the
+    surrounding background, not data — surfaced so artists can QA what was
+    invented. None when no fill was requested.
     """
 
     vertices: Any
     faces: Any
     uvs: Any
     stats: dict[str, Any] = field(default_factory=dict)
+    hole_mask: Any = None
+    filled_mask: Any = None
 
 
 def estimate_ground_scale(
@@ -133,6 +149,12 @@ def build_relief_mesh(
     horizon_y: float | None = None,
     band_min_m: float | None = None,
     band_max_m: float | None = None,
+    exclude_mask: Any = None,
+    apply_sky_heuristic: bool = True,
+    fill_mask: Any = None,
+    edge_overhang_cells: int = 0,
+    overhang_bevel_rel: float = 0.0,
+    exclude_choke_cells: int = 0,
 ) -> ReliefMesh:
     """Triangulate a forward-z depth map into a world-space relief mesh.
 
@@ -160,6 +182,68 @@ def build_relief_mesh(
     map is split into independent per-layer meshes for the inpaint-layers
     feature (see ``AtlasCleanPlateLayer``): each layer's mesh only contains its
     own band, so overlapping layers never fight over the same texels.
+
+    ``exclude_mask`` (H,W) bool, default ``None``, ORs an externally-supplied
+    exclusion (e.g. a real sky segmentation from SAM/RMBG, run once upstream)
+    on top of the internal ``detect_sky_mask`` heuristic — never replaces it,
+    only ever excludes more. Caller's responsibility to resize it to the
+    depth map's own resolution first; this function does no resampling.
+
+    ``apply_sky_heuristic`` (default ``True``) runs the internal
+    ``detect_sky_mask`` roughness/far-percentile heuristic as usual. Set
+    ``False`` only when the caller's own depth array IS deliberately
+    sky-shaped (see ``build_sky_dome_mesh``, which feeds this function a
+    synthetic constant-depth field for exactly the pixels it wants to KEEP —
+    the heuristic would otherwise re-exclude that same region, since a
+    constant-depth field is precisely what it's designed to flag).
+
+    ``overhang_bevel_rel`` (default 0.0 = flat) makes the overhang skirt
+    RECEDE away from the camera: each extension ring's depth is multiplied
+    by ``1 + bevel * (step/fx)`` — i.e. the bevel is a SLOPE in units of
+    the local cell size (1.0 recedes one cell per ring = a 45° skirt,
+    scale-invariant at any depth/focal/grid because the lateral cell world
+    size is also proportional to depth). Physically motivated — an occluded
+    surface continues away from the camera behind its silhouette, so a
+    receding beveled skirt is the least-wrong geometry at a tear edge
+    (holes read as broken; a sharp cliff reads as a wall) — and it can
+    never trip the world-edge tear check, since ring-to-ring 3D edges stay
+    ~sqrt(1+bevel²) cell lengths. Pairs with the plate edge-extend: the
+    smeared colors land on the receding skirt and the extend matte marks
+    them for downstream regrain.
+    ``exclude_choke_cells`` (default 0 = off) erodes the layer's validity
+    this many grid cells away from the EXCLUSION edge before the overhang
+    runs — the classic matte choke-and-reskirt. Segmentation and depth
+    edges never align exactly, leaving a ribbon of cells that the mask
+    calls "not sky" but whose depth IS sky: they back-project high above
+    the real silhouette as a jagged floating band (found live). Choking
+    removes the contaminated ribbon; the overhang then regrows it with
+    clean neighbor (rock) depth, so coverage is preserved but the boundary
+    geometry hugs the true surface. Only applies when ``exclude_mask``
+    is provided.
+    ``edge_overhang_cells`` (default 0 = off) extends every mesh boundary
+    OUTWARD into invalid regions by N grid cells, copying the nearest valid
+    depth. Only meaningful together with a per-pixel edge matte
+    (``ProjectionSource.mask_b64``): boundary quads straddling an exclusion
+    edge (sky mask, band clip) are otherwise torn at grid-quad resolution,
+    leaving a stepped uncovered strip along the true silhouette that no
+    matte can fix — the matte can only CUT geometry that exists. With the
+    overhang, geometry slightly overshoots the boundary and the
+    full-resolution matte cuts the exact edge. Never enable without a matte:
+    the overhang skirt would show visibly stretched edge texels. Overhung
+    cells count as covered in ``hole_mask`` (geometry exists there).
+
+    ``fill_mask`` (H,W) bool, default ``None`` — pixels whose depth should be
+    SYNTHESIZED by diffusion from the surrounding valid grid instead of
+    trusted or torn into a hole. The disocclusion move: a clean-plate layer's
+    band clip leaves a hole exactly where a foreground occluder stood; the
+    inpainted plate has pixels there but no geometry. Filling interpolates
+    the surrounding background depth across the occluder's footprint (Jacobi
+    diffusion on the decimated grid — cheap, never full-res) so the plate's
+    inpainted content lands on real geometry. Only currently-invalid cells
+    are filled (a fill-flagged cell that got a legitimate in-band value from
+    the 3x3 median keeps it); cells with no valid neighbors anywhere stay
+    holes. Filled pixels are reported in ``ReliefMesh.filled_mask`` and
+    removed from ``hole_mask``.
     """
     from atlas_camera.core.depth_geometry import detect_sky_mask
 
@@ -171,7 +255,10 @@ def build_relief_mesh(
         horizon_y = height * 0.45
 
     valid_full = np.isfinite(depth) & (depth > 1e-4)
-    valid_full &= ~detect_sky_mask(depth, horizon_y=horizon_y)
+    if apply_sky_heuristic:
+        valid_full &= ~detect_sky_mask(depth, horizon_y=horizon_y)
+    if exclude_mask is not None:
+        valid_full &= ~np.asarray(exclude_mask, dtype=bool)
     if band_min_m is not None or band_max_m is not None:
         metric = depth * float(scale)
         if band_min_m is not None:
@@ -181,6 +268,12 @@ def build_relief_mesh(
     if far_clip_percentile and valid_full.any():
         far = float(np.percentile(depth[valid_full], far_clip_percentile))
         np.minimum(depth, far, out=depth)
+
+    # Seed the full-resolution hole mask from the per-pixel exclusion test
+    # (sky/invalid/band) before grid decimation smooths any of it over; the
+    # per-quad tear boundary (below, once ok_a/ok_b are known) is OR'd in
+    # afterward.
+    hole_mask = ~valid_full
 
     step = max(1, int(round(max(height, width) / max(grid_long_edge, 2))))
     rows = np.arange(0, height, step)
@@ -210,6 +303,115 @@ def build_relief_mesh(
         d = np.nanmedian(np.stack(samples), axis=0)
     vgrid = np.isfinite(d) & (d > 1e-4)
     d = np.where(vgrid, d, 0.0)
+
+    # Diffusion fill of the fill_mask region (disocclusion): synthesize depth
+    # for currently-invalid fill-flagged grid cells by iteratively averaging
+    # known 4-neighbors (front propagation + Jacobi relaxation in one loop).
+    # Runs on the decimated grid, so cost is bounded by grid_long_edge, not
+    # image resolution. Cells that never reach a known neighbor stay invalid.
+    filled_grid = None
+    if fill_mask is not None:
+        fill_target = np.asarray(fill_mask, dtype=bool)[np.ix_(rows, cols)] & ~vgrid
+        if fill_target.any():
+            known = vgrid.copy()
+            for _ in range(200):
+                acc = np.zeros_like(d)
+                cnt = np.zeros_like(d)
+                for shift_r, shift_c in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nb = np.roll(d, (shift_r, shift_c), axis=(0, 1))
+                    nb_k = np.roll(known, (shift_r, shift_c), axis=(0, 1))
+                    border = np.zeros_like(known)
+                    if shift_r == 1:
+                        border[0, :] = True
+                    elif shift_r == -1:
+                        border[-1, :] = True
+                    if shift_c == 1:
+                        border[:, 0] = True
+                    elif shift_c == -1:
+                        border[:, -1] = True
+                    ok = nb_k & ~border
+                    acc += np.where(ok, nb, 0.0)
+                    cnt += ok
+                upd = fill_target & (cnt > 0)
+                if not upd.any():
+                    break
+                prev = d[upd].copy()
+                d[upd] = (acc / np.maximum(cnt, 1))[upd]
+                newly = upd & ~known
+                known |= upd
+                if not newly.any():
+                    delta = np.abs(d[upd] - prev) / np.maximum(prev, 1e-6)
+                    if float(delta.max()) < 1e-4:
+                        break
+            filled_grid = fill_target & known
+            vgrid |= filled_grid
+
+    # Boundary overhang (see docstring): extend valid grid cells outward into
+    # invalid space by copying neighbor depths — flat skirts the edge matte
+    # cuts back to the true silhouette per-pixel. Runs after the diffusion
+    # fill (fills are legitimate interior geometry, not boundary) and before
+    # smoothing (so the skirt relaxes with everything else).
+    # Choke-and-reskirt against the exclusion edge (see docstring): remove
+    # grid cells within N cells of the exclusion — their depth is suspect
+    # (segmentation/depth edge misalignment) — and let the overhang below
+    # regrow them from clean neighbor depth.
+    excl_grid = None
+    if exclude_mask is not None:
+        excl_grid = np.asarray(exclude_mask, dtype=bool)[np.ix_(rows, cols)]
+    if excl_grid is not None and exclude_choke_cells and int(exclude_choke_cells) > 0:
+        near_excl = excl_grid.copy()
+        for _ in range(int(exclude_choke_cells)):
+            grown = near_excl.copy()
+            grown[1:, :] |= near_excl[:-1, :]
+            grown[:-1, :] |= near_excl[1:, :]
+            grown[:, 1:] |= near_excl[:, :-1]
+            grown[:, :-1] |= near_excl[:, 1:]
+            near_excl = grown
+        # Drop the contaminated ring: near the exclusion but not excluded
+        # (excluded cells are already invalid via valid_full).
+        vgrid[near_excl & ~excl_grid] = False
+
+    if edge_overhang_cells and int(edge_overhang_cells) > 0:
+        # Per-ring multiplicative recession: constant slope in cell units
+        # (compounds naturally because each ring copies the previous ring's
+        # already-receded depth — no ring index bookkeeping needed).
+        bevel_gain = 1.0 + max(0.0, float(overhang_bevel_rel)) * (step / max(float(fx), 1e-6))
+        # Excluded regions (sky) are a HARD boundary for skirt growth: the
+        # sky belongs to the sky layer, and a rock layer's skirt growing
+        # upward past the skyline carries replicated SKY pixels on receding
+        # rock geometry — a jagged floating band above the silhouette
+        # (found live on monument valley: 14% of bg vertices had grown into
+        # the sky region). Band-clip / frame-ring / tear regions still grow.
+        forbid_grid = excl_grid  # original exclusion: the choked ring regrows,
+        # true sky never does.
+        for _ring in range(int(edge_overhang_cells)):
+            acc = np.zeros_like(d)
+            cnt = np.zeros_like(d)
+            for shift_r, shift_c in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nb = np.roll(d, (shift_r, shift_c), axis=(0, 1))
+                nb_v = np.roll(vgrid, (shift_r, shift_c), axis=(0, 1))
+                border = np.zeros_like(vgrid)
+                if shift_r == 1:
+                    border[0, :] = True
+                elif shift_r == -1:
+                    border[-1, :] = True
+                if shift_c == 1:
+                    border[:, 0] = True
+                elif shift_c == -1:
+                    border[:, -1] = True
+                ok = nb_v & ~border
+                acc += np.where(ok, nb, 0.0)
+                cnt += ok
+            newly = ~vgrid & (cnt > 0)
+            if forbid_grid is not None:
+                newly &= ~forbid_grid
+            if not newly.any():
+                break
+            # Beveled skirt: multiplying forward-Z depth pushes the point
+            # away from the camera along its own view ray by construction
+            # of the back-projection.
+            d[newly] = (acc / np.maximum(cnt, 1))[newly] * bevel_gain
+            vgrid |= newly
 
     # Edge-aware smoothing of the sampled grid: average with neighbours that are
     # depth-consistent (within the tear threshold) — flattens shards without
@@ -302,6 +504,26 @@ def build_relief_mesh(
     tri_b = np.stack([i10[ok_b], i11[ok_b], i01[ok_b]], axis=1)
     faces = np.concatenate([tri_a, tri_b], axis=0)
 
+    # Rasterize torn quads (partially or fully) back into the full-resolution
+    # hole mask. rows/cols are literal pixel indices, so a per-pixel gather
+    # against the per-quad "fully covered" test is a single vectorized index
+    # op — no per-quad Python loop even at grid_long_edge=1024.
+    quad_hole = ~(ok_a & ok_b)
+    row_idx = np.clip(np.searchsorted(rows, np.arange(height), side="right") - 1, 0, nr - 2)
+    col_idx = np.clip(np.searchsorted(cols, np.arange(width), side="right") - 1, 0, nc - 2)
+    hole_mask |= quad_hole[row_idx[:, None], col_idx[None, :]]
+
+    # Filled (synthesized-depth) pixels carry real geometry now: rasterize
+    # kept quads touching a filled grid vertex, clear them from hole_mask,
+    # and surface them separately so artists can QA what was invented.
+    filled_mask_full = None
+    if filled_grid is not None and filled_grid.any():
+        f00, f01 = filled_grid[:-1, :-1], filled_grid[:-1, 1:]
+        f10, f11 = filled_grid[1:, :-1], filled_grid[1:, 1:]
+        quad_filled = (f00 | f01 | f10 | f11) & ok_a & ok_b
+        filled_mask_full = quad_filled[row_idx[:, None], col_idx[None, :]]
+        hole_mask &= ~filled_mask_full
+
     verts = pts.reshape(-1, 3)
     uvs_flat = uvs.reshape(-1, 2)
 
@@ -318,5 +540,62 @@ def build_relief_mesh(
         "grid": (int(nr), int(nc)),
         "scale": float(scale),
         "torn_fraction": float(1.0 - len(faces) / max(n_quads, 1)),
+        "n_filled_cells": int(filled_grid.sum()) if filled_grid is not None else 0,
     }
-    return ReliefMesh(vertices=verts, faces=faces, uvs=uvs_flat, stats=stats)
+    return ReliefMesh(vertices=verts, faces=faces, uvs=uvs_flat, stats=stats,
+                      hole_mask=hole_mask, filled_mask=filled_mask_full)
+
+
+def build_sky_dome_mesh(
+    sky_mask: Any,
+    *,
+    view_matrix: Any,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    radius_m: float = 300.0,
+    grid_long_edge: int = 96,
+    edge_overhang_cells: int = 2,
+) -> ReliefMesh:
+    """Build a same-camera 'sky dome' patch: a constant-radius shell covering
+    only the pixels flagged in ``sky_mask``, UV-baked exactly like a normal
+    relief mesh so a clean sky plate projects onto it correctly.
+
+    ``edge_overhang_cells`` (default 2, since the dome ALWAYS ships with its
+    segmentation embedded as a per-pixel matte) extends the card slightly
+    past the mask boundary so the skyline edge is cut by the full-resolution
+    matte instead of stepping at grid-quad resolution — without it, boundary
+    quads straddling the silhouette tear away, leaving a stepped uncovered
+    strip of background exactly along the skyline.
+
+    The standard DMP move (Nuke and similar): separate sky from real
+    (parallax-bearing) geometry so it can be clean-plated and projected onto
+    simple, depth-free geometry instead of fighting noisy monocular sky depth
+    or tearing at a boundary that's really just "where the segmentation mask
+    ends," not a real depth discontinuity.
+
+    Reuses ``build_relief_mesh``'s exact triangulation/tearing/UV-baking math
+    by feeding it a SYNTHETIC constant-depth array — ``radius_m`` wherever
+    ``sky_mask`` is set, ``0.0`` (invalid) elsewhere — with
+    ``apply_sky_heuristic=False`` (the internal heuristic would otherwise
+    re-exclude this exact region: a constant-depth field is precisely what
+    it's designed to flag) and ``floor_clamp=None``/``scale=1.0`` (ground-
+    plane clamping and metric ground-scale rescaling are both meaningless
+    for a dome deliberately independent of the scene's real depth). The
+    boundary of ``sky_mask`` becomes a natural torn edge via the same
+    "invalid grid vertex" mechanism silhouette/sky exclusion already uses —
+    no special-casing needed. ``depth_edge_rel`` is omitted entirely: with a
+    perfectly constant depth field its ratio test is always satisfied
+    trivially (``dmax == dmin``), so it has no effect here.
+    """
+    np = _require_numpy()
+    mask = np.asarray(sky_mask, dtype=bool)
+    synthetic_depth = np.where(mask, float(radius_m), 0.0)
+    return build_relief_mesh(
+        synthetic_depth, view_matrix=view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+        grid_long_edge=grid_long_edge, far_clip_percentile=0.0,
+        scale=1.0, floor_clamp=None, horizon_y=None,
+        apply_sky_heuristic=False,
+        edge_overhang_cells=edge_overhang_cells,
+    )

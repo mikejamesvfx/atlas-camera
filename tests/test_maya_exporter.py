@@ -333,6 +333,34 @@ def test_maya_exporter_imports_relief_mesh_obj_when_path_given(tmp_path):
     assert "'type': 'mesh'" not in script
 
 
+def test_maya_exporter_escapes_source_image_name_with_quote_character(tmp_path):
+    # Regression test: source_image_name is interpolated into the generated
+    # script's image_path expression. It must use !r (repr) escaping like
+    # every other interpolated value in this f-string — without it, a
+    # filename containing a double-quote breaks out of the string literal
+    # and injects arbitrary Python that Maya would execute when the artist
+    # opens the review scene.
+    solve = AtlasSolve(
+        camera=AtlasCamera(
+            intrinsics=build_intrinsics(image_width=1920, image_height=1080, focal_length_mm=35.0)
+        ),
+        image_width=1920,
+        image_height=1080,
+    )
+    malicious_name = 'evil".os.system("calc")#.png'
+
+    script = write_maya_scene_script(
+        solve, tmp_path / "maya_open_scene.py", source_image_name=malicious_name,
+    ).read_text(encoding="utf-8")
+
+    ast.parse(script)  # must still be syntactically valid
+    # The malicious name must appear ONLY inside its safely-repr'd string
+    # literal, never as a raw substring that could break out of it.
+    assert repr(malicious_name) in script
+    without_safe_repr = script.replace(repr(malicious_name), "")
+    assert "os.system(" not in without_safe_repr
+
+
 def test_maya_exporter_skips_relief_mesh_import_when_no_path(tmp_path):
     mesh = AtlasProxyPrimitive(
         name="projection_relief_mesh",

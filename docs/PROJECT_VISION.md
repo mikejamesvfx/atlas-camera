@@ -1,5 +1,10 @@
 # ATLAS
 
+> **Vintage note (2026-07-09):** written at project start and kept as the
+> north star. For what has actually shipped since, see CHANGELOG.md and the
+> dated addenda in ECOSYSTEM_GUIDE.md.
+
+
 ## Recover the Latent World
 
 Atlas is an open-source platform for recovering the hidden 3D structure implied

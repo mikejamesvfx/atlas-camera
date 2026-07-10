@@ -656,8 +656,11 @@ def _derive_objects(np, cfg, stats, pts_world, normals, obj_cand, valid_normal,
         gz = (gz / f).astype(int)
     gw, gh = int(gx.max()) + 1, int(gz.max()) + 1
 
-    counts = np.zeros((gw, gh), dtype=int)
-    np.add.at(counts, (gx, gz), 1)
+    # np.bincount on raveled indices, not np.add.at — np.add.at is numpy's
+    # known-slow unbuffered scatter-add path; bincount is the vectorized,
+    # much faster equivalent for a plain "count occurrences per bin" histogram.
+    flat_idx = gx * gh + gz
+    counts = np.bincount(flat_idx, minlength=gw * gh).reshape(gw, gh)
     occupied = counts >= cfg.object_min_cell_pixels
 
     # Connected components (4-connectivity BFS at grid resolution).
@@ -929,7 +932,7 @@ def _dilate_mesh_primitive(prim: AtlasProxyPrimitive, pivot: Any, scale: float) 
     verts2 = pivot[None, :] + d_n + scale * d_t
 
     new_meta = dict(md)
-    new_meta["vertices"] = [round(float(x), 3) for x in verts2.reshape(-1)]
+    new_meta["vertices"] = np.round(verts2.reshape(-1), 3).tolist()
     new_meta["preview_dilated"] = True
     new_meta["preview_scale"] = float(scale)
     return AtlasProxyPrimitive(
@@ -992,10 +995,15 @@ def relief_mesh_primitive(mesh: Any, *, name: str = "projection_relief_mesh") ->
     primitive so it rides the solve into the blockout viewport payload.
 
     Arrays are flattened and rounded (mm / 1e-4 UV) to keep the JSON compact.
+    Rounding/flattening is vectorized (np.round + .tolist()) rather than a
+    Python-level round()/float() comprehension per scalar — at
+    relief_quality="ultra" (grid=1024, up to ~780K vertices) the per-scalar
+    Python loop cost seconds of pure interpreter overhead on every execution.
     """
-    verts = [round(float(v), 3) for v in mesh.vertices.reshape(-1)]
-    faces = [int(i) for i in mesh.faces.reshape(-1)]
-    uvs = [round(float(v), 4) for v in mesh.uvs.reshape(-1)]
+    np = _require_numpy()
+    verts = np.round(mesh.vertices.reshape(-1).astype(np.float64), 3).tolist()
+    faces = mesh.faces.reshape(-1).astype(np.int64).tolist()
+    uvs = np.round(mesh.uvs.reshape(-1).astype(np.float64), 4).tolist()
     return AtlasProxyPrimitive(
         name=name,
         primitive_type="mesh",

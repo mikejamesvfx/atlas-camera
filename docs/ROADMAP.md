@@ -1,5 +1,12 @@
 # Roadmap
 
+> **Vintage note (2026-07-09):** this roadmap predates the beta-0.2 work —
+> the DMP layer stack, Output Desk/OCIO handoff, verified Nuke/Maya layer
+> exports, DA3 depth, and the experimental hidden-geometry track all shipped
+> since. Treat it as the original plan of record; CHANGELOG.md is the record
+> of what actually happened.
+
+
 ## Version 0.1: LatentCamera MVP
 
 - Recover a practical still-image camera from metadata, artist constraints, or

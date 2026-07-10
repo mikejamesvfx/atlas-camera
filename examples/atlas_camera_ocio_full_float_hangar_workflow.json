@@ -1,0 +1,1533 @@
+{
+  "last_node_id": 24,
+  "last_link_id": 35,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OCIORead",
+      "pos": [
+        40,
+        140
+      ],
+      "size": [
+        420,
+        360
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image/video",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            29
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "OCIORead"
+      },
+      "widgets_values": [
+        "C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\OCIO\\atlasSpaceHangar_32bit_AcesCG.exr",
+        "auto",
+        "ACEScg",
+        "sRGB - Display",
+        false,
+        0,
+        0,
+        0,
+        "black",
+        "hold",
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasRegisterPlate",
+      "pos": [
+        500,
+        140
+      ],
+      "size": [
+        380,
+        200
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "links": [
+            8
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasRegisterPlate"
+      },
+      "widgets_values": [
+        "C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\OCIO\\atlasSpaceHangar_32bit_AcesCG.exr",
+        "ACEScg",
+        "32f",
+        "source",
+        ""
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        920,
+        140
+      ],
+      "size": [
+        380,
+        210
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36,
+        "pinhole",
+        "auto"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasAttachSourcePlate",
+      "pos": [
+        1340,
+        140
+      ],
+      "size": [
+        340,
+        100
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 9,
+          "slot_index": 0
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": 8,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            10,
+            11,
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasAttachSourcePlate"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 5,
+      "type": "AtlasDepthMap",
+      "pos": [
+        920,
+        400
+      ],
+      "size": [
+        380,
+        120
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            13,
+            14,
+            15,
+            16,
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "AtlasDepthLayerMask",
+      "pos": [
+        1740,
+        140
+      ],
+      "size": [
+        380,
+        220
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 13,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "layer_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "occlusion_mask",
+          "type": "MASK",
+          "links": [
+            18
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthLayerMask"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.65,
+        0,
+        4
+      ],
+      "title": "Depth Layer Mask — BG band (0.65 → +inf)"
+    },
+    {
+      "id": 7,
+      "type": "AtlasDepthLayerMask",
+      "pos": [
+        1740,
+        440
+      ],
+      "size": [
+        380,
+        220
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 14,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "layer_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "occlusion_mask",
+          "type": "MASK",
+          "links": [
+            20
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthLayerMask"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.2,
+        0.65,
+        4
+      ],
+      "title": "Depth Layer Mask — MID band (0.20 → 0.65)"
+    },
+    {
+      "id": 8,
+      "type": "MaskToImage",
+      "pos": [
+        2170,
+        140
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 18,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            19
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "PreviewImage",
+      "pos": [
+        2170,
+        250
+      ],
+      "size": [
+        240,
+        260
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 19,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "BG occlusion — what the bg inpaint must fill"
+    },
+    {
+      "id": 10,
+      "type": "MaskToImage",
+      "pos": [
+        2170,
+        560
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 20,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            21
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 11,
+      "type": "PreviewImage",
+      "pos": [
+        2170,
+        670
+      ],
+      "size": [
+        240,
+        260
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "MID occlusion — what the mid inpaint must fill"
+    },
+    {
+      "id": 12,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        2460,
+        140
+      ],
+      "size": [
+        380,
+        280
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 12,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 15,
+          "slot_index": 1
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 4,
+          "slot_index": 2
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "slot_index": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            22
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.65,
+        0,
+        "bg",
+        0,
+        384,
+        1.5
+      ],
+      "title": "Clean Plate Layer — BG (placeholder plate, wire inpaint here)"
+    },
+    {
+      "id": 13,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        2460,
+        470
+      ],
+      "size": [
+        380,
+        280
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 22,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 16,
+          "slot_index": 1
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 5,
+          "slot_index": 2
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "slot_index": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            23
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.2,
+        0.65,
+        "mid",
+        5,
+        384,
+        1.5
+      ],
+      "title": "Clean Plate Layer — MID (placeholder plate, wire inpaint here)"
+    },
+    {
+      "id": 14,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        2460,
+        800
+      ],
+      "size": [
+        380,
+        280
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 23,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 17,
+          "slot_index": 1
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 6,
+          "slot_index": 2
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "slot_index": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            24,
+            25,
+            26,
+            27,
+            28
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0,
+        0.2,
+        "fg",
+        10,
+        384,
+        1.5
+      ],
+      "title": "Clean Plate Layer — FG (original pixels, no inpaint needed)"
+    },
+    {
+      "id": 15,
+      "type": "AtlasViewportControls",
+      "pos": [
+        2920,
+        800
+      ],
+      "size": [
+        380,
+        360
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "links": [
+            31
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "links": [
+            32,
+            33
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasViewportControls"
+      },
+      "widgets_values": [
+        "ACES 2.0 / Studio",
+        "",
+        "ACEScg",
+        "ACES - ACEScg",
+        "sRGB - Display",
+        "ACES 2.0 SDR-video",
+        "None",
+        "",
+        0.0,
+        1.0,
+        1.0
+      ],
+      "title": "Output Desk — View · Plates · Color · Passes · Path · Lights"
+    },
+    {
+      "id": 16,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2920,
+        140
+      ],
+      "size": [
+        960,
+        720
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 24,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 7,
+          "slot_index": 1
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": 31,
+          "slot_index": 2
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null,
+          "slot_index": 3
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": 32,
+          "slot_index": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [
+            34
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [
+            35
+          ],
+          "slot_index": 5
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "PreviewImage",
+      "pos": [
+        3940,
+        140
+      ],
+      "size": [
+        260,
+        280
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 34,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "Blockout — Shaded"
+    },
+    {
+      "id": 18,
+      "type": "AtlasExportCameraPathUSD",
+      "pos": [
+        3940,
+        480
+      ],
+      "size": [
+        420,
+        140
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 25,
+          "slot_index": 0
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": 35,
+          "slot_index": 1
+        },
+        {
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 2,
+          "widget": {
+            "name": "output_dir"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "usd_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportCameraPathUSD"
+      },
+      "widgets_values": [
+        "atlas_exports/atlas_hangar_ocio_camera_path"
+      ]
+    },
+    {
+      "id": 24,
+      "type": "AtlasExportReliefMesh",
+      "pos": [
+        3940,
+        680
+      ],
+      "size": [
+        420,
+        220
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 28,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 29,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "obj_path",
+          "type": "STRING",
+          "links": [
+            30
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "glb_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportReliefMesh"
+      },
+      "widgets_values": [
+        "atlas_exports/atlas_hangar_ocio_relief_mesh",
+        256,
+        1.5,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        "obj"
+      ],
+      "title": "Export relief mesh (OBJ) — feeds AtlasExportNuke below"
+    },
+    {
+      "id": 19,
+      "type": "AtlasExportNuke",
+      "pos": [
+        3940,
+        940
+      ],
+      "size": [
+        420,
+        160
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 26,
+          "slot_index": 0
+        },
+        {
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 1,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "name": "relief_mesh_obj_path",
+          "type": "STRING",
+          "link": 30,
+          "slot_index": 2,
+          "widget": {
+            "name": "relief_mesh_obj_path"
+          }
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": 33,
+          "slot_index": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "script_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "nk_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportNuke"
+      },
+      "widgets_values": [
+        "atlas_exports/atlas_hangar_ocio_nuke",
+        ""
+      ]
+    },
+    {
+      "id": 20,
+      "type": "AtlasExportSolveJSON",
+      "pos": [
+        3940,
+        1140
+      ],
+      "size": [
+        420,
+        120
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 27,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportSolveJSON"
+      },
+      "widgets_values": [
+        "atlas_exports/atlas_hangar_ocio_solve.json"
+      ],
+      "title": "Export layered + plated solve (source_plate + all 3 ProjectionSources)"
+    },
+    {
+      "id": 21,
+      "type": "Note",
+      "pos": [
+        20,
+        -420
+      ],
+      "size": [
+        1900,
+        500
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "ATLAS OCIO ACEScg FULL-FLOAT PLATE WORKFLOW — sci-fi hangar (third version in this series)\n\nExtends atlas_camera_inpaint_layers_hangar_workflow.json (the 3-band clean-plate sequel) with a genuine float-safe source plate and DCC export verification:\n\n  1. OCIORead loads examples/images/OCIO/atlasSpaceHangar_32bit_AcesCG.exr directly (32-bit float, ACEScg scene-linear) and converts ACEScg -> sRGB - Display for the ComfyUI-side tensor used to solve the camera and populate the viewport preview — the SAME 'display proxy vs. real float plate' split every exporter here already assumes (see nuke_exporter.py's Read-node comment).\n  2. AtlasRegisterPlate registers that SAME EXR path (colorspace=ACEScg, bit_depth=32f, role=source) as the durable plate_ref — is_proxy is False because a real, non-blank plate_path was supplied.\n  3. AtlasAttachSourcePlate attaches it onto the solve immediately after the learned solve, so it rides through every downstream deep-copy (AtlasCleanPlateLayer x3 all copy.deepcopy(solve) and only touch projection_sources/proxy_geometry — source_plate is untouched, confirmed by reading nodes.py).\n  4. The SAME three clean-plate bands as the previous hangar workflow (bg/mid/fg, tuned relief_grid 384 + depth_edge_rel 1.5) chain on top of the plated solve — nothing about the plate changes the clean-plate mechanics, it is pure metadata carried alongside.\n  5. Bake a camera move in the viewport (🎥 Camera Path -> pick a preset -> Apply Preset -> ⏺ Bake Proxy Path) to populate the camera_path output, then AtlasExportCameraPathUSD writes a time-sampled animated camera .usda from it.\n  6. AtlasExportNuke reads solve.source_plate (via exporters/_plate.py's primary_plate_path/primary_plate_colorspace helpers) to point its Read node at the REAL EXR with colorspace=ACEScg instead of a browser JPEG/PNG proxy — this is the actual full-float verification: open the generated script and confirm the Read node's file/colorspace knobs.\n  7. The detached AtlasViewportControls Output Desk feeds output_profile into BOTH the viewport and AtlasExportNuke directly (a direct optional-input wire, not an attach node) — its defaults are already ACEScg-flavored (working_colorspace=ACEScg, output_colorspace='ACES - ACEScg').\n  8. AtlasExportReliefMesh derives the real hangar geometry (OBJ) and feeds its obj_path into AtlasExportNuke's relief_mesh_obj_path input (same wiring pattern as AtlasExportMayaReviewScene) — both the .py and .nk Nuke exports then live-project the recovered camera onto that REAL mesh via ReadGeo2, instead of the default flat 40x40m ground card. Confirmed live (Nuke 16.1v3): ReadGeo2 reads the OBJ fine but does NOT auto-apply its MTL's own texture reference — the live Project3D2 projection wired into ReadGeo2's own image input (same topology as the Card case) is what actually textures it, which is also why this stays a genuine camera projection rather than a static UV bake even though the mesh's own baked UVs would technically make the raw photo 'look right' too.\n\nPATH GOTCHA (same caveat as atlas_camera_vfx_ocio_output_workflow.json): the OCIORead source and AtlasRegisterPlate plate_path widgets are hardcoded to this machine's absolute path (C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\OCIO\\atlasSpaceHangar_32bit_AcesCG.exr). Point both widgets at your own local copy of the EXR before running — OCIORead accepts any absolute path 'anywhere on disk' (its own tooltip), it does not need to live under ComfyUI/input.\n\nRequires the ComfyUI-OCIO custom node pack (OCIORead) — see atlas_camera_vfx_ocio_output_workflow.json's own note for install steps. Needs [neural] for the learned solve + depth model.\n\nVERIFIED LIVE 2026-07-07 (full pipeline, not just reasoned through):\n  - OCIORead loads the real 3840x2160 32-bit-float ACEScg EXR and converts to sRGB - Display; AtlasLearnedSolveFromImage solves cleanly on that preview.\n  - Exported atlas_hangar_ocio_solve.json's source_plate: image_path = the real .exr, colorspace = ACEScg, bit_depth = 32f, is_proxy = false, metadata.path_exists = true.\n  - Baked a camera path in the real browser UI (Camera Path -> Orbit Left preset -> Apply Preset -> Bake Proxy Path) and re-queued; AtlasExportCameraPathUSD's camera_path.usda came out correctly time-sampled: startTimeCode=0, endTimeCode=47, framesPerSecond=24 (48 keyframe samples, matching frame_count=48/fps=24), upAxis=Y, and the pose arcs from an off-angle start to the recovered camera's own straight-on pose at frame 47 — exactly the documented Orbit Left 'arrive at the current vantage' behavior.\n  - AtlasExportNuke's nuke_projection.py Read node points at the SAME real EXR path with colorspace='ACEScg' (not the ComfyUI-side sRGB-Display preview), and its StickyNote carries the full output_profile dict from the Output Desk (working_colorspace=ACEScg, output_colorspace='ACES - ACEScg') — confirming AtlasExportNuke's optional output_profile input attaches onto the solve before export, per nodes.py's _clone_solve_with_metadata call.\n  - Without a bake, AtlasExportCameraPathUSD correctly raises 'No camera path yet...' rather than silently no-op'ing or crashing — verified by running the graph once before baking."
+      ]
+    },
+    {
+      "id": 22,
+      "type": "Note",
+      "pos": [
+        1740,
+        760
+      ],
+      "size": [
+        380,
+        380
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "EXTERNAL INPAINT STEP (not included — needs Acly/comfyui-inpaint-nodes, GPL-3.0):\n\nThe links feeding the BG and MID AtlasCleanPlateLayer plate_image inputs are PLACEHOLDERS — they reuse OCIORead's sRGB-Display preview directly so this graph stays valid/runnable without the external pack installed.\n\nFor each of the two occluded bands, replace that link with:\n  AtlasDepthLayerMask.occlusion_mask\n    -> INPAINT_ExpandMask (grow ~16-32)\n    -> INPAINT_InpaintWithModel (image = OCIORead's image output, inpaint_model = INPAINT_LoadInpaintModel loading big-lama.pt)\n    -> AtlasCleanPlateLayer.plate_image\n\nThe FG layer needs no inpainting — it is wired to the original photo by design, since nothing occludes the frontmost band.\n\nEach AtlasCleanPlateLayer also exposes its own optional plate_ref (ATLAS_PLATE_REF) input, left unconnected here — wire an AtlasRegisterPlate per band if a real per-layer float clean plate ever exists (e.g. a separately rendered background pass); it is independent of the solve-level source_plate this workflow demonstrates."
+      ]
+    },
+    {
+      "id": 23,
+      "type": "Note",
+      "pos": [
+        3940,
+        1280
+      ],
+      "size": [
+        900,
+        380
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "VIEWPORT + EXPORT CHECKS (Output Desk holds all the viewport buttons — the viewport node itself is render-only):\n\n1. Hit 📽 Project, then dolly/orbit in — the hangar reassembles from the three chained clean-plate bands exactly like the previous example.\n2. Camera Path: click 🎥 Camera Path, pick a preset (e.g. Orbit Left) from the dropdown, click Apply Preset, then ⏺ Bake Proxy Path. This fills the viewport's camera_path/path_frames outputs and re-queues automatically — AtlasExportCameraPathUSD downstream needs this to have run at least once (camera_path is None until a bake has happened; the export node no-ops and passes the solve through unchanged if camera_path.keyframes is empty).\n3. AtlasExportCameraPathUSD writes camera_path.usda — a time-sampled Usd.TimeCode-keyed animated camera, importable straight into Maya/Houdini/Blender's USD stage.\n4. AtlasExportNuke writes a Nuke Python script whose Read node points at the real ACEScg EXR (not this graph's ComfyUI-side sRGB-Display preview) — open the generated .py and confirm the file/colorspace knobs before treating this as verified.\n5. AtlasExportSolveJSON's output JSON should contain a populated \"source_plate\" object (image_path = the EXR, colorspace = ACEScg, bit_depth = 32f, is_proxy = false) plus all three clean-plate ProjectionSources — the same full pipeline validated end to end from a single JSON.\n6. Open nuke_projection.nk (or .py) in Nuke: ScanlineRender should show the real hangar geometry (torn at depth discontinuities), not a flat floor — confirms AtlasExportReliefMesh's obj_path reached AtlasExportNuke's relief_mesh_obj_path input and ReadGeo2 is live-projected onto correctly."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      1,
+      0,
+      12,
+      2,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      0,
+      13,
+      2,
+      "IMAGE"
+    ],
+    [
+      6,
+      1,
+      0,
+      14,
+      2,
+      "IMAGE"
+    ],
+    [
+      7,
+      1,
+      0,
+      16,
+      1,
+      "IMAGE"
+    ],
+    [
+      8,
+      2,
+      1,
+      4,
+      1,
+      "ATLAS_PLATE_REF"
+    ],
+    [
+      9,
+      3,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      10,
+      4,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      4,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      4,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      5,
+      0,
+      6,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      14,
+      5,
+      0,
+      7,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      15,
+      5,
+      0,
+      12,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      16,
+      5,
+      0,
+      13,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      17,
+      5,
+      0,
+      14,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      18,
+      6,
+      1,
+      8,
+      0,
+      "MASK"
+    ],
+    [
+      19,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      20,
+      7,
+      1,
+      10,
+      0,
+      "MASK"
+    ],
+    [
+      21,
+      10,
+      0,
+      11,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      12,
+      0,
+      13,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      23,
+      13,
+      0,
+      14,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      24,
+      14,
+      0,
+      16,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      25,
+      14,
+      0,
+      18,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      26,
+      14,
+      0,
+      19,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      27,
+      14,
+      0,
+      20,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      28,
+      14,
+      0,
+      24,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      29,
+      1,
+      0,
+      24,
+      1,
+      "IMAGE"
+    ],
+    [
+      30,
+      24,
+      0,
+      19,
+      2,
+      "STRING"
+    ],
+    [
+      31,
+      15,
+      0,
+      16,
+      2,
+      "ATLAS_VIEWPORT_LINK"
+    ],
+    [
+      32,
+      15,
+      1,
+      16,
+      4,
+      "ATLAS_OUTPUT_PROFILE"
+    ],
+    [
+      33,
+      15,
+      1,
+      19,
+      3,
+      "ATLAS_OUTPUT_PROFILE"
+    ],
+    [
+      34,
+      16,
+      0,
+      17,
+      0,
+      "IMAGE"
+    ],
+    [
+      35,
+      16,
+      5,
+      18,
+      1,
+      "ATLAS_CAMERA_PATH"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① OCIO Source Plate — ACEScg 32-bit float EXR",
+      "bounding": [
+        20,
+        100,
+        900,
+        420
+      ],
+      "color": "#3f789e",
+      "font_size": 16,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② Solve + Attach Float Plate + Shared Depth",
+      "bounding": [
+        900,
+        100,
+        460,
+        440
+      ],
+      "color": "#3d7e48",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Depth-Band Masks + occlusion previews",
+      "bounding": [
+        1720,
+        100,
+        700,
+        800
+      ],
+      "color": "#7e4f3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "④ Clean-Plate Layers — chained bg → mid → fg onto the plated solve",
+      "bounding": [
+        2440,
+        100,
+        420,
+        1000
+      ],
+      "color": "#7e6e3d",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 5,
+      "title": "⑤ Atlas Viewport + detached Output Desk — bake a camera path here",
+      "bounding": [
+        2900,
+        100,
+        1000,
+        1080
+      ],
+      "color": "#6e3d7e",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 6,
+      "title": "⑥ DCC Exports — Nuke (full-float + real relief mesh) + Camera Path USD + Solve JSON",
+      "bounding": [
+        3920,
+        440,
+        460,
+        1240
+      ],
+      "color": "#3d6e7e",
+      "font_size": 14,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.45,
+      "offset": [
+        20,
+        500
+      ]
+    }
+  },
+  "version": 0.4
+}

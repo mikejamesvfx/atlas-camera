@@ -22,6 +22,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from atlas_camera.inference._common import bounded_cache_set, resolve_device
+
 
 def _require_geocalib() -> tuple[Any, Any]:
     """Import torch + geocalib lazily with an informative error."""
@@ -69,8 +71,10 @@ class CameraPrior:
 
 
 # Module-level model cache: GeoCalib weights load once and are reused across calls
-# (the ComfyUI node solves many images per session).
+# (the ComfyUI node solves many images per session). Bounded to avoid
+# unbounded VRAM growth across a long session cycling through weights/devices.
 _MODEL_CACHE: dict[tuple[str, str], Any] = {}
+_MODEL_CACHE_MAX = 4
 
 
 def _get_model(weights: str, device: str) -> Any:
@@ -79,7 +83,7 @@ def _get_model(weights: str, device: str) -> Any:
     if model is None:
         _, GeoCalib = _require_geocalib()
         model = GeoCalib(weights=weights).to(device)
-        _MODEL_CACHE[key] = model
+        bounded_cache_set(_MODEL_CACHE, key, model, _MODEL_CACHE_MAX)
     return model
 
 
@@ -117,13 +121,7 @@ def estimate_camera_prior(
     import math
 
     torch, _ = _require_geocalib()
-    if device is None:
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif torch.backends.mps.is_available():
-            device = "mps"
-        else:
-            device = "cpu"
+    device = resolve_device(device, torch)
 
     model = _get_model(weights, device)
     image = model.load_image(str(image_path)).to(device)

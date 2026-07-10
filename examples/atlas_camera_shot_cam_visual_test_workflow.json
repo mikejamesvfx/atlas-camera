@@ -38,7 +38,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.jpg",
+        "atlas_monument_valley.png",
         "image"
       ]
     },
@@ -81,7 +81,7 @@
         "measure_from_depth",
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
+        36,
         "pinhole",
         "auto"
       ]
@@ -115,9 +115,9 @@
         "Node name for S&R": "AtlasDefineShotCam"
       },
       "widgets_values": [
-        36.0,
+        36,
         15.06,
-        35.0,
+        35,
         2048
       ],
       "title": "2.39:1 anamorphic — deliberately unlike the source photo's own aspect"
@@ -202,7 +202,7 @@
       "widgets_values": [
         1024,
         "",
-        1.0
+        1
       ]
     },
     {

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlas-camera"
-version = "0.2.0"
+version = "0.3.0"
 description = "Still-image camera inference and projection-prep toolkit for DCC handoff workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,6 +46,15 @@ neural = [
     "transformers>=4.40",        # Depth Anything V2 monocular depth
     "geocalib @ git+https://github.com/cvg/GeoCalib.git",
 ]
+# Depth Anything 3 backend (opt-in). GitHub-only package whose own dependency
+# list is heavy and includes xformers and numpy<2 — installing this extra into
+# an existing ComfyUI venv can downgrade/clobber torch or numpy. For ComfyUI
+# venvs prefer the --no-deps route documented in INSTALL.md.
+neural-da3 = [
+    "numpy>=1.24",
+    "torch>=2.0",
+    "depth-anything-3 @ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git",
+]
 image = [
     "pillow>=10",
 ]
@@ -73,6 +82,7 @@ include = ["atlas_camera*", "atlas*"]
 
 [tool.setuptools.package-data]
 "atlas_camera.reference_data" = ["*.json"]
+"atlas_camera.inference" = ["fixer_shim/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

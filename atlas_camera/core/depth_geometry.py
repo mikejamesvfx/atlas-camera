@@ -120,9 +120,12 @@ def primary_camera_validity_mask(
     primary_width: int,
     primary_height: int,
     angle_threshold_deg: float = 90.0,
+    primary_depth_map: Any = None,
+    depth_bias_rel: float = 0.05,
 ) -> Any:
     """Test a field of world points against a SECOND ("primary") camera's
-    projection validity — behind-camera, outside-frame, or too-grazing.
+    projection validity — behind-camera, outside-frame, too-grazing, or
+    (optionally) hidden behind nearer geometry.
 
     ``pts_world``/``valid_depth``/``normals``/``valid_normal`` are typically a
     :class:`BackProjection` from a *different* (target/patch) camera's own
@@ -132,6 +135,23 @@ def primary_camera_validity_mask(
     (``facing = abs(dot(normal, toCam))``) and this repo's universal "-Z
     forward" view-matrix convention (row-major, world->cam,
     ``cam_to_world = inv(view_matrix)``).
+
+    ``primary_depth_map`` (2D array, default ``None``) enables the true
+    MPTK-style depth-shadow test: shadow mapping with the primary camera as
+    the light, and its own monocular depth estimate as the shadow map — no
+    rasterizer or render pass needed, since a depth map from the primary's
+    viewpoint IS a depth buffer from the primary's viewpoint. Each in-front,
+    in-frame point's primary-camera depth is compared against the map sampled
+    at its projected pixel (nearest-neighbour; coordinates rescaled if the
+    map's resolution differs from ``primary_width``/``primary_height``):
+    farther than the stored depth by more than ``depth_bias_rel`` (relative
+    bias against depth-precision false positives) means the point was HIDDEN
+    behind nearer geometry from the primary — invalid, a patch should fill
+    it. Points sampling invalid map depth (NaN/<=0, e.g. sky) also count as
+    invalid (the primary has no data there). CRITICAL: the map's depth values
+    must be in the SAME metric world scale as ``pts_world`` — ground-pin both
+    sides with ``relief_mesh.estimate_ground_scale`` before calling (see
+    ``AtlasOcclusionMask``'s depth_shadow mode).
 
     Returns an ``(H, W)`` bool array — ``True`` where the primary camera's
     projection is INVALID at that point (should be filled by another source).
@@ -166,8 +186,24 @@ def primary_camera_validity_mask(
     threshold_cos = -1.0 if angle_threshold_deg >= 90.0 else math.cos(math.radians(angle_threshold_deg))
     grazing = facing < threshold_cos
 
-    return behind | out_of_frame | grazing | ~np.asarray(valid_depth, dtype=bool) \
-        | ~np.asarray(valid_normal, dtype=bool)
+    shadowed = np.zeros(behind.shape, dtype=bool)
+    if primary_depth_map is not None:
+        dm = np.asarray(primary_depth_map, dtype=np.float64)
+        can_sample = ~behind & ~out_of_frame
+        # px/py are NaN for behind-camera points — substitute 0 before the
+        # int cast (those points are already excluded via can_sample).
+        sx = np.where(can_sample, px, 0.0) * (dm.shape[1] / float(primary_width))
+        sy = np.where(can_sample, py, 0.0) * (dm.shape[0] / float(primary_height))
+        sx = np.clip(np.round(sx), 0, dm.shape[1] - 1).astype(np.int64)
+        sy = np.clip(np.round(sy), 0, dm.shape[0] - 1).astype(np.int64)
+        sampled = dm[sy, sx]
+        sample_invalid = ~np.isfinite(sampled) | (sampled <= 1e-4)
+        point_depth = -cam_z
+        shadowed = can_sample & (
+            sample_invalid | (point_depth > sampled * (1.0 + depth_bias_rel)))
+
+    return behind | out_of_frame | grazing | shadowed \
+        | ~np.asarray(valid_depth, dtype=bool) | ~np.asarray(valid_normal, dtype=bool)
 
 
 @dataclass(slots=True)

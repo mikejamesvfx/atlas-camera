@@ -389,6 +389,18 @@ class ProjectionSource:
     distance_scale: float = 1.0
     priority: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Optional full-resolution edge matte (data-URI PNG, same camera frame as
+    # image_b64) — the classic DMP move: geometry stays coarse (silhouettes
+    # tear at grid-quad resolution), and this per-PIXEL matte cuts the exact
+    # edge instead. The viewport's projection shader discards fragments whose
+    # projected pixel falls outside it; the Nuke layers export writes it into
+    # the plate's alpha channel.
+    mask_b64: str | None = None
+    # Mask of INVENTED pixels: regions filled by deterministic edge-extend /
+    # frame outpaint rather than photographed or generated content. Exported
+    # by the DCC layer writers as {layer}_extend_matte.png so compositors can
+    # process the extension separately (regrain, blur, replace).
+    extend_mask_b64: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProjectionSource":
@@ -406,6 +418,8 @@ class ProjectionSource:
             distance_scale=float(data.get("distance_scale", 1.0)),
             priority=float(data.get("priority", 0.0)),
             metadata=dict(data.get("metadata", {})),
+            mask_b64=data.get("mask_b64"),
+            extend_mask_b64=data.get("extend_mask_b64"),
         )
 
 
@@ -506,7 +520,6 @@ class LatentScene:
     source_method: str = "manual"
     known_intrinsics_used: bool = False
     projection_scene: AtlasProjectionScene = field(default_factory=AtlasProjectionScene)
-    projection_workspace: AtlasProjectionScene | None = None
     projection_sources: list[ProjectionSource] = field(default_factory=list)
     depth: LatentComponent = field(default_factory=LatentComponent)
     geometry: LatentComponent = field(default_factory=LatentComponent)
@@ -524,8 +537,16 @@ class LatentScene:
             self.image_width = self.camera.intrinsics.image_width
         if self.image_height is None:
             self.image_height = self.camera.intrinsics.image_height
-        if self.projection_workspace is None:
-            self.projection_workspace = self.projection_scene
+
+    @property
+    def projection_workspace(self) -> AtlasProjectionScene:
+        """Deprecated alias for `projection_scene`. Used to be a separate
+        stored field that always mirrored `projection_scene` — which meant
+        every exported solve JSON serialized the entire projection scene
+        payload twice for zero benefit (no code ever read it as anything
+        other than an alias). Now a plain property: same `is` identity for
+        any existing caller, no duplicate data on disk."""
+        return self.projection_scene
 
     def to_dict(self) -> dict[str, Any]:
         data = _json_ready(self)
@@ -548,8 +569,10 @@ class LatentScene:
                 "individual_metrics": {},
             }
         camera = LatentCamera.from_dict(camera_data)
+        # "projection_workspace" fallback: legacy solve JSON (written before
+        # projection_workspace became a plain alias property) may only carry
+        # that key if projection_scene itself was ever absent.
         projection_scene_data = data.get("projection_scene") or data.get("projection_workspace") or {}
-        projection_workspace_data = data.get("projection_workspace") or projection_scene_data
         return cls(
             camera=camera,
             image_path=data.get("image_path"),
@@ -566,7 +589,6 @@ class LatentScene:
             source_method=data.get("source_method", "manual"),
             known_intrinsics_used=bool(data.get("known_intrinsics_used", False)),
             projection_scene=AtlasProjectionScene.from_dict(projection_scene_data),
-            projection_workspace=AtlasProjectionScene.from_dict(projection_workspace_data),
             projection_sources=[
                 ProjectionSource.from_dict(item)
                 for item in data.get("projection_sources", [])

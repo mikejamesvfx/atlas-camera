@@ -1,0 +1,1149 @@
+{
+  "last_node_id": 19,
+  "last_link_id": 25,
+  "nodes": [
+    {
+      "id": 17,
+      "type": "Note",
+      "pos": [
+        20,
+        -380
+      ],
+      "size": [
+        1620,
+        400
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "ATLAS INPAINT LAYERS II — sci-fi hangar, THREE depth bands (detailed example; partial: in-repo Atlas nodes only)\n\nExtends atlas_camera_inpaint_layers_workflow.json (the 2-band Monument Valley intro) with:\n  • THREE clean-plate layers — bg (near_pct 0.65 → +inf), mid (0.20 → 0.65), fg (0 → 0.20) — chained bg → mid → fg so all three land on one solve as separate ProjectionSources (priority fg 10 > mid 5 > bg 0; nearer band wins where they overlap).\n  • AtlasDepthLayerMask for BOTH occluded bands (bg + mid), with their occlusion_masks previewed via MaskToImage → PreviewImage so you can see exactly what each band's inpaint pass would need to fill. The fg band needs no mask/inpaint — nothing occludes the frontmost layer.\n  • A detached AtlasViewportControls Output Desk wired into the viewport's controls + output_profile inputs — moves every toolbar/panel (primitives, 📽/📊/ℹ, 🎥 Camera Path, 💡 Lights tab, Render Passes) off the viewport node, leaving it render-only.\n  • AtlasExportSolveJSON at the end — the exported solve carries all three clean-plate ProjectionSources.\n\nBand percentiles are per-photo tuning knobs: for this hangar the fg band catches the nearest deck plating, mid catches the parked ship, bg catches the far wall/ceiling. Nudge near_pct/far_pct pairs (they MUST stay identical between each AtlasDepthLayerMask and its matching AtlasCleanPlateLayer — both call the same _resolve_depth_band helper).\n\nTUNING NOTE (calibrated live on this image, 3 iterations): band-clipped relief meshes tear at their band boundaries IN ADDITION to normal silhouette tearing, so per-layer meshes want a finer grid and a more tolerant edge threshold than a single whole-frame mesh — relief_grid 384 + depth_edge_rel 1.5 here vs the 128/0.5 defaults (at 128/0.5 the ship region was mostly holes; the higher edge tolerance is safe within a band because the band clip already bounds each mesh's depth range). Also pick band edges that do NOT slice through your subject: 0.30/0.60 cut this ship in half across bands; 0.20/0.65 keeps it whole in mid.\n\nThe external inpaint step (Acly/comfyui-inpaint-nodes, GPL-3.0) is a documented placeholder — see the note in group ③.\n\n2026-07-07 viewport upgrade: the Atlas viewport now runs on a vendored three.js r185 bundle (atlas_camera/comfy/web/lib/atlas-three.bundle.js) instead of a CDN — works fully offline, and the 🧍 Woman / 🚗 Sedan scale-proxy models and 📥 FBX camera import (previously silently broken by an unresolvable CDN import) now work."
+      ]
+    },
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        140
+      ],
+      "size": [
+        320,
+        314
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            13,
+            16,
+            19,
+            21
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "atlas_scifi_hangar.png",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        100
+      ],
+      "size": [
+        380,
+        210
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            3,
+            5,
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36,
+        "pinhole",
+        "auto"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        420,
+        360
+      ],
+      "size": [
+        380,
+        120
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            4,
+            6,
+            12,
+            15,
+            18
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasDepthLayerMask",
+      "pos": [
+        860,
+        100
+      ],
+      "size": [
+        380,
+        220
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 4,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "layer_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "occlusion_mask",
+          "type": "MASK",
+          "links": [
+            7
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthLayerMask"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.65,
+        0,
+        4
+      ],
+      "title": "Depth Layer Mask — BG band (0.65 → +inf)"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDepthLayerMask",
+      "pos": [
+        860,
+        400
+      ],
+      "size": [
+        380,
+        220
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 5,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 6,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "layer_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "occlusion_mask",
+          "type": "MASK",
+          "links": [
+            9
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthLayerMask"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.2,
+        0.65,
+        4
+      ],
+      "title": "Depth Layer Mask — MID band (0.20 → 0.65)"
+    },
+    {
+      "id": 6,
+      "type": "MaskToImage",
+      "pos": [
+        1290,
+        100
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 7,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 7,
+      "type": "PreviewImage",
+      "pos": [
+        1290,
+        210
+      ],
+      "size": [
+        240,
+        260
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 8,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "BG occlusion — what the bg inpaint must fill"
+    },
+    {
+      "id": 8,
+      "type": "MaskToImage",
+      "pos": [
+        1290,
+        520
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 9,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "PreviewImage",
+      "pos": [
+        1290,
+        630
+      ],
+      "size": [
+        240,
+        260
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 10,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "MID occlusion — what the mid inpaint must fill"
+    },
+    {
+      "id": 18,
+      "type": "Note",
+      "pos": [
+        860,
+        700
+      ],
+      "size": [
+        400,
+        420
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "EXTERNAL INPAINT STEP (not included — needs Acly/comfyui-inpaint-nodes, GPL-3.0):\n\nThe links feeding the BG and MID AtlasCleanPlateLayer plate_image inputs are PLACEHOLDERS — they reuse the original LoadImage output directly so this graph stays valid/runnable without the external pack installed.\n\nFor each of the two occluded bands, replace that link with:\n  AtlasDepthLayerMask.occlusion_mask\n    → INPAINT_ExpandMask (grow ~16–32)\n    → INPAINT_InpaintWithModel (image = original LoadImage output, inpaint_model = INPAINT_LoadInpaintModel loading big-lama.pt)\n    → AtlasCleanPlateLayer.plate_image\n\nThe two occlusion previews to the right show exactly the pixels each pass must fill (bg has the most — everything the ship and mid structure hide; mid only needs what the nearest deck hides).\n\nThe FG layer needs no inpainting — it is wired to the original photo by design, since nothing occludes the frontmost band.\n\nSee INSTALL.md 'Optional Inpaint Integration' for install steps; LanPaint is the optional generative tier for hard disocclusions a LaMa pass smears."
+      ]
+    },
+    {
+      "id": 10,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1600,
+        100
+      ],
+      "size": [
+        380,
+        280
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 12,
+          "slot_index": 1
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 13,
+          "slot_index": 2
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "slot_index": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.65,
+        0,
+        "bg",
+        0,
+        384,
+        1.5
+      ],
+      "title": "Clean Plate Layer — BG (placeholder plate, wire inpaint here)"
+    },
+    {
+      "id": 11,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1600,
+        430
+      ],
+      "size": [
+        380,
+        280
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 14,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 15,
+          "slot_index": 1
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 16,
+          "slot_index": 2
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "slot_index": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.2,
+        0.65,
+        "mid",
+        5,
+        384,
+        1.5
+      ],
+      "title": "Clean Plate Layer — MID (placeholder plate, wire inpaint here)"
+    },
+    {
+      "id": 12,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1600,
+        760
+      ],
+      "size": [
+        380,
+        280
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 17,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 18,
+          "slot_index": 1
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 19,
+          "slot_index": 2
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null,
+          "slot_index": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            20,
+            25
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0,
+        0.2,
+        "fg",
+        10,
+        384,
+        1.5
+      ],
+      "title": "Clean Plate Layer — FG (original pixels, no inpaint needed)"
+    },
+    {
+      "id": 13,
+      "type": "AtlasViewportControls",
+      "pos": [
+        2060,
+        880
+      ],
+      "size": [
+        380,
+        360
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "links": [
+            22
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "links": [
+            23
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasViewportControls"
+      },
+      "widgets_values": [
+        "ACES 2.0 / Studio",
+        "",
+        "ACEScg",
+        "ACES - ACEScg",
+        "sRGB - Display",
+        "ACES 2.0 SDR-video",
+        "None",
+        "",
+        0.0,
+        1.0,
+        1.0
+      ],
+      "title": "Output Desk — View · Plates · Color · Passes · Path · Lights"
+    },
+    {
+      "id": 14,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2060,
+        100
+      ],
+      "size": [
+        960,
+        720
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 20,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 21,
+          "slot_index": 1
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": 22,
+          "slot_index": 2
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null,
+          "slot_index": 3
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": 23,
+          "slot_index": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [
+            24
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [],
+          "slot_index": 5
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1
+      ]
+    },
+    {
+      "id": 15,
+      "type": "PreviewImage",
+      "pos": [
+        3100,
+        100
+      ],
+      "size": [
+        260,
+        280
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 24,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "Blockout — Shaded"
+    },
+    {
+      "id": 16,
+      "type": "AtlasExportSolveJSON",
+      "pos": [
+        3100,
+        440
+      ],
+      "size": [
+        380,
+        120
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 25,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportSolveJSON"
+      },
+      "widgets_values": [
+        "atlas_exports/atlas_hangar_inpaint_layers_solve.json"
+      ],
+      "title": "Export layered solve (carries all 3 ProjectionSources)"
+    },
+    {
+      "id": 19,
+      "type": "Note",
+      "pos": [
+        3100,
+        620
+      ],
+      "size": [
+        420,
+        340
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "VIEWPORT CHECKS (Output Desk holds all the buttons — the viewport node itself is render-only):\n\n1. Hit 📽 Project, then dolly/orbit in. Each band is its own ProjectionSource (priority fg 10 > mid 5 > bg 0); clean-plate layers paint head-on AND grazing (facing threshold −1), ordered by depth + priority only.\n2. With the placeholder plates, regions the fg/mid layers uncover repeat original pixels — after wiring the real inpaint chain (note in group ③) they show genuinely clean background instead.\n3. Drop a 🧍 Woman / 🚗 Sedan to sanity-check the metric solve — these load from the vendored three.js r185 bundle (2026-07-07), so they work offline; before the bundle they were silently broken.\n4. Try the Lights tab (💡 two movable point lights, default intensity 0 = no look change) and ☀ exposure — exposure only affects the grey preview, never 📽 Project.\n5. Render Proxy Passes fills the shaded/depth/normal/mask outputs (black until clicked — expected)."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      5,
+      2,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      6,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      7,
+      4,
+      1,
+      6,
+      0,
+      "MASK"
+    ],
+    [
+      8,
+      6,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      5,
+      1,
+      8,
+      0,
+      "MASK"
+    ],
+    [
+      10,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
+      2,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      3,
+      0,
+      10,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      13,
+      1,
+      0,
+      10,
+      2,
+      "IMAGE"
+    ],
+    [
+      14,
+      10,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      15,
+      3,
+      0,
+      11,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      16,
+      1,
+      0,
+      11,
+      2,
+      "IMAGE"
+    ],
+    [
+      17,
+      11,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      18,
+      3,
+      0,
+      12,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      19,
+      1,
+      0,
+      12,
+      2,
+      "IMAGE"
+    ],
+    [
+      20,
+      12,
+      0,
+      14,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      21,
+      1,
+      0,
+      14,
+      1,
+      "IMAGE"
+    ],
+    [
+      22,
+      13,
+      0,
+      14,
+      2,
+      "ATLAS_VIEWPORT_LINK"
+    ],
+    [
+      23,
+      13,
+      1,
+      14,
+      4,
+      "ATLAS_OUTPUT_PROFILE"
+    ],
+    [
+      24,
+      14,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      12,
+      0,
+      16,
+      0,
+      "ATLAS_SOLVE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Source",
+      "bounding": [
+        20,
+        60,
+        350,
+        420
+      ],
+      "color": "#3f789e",
+      "font_size": 20,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② Solve + Shared Depth (one AtlasDepthMap feeds every band — required for scale agreement)",
+      "bounding": [
+        400,
+        60,
+        420,
+        440
+      ],
+      "color": "#3d7e48",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Depth-Band Masks + occlusion previews — feed the external inpaint (see note)",
+      "bounding": [
+        840,
+        60,
+        710,
+        1080
+      ],
+      "color": "#7e4f3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "④ Clean-Plate Layers — chained bg → mid → fg onto one solve",
+      "bounding": [
+        1580,
+        60,
+        420,
+        1000
+      ],
+      "color": "#7e6e3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 5,
+      "title": "⑤ Atlas Viewport + detached Output Desk",
+      "bounding": [
+        2040,
+        60,
+        1000,
+        1220
+      ],
+      "color": "#6e3d7e",
+      "font_size": 16,
+      "locked": false
+    },
+    {
+      "id": 6,
+      "title": "⑥ Outputs — shaded preview · layered-solve JSON",
+      "bounding": [
+        3080,
+        60,
+        460,
+        920
+      ],
+      "color": "#3d6e7e",
+      "font_size": 15,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5,
+      "offset": [
+        20,
+        420
+      ]
+    }
+  },
+  "version": 0.4
+}

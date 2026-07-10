@@ -988,7 +988,10 @@ def solve_still_image_learned(
         )
 
         depth_result = estimate_depth(
-            image_path, model_id=depth_model or DEFAULT_METRIC_OUTDOOR, device=device
+            image_path, model_id=depth_model or DEFAULT_METRIC_OUTDOOR, device=device,
+            # prior.focal_px is at the prior's native image size — the resolution
+            # estimate_depth itself opens — not the resized `fx` local above.
+            focal_px=prior.focal_px,
         )
         depth_map = depth_result.depth
         if depth_map.shape != (height, width):
@@ -1065,8 +1068,15 @@ def apply_reference_scale(
         return solve
     cx = K.cx_px if K.cx_px is not None else K.image_width / 2.0
     cy = K.cy_px if K.cy_px is not None else K.image_height / 2.0
+    # View-matrix convention (CLAUDE.md): use the 4x4 camera_view_matrix's own
+    # rotation block (world->cam, unambiguous), never the bare 3x3
+    # camera_rotation_matrix (cam->world, transpose-ambiguous at call sites
+    # that assume the other convention). metric_height_from_reference expects
+    # a world->cam rotation and transposes it internally to get cam->world.
+    np = _require_numpy()
+    world_to_cam = np.asarray(intr.camera_view_matrix, dtype=np.float64)[:3, :3]
     result = resolve_reference_scale(
-        references, rotation=intr.camera_rotation_matrix, fx=fx, fy=fy, cx=cx, cy=cy
+        references, rotation=world_to_cam, fx=fx, fy=fy, cx=cx, cy=cy
     )
     adopted = bool(
         adopt and result.get("camera_height")
@@ -1634,30 +1644,3 @@ def solve_from_constraints(
         solve.debug_metadata["debug_overlay_path"] = str(overlay_path)
 
     return solve
-
-
-class StillImageCameraEstimator:
-    """Thin class wrapper for automatic still-image solving."""
-
-    def solve(
-        self,
-        image_path: str | Path,
-        *,
-        image_size: tuple[int, int] | None = None,
-        intrinsics_hint: dict[str, Any] | None = None,
-        detect_vanishing_points: bool = False,
-        debug_overlay_path: str | Path | None = None,
-        camera_height: float = 1.6,
-        detection_options: dict[str, Any] | None = None,
-        seed: int = 0,
-    ) -> AtlasSolve:
-        return solve_still_image(
-            image_path,
-            image_size=image_size,
-            intrinsics_hint=intrinsics_hint,
-            detect_vanishing_points=detect_vanishing_points,
-            debug_overlay_path=debug_overlay_path,
-            camera_height=camera_height,
-            detection_options=detection_options,
-            seed=seed,
-        )
