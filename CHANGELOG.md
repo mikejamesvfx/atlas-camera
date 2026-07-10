@@ -55,6 +55,14 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   scenes no longer need the manual −180° Y rotation a real Maya lineup
   exposed. Gravity/pitch are provably untouched by the flip.
 
+### Staged master workflow
+
+- `atlas_camera_staged_master_workflow.json`: the five-stage layered DMP
+  master (solve-confirm gate -> sky -> four depth bands at 80-100/60-80/
+  30-60/0-30% with real LaMa clean plates -> assemble + Nuke/Maya layer
+  exports), organized as titled groups driven by rgthree's Fast Groups
+  Bypasser so artists work one layer at a time with the solve chain intact.
+
 ### Solve-confirm gate
 
 - `AtlasSolveGate` ✅: pause the expensive graph until the artist approves
