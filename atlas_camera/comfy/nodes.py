@@ -1149,6 +1149,98 @@ class AtlasAssessImage:
 _ATLAS_ASSESS_CACHE: dict = {}
 
 
+class AtlasSolveGate:
+    """✅ Solve-confirm checkpoint — pause the heavy graph until the artist
+    approves the camera solve.
+
+    The third gate in the established family (AtlasAssessImage gates the
+    whole graph on VLM pre-flight; 📐 pauses the patch branch): wire
+    `solve → viewport` UNGATED for a cheap preview (a low-grid relief costs
+    seconds) and `solve → this gate → the heavy stack` (grid-1024 band
+    layers, sky dome, Fixer, exports — the minutes). The first Queue costs a
+    solve and a thumbnail-grade preview; check the camera in ℹ/📊 (or the
+    report rendered on this node), click ✅ Approve Solve, and the re-queue
+    runs the expensive graph exactly once, on a solve you signed off.
+
+    Approval is fingerprint-scoped to (solve camera + source image): a new
+    photo OR a re-solve with different settings re-arms the gate instead of
+    sailing through a stale approval (the persisted-gating rule every gate
+    here follows). Empty `approved_for` with proceed=True stays the manual
+    unconditional override. Outside a ComfyUI runtime the gate degrades to
+    pass-through (no ExecutionBlocker available).
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "gate"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "source_image": ("IMAGE", {"tooltip":
+                    "The photo this solve came from — part of the approval "
+                    "identity, so swapping the image re-arms the gate."}),
+            },
+            "optional": {
+                "proceed": ("BOOLEAN", {"default": False, "tooltip":
+                    "While off, the solve output returns ExecutionBlocker and "
+                    "everything downstream of the gate is silently paused. "
+                    "The ✅ Approve Solve button sets this and re-queues."}),
+                "approved_for": ("STRING", {"default": "", "tooltip":
+                    "Fingerprint of the solve+image the current approval was "
+                    "given for (stamped by ✅). Mismatch re-arms the gate. "
+                    "Leave empty when toggling proceed by hand to approve "
+                    "unconditionally."}),
+            },
+        }
+
+    def gate(self, solve, source_image, proceed=False, approved_for="", **_extra):
+        # **_extra: API-format exports can serialize the button widget as a
+        # bogus input key — tolerate unknown kwargs (AssessImage precedent).
+        import math as _math
+
+        np = _require_numpy()
+
+        fp = _solve_fingerprint(solve, source_image)
+        intr = solve.camera.intrinsics
+        extr = solve.camera.extrinsics
+        try:
+            vm = np.array(extr.camera_view_matrix, dtype=np.float64)
+            fwd = np.linalg.inv(vm)[:3, :3] @ np.array([0.0, 0.0, -1.0])
+            pitch = _math.degrees(_math.asin(max(-1.0, min(1.0, float(fwd[1])))))
+        except Exception:
+            pitch = float("nan")
+        fov = (2 * _math.degrees(_math.atan((intr.image_width or 0) /
+               (2 * intr.fx_px))) if intr.fx_px else float("nan"))
+        cam_h = (extr.camera_position or (0, float("nan"), 0))[1]
+        meta = solve.debug_metadata or {}
+        effective = bool(proceed) and (not approved_for or approved_for == fp)
+        lines = [
+            "✅ SOLVE APPROVED — heavy graph running." if effective else
+            "⏸ SOLVE GATE — downstream paused. Review, then ✅ Approve Solve.",
+            (f"focal: {intr.focal_length_mm:.1f}mm ({fov:.1f}° hFOV) on "
+             f"{intr.sensor_width_mm}mm") if intr.focal_length_mm else "focal: n/a",
+            f"camera height: {cam_h:.2f}m  (scale: {meta.get('scale_source', 'n/a')})",
+            f"pitch: {pitch:+.1f}°",
+            (f"confidence: {solve.confidence:.2f}  ({solve.source_method})"
+             if getattr(solve, "confidence", None) is not None else ""),
+        ]
+        if proceed and approved_for and approved_for != fp:
+            lines.insert(0, "*** GATE RE-ARMED: the solve or image changed since "
+                            "approval — review and ✅ Approve again. ***")
+        report = "\n".join(l for l in lines if l)
+
+        if effective:
+            out = solve
+        else:
+            blocker = _execution_blocker()
+            out = blocker if blocker is not None else solve
+        return {"ui": {"text": [report], "fingerprint": [fp]},
+                "result": (out, report)}
+
+
 class AtlasVLMScaleCues:
     """Detect scale-reference objects with a local vision-language model.
 
@@ -5417,6 +5509,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasReferenceScaleSolve":   AtlasReferenceScaleSolve,
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
     "AtlasAssessImage":           AtlasAssessImage,
+    "AtlasSolveGate":             AtlasSolveGate,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
     "AtlasAddPatchView":          AtlasAddPatchView,
@@ -5476,6 +5569,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasLearnedSolveFromImage": "Atlas Learned Solve (GeoCalib) 🧠",
     "AtlasReferenceScaleSolve":   "Atlas Reference-Object Scale 📏",
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
+    "AtlasSolveGate":             "Atlas Solve Gate ✅",
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",
