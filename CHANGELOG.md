@@ -55,6 +55,14 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   scenes no longer need the manual −180° Y rotation a real Maya lineup
   exposed. Gravity/pitch are provably untouched by the flip.
 
+### Solve-confirm gate
+
+- `AtlasSolveGate` ✅: pause the expensive graph until the artist approves
+  the camera solve. First Queue costs the solve + a cheap ungated preview;
+  the node renders a solve summary (focal/FOV/height/pitch/confidence);
+  ✅ Approve Solve re-queues with a fingerprint-scoped approval — a new
+  photo or a re-solve re-arms the gate.
+
 ### Ground-anchored extrusion + roofline segmentation
 
 - `ground_anchor` on both wall-derive nodes: building footprints from
