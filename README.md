@@ -212,7 +212,8 @@ geometry. They do not yet solve metric depth from a single image.
 
 ## ComfyUI Node Pack
 
-The flagship interface is a **47-node ComfyUI pack** (category **Atlas Camera**)
+The flagship interface is a **46-node ComfyUI pack** (category **Atlas Camera**;
+48 with the 🔬 experimental tier enabled)
 that runs the whole pipeline as a graph. Install it into ComfyUI's own venv
 (editable, so source changes are live):
 
