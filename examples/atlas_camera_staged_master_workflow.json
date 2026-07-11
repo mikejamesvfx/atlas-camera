@@ -1,8 +1,8 @@
 {
  "id": "3a115c93-dd03-417c-b6c0-b47bf6f3e710",
  "revision": 0,
- "last_node_id": 190,
- "last_link_id": 198,
+ "last_node_id": 198,
+ "last_link_id": 210,
  "nodes": [
   {
    "id": 1,
@@ -1536,6 +1536,14 @@
      "name": "band_ref_mask",
      "type": "MASK",
      "link": 185
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "widget": {
+      "name": "band_override"
+     },
+     "link": 200
     }
    ],
    "outputs": [
@@ -1576,7 +1584,8 @@
     384,
     1.5,
     false,
-    "manual"
+    "manual",
+    ""
    ]
   },
   {
@@ -2114,6 +2123,14 @@
      "name": "band_ref_mask",
      "type": "MASK",
      "link": 186
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "widget": {
+      "name": "band_override"
+     },
+     "link": 201
     }
    ],
    "outputs": [
@@ -2159,6 +2176,7 @@
     2,
     "manual",
     "relief",
+    "",
     ""
    ]
   },
@@ -2375,6 +2393,14 @@
      "name": "band_ref_mask",
      "type": "MASK",
      "link": 188
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "widget": {
+      "name": "band_override"
+     },
+     "link": 203
     }
    ],
    "outputs": [
@@ -2415,7 +2441,8 @@
     384,
     1.5,
     false,
-    "manual"
+    "manual",
+    ""
    ]
   },
   {
@@ -2953,6 +2980,14 @@
      "name": "band_ref_mask",
      "type": "MASK",
      "link": 189
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "widget": {
+      "name": "band_override"
+     },
+     "link": 204
     }
    ],
    "outputs": [
@@ -2998,6 +3033,7 @@
     2,
     "manual",
     "relief",
+    "",
     ""
    ]
   },
@@ -3214,6 +3250,14 @@
      "name": "band_ref_mask",
      "type": "MASK",
      "link": 191
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "widget": {
+      "name": "band_override"
+     },
+     "link": 206
     }
    ],
    "outputs": [
@@ -3254,7 +3298,8 @@
     384,
     1.5,
     false,
-    "manual"
+    "manual",
+    ""
    ]
   },
   {
@@ -3792,6 +3837,14 @@
      "name": "band_ref_mask",
      "type": "MASK",
      "link": 192
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "widget": {
+      "name": "band_override"
+     },
+     "link": 207
     }
    ],
    "outputs": [
@@ -3837,6 +3890,7 @@
     2,
     "manual",
     "relief",
+    "",
     ""
    ]
   },
@@ -4053,6 +4107,14 @@
      "name": "band_ref_mask",
      "type": "MASK",
      "link": 194
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "widget": {
+      "name": "band_override"
+     },
+     "link": 209
     }
    ],
    "outputs": [
@@ -4093,7 +4155,8 @@
     384,
     1.5,
     false,
-    "manual"
+    "manual",
+    ""
    ]
   },
   {
@@ -4631,6 +4694,14 @@
      "name": "band_ref_mask",
      "type": "MASK",
      "link": 195
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "widget": {
+      "name": "band_override"
+     },
+     "link": 210
     }
    ],
    "outputs": [
@@ -4680,6 +4751,7 @@
     2,
     "manual",
     "relief",
+    "",
     ""
    ]
   },
@@ -6151,6 +6223,38 @@
       156
      ],
      "slot_index": 11
+    },
+    {
+     "name": "band_far",
+     "type": "STRING",
+     "links": [
+      199
+     ],
+     "slot_index": 12
+    },
+    {
+     "name": "band_bg",
+     "type": "STRING",
+     "links": [
+      202
+     ],
+     "slot_index": 13
+    },
+    {
+     "name": "band_mid",
+     "type": "STRING",
+     "links": [
+      205
+     ],
+     "slot_index": 14
+    },
+    {
+     "name": "band_fg",
+     "type": "STRING",
+     "links": [
+      208
+     ],
+     "slot_index": 15
     }
    ],
    "properties": {
@@ -8429,6 +8533,310 @@
    },
    "widgets_values": [],
    "title": "sky layer"
+  },
+  {
+   "id": 191,
+   "type": "SetNode",
+   "pos": [
+    1400,
+    1740
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "link": 199
+    }
+   ],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": null
+    }
+   ],
+   "title": "Set_band_far",
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "band_far"
+   },
+   "widgets_values": [
+    "band_far"
+   ],
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 192,
+   "type": "GetNode",
+   "pos": [
+    2600,
+    1090
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": [
+      200,
+      201
+     ]
+    }
+   ],
+   "title": "Get_band_far",
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "band_far"
+   ],
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 193,
+   "type": "SetNode",
+   "pos": [
+    1400,
+    1812
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "link": 202
+    }
+   ],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": null
+    }
+   ],
+   "title": "Set_band_bg",
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "band_bg"
+   },
+   "widgets_values": [
+    "band_bg"
+   ],
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 194,
+   "type": "GetNode",
+   "pos": [
+    2600,
+    1790
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": [
+      203,
+      204
+     ]
+    }
+   ],
+   "title": "Get_band_bg",
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "band_bg"
+   ],
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 195,
+   "type": "SetNode",
+   "pos": [
+    1400,
+    1884
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "link": 205
+    }
+   ],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": null
+    }
+   ],
+   "title": "Set_band_mid",
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "band_mid"
+   },
+   "widgets_values": [
+    "band_mid"
+   ],
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 196,
+   "type": "GetNode",
+   "pos": [
+    2600,
+    2490
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": [
+      206,
+      207
+     ]
+    }
+   ],
+   "title": "Get_band_mid",
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "band_mid"
+   ],
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 197,
+   "type": "SetNode",
+   "pos": [
+    1400,
+    1956
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "link": 208
+    }
+   ],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": null
+    }
+   ],
+   "title": "Set_band_fg",
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "band_fg"
+   },
+   "widgets_values": [
+    "band_fg"
+   ],
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 198,
+   "type": "GetNode",
+   "pos": [
+    2600,
+    3190
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": [
+      209,
+      210
+     ]
+    }
+   ],
+   "title": "Get_band_fg",
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "band_fg"
+   ],
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
   }
  ],
  "links": [
@@ -9751,6 +10159,102 @@
    190,
    0,
    "IMAGE"
+  ],
+  [
+   199,
+   120,
+   12,
+   191,
+   0,
+   "STRING"
+  ],
+  [
+   200,
+   192,
+   0,
+   22,
+   15,
+   "STRING"
+  ],
+  [
+   201,
+   192,
+   0,
+   30,
+   24,
+   "STRING"
+  ],
+  [
+   202,
+   120,
+   13,
+   193,
+   0,
+   "STRING"
+  ],
+  [
+   203,
+   194,
+   0,
+   35,
+   15,
+   "STRING"
+  ],
+  [
+   204,
+   194,
+   0,
+   43,
+   24,
+   "STRING"
+  ],
+  [
+   205,
+   120,
+   14,
+   195,
+   0,
+   "STRING"
+  ],
+  [
+   206,
+   196,
+   0,
+   48,
+   15,
+   "STRING"
+  ],
+  [
+   207,
+   196,
+   0,
+   56,
+   24,
+   "STRING"
+  ],
+  [
+   208,
+   120,
+   15,
+   197,
+   0,
+   "STRING"
+  ],
+  [
+   209,
+   198,
+   0,
+   61,
+   15,
+   "STRING"
+  ],
+  [
+   210,
+   198,
+   0,
+   69,
+   24,
+   "STRING"
   ]
  ],
  "groups": [
@@ -9882,7 +10386,7 @@
     1360,
     990,
     300,
-    790
+    1100
    ],
    "color": "#3f789e",
    "font_size": 20,

@@ -85,6 +85,7 @@ app.registerExtension({
       const groups = [
         { values: message?.sam_prompts, base: 3, count: 5, fallback: "prompt" },
         { values: message?.sam_geometry, base: 8, count: 4, fallback: "geometry_override" },
+        { values: message?.sam_bands, base: 12, count: 4, fallback: "band_override" },
       ];
       let mirrored = false;
       for (const g of groups) {

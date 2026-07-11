@@ -56,13 +56,12 @@ _PAYLOAD = {
 
 def test_node_registered():
     assert NODE_CLASS_MAPPINGS["AtlasAssessImage"] is AtlasAssessImage
-    assert AtlasAssessImage.RETURN_TYPES == (
-        "IMAGE", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING",
-        "STRING", "STRING", "STRING", "STRING")
+    assert AtlasAssessImage.RETURN_TYPES == ("IMAGE",) + ("STRING",) * 15
     assert AtlasAssessImage.RETURN_NAMES == (
         "image", "report", "settings_json", "sam_prompt_sky", "sam_prompt_far",
         "sam_prompt_bg", "sam_prompt_mid", "sam_prompt_fg",
-        "geom_far", "geom_bg", "geom_mid", "geom_fg")
+        "geom_far", "geom_bg", "geom_mid", "geom_fg",
+        "band_far", "band_bg", "band_mid", "band_fg")
 
 
 def test_system_prompt_covers_the_settings_surface():
@@ -347,11 +346,18 @@ def test_node_pauses_image_until_proceed(monkeypatch):
     # The staged SAM prompts + geometry recommendations flow UNGATED (the
     # image blocker already pauses everything they feed, via the plate rail).
     assert out["result"][3:8] == ("sky", "rock formations", "mesa cliffs", "", "desert scrub")
-    assert out["result"][8:] == ("card", "relief", "", "ground")  # absent mid -> ""
+    assert out["result"][8:12] == ("card", "relief", "", "ground")  # absent mid -> ""
+    # Watertight band overrides (jointly-derived boundaries, default slots
+    # here since _PAYLOAD suggests none).
+    assert out["result"][12:] == ("near_pct=0.800 far_pct=1.000",
+                                  "near_pct=0.600 far_pct=0.800",
+                                  "near_pct=0.300 far_pct=0.600",
+                                  "near_pct=0.000 far_pct=0.300")
     # ...and ride the ui message so atlas_assess.js can mirror them into
     # linked widgets (linked widget-inputs display stale text otherwise).
     assert out["ui"]["sam_prompts"] == ["sky", "rock formations", "mesa cliffs", "", "desert scrub"]
     assert out["ui"]["sam_geometry"] == ["card", "relief", "", "ground"]
+    assert out["ui"]["sam_bands"][0] == "near_pct=0.800 far_pct=1.000"
 
     img_out2 = AtlasAssessImage().assess(image, proceed=True,
                                          auto_continue=False)["result"][0]
@@ -423,3 +429,25 @@ def test_node_tolerates_serialized_button_input(monkeypatch):
     image = torch.rand(1, 32, 32, 3)
     out = AtlasAssessImage().assess(image, proceed=True, **{"▶ Continue Workflow": None})
     assert out["result"][0] is image
+
+
+def test_staged_layer_bands_joint_boundaries():
+    from atlas_camera.inference.assessor import staged_layer_bands
+
+    # No staged plan -> no overrides (nodes keep their widgets).
+    assert staged_layer_bands({}) == {"far": "", "bg": "", "mid": "", "fg": ""}
+
+    # A suggestion moves ONE boundary; both adjacent bands share it exactly.
+    p = {"staged_layers": {"bg": {"present": True, "sam_prompt": "x",
+                                  "near_pct": 0.55},
+                           "mid": {"present": False, "sam_prompt": "",
+                                   "far_pct": 0.55}}}
+    bands = staged_layer_bands(p)
+    assert bands["mid"].endswith("far_pct=0.550")
+    assert bands["bg"].startswith("near_pct=0.550")
+    assert bands["fg"] == "near_pct=0.000 far_pct=0.300"   # untouched boundary
+
+    # Non-monotonic suggestions reset ALL boundaries to the fixed slots.
+    bad = {"staged_layers": {"fg": {"present": True, "sam_prompt": "x", "far_pct": 0.9},
+                             "mid": {"present": True, "sam_prompt": "y", "far_pct": 0.2}}}
+    assert staged_layer_bands(bad)["fg"] == "near_pct=0.000 far_pct=0.300"
