@@ -89,3 +89,22 @@ def test_debug_report_healthy_stack_says_so(tmp_path):
     data = json.loads(open(out["result"][1], encoding="utf-8").read())
     assert data["flags"] == []
     assert "stack looks healthy" in out["result"][0]
+
+
+def test_debug_report_flags_negative_depth(tmp_path):
+    """DA3 watch-item made measurable: negative raw depth fraction is
+    reported, and flagged above 1% (observed live: depth.near = -11.4m on an
+    alpine ridge shot)."""
+    solve, depth = _layered_solve()
+    out = AtlasDebugReport().report(solve, depth=depth, file_path=str(tmp_path / "a.json"))
+    data = json.loads(open(out["result"][1], encoding="utf-8").read())
+    assert data["depth"]["negative_fraction"] == 0.0
+    assert not any("NEGATIVE" in f for f in data["flags"])
+
+    bad_map = _occluder_depth().copy()
+    bad_map[:20, :] = -5.0          # ~8% negative rows
+    bad_depth = _depth_result(bad_map)
+    out2 = AtlasDebugReport().report(solve, depth=bad_depth, file_path=str(tmp_path / "b.json"))
+    data2 = json.loads(open(out2["result"][1], encoding="utf-8").read())
+    assert data2["depth"]["negative_fraction"] > 0.05
+    assert any("NEGATIVE" in f and "DA3" in f for f in data2["flags"])
