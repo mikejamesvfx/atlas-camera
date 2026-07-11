@@ -5144,6 +5144,29 @@ class AtlasDebugReport:
             if "FALLBACK" in s:
                 flags.append(f"scope {k}: {s}")
 
+        # DA3 watch-item made measurable: the DA3 backend occasionally emits
+        # NEGATIVE raw depth (documented; ground-pinning renormalizes, so it
+        # has been harmless so far) — surface the actual fraction so a shot
+        # where a band misbehaves points here first (observed live: an alpine
+        # ridge shot reported depth.near = -11.4m).
+        depth_info = None
+        if depth is not None:
+            depth_info = {"model_id": depth.model_id, "is_metric": depth.is_metric,
+                          "near": depth.near, "far": depth.far,
+                          "wh": [depth.image_width, depth.image_height]}
+            try:
+                np = _require_numpy()
+                arr = np.asarray(depth.depth)
+                neg = float((arr < 0).mean())
+                depth_info["negative_fraction"] = round(neg, 4)
+                if neg > 0.01:
+                    flags.append(
+                        f"depth: {neg:.1%} of raw depth is NEGATIVE (DA3 watch-item) — "
+                        "ground-pinning renormalizes it, but suspect this first if a "
+                        "band's geometry misbehaves on this shot")
+            except Exception:
+                pass
+
         try:
             from atlas_camera import __version__ as _atlas_version
         except Exception:
@@ -5156,10 +5179,7 @@ class AtlasDebugReport:
             "atlas_version": _atlas_version,
             "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "camera": camera,
-            "depth": ({"model_id": depth.model_id, "is_metric": depth.is_metric,
-                       "near": depth.near, "far": depth.far,
-                       "wh": [depth.image_width, depth.image_height]}
-                      if depth is not None else None),
+            "depth": depth_info,
             "shot_cam": (solve.shot_cam.to_dict()
                          if getattr(solve, "shot_cam", None) and
                          hasattr(solve.shot_cam, "to_dict") else None),
