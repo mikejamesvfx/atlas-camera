@@ -67,3 +67,8 @@ docs/applications/
 # Doc-embedded scene thumbnails are the exception to the *.jpg ban
 !docs/images/*.jpg
 !docs/images/*.svg
+
+# Python packaging artifacts (pip wheel / python -m build)
+dist/
+build/
+*.egg-info/
