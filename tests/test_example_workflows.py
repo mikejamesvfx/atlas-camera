@@ -1,0 +1,140 @@
+"""Graph-integrity regression tests for every shipped example workflow.
+
+ComfyUI's UI-format JSON is redundantly linked (the links array AND each
+node's inputs[].link / outputs[].links must agree), and `widgets_values` is
+positional — both have caused real shipped bugs (the 2026-07-06 widget-order
+corruption; a hand-edited origin-links omission in the shot-cam workflow that
+this test's first run caught). The staged master alone was hand-edited eight
+times on 2026-07-11; every edit was validated by a throwaway copy of exactly
+this checker. Promoted to a permanent test per the beta-0.3 spec-panel review
+("highest value-per-line item"): no live ComfyUI needed, runs in milliseconds.
+"""
+
+import glob
+import json
+import os
+
+import pytest
+
+EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "examples")
+
+STAGED_MASTER = "atlas_camera_staged_master_workflow.json"
+
+
+def _ui_workflows():
+    out = []
+    for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, "*.json"))):
+        try:
+            wf = json.load(open(path, encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        # UI format only — api-format exports and non-workflow JSON are skipped
+        if isinstance(wf, dict) and isinstance(wf.get("nodes"), list) and "links" in wf:
+            out.append((os.path.basename(path), wf))
+    return out
+
+
+_WORKFLOWS = _ui_workflows()
+
+
+def test_examples_directory_has_ui_workflows():
+    assert len(_WORKFLOWS) > 20  # the shipped catalog; guards the glob itself
+
+
+@pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])
+def test_workflow_link_graph_is_bidirectionally_consistent(name, wf):
+    """Every link must be listed by its origin output AND referenced by its
+    target input, and every node-side link id must exist in the links array —
+    the invariant every hand/script edit of a workflow must preserve."""
+    nodes = {n["id"]: n for n in wf["nodes"]}
+    errs = []
+    links = wf.get("links") or []
+    for l in links:
+        assert isinstance(l, list) and len(l) >= 6, f"malformed link entry {l!r}"
+        lid, oid, oslot, tid, tslot = l[:5]
+        if oid not in nodes or tid not in nodes:
+            errs.append(f"link {lid}: references missing node ({oid}->{tid})")
+            continue
+        outs = nodes[oid].get("outputs") or []
+        ins = nodes[tid].get("inputs") or []
+        if oslot >= len(outs) or lid not in (outs[oslot].get("links") or []):
+            errs.append(f"link {lid}: origin {oid}:{oslot} does not list it")
+        if tslot >= len(ins) or ins[tslot].get("link") != lid:
+            errs.append(f"link {lid}: target {tid}:{tslot} does not reference it")
+    link_ids = {l[0] for l in links}
+    for n in wf["nodes"]:
+        for inp in n.get("inputs") or []:
+            if inp.get("link") is not None and inp["link"] not in link_ids:
+                errs.append(f"node {n['id']}: dangling input link {inp['link']}")
+        for out in n.get("outputs") or []:
+            for lid in out.get("links") or []:
+                if lid not in link_ids:
+                    errs.append(f"node {n['id']}: dangling output link {lid}")
+    assert not errs, f"{name}: " + "; ".join(errs[:10])
+
+
+@pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])
+def test_workflow_id_counters_cover_contents(name, wf):
+    """last_node_id / last_link_id must be >= every id in use — a stale
+    counter makes the frontend mint DUPLICATE ids for newly added nodes."""
+    node_ids = [n["id"] for n in wf["nodes"] if isinstance(n["id"], int)]
+    link_ids = [l[0] for l in (wf.get("links") or []) if isinstance(l[0], int)]
+    if node_ids and isinstance(wf.get("last_node_id"), int):
+        assert wf["last_node_id"] >= max(node_ids), name
+    if link_ids and isinstance(wf.get("last_link_id"), int):
+        assert wf["last_link_id"] >= max(link_ids), name
+
+
+def _staged():
+    match = [wf for n, wf in _WORKFLOWS if n == STAGED_MASTER]
+    assert match, "staged master workflow missing from examples/"
+    return match[0]
+
+
+def test_staged_master_rails_have_setters():
+    """Every KJ GetNode's rail name must have exactly one SetNode — a renamed
+    or deleted Set silently starves every Get on that rail."""
+    wf = _staged()
+    sets = {}
+    for n in wf["nodes"]:
+        if n["type"] == "SetNode":
+            rail = n["widgets_values"][0]
+            sets.setdefault(rail, 0)
+            sets[rail] += 1
+    dupes = [r for r, c in sets.items() if c > 1]
+    assert not dupes, f"duplicate SetNodes for rails: {dupes}"
+    orphans = [n["widgets_values"][0] for n in wf["nodes"]
+               if n["type"] == "GetNode" and n["widgets_values"][0] not in sets]
+    assert not orphans, f"GetNodes with no SetNode: {orphans}"
+
+
+def test_staged_master_debug_strip_is_group_free():
+    """The per-layer previews + the 🔍 debug node live OUTSIDE every group
+    bounding on purpose: a node fully inside a stage group's bounds gets
+    claimed by the rgthree bypasser and dies with that group — the exact
+    trap the first preview placement fell into (inside the ASSEMBLE group)."""
+    wf = _staged()
+
+    def inside(n, g):
+        x, y = n["pos"]
+        w, h = n.get("size") or [210, 246]
+        gx, gy, gw, gh = g["bounding"]
+        return gx <= x and gy <= y and x + w <= gx + gw and y + h <= gy + gh
+
+    strip_types = {"AtlasLayerPreview", "AtlasDebugReport"}
+    claimed = []
+    for n in wf["nodes"]:
+        if n["type"] in strip_types and n["pos"][0] < 2010:  # the x1760 strip
+            for g in wf["groups"]:
+                if inside(n, g):
+                    claimed.append((n["id"], n["type"], g["title"][:30]))
+    assert not claimed, f"strip nodes claimed by groups: {claimed}"
+
+
+def test_staged_master_scope_rows_are_always_active():
+    """v7 doctrine: 🎯 AtlasScopeMask rows self-disarm — none may ship
+    bypassed (mode 4) or muted (mode 2), and there must be one per band."""
+    wf = _staged()
+    scopes = [n for n in wf["nodes"] if n["type"] == "AtlasScopeMask"]
+    assert len(scopes) == 4
+    assert all(n.get("mode", 0) == 0 for n in scopes)
