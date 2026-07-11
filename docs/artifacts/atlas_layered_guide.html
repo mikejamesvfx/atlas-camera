@@ -1,0 +1,516 @@
+<title>Atlas Layered Projection — Build-Up Guide</title>
+<style>
+  :root {
+    --ground: #16181a;
+    --panel: #1f2226;
+    --panel-2: #24282c;
+    --line: #33383d;
+    --ink: #d5dad3;
+    --ink-dim: #9aa39c;
+    --ink-faint: #6b736d;
+    --base-c: #2fd6c3;   /* teal — base mesh (matches 🎨 overlay) */
+    --fg-c: #ff6a3d;     /* orange — foreground layer */
+    --xray-c: #3d8bff;   /* blue — X-ray layer */
+    --sky-c: #a8cfe0;    /* pale cyan — sky dome */
+    --warn: #ffd23d;
+    --mono: "Cascadia Code", "Consolas", ui-monospace, "SF Mono", monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  html { background: var(--ground); }
+  body {
+    background: var(--ground); color: var(--ink);
+    font: 15px/1.65 var(--sans);
+    margin: 0; padding: 0 20px 96px;
+  }
+  main { max-width: 860px; margin: 0 auto; }
+  h1, h2, h3 { font-family: var(--mono); text-wrap: balance; line-height: 1.2; }
+  h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; margin: 56px 0 8px; }
+  h2 { font-size: 20px; font-weight: 600; margin: 64px 0 12px; padding-top: 20px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; font-weight: 600; margin: 28px 0 8px; color: var(--ink); }
+  p { max-width: 68ch; margin: 10px 0; }
+  .lede { color: var(--ink-dim); font-size: 16px; max-width: 62ch; }
+  .eyebrow {
+    font: 600 11px/1 var(--mono); letter-spacing: 2px; text-transform: uppercase;
+    color: var(--ink-faint); display: block; margin-bottom: 10px;
+  }
+  .stage-tag {
+    display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: 1.5px;
+    padding: 4px 9px; border-radius: 3px; margin-right: 10px; vertical-align: 2px;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+  }
+  code, .mono { font-family: var(--mono); font-size: 0.92em; }
+  code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
+  a { color: var(--base-c); }
+
+  /* ---- layer color chips ---- */
+  .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+  /* ---- node facsimiles ---- */
+  .graph {
+    display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;
+    background: #121416;
+    background-image: radial-gradient(#26292c 1px, transparent 1px);
+    background-size: 22px 22px;
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 22px; margin: 18px 0; overflow-x: auto;
+  }
+  .node {
+    background: #26292e; border: 1px solid #3c4147; border-radius: 7px;
+    min-width: 195px; max-width: 240px; font-size: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45); flex: 0 0 auto;
+  }
+  .node-title {
+    font: 600 11.5px/1.35 var(--sans); padding: 7px 10px;
+    border-radius: 6px 6px 0 0; color: #0e1012;
+  }
+  .nt-atlas { background: #7fb069; }
+  .nt-atlas2 { background: #5a9e8f; }
+  .nt-core { background: #8c93a8; }
+  .nt-inpaint { background: #b08bc9; }
+  .nt-sam { background: #c9a15a; }
+  .node-io { padding: 6px 0 4px; border-bottom: 1px solid #34383d; }
+  .io { display: flex; justify-content: space-between; padding: 1.5px 10px; color: #b9c0ba; }
+  .io .in::before { content: "●"; color: #6f8f6a; margin-right: 6px; font-size: 9px; }
+  .io .out::after { content: "●"; color: #6f8f6a; margin-left: 6px; font-size: 9px; }
+  .io .opt::before { color: #566; }
+  .widgets { padding: 5px 8px 8px; display: grid; gap: 3px; }
+  .w { display: flex; justify-content: space-between; gap: 10px; background: #1c1f22;
+       border: 1px solid #313539; border-radius: 4px; padding: 2.5px 8px; color: #9fa8a1; }
+  .w b { color: #dfe5de; font-family: var(--mono); font-weight: 500; font-size: 11px;
+         font-variant-numeric: tabular-nums; text-align: right; }
+  .w.hot { border-color: #6a5a2c; }
+  .w.hot b { color: var(--warn); }
+  .node-note { font-size: 11px; color: var(--ink-faint); padding: 6px 10px 9px; line-height: 1.45; }
+  .arrow { align-self: center; color: var(--ink-faint); font-size: 18px; flex: 0 0 auto; }
+
+  /* ---- tables ---- */
+  .tablewrap { overflow-x: auto; margin: 14px 0; }
+  table { border-collapse: collapse; font-size: 13px; min-width: 640px; }
+  th { font: 600 11px/1.4 var(--mono); letter-spacing: 1px; text-transform: uppercase;
+       color: var(--ink-faint); text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 14px 8px 0; border-bottom: 1px solid #24282c; vertical-align: top; color: var(--ink-dim); }
+  td:first-child, th:first-child { padding-left: 2px; }
+  td b { color: var(--ink); font-weight: 600; }
+  td code { white-space: nowrap; }
+
+  /* ---- callouts ---- */
+  .rule {
+    border-left: 3px solid var(--base-c); background: var(--panel);
+    border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 18px 0; max-width: 72ch;
+  }
+  .rule.warn { border-left-color: var(--warn); }
+  .rule .t { font: 600 11px/1 var(--mono); letter-spacing: 1.5px; text-transform: uppercase;
+             color: var(--ink-faint); display: block; margin-bottom: 6px; }
+  .rule p { margin: 4px 0; font-size: 14px; }
+
+  .works {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 16px; margin: 16px 0; max-width: 72ch; font-size: 14px;
+  }
+  .works .t { color: var(--base-c); font: 600 11px/1 var(--mono); letter-spacing: 1.5px;
+              text-transform: uppercase; display: block; margin-bottom: 6px; }
+  .works ul { margin: 4px 0 0 18px; padding: 0; }
+  .works li { margin: 3px 0; color: var(--ink-dim); }
+
+  /* ---- hero diagram ---- */
+  .hero-diagram { margin: 30px 0 6px; }
+  .hero-diagram svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12.5px; color: var(--ink-dim);
+            margin: 10px 0 0; font-family: var(--mono); }
+
+  /* ---- toc ---- */
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 6px; }
+  .toc a {
+    font: 500 12px/1 var(--mono); text-decoration: none; color: var(--ink-dim);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 7px 11px;
+  }
+  .toc a:hover { color: var(--ink); border-color: #4a5157; }
+  kbd { font-family: var(--mono); font-size: 11px; background: var(--panel-2); border: 1px solid var(--line);
+        border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; }
+</style>
+
+<main>
+  <span class="eyebrow">Atlas Camera · ComfyUI · field guide</span>
+  <h1>The Layered Projection, Built Up One Layer at a Time</h1>
+  <p class="lede">
+    Every hidden-geometry workflow is the same five-layer sandwich. This guide builds it
+    from a 5-node minimum to the full rig — what each layer is for, which three knobs
+    actually matter at each stage, and how to read the debug lenses when tuning goes sideways.
+    Driving the <b>staged master</b> (the assess-driven production rig)? Its own
+    <a href="https://claude.ai/code/artifact/174fccee-3200-43f9-83c5-7875ada0b8cf">🏗 operator's
+    guide</a> covers the queue rhythm and the VLM autopilot — the concepts here still apply
+    underneath it.
+  </p>
+
+  <div class="hero-diagram">
+    <svg viewBox="0 0 860 300" role="img" aria-label="Side view of the layer stack from camera to sky">
+      <!-- depth axis -->
+      <line x1="60" y1="272" x2="820" y2="272" stroke="#33383d" stroke-width="1"/>
+      <text x="60" y="292" fill="#6b736d" font-size="11" font-family="monospace">near</text>
+      <text x="790" y="292" fill="#6b736d" font-size="11" font-family="monospace">far</text>
+      <!-- camera -->
+      <g>
+        <polygon points="38,128 68,143 38,158" fill="none" stroke="#d5dad3" stroke-width="1.6"/>
+        <rect x="18" y="133" width="20" height="20" rx="3" fill="none" stroke="#d5dad3" stroke-width="1.6"/>
+        <text x="12" y="180" fill="#9aa39c" font-size="11" font-family="monospace">recovered</text>
+        <text x="12" y="193" fill="#9aa39c" font-size="11" font-family="monospace">camera</text>
+      </g>
+      <!-- frustum -->
+      <line x1="68" y1="143" x2="828" y2="30" stroke="#3a4045" stroke-width="1" stroke-dasharray="3 4"/>
+      <line x1="68" y1="143" x2="828" y2="262" stroke="#3a4045" stroke-width="1" stroke-dasharray="3 4"/>
+      <!-- fg layer -->
+      <path d="M 218 96 q 14 34 -4 66 q 18 30 8 66" fill="none" stroke="#ff6a3d" stroke-width="4" stroke-linecap="round"/>
+      <text x="196" y="82" fill="#ff6a3d" font-size="12" font-family="monospace">foreground</text>
+      <!-- xray layer -->
+      <path d="M 330 118 q 10 36 -6 60 q 14 26 6 56" fill="none" stroke="#3d8bff" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5"/>
+      <text x="306" y="104" fill="#3d8bff" font-size="12" font-family="monospace">x-ray (hidden)</text>
+      <!-- base mesh -->
+      <path d="M 150 250 L 300 236 Q 420 220 470 160 Q 520 96 640 84 L 758 66" fill="none" stroke="#2fd6c3" stroke-width="4" stroke-linecap="round"/>
+      <text x="480" y="210" fill="#2fd6c3" font-size="12" font-family="monospace">base mesh + backdrop</text>
+      <!-- sky -->
+      <path d="M 792 34 L 792 258" fill="none" stroke="#a8cfe0" stroke-width="4" stroke-linecap="round"/>
+      <text x="736" y="24" fill="#a8cfe0" font-size="12" font-family="monospace">sky dome</text>
+      <!-- one photo, projected -->
+      <text x="96" y="120" fill="#6b736d" font-size="11" font-family="monospace">one photo,</text>
+      <text x="96" y="133" fill="#6b736d" font-size="11" font-family="monospace">projected →</text>
+    </svg>
+    <div class="legend">
+      <span><span class="chip" style="background:var(--base-c)"></span>base — always</span>
+      <span><span class="chip" style="background:var(--fg-c)"></span>foreground — occluders</span>
+      <span><span class="chip" style="background:var(--xray-c)"></span>x-ray — predicted, behind</span>
+      <span><span class="chip" style="background:var(--sky-c)"></span>sky — outdoor only</span>
+    </div>
+  </div>
+
+  <nav class="toc">
+    <a href="#model">mental model</a>
+    <a href="#master">staged master</a>
+    <a href="#s0">0 · minimum</a>
+    <a href="#s1">1 · backdrop</a>
+    <a href="#s2">2 · sky</a>
+    <a href="#s3">3 · foreground</a>
+    <a href="#s4">4 · x-ray</a>
+    <a href="#lenses">debug lenses</a>
+    <a href="#knobs">knob priority</a>
+    <a href="#trouble">troubleshooting</a>
+    <a href="#presets">shipped presets</a>
+  </nav>
+
+  <h2 id="model">The mental model — three sentences</h2>
+  <p>
+    <b>One camera, one photo, many surfaces.</b> Atlas recovers the camera that took the
+    photo, then projects that photo (like a slide projector at the recovered position)
+    onto 3D surfaces. At the recovered view everything reassembles pixel-perfectly;
+    layers only earn their keep when the <em>render</em> camera moves.
+  </p>
+  <p>
+    <b>Layers stack back-to-front and each carries its own plate.</b> The base mesh gets a
+    (clean-plated) photo; the foreground layer gets the pure original; the X-ray layer gets
+    an inpainted plate; the sky dome gets a clean sky. Z-buffering + priorities decide who
+    paints each pixel.
+  </p>
+  <p>
+    <b>Masks come in three quality tiers.</b>
+    <span class="mono">segmentation</span> (SAM — crisp, semantic) &gt;
+    <span class="mono">depth-band</span> (robust, but steppy: DA3 works at ~504px internally) &gt;
+    <span class="mono">prediction</span> (the X-ray's own mattes). Use the highest tier
+    available for matte <em>edges</em>; bands are fine for deciding <em>membership</em>.
+  </p>
+
+  <h2 id="master">The staged master — the rig that configures itself</h2>
+  <p>
+    The production version of everything below is
+    <code>atlas_camera_staged_master_workflow.json</code>: five fixed layers (sky + far/bg/mid/fg
+    depth bands), each its own bypasser-switched stage, with a local VLM filling in the
+    per-image decisions on the first queue — segmentation prompts, per-band geometry
+    (<code>relief</code> / <code>card</code> / <code>ground</code>), and band boundaries that stay
+    watertight by construction. Three behaviors distinguish it from the hand-built stacks
+    this guide teaches:
+  </p>
+  <div class="tablewrap"><table>
+    <tr><th>Behavior</th><th>What it means for you</th></tr>
+    <tr><td><b>Scope rows self-disarm</b></td>
+        <td>The band ∩ segment scoping is always active; an absent layer (empty prompt) or a SAM
+        no-match falls back to plain band membership automatically — no bypass dance, and the 🎯
+        status line says which path fired.</td></tr>
+    <tr><td><b>The autopilot is visible and overridable</b></td>
+        <td>Everything the VLM decides lands in real widget boxes (mirrored on execution) and in
+        the report's <span class="mono">STAGED 5-LAYER PLAN</span>. Unlink any rail to go manual.</td></tr>
+    <tr><td><b>It debugs itself</b></td>
+        <td>One 🎨 cutout preview per layer (plate pixels inside the matte, legend color outside) and
+        a 🔍 report that writes <code>atlas_debug/master_debug.json</code> every run with red flags —
+        zero-vertex layers, band gaps, scope fallbacks — before you squint at a viewport.</td></tr>
+  </table></div>
+  <div class="rule"><span class="t">Where to go deeper</span>
+    <p>The full operator's guide — queue rhythm, the inpaint quality chain (✂ crop → LaMa + 4×
+    upscale → ✂ stitch, measured 6.5× the old fill detail), geometry-type selection, and the
+    troubleshooting table from real runs — is the
+    <a href="https://claude.ai/code/artifact/174fccee-3200-43f9-83c5-7875ada0b8cf">🏗 Staged Master
+    Operator's Guide</a>.</p>
+  </div>
+
+  <h2 id="s0"><span class="stage-tag">STAGE 0</span>The 5-node minimum</h2>
+  <p>Start here on every new image. No layers, no tuning — just verify the solve and depth are sane.</p>
+
+  <div class="graph">
+    <div class="node"><div class="node-title nt-core">Load Image</div>
+      <div class="node-io"><div class="io"><span></span><span class="out">IMAGE</span></div></div>
+      <div class="node-note">Feeds everything. 4K is fine.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-atlas">Atlas Learned Solve</div>
+      <div class="node-io"><div class="io"><span class="in">image</span><span class="out">ATLAS_SOLVE</span></div></div>
+      <div class="widgets">
+        <div class="w"><span>height_mode</span><b>measure_from_depth</b></div>
+        <div class="w"><span>depth_model</span><b>DA3METRIC-LARGE</b></div>
+      </div>
+      <div class="node-note">GeoCalib recovers the camera; DA3 measures its height. Leave alone.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-atlas2">Atlas Depth Map 🌊</div>
+      <div class="node-io">
+        <div class="io"><span class="in">image</span><span class="out">ATLAS_DEPTH_MAP</span></div>
+        <div class="io"><span class="in opt">solve</span><span></span></div>
+      </div>
+      <div class="widgets"><div class="w"><span>depth_model</span><b>DA3METRIC-LARGE</b></div></div>
+      <div class="node-note">ONE shared depth pass — every layer reads this. Wire the solve in: DA3 then uses the <em>solved</em> focal.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-atlas2">Atlas Derive Relief Mesh 🏔</div>
+      <div class="node-io">
+        <div class="io"><span class="in">solve · depth</span><span class="out">solve</span></div>
+      </div>
+      <div class="widgets">
+        <div class="w hot"><span>relief_grid</span><b>384</b></div>
+        <div class="w hot"><span>depth_edge_rel</span><b>1.50</b></div>
+      </div>
+      <div class="node-note">The <span style="color:var(--base-c)">base mesh</span> + its backdrop plane.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-atlas">Atlas Viewport</div>
+      <div class="node-io"><div class="io"><span class="in">solve · source_image</span><span></span></div></div>
+      <div class="widgets"><div class="w"><span>resolution</span><b>960</b></div></div>
+      <div class="node-note">📽 Project is on by default.</div>
+    </div>
+  </div>
+
+  <div class="works"><span class="t">You know it works when</span>
+    <ul>
+      <li>At <kbd>📷 Camera View</kbd> the projection matches the photo exactly.</li>
+      <li><kbd>ℹ Info</kbd> shows a plausible camera height (~1.4–1.8&nbsp;m for eye-level shots).</li>
+      <li>Small orbits parallax believably; tears at silhouettes are <em>expected</em> at this stage.</li>
+    </ul>
+  </div>
+
+  <h2 id="s1"><span class="stage-tag">STAGE 1</span>Understand the backdrop before adding anything</h2>
+  <p>
+    The base mesh <em>tears</em> at depth discontinuities — deliberately. Torn quads are the
+    openings the deeper layers will show through. The <b>backdrop</b> (a flat plane at the
+    scene's far depth, emitted automatically with the base mesh) is the designed backstop
+    that fills those openings at camera view.
+  </p>
+  <div class="rule warn"><span class="t">The tear trade, in one rule</span>
+    <p><code>depth_edge_rel</code> low → more tears → more black gaps but honest silhouettes and open reveal paths.
+    High (3–5) → mesh rubber-sheets instead → clean static view, but the stretched sheet can
+    <em>block</em> X-ray reveals behind it. The shipped 1.5 + backdrop ON is the balanced default.
+    Toggling <kbd>🎬 Backdrop</kbd> off without replacing its job = black staircase bands. That is the system working.</p>
+  </div>
+
+  <h2 id="s2"><span class="stage-tag">STAGE 2</span>Sky — outdoor scenes only</h2>
+  <p>
+    Monocular depth hallucinates on sky, and the built-in sky heuristic that guards against it
+    will happily eat <em>above-skyline subjects</em> (a figure on a ridge, a spire). A real
+    segmentation replaces both problems at once.
+  </p>
+  <div class="graph">
+    <div class="node"><div class="node-title nt-sam">SAM3 Segment</div>
+      <div class="node-io">
+        <div class="io"><span class="in">image</span><span class="out">MASK</span></div>
+      </div>
+      <div class="widgets"><div class="w hot"><span>prompt</span><b>"sky"</b></div></div>
+      <div class="node-note">This one mask does two jobs → dome shape + heuristic replacement on base/fg <code>exclude_mask</code>.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-inpaint">LaMa (clean sky)</div>
+      <div class="node-io"><div class="io"><span class="in">image · ~sky grown</span><span class="out">IMAGE</span></div></div>
+      <div class="node-note">Invert sky → grow 48 → inpaint. The dome's plate must contain <em>no terrain</em>.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-atlas2">Atlas Sky Dome Layer ☁</div>
+      <div class="node-io"><div class="io"><span class="in">solve · depth · sky_mask · plate</span><span class="out">solve</span></div></div>
+      <div class="widgets">
+        <div class="w"><span>edge_extend_px</span><b>48</b></div>
+        <div class="w"><span>frame_outpaint_px</span><b>64</b></div>
+      </div>
+      <div class="node-note">Pixel-resolution skyline matte — the staircase at the terrain/sky boundary disappears. New: <code>distance_m</code> places the card; <code>radius_m</code> then acts as its minimum SIZE.</div>
+    </div>
+  </div>
+  <div class="works"><span class="t">You know it works when</span>
+    <ul>
+      <li>The skyline edge is crisp at any orbit (no black staircase against sky).</li>
+      <li>Above-skyline subjects stay solid — nothing “eaten as sky”.</li>
+      <li>Small pans never hit a hard sky boundary (the outpaint ring absorbs them).</li>
+    </ul>
+  </div>
+
+  <h2 id="s3"><span class="stage-tag">STAGE 3</span>Foreground — matte-cut occluders</h2>
+  <p>
+    The base mesh’s silhouettes tear at grid resolution (~10&nbsp;px steps). A dedicated
+    <span style="color:var(--fg-c)"><b>foreground layer</b></span> re-projects the <em>original photo</em>
+    onto just the near occluders, with a per-pixel matte cutting the true edge.
+  </p>
+  <div class="graph">
+    <div class="node"><div class="node-title nt-atlas2">Atlas Depth Layer Mask</div>
+      <div class="node-io"><div class="io"><span class="in">solve · depth</span><span class="out">layer_mask</span></div></div>
+      <div class="widgets">
+        <div class="w hot"><span>far_pct</span><b>0.30–0.50</b></div>
+        <div class="w"><span>band_side</span><b>manual</b></div>
+      </div>
+      <div class="node-note">The band = “what counts as near occluders”. <b>Tune this first, per scene</b> — subjects must sit INSIDE it.</div>
+    </div>
+    <div class="arrow">＋</div>
+    <div class="node"><div class="node-title nt-sam">SAM3 Segment (optional)</div>
+      <div class="node-io"><div class="io"><span class="in">image</span><span class="out">MASK</span></div></div>
+      <div class="widgets"><div class="w hot"><span>prompt</span><b>"foliage" / "person"</b></div></div>
+      <div class="node-note">Band edges are steppy (depth-tier). SAM × band (MaskComposite&nbsp;multiply) = crisp edges, band-bounded safety. In the staged master this is a 🎯 Scope Mask row — self-disarming on no-match.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-atlas2">Atlas Clean Plate Layer — FG</div>
+      <div class="node-io"><div class="io"><span class="in">solve · depth · plate=ORIGINAL · layer_matte</span><span class="out">solve</span></div></div>
+      <div class="widgets">
+        <div class="w"><span>band far_pct</span><b>= restrict</b></div>
+        <div class="w"><span>embed_matte</span><b>true</b></div>
+        <div class="w"><span>priority</span><b>10</b></div>
+      </div>
+      <div class="node-note">Original photo, original depth — this layer is what keeps camera view honest.</div>
+    </div>
+  </div>
+  <div class="works"><span class="t">You know it works when</span>
+    <ul>
+      <li><kbd>🎨 Layers</kbd> shows your subjects fully <span style="color:var(--fg-c)">orange</span> — no teal or black patches inside them.</li>
+      <li>Silhouette edges cut at pixel quality, not depth-block steps.</li>
+      <li>No inpainted content is visible anywhere at camera view.</li>
+    </ul>
+  </div>
+
+  <h2 id="s4"><span class="stage-tag">STAGE 4</span>X-ray — predicted geometry behind the occluders</h2>
+  <p>
+    The research layer. A layered-ray model (LaRI or World Tracing) predicts the surfaces
+    <em>behind</em> the foreground; the node makes those predictions coherent; a LaMa plate
+    gives the reveal real pixels; and the same plate is feathered into the base projection
+    so background geometry never carries baked-in occluder pixels.
+  </p>
+  <div class="graph">
+    <div class="node"><div class="node-title nt-atlas">🔬 Predict Hidden Geometry</div>
+      <div class="node-io">
+        <div class="io"><span class="in">depth · image · restrict_mask</span><span class="out">depth (patched)</span></div>
+        <div class="io"><span></span><span class="out">hidden_mask · paint_matte</span></div>
+      </div>
+      <div class="widgets">
+        <div class="w hot"><span>model</span><b>lari / world-tracing</b></div>
+        <div class="w hot"><span>clear_rel</span><b>0.10–0.30</b></div>
+        <div class="w"><span>fill_gaps</span><b>true</b></div>
+        <div class="w"><span>smooth_px</span><b>31</b></div>
+        <div class="w"><span>seed ctrl</span><b>fixed ← keep!</b></div>
+      </div>
+      <div class="node-note">Read its report every run: <b>rel MAD &lt; 0.2 = trust it</b>; “poor” = that backend misregisters on this scene — switch backends.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-core">GrowMask 32 → InvertMask</div>
+      <div class="node-io"><div class="io"><span class="in">hidden_mask</span><span class="out">MASK</span></div></div>
+      <div class="node-note">Geometry region = the hidden mask (membership by MASK, never by depth band — a depth split loses 76–97% of predictions).</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-atlas2">Atlas Clean Plate Layer — X-RAY</div>
+      <div class="node-io"><div class="io"><span class="in">depth=PATCHED · plate=LaMa · exclude=~region · layer_matte=paint</span><span class="out">solve</span></div></div>
+      <div class="widgets">
+        <div class="w"><span>band</span><b>manual, uncapped</b></div>
+        <div class="w"><span>priority</span><b>0</b></div>
+      </div>
+      <div class="node-note">Sits <em>behind</em> the fg layer; only visible at true reveals.</div>
+    </div>
+  </div>
+  <div class="works"><span class="t">You know it works when</span>
+    <ul>
+      <li>At camera view, <kbd>🩻 X-ray</kbd> shows <b>no tint at all</b> — it appears only as you orbit/dolly into reveals.</li>
+      <li>Reveals show plausible inpainted content on real geometry, not black and not smears.</li>
+      <li>The report’s substituted % roughly matches your occluder coverage.</li>
+    </ul>
+  </div>
+
+  <h2 id="lenses">The debug lenses — tune with your eyes</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Lens</th><th>Question it answers</th><th>What good looks like</th></tr>
+    <tr><td><b>🎨 Layers</b></td><td>Which layer paints this pixel?</td>
+        <td>Teal world, orange subjects, blue only on reveals, sky pale. <b>Black = nothing paints — always a finding.</b></td></tr>
+    <tr><td><b>🩻 X-ray</b></td><td>Which pixels are <em>invented</em> geometry?</td>
+        <td>Red (LaRI) / blue (WT) only off-angle, never at camera view.</td></tr>
+    <tr><td><b>Confidence report</b></td><td>Did the backend register?</td>
+        <td><code>rel MAD</code> &lt; 0.2 good · 0.2–0.5 shaky · &gt; 0.5 don’t use — switch backends.</td></tr>
+    <tr><td><b>🎨 layer cutouts (staged master)</b></td><td>What will this layer project?</td>
+        <td>The plate's pixels inside the matte, legend color outside — an all-color cutout means the layer carries nothing.</td></tr>
+    <tr><td><b>🔍 debug report (staged master)</b></td><td>Anything structurally wrong?</td>
+        <td><code>FLAGS (0)</code>. Zero-vertex layers, band gaps, scope fallbacks and negative depth are named before you go squinting.</td></tr>
+    <tr><td><b>🧭 Safe Zone</b></td><td>How far can the camera actually move?</td>
+        <td>Measured orbit clamps; if the arc is tiny, fix coverage before tuning anything else.</td></tr>
+  </table></div>
+
+  <h2 id="knobs">Knob priority — touch them in this order</h2>
+  <div class="tablewrap"><table>
+    <tr><th>#</th><th>Knob</th><th>Node</th><th>What it really does</th></tr>
+    <tr><td>1</td><td><code>far_pct</code> (restrict + fg band)</td><td>Depth Layer Mask / FG layer</td>
+        <td><b>The scene decision:</b> what counts as “occluder”. Check with the mask preview — subjects fully inside. Everything downstream keys off this. (Staged master: the VLM proposes this — override via <code>band_override</code>.)</td></tr>
+    <tr><td>2</td><td><code>model</code></td><td>🔬</td>
+        <td>Per-scene, not per-taste: LaRI = fast, wins interiors + steep perspective; WT = 20 s diffusion, wins where LaRI’s report says “poor”.</td></tr>
+    <tr><td>3</td><td><code>clear_rel</code></td><td>🔬</td>
+        <td>How far behind the visible a prediction must sit to count. Shallow scenes need low (0.10); deep scenes tolerate 0.30. Symptom of too-high: near-zero substitution.</td></tr>
+    <tr><td>4</td><td>SAM prompts</td><td>SAM3 nodes</td>
+        <td>Free-text — concrete nouns beat expanses (“sand” works where “desert floor and boulder” scores 0.00%). “sky” for the dome; the fg prompt names your occluders.</td></tr>
+    <tr><td>5</td><td><code>relief_grid</code> / <code>depth_edge_rel</code></td><td>base + layers</td>
+        <td>Mesh density / tear threshold. Shipped 384 / 1.5 is calibrated — move only with a specific symptom (see below), not for taste.</td></tr>
+    <tr><td>6</td><td><code>smooth_px</code> / <code>fill_gaps</code></td><td>🔬</td>
+        <td>Prediction coherence. Defaults (31 / on) came from measurement; turning fill_gaps off on fragmented scenes (foliage) shreds the X-ray layer.</td></tr>
+  </table></div>
+
+  <h2 id="trouble">Troubleshooting — symptom → cause → fix</h2>
+  <div class="tablewrap"><table>
+    <tr><th>You see</th><th>It means</th><th>Do</th></tr>
+    <tr><td><b>Black staircase bands</b> against sky/far content</td><td>Base-mesh tears with nothing behind (backdrop off, or gap between layers)</td>
+        <td>🎬 back on, or add the sky dome (sky-side) / a mid band layer (tree-side); for static shots: base <code>depth_edge_rel</code> 3–5.</td></tr>
+    <tr><td><b>Subject turns black/eaten</b>, esp. above the skyline</td><td>Sky heuristic ate it, and no fg layer covers it</td>
+        <td>SAM sky mask into every <code>exclude_mask</code> (outdoor); widen fg band until 🎨 shows it orange.</td></tr>
+    <tr><td><b>A whole layer is empty (staged master)</b></td><td>Zero-vertex layer — absent band, or a scope that found nothing</td>
+        <td>Read 🔍 flags + 🎯 statuses first: absent is often correct (mid), a FALLBACK names its prompt — shorten it to a concrete noun.</td></tr>
+    <tr><td><b>Inpainted mush at camera view</b></td><td>X-ray plate leaking through base tears; fg layer missing or its band too narrow</td>
+        <td>Ensure the fg layer exists and covers the occluders (🎨 check).</td></tr>
+    <tr><td><b>Very little X-ray built</b></td><td>Misregistration (report “poor”), too-strict <code>clear_rel</code>, or predictions fell to a depth band</td>
+        <td>Read the report → switch backend; lower <code>clear_rel</code>; membership must be mask-based (the shipped graphs already are).</td></tr>
+    <tr><td><b>Steppy/blocky matte edges</b></td><td>Depth-band matte (DA3 is ~504&nbsp;px internally)</td>
+        <td>Give that layer a SAM matte × band (jungle/canyon pattern).</td></tr>
+    <tr><td><b>Different result every queue</b></td><td>A <code>seed</code> widget’s control is on <em>randomize</em></td>
+        <td>Set every seed control to <b>fixed</b> (WT and LaMa both have one).</td></tr>
+    <tr><td><b>Whole viewport shifted/odd pivot</b></td><td>Stale state after re-executions</td>
+        <td><kbd>📷 Camera View</kbd> resets; pivot re-centers itself per execution.</td></tr>
+  </table></div>
+
+  <h2 id="presets">Shipped per-scene presets (the sweep results)</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Workflow</th><th>Backend</th><th>band / clear</th><th>Extras</th><th>Character</th></tr>
+    <tr><td><b>cathedral</b></td><td>LaRI</td><td>0.30 / 0.30</td><td>interior (SolidMask)</td><td>LaRI’s home turf — rel MAD 0.118</td></tr>
+    <tr><td><b>space_hangar</b></td><td>World Tracing</td><td>0.40 / 0.10</td><td>interior</td><td>shallow scene → gentlest margin; cleanest X-ray (0.07)</td></tr>
+    <tr><td><b>jungle_temple</b></td><td>World Tracing</td><td>0.30 / 0.30</td><td>sky dome + SAM fg “foliage”</td><td>the stress case — fragmented masks; coherence pass essential</td></tr>
+    <tr><td><b>canyon</b></td><td>World Tracing</td><td>0.50 / 0.20</td><td>sky dome + SAM fg “person”</td><td>WT’s win — LaRI misregisters here (0.639)</td></tr>
+    <tr><td><b>steep_ridge</b></td><td>LaRI</td><td>0.50 / 0.20</td><td>sky dome</td><td>mirror case — WT misregisters (0.305)</td></tr>
+    <tr><td><b>wide_valley</b></td><td>World Tracing</td><td>0.40 / 0.30</td><td>sky dome</td><td>honest weak case — X-ray barely fires; diffusion carries it</td></tr>
+  </table></div>
+
+  <div class="rule"><span class="t">The one-paragraph tuning loop</span>
+    <p>
+      Queue at defaults → open <kbd>🎨 Layers</kbd> and fix any black or wrong-color region by
+      adjusting the <b>fg band</b> (and SAM prompts) until subjects are solid orange →
+      read the <b>report</b>; if rel&nbsp;MAD is poor, switch backend → orbit with <kbd>🩻</kbd>
+      to judge reveals; adjust <code>clear_rel</code> only if the X-ray is starved →
+      bake the dolly. Never tune more than one knob per queue.
+    </p>
+  </div>
+</main>
