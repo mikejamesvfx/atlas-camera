@@ -3422,14 +3422,26 @@ app.registerExtension({
     // Track resolution widget changes (applied on the next execution's resize).
     if (resWidget) resWidget.callback = (v) => { node._atlasResolution = v; };
 
-    // Cleanup on node removal
-    node.onRemoved = () => {
+    // Cleanup on node removal. MUST CHAIN, never assign: addDOMWidget has
+    // already installed ComfyUI's own onRemoved (useChainCallback in
+    // domWidget.ts) which detaches the widget's DOM from the document —
+    // clobbering it left every replaced viewport's container + WebGL canvas
+    // + overlays ORPHANED in the page, where they rendered in normal
+    // document flow (floating slider stubs near the top, a body-wide canvas
+    // sheet at the bottom — found live on the AtlasInput quickstart after a
+    // workflow switch, confirmed by a 0×0-rect orphan canvas in the DOM).
+    const prevOnRemoved = node.onRemoved;
+    node.onRemoved = function (...args) {
+      prevOnRemoved?.apply(this, args);
       api.removeEventListener("executed", onApiExecuted);
       node._atlasSizeTraceCleanup?.();
       cancelAnimationFrame(node._atlasRafId);
       node._atlasRenderer?.dispose();
       node._atlasControls?.dispose();
       node._atlasFly?.dispose();
+      // Belt-and-braces for frontends whose addDOMWidget cleanup semantics
+      // differ: removing an already-detached element is a no-op.
+      container.remove();
     };
   },
 });
