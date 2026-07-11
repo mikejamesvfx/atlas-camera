@@ -24,6 +24,7 @@ from typing import Any
 from atlas_camera.inference.multimodal_helper import (
     _image_base64,
     _image_data_url,
+    _is_response_format_error,
     _openai_chat_content,
     _parse_model_json,
     create_multimodal_provider,
@@ -93,6 +94,40 @@ bands (depth layering) — the most important judgment call:
 - fill_occluded: true on every band that has a nearer occluder.
 - embed_matte: true on all bands (crisp per-pixel edges; cheap).
 
+STAGED 5-LAYER MASTER PLAN (staged_layers) — ALWAYS produce this block:
+the staged master workflow splits every photo into at most FIVE fixed layers,
+each its own stage the artist enables one at a time (far to near):
+  sky            SAM-segmented sky card
+  far  80-100%   farthest depth band
+  bg   60-80%
+  mid  30-60%
+  fg   0-30%     nearest band
+Each band is additionally SCOPED by its own SAM segmentation (the layer keeps
+band membership AND segment membership), so for EACH of the five layers judge:
+- present: does the photo really have distinct content there? NOT every image
+  has a sky; an interior never does; a flat vista may have an empty mid band;
+  a distant landscape may have nothing in fg. Absent layers get present=false
+  and an EMPTY sam_prompt — the artist leaves that stage bypassed.
+- sam_prompt: a short segmentation prompt naming the CONCRETE things occupying
+  that layer, phrased for a text-prompted segmenter ("rock formations",
+  "church tower", "pine trees", "parked cars", "cobblestone street") — never
+  abstract words like "background", "midground", or "distant objects".
+- geometry (bands only; sky is always a flat card): how this layer's
+  projection surface should be built —
+  "ground": the layer is a flat horizontal surface the camera stands over
+    (desert floor, water, road, plaza/hangar floor). Projected onto the
+    exact analytic ground plane: zero depth noise, perfectly smooth.
+  "card": a distant or flat-facing layer with negligible internal depth
+    relative to its distance (mountains at the horizon, a hangar's flat
+    back wall, a city-skyline backdrop). One flat plane at the band's
+    depth: never tears.
+  "relief": anything with real 3D shape inside the band — the DEFAULT
+    whenever unsure. Rule of thumb: if orbiting ~15 degrees would reveal
+    parallax INSIDE the layer, it needs "relief"; if the layer would move
+    as one rigid poster, "card"; if it is the floor itself, "ground".
+- If a fixed band boundary above would slice that layer's main subject in
+  half, say so in the layer's notes and suggest adjusted percentages.
+
 relief settings:
 - relief_grid 128 is the default. Recommend 256 for detailed/noisy scenes or
   4K plates where edge quality matters; 384+ with depth_edge_rel 1.5 for
@@ -134,6 +169,13 @@ OUTPUT FORMAT — respond with ONLY this JSON object, no prose outside it:
     {"name": "bg", "role": "background", "near_pct": 0.55, "far_pct": 1.0,
      "needs_inpaint": true, "fill_occluded": true, "notes": "..."}
   ],
+  "staged_layers": {
+    "sky": {"present": true, "sam_prompt": "sky", "notes": "..."},
+    "far": {"present": true, "sam_prompt": "rock formations", "geometry": "card", "notes": "..."},
+    "bg":  {"present": true, "sam_prompt": "...", "geometry": "relief", "notes": "..."},
+    "mid": {"present": false, "sam_prompt": "", "geometry": "relief", "notes": "nothing distinct in this band"},
+    "fg":  {"present": true, "sam_prompt": "desert floor", "geometry": "ground", "notes": "..."}
+  },
   "recommended_settings": {
     "depth_model": "outdoor",
     "scene_type": "organic",
@@ -152,6 +194,65 @@ _USER_PROMPT = (
     "the decision rules from your instructions to what you actually see, and "
     "return ONLY the JSON object in the specified format."
 )
+
+# Response budget. The staged_layers block grew the output; 2200 was observed
+# truncating a verbose 12B model's reply into unparseable JSON (lmstudio/gemma).
+_ASSESSMENT_MAX_TOKENS = 3200
+
+
+def _assessment_response_format() -> dict[str, Any]:
+    """OpenAI-style structured-output request for the assessment JSON.
+
+    LM Studio grammar-constrains decoding against this (fixes invalid-JSON
+    replies at the source); servers that reject `response_format` fall back
+    via the same `_is_response_format_error` chain `analyze_image` uses.
+    Deliberately loose (strict=False, open sub-objects) — the report degrades
+    gracefully on missing fields, and an over-strict schema is itself a
+    failure mode on small local models.
+    """
+    layer_slot = {"type": "object", "properties": {
+        "present": {"type": "boolean"},
+        "sam_prompt": {"type": "string"},
+        "geometry": {"type": "string"},
+        "notes": {"type": "string"},
+    }, "required": ["present", "sam_prompt"]}
+    # "required" matters: LM Studio's grammar treats bare properties as
+    # OPTIONAL, and the model nondeterministically omitted the whole
+    # staged_layers block until it was required (found live, gemma-4-12b —
+    # one call had it perfect, the next skipped it entirely).
+    schema = {
+        "type": "object",
+        "properties": {
+            "scene_summary": {"type": "string"},
+            "viability": {"type": "object", "properties": {
+                "score_0_10": {"type": "number"},
+                "max_orbit_deg": {"type": "number"},
+                "dolly_ok": {"type": "boolean"},
+                "notes": {"type": "string"},
+            }},
+            "layers": {"type": "array", "items": {"type": "object"}},
+            "staged_layers": {"type": "object", "properties": {
+                key: layer_slot for key in STAGED_LAYER_KEYS},
+                "required": list(STAGED_LAYER_KEYS)},
+            "recommended_settings": {"type": "object"},
+            "warnings": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["scene_summary", "viability", "staged_layers",
+                     "recommended_settings"],
+    }
+    return {"type": "json_schema", "json_schema": {
+        "name": "atlas_assessment", "schema": schema, "strict": False}}
+
+
+# Any real assessment carries at least one of these; a payload with none of
+# them is `_parse_model_json`'s prose/garbage fallback (or a reply that was
+# valid JSON but not an assessment) — treat both as a failed assessment.
+_ASSESSMENT_KEYS = ("scene_summary", "viability", "staged_layers",
+                    "recommended_settings", "layers")
+
+
+def _looks_like_assessment(payload: dict[str, Any]) -> bool:
+    return any(key in payload for key in _ASSESSMENT_KEYS)
 
 
 @dataclass(slots=True)
@@ -172,7 +273,9 @@ def assess_image(
     provider: str = "ollama",
     model: str = "",
     base_url: str | None = None,
+    api_key: str | None = None,
     extra_instructions: str = "",
+    offload_model: bool = False,
     timeout_seconds: float = 180.0,
 ) -> AssessmentResult:
     """Run the assessment prompt over one image via a local VLM provider.
@@ -182,7 +285,8 @@ def assess_image(
     still works without an assessment, the artist just gets no advice.
     """
     helper = create_multimodal_provider(
-        provider, model=model, base_url=base_url or None, timeout_seconds=timeout_seconds)
+        provider, model=model, base_url=base_url or None, api_key=api_key,
+        timeout_seconds=timeout_seconds)
     try:
         model_info = helper.validate_vision_model()
         user_text = _USER_PROMPT
@@ -199,8 +303,10 @@ def assess_image(
                      "images": [_image_base64(Path(image_path))]},
                 ],
                 "format": "json",
-                "options": {"num_predict": 2200},
+                "options": {"num_predict": _ASSESSMENT_MAX_TOKENS},
             }
+            if offload_model:
+                payload["keep_alive"] = 0  # unload right after responding
             response = helper._request_json("/api/chat", payload)
             content = str(response.get("message", {}).get("content", "")).strip()
         else:  # lmstudio / llamacpp (OpenAI-compatible chat)
@@ -216,30 +322,186 @@ def assess_image(
                     ]},
                 ],
                 "temperature": 0,
-                "max_tokens": 2200,
+                "max_tokens": _ASSESSMENT_MAX_TOKENS,
             }
-            response = helper._request_json("/chat/completions", payload)
+            # Structured output where the provider supports it (lmstudio +
+            # openai cloud; llamacpp stays plain, matching its provider
+            # class), with analyze_image's established rejection fallback.
+            if helper.provider in ("lmstudio", "openai"):
+                payload["response_format"] = _assessment_response_format()
+            if offload_model and helper.provider == "lmstudio":
+                payload["ttl"] = 2  # LM Studio JIT auto-evict, seconds
+            try:
+                response = helper._request_json("/chat/completions", payload)
+            except RuntimeError as exc:
+                if "response_format" not in payload or not _is_response_format_error(str(exc)):
+                    raise
+                plain_payload = dict(payload)
+                plain_payload.pop("response_format", None)
+                response = helper._request_json("/chat/completions", plain_payload)
             content = _openai_chat_content(response)
 
         parsed = _parse_model_json(content)
+        if not _looks_like_assessment(parsed):
+            # The provider answered, but not with a usable assessment. Fail
+            # like a connectivity error (ok=False -> the node never caches
+            # it, so re-queuing actually retries) but SHOW the raw reply.
+            # Deliberately NO offload here: the model stays warm so the
+            # retry is fast.
+            return AssessmentResult(
+                ok=False, provider=helper.provider, model=model_info.id,
+                payload=parsed,
+                warnings=[str(w) for w in parsed.get("warnings", []) if w],
+                report=format_parse_failure_report(
+                    content, provider=helper.provider, model=model_info.id))
         result = AssessmentResult(
             payload=parsed, provider=helper.provider, model=model_info.id, ok=True)
         result.warnings = [str(w) for w in parsed.get("warnings", []) if w]
         result.report = format_assessment_report(parsed, provider=helper.provider,
                                                  model=model_info.id)
+        if offload_model:
+            result.report += ("\n\nMODEL OFFLOAD: "
+                              + _offload_after_assessment(helper, model_info.id))
         return result
     except (RuntimeError, ValueError, OSError) as exc:
         return AssessmentResult(
             ok=False, provider=provider, model=model,
             report=(
                 f"ATLAS ASSESSMENT UNAVAILABLE — {exc}\n\n"
-                "Start a local VLM provider and re-queue:\n"
+                "Start a VLM provider and re-queue:\n"
                 "  ollama:   ollama run gemma3:4b   (default http://127.0.0.1:11434)\n"
                 "  lmstudio: load a vision model    (default http://127.0.0.1:1234/v1)\n"
-                "  llamacpp: llama-server with a vision model (default http://127.0.0.1:8080/v1)\n\n"
+                "  llamacpp: llama-server with a vision model (default http://127.0.0.1:8080/v1)\n"
+                "  openai:   no local model needed — set api_key (or OPENAI_API_KEY);\n"
+                "            any OpenAI-compatible host via base_url (OpenRouter, ...)\n\n"
                 "You can also toggle `proceed` and continue without an assessment."
             ),
         )
+
+
+def _offload_after_assessment(helper, model_id: str) -> str:
+    """Best-effort VRAM offload of the assessment VLM, per provider.
+
+    Called only after a SUCCESSFUL assessment (a failed one keeps the model
+    warm so the retry is fast). Returns a one-line status for the report —
+    offloading is inherently provider-specific and partly out of our hands:
+    - ollama: keep_alive=0 rode the chat request already; an explicit
+      /api/generate with keep_alive=0 forces the unload even if a server
+      config overrode the request-level value.
+    - lmstudio: request `ttl` auto-evicts JIT-loaded models; GUI-loaded
+      models only unload via the `lms` CLI (tried when on PATH, targeting
+      just this model — never `--all`, the user may have an embedding
+      model resident that other tooling depends on).
+    - llamacpp: llama-server owns its model for the process lifetime; there
+      is no unload API. Honest status instead of pretending.
+    - openai: cloud — nothing resident locally.
+    """
+    provider = helper.provider
+    if provider == "openai":
+        return "nothing to offload (cloud provider)"
+    if provider == "llamacpp":
+        return ("not supported — llama-server holds its model for the process "
+                "lifetime; restart llama-server to free VRAM")
+    if provider == "ollama":
+        try:
+            helper._request_json("/api/generate", {"model": model_id, "keep_alive": 0})
+            return f"'{model_id}' unloaded (keep_alive=0)"
+        except (RuntimeError, ValueError, OSError):
+            return "keep_alive=0 was set on the request; explicit unload call failed (harmless)"
+    # lmstudio
+    import shutil
+    import subprocess
+    lms = shutil.which("lms")
+    if lms is None:
+        return ("ttl=2s set (auto-evicts JIT-loaded models); for GUI-loaded models "
+                "install LM Studio's 'lms' CLI on PATH for a guaranteed unload")
+    try:
+        subprocess.run([lms, "unload", model_id], capture_output=True,
+                       timeout=30, check=True)
+        return f"'{model_id}' unloaded via lms CLI"
+    except Exception as exc:  # CLI identifier mismatch / timeout — degrade to ttl
+        return (f"lms unload failed ({type(exc).__name__}); ttl=2s still "
+                "auto-evicts JIT-loaded models")
+
+
+def format_parse_failure_report(raw: str, *, provider: str = "",
+                                model: str = "") -> str:
+    """Shown on the node when the VLM replied but not with usable JSON —
+    the artist needs to SEE what came back, and to know a re-queue retries."""
+    snippet = (raw or "").strip()
+    if len(snippet) > 800:
+        snippet = snippet[:800] + " …[truncated]"
+    header = "ATLAS ASSESSMENT FAILED — reply was not a usable assessment"
+    if model:
+        header += f"  ({provider}/{model})"
+    return "\n".join([
+        header,
+        "=" * len(header),
+        "",
+        "The VLM responded, but no assessment JSON could be extracted.",
+        "Raw reply (start):",
+        "",
+        snippet or "(empty response)",
+        "",
+        "This result is NOT cached — just Queue again to retry. If it keeps",
+        "happening: try a larger / better instruction-following vision model,",
+        "and check the provider's console for context-length truncation.",
+        "",
+        "You can also toggle `proceed` and continue without an assessment.",
+    ])
+
+
+# The staged master workflow's fixed layer slots, far to near. Order matters:
+# it is the AtlasAssessImage output order and the report's display order.
+STAGED_LAYER_KEYS = ("sky", "far", "bg", "mid", "fg")
+
+_STAGED_BAND_LABELS = {"sky": "sky card", "far": "80-100%", "bg": "60-80%",
+                       "mid": "30-60%", "fg": "0-30%"}
+
+
+def staged_layer_prompts(payload: dict[str, Any]) -> dict[str, str]:
+    """Per-slot SAM3 prompt strings from an assessment's `staged_layers` block.
+
+    Absent layers (present=false, or missing from the payload) yield "" so a
+    wired-but-bypassed scope row stays inert — EXCEPT sky, which falls back to
+    the literal "sky" (the sky SAM3 always runs in the staged workflow's
+    always-on SHARED group; a no-match prompt on a skyless photo just returns
+    an empty mask, which is the correct sky mask for that photo anyway).
+    """
+    staged = payload.get("staged_layers") or {}
+    out: dict[str, str] = {}
+    for key in STAGED_LAYER_KEYS:
+        entry = staged.get(key) or {}
+        prompt = str(entry.get("sam_prompt") or "").strip()
+        out[key] = prompt if entry.get("present") else ""
+    if not out["sky"]:
+        out["sky"] = "sky"
+    return out
+
+
+# The band geometry vocabulary AtlasCleanPlateLayer accepts — keep in sync
+# with nodes._BAND_GEOMETRY_CHOICES (the node errors loudly on anything else,
+# so this helper must never emit an out-of-vocabulary value).
+STAGED_GEOMETRY_CHOICES = ("relief", "card", "ground")
+STAGED_BAND_KEYS = ("far", "bg", "mid", "fg")
+
+
+def staged_layer_geometry(payload: dict[str, Any]) -> dict[str, str]:
+    """Per-band geometry-type recommendations from `staged_layers`.
+
+    Returns "" (no recommendation — the layer node's own band_geometry combo
+    applies) for absent layers, missing fields, and anything outside the
+    known vocabulary: a hallucinated value must degrade to the default, not
+    crash the wired AtlasCleanPlateLayer downstream.
+    """
+    staged = payload.get("staged_layers") or {}
+    out: dict[str, str] = {}
+    for key in STAGED_BAND_KEYS:
+        entry = staged.get(key) or {}
+        geometry = str(entry.get("geometry") or "").strip().lower()
+        out[key] = geometry if (
+            entry.get("present") and geometry in STAGED_GEOMETRY_CHOICES) else ""
+    return out
 
 
 def format_assessment_report(payload: dict[str, Any], *, provider: str = "",
@@ -280,6 +542,23 @@ def format_assessment_report(payload: dict[str, Any], *, provider: str = "",
             lines.append(f"  {l.get('name', '?'):8s} {l.get('role', ''):10s}{band}{flag_s}")
             if l.get("notes"):
                 lines.append(f"           {l['notes']}")
+
+    staged = payload.get("staged_layers") or {}
+    if staged:
+        lines += ["", "STAGED 5-LAYER PLAN  (SAM prompts are wired to the scope rows)"]
+        for key in STAGED_LAYER_KEYS:
+            entry = staged.get(key) or {}
+            if entry.get("present"):
+                mark, prompt = "+", f'SAM "{entry.get("sam_prompt", "")}"'
+                geometry = str(entry.get("geometry") or "").strip().lower()
+                if key != "sky" and geometry in STAGED_GEOMETRY_CHOICES:
+                    prompt += f"  · geometry: {geometry}"
+            else:
+                mark, prompt = "-", "absent — leave this stage bypassed"
+            lines.append(f"  {mark} {key:4s} {_STAGED_BAND_LABELS.get(key, ''):8s} {prompt}")
+            if entry.get("notes"):
+                lines.append(f"           {entry['notes']}")
+        lines.append("  Un-bypass the + rows' MaskComposite in SAM SCOPE (and each + stage's group).")
 
     rs = payload.get("recommended_settings") or {}
     if rs:

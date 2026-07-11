@@ -907,3 +907,210 @@ def test_band_split_partitions_fg_bg_exactly():
     fgs = next(s for s in out.projection_sources if s.name == "fg")
     assert bgs.metadata["far_m"] is None                 # +inf
     assert fgs.metadata["far_m"] == pytest.approx(bgs.metadata["near_m"])
+
+
+# --- band_geometry: card / ground flat modes (VLM-recommendable, 2026-07-11) --
+
+def _layer_verts(out):
+    src = out.projection_sources[-1]
+    v = np.array(src.proxy_geometry[0].metadata["vertices"], dtype=float).reshape(-1, 3)
+    return v, src.metadata
+
+
+def test_band_geometry_card_is_fronto_parallel_plane():
+    """card = ONE flat constant-forward-Z plane at the band's median depth
+    (the hangar-far-wall case). Above-ground vertices must share EXACTLY one
+    forward depth — zero tearing/noise by construction. (Below-ground card
+    extent is floor-clamped along the ray, same rule as relief meshes.)"""
+    solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
+    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=8.0, far_m=12.0, band_geometry="card")
+    v, meta = _layer_verts(out)
+    assert meta["band_geometry"] == "card"
+    above = v[v[:, 1] > 0.01]
+    assert len(above) > 100
+    assert above[:, 2].std() < 1e-6           # exactly planar
+    assert -12.0 <= above[:, 2].mean() <= -8.0  # at the band's depth
+
+
+def test_band_geometry_ground_lands_on_y0_plane():
+    """ground = the exact analytic Y=0 plane (the desert-floor case): every
+    vertex on the ground plane regardless of depth noise, capped at the
+    band's far edge so wall-like pixels don't run out to the horizon."""
+    solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
+    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=0.0, far_m=5.0, band_geometry="ground")
+    v, meta = _layer_verts(out)
+    assert meta["band_geometry"] == "ground"
+    assert len(v) > 100
+    assert np.abs(v[:, 1]).max() < 0.05       # on the plane (mm rounding)
+    assert v[:, 2].min() >= -5.0 - 1e-6       # capped at the band far edge
+
+
+def test_band_geometry_relief_default_unchanged():
+    solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
+    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=8.0, far_m=12.0)
+    v, meta = _layer_verts(out)
+    assert meta["band_geometry"] == "relief"
+    assert v[:, 2].std() > 0.01               # a real depth-following mesh
+
+
+def test_geometry_override_wins_and_garbage_errors():
+    solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
+    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=8.0, far_m=12.0,
+        band_geometry="relief", geometry_override="card")
+    assert out.projection_sources[-1].metadata["band_geometry"] == "card"
+    # "" falls through to the combo; unknown values error loudly
+    out2, _h2, _e2 = AtlasCleanPlateLayer().add_layer(
+        solve, depth, plate, near_m=8.0, far_m=12.0,
+        band_geometry="ground", geometry_override="")
+    assert out2.projection_sources[-1].metadata["band_geometry"] == "ground"
+    with pytest.raises(ValueError, match="band geometry"):
+        AtlasCleanPlateLayer().add_layer(solve, depth, plate, geometry_override="flat")
+
+
+# --- sky card: distance_m vs radius_m-as-size (2026-07-11) -------------------
+
+def test_sky_card_distance_m_places_card_and_radius_becomes_size():
+    solve = _solve()
+    depth_map = _occluder_depth()
+    depth = _depth_result(depth_map)
+    sky_mask = _sky_mask_tensor(depth_map)
+    plate = _plate_image()
+
+    # Legacy: distance_m=0 -> radius_m IS the distance (unchanged behavior).
+    out, _h, _e = AtlasSkyDomeLayer().add_layer(
+        solve, depth, sky_mask, plate, radius_m=300.0, frame_outpaint_px=0)
+    src = out.projection_sources[-1]
+    v = np.array(src.proxy_geometry[0].metadata["vertices"], dtype=float).reshape(-1, 3)
+    assert np.allclose(v[:, 2], -300.0, atol=5.0)
+    assert src.metadata["distance_m"] == 300.0
+    assert src.metadata["size_pad_px"] == 0
+
+    # distance_m places the card; radius_m = minimum half-extent (SIZE).
+    # Natural half-width at 50m on this fixture: 50 * 128/250 = 25.6m — a
+    # 40m radius needs extra outpaint, which must actually deliver >= 40m.
+    out2, _h2, _e2 = AtlasSkyDomeLayer().add_layer(
+        solve, depth, sky_mask, plate, radius_m=40.0, distance_m=50.0,
+        frame_outpaint_px=0)
+    src2 = out2.projection_sources[-1]
+    v2 = np.array(src2.proxy_geometry[0].metadata["vertices"], dtype=float).reshape(-1, 3)
+    assert np.allclose(v2[:, 2], -50.0, atol=2.0)           # sits AT distance_m
+    assert src2.metadata["size_pad_px"] > 0
+    assert np.abs(v2[:, 0]).max() >= 40.0 * 0.95            # reaches the size
+    # The grown ring is invented pixels — declared, and the source camera
+    # widened to match (per-source camera, primary untouched).
+    assert src2.metadata["frame_outpaint_px"] == src2.metadata["size_pad_px"]
+    assert src2.camera.intrinsics.image_width > solve.camera.intrinsics.image_width
+
+    # A size the frustum already covers adds no padding (never shrinks).
+    out3, _h3, _e3 = AtlasSkyDomeLayer().add_layer(
+        solve, depth, sky_mask, plate, radius_m=10.0, distance_m=50.0,
+        frame_outpaint_px=0)
+    assert out3.projection_sources[-1].metadata["size_pad_px"] == 0
+
+
+# --- AtlasScopeMask: self-disarming band scoping (2026-07-11) ----------------
+
+def _scope():
+    from atlas_camera.comfy.nodes import AtlasScopeMask
+    return AtlasScopeMask()
+
+
+def test_scope_mask_empty_prompt_is_band_only_and_lazy():
+    sky = torch.zeros(1, H, W); sky[:, :60] = 1.0
+    excl, status = _scope().build(sky, prompt="")
+    assert torch.equal(excl, sky)                       # exactly the sky mask
+    assert "band-only" in status
+    # Lazy contract: with an empty prompt the segment branch is never pulled.
+    assert _scope().check_lazy_status(sky, prompt="") == []
+    assert _scope().check_lazy_status(sky, prompt="rocks") == ["segment_mask"]
+    assert _scope().check_lazy_status(sky, prompt="rocks",
+                                      segment_mask=torch.zeros(1, H, W)) == []
+
+
+def test_scope_mask_no_match_segment_falls_back():
+    """The live failure: SAM3 scored 0.0% for 'desert floor and boulder' and
+    the old Grow->Invert->Composite row turned that into exclude-EVERYTHING,
+    silently emptying the layer to zero mesh. The node must fall back."""
+    sky = torch.zeros(1, H, W); sky[:, :60] = 1.0
+    empty_seg = torch.zeros(1, H, W)
+    excl, status = _scope().build(sky, prompt="desert floor and boulder",
+                                  segment_mask=empty_seg)
+    assert torch.equal(excl, sky)
+    assert "FALLBACK" in status and "no-match" in status
+
+
+def test_scope_mask_real_segment_scopes_band():
+    sky = torch.zeros(1, H, W); sky[:, :60] = 1.0
+    seg = torch.zeros(1, H, W); seg[:, 100:180, 80:240] = 1.0
+    excl, status = _scope().build(sky, prompt="rock formations",
+                                  segment_mask=seg, grow_px=8)
+    assert "scoped to 'rock formations'" in status
+    # Inside the grown segment: NOT excluded; far outside: excluded.
+    assert float(excl[0, 140, 160]) == 0.0              # segment interior kept
+    assert float(excl[0, 140, 100 - 30]) == 1.0         # 30px left of segment+grow
+    assert float(excl[0, 105, 160]) == 0.0              # grow ring (8px) kept
+    assert float(excl[0, 10, 160]) == 1.0               # sky stays excluded
+
+
+# --- band_ref_mask: shared band-edge population (2026-07-11 debug finding) ---
+
+def test_band_ref_mask_removes_scope_induced_band_drift():
+    """Per-layer scoped excludes change each layer's depth population, so the
+    same percentages resolve to different metres per layer (debug-report
+    finding: real metric GAPs between adjacent bands). With band_ref_mask
+    (the plain sky mask) wired, two layers with different scoped excludes
+    must resolve IDENTICAL band edges."""
+    # A vertical depth RAMP (1..30m) so excludes genuinely bias the robust
+    # percentile bounds (the analytic wall fixture pins them at [3,10] no
+    # matter what is excluded).
+    vv = np.linspace(1.0, 30.0, H, dtype=np.float32)[:, None]
+    depth_map = np.repeat(vv, W, axis=1)
+    solve, depth = _solve(), _depth_result(depth_map)
+    sky = torch.zeros(1, H, W)
+    # a scoped exclude removes the far half of the ramp -> different d_hi
+    scoped = sky.clone()
+    scoped[:, H // 2:, :] = 1.0
+
+    def far_edge(exclude, band_ref):
+        # far_pct deliberately NOT 0.5: 0.5 is the geometric mean, which this
+        # analytic fixture keeps coincidentally invariant across populations.
+        out, _h, _e = AtlasCleanPlateLayer().add_layer(
+            solve, depth, _plate_image(), near_pct=0.0, far_pct=0.3,
+            exclude_mask=exclude, band_ref_mask=band_ref, name="t")
+        return out.projection_sources[-1].metadata["far_m"]
+
+    # Legacy: different exclude populations -> the same far_pct drifts apart.
+    assert far_edge(sky, None) != pytest.approx(far_edge(scoped, None), rel=0.01)
+    # band_ref_mask: identical edges regardless of each layer's scoping.
+    assert far_edge(sky, sky) == pytest.approx(far_edge(scoped, sky), rel=1e-9)
+
+
+# --- AtlasLayerPreview: cut-out layer preview in 🎨 legend colors ------------
+
+def test_layer_preview_cutout_and_palette():
+    from atlas_camera.comfy.nodes import (
+        _LAYER_DEBUG_PALETTE_HEX,
+        _LAYER_DEBUG_PRIMARY_HEX,
+        AtlasLayerPreview,
+    )
+    img = torch.rand(1, H, W, 3)
+    m = torch.zeros(1, H, W); m[:, 40:120, 60:200] = 1.0
+    (out,) = AtlasLayerPreview().preview(img, m, layer_index=1)  # 3d8bff blue
+    assert out.shape == (1, H, W, 3)
+    assert torch.allclose(out[:, 40:120, 60:200, :], img[:, 40:120, 60:200, :])  # cutout
+    expect = torch.tensor([0x3d / 255, 0x8b / 255, 0xff / 255])
+    assert torch.allclose(out[0, 0, 0, :], expect, atol=1e-6)                    # surround
+    # -1 = primary teal; explicit hex override wins; malformed hex = magenta.
+    (teal,) = AtlasLayerPreview().preview(img, m, layer_index=-1)
+    assert torch.allclose(teal[0, 0, 0, :],
+                          torch.tensor([0x2f / 255, 0xd6 / 255, 0xc3 / 255]), atol=1e-6)
+    (ovr,) = AtlasLayerPreview().preview(img, m, layer_index=1, color_hex="#ff0000")
+    assert torch.allclose(ovr[0, 0, 0, :], torch.tensor([1.0, 0.0, 0.0]), atol=1e-6)
+    (bad,) = AtlasLayerPreview().preview(img, m, color_hex="zz")
+    assert torch.allclose(bad[0, 0, 0, :], torch.tensor([1.0, 0.0, 1.0]), atol=1e-6)
+    # palette mirrors atlas_blockout.js (LAYER_DEBUG_PALETTE)
+    assert _LAYER_DEBUG_PALETTE_HEX[0] == "ff6a3d" and _LAYER_DEBUG_PRIMARY_HEX == "2fd6c3"

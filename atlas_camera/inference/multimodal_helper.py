@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 import base64
 import mimetypes
 import json
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -322,6 +323,79 @@ class LlamaCppVisionProvider(OpenAICompatibleVisionProvider):
         return models
 
 
+class OpenAIVisionProvider(OpenAICompatibleVisionProvider):
+    """OpenAI-compatible CLOUD provider — for users without local models.
+
+    Default base_url is api.openai.com, but any OpenAI-compatible hosted
+    endpoint works via base_url (OpenRouter, and the Gemini/xAI/Mistral
+    compatibility endpoints). Auth is the Bearer `api_key` header
+    `_request_json` already sends; the key can come from the node widget or
+    the OPENAI_API_KEY environment variable (preferred — a widget value is
+    saved into workflow JSON, which artists share).
+    """
+
+    def __init__(
+        self,
+        *,
+        model: str = "",
+        base_url: str = "https://api.openai.com/v1",
+        api_key: str | None = None,
+        timeout_seconds: float = 120.0,
+    ) -> None:
+        # Skip OpenAICompatibleVisionProvider's "not-needed" key placeholder:
+        # a cloud endpoint genuinely needs a key, and validate_vision_model
+        # checks for its absence to fail with an actionable message.
+        MultimodalProvider.__init__(
+            self,
+            model=model,
+            base_url=base_url,
+            api_key=(api_key or "").strip() or os.environ.get("OPENAI_API_KEY") or None,
+            timeout_seconds=timeout_seconds,
+        )
+
+    @property
+    def provider(self) -> str:
+        return "openai"
+
+    def validate_vision_model(self) -> ProviderModelInfo:
+        if not self.api_key:
+            raise RuntimeError(
+                "openai provider needs an API key — set the node's api_key "
+                "(or the OPENAI_API_KEY environment variable, preferred so "
+                "the key never lands in shared workflow JSON)."
+            )
+        if self.model:
+            # Cloud catalogs are huge and /models doesn't advertise vision
+            # capability — trust the explicit id; a typo fails loudly at the
+            # chat call with the host's own error message.
+            return ProviderModelInfo(
+                id=self.model,
+                name=self.model,
+                vision_capable=True,
+                capabilities=["assumed_vision_capable"],
+            )
+        return super().validate_vision_model()
+
+    def list_models(self) -> list[ProviderModelInfo]:
+        data = self._request_json("/models")
+        return [
+            _model_info_from_openai_compatible(item, default_vision=True)
+            for item in _model_items(data)
+        ]
+
+    def response_format(self) -> dict[str, Any]:
+        # Same guided-JSON request LM Studio uses; hosts that reject it fall
+        # back through analyze_image's _is_response_format_error chain.
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "atlas_camera_guidance",
+                "schema": _scene_observation_json_schema(),
+                "strict": False,
+            },
+        }
+
+
 class OllamaVisionProvider(MultimodalProvider):
     """Local Ollama vision-language helper for advisory scene analysis."""
 
@@ -422,6 +496,13 @@ def create_multimodal_provider(
         return OllamaVisionProvider(
             model=model or "gemma3:4b",
             base_url=base_url or "http://127.0.0.1:11434",
+            api_key=api_key,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider_id == "openai":
+        return OpenAIVisionProvider(
+            model=model or "gpt-4o-mini",
+            base_url=base_url or "https://api.openai.com/v1",
             api_key=api_key,
             timeout_seconds=timeout_seconds,
         )
@@ -638,10 +719,13 @@ def _parse_model_json(content: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             pass
 
-    if was_looping and start >= 0:
+    # Try bracket-closing recovery for ANY unparseable tail, not just loops —
+    # a max_tokens truncation cuts JSON mid-object with no repetition to detect.
+    if start >= 0:
         recovered = _close_partial_json(working[start:])
         if recovered is not None:
-            _extend_warnings(recovered, loop_warnings)
+            _extend_warnings(recovered, loop_warnings or
+                             ["Model response was truncated; partial data was recovered."])
             return recovered
 
     return {
