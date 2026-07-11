@@ -83,6 +83,11 @@ include = ["atlas_camera*", "atlas*"]
 [tool.setuptools.package-data]
 "atlas_camera.reference_data" = ["*.json"]
 "atlas_camera.inference" = ["fixer_shim/*.py"]
+# The ComfyUI frontend IS package data — without these a non-editable pip
+# install ships a dead viewport (found by the beta-0.3 wheel audit; invisible
+# on dev machines where the editable install + custom_nodes symlink serve
+# files from the checkout).
+"atlas_camera.comfy" = ["web/*.js", "web/lib/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
