@@ -437,6 +437,19 @@ Six calibrated per-scene workflows ship in `examples/`
 jungle temple, canyon, steep ridge, wide valley — each with a dolly-in bake
 wired to video. Start from the one whose scene most resembles your shot.
 
+## What's new (2026-07-12) — AtlasInput, the one-node fast path
+
+`examples/atlas_input_quickstart_workflow.json` is now the fastest way in:
+LoadImage → **🎬 Atlas Input** → viewport. By default the first queue costs a
+solve, a shared depth pass, and one high-resolution relief mesh — image to
+projected 3D in seconds. The same node then grows into the master workflow's
+behaviors by widgets alone: `layers` (2–4 watertight depth bands), `use_vlm`
+(the 🧭 assessment configures prompts/geometry/bands per image), `sky` +
+`scope_prompts` (SAM segmentation), and `inpaint` (per-band LaMa clean plates
+with the ✂ crop quality chain). Missing node packs never error — the feature
+skips and the `report` output says so. Under the hood it expands into the
+real Atlas nodes at execution, so every step caches individually.
+
 ## What's new (2026-07-11) — the staged master runs itself
 
 The staged master (`examples/atlas_camera_staged_master_workflow.json`) is now

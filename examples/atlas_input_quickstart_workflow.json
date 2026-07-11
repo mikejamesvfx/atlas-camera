@@ -1,0 +1,238 @@
+{
+ "id": "atlas-input-quickstart",
+ "revision": 0,
+ "last_node_id": 4,
+ "last_link_id": 3,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "LoadImage",
+   "pos": [
+    40,
+    120
+   ],
+   "size": [
+    280,
+    314
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      1
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "atlas_monument_valley.png",
+    "image"
+   ]
+  },
+  {
+   "id": 2,
+   "type": "AtlasInput",
+   "pos": [
+    380,
+    120
+   ],
+   "size": [
+    340,
+    360
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 1
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      2
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      3
+     ],
+     "slot_index": 1
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "links": null
+    },
+    {
+     "name": "sky_mask",
+     "type": "MASK",
+     "links": null
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasInput"
+   },
+   "widgets_values": [
+    0,
+    "relief",
+    512,
+    false,
+    "lmstudio",
+    "",
+    false,
+    "sky",
+    "",
+    false,
+    ""
+   ],
+   "title": "🎬 Atlas Input — instant relief (turn knobs up from here)"
+  },
+  {
+   "id": 3,
+   "type": "AtlasBlockoutViewport",
+   "pos": [
+    780,
+    120
+   ],
+   "size": [
+    960,
+    720
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 2
+    },
+    {
+     "name": "source_image",
+     "type": "IMAGE",
+     "link": 3
+    }
+   ],
+   "outputs": [
+    {
+     "name": "shaded",
+     "type": "IMAGE",
+     "links": null
+    },
+    {
+     "name": "depth",
+     "type": "IMAGE",
+     "links": null
+    },
+    {
+     "name": "normal",
+     "type": "IMAGE",
+     "links": null
+    },
+    {
+     "name": "mask",
+     "type": "IMAGE",
+     "links": null
+    },
+    {
+     "name": "path_frames",
+     "type": "IMAGE",
+     "links": null
+    },
+    {
+     "name": "camera_path",
+     "type": "ATLAS_CAMERA_PATH",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasBlockoutViewport"
+   },
+   "widgets_values": [
+    1464,
+    "",
+    1.0
+   ]
+  },
+  {
+   "id": 4,
+   "type": "Note",
+   "pos": [
+    40,
+    500
+   ],
+   "size": [
+    320,
+    300
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "Note"
+   },
+   "widgets_values": [
+    "ATLAS INPUT QUICKSTART — image in, projected relief out.\n\nDefaults = instant relief: one high-res mesh, first queue in seconds. Then grow into the master workflow's behaviors without leaving this node:\n\n· layers 2–4 — depth-band clean-plate layers (watertight splits)\n· use_vlm — the 🧭 assessment configures prompts/geometry/bands per image (forces 4 bands)\n· sky + sky_prompt — SAM sky card (needs ComfyUI-RMBG)\n· scope_prompts — one SAM prompt per band, far→near; self-disarming on no-match\n· inpaint (+ upscale_model) — per-band LaMa clean plates (needs comfyui-inpaint-nodes + big-lama.pt)\n\nMissing packs never error — features skip and the report output says so. When you outgrow this node: examples/atlas_camera_staged_master_workflow.json is the same logic with stages, gates and per-layer debug."
+   ]
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "IMAGE"
+  ],
+  [
+   2,
+   2,
+   0,
+   3,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   3,
+   2,
+   1,
+   3,
+   1,
+   "IMAGE"
+  ]
+ ],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4
+}

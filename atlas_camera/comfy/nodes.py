@@ -5287,6 +5287,313 @@ class AtlasLayerPreview:
         return (out,)
 
 
+def _comfy_registry():
+    """ComfyUI's global node registry, or {} outside ComfyUI — used by
+    AtlasInput's expansion to feature-detect third-party packs (SAM3 /
+    inpaint) without ever importing their code."""
+    try:
+        import nodes as comfy_nodes  # ComfyUI's own top-level module
+        return comfy_nodes.NODE_CLASS_MAPPINGS
+    except Exception:
+        return {}
+
+
+class _MiniGraphBuilder:
+    """Test-shim mirror of comfy_execution.graph_utils.GraphBuilder (same
+    node()/out()/finalize() surface) so AtlasInput's expansion assembly is
+    unit-testable outside ComfyUI. Real runs always use the real one — it
+    namespaces inner node ids for the executor's caching."""
+
+    class _Node:
+        def __init__(self, nid, class_type, inputs):
+            self.id, self.class_type, self.inputs = nid, class_type, inputs
+
+        def out(self, index):
+            return [self.id, index]
+
+    def __init__(self):
+        self.nodes = {}
+        self._i = 0
+
+    def node(self, class_type, **inputs):
+        self._i += 1
+        n = self._Node(str(self._i), class_type, inputs)
+        self.nodes[n.id] = n
+        return n
+
+    def finalize(self):
+        return {nid: {"class_type": n.class_type, "inputs": n.inputs}
+                for nid, n in self.nodes.items()}
+
+
+def _graph_builder():
+    try:
+        from comfy_execution.graph_utils import GraphBuilder
+        return GraphBuilder()
+    except Exception:
+        return _MiniGraphBuilder()
+
+
+# The documented proven band splits per layer count (log-depth positions).
+_ATLAS_INPUT_BOUNDARIES = {2: (0.55,), 3: (0.2, 0.65), 4: (0.3, 0.6, 0.8)}
+_ATLAS_INPUT_BAND_NAMES = ("band_far", "band_bg", "band_mid", "band_fg")
+
+
+class AtlasInput:
+    """🎬 The all-in-one entry point — one node between LoadImage and the
+    viewport that wraps the staged master's logic via NODE EXPANSION: at
+    execution it emits the real mini-graph (our nodes by class, third-party
+    SAM3Segment / LaMa by registry name) so every inner step keeps its own
+    cache, and missing packs degrade gracefully (skipped + named in the
+    `report` output) instead of erroring.
+
+    Out of the box (instant relief): layers=0, VLM/SAM/inpaint off — the
+    first queue costs solve + depth + ONE high-resolution relief mesh, and
+    the `solve`/`image` outputs wire straight into AtlasBlockoutViewport.
+    Turn knobs up from there:
+    - `layers` 2–4 splits into depth-band clean-plate layers on the proven
+      splits, watertight by construction (the band_override channel).
+    - `use_vlm` puts AtlasAssessImage in front (advisory mode, VRAM
+      offloaded after) and wires its prompts / per-band geometry / band
+      boundaries into the inner nodes exactly like the staged master. With
+      layers>0 this forces the 4-band plan (the VLM speaks 5 fixed slots).
+    - `sky` + `sky_prompt` adds the SAM sky card; the mask also feeds every
+      mesh's exclude_mask AND band_ref_mask (the band-drift rule).
+    - `scope_prompts` (one line per band, far→near) adds self-disarming 🎯
+      scope rows; `inpaint` adds the ✂crop→LaMa(+upscale)→✂stitch clean-
+      plate chain per occluded band.
+
+    When you outgrow it, the staged master IS this graph with stages,
+    gates, rails, and per-layer debug previews — see
+    examples/atlas_camera_staged_master_workflow.json.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "IMAGE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
+    RETURN_NAMES = ("solve", "image", "depth", "sky_mask", "report")
+    FUNCTION = "build"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"image": ("IMAGE",)},
+            "optional": {
+                "layers": ("INT", {"default": 0, "min": 0, "max": 4,
+                    "tooltip": "0 = one full-range mesh (instant relief). 2/3/4 = depth-band "
+                               "clean-plate layers on the proven splits (2→0.55; 3→0.2/0.65; "
+                               "4→0.3/0.6/0.8), watertight by construction. 1 = one full-range "
+                               "clean-plate layer (useful with mesh=card/ground)."}),
+                "mesh": (["relief", "card", "ground"], {"default": "relief",
+                    "tooltip": "layers=0: relief = depth-following mesh; card/ground = ONE flat "
+                               "plane (band-median card / analytic ground). layers>0: the "
+                               "DEFAULT band geometry — the VLM's per-band call wins when "
+                               "use_vlm is on."}),
+                "mesh_resolution": ("INT", {"default": 512, "min": 128, "max": 2048, "step": 64,
+                    "tooltip": "Relief grid (long-edge cells). Internal tear threshold pairs "
+                               "automatically: 0.5 for the single full-range mesh, 1.5 for "
+                               "band-clipped layers (the calibrated pairings)."}),
+                "use_vlm": ("BOOLEAN", {"default": False,
+                    "tooltip": "Run the 🧭 VLM assessment first (advisory — never blocks; VRAM "
+                               "offloaded after) and wire its SAM prompts, per-band geometry, "
+                               "and band boundaries into the inner nodes. With layers>0 this "
+                               "forces the 4-band plan (the VLM's plan has 5 fixed slots)."}),
+                "vlm_provider": (["ollama", "lmstudio", "llamacpp", "openai"],
+                    {"default": "lmstudio"}),
+                "vlm_model": ("STRING", {"default": "",
+                    "tooltip": "Blank = the provider's default model."}),
+                "sky": ("BOOLEAN", {"default": False,
+                    "tooltip": "SAM-segment the sky onto its own flat card, and feed the mask "
+                               "into every mesh's exclude_mask + band_ref_mask. Needs "
+                               "ComfyUI-RMBG (SAM3Segment) — skipped + noted if absent."}),
+                "sky_prompt": ("STRING", {"default": "sky",
+                    "tooltip": "Manual sky segmentation prompt; the VLM's wins when use_vlm."}),
+                "scope_prompts": ("STRING", {"default": "", "multiline": True,
+                    "tooltip": "Manual per-band SAM scoping, ONE PROMPT PER LINE far→near "
+                               "(line 1 = farthest band). Blank line = that band stays "
+                               "band-only. Self-disarming: a no-match segment falls back to "
+                               "band-only automatically. The VLM's prompts win when use_vlm. "
+                               "Needs ComfyUI-RMBG."}),
+                "inpaint": ("BOOLEAN", {"default": False,
+                    "tooltip": "Build each occluded band's clean plate: occlusion mask → "
+                               "expand → ✂crop → LaMa → ✂stitch (the 256²-bottleneck fix). "
+                               "Needs comfyui-inpaint-nodes + big-lama.pt — skipped + noted if "
+                               "absent. Off = bands project the original photo (honest holes "
+                               "on reveal)."}),
+                "upscale_model": ("STRING", {"default": "",
+                    "tooltip": "Optional upscale model FILENAME (models/upscale_models) fed to "
+                               "the inner LaMa nodes — e.g. 4xRealWebPhoto_v4_dat2.safetensors. "
+                               "Measured 6.5× fill detail vs legacy. Blank = off."}),
+            },
+        }
+
+    # --- assembly ---------------------------------------------------------
+    def build(self, image, layers=0, mesh="relief", mesh_resolution=512,
+              use_vlm=False, vlm_provider="lmstudio", vlm_model="",
+              sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
+              upscale_model="", **_extra):
+        registry = _comfy_registry()
+        have_sam = "SAM3Segment" in registry
+        have_inpaint = ("INPAINT_InpaintWithModel" in registry
+                        and "INPAINT_LoadInpaintModel" in registry
+                        and "INPAINT_ExpandMask" in registry)
+        notes: list = []
+        g = _graph_builder()
+
+        def sam3(image_ref, prompt_value):
+            return g.node("SAM3Segment", image=image_ref, prompt=prompt_value,
+                          output_mode="Merged", confidence_threshold=0.5,
+                          max_segments=0, segment_pick=0, mask_blur=0,
+                          mask_offset=0, device="Auto", invert_output=False,
+                          unload_model=False, background="Alpha",
+                          background_color="#222222")
+
+        # 0. optional VLM assessment (advisory: auto_continue never blocks).
+        image_ref = image
+        vlm = None
+        if use_vlm:
+            vlm = g.node("AtlasAssessImage", image=image,
+                         provider=vlm_provider, model=vlm_model,
+                         auto_continue=True, offload_model=True)
+            image_ref = vlm.out(0)
+            notes.append("VLM assessment ON — prompts/geometry/bands from the plan")
+            if layers > 0 and layers != 4:
+                notes.append(f"layers {layers} → 4 (the VLM plan has 4 band slots)")
+                layers = 4
+
+        # 1. solve + shared depth (always).
+        solve = g.node("AtlasLearnedSolveFromImage", image=image_ref)
+        depth = g.node("AtlasDepthMap", image=image_ref, solve=solve.out(0))
+
+        # 2. sky mask (SolidMask zero when off/unavailable — every consumer
+        # nearest-resizes masks, so the 64px placeholder is fine).
+        zero_mask = g.node("SolidMask", value=0.0, width=64, height=64)
+        sky_mask_ref = zero_mask.out(0)
+        sky_on = bool(sky)
+        if sky_on and not have_sam:
+            notes.append("sky SKIPPED — SAM3Segment not installed (ComfyUI-RMBG)")
+            sky_on = False
+        if sky_on:
+            sky_prompt_ref = vlm.out(3) if vlm is not None else sky_prompt
+            sky_seg = sam3(image_ref, sky_prompt_ref)
+            sky_mask_ref = sky_seg.out(1)
+            notes.append("sky card ON")
+
+        # 3. geometry.
+        solve_chain = solve.out(0)
+        if sky_on:
+            sky_layer = g.node("AtlasSkyDomeLayer", solve=solve_chain,
+                               depth=depth.out(0), sky_mask=sky_mask_ref,
+                               plate_image=image_ref)
+            solve_chain = sky_layer.out(0)
+
+        exclude_kw = {"exclude_mask": sky_mask_ref} if sky_on else {}
+        band_ref_kw = {"band_ref_mask": sky_mask_ref} if sky_on else {}
+
+        if layers == 0:
+            if mesh == "relief":
+                relief = g.node("AtlasDeriveReliefMesh", solve=solve_chain,
+                                depth=depth.out(0),
+                                relief_grid=int(mesh_resolution),
+                                depth_edge_rel=0.5, **exclude_kw)
+                solve_chain = relief.out(0)
+                notes.append(f"single relief mesh, grid {int(mesh_resolution)}")
+            else:
+                flat = g.node("AtlasCleanPlateLayer", solve=solve_chain,
+                              depth=depth.out(0), plate_image=image_ref,
+                              near_pct=0.0, far_pct=0.0,  # full range (+inf)
+                              name="full_range", priority=0.0,
+                              relief_grid=int(mesh_resolution), depth_edge_rel=1.5,
+                              embed_matte=sky_on, band_geometry=mesh,
+                              **exclude_kw, **band_ref_kw)
+                solve_chain = flat.out(0)
+                notes.append(f"single full-range {mesh} plane")
+        else:
+            bounds = _ATLAS_INPUT_BOUNDARIES.get(int(layers), ())
+            edges = [0.0, *bounds, 1.0]
+            n_bands = len(edges) - 1
+            # far -> near, staged priorities 0/5/10/15
+            scope_lines = [s.strip() for s in (scope_prompts or "").splitlines()]
+            lama_loader = None
+            upscaler = None
+            if inpaint and not have_inpaint:
+                notes.append("inpaint SKIPPED — comfyui-inpaint-nodes not installed")
+            inpaint_on = bool(inpaint) and have_inpaint
+            if inpaint_on:
+                lama_loader = g.node("INPAINT_LoadInpaintModel", model_name="big-lama.pt")
+                if (upscale_model or "").strip():
+                    upscaler = g.node("UpscaleModelLoader",
+                                      model_name=upscale_model.strip())
+                notes.append("per-band LaMa inpaint ON"
+                             + (" + upscale model" if upscaler else ""))
+
+            for i in range(n_bands):  # i=0 farthest
+                near, far = edges[n_bands - 1 - i], edges[n_bands - i]
+                override = f"near_pct={near:.3f} far_pct={far:.3f}"
+                if vlm is not None:
+                    override = vlm.out(12 + i)  # band_far..band_fg
+                name = (_ATLAS_INPUT_BAND_NAMES[i] if n_bands == 4
+                        else f"band_{n_bands - i}")
+
+                # scope: manual line (or VLM prompt) -> SAM -> AtlasScopeMask
+                exclude_ref = sky_mask_ref if sky_on else zero_mask.out(0)
+                prompt_val = scope_lines[i] if i < len(scope_lines) else ""
+                if vlm is not None:
+                    prompt_val = None  # replaced by the VLM output below
+                wants_scope = (vlm is not None) or bool(prompt_val)
+                if wants_scope and not have_sam:
+                    if prompt_val:
+                        notes.append(f"{name} scope SKIPPED — SAM3Segment not installed")
+                    wants_scope = False
+                if wants_scope:
+                    p_ref = vlm.out(4 + i) if vlm is not None else prompt_val
+                    seg = sam3(image_ref, p_ref)
+                    scope = g.node("AtlasScopeMask",
+                                   sky_mask=(sky_mask_ref if sky_on else zero_mask.out(0)),
+                                   prompt=p_ref, segment_mask=seg.out(1))
+                    exclude_ref = scope.out(0)
+
+                # plate: original photo, or the inpainted clean plate
+                plate_ref = image_ref
+                if inpaint_on and i < n_bands - 1:  # frontmost band never needs it
+                    band_mask = g.node("AtlasDepthLayerMask", solve=solve.out(0),
+                                       depth=depth.out(0), band_override=override,
+                                       exclude_mask=exclude_ref, **band_ref_kw)
+                    grown = g.node("INPAINT_ExpandMask", mask=band_mask.out(1),
+                                   grow=32, blur=8, blur_type="gaussian")
+                    crop = g.node("AtlasInpaintCrop", image=image_ref,
+                                  mask=grown.out(0), context_pad_px=128)
+                    lama_kw = {"optional_upscale_model": upscaler.out(0)} if upscaler else {}
+                    lama = g.node("INPAINT_InpaintWithModel",
+                                  inpaint_model=lama_loader.out(0),
+                                  image=crop.out(0), mask=crop.out(1), seed=0,
+                                  **lama_kw)
+                    stitch = g.node("AtlasInpaintStitch", original_image=image_ref,
+                                    inpainted_crop=lama.out(0),
+                                    crop_region=crop.out(2))
+                    plate_ref = stitch.out(0)
+
+                layer_kw = {}
+                if vlm is not None:
+                    layer_kw["geometry_override"] = vlm.out(8 + i)  # geom_far..fg
+                layer = g.node("AtlasCleanPlateLayer", solve=solve_chain,
+                               depth=depth.out(0), plate_image=plate_ref,
+                               band_override=override, name=name,
+                               priority=float(5 * i),
+                               relief_grid=int(mesh_resolution),
+                               depth_edge_rel=1.5,
+                               fill_occluded=(inpaint_on and i < n_bands - 1),
+                               embed_matte=True,
+                               band_geometry=mesh,
+                               exclude_mask=exclude_ref, **band_ref_kw, **layer_kw)
+                solve_chain = layer.out(0)
+            notes.append(f"{n_bands} band layer(s), grid {int(mesh_resolution)}")
+
+        report = "ATLAS INPUT — expanded graph\n" + "\n".join(f"  · {n}" for n in notes)
+        return {
+            "result": (solve_chain, image_ref, depth.out(0), sky_mask_ref, report),
+            "expand": g.finalize(),
+        }
+
+
 class AtlasScopeMask:
     """🎯 Per-band scope exclude builder — `sky ∪ NOT(grow(segment))`, with
     SELF-DISARMING fallbacks so a scope row can stay permanently active.
@@ -6430,6 +6737,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasScopeMask":             AtlasScopeMask,
     "AtlasDebugReport":           AtlasDebugReport,
     "AtlasLayerPreview":          AtlasLayerPreview,
+    "AtlasInput":                 AtlasInput,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -6495,6 +6803,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasScopeMask":             "Atlas Scope Mask 🎯",
     "AtlasDebugReport":           "Atlas Debug Report 🔍",
     "AtlasLayerPreview":          "Atlas Layer Preview 🎨",
+    "AtlasInput":                 "Atlas Input 🎬",
 }
 
 # ---------------------------------------------------------------------------
