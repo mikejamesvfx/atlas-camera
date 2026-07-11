@@ -8,6 +8,7 @@ import io
 import json
 import math
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -1065,11 +1066,13 @@ class AtlasAssessImage:
     """
     RETURN_TYPES = ("IMAGE", "STRING", "STRING",
                     "STRING", "STRING", "STRING", "STRING", "STRING",
+                    "STRING", "STRING", "STRING", "STRING",
                     "STRING", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("image", "report", "settings_json",
                     "sam_prompt_sky", "sam_prompt_far", "sam_prompt_bg",
                     "sam_prompt_mid", "sam_prompt_fg",
-                    "geom_far", "geom_bg", "geom_mid", "geom_fg")
+                    "geom_far", "geom_bg", "geom_mid", "geom_fg",
+                    "band_far", "band_bg", "band_mid", "band_fg")
     FUNCTION = "assess"
     CATEGORY = "Atlas Camera"
     # OUTPUT_NODE so the assessment ALWAYS runs and shows its report on the
@@ -1145,6 +1148,7 @@ class AtlasAssessImage:
 
         from atlas_camera.inference.assessor import (
             assess_image,
+            staged_layer_bands,
             staged_layer_geometry,
             staged_layer_prompts,
         )
@@ -1206,6 +1210,9 @@ class AtlasAssessImage:
         # the layer node's own band_geometry combo applies).
         sam = staged_layer_prompts(cached.payload if cached.ok else {})
         geom = staged_layer_geometry(cached.payload if cached.ok else {})
+        # Watertight band boundaries (jointly derived — adjacent bands share
+        # edges by construction); "" when no assessment = nodes keep widgets.
+        band = staged_layer_bands(cached.payload if cached.ok else {})
 
         # ui.text renders the report directly on the node (atlas_assess.js);
         # ui.fingerprint is what the ▶ button stamps into approved_for.
@@ -1217,10 +1224,13 @@ class AtlasAssessImage:
                        "sam_prompts": [sam["sky"], sam["far"], sam["bg"],
                                        sam["mid"], sam["fg"]],
                        "sam_geometry": [geom["far"], geom["bg"],
-                                        geom["mid"], geom["fg"]]},
+                                        geom["mid"], geom["fg"]],
+                       "sam_bands": [band["far"], band["bg"],
+                                     band["mid"], band["fg"]]},
                 "result": (img_out, report, settings_json,
                            sam["sky"], sam["far"], sam["bg"], sam["mid"], sam["fg"],
-                           geom["far"], geom["bg"], geom["mid"], geom["fg"])}
+                           geom["far"], geom["bg"], geom["mid"], geom["fg"],
+                           band["far"], band["bg"], band["mid"], band["fg"])}
 
 
 _ATLAS_ASSESS_CACHE: dict = {}
@@ -1997,6 +2007,27 @@ def _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct):
         far = log_depth_position(float(far_pct))
     else:
         far = float("inf")
+    return near, far
+
+
+def _parse_band_override(text):
+    """Parse the assess node's band_far/bg/mid/fg output format
+    ('near_pct=<f> far_pct=<f>') into a (near_pct, far_pct) tuple. "" / None
+    -> None (no override). Errors loudly on garbage, per the
+    patch_view_override / geometry_override precedent. The strings come from
+    `assessor.staged_layer_bands`, whose joint boundary derivation guarantees
+    adjacent bands share edges exactly — never hand-assemble these per band."""
+    t = (text or "").strip()
+    if not t:
+        return None
+    m = re.fullmatch(r"near_pct=([0-9.]+)\s+far_pct=([0-9.]+)", t)
+    if not m:
+        raise ValueError(
+            f"Unparseable band override {text!r} — expected 'near_pct=<f> far_pct=<f>' "
+            "(the AtlasAssessImage band_* output format).")
+    near, far = float(m.group(1)), float(m.group(2))
+    if not (0.0 <= near <= far <= 1.0):
+        raise ValueError(f"Band override out of range (need 0 <= near <= far <= 1): {text!r}")
     return near, far
 
 
@@ -4904,12 +4935,21 @@ class AtlasDepthLayerMask:
                                "debug-report finding). Wire the plain SKY mask here on every "
                                "band node so all layers resolve identical edges. Unwired = "
                                "legacy behavior (band edges from exclude_mask's population)."}),
+                # APPENDED last (widgets_values is positional — never insert).
+                "band_override": ("STRING", {"default": "",
+                    "tooltip": "Optional band override STRING ('near_pct=<f> far_pct=<f>') — "
+                               "wins over this node's near/far widgets when non-empty. Wire "
+                               "AtlasAssessImage's band_far/bg/mid/fg output here so the VLM's "
+                               "subject-aware band boundaries flow in (jointly derived, so "
+                               "adjacent bands always share edges exactly). Loses to a "
+                               "connected band_split. Errors loudly on garbage."}),
             },
         }
 
     def generate(self, solve, depth, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5, feather_px=4,
                  compute_hole_mask=False, relief_grid=384, depth_edge_rel=1.5, exclude_mask=None,
-                 fill_occluded=False, band_side="manual", band_split=None, band_ref_mask=None):
+                 fill_occluded=False, band_side="manual", band_split=None, band_ref_mask=None,
+                 band_override=""):
         np = _require_numpy()
         torch = _require_torch()
 
@@ -4920,6 +4960,10 @@ class AtlasDepthLayerMask:
             return (zero, zero.clone(), zero.clone())
         metric, valid = setup.metric, setup.valid
 
+        override = _parse_band_override(band_override)
+        if override is not None:
+            near_m = far_m = 0.0
+            near_pct, far_pct = override
         near, far = _apply_band_split(band_split, band_side, metric,
                                       _band_resolution_validity(setup, band_ref_mask),
                                       near_m, far_m, near_pct, far_pct)
@@ -5241,6 +5285,11 @@ class AtlasScopeMask:
     behavior, exactly what a bypassed row used to forward). The `status`
     output says which path fired. `segment_mask` is LAZY: with an empty
     prompt the segmenter branch is never even executed.
+
+    FAILURE MODES COVERED vs NOT: the fallbacks handle empty/no-match
+    RESULTS. A SAM3Segment ERROR (model not installed, VRAM OOM) still
+    aborts the whole queue — by design, a crashed segmenter is a config
+    problem to surface, not to paper over.
 
     REQUIRED COMPANION when the output feeds percentile band nodes: wire
     the plain SKY mask into those nodes' `band_ref_mask` too. A scoped
@@ -5685,6 +5734,15 @@ class AtlasCleanPlateLayer:
                                "debug-report finding). Wire the plain SKY mask here on every "
                                "band node so all layers resolve identical edges. Unwired = "
                                "legacy behavior (band edges from exclude_mask's population)."}),
+                # APPENDED last (widgets_values is positional — never insert).
+                "band_override": ("STRING", {"default": "",
+                    "tooltip": "Optional band override STRING ('near_pct=<f> far_pct=<f>') — "
+                               "wins over this node's near/far widgets when non-empty. Wire "
+                               "AtlasAssessImage's band_far/bg/mid/fg output here so the VLM's "
+                               "subject-aware band boundaries flow in (jointly derived, so "
+                               "adjacent bands always share edges exactly). MUST be the same "
+                               "string the paired AtlasDepthLayerMask received. Loses to a "
+                               "connected band_split. Errors loudly on garbage."}),
             },
         }
 
@@ -5693,7 +5751,8 @@ class AtlasCleanPlateLayer:
                   exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None,
                   edge_extend_px=0, skirt_bevel=0.0, frame_outpaint_px=0,
                   exclude_choke_cells=2, band_side="manual", band_split=None,
-                  band_geometry="relief", geometry_override="", band_ref_mask=None):
+                  band_geometry="relief", geometry_override="", band_ref_mask=None,
+                  band_override=""):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import (
@@ -5717,6 +5776,10 @@ class AtlasCleanPlateLayer:
         fx, fy, cx, cy = setup.fx, setup.fy, setup.cx, setup.cy
         extr, depth_map = setup.extr, setup.depth_map
         scale, horizon_y = setup.scale, setup.horizon_y
+        override = _parse_band_override(band_override)
+        if override is not None:
+            near_m = far_m = 0.0
+            near_pct, far_pct = override
         near, far = _apply_band_split(band_split, band_side, setup.metric,
                                       _band_resolution_validity(setup, band_ref_mask),
                                       near_m, far_m, near_pct, far_pct)

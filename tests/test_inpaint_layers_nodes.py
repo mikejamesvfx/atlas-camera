@@ -1114,3 +1114,38 @@ def test_layer_preview_cutout_and_palette():
     assert torch.allclose(bad[0, 0, 0, :], torch.tensor([1.0, 0.0, 1.0]), atol=1e-6)
     # palette mirrors atlas_blockout.js (LAYER_DEBUG_PALETTE)
     assert _LAYER_DEBUG_PALETTE_HEX[0] == "ff6a3d" and _LAYER_DEBUG_PRIMARY_HEX == "2fd6c3"
+
+
+# --- band_override: the VLM band-boundary channel (2026-07-11) ---------------
+
+def test_band_override_wins_and_stays_watertight():
+    from atlas_camera.comfy.nodes import _parse_band_override
+
+    solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
+
+    def edges(**kw):
+        out, _h, _e = AtlasCleanPlateLayer().add_layer(
+            solve, depth, plate, near_m=99.0, far_m=100.0, name="t", **kw)
+        m = out.projection_sources[-1].metadata
+        return m["near_m"], m["far_m"]
+
+    # Override beats the node's own (absurd) metre widgets.
+    n1, f1 = edges(band_override="near_pct=0.000 far_pct=0.400")
+    n2, f2 = edges(band_override="near_pct=0.400 far_pct=1.000")
+    assert (n1 or 0) < f1
+    # Adjacent overrides share the edge EXACTLY (watertight by construction).
+    assert f1 == pytest.approx(n2, rel=1e-9)
+    assert f2 is None  # far_pct=1.0 -> open-ended (+inf)
+
+    # "" is a no-op; garbage errors loudly.
+    assert _parse_band_override("") is None
+    with pytest.raises(ValueError, match="band override"):
+        _parse_band_override("bands: 0.3 to 0.6")
+    with pytest.raises(ValueError, match="out of range"):
+        _parse_band_override("near_pct=0.8 far_pct=0.2")
+
+    # AtlasDepthLayerMask takes the same string -> same band as the layer.
+    lm, occ, _h = AtlasDepthLayerMask().generate(
+        solve, depth, near_m=99.0, far_m=100.0,
+        band_override="near_pct=0.000 far_pct=0.400")
+    assert float(lm.sum()) > 0

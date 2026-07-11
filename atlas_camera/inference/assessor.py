@@ -125,8 +125,11 @@ band membership AND segment membership), so for EACH of the five layers judge:
     whenever unsure. Rule of thumb: if orbiting ~15 degrees would reveal
     parallax INSIDE the layer, it needs "relief"; if the layer would move
     as one rigid poster, "card"; if it is the floor itself, "ground".
-- If a fixed band boundary above would slice that layer's main subject in
-  half, say so in the layer's notes and suggest adjusted percentages.
+- near_pct / far_pct (bands only, OPTIONAL): adjusted band boundaries as
+  positions 0-1 along the scene's log-depth range — provide them ONLY when a
+  fixed boundary above would slice a layer's main subject in half (say why
+  in notes). Keep bands CONTIGUOUS: one band's far_pct must equal the next
+  band's near_pct. Omit the fields to accept the fixed slots.
 
 relief settings:
 - relief_grid 128 is the default. Recommend 256 for detailed/noisy scenes or
@@ -172,8 +175,11 @@ OUTPUT FORMAT — respond with ONLY this JSON object, no prose outside it:
   "staged_layers": {
     "sky": {"present": true, "sam_prompt": "sky", "notes": "..."},
     "far": {"present": true, "sam_prompt": "rock formations", "geometry": "card", "notes": "..."},
-    "bg":  {"present": true, "sam_prompt": "...", "geometry": "relief", "notes": "..."},
-    "mid": {"present": false, "sam_prompt": "", "geometry": "relief", "notes": "nothing distinct in this band"},
+    "bg":  {"present": true, "sam_prompt": "...", "geometry": "relief",
+            "near_pct": 0.55, "far_pct": 0.8,
+            "notes": "boundary lowered to 0.55 so the butte sits whole in bg"},
+    "mid": {"present": false, "sam_prompt": "", "geometry": "relief", "far_pct": 0.55,
+            "notes": "nothing distinct in this band"},
     "fg":  {"present": true, "sam_prompt": "desert floor", "geometry": "ground", "notes": "..."}
   },
   "recommended_settings": {
@@ -214,6 +220,8 @@ def _assessment_response_format() -> dict[str, Any]:
         "present": {"type": "boolean"},
         "sam_prompt": {"type": "string"},
         "geometry": {"type": "string"},
+        "near_pct": {"type": "number"},
+        "far_pct": {"type": "number"},
         "notes": {"type": "string"},
     }, "required": ["present", "sam_prompt"]}
     # "required" matters: LM Studio's grammar treats bare properties as
@@ -360,8 +368,19 @@ def assess_image(
         result.report = format_assessment_report(parsed, provider=helper.provider,
                                                  model=model_info.id)
         if offload_model:
-            result.report += ("\n\nMODEL OFFLOAD: "
-                              + _offload_after_assessment(helper, model_info.id))
+            # Verify the offload actually freed VRAM (spec-panel finding: a
+            # best-effort unload with no verification is unfalsifiable). The
+            # unload is out-of-process and slightly async — sample, wait,
+            # resample; skip silently when no CUDA is visible.
+            before = _vram_free_gb()
+            status = _offload_after_assessment(helper, model_info.id)
+            if before is not None and helper.provider != "openai":
+                import time as _time
+                _time.sleep(1.5)
+                after = _vram_free_gb()
+                if after is not None:
+                    status += f"  · VRAM free {before:.1f} → {after:.1f} GB"
+            result.report += "\n\nMODEL OFFLOAD: " + status
         return result
     except (RuntimeError, ValueError, OSError) as exc:
         return AssessmentResult(
@@ -377,6 +396,20 @@ def assess_image(
                 "You can also toggle `proceed` and continue without an assessment."
             ),
         )
+
+
+def _vram_free_gb() -> float | None:
+    """Device-wide free VRAM in GB (cudaMemGetInfo is global, so it sees
+    other processes' allocations — exactly what an out-of-process ollama/
+    LM Studio unload changes). None when CUDA/torch is unavailable."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            free, _total = torch.cuda.mem_get_info()
+            return free / 1e9
+    except Exception:
+        pass
+    return None
 
 
 def _offload_after_assessment(helper, model_id: str) -> str:
@@ -486,6 +519,53 @@ STAGED_GEOMETRY_CHOICES = ("relief", "card", "ground")
 STAGED_BAND_KEYS = ("far", "bg", "mid", "fg")
 
 
+# The staged master's fixed band boundaries (fg|mid, mid|bg, bg|far) as
+# log-depth positions — the VLM's near_pct/far_pct suggestions move these.
+STAGED_DEFAULT_BOUNDARIES = (0.3, 0.6, 0.8)
+
+
+def staged_layer_bands(payload: dict[str, Any]) -> dict[str, str]:
+    """Watertight per-band near/far percentages from the VLM's optional
+    band-boundary suggestions, as `"near_pct=<f> far_pct=<f>"` strings for
+    the band nodes' `band_override` inputs ("" everywhere when the payload
+    carries no staged plan — the nodes keep their own widgets).
+
+    The three shared boundaries (fg|mid, mid|bg, bg|far) are derived JOINTLY
+    — each from the two adjacent bands' suggestions, falling back to the
+    fixed slots — so adjacent bands share edges EXACTLY by construction and
+    can never reintroduce the metric band-gap defect. A non-monotonic or
+    out-of-range suggestion set resets ALL boundaries to the defaults rather
+    than emitting a partially-applied plan.
+    """
+    staged = payload.get("staged_layers") or {}
+    if not staged:
+        return {key: "" for key in STAGED_BAND_KEYS}
+
+    def suggested(key: str, field: str):
+        entry = staged.get(key) or {}
+        value = entry.get(field)
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return None
+        return v if 0.0 <= v <= 1.0 else None
+
+    def boundary(low_key, high_key, default):
+        v = suggested(low_key, "far_pct")
+        if v is None:
+            v = suggested(high_key, "near_pct")
+        return default if v is None else v
+
+    b1 = boundary("fg", "mid", STAGED_DEFAULT_BOUNDARIES[0])
+    b2 = boundary("mid", "bg", STAGED_DEFAULT_BOUNDARIES[1])
+    b3 = boundary("bg", "far", STAGED_DEFAULT_BOUNDARIES[2])
+    if not (0.0 <= b1 <= b2 <= b3 <= 1.0):
+        b1, b2, b3 = STAGED_DEFAULT_BOUNDARIES
+    fmt = "near_pct={:.3f} far_pct={:.3f}".format
+    return {"fg": fmt(0.0, b1), "mid": fmt(b1, b2),
+            "bg": fmt(b2, b3), "far": fmt(b3, 1.0)}
+
+
 def staged_layer_geometry(payload: dict[str, Any]) -> dict[str, str]:
     """Per-band geometry-type recommendations from `staged_layers`.
 
@@ -545,9 +625,17 @@ def format_assessment_report(payload: dict[str, Any], *, provider: str = "",
 
     staged = payload.get("staged_layers") or {}
     if staged:
+        bands = staged_layer_bands(payload)
         lines += ["", "STAGED 5-LAYER PLAN  (SAM prompts are wired to the scope rows)"]
         for key in STAGED_LAYER_KEYS:
             entry = staged.get(key) or {}
+            if key == "sky":
+                band_label = _STAGED_BAND_LABELS["sky"]
+            else:
+                # resolved (possibly VLM-adjusted, always watertight) range
+                parts = dict(p.split("=") for p in bands.get(key, "").split()) if bands.get(key) else {}
+                band_label = (f"{float(parts['near_pct']):.0%}-{float(parts['far_pct']):.0%}"
+                              if parts else _STAGED_BAND_LABELS.get(key, ""))
             if entry.get("present"):
                 mark, prompt = "+", f'SAM "{entry.get("sam_prompt", "")}"'
                 geometry = str(entry.get("geometry") or "").strip().lower()
@@ -555,7 +643,7 @@ def format_assessment_report(payload: dict[str, Any], *, provider: str = "",
                     prompt += f"  · geometry: {geometry}"
             else:
                 mark, prompt = "-", "absent — leave this stage bypassed"
-            lines.append(f"  {mark} {key:4s} {_STAGED_BAND_LABELS.get(key, ''):8s} {prompt}")
+            lines.append(f"  {mark} {key:4s} {band_label:8s} {prompt}")
             if entry.get("notes"):
                 lines.append(f"           {entry['notes']}")
         lines.append("  Un-bypass the + rows' MaskComposite in SAM SCOPE (and each + stage's group).")
