@@ -89,6 +89,20 @@ are this machine's; substitute your own ComfyUI install and repo checkout locati
 
 The package is installed in editable mode in ComfyUI's venv so `import atlas_camera` resolves to this project directory. Changes to Python source are live immediately — no reinstall needed.
 
+### Clone-and-go entry point (repo root `__init__.py`, 2026-07-11)
+
+The repository root is itself a loadable ComfyUI custom node: `git clone` into
+`custom_nodes/` works with no pip install (the root `__init__.py` prepends the
+checkout to sys.path, re-exports the mappings from `atlas_camera.comfy`, and
+sets a RELATIVE `WEB_DIRECTORY = "./atlas_camera/comfy/web"`). The dev
+symlink+editable setup never loads that file. `atlas_camera/comfy/__init__.py`'s
+own `WEB_DIRECTORY` is now the conventional relative `"./web"` (was absolute —
+worked only because os.path.join discards the left side for absolute right
+sides). pyproject carries `[tool.comfy]` (PublisherId `miikejamesburns`) for
+`comfy node publish`; the publisher must exist on registry.comfy.org first.
+Pinned by `tests/test_node_pack_entrypoint.py`, which loads the root file the
+way ComfyUI would.
+
 ### Double-import guard (critical)
 
 `atlas_camera/comfy/__init__.py` is loaded twice at ComfyUI startup:
