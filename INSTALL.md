@@ -12,6 +12,32 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
+## ComfyUI Node Pack Install
+
+**Clone-and-go (simplest — no pip install):** clone the repository straight
+into ComfyUI's `custom_nodes` and restart. The repo-root `__init__.py` puts
+the checkout on `sys.path` and registers all Atlas nodes; the example
+workflows, proxy meshes, and frontend all work from the checkout.
+
+```powershell
+cd <COMFYUI_ROOT>\custom_nodes
+git clone https://github.com/miikejamesburns/atlasCamera.git
+```
+
+No requirements step is needed for the core nodes — ComfyUI already ships
+numpy/Pillow/torch. The `[neural]` features (learned solve, depth, derive
+nodes) additionally need GeoCalib in ComfyUI's venv:
+
+```powershell
+& "<COMFYUI_ROOT>env\Scripts\python.exe" -m pip install "git+https://github.com/cvg/GeoCalib.git" transformers
+```
+
+**Development install (editable + symlink):** keeps the checkout wherever you
+work on it; Python changes are live without reinstalling. See CLAUDE.md's
+Commands section — editable-install `atlas_camera` into ComfyUI's venv and
+symlink `custom_nodes\AtlasCamera` at `atlas_camera\comfy`. Don't combine
+both routes in one ComfyUI install (the nodes would register twice).
+
 ## Optional Image Metadata Support
 
 Install Pillow when you want `solve_still_image()` to infer image size directly

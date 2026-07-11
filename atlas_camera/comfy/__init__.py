@@ -18,7 +18,11 @@ _ATLAS_MODELS_DIR = Path(__file__).resolve().parents[2] / "examples" / "models"
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
 
 # ComfyUI reads this to auto-register any *.js files as frontend extensions.
-WEB_DIRECTORY = os.path.join(os.path.dirname(__file__), "web")
+# RELATIVE per convention (ComfyUI joins it onto the custom node's own dir;
+# registry/manager tooling assumes relative) — was an absolute path, which
+# only worked because os.path.join ignores the left side when the right side
+# is absolute.
+WEB_DIRECTORY = "./web"
 
 # ---------------------------------------------------------------------------
 # Optional: register API routes if PromptServer is available (ComfyUI context).

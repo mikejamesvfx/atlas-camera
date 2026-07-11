@@ -77,6 +77,12 @@ ui = [
     "uvicorn>=0.27",
 ]
 
+# ComfyUI Registry metadata (`comfy node publish`). PublisherId must match a
+# publisher created at registry.comfy.org before the first publish.
+[tool.comfy]
+PublisherId = "miikejamesburns"
+DisplayName = "Atlas Camera"
+
 [tool.setuptools.packages.find]
 include = ["atlas_camera*", "atlas*"]
 
