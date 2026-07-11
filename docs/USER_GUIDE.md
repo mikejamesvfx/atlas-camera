@@ -437,8 +437,52 @@ Six calibrated per-scene workflows ship in `examples/`
 jungle temple, canyon, steep ridge, wide valley — each with a dolly-in bake
 wired to video. Start from the one whose scene most resembles your shot.
 
+## What's new (2026-07-11) — the staged master runs itself
+
+The staged master (`examples/atlas_camera_staged_master_workflow.json`) is now
+the flagship: five fixed layers — a sky card plus far/bg/mid/fg depth bands —
+each its own bypasser-switched stage, with a local VLM configuring the rig per
+image on the first queue.
+
+**The queue rhythm.** Queue 1 runs assessment → camera solve → preview in one
+go (`auto_continue` is on by default; the VLM is offloaded from VRAM right
+after, and the report proves it with a before/after number). Read the report's
+STAGED 5-LAYER PLAN — each layer marked + or − with its segmentation prompt,
+geometry type, and band range — check the camera in the preview, click
+✅ Approve Solve, and Queue 2 runs the enabled stages. Work far → near;
+finished stages re-queue for free.
+
+**The autopilot is visible and overridable.** Everything the VLM decides
+flows into real widget boxes (SAM prompts, per-band `geometry_override`,
+watertight `band_override` boundaries) and can be taken manual by unlinking a
+rail. Absent layers self-disarm: an empty prompt or a SAM no-match falls back
+to plain band membership automatically, and the 🎯 status line says so —
+"not every image has a sky" is now handled end-to-end.
+
+**Per-band geometry.** Bands can build as `relief` (default), `card` (one
+flat plane at the band's median depth — far mountains, a hangar's back wall;
+can't tear, can't wobble) or `ground` (the exact analytic ground plane — a
+desert floor with zero depth-noise bumps). The VLM recommends per band; your
+eye overrides.
+
+**Inpaint quality.** Every occluded band's clean plate runs
+✂ crop → LaMa + 4× upscale → ✂ stitch. The crop's `context_pad_px` is the
+per-band quality slider (the LaMa node internally works at 256² — cropping
+first is worth ~1.5× fill detail, and the upscaler takes the chain to a
+measured 6.5× over the old whole-frame path).
+
+**It debugs itself.** One 🎨 cutout preview per layer (the plate's pixels
+inside the matte, the layer's legend color outside), 🎯 scope statuses in
+plain words, and a 🔍 debug report that writes
+`atlas_debug/master_debug.json` every run with red flags — zero-vertex
+layers, band gaps, scope fallbacks, negative raw depth — so diagnosis starts
+from a file, not a screenshot.
+
+Full walkthrough: the [🏗 Staged Master Operator's Guide](https://claude.ai/code/artifact/174fccee-3200-43f9-83c5-7875ada0b8cf).
+
 ### Where to read more
 
+- [🏗 Staged Master Operator's Guide](https://claude.ai/code/artifact/174fccee-3200-43f9-83c5-7875ada0b8cf) — driving the flagship workflow: queue rhythm, autopilot, quality chain, troubleshooting.
 - [🥞 Build-Up Guide](https://claude.ai/code/artifact/77b10784-a6d5-4def-89bd-84cbfaabc21e) — the layer stack taught stage by stage, with tuning tables.
 - [🎞 Examples Catalog](https://claude.ai/code/artifact/186c3a6a-a778-40f0-8f39-fe29cfa6aace) — every shipping workflow with its scene, settings, and dependencies.
 - [📊 Technical Details](https://claude.ai/code/artifact/4781289c-50dd-47fc-8571-1ef67513b7ba) — the measured numbers behind every default on this page.
