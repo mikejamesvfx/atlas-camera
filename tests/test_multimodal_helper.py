@@ -110,6 +110,20 @@ def test_looping_response_warning_is_list():
     assert isinstance(result.get("warnings"), list)
 
 
+def test_max_tokens_truncation_recovers_partial_data():
+    # A max_tokens cut has NO repetition loop to detect — bracket-closing
+    # recovery must still run (found live: lmstudio/gemma truncated the
+    # assessment JSON and the whole reply fell through to the fallback).
+    content = ('{"scene_summary": "Desert vista.", '
+               '"viability": {"score_0_10": 7, "max_orbit_deg": 20}, '
+               '"staged_layers": {"sky": {"present": true, "sam_prompt": "sky"}, '
+               '"far": {"present": true, "sam_prompt": "rock for')
+    result = _parse_model_json(content)
+    assert result.get("scene_summary") == "Desert vista."
+    assert result.get("viability", {}).get("score_0_10") == 7
+    assert any("truncated" in w for w in result.get("warnings", []))
+
+
 def test_completely_broken_json_returns_fallback():
     result = _parse_model_json("not json at all")
     assert "summary" in result

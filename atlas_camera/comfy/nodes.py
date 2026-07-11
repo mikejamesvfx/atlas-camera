@@ -1023,8 +1023,10 @@ class AtlasAssessImage:
     """VLM pre-flight for the whole DMP pipeline — wire it directly after
     LoadImage, BEFORE anything else consumes the photo.
 
-    A local vision-language model (Ollama / LM Studio / llama.cpp — the same
-    provider layer as `AtlasVLMScaleCues`) analyzes the photo against an
+    A vision-language model (Ollama / LM Studio / llama.cpp locally, or the
+    `openai` provider — any OpenAI-compatible cloud endpoint + api_key, for
+    users without local models; the same provider layer as
+    `AtlasVLMScaleCues`) analyzes the photo against an
     expert instruction prompt encoding Atlas Camera's full settings knowledge
     (`inference.assessor.ATLAS_ASSESSMENT_SYSTEM_PROMPT`): scene type /
     depth-model choice, sky separation, depth-band layer design, disocclusion
@@ -1034,21 +1036,40 @@ class AtlasAssessImage:
     Show Text node); `settings_json` is the machine-readable
     recommended_settings block.
 
-    EXECUTION PAUSE: while `proceed` is False (default) the `image` output
-    returns ExecutionBlocker — everything downstream of the photo is silently
-    skipped, so the first Queue costs only the assessment. Read the report,
-    apply the recommended settings to the graph, then click ▶ Continue
-    Workflow (sets `proceed` and re-queues; the assessment itself is cached
-    per image+provider so continuing doesn't re-run the VLM). Same native
-    pause mechanism as the viewport's 📐 Extract Angle gating.
+    STAGED 5-LAYER PLAN: the assessment also divides the photo into the
+    staged master workflow's five fixed layers (sky + far/bg/mid/fg depth
+    bands) and emits one SAM3 prompt STRING output per layer
+    (`sam_prompt_*`) — wire them into the sky SAM3Segment and the four SAM
+    SCOPE rows' prompt inputs so each row's segmentation prompt comes from
+    the assessment instead of hand-typing. Not every image has every layer:
+    an absent layer (no sky, empty mid band, ...) yields "" and the report
+    says to leave that stage bypassed; only sky falls back to the literal
+    "sky" (a no-match prompt there returns an empty mask, which IS the
+    correct sky mask for a skyless photo).
+
+    EXECUTION PAUSE — opt-in since 2026-07-11 (`auto_continue`, default ON):
+    by default the node is ADVISORY: the assessment runs, its staged
+    prompts/geometry flow downstream, and the same queue continues — the ✅
+    solve gate (and the 📐 patch gate) are the workflow's checkpoints. With
+    `auto_continue` OFF the original hard gate returns: while `proceed` is
+    False the `image` output returns ExecutionBlocker — everything
+    downstream of the photo is silently skipped, so the first Queue costs
+    only the assessment; ▶ Continue Workflow approves THIS image (the
+    assessment is cached per image+provider, so continuing never re-runs the
+    VLM). Same native pause mechanism as 📐 Extract Angle gating.
 
     Advisory only, per the LLM-confirm principle: the VLM never changes a
     setting itself — it recommends, the artist decides. Fails soft to a
     "provider unreachable" report; `proceed` still works without an
     assessment.
     """
-    RETURN_TYPES = ("IMAGE", "STRING", "STRING")
-    RETURN_NAMES = ("image", "report", "settings_json")
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING",
+                    "STRING", "STRING", "STRING", "STRING", "STRING",
+                    "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("image", "report", "settings_json",
+                    "sam_prompt_sky", "sam_prompt_far", "sam_prompt_bg",
+                    "sam_prompt_mid", "sam_prompt_fg",
+                    "geom_far", "geom_bg", "geom_mid", "geom_fg")
     FUNCTION = "assess"
     CATEGORY = "Atlas Camera"
     # OUTPUT_NODE so the assessment ALWAYS runs and shows its report on the
@@ -1064,9 +1085,12 @@ class AtlasAssessImage:
                 "image": ("IMAGE",),
             },
             "optional": {
-                "provider": (["ollama", "lmstudio", "llamacpp"], {"default": "ollama",
-                    "tooltip": "Local VLM server. Blank model/base_url use each provider's own "
-                               "defaults (same conventions as AtlasVLMScaleCues)."}),
+                "provider": (["ollama", "lmstudio", "llamacpp", "openai"], {"default": "ollama",
+                    "tooltip": "VLM backend. ollama/lmstudio/llamacpp are local servers; "
+                               "'openai' is any OpenAI-compatible CLOUD endpoint (api.openai.com "
+                               "by default, OpenRouter etc. via base_url) for users without local "
+                               "models — needs api_key. Blank model/base_url use each provider's "
+                               "own defaults (same conventions as AtlasVLMScaleCues)."}),
                 "model": ("STRING", {"default": "",
                     "tooltip": "Vision model id; blank = provider default (ollama: gemma3:4b)."}),
                 "base_url": ("STRING", {"default": ""}),
@@ -1086,16 +1110,44 @@ class AtlasAssessImage:
                                "changes, the gate re-arms automatically instead of running a "
                                "stale approval. Leave empty when toggling proceed by hand "
                                "(empty = unconditional)."}),
+                # APPENDED last (widgets_values is positional — never insert).
+                "api_key": ("STRING", {"default": "",
+                    "tooltip": "API key for the 'openai' cloud provider (ignored by local "
+                               "providers). SAVED INTO THE WORKFLOW FILE — prefer leaving this "
+                               "blank and setting the OPENAI_API_KEY environment variable so "
+                               "shared workflows never carry your key."}),
+                "offload_model": ("BOOLEAN", {"default": False,
+                    "tooltip": "Free the VLM's VRAM after a SUCCESSFUL assessment so the heavy "
+                               "pipeline (depth/SAM/LaMa) doesn't fight it for memory — the "
+                               "assessment is cached per image, so ▶ Continue never reloads the "
+                               "model. Per provider: ollama = keep_alive:0 (clean unload); "
+                               "lmstudio = request ttl for JIT loads + the 'lms' CLI when on "
+                               "PATH for GUI-loaded models; llamacpp = NOT possible (the server "
+                               "owns its model — restart it to free VRAM); openai = nothing "
+                               "local. A failed assessment keeps the model warm for the retry. "
+                               "The report shows what actually happened."}),
+                "auto_continue": ("BOOLEAN", {"default": True,
+                    "tooltip": "ON (default): advisory mode — the assessment runs, its SAM "
+                               "prompts/geometry flow downstream, and the SAME queue continues "
+                               "without a ▶ Continue click; the ✅ solve gate (and the later 📐 "
+                               "patch gate) become the workflow's checkpoints. Turn OFF to "
+                               "restore the hard per-image gate: the image output blocks until "
+                               "▶ Continue Workflow approves THIS image."}),
             },
         }
 
     def assess(self, image, provider="ollama", model="", base_url="",
-               extra_instructions="", proceed=False, approved_for="", **_extra):
+               extra_instructions="", proceed=False, approved_for="",
+               api_key="", offload_model=False, auto_continue=True, **_extra):
         # **_extra: API-format exports can serialize the ▶ Continue Workflow
         # BUTTON widget as a bogus input key — tolerate unknown kwargs.
         import hashlib
 
-        from atlas_camera.inference.assessor import assess_image
+        from atlas_camera.inference.assessor import (
+            assess_image,
+            staged_layer_geometry,
+            staged_layer_prompts,
+        )
 
         # Cache per image+provider settings so flipping `proceed` (which
         # re-executes this node) doesn't re-run a 30-120s VLM call.
@@ -1108,7 +1160,9 @@ class AtlasAssessImage:
                 cached = assess_image(
                     tmp, provider=provider, model=model,
                     base_url=base_url.strip() or None,
-                    extra_instructions=extra_instructions)
+                    api_key=api_key.strip() or None,
+                    extra_instructions=extra_instructions,
+                    offload_model=bool(offload_model))
             finally:
                 os.unlink(tmp)
             # Never cache FAILED assessments: the user typically starts the
@@ -1129,8 +1183,12 @@ class AtlasAssessImage:
         # manual unconditional override.
         img_fp = _image_fingerprint(image)
         report = cached.report
-        effective_proceed = bool(proceed) and (not approved_for or approved_for == img_fp)
-        if proceed and approved_for and approved_for != img_fp:
+        # auto_continue (default ON): advisory mode — never block; the solve
+        # gate downstream is the first checkpoint. OFF restores the hard
+        # per-image ▶ Continue gate with its stale-approval re-arming.
+        effective_proceed = bool(auto_continue) or (
+            bool(proceed) and (not approved_for or approved_for == img_fp))
+        if not auto_continue and proceed and approved_for and approved_for != img_fp:
             report = ("*** GATE RE-ARMED: the input image changed since ▶ Continue was "
                       "clicked — review the fresh assessment below, then ▶ Continue "
                       "again for this image. ***\n\n" + report)
@@ -1140,10 +1198,29 @@ class AtlasAssessImage:
         else:
             blocker = _execution_blocker()
             img_out = blocker if blocker is not None else image
+        # Staged 5-layer SAM prompts + per-band geometry recommendations —
+        # plain strings, NOT gated: everything they feed (SAM3 nodes /
+        # AtlasCleanPlateLayer) also consumes the gated image via the plate
+        # rail, so the image blocker already pauses it. geom_* wires into
+        # AtlasCleanPlateLayer.geometry_override ("" = no recommendation,
+        # the layer node's own band_geometry combo applies).
+        sam = staged_layer_prompts(cached.payload if cached.ok else {})
+        geom = staged_layer_geometry(cached.payload if cached.ok else {})
+
         # ui.text renders the report directly on the node (atlas_assess.js);
         # ui.fingerprint is what the ▶ button stamps into approved_for.
-        return {"ui": {"text": [report], "fingerprint": [img_fp]},
-                "result": (img_out, report, settings_json)}
+        # ui.sam_prompts / ui.sam_geometry let the frontend mirror the
+        # resolved values into LINKED widgets — a widget converted to a
+        # linked input keeps displaying its stale typed text otherwise
+        # (found live: values flowed at execution but were invisible).
+        return {"ui": {"text": [report], "fingerprint": [img_fp],
+                       "sam_prompts": [sam["sky"], sam["far"], sam["bg"],
+                                       sam["mid"], sam["fg"]],
+                       "sam_geometry": [geom["far"], geom["bg"],
+                                        geom["mid"], geom["fg"]]},
+                "result": (img_out, report, settings_json,
+                           sam["sky"], sam["far"], sam["bg"], sam["mid"], sam["fg"],
+                           geom["far"], geom["bg"], geom["mid"], geom["fg"])}
 
 
 _ATLAS_ASSESS_CACHE: dict = {}
@@ -1246,9 +1323,11 @@ class AtlasVLMScaleCues:
 
     Runs a local VLM (LM Studio / llama.cpp / Ollama) to find known-size objects
     (people, doors, cars, …) and emits ``scale_references`` JSON for
-    AtlasApplyScaleReferences. Requires a running local VLM server and the model to
-    return pixel bounding boxes. Advisory only — nothing is applied without the
-    artist confirming in AtlasApplyScaleReferences.
+    AtlasApplyScaleReferences. Requires a running local VLM server — or, for
+    users without local models, the ``openai`` provider: any OpenAI-compatible
+    cloud endpoint via ``base_url`` + ``api_key``. The model must return pixel
+    bounding boxes. Advisory only — nothing is applied without the artist
+    confirming in AtlasApplyScaleReferences.
     """
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("scale_references", "summary")
@@ -1260,14 +1339,22 @@ class AtlasVLMScaleCues:
         return {
             "required": {"image": ("IMAGE",)},
             "optional": {
-                "provider": (["ollama", "lmstudio", "llamacpp"], {"default": "ollama"}),
+                "provider": (["ollama", "lmstudio", "llamacpp", "openai"], {"default": "ollama",
+                    "tooltip": "ollama/lmstudio/llamacpp are local; 'openai' is any "
+                               "OpenAI-compatible cloud endpoint (needs api_key)."}),
                 "model": ("STRING", {"default": ""}),
                 "base_url": ("STRING", {"default": "", "tooltip": "Blank = provider default URL"}),
                 "min_confidence": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05}),
+                # APPENDED last (widgets_values is positional — never insert).
+                "api_key": ("STRING", {"default": "",
+                    "tooltip": "API key for the 'openai' cloud provider (ignored by local "
+                               "providers). SAVED INTO THE WORKFLOW FILE — prefer the "
+                               "OPENAI_API_KEY environment variable for shared workflows."}),
             },
         }
 
-    def analyze(self, image, provider="ollama", model="", base_url="", min_confidence=0.0):
+    def analyze(self, image, provider="ollama", model="", base_url="", min_confidence=0.0,
+                api_key=""):
         from atlas_camera.inference.multimodal_helper import (
             create_multimodal_provider,
             scale_references_from_observation,
@@ -1277,7 +1364,8 @@ class AtlasVLMScaleCues:
         tmp = _save_image_tensor_to_tmp(image)
         try:
             candidate_ids = [r.id for r in load_scale_references()]
-            prov = create_multimodal_provider(provider, model=model, base_url=base_url or None)
+            prov = create_multimodal_provider(provider, model=model, base_url=base_url or None,
+                                              api_key=api_key.strip() or None)
             obs = prov.analyze_image(tmp, candidate_reference_ids=candidate_ids)
             refs = scale_references_from_observation(obs, min_confidence=min_confidence)
             lines = [obs.summary or "VLM analysis complete."]
@@ -1910,6 +1998,29 @@ def _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct):
     else:
         far = float("inf")
     return near, far
+
+
+def _band_resolution_validity(setup, band_ref_mask):
+    """Validity used ONLY for percentile band-edge resolution.
+
+    Per-layer scoped excludes (sky ∪ NOT(segment), the 🎯 scope rows) change
+    each layer's depth POPULATION, so the same near/far percentages resolve
+    to different metres per layer — the debug report flagged real metric
+    GAPs between adjacent bands (mid far 8.26m vs bg near 9.46m on the same
+    run). Wiring the same `band_ref_mask` (the plain sky mask) into every
+    band node makes all layers resolve band edges over one shared population
+    again, restoring the "bands can never drift" contract. Default (None) =
+    setup.valid, i.e. the legacy behavior, so existing calibrated workflows
+    are untouched.
+    """
+    if band_ref_mask is None:
+        return setup.valid
+    np = _require_numpy()
+    v = np.isfinite(setup.metric) & (setup.metric > 1e-6)
+    ref = _resolve_exclude_mask(band_ref_mask, setup.height, setup.width)
+    if ref is not None:
+        v = v & ~ref.astype(bool)
+    return v
 
 
 class AtlasDepthMap:
@@ -4785,12 +4896,20 @@ class AtlasDepthLayerMask:
                     "tooltip": "Wire ONE AtlasDepthBandSplit into every band node (with "
                                "band_side set) so the fg/bg boundary lives in exactly one "
                                "widget and the layers can never drift apart."}),
+                "band_ref_mask": ("MASK", {
+                    "tooltip": "Exclusion used ONLY for resolving near/far percentages to "
+                               "metres. When exclude_mask carries per-layer scoping (🎯 scope "
+                               "rows), each layer's depth population differs and the shared "
+                               "band edges DRIFT apart (metric gaps between adjacent bands — "
+                               "debug-report finding). Wire the plain SKY mask here on every "
+                               "band node so all layers resolve identical edges. Unwired = "
+                               "legacy behavior (band edges from exclude_mask's population)."}),
             },
         }
 
     def generate(self, solve, depth, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5, feather_px=4,
                  compute_hole_mask=False, relief_grid=384, depth_edge_rel=1.5, exclude_mask=None,
-                 fill_occluded=False, band_side="manual", band_split=None):
+                 fill_occluded=False, band_side="manual", band_split=None, band_ref_mask=None):
         np = _require_numpy()
         torch = _require_torch()
 
@@ -4801,7 +4920,9 @@ class AtlasDepthLayerMask:
             return (zero, zero.clone(), zero.clone())
         metric, valid = setup.metric, setup.valid
 
-        near, far = _apply_band_split(band_split, band_side, metric, valid, near_m, far_m, near_pct, far_pct)
+        near, far = _apply_band_split(band_split, band_side, metric,
+                                      _band_resolution_validity(setup, band_ref_mask),
+                                      near_m, far_m, near_pct, far_pct)
 
         layer_mask = valid & (metric >= near) & (metric <= far)
         occlusion_mask = valid & (metric < near)
@@ -4842,6 +4963,521 @@ class AtlasDepthLayerMask:
         occ_t = torch.from_numpy(occlusion_mask.astype(np.float32)).unsqueeze(0)
         hole_t = torch.from_numpy(hole_mask_arr).unsqueeze(0)
         return (layer_t, occ_t, hole_t)
+
+
+class AtlasDebugReport:
+    """🔍 One-stop machine-readable diagnostic of the layered master scene.
+
+    Wire the FINAL solve (whatever feeds the master viewport) plus, optionally,
+    the shared depth, the 🎯 scope-status strings, and the 🧭 VLM report. Every
+    execution introspects the whole stack — camera summary, every
+    ProjectionSource's geometry type / vertex count / band range / matte
+    coverage — runs red-flag analysis (zero-vertex layers, band gaps/overlaps,
+    near-empty mattes, no-match scope fallbacks), renders a human-readable
+    report ON the node, and writes the full structured JSON to a STABLE path
+    (`file_path`, default `atlas_debug/master_debug.json` under ComfyUI's CWD).
+
+    The JSON exists specifically so an AI assistant (or any tool) can read one
+    file and see the same facts that otherwise take a live payload/history
+    autopsy to reconstruct — built after exactly such a session: two layers
+    silently shipped zero-vertex meshes and only a viewport-payload dump
+    revealed it. Zero heavy computation: everything is read off data the solve
+    already carries (matte coverage decodes the embedded PNGs, the one
+    non-trivial step).
+    """
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("report", "json_path")
+    FUNCTION = "report"
+    CATEGORY = "Atlas Camera"
+    OUTPUT_NODE = True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"solve": ("ATLAS_SOLVE",)},
+            "optional": {
+                "depth": ("ATLAS_DEPTH_MAP",),
+                "file_path": ("STRING", {"default": "atlas_debug/master_debug.json",
+                    "tooltip": "Stable JSON path (relative to ComfyUI's working directory) — "
+                               "keep it constant so external tooling can always find the "
+                               "latest diagnostic."}),
+                "status_1": ("STRING", {"forceInput": True}),
+                "status_2": ("STRING", {"forceInput": True}),
+                "status_3": ("STRING", {"forceInput": True}),
+                "status_4": ("STRING", {"forceInput": True}),
+                "vlm_report": ("STRING", {"forceInput": True}),
+            },
+        }
+
+    @staticmethod
+    def _matte_coverage(mask_b64):
+        if not mask_b64:
+            return None
+        try:
+            np = _require_numpy()
+            PILImage = _require_pil()
+            raw = base64.b64decode(mask_b64.split(",", 1)[-1])
+            arr = np.asarray(PILImage.open(io.BytesIO(raw)).convert("L"))
+            return round(float((arr > 127).mean()), 4)
+        except Exception:
+            return None
+
+    def report(self, solve, depth=None, file_path="atlas_debug/master_debug.json",
+               status_1="", status_2="", status_3="", status_4="", vlm_report="",
+               **_extra):
+        import datetime
+
+        flags: list = []
+        cam = solve.camera
+        intr, extr = cam.intrinsics, cam.extrinsics
+        # Camera height from the full 4x4 (the view-matrix convention rule) —
+        # extrinsics.camera_position can legitimately be an unset default.
+        cam_y = None
+        if extr is not None and extr.camera_view_matrix is not None:
+            try:
+                np = _require_numpy()
+                cam_y = round(float(np.linalg.inv(np.asarray(
+                    extr.camera_view_matrix, dtype=float))[1, 3]), 4)
+            except Exception:
+                cam_y = None
+        camera = {
+            "image_wh": [intr.image_width, intr.image_height],
+            "focal_mm": intr.focal_length_mm, "sensor_mm": intr.sensor_width_mm,
+            "fx_px": intr.fx_px, "camera_height_m": cam_y,
+            "confidence": getattr(solve, "confidence", None),
+            "source_method": getattr(solve, "source_method", None),
+            "scale_source": (solve.debug_metadata or {}).get("scale_source"),
+        }
+        if cam_y is not None and cam_y <= 0:
+            flags.append("camera height <= 0 — ground-based features (ground depth, "
+                         "band_geometry=ground) will fail")
+
+        sources = []
+        for src in getattr(solve, "projection_sources", None) or []:
+            meta = src.metadata or {}
+            n_verts = sum(int((g.metadata or {}).get("n_vertices") or 0)
+                          for g in (src.proxy_geometry or []))
+            n_faces = sum(int((g.metadata or {}).get("n_faces") or 0)
+                          for g in (src.proxy_geometry or []))
+            cov = self._matte_coverage(getattr(src, "mask_b64", None))
+            entry = {
+                "name": src.name, "priority": src.priority,
+                "projection_mode": meta.get("projection_mode"),
+                "band_geometry": meta.get("band_geometry"),
+                "near_m": meta.get("near_m"), "far_m": meta.get("far_m"),
+                "n_vertices": n_verts, "n_faces": n_faces,
+                "n_filled_cells": meta.get("n_filled_cells"),
+                "source_camera_wh": [src.camera.intrinsics.image_width,
+                                     src.camera.intrinsics.image_height]
+                                    if src.camera else None,
+                "matte_coverage": cov,
+                "has_extend_mask": bool(getattr(src, "extend_mask_b64", None)),
+            }
+            sources.append(entry)
+            if n_verts == 0:
+                flags.append(f"{src.name}: ZERO vertices — this layer contributes no "
+                             "geometry (empty band, exclude-everything scope, or a "
+                             "failed flat-mode region)")
+            elif cov is not None and cov < 0.005:
+                flags.append(f"{src.name}: matte covers only {cov:.2%} of the frame — "
+                             "layer will paint almost nothing")
+
+        # Band continuity (clean-plate band layers only, sorted by near edge).
+        bands = sorted((s for s in sources
+                        if s["projection_mode"] == "clean_plate" and s["near_m"] is not None
+                        or (s["near_m"] is None and s["far_m"] is not None)),
+                       key=lambda s: s["near_m"] or 0.0)
+        for a, b in zip(bands, bands[1:]):
+            fa, nb = a.get("far_m"), b.get("near_m")
+            if fa is not None and nb is not None and abs(fa - nb) > max(0.05, 0.02 * fa):
+                kind = "GAP" if nb > fa else "OVERLAP"
+                flags.append(f"band {kind} between {a['name']} (far {fa:.2f}m) and "
+                             f"{b['name']} (near {nb:.2f}m)")
+
+        statuses = {f"status_{i}": s for i, s in
+                    enumerate((status_1, status_2, status_3, status_4), 1) if s}
+        for k, s in statuses.items():
+            if "FALLBACK" in s:
+                flags.append(f"scope {k}: {s}")
+
+        data = {
+            "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            "camera": camera,
+            "depth": ({"model_id": depth.model_id, "is_metric": depth.is_metric,
+                       "near": depth.near, "far": depth.far,
+                       "wh": [depth.image_width, depth.image_height]}
+                      if depth is not None else None),
+            "shot_cam": (solve.shot_cam.to_dict()
+                         if getattr(solve, "shot_cam", None) and
+                         hasattr(solve.shot_cam, "to_dict") else None),
+            "projection_sources": sources,
+            "primary_proxy_geometry": [
+                {"name": g.name, "type": g.primitive_type,
+                 "n_vertices": (g.metadata or {}).get("n_vertices")}
+                for g in (getattr(solve.projection_scene, "proxy_geometry", None) or [])],
+            "scope_status": statuses,
+            "vlm_report": vlm_report or None,
+            "flags": flags,
+        }
+        path = os.path.abspath(file_path or "atlas_debug/master_debug.json")
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=1, ensure_ascii=False)
+        except OSError as exc:
+            flags.append(f"could not write {path}: {exc}")
+            path = ""
+
+        lines = ["ATLAS MASTER DEBUG", "=" * 18, ""]
+        lines.append(f"camera  {camera['image_wh'][0]}x{camera['image_wh'][1]}  "
+                     f"{camera['focal_mm'] or '?'}mm  height {cam_y if cam_y is not None else '?'}m  "
+                     f"conf {camera['confidence']}")
+        lines.append("")
+        lines.append("LAYERS (name / geometry / band / verts / matte)")
+        for s in sources:
+            band = (f"{s['near_m'] or 0:.1f}-" +
+                    (f"{s['far_m']:.1f}m" if s["far_m"] is not None else "inf"))
+            cov = f"{s['matte_coverage']:.1%}" if s["matte_coverage"] is not None else "-"
+            lines.append(f"  {s['name']:10s} {s['band_geometry'] or '-':7s} {band:12s} "
+                         f"{s['n_vertices']:>8d} verts  matte {cov}")
+        if statuses:
+            lines += ["", "SCOPE STATUS"] + [f"  {v}" for v in statuses.values()]
+        lines += ["", f"FLAGS ({len(flags)})"] + ([f"  ! {f}" for f in flags] or ["  (none — stack looks healthy)"])
+        if path:
+            lines += ["", f"full JSON: {path}"]
+        report = "\n".join(lines)
+        return {"ui": {"text": [report]}, "result": (report, path)}
+
+
+# Hand-mirrors atlas_blockout.js's LAYER_DEBUG_PALETTE / LAYER_DEBUG_PRIMARY
+# (the 🎨 Layers legend) — keep both in sync by hand, the accepted-duplication
+# pattern. Index = position in projection_sources; -1 = the primary teal.
+_LAYER_DEBUG_PRIMARY_HEX = "2fd6c3"
+_LAYER_DEBUG_PALETTE_HEX = ("ff6a3d", "3d8bff", "ffd23d", "c95aff", "6aff5a", "ff5aa8")
+
+
+class AtlasLayerPreview:
+    """🎨 Cut-out layer preview: the plate's pixels where this layer's matte
+    is, and the layer's 🎨 Layers debug color (opaque) everywhere else — one
+    image that shows WHAT the layer will project AND which layer it is, in
+    the exact color the master viewport's 🎨 Layers legend uses for it.
+
+    Replaces the mask-preview + plate-preview pairs in the staged master's
+    per-stage debug strip (user feedback: "the preview should only show
+    already cut-out layers, then we don't need the mask preview").
+    `layer_index` is the layer's position in `projection_sources` (the 🎨
+    legend order — staged master: sky=0, far=1, bg=2, mid=3, fg=4; -1 = the
+    primary teal); `color_hex` overrides the palette when set.
+    """
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "preview"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE", {"tooltip": "The layer's plate (post-inpaint)."}),
+                "mask": ("MASK", {"tooltip": "The layer's matte (band layer_mask / sky mask)."}),
+            },
+            "optional": {
+                "layer_index": ("INT", {"default": 0, "min": -1, "max": 15,
+                    "tooltip": "Position in projection_sources = the 🎨 Layers legend order "
+                               "(staged master: sky=0, far=1, bg=2, mid=3, fg=4). -1 = primary "
+                               "teal. Sets the opaque surround color."}),
+                "color_hex": ("STRING", {"default": "",
+                    "tooltip": "Optional explicit hex color (e.g. ff6a3d) — overrides "
+                               "layer_index's palette pick."}),
+            },
+        }
+
+    def preview(self, image, mask, layer_index=0, color_hex=""):
+        torch = _require_torch()
+        import torch.nn.functional as F
+
+        hexs = (color_hex or "").strip().lstrip("#")
+        if not hexs:
+            hexs = (_LAYER_DEBUG_PRIMARY_HEX if int(layer_index) < 0 else
+                    _LAYER_DEBUG_PALETTE_HEX[int(layer_index) % len(_LAYER_DEBUG_PALETTE_HEX)])
+        try:
+            rgb = tuple(int(hexs[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+        except (ValueError, IndexError):
+            rgb = (1.0, 0.0, 1.0)  # loud magenta for a malformed hex
+        h, w = int(image.shape[1]), int(image.shape[2])
+        m = mask if mask.dim() == 3 else mask.unsqueeze(0)
+        if tuple(m.shape[1:]) != (h, w):
+            m = F.interpolate(m.unsqueeze(1).float(), size=(h, w), mode="nearest").squeeze(1)
+        mm = (m[:1] > 0.5).float().unsqueeze(-1)
+        color = torch.tensor(rgb, dtype=image.dtype, device=image.device).view(1, 1, 1, 3)
+        out = image[:, :, :, :3] * mm + color * (1.0 - mm)
+        return (out,)
+
+
+class AtlasScopeMask:
+    """🎯 Per-band scope exclude builder — `sky ∪ NOT(grow(segment))`, with
+    SELF-DISARMING fallbacks so a scope row can stay permanently active.
+
+    Replaces the staged master's hand-built GrowMask → InvertMask →
+    MaskComposite scope rows. The v4 design relied on the ARTIST bypassing a
+    row when its layer is absent; with `AtlasAssessImage` auto-feeding the
+    prompts that became a live trap (found on a real run): an ACTIVE row
+    whose prompt is "" (VLM says the layer is absent), or whose prompt the
+    segmenter simply can't match ("desert floor and boulder" scored 0.0%
+    coverage on SAM3), inverted an EMPTY segment into an exclude-everything
+    mask and silently emptied the whole layer to zero mesh.
+
+    Fallback rule: no prompt, no segment wired, or segment coverage below
+    `min_coverage_pct` → the output is the plain sky mask (= band-only
+    behavior, exactly what a bypassed row used to forward). The `status`
+    output says which path fired. `segment_mask` is LAZY: with an empty
+    prompt the segmenter branch is never even executed.
+    """
+    RETURN_TYPES = ("MASK", "STRING")
+    RETURN_NAMES = ("exclude_mask", "status")
+    FUNCTION = "build"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "sky_mask": ("MASK", {"tooltip": "The always-on base exclusion (SAM sky mask). "
+                                                 "Every fallback path returns exactly this."}),
+            },
+            "optional": {
+                "prompt": ("STRING", {"default": "",
+                    "tooltip": "The scope prompt — wire the same sam_* rail that feeds this "
+                               "row's SAM3Segment. Empty = this layer is unscoped/absent: the "
+                               "node returns the sky mask alone and (via lazy evaluation) the "
+                               "segmenter never runs."}),
+                "segment_mask": ("MASK", {"lazy": True,
+                    "tooltip": "The SAM3 segment for this band's content. Only evaluated when "
+                               "prompt is non-empty."}),
+                "grow_px": ("INT", {"default": 16, "min": 0, "max": 256, "step": 1,
+                    "tooltip": "Dilate the segment before inverting (keeps silhouettes from "
+                               "clipping — the old GrowMask 16 default)."}),
+                "min_coverage_pct": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 50.0,
+                    "step": 0.1,
+                    "tooltip": "If the segment covers less than this % of the frame, treat the "
+                               "prompt as a NO-MATCH and fall back to band-only instead of "
+                               "excluding the whole layer."}),
+            },
+        }
+
+    def check_lazy_status(self, sky_mask, prompt="", segment_mask=None,
+                          grow_px=16, min_coverage_pct=0.2, **_extra):
+        if (prompt or "").strip() and segment_mask is None:
+            return ["segment_mask"]
+        return []
+
+    def build(self, sky_mask, prompt="", segment_mask=None, grow_px=16,
+              min_coverage_pct=0.2, **_extra):
+        torch = _require_torch()
+        import torch.nn.functional as F
+
+        sky = sky_mask if sky_mask.dim() == 3 else sky_mask.unsqueeze(0)
+        prompt = (prompt or "").strip()
+        if not prompt:
+            return (sky, "band-only (no scope prompt — layer absent or unscoped)")
+        if segment_mask is None:
+            return (sky, f"band-only (prompt '{prompt}' but no segment wired)")
+        seg = segment_mask if segment_mask.dim() == 3 else segment_mask.unsqueeze(0)
+        if tuple(seg.shape[1:]) != tuple(sky.shape[1:]):
+            seg = F.interpolate(seg.unsqueeze(1).float(), size=tuple(sky.shape[1:]),
+                                mode="nearest").squeeze(1)
+        coverage = float((seg[0] > 0.5).float().mean())
+        if coverage < float(min_coverage_pct) / 100.0:
+            return (sky, f"band-only FALLBACK — segment for '{prompt}' covered "
+                         f"{coverage:.2%} of the frame (no-match); scoping skipped "
+                         "so the layer keeps its full band")
+        grown = seg
+        if grow_px and int(grow_px) > 0:
+            k = int(grow_px) * 2 + 1
+            grown = F.max_pool2d(seg.unsqueeze(1).float(), k, stride=1,
+                                 padding=k // 2).squeeze(1)
+        excl = torch.clamp(sky.float() + (1.0 - (grown > 0.5).float()), 0.0, 1.0)
+        return (excl, f"scoped to '{prompt}' ({coverage:.1%} segment, grown {int(grow_px)}px)")
+
+
+class AtlasInpaintCrop:
+    """✂ Crop a padded box around the inpaint mask BEFORE the inpaint model.
+
+    The quality lever for LaMa-class inpainters, found by reading the
+    installed comfyui-inpaint-nodes source: INPAINT_InpaintWithModel squashes
+    the ENTIRE image to a 256×256 square for LaMa (512 for MAT), inpaints
+    there, and bilinear-upscales back — on a 4K plate that is a 16× linear
+    downscale, which IS the documented "LaMa smears fine structure" ceiling.
+    Cropping first spends that fixed internal budget on the hole's
+    neighborhood instead of the whole frame.
+
+    `context_pad_px` is the quality/context tradeoff slider: tight = more
+    effective resolution in the fill, but less surrounding texture for the
+    model to sample; wide = more context, softer fill. Orchestration only
+    (a tensor crop) — the inpainting itself stays in the external node
+    packs, per the repo's GPL scope boundary.
+
+    Pair with `AtlasInpaintStitch` (wire `crop_region` across). Multiple
+    disjoint holes are covered by ONE union bounding box — if holes span the
+    whole frame the crop degrades gracefully toward the full image, i.e.
+    today's behavior, never worse.
+    """
+    RETURN_TYPES = ("IMAGE", "MASK", "ATLAS_CROP_REGION")
+    RETURN_NAMES = ("cropped_image", "cropped_mask", "crop_region")
+    FUNCTION = "crop"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "mask": ("MASK", {"tooltip": "The inpaint mask (e.g. INPAINT_ExpandMask's "
+                                             "output). The crop is its bounding box plus "
+                                             "context_pad_px on every side."}),
+            },
+            "optional": {
+                "context_pad_px": ("INT", {"default": 128, "min": 16, "max": 2048, "step": 8,
+                    "tooltip": "THE quality slider: padding around the mask's bounding box. "
+                               "Tight (32-64) = the inpainter's fixed internal resolution is "
+                               "spent almost entirely on the hole → maximum detail, but little "
+                               "surrounding texture to sample. Wide (256+) = more context, "
+                               "softer fill. 128 is a good 4K-plate default."}),
+            },
+        }
+
+    def crop(self, image, mask, context_pad_px=128):
+        torch = _require_torch()
+        import torch.nn.functional as F
+
+        h, w = int(image.shape[1]), int(image.shape[2])
+        m = mask if mask.dim() == 3 else mask.unsqueeze(0)
+        if tuple(m.shape[1:]) != (h, w):
+            m = F.interpolate(m.unsqueeze(1).float(), size=(h, w), mode="nearest").squeeze(1)
+        hot = m[0] > 0.5
+        ys, xs = torch.nonzero(hot, as_tuple=True)
+        if len(ys) == 0:
+            # Empty mask: nothing to inpaint — pass through, full-frame region.
+            region = {"x0": 0, "y0": 0, "x1": w, "y1": h, "width": w, "height": h}
+            return (image, m, region)
+        pad = max(0, int(context_pad_px))
+        y0 = max(0, int(ys.min()) - pad)
+        y1 = min(h, int(ys.max()) + 1 + pad)
+        x0 = max(0, int(xs.min()) - pad)
+        x1 = min(w, int(xs.max()) + 1 + pad)
+        region = {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "width": w, "height": h}
+        return (image[:, y0:y1, x0:x1, :], m[:, y0:y1, x0:x1], region)
+
+
+class AtlasInpaintStitch:
+    """✂ Paste an inpainted crop back into the original frame.
+
+    The other half of `AtlasInpaintCrop` — wire its `crop_region` output
+    here. If the inpainted crop comes back at a different size (an upscale
+    model on the inpaint node, a generative inpainter snapping to
+    multiples-of-8), it is resized to the region first.
+
+    By default the whole rectangle is pasted — exact for LaMa/MAT, whose
+    node already returns original pixels outside the mask. For generative
+    inpainters that re-render the entire crop, wire the SAME mask into
+    `mask` (and optionally feather it) so only masked pixels land back.
+    """
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "stitch"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "original_image": ("IMAGE",),
+                "inpainted_crop": ("IMAGE",),
+                "crop_region": ("ATLAS_CROP_REGION",),
+            },
+            "optional": {
+                "mask": ("MASK", {"tooltip": "Optional: restrict the paste to these pixels "
+                                             "(full-frame mask, same one the crop used). Needed "
+                                             "only for inpainters that re-render the whole crop; "
+                                             "LaMa/MAT return original pixels outside the mask, "
+                                             "so the default whole-rect paste is already exact."}),
+                "feather_px": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1,
+                    "tooltip": "Soften the mask edge by this many pixels when a mask is wired "
+                               "(box blur) — hides seams from generative inpainters. 0 = hard."}),
+            },
+        }
+
+    def stitch(self, original_image, inpainted_crop, crop_region, mask=None, feather_px=0):
+        torch = _require_torch()
+        import torch.nn.functional as F
+
+        x0, y0, x1, y1 = (int(crop_region[k]) for k in ("x0", "y0", "x1", "y1"))
+        rh, rw = y1 - y0, x1 - x0
+        crop = inpainted_crop
+        if tuple(crop.shape[1:3]) != (rh, rw):
+            crop = F.interpolate(crop.permute(0, 3, 1, 2), size=(rh, rw),
+                                 mode="bilinear", align_corners=False).permute(0, 2, 3, 1)
+        out = original_image.clone()
+        if mask is None:
+            out[:, y0:y1, x0:x1, :] = crop.to(out.dtype)
+            return (out,)
+        m = mask if mask.dim() == 3 else mask.unsqueeze(0)
+        h, w = int(original_image.shape[1]), int(original_image.shape[2])
+        if tuple(m.shape[1:]) != (h, w):
+            m = F.interpolate(m.unsqueeze(1).float(), size=(h, w), mode="nearest").squeeze(1)
+        m = m[:, y0:y1, x0:x1].unsqueeze(1).float()
+        if feather_px and int(feather_px) > 0:
+            k = int(feather_px) * 2 + 1
+            m = F.avg_pool2d(F.pad(m, (k // 2,) * 4, mode="replicate"), k, stride=1)
+        m = m.squeeze(1).unsqueeze(-1).clamp(0, 1)
+        region_orig = out[:, y0:y1, x0:x1, :]
+        out[:, y0:y1, x0:x1, :] = region_orig * (1.0 - m) + crop.to(out.dtype) * m
+        return (out,)
+
+
+_BAND_GEOMETRY_CHOICES = ("relief", "card", "ground")
+
+
+def _resolve_band_geometry(band_geometry: str, geometry_override: str) -> str:
+    """The override STRING (usually wired from AtlasAssessImage's geom_*
+    outputs — ComfyUI rejects STRING→combo links, same constraint as
+    patch_view_override) WINS over the combo when non-empty. Errors loudly
+    on garbage, per the patch-view-override precedent."""
+    value = (geometry_override or "").strip().lower() or (band_geometry or "relief")
+    if value not in _BAND_GEOMETRY_CHOICES:
+        raise ValueError(
+            f"Unknown band geometry '{value}' — expected one of "
+            f"{', '.join(_BAND_GEOMETRY_CHOICES)}.")
+    return value
+
+
+def _analytic_ground_forward_depth(extr, fx, fy, cx, cy, height, width):
+    """Per-pixel forward depth of the ray∩(Y=0 ground plane) intersection,
+    NaN where the ray never hits ground (at/above horizon) or the camera is
+    at/below ground. Matches build_relief_mesh's back-projection EXACTLY:
+    with the unnormalized camera ray ((u-cx)/fx, -(v-cy)/fy, -1), the ray
+    parameter IS forward depth, so feeding this array back through the mesh
+    builder lands every vertex on Y=0 by construction (same ray-plane math
+    as _ground_depth_compute / the viewport's DEPTH_FRAGMENT_SHADER)."""
+    np = _require_numpy()
+    vm = np.array(extr.camera_view_matrix, dtype=np.float64)
+    c2w = np.linalg.inv(vm)
+    R = c2w[:3, :3]
+    cam_y = float(c2w[1, 3])
+    out = np.full((height, width), np.nan)
+    if cam_y <= 1e-6:
+        return out
+    uu, vv = np.meshgrid(np.arange(width, dtype=np.float64),
+                         np.arange(height, dtype=np.float64))
+    kx = (uu - cx) / fx
+    ky = -(vv - cy) / fy
+    # World-Y component of the unnormalized ray direction.
+    ry = R[1, 0] * kx + R[1, 1] * ky - R[1, 2]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        s = -cam_y / ry
+    ok = np.isfinite(s) & (s > 1e-3)
+    out[ok] = s[ok]
+    return out
 
 
 class AtlasCleanPlateLayer:
@@ -5004,6 +5640,35 @@ class AtlasCleanPlateLayer:
                     "tooltip": "Wire ONE AtlasDepthBandSplit into every band node (with "
                                "band_side set) so the fg/bg boundary lives in exactly one "
                                "widget and the layers can never drift apart."}),
+                # APPENDED last (widgets_values is positional — never insert).
+                "band_geometry": (list(_BAND_GEOMETRY_CHOICES), {"default": "relief",
+                    "tooltip": "How this band's projection surface is built. relief (default) = "
+                               "the depth-following mesh, for anything with real 3D shape inside "
+                               "the band. card = ONE flat fronto-parallel plane at the band's "
+                               "median depth (classic DMP card) — for distant/flat-facing layers "
+                               "with negligible internal parallax (far mountains at the horizon, "
+                               "a hangar's back wall, a skyline backdrop); never tears, zero "
+                               "depth noise. ground = the exact analytic Y=0 ground plane — for "
+                               "flat horizontal surfaces the camera stands over (desert floor, "
+                               "water, road); zero depth-noise bumps. Both flat modes keep band "
+                               "membership from the REAL depth (which pixels belong) and only "
+                               "flatten WHERE they sit; matte/edge-extend/outpaint all still "
+                               "apply."}),
+                "geometry_override": ("STRING", {"default": "",
+                    "tooltip": "Optional geometry-type override STRING — wins over band_geometry "
+                               "when non-empty ('relief'/'card'/'ground'). Exists because ComfyUI "
+                               "rejects STRING→combo links: wire AtlasAssessImage's geom_far/bg/"
+                               "mid/fg output here so the VLM's per-layer geometry recommendation "
+                               "flows in (same pattern as patch_view_override). Unknown values "
+                               "error loudly."}),
+                "band_ref_mask": ("MASK", {
+                    "tooltip": "Exclusion used ONLY for resolving near/far percentages to "
+                               "metres. When exclude_mask carries per-layer scoping (🎯 scope "
+                               "rows), each layer's depth population differs and the shared "
+                               "band edges DRIFT apart (metric gaps between adjacent bands — "
+                               "debug-report finding). Wire the plain SKY mask here on every "
+                               "band node so all layers resolve identical edges. Unwired = "
+                               "legacy behavior (band edges from exclude_mask's population)."}),
             },
         }
 
@@ -5011,7 +5676,8 @@ class AtlasCleanPlateLayer:
                   name="layer", priority=0.0, plate_ref=None, relief_grid=384, depth_edge_rel=1.5,
                   exclude_mask=None, fill_occluded=False, embed_matte=False, layer_matte=None,
                   edge_extend_px=0, skirt_bevel=0.0, frame_outpaint_px=0,
-                  exclude_choke_cells=2, band_side="manual", band_split=None):
+                  exclude_choke_cells=2, band_side="manual", band_split=None,
+                  band_geometry="relief", geometry_override="", band_ref_mask=None):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import (
@@ -5035,7 +5701,8 @@ class AtlasCleanPlateLayer:
         fx, fy, cx, cy = setup.fx, setup.fy, setup.cx, setup.cy
         extr, depth_map = setup.extr, setup.depth_map
         scale, horizon_y = setup.scale, setup.horizon_y
-        near, far = _apply_band_split(band_split, band_side, setup.metric, setup.valid,
+        near, far = _apply_band_split(band_split, band_side, setup.metric,
+                                      _band_resolution_validity(setup, band_ref_mask),
                                       near_m, far_m, near_pct, far_pct)
 
         # Frame outpaint (the sky dome's proven widened-camera trick, applied
@@ -5074,6 +5741,64 @@ class AtlasCleanPlateLayer:
                 horizon_m = float(horizon_m) + pad
             Hp, Wp = Hp + 2 * pad, Wp + 2 * pad
 
+        # Per-layer geometry type: the flat modes substitute the depth FIELD
+        # fed to build_relief_mesh — band membership still comes from the
+        # REAL depth (which pixels belong to this layer); geometry only
+        # changes WHERE those pixels sit. Out-of-region pixels become NaN,
+        # which is invalid-but-regrowable exactly like band clipping (matte
+        # skirts still grow); real exclusions stay the hard skirt forbid.
+        geometry = _resolve_band_geometry(band_geometry, geometry_override)
+        band_min_for_mesh = near
+        band_max_for_mesh = None if far == float("inf") else far
+        fill_for_mesh = fill_m
+        heuristic = exclude_m is None
+        if geometry != "relief":
+            band_region = valid_m & (metric_m >= near)
+            if far != float("inf"):
+                band_region &= metric_m <= far
+            if fill_m is not None:
+                # Flat depth covers the occluder footprint for free — include
+                # it in the region instead of diffusion-filling it.
+                band_region = band_region | (
+                    fill_m if exclude_m is None else (fill_m & ~exclude_m))
+            if geometry == "card":
+                # One fronto-parallel plane at the band's median depth — the
+                # classic DMP card; matches the projection_backdrop / sky
+                # dome constant-forward-Z convention.
+                const_raw = float(np.median(depth_m[band_region])) if band_region.any() else 1.0
+                geo_depth = np.full(depth_m.shape, const_raw, dtype=np.float64)
+            else:  # ground
+                # The exact analytic Y=0 plane along each pixel ray — raw
+                # units are metric/scale so build_relief_mesh's internal
+                # rescale-about-camera lands vertices on Y=0 on the nose.
+                geo_metric = _analytic_ground_forward_depth(extr, fx, fy, cx_m, cy_m, Hp, Wp)
+                if not np.isfinite(geo_metric).any():
+                    raise ValueError(
+                        "band_geometry='ground' needs a camera above the ground plane "
+                        "(solved camera height <= 0, or no ray ever hits Y=0).")
+                band_region &= np.isfinite(geo_metric)
+                # Non-ground pixels in the band (a wall base, an occluder's
+                # side) have analytic ground depths FAR beyond the band —
+                # near-horizontal rays run out toward the horizon. Cap at the
+                # band's far edge (or 4x the band's real 99th-pct depth when
+                # the band is open-ended) so only plausible ground-plane
+                # membership survives; the rest become holes/skirt.
+                if far != float("inf"):
+                    ground_cap = float(far)
+                elif band_region.any():
+                    ground_cap = 4.0 * float(np.percentile(metric_m[band_region], 99.0))
+                else:
+                    ground_cap = float("inf")
+                with np.errstate(invalid="ignore"):
+                    band_region &= ~(geo_metric > ground_cap)
+                geo_depth = geo_metric / max(float(scale), 1e-9)
+            depth_m = np.where(band_region, geo_depth, np.nan)
+            band_min_for_mesh = None   # region already encodes membership;
+            band_max_for_mesh = None   # analytic ground may exceed the band
+            fill_for_mesh = None
+            heuristic = False          # constant/far flat depth IS "sky" to
+            #                            the heuristic — must never run here
+
         choke = int(exclude_choke_cells) if exclude_m is not None else 0
         overhang_cells = 0
         if embed_matte:
@@ -5087,9 +5812,14 @@ class AtlasCleanPlateLayer:
             depth_m, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx_m, cy=cy_m,
             grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
             scale=scale, horizon_y=horizon_m,
-            band_min_m=near, band_max_m=(None if far == float("inf") else far),
-            exclude_mask=exclude_m, fill_mask=fill_m,
-            apply_sky_heuristic=exclude_m is None,
+            band_min_m=band_min_for_mesh, band_max_m=band_max_for_mesh,
+            exclude_mask=exclude_m, fill_mask=fill_for_mesh,
+            apply_sky_heuristic=heuristic,
+            # Flat modes feed an ANALYTIC field: the far-percentile clamp
+            # would float legit on-plane ground off the plane, and smoothing
+            # only corrupts a field with no noise to remove.
+            far_clip_percentile=(0.0 if geometry != "relief" else 97.0),
+            smooth_iterations=(0 if geometry != "relief" else 2),
             overhang_bevel_rel=float(skirt_bevel),
             exclude_choke_cells=choke,
             edge_overhang_cells=overhang_cells)
@@ -5146,6 +5876,7 @@ class AtlasCleanPlateLayer:
             metadata={
                 "projection_mode": "clean_plate",
                 "source": "inpaint_layer",
+                "band_geometry": geometry,
                 "near_m": None if near <= 0 else float(near),
                 "far_m": None if far == float("inf") else float(far),
                 "ground_scale": scale,
@@ -5273,8 +6004,10 @@ class AtlasSkyDomeLayer:
     `_metric_depth_and_validity` setup `AtlasDepthLayerMask`/
     `AtlasCleanPlateLayer` use — the real depth array itself is never read.
 
-    Geometrically this is a flat card at a constant forward-Z depth
-    (`radius_m`), the same convention `build_relief_mesh` uses everywhere
+    Geometrically this is a flat card at a constant forward-Z depth —
+    `radius_m` alone (legacy), or `distance_m` when set, with `radius_m`
+    then acting as the card's minimum half-extent (SIZE, grown via honest
+    outpaint) — the same convention `build_relief_mesh` uses everywhere
     else (and the same convention every extractor's own `projection_backdrop`
     plane already uses) — not a literal sphere/hemisphere. For any normal
     camera FOV this is visually equivalent to a dome; a true sphere would
@@ -5319,13 +6052,16 @@ class AtlasSkyDomeLayer:
             },
             "optional": {
                 "radius_m": ("FLOAT", {"default": 300.0, "min": 1.0, "max": 100000.0, "step": 1.0,
-                    "tooltip": "Card distance in metres (forward-Z, same convention as every "
-                               "other relief mesh here) — should comfortably exceed the scene's "
-                               "own derived backdrop distance (AtlasDeriveReliefMesh's backdrop, "
-                               "or the Info HUD's scene depth) so it never intersects real "
-                               "geometry. Distance doesn't affect appearance (texel assignment is "
-                               "by ray, not depth) — only how far you can dolly before it reveals "
-                               "itself as flat, which at typical FOV is a very long way."}),
+                    "tooltip": "With distance_m at 0 (default): the card's DISTANCE in metres "
+                               "(forward-Z, legacy behavior) — should comfortably exceed the "
+                               "scene's own derived backdrop distance so it never intersects real "
+                               "geometry. With distance_m set: the card's minimum half-extent — "
+                               "its SIZE, radius in the dome sense — the card is enlarged (never "
+                               "shrunk below frustum coverage) via extra outpaint so it reaches "
+                               "this world size at that distance. Distance doesn't affect "
+                               "appearance from the solve camera (texel assignment is by ray); it "
+                               "controls parallax — how far you can dolly/orbit before the card "
+                               "reveals itself."}),
                 "relief_grid": ("INT", {"default": 96, "min": 16, "max": 4096,
                     "tooltip": "Card mesh density (long-edge grid columns). A flat, constant-depth "
                                "card needs far less density than real geometry — default is lower "
@@ -5355,12 +6091,22 @@ class AtlasSkyDomeLayer:
                                "past the original frustum to carry it. Purely this layer's "
                                "camera - the primary solve and every other layer are untouched. "
                                "0 = off."}),
+                # APPENDED last (widgets_values is positional — never insert).
+                "distance_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 1.0,
+                    "tooltip": "Card distance from the camera in metres. 0 (default) = legacy "
+                               "behavior: radius_m IS the distance and size follows from the "
+                               "frustum. When set, this places the card and radius_m becomes its "
+                               "minimum half-extent (SIZE): if the frustum footprint at this "
+                               "distance is smaller than radius_m, the card grows via extra "
+                               "outpaint (edge-replicated pixels, declared in extend_mask; total "
+                               "padding memory-capped at half the plate's long edge per side). "
+                               "Distance = parallax; size = orbit/pan slack."}),
             },
         }
 
     def add_layer(self, solve, depth, sky_mask, plate_image, radius_m=300.0, relief_grid=96,
                   name="sky", priority=-10.0, plate_ref=None, edge_extend_px=48,
-                  frame_outpaint_px=64):
+                  frame_outpaint_px=64, distance_m=0.0):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_sky_dome_mesh
         from atlas_camera.core.schema import AtlasIntrinsics, AtlasPlateRef, LatentCamera, ProjectionSource
@@ -5400,7 +6146,26 @@ class AtlasSkyDomeLayer:
         fx_p, fy_p = setup.fx * sx, setup.fy * sy
         cx_p, cy_p = setup.cx * sx, setup.cy * sy
 
+        # Distance vs size (user feature request 2026-07-11): with distance_m
+        # set, the card sits THERE and radius_m becomes its minimum
+        # half-extent (SIZE). Extra size is honest outpaint — the frustum
+        # footprint at that distance is padded out with edge-replicated
+        # pixels (declared invented via extend_mask below) until the card's
+        # world half-extent reaches radius_m. Never shrinks below frustum
+        # coverage (that would punch holes around the sky's frame edges).
+        # distance_m=0 keeps the legacy single-knob behavior bit-identical.
+        card_distance = float(distance_m) if float(distance_m) > 0.0 else float(radius_m)
         pad = max(0, int(frame_outpaint_px))
+        size_pad = 0
+        if float(distance_m) > 0.0:
+            need_x = float(radius_m) * fx_p / card_distance - (Wp / 2.0 + pad)
+            need_y = float(radius_m) * fy_p / card_distance - (Hp / 2.0 + pad)
+            size_pad = int(np.ceil(max(0.0, need_x, need_y)))
+            if size_pad:
+                # Memory guard: total extra padding capped at half the plate
+                # long edge per side (canvas at most ~2x linear).
+                size_pad = min(size_pad, max(Hp, Wp) // 2)
+                pad += size_pad
         if pad:
             plate_np = np.pad(plate_np, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
             m = np.pad(m, pad, mode="edge")
@@ -5427,7 +6192,7 @@ class AtlasSkyDomeLayer:
         mesh = build_sky_dome_mesh(
             m, view_matrix=setup.extr.camera_view_matrix,
             fx=fx_p, fy=fy_p, cx=cx_p, cy=cy_p,
-            radius_m=float(radius_m), grid_long_edge=int(relief_grid),
+            radius_m=card_distance, grid_long_edge=int(relief_grid),
             edge_overhang_cells=overhang_cells)
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_dome_mesh")]
 
@@ -5476,6 +6241,8 @@ class AtlasSkyDomeLayer:
                 "projection_mode": "clean_plate",
                 "source": "sky_dome",
                 "radius_m": float(radius_m),
+                "distance_m": card_distance,     # where the card actually sits
+                "size_pad_px": size_pad,         # extra outpaint added for SIZE
                 "edge_extend_px": int(edge_extend_px),
                 "frame_outpaint_px": pad,
                 "n_vertices": mesh.stats.get("n_vertices"),
@@ -5559,6 +6326,11 @@ NODE_CLASS_MAPPINGS = {
     "AtlasDepthLayerMask":        AtlasDepthLayerMask,
     "AtlasCleanPlateLayer":       AtlasCleanPlateLayer,
     "AtlasSkyDomeLayer":          AtlasSkyDomeLayer,
+    "AtlasInpaintCrop":           AtlasInpaintCrop,
+    "AtlasInpaintStitch":         AtlasInpaintStitch,
+    "AtlasScopeMask":             AtlasScopeMask,
+    "AtlasDebugReport":           AtlasDebugReport,
+    "AtlasLayerPreview":          AtlasLayerPreview,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -5619,6 +6391,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDepthLayerMask":        "Atlas Depth Layer Mask 🎭",
     "AtlasCleanPlateLayer":       "Atlas Clean Plate Layer 🖼",
     "AtlasSkyDomeLayer":          "Atlas Sky Dome Layer ☁",
+    "AtlasInpaintCrop":           "Atlas Inpaint Crop ✂",
+    "AtlasInpaintStitch":         "Atlas Inpaint Stitch ✂",
+    "AtlasScopeMask":             "Atlas Scope Mask 🎯",
+    "AtlasDebugReport":           "Atlas Debug Report 🔍",
+    "AtlasLayerPreview":          "Atlas Layer Preview 🎨",
 }
 
 # ---------------------------------------------------------------------------
