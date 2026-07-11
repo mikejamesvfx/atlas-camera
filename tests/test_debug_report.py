@@ -48,6 +48,9 @@ def test_debug_report_json_and_flags(tmp_path):
     assert json_path == path or json_path.endswith("master_debug.json")
 
     data = json.loads(open(json_path, encoding="utf-8").read())
+    # Versioned contract for external consumers (spec-panel immediate item).
+    assert data["schema"] == 1
+    assert data["atlas_version"] not in ("", None)
     names = [s["name"] for s in data["projection_sources"]]
     assert names == ["band_bg", "band_fg"]
     bg, fg = data["projection_sources"]

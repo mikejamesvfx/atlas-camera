@@ -5100,7 +5100,16 @@ class AtlasDebugReport:
             if "FALLBACK" in s:
                 flags.append(f"scope {k}: {s}")
 
+        try:
+            from atlas_camera import __version__ as _atlas_version
+        except Exception:
+            _atlas_version = "unknown"
         data = {
+            # Versioned for external consumers (this JSON is parsed by
+            # tooling/AI assistants, not just eyeballed): bump "schema" on
+            # any breaking key change.
+            "schema": 1,
+            "atlas_version": _atlas_version,
             "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "camera": camera,
             "depth": ({"model_id": depth.model_id, "is_metric": depth.is_metric,
@@ -5232,6 +5241,13 @@ class AtlasScopeMask:
     behavior, exactly what a bypassed row used to forward). The `status`
     output says which path fired. `segment_mask` is LAZY: with an empty
     prompt the segmenter branch is never even executed.
+
+    REQUIRED COMPANION when the output feeds percentile band nodes: wire
+    the plain SKY mask into those nodes' `band_ref_mask` too. A scoped
+    exclude changes each layer's depth POPULATION, so identical near/far
+    percentages resolve to different metres per layer — adjacent bands
+    drift apart into real metric gaps (debug-report finding, 2026-07-11).
+    `band_ref_mask` pins band-edge resolution to one shared population.
     """
     RETURN_TYPES = ("MASK", "STRING")
     RETURN_NAMES = ("exclude_mask", "status")
