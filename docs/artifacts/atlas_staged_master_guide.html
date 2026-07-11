@@ -1,0 +1,469 @@
+<title>Atlas Staged Master — Operator's Guide</title>
+<style>
+  :root {
+    --ground: #16181a;
+    --panel: #1f2226;
+    --panel-2: #24282c;
+    --line: #33383d;
+    --ink: #d5dad3;
+    --ink-dim: #9aa39c;
+    --ink-faint: #6b736d;
+    --sky-c: #ff6a3d;    /* orange — sky (source index 0 in the 🎨 legend) */
+    --far-c: #3d8bff;    /* blue — far band */
+    --bg-c: #ffd23d;     /* yellow — background band */
+    --mid-c: #c95aff;    /* violet — midground band */
+    --fg-c: #6aff5a;     /* green — foreground band */
+    --base-c: #2fd6c3;   /* teal — reserved for the primary/base */
+    --warn: #ffd23d;
+    --mono: "Cascadia Code", "Consolas", ui-monospace, "SF Mono", monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  html { background: var(--ground); }
+  body {
+    background: var(--ground); color: var(--ink);
+    font: 15px/1.65 var(--sans);
+    margin: 0; padding: 0 20px 96px;
+  }
+  main { max-width: 880px; margin: 0 auto; }
+  h1, h2, h3 { font-family: var(--mono); text-wrap: balance; line-height: 1.2; }
+  h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; margin: 56px 0 8px; }
+  h2 { font-size: 20px; font-weight: 600; margin: 64px 0 12px; padding-top: 20px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; font-weight: 600; margin: 28px 0 8px; }
+  p { max-width: 68ch; margin: 10px 0; }
+  .lede { color: var(--ink-dim); font-size: 16px; max-width: 64ch; }
+  .eyebrow {
+    font: 600 11px/1 var(--mono); letter-spacing: 2px; text-transform: uppercase;
+    color: var(--ink-faint); display: block; margin-bottom: 10px;
+  }
+  code, .mono { font-family: var(--mono); font-size: 0.92em; }
+  code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
+  a { color: var(--base-c); }
+  kbd { font-family: var(--mono); font-size: 11px; background: var(--panel-2); border: 1px solid var(--line);
+        border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; }
+  .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+  /* queue rhythm strip */
+  .rhythm { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 4px; align-items: center; }
+  .q {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 14px; font-size: 13px; color: var(--ink-dim); flex: 1 1 220px; min-width: 220px;
+  }
+  .q .n { font: 600 11px/1 var(--mono); letter-spacing: 1.5px; color: var(--base-c);
+          text-transform: uppercase; display: block; margin-bottom: 5px; }
+  .rhythm .sep { color: var(--ink-faint); font-size: 18px; flex: 0 0 auto; }
+
+  /* pipeline map */
+  .map { background: #121416;
+    background-image: radial-gradient(#26292c 1px, transparent 1px); background-size: 22px 22px;
+    border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 20px 0; overflow-x: auto; }
+  .map svg { display: block; min-width: 760px; width: 100%; height: auto; }
+
+  /* node facsimiles (same system as the 🥞 guide) */
+  .graph {
+    display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;
+    background: #121416;
+    background-image: radial-gradient(#26292c 1px, transparent 1px);
+    background-size: 22px 22px;
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 22px; margin: 18px 0; overflow-x: auto;
+  }
+  .node {
+    background: #26292e; border: 1px solid #3c4147; border-radius: 7px;
+    min-width: 190px; max-width: 250px; font-size: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45); flex: 0 0 auto;
+  }
+  .node-title { font: 600 11.5px/1.35 var(--sans); padding: 7px 10px; border-radius: 6px 6px 0 0; color: #0e1012; }
+  .nt-atlas { background: #7fb069; }
+  .nt-atlas2 { background: #5a9e8f; }
+  .nt-core { background: #8c93a8; }
+  .nt-inpaint { background: #b08bc9; }
+  .node-io { padding: 6px 0 4px; border-bottom: 1px solid #34383d; }
+  .io { display: flex; justify-content: space-between; padding: 1.5px 10px; color: #b9c0ba; }
+  .io .in::before { content: "●"; color: #6f8f6a; margin-right: 6px; font-size: 9px; }
+  .io .out::after { content: "●"; color: #6f8f6a; margin-left: 6px; font-size: 9px; }
+  .widgets { padding: 5px 8px 8px; display: grid; gap: 3px; }
+  .w { display: flex; justify-content: space-between; gap: 10px; background: #1c1f22;
+       border: 1px solid #313539; border-radius: 4px; padding: 2.5px 8px; color: #9fa8a1; }
+  .w b { color: #dfe5de; font-family: var(--mono); font-weight: 500; font-size: 11px;
+         font-variant-numeric: tabular-nums; text-align: right; }
+  .w.hot { border-color: #6a5a2c; }
+  .w.hot b { color: var(--warn); }
+  .node-note { font-size: 11px; color: var(--ink-faint); padding: 6px 10px 9px; line-height: 1.45; }
+  .arrow { align-self: center; color: var(--ink-faint); font-size: 18px; flex: 0 0 auto; }
+
+  .tablewrap { overflow-x: auto; margin: 14px 0; }
+  table { border-collapse: collapse; font-size: 13px; min-width: 660px; }
+  th { font: 600 11px/1.4 var(--mono); letter-spacing: 1px; text-transform: uppercase;
+       color: var(--ink-faint); text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 14px 8px 0; border-bottom: 1px solid #24282c; vertical-align: top; color: var(--ink-dim); }
+  td:first-child, th:first-child { padding-left: 2px; }
+  td b { color: var(--ink); font-weight: 600; }
+  td code { white-space: nowrap; }
+  tr.hl td { background: rgba(47, 214, 195, 0.05); }
+
+  .rule {
+    border-left: 3px solid var(--base-c); background: var(--panel);
+    border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 18px 0; max-width: 72ch;
+  }
+  .rule.warn { border-left-color: var(--warn); }
+  .rule .t { font: 600 11px/1 var(--mono); letter-spacing: 1.5px; text-transform: uppercase;
+             color: var(--ink-faint); display: block; margin-bottom: 6px; }
+  .rule p { margin: 4px 0; font-size: 14px; }
+
+  .status {
+    font-family: var(--mono); font-size: 12px; line-height: 1.7;
+    background: #121416; border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 16px; margin: 14px 0; color: var(--ink-dim);
+    overflow-x: auto; white-space: pre;
+  }
+  .status .ok { color: #7fb069; }
+  .status .fb { color: var(--warn); }
+
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 6px; }
+  .toc a { font: 500 12px/1 var(--mono); text-decoration: none; color: var(--ink-dim);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 7px 11px; }
+  .toc a:hover { color: var(--ink); border-color: #4a5157; }
+
+  .measure { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+  .m {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 16px; flex: 1 1 180px; min-width: 180px;
+  }
+  .m .v { font: 600 24px/1.1 var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+  .m .l { font-size: 12px; color: var(--ink-faint); margin-top: 4px; line-height: 1.45; }
+</style>
+
+<main>
+  <span class="eyebrow">Atlas Camera · ComfyUI · operator's guide</span>
+  <h1>The Staged Master, Operated</h1>
+  <p class="lede">
+    <code>atlas_camera_staged_master_workflow.json</code> splits one photo into five projection
+    layers — sky plus four depth bands — and a local VLM configures it per image: segmentation
+    prompts, per-band geometry, band boundaries. This page is how to <em>drive</em> it: the queue
+    rhythm, what the autopilot fills in, what stays your call, and how to read the debug
+    surfaces when a layer misbehaves.
+  </p>
+
+  <div class="rhythm">
+    <div class="q"><span class="n">Queue 1</span>
+      Assess + solve + preview run in one go. Read the 🧭 report on the assess node,
+      check the camera in the preview viewport, then <kbd>✅ Approve Solve</kbd>.</div>
+    <span class="sep">→</span>
+    <div class="q"><span class="n">Queue 2</span>
+      The enabled stages run. Work far → near with the group bypasser, or enable
+      everything for a full pass. Finished stages re-queue for free (cached).</div>
+    <span class="sep">→</span>
+    <div class="q"><span class="n">Every queue after</span>
+      Only what changed re-executes. The 🔍 debug JSON and the 🎨 strip refresh
+      every run — check flags before judging the viewport.</div>
+  </div>
+
+  <div class="map">
+    <svg viewBox="0 0 900 340" role="img" aria-label="Staged master pipeline map">
+      <defs>
+        <marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 z" fill="#6b736d"/>
+        </marker>
+      </defs>
+      <!-- stage 0 -->
+      <rect x="14" y="20" width="180" height="92" rx="7" fill="#1f2226" stroke="#33383d"/>
+      <text x="26" y="42" fill="#d5dad3" font-size="12" font-family="monospace" font-weight="600">0 · ASSESS + SOLVE</text>
+      <text x="26" y="62" fill="#9aa39c" font-size="11" font-family="monospace">🧭 VLM 5-layer plan</text>
+      <text x="26" y="78" fill="#9aa39c" font-size="11" font-family="monospace">GeoCalib + DA3 depth</text>
+      <text x="26" y="94" fill="#9aa39c" font-size="11" font-family="monospace">✅ solve gate</text>
+      <!-- rails -->
+      <rect x="14" y="136" width="180" height="66" rx="7" fill="#1f2226" stroke="#33383d"/>
+      <text x="26" y="158" fill="#d5dad3" font-size="12" font-family="monospace" font-weight="600">RAILS (Set/Get)</text>
+      <text x="26" y="176" fill="#9aa39c" font-size="10.5" font-family="monospace">plate · solve · depth · sky</text>
+      <text x="26" y="190" fill="#9aa39c" font-size="10.5" font-family="monospace">prompts · geometry · bands</text>
+      <line x1="104" y1="112" x2="104" y2="136" stroke="#6b736d" marker-end="url(#a)"/>
+      <!-- stages -->
+      <g font-family="monospace" font-size="12" font-weight="600">
+        <rect x="248" y="20" width="128" height="52" rx="7" fill="#1f2226" stroke="#ff6a3d"/>
+        <text x="262" y="42" fill="#ff6a3d">1 · SKY</text>
+        <text x="262" y="60" fill="#9aa39c" font-size="10.5" font-weight="400">card + SAM matte</text>
+        <rect x="248" y="86" width="128" height="52" rx="7" fill="#1f2226" stroke="#3d8bff"/>
+        <text x="262" y="108" fill="#3d8bff">2 · FAR</text>
+        <text x="262" y="126" fill="#9aa39c" font-size="10.5" font-weight="400">band 80–100%</text>
+        <rect x="248" y="152" width="128" height="52" rx="7" fill="#1f2226" stroke="#ffd23d"/>
+        <text x="262" y="174" fill="#ffd23d">3 · BG</text>
+        <text x="262" y="192" fill="#9aa39c" font-size="10.5" font-weight="400">band 60–80%</text>
+        <rect x="248" y="218" width="128" height="52" rx="7" fill="#1f2226" stroke="#c95aff"/>
+        <text x="262" y="240" fill="#c95aff">4 · MID</text>
+        <text x="262" y="258" fill="#9aa39c" font-size="10.5" font-weight="400">band 30–60%</text>
+        <rect x="248" y="284" width="128" height="52" rx="7" fill="#1f2226" stroke="#6aff5a"/>
+        <text x="262" y="306" fill="#6aff5a">5 · FG</text>
+        <text x="262" y="324" fill="#9aa39c" font-size="10.5" font-weight="400">band 0–30%</text>
+      </g>
+      <!-- per-stage internals -->
+      <g font-family="monospace" font-size="10.5" fill="#6b736d">
+        <text x="412" y="105">band mask → ✂crop → LaMa+4× → ✂stitch → 🎯scope → layer</text>
+        <text x="412" y="122">(each band stage runs this identical chain)</text>
+      </g>
+      <line x1="194" y1="46" x2="248" y2="46" stroke="#6b736d" marker-end="url(#a)"/>
+      <line x1="194" y1="169" x2="248" y2="112" stroke="#6b736d" marker-end="url(#a)"/>
+      <line x1="194" y1="169" x2="248" y2="178" stroke="#6b736d" marker-end="url(#a)"/>
+      <line x1="194" y1="169" x2="248" y2="244" stroke="#6b736d" marker-end="url(#a)"/>
+      <line x1="194" y1="169" x2="248" y2="310" stroke="#6b736d" marker-end="url(#a)"/>
+      <!-- assemble -->
+      <rect x="700" y="128" width="186" height="92" rx="7" fill="#1f2226" stroke="#2fd6c3"/>
+      <text x="714" y="150" fill="#2fd6c3" font-size="12" font-family="monospace" font-weight="600">6 · ASSEMBLE</text>
+      <text x="714" y="170" fill="#9aa39c" font-size="11" font-family="monospace">master viewport 📽</text>
+      <text x="714" y="186" fill="#9aa39c" font-size="11" font-family="monospace">Nuke + Maya layers</text>
+      <text x="714" y="202" fill="#9aa39c" font-size="11" font-family="monospace">🔍 debug JSON</text>
+      <line x1="376" y1="46" x2="700" y2="150" stroke="#6b736d" marker-end="url(#a)"/>
+      <line x1="376" y1="310" x2="700" y2="200" stroke="#6b736d" marker-end="url(#a)"/>
+    </svg>
+  </div>
+
+  <nav class="toc">
+    <a href="#autopilot">the autopilot</a>
+    <a href="#layers">the five layers</a>
+    <a href="#geometry">geometry types</a>
+    <a href="#quality">inpaint quality</a>
+    <a href="#scopes">self-healing scopes</a>
+    <a href="#debug">debug surfaces</a>
+    <a href="#knobs">knob priority</a>
+    <a href="#trouble">troubleshooting</a>
+    <a href="#numbers">the numbers</a>
+  </nav>
+
+  <h2 id="autopilot">The autopilot — what the VLM fills in, and what stays yours</h2>
+  <p>
+    On Queue&nbsp;1 the 🧭 assess node sends the photo to your local VLM with the staged
+    workflow's full decision rules. Three families of values come back and <b>flow into the
+    graph through rails</b> — every receiving widget box updates so you can see exactly what
+    landed:
+  </p>
+  <div class="tablewrap"><table>
+    <tr><th>What flows</th><th>Where it lands</th><th>The contract</th></tr>
+    <tr><td><b>SAM prompts</b> (5)</td><td>the sky segmenter + each band's 🎯 scope row</td>
+        <td>Concrete nouns only ("rock formations", never "background"). An <b>absent layer</b> — no sky
+        indoors, an empty mid band — arrives as an empty prompt and its scope self-disarms.</td></tr>
+    <tr><td><b>Geometry types</b> (4)</td><td>each band layer's <code>geometry_override</code></td>
+        <td><code>relief</code> / <code>card</code> / <code>ground</code> per band (see below). A value the
+        node doesn't recognize degrades to the widget instead of erroring the graph.</td></tr>
+    <tr><td><b>Band boundaries</b> (4)</td><td>both band nodes per stage via <code>band_override</code></td>
+        <td>The VLM may move the fixed 30/60/80% splits to keep a subject whole. Boundaries are derived
+        <b>jointly</b>, so adjacent bands always share edges exactly — bands can't drift apart.</td></tr>
+  </table></div>
+  <p>
+    What stays yours: <b>approving the solve</b> (the ✅ gate ships closed), <b>which stages are
+    enabled</b> (the bypasser lists stages 1–6 only), and every value above — unlink a rail and
+    type to take a widget manual. The report's <span class="mono">STAGED 5-LAYER PLAN</span>
+    marks each layer <b>+</b> (present, with its prompt and geometry) or <b>−</b> (absent).
+  </p>
+  <div class="rule"><span class="t">Gates, current defaults</span>
+    <p>The assess node ships <code>auto_continue = ON</code>: Queue&nbsp;1 runs straight through to the
+    solve preview with no ▶ click — the ✅ solve gate is the first stop. Turn it OFF to restore the
+    hard per-image ▶ Continue gate. After a successful assessment the VLM is <b>offloaded from
+    VRAM</b> and the report proves it (<span class="mono">VRAM free 1.5 → 12.7 GB</span> on a real run).</p>
+  </div>
+
+  <h2 id="layers">The five layers</h2>
+  <p>Colors below are the same everywhere: the viewport's <kbd>🎨 Layers</kbd> legend, the
+  per-stage cutout previews in the strip, and the DCC exports' layer order.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Layer</th><th>Band</th><th>Plate</th><th>Typical geometry</th><th>Notes</th></tr>
+    <tr><td><span class="chip" style="background:var(--sky-c)"></span><b>sky</b></td>
+        <td>SAM mask, not depth</td><td>clean sky (LaMa)</td><td>flat card (always)</td>
+        <td>Always-on SHARED group. <code>distance_m</code> sets parallax; <code>radius_m</code> then
+        becomes minimum SIZE (grown by honest outpaint).</td></tr>
+    <tr><td><span class="chip" style="background:var(--far-c)"></span><b>far</b></td>
+        <td>80–100%</td><td>inpainted</td><td><code>card</code> — horizon content moves as one poster</td>
+        <td>Never tears; zero depth noise at distance.</td></tr>
+    <tr><td><span class="chip" style="background:var(--bg-c)"></span><b>bg</b></td>
+        <td>60–80%</td><td>inpainted</td><td><code>relief</code></td>
+        <td>Usually the main structure band (buttes, buildings).</td></tr>
+    <tr><td><span class="chip" style="background:var(--mid-c)"></span><b>mid</b></td>
+        <td>30–60%</td><td>inpainted</td><td><code>relief</code></td>
+        <td>The most often <b>absent</b> layer — many scenes split cleanly into near + far. Absent is
+        fine: the VLM says so and the stage contributes nothing.</td></tr>
+    <tr><td><span class="chip" style="background:var(--fg-c)"></span><b>fg</b></td>
+        <td>0–30%</td><td><b>original photo</b></td><td><code>ground</code> when it's a floor; else <code>relief</code></td>
+        <td>Frontmost band needs no inpainting — nothing occludes it.</td></tr>
+  </table></div>
+
+  <h2 id="geometry">Geometry types — relief, card, ground</h2>
+  <p>
+    Band membership always comes from the real depth (which pixels belong to the layer);
+    the geometry type only changes <em>where those pixels sit</em>. Mattes, edge-extend and
+    outpaint work identically on all three.
+  </p>
+  <div class="tablewrap"><table>
+    <tr><th>Type</th><th>What it builds</th><th>Use when</th><th>Why</th></tr>
+    <tr><td><b><code>relief</code></b> (default)</td><td>depth-following mesh</td>
+        <td>anything with real 3D shape inside the band</td>
+        <td>Honest parallax within the layer; tears at silhouettes are load-bearing.</td></tr>
+    <tr><td><b><code>card</code></b></td><td>ONE flat plane at the band's median depth</td>
+        <td>distant or flat-facing content — horizon mountains, a hangar's back wall, a skyline</td>
+        <td>Depth noise on far content becomes wobble on what should be rigid; a card can't tear
+        and can't wobble. Rule of thumb: if the layer would move as one poster, card it.</td></tr>
+    <tr><td><b><code>ground</code></b></td><td>the exact analytic Y=0 plane</td>
+        <td>flat horizontal surfaces the camera stands over — desert floor, water, roads, plazas</td>
+        <td>Every vertex lands on the true ground plane — zero depth-noise bumps by construction.</td></tr>
+  </table></div>
+
+  <h2 id="quality">The inpaint quality chain</h2>
+  <p>
+    Every occluded band's clean plate runs the same four-node chain. The reason it exists:
+    the LaMa node squashes <b>the entire frame to 256×256</b> internally — on a 4K plate that's
+    a 16× downscale, and it was the whole reason inpainted fills looked like mush.
+  </p>
+  <div class="graph">
+    <div class="node"><div class="node-title nt-atlas2">✂ Atlas Inpaint Crop</div>
+      <div class="node-io"><div class="io"><span class="in">plate · mask</span><span class="out">crop · mask · region</span></div></div>
+      <div class="widgets"><div class="w hot"><span>context_pad_px</span><b>128</b></div></div>
+      <div class="node-note"><b>The quality slider.</b> Tight (64) = LaMa's fixed budget spent on the
+      hole → max detail. Wide (256+) = more surrounding texture to sample → softer.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-inpaint">LaMa + upscale model</div>
+      <div class="node-io"><div class="io"><span class="in">crop · mask · 4xRealWebPhoto</span><span class="out">IMAGE</span></div></div>
+      <div class="node-note">The shared upscaler recovers the 256-class fill before pasting —
+      measured 6.5× the legacy detail. One loader feeds all four stages.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="node-title nt-atlas2">✂ Atlas Inpaint Stitch</div>
+      <div class="node-io"><div class="io"><span class="in">original · fill · region</span><span class="out">IMAGE</span></div></div>
+      <div class="node-note">Bit-exact outside the crop rect. The stitched plate is what the 🎨
+      strip preview shows per stage.</div>
+    </div>
+  </div>
+  <div class="measure">
+    <div class="m"><div class="v">0.0013</div><div class="l">fill detail, legacy whole-frame LaMa
+      (Laplacian variance in the hole, real 4K plate)</div></div>
+    <div class="m"><div class="v">0.0019</div><div class="l">crop-first at pad 128 — and visibly
+      structural instead of mush</div></div>
+    <div class="m"><div class="v">0.0085</div><div class="l">crop + 4× upscale model —
+      <b>6.5× legacy</b>, the shipped chain</div></div>
+  </div>
+  <div class="rule warn"><span class="t">When LaMa is still not enough</span>
+    <p>LaMa continues <em>texture</em>. A structured reveal (a building half-hidden behind another)
+    wants the generative tier — swap that one band's LaMa for LanPaint or flux-inpainting and leave
+    the rest of the chain alone.</p>
+  </div>
+
+  <h2 id="scopes">Self-healing scopes — band ∩ segment, safely</h2>
+  <p>
+    A depth band alone slices through objects; each band's 🎯 scope row intersects the band with a
+    SAM segment of that layer's content. The rows are <b>always active and disarm themselves</b> —
+    the failure modes that used to silently empty a layer to zero mesh now fall back to plain
+    band membership, and the <code>status</code> says which path fired:
+  </p>
+  <div class="status"><span class="ok">scoped to 'distant mountains' (15.3% segment, grown 16px)</span>
+<span class="ok">scoped to 'valley floor and small settlements' (23.9% segment, grown 16px)</span>
+<span class="fb">band-only FALLBACK — segment for 'rolling hills and valley' covered 0.00%
+of the frame (no-match); scoping skipped so the layer keeps its full band</span>
+<span class="ok">band-only (no scope prompt — layer absent or unscoped)</span></div>
+  <div class="rule"><span class="t">Prompt craft, from real runs</span>
+    <p>Text-prompted SAM is good at <b>things</b> and bad at <b>expanses</b>: "church tower" 2.4%&nbsp;✓,
+    "distant mountains" 15.3%&nbsp;✓ — but "desert floor and boulder" and "rolling hills and valley"
+    both scored 0.00%. When a wanted scope falls back, retry with a shorter concrete noun
+    ("sand", "hills"). A fallback is never broken output — just band-only behavior.</p>
+  </div>
+
+  <h2 id="debug">Reading the debug surfaces</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Surface</th><th>Where</th><th>What it answers</th></tr>
+    <tr><td><b>🎨 strip cutouts</b></td><td>left of the stages, one per layer</td>
+        <td>Exactly what each layer will project: the plate's pixels inside its matte, the layer's
+        legend color everywhere else. A cutout that's all color = the layer carries nothing.</td></tr>
+    <tr><td><b>🎯 status lines</b></td><td>each scope row / the 🔍 report</td>
+        <td>Scoped, fallback, or absent — per band, in plain words.</td></tr>
+    <tr><td><b>🔍 debug report</b></td><td>below the strip; JSON at
+        <code>atlas_debug/master_debug.json</code></td>
+        <td>Per-layer verts / geometry / band ranges / matte coverage, plus <b>flags</b>: zero-vertex
+        layers, band GAP/OVERLAP, near-empty mattes, scope fallbacks, negative raw depth. Check flags
+        before judging anything visually — and paste the JSON path at your AI assistant instead of
+        screenshots.</td></tr>
+    <tr><td><b>🎨 Layers / ℹ / 📊</b></td><td>master viewport toolbar</td>
+        <td>Who paints each pixel (legend colors); solve numbers; VP/horizon diagram.</td></tr>
+  </table></div>
+
+  <h2 id="knobs">Knob priority — touch them in this order</h2>
+  <div class="tablewrap"><table>
+    <tr><th>#</th><th>Knob</th><th>Where</th><th>What it really does</th></tr>
+    <tr><td>1</td><td><b>stage enables</b></td><td>Fast Groups Bypasser</td>
+        <td>Work far → near, one stage per queue while learning a shot. Finished stages cache free —
+        never bypass a finished layer (bypass = removed from the stack).</td></tr>
+    <tr><td>2</td><td><b>SAM prompts</b></td><td>scope rows (auto-filled)</td>
+        <td>Only when a 🎯 status shows an unwanted fallback — shorten to a concrete noun.</td></tr>
+    <tr><td>3</td><td><code>context_pad_px</code></td><td>each ✂ crop</td>
+        <td>Per-band fill quality vs context. Drop toward 64 on a band whose plate preview looks soft.</td></tr>
+    <tr><td>4</td><td><code>geometry_override</code> / <code>band_override</code></td><td>band layers (auto-filled)</td>
+        <td>Override the VLM's call when your eye disagrees — e.g. force <code>relief</code> on a "card"
+        band you intend to dolly toward.</td></tr>
+    <tr><td>5</td><td><code>relief_grid</code> / <code>depth_edge_rel</code></td><td>band layers</td>
+        <td>Shipped 384 / 1.5 is the band-mesh calibration. Move only on a specific symptom.</td></tr>
+    <tr><td>6</td><td><code>distance_m</code> + <code>radius_m</code></td><td>sky card</td>
+        <td>Only when authoring a real camera move: distance ≈ 3–5× scene depth, radius sized to the
+        move's widest framing.</td></tr>
+  </table></div>
+
+  <h2 id="trouble">Troubleshooting — symptom → cause → fix</h2>
+  <div class="tablewrap"><table>
+    <tr><th>You see</th><th>It means</th><th>Do</th></tr>
+    <tr><td><b>A layer is missing / a region is black</b></td>
+        <td>That layer built no geometry — check 🔍 flags for <code>ZERO vertices</code> and the 🎯 statuses</td>
+        <td>Absent layer (mid, usually) is fine. Unwanted fallback → fix the prompt. Everything
+        else → read the flag text; it names the cause.</td></tr>
+    <tr><td><b>Stripes/holes at band seams when orbiting</b></td>
+        <td>Band edges drifted apart (🔍 flags: <code>band GAP</code>)</td>
+        <td>Shouldn't happen with the shipped graph (shared band population + joint boundaries).
+        If you rewired excludes: put the plain sky mask on every band node's <code>band_ref_mask</code>.</td></tr>
+    <tr><td><b>Inpainted fill looks soft/mushy</b></td>
+        <td>The 256² budget spread too wide</td>
+        <td>Drop that band's <code>context_pad_px</code> to 64; confirm the upscaler is wired; structured
+        content → generative tier for that band only.</td></tr>
+    <tr><td><b>Far layer wobbles on orbit</b></td>
+        <td>Depth noise on distant content, geometry is relief</td>
+        <td>That's the card case — set the band's geometry to <code>card</code>.</td></tr>
+    <tr><td><b>Ground has lumps/bumps</b></td>
+        <td>Depth noise on a flat floor</td>
+        <td>Geometry <code>ground</code> for that band — analytic plane, zero noise.</td></tr>
+    <tr><td><b>Different plates every queue</b></td>
+        <td>A seed control on <em>randomize</em></td>
+        <td>Set LaMa/generative seed controls to <b>fixed</b>.</td></tr>
+    <tr><td><b>OOM / crawling during stages</b></td>
+        <td>The VLM still resident alongside SAM/DA3/LaMa</td>
+        <td>Keep <code>offload_model</code> ON and verify the report's VRAM line moved. llama.cpp can't
+        offload — restart its server, or use LM Studio/ollama.</td></tr>
+    <tr><td><b>New photo ran with old settings</b></td>
+        <td>A stale approval</td>
+        <td>Gates are fingerprint-scoped and re-arm on image change by design — if you overrode with
+        a manual <code>proceed</code>, clear it.</td></tr>
+  </table></div>
+
+  <h2 id="numbers">The numbers behind the defaults</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Claim</th><th>Measured</th><th>Where</th></tr>
+    <tr><td>Crop-first LaMa beats whole-frame</td><td>fill detail 0.0013 → 0.0019; visually structural vs mush</td>
+        <td>real 4K cathedral plate, big-lama.pt, the pack's exact inference path</td></tr>
+    <tr class="hl"><td>+ 4× upscale model</td><td><b>0.0085 — 6.5× legacy</b></td><td>same plate, 4xRealWebPhoto_v4 (DAT)</td></tr>
+    <tr><td>Band edges watertight</td><td>adjacent layers share edges to 1e-9 (4.28 / 11.10 / 20.96&nbsp;m on a live run)</td>
+        <td>joint boundary derivation + shared band population</td></tr>
+    <tr><td>SAM prompt reality</td><td>things ✓ (1.9–30.6%) · expanses ✗ (0.00% twice)</td>
+        <td>live SAM3 coverage per prompt, monument valley + alpine plates</td></tr>
+    <tr><td>Offload works &amp; is verified</td><td>VRAM free 1.5 → 12.7 GB after assessment</td>
+        <td>lmstudio/gemma-4-12b via lms CLI, sampled before/after</td></tr>
+    <tr><td>Two stage viewports removed</td><td>per-stage WebGL + full mesh payloads → five 2D cutout previews</td>
+        <td>the strip; the master viewport is the only 3D view</td></tr>
+  </table></div>
+
+  <div class="rule"><span class="t">The one-paragraph operating loop</span>
+    <p>
+      Queue → read the 🧭 plan (+/− per layer, prompts, geometry, bands) → ✅ approve the solve →
+      enable stages far-to-near, checking each 🎨 cutout as it lands → any surprise, read 🔍 flags
+      and 🎯 statuses before touching a knob → knobs in priority order, one per queue →
+      when the master viewport holds up under your intended move, export Nuke/Maya layers.
+    </p>
+  </div>
+
+  <p style="color:var(--ink-faint); font-size:13px; margin-top:48px">
+    Companions: <a href="https://claude.ai/code/artifact/77b10784-a6d5-4def-89bd-84cbfaabc21e">🥞 Build-Up Guide</a> (the layer stack taught stage by stage) ·
+    <a href="https://claude.ai/code/artifact/186c3a6a-a778-40f0-8f39-fe29cfa6aace">🎞 Examples Catalog</a> ·
+    <a href="https://claude.ai/code/artifact/4781289c-50dd-47fc-8571-1ef67513b7ba">📊 Technical Details</a>.
+    In-repo: <code>docs/USER_GUIDE.md</code> · <code>docs/dev/gate_state_table.md</code>.
+  </p>
+</main>
