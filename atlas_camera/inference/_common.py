@@ -48,6 +48,10 @@ def bounded_cache_set(cache: dict, key: Any, value: Any, max_size: int,
         evicted = True
     cache[key] = value
     if evicted and release_cuda:
+        # Best-effort, but only for the failures this can actually produce:
+        # torch absent (ImportError) or CUDA in a bad state (RuntimeError).
+        # Anything else propagating here is a real bug we want to see, not
+        # swallow.
         try:
             import gc
 
@@ -55,5 +59,5 @@ def bounded_cache_set(cache: dict, key: Any, value: Any, max_size: int,
             gc.collect()  # drop the evicted model's tensors first
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-        except Exception:
+        except (ImportError, RuntimeError):
             pass

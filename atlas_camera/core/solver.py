@@ -686,7 +686,11 @@ def estimate_ground_height_from_depth(
     calibration; prefer it whenever available rather than trusting this tier alone.
     """
     np = _require_numpy()
-    depth = np.asarray(depth, dtype=np.float64)
+    # No dtype yet — the >2MP guard below strides the RAW input first, so a
+    # 4K map never pays for a full-resolution float64 copy (~64MB transient)
+    # that the strided recursion would immediately discard; the recursive
+    # call converts the small map.
+    depth = np.asarray(depth)
     height, width = depth.shape
 
     # Plane fitting is statistical — it needs thousands of votes, not
@@ -708,6 +712,7 @@ def estimate_ground_height_from_depth(
         sub["ground_pixels"] = int(up.sum())
         return sub
 
+    depth = np.asarray(depth, dtype=np.float64)
     rotation = np.asarray(rotation, dtype=np.float64)
     cam_to_world = rotation.T
 
