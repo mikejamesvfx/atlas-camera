@@ -688,6 +688,26 @@ def estimate_ground_height_from_depth(
     np = _require_numpy()
     depth = np.asarray(depth, dtype=np.float64)
     height, width = depth.shape
+
+    # Plane fitting is statistical — it needs thousands of votes, not
+    # megapixels. Above ~2MP, stride-subsample and fit on the small map
+    # (rays stay exact: pixel u_s maps to source u = u_s*s, and
+    # (u_s - cx/s)/(fx/s) == (u_s*s - cx)/fx), then nearest-upsample the
+    # mask. Below the threshold (every synthetic test fixture) the path is
+    # bit-identical to before.
+    if height * width > 2_000_000:
+        s = int(np.ceil(np.sqrt(height * width / 2_000_000)))
+        sub = estimate_ground_height_from_depth(
+            depth[::s, ::s], rotation=rotation, fx=fx / s, fy=fy / s,
+            cx=cx / s, cy=cy / s,
+            horizon_y=None if horizon_y is None else horizon_y / s,
+            plane_tolerance=plane_tolerance, depth_edge_rel=depth_edge_rel)
+        m = np.asarray(sub["ground_mask"])
+        up = np.repeat(np.repeat(m, s, axis=0), s, axis=1)[:height, :width]
+        sub["ground_mask"] = up
+        sub["ground_pixels"] = int(up.sum())
+        return sub
+
     rotation = np.asarray(rotation, dtype=np.float64)
     cam_to_world = rotation.T
 

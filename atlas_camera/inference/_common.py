@@ -27,14 +27,33 @@ def resolve_device(device: str | None, torch: Any) -> str:
     return "cpu"
 
 
-def bounded_cache_set(cache: dict, key: Any, value: Any, max_size: int) -> None:
+def bounded_cache_set(cache: dict, key: Any, value: Any, max_size: int,
+                      *, release_cuda: bool = False) -> None:
     """Insert into a module-level cache dict, evicting the oldest entry (dict
     preserves insertion order) once it would exceed `max_size`. Same pattern
     already used for `_ATLAS_BLOCKOUT_CACHE` in comfy/nodes.py — applied here
     to the model caches, which previously grew unbounded (each entry holds a
     full loaded torch model, unlike the lightweight dict payloads that
-    pattern was applied to elsewhere)."""
+    pattern was applied to elsewhere).
+
+    ``release_cuda``: pass True for caches whose entries hold GPU models —
+    after evicting one, the CUDA caching allocator still holds its blocks
+    until `empty_cache()`, which matters on a contended card (measured
+    31.9/32.6 GB during a real staged run). No-op without CUDA.
+    """
+    evicted = False
     if len(cache) >= max_size:
         oldest = next(iter(cache))
         del cache[oldest]
+        evicted = True
     cache[key] = value
+    if evicted and release_cuda:
+        try:
+            import gc
+
+            import torch
+            gc.collect()  # drop the evicted model's tensors first
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass

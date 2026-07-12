@@ -1907,6 +1907,40 @@ def _resolve_exclude_mask(mask_tensor, height, width):
     return arr > 0.5
 
 
+_GROUND_SCALE_CACHE: dict = {}
+
+
+def _ground_scale_cached(depth_map, view_matrix, fx, fy, cx, cy, horizon_y):
+    """Memoized estimate_ground_scale for the shared-depth node family.
+
+    The staged master runs _metric_depth_and_validity in EVERY band node
+    (mask + layer, x4 bands, + sky) — 8+ identical full-resolution ground
+    fits per queue on the same DepthResult. The fit is deterministic in
+    (depth content, camera, horizon), so memoize on a cheap content
+    signature: a strided float32 sample hash + shape + rounded camera
+    params (id()-based keys are unsafe — CPython reuses ids after GC).
+    """
+    import hashlib as _hashlib
+
+    np = _require_numpy()
+    sample = np.ascontiguousarray(depth_map[::16, ::16], dtype=np.float32)
+    sig = _hashlib.md5(sample.tobytes()).hexdigest()
+    vm = tuple(round(float(x), 6) for row in view_matrix for x in row)
+    key = (sig, depth_map.shape, vm, round(float(fx), 3), round(float(fy), 3),
+           round(float(cx), 3), round(float(cy), 3),
+           None if horizon_y is None else round(float(horizon_y), 2))
+    hit = _GROUND_SCALE_CACHE.get(key)
+    if hit is not None:
+        return hit
+    from atlas_camera.core.relief_mesh import estimate_ground_scale
+    out = estimate_ground_scale(depth_map, view_matrix=view_matrix,
+                                fx=fx, fy=fy, cx=cx, cy=cy, horizon_y=horizon_y)
+    if len(_GROUND_SCALE_CACHE) >= 16:
+        _GROUND_SCALE_CACHE.pop(next(iter(_GROUND_SCALE_CACHE)))
+    _GROUND_SCALE_CACHE[key] = out
+    return out
+
+
 def _metric_depth_and_validity(solve, depth, exclude_mask=None) -> "_MetricDepthSetup | None":
     """Shared metric-depth + validity-mask setup for the inpaint-layers nodes.
 
@@ -1939,9 +1973,8 @@ def _metric_depth_and_validity(solve, depth, exclude_mask=None) -> "_MetricDepth
         horizon_y = height * 0.45  # same fallback build_relief_mesh uses internally
     extr = solve.camera.extrinsics
 
-    scale, _ground_info = estimate_ground_scale(
-        depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-        horizon_y=horizon_y)
+    scale, _ground_info = _ground_scale_cached(
+        depth_map, extr.camera_view_matrix, fx, fy, cx, cy, horizon_y)
     metric = depth_map.astype(np.float64) * scale
     resolved_exclude = _resolve_exclude_mask(exclude_mask, height, width)
     valid = np.isfinite(depth_map) & (depth_map > 1e-4)
@@ -5156,8 +5189,15 @@ class AtlasDebugReport:
                           "wh": [depth.image_width, depth.image_height]}
             try:
                 np = _require_numpy()
-                arr = np.asarray(depth.depth)
-                neg = float((arr < 0).mean())
+                # Prefer the estimator's recorded PRE-CLAMP fraction (the
+                # source now clamps metric depth at >= 0, so recomputing from
+                # the array would always read 0 and hide the watch-item).
+                recorded = (depth.metadata or {}).get("negative_fraction")
+                if recorded is not None:
+                    neg = float(recorded)
+                else:
+                    arr = np.asarray(depth.depth)
+                    neg = float((arr < 0).mean())
                 depth_info["negative_fraction"] = round(neg, 4)
                 if neg > 0.01:
                     flags.append(
@@ -5654,17 +5694,31 @@ class AtlasScopeMask:
                     "tooltip": "If the segment covers less than this % of the frame, treat the "
                                "prompt as a NO-MATCH and fall back to band-only instead of "
                                "excluding the whole layer."}),
+                "fallback_mask": ("MASK", {"lazy": True,
+                    "tooltip": "Geometry-prior fallback, tried BEFORE band-only when the SAM "
+                               "prompt no-matches — wire an AtlasSemanticMask (fixed ADE20K "
+                               "vocabulary, can't miss the way free-text prompts can). Lazy: "
+                               "only evaluated on an actual no-match."}),
             },
         }
 
     def check_lazy_status(self, sky_mask, prompt="", segment_mask=None,
-                          grow_px=16, min_coverage_pct=0.2, **_extra):
-        if (prompt or "").strip() and segment_mask is None:
+                          grow_px=16, min_coverage_pct=0.2, fallback_mask=None,
+                          **_extra):
+        if not (prompt or "").strip():
+            return []
+        if segment_mask is None:
             return ["segment_mask"]
+        # Segment arrived — pull the fallback only when it will actually be
+        # used (coverage no-match; the fraction is resolution-independent, so
+        # no resize needed here).
+        coverage = float((segment_mask > 0.5).float().mean())
+        if coverage < float(min_coverage_pct) / 100.0 and fallback_mask is None:
+            return ["fallback_mask"]
         return []
 
     def build(self, sky_mask, prompt="", segment_mask=None, grow_px=16,
-              min_coverage_pct=0.2, **_extra):
+              min_coverage_pct=0.2, fallback_mask=None, **_extra):
         torch = _require_torch()
         import torch.nn.functional as F
 
@@ -5674,22 +5728,90 @@ class AtlasScopeMask:
             return (sky, "band-only (no scope prompt — layer absent or unscoped)")
         if segment_mask is None:
             return (sky, f"band-only (prompt '{prompt}' but no segment wired)")
-        seg = segment_mask if segment_mask.dim() == 3 else segment_mask.unsqueeze(0)
-        if tuple(seg.shape[1:]) != tuple(sky.shape[1:]):
-            seg = F.interpolate(seg.unsqueeze(1).float(), size=tuple(sky.shape[1:]),
-                                mode="nearest").squeeze(1)
-        coverage = float((seg[0] > 0.5).float().mean())
-        if coverage < float(min_coverage_pct) / 100.0:
-            return (sky, f"band-only FALLBACK — segment for '{prompt}' covered "
-                         f"{coverage:.2%} of the frame (no-match); scoping skipped "
-                         "so the layer keeps its full band")
-        grown = seg
-        if grow_px and int(grow_px) > 0:
-            k = int(grow_px) * 2 + 1
-            grown = F.max_pool2d(seg.unsqueeze(1).float(), k, stride=1,
-                                 padding=k // 2).squeeze(1)
-        excl = torch.clamp(sky.float() + (1.0 - (grown > 0.5).float()), 0.0, 1.0)
-        return (excl, f"scoped to '{prompt}' ({coverage:.1%} segment, grown {int(grow_px)}px)")
+
+        def _scope_with(seg_in, label):
+            seg = seg_in if seg_in.dim() == 3 else seg_in.unsqueeze(0)
+            if tuple(seg.shape[1:]) != tuple(sky.shape[1:]):
+                seg = F.interpolate(seg.unsqueeze(1).float(), size=tuple(sky.shape[1:]),
+                                    mode="nearest").squeeze(1)
+            cov = float((seg[0] > 0.5).float().mean())
+            if cov < float(min_coverage_pct) / 100.0:
+                return None, cov
+            grown = seg
+            if grow_px and int(grow_px) > 0:
+                k = int(grow_px) * 2 + 1
+                grown = F.max_pool2d(seg.unsqueeze(1).float(), k, stride=1,
+                                     padding=k // 2).squeeze(1)
+            excl = torch.clamp(sky.float() + (1.0 - (grown > 0.5).float()), 0.0, 1.0)
+            return (excl, f"scoped to '{prompt}' via {label} ({cov:.1%} segment, "
+                          f"grown {int(grow_px)}px)"), cov
+
+        result, coverage = _scope_with(segment_mask, "SAM segment")
+        if result is not None:
+            return result
+        if fallback_mask is not None:
+            fb_result, fb_cov = _scope_with(fallback_mask, "semantic FALLBACK")
+            if fb_result is not None:
+                excl, status = fb_result
+                return (excl, f"{status} — SAM prompt no-matched at {coverage:.2%}")
+        return (sky, f"band-only FALLBACK — segment for '{prompt}' covered "
+                     f"{coverage:.2%} of the frame (no-match); scoping skipped "
+                     "so the layer keeps its full band")
+
+
+class AtlasSemanticMask:
+    """🧩 Named-class semantic mask via SegFormer/ADE20K.
+
+    A promptless, deterministic alternative to SAM3 text segmentation:
+    SegFormer assigns every pixel one of ADE20K's 150 fixed scene classes
+    ("sky", "floor", "building", "tree", "person", ...). Two intended roles:
+    a native sky-mask source when ComfyUI-RMBG isn't installed, and a
+    geometry-prior fallback for `AtlasScopeMask.fallback_mask` when a
+    free-text SAM prompt no-matches (a fixed vocabulary can't miss the way
+    "desert floor and boulder" did). b0 is tiny (~15MB) and CPU-viable.
+    Needs `[neural]` (transformers)."""
+    RETURN_TYPES = ("MASK", "STRING")
+    RETURN_NAMES = ("mask", "report")
+    FUNCTION = "segment"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        from atlas_camera.inference.semantic_segmenter import SEGFORMER_MODELS
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "classes": ("STRING", {"default": "sky",
+                    "tooltip": "Comma-separated ADE20K class names (sky, floor, building, "
+                               "tree, person, road, water, mountain, ceiling, wall, ...). "
+                               "The mask is the UNION of all matched classes."}),
+            },
+            "optional": {
+                "model": (list(SEGFORMER_MODELS), {"default": SEGFORMER_MODELS[0],
+                    "tooltip": "b0 = fastest/smallest, b4 = most accurate."}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+            },
+        }
+
+    def segment(self, image, classes="sky", model=None, device="auto", **_extra):
+        from atlas_camera.inference.semantic_segmenter import (
+            DEFAULT_SEGFORMER_MODEL, available_labels, semantic_class_mask)
+        torch = _require_torch()
+
+        pil = _image_tensor_to_pil(image)
+        dev = None if device == "auto" else device
+        model_id = model or DEFAULT_SEGFORMER_MODEL
+        mask_np, matched, coverage = semantic_class_mask(
+            pil, classes, model_id=model_id, device=dev)
+        mask = torch.from_numpy(mask_np.astype("float32")).unsqueeze(0)
+        if matched:
+            report = (f"matched {sorted(set(matched))} -> {coverage:.1%} of frame "
+                      f"({model_id.rsplit('/', 1)[-1]})")
+        else:
+            labels = ", ".join(sorted(available_labels(model_id, dev))[:40])
+            report = (f"NO MATCH for '{classes}' — mask is empty. "
+                      f"ADE20K classes include: {labels}, ...")
+        return (mask, report)
 
 
 class AtlasInpaintCrop:
@@ -6735,6 +6857,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasInpaintCrop":           AtlasInpaintCrop,
     "AtlasInpaintStitch":         AtlasInpaintStitch,
     "AtlasScopeMask":             AtlasScopeMask,
+    "AtlasSemanticMask":          AtlasSemanticMask,
     "AtlasDebugReport":           AtlasDebugReport,
     "AtlasLayerPreview":          AtlasLayerPreview,
     "AtlasInput":                 AtlasInput,
@@ -6801,6 +6924,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasInpaintCrop":           "Atlas Inpaint Crop ✂",
     "AtlasInpaintStitch":         "Atlas Inpaint Stitch ✂",
     "AtlasScopeMask":             "Atlas Scope Mask 🎯",
+    "AtlasSemanticMask":          "Atlas Semantic Mask 🧩",
     "AtlasDebugReport":           "Atlas Debug Report 🔍",
     "AtlasLayerPreview":          "Atlas Layer Preview 🎨",
     "AtlasInput":                 "Atlas Input 🎬",
