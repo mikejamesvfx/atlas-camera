@@ -5619,23 +5619,33 @@ class AtlasInput:
                 layer_kw = {}
                 if vlm is not None:
                     layer_kw["geometry_override"] = vlm.out(8 + i)  # geom_far..fg
-                # edge_extend 64 + skirt_bevel 1.5 + frame_outpaint 64: every
-                # band's plate colors are smeared well past its band matte
-                # onto receding skirts, so adjacent bands overlap generously
-                # instead of meeting at a black hairline — the quickstart must
-                # hide band separation even at rough settings (artist-reported
-                # black band lines on the alpine ridge plate; these are the
-                # ultra workflow's calibrated values).
+                # DMP seam doctrine (artist-corrected 2026-07-12): the
+                # extension/outpaint belongs on the layer BEHIND — the front
+                # layer keeps a clean cut matte. So the frontmost band gets
+                # NO extend/outpaint/skirt, every band behind gets the
+                # generous smear (64/1.5/64) that covers the seam on camera
+                # move. Priorities are FARTHEST-HIGHEST for the same reason:
+                # at a watertight seam the two bands' surfaces are depth-
+                # adjacent, and the near-tie priority bias decides which
+                # paints — with nearest-highest (the first attempt) each
+                # band's smear rendered IN FRONT of the layer behind it
+                # (striped columns at every seam, artist-reported); with
+                # farthest-highest the behind layer's real pixels win the
+                # seam ribbon and its extension shows only in true reveals,
+                # while genuinely nearer real geometry still wins by plain
+                # depth test.
+                is_front = (i == n_bands - 1)
                 layer = g.node("AtlasCleanPlateLayer", solve=solve_chain,
                                depth=depth.out(0), plate_image=plate_ref,
                                band_override=override, name=name,
-                               priority=float(5 * i),
+                               priority=float(5 * (n_bands - 1 - i)),
                                relief_grid=int(mesh_resolution),
                                depth_edge_rel=1.5,
                                fill_occluded=(inpaint_on and i < n_bands - 1),
                                embed_matte=True,
-                               edge_extend_px=64, skirt_bevel=1.5,
-                               frame_outpaint_px=64,
+                               edge_extend_px=0 if is_front else 64,
+                               skirt_bevel=0.0 if is_front else 1.5,
+                               frame_outpaint_px=0 if is_front else 64,
                                band_geometry=mesh,
                                exclude_mask=exclude_ref, **band_ref_kw, **layer_kw)
                 solve_chain = layer.out(0)

@@ -75,17 +75,23 @@ def test_band_layers_watertight_and_prioritized(monkeypatch):
         assert parsed[0][0] == 0.0 and parsed[-1][1] == 1.0
         for (n1, f1), (n2, f2) in zip(parsed, parsed[1:]):
             assert f1 == pytest.approx(n2)
-        # every override parses through the SAME parser the node uses
-        prios = sorted(b["inputs"]["priority"] for b in bands)
-        assert prios == [5.0 * i for i in range(n_expected)]
+        # DMP seam doctrine (artist-corrected): priority is FARTHEST-HIGHEST
+        # so the layer behind wins the seam near-tie; the extension/outpaint
+        # lives on the layers BEHIND while the frontmost band keeps a clean
+        # cut matte (no extend, no outpaint, no skirt).
+        by_depth = sorted(bands,
+                          key=lambda b: _parse_band_override(b["inputs"]["band_override"])[0])
+        front, behind = by_depth[0], by_depth[1:]   # nearest first
+        assert [b["inputs"]["priority"] for b in by_depth] == \
+            [5.0 * i for i in range(n_expected)]     # nearest lowest
+        assert front["inputs"]["edge_extend_px"] == 0
+        assert front["inputs"]["skirt_bevel"] == 0.0
+        assert front["inputs"]["frame_outpaint_px"] == 0
+        assert all(b["inputs"]["edge_extend_px"] == 64 for b in behind)
+        assert all(b["inputs"]["skirt_bevel"] == 1.5 for b in behind)
+        assert all(b["inputs"]["frame_outpaint_px"] == 64 for b in behind)
         # bands use the calibrated band-mesh tear threshold
         assert all(b["inputs"]["depth_edge_rel"] == 1.5 for b in bands)
-        # ... and the ultra workflow's seam-smear calibration, so adjacent
-        # bands overlap generously instead of meeting at black hairlines
-        # (artist-reported band lines on the alpine ridge plate).
-        assert all(b["inputs"]["edge_extend_px"] == 64 for b in bands)
-        assert all(b["inputs"]["skirt_bevel"] == 1.5 for b in bands)
-        assert all(b["inputs"]["frame_outpaint_px"] == 64 for b in bands)
 
 
 def test_sky_and_scope_skip_gracefully_without_sam(monkeypatch):
