@@ -55,6 +55,9 @@ examples/review_packages/*
 *.tif
 *.tiff
 !tests/fixtures/*
+# Brand/registry assets are hand-authored and must ship (the registry Icon URL
+# points at assets/atlas_camera_icon.png).
+!assets/*.png
 !examples/images/.gitkeep
 
 # Session/tooling artifacts
