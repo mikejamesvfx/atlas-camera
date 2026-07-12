@@ -27,11 +27,28 @@ def _expand(monkeypatch, registry=None, **kw):
     monkeypatch.setattr(nodes_mod, "_comfy_registry", lambda: registry or {})
     out = AtlasInput().build(IMG, **kw)
     assert set(out) == {"result", "expand"}
+    _assert_atlas_inputs_valid(out["expand"])
     return out["expand"], out["result"]
 
 
 def _types(graph):
     return sorted(n["class_type"] for n in graph.values())
+
+
+def _assert_atlas_inputs_valid(graph):
+    """Every emitted Atlas-class node's input names must exist on the real
+    class's INPUT_TYPES (code-review minor #7): a typo'd kwarg in build()
+    would pass every value-assertion test and only explode at ComfyUI
+    prompt validation at runtime. Third-party classes (SAM3Segment,
+    INPAINT_*) are skipped — their schemas aren't importable here."""
+    for node in graph.values():
+        cls = NODE_CLASS_MAPPINGS.get(node["class_type"])
+        if cls is None:
+            continue
+        spec = cls.INPUT_TYPES()
+        legal = set(spec.get("required", {})) | set(spec.get("optional", {}))
+        unknown = set(node["inputs"]) - legal
+        assert not unknown, f"{node['class_type']}: unknown inputs {unknown}"
 
 
 def test_registered():

@@ -1935,14 +1935,15 @@ def _ground_scale_cached(depth_map, view_matrix, fx, fy, cx, cy, horizon_y):
            None if horizon_y is None else round(float(horizon_y), 2))
     hit = _GROUND_SCALE_CACHE.get(key)
     if hit is not None:
-        return hit
+        return hit[0], dict(hit[1])   # copy the info dict — a caller mutating
+                                      # it must never poison the cache
     from atlas_camera.core.relief_mesh import estimate_ground_scale
     out = estimate_ground_scale(depth_map, view_matrix=view_matrix,
                                 fx=fx, fy=fy, cx=cx, cy=cy, horizon_y=horizon_y)
     if len(_GROUND_SCALE_CACHE) >= 16:
         _GROUND_SCALE_CACHE.pop(next(iter(_GROUND_SCALE_CACHE)))
     _GROUND_SCALE_CACHE[key] = out
-    return out
+    return out[0], dict(out[1])
 
 
 def _metric_depth_and_validity(solve, depth, exclude_mask=None) -> "_MetricDepthSetup | None":
@@ -5662,6 +5663,18 @@ class AtlasInput:
         }
 
 
+def _seg_coverage(mask_tensor) -> float:
+    """Fraction of the frame a MASK covers (first batch item, >0.5).
+
+    Shared by AtlasScopeMask's check_lazy_status and build so a borderline
+    segment can't pass one coverage test and fail the other (code-review
+    minor: the two used to compute it differently — whole raw tensor vs
+    first-item-after-resize). Resolution-independent, so no resize needed.
+    """
+    t = mask_tensor if mask_tensor.dim() == 3 else mask_tensor.unsqueeze(0)
+    return float((t[0] > 0.5).float().mean())
+
+
 class AtlasScopeMask:
     """🎯 Per-band scope exclude builder — `sky ∪ NOT(grow(segment))`, with
     SELF-DISARMING fallbacks so a scope row can stay permanently active.
@@ -5738,10 +5751,10 @@ class AtlasScopeMask:
         if segment_mask is None:
             return ["segment_mask"]
         # Segment arrived — pull the fallback only when it will actually be
-        # used (coverage no-match; the fraction is resolution-independent, so
-        # no resize needed here).
-        coverage = float((segment_mask > 0.5).float().mean())
-        if coverage < float(min_coverage_pct) / 100.0 and fallback_mask is None:
+        # used (coverage no-match). Same computation as build()'s, so the two
+        # can never disagree on a borderline segment.
+        if (_seg_coverage(segment_mask) < float(min_coverage_pct) / 100.0
+                and fallback_mask is None):
             return ["fallback_mask"]
         return []
 
@@ -5764,7 +5777,7 @@ class AtlasScopeMask:
             if tuple(seg.shape[1:]) != tuple(sky.shape[1:]):
                 seg = F.interpolate(seg.unsqueeze(1).float(), size=tuple(sky.shape[1:]),
                                     mode="nearest").squeeze(1)
-            cov = float((seg[0] > 0.5).float().mean())
+            cov = _seg_coverage(seg)
             if cov < float(min_coverage_pct) / 100.0:
                 return None, None, cov
             grown = seg

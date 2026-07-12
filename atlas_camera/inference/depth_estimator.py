@@ -176,6 +176,33 @@ def _record_and_clamp_negative(depth: Any, metadata: dict[str, Any]) -> tuple[An
     return depth, metadata
 
 
+def _disparity_to_depth(disparity: Any, metadata: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """Convert a relative model's disparity map to normalised depth ([0,1],
+    larger = farther).
+
+    Disparity is proportional to 1/depth, so the conversion must be
+    RECIPROCAL — the pre-audit linear `1 - d` flip was rank-preserving but
+    systematically warped spacing (near range compressed, far stretched).
+    Normalised disparity is floored at `_DISPARITY_FLOOR` (a 25:1 depth-ratio
+    cap) so the sky/horizon tail doesn't blow the dynamic range; everything
+    at/below the floor collapses to ONE far plane, and the fraction that did
+    is recorded in metadata["floored_fraction"].
+
+    Pure numpy, extracted from the V2 inference path per code review so the
+    spacing behavior is pinnable without model weights.
+    """
+    import numpy as np
+
+    d = disparity - disparity.min()
+    d = d / (d.max() or 1.0)
+    inv = 1.0 / np.maximum(d, _DISPARITY_FLOOR)
+    inv -= inv.min()
+    depth = (inv / (inv.max() or 1.0)).astype(np.float32)
+    metadata["disparity_floor"] = _DISPARITY_FLOOR
+    metadata["floored_fraction"] = round(float((d <= _DISPARITY_FLOOR).mean()), 6)
+    return depth, metadata
+
+
 def _get_model(model_id: str, device: str):
     cached = _MODEL_CACHE.get((model_id, device))
     if cached is not None:
@@ -403,26 +430,9 @@ def _estimate_depth_v2(
     metadata: dict[str, Any] = {"device": device}
 
     if not is_metric:
-        # Relative models emit DISPARITY (larger = closer), and disparity is
-        # proportional to 1/depth — so the conversion must be reciprocal, not
-        # the previous linear `1 - d` (rank-preserving but with systematically
-        # wrong SPACING: near range compressed, far range stretched, warping
-        # any geometry built from it). Floor the normalised disparity at 0.04
-        # (a 25:1 depth ratio cap) so the sky/horizon tail doesn't blow the
-        # dynamic range, then renormalise to [0, 1], larger = farther.
-        import numpy as np
-
-        d = depth - depth.min()
-        d = d / (d.max() or 1.0)
-        inv = 1.0 / np.maximum(d, _DISPARITY_FLOOR)
-        inv -= inv.min()
-        depth = (inv / (inv.max() or 1.0)).astype(np.float32)
-        # Surface the cap in the result: everything at/below the floor
-        # (the farthest tail — sky, horizon haze) collapses to one depth
-        # plane. Consumers needing far-field separation can read this
-        # instead of rediscovering it from a flat far field.
-        metadata["disparity_floor"] = _DISPARITY_FLOOR
-        metadata["floored_fraction"] = round(float((d <= _DISPARITY_FLOOR).mean()), 6)
+        # Relative models emit DISPARITY (larger = closer) — reciprocal
+        # conversion + floor cap; see _disparity_to_depth for the full story.
+        depth, metadata = _disparity_to_depth(depth, metadata)
     else:
         depth, metadata = _record_and_clamp_negative(depth, metadata)
 
