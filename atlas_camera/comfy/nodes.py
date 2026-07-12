@@ -1916,15 +1916,19 @@ def _ground_scale_cached(depth_map, view_matrix, fx, fy, cx, cy, horizon_y):
     The staged master runs _metric_depth_and_validity in EVERY band node
     (mask + layer, x4 bands, + sky) — 8+ identical full-resolution ground
     fits per queue on the same DepthResult. The fit is deterministic in
-    (depth content, camera, horizon), so memoize on a cheap content
-    signature: a strided float32 sample hash + shape + rounded camera
-    params (id()-based keys are unsafe — CPython reuses ids after GC).
+    (depth content, camera, horizon), so memoize on the FULL array's
+    float32 hash + shape + rounded camera params (id()-based keys are
+    unsafe — CPython reuses ids after GC; a strided sample hash was the
+    first version, dropped per code review: two maps identical at the
+    samples but differing elsewhere would silently return the wrong
+    scale). The full hash is ~tens of ms at 4K vs the seconds-long fit
+    a hit saves.
     """
     import hashlib as _hashlib
 
     np = _require_numpy()
-    sample = np.ascontiguousarray(depth_map[::16, ::16], dtype=np.float32)
-    sig = _hashlib.md5(sample.tobytes()).hexdigest()
+    sig = _hashlib.md5(
+        np.ascontiguousarray(depth_map, dtype=np.float32).tobytes()).hexdigest()
     vm = tuple(round(float(x), 6) for row in view_matrix for x in row)
     key = (sig, depth_map.shape, vm, round(float(fx), 3), round(float(fy), 3),
            round(float(cx), 3), round(float(cy), 3),
@@ -5754,30 +5758,32 @@ class AtlasScopeMask:
             return (sky, f"band-only (prompt '{prompt}' but no segment wired)")
 
         def _scope_with(seg_in, label):
+            """Try scoping with one segment. Returns (excl, status, cov);
+            excl/status are None when the segment's coverage no-matches."""
             seg = seg_in if seg_in.dim() == 3 else seg_in.unsqueeze(0)
             if tuple(seg.shape[1:]) != tuple(sky.shape[1:]):
                 seg = F.interpolate(seg.unsqueeze(1).float(), size=tuple(sky.shape[1:]),
                                     mode="nearest").squeeze(1)
             cov = float((seg[0] > 0.5).float().mean())
             if cov < float(min_coverage_pct) / 100.0:
-                return None, cov
+                return None, None, cov
             grown = seg
             if grow_px and int(grow_px) > 0:
                 k = int(grow_px) * 2 + 1
                 grown = F.max_pool2d(seg.unsqueeze(1).float(), k, stride=1,
                                      padding=k // 2).squeeze(1)
             excl = torch.clamp(sky.float() + (1.0 - (grown > 0.5).float()), 0.0, 1.0)
-            return (excl, f"scoped to '{prompt}' via {label} ({cov:.1%} segment, "
-                          f"grown {int(grow_px)}px)"), cov
+            status = (f"scoped to '{prompt}' via {label} ({cov:.1%} segment, "
+                      f"grown {int(grow_px)}px)")
+            return excl, status, cov
 
-        result, coverage = _scope_with(segment_mask, "SAM segment")
-        if result is not None:
-            return result
+        excl, status, coverage = _scope_with(segment_mask, "SAM segment")
+        if excl is not None:
+            return (excl, status)
         if fallback_mask is not None:
-            fb_result, fb_cov = _scope_with(fallback_mask, "semantic FALLBACK")
-            if fb_result is not None:
-                excl, status = fb_result
-                return (excl, f"{status} — SAM prompt no-matched at {coverage:.2%}")
+            fb_excl, fb_status, _fb_cov = _scope_with(fallback_mask, "semantic FALLBACK")
+            if fb_excl is not None:
+                return (fb_excl, f"{fb_status} — SAM prompt no-matched at {coverage:.2%}")
         return (sky, f"band-only FALLBACK — segment for '{prompt}' covered "
                      f"{coverage:.2%} of the frame (no-match); scoping skipped "
                      "so the layer keeps its full band")

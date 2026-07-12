@@ -52,6 +52,13 @@ DA3_NESTED_MODEL = "depth-anything/DA3NESTED-GIANT-LARGE-1.1"
 # DA3METRIC emits canonical depth normalised by this constant: metres = focal_px * out / 300.
 _DA3_CANONICAL_FOCAL_NORM = 300.0
 
+# Relative (disparity) models: normalised disparity is floored here before the
+# reciprocal depth conversion — a 25:1 depth-ratio cap that keeps the sky /
+# horizon tail from blowing the dynamic range. Everything at or below the
+# floor lands on ONE far plane; the fraction that did is recorded in
+# DepthResult.metadata["floored_fraction"].
+_DISPARITY_FLOOR = 0.04
+
 
 def _is_da3_model(model_id: str) -> bool:
     """True for Depth Anything 3 ids (``depth-anything/DA3...``); no V2 id matches."""
@@ -407,9 +414,15 @@ def _estimate_depth_v2(
 
         d = depth - depth.min()
         d = d / (d.max() or 1.0)
-        inv = 1.0 / np.maximum(d, 0.04)
+        inv = 1.0 / np.maximum(d, _DISPARITY_FLOOR)
         inv -= inv.min()
         depth = (inv / (inv.max() or 1.0)).astype(np.float32)
+        # Surface the cap in the result: everything at/below the floor
+        # (the farthest tail — sky, horizon haze) collapses to one depth
+        # plane. Consumers needing far-field separation can read this
+        # instead of rediscovering it from a flat far field.
+        metadata["disparity_floor"] = _DISPARITY_FLOOR
+        metadata["floored_fraction"] = round(float((d <= _DISPARITY_FLOOR).mean()), 6)
     else:
         depth, metadata = _record_and_clamp_negative(depth, metadata)
 
