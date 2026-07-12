@@ -199,7 +199,12 @@ Two independent things address this:
 **Orbit angle clamp** — the orbit controller limits rotation to roughly
 ±80° yaw / ±55° pitch around the camera's own original direction. This
 stops you from spinning into the void by accident, while leaving plenty of
-room to inspect parallax and occlusion.
+room to inspect parallax and occlusion. The orbit also **preserves the
+solve's roll**: if the recovered camera is tilted (GeoCalib reads gravity
+from the photo — ridge shots with no true horizon can carry 20°+), dragging
+keeps that tilt instead of snapping the horizon level, so the projected
+scene never visibly rotates on your first click. 📷 Camera View still
+restores the exact recovered pose.
 
 **`preview_expand`** (on `AtlasBlockoutViewport`, default 1.0 = off) — dilates the
 geometry itself outward from the camera, so more of the visible cone is
@@ -364,6 +369,14 @@ sanity-checking a solve and, since 2026-07-09, for tuning the layer stack:
 | `AtlasDeriveReliefMesh` | The base mesh + backdrop under every layered workflow |
 | `AtlasCleanPlateLayer` / `AtlasDepthLayerMask` / `AtlasSkyDomeLayer` | The layer stack (see the 2026-07-09 section below) |
 | `AtlasPredictHiddenGeometry` 🔬 | Experimental X-ray depth — predicted geometry behind occluders |
+| `AtlasInput` 🎬 | The one-node fast path (see the 2026-07-12 section below) |
+| `AtlasSolveGate` ✅ | Solve-confirm checkpoint — cheap preview first, approve before the heavy stack runs |
+| `AtlasScopeMask` 🎯 | Per-band scope exclude with self-disarming fallbacks (band-only on a SAM no-match) |
+| `AtlasSemanticMask` 🧩 | Named-class masks via SegFormer/ADE20K — promptless sky/floor/building masks, and the 🎯 geometry-prior fallback |
+| `AtlasInpaintCrop` / `AtlasInpaintStitch` ✂ | The LaMa quality lever — spend the inpainter's fixed internal resolution on the hole, not the whole frame |
+| `AtlasDebugReport` 🔍 | Full-stack diagnostic of a layered scene, rendered on-node + written to stable JSON |
+| `AtlasLayerPreview` 🎨 | Cut-out layer preview in the layer's viewport legend color |
+| `AtlasBlockoutViewport` (⛶ + arrow/A/D keys) | Fullscreen viewport + UE-style tracking keys (Shift = 4×) |
 
 ---
 
@@ -432,10 +445,11 @@ scene:
 
 ![Registration quality by scene and backend](images/chart_relmad_backends.svg)
 
-Six calibrated per-scene workflows ship in `examples/`
-(`atlas_camera_hidden_geometry_*_workflow.json`) — cathedral, space hangar,
-jungle temple, canyon, steep ridge, wide valley — each with a dolly-in bake
-wired to video. Start from the one whose scene most resembles your shot.
+Six calibrated per-scene workflows were built for this track — cathedral,
+space hangar, jungle temple, canyon, steep ridge, wide valley — each with a
+dolly-in bake wired to video. They were removed from the shipped set in the
+2026-07-12 two-workflow trim; recover any of them with
+`git show 10e600b:examples/atlas_camera_hidden_geometry_<scene>_workflow.json`.
 
 ## What's new (2026-07-12) — AtlasInput, the one-node fast path
 

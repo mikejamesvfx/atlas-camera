@@ -16,6 +16,7 @@ pulls in and what its terms allow.
 | LaRI | **No upstream license** (all rights reserved by default) | user clones github.com/ruili3/lari → `lari_path`/`ATLAS_LARI_PATH` | `AtlasPredictHiddenGeometry` (lari-scene) | ❌ research only |
 | World Tracing (WT-DiT r69l) | **CC BY-NC-ND 4.0**, checkpoint HF-gated | user clones repo + requests checkpoint access → `wt_path`/`ATLAS_WT_PATH` | `AtlasPredictHiddenGeometry` (world-tracing-scene) | ❌ non-commercial |
 | SAM 3 (via ComfyUI-RMBG) | per Meta's SAM license / pack's terms | ComfyUI Manager | Sky + foreground mattes in the hero workflows | check pack |
+| SegFormer ADE20K (b0/b2/b4) | transformers implementation Apache-2.0; **weights** published by NVIDIA on Hugging Face under NVIDIA's SegFormer model license (see the model card) | auto-download via `[neural]` transformers | `AtlasSemanticMask` 🧩 (named-class masks; 🎯 scope fallback) | **check the weights' terms before commercial use** |
 | comfyui-inpaint-nodes (LaMa/MAT) | **GPL-3.0** | ComfyUI Manager | X-ray clean plates, inpaint-layer track | graph-level only — see boundary below |
 | big-lama.pt weights | Apache 2.0 (LaMa) | pack's model download | same | ✅ |
 | ComfyUI-OCIO | per pack | ComfyUI Manager | ACEScg full-float examples | check pack |

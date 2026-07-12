@@ -70,16 +70,20 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (47 nodes, category "Atlas Camera")
+## 2. The Node Catalog (54 nodes, category "Atlas Camera")
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in.
 
-> Count refreshed 2026-07-09. The tables below predate the newest additions —
+> Count refreshed 2026-07-12. The tables below predate the newest additions —
 > the shared-depth layer nodes (`AtlasDepthMap`, `AtlasCleanPlateLayer`,
-> `AtlasDepthLayerMask`, `AtlasSkyDomeLayer`), `AtlasAssessImage`, and
-> `AtlasPredictHiddenGeometry` 🔬 — which are covered in the dated addenda at
-> the end of this guide and, in full, in CLAUDE.md's catalog.
+> `AtlasDepthLayerMask`, `AtlasSkyDomeLayer`), `AtlasAssessImage`,
+> `AtlasPredictHiddenGeometry` 🔬, the staged-master support nodes
+> (`AtlasSolveGate` ✅, `AtlasScopeMask` 🎯, `AtlasSemanticMask` 🧩,
+> `AtlasInpaintCrop`/`AtlasInpaintStitch` ✂, `AtlasDebugReport` 🔍,
+> `AtlasLayerPreview` 🎨), and the one-node entry point `AtlasInput` 🎬 —
+> which are covered in the dated addenda at the end of this guide and, in
+> full, in CLAUDE.md's catalog.
 
 ### Solve
 

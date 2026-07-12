@@ -5,6 +5,43 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
 ## Unreleased
 
+### Public-release preparation (2026-07-12)
+
+- **Shipping catalog trimmed to two workflows**: the 🎬 quickstart
+  (`atlas_input_quickstart_workflow.json`) and the 🏗 staged master
+  (`atlas_camera_staged_master_workflow.json`). The ~37 other examples and
+  the sample assets (4K test photos, proxy OBJs) left the repo — assets are
+  distributed as a separate download; recover any removed workflow with
+  `git show 10e600b:examples/<name>.json`.
+- **Packaging fix**: wheels built on a dev machine no longer sweep in
+  gitignored runtime output dirs (a bad `atlas*` discovery glob shipped
+  800+ files of local test exports); the package list is now pinned by test.
+- Stale/personal docs and tools removed; machine paths genericized.
+
+### Quality + correctness (2026-07-12)
+
+- **CV-audit hardening (11 findings)**: bilinear depth resize (bicubic rang
+  negative halos at silhouettes); reciprocal disparity→depth for relative
+  models (spacing was systematically warped); negative metric depth recorded
+  (`metadata["negative_fraction"]`) then clamped at the source; ground fits
+  memoized and stride-subsampled above 2MP (identical results, ~seconds
+  saved per queue); sky-mask roughness via integral image; CUDA freed on
+  model-cache eviction; `tools/export_depth_v2_onnx.py` (parity-gated ONNX
+  export, fixed-resolution contract).
+- **Viewport orbit preserves the solve's roll** — on tilted-gravity solves
+  (ridge shots measured at 28°) the first drag no longer visibly rotates the
+  projected scene; 📷 Camera View still restores the exact recovered pose.
+- **New nodes**: `AtlasSemanticMask` 🧩 (SegFormer/ADE20K named-class masks —
+  promptless sky/floor/building mattes, exact-first class matching) and a
+  lazy `fallback_mask` on `AtlasScopeMask` 🎯 (geometry-prior fallback tried
+  before band-only on a SAM no-match).
+- **DMP seam doctrine in the quickstart**: the frontmost band keeps a clean
+  cut matte; every band behind gets the generous edge-extend/skirt/outpaint
+  smear; band priorities are farthest-highest so the layer behind wins the
+  seam — no more black band lines or striped seams. Staged master v10 aligns
+  its priorities to the same convention.
+
+
 ### Output Desk slimmed: look/LUT/exposure/gamma widgets removed
 
 - `AtlasViewportControls` dropped its `look`, `lut_path`, `exposure`, and
