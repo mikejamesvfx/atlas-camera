@@ -1133,7 +1133,7 @@ function applyRecoveredCamera(threeCamera, data) {
 // ---------------------------------------------------------------------------
 // Primitive helper
 // ---------------------------------------------------------------------------
-function atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height) {
+function atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height, mime = "image/png", quality) {
   const buffer = new Uint8Array(width * height * 4);
   renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, buffer);
 
@@ -1152,7 +1152,7 @@ function atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height) {
   const imageData = ctx.createImageData(width, height);
   imageData.data.set(flipped);
   ctx.putImageData(imageData, 0, 0);
-  return offscreen.toDataURL("image/png").split(",")[1];
+  return offscreen.toDataURL(mime, quality).split(",")[1];
 }
 
 function atlasRenderSceneToBase64(renderer, scene, camera, width, height, options = {}) {
@@ -1167,7 +1167,7 @@ function atlasRenderSceneToBase64(renderer, scene, camera, width, height, option
     renderer.setRenderTarget(renderTarget);
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
-    return atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height);
+    return atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height, options.mime, options.quality);
   } finally {
     renderer.setRenderTarget(null);
     if (hasOverrideMaterial) scene.overrideMaterial = prevOverrideMaterial;
@@ -2335,7 +2335,12 @@ function buildNodeUI(node, containerEl) {
         camera.position.set(pose.position.x, pose.position.y, pose.position.z);
         camera.up.set(0, 1, 0);
         camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
-        frames.push(atlasRenderSceneToBase64(renderer, scene, camera, W, H, { renderTarget: outputRt }));
+        // JPEG, not PNG: baked frames feed a video encoder (h264, lossy), so
+        // lossless PNG is pure waste — JPEG is ~5–10× smaller and stops the
+        // whole clip's base64 from OOM-ing the JS heap when it's all stringified
+        // into one client_data blob (the reported bake OOM at 1280×100 frames).
+        frames.push(atlasRenderSceneToBase64(renderer, scene, camera, W, H,
+          { renderTarget: outputRt, mime: "image/jpeg", quality: 0.9 }));
       }
       const widget = node.widgets?.find((w) => w.name === "client_data");
       let existing = {};
@@ -2343,7 +2348,7 @@ function buildNodeUI(node, containerEl) {
       existing.path_frames = frames;
       existing.camera_path = { keyframes: pathKeyframes.map(kfToJSON), fps: pathFps, frame_count: pathFrameCount };
       existing.atlas_proxy_path = {
-        transport: "png_base64_proxy_ldr",
+        transport: "jpeg_base64_proxy_ldr",
         width: W,
         height: H,
         fps: pathFps,
