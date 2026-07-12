@@ -296,3 +296,41 @@ Phase 1 gives a useful frustum/facing/grazing mask.
 Phase 2 adds `occlusion_mode = simple | depth_shadow`.
 
 This keeps the workflow forgiving while opening the door to a real MPTK-style projection layering system.
+
+---
+
+## Phase 3 (planned): apply the primary-occlusion mask in the VIEWPORT
+
+**Motivation (2026-07-12, from a live AtlasInput quickstart orbit).** The
+single-view relief projects perfectly from the recovered camera, but on orbit
+the PRIMARY paints grazing/occluded back-geometry — e.g. the sea plane behind a
+foreground castle, seen edge-on — with stretched texels. The primary uses
+`facingThreshold = -1` (paints everywhere in-frame) by design, so nothing culls
+the surfaces the recovered camera couldn't actually see. Artists read this as
+"there's geometry behind the subject that shouldn't be painted."
+
+**Key framing:** the geometry is NOT junk to delete — the background is real
+surface the camera saw. The wrong thing is *painting fragments that are occluded
+from the projector*. The fix is projector-occlusion culling, and the machinery
+already exists: `depth_geometry.primary_camera_validity_mask` /
+`AtlasOcclusionMask`'s `depth_shadow` mode already computes exactly this (a
+surface farther than the primary's stored depth at its projected pixel, by a
+bias, is occluded from the recovered camera). Today that only feeds PATCH masks,
+never the viewport primary.
+
+**Scope — display-only, opt-in (mirrors ☀ Exposure / 💡 Lights / 🩻):**
+- Serialize the primary's own depth map (or a precomputed per-pixel occlusion
+  seed) into `_extract_blockout_camera`'s payload.
+- In `PROJECTION_FRAGMENT_SHADER`, for the PRIMARY source only, sample that depth
+  at the fragment's projected uv and `discard` when the fragment's camera-space
+  depth exceeds the stored primary depth + bias — the same shadow-map test
+  `primary_camera_validity_mask` does in numpy.
+- Add a viewport toggle (sibling of 📽/🩻/💡, e.g. "✂ Occlude") + a small bias
+  slider. Default OFF: it also culls legitimate grazing surfaces, and the honest
+  result is black-where-unseen, which some shots want and some don't.
+- Never touches exports or measurement — purely a viewport display cull.
+
+**Relationship to the layer stack:** this is the *cull* answer (show
+black-where-unseen); the *fill* answer (clean-plate layers / patches inpaint the
+unseen region) stays the production path. Complementary — cull for a quick honest
+preview, fill for a finished move.
