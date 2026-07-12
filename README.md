@@ -1,378 +1,147 @@
-# ATLAS
+<p align="center">
+  <img src="assets/atlas_camera_icon.png" width="132" alt="Atlas Camera">
+</p>
 
-## Recover the Latent World
+<h1 align="center">Atlas Camera</h1>
 
-Atlas is an open-source platform for recovering the hidden 3D structure implied
-by a single image. The current milestone focuses on the first recoverable
-component, the `LatentCamera`, and packages it with projection evidence,
-confidence, proxy geometry, and DCC handoff data.
+<p align="center">
+  <b>Recover the camera from a single still — up to 8K — and build a color-managed
+  projection scene for Nuke, Maya and USD,<br>reviewable with simple camera moves in a
+  real-time viewport.</b>
+</p>
 
-> **Status: beta (`release/beta-0.2`, v0.3.0).** Deterministic core + a 46-node
-> ComfyUI pack for single-image camera recovery, matte-painting projection,
-> layered 2.5D clean-plate rigs, and DCC handoff. See
-> [Current Status](#current-status) for what's implemented vs. placeholder.
+<p align="center">
+  <a href="https://registry.comfy.org/nodes/atlas-camera"><img src="https://img.shields.io/badge/ComfyUI_Registry-atlas--camera-eaa03a" alt="ComfyUI Registry"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2fb7a6" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/python-3.10+-c4b29a" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/ComfyUI-54_nodes-8f8571" alt="54 nodes">
+  <a href="https://mikejamesvfx.com"><img src="https://img.shields.io/badge/a-mikejamesvfx_tool-c4b29a" alt="a mikejamesvfx tool"></a>
+</p>
+
+---
+
+Atlas Camera is a professional VFX tool for **single-image camera recovery and
+matte-painting projection**, running as a ComfyUI custom node. A photograph goes
+in; a ready camera-projection setup comes out — camera, geometry, and a
+color-managed plate — for Nuke, Maya, Blender and USD.
+
+It **solves a camera, not a mesh.** Where most 3D nodes generate geometry from an
+image, Atlas does the inverse-problem, geometry-first job a projection pipeline
+actually needs: recover a real, metric pinhole camera, then project the
+photograph onto derived geometry. From the recovered viewpoint the plate
+reassembles exactly; scale error shows only as parallax on a move — never as
+smeared texture.
+
+## What it does
+
+1. **Solve** — recover the camera from one photograph: focal length, orientation
+   and horizon, with a confidence value. A deterministic geometric solve, or a
+   learned prior (GeoCalib) for harder frames.
+2. **Project** — derive projection geometry (relief mesh or fitted primitives)
+   and cast the plate back through the recovered camera.
+3. **Review** — inspect the result and set simple camera moves — dolly, orbit,
+   pan — in a real-time, fullscreen viewport, at your delivery resolution.
+4. **Export** — hand off a native projection setup to Nuke (`.nk` + Python),
+   Maya (`.ma`), USD, Blender, and a relief mesh (OBJ/GLB), verified in the real
+   applications.
+
+Color-managed and float-safe throughout: plates are tracked by reference in
+their working colorspace (ACEScg) and bit depth (EXR 16/32-bit float), the
+projection path stays floating-point, and it hands off to OpenColorIO, Nuke,
+Maya and Resolve. Render format is a project-level camera up to **8192 px**.
+
+**Runs anywhere:** the core is pure NumPy with **zero required dependencies** —
+solve a camera and export to your DCC with no GPU. All 54 nodes register without
+heavy dependencies; a GPU is only needed for the optional neural features.
+
+## Install
+
+**Clone-and-go** (simplest — no build step) — clone into ComfyUI's `custom_nodes`
+and restart:
+
+```bash
+cd <ComfyUI>/custom_nodes
+git clone https://github.com/mikejamesvfx/atlas-camera.git
+```
+
+Or install from the [ComfyUI Registry](https://registry.comfy.org/nodes/atlas-camera).
+
+Dependency tiers (install only what you need):
+
+| Tier | Install | Adds |
+|---|---|---|
+| **Core** | *(nothing)* | Camera solve from vanishing points, masks, DCC export — pure Python, no GPU |
+| **`[vision]`** | numpy + opencv | Geometric solve with line detection + debug overlays |
+| **`[neural]`** | torch + GeoCalib | Learned solve, monocular depth, depth-driven geometry, patches |
+
+Depth Anything 3 is the default depth backend (measurably fewer relief-mesh
+tears than V2); it needs the separate `[neural-da3]` extra. Full setup,
+including the research-only tier, is in **[INSTALL.md](INSTALL.md)**.
 
 ## Two distributions
 
-- **`main` — the working version.** Everything above the experimental line:
-  camera solve, geometry derivation, the layered DMP rig, viewport, and all
-  DCC exporters. Runs on any ComfyUI install — the core package has zero
-  required runtime dependencies, and the vision/depth features need only the
-  `[neural]` extra. No Docker, no research-licensed models.
-- **`experimental` — the 🔬 tier enabled.** Same codebase with two extra
-  nodes registered by default: `AtlasRenderFix` (NVIDIA Fixer render repair —
-  needs Docker + an NVIDIA GPU) and `AtlasPredictHiddenGeometry` (LaRI /
-  World Tracing X-ray depth — research-only upstream licenses, user-cloned).
-  Their setup lives in [INSTALL.md](INSTALL.md).
+- **`main`** — the working tool: camera solve, geometry derivation, the layered
+  2.5D digital-matte-painting rig, viewport, and every DCC exporter. No Docker,
+  no research-licensed models.
+- **`experimental`** — the same codebase with two extra 🔬 nodes registered:
+  `AtlasRenderFix` (NVIDIA Fixer render repair) and `AtlasPredictHiddenGeometry`
+  (LaRI / World Tracing "X-ray" depth — research-only upstream, user-cloned).
+  Toggle on any branch with `ATLAS_EXPERIMENTAL=1`.
 
-The switch is one env var: `ATLAS_EXPERIMENTAL=1` before launching ComfyUI
-registers the experimental nodes on *any* branch (`=0` hides them on
-`experimental`). The branches differ only in that default.
+## The node pack
 
-It is designed for:
+A **54-node ComfyUI pack** (category *Atlas Camera*; 56 with the experimental
+tier) covering the whole pipeline as a graph:
 
-- Matte painters
-- Environment artists
-- Concept-to-3D workflows
-- AI-generated image projection workflows
-- DMP camera lineup
-- DCC handoff
-
-Atlas is not an AI image generator, a sequence camera tracker, a photogrammetry
-package, a depth model, or a ComfyUI-only node. It uses those technologies where
-appropriate while keeping the deterministic core focused on recovering a
-reusable latent scene representation.
-
-## MVP Workflow
-
-```text
-image -> LatentCamera -> debug overlay -> review package -> Maya / Blender / Nuke / USD
-```
-
-The current milestone provides a clean Python package, portable `LatentScene`
-schema aliases, basic intrinsics helpers, DCC-agnostic projection scene data,
-an optional local 3D lineup workbench, and a review package builder.
-
-## Future Workflow
-
-```text
-image + 3DGS scene prior -> camera registration -> projection handoff
-```
-
-3D Gaussian Splat and point-cloud camera registration are future research hooks,
-not implemented production features.
-
-## Core Principles
-
-- Core schema is DCC-agnostic.
-- Atlas core defaults to right-handed Y-up coordinates.
-- Image coordinates use origin top-left, x right, y down.
-- Maya, Blender, Nuke, USD, and ComfyUI are adapters around the core.
-- Coordinate conversions must happen explicitly at import/export boundaries.
-
-## Quick Start
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-python -m pytest -q
-```
-
-Run the optional local web UI:
-
-```powershell
-pip install -e ".[ui,vision]"
-python -m atlas_camera.ui
-```
-
-Open `http://127.0.0.1:8787` for the FastAPI-backed UI, or start the React
-workbench during development:
-
-```powershell
-cd ui
-npm install
-npm run dev
-```
-
-If `8787` is already in use, run the backend on another port:
-
-```powershell
-python -m atlas_camera.ui --port 8788
-```
-
-The workbench opens on a 3D camera lineup surface. Use Select mode to orbit or
-inspect the scene, then switch to left/right/vertical/scale guide tools when
-you need the 2D source-image draw layer. The 3D panel can show the source image
-plate, camera frustum, ground grid, axis guides, horizon, artist guide lines,
-and editable proxy objects. View settings and proxy objects are stored in
-`constraints.viewport3d` alongside the existing artist constraints.
-
-Create a metadata-only prototype solve and review package:
-
-```python
-import atlas
-from atlas_camera.exporters.review_package import build_review_package
-
-scene = atlas.recover(
-    "concept.png",
-    image_size=(1920, 1080),
-    intrinsics_hint={"focal_length_mm": 35.0, "sensor_width_mm": 36.0},
-)
-result = build_review_package(scene, "review_packages")
-print(result.package_dir)
-```
-
-The stable package name remains `atlas_camera`, and the concise `import atlas`
-facade mirrors the public API for vision-facing examples.
-
-Or run the one-command MVP workflow with vanishing-point detection and a debug
-overlay:
-
-```powershell
-python tools\solve_image.py --image concept.png --output-dir review_packages --package-name atlas_review_001
-```
-
-This writes a portable review package containing `source_image.png`,
-`debug_overlay.png`, `atlas_solve.json`, `maya_open_scene.py`, DCC placeholder
-scripts, and `report.md`.
-
-For artist-guided line constraints stored in JSON:
-
-```powershell
-python tools\solve_constraints.py --image concept.png --constraints constraints.json --output-dir review_packages
-```
-
-List curated scale references:
-
-```powershell
-python tools\list_references.py --query person
-```
-
-Run a metadata-only ETH3D benchmark against an externally downloaded dataset
-root:
-
-```powershell
-python tools\benchmark_datasets.py --dataset eth3d --root C:\path\to\eth3d_scene --limit 10
-```
-
-This writes JSON and CSV reports under `validation_output/`. Large datasets
-should stay outside the repository, for example under `external_datasets/` or
-another local path.
-
-Optional local multimodal guidance can run through LM Studio, llama.cpp, or
-Ollama from the UI. The workbench defaults to LM Studio at
-`http://127.0.0.1:1234/v1`; select Ollama in the provider control if you want
-to use an Ollama-hosted model. Install Ollama separately, then pull a local
-vision model:
-
-```powershell
-ollama pull gemma3:4b
-```
-
-The UI's Guide action sends the current source image plus Atlas solve context
-to the selected local provider. Model outputs are stored as advisory guidance
-only and do not mutate the deterministic camera solve.
-
-Artist-guided line constraints can drive the same solver when automatic
-detection needs help:
-
-```python
-from atlas_camera.core.solver import solve_from_constraints
-
-solve = solve_from_constraints(
-    "concept.png",
-    {
-        "image_width": 1920,
-        "image_height": 1080,
-        "line_groups": {
-            "left": [
-                ((100, 500), (900, 300)),
-                ((120, 650), (900, 420)),
-            ],
-            "right": [
-                ((1000, 300), (1800, 500)),
-                ((1000, 420), (1780, 650)),
-            ],
-        },
-        "scale_constraints": [
-            {
-                "reference_id": "door_210cm",
-                "image_points": [[850, 760], [850, 410]],
-            }
-        ],
-        "focal_length_mm": 35.0,
-        "sensor_width_mm": 36.0,
-    },
-)
-```
-
-Scale constraints are stored as explicit review landmarks and height-guide proxy
-geometry. They do not yet solve metric depth from a single image.
-
-## ComfyUI Node Pack
-
-The flagship interface is a **46-node ComfyUI pack** (category **Atlas Camera**;
-48 with the 🔬 experimental tier enabled)
-that runs the whole pipeline as a graph. Install it into ComfyUI's own venv
-(editable, so source changes are live):
-
-```powershell
-# Symlink the node pack into ComfyUI (once):
-#   <COMFYUI>\custom_nodes\AtlasCamera  ->  <REPO>\atlas_camera\comfy
-& "<COMFYUI>\venv\Scripts\python.exe" -m pip install -e ".[neural]"
-```
-
-The `[neural]` extra adds the Depth Anything V2 depth models + the GeoCalib
-learned prior (GeoCalib is GitHub-only:
-`pip install "git+https://github.com/cvg/GeoCalib.git"`; torch is expected from
-ComfyUI's env). **Depth Anything 3 is the default depth model** since v0.3 —
-measurably fewer relief-mesh tears and focal-conditioned metric depth using the
-*solved* focal; it needs the separate `[neural-da3]` extra (see
-[INSTALL.md](INSTALL.md) — into a ComfyUI venv install `--no-deps`). Every
-`depth_model` combo keeps the V2 models available.
-
-**Core through-line — recover → derive → project → hand off:**
-
-```text
-Load Image → Learned Solve (GeoCalib) → Derive Projection Geometry
-          → Atlas Viewport (📽 Project) → Export Relief Mesh / DCC
-```
-
-Node tracks:
-
-- **Solve** — `AtlasSolveFromImage` (geometric vanishing points, no deps) and
-  `AtlasLearnedSolveFromImage` (GeoCalib learned prior — robust on AI-generated
-  images; `height_mode=measure_from_depth` measures camera height from depth).
-- **Scale** — tiered metric-scale cascade: known-size reference objects
-  (`AtlasReferenceScaleSolve`), local-VLM scale cues (`AtlasVLMScaleCues` →
-  `AtlasApplyScaleReferences`, confirm-to-adopt), then depth, then a flagged
-  default. Never auto-promoted.
-- **Derive geometry** — `AtlasDeriveProjectionGeometry` (relief mesh and/or
-  fitted primitives, artist-selected strategy), plus a **composable** track:
-  `AtlasDepthMap` + `AtlasDeriveReliefMesh`/`Walls`/`TowersSpires`/
-  `RoofsFacades`/`InteriorRoom`, combined with **`AtlasMergeGeometry`**
-  (a Nuke-Merge-node equivalent) to mix strategies per scene region.
-- **Shot format** — `AtlasDefineShotCam` sets a project-level render/output
-  camera (sensor + lens + resolution), attachable via `AtlasMergeGeometry` so the
-  viewport/exporters conform to one shot format.
-- **DMP layer stack** — the classic 2.5D clean-plate rig as nodes:
-  `AtlasSkyDomeLayer` (SAM-driven sky separation with deterministic
-  edge-extend/frame-outpaint), `AtlasDepthLayerMask` + `AtlasCleanPlateLayer`
-  (depth-banded clean-plate layers with disocclusion fill, per-pixel edge
-  mattes, beveled skirts), `AtlasDepthBandSplit` (one authoritative fg/bg
-  boundary), and hole masks everywhere (the literal "where projection shows
-  black" signal). Inpainting stays graph-level (LaMa/LanPaint/FLUX packs).
-- **Viewport** — `AtlasBlockoutViewport`: browser-side Three.js preview with a
-  recovered-camera inherit, **📽 Project** (matte-painting projection onto
-  geometry), 🎥 camera-path authoring with presets + baked-frame output,
-  🧭 measured safe-zone orbit clamps, 📐 patch-angle extraction, 💡 relight
-  preview, 🩻 hidden-geometry provenance overlay, and 4 render passes.
-- **Multi-angle fill** — `AtlasAddPatchView` / `AtlasOcclusionMask` project
-  extra LoRA-generated views to fill what the single recovered camera can't see.
-- **🔬 Experimental hidden geometry** — `AtlasPredictHiddenGeometry` predicts
-  the surfaces *behind* occluders (layered ray intersections: LaRI, fast
-  regression, or World Tracing, generative diffusion — both research-only,
-  user-installed) and patches them into an "X-ray" depth map that band layers
-  turn into real reveal geometry. See
-  [docs/dev/hidden_geometry_training_free_research.md](docs/dev/hidden_geometry_training_free_research.md).
-- **Pre-flight** — `AtlasAssessImage` gates the graph behind a local-VLM
-  scene assessment (advisory, ▶ Continue to proceed).
-- **Output desk** — `AtlasRegisterPlate` / `AtlasAttachSourcePlate` track the
+- **Solve** — geometric (vanishing points, no deps) and learned (GeoCalib,
+  robust on AI-generated images).
+- **Scale** — a tiered, confirm-to-adopt metric cascade (known-size reference →
+  local-VLM cue → depth → flagged default); suggestions are never auto-promoted.
+- **Geometry** — one composable node per strategy (relief mesh, walls,
+  towers/spires, roofs/facades, interior room) combined with a Nuke-Merge-style
+  `AtlasMergeGeometry`, plus a project-level shot-camera format.
+- **2.5D DMP layer stack** — sky-dome separation, depth-band clean plates with
+  disocclusion fill, per-pixel edge mattes and beveled skirts, and hole masks
+  (the literal "where projection shows black" signal). Inpainting stays
+  graph-level.
+- **Viewport** — `AtlasBlockoutViewport`: real-time camera-projection preview,
+  camera-path authoring (dolly/orbit/pan) with baked-frame output, measured
+  safe-zone orbit clamps, render passes, and diagnostic overlays.
+- **Output desk** — `AtlasRegisterPlate` / `AtlasAttachSourcePlate` carry the
   real float plate (EXR/ACEScg) past the browser preview into every exporter.
-- **Export** — Relief mesh (OBJ/GLB, projection baked into UVs), Blender, Nuke
-  (.py + native .nk), per-layer Nuke/Maya scene exports, USD, Maya review
-  scene, camera-path USD, and a full review package.
+- **Export** — Nuke (`.nk` + `.py`), Maya (`.ma` + review scene), per-layer
+  Nuke/Maya, USD (+ camera path), Blender, and relief mesh (OBJ/GLB with the
+  projection baked into UVs).
 
-Two ready-to-load workflows ship in [`examples/`](examples/) — start with
-`atlas_input_quickstart_workflow.json` (4 nodes: image in, projected relief
-out, every master behavior reachable by widgets on the one 🎬 AtlasInput
-node), then graduate to `atlas_camera_staged_master_workflow.json` (the same
-logic with stages, gates, rails, and per-layer debug).
-The sample assets (4K test photos and proxy OBJ meshes) are **not** in the
-repo — they're distributed as a separate download; point the workflows'
-LoadImage node at any photo of your own to start.
-See [docs/ECOSYSTEM_GUIDE.md](docs/ECOSYSTEM_GUIDE.md) for
-the full node catalog.
-
-## Current Status
-
-Implemented:
-
-- Portable dataclass schema for `AtlasSolve`, `AtlasCamera`, intrinsics,
-  extrinsics, vanishing points, horizon, and projection scenes.
-- First-class `LatentScene` and `LatentCamera` schema names, with `AtlasSolve`
-  and `AtlasCamera` retained as compatibility aliases.
-- Empty `LatentComponent` slots for future depth, geometry, lighting, and
-  semantic recovery.
-- `atlas.recover(...)` for the project-vision API.
-- Intrinsics helper for focal length and sensor-to-pixel conversion.
-- Vanishing-point detection with optional OpenCV/NumPy vision dependencies.
-- Camera estimation from two orthogonal vanishing points.
-- Debug overlay rendering for detected lines, vanishing points, horizon, and
-  estimated camera metadata.
-- Artist-guided line constraints via `solve_from_constraints(...)`.
-- Curated local scale-reference registry with `reference_id` support in guided
-  constraints.
-- Review package output folder with JSON, Maya script, Blender placeholder,
-  Nuke placeholder, report, and optional USD files.
-- Lazy USD import/export boundary.
-- ComfyUI node scaffolds with no hard Comfy dependency.
-- Explicit 3DGS placeholder interfaces.
-- Optional FastAPI + React local UI for artist-guided still-image lineup,
-  constraint editing, Three.js 3D camera/proxy inspection, solve review, local
-  multimodal guidance, and review-package export.
-- **47-node ComfyUI pack** (category "Atlas Camera") covering the full
-  recover → derive → layer → project → export pipeline as a graph.
-- **Learned camera recovery** (GeoCalib prior, `method="learned"`) — robust on
-  AI-generated images where geometric vanishing points fail.
-- **Depth Anything 3 (default) + Depth Anything V2** monocular depth backends +
-  ground-plane camera-height measurement (`camera_height="auto"`), with
-  sky-aware masking. DA3 converts canonical depth to metres with the *solved*
-  focal (measured: ~3× fewer relief-mesh tears vs V2 on the test set).
-- **Layered 2.5D DMP rig** — sky dome, depth-band clean-plate layers with
-  disocclusion fill, per-pixel edge mattes, edge-extend/frame-outpaint,
-  hole-mask honesty signals, and one authoritative band split.
-- **🔬 Experimental hidden-geometry prediction** (research-only): LaRI /
-  World Tracing layered ray intersections → "X-ray" depth maps → real reveal
-  geometry behind occluders, with a viewport provenance overlay and six
-  calibrated per-scene demo workflows.
-- **Composable projection-geometry derivation** (shared depth map + per-strategy
-  derive nodes: relief mesh, walls, towers/spires, roofs/facades, interior room)
-  combined with a **merge node**, plus a project-level **shot-camera** format.
-- **Relief-mesh export** (OBJ/MTL + GLB, camera projection baked into UVs; imports
-  textured into Maya/Nuke/ZBrush/Blender).
-- **Interactive browser viewport** with live camera-projection ("matte-painting")
-  preview and four render passes (shaded/depth/normal/mask).
-- **Camera-path animation** authoring in the viewport with USD export.
-- **Multi-angle patch projection** + occlusion mask to fill single-camera gaps.
-- Tiered, confirm-to-adopt metric-scale cascade (reference object → local-VLM
-  cue → depth → flagged default); LLM/VLM suggestions never auto-promoted.
-
-Placeholder:
-
-- Metric depth fitting from scale/object-height constraints.
-- Optional object detector for scale-reference suggestions.
-- Production Blender, Nuke, Houdini exporters.
-- 3DGS / point-cloud pose estimation.
-- Robust production tuning for varied real-world images.
+Two ready-to-load workflows ship in [`examples/`](examples/): start with
+`atlas_input_quickstart_workflow.json` (4 nodes — image in, projected relief
+out), then `atlas_camera_staged_master_workflow.json` (the same logic with
+stages, gates and per-layer debug). Point the LoadImage node at any photo of
+your own. See the [technical brief](docs/TECH_AND_DIFFERENTIATION.md) for how
+Atlas differs from other ComfyUI 3D systems, and the
+[ecosystem guide](docs/ECOSYSTEM_GUIDE.md) for the full node catalog.
 
 ## Documentation
 
-- [Install guide](INSTALL.md) — including the `[neural-da3]` and
-  research-only hidden-geometry setup
-- [Changelog](CHANGELOG.md) — release notes per beta branch
-- [Third-party notices](THIRD_PARTY.md) — license boundaries, incl. the
-  research-only hidden-geometry backends
-- [User guide](docs/USER_GUIDE.md) — now with the 2026-07-09 five-layer-stack
-  section
-- [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md) — full node catalog
-- [Project vision](docs/PROJECT_VISION.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [UI workbench](docs/UI_WORKBENCH.md)
-- [DCC exports](docs/DCC_EXPORTS.md) — rewritten 2026-07-09 around the
-  verified Nuke/Maya topology
-- [Comfy workflow](docs/COMFY_WORKFLOW.md)
-- [Hidden-geometry research](docs/dev/hidden_geometry_training_free_research.md)
-- [DA3 depth-backend test plan](docs/dev/da3_backend_test_plan.md)
-- [Roadmap](docs/ROADMAP.md)
+- [Install guide](INSTALL.md) — including the `[neural-da3]` and research-only setup
+- [Technical brief](docs/TECH_AND_DIFFERENTIATION.md) — camera solve + projection vs mesh generation
+- [User guide](docs/USER_GUIDE.md) · [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md) — full node catalog
+- [DCC exports](docs/DCC_EXPORTS.md) · [Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md)
+
+## License
+
+Atlas Camera is **[MIT](LICENSE)** — free for commercial use. It vendors nothing
+restrictive; every optional model or package is installed by the user, and its
+node fails soft with an informative message when absent.
+
+Two **optional** features are the exception, and only if you enable the
+experimental tier: the 🔬 hidden-geometry backends **LaRI** (no upstream license
+→ all rights reserved) and **World Tracing** (CC BY-NC-ND 4.0) are
+**research/non-commercial** — Atlas never redistributes them, and removing that
+one node removes the restriction. Every other part of Atlas — the solve,
+geometry, layer stack, viewport, and the full OpenColorIO output path — carries
+no non-commercial dependency. Full map in **[THIRD_PARTY.md](THIRD_PARTY.md)**.
+
+---
+
+<p align="center"><sub>A <a href="https://mikejamesvfx.com">mikejamesvfx</a> tool · MIT · built for matte painters and environment artists.</sub></p>
