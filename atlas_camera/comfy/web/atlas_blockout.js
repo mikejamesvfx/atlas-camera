@@ -285,6 +285,31 @@ function createOrbitControls(camera, dom) {
   // Disabled while Camera Path fly-mode is active (createFlyControls) so the
   // two controllers never fight over the same pointer/wheel events.
   let enabled = true;
+  // UE-style tracking keys, scoped to THIS element's focus (no global
+  // listeners — clicking the viewport focuses it; unrelated keys pass
+  // through untouched so ComfyUI hotkeys keep working). tabIndex -1 =
+  // focusable by click/JS but never in the tab order. outline suppressed —
+  // the grab cursor already signals interactivity.
+  dom.tabIndex = -1;
+  dom.style.outline = "none";
+  const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+                            "KeyW", "KeyS", "KeyA", "KeyD", "KeyQ", "KeyE"]);
+  const pressed = new Set();
+  let navShift = false, lastNavT = 0;
+  function onKeyDown(e) {
+    if (!enabled || !NAV_KEYS.has(e.code)) return;
+    pressed.add(e.code);
+    navShift = e.shiftKey;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  function onKeyUp(e) {
+    if (!NAV_KEYS.has(e.code)) return;
+    pressed.delete(e.code);
+    navShift = e.shiftKey;
+    e.stopPropagation();
+  }
+  function onBlur() { pressed.clear(); }
 
   // Derived geometry (relief mesh, backdrop, fitted primitives) only ever
   // covers what the RECOVERED camera could see — a forward-facing cone — since
@@ -332,6 +357,7 @@ function createOrbitControls(camera, dom) {
     panning = e.button === 2 || e.shiftKey;
     lx = e.clientX; ly = e.clientY;
     dom.style.cursor = "grabbing";
+    dom.focus({ preventScroll: true });  // arm the tracking keys
     // stopPropagation on POINTERDOWN specifically (not mousedown) is required:
     // LiteGraph's LGraphCanvas binds its node-drag/selection handling via
     // canvas.addEventListener('pointerdown', ...) — Pointer Events, which fire
@@ -376,11 +402,41 @@ function createOrbitControls(camera, dom) {
   window.addEventListener("pointermove", onMove);
   window.addEventListener("pointerup", onUp);
   dom.addEventListener("wheel", onWheel, { passive: false });
+  dom.addEventListener("keydown", onKeyDown);
+  dom.addEventListener("keyup", onKeyUp);
+  dom.addEventListener("blur", onBlur);
   dom.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); });
   return {
     target,
     setTarget(v) { target.copy(v); },
     syncFromCamera,
+    // TRUE tracking (translate target; apply() repositions the camera from
+    // the sphere, so camera + target move together) — the exact mechanic the
+    // Shift-drag pan above uses, exposed for the tracking keys.
+    pan(v) { target.add(v); apply(); },
+    // Per-frame keyboard integration (called from the animate() loop).
+    // Mapping per the user's spec: ↑/↓ track in/out, ←/→ track left/right,
+    // A/D track up/down — with W/S (in/out) and Q/E (up/down) as the UE
+    // muscle-memory aliases. Self-timed; scene-scaled step; Shift = 4×.
+    updateKeys() {
+      const now = performance.now();
+      const dt = lastNavT ? Math.min(0.1, (now - lastNavT) / 1000) : 0;
+      lastNavT = now;
+      if (!enabled || dragging || pressed.size === 0) return;
+      const step = sph.radius * 1.2 * dt * (navShift ? 4 : 1);
+      if (!(step > 0)) return;
+      const forward = target.clone().sub(camera.position).normalize();
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+      const move = new THREE.Vector3();
+      if (pressed.has("ArrowUp") || pressed.has("KeyW")) move.add(forward);
+      if (pressed.has("ArrowDown") || pressed.has("KeyS")) move.sub(forward);
+      if (pressed.has("ArrowRight")) move.add(right);
+      if (pressed.has("ArrowLeft")) move.sub(right);
+      if (pressed.has("KeyA") || pressed.has("KeyE")) move.y += 1;
+      if (pressed.has("KeyD") || pressed.has("KeyQ")) move.y -= 1;
+      if (move.lengthSq() === 0) return;
+      this.pan(move.normalize().multiplyScalar(step));
+    },
     // Measured (or default) orbit limits — pass null to restore defaults.
     setLimits(l) {
       limits = l ? { ...l }
@@ -397,6 +453,9 @@ function createOrbitControls(camera, dom) {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       dom.removeEventListener("wheel", onWheel);
+      dom.removeEventListener("keydown", onKeyDown);
+      dom.removeEventListener("keyup", onKeyUp);
+      dom.removeEventListener("blur", onBlur);
     },
   };
 }
@@ -1376,6 +1435,7 @@ function buildNodeUI(node, containerEl) {
     const dt = Math.min(0.1, (now - lastTickTime) / 1000);
     lastTickTime = now;
     fly.tick(dt);
+    controls.updateKeys();  // UE-style tracking keys (self-timed; no-op when idle)
     if (pathPlayback) {
       const t = Math.min(1, (now - pathPlayback.startTime) / 1000 / pathPlayback.durationSec);
       applyPathPoseAtT(t);
@@ -2497,6 +2557,37 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(lightBtn);
 
+  // ⛶ Fullscreen — the browser Fullscreen API on canvasWrap (canvas + all
+  // HUD/diagram/legend overlays; NOT the container, whose toolbar may live in
+  // a detached Output Desk — canvasWrap behaves identically in both modes).
+  // Pure display change: no node sizing, no widget layout, no canvas
+  // attribute writes — the render RESOLUTION stays governed by the
+  // `resolution` widget (CSS object-fit:contain letterboxes, exactly like
+  // dragging the node large). Esc exits natively; entering focuses the
+  // canvas so the tracking keys (↑↓ in/out · ←→ left/right · A/D up/down)
+  // work immediately.
+  const fsBtn = document.createElement("button");
+  fsBtn.textContent = "⛶ Fullscreen";
+  fsBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  fsBtn.onclick = () => {
+    if (document.fullscreenElement === canvasWrap) {
+      document.exitFullscreen?.();
+    } else {
+      canvasWrap.requestFullscreen?.().catch(() => {});
+    }
+  };
+  toolbar.appendChild(fsBtn);
+  const onFsChange = () => {
+    const active = document.fullscreenElement === canvasWrap;
+    fsBtn.textContent = active ? "⛶ Exit" : "⛶ Fullscreen";
+    fsBtn.style.background = active ? "#2a3a3a" : "#2a2a2a";
+    if (active) canvas.focus({ preventScroll: true });
+  };
+  document.addEventListener("fullscreenchange", onFsChange);
+  // Removed via the CHAINED onRemoved cleanup (never assign onRemoved —
+  // see the orphaned-DOM lineage entry).
+  node._atlasFsCleanup = () => document.removeEventListener("fullscreenchange", onFsChange);
+
   const lightPanel = document.createElement("div");
   lightPanel.style.cssText = "display:none;flex-wrap:wrap;align-items:center;gap:10px;padding:4px 6px;background:#181818;border-top:1px solid #333;font-size:11px;color:#ccc";
   movableLights.forEach((light, idx) => {
@@ -2658,6 +2749,14 @@ function buildNodeUI(node, containerEl) {
   let pendingSnapAspect = null;
   function snapNodeHeightToRenderAspect(renderAspect) {
     if (!renderAspect || !isFinite(renderAspect)) return;
+    if (document.fullscreenElement === canvasWrap) {
+      // ⛶ fullscreen: rects are SCREEN-sized — snapping now would persist a
+      // garbage node height behind the fullscreen view. Defer; the animate()
+      // retry re-enters this guard each frame (one check) and the snap
+      // applies correctly the moment fullscreen exits.
+      pendingSnapAspect = renderAspect;
+      return;
+    }
     const scale = app.canvas?.ds?.scale || 1;
     const wrapRect = canvasWrap.getBoundingClientRect();
     if (!(wrapRect.width > 0) || !(wrapRect.height > 0)) {
@@ -3435,6 +3534,7 @@ app.registerExtension({
       prevOnRemoved?.apply(this, args);
       api.removeEventListener("executed", onApiExecuted);
       node._atlasSizeTraceCleanup?.();
+      node._atlasFsCleanup?.();
       cancelAnimationFrame(node._atlasRafId);
       node._atlasRenderer?.dispose();
       node._atlasControls?.dispose();
