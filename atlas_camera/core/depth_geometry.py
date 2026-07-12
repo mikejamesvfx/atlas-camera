@@ -331,8 +331,16 @@ def detect_sky_mask(
 
     pad = roughness_window // 2
     padded = np.pad(sq, pad, mode="edge")
-    windows = np.lib.stride_tricks.sliding_window_view(padded, (roughness_window, roughness_window))
-    roughness = windows.mean(axis=(-2, -1))
+    # Box-filter mean via an integral image — O(HW) with no window-sized
+    # temporary. sliding_window_view here materialized W*W scalars per pixel
+    # through the mean reduction (~25x the map at the default window), the
+    # peak-memory hotspot on 4K+ plates. Same edge-padded semantics; only
+    # float summation order differs, and the consumer is an 8x-median
+    # threshold, insensitive to that.
+    ii = np.zeros((padded.shape[0] + 1, padded.shape[1] + 1), dtype=np.float64)
+    ii[1:, 1:] = padded.cumsum(axis=0).cumsum(axis=1)
+    w = roughness_window
+    roughness = (ii[w:, w:] - ii[:-w, w:] - ii[w:, :-w] + ii[:-w, :-w]) / float(w * w)
 
     below = ~above & valid
     baseline_roughness = float(np.median(roughness[below])) if below.any() else 0.0

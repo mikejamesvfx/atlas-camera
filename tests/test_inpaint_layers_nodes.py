@@ -1027,8 +1027,34 @@ def test_scope_mask_empty_prompt_is_band_only_and_lazy():
     # Lazy contract: with an empty prompt the segment branch is never pulled.
     assert _scope().check_lazy_status(sky, prompt="") == []
     assert _scope().check_lazy_status(sky, prompt="rocks") == ["segment_mask"]
+    # A no-match segment pulls the (lazy) fallback_mask next; a real segment
+    # never does.
     assert _scope().check_lazy_status(sky, prompt="rocks",
-                                      segment_mask=torch.zeros(1, H, W)) == []
+                                      segment_mask=torch.zeros(1, H, W)) == ["fallback_mask"]
+    good = torch.zeros(1, H, W); good[:, 100:180, 80:240] = 1.0
+    assert _scope().check_lazy_status(sky, prompt="rocks", segment_mask=good) == []
+    assert _scope().check_lazy_status(sky, prompt="rocks",
+                                      segment_mask=torch.zeros(1, H, W),
+                                      fallback_mask=good) == []
+
+
+def test_scope_mask_semantic_fallback_scopes_on_no_match():
+    """Item 10 (CV audit): a no-match SAM segment tries the geometry-prior
+    fallback (AtlasSemanticMask) BEFORE degrading to band-only."""
+    sky = torch.zeros(1, H, W); sky[:, :60] = 1.0
+    empty_seg = torch.zeros(1, H, W)
+    fb = torch.zeros(1, H, W); fb[:, 100:180, 80:240] = 1.0
+    excl, status = _scope().build(sky, prompt="desert floor and boulder",
+                                  segment_mask=empty_seg, fallback_mask=fb,
+                                  grow_px=8)
+    assert "semantic FALLBACK" in status and "no-matched" in status
+    assert float(excl[0, 140, 160]) == 0.0              # fallback interior kept
+    assert float(excl[0, 140, 100 - 30]) == 1.0         # outside excluded
+    # An ALSO-empty fallback still degrades to band-only, never exclude-all.
+    excl2, status2 = _scope().build(sky, prompt="x", segment_mask=empty_seg,
+                                    fallback_mask=torch.zeros(1, H, W))
+    assert torch.equal(excl2, sky)
+    assert "band-only FALLBACK" in status2
 
 
 def test_scope_mask_no_match_segment_falls_back():

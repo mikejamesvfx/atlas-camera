@@ -150,6 +150,25 @@ _DA3_MODEL_CACHE: dict[tuple[str, str], Any] = {}
 _DA3_MODEL_CACHE_MAX = 2
 
 
+def _record_and_clamp_negative(depth: Any, metadata: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """Record the negative-pixel fraction, then clamp metric depth at >= 0.
+
+    The DA3 backend occasionally emits negative raw depth (documented
+    watch-item). Downstream validity masks already exclude negatives, but the
+    3x3 median filter and edge tests still ingest them as NEIGHBORS — clamping
+    at the source protects every consumer, and recording first keeps the
+    diagnostic (`AtlasDebugReport` reads metadata['negative_fraction'] as the
+    pre-clamp truth).
+    """
+    import numpy as np
+
+    neg = float((depth < 0).mean()) if depth.size else 0.0
+    metadata["negative_fraction"] = round(neg, 6)
+    if neg > 0:
+        depth = np.maximum(depth, 0.0)
+    return depth, metadata
+
+
 def _get_model(model_id: str, device: str):
     cached = _MODEL_CACHE.get((model_id, device))
     if cached is not None:
@@ -157,7 +176,8 @@ def _get_model(model_id: str, device: str):
     torch, AutoImageProcessor, AutoModelForDepthEstimation = _require_depth_backend()
     processor = AutoImageProcessor.from_pretrained(model_id)
     model = AutoModelForDepthEstimation.from_pretrained(model_id).to(device).eval()
-    bounded_cache_set(_MODEL_CACHE, (model_id, device), (processor, model), _MODEL_CACHE_MAX)
+    bounded_cache_set(_MODEL_CACHE, (model_id, device), (processor, model), _MODEL_CACHE_MAX,
+                      release_cuda=True)
     return processor, model
 
 
@@ -167,7 +187,8 @@ def _get_da3_model(model_id: str, device: str):
         return cached
     DepthAnything3 = _require_da3()
     model = DepthAnything3.from_pretrained(model_id).to(device=device).eval()
-    bounded_cache_set(_DA3_MODEL_CACHE, (model_id, device), model, _DA3_MODEL_CACHE_MAX)
+    bounded_cache_set(_DA3_MODEL_CACHE, (model_id, device), model, _DA3_MODEL_CACHE_MAX,
+                      release_cuda=True)
     return model
 
 
@@ -218,7 +239,11 @@ def _estimate_depth_da3(
     image = Image.open(image_path).convert("RGB")
     width, height = image.size
 
-    prediction = model.inference([np.asarray(image)])
+    # Defensive no-grad: the V2 path guards this explicitly; if the DA3
+    # package's inference ever runs ungated, autograd would silently
+    # accumulate activation memory on a card that's already contended.
+    with torch.inference_mode():
+        prediction = model.inference([np.asarray(image)])
     net = np.asarray(prediction.depth[0], dtype=np.float32)
     proc_h, proc_w = net.shape
 
@@ -270,14 +295,22 @@ def _estimate_depth_da3(
         is_metric = False
 
     if depth.shape != (height, width):
+        # BILINEAR, deliberately not bicubic: depth is not a photograph.
+        # Bicubic RINGS at discontinuities — at a silhouette edge it
+        # overshoots below the local minimum, which on metric maps produces
+        # negative-depth halos exactly where meshes tear (observed live as
+        # depth.near = -11.4m on a ridge shot). Bilinear cannot overshoot.
         t = torch.from_numpy(np.ascontiguousarray(depth))[None, None]
         depth = (
             torch.nn.functional.interpolate(
-                t, size=(height, width), mode="bicubic", align_corners=False
+                t, size=(height, width), mode="bilinear", align_corners=False
             )[0, 0]
             .numpy()
             .astype(np.float32)
         )
+
+    if is_metric:
+        depth, metadata = _record_and_clamp_negative(depth, metadata)
 
     return DepthResult(
         depth=depth,
@@ -353,18 +386,32 @@ def _estimate_depth_v2(
     if predicted.dim() == 3:
         predicted = predicted.unsqueeze(1)
     predicted = torch.nn.functional.interpolate(
-        predicted, size=(height, width), mode="bicubic", align_corners=False
+        # Bilinear, not bicubic — see the DA3 path's comment: bicubic rings
+        # at depth discontinuities and can overshoot into negative halos.
+        predicted, size=(height, width), mode="bilinear", align_corners=False
     )[0, 0]
 
     is_metric = _METRIC_HINT in model_id.lower()
     depth = predicted.detach().float().cpu().numpy()
+    metadata: dict[str, Any] = {"device": device}
 
     if not is_metric:
-        # Relative models emit disparity-like values (larger = closer). Convert to
-        # a distance-like map (larger = farther), normalised to [0, 1] up to scale.
+        # Relative models emit DISPARITY (larger = closer), and disparity is
+        # proportional to 1/depth — so the conversion must be reciprocal, not
+        # the previous linear `1 - d` (rank-preserving but with systematically
+        # wrong SPACING: near range compressed, far range stretched, warping
+        # any geometry built from it). Floor the normalised disparity at 0.04
+        # (a 25:1 depth ratio cap) so the sky/horizon tail doesn't blow the
+        # dynamic range, then renormalise to [0, 1], larger = farther.
+        import numpy as np
+
         d = depth - depth.min()
         d = d / (d.max() or 1.0)
-        depth = 1.0 - d  # now larger = farther, still unitless
+        inv = 1.0 / np.maximum(d, 0.04)
+        inv -= inv.min()
+        depth = (inv / (inv.max() or 1.0)).astype(np.float32)
+    else:
+        depth, metadata = _record_and_clamp_negative(depth, metadata)
 
     near = float(depth.min())
     far = float(depth.max())
@@ -376,5 +423,5 @@ def _estimate_depth_v2(
         image_height=height,
         near=near,
         far=far,
-        metadata={"device": device},
+        metadata=metadata,
     )
