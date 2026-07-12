@@ -34,7 +34,7 @@ DA3's cleaner depth, test whether `depth_edge_rel` can come back down.
 
 ```powershell
 # From the repo root, in a venv with [neural] + depth_anything_3 installed:
-python tools/compare_depth_backends.py examples/atlas_4k_testimages/*.png --json da3_ab.json
+python tools/compare_depth_backends.py path/to/test_images/*.png --json da3_ab.json
 ```
 
 The script runs the learned solve ONCE per image (shared across backends), then

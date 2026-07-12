@@ -21,15 +21,15 @@ The `atlas_camera.comfy` package adds ComfyUI nodes split across two tracks:
 ```powershell
 # 1. Create symlink (run once as admin or with Developer Mode on)
 New-Item -ItemType SymbolicLink `
-  -Path "C:\Users\miike\ComfyUI_V91\ComfyUI\custom_nodes\AtlasCamera" `
-  -Target "C:\Users\miike\Desktop\AtlasCamera_Claude\atlas_camera\comfy"
+  -Path "<COMFYUI_ROOT>\custom_nodes\AtlasCamera" `
+  -Target "<REPO_ROOT>\atlas_camera\comfy"
 
 # 2. Install atlas_camera package into ComfyUI's Python environment
-& "C:\Users\miike\ComfyUI_V91\ComfyUI\venv\Scripts\python.exe" `
-  -m pip install -e "C:\Users\miike\Desktop\AtlasCamera_Claude"
+& "<COMFYUI_ROOT>\venv\Scripts\python.exe" `
+  -m pip install -e "<REPO_ROOT>"
 
 # 3. Verify
-& "C:\Users\miike\ComfyUI_V91\ComfyUI\venv\Scripts\python.exe" `
+& "<COMFYUI_ROOT>\venv\Scripts\python.exe" `
   -c "import atlas_camera; print(atlas_camera.__file__)"
 # Expected: ...AtlasCamera_Claude\atlas_camera\__init__.py
 ```

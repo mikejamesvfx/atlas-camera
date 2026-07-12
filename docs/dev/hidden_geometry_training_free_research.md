@@ -1,6 +1,6 @@
 # Training-free hidden geometry for the depth-shadow problem — research notes
 
-*2026-07-09. Companion to `docs/ATLASresearch-report.md` (the monocular-occlusion
+*2026-07-09. Companion to the monocular-occlusion research report (removed from the public tree 2026-07-12; in git history pre-`21b1bd0`) (the monocular-occlusion
 grounding document). Written for the "predict hidden geometry behind camera
 shadow rays, CUDA-only is fine" idea.*
 
