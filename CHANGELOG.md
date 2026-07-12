@@ -3,7 +3,7 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
-## Unreleased
+## 0.4.0 — `release/beta-0.3` (2026-07-10 → 2026-07-12)
 
 ### Public-release preparation (2026-07-12)
 
