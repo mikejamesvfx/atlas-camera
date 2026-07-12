@@ -41,3 +41,21 @@ def test_comfy_subpackage_web_directory_is_relative():
     assert comfy_pkg.WEB_DIRECTORY == "./web"
     web = os.path.join(os.path.dirname(comfy_pkg.__file__), comfy_pkg.WEB_DIRECTORY)
     assert os.path.isfile(os.path.join(web, "atlas_blockout.js"))
+
+
+def test_package_discovery_cannot_swallow_runtime_dirs():
+    """The beta-0.3 packaging audit found `include = ["atlas*"]` glob-matched
+    atlas_exports/ and atlas_ui_projects/ — GITIGNORED runtime output dirs on
+    any dev machine — and shipped 800+ files of local test exports inside the
+    wheel. Exact package names + dotted-subpackage globs only: "atlas.*" can
+    never match a sibling directory, because the dot means subpackage-of."""
+    import re
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    m = re.search(r"\[tool\.setuptools\.packages\.find\].*?include\s*=\s*\[([^\]]*)\]",
+                  text, re.DOTALL)
+    assert m, "packages.find include list missing from pyproject.toml"
+    entries = sorted(e.strip().strip('"') for e in m.group(1).split(",") if e.strip())
+    assert entries == ["atlas", "atlas.*", "atlas_camera", "atlas_camera.*"], entries

@@ -84,7 +84,12 @@ PublisherId = "miikejamesburns"
 DisplayName = "Atlas Camera"
 
 [tool.setuptools.packages.find]
-include = ["atlas_camera*", "atlas*"]
+# EXACT names + dotted-subpackage globs only. The earlier "atlas*" glob also
+# matched atlas_exports/ and atlas_ui_projects/ — gitignored RUNTIME OUTPUT
+# dirs present on any dev machine — and shipped 800+ files of local test
+# exports in the wheel (found by the beta-0.3 packaging audit). "atlas.*"
+# cannot match them: the dot only matches subpackages of the atlas facade.
+include = ["atlas", "atlas.*", "atlas_camera", "atlas_camera.*"]
 
 [tool.setuptools.package-data]
 "atlas_camera.reference_data" = ["*.json"]
