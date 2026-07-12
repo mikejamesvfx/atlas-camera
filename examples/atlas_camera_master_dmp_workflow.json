@@ -1,0 +1,3080 @@
+{
+  "id": "1666ed3d-be35-4cf0-8df1-71d7dd496110",
+  "revision": 0,
+  "last_node_id": 29,
+  "last_link_id": 48,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        20
+      ],
+      "size": [
+        320,
+        314
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            43
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "LoadImage",
+        "#sdppp_variant": "default",
+        "#sdppp_simple_content": "canvas",
+        "#sdppp_simple_mask": "canvas",
+        "#sdppp_simple_boundary": "canvas",
+        "#sdppp_label": ""
+      },
+      "widgets_values": [
+        "atlas_monument_valley.png",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        20
+      ],
+      "size": [
+        380,
+        210
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            3,
+            15,
+            19
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36,
+        "pinhole",
+        "auto"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        420,
+        280
+      ],
+      "size": [
+        380,
+        120
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "slot_index": 0,
+          "links": [
+            4,
+            8,
+            11,
+            16,
+            21,
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasDepthLayerMask",
+      "pos": [
+        860,
+        420
+      ],
+      "size": [
+        639.7466796875,
+        340
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 15
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 16
+        },
+        {
+          "name": "exclude_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 40
+        }
+      ],
+      "outputs": [
+        {
+          "name": "layer_mask",
+          "type": "MASK",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "occlusion_mask",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "slot_index": 2,
+          "links": [
+            17
+          ]
+        }
+      ],
+      "title": "② Depth Layer Mask — bg band, fill_occluded (occlusion_mask drives the external inpaint)",
+      "properties": {
+        "Node name for S&R": "AtlasDepthLayerMask"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.75,
+        1,
+        4,
+        true,
+        384,
+        1.5,
+        true,
+        "manual"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1660,
+        20
+      ],
+      "size": [
+        645.577734375,
+        340
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 7
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 8
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 9
+        },
+        {
+          "name": "plate_ref",
+          "shape": 7,
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        },
+        {
+          "name": "exclude_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 41
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            10
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "③ Clean Plate — background, fill_occluded=True (plate placeholder: swap for inpaint chain)",
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0.75,
+        1,
+        "bg",
+        0,
+        384,
+        1.5,
+        true,
+        true,
+        0,
+        0.0,
+        0,
+        2,
+        "manual"
+      ]
+    },
+    {
+      "id": 8,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        2120,
+        20
+      ],
+      "size": [
+        466.790625,
+        340
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 11
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 12
+        },
+        {
+          "name": "plate_ref",
+          "shape": 7,
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        },
+        {
+          "name": "exclude_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 42
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            13,
+            33
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "④ Clean Plate — foreground, original pixels (nothing occludes it)",
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0,
+        0,
+        0,
+        0.75,
+        "fg",
+        10,
+        384,
+        1.5,
+        false,
+        true,
+        0,
+        0.0,
+        0,
+        2,
+        "manual"
+      ]
+    },
+    {
+      "id": 16,
+      "type": "Note",
+      "pos": [
+        -4.53915432246539,
+        -638.8553176876957
+      ],
+      "size": [
+        2900,
+        380
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "ATLAS COMPLETE DMP PIPELINE — the full matte-painting story in one graph (sky dome + depth-layered clean plates + disocclusion fill + true depth-shadow occlusion)\n\nThis is the capstone example tying together the whole Atlas Camera inpaint/projection system:\n\n1. SKY: a real segmentation (placeholder SolidMask here — swap for ComfyUI-RMBG's SAM3 Segmentation prompted 'sky') separates the sky onto AtlasSkyDomeLayer's flat far card, clean-plated and projected independently of noisy monocular sky depth.\n2. DEPTH LAYERS: AtlasDepthLayerMask splits the solved photo into metric bands; its occlusion_mask drives an external inpaint (placeholder: original photo wired directly — swap for INPAINT_ExpandMask -> INPAINT_InpaintWithModel per INSTALL.md) to build each band's clean plate; AtlasCleanPlateLayer projects each plate onto its own band-clipped relief mesh.\n3. DISOCCLUSION FILL (fill_occluded=True, new): the band clip normally leaves a hole in the background mesh exactly where the foreground occluder stood — the inpainted plate had pixels there but no geometry. fill_occluded diffusion-fills the occluder footprint's depth from the surrounding background, so orbiting now reveals INPAINTED CONTENT ON REAL GEOMETRY instead of a hole. n_filled_cells is recorded in the layer's metadata; AtlasDepthLayerMask's matching fill_occluded keeps its pre-inpaint hole_mask in lockstep.\n4. DEPTH-SHADOW OCCLUSION (occlusion_mode=depth_shadow, new): AtlasOcclusionMask now detects true MPTK-style self-occlusion — surfaces hidden behind NEARER geometry from the primary's view — by treating the primary camera as a light and its own AtlasDepthMap as the shadow map (no render pass, pure numpy). Wire primary_depth from the same shared AtlasDepthMap. The bottom-left corner demos it; its target_image placeholder is the original photo — swap for a real Qwen Multiple-Angles novel view, then feed the composited result into AtlasAddPatchView per the multi-angle patch pipeline.\n\nRun it, open the Atlas Viewport, hit Project, then orbit/dolly: sky stays clean on its card, depth layers separate in parallax, and the previously-black disocclusion hole behind the foreground now shows the (placeholder) plate on synthesized geometry.\n\nSee CLAUDE.md's 'Inpaint layers', 'Multi-angle patch projection', and 'Relief mesh tearing' key design rules.\n\n--- MASTER PIPELINE ADDITIONS (this workflow) ---\n5. QWEN MULTI-ANGLE PATCH, angle-driven by the viewport: run the graph once, open the Atlas Viewport, orbit/fly to the view your camera move should end on, click 📐 Extract Angle, then Queue again. The viewport's patch_prompt output feeds the Qwen Image Edit 2511 subgraph directly (replacing the manual QwenMultiangleCameraNode angle picker), and patch_azimuth_view/patch_elevation_view/patch_distance feed AtlasAddPatchView's converted widget-inputs - the SAME snapped angles everywhere, no retyping, exact round-trip through orbit_camera. Leave flip_azimuth OFF for extracted angles.\n6. NUKE LAYERS EXPORT (AtlasExportNukeLayers): every projection layer on the final solve - sky dome, bg/fg clean plates, the Qwen patch - exports as ONE native .nk: per-layer Read + Camera2 + Project3D2 + ReadGeo2 (OBJ written alongside), merged through a single Scene into one ScanlineRender rendered from the primary camera. Drag-and-drop into Nuke; layer overlap resolves by real z-depth.\n\nAUTOMATIC PAUSE/RESUME: until 📐 Extract Angle has been clicked, the viewport's patch_* outputs return ComfyUI's ExecutionBlocker - the whole patch branch (Qwen generation, AtlasAddPatchView, final viewport, Nuke layers export) is silently SKIPPED on the first Queue instead of wasting a zero-orbit generation. Orbit/fly to your target view, click 📐 Extract Angle, and the branch resumes by itself (the button re-queues automatically) with the extracted views flowing everywhere. Requires the qwen_image_edit_2511 models + both LoRAs from the atlas_qwen_image_edit_2511_multiangle_camera.json example (see its subgraph for exact filenames).\n\n7. VLM ASSESSMENT GATE (AtlasAssessImage, head of the graph): a local VLM (ollama gemma3:4b by default; LM Studio/llama.cpp also supported) analyzes the photo against Atlas's full settings knowledge and writes a setup plan to the Show Text node - scene type, depth model, band splits, sky prompt, relief tuning, camera-move viability (score + max orbit degrees), patch recommendations. The graph is PAUSED at this node (only the assessment runs on first Queue); read the report, apply the recommended settings, then click ▶ Continue Workflow on the node. The assessment is cached per image, so continuing doesn't re-run the VLM. No VLM server running? The report says so and ▶ Continue still works - the advisor is optional, never a hard dependency. Requires pythongosssss custom-scripts for the Show Text node (or wire report into any text display).\n\n8. MAYA LAYERS EXPORT (AtlasExportMayaLayers): the Maya twin of the Nuke export - every layer as ONE .ma: native per-layer projector cameras + an on-open scriptNode that imports the OBJs and builds the camera-projection shading networks (projection node projType 8, place3dTexture under each layer's camera). Edge mattes ride the plate alpha into lambert transparency. Same assets on disk as the Nuke export (plates/mattes/OBJs). If Maya's script security blocks scriptNodes, import the OBJs manually - they sit next to the .ma."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 17,
+      "type": "SAM3Segment",
+      "pos": [
+        867.1520525836047,
+        -45.02410623254868
+      ],
+      "size": [
+        340,
+        394
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            25,
+            40,
+            41,
+            42
+          ]
+        },
+        {
+          "name": "MASK_IMAGE",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-rmbg",
+        "ver": "3.0.0",
+        "Node name for S&R": "SAM3Segment"
+      },
+      "widgets_values": [
+        "sky\n",
+        "Separate",
+        0.3,
+        0,
+        0,
+        1,
+        0,
+        "Auto",
+        false,
+        false,
+        "Alpha",
+        "#222222"
+      ],
+      "color": "#222e40",
+      "bgcolor": "#364254"
+    },
+    {
+      "id": 6,
+      "type": "AtlasSkyDomeLayer",
+      "pos": [
+        1227.6106063149434,
+        84.50473120760527
+      ],
+      "size": [
+        400,
+        300
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 3
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 4
+        },
+        {
+          "name": "sky_mask",
+          "type": "MASK",
+          "link": 25
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "name": "plate_ref",
+          "shape": 7,
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            7
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "① Sky Dome Layer — flat far card",
+      "properties": {
+        "Node name for S&R": "AtlasSkyDomeLayer"
+      },
+      "widgets_values": [
+        300,
+        96,
+        "sky",
+        -10,
+        48,
+        64
+      ]
+    },
+    {
+      "id": 14,
+      "type": "PreviewImage",
+      "pos": [
+        1831.3171420454644,
+        521.886207771796
+      ],
+      "size": [
+        461.103125,
+        246
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "bg hole_mask (fill_occluded — occluder footprint is NOT a hole)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 13,
+      "type": "MaskToImage",
+      "pos": [
+        1555.7596122888178,
+        460.3261434449714
+      ],
+      "size": [
+        220,
+        80
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 15,
+      "type": "PreviewImage",
+      "pos": [
+        3362.840761034101,
+        -256.89420411971753
+      ],
+      "size": [
+        240,
+        246
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "Blockout — Shaded",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 12,
+      "type": "PreviewImage",
+      "pos": [
+        1986.504140208186,
+        906.282946853566
+      ],
+      "size": [
+        654.0219891784176,
+        453.33672847038997
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "depth_shadow occlusion — white = hidden from the primary, patch fills it",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 11,
+      "type": "MaskToImage",
+      "pos": [
+        1666.6423808832733,
+        871.4476370465798
+      ],
+      "size": [
+        220,
+        80
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 10,
+      "type": "AtlasOcclusionMask",
+      "pos": [
+        860,
+        840
+      ],
+      "size": [
+        610.058203125,
+        460
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 19
+        },
+        {
+          "name": "target_image",
+          "type": "IMAGE",
+          "link": 20
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
+          "name": "occlusion_mask",
+          "type": "MASK",
+          "slot_index": 0,
+          "links": [
+            22
+          ]
+        },
+        {
+          "name": "coverage_mask",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "⑥ Occlusion Mask — depth_shadow (target placeholder: swap for a Qwen novel view)",
+      "properties": {
+        "Node name for S&R": "AtlasOcclusionMask"
+      },
+      "widgets_values": [
+        "front-right quarter view",
+        "eye-level shot",
+        "medium shot",
+        "front view",
+        "eye-level shot",
+        false,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        90,
+        0,
+        8,
+        1,
+        "depth_shadow",
+        0.05
+      ]
+    },
+    {
+      "id": 9,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2580,
+        20
+      ],
+      "size": [
+        720.169133578459,
+        611.8527358524702
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 13
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 14
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            24
+          ]
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": null
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": [
+            29,
+            34
+          ]
+        }
+      ],
+      "title": "⑤ Viewport — hit Project, orbit into the disocclusion",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 21,
+      "type": "7c11dedc-f05e-4fd4-aef4-0a3d3c8525ac",
+      "pos": [
+        860,
+        1300
+      ],
+      "size": [
+        400,
+        210
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 29
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 30
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            31,
+            32,
+            46
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [
+          [
+            "103",
+            "prompt"
+          ],
+          [
+            "105",
+            "seed"
+          ]
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0"
+      },
+      "widgets_values": [],
+      "title": "Qwen Image Edit 2511 + Multiple-Angles LoRA (prompt = viewport patch_prompt)"
+    },
+    {
+      "id": 22,
+      "type": "SaveImage",
+      "pos": [
+        1340,
+        1300
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 31
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "Atlas_Qwen_patch"
+      ],
+      "title": "Generated novel view (patch)"
+    },
+    {
+      "id": 23,
+      "type": "AtlasAddPatchView",
+      "pos": [
+        1740,
+        1300
+      ],
+      "size": [
+        420,
+        420
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 33
+        },
+        {
+          "name": "patch_image",
+          "type": "IMAGE",
+          "link": 32
+        },
+        {
+          "name": "plate_ref",
+          "shape": 7,
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        },
+        {
+          "name": "patch_view_override",
+          "shape": 7,
+          "type": "STRING",
+          "link": 34
+        },
+        {
+          "name": "exclude_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 47
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            37,
+            38,
+            45
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasAddPatchView"
+      },
+      "widgets_values": [
+        "front-right quarter view",
+        "eye-level shot",
+        "medium shot",
+        "front view",
+        "eye-level shot",
+        false,
+        "patch",
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        96,
+        1.0,
+        "auto",
+        true,
+        16,
+        "reuse_scene"
+      ],
+      "title": "Add Patch View — angles wired from the viewport's Extract Angle"
+    },
+    {
+      "id": 24,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2260,
+        1300
+      ],
+      "size": [
+        460,
+        580
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 37
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 39
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": null
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ],
+      "title": "FINAL viewport — sky + layers + patch composited (hit Project, orbit)"
+    },
+    {
+      "id": 25,
+      "type": "AtlasExportNukeLayers",
+      "pos": [
+        2260,
+        1960
+      ],
+      "size": [
+        420,
+        140
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 38
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "nk_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "summary",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportNukeLayers"
+      },
+      "widgets_values": [
+        "atlas_exports/nuke_layers"
+      ],
+      "title": "Nuke Layers Export — ALL layers in one .nk"
+    },
+    {
+      "id": 26,
+      "type": "AtlasAssessImage",
+      "pos": [
+        40,
+        420
+      ],
+      "size": [
+        340,
+        260
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 43
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            6,
+            9,
+            12,
+            14,
+            20,
+            26,
+            30,
+            39
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            44
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "settings_json",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasAssessImage"
+      },
+      "widgets_values": [
+        "ollama",
+        "",
+        "",
+        "",
+        false,
+        ""
+      ],
+      "title": "🧭 Assess Image — VLM setup advisor (PAUSES the graph until ▶ Continue)"
+    },
+    {
+      "id": 27,
+      "type": "ShowText|pysssss",
+      "pos": [
+        40,
+        760
+      ],
+      "size": [
+        360,
+        400
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 44
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "Assessment report — read, apply settings, then ▶ Continue Workflow"
+    },
+    {
+      "id": 28,
+      "type": "AtlasExportMayaLayers",
+      "pos": [
+        2740,
+        1960
+      ],
+      "size": [
+        420,
+        140
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 45
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ma_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "summary",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportMayaLayers"
+      },
+      "widgets_values": [
+        "atlas_exports/maya_layers"
+      ],
+      "title": "Maya Layers Export — ALL layers in one .ma"
+    },
+    {
+      "id": 29,
+      "type": "SAM3Segment",
+      "pos": [
+        1720,
+        1780
+      ],
+      "size": [
+        380,
+        320
+      ],
+      "flags": {},
+      "order": 98,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 46
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            47
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "MASK_IMAGE",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SAM3Segment"
+      },
+      "widgets_values": [
+        "sky",
+        "Merged",
+        0.3,
+        0,
+        0,
+        0,
+        0,
+        "Auto",
+        false,
+        false,
+        "Alpha",
+        "#222222"
+      ],
+      "title": "SAM3 on the PATCH image — sky out of the patch mesh"
+    }
+  ],
+  "links": [
+    [
+      1,
+      26,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      26,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      3,
+      0,
+      6,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      6,
+      26,
+      0,
+      6,
+      3,
+      "IMAGE"
+    ],
+    [
+      7,
+      6,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      8,
+      3,
+      0,
+      7,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      9,
+      26,
+      0,
+      7,
+      2,
+      "IMAGE"
+    ],
+    [
+      10,
+      7,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      3,
+      0,
+      8,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      12,
+      26,
+      0,
+      8,
+      2,
+      "IMAGE"
+    ],
+    [
+      13,
+      8,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      14,
+      26,
+      0,
+      9,
+      1,
+      "IMAGE"
+    ],
+    [
+      15,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      16,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      17,
+      4,
+      2,
+      13,
+      0,
+      "MASK"
+    ],
+    [
+      18,
+      13,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      2,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      20,
+      26,
+      0,
+      10,
+      1,
+      "IMAGE"
+    ],
+    [
+      21,
+      3,
+      0,
+      10,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      22,
+      10,
+      0,
+      11,
+      0,
+      "MASK"
+    ],
+    [
+      23,
+      11,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ],
+    [
+      24,
+      9,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      17,
+      1,
+      6,
+      2,
+      "MASK"
+    ],
+    [
+      26,
+      26,
+      0,
+      17,
+      0,
+      "IMAGE"
+    ],
+    [
+      29,
+      9,
+      9,
+      21,
+      0,
+      "STRING"
+    ],
+    [
+      30,
+      26,
+      0,
+      21,
+      1,
+      "IMAGE"
+    ],
+    [
+      31,
+      21,
+      0,
+      22,
+      0,
+      "IMAGE"
+    ],
+    [
+      32,
+      21,
+      0,
+      23,
+      1,
+      "IMAGE"
+    ],
+    [
+      33,
+      8,
+      0,
+      23,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      34,
+      9,
+      9,
+      23,
+      3,
+      "STRING"
+    ],
+    [
+      37,
+      23,
+      0,
+      24,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      38,
+      23,
+      0,
+      25,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      39,
+      26,
+      0,
+      24,
+      1,
+      "IMAGE"
+    ],
+    [
+      40,
+      17,
+      1,
+      4,
+      2,
+      "MASK"
+    ],
+    [
+      41,
+      17,
+      1,
+      7,
+      4,
+      "MASK"
+    ],
+    [
+      42,
+      17,
+      1,
+      8,
+      4,
+      "MASK"
+    ],
+    [
+      43,
+      1,
+      0,
+      26,
+      0,
+      "IMAGE"
+    ],
+    [
+      44,
+      26,
+      1,
+      27,
+      0,
+      "STRING"
+    ],
+    [
+      45,
+      23,
+      0,
+      28,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      46,
+      21,
+      0,
+      29,
+      0,
+      "IMAGE"
+    ],
+    [
+      47,
+      29,
+      1,
+      23,
+      4,
+      "MASK"
+    ],
+    [
+      48,
+      3,
+      0,
+      23,
+      5,
+      "ATLAS_DEPTH_MAP"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Source + Solve + Shared Depth",
+      "bounding": [
+        20,
+        0,
+        800,
+        420
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "② Sky Dome (placeholder mask — see Note)",
+      "bounding": [
+        840,
+        0,
+        760,
+        340
+      ],
+      "color": "#3d7e48",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "③ Depth Layers + Disocclusion Fill (placeholder plates — see Note)",
+      "bounding": [
+        840,
+        400,
+        1700,
+        380
+      ],
+      "color": "#7e4f3d",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "④ Viewport — sky + layers + filled disocclusion composited",
+      "bounding": [
+        2560,
+        0,
+        780,
+        620
+      ],
+      "color": "#6e3d7e",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "⑤ True Depth-Shadow Occlusion (MPTK camera-as-light) — multi-angle patch pipeline",
+      "bounding": [
+        840,
+        800,
+        1040,
+        380
+      ],
+      "color": "#7e6e3d",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "⑥ Qwen Multi-Angle Patch — prompt driven by 📐 Extract Angle",
+      "bounding": [
+        840,
+        1240,
+        1360,
+        520
+      ],
+      "color": "#3d5a7e",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 7,
+      "title": "⑦ Patched Result + DCC Layer Exports (one .nk + one .ma, all layers)",
+      "bounding": [
+        2240,
+        1240,
+        940,
+        880
+      ],
+      "color": "#7e3d5a",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 8,
+      "title": "⓪ VLM Pre-flight — assess, apply settings, then continue",
+      "bounding": [
+        20,
+        360,
+        420,
+        820
+      ],
+      "color": "#3d7e6e",
+      "font_size": 14,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5445000000000003,
+      "offset": [
+        301.14466048834356,
+        932.5630001821696
+      ]
+    },
+    "frontendVersion": "1.45.20"
+  },
+  "version": 0.4,
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "7c11dedc-f05e-4fd4-aef4-0a3d3c8525ac",
+        "version": 1,
+        "state": {
+          "lastGroupId": 2,
+          "lastNodeId": 112,
+          "lastLinkId": 257,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "New Subgraph",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -876.8182167247725,
+            -865.4108403883233,
+            128,
+            88
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            667.0446891422647,
+            -855.4108403883233,
+            128,
+            68
+          ]
+        },
+        "inputs": [
+          {
+            "id": "ddc2cb83-ac3f-4a13-8cd9-8b7d9783767e",
+            "name": "prompt",
+            "type": "STRING",
+            "linkIds": [
+              253
+            ],
+            "localized_name": "prompt",
+            "pos": [
+              -772.8182167247725,
+              -841.4108403883233
+            ]
+          },
+          {
+            "id": "e8fa8661-54fb-45f6-8a3e-c43452ce2653",
+            "name": "image",
+            "type": "IMAGE",
+            "linkIds": [
+              246
+            ],
+            "localized_name": "image",
+            "pos": [
+              -772.8182167247725,
+              -821.4108403883233
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "e1be2151-17c0-408c-9efa-ef3a72e68a7b",
+            "name": "IMAGE",
+            "type": "IMAGE",
+            "linkIds": [
+              245
+            ],
+            "localized_name": "IMAGE",
+            "pos": [
+              691.0446891422647,
+              -831.4108403883233
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 93,
+            "type": "CLIPLoader",
+            "pos": [
+              -679.990665907353,
+              -967.4634656171052
+            ],
+            "size": [
+              396.1197916666667,
+              106
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "CLIP",
+                "name": "CLIP",
+                "type": "CLIP",
+                "links": [
+                  231,
+                  236
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "CLIPLoader",
+              "models": [
+                {
+                  "name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+                  "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+                  "directory": "text_encoders"
+                }
+              ],
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+              "qwen_image",
+              "default"
+            ]
+          },
+          {
+            "id": 95,
+            "type": "VAELoader",
+            "pos": [
+              -679.990665907353,
+              -789.4634746593506
+            ],
+            "size": [
+              396.1197916666667,
+              58
+            ],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "VAE",
+                "name": "VAE",
+                "type": "VAE",
+                "slot_index": 0,
+                "links": [
+                  232,
+                  235,
+                  237,
+                  244
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "VAELoader",
+              "models": [
+                {
+                  "name": "qwen_image_vae.safetensors",
+                  "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+                  "directory": "vae"
+                }
+              ],
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "qwen_image_vae.safetensors"
+            ]
+          },
+          {
+            "id": 100,
+            "type": "TextEncodeQwenImageEditPlus",
+            "pos": [
+              -168.93745273294317,
+              -922.3004538215929
+            ],
+            "size": [
+              420,
+              195
+            ],
+            "flags": {},
+            "order": 10,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "clip",
+                "name": "clip",
+                "type": "CLIP",
+                "link": 231
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "shape": 7,
+                "type": "VAE",
+                "link": 232
+              },
+              {
+                "localized_name": "image1",
+                "name": "image1",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": 233
+              },
+              {
+                "localized_name": "image2",
+                "name": "image2",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              },
+              {
+                "localized_name": "image3",
+                "name": "image3",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  228
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "TextEncodeQwenImageEditPlus",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              ""
+            ],
+            "color": "#322",
+            "bgcolor": "#533"
+          },
+          {
+            "id": 103,
+            "type": "TextEncodeQwenImageEditPlus",
+            "pos": [
+              -168.93745273294317,
+              -1242.3005442440458
+            ],
+            "size": [
+              426.61458333333337,
+              240.546875
+            ],
+            "flags": {},
+            "order": 12,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "clip",
+                "name": "clip",
+                "type": "CLIP",
+                "link": 236
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "shape": 7,
+                "type": "VAE",
+                "link": 237
+              },
+              {
+                "localized_name": "image1",
+                "name": "image1",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": 249
+              },
+              {
+                "localized_name": "image2",
+                "name": "image2",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              },
+              {
+                "localized_name": "image3",
+                "name": "image3",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              },
+              {
+                "localized_name": "prompt",
+                "name": "prompt",
+                "type": "STRING",
+                "widget": {
+                  "name": "prompt"
+                },
+                "link": 253
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  229
+                ]
+              }
+            ],
+            "title": "TextEncodeQwenImageEditPlus (Positive)",
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "TextEncodeQwenImageEditPlus",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "Change the furniture leather difference in image 1 to the fur material in image 2."
+            ],
+            "color": "#232",
+            "bgcolor": "#353"
+          },
+          {
+            "id": 97,
+            "type": "FluxKontextMultiReferenceLatentMethod",
+            "pos": [
+              -218.71667537044377,
+              -625.2806643743213
+            ],
+            "size": [
+              309.66145833333337,
+              58
+            ],
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "conditioning",
+                "name": "conditioning",
+                "type": "CONDITIONING",
+                "link": 229
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  239
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "FluxKontextMultiReferenceLatentMethod",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "index_timestep_zero"
+            ],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 94,
+            "type": "ModelSamplingAuraFlow",
+            "pos": [
+              -689.7276495951425,
+              -494.1065546289685
+            ],
+            "size": [
+              270,
+              58
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 252
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "MODEL",
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [
+                  230
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "ModelSamplingAuraFlow",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              3.1
+            ]
+          },
+          {
+            "id": 96,
+            "type": "FluxKontextMultiReferenceLatentMethod",
+            "pos": [
+              -348.48901343370744,
+              -477.5314023080078
+            ],
+            "size": [
+              309.66145833333337,
+              58
+            ],
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "conditioning",
+                "name": "conditioning",
+                "type": "CONDITIONING",
+                "link": 228
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  240
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "FluxKontextMultiReferenceLatentMethod",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "index_timestep_zero"
+            ],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 99,
+            "type": "MarkdownNote",
+            "pos": [
+              120.14156858969547,
+              -580.8155226235984
+            ],
+            "size": [
+              270,
+              193.68489583333334
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "title": "KSampler settings",
+            "properties": {},
+            "widgets_values": [
+              "You can test and find the best setting by yourself. The following table is for reference.\n|   | Qwen | Comfy | lightning LoRA |\n|--------|---------|------------|---------------------------|\n| Steps  | 40      | 20         | 4                         |\n| CFG    | 4.0     | 4.0       | 1.0                       |\n\nBy default, we use 20 steps as we just don't want it to take too long. Try 40 if you want a better result, but it will take longer."
+            ],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 98,
+            "type": "CFGNorm",
+            "pos": [
+              -696.8182167247725,
+              -373.9002784064568
+            ],
+            "size": [
+              270,
+              82
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 230
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "patched_model",
+                "name": "patched_model",
+                "type": "MODEL",
+                "links": [
+                  238
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "CFGNorm",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              1,
+              false
+            ]
+          },
+          {
+            "id": 106,
+            "type": "FluxKontextImageScale",
+            "pos": [
+              -359.5513324710025,
+              -351.35794847263855
+            ],
+            "size": [
+              194.9458984375,
+              26
+            ],
+            "flags": {},
+            "order": 15,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 246
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  233,
+                  234,
+                  249
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "FluxKontextImageScale",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": []
+          },
+          {
+            "id": 104,
+            "type": "VAEEncode",
+            "pos": [
+              -90.226551158399,
+              -350.3729005058339
+            ],
+            "size": [
+              187.5,
+              46
+            ],
+            "flags": {},
+            "order": 13,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "pixels",
+                "name": "pixels",
+                "type": "IMAGE",
+                "link": 234
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "type": "VAE",
+                "link": 235
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  241
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "VAEEncode",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": []
+          },
+          {
+            "id": 102,
+            "type": "VAEDecode",
+            "pos": [
+              349.90446764569083,
+              -728.3803800229962
+            ],
+            "size": [
+              187.5,
+              46
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 11,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "samples",
+                "name": "samples",
+                "type": "LATENT",
+                "link": 243
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "type": "VAE",
+                "link": 244
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "slot_index": 0,
+                "links": [
+                  245
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "VAEDecode",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": []
+          },
+          {
+            "id": 105,
+            "type": "KSampler",
+            "pos": [
+              341.4312890622647,
+              -1311.5430061335985
+            ],
+            "size": [
+              265.61340008,
+              287.73272688
+            ],
+            "flags": {},
+            "order": 14,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 238
+              },
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 239
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 240
+              },
+              {
+                "localized_name": "latent_image",
+                "name": "latent_image",
+                "type": "LATENT",
+                "link": 241
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  243
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "KSampler",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              654553246174758,
+              "randomize",
+              4,
+              1,
+              "euler",
+              "simple",
+              1
+            ]
+          },
+          {
+            "id": 108,
+            "type": "UNETLoader",
+            "pos": [
+              -688.3107749568322,
+              -1279.3034947331353
+            ],
+            "size": [
+              396.1197916666667,
+              82
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "MODEL",
+                "name": "MODEL",
+                "type": "MODEL",
+                "slot_index": 0,
+                "links": [
+                  242
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "UNETLoader",
+              "models": [
+                {
+                  "name": "qwen_image_edit_2511_bf16.safetensors",
+                  "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors",
+                  "directory": "diffusion_models"
+                }
+              ],
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "qwen_image_edit_2511_fp8_e4m3fn.safetensors",
+              "default"
+            ]
+          },
+          {
+            "id": 107,
+            "type": "LoraLoaderModelOnly",
+            "pos": [
+              -674.3389912835104,
+              -1132.690883739573
+            ],
+            "size": [
+              396.1197916666667,
+              82
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 242
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "MODEL",
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [
+                  251
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "LoraLoaderModelOnly",
+              "models": [
+                {
+                  "name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+                  "url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+                  "directory": "loras"
+                }
+              ],
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "Qwen\\Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+              1
+            ]
+          },
+          {
+            "id": 110,
+            "type": "LoraLoaderModelOnly",
+            "pos": [
+              -676.9574673034756,
+              -667.4697386748306
+            ],
+            "size": [
+              396.1197916666667,
+              82
+            ],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 251
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "MODEL",
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [
+                  252
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.5.1",
+              "Node name for S&R": "LoraLoaderModelOnly",
+              "models": [
+                {
+                  "name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+                  "url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+                  "directory": "loras"
+                }
+              ],
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "Qwen\\qwen-image-edit-2511-multiple-angles-lora.safetensors",
+              1
+            ]
+          }
+        ],
+        "groups": [
+          {
+            "id": 1,
+            "title": "Models",
+            "bounding": [
+              -693.9911555878579,
+              -1346.4487802708127,
+              436.45910983615454,
+              793.8395799424915
+            ],
+            "color": "#3f789e",
+            "flags": {}
+          },
+          {
+            "id": 2,
+            "title": "Prompt",
+            "bounding": [
+              -218.9375585951711,
+              -1322.3005397065353,
+              510,
+              630
+            ],
+            "color": "#3f789e",
+            "flags": {}
+          }
+        ],
+        "links": [
+          {
+            "id": 242,
+            "origin_id": 108,
+            "origin_slot": 0,
+            "target_id": 107,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 231,
+            "origin_id": 93,
+            "origin_slot": 0,
+            "target_id": 100,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 232,
+            "origin_id": 95,
+            "origin_slot": 0,
+            "target_id": 100,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 233,
+            "origin_id": 106,
+            "origin_slot": 0,
+            "target_id": 100,
+            "target_slot": 2,
+            "type": "IMAGE"
+          },
+          {
+            "id": 236,
+            "origin_id": 93,
+            "origin_slot": 0,
+            "target_id": 103,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 237,
+            "origin_id": 95,
+            "origin_slot": 0,
+            "target_id": 103,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 249,
+            "origin_id": 106,
+            "origin_slot": 0,
+            "target_id": 103,
+            "target_slot": 2,
+            "type": "IMAGE"
+          },
+          {
+            "id": 251,
+            "origin_id": 107,
+            "origin_slot": 0,
+            "target_id": 110,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 229,
+            "origin_id": 103,
+            "origin_slot": 0,
+            "target_id": 97,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 252,
+            "origin_id": 110,
+            "origin_slot": 0,
+            "target_id": 94,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 228,
+            "origin_id": 100,
+            "origin_slot": 0,
+            "target_id": 96,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 230,
+            "origin_id": 94,
+            "origin_slot": 0,
+            "target_id": 98,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 234,
+            "origin_id": 106,
+            "origin_slot": 0,
+            "target_id": 104,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 235,
+            "origin_id": 95,
+            "origin_slot": 0,
+            "target_id": 104,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 243,
+            "origin_id": 105,
+            "origin_slot": 0,
+            "target_id": 102,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 244,
+            "origin_id": 95,
+            "origin_slot": 0,
+            "target_id": 102,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 238,
+            "origin_id": 98,
+            "origin_slot": 0,
+            "target_id": 105,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 239,
+            "origin_id": 97,
+            "origin_slot": 0,
+            "target_id": 105,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 240,
+            "origin_id": 96,
+            "origin_slot": 0,
+            "target_id": 105,
+            "target_slot": 2,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 241,
+            "origin_id": 104,
+            "origin_slot": 0,
+            "target_id": 105,
+            "target_slot": 3,
+            "type": "LATENT"
+          },
+          {
+            "id": 253,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 103,
+            "target_slot": 5,
+            "type": "STRING"
+          },
+          {
+            "id": 246,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 106,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 245,
+            "origin_id": 102,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "IMAGE"
+          }
+        ],
+        "extra": {}
+      }
+    ]
+  }
+}

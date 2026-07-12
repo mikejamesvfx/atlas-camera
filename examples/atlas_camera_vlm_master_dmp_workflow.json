@@ -1,0 +1,629 @@
+{
+  "1": {
+    "inputs": {
+      "image": "atlas_monument_valley.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "2": {
+    "inputs": {
+      "height_mode": "measure_from_depth",
+      "camera_height_m": 1.6,
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "sensor_width_mm": 36,
+      "weights": "pinhole",
+      "device": "auto",
+      "image": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "AtlasLearnedSolveFromImage",
+    "_meta": {
+      "title": "Atlas Learned Solve (GeoCalib) 🧠"
+    }
+  },
+  "3": {
+    "inputs": {
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "device": "auto",
+      "image": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "AtlasDepthMap",
+    "_meta": {
+      "title": "Atlas Depth Map 🌊"
+    }
+  },
+  "4": {
+    "inputs": {
+      "near_m": 0,
+      "far_m": 0,
+      "near_pct": 0.35,
+      "far_pct": 1,
+      "feather_px": 4,
+      "compute_hole_mask": true,
+      "relief_grid": 128,
+      "depth_edge_rel": 0.5,
+      "fill_occluded": true,
+      "solve": [
+        "2",
+        0
+      ],
+      "depth": [
+        "3",
+        0
+      ],
+      "exclude_mask": [
+        "17",
+        1
+      ]
+    },
+    "class_type": "AtlasDepthLayerMask",
+    "_meta": {
+      "title": "② Depth Layer Mask — bg band, fill_occluded (occlusion_mask drives the external inpaint)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "radius_m": 300,
+      "relief_grid": 96,
+      "name": "sky",
+      "priority": -10,
+      "solve": [
+        "2",
+        0
+      ],
+      "depth": [
+        "3",
+        0
+      ],
+      "sky_mask": [
+        "17",
+        1
+      ],
+      "plate_image": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "AtlasSkyDomeLayer",
+    "_meta": {
+      "title": "① Sky Dome Layer — flat far card"
+    }
+  },
+  "7": {
+    "inputs": {
+      "near_m": 0,
+      "far_m": 0,
+      "near_pct": 0.35,
+      "far_pct": 1,
+      "name": "bg",
+      "priority": 0,
+      "relief_grid": 128,
+      "depth_edge_rel": 0.5,
+      "fill_occluded": true,
+      "embed_matte": true,
+      "solve": [
+        "6",
+        0
+      ],
+      "depth": [
+        "3",
+        0
+      ],
+      "plate_image": [
+        "113",
+        0
+      ],
+      "exclude_mask": [
+        "17",
+        1
+      ]
+    },
+    "class_type": "AtlasCleanPlateLayer",
+    "_meta": {
+      "title": "③ Clean Plate — background, fill_occluded=True (plate placeholder: swap for inpaint chain)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "near_m": 0,
+      "far_m": 0,
+      "near_pct": 0,
+      "far_pct": 0.35,
+      "name": "fg",
+      "priority": 10,
+      "relief_grid": 128,
+      "depth_edge_rel": 0.5,
+      "fill_occluded": false,
+      "embed_matte": true,
+      "solve": [
+        "7",
+        0
+      ],
+      "depth": [
+        "3",
+        0
+      ],
+      "plate_image": [
+        "113",
+        0
+      ],
+      "exclude_mask": [
+        "17",
+        1
+      ]
+    },
+    "class_type": "AtlasCleanPlateLayer",
+    "_meta": {
+      "title": "④ Clean Plate — foreground, original pixels (nothing occludes it)"
+    }
+  },
+  "9": {
+    "inputs": {
+      "resolution": 768,
+      "client_data": "{\"patch_angle\":{\"azimuth_view\":\"front-left quarter view\",\"elevation_view\":\"eye-level shot\",\"distance_view\":\"wide shot\",\"prompt\":\"<sks> front-left quarter view eye-level shot wide shot\",\"raw\":{\"d_azimuth_deg\":-24.220824494987596,\"d_elevation_deg\":1.9536925098665936,\"distance_scale\":1.511309548535992}}}",
+      "preview_expand": 1,
+      "solve": [
+        "8",
+        0
+      ],
+      "source_image": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "AtlasBlockoutViewport",
+    "_meta": {
+      "title": "⑤ Viewport — hit Project, orbit into the disocclusion"
+    }
+  },
+  "10": {
+    "inputs": {
+      "patch_azimuth_view": "front-right quarter view",
+      "patch_elevation_view": "eye-level shot",
+      "patch_distance": "medium shot",
+      "source_azimuth_view": "front view",
+      "source_elevation_view": "eye-level shot",
+      "flip_azimuth": false,
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "device": "auto",
+      "angle_threshold": 90,
+      "dilate_px": 0,
+      "soft_edge_px": 8,
+      "power": 1,
+      "occlusion_mode": "depth_shadow",
+      "depth_bias": 0.05,
+      "solve": [
+        "2",
+        0
+      ],
+      "target_image": [
+        "113",
+        0
+      ],
+      "primary_depth": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "AtlasOcclusionMask",
+    "_meta": {
+      "title": "⑥ Occlusion Mask — depth_shadow (target placeholder: swap for a Qwen novel view)"
+    }
+  },
+  "11": {
+    "inputs": {
+      "mask": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "MaskToImage",
+    "_meta": {
+      "title": "Convert Mask to Image"
+    }
+  },
+  "12": {
+    "inputs": {
+      "images": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "depth_shadow occlusion — white = hidden from the primary, patch fills it"
+    }
+  },
+  "13": {
+    "inputs": {
+      "mask": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "MaskToImage",
+    "_meta": {
+      "title": "Convert Mask to Image"
+    }
+  },
+  "14": {
+    "inputs": {
+      "images": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "bg hole_mask (fill_occluded — occluder footprint is NOT a hole)"
+    }
+  },
+  "15": {
+    "inputs": {
+      "images": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Blockout — Shaded"
+    }
+  },
+  "17": {
+    "inputs": {
+      "prompt": "sky\n",
+      "output_mode": "Separate",
+      "confidence_threshold": 0.3,
+      "max_segments": 0,
+      "segment_pick": 0,
+      "mask_blur": 1,
+      "mask_offset": 0,
+      "device": "Auto",
+      "invert_output": false,
+      "unload_model": false,
+      "background": "Alpha",
+      "background_color": "#222222",
+      "image": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "SAM3Segment",
+    "_meta": {
+      "title": "SAM3 Segmentation (RMBG)"
+    }
+  },
+  "22": {
+    "inputs": {
+      "filename_prefix": "Atlas_Qwen_patch",
+      "images": [
+        "21:102",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Generated novel view (patch)"
+    }
+  },
+  "23": {
+    "inputs": {
+      "patch_azimuth_view": "front-right quarter view",
+      "patch_elevation_view": "eye-level shot",
+      "patch_distance": "medium shot",
+      "source_azimuth_view": "front view",
+      "source_elevation_view": "eye-level shot",
+      "flip_azimuth": false,
+      "name": "patch",
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "relief_grid": 96,
+      "priority": 1,
+      "device": "auto",
+      "solve": [
+        "8",
+        0
+      ],
+      "patch_image": [
+        "21:102",
+        0
+      ],
+      "patch_view_override": [
+        "9",
+        9
+      ]
+    },
+    "class_type": "AtlasAddPatchView",
+    "_meta": {
+      "title": "Add Patch View — angles wired from the viewport's Extract Angle"
+    }
+  },
+  "24": {
+    "inputs": {
+      "resolution": 768,
+      "client_data": "",
+      "preview_expand": 1,
+      "solve": [
+        "23",
+        0
+      ],
+      "source_image": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "AtlasBlockoutViewport",
+    "_meta": {
+      "title": "FINAL viewport — sky + layers + patch composited (hit Project, orbit)"
+    }
+  },
+  "25": {
+    "inputs": {
+      "output_dir": "atlas_exports/nuke_layers",
+      "solve": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "AtlasExportNukeLayers",
+    "_meta": {
+      "title": "Nuke Layers Export — ALL layers in one .nk"
+    }
+  },
+  "113": {
+    "inputs": {
+      "provider": "lmstudio",
+      "model": "gemma-4-12b-qat",
+      "base_url": "",
+      "extra_instructions": "",
+      "proceed": true,
+      "▶ Continue Workflow": null,
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "AtlasAssessImage",
+    "_meta": {
+      "title": "Atlas Assess Image 🧭"
+    }
+  },
+  "21:93": {
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "21:95": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "21:100": {
+    "inputs": {
+      "prompt": "",
+      "clip": [
+        "21:93",
+        0
+      ],
+      "vae": [
+        "21:95",
+        0
+      ],
+      "image1": [
+        "21:106",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "21:103": {
+    "inputs": {
+      "prompt": [
+        "9",
+        9
+      ],
+      "clip": [
+        "21:93",
+        0
+      ],
+      "vae": [
+        "21:95",
+        0
+      ],
+      "image1": [
+        "21:106",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus (Positive)"
+    }
+  },
+  "21:97": {
+    "inputs": {
+      "reference_latents_method": "index_timestep_zero",
+      "conditioning": [
+        "21:103",
+        0
+      ]
+    },
+    "class_type": "FluxKontextMultiReferenceLatentMethod",
+    "_meta": {
+      "title": "Edit Model Reference Method"
+    }
+  },
+  "21:94": {
+    "inputs": {
+      "shift": 3.1,
+      "model": [
+        "21:110",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
+    }
+  },
+  "21:96": {
+    "inputs": {
+      "reference_latents_method": "index_timestep_zero",
+      "conditioning": [
+        "21:100",
+        0
+      ]
+    },
+    "class_type": "FluxKontextMultiReferenceLatentMethod",
+    "_meta": {
+      "title": "Edit Model Reference Method"
+    }
+  },
+  "21:98": {
+    "inputs": {
+      "strength": 1,
+      "pre_cfg": false,
+      "model": [
+        "21:94",
+        0
+      ]
+    },
+    "class_type": "CFGNorm",
+    "_meta": {
+      "title": "CFGNorm"
+    }
+  },
+  "21:106": {
+    "inputs": {
+      "image": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "FluxKontextImageScale",
+    "_meta": {
+      "title": "FluxKontextImageScale"
+    }
+  },
+  "21:104": {
+    "inputs": {
+      "pixels": [
+        "21:106",
+        0
+      ],
+      "vae": [
+        "21:95",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "21:102": {
+    "inputs": {
+      "samples": [
+        "21:105",
+        0
+      ],
+      "vae": [
+        "21:95",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "21:105": {
+    "inputs": {
+      "seed": 549315487181908,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "21:98",
+        0
+      ],
+      "positive": [
+        "21:97",
+        0
+      ],
+      "negative": [
+        "21:96",
+        0
+      ],
+      "latent_image": [
+        "21:104",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "21:108": {
+    "inputs": {
+      "unet_name": "qwen_image_edit_2511_fp8_e4m3fn.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "21:107": {
+    "inputs": {
+      "lora_name": "Qwen\\Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "21:108",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "21:110": {
+    "inputs": {
+      "lora_name": "Qwen\\qwen-image-edit-2511-multiple-angles-lora.safetensors",
+      "strength_model": 1,
+      "model": [
+        "21:107",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  }
+}

@@ -1,0 +1,565 @@
+{
+  "last_node_id": 9,
+  "last_link_id": 11,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        140
+      ],
+      "size": {
+        "0": 320,
+        "1": 314
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "atlas_cathedral_nave.png",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        420,
+        140
+      ],
+      "size": {
+        "0": 400,
+        "1": 210
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            3,
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
+        36,
+        "pinhole",
+        "auto"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        420,
+        400
+      ],
+      "size": {
+        "0": 400,
+        "1": 100
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            5,
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
+        "auto"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasDeriveInteriorRoom",
+      "pos": [
+        880,
+        140
+      ],
+      "size": {
+        "0": 380,
+        "1": 110
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 5,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveInteriorRoom"
+      },
+      "widgets_values": [],
+      "title": "Base — Manhattan floor/walls/ceiling (room_cuboid)"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        880,
+        300
+      ],
+      "size": {
+        "0": 380,
+        "1": 150
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4,
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 6,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "medium",
+        0.4
+      ],
+      "title": "Clutter — Furniture (organic, non-orthogonal)"
+    },
+    {
+      "id": 6,
+      "type": "AtlasMergeGeometry",
+      "pos": [
+        1340,
+        220
+      ],
+      "size": {
+        "0": 260,
+        "1": 80
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve_a",
+          "type": "ATLAS_SOLVE",
+          "link": 7,
+          "slot_index": 0
+        },
+        {
+          "name": "solve_b",
+          "type": "ATLAS_SOLVE",
+          "link": 9,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMergeGeometry"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 7,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1660,
+        140
+      ],
+      "size": {
+        "0": 460,
+        "1": 460
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10,
+          "slot_index": 0
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 8,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [],
+          "slot_index": 5
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1
+      ]
+    },
+    {
+      "id": 8,
+      "type": "PreviewImage",
+      "pos": [
+        2140,
+        140
+      ],
+      "size": {
+        "0": 260,
+        "1": 280
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 11,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "Merged — Shaded"
+    },
+    {
+      "id": 9,
+      "type": "Note",
+      "pos": [
+        40,
+        520
+      ],
+      "size": {
+        "0": 800,
+        "1": 460
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "MERGE #2 — Interior Room (base) + Relief Mesh (furniture/clutter)\n\nScenario: an interior shot where the room shell itself (floor,\nwalls, ceiling) is genuinely orthogonal/Manhattan, but the room is\nfurnished — sofas, lamps, plants, anything organic or angled that\nAtlasDeriveInteriorRoom's room_cuboid fit can't represent (it only\noutputs up to 4 walls + floor/ceiling aligned to the dominant wall\ndirection; forcing furniture into that fit would skew it).\n\n1. Node 4 (base) — AtlasDeriveInteriorRoom for the clean orthogonal\n   shell. No wall-count widget: room_cuboid always resolves its own\n   wall count from the depth map's Manhattan structure.\n2. Node 5 (clutter) — AtlasDeriveReliefMesh, which follows actual\n   depth contours vertex-by-vertex — no orthogonality assumption,\n   so it captures furniture/clutter shapes the room fit can't.\n   relief_quality=medium (256) for enough density on small objects.\n3. Node 6 — AtlasMergeGeometry combines them; solve_a (the room\n   shell) provides the merged camera.\n\nNote the depth_model on nodes 2/3 is switched to Indoor — match this\nby hand on any interior shot (nodes don't cross-configure each\nother's widgets)."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      2,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      6,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      7,
+      4,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      8,
+      1,
+      0,
+      7,
+      1,
+      "IMAGE"
+    ],
+    [
+      9,
+      5,
+      0,
+      6,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      10,
+      6,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      7,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "① Source + Solve (Indoor depth model)",
+      "bounding": [
+        20,
+        100,
+        780,
+        380
+      ],
+      "color": "#3f789e",
+      "font_size": 18,
+      "locked": false
+    },
+    {
+      "id": 2,
+      "title": "② Base — AtlasDeriveInteriorRoom",
+      "bounding": [
+        860,
+        100,
+        420,
+        180
+      ],
+      "color": "#7e4f3d",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 3,
+      "title": "③ Clutter — AtlasDeriveReliefMesh",
+      "bounding": [
+        860,
+        260,
+        420,
+        220
+      ],
+      "color": "#3d7e48",
+      "font_size": 15,
+      "locked": false
+    },
+    {
+      "id": 4,
+      "title": "④ Merge",
+      "bounding": [
+        1320,
+        170,
+        320,
+        180
+      ],
+      "color": "#6e3d7e",
+      "font_size": 14,
+      "locked": false
+    },
+    {
+      "id": 5,
+      "title": "⑤ Viewport",
+      "bounding": [
+        1640,
+        100,
+        780,
+        340
+      ],
+      "color": "#7e6e3d",
+      "font_size": 14,
+      "locked": false
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6,
+      "offset": [
+        10,
+        -40
+      ]
+    }
+  },
+  "version": 0.4
+}
