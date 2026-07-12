@@ -89,6 +89,12 @@ def main() -> int:
         pil = Image.open(args.image).convert("RGB")
         pixel_values = processor(images=pil, return_tensors="pt")["pixel_values"]
         print(f"Parity input: {args.image} -> {tuple(pixel_values.shape)}")
+        # The processor decides the shape here, and the traced graph bakes it
+        # (see the fixed-resolution note above) — an explicit --size would be
+        # silently ignored, so say so rather than let the flag mislead.
+        if args.size != DEFAULT_SIZE:
+            print(f"NOTE: --size {args.size} ignored — with --image the export "
+                  f"resolution is the processor's output shape above.")
     else:
         torch.manual_seed(0)
         pixel_values = torch.randn(1, 3, args.size, args.size)
