@@ -1,7 +1,7 @@
 # Atlas Camera — ComfyUI Integration
 
 > **Vintage note (2026-07-09):** this page's two-track mental model is still
-> correct, but the catalog has grown to **47 nodes** — including the shared-depth
+> correct, but the catalog has grown to **54 nodes** — including the shared-depth
 > layer nodes, the sky dome, the Output Desk color track, and the experimental
 > hidden-geometry 🔬 node — and the default depth model is now DA3METRIC-LARGE.
 > For the current catalog see CLAUDE.md; for the layered-workflow story see
