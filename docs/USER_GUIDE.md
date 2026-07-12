@@ -439,6 +439,16 @@ wired to video. Start from the one whose scene most resembles your shot.
 
 ## What's new (2026-07-12) — AtlasInput, the one-node fast path
 
+### Fullscreen and tracking keys
+
+The viewport toolbar's **⛶ Fullscreen** (after 💡 Lights) takes the 3D view
+fullscreen — Esc or ⛶ Exit returns. Click the viewport once to arm the
+**tracking keys**: ↑/↓ track in/out, ←/→ track left/right, A/D track
+up/down (hold Shift for 4× speed; W/S and Q/E work as Unreal-style
+aliases). Keys only respond while the viewport has focus, so ComfyUI's own
+shortcuts are untouched. Display sharpness in fullscreen follows the
+`resolution` widget, same as resizing the node.
+
 `examples/atlas_input_quickstart_workflow.json` is now the fastest way in:
 LoadImage → **🎬 Atlas Input** → viewport. By default the first queue costs a
 solve, a shared depth pass, and one high-resolution relief mesh — image to
