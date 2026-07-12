@@ -1019,23 +1019,46 @@ def _scope():
     return AtlasScopeMask()
 
 
+class _DynPromptStub:
+    """Minimal DynPrompt: reports the named inputs as graph links (lists),
+    mirroring how ComfyUI records a wired input as [source_id, slot]. Lets the
+    lazy-status wiring guard be exercised outside a live executor."""
+    def __init__(self, *wired):
+        self._wired = wired
+
+    def get_node(self, _uid):
+        return {"inputs": {name: ["src", 0] for name in self._wired}}
+
+
 def test_scope_mask_empty_prompt_is_band_only_and_lazy():
     sky = torch.zeros(1, H, W); sky[:, :60] = 1.0
     excl, status = _scope().build(sky, prompt="")
     assert torch.equal(excl, sky)                       # exactly the sky mask
     assert "band-only" in status
-    # Lazy contract: with an empty prompt the segment branch is never pulled.
+    # Empty prompt: the segment branch is never pulled (wiring irrelevant).
     assert _scope().check_lazy_status(sky, prompt="") == []
-    assert _scope().check_lazy_status(sky, prompt="rocks") == ["segment_mask"]
-    # A no-match segment pulls the (lazy) fallback_mask next; a real segment
-    # never does.
-    assert _scope().check_lazy_status(sky, prompt="rocks",
-                                      segment_mask=torch.zeros(1, H, W)) == ["fallback_mask"]
+    # Prompt set + segment WIRED: pull it.
+    assert _scope().check_lazy_status(
+        sky, prompt="rocks",
+        dynprompt=_DynPromptStub("segment_mask"), unique_id="1") == ["segment_mask"]
+    # Prompt set + segment UNWIRED: band-only, never request the input (the
+    # 2026-07-12 crash guard — asking for an unconnected lazy input aborts the
+    # queue).
+    assert _scope().check_lazy_status(
+        sky, prompt="rocks", dynprompt=_DynPromptStub(), unique_id="1") == []
+    # A no-match segment pulls the (lazy) fallback_mask next when it's WIRED.
+    assert _scope().check_lazy_status(
+        sky, prompt="rocks", segment_mask=torch.zeros(1, H, W),
+        dynprompt=_DynPromptStub("fallback_mask"), unique_id="1") == ["fallback_mask"]
+    # No-match segment + fallback UNWIRED: band-only.
+    assert _scope().check_lazy_status(
+        sky, prompt="rocks", segment_mask=torch.zeros(1, H, W),
+        dynprompt=_DynPromptStub(), unique_id="1") == []
+    # A real (matching) segment pulls neither.
     good = torch.zeros(1, H, W); good[:, 100:180, 80:240] = 1.0
-    assert _scope().check_lazy_status(sky, prompt="rocks", segment_mask=good) == []
-    assert _scope().check_lazy_status(sky, prompt="rocks",
-                                      segment_mask=torch.zeros(1, H, W),
-                                      fallback_mask=good) == []
+    assert _scope().check_lazy_status(
+        sky, prompt="rocks", segment_mask=good,
+        dynprompt=_DynPromptStub("fallback_mask"), unique_id="1") == []
 
 
 def test_scope_mask_semantic_fallback_scopes_on_no_match():
