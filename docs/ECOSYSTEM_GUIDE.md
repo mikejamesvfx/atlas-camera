@@ -544,15 +544,16 @@ ComfyUI's browser canvas for interactive, click-around testing:
 
 | File | Demonstrates |
 |---|---|
-| `atlas_camera_core_projection_workflow.json` | The minimal 6-node core through-line (solve → derive → project → export mesh). Best starting point. |
-| `atlas_camera_learned_workflow.json` | The full 26-node learned pipeline — every analysis node, viewport, and all 5 DCC export formats. |
-| `atlas_camera_full_workflow.json` | Original 20-node vanishing-point workflow (no neural deps). |
-| `atlas_camera_multiangle_patch_proof_workflow.json` | Multi-angle patch calibration proof (§3.3). |
-| `api_format/atlas_camera_vertical_extrusion_comparison_workflow.json` | Primitive-method comparison (API format). |
-| `atlas_camera_reference_scale_workflow.json` **(new)** | Tier-1 reference-object scale demo, with an in-canvas caution note about AI-generated-image limitations (§3.4). |
-| `atlas_camera_vlm_scale_cues_workflow.json` **(new)** | `AtlasVLMScaleCues` preset for the now-fixed LM Studio path, with the quantized-model reliability caveat (§4.4) documented in-canvas. |
-| `atlas_camera_vfx_ocio_output_workflow.json` **(new)** | The VFX/OCIO integration from §5. |
-| `atlas_camera_inpaint_layers_workflow.json` **(new)** | 2.5D clean-plate parallax (§3.5) — in-repo Atlas nodes only; the external inpaint step is a documented placeholder note, wire it in by hand per `INSTALL.md`. |
+| `atlas_input_quickstart_workflow.json` | The 4-node fastest path: LoadImage → 🎬 AtlasInput → Atlas Viewport. Instant relief by default; layers/VLM/sky/scope/inpaint all reachable by widgets on the one node. Start here. |
+| `atlas_camera_staged_master_workflow.json` | 🏗 The 5-stage layered master — the same logic with stages, gates (VLM + solve), KJ rails, SAM sky + per-band scope, per-band LaMa clean plates, per-layer debug previews, 🔍 debug JSON, and both DCC layer exports. |
+
+**The shipping catalog was deliberately trimmed to these two on 2026-07-12**
+(release focus). Every workflow this guide's earlier sections mention by name
+(core projection, learned pipeline, VP-only, merge scenarios, hidden-geometry
+heroes, master DMP variants, OCIO/plate proofs, calibration tests) still
+exists in git history — recover any of them with
+`git show 10e600b:examples/<name>.json`. The narrative sections below are a
+chronicle and intentionally keep the historical file names.
 
 `examples/api_format/*.json` **(new)** — ComfyUI's raw **API format**
 (node-id → `{class_type, inputs}`), no layout data, **cannot be opened in the

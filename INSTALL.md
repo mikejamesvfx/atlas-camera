@@ -298,7 +298,7 @@ KSampler → VAE decode subgraph instead, and feed its output into
 
 ## Optional Master-Workflow Integrations (2026-07-08)
 
-The hero workflow `examples/atlas_camera_master_dmp_workflow.json` uses three
+The hero workflow `examples/atlas_camera_staged_master_workflow.json` uses three
 optional external pieces — each fails soft or has a documented placeholder:
 
 - **Sky segmentation** — [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)
@@ -316,7 +316,9 @@ optional external pieces — each fails soft or has a documented placeholder:
   subgraph needs `qwen_image_edit_2511_fp8_e4m3fn.safetensors`,
   `qwen_2.5_vl_7b_fp8_scaled.safetensors`, `qwen_image_vae.safetensors`, the
   Lightning 4-step LoRA, and the `qwen-image-edit-2511-multiple-angles-lora`
-  (see `examples/atlas_qwen_image_edit_2511_multiangle_camera.json`). The
+  (the reference Qwen subgraph example was removed from the shipped set
+  2026-07-12 — recover it with
+  `git show 10e600b:examples/atlas_qwen_image_edit_2511_multiangle_camera.json`). The
   branch stays paused (ExecutionBlocker) until 📐 Extract Angle runs, so the
   rest of the workflow works without these models installed.
 

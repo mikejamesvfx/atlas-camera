@@ -7,7 +7,7 @@ image, how the source photo gets **projected** onto derived 3D geometry
 **preview dilation** widens what you can see while orbiting without lying
 about the actual geometry.
 
-It assumes you've already loaded a workflow (`examples/atlas_camera_core_projection_workflow.json`
+It assumes you've already loaded a workflow (`examples/atlas_input_quickstart_workflow.json`
 is the minimal one) and are looking at the node graph in ComfyUI.
 
 ---
@@ -370,7 +370,7 @@ sanity-checking a solve and, since 2026-07-09, for tuning the layer stack:
 ## What's new (2026-07-08) — the complete DMP workflow
 
 This guide's three mental models still hold. On top of them, the hero
-workflow (`examples/atlas_camera_master_dmp_workflow.json`) now assembles the
+workflow (`examples/atlas_camera_staged_master_workflow.json`) now assembles the
 full matte-painting pipeline: a **VLM pre-flight** that assesses your photo
 and recommends settings (the graph pauses until you click ▶ Continue), **sky
 separation** onto a far card driven by a SAM segmentation (with deterministic
