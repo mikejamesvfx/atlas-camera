@@ -38,7 +38,13 @@ _WORKFLOWS = _ui_workflows()
 
 
 def test_examples_directory_has_ui_workflows():
-    assert len(_WORKFLOWS) > 20  # the shipped catalog; guards the glob itself
+    # Shipping catalog deliberately trimmed to TWO workflows (2026-07-12,
+    # user decision): the quickstart + the staged master. The guard now pins
+    # exactly that, so an accidental deletion OR an unreviewed addition both
+    # fail loudly. The removed examples live in git history (< 10e600b).
+    names = sorted(n for n, _ in _WORKFLOWS)
+    assert names == ["atlas_camera_staged_master_workflow.json",
+                     "atlas_input_quickstart_workflow.json"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])

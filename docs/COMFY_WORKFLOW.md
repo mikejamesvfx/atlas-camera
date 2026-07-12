@@ -40,7 +40,7 @@ Start ComfyUI normally. All 18 Atlas Camera nodes appear under the **Atlas Camer
 
 ## Example workflow
 
-Load `examples/atlas_camera_full_workflow.json` (drag-and-drop into ComfyUI).
+Load `examples/atlas_input_quickstart_workflow.json` (drag-and-drop into ComfyUI).
 
 Five colour-coded groups:
 
@@ -302,7 +302,7 @@ Work through these in order. Each step depends on the previous passing.
 - [ ] **ComfyUI starts without errors** — no aiohttp traceback, Atlas Camera nodes visible in node browser
 - [ ] **Symlink resolves** — `custom_nodes\AtlasCamera` → `atlas_camera\comfy` (check in Explorer or `Get-Item`)
 - [ ] **Package importable** — `& venv\Scripts\python.exe -c "import atlas_camera; print(atlas_camera.__file__)"` returns project path
-- [ ] **Load example workflow** — drag `examples/atlas_camera_full_workflow.json` into ComfyUI, all nodes appear with correct connections
+- [ ] **Load example workflow** — drag `examples/atlas_input_quickstart_workflow.json` into ComfyUI, all nodes appear with correct connections
 - [ ] **Auto-solve with good image** — load an exterior real photograph; queue; `AtlasVPVisualization` preview shows VP lines overlaid
 - [ ] **cam_y > 0** — wire `AtlasDecomposeCamera.cam_y` to a Primitive node; value should be > 0.1 for a ground-level photo
 - [ ] **Depth map non-black** — `AtlasGroundDepthMap` preview shows warm-to-cool gradient on ground pixels, black on sky
@@ -322,5 +322,5 @@ atlas_camera/comfy/
     atlas_blockout.js  ← ComfyUI frontend extension (Three.js viewport, camera apply, render passes)
 
 examples/
-  atlas_camera_full_workflow.json   ← Load this in ComfyUI to test everything
+  atlas_input_quickstart_workflow.json   ← Load this in ComfyUI to test everything
 ```

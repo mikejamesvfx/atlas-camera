@@ -284,12 +284,12 @@ Node tracks:
   (.py + native .nk), per-layer Nuke/Maya scene exports, USD, Maya review
   scene, camera-path USD, and a full review package.
 
-Ready-to-load example workflows are in [`examples/`](examples/) — start with
-`atlas_camera_core_projection_workflow.json` (the 6-node core),
-`atlas_camera_learned_workflow.json` (full pipeline), or the calibrated
-per-scene `atlas_camera_hidden_geometry_*_workflow.json` demos (cathedral /
-hangar / jungle / canyon / ridge / valley — X-ray reveals + dolly-in camera
-move + mp4 bake). See [docs/ECOSYSTEM_GUIDE.md](docs/ECOSYSTEM_GUIDE.md) for
+Two ready-to-load workflows ship in [`examples/`](examples/) — start with
+`atlas_input_quickstart_workflow.json` (4 nodes: image in, projected relief
+out, every master behavior reachable by widgets on the one 🎬 AtlasInput
+node), then graduate to `atlas_camera_staged_master_workflow.json` (the same
+logic with stages, gates, rails, and per-layer debug).
+See [docs/ECOSYSTEM_GUIDE.md](docs/ECOSYSTEM_GUIDE.md) for
 the full node catalog.
 
 ## Current Status
