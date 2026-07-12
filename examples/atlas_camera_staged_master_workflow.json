@@ -65,7 +65,7 @@
     "#sdppp_label": ""
    },
    "widgets_values": [
-    "atlas_monument_valley.png",
+    "atlas_sample_monument_valley.png",
     "image"
    ]
   },
@@ -162,7 +162,7 @@
      ]
     }
    ],
-   "title": "Output Desk \u2014 register plate",
+   "title": "Output Desk — register plate",
    "properties": {
     "Node name for S&R": "AtlasRegisterPlate"
    },
@@ -387,7 +387,7 @@
      "links": null
     }
    ],
-   "title": "\u2705 Approve solve, then re-queue",
+   "title": "✅ Approve solve, then re-queue",
    "properties": {
     "Node name for S&R": "AtlasSolveGate"
    },
@@ -541,7 +541,7 @@
      "links": null
     }
    ],
-   "title": "Preview \u2014 check camera, then \u2705",
+   "title": "Preview — check camera, then ✅",
    "properties": {
     "Node name for S&R": "AtlasBlockoutViewport"
    },
@@ -1049,7 +1049,7 @@
      "links": null
     }
    ],
-   "title": "SAM3 \u2014 sky",
+   "title": "SAM3 — sky",
    "properties": {
     "cnr_id": "comfyui-rmbg",
     "ver": "3.0.0",
@@ -5127,7 +5127,7 @@
      "links": null
     }
    ],
-   "title": "MASTER VIEWPORT \u2014 \ud83d\udcfd the layered scene",
+   "title": "MASTER VIEWPORT — 📽 the layered scene",
    "properties": {
     "Node name for S&R": "AtlasBlockoutViewport"
    },
@@ -5359,10 +5359,10 @@
      "links": null
     }
    ],
-   "title": "STAGE SWITCHER \u2014 work one layer at a time",
+   "title": "STAGE SWITCHER — work one layer at a time",
    "properties": {
     "matchColors": "",
-    "matchTitle": "^[1-6] \u00b7",
+    "matchTitle": "^[1-6] ·",
     "showNav": true,
     "showAllGraphs": true,
     "sort": "position",
@@ -5390,7 +5390,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "PER-LAYER SAM3 SCOPE \u2014 a depth band alone cuts through objects; each row makes a band layer keep ONLY its segmented content (band \u2229 segment). Rows are ALWAYS ACTIVE and SELF-DISARMING (\ud83c\udfaf AtlasScopeMask): an empty prompt (the \ud83e\udded assess node says the layer is absent) or a no-match segment (coverage below min_coverage_pct \u2014 e.g. SAM3 scored 0.0% on 'desert floor and boulder', found live) automatically falls back to the plain sky mask = band-only behavior, and the segmenter itself is skipped via lazy evaluation when the prompt is empty. No more bypass dance: prompts arrive wired from the \ud83e\udded staged 5-layer plan; to hand-scope, unlink a prompt and type. GrowMask is now the node's grow_px widget (default 16)."
+    "PER-LAYER SAM3 SCOPE — a depth band alone cuts through objects; each row makes a band layer keep ONLY its segmented content (band ∩ segment). Rows are ALWAYS ACTIVE and SELF-DISARMING (🎯 AtlasScopeMask): an empty prompt (the 🧭 assess node says the layer is absent) or a no-match segment (coverage below min_coverage_pct — e.g. SAM3 scored 0.0% on 'desert floor and boulder', found live) automatically falls back to the plain sky mask = band-only behavior, and the segmenter itself is skipped via lazy evaluation when the prompt is empty. No more bypass dance: prompts arrive wired from the 🧭 staged 5-layer plan; to hand-scope, unlink a prompt and type. GrowMask is now the node's grow_px widget (default 16)."
    ],
    "title": "SAM scope doctrine"
   },
@@ -5496,7 +5496,7 @@
     "Alpha",
     "#222222"
    ],
-   "title": "SAM scope \u00b7 far"
+   "title": "SAM scope · far"
   },
   {
    "id": 96,
@@ -5675,7 +5675,7 @@
     "Alpha",
     "#222222"
    ],
-   "title": "SAM scope \u00b7 bg"
+   "title": "SAM scope · bg"
   },
   {
    "id": 103,
@@ -5854,7 +5854,7 @@
     "Alpha",
     "#222222"
    ],
-   "title": "SAM scope \u00b7 mid"
+   "title": "SAM scope · mid"
   },
   {
    "id": 110,
@@ -6033,7 +6033,7 @@
     "Alpha",
     "#222222"
    ],
-   "title": "SAM scope \u00b7 fg"
+   "title": "SAM scope · fg"
   },
   {
    "id": 117,
@@ -6271,7 +6271,7 @@
     true,
     true
    ],
-   "title": "\ud83e\udded VLM 5-layer assess \u2014 PAUSES until \u25b6 Continue"
+   "title": "🧭 VLM 5-layer assess — PAUSES until ▶ Continue"
   },
   {
    "id": 121,
@@ -6331,7 +6331,7 @@
    "widgets_values": [
     128
    ],
-   "title": "\u2702 crop around hole (context = quality slider)"
+   "title": "✂ crop around hole (context = quality slider)"
   },
   {
    "id": 122,
@@ -6381,7 +6381,7 @@
    "widgets_values": [
     0
    ],
-   "title": "\u2702 stitch back"
+   "title": "✂ stitch back"
   },
   {
    "id": 123,
@@ -6441,7 +6441,7 @@
    "widgets_values": [
     128
    ],
-   "title": "\u2702 crop around hole (context = quality slider)"
+   "title": "✂ crop around hole (context = quality slider)"
   },
   {
    "id": 124,
@@ -6491,7 +6491,7 @@
    "widgets_values": [
     0
    ],
-   "title": "\u2702 stitch back"
+   "title": "✂ stitch back"
   },
   {
    "id": 125,
@@ -6551,7 +6551,7 @@
    "widgets_values": [
     128
    ],
-   "title": "\u2702 crop around hole (context = quality slider)"
+   "title": "✂ crop around hole (context = quality slider)"
   },
   {
    "id": 126,
@@ -6601,7 +6601,7 @@
    "widgets_values": [
     0
    ],
-   "title": "\u2702 stitch back"
+   "title": "✂ stitch back"
   },
   {
    "id": 127,
@@ -6661,7 +6661,7 @@
    "widgets_values": [
     128
    ],
-   "title": "\u2702 crop around hole (context = quality slider)"
+   "title": "✂ crop around hole (context = quality slider)"
   },
   {
    "id": 128,
@@ -6711,7 +6711,7 @@
    "widgets_values": [
     0
    ],
-   "title": "\u2702 stitch back"
+   "title": "✂ stitch back"
   },
   {
    "id": 129,
@@ -7699,7 +7699,7 @@
     16,
     0.2
    ],
-   "title": "\ud83c\udfaf scope: sky \u222a NOT(segment) \u2014 self-disarming"
+   "title": "🎯 scope: sky ∪ NOT(segment) — self-disarming"
   },
   {
    "id": 171,
@@ -7760,7 +7760,7 @@
     16,
     0.2
    ],
-   "title": "\ud83c\udfaf scope: sky \u222a NOT(segment) \u2014 self-disarming"
+   "title": "🎯 scope: sky ∪ NOT(segment) — self-disarming"
   },
   {
    "id": 172,
@@ -7821,7 +7821,7 @@
     16,
     0.2
    ],
-   "title": "\ud83c\udfaf scope: sky \u222a NOT(segment) \u2014 self-disarming"
+   "title": "🎯 scope: sky ∪ NOT(segment) — self-disarming"
   },
   {
    "id": 173,
@@ -7882,7 +7882,7 @@
     16,
     0.2
    ],
-   "title": "\ud83c\udfaf scope: sky \u222a NOT(segment) \u2014 self-disarming"
+   "title": "🎯 scope: sky ∪ NOT(segment) — self-disarming"
   },
   {
    "id": 175,
@@ -7988,7 +7988,7 @@
    "widgets_values": [
     "atlas_debug/master_debug.json"
    ],
-   "title": "\ud83d\udd0d MASTER DEBUG \u2014 full-stack diagnostic (JSON on disk)"
+   "title": "🔍 MASTER DEBUG — full-stack diagnostic (JSON on disk)"
   },
   {
    "id": 176,
@@ -8069,7 +8069,7 @@
     1,
     ""
    ],
-   "title": "\ud83c\udfa8 band_far cutout"
+   "title": "🎨 band_far cutout"
   },
   {
    "id": 178,
@@ -8178,7 +8178,7 @@
     2,
     ""
    ],
-   "title": "\ud83c\udfa8 band_bg cutout"
+   "title": "🎨 band_bg cutout"
   },
   {
    "id": 181,
@@ -8287,7 +8287,7 @@
     3,
     ""
    ],
-   "title": "\ud83c\udfa8 band_mid cutout"
+   "title": "🎨 band_mid cutout"
   },
   {
    "id": 184,
@@ -8396,7 +8396,7 @@
     4,
     ""
    ],
-   "title": "\ud83c\udfa8 band_fg cutout"
+   "title": "🎨 band_fg cutout"
   },
   {
    "id": 187,
@@ -8504,7 +8504,7 @@
     0,
     ""
    ],
-   "title": "\ud83c\udfa8 sky cutout"
+   "title": "🎨 sky cutout"
   },
   {
    "id": 190,
@@ -10260,7 +10260,7 @@
  "groups": [
   {
    "id": 1,
-   "title": "0 \u00b7 ASSESS + SOLVE (ALWAYS ON) \u2014 Q1 runs assess+solve+preview in one go \u2192 review \ud83e\udded report + camera, \u2705 approve \u00b7 Q2: full stages",
+   "title": "0 · ASSESS + SOLVE (ALWAYS ON) — Q1 runs assess+solve+preview in one go → review 🧭 report + camera, ✅ approve · Q2: full stages",
    "bounding": [
     -460,
     0,
@@ -10272,7 +10272,7 @@
   },
   {
    "id": 2,
-   "title": "SHARED (ALWAYS ON) \u2014 depth, LaMa, SAM3 sky mask rails",
+   "title": "SHARED (ALWAYS ON) — depth, LaMa, SAM3 sky mask rails",
    "bounding": [
     20,
     1020,
@@ -10284,7 +10284,7 @@
   },
   {
    "id": 3,
-   "title": "1 \u00b7 SKY  (sky card only \u2014 its mask rail lives in SHARED)",
+   "title": "1 · SKY  (sky card only — its mask rail lives in SHARED)",
    "bounding": [
     2010,
     0,
@@ -10296,7 +10296,7 @@
   },
   {
    "id": 4,
-   "title": "2 \u00b7 FAR BACKGROUND  80\u2013100%",
+   "title": "2 · FAR BACKGROUND  80–100%",
    "bounding": [
     2010,
     560,
@@ -10308,7 +10308,7 @@
   },
   {
    "id": 5,
-   "title": "3 \u00b7 BACKGROUND  60\u201380%",
+   "title": "3 · BACKGROUND  60–80%",
    "bounding": [
     2010,
     1260,
@@ -10320,7 +10320,7 @@
   },
   {
    "id": 6,
-   "title": "4 \u00b7 MIDGROUND  30\u201360%",
+   "title": "4 · MIDGROUND  30–60%",
    "bounding": [
     2010,
     1960,
@@ -10332,7 +10332,7 @@
   },
   {
    "id": 7,
-   "title": "5 \u00b7 FOREGROUND  0\u201330%",
+   "title": "5 · FOREGROUND  0–30%",
    "bounding": [
     2010,
     2660,
@@ -10344,7 +10344,7 @@
   },
   {
    "id": 8,
-   "title": "6 \u00b7 ASSEMBLE + EXPORT  (viewport + Nuke/Maya layer scenes)",
+   "title": "6 · ASSEMBLE + EXPORT  (viewport + Nuke/Maya layer scenes)",
    "bounding": [
     3760,
     0,
@@ -10356,7 +10356,7 @@
   },
   {
    "id": 9,
-   "title": "STAGE SWITCHER \u2014 lists ONLY stages 1\u20136 (solve/shared are always-on). Bypass stages you have NOT reached; finished stages cache free. To skip solve approval permanently: Ctrl+B the gate node.",
+   "title": "STAGE SWITCHER — lists ONLY stages 1–6 (solve/shared are always-on). Bypass stages you have NOT reached; finished stages cache free. To skip solve approval permanently: Ctrl+B the gate node.",
    "bounding": [
     20,
     1500,
@@ -10368,7 +10368,7 @@
   },
   {
    "id": 10,
-   "title": "SAM SCOPE (optional) \u2014 per-layer semantic masks; un-bypass a row's MaskComposite to activate",
+   "title": "SAM SCOPE (optional) — per-layer semantic masks; un-bypass a row's MaskComposite to activate",
    "bounding": [
     20,
     1980,
@@ -10381,7 +10381,7 @@
   },
   {
    "id": 11,
-   "title": "ASSESS + UPSCALER RAILS (Set/Get \u2014 VLM prompts, geometry, upscaler)",
+   "title": "ASSESS + UPSCALER RAILS (Set/Get — VLM prompts, geometry, upscaler)",
    "bounding": [
     1360,
     990,
