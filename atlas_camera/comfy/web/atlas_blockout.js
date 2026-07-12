@@ -417,13 +417,15 @@ function createOrbitControls(camera, dom) {
     // Per-frame keyboard integration (called from the animate() loop).
     // Mapping per the user's spec: ↑/↓ track in/out, ←/→ track left/right,
     // A/D track up/down — with W/S (in/out) and Q/E (up/down) as the UE
-    // muscle-memory aliases. Self-timed; scene-scaled step; Shift = 4×.
+    // muscle-memory aliases. Self-timed; scene-scaled step. Deliberately
+    // SLOW by default (real-camera tracking feel, user-tuned 2026-07-12):
+    // base 0.3·radius/s; Shift = 4× restores the original 1.2·radius/s.
     updateKeys() {
       const now = performance.now();
       const dt = lastNavT ? Math.min(0.1, (now - lastNavT) / 1000) : 0;
       lastNavT = now;
       if (!enabled || dragging || pressed.size === 0) return;
-      const step = sph.radius * 1.2 * dt * (navShift ? 4 : 1);
+      const step = sph.radius * 0.3 * dt * (navShift ? 4 : 1);
       if (!(step > 0)) return;
       const forward = target.clone().sub(camera.position).normalize();
       const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);

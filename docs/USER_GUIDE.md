@@ -444,8 +444,8 @@ wired to video. Start from the one whose scene most resembles your shot.
 The viewport toolbar's **⛶ Fullscreen** (after 💡 Lights) takes the 3D view
 fullscreen — Esc or ⛶ Exit returns. Click the viewport once to arm the
 **tracking keys**: ↑/↓ track in/out, ←/→ track left/right, A/D track
-up/down (hold Shift for 4× speed; W/S and Q/E work as Unreal-style
-aliases). Keys only respond while the viewport has focus, so ComfyUI's own
+up/down — deliberately slow, like a real camera move (hold Shift for 4×
+speed; W/S and Q/E work as Unreal-style aliases). Keys only respond while the viewport has focus, so ComfyUI's own
 shortcuts are untouched. Display sharpness in fullscreen follows the
 `resolution` widget, same as resizing the node.
 
