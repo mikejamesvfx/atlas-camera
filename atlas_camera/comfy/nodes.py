@@ -5520,9 +5520,13 @@ class AtlasInput:
         # 3. geometry.
         solve_chain = solve.out(0)
         if sky_on:
+            # Generous smear (the ultra workflow's 96/128 calibration): the
+            # sky card must reach well below every ridge silhouette so orbit
+            # reveals show smeared sky, never black.
             sky_layer = g.node("AtlasSkyDomeLayer", solve=solve_chain,
                                depth=depth.out(0), sky_mask=sky_mask_ref,
-                               plate_image=image_ref)
+                               plate_image=image_ref,
+                               edge_extend_px=96, frame_outpaint_px=128)
             solve_chain = sky_layer.out(0)
 
         exclude_kw = {"exclude_mask": sky_mask_ref} if sky_on else {}
@@ -5543,6 +5547,7 @@ class AtlasInput:
                               name="full_range", priority=0.0,
                               relief_grid=int(mesh_resolution), depth_edge_rel=1.5,
                               embed_matte=sky_on, band_geometry=mesh,
+                              frame_outpaint_px=64,  # orbit slack past the frame edge
                               **exclude_kw, **band_ref_kw)
                 solve_chain = flat.out(0)
                 notes.append(f"single full-range {mesh} plane")
@@ -5614,6 +5619,13 @@ class AtlasInput:
                 layer_kw = {}
                 if vlm is not None:
                     layer_kw["geometry_override"] = vlm.out(8 + i)  # geom_far..fg
+                # edge_extend 64 + skirt_bevel 1.5 + frame_outpaint 64: every
+                # band's plate colors are smeared well past its band matte
+                # onto receding skirts, so adjacent bands overlap generously
+                # instead of meeting at a black hairline — the quickstart must
+                # hide band separation even at rough settings (artist-reported
+                # black band lines on the alpine ridge plate; these are the
+                # ultra workflow's calibrated values).
                 layer = g.node("AtlasCleanPlateLayer", solve=solve_chain,
                                depth=depth.out(0), plate_image=plate_ref,
                                band_override=override, name=name,
@@ -5622,6 +5634,8 @@ class AtlasInput:
                                depth_edge_rel=1.5,
                                fill_occluded=(inpaint_on and i < n_bands - 1),
                                embed_matte=True,
+                               edge_extend_px=64, skirt_bevel=1.5,
+                               frame_outpaint_px=64,
                                band_geometry=mesh,
                                exclude_mask=exclude_ref, **band_ref_kw, **layer_kw)
                 solve_chain = layer.out(0)

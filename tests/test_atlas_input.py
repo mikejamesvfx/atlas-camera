@@ -80,6 +80,12 @@ def test_band_layers_watertight_and_prioritized(monkeypatch):
         assert prios == [5.0 * i for i in range(n_expected)]
         # bands use the calibrated band-mesh tear threshold
         assert all(b["inputs"]["depth_edge_rel"] == 1.5 for b in bands)
+        # ... and the ultra workflow's seam-smear calibration, so adjacent
+        # bands overlap generously instead of meeting at black hairlines
+        # (artist-reported band lines on the alpine ridge plate).
+        assert all(b["inputs"]["edge_extend_px"] == 64 for b in bands)
+        assert all(b["inputs"]["skirt_bevel"] == 1.5 for b in bands)
+        assert all(b["inputs"]["frame_outpaint_px"] == 64 for b in bands)
 
 
 def test_sky_and_scope_skip_gracefully_without_sam(monkeypatch):
@@ -99,7 +105,11 @@ def test_sky_and_scope_wire_when_sam_present(monkeypatch):
                             layers=2, scope_prompts="rocks")
     sams = [n for n in graph.values() if n["class_type"] == "SAM3Segment"]
     assert len(sams) == 2                        # sky + one scope line
-    assert any(n["class_type"] == "AtlasSkyDomeLayer" for n in graph.values())
+    sky_layer = next(n for n in graph.values()
+                     if n["class_type"] == "AtlasSkyDomeLayer")
+    # Generous sky smear (96/128) so ridge-silhouette reveals never go black.
+    assert sky_layer["inputs"]["edge_extend_px"] == 96
+    assert sky_layer["inputs"]["frame_outpaint_px"] == 128
     scopes = [n for n in graph.values() if n["class_type"] == "AtlasScopeMask"]
     assert len(scopes) == 1 and scopes[0]["inputs"]["prompt"] == "rocks"
     # sky mask feeds band_ref_mask on every band layer (the drift rule)
