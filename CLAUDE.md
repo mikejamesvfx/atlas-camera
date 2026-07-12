@@ -64,7 +64,7 @@ The core package has **zero required runtime dependencies**. All vision, USD, an
 atlas_camera.core       ← DCC-agnostic schema, solver, math (no host deps)
 atlas_camera.exporters  ← Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  ← Atlas JSON and USD camera loaders
-atlas_camera.comfy      ← ComfyUI node library (45 nodes, no hard Comfy dep)
+atlas_camera.comfy      ← ComfyUI node library (54 nodes, no hard Comfy dep)
 atlas_camera.ui         ← Optional FastAPI project service
 atlas_camera.reference_data ← Curated scale-reference registry (JSON)
 atlas_camera.gaussian   ← Future 3DGS / point-cloud interfaces (placeholder)
@@ -111,7 +111,7 @@ way ComfyUI would.
 
 Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/{node_id}` to be registered twice, which raises `RuntimeError: method HEAD is already registered`. The fix in `__init__.py` checks `if not any(r.path == ... for r in _routes)` before registering.
 
-### Node catalog (45 nodes)
+### Node catalog (54 nodes)
 
 **Category: Atlas Camera**
 
