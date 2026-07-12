@@ -333,6 +333,15 @@ function createOrbitControls(camera, dom) {
                  phiMin: -MAX_PITCH, phiMax: MAX_PITCH };
   const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
+  // Recovered-camera ROLL about the view axis, captured at syncFromCamera and
+  // re-applied after every lookAt. GeoCalib solves include roll (tilted
+  // gravity — measured live at 28.4° on a hazy ridge photo with no true
+  // horizon), and applyRecoveredView poses the camera with it; without this,
+  // the first drag's apply() snapped the camera level and the whole projected
+  // scene visibly rotated by the discarded roll (artist-reported as "the
+  // orbit camera rotates anticlockwise when I click").
+  let rollAngle = 0;
+
   function syncFromCamera() {
     const off = camera.position.clone().sub(target);
     sph.radius = Math.max(0.01, off.length());
@@ -340,6 +349,21 @@ function createOrbitControls(camera, dom) {
     sph.phi = Math.acos(Math.min(1, Math.max(-1, off.y / sph.radius)));
     theta0 = sph.theta;
     phi0 = sph.phi;
+    // Signed roll = angle from the LEVEL up (world-up projected perpendicular
+    // to the actual view direction — what lookAt would produce) to the
+    // camera's ACTUAL up, about the view axis. Both from the quaternion, not
+    // from position-target, so this measures the real orientation. Stable
+    // under repeated syncs: apply() reproduces exactly this roll, so
+    // re-measuring returns the same value.
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const actualUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const lvl = new THREE.Vector3(0, 1, 0).addScaledVector(fwd, -fwd.y);
+    if (lvl.lengthSq() > 1e-8) {
+      lvl.normalize();
+      rollAngle = Math.atan2(lvl.clone().cross(actualUp).dot(fwd), lvl.dot(actualUp));
+    } else {
+      rollAngle = 0;  // looking straight up/down — roll is undefined, go level
+    }
   }
   function apply() {
     const sp = Math.sin(sph.phi), cp = Math.cos(sph.phi);
@@ -350,6 +374,9 @@ function createOrbitControls(camera, dom) {
     );
     camera.up.set(0, 1, 0);
     camera.lookAt(target);
+    // rotateZ spins about local +z = the BACKWARD axis, so it applies -angle
+    // about the view direction; negate to reproduce the measured roll.
+    if (Math.abs(rollAngle) > 1e-6) camera.rotateZ(-rollAngle);
   }
   function onDown(e) {
     if (!enabled) return;
