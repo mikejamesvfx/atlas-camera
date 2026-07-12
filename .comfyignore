@@ -1,0 +1,35 @@
+# .comfyignore — files kept in git but excluded from the published Registry
+# archive. Syntax matches .gitignore. NOTE: gitignore syntax has NO inline
+# comments — a "#" only starts a comment at the beginning of a line, so every
+# pattern below must be on its own line with nothing after it.
+#
+# Kept in the archive: atlas_camera/ (node pack + web/), atlas/ (public API
+# facade), __init__.py (clone-and-go entry), pyproject.toml, LICENSE,
+# README.md, INSTALL.md, CHANGELOG.md, THIRD_PARTY.md, requirements.txt,
+# examples/ (Registry browsers and Manager users expect example workflows).
+
+# --- Dev-only trees (leading slash anchors to repo root, so the in-package
+#     atlas_camera/ui/ FastAPI backend is NOT caught by the top-level /ui/) ---
+/tests/
+/docs/
+/tools/
+/docker/
+# Standalone React/Vite workbench. The three.js bundle it builds is already
+# committed under atlas_camera/comfy/web/lib/ and ships with the pack.
+/ui/
+
+# --- Agent / development config, not needed by end users ---
+/CLAUDE.md
+/AGENTS.md
+/.comfyui-agent.example.json
+/.claude/
+# CI config, not a runtime asset:
+/.github/
+/.gitignore
+/.vscode/
+
+# --- Editor / OS / build cruft ---
+*.psd
+*.pyc
+__pycache__/
+.DS_Store

@@ -35,6 +35,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Repository = "https://github.com/mikejamesvfx/atlas-camera"
+
 [project.optional-dependencies]
 # Learned single-image camera prior (GeoCalib). torch is expected to already be
 # present in the host environment (e.g. ComfyUI's venv). geocalib is published
@@ -80,7 +83,7 @@ ui = [
 # ComfyUI Registry metadata (`comfy node publish`). PublisherId must match a
 # publisher created at registry.comfy.org before the first publish.
 [tool.comfy]
-PublisherId = "miikejamesburns"
+PublisherId = "mikejamesvfx"
 DisplayName = "Atlas Camera"
 
 [tool.setuptools.packages.find]

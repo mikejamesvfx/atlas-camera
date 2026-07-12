@@ -21,7 +21,7 @@ workflows, proxy meshes, and frontend all work from the checkout.
 
 ```powershell
 cd <COMFYUI_ROOT>\custom_nodes
-git clone https://github.com/miikejamesburns/atlasCamera.git
+git clone https://github.com/mikejamesvfx/atlas-camera.git
 ```
 
 No requirements step is needed for the core nodes — ComfyUI already ships

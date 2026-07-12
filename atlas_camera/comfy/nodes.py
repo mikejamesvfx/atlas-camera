@@ -3383,19 +3383,27 @@ class AtlasAddPatchView:
                 # coverage would let the AI patch overwrite real pixels.
                 close_px = max(2, int(round(2.0 * patch_w * stride / p_w)))
                 for _ in range(close_px):
-                    up = np.zeros_like(coverage); up[:-1, :] = coverage[1:, :]
-                    dn = np.zeros_like(coverage); dn[1:, :] = coverage[:-1, :]
-                    lf = np.zeros_like(coverage); lf[:, :-1] = coverage[:, 1:]
-                    rt = np.zeros_like(coverage); rt[:, 1:] = coverage[:, :-1]
+                    up = np.zeros_like(coverage)
+                    up[:-1, :] = coverage[1:, :]
+                    dn = np.zeros_like(coverage)
+                    dn[1:, :] = coverage[:-1, :]
+                    lf = np.zeros_like(coverage)
+                    lf[:, :-1] = coverage[:, 1:]
+                    rt = np.zeros_like(coverage)
+                    rt[:, 1:] = coverage[:, :-1]
                     coverage = coverage | up | dn | lf | rt
                 unseen = ~coverage
                 if resolved_exclude is not None:
                     unseen &= ~resolved_exclude  # never paint sky onto geometry
                 for _ in range(int(unseen_dilate_px)):
-                    up = np.zeros_like(unseen); up[:-1, :] = unseen[1:, :]
-                    dn = np.zeros_like(unseen); dn[1:, :] = unseen[:-1, :]
-                    lf = np.zeros_like(unseen); lf[:, :-1] = unseen[:, 1:]
-                    rt = np.zeros_like(unseen); rt[:, 1:] = unseen[:, :-1]
+                    up = np.zeros_like(unseen)
+                    up[:-1, :] = unseen[1:, :]
+                    dn = np.zeros_like(unseen)
+                    dn[1:, :] = unseen[:-1, :]
+                    lf = np.zeros_like(unseen)
+                    lf[:, :-1] = unseen[:, 1:]
+                    rt = np.zeros_like(unseen)
+                    rt[:, 1:] = unseen[:, :-1]
                     unseen = unseen | up | dn | lf | rt
                 mask_b64 = _mask_to_b64_png(unseen) or None
             return self._finish_patch(
@@ -3479,10 +3487,14 @@ class AtlasAddPatchView:
                 angle_threshold_deg=90.0,
                 primary_depth_map=primary_metric_map)
             for _ in range(int(unseen_dilate_px)):
-                up = np.zeros_like(unseen); up[:-1, :] = unseen[1:, :]
-                dn = np.zeros_like(unseen); dn[1:, :] = unseen[:-1, :]
-                lf = np.zeros_like(unseen); lf[:, :-1] = unseen[:, 1:]
-                rt = np.zeros_like(unseen); rt[:, 1:] = unseen[:, :-1]
+                up = np.zeros_like(unseen)
+                up[:-1, :] = unseen[1:, :]
+                dn = np.zeros_like(unseen)
+                dn[1:, :] = unseen[:-1, :]
+                lf = np.zeros_like(unseen)
+                lf[:, :-1] = unseen[:, 1:]
+                rt = np.zeros_like(unseen)
+                rt[:, 1:] = unseen[:, :-1]
                 unseen = unseen | up | dn | lf | rt
             mask_b64 = _mask_to_b64_png(unseen) or None
 
@@ -5034,10 +5046,14 @@ class AtlasDepthLayerMask:
                 # around image borders, which would bleed occlusion from one
                 # edge (e.g. a foreground object touching the bottom of the
                 # frame, the common case) onto the opposite edge.
-                up = np.zeros_like(grown); up[:-1, :] = grown[1:, :]
-                down = np.zeros_like(grown); down[1:, :] = grown[:-1, :]
-                left = np.zeros_like(grown); left[:, :-1] = grown[:, 1:]
-                right = np.zeros_like(grown); right[:, 1:] = grown[:, :-1]
+                up = np.zeros_like(grown)
+                up[:-1, :] = grown[1:, :]
+                down = np.zeros_like(grown)
+                down[1:, :] = grown[:-1, :]
+                left = np.zeros_like(grown)
+                left[:, :-1] = grown[:, 1:]
+                right = np.zeros_like(grown)
+                right[:, 1:] = grown[:, :-1]
                 grown = grown | up | down | left | right
             occlusion_mask = grown
 
