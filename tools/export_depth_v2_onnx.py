@@ -10,7 +10,7 @@ estimator keeps its transformers backend.
 Usage:
     python tools/export_depth_v2_onnx.py                       # relative small model
     python tools/export_depth_v2_onnx.py --model depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf
-    python tools/export_depth_v2_onnx.py --output depth_v2.onnx --image examples/images/foo.png
+    python tools/export_depth_v2_onnx.py --output depth_v2.onnx --image path/to/photo.png
 
 Requires:  pip install -e .[neural] onnx onnxruntime
 

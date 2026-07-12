@@ -289,6 +289,9 @@ Two ready-to-load workflows ship in [`examples/`](examples/) — start with
 out, every master behavior reachable by widgets on the one 🎬 AtlasInput
 node), then graduate to `atlas_camera_staged_master_workflow.json` (the same
 logic with stages, gates, rails, and per-layer debug).
+The sample assets (4K test photos and proxy OBJ meshes) are **not** in the
+repo — they're distributed as a separate download; point the workflows'
+LoadImage node at any photo of your own to start.
 See [docs/ECOSYSTEM_GUIDE.md](docs/ECOSYSTEM_GUIDE.md) for
 the full node catalog.
 
@@ -372,6 +375,4 @@ Placeholder:
 - [Comfy workflow](docs/COMFY_WORKFLOW.md)
 - [Hidden-geometry research](docs/dev/hidden_geometry_training_free_research.md)
 - [DA3 depth-backend test plan](docs/dev/da3_backend_test_plan.md)
-- [Gaussian splats](docs/GAUSSIAN_SPLATS.md)
 - [Roadmap](docs/ROADMAP.md)
-- [Migration notes](docs/MIGRATION_NOTES.md)

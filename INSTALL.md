@@ -5,7 +5,7 @@ Atlas Camera starts with a low-dependency Python core.
 ## Development Install
 
 ```powershell
-cd C:\Users\miike\Documents\AtlasCamera
+cd <REPO_ROOT>
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
