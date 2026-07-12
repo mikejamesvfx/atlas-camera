@@ -5741,20 +5741,35 @@ class AtlasScopeMask:
                                "vocabulary, can't miss the way free-text prompts can). Lazy: "
                                "only evaluated on an actual no-match."}),
             },
+            "hidden": {"dynprompt": "DYNPROMPT", "unique_id": "UNIQUE_ID"},
         }
+
+    @staticmethod
+    def _wired(dynprompt, unique_id, name):
+        """True when `name` is an actual graph link on this node. A lazy kwarg
+        is None BOTH when unevaluated and when unconnected, and asking the
+        executor for an unconnected input raises NodeInputError ("no input to
+        that node at all") — so wiring must be read from the prompt graph."""
+        try:
+            return isinstance(dynprompt.get_node(unique_id)["inputs"].get(name), list)
+        except Exception:
+            return False
 
     def check_lazy_status(self, sky_mask, prompt="", segment_mask=None,
                           grow_px=16, min_coverage_pct=0.2, fallback_mask=None,
-                          **_extra):
+                          dynprompt=None, unique_id=None, **_extra):
         if not (prompt or "").strip():
             return []
         if segment_mask is None:
-            return ["segment_mask"]
+            if self._wired(dynprompt, unique_id, "segment_mask"):
+                return ["segment_mask"]
+            return []  # unwired: build() falls back to band-only
         # Segment arrived — pull the fallback only when it will actually be
         # used (coverage no-match). Same computation as build()'s, so the two
         # can never disagree on a borderline segment.
         if (_seg_coverage(segment_mask) < float(min_coverage_pct) / 100.0
-                and fallback_mask is None):
+                and fallback_mask is None
+                and self._wired(dynprompt, unique_id, "fallback_mask")):
             return ["fallback_mask"]
         return []
 
