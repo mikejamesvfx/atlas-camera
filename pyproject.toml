@@ -85,6 +85,7 @@ ui = [
 [tool.comfy]
 PublisherId = "mikejamesvfx"
 DisplayName = "Atlas Camera"
+Icon = "https://raw.githubusercontent.com/mikejamesvfx/atlas-camera/main/assets/atlas_camera_icon.png"
 
 [tool.setuptools.packages.find]
 # EXACT names + dotted-subpackage globs only. The earlier "atlas*" glob also

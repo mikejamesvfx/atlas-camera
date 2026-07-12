@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+  <title>Atlas Camera</title>
+  <desc>Reticle A: framing legs converge to a high apex (a vertical vanishing point — looking up); the horizon doubles as the A's crossbar; a survey reticle sits on the solved point.</desc>
+  <!-- A legs converge to the apex vanishing point -->
+  <path d="M50 16 L16 86"/>
+  <path d="M50 16 L84 86"/>
+  <!-- foot ticks -->
+  <path d="M16 86 H30"/>
+  <path d="M70 86 H84"/>
+  <!-- horizon = crossbar -->
+  <path d="M23 58 H77"/>
+  <!-- reticle crosshair + flanking ticks on the solved point -->
+  <path d="M50 47 V69"/>
+  <path d="M39 58 H43"/>
+  <path d="M57 58 H61"/>
+  <circle cx="50" cy="58" r="7"/>
+  <circle cx="50" cy="58" r="2" fill="currentColor" stroke="none"/>
+</svg>
