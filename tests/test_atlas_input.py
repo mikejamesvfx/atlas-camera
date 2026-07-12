@@ -104,11 +104,20 @@ def test_band_layers_watertight_and_prioritized(monkeypatch):
         assert front["inputs"]["edge_extend_px"] == 0
         assert front["inputs"]["skirt_bevel"] == 0.0
         assert front["inputs"]["frame_outpaint_px"] == 0
-        assert all(b["inputs"]["edge_extend_px"] == 64 for b in behind)
+        assert all(b["inputs"]["edge_extend_px"] == 24 for b in behind)  # widget default
         assert all(b["inputs"]["skirt_bevel"] == 1.5 for b in behind)
         assert all(b["inputs"]["frame_outpaint_px"] == 64 for b in behind)
         # bands use the calibrated band-mesh tear threshold
         assert all(b["inputs"]["depth_edge_rel"] == 1.5 for b in bands)
+
+    # the edge_extend_px widget threads through to the behind bands (foliage
+    # needs it low; the frontmost band always stays a clean 0 cut)
+    graph, _ = _expand(monkeypatch, layers=2, edge_extend_px=8)
+    by_depth = sorted((n for n in graph.values()
+                       if n["class_type"] == "AtlasCleanPlateLayer"),
+                      key=lambda b: _parse_band_override(b["inputs"]["band_override"])[0])
+    assert by_depth[0]["inputs"]["edge_extend_px"] == 0        # front: clean cut
+    assert all(b["inputs"]["edge_extend_px"] == 8 for b in by_depth[1:])
 
 
 def test_sky_and_scope_skip_gracefully_without_sam(monkeypatch):

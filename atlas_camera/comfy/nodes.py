@@ -5483,6 +5483,12 @@ class AtlasInput:
                     "tooltip": "Optional upscale model FILENAME (models/upscale_models) fed to "
                                "the inner LaMa nodes — e.g. 4xRealWebPhoto_v4_dat2.safetensors. "
                                "Measured 6.5× fill detail vs legacy. Blank = off."}),
+                "edge_extend_px": ("INT", {"default": 24, "min": 0, "max": 256, "step": 4,
+                    "tooltip": "Behind-band edge-extend (layers>0): how far plate colours smear "
+                               "PAST each silhouette to hide grid-step tears — the frontmost band "
+                               "always keeps a clean 0 cut. Was baked at 64 (tuned for smooth "
+                               "ridgelines); lower it for high-frequency content like foliage, "
+                               "which 64 shreds into halos. 0 = clean cut on every band."}),
             },
         }
 
@@ -5490,7 +5496,7 @@ class AtlasInput:
     def build(self, image, layers=0, mesh="relief", mesh_resolution=512,
               use_vlm=False, vlm_provider="lmstudio", vlm_model="",
               sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
-              upscale_model="", **_extra):
+              upscale_model="", edge_extend_px=24, **_extra):
         registry = _comfy_registry()
         have_sam = "SAM3Segment" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry
@@ -5664,7 +5670,7 @@ class AtlasInput:
                                depth_edge_rel=1.5,
                                fill_occluded=(inpaint_on and i < n_bands - 1),
                                embed_matte=True,
-                               edge_extend_px=0 if is_front else 64,
+                               edge_extend_px=0 if is_front else int(edge_extend_px),
                                skirt_bevel=0.0 if is_front else 1.5,
                                frame_outpaint_px=0 if is_front else 64,
                                band_geometry=mesh,
