@@ -137,6 +137,19 @@ def test_staged_master_debug_strip_is_group_free():
     assert not claimed, f"strip nodes claimed by groups: {claimed}"
 
 
+def test_staged_master_band_priorities_are_farthest_highest():
+    """DMP seam doctrine (2026-07-12, from the quickstart's striped-seam
+    fix): at a watertight band seam the two surfaces are depth-adjacent and
+    the priority near-tie bias decides which paints — farthest-highest makes
+    the layer BEHIND win the seam ribbon, so a band's edge smear can never
+    render in front of the layer behind it. Keeps the staged master and
+    AtlasInput on the same convention."""
+    wf = _staged()
+    prios = {n["widgets_values"][4]: n["widgets_values"][5]
+             for n in wf["nodes"] if n["type"] == "AtlasCleanPlateLayer"}
+    assert prios == {"band_far": 15, "band_bg": 10, "band_mid": 5, "band_fg": 0}
+
+
 def test_staged_master_scope_rows_are_always_active():
     """v7 doctrine: 🎯 AtlasScopeMask rows self-disarm — none may ship
     bypassed (mode 4) or muted (mode 2), and there must be one per band."""
