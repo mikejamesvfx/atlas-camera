@@ -66,6 +66,16 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   stubs so `[neural-da3]` installs don't crash on missing Windows wheels, and
   `--no-deps` install recipes for the portable ComfyUI (GeoCalib/DA3).
 
+### Docs
+
+- **New guide** [`docs/CAMERA_MOVES.md`](docs/CAMERA_MOVES.md) — single photo →
+  Nuke dolly with X-ray hidden-geometry fill (the marketing pipeline), incl.
+  per-scene depth/sky settings and a performance/RAM note.
+- **New** [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md) — license-boundary map
+  (Atlas MIT; extras Apache/BSD/MIT; GPL inpaint graph-level; research tier).
+- Full doc audit: propagated the DA3→V2 default reversal to README + all guides,
+  fixed stale node/workflow counts, repaired the broken THIRD_PARTY link.
+
 ## 0.4.0 — `release/beta-0.3` (2026-07-10 → 2026-07-12)
 
 ### Public-release preparation (2026-07-12)

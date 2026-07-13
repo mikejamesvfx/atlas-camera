@@ -128,6 +128,8 @@ Atlas differs from other ComfyUI 3D systems, and the
 - [Install guide](INSTALL.md) — including the `[neural-da3]` and research-only setup
 - [Technical brief](docs/TECH_AND_DIFFERENTIATION.md) — camera solve + projection vs mesh generation
 - [User guide](docs/USER_GUIDE.md) · [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md) — full node catalog
+- [Camera moves & marketing renders](docs/CAMERA_MOVES.md) — single photo → Nuke dolly with X-ray hidden-geometry fill
+- [DCC exports](docs/DCC_EXPORTS.md) · [Third-party & licenses](docs/THIRD_PARTY.md)
 - [DCC exports](docs/DCC_EXPORTS.md) · [Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md)
 
 ## License
