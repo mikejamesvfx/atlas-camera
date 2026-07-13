@@ -989,6 +989,88 @@ def _reference_id_choices() -> list[str]:
         return ["person_175cm", "door_210cm", "sedan_car"]
 
 
+class AtlasScaleOverride:
+    """📐 Manual metric-scale dial for a solve — the artist's scale override.
+
+    Single-image camera recovery has an inherent SCALE ambiguity: with no ground
+    plane to fit and no known-size reference, the solve falls back to an assumed
+    ~1.6 m eye height (`scale_source=assumed_default`), which is often far off for
+    elevated vistas (a cityscape overlook can read ~10× too small). Metric scale
+    is PROPORTIONAL to camera height (`scale = −cam_y/g`, with g fixed by the
+    depth), so this node rescales the solve by a single factor — multiplying the
+    camera position and both extrinsics matrices' translation columns — and EVERY
+    downstream metric follows: geometry distances, the 📏 Band Box cutoffs, and
+    the DCC-export camera positions. The projection is purely angular, so the
+    view/texture mapping is pixel-identical — only the metric numbers move.
+
+    `scale` is a plain multiplier (10.0 = ten times as far/big — the "1:10" case).
+    `camera_height_m` (0 = off) instead SETS an absolute camera height when you
+    know the real vantage, and the node computes the factor for you. Composable
+    companion node (works after ANY solve); stamps `scale_source="manual_override"`.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "override"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"solve": ("ATLAS_SOLVE",)},
+            "optional": {
+                "scale": ("FLOAT", {"default": 1.0, "min": 0.001, "max": 100000.0, "step": 0.1,
+                    "tooltip": "Metric scale multiplier — 10.0 = the whole scene is 10× as far/big "
+                               "(the single-image '1:10' case). Metric scale ∝ camera height, so this "
+                               "uniformly rescales every downstream distance (geometry, 📏 cutoffs, "
+                               "DCC-export cameras); the projected view is unchanged. Ignored when "
+                               "camera_height_m > 0."}),
+                "camera_height_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000000.0, "step": 0.1,
+                    "tooltip": "Absolute override: SET the camera height in metres when you know the "
+                               "real vantage (the node computes the factor). 0 = use the scale "
+                               "multiplier instead."}),
+            },
+        }
+
+    def override(self, solve, scale=1.0, camera_height_m=0.0):
+        import copy
+        out = copy.deepcopy(solve)
+        extr = out.camera.extrinsics
+        vm = [list(r) for r in extr.camera_view_matrix]   # world->cam
+        # Camera WORLD position p = -R_wc^T @ t_wc (robust: some solves leave the
+        # camera_position field at 0 but always populate the view matrix). The
+        # translation column scales by the same factor, so p_new = p * factor.
+        t = [vm[0][3], vm[1][3], vm[2][3]]
+        p = [-(vm[0][k] * t[0] + vm[1][k] * t[1] + vm[2][k] * t[2]) for k in range(3)]
+        cur_h = p[1]
+        if float(camera_height_m) > 0.0 and abs(cur_h) > 1e-6:
+            factor = float(camera_height_m) / abs(cur_h)
+        else:
+            factor = float(scale)
+        if not (factor > 0.0):
+            factor = 1.0
+
+        for r in range(3):
+            vm[r][3] = vm[r][3] * factor
+        extr.camera_view_matrix = tuple(tuple(r) for r in vm)
+        extr.camera_position = tuple(c * factor for c in p)
+        wm = [list(r) for r in extr.camera_world_matrix]
+        for r in range(3):
+            wm[r][3] = wm[r][3] * factor
+        extr.camera_world_matrix = tuple(tuple(r) for r in wm)
+        meta = dict(getattr(out, "debug_metadata", None) or {})
+        meta["scale_override"] = factor
+        meta["scale_source"] = "manual_override"
+        out.debug_metadata = meta
+
+        new_h = extr.camera_position[1]
+        report = (
+            f"AtlasScaleOverride: ×{factor:.4g}  |  camera height {cur_h:.2f} m → {new_h:.2f} m\n"
+            "  Rescales ALL downstream metric — geometry distances, 📏 Band Box cutoffs, and DCC "
+            "export cameras — uniformly; the projection/view is unchanged (angular). Insert between "
+            "the solve and the geometry/viewport nodes.")
+        return (out, report)
+
+
 class AtlasReferenceScaleSolve:
     """Fix a solve's metric scale from a known-size reference object.
 
@@ -7166,6 +7248,7 @@ NODE_CLASS_MAPPINGS = {
     # Track 1 — solve
     "AtlasSolveFromImage":        AtlasSolveFromImage,
     "AtlasLearnedSolveFromImage": AtlasLearnedSolveFromImage,
+    "AtlasScaleOverride":         AtlasScaleOverride,
     "AtlasReferenceScaleSolve":   AtlasReferenceScaleSolve,
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
     "AtlasAssessImage":           AtlasAssessImage,
@@ -7235,6 +7318,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # Track 1 — solve
     "AtlasSolveFromImage":        "Atlas Solve Camera from Image",
     "AtlasLearnedSolveFromImage": "Atlas Learned Solve (GeoCalib) 🧠",
+    "AtlasScaleOverride":         "Atlas Scale Override 📐",
     "AtlasReferenceScaleSolve":   "Atlas Reference-Object Scale 📏",
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
