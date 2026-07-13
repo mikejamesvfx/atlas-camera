@@ -136,6 +136,15 @@ def test_layers_export_writes_ma_with_cameras_and_scriptnode(tmp_path):
     # imported OBJs get the cm->m x100 compensation.
     assert "projType" in ma and "linkedCamera" in ma
     assert "100, 100, 100" in ma
+    # The x100 MUST scale about world origin, not the import group's own
+    # pivot — groupReference lands the pivot at the geometry centre, so a
+    # pivot-relative x100 grows size but leaves each band clustered ~1m from
+    # origin, collapsing every layer onto the camera and garbling/tiling the
+    # projection (found live in Maya 2027; verified fixed by re-render). The
+    # scriptNode must zero the scale/rotate pivots BEFORE the x100.
+    assert ".scalePivot" in ma and ".scalePivotTranslate" in ma
+    assert ".rotatePivot" in ma
+    assert ma.index(".scalePivot") < ma.index("100, 100, 100")
     # Units declared metric; paths forward-slashed inside the script string.
     assert "currentUnit -l meter" in ma
     assert ":\\\\" not in ma.replace("\\\\n", "")  # no unescaped drive-letter backslash paths
