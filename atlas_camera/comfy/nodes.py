@@ -5623,6 +5623,12 @@ class AtlasInput:
               depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", **_extra):
         registry = _comfy_registry()
         have_sam = "SAM3Segment" in registry
+        # AtlasSemanticMask is our own node (SegFormer/ADE20K, pure transformers,
+        # NO triton/CUDA requirement) — the non-CUDA fallback for text-prompt
+        # segmentation. SAM3 needs triton, which does not exist on Mac(MPS)/CPU/
+        # AMD, so those users can never load it; SegFormer keeps sky+scope on a
+        # LEARNED mask there instead of collapsing to the bare heuristic.
+        have_semantic = "AtlasSemanticMask" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry
                         and "INPAINT_LoadInpaintModel" in registry
                         and "INPAINT_ExpandMask" in registry)
@@ -5636,6 +5642,24 @@ class AtlasInput:
                           mask_offset=0, device="Auto", invert_output=False,
                           unload_model=False, background="Alpha",
                           background_color="#222222")
+
+        def segment(image_ref, prompt_value):
+            """Text-prompt segmentation with an automatic non-CUDA fallback.
+            SAM3 (open-vocab, needs triton/CUDA) is preferred; on a box without
+            it we fall back to AtlasSemanticMask (SegFormer, CPU/MPS) so sky and
+            scope still get a learned mask with no rewiring. Returns a MASK ref,
+            or None when neither segmenter is installed (caller then drops to the
+            heuristic). SAM3 mask is out(1); AtlasSemanticMask mask is out(0)."""
+            if have_sam:
+                return sam3(image_ref, prompt_value).out(1)
+            if have_semantic:
+                return g.node("AtlasSemanticMask", image=image_ref,
+                              classes=prompt_value).out(0)
+            return None
+
+        if not have_sam and have_semantic:
+            notes.append("SAM3 absent -> AtlasSemanticMask (SegFormer, CPU/MPS) "
+                         "fallback for sky/scope")
 
         # 0. optional VLM assessment (advisory: auto_continue never blocks).
         image_ref = image
@@ -5661,14 +5685,15 @@ class AtlasInput:
         zero_mask = g.node("SolidMask", value=0.0, width=64, height=64)
         sky_mask_ref = zero_mask.out(0)
         sky_on = bool(sky)
-        if sky_on and not have_sam:
-            notes.append("sky SKIPPED — SAM3Segment not installed (ComfyUI-RMBG)")
-            sky_on = False
         if sky_on:
             sky_prompt_ref = vlm.out(3) if vlm is not None else sky_prompt
-            sky_seg = sam3(image_ref, sky_prompt_ref)
-            sky_mask_ref = sky_seg.out(1)
-            notes.append("sky card ON")
+            sky_mask = segment(image_ref, sky_prompt_ref)
+            if sky_mask is None:
+                notes.append("sky SKIPPED — no segmenter (SAM3 / AtlasSemanticMask absent)")
+                sky_on = False
+            else:
+                sky_mask_ref = sky_mask
+                notes.append("sky card ON")
 
         # 3. geometry.
         solve_chain = solve.out(0)
@@ -5740,17 +5765,17 @@ class AtlasInput:
                 if vlm is not None:
                     prompt_val = None  # replaced by the VLM output below
                 wants_scope = (vlm is not None) or bool(prompt_val)
-                if wants_scope and not have_sam:
-                    if prompt_val:
-                        notes.append(f"{name} scope SKIPPED — SAM3Segment not installed")
-                    wants_scope = False
                 if wants_scope:
                     p_ref = vlm.out(4 + i) if vlm is not None else prompt_val
-                    seg = sam3(image_ref, p_ref)
-                    scope = g.node("AtlasScopeMask",
-                                   sky_mask=(sky_mask_ref if sky_on else zero_mask.out(0)),
-                                   prompt=p_ref, segment_mask=seg.out(1))
-                    exclude_ref = scope.out(0)
+                    seg_ref = segment(image_ref, p_ref)
+                    if seg_ref is None:
+                        if prompt_val:
+                            notes.append(f"{name} scope SKIPPED — no segmenter (SAM3 / AtlasSemanticMask absent)")
+                    else:
+                        scope = g.node("AtlasScopeMask",
+                                       sky_mask=(sky_mask_ref if sky_on else zero_mask.out(0)),
+                                       prompt=p_ref, segment_mask=seg_ref)
+                        exclude_ref = scope.out(0)
 
                 # plate: original photo, or the inpainted clean plate
                 plate_ref = image_ref
