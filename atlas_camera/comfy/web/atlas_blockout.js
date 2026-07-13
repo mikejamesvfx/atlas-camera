@@ -1525,9 +1525,13 @@ function buildNodeUI(node, containerEl) {
         delete c.userData._prevMaterial;
       }
     });
-    // The projection IS the image now — the floating background photo plane
-    // only duplicates/confuses projected views.
-    if (bgMesh) bgMesh.visible = !on;
+    // See-through backdrop: the background photo plane STAYS visible under
+    // 📽 Project (renderOrder -100000, depthTest false) so it fills any pixel the
+    // projection discards (matte silhouettes, tears, out-of-frame) with the photo
+    // instead of black — the projected geometry draws on top of it everywhere it
+    // actually paints, so it only shows through in the holes. Hidden only during
+    // the deterministic export passes (renderAllPasses / Safe Zone probe).
+    if (bgMesh) bgMesh.visible = true;
   }
 
   projBtn.onclick = () => {
@@ -3141,14 +3145,37 @@ function buildNodeUI(node, containerEl) {
         const fovRad = (camera.fov * Math.PI) / 180;
         const ph = 2 * D * Math.tan(fovRad / 2);
         const pw = ph * (camera.aspect || 1);
-        const geo = new THREE.PlaneGeometry(pw, ph);
+        // As a see-through backdrop the plane must cover well PAST the recovered
+        // frustum so orbiting off-axis doesn't run the view off its edge into
+        // black. Enlarge the plane by K but keep the photo itself frustum-sized
+        // (UVs scaled about centre by 1/K) and clamp the border, so the photo
+        // stays aligned with the geometry at Camera View while the outer ring is
+        // the edge pixels stretched outward — a soft fill, never black.
+        const K = 3.0;
+        const geo = new THREE.PlaneGeometry(pw * K, ph * K);
+        const uv = geo.attributes.uv;
+        for (let i = 0; i < uv.count; i++) {
+          uv.setXY(i, 0.5 + (uv.getX(i) - 0.5) * K, 0.5 + (uv.getY(i) - 0.5) * K);
+        }
+        uv.needsUpdate = true;
+        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.needsUpdate = true;
         const mat = new THREE.MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false });
         bgMesh = new THREE.Mesh(geo, mat);
-        bgMesh.renderOrder = -1;
+        // Deepest renderOrder so it draws FIRST as a pure background canvas: every
+        // projected layer (renderOrder >= 1 via priorityToRenderOrder, primary
+        // 100000) draws on top and overwrites it where it paints, while any pixel
+        // the projection DISCARDS (matte-cut silhouette, torn quad, out-of-frame)
+        // reveals this backdrop photo instead of the black clear colour. depthTest
+        // false means it can never occlude geometry regardless of its D distance.
+        bgMesh.renderOrder = -100000;
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
         bgMesh.position.copy(camera.position).addScaledVector(fwd, D);
         bgMesh.quaternion.copy(camera.quaternion);
-        bgMesh.visible = !projectionOn; // hidden while 📽 Project is active
+        // The "see-through to backdrop": stays visible UNDER 📽 Project so the
+        // matte/tear outliers see through to the photo, not black. Independent of
+        // the 🎬 Backdrop toggle (which only governs the projection_backdrop plane).
+        bgMesh.visible = true;
         scene.add(bgMesh);
         node._atlasBgMesh = bgMesh;
       });
