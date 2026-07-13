@@ -1627,25 +1627,69 @@ function buildNodeUI(node, containerEl) {
       if (typeof f === "number" && isFinite(f) && (!fg || f < fg.userData.far_m)) fg = c;
     });
     if (!fg) return; // no bounded band in this scene — nothing to box
+    const cutoff = Math.abs(fg.userData.far_m);
     scene.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(fg);
-    if (box.isEmpty()) return;
-    const size = new THREE.Vector3(); box.getSize(size);
-    const center = new THREE.Vector3(); box.getCenter(center);
+    const wbox = new THREE.Box3().setFromObject(fg);
+    if (wbox.isEmpty()) return;
+
+    // Build the box in the RECOVERED camera's frame so its BACK face sits exactly
+    // at the cutoff depth (the AtlasBoundedBand clip plane) regardless of camera
+    // pitch — this is the whole point of the overlay: WHERE the relief is capped.
+    // Lateral bounds hug the actual foreground; depth spans the foreground's near
+    // out to the cutoff (so the box reaches past where the geometry ends, showing
+    // the headroom). Falls back to the plain world AABB if the recovered camera
+    // isn't in the payload.
+    const vm = recoveredData && recoveredData.view_matrix;
+    let boxGeo = null, cutGeo = null, place = null;
+    if (vm && vm.length === 4) {
+      const M = new THREE.Matrix4().set(
+        vm[0][0], vm[0][1], vm[0][2], vm[0][3],
+        vm[1][0], vm[1][1], vm[1][2], vm[1][3],
+        vm[2][0], vm[2][1], vm[2][2], vm[2][3],
+        vm[3][0], vm[3][1], vm[3][2], vm[3][3]);
+      place = M.clone().invert();            // cam -> world
+      const vb = new THREE.Box3();           // fg AABB corners in view space
+      const mn = wbox.min, mx = wbox.max;
+      for (let i = 0; i < 8; i++) {
+        vb.expandByPoint(new THREE.Vector3(
+          (i & 1) ? mx.x : mn.x, (i & 2) ? mx.y : mn.y, (i & 4) ? mx.z : mn.z).applyMatrix4(M));
+      }
+      const nearZ = vb.max.z;                // camera looks -Z; nearest = largest z
+      const farZ = -cutoff;                  // the cutoff plane
+      const zLo = Math.min(nearZ, farZ), zHi = Math.max(nearZ, farZ);
+      const cx = (vb.min.x + vb.max.x) / 2, cy = (vb.min.y + vb.max.y) / 2, cz = (zLo + zHi) / 2;
+      const sx = Math.max(vb.max.x - vb.min.x, 1e-3), sy = Math.max(vb.max.y - vb.min.y, 1e-3);
+      boxGeo = new THREE.BoxGeometry(sx, sy, Math.max(zHi - zLo, 1e-3));
+      boxGeo.translate(cx, cy, cz);
+      cutGeo = new THREE.PlaneGeometry(sx, sy);
+      cutGeo.translate(cx, cy, farZ);        // highlighted clip plane at the cutoff
+    } else {
+      const size = new THREE.Vector3(); wbox.getSize(size);
+      const center = new THREE.Vector3(); wbox.getCenter(center);
+      boxGeo = new THREE.BoxGeometry(Math.max(size.x, 1e-3), Math.max(size.y, 1e-3), Math.max(size.z, 1e-3));
+      boxGeo.translate(center.x, center.y, center.z);
+    }
+
     bandBox = new THREE.Group();
     bandBox.name = "atlas_band_box";
-    const geo = new THREE.BoxGeometry(
-      Math.max(size.x, 1e-3), Math.max(size.y, 1e-3), Math.max(size.z, 1e-3));
-    const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      color: 0xff2020, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
-    // Edges draw with depthTest OFF so the box outline is ALWAYS visible on top
-    // of the projected geometry — reads clearly as a bounding cage rather than a
-    // faint tint. The fill keeps depthTest ON so it still sits correctly in 3D.
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+    const fill = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({
+      color: 0xff2020, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false }));
+    // Edges draw with depthTest OFF so the outline is ALWAYS visible over the
+    // projected geometry — reads as a bounding cage, not a faint tint.
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo),
       new THREE.LineBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.95, depthTest: false }));
     fill.renderOrder = 100001; edges.renderOrder = 100002;
     bandBox.add(fill); bandBox.add(edges);
-    bandBox.position.copy(center);
+    if (cutGeo) {
+      // The cutoff plane itself, brighter — this is the clip boundary the artist
+      // is tuning (extrude_multiplier); everything in front is foreground relief,
+      // everything behind is the pushed-back sky card.
+      const cut = new THREE.Mesh(cutGeo, new THREE.MeshBasicMaterial({
+        color: 0xff0000, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
+      cut.renderOrder = 100001;
+      bandBox.add(cut);
+    }
+    if (place) bandBox.applyMatrix4(place);
     scene.add(bandBox);
   }
   const bandBoxBtn = document.createElement("button");
