@@ -3,6 +3,69 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## 0.5.0 — `release/beta-0.4` (2026-07-13)
+
+### Depth backends
+
+- **New default depth model on `main` is `Depth-Anything-V2-Metric-Outdoor`**
+  (Apache, transformers-only — **no extra install**), with V2-Indoor as its
+  interior twin. DA3 remains a selectable choice and stays the default on the
+  `experimental-da3-default` branch. Picked per shot: outdoor → V2-Outdoor,
+  interior → MoGe or V2-Indoor.
+- **MoGe-2 backend added** (`Ruicheng/moge-*`, MIT, `[moge]` extra) — the
+  interior specialist (cleanest on enclosed/no-sky shots; culls sky, so weak
+  outdoors). Exposed in every depth-model dropdown.
+
+### Correctness fixes
+
+- **Maya layers export: projection now lines up.** The cm→m ×100 on imported
+  band meshes was scaling about the import group's pivot (geometry centre),
+  leaving every band collapsed ~1 m onto the camera — the projection tiled/
+  garbled. It now scales about the world origin (verified by a headless Maya
+  re-render). Bands land at true depth; the projection is exact.
+- **Sky heuristic self-disarms on interiors.** `detect_sky_mask`'s roughness
+  term ate detailed ceilings / far walls above the (sky-free) horizon, punching
+  large scattered holes (measured: a hangar lost 39 % of its back wall). It now
+  detects the fragmented, non-top-anchored signature of a false positive and
+  excludes nothing — real outdoor sky (one top-anchored region) is untouched.
+- **Nuke layers export: the render camera is animatable.** `RenderCam` uses
+  translate/rotate + `rot_order XYZ` instead of `useMatrix` (which greys out
+  the channels), so you can keyframe a camera move. Each band also gets a
+  `resize none` conform Reformat so a swapped original-size EXR fits the
+  band's (outpainted) projection format.
+- **DCC layer exports degrade gracefully at `layers=0`** (`AtlasExportNuke
+  Layers` / `MayaLayers`) instead of crashing the queue with a ValueError.
+
+### Non-CUDA support
+
+- **Automatic SAM3 → `AtlasSemanticMask` fallback.** SAM3Segment (comfyui-rmbg)
+  hard-requires `triton`, which doesn't exist on Mac(MPS)/CPU/AMD. `AtlasInput`
+  now routes sky/scope segmentation through a cascade — SAM3 (GPU) → SegFormer
+  (`AtlasSemanticMask`, CPU/MPS, no triton) → numpy heuristic — so non-CUDA
+  users get a *learned* mask with no rewiring; the report states which fired.
+- Windows/CUDA users who want SAM3 install `triton-windows` (see INSTALL.md).
+
+### Exports + workflows
+
+- **`AtlasExportReliefMesh` exports the tuned solve mesh** (`use_solve_mesh`,
+  default on) — the viewport's `max_edge_factor` / `normal_edge_deg` / band
+  near-clip / sky-heuristic edge tuning now carries into the OBJ/GLB verbatim.
+- **Relief-mesh tear knobs exposed**: `max_edge_factor` (the dominant lever on
+  deep/interior scenes — raise to 40-80 to stop comb-tearing), a new
+  normal-bend tear test (`normal_edge_deg`), and `sky_heuristic`, on
+  `AtlasDeriveReliefMesh` / `AtlasInput` / the band-layer nodes.
+- **OCIO / ACEScg float handoff**: a third shipping workflow
+  (`atlas_input_ocio_quickstart_workflow.json`) — `OCIORead` (.exr) →
+  `AtlasRegisterPlate` → `AtlasInput` → `AtlasAttachSourcePlate` → Nuke/Maya/
+  USD exporters reading the original EXR at `ACEScg`. Quickstart gained Nuke/
+  Maya/USD exports + `AtlasExportReliefMesh`.
+
+### Install friction
+
+- Fresh-install fixes: `pytest` PIL guard (`importorskip`), DA3 eager-import
+  stubs so `[neural-da3]` installs don't crash on missing Windows wheels, and
+  `--no-deps` install recipes for the portable ComfyUI (GeoCalib/DA3).
+
 ## 0.4.0 — `release/beta-0.3` (2026-07-10 → 2026-07-12)
 
 ### Public-release preparation (2026-07-12)
