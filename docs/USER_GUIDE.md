@@ -402,15 +402,21 @@ for how each piece works and why.
 Two things changed: the default depth model, and how layered workflows are
 architected. If you use the shipped hero workflows you get both automatically.
 
-### The depth model is now DA3
+### Choosing a depth model (V2-Outdoor is the default)
 
-`depth-anything/DA3METRIC-LARGE` replaced Depth Anything V2 as the default
-everywhere. DA3 emits *canonical* depth that Atlas converts to metres using
-the **focal length the camera solve already recovered** — so depth scale
-inherits the solve's accuracy instead of guessing a lens. Measured on the 4K
-test set: ~3× fewer relief-mesh tears on two of four scenes, and a usable
-mesh on a pitched shot where V2's shattered to zero faces. V2 remains
-selectable in every depth combo.
+The default on `main` is **`Depth-Anything-V2-Metric-Outdoor`** — Apache-
+licensed, transformers-only (**no extra install**), and best-or-tied on every
+exterior in a 4-scene A/B. Pick per shot:
+
+- **Outdoor / sky scenes → V2-Metric-Outdoor** (default).
+- **Interior / enclosed → V2-Metric-Indoor or MoGe-2** (`Ruicheng/moge-*`,
+  MIT, `[moge]` extra — the interior specialist; it culls sky, so it's poor
+  outdoors).
+- **DA3** (`DA3METRIC-LARGE`) stays a selectable choice and is the default on
+  the `experimental-da3-default` branch. It emits *canonical* depth converted
+  to metres with the **solved focal**, and on some scenes tears less than V2 —
+  but it needs the GitHub-only `[neural-da3]` extra, so it's not the shipping
+  default. Every model is selectable in every depth combo.
 
 ### Every hidden-geometry workflow is the same sandwich
 

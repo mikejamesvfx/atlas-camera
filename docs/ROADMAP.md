@@ -14,8 +14,8 @@
   tool's help). Wiring it into `atlas_camera.inference.depth_estimator` at
   runtime is deferred, not dropped. Do **not** pursue it as a "make depth faster
   on CUDA" item — depth inference is not the pipeline bottleneck (mesh build +
-  viewport serialization dominate), and it would only accelerate V2, not the
-  DA3 default. The one case that justifies it is **broadening hardware reach**:
+  viewport serialization dominate). The one case that justifies it is
+  **broadening hardware reach**:
   ONNX Runtime with DirectML (Windows AMD/Intel GPUs) or CoreML (Apple Silicon)
   would give GPU-accelerated depth to non-CUDA users. If taken up, sequence it:
   (1) target the non-CUDA GPU path specifically, (2) export the SegFormer

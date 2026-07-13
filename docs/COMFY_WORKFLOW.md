@@ -3,7 +3,8 @@
 > **Vintage note (2026-07-09):** this page's two-track mental model is still
 > correct, but the catalog has grown to **54 nodes** — including the shared-depth
 > layer nodes, the sky dome, the Output Desk color track, and the experimental
-> hidden-geometry 🔬 node — and the default depth model is now DA3METRIC-LARGE.
+> hidden-geometry 🔬 node — and the default depth model is `V2-Metric-Outdoor`
+> (DA3 is the default only on the `experimental-da3-default` branch).
 > For the current catalog see CLAUDE.md; for the layered-workflow story see
 > USER_GUIDE.md's 2026-07-09 section and ECOSYSTEM_GUIDE.md's addenda.
 

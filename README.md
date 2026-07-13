@@ -74,9 +74,11 @@ Dependency tiers (install only what you need):
 | **`[vision]`** | numpy + opencv | Geometric solve with line detection + debug overlays |
 | **`[neural]`** | torch + GeoCalib | Learned solve, monocular depth, depth-driven geometry, patches |
 
-Depth Anything 3 is the default depth backend (measurably fewer relief-mesh
-tears than V2); it needs the separate `[neural-da3]` extra. Full setup,
-including the research-only tier, is in **[INSTALL.md](INSTALL.md)**.
+Depth Anything V2 (`V2-Metric-Outdoor`) is the default depth backend — Apache-
+licensed and transformers-only, so `[neural]` needs no extra install. MoGe-2
+(`[moge]`, interior specialist) and Depth Anything 3 (`[neural-da3]`; the
+default on the `experimental-da3-default` branch) are selectable alternatives.
+Full setup, including the research-only tier, is in **[INSTALL.md](INSTALL.md)**.
 
 ## Two distributions
 

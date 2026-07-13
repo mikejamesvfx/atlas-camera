@@ -41,7 +41,7 @@ RECOVER  →  DERIVE  →  PROJECT  →  EXPORT
 atlas_camera.core       ← DCC-agnostic schema, solver, math (zero required deps)
 atlas_camera.exporters  ← Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  ← Atlas JSON and USD camera loaders
-atlas_camera.comfy      ← ComfyUI node library (26 nodes as of this session)
+atlas_camera.comfy      ← ComfyUI node library (54 nodes; +2 experimental behind ATLAS_EXPERIMENTAL)
 atlas_camera.ui         ← Optional FastAPI project service + React/Three.js workbench
 atlas_camera.reference_data ← Curated scale-reference registry (person/door/car/etc.)
 atlas_camera.inference  ← Depth Anything V2, GeoCalib, local VLM helpers
@@ -550,9 +550,10 @@ ComfyUI's browser canvas for interactive, click-around testing:
 |---|---|
 | `atlas_input_quickstart_workflow.json` | The 4-node fastest path: LoadImage → 🎬 AtlasInput → Atlas Viewport. Instant relief by default; layers/VLM/sky/scope/inpaint all reachable by widgets on the one node. Start here. |
 | `atlas_camera_staged_master_workflow.json` | 🏗 The 5-stage layered master — the same logic with stages, gates (VLM + solve), KJ rails, SAM sky + per-band scope, per-band LaMa clean plates, per-layer debug previews, 🔍 debug JSON, and both DCC layer exports. |
+| `atlas_input_ocio_quickstart_workflow.json` | 🎨 The float VFX color-managed handoff (added 2026-07-13): `OCIORead` (ACEScg `.exr`) → `AtlasRegisterPlate` → `AtlasInput` → `AtlasAttachSourcePlate` → Nuke/Maya/USD exporters that read the original EXR at `ACEScg`. Needs ComfyUI-OCIO + opencv-python 4.x + `[usd]`. |
 
-**The shipping catalog was deliberately trimmed to these two on 2026-07-12**
-(release focus). Every workflow this guide's earlier sections mention by name
+**The shipping catalog was deliberately trimmed to these three on 2026-07-12
+(the OCIO quickstart added 2026-07-13)** (release focus). Every workflow this guide's earlier sections mention by name
 (core projection, learned pipeline, VP-only, merge scenarios, hidden-geometry
 heroes, master DMP variants, OCIO/plate proofs, calibration tests) still
 exists in git history — recover any of them with
