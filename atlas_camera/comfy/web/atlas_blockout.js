@@ -673,6 +673,7 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform vec3 uLight3Pos;
   uniform vec3 uLight3Color;
   uniform float uLight3Intensity;
+  uniform float uSceneScale;
   uniform float uBumpStrength;
   uniform float uBumpScale;
   varying vec2 vImagePx;
@@ -684,7 +685,13 @@ const PROJECTION_FRAGMENT_SHADER = `
     vec3 toLight = lightPos - worldPos;
     float dist = length(toLight);
     float ndotl = max(dot(normalize(worldNormal), normalize(toLight)), 0.0);
-    float atten = 1.0 / (1.0 + 0.05 * dist * dist);
+    // Scale-aware falloff: distance is measured relative to the scene's metric
+    // scale (uSceneScale = recovered camera height / 1.6 m default eye height),
+    // so a light placed proportionally to the scene gives the same relight at
+    // any AtlasScaleOverride. uSceneScale=1 (the ~1.6 m default) reproduces the
+    // original 1/(1+0.05·dist²) exactly — backward-compatible.
+    float ds = dist / max(uSceneScale, 1e-3);
+    float atten = 1.0 / (1.0 + 0.05 * ds * ds);
     return intensity * ndotl * atten;
   }
   // Detail relight: perturb the surface normal using the PHOTO's own luminance
@@ -824,6 +831,12 @@ function makeProjectionMaterial(data, texture, opts) {
     flat[12], flat[13], flat[14], flat[15]
   );
   const camPos = data.camera_position || [0, 0, 0];
+  // Scale-aware relight falloff (see PROJECTION_FRAGMENT_SHADER): the light
+  // attenuation distance scales with the scene's metric scale, proxied by the
+  // recovered camera height vs the 1.6 m default eye height — so a large
+  // AtlasScaleOverride (geometry 100 m+) no longer starves the lights. Exactly
+  // 1 at the default height, so existing ~1.6 m-camera looks are unchanged.
+  const sceneScale = Math.max(Math.abs(camPos[1]) / 1.6, 0.1);
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uAtlasViewMatrix: { value: vm },
@@ -865,6 +878,7 @@ function makeProjectionMaterial(data, texture, opts) {
       uLight3Pos: { value: new THREE.Vector3() },
       uLight3Color: { value: new THREE.Color(0xffffff) },
       uLight3Intensity: { value: 0 },
+      uSceneScale: { value: sceneScale },   // scale-aware relight falloff (cam height / 1.6m)
       // Detail-relight bump strength (💡 Lights panel "Detail" slider); 0 = off
       // = the geometry normal, so backward-compatible. Live-synced like lights.
       uBumpStrength: { value: 0 },
