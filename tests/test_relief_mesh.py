@@ -678,3 +678,28 @@ def test_band_min_m_none_leaves_geometry_unclipped():
     cam, rcw = c2w[:3, 3], c2w[:3, :3]
     fwd = -((v - cam) @ rcw[:, 2])
     assert fwd.min() < 8.0   # the 5 m content survives, not clipped to anything
+
+
+def test_relief_mesh_from_solve_prefers_the_derived_mesh():
+    """AtlasExportReliefMesh's helper must return the relief mesh already on the
+    solve (so its edge tuning carries into the OBJ), and None for a bare solve."""
+    from atlas_camera.comfy.nodes import _relief_mesh_from_solve
+    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+    from atlas_camera.core.schema import (
+        AtlasCamera, AtlasExtrinsics, AtlasProjectionScene, AtlasSolve)
+    from atlas_camera.core.intrinsics import build_intrinsics
+
+    depth = np.full((40, 40), 10.0)
+    mesh = _build(depth, h=0.0, grid_long_edge=24, apply_sky_heuristic=False,
+                  far_clip_percentile=100.0)
+    intr = build_intrinsics(image_width=40, image_height=40, focal_length_mm=35.0,
+                            sensor_width_mm=36.0)
+    cam = AtlasCamera(intrinsics=intr, extrinsics=AtlasExtrinsics(
+        camera_position=(0.0, 0.0, 0.0),
+        camera_world_matrix=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))))
+    solve = AtlasSolve(camera=cam, image_width=40, image_height=40)
+
+    assert _relief_mesh_from_solve(solve) is None            # bare solve
+    solve.projection_scene = AtlasProjectionScene(proxy_geometry=[relief_mesh_primitive(mesh)])
+    got = _relief_mesh_from_solve(solve)                      # now present
+    assert got is not None and len(got.faces) == len(mesh.faces)

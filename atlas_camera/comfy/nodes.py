@@ -3863,6 +3863,22 @@ class AtlasOcclusionMask:
         return (mask_t, coverage_t)
 
 
+def _relief_mesh_from_solve(solve):
+    """The relief mesh already derived onto a solve (AtlasDeriveReliefMesh /
+    AtlasInput), reconstructed for export so its edge tuning carries over
+    exactly. Looks for the ``depth_relief_mesh``-sourced primitive in the
+    projection scene; returns a ReliefMesh, or None when the solve carries no
+    relief mesh (bare solve, or a bands-only / primitives-only solve)."""
+    from atlas_camera.exporters._layers import mesh_from_primitive
+    scene = getattr(solve, "projection_scene", None)
+    prims = (getattr(scene, "proxy_geometry", None) or []) if scene is not None else []
+    for p in prims:
+        meta = p.metadata or {}
+        if p.primitive_type == "mesh" and meta.get("source") == "depth_relief_mesh":
+            return mesh_from_primitive(p)
+    return None
+
+
 class AtlasExportReliefMesh:
     """Export a depth relief mesh (OBJ + MTL + texture) for Maya / Nuke / ZBrush.
 
@@ -3897,13 +3913,28 @@ class AtlasExportReliefMesh:
                     {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "format": (["both", "obj", "glb"], {"default": "both"}),
+                "use_solve_mesh": ("BOOLEAN", {"default": True,
+                    "tooltip": "Export the relief mesh ALREADY on the solve (from "
+                               "AtlasDeriveReliefMesh / AtlasInput) so ALL its edge tuning — "
+                               "max_edge_factor, normal_edge_deg, the band near-clip, sky_heuristic "
+                               "— carries into the OBJ/GLB exactly, with no widget to re-set. Turn "
+                               "OFF to re-derive from depth at this node's own grid/thresholds "
+                               "below (e.g. to export a HIGHER-resolution mesh than the viewport). "
+                               "Auto-falls-back to re-derive when the solve carries no relief mesh."}),
+                "max_edge_factor": ("FLOAT", {"default": 12.0, "min": 2.0, "max": 200.0, "step": 1.0,
+                    "tooltip": "Re-derive only (use_solve_mesh off): world-space edge tear "
+                               "threshold. Raise to 40-80 on deep/interior scenes to stop combs."}),
+                "normal_edge_deg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 180.0, "step": 1.0,
+                    "tooltip": "Re-derive only: 0 = off; tears on surface-normal bend (real creases) "
+                               "while leaving smooth grazing surfaces intact."}),
             },
         }
 
     def export(self, solve, image, output_dir="atlas_exports", grid_long_edge=128,
                depth_edge_rel=0.5,
                depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-               device="auto", format="both"):
+               device="auto", format="both", use_solve_mesh=True,
+               max_edge_factor=12.0, normal_edge_deg=0.0):
         from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
         from atlas_camera.core.solver import _resize_depth
         from atlas_camera.exporters.relief_mesh_exporter import (
@@ -3926,38 +3957,47 @@ class AtlasExportReliefMesh:
         cx = intr.cx_px if intr.cx_px is not None else width / 2.0
         cy = intr.cy_px if intr.cy_px is not None else height / 2.0
 
-        tmp = _save_image_tensor_to_tmp(image)
-        try:
-            result = estimate_depth(tmp, model_id=depth_model,
-                                    device=None if device == "auto" else device,
-                                    # fx is in solve-image pixels; the tmp file is the
-                                    # wired tensor's resolution (usually identical).
-                                    focal_px=fx * (image.shape[2] / width))
-        finally:
-            os.unlink(tmp)
+        # Prefer the relief mesh ALREADY derived onto the solve — it carries all
+        # the edge tuning (max_edge_factor / normal_edge_deg / band near-clip /
+        # sky_heuristic) exactly, so the OBJ matches the viewport with no widget
+        # to re-set. Re-derive only when asked (higher-res export) or when the
+        # solve has no relief mesh (e.g. a bare solve node).
+        mesh = _relief_mesh_from_solve(solve) if use_solve_mesh else None
+        if mesh is None:
+            tmp = _save_image_tensor_to_tmp(image)
+            try:
+                result = estimate_depth(tmp, model_id=depth_model,
+                                        device=None if device == "auto" else device,
+                                        # fx is in solve-image pixels; the tmp file is the
+                                        # wired tensor's resolution (usually identical).
+                                        focal_px=fx * (image.shape[2] / width))
+            finally:
+                os.unlink(tmp)
 
-        depth_map = result.depth
-        if depth_map.shape != (height, width):
-            depth_map = _resize_depth(depth_map, width, height)
+            depth_map = result.depth
+            if depth_map.shape != (height, width):
+                depth_map = _resize_depth(depth_map, width, height)
 
-        horizon_y = None
-        if solve.horizon_line and solve.horizon_line.endpoints_px:
-            p1, p2 = solve.horizon_line.endpoints_px
-            horizon_y = 0.5 * (float(p1[1]) + float(p2[1]))
+            horizon_y = None
+            if solve.horizon_line and solve.horizon_line.endpoints_px:
+                p1, p2 = solve.horizon_line.endpoints_px
+                horizon_y = 0.5 * (float(p1[1]) + float(p2[1]))
 
-        scale, scale_info = estimate_ground_scale(
-            depth_map, view_matrix=extr.camera_view_matrix,
-            fx=fx, fy=fy, cx=cx, cy=cy,
-            horizon_y=horizon_y,
-        )
-        mesh = build_relief_mesh(
-            depth_map, view_matrix=extr.camera_view_matrix,
-            fx=fx, fy=fy, cx=cx, cy=cy,
-            grid_long_edge=int(grid_long_edge),
-            depth_edge_rel=float(depth_edge_rel),
-            scale=scale,
-            horizon_y=horizon_y,
-        )
+            scale, scale_info = estimate_ground_scale(
+                depth_map, view_matrix=extr.camera_view_matrix,
+                fx=fx, fy=fy, cx=cx, cy=cy,
+                horizon_y=horizon_y,
+            )
+            mesh = build_relief_mesh(
+                depth_map, view_matrix=extr.camera_view_matrix,
+                fx=fx, fy=fy, cx=cx, cy=cy,
+                grid_long_edge=int(grid_long_edge),
+                depth_edge_rel=float(depth_edge_rel),
+                scale=scale,
+                horizon_y=horizon_y,
+                max_edge_factor=float(max_edge_factor),
+                normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
+            )
         texture = _image_tensor_to_pil(image)
         plate = getattr(solve, "source_plate", None)
         texture_path = None
