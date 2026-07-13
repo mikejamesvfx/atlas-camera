@@ -1645,7 +1645,7 @@ function buildNodeUI(node, containerEl) {
   // patch group, into `parent`. Geometry is emitted in `M`'s VIEW space (so the
   // back face lands exactly on the cutoff plane at any camera pitch) when M is
   // given, else in world space; the caller applies cam->world once to `parent`.
-  function addBandBoxFor(fg, parent, M) {
+  function addBandBoxFor(fg, parent, M, fillOp, planeOp) {
     const cutoff = Math.abs(fg.userData.far_m);
     const wbox = new THREE.Box3().setFromObject(fg);
     if (wbox.isEmpty()) return;
@@ -1672,14 +1672,14 @@ function buildNodeUI(node, containerEl) {
       labelPos = new THREE.Vector3(center.x, center.y + size.y / 2, center.z);
     }
     const fill = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({
-      color: 0xff2020, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false }));
+      color: 0xff2020, transparent: true, opacity: fillOp, side: THREE.DoubleSide, depthWrite: false }));
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo),
       new THREE.LineBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.95, depthTest: false }));
     fill.renderOrder = 100001; edges.renderOrder = 100002;
     parent.add(fill); parent.add(edges);
     if (cutGeo) {
       const cut = new THREE.Mesh(cutGeo, new THREE.MeshBasicMaterial({
-        color: 0xff0000, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
+        color: 0xff0000, transparent: true, opacity: planeOp, side: THREE.DoubleSide, depthWrite: false }));
       cut.renderOrder = 100001; parent.add(cut);
     }
     const label = makeBandLabel(`cutoff ${cutoff.toFixed(1)} m`);
@@ -1713,7 +1713,12 @@ function buildNodeUI(node, containerEl) {
     }
     bandBox = new THREE.Group();
     bandBox.name = "atlas_band_box";
-    for (const fg of bounded) addBandBoxFor(fg, bandBox, M);
+    // Frame-spanning band boxes stack, so scale the fill/plane opacity down with
+    // the count — one box stays bold, three read light so the scene shows through
+    // (the always-visible edges + cutoff plane + label still define each).
+    const N = bounded.length;
+    const fillOp = Math.min(0.13, 0.16 / N), planeOp = Math.min(0.28, 0.42 / N);
+    for (const fg of bounded) addBandBoxFor(fg, bandBox, M, fillOp, planeOp);
     if (place) bandBox.applyMatrix4(place);
     scene.add(bandBox);
   }
