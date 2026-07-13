@@ -1617,7 +1617,8 @@ function buildNodeUI(node, containerEl) {
   }
   // A camera-facing text sprite (canvas texture — self-contained, no font/CSS2D
   // loader needed) used to label the cutoff distance on the 📏 Band Box.
-  function makeBandLabel(text, worldHeight = 0.9) {
+  function makeBandLabel(text, worldHeight = 0.9, color = 0xff2020) {
+    const r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255;
     const canvas = document.createElement("canvas");
     let ctx = canvas.getContext("2d");
     const fontPx = 48;
@@ -1627,9 +1628,11 @@ function buildNodeUI(node, containerEl) {
     canvas.width = w; canvas.height = h;
     ctx = canvas.getContext("2d");         // resizing the canvas clears state
     ctx.font = `bold ${fontPx}px sans-serif`;
-    ctx.fillStyle = "rgba(150,10,10,0.88)";
+    // Darkened box color as the background, bright box color as the border, white
+    // text — so any palette color stays legible and matches its box.
+    ctx.fillStyle = `rgba(${(r * 0.42) | 0},${(g * 0.42) | 0},${(b * 0.42) | 0},0.9)`;
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = "rgba(255,80,80,0.95)"; ctx.lineWidth = 4;
+    ctx.strokeStyle = `rgba(${r},${g},${b},0.95)`; ctx.lineWidth = 4;
     ctx.strokeRect(2, 2, w - 4, h - 4);
     ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(text, w / 2, h / 2 + 2);
@@ -1645,7 +1648,7 @@ function buildNodeUI(node, containerEl) {
   // patch group, into `parent`. Geometry is emitted in `M`'s VIEW space (so the
   // back face lands exactly on the cutoff plane at any camera pitch) when M is
   // given, else in world space; the caller applies cam->world once to `parent`.
-  function addBandBoxFor(fg, parent, M, fillOp, planeOp) {
+  function addBandBoxFor(fg, parent, M, fillOp, planeOp, color) {
     const cutoff = Math.abs(fg.userData.far_m);
     const wbox = new THREE.Box3().setFromObject(fg);
     if (wbox.isEmpty()) return;
@@ -1672,17 +1675,17 @@ function buildNodeUI(node, containerEl) {
       labelPos = new THREE.Vector3(center.x, center.y + size.y / 2, center.z);
     }
     const fill = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({
-      color: 0xff2020, transparent: true, opacity: fillOp, side: THREE.DoubleSide, depthWrite: false }));
+      color: color, transparent: true, opacity: fillOp, side: THREE.DoubleSide, depthWrite: false }));
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo),
-      new THREE.LineBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.95, depthTest: false }));
+      new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.95, depthTest: false }));
     fill.renderOrder = 100001; edges.renderOrder = 100002;
     parent.add(fill); parent.add(edges);
     if (cutGeo) {
       const cut = new THREE.Mesh(cutGeo, new THREE.MeshBasicMaterial({
-        color: 0xff0000, transparent: true, opacity: planeOp, side: THREE.DoubleSide, depthWrite: false }));
+        color: color, transparent: true, opacity: planeOp, side: THREE.DoubleSide, depthWrite: false }));
       cut.renderOrder = 100001; parent.add(cut);
     }
-    const label = makeBandLabel(`cutoff ${cutoff.toFixed(1)} m`);
+    const label = makeBandLabel(`cutoff ${cutoff.toFixed(1)} m`, 0.9, color);
     label.position.copy(labelPos); parent.add(label);
   }
   function buildBandBox() {
@@ -1697,6 +1700,7 @@ function buildNodeUI(node, containerEl) {
       if (c.userData?.atlasPatchGroup && typeof c.userData.far_m === "number" && isFinite(c.userData.far_m)) bounded.push(c);
     });
     if (!bounded.length) return; // no bounded band in this scene — nothing to box
+    bounded.sort((a, b) => a.userData.far_m - b.userData.far_m); // near -> far, for stable colors
     scene.updateMatrixWorld(true);
     // Build every box in the RECOVERED camera's frame so each back face lands on
     // its own cutoff plane regardless of camera pitch; one cam->world applied to
@@ -1718,7 +1722,10 @@ function buildNodeUI(node, containerEl) {
     // (the always-visible edges + cutoff plane + label still define each).
     const N = bounded.length;
     const fillOp = Math.min(0.13, 0.16 / N), planeOp = Math.min(0.28, 0.42 / N);
-    for (const fg of bounded) addBandBoxFor(fg, bandBox, M, fillOp, planeOp);
+    // Distinct color per box (by depth: near -> far). A single box is red, matching
+    // the original; multiple bands get their own hue so they're tellable apart.
+    const PALETTE = [0xff3838, 0xffb020, 0x30c8ff, 0x44e05a, 0xb060ff, 0xf5e030];
+    bounded.forEach((fg, i) => addBandBoxFor(fg, bandBox, M, fillOp, planeOp, PALETTE[i % PALETTE.length]));
     if (place) bandBox.applyMatrix4(place);
     scene.add(bandBox);
   }
