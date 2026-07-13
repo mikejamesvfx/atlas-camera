@@ -996,6 +996,13 @@ function buildPatchSources(scene, data, onSourceReady) {
     const group = new THREE.Group();
     group.name = `atlas_patch_${idx}`;
     group.userData.atlasPatchGroup = true;
+    // Band metrics for the 📏 Band Box overlay: a finite far_m on a clean-plate
+    // layer is the AtlasBoundedBand cutoff (the foreground's back edge).
+    group.userData.sourceName = src.name;
+    group.userData.near_m = src.near_m;
+    group.userData.far_m = src.far_m;
+    group.userData.band_geometry = src.band_geometry;
+    group.userData.projection_mode = src.projection_mode;
     const meshes = [];
     for (const e of (src.proxy_geometry || [])) {
       const geo = proxyEntryToGeometry(e);
@@ -1594,6 +1601,63 @@ function buildNodeUI(node, containerEl) {
   }
   seeThruBtn.onclick = () => setSeeThrough(!seeThroughOn);
   toolbar.appendChild(seeThruBtn);
+
+  // 📏 Band Box overlay — a translucent red box around the AtlasBoundedBand
+  // FOREGROUND: the clean-plate layer whose far_m is FINITE is the one the
+  // bounded band clipped at the cutoff (near + N·W); its axis-aligned bounds
+  // show exactly where the foreground relief is capped and where the sky card
+  // falls back behind it. Session-only display state, rebuilt each execution.
+  let bandBoxOn = false;
+  let bandBox = null;
+  function disposeBandBox() {
+    if (!bandBox) return;
+    scene.remove(bandBox);
+    bandBox.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+    bandBox = null;
+  }
+  function buildBandBox() {
+    disposeBandBox();
+    if (!bandBoxOn || !THREE) return;
+    // The bounded foreground = the patch group with the smallest FINITE far_m
+    // (the background card's far_m is null/+inf).
+    let fg = null;
+    scene.traverse((c) => {
+      if (!c.userData?.atlasPatchGroup) return;
+      const f = c.userData.far_m;
+      if (typeof f === "number" && isFinite(f) && (!fg || f < fg.userData.far_m)) fg = c;
+    });
+    if (!fg) return; // no bounded band in this scene — nothing to box
+    scene.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(fg);
+    if (box.isEmpty()) return;
+    const size = new THREE.Vector3(); box.getSize(size);
+    const center = new THREE.Vector3(); box.getCenter(center);
+    bandBox = new THREE.Group();
+    bandBox.name = "atlas_band_box";
+    const geo = new THREE.BoxGeometry(
+      Math.max(size.x, 1e-3), Math.max(size.y, 1e-3), Math.max(size.z, 1e-3));
+    const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: 0xff2020, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
+    // Edges draw with depthTest OFF so the box outline is ALWAYS visible on top
+    // of the projected geometry — reads clearly as a bounding cage rather than a
+    // faint tint. The fill keeps depthTest ON so it still sits correctly in 3D.
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+      new THREE.LineBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.95, depthTest: false }));
+    fill.renderOrder = 100001; edges.renderOrder = 100002;
+    bandBox.add(fill); bandBox.add(edges);
+    bandBox.position.copy(center);
+    scene.add(bandBox);
+  }
+  const bandBoxBtn = document.createElement("button");
+  bandBoxBtn.textContent = "📏 Band Box";
+  bandBoxBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  bandBoxBtn.onclick = () => {
+    bandBoxOn = !bandBoxOn;
+    bandBoxBtn.style.background = bandBoxOn ? "#3a1a1a" : "#2a2a2a";
+    bandBoxBtn.style.color = bandBoxOn ? "#f88" : "#ddd";
+    buildBandBox();
+  };
+  toolbar.appendChild(bandBoxBtn);
 
   // 🩻 X-ray provenance overlay — tints the surface region whose depth was
   // SUBSTITUTED by AtlasPredictHiddenGeometry (red = LaRI, blue = World
@@ -3143,6 +3207,7 @@ function buildNodeUI(node, containerEl) {
       // the primary to fill areas the primary camera couldn't see.
       buildPatchSources(scene, data, () => { if (projectionOn) applyProjection(true); });
       if (projectionOn) applyProjection(true); // grey until textures arrive
+      buildBandBox(); // rebuild the 📏 overlay against this execution's geometry
     },
     setBackground(imgBase64) {
       if (!imgBase64 || !THREE) return;

@@ -430,6 +430,12 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
             "azimuth_deg": float(src.azimuth_deg),
             "elevation_deg": float(src.elevation_deg),
             "projection_mode": (src.metadata or {}).get("projection_mode"),
+            # Band metrics (metres) — a finite far_m is the AtlasBoundedBand
+            # cutoff on a foreground clean-plate layer; drives the 📏 Band Box
+            # overlay (near_m None = 0 = the near plane).
+            "near_m": (src.metadata or {}).get("near_m"),
+            "far_m": (src.metadata or {}).get("far_m"),
+            "band_geometry": (src.metadata or {}).get("band_geometry"),
             # 🩻 hidden-geometry provenance (AtlasPredictHiddenGeometry via a
             # band layer) — drives the viewport's debug tint overlay.
             "hidden_mask_b64": (src.metadata or {}).get("hidden_mask_b64") or "",
