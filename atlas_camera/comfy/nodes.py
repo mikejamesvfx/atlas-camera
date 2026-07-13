@@ -4418,7 +4418,14 @@ class AtlasExportNukeLayers:
         from atlas_camera.exporters.nuke_exporter import write_nuke_layers_script
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
-        result = write_nuke_layers_script(solve, output_dir)
+        try:
+            result = write_nuke_layers_script(solve, output_dir)
+        except ValueError as exc:
+            # The LAYER export needs ProjectionSources (sky / clean-plate bands /
+            # patches). A layers=0 single relief mesh has none — don't crash the
+            # queue; return a clear pointer. Use AtlasInput layers>=1 for the full
+            # DCC handoff, or AtlasExportUSD (camera) for the single-relief case.
+            return ("", f"Nuke layer export skipped — {exc}")
         summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
@@ -4466,7 +4473,12 @@ class AtlasExportMayaLayers:
         from atlas_camera.exporters.maya_exporter import write_maya_layers_scene
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
-        result = write_maya_layers_scene(solve, output_dir)
+        try:
+            result = write_maya_layers_scene(solve, output_dir)
+        except ValueError as exc:
+            # See AtlasExportNukeLayers: the LAYER export needs ProjectionSources;
+            # a layers=0 single relief mesh has none. Graceful skip, not a crash.
+            return ("", f"Maya layer export skipped — {exc}")
         summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
