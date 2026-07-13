@@ -67,6 +67,16 @@ otherwise be a black hole.
 and re-export that scene; the projected texture is already full-res, so this only
 sharpens the geometry.
 
+**If the metric scale looks wrong** (distances tiny for an elevated vista), the
+solve had no ground plane to fit and fell back to an assumed ~1.6 m eye height —
+often ~10× too small looking out over a city. Drop an `AtlasScaleOverride`
+between the solve and the geometry and dial `scale` (10.0 = "1:10") or set an
+absolute `camera_height_m`. Every distance — the projected geometry, the 📏 Band
+Box cutoffs, the exported Nuke/Maya cameras — scales together; the view itself is
+unchanged. Toggle **📏 Band Box** in the viewport to read each layer's clip
+distance while you dial it in. (A known-size reference via `AtlasReferenceScaleSolve`
+is a true lock if you have one; the override is the honest by-eye fix when you don't.)
+
 **If a foreground subject's relief runs away backward** (monocular depth
 "bananas" tall/soft structures), drop an `AtlasBoundedBand` between the solve and
 the layers: feed it the subject's mask and it measures the subject's own depth

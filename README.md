@@ -14,7 +14,7 @@
   <a href="https://registry.comfy.org/nodes/atlas-camera"><img src="https://img.shields.io/badge/ComfyUI_Registry-atlas--camera-eaa03a" alt="ComfyUI Registry"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2fb7a6" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/python-3.10+-c4b29a" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/ComfyUI-54_nodes-8f8571" alt="54 nodes">
+  <img src="https://img.shields.io/badge/ComfyUI-56_nodes-8f8571" alt="56 nodes">
   <a href="https://mikejamesvfx.com"><img src="https://img.shields.io/badge/a-mikejamesvfx_tool-c4b29a" alt="a mikejamesvfx tool"></a>
 </p>
 
@@ -51,7 +51,7 @@ projection path stays floating-point, and it hands off to OpenColorIO, Nuke,
 Maya and Resolve. Render format is a project-level camera up to **8192 px**.
 
 **Runs anywhere:** the core is pure NumPy with **zero required dependencies** —
-solve a camera and export to your DCC with no GPU. All 54 nodes register without
+solve a camera and export to your DCC with no GPU. All 56 nodes register without
 heavy dependencies; a GPU is only needed for the optional neural features.
 
 ## Install
@@ -92,23 +92,28 @@ Full setup, including the research-only tier, is in **[INSTALL.md](INSTALL.md)**
 
 ## The node pack
 
-A **54-node ComfyUI pack** (category *Atlas Camera*; 56 with the experimental
+A **56-node ComfyUI pack** (category *Atlas Camera*; 58 with the experimental
 tier) covering the whole pipeline as a graph:
 
 - **Solve** — geometric (vanishing points, no deps) and learned (GeoCalib,
   robust on AI-generated images).
 - **Scale** — a tiered, confirm-to-adopt metric cascade (known-size reference →
-  local-VLM cue → depth → flagged default); suggestions are never auto-promoted.
+  local-VLM cue → depth → flagged default); suggestions are never auto-promoted,
+  plus `AtlasScaleOverride`, a manual scale dial for when the single-image scale
+  needs a nudge.
 - **Geometry** — one composable node per strategy (relief mesh, walls,
   towers/spires, roofs/facades, interior room) combined with a Nuke-Merge-style
   `AtlasMergeGeometry`, plus a project-level shot-camera format.
 - **2.5D DMP layer stack** — sky-dome separation, depth-band clean plates with
-  disocclusion fill, per-pixel edge mattes and beveled skirts, and hole masks
-  (the literal "where projection shows black" signal). Inpainting stays
-  graph-level.
+  disocclusion fill, `AtlasBoundedBand` (clip a foreground at its own measured
+  depth extent so it stops running away), per-pixel edge mattes and beveled
+  skirts, and hole masks (the literal "where projection shows black" signal).
+  Inpainting stays graph-level.
 - **Viewport** — `AtlasBlockoutViewport`: real-time camera-projection preview,
   camera-path authoring (dolly/orbit/pan) with baked-frame output, measured
-  safe-zone orbit clamps, render passes, and diagnostic overlays.
+  safe-zone orbit clamps, render passes, and diagnostic overlays (a see-through
+  backdrop that fills projection gaps with the plate, and a 📏 Band Box overlay
+  showing each layer's clip distance).
 - **Output desk** — `AtlasRegisterPlate` / `AtlasAttachSourcePlate` carry the
   real float plate (EXR/ACEScg) past the browser preview into every exporter.
 - **Export** — Nuke (`.nk` + `.py`), Maya (`.ma` + review scene), per-layer

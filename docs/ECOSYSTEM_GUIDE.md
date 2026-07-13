@@ -41,7 +41,7 @@ RECOVER  →  DERIVE  →  PROJECT  →  EXPORT
 atlas_camera.core       ← DCC-agnostic schema, solver, math (zero required deps)
 atlas_camera.exporters  ← Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  ← Atlas JSON and USD camera loaders
-atlas_camera.comfy      ← ComfyUI node library (54 nodes; +2 experimental behind ATLAS_EXPERIMENTAL)
+atlas_camera.comfy      ← ComfyUI node library (56 nodes; +2 experimental behind ATLAS_EXPERIMENTAL)
 atlas_camera.ui         ← Optional FastAPI project service + React/Three.js workbench
 atlas_camera.reference_data ← Curated scale-reference registry (person/door/car/etc.)
 atlas_camera.inference  ← Depth Anything V2, GeoCalib, local VLM helpers
@@ -70,7 +70,7 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (54 nodes, category "Atlas Camera")
+## 2. The Node Catalog (56 nodes, category "Atlas Camera")
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in.
@@ -104,6 +104,7 @@ actually wire them in.
 | `AtlasApplyScaleReferences` | 1, gate | Applies `AtlasVLMScaleCues`' suggestions to a solve — but **only when `confirm=true`**. With `confirm=false` (default) it just records candidates for review. This mirrors the project's whole-codebase rule: propose, never silently apply. |
 | *(built into)* `AtlasLearnedSolveFromImage`, `height_mode=measure_from_depth` | 2 | Depth Anything V2 fits a ground plane below the horizon and reads camera height off it. Medium reliability — AI-image depth is often not perfectly ground-plane-consistent. |
 | *(built into)* `AtlasLearnedSolveFromImage`, `height_mode=assume` | 3 (fallback) | Plain assumed eye-height (`camera_height_m`, default 1.6m), always flagged as an assumption. |
+| `AtlasScaleOverride` 📐 | manual dial | The artist's scale override, after any solve. Scale ∝ camera height, so it rescales the whole solve by a `scale` multiplier (10.0 = the "1:10" case for an elevated vista the assumed 1.6 m under-scaled) or to an absolute `camera_height_m`. Every downstream metric follows (geometry, cutoffs, DCC cameras); the projection/view is unchanged. |
 
 ### Derive geometry
 
@@ -141,6 +142,8 @@ combine explicitly.
 |---|---|
 | `AtlasDepthLayerMask` | One metric depth band → `(layer_mask, occlusion_mask)`. `occlusion_mask` feeds an external inpaint graph (`INPAINT_ExpandMask` → `INPAINT_InpaintWithModel`) to build that band's clean plate. |
 | `AtlasCleanPlateLayer` | Inpainted clean plate + the same depth band → appends a `ProjectionSource` (camera = primary, unchanged; mesh clipped to the band). Chain one per layer. |
+| `AtlasBoundedBand` 📏 | Measures a foreground subject's own metric depth extent `W` (P5–P95) from its mask and emits ONE `band_split` cutoff at `near + 2·W`. Feed it into both a foreground layer (`band_side=foreground` → relief clipped, no runaway extrusion) and the background card (`band_side=background` → pushed back behind it). One measured boundary, both layers. |
+| `AtlasDepthBandSplit` | One authoritative fg/bg depth boundary (log-depth position or metres) shared by every band node — wire into `band_split` with `band_side` so the layers can't drift apart. |
 
 ### Decompose / analyze
 

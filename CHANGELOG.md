@@ -16,8 +16,42 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   interior specialist (cleanest on enclosed/no-sky shots; culls sky, so weak
   outdoors). Exposed in every depth-model dropdown.
 
+### 2.5D matte painting + scale
+
+- **New `AtlasBoundedBand`** 📏 — measures a foreground subject's own metric
+  depth extent `W` (P5–P95) from its mask and emits ONE cutoff at
+  `near + extrude_multiplier·W` (default 2×). Wire it into both clean-plate
+  layers' `band_split`: the foreground relief is clipped at the cutoff (no
+  runaway extrusion past the guessed distance) and the background card falls
+  back behind it — one measured boundary, both layers, no hand-tuned distances.
+- **New `AtlasScaleOverride`** 📐 — the artist's manual metric-scale dial.
+  Single-image scale is ambiguous (no ground plane / reference →
+  `assumed_default` ~1.6 m, often ~10× off on elevated vistas). Since scale ∝
+  camera height, this rescales a solve by a `scale` multiplier (10.0 = the
+  "1:10" case) or to an absolute `camera_height_m`; every downstream metric
+  follows (geometry distances, 📏 cutoffs, DCC-export cameras) while the
+  projection/view stays pixel-identical. Pure-Python, zero deps, after any solve.
+
+### Viewport
+
+- **🕳 See-through backdrop** — under 📽 Project, pixels the projection discards
+  (matte silhouettes, tears, out-of-frame) now reveal the source photo instead
+  of black, so an orbit/dolly reads as the plate rather than holes. The
+  background plane is enlarged and its edge softly fades to the photo's average
+  colour (no streaking). Toggle on the toolbar; on by default.
+- **📏 Band Box overlay** — a toolbar toggle that draws a translucent box around
+  each bounded foreground layer, its back face pinned to the cutoff plane (in
+  the recovered camera's frame, so it's correct at any pitch), with a
+  `cutoff X.X m` distance label. Multiple layers each get a distinct colour by
+  depth; opacity scales with the count so stacked band boxes stay readable.
+
 ### Correctness fixes
 
+- **VLM assess: large plates now actually get assessed.** `AtlasAssessImage`
+  base64'd the raw image, so a 9K/37 MB plate made lmstudio reject the request
+  (`Invalid image detected`) and the assessment silently never ran. It now
+  downscales the long edge to 1280 (JPEG) before sending — no quality loss
+  (VLMs downsample internally), fixes the rejection.
 - **Maya layers export: projection now lines up.** The cm→m ×100 on imported
   band meshes was scaling about the import group's pivot (geometry centre),
   leaving every band collapsed ~1 m onto the camera — the projection tiled/
