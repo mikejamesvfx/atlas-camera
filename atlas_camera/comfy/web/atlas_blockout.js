@@ -671,6 +671,7 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform vec3 uLight2Color;
   uniform float uLight2Intensity;
   uniform float uBumpStrength;
+  uniform float uBumpScale;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
@@ -691,7 +692,11 @@ const PROJECTION_FRAGMENT_SHADER = `
   // derivatives of world position + uv (no precomputed tangents needed). Feeds
   // the relight ONLY — the base texture is never altered. Brighter = higher.
   vec3 atlasBumpNormal(vec3 N, vec3 p, vec2 uv, float strength) {
-    vec2 texel = 1.0 / uImageSize;
+    // Sampling offset in texels (uBumpScale) sets the detail scale: 1 texel is
+    // too fine to register on a big plate (adjacent-pixel luminance is near-
+    // identical), so the default samples several texels apart for real
+    // meso-detail (brick/foliage). Larger = coarser/stronger.
+    vec2 texel = max(uBumpScale, 1.0) / uImageSize;
     vec3 lw = vec3(0.299, 0.587, 0.114);
     float hL = dot(texture2D(uTexture, uv - vec2(texel.x, 0.0)).rgb, lw);
     float hR = dot(texture2D(uTexture, uv + vec2(texel.x, 0.0)).rgb, lw);
@@ -856,6 +861,7 @@ function makeProjectionMaterial(data, texture, opts) {
       // Detail-relight bump strength (💡 Lights panel "Detail" slider); 0 = off
       // = the geometry normal, so backward-compatible. Live-synced like lights.
       uBumpStrength: { value: 0 },
+      uBumpScale: { value: 8.0 },   // luminance-gradient sampling offset in texels ("Scale")
     },
     vertexShader: PROJECTION_VERTEX_SHADER,
     fragmentShader: PROJECTION_FRAGMENT_SHADER,
@@ -1447,6 +1453,7 @@ function buildNodeUI(node, containerEl) {
   let debugHiddenOn = false;
   let layerDebugOn = false; // 🎨 per-layer identity tint toggle
   let bumpStrength = 0;     // 💡 Lights panel "Detail" — photo-luminance relight bump
+  let bumpScale = 8;        // 💡 Lights panel "Scale" — bump sampling offset (texels)
   function syncProjectionLightUniforms() {
     const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn
       || layerDebugOn || bumpStrength > 0;
@@ -1472,6 +1479,9 @@ function buildNodeUI(node, containerEl) {
       }
       if (mat.uniforms.uBumpStrength) {
         mat.uniforms.uBumpStrength.value = bumpStrength;
+      }
+      if (mat.uniforms.uBumpScale) {
+        mat.uniforms.uBumpScale.value = bumpScale;
       }
     });
   }
@@ -2883,12 +2893,22 @@ function buildNodeUI(node, containerEl) {
     label.style.cssText = "color:#ddd;font-weight:600;";
     label.title = "Photo-luminance surface detail for the lights (raise a light too).";
     const slider = document.createElement("input");
-    slider.type = "range"; slider.min = "0"; slider.max = "2"; slider.step = "0.02"; slider.value = "0";
+    slider.type = "range"; slider.min = "0"; slider.max = "6"; slider.step = "0.05"; slider.value = "0";
     slider.style.cssText = "width:90px;vertical-align:middle;";
     const val = document.createElement("span");
     val.textContent = "0.00"; val.style.cssText = "color:#888;width:28px;";
     slider.oninput = () => { bumpStrength = parseFloat(slider.value) || 0; val.textContent = bumpStrength.toFixed(2); };
     group.append(label, slider, val);
+    // Scale = luminance-gradient sampling offset in texels (detail coarseness).
+    const sLabel = document.createElement("span");
+    sLabel.textContent = "Scale"; sLabel.style.cssText = "color:#888;margin-left:4px;";
+    const sSlider = document.createElement("input");
+    sSlider.type = "range"; sSlider.min = "1"; sSlider.max = "32"; sSlider.step = "1"; sSlider.value = String(bumpScale);
+    sSlider.style.cssText = "width:70px;vertical-align:middle;";
+    const sVal = document.createElement("span");
+    sVal.textContent = String(bumpScale); sVal.style.cssText = "color:#888;width:20px;";
+    sSlider.oninput = () => { bumpScale = parseFloat(sSlider.value) || 1; sVal.textContent = String(bumpScale); };
+    group.append(sLabel, sSlider, sVal);
     lightPanel.appendChild(group);
   }
 
