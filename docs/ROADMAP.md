@@ -6,6 +6,23 @@
 > since. Treat it as the original plan of record; CHANGELOG.md is the record
 > of what actually happened.
 
+## Deferred engineering backlog
+
+- **ONNX Runtime depth backend (2026-07-13).** `tools/export_depth_v2_onnx.py`
+  already exports Depth Anything V2 to ONNX with a torch-vs-onnxruntime parity
+  gate (fp32; fp16 is only a downstream TensorRT/OpenVINO suggestion in the
+  tool's help). Wiring it into `atlas_camera.inference.depth_estimator` at
+  runtime is deferred, not dropped. Do **not** pursue it as a "make depth faster
+  on CUDA" item — depth inference is not the pipeline bottleneck (mesh build +
+  viewport serialization dominate), and it would only accelerate V2, not the
+  DA3 default. The one case that justifies it is **broadening hardware reach**:
+  ONNX Runtime with DirectML (Windows AMD/Intel GPUs) or CoreML (Apple Silicon)
+  would give GPU-accelerated depth to non-CUDA users. If taken up, sequence it:
+  (1) target the non-CUDA GPU path specifically, (2) export the SegFormer
+  semantic model to ONNX too (not just V2 depth), (3) add a **metric-accuracy**
+  parity gate (derived camera height / ground scale, not just raw-depth
+  deviation) before any fp16 path is allowed to feed metric geometry.
+
 
 ## Version 0.1: LatentCamera MVP
 
