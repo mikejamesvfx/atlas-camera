@@ -670,6 +670,9 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform vec3 uLight2Pos;
   uniform vec3 uLight2Color;
   uniform float uLight2Intensity;
+  uniform vec3 uLight3Pos;
+  uniform vec3 uLight3Color;
+  uniform float uLight3Intensity;
   uniform float uBumpStrength;
   uniform float uBumpScale;
   varying vec2 vImagePx;
@@ -744,7 +747,8 @@ const PROJECTION_FRAGMENT_SHADER = `
     if (uBumpStrength > 0.0) N = atlasBumpNormal(N, vWorldPos, uv, uBumpStrength);
     vec3 relight = vec3(1.0)
       + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, N)
-      + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, N);
+      + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, N)
+      + uLight3Color * atlasRelightTerm(uLight3Pos, uLight3Color, uLight3Intensity, vWorldPos, N);
     vec3 outColor = atlasLinearToSRGB(clamp(col.rgb * relight, 0.0, 1.0));
     // 🩻 hidden-geometry provenance overlay (debug): tint the surface region
     // whose depth was SUBSTITUTED by AtlasPredictHiddenGeometry (the node's
@@ -858,6 +862,9 @@ function makeProjectionMaterial(data, texture, opts) {
       uLight2Pos: { value: new THREE.Vector3() },
       uLight2Color: { value: new THREE.Color(0xffffff) },
       uLight2Intensity: { value: 0 },
+      uLight3Pos: { value: new THREE.Vector3() },
+      uLight3Color: { value: new THREE.Color(0xffffff) },
+      uLight3Intensity: { value: 0 },
       // Detail-relight bump strength (💡 Lights panel "Detail" slider); 0 = off
       // = the geometry normal, so backward-compatible. Live-synced like lights.
       uBumpStrength: { value: 0 },
@@ -1442,9 +1449,11 @@ function buildNodeUI(node, containerEl) {
   const movableLights = [
     new THREE.PointLight(0xffffff, 0, 0, 2),
     new THREE.PointLight(0xffffff, 0, 0, 2),
+    new THREE.PointLight(0xffffff, 0, 0, 2),
   ];
   movableLights[0].position.set(2, 3, 2);
   movableLights[1].position.set(-2, 3, -2);
+  movableLights[2].position.set(0, 4, 3);
   movableLights.forEach((l) => scene.add(l));
   let _lightsWereActive = false;
   // 🩻 hidden-geometry provenance overlay toggle — synced into every
@@ -1467,6 +1476,7 @@ function buildNodeUI(node, containerEl) {
       if (!mat?.isShaderMaterial || !mat.uniforms?.uLight1Pos) return;
       movableLights.forEach((l, i) => {
         const n = i + 1;
+        if (!mat.uniforms[`uLight${n}Pos`]) return; // material predates this light count
         mat.uniforms[`uLight${n}Pos`].value.copy(l.position);
         mat.uniforms[`uLight${n}Color`].value.copy(l.color);
         mat.uniforms[`uLight${n}Intensity`].value = l.intensity;
@@ -2870,7 +2880,7 @@ function buildNodeUI(node, containerEl) {
     intLabel.textContent = "Intensity";
     intLabel.style.cssText = "color:#888;margin-left:4px;";
     const intSlider = document.createElement("input");
-    intSlider.type = "range"; intSlider.min = "0"; intSlider.max = "5"; intSlider.step = "0.05"; intSlider.value = "0";
+    intSlider.type = "range"; intSlider.min = "0"; intSlider.max = "10"; intSlider.step = "0.05"; intSlider.value = "0";
     intSlider.style.cssText = "width:70px;vertical-align:middle;";
     intSlider.oninput = () => { light.intensity = parseFloat(intSlider.value) || 0; };
     const colorInput = document.createElement("input");
