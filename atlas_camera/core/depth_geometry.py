@@ -277,6 +277,10 @@ def detect_sky_mask(
     far_clip_percentile: float = 97.0,
     roughness_window: int = 5,
     roughness_factor: float = 8.0,
+    disarm_on_incoherent: bool = True,
+    disarm_min_coverage: float = 0.08,
+    disarm_top_anchored: float = 0.35,
+    disarm_runs_per_col: float = 4.0,
 ) -> Any:
     """Heuristic sky mask: pixels above the horizon whose depth is unreliable.
 
@@ -308,6 +312,14 @@ def detect_sky_mask(
     Returns a boolean array (``True`` = sky), same shape as ``depth``.
     Numpy-only — no training data or new dependency, reuses the horizon line
     the camera solve already produced.
+
+    Self-disarms on interiors: if the candidate mask has the fragmented,
+    non-top-anchored shape signature of a false positive (the roughness term
+    firing on a detailed ceiling / far wall rather than real sky), it returns
+    an empty mask instead of shredding real geometry. Controlled by
+    ``disarm_on_incoherent`` and its thresholds; pass ``disarm_on_incoherent=
+    False`` for the raw heuristic. See the inline comment for the measured
+    interior-vs-sky separation.
     """
     np = _require_numpy()
     depth = np.asarray(depth, dtype=np.float64)
@@ -346,7 +358,47 @@ def detect_sky_mask(
     baseline_roughness = float(np.median(roughness[below])) if below.any() else 0.0
     noisy = roughness > max(roughness_factor * baseline_roughness, 1e-9)
 
-    return above & valid & (far | noisy)
+    sky = above & valid & (far | noisy)
+
+    # Self-disarm on interiors (mirrors AtlasScopeMask's self-disarming
+    # fallbacks). The roughness term catches genuine noisy sky, but on an
+    # INTERIOR it also fires on detailed ceilings / far greebled walls that are
+    # above the (arbitrary, sky-free) horizon — punching large scattered holes
+    # in real geometry (measured live: a sci-fi hangar lost 39% of its back
+    # wall to this, halved by turning the heuristic off). When the candidate
+    # mask has the fragmented, un-anchored shape of a false positive we exclude
+    # nothing rather than shredding the mesh. Wire a real sky segmentation
+    # (AtlasSkyDomeLayer / an exclude_mask) for genuine indoor-with-window cases.
+    if disarm_on_incoherent and _sky_mask_incoherent(
+            np, sky, min_coverage=disarm_min_coverage,
+            top_anchored_max=disarm_top_anchored,
+            runs_per_col_min=disarm_runs_per_col):
+        return np.zeros((height, width), dtype=bool)
+
+    return sky
+
+
+def _sky_mask_incoherent(np, sky, *, min_coverage, top_anchored_max, runs_per_col_min):
+    """True when a candidate sky mask has the interior-misfire signature:
+    meaningful coverage, yet scattered and NOT anchored to the top of frame.
+
+    Real outdoor sky is one region anchored to the top and vertically
+    contiguous; an interior false positive (roughness firing on a detailed
+    ceiling / far wall) is scattered fragments with almost nothing top-anchored.
+    Two cheap numpy-only shape signals separate them with a wide margin
+    (measured on a real hangar: top_anchored 0.02 / 22 runs-per-column vs real
+    sky 1.0 / 1.0). Requiring BOTH signals keeps the disarm conservative — a
+    coherent-but-large sky (a landscape, a top-occluded sky) still has ~1
+    run/column and stays flagged.
+    """
+    total = float(sky.sum())
+    if total == 0.0 or total / sky.size < min_coverage:
+        return False
+    top_anchored = float(np.cumprod(sky, axis=0).sum()) / total
+    runs = float((sky[1:] & ~sky[:-1]).sum() + int(sky[0].sum()))
+    cols_with_sky = int(sky.any(axis=0).sum())
+    runs_per_col = runs / max(cols_with_sky, 1)
+    return top_anchored < top_anchored_max and runs_per_col > runs_per_col_min
 
 
 def plane_transform(u: Any, v: Any, n: Any, c: Any) -> tuple:
