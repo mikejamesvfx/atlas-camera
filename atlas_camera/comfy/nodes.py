@@ -2556,13 +2556,23 @@ class AtlasDeriveReliefMesh:
                                "(it otherwise eats the ceiling / vault / far wall as 'sky', "
                                "punching large holes). Automatically off when exclude_mask is "
                                "wired (an explicit mask always governs)."}),
+                "normal_edge_deg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 180.0, "step": 1.0,
+                    "tooltip": "0 = off. When set, a THIRD tear test: a triangle tears when its "
+                               "corner surface-normals bend by more than this angle. Unlike "
+                               "max_edge_factor (which trips on ANY grazing/receding surface), "
+                               "this fires only where the surface ORIENTATION changes sharply - a "
+                               "real crease or occlusion silhouette - so it tears genuine edges "
+                               "while leaving a smoothly-receding wall/floor intact. Pair it with "
+                               "a HIGHER max_edge_factor: raise mef to stop comb-tearing continuous "
+                               "grazing surfaces, then set ~40-70 here to keep real silhouettes "
+                               "torn. Lower = tears more readily."}),
             },
         }
 
     _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
     def derive(self, solve, depth, relief_grid=128, relief_quality="custom", depth_edge_rel=0.5,
-               exclude_mask=None, max_edge_factor=12.0, sky_heuristic=True):
+               exclude_mask=None, max_edge_factor=12.0, sky_heuristic=True, normal_edge_deg=0.0):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -2595,6 +2605,7 @@ class AtlasDeriveReliefMesh:
             grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
             scale=scale, horizon_y=horizon_y, exclude_mask=resolved_exclude,
             max_edge_factor=float(max_edge_factor),
+            normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
             apply_sky_heuristic=(resolved_exclude is None) and bool(sky_heuristic))
         prims = [backdrop, relief_mesh_primitive(mesh)]
         stats = {
@@ -2604,7 +2615,8 @@ class AtlasDeriveReliefMesh:
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "relief_grid": int(relief_grid), "relief_quality": relief_quality,
             "depth_edge_rel": float(depth_edge_rel), "max_edge_factor": float(max_edge_factor),
-            "sky_heuristic": bool(sky_heuristic), "derive_node": "AtlasDeriveReliefMesh",
+            "sky_heuristic": bool(sky_heuristic), "normal_edge_deg": float(normal_edge_deg),
+            "derive_node": "AtlasDeriveReliefMesh",
         })
         hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
         return (out, hole_t)
@@ -5520,6 +5532,14 @@ class AtlasInput:
                                "(it eats the ceiling / vault / far wall as 'sky', punching large "
                                "holes). Ignored when sky (the SAM card) is on — that mask governs. "
                                "(No effect in layers>0 band mode.)"}),
+                "normal_edge_deg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 180.0, "step": 1.0,
+                    "tooltip": "layers=0 relief mesh. 0 = off. A THIRD tear test on surface-normal "
+                               "BEND: tears real creases / occlusion silhouettes while leaving "
+                               "smoothly-receding walls and floors intact (unlike max_edge_factor, "
+                               "which trips on any grazing surface). Pair with a HIGHER "
+                               "max_edge_factor: raise mef to stop comb-tearing continuous grazing "
+                               "surfaces, then set ~40-70 here to keep genuine edges torn. "
+                               "(No effect in layers>0 band mode.)"}),
             },
         }
 
@@ -5528,7 +5548,7 @@ class AtlasInput:
               use_vlm=False, vlm_provider="lmstudio", vlm_model="",
               sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
               upscale_model="", edge_extend_px=24, max_edge_factor=12.0,
-              sky_heuristic=True, **_extra):
+              sky_heuristic=True, normal_edge_deg=0.0, **_extra):
         registry = _comfy_registry()
         have_sam = "SAM3Segment" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry
@@ -5598,7 +5618,8 @@ class AtlasInput:
                                 relief_grid=int(mesh_resolution),
                                 depth_edge_rel=0.5,
                                 max_edge_factor=float(max_edge_factor),
-                                sky_heuristic=bool(sky_heuristic), **exclude_kw)
+                                sky_heuristic=bool(sky_heuristic),
+                                normal_edge_deg=float(normal_edge_deg), **exclude_kw)
                 solve_chain = relief.out(0)
                 notes.append(f"single relief mesh, grid {int(mesh_resolution)}")
             else:

@@ -586,3 +586,51 @@ def test_overhang_never_grows_into_excluded_region():
     assert (py >= 16 - cell).all()
     # Sanity: the skirt DID grow somewhere (below/sides are plain invalid).
     assert (py > 48).any()
+
+
+# --- normal-bend tear test (normal_edge_deg) -------------------------------
+
+def _ramp_depth():
+    """Continuous tilted plane: depth increases linearly L->R. Constant normal."""
+    xs = np.linspace(5.0, 15.0, W)[None, :].repeat(H, 0)
+    return xs.astype(np.float64)
+
+
+def _tent_depth():
+    """Two symmetric planes meeting at a sharp V ridge down the middle."""
+    half = W // 2
+    left = np.linspace(15.0, 6.0, half)
+    right = np.linspace(6.0, 15.0, W - half)
+    row = np.concatenate([left, right])
+    return row[None, :].repeat(H, 0).astype(np.float64)
+
+
+def _torn(depth, **kw):
+    m = build_relief_mesh(
+        depth, view_matrix=_view_matrix(0.0), fx=FX, fy=FY, cx=CX, cy=CY,
+        grid_long_edge=150, depth_edge_rel=5.0, max_edge_factor=0.0,
+        far_clip_percentile=100.0, smooth_iterations=0,
+        apply_sky_heuristic=False, floor_clamp=None, **kw)
+    return m.stats["torn_fraction"]
+
+
+def test_normal_edge_deg_off_is_a_noop():
+    tent = _tent_depth()
+    base = _torn(tent)
+    assert _torn(tent, normal_edge_deg=None) == base
+    assert _torn(tent, normal_edge_deg=0.0) == base
+
+
+def test_normal_edge_deg_keeps_continuous_grazing_plane():
+    """A smooth tilted plane has a constant normal, so the bend test must not
+    tear it even at a tight threshold (isolates it from max_edge_factor, off)."""
+    ramp = _ramp_depth()
+    assert _torn(ramp, normal_edge_deg=30.0) == _torn(ramp)
+
+
+def test_normal_edge_deg_tears_a_sharp_crease():
+    """A ~90 deg fold tears at a tight threshold but not a loose one."""
+    tent = _tent_depth()
+    base = _torn(tent)
+    assert _torn(tent, normal_edge_deg=45.0) > base
+    assert _torn(tent, normal_edge_deg=120.0) == base
