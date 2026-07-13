@@ -670,6 +670,7 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform vec3 uLight2Pos;
   uniform vec3 uLight2Color;
   uniform float uLight2Intensity;
+  uniform float uBumpStrength;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
@@ -681,6 +682,31 @@ const PROJECTION_FRAGMENT_SHADER = `
     float ndotl = max(dot(normalize(worldNormal), normalize(toLight)), 0.0);
     float atten = 1.0 / (1.0 + 0.05 * dist * dist);
     return intensity * ndotl * atten;
+  }
+  // Detail relight: perturb the surface normal using the PHOTO's own luminance
+  // as a heightfield, so the lights sculpt fine surface detail (brick, foliage,
+  // rock) the coarse projection geometry lacks. The height gradient is sampled
+  // in TEXEL space (zoom-stable — the detail scale doesn't change as you orbit),
+  // then mapped tangent→world by a cotangent frame built from screen-space
+  // derivatives of world position + uv (no precomputed tangents needed). Feeds
+  // the relight ONLY — the base texture is never altered. Brighter = higher.
+  vec3 atlasBumpNormal(vec3 N, vec3 p, vec2 uv, float strength) {
+    vec2 texel = 1.0 / uImageSize;
+    vec3 lw = vec3(0.299, 0.587, 0.114);
+    float hL = dot(texture2D(uTexture, uv - vec2(texel.x, 0.0)).rgb, lw);
+    float hR = dot(texture2D(uTexture, uv + vec2(texel.x, 0.0)).rgb, lw);
+    float hD = dot(texture2D(uTexture, uv - vec2(0.0, texel.y)).rgb, lw);
+    float hU = dot(texture2D(uTexture, uv + vec2(0.0, texel.y)).rgb, lw);
+    vec3 tn = normalize(vec3((hL - hR) * strength, (hD - hU) * strength, 1.0));
+    vec3 dp1 = dFdx(p), dp2 = dFdy(p);
+    vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
+    vec3 dp2perp = cross(dp2, N);
+    vec3 dp1perp = cross(N, dp1);
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+    float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
+    mat3 tbn = mat3(T * invmax, B * invmax, N);
+    return normalize(tbn * tn);
   }
   // Matches THREE.ShaderChunk's own LinearTosRGB (r0.41666 ~= 1/2.4). uTexture
   // is tagged colorSpace=SRGBColorSpace, so the GPU already decodes it to
@@ -706,9 +732,14 @@ const PROJECTION_FRAGMENT_SHADER = `
     float facing = abs(dot(normalize(vWorldNormal), toCam));
     if (facing < uFacingThreshold) discard;       // too grazing for this projector
     vec4 col = texture2D(uTexture, uv);
+    // Relight normal: geometry normal, optionally perturbed with photo-luminance
+    // surface detail (uBumpStrength > 0). Only the LIGHTS read this — the facing
+    // discard above stays on the true geometry normal.
+    vec3 N = normalize(vWorldNormal);
+    if (uBumpStrength > 0.0) N = atlasBumpNormal(N, vWorldPos, uv, uBumpStrength);
     vec3 relight = vec3(1.0)
-      + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, vWorldNormal)
-      + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, vWorldNormal);
+      + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, N)
+      + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, N);
     vec3 outColor = atlasLinearToSRGB(clamp(col.rgb * relight, 0.0, 1.0));
     // 🩻 hidden-geometry provenance overlay (debug): tint the surface region
     // whose depth was SUBSTITUTED by AtlasPredictHiddenGeometry (the node's
@@ -822,6 +853,9 @@ function makeProjectionMaterial(data, texture, opts) {
       uLight2Pos: { value: new THREE.Vector3() },
       uLight2Color: { value: new THREE.Color(0xffffff) },
       uLight2Intensity: { value: 0 },
+      // Detail-relight bump strength (💡 Lights panel "Detail" slider); 0 = off
+      // = the geometry normal, so backward-compatible. Live-synced like lights.
+      uBumpStrength: { value: 0 },
     },
     vertexShader: PROJECTION_VERTEX_SHADER,
     fragmentShader: PROJECTION_FRAGMENT_SHADER,
@@ -1412,9 +1446,10 @@ function buildNodeUI(node, containerEl) {
   // are rebuilt on every execution, so a set-once approach would go stale).
   let debugHiddenOn = false;
   let layerDebugOn = false; // 🎨 per-layer identity tint toggle
+  let bumpStrength = 0;     // 💡 Lights panel "Detail" — photo-luminance relight bump
   function syncProjectionLightUniforms() {
     const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn
-      || layerDebugOn;
+      || layerDebugOn || bumpStrength > 0;
     // Skip the traverse entirely while both lights have always been off (the
     // default), but still run once on the on->off transition so any material
     // that previously picked up a nonzero uLightNIntensity gets zeroed out.
@@ -1434,6 +1469,9 @@ function buildNodeUI(node, containerEl) {
       }
       if (mat.uniforms.uLayerDebug) {
         mat.uniforms.uLayerDebug.value = layerDebugOn ? 1 : 0;
+      }
+      if (mat.uniforms.uBumpStrength) {
+        mat.uniforms.uBumpStrength.value = bumpStrength;
       }
     });
   }
@@ -2833,6 +2871,26 @@ function buildNodeUI(node, containerEl) {
     group.append(intLabel, intSlider, colorInput);
     lightPanel.appendChild(group);
   });
+
+  // Detail relight — photo-luminance bump strength. Perturbs the normal the
+  // lights read (uBumpStrength), so they sculpt fine surface detail the coarse
+  // geometry lacks. 0 = off (geometry normal only). Needs a light raised above 0.
+  {
+    const group = document.createElement("span");
+    group.style.cssText = "display:inline-flex;align-items:center;gap:4px;";
+    const label = document.createElement("span");
+    label.textContent = "Detail";
+    label.style.cssText = "color:#ddd;font-weight:600;";
+    label.title = "Photo-luminance surface detail for the lights (raise a light too).";
+    const slider = document.createElement("input");
+    slider.type = "range"; slider.min = "0"; slider.max = "2"; slider.step = "0.02"; slider.value = "0";
+    slider.style.cssText = "width:90px;vertical-align:middle;";
+    const val = document.createElement("span");
+    val.textContent = "0.00"; val.style.cssText = "color:#888;width:28px;";
+    slider.oninput = () => { bumpStrength = parseFloat(slider.value) || 0; val.textContent = bumpStrength.toFixed(2); };
+    group.append(label, slider, val);
+    lightPanel.appendChild(group);
+  }
 
   // (Clear button removed 2026-07-09 along with the primitive/proxy buttons —
   // its only job was removing the user meshes those buttons created.)
