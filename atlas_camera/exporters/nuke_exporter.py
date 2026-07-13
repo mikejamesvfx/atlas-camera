@@ -403,6 +403,29 @@ from atlas_camera.exporters._layers import (  # noqa: E402
 )
 
 
+def _matrix_to_nuke_euler_xyz(world_matrix) -> tuple[float, float, float]:
+    """Decompose a cam->world 4x4's rotation to Nuke XYZ Euler degrees.
+
+    R = Rx(a) @ Ry(b) @ Rz(c) (column-vector). Verified round-trip exact (1e-16)
+    on real solves. Used for the RENDER camera so its translate/rotate channels
+    stay unlocked/animatable — Nuke's ``useMatrix true`` disables the TRS knobs,
+    so a matrix-driven camera can't be keyframed. Projection cameras keep
+    useMatrix (they're static, and the matrix is unambiguous). Pair with
+    ``rot_order XYZ`` on the node so Nuke composes it the same way.
+    """
+    import math
+    m = [list(r) for r in world_matrix]
+    sy = max(-1.0, min(1.0, float(m[0][2])))
+    b = math.asin(sy)
+    if abs(math.cos(b)) > 1e-6:
+        a = math.atan2(-float(m[1][2]), float(m[2][2]))
+        c = math.atan2(-float(m[0][1]), float(m[0][0]))
+    else:  # gimbal lock: fold c into a
+        a = math.atan2(float(m[2][1]), float(m[1][1]))
+        c = 0.0
+    return math.degrees(a), math.degrees(b), math.degrees(c)
+
+
 def write_nuke_layers_script(
     solve: AtlasSolve,
     output_dir: str | Path,
@@ -460,7 +483,7 @@ def write_nuke_layers_script(
         )
 
     # --- assemble the .nk text -------------------------------------------
-    def _camera_block(cam, node_name, xpos, ypos):
+    def _camera_block(cam, node_name, xpos, ypos, animatable=False):
         c_intr = cam.intrinsics
         c_extr = cam.extrinsics
         focal = _layer_focal_mm(c_intr)
@@ -473,17 +496,23 @@ def write_nuke_layers_script(
         win_tx = (ccx - w / 2.0) / w
         win_ty = -((ccy - h / 2.0) / h)
         tx, ty, tz = c_extr.camera_position
-        matrix_block = "\n".join(
-            "     {" + " ".join(repr(float(v)) for v in row) + "}"
-            for row in c_extr.camera_world_matrix
-        )
+        if animatable:
+            # Render camera: TRS via translate + XYZ Euler so the channels stay
+            # unlocked for keyframing a move. useMatrix would grey them out.
+            rx, ry, rz = _matrix_to_nuke_euler_xyz(c_extr.camera_world_matrix)
+            transform = (f' rot_order XYZ\n translate {{{tx!r} {ty!r} {tz!r}}}\n'
+                         f' rotate {{{rx!r} {ry!r} {rz!r}}}')
+        else:
+            # Projection camera: static — the unambiguous matrix is best.
+            matrix_block = "\n".join(
+                "     {" + " ".join(repr(float(v)) for v in row) + "}"
+                for row in c_extr.camera_world_matrix
+            )
+            transform = (f' translate {{{tx!r} {ty!r} {tz!r}}}\n useMatrix true\n'
+                         f' matrix {{\n{matrix_block}\n }}')
         return f'''Camera2 {{
  inputs 0
- translate {{{tx!r} {ty!r} {tz!r}}}
- useMatrix true
- matrix {{
-{matrix_block}
- }}
+{transform}
  focal {focal!r}
  haperture {sensor_w!r}
  vaperture {sensor_h!r}
@@ -508,7 +537,7 @@ def write_nuke_layers_script(
 }}''')
     # Render camera (primary pose) — consumed ONLY via onScriptLoad, never
     # pushed, so the stack resolver can't mis-place it.
-    blocks.append(_camera_block(solve.camera, "RenderCam1", 600, -120))
+    blocks.append(_camera_block(solve.camera, "RenderCam1", 600, -120, animatable=True))
 
     for i, layer in enumerate(layers, start=1):
         suffix = Path(layer["plate_path"]).suffix.lower().lstrip(".") or "png"
@@ -523,6 +552,19 @@ def write_nuke_layers_script(
 {colorspace_line} name Read_{layer['name']}
  xpos {x}
  ypos 0
+}}
+Reformat {{
+ inputs 1
+ type "to box"
+ box_width {layer['camera'].intrinsics.image_width or image_w}
+ box_height {layer['camera'].intrinsics.image_height or image_h}
+ box_fixed true
+ resize none
+ center true
+ black_outside true
+ name Fit_{layer['name']}
+ xpos {x}
+ ypos 50
 }}
 set N_read{i} [stack 0]''')
         blocks.append(_camera_block(layer["camera"], f"ProjCam_{layer['name']}", x + 120, 0))

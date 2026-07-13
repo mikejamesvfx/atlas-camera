@@ -164,3 +164,46 @@ def test_matte_lands_in_plate_alpha_and_standalone_file(tmp_path):
     bg_plate = Image.open(tmp_path / "bg_plate.png")
     assert bg_plate.mode == "RGB"
     assert not (tmp_path / "bg_matte.png").exists()
+
+
+def test_render_camera_is_animatable_and_bands_reformat(tmp_path):
+    """RenderCam must use TRS (translate + rotate + rot_order), NOT useMatrix —
+    Nuke greys out the transform channels when useMatrix is on, so a
+    matrix-driven camera can't be keyframed for a move. Projection cameras keep
+    useMatrix (static). And each band gets a 'resize none' Reformat so a swapped
+    original-size EXR conforms to the band's (outpainted) projection format."""
+    solve = _layered_solve()
+    nk = open(write_nuke_layers_script(solve, tmp_path)["nk_path"]).read()
+
+    start = nk.rfind("Camera2 {", 0, nk.index("name RenderCam1"))
+    rc = nk[start:nk.index("}", nk.index("name RenderCam1"))]
+    assert "rot_order XYZ" in rc and "rotate {" in rc
+    assert "useMatrix" not in rc  # channels stay unlocked/animatable
+
+    # every PROJECTION camera stays matrix-driven (static); the render cam does
+    # NOT — so useMatrix count == number of projection cameras.
+    n_proj = nk.count("ProjCam_")
+    assert n_proj >= 1
+    assert nk.count("useMatrix true") == n_proj
+
+    # one 'resize none' conform Reformat per layer (name-agnostic Fit_<layer>)
+    assert nk.count(" name Fit_") == n_proj
+    assert nk.count("resize none") == n_proj
+    assert "black_outside true" in nk
+
+
+def test_render_camera_trs_round_trips_the_world_matrix():
+    """The exported XYZ Euler + translate must reconstruct the camera world
+    matrix exactly, so the animatable render camera still lines up with the
+    matrix-driven projection cameras at frame 0."""
+    import math
+    from atlas_camera.exporters.nuke_exporter import _matrix_to_nuke_euler_xyz
+    solve = _layered_solve()
+    W = [list(r) for r in solve.camera.extrinsics.camera_world_matrix]
+    a, b, c = (math.radians(v) for v in _matrix_to_nuke_euler_xyz(W))
+
+    def rx(t): return np.array([[1, 0, 0], [0, math.cos(t), -math.sin(t)], [0, math.sin(t), math.cos(t)]])
+    def ry(t): return np.array([[math.cos(t), 0, math.sin(t)], [0, 1, 0], [-math.sin(t), 0, math.cos(t)]])
+    def rz(t): return np.array([[math.cos(t), -math.sin(t), 0], [math.sin(t), math.cos(t), 0], [0, 0, 1]])
+    R = np.array([row[:3] for row in W[:3]])
+    assert np.abs(rx(a) @ ry(b) @ rz(c) - R).max() < 1e-9
