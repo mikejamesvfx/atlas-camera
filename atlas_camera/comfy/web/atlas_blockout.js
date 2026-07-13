@@ -1612,8 +1612,34 @@ function buildNodeUI(node, containerEl) {
   function disposeBandBox() {
     if (!bandBox) return;
     scene.remove(bandBox);
-    bandBox.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+    bandBox.traverse((o) => { o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); });
     bandBox = null;
+  }
+  // A camera-facing text sprite (canvas texture — self-contained, no font/CSS2D
+  // loader needed) used to label the cutoff distance on the 📏 Band Box.
+  function makeBandLabel(text, worldHeight = 0.9) {
+    const canvas = document.createElement("canvas");
+    let ctx = canvas.getContext("2d");
+    const fontPx = 48;
+    ctx.font = `bold ${fontPx}px sans-serif`;
+    const w = Math.ceil(ctx.measureText(text).width) + 40;
+    const h = fontPx + 28;
+    canvas.width = w; canvas.height = h;
+    ctx = canvas.getContext("2d");         // resizing the canvas clears state
+    ctx.font = `bold ${fontPx}px sans-serif`;
+    ctx.fillStyle = "rgba(150,10,10,0.88)";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(255,80,80,0.95)"; ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, w - 4, h - 4);
+    ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(text, w / 2, h / 2 + 2);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, depthTest: false, transparent: true }));
+    spr.scale.set(worldHeight * (w / h), worldHeight, 1);
+    spr.renderOrder = 100003;
+    return spr;
   }
   function buildBandBox() {
     disposeBandBox();
@@ -1640,7 +1666,7 @@ function buildNodeUI(node, containerEl) {
     // the headroom). Falls back to the plain world AABB if the recovered camera
     // isn't in the payload.
     const vm = recoveredData && recoveredData.view_matrix;
-    let boxGeo = null, cutGeo = null, place = null;
+    let boxGeo = null, cutGeo = null, place = null, labelPos = null;
     if (vm && vm.length === 4) {
       const M = new THREE.Matrix4().set(
         vm[0][0], vm[0][1], vm[0][2], vm[0][3],
@@ -1663,11 +1689,13 @@ function buildNodeUI(node, containerEl) {
       boxGeo.translate(cx, cy, cz);
       cutGeo = new THREE.PlaneGeometry(sx, sy);
       cutGeo.translate(cx, cy, farZ);        // highlighted clip plane at the cutoff
+      labelPos = new THREE.Vector3(cx, vb.max.y, farZ);  // top of the cutoff plane
     } else {
       const size = new THREE.Vector3(); wbox.getSize(size);
       const center = new THREE.Vector3(); wbox.getCenter(center);
       boxGeo = new THREE.BoxGeometry(Math.max(size.x, 1e-3), Math.max(size.y, 1e-3), Math.max(size.z, 1e-3));
       boxGeo.translate(center.x, center.y, center.z);
+      labelPos = new THREE.Vector3(center.x, center.y + size.y / 2, center.z);
     }
 
     bandBox = new THREE.Group();
@@ -1688,6 +1716,12 @@ function buildNodeUI(node, containerEl) {
         color: 0xff0000, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
       cut.renderOrder = 100001;
       bandBox.add(cut);
+    }
+    if (labelPos) {
+      // Distance label so the cutoff plane is self-explanatory (e.g. "cutoff 9.7 m").
+      const label = makeBandLabel(`cutoff ${cutoff.toFixed(1)} m`);
+      label.position.copy(labelPos);
+      bandBox.add(label);
     }
     if (place) bandBox.applyMatrix4(place);
     scene.add(bandBox);
