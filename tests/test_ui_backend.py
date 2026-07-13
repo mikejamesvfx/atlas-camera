@@ -3,6 +3,11 @@ import sys
 
 import pytest
 
+# The UI backend loads/saves images via Pillow (atlas-camera[ui]). Skip the whole
+# module when it is absent — e.g. a plain `pip install -e .[dev]`, which
+# deliberately omits Pillow — matching every other optional-dep-guarded test.
+pytest.importorskip("PIL")
+
 from atlas_camera.ui.project import (
     analyze_project,
     create_project,

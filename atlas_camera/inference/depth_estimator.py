@@ -90,8 +90,105 @@ def _require_torch() -> Any:
     return torch
 
 
+# DA3's ``api`` module eagerly imports its gaussian-splat/COLMAP export, trajectory
+# eval, and plotting stack (gsplat, open3d, e3nn, pycolmap, trimesh, plyfile,
+# pillow_heif, evo, matplotlib) — none of which the depth forward pass touches, and
+# several of which have no wheels for recent torch/Python on Windows. When the
+# package is installed with ``--no-deps`` (the documented ComfyUI route, see
+# INSTALL.md) those imports would abort the whole load. We fabricate the missing
+# export-only modules on demand so inference works without the heavy 3D stack.
+#
+# ``xformers`` is deliberately NOT stubbed: DINOv2 guards it with
+# ``try: from xformers.ops import ... ; XFORMERS_AVAILABLE = True / except
+# ImportError: False`` and then uses it when available — a stub would flip that flag
+# true and route attention through a fake module, corrupting inference. Left absent,
+# the guard correctly falls back to standard attention.
+_DA3_EXPORT_ONLY_ROOTS = (
+    "gsplat", "open3d", "e3nn", "pycolmap", "trimesh",
+    "plyfile", "pillow_heif", "evo", "matplotlib",
+)
+_DA3_STUBS_INSTALLED = False
+
+
+class _DA3StubAny:
+    """Permissive placeholder: any attribute access or call yields another one.
+
+    Enough for ``import x`` / ``from x import Y`` / class-body attribute reads to
+    succeed at import time. Never actually invoked during a depth forward pass.
+    """
+
+    def __call__(self, *args: Any, **kwargs: Any) -> "_DA3StubAny":
+        return _DA3StubAny()
+
+    def __getattr__(self, name: str) -> "_DA3StubAny":
+        # Dunders must read as genuinely absent so ``inspect``/``torch.library``
+        # stack-walking over sys.modules (e.g. probing ``__file__``) sees None
+        # instead of a stub object and does not crash.
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        return _DA3StubAny()
+
+
+def _install_da3_export_stubs() -> None:
+    """Register a meta-path finder for DA3's export-only deps, once, if absent.
+
+    Only roots that are genuinely not installed are stubbed, so a user's real
+    matplotlib (etc.) is never shadowed.
+    """
+    global _DA3_STUBS_INSTALLED
+    if _DA3_STUBS_INSTALLED:
+        return
+
+    import sys
+    import types
+    import importlib.abc
+    import importlib.machinery
+    import importlib.util
+
+    absent = set()
+    for root in _DA3_EXPORT_ONLY_ROOTS:
+        try:
+            if importlib.util.find_spec(root) is None:
+                absent.add(root)
+        except (ImportError, ValueError):
+            absent.add(root)
+
+    if absent:
+
+        class _StubLoader(importlib.abc.Loader):
+            def create_module(self, spec):  # type: ignore[override]
+                module = types.ModuleType(spec.name)
+                module.__path__ = []  # treat as a package so submodules resolve
+
+                def _stub_getattr(name):
+                    # Absent dunders (e.g. __file__) must raise so introspection
+                    # over sys.modules treats them as unset, not as a stub object.
+                    if name.startswith("__") and name.endswith("__"):
+                        raise AttributeError(name)
+                    return _DA3StubAny()
+
+                module.__getattr__ = _stub_getattr  # type: ignore[attr-defined]
+                return module
+
+            def exec_module(self, module):  # type: ignore[override]
+                pass
+
+        class _StubFinder(importlib.abc.MetaPathFinder):
+            def find_spec(self, name, path, target=None):  # type: ignore[override]
+                if name.split(".")[0] in absent:
+                    return importlib.machinery.ModuleSpec(
+                        name, _StubLoader(), is_package=True
+                    )
+                return None
+
+        sys.meta_path.insert(0, _StubFinder())
+
+    _DA3_STUBS_INSTALLED = True
+
+
 def _require_da3() -> Any:
     """Import the Depth Anything 3 API lazily with an informative error."""
+    _install_da3_export_stubs()
     try:
         from depth_anything_3.api import DepthAnything3
     except ImportError as exc:  # pragma: no cover - exercised only without the extra

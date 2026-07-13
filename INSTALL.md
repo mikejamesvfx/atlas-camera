@@ -26,11 +26,38 @@ git clone https://github.com/mikejamesvfx/atlas-camera.git
 
 No requirements step is needed for the core nodes — ComfyUI already ships
 numpy/Pillow/torch. The `[neural]` features (learned solve, depth, derive
-nodes) additionally need GeoCalib in ComfyUI's venv:
+nodes) additionally need GeoCalib in ComfyUI's Python. Pick the recipe that
+matches your ComfyUI install:
+
+**Standard `venv` install** - pip resolves GeoCalib's dependency tree normally:
 
 ```powershell
-& "<COMFYUI_ROOT>env\Scripts\python.exe" -m pip install "git+https://github.com/cvg/GeoCalib.git" transformers
+& "<COMFYUI_ROOT>\venv\Scripts\python.exe" -m pip install "git+https://github.com/cvg/GeoCalib.git" transformers
 ```
+
+**Portable ComfyUI (`python_embeded`) - `--no-deps`, protect the CUDA stack.**
+The embedded build ships torch/torchvision/numpy compiled against a specific
+ABI, and the standard command above lets pip re-resolve GeoCalib's (unpinned)
+dependency tree, which can pull a numpy or torch wheel that clobbers that ABI
+and breaks torch or other custom nodes (the same hazard as the DA3 `--no-deps`
+note below). GeoCalib itself is pure Python (`py3-none-any`), so install it with
+no deps and add its runtime deps separately:
+
+```powershell
+# GeoCalib (pure Python) - no deps, so pip can't touch your torch/numpy:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps "git+https://github.com/cvg/GeoCalib.git"
+# GeoCalib eager-imports cv2 + kornia at load; transformers powers depth.
+# Install these normally - their only shared dep, numpy, is already present and
+# satisfied (left untouched), and `kornia` pulls its required `kornia-rs`:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install opencv-python kornia transformers
+```
+
+> `--no-deps` on GeoCalib **alone is not enough** - it imports `cv2` and `kornia`
+> at module load and fails with `ModuleNotFoundError: No module named 'cv2'`
+> without the second line. GeoCalib also declares `matplotlib`, but that is used
+> only by its visualization helpers, never the camera solve, so it is omitted
+> here. Restart ComfyUI after installing so the embedded interpreter picks up
+> the new packages.
 
 **Development install (editable + symlink):** keeps the checkout wherever you
 work on it; Python changes are live without reinstalling. See CLAUDE.md's
@@ -149,21 +176,43 @@ Into a fresh/dedicated venv the extra works directly:
 pip install -e ".[neural-da3]"
 ```
 
-**Into an existing ComfyUI venv, do NOT install with dependencies.** The
-`depth-anything-3` package hard-requires `xformers` and `numpy<2` and pins
-`moviepy==1.0.3` — a full dependency install can downgrade or clobber ComfyUI's
-torch/numpy. Install the package alone and let it use what ComfyUI already has:
+**Into an existing ComfyUI install, do NOT install with dependencies.** The
+`depth-anything-3` package declares `xformers`, `numpy<2`, `moviepy==1.0.3`, and a
+full gaussian-splat/COLMAP export stack (`gsplat`, `open3d`, `pycolmap`, `trimesh`,
+...) - a normal install can downgrade or clobber ComfyUI's torch/numpy, and several
+of those export deps have no wheels for recent torch/Python on Windows. None are
+used by depth inference, so install the package alone: Atlas auto-stubs the export
+stack at import time (`depth_estimator._install_da3_export_stubs`), leaving you only
+DA3 itself plus a few small pure-Python deps.
+
+Standard `venv`:
 
 ```powershell
 & "<COMFYUI_ROOT>\venv\Scripts\python.exe" -m pip install --no-deps "git+https://github.com/ByteDance-Seed/Depth-Anything-3.git"
-# Then verify the import and that torch/numpy were untouched:
-& "<COMFYUI_ROOT>\venv\Scripts\python.exe" -c "import torch, numpy; print(torch.__version__, numpy.__version__); from depth_anything_3.api import DepthAnything3; print('DA3 OK')"
+& "<COMFYUI_ROOT>\venv\Scripts\python.exe" -m pip install omegaconf einops addict "moviepy==1.0.3"
 ```
 
-If the import fails on a missing small dependency (e.g. `einops`, `omegaconf`,
-`safetensors`), install just that package — never the full dependency set.
-Model weights download from Hugging Face on first use. A GPU (cuda) is
-recommended: DA3's inference autocasts to bf16/fp16 by device type.
+Portable ComfyUI (`python_embeded`) - same idea, but DA3's hatchling build backend
+and a too-tight `requires-python` upper bound (`<=3.13`, which pip reads as excluding
+3.13.1+) need two extra flags:
+
+```powershell
+# DA3 builds with hatchling; install it, then build without isolation and ignore the
+# over-strict requires-python pin (3.13.x is fine):
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install hatchling
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps --no-build-isolation --ignore-requires-python "git+https://github.com/ByteDance-Seed/Depth-Anything-3.git"
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install omegaconf einops addict "moviepy==1.0.3"
+# Verify torch/numpy were untouched:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -c "import torch, numpy; print(torch.__version__, numpy.__version__)"
+```
+
+Notes: `moviepy` MUST be `<2` (DA3 imports the removed `moviepy.editor`); DA3's
+`numpy<2` pin is conservative - inference is verified working on numpy 2.x. `xformers`
+is left absent on purpose so DINOv2 falls back to standard attention (a MagicMock stub
+would flip its availability flag and corrupt the forward pass). Do NOT install the
+heavy export deps (`gsplat`/`open3d`/`pycolmap`/...) - Atlas stubs them. Model weights
+download from Hugging Face on first use. A GPU (cuda) is recommended: DA3's inference
+autocasts to bf16/fp16 by device type.
 
 ### Second backend: World Tracing (diffusion, also research-only)
 
