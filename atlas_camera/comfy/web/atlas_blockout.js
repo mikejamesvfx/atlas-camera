@@ -3153,14 +3153,37 @@ function buildNodeUI(node, containerEl) {
         // the edge pixels stretched outward — a soft fill, never black.
         const K = 3.0;
         const geo = new THREE.PlaneGeometry(pw * K, ph * K);
-        const uv = geo.attributes.uv;
-        for (let i = 0; i < uv.count; i++) {
-          uv.setXY(i, 0.5 + (uv.getX(i) - 0.5) * K, 0.5 + (uv.getY(i) - 0.5) * K);
+        const uvA = geo.attributes.uv;
+        for (let i = 0; i < uvA.count; i++) {
+          uvA.setXY(i, 0.5 + (uvA.getX(i) - 0.5) * K, 0.5 + (uvA.getY(i) - 0.5) * K);
         }
-        uv.needsUpdate = true;
+        uvA.needsUpdate = true;
+        tex.colorSpace = THREE.SRGBColorSpace;
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
         tex.needsUpdate = true;
-        const mat = new THREE.MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false });
+        // In the outer ring (UV outside [0,1]) don't STREAK the clamped edge
+        // pixels — softly fade toward the photo's own average colour, so the
+        // backdrop dissolves into a soft ambient instead of stretched streaks
+        // (still never black). Average = a 1x1 downscale of the photo.
+        let ambient = new THREE.Color(0.02, 0.02, 0.03);
+        try {
+          const cnv = document.createElement("canvas"); cnv.width = cnv.height = 1;
+          const cx = cnv.getContext("2d"); cx.drawImage(tex.image, 0, 0, 1, 1);
+          const px = cx.getImageData(0, 0, 1, 1).data;
+          ambient = new THREE.Color(px[0] / 255, px[1] / 255, px[2] / 255).convertSRGBToLinear();
+        } catch (e) { /* tainted canvas -> keep the dark default */ }
+        const mat = new THREE.ShaderMaterial({
+          uniforms: { map: { value: tex }, uAmbient: { value: ambient } },
+          depthWrite: false, depthTest: false,
+          vertexShader:
+            "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+          fragmentShader:
+            "uniform sampler2D map; uniform vec3 uAmbient; varying vec2 vUv;" +
+            "vec3 l2s(vec3 c){ return mix(pow(c,vec3(0.41666))*1.055-0.055, c*12.92, vec3(lessThanEqual(c,vec3(0.0031308)))); }" +
+            "void main(){ vec3 p = texture2D(map, clamp(vUv,0.0,1.0)).rgb;" +
+            " vec2 d = max(vec2(0.0), max(-vUv, vUv-1.0)); float f = smoothstep(0.0, 0.45, length(d));" +
+            " gl_FragColor = vec4(l2s(mix(p, uAmbient, f)), 1.0); }",
+        });
         bgMesh = new THREE.Mesh(geo, mat);
         // Deepest renderOrder so it draws FIRST as a pure background canvas: every
         // projected layer (renderOrder >= 1 via priorityToRenderOrder, primary
