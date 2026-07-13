@@ -156,13 +156,14 @@ runtime error.
 
 Depth Anything 3 (DA3) is a second depth backend selected per node via the
 `depth_model` combo (`depth-anything/DA3METRIC-LARGE`, `DA3MONO-LARGE`,
-`DA3NESTED-GIANT-LARGE-1.1`). **Since 2026-07-09, `DA3METRIC-LARGE` is the
-default for newly added nodes** (measured A/B: ~3× fewer relief-mesh tears,
-much stronger metric ground fits — see `docs/dev/da3_backend_test_plan.md`).
-Existing saved workflows keep their stored V2 values, and every V2 model
-remains in the combo. Without the `[neural-da3]` extra installed, a node left
-on the DA3 default fails with an informative install hint — switch it to a V2
-model or install the extra below. `DA3METRIC-LARGE` converts canonical depth to
+`DA3NESTED-GIANT-LARGE-1.1`). It was briefly the default (2026-07-09) but on
+**2026-07-13 the `main` default reverted to `V2-Metric-Outdoor`** (a 4-scene
+A/B found V2 best-or-tied on exteriors, and V2 needs no extra install — see
+`docs/dev/da3_backend_test_plan.md`). **DA3 is now a selectable choice, and the
+default only on the `experimental-da3-default` branch.** Every V2 model remains
+in the combo. Without the `[neural-da3]` extra installed, selecting a DA3 model
+fails with an informative install hint — switch it to a V2 model or install the
+extra below. `DA3METRIC-LARGE` converts canonical depth to
 metres using the *solved* focal length when the node has one (`focal_source:
 "solve"` in the depth summary); on image-only nodes it falls back to an
 assumed normal-lens focal (`"assumed"` — the metric model is a depth-only
