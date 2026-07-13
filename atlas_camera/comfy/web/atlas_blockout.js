@@ -1510,6 +1510,13 @@ function buildNodeUI(node, containerEl) {
     });
     if (!any || box.isEmpty()) return;
     const pivot = box.getCenter(new THREE.Vector3());
+    // Scene scale → the 🎯 pivot-offset step, so a nudge stays proportional at
+    // any AtlasScaleOverride (a 1m step is useless when geometry sits at 150m).
+    lastSceneRadius = box.getSize(new THREE.Vector3()).length() * 0.5 || 10;
+    if (pivotInputs) {
+      const step = Math.max(lastSceneRadius / 40, 0.05).toPrecision(2);
+      pivotInputs.forEach((inp) => { inp.step = step; });
+    }
     const camPos = (recoveredData && recoveredData.camera_position)
       ? new THREE.Vector3(recoveredData.camera_position[0], recoveredData.camera_position[1], recoveredData.camera_position[2])
       : camera.position.clone();
@@ -1596,6 +1603,26 @@ function buildNodeUI(node, containerEl) {
   // Last geometry-derived orbit pivot (median-depth, from setProxies) — reused
   // by 📷 Camera View so a reset never regresses to the ground-point heuristic.
   let lastGeometryPivot = null;
+
+  // 🎯 Manual orbit-pivot offset (world metres, session-only). Added on top of
+  // whatever base pivot the auto-logic picks (geometry median-depth or the
+  // ground-point fallback), so the artist can nudge the point the orbit swings
+  // around — useful once AtlasScaleOverride pushes geometry out to 100m+ and the
+  // auto centroid isn't where you want to look. `pivotBase` is the un-offset
+  // pivot the auto-logic last set; `applyPivotOffset` re-targets base+offset live.
+  const pivotOffset = new THREE.Vector3(0, 0, 0);
+  let pivotBase = null;              // un-offset world pivot (set at every setTarget site)
+  let lastSceneRadius = 10;          // geometry bounding radius — scales the panel step
+  let pivotInputs = null;            // [x,y,z] <input> refs, for step rescaling on execute
+  function targetWithOffset(base) {  // base (Vector3) + the manual offset
+    pivotBase = base.clone();
+    return base.clone().add(pivotOffset);
+  }
+  function applyPivotOffset() {      // live re-target when the offset changes
+    if (!pivotBase) return;
+    controls.setTarget(pivotBase.clone().add(pivotOffset));
+    controls.syncFromCamera();
+  }
 
   // Animation loop — assign to node._atlasRafId each frame so cancelAnimationFrame works.
   // The orbit/fly controllers update the camera on input events; pathPlayback
@@ -2904,6 +2931,59 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(lightBtn);
 
+  // 🎯 Orbit pivot offset — nudge the point the orbit swings around (world
+  // metres, ADDED on top of the auto pivot). Session-only; default (0,0,0) = the
+  // auto pivot exactly, so nothing changes until dialled. Useful once
+  // AtlasScaleOverride pushes geometry to 100m+ and the auto centroid isn't
+  // where you want to look. The step auto-scales with the scene (placeDefaultLights).
+  let pivotOn = false;
+  const pivotBtn = document.createElement("button");
+  pivotBtn.textContent = "🎯 Pivot";
+  pivotBtn.title = "Manually offset the orbit pivot (world metres)";
+  pivotBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  pivotBtn.onclick = () => {
+    pivotOn = !pivotOn;
+    pivotBtn.style.background = pivotOn ? "#1a2a3a" : "#2a2a2a";
+    pivotPanel.style.display = pivotOn ? "flex" : "none";
+  };
+  toolbar.appendChild(pivotBtn);
+
+  const pivotPanel = document.createElement("div");
+  pivotPanel.style.cssText = "display:none;flex-wrap:wrap;align-items:center;gap:8px;padding:4px 6px;background:#181818;border-top:1px solid #333;font-size:11px;color:#ccc";
+  const pivotLabel = document.createElement("span");
+  pivotLabel.textContent = "Orbit pivot offset (m):";
+  pivotPanel.appendChild(pivotLabel);
+  pivotInputs = ["x", "y", "z"].map((axis) => {
+    const wrap = document.createElement("span");
+    wrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
+    const lab = document.createElement("span");
+    lab.textContent = axis.toUpperCase();
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.value = "0";
+    inp.step = "0.25";
+    inp.style.cssText = "width:60px;background:#111;color:#ddd;border:1px solid #444;border-radius:3px;padding:2px 4px;font-size:11px";
+    inp.onchange = () => {
+      const v = parseFloat(inp.value);
+      pivotOffset[axis] = Number.isFinite(v) ? v : 0;
+      applyPivotOffset();
+    };
+    wrap.appendChild(lab);
+    wrap.appendChild(inp);
+    pivotPanel.appendChild(wrap);
+    return inp;
+  });
+  const pivotReset = document.createElement("button");
+  pivotReset.textContent = "Reset";
+  pivotReset.title = "Recentre the orbit pivot on the auto (geometry) point";
+  pivotReset.style.cssText = "padding:2px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  pivotReset.onclick = () => {
+    pivotOffset.set(0, 0, 0);
+    pivotInputs.forEach((inp) => { inp.value = "0"; });
+    applyPivotOffset();
+  };
+  pivotPanel.appendChild(pivotReset);
+
   // ⛶ Fullscreen — the browser Fullscreen API on canvasWrap (canvas + all
   // HUD/diagram/legend overlays; NOT the container, whose toolbar may live in
   // a detached Output Desk — canvasWrap behaves identically in both modes).
@@ -3079,6 +3159,7 @@ function buildNodeUI(node, containerEl) {
     if (lightTarget !== _atlasLightMountTarget) {
       _atlasLightMountTarget = lightTarget;
       lightTarget.appendChild(lightPanel);
+      lightTarget.appendChild(pivotPanel);
     }
     if (recoveredData) updateLinkedOutputDesk(recoveredData);
   }
@@ -3197,13 +3278,13 @@ function buildNodeUI(node, containerEl) {
       // point way behind the subject (artist-reported 2026-07-09). The
       // heuristic remains only the no-geometry-yet fallback.
       if (lastGeometryPivot) {
-        controls.setTarget(lastGeometryPivot);
+        controls.setTarget(targetWithOffset(lastGeometryPivot));
       } else {
         // Prefer the solved scene depth (when a derive-geometry node ran) over
         // the generic 30m default so the orbit radius matches this scene.
         const sceneDepth = data.camera_meta?.scene_depth_m;
         const pivotMax = sceneDepth ? sceneDepth * 1.5 : 30;
-        controls.setTarget(groundPointInView(camera, pivotMax));
+        controls.setTarget(targetWithOffset(groundPointInView(camera, pivotMax)));
       }
       controls.syncFromCamera();                     // init orbit state from recovered pose
     }
@@ -3445,7 +3526,7 @@ function buildNodeUI(node, containerEl) {
       const geometryPivot = computeGeometryPivot(data);
       if (geometryPivot) {
         lastGeometryPivot = geometryPivot;
-        controls.setTarget(geometryPivot);
+        controls.setTarget(targetWithOffset(geometryPivot));
         controls.syncFromCamera();
       }
       loadProjectionTexture(data, (tex) => {
