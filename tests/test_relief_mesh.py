@@ -440,10 +440,14 @@ def test_fill_mask_synthesized_geometry_stays_plausible():
     occl = depth < 5.0
     filled = _build(depth, band_min_m=5.0, band_max_m=12.0, grid_long_edge=64,
                     fill_mask=occl)
-    # Nothing below the floor clamp (synthesized ground rides the existing
-    # clamp-along-view-ray), nothing beyond the band's far edge.
-    assert float(filled.vertices[:, 1].min()) >= -0.3
-    assert float((-filled.vertices[:, 2]).max()) <= 12.5
+    # Synthesized fill must stay WITHIN the band [band_min, band_max]: never
+    # nearer than band_min (the near-clip — else it intrudes into a nearer band's
+    # zone and renders in front of it), never beyond band_max. It may dip below
+    # the nominal floor when band_min pushes a downward ray past the ground; that
+    # region is occluded background, not visible ground.
+    fwd = -filled.vertices[:, 2]
+    assert float(fwd.min()) >= 5.0 - 0.05
+    assert float(fwd.max()) <= 12.5
 
 
 def test_fill_mask_none_is_backward_compatible():
@@ -634,3 +638,43 @@ def test_normal_edge_deg_tears_a_sharp_crease():
     base = _torn(tent)
     assert _torn(tent, normal_edge_deg=45.0) > base
     assert _torn(tent, normal_edge_deg=120.0) == base
+
+
+# --- band near-clip: fill geometry must stay behind band_min_m ---------------
+
+def test_band_min_m_near_clips_fill_geometry():
+    """A behind band's fill_occluded (and floor-clamped) geometry must never sit
+    nearer than band_min_m — otherwise it intrudes into a nearer band's depth
+    zone and, with farthest-highest priority, renders its blurry inpaint in front
+    of the nearer band's real content (the measured 7.09 m intrusion bug)."""
+    hh = ww = 128
+    depth = np.full((hh, ww), 20.0)      # far band content (~20 m)
+    depth[40:90, 40:90] = 8.0            # a near occluder in front of the band
+    band_min = 15.0
+    fill = depth < band_min              # synthesize depth across the occluder
+    m = build_relief_mesh(
+        depth, view_matrix=_view_matrix(0.0), fx=200.0, fy=200.0, cx=ww / 2, cy=hh / 2,
+        grid_long_edge=100, depth_edge_rel=5.0, scale=1.0,
+        band_min_m=band_min, fill_mask=fill,
+        apply_sky_heuristic=False, far_clip_percentile=100.0, smooth_iterations=0)
+    v = np.asarray(m.vertices)
+    assert len(v) > 0
+    c2w = np.linalg.inv(np.asarray(_view_matrix(0.0), dtype=float))
+    cam, rcw = c2w[:3, 3], c2w[:3, :3]
+    fwd = -((v - cam) @ rcw[:, 2])       # forward depth (metres)
+    assert fwd.min() >= band_min - 1e-6, f"vertex at {fwd.min():.3f} m < band_min {band_min}"
+
+
+def test_band_min_m_none_leaves_geometry_unclipped():
+    """Single-relief mode (band_min_m=None) must be a no-op for the near-clip."""
+    depth = np.full((64, 64), 12.0)
+    depth[20:44, 20:44] = 5.0
+    m = build_relief_mesh(
+        depth, view_matrix=_view_matrix(0.0), fx=200.0, fy=200.0, cx=32, cy=32,
+        grid_long_edge=60, depth_edge_rel=5.0, scale=1.0, band_min_m=None,
+        apply_sky_heuristic=False, far_clip_percentile=100.0, smooth_iterations=0)
+    v = np.asarray(m.vertices)
+    c2w = np.linalg.inv(np.asarray(_view_matrix(0.0), dtype=float))
+    cam, rcw = c2w[:3, 3], c2w[:3, :3]
+    fwd = -((v - cam) @ rcw[:, 2])
+    assert fwd.min() < 8.0   # the 5 m content survives, not clipped to anything

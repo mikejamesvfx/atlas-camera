@@ -474,6 +474,21 @@ def build_relief_mesh(
             s_fix = (cam[1] - floor_clamp) / np.maximum(cam[1] - py[low], 1e-9)
             pts[low] = cam + s_fix[:, None] * (pts[low] - cam)
 
+    # Near-clip: no vertex may sit nearer than band_min_m (metres). Without it, a
+    # behind band's fill_occluded/floor-clamped geometry leaks into a NEARER
+    # band's depth zone (measured: every behind band reached 7.09 m into the
+    # front band's 6.6-11.4 m range), and farthest-highest priority then renders
+    # its blurry inpaint IN FRONT of the nearer band's real content. Push
+    # offenders back along their own view ray to band_min_m — same ray-preserving
+    # move as floor_clamp, so the baked camera projection is untouched. Runs after
+    # floor_clamp precisely because floor_clamp is one source of the intrusion.
+    if band_min_m is not None:
+        fwd = -((pts - cam) @ R_cw[:, 2])  # metres (pts already scaled about cam)
+        near_bad = (fwd > 1e-6) & (fwd < float(band_min_m))
+        if near_bad.any():
+            s_near = float(band_min_m) / fwd[near_bad]
+            pts[near_bad] = cam + s_near[:, None] * (pts[near_bad] - cam)
+
     # UVs: each vertex is its own image pixel. OBJ vt origin is bottom-left.
     u_uv = cols.astype(np.float64) / max(width - 1, 1)
     v_uv = 1.0 - rows.astype(np.float64) / max(height - 1, 1)

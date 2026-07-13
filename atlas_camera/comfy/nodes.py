@@ -5530,27 +5530,25 @@ class AtlasInput:
                                "ridgelines); lower it for high-frequency content like foliage, "
                                "which 64 shreds into halos. 0 = clean cut on every band."}),
                 "max_edge_factor": ("FLOAT", {"default": 12.0, "min": 2.0, "max": 200.0, "step": 1.0,
-                    "tooltip": "layers=0 relief mesh: world-space edge tear threshold, SEPARATE "
-                               "from the internal depth_edge_rel and often the DOMINANT tear cause "
-                               "on deep / narrow-FOV / interior scenes — grazing walls and "
+                    "tooltip": "World-space edge tear threshold (layers=0 relief AND layers>0 "
+                               "bands), SEPARATE from depth_edge_rel and often the DOMINANT tear "
+                               "cause on deep / narrow-FOV / interior scenes — grazing walls and "
                                "receding floors trip the default 12x even where continuous, "
-                               "shredding the mesh into 'combs'. Raise to 20-40 to close them; "
-                               ">80 rubber-sheets real foreground silhouettes onto the background. "
-                               "(No effect in layers>0 band mode.)"}),
+                               "shredding the mesh into 'combs'. Raise to 40-80 to close them; "
+                               ">80 rubber-sheets real foreground silhouettes onto the background."}),
                 "sky_heuristic": ("BOOLEAN", {"default": True,
                     "tooltip": "layers=0 relief mesh: exclude above-horizon far/rough regions as "
                                "sky before triangulation. Correct OUTDOORS; turn OFF for INTERIORS "
                                "(it eats the ceiling / vault / far wall as 'sky', punching large "
                                "holes). Ignored when sky (the SAM card) is on — that mask governs. "
-                               "(No effect in layers>0 band mode.)"}),
+                               "(layers>0 bands: sky handled per-band via exclude/scope instead.)"}),
                 "normal_edge_deg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 180.0, "step": 1.0,
-                    "tooltip": "layers=0 relief mesh. 0 = off. A THIRD tear test on surface-normal "
-                               "BEND: tears real creases / occlusion silhouettes while leaving "
-                               "smoothly-receding walls and floors intact (unlike max_edge_factor, "
-                               "which trips on any grazing surface). Pair with a HIGHER "
-                               "max_edge_factor: raise mef to stop comb-tearing continuous grazing "
-                               "surfaces, then set ~40-70 here to keep genuine edges torn. "
-                               "(No effect in layers>0 band mode.)"}),
+                    "tooltip": "0 = off. A THIRD tear test on surface-normal BEND (layers=0 relief "
+                               "AND layers>0 bands): tears real creases / occlusion silhouettes "
+                               "while leaving smoothly-receding walls and floors intact (unlike "
+                               "max_edge_factor, which trips on any grazing surface). Pair with a "
+                               "HIGHER max_edge_factor: raise mef to stop comb-tearing continuous "
+                               "grazing surfaces, then set ~40-70 here to keep genuine edges torn."}),
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
                     {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                      "tooltip": "Monocular depth backend (fed the solved focal). "
@@ -5747,6 +5745,8 @@ class AtlasInput:
                                priority=float(5 * (n_bands - 1 - i)),
                                relief_grid=int(mesh_resolution),
                                depth_edge_rel=1.5,
+                               max_edge_factor=float(max_edge_factor),
+                               normal_edge_deg=float(normal_edge_deg),
                                fill_occluded=(inpaint_on and i < n_bands - 1),
                                embed_matte=True,
                                edge_extend_px=0 if is_front else int(edge_extend_px),
@@ -6351,6 +6351,20 @@ class AtlasCleanPlateLayer:
                                "adjacent bands always share edges exactly). MUST be the same "
                                "string the paired AtlasDepthLayerMask received. Loses to a "
                                "connected band_split. Errors loudly on garbage."}),
+                # Tearing knobs, mirroring AtlasDeriveReliefMesh (freeze exception:
+                # these are core mesh-tearing params, siblings of depth_edge_rel /
+                # relief_grid, not a new capability — band mode was the only relief
+                # path that couldn't reach them).
+                "max_edge_factor": ("FLOAT", {"default": 12.0, "min": 2.0, "max": 200.0, "step": 1.0,
+                    "tooltip": "World-space edge tear threshold (SEPARATE from depth_edge_rel). "
+                               "Dominant tear cause on deep / narrow-FOV / interior bands: raise "
+                               "to 40-80 to stop comb-tearing continuous grazing surfaces. >80 "
+                               "rubber-sheets real silhouettes."}),
+                "normal_edge_deg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 180.0, "step": 1.0,
+                    "tooltip": "0 = off. Tears where surface NORMALS bend past this angle — real "
+                               "creases / occlusion silhouettes — while leaving smoothly-receding "
+                               "walls intact. Pair with a higher max_edge_factor: raise mef to kill "
+                               "spurious combs, then ~40-70 here to keep genuine edges torn."}),
             },
         }
 
@@ -6360,7 +6374,7 @@ class AtlasCleanPlateLayer:
                   edge_extend_px=0, skirt_bevel=0.0, frame_outpaint_px=0,
                   exclude_choke_cells=2, band_side="manual", band_split=None,
                   band_geometry="relief", geometry_override="", band_ref_mask=None,
-                  band_override=""):
+                  band_override="", max_edge_factor=12.0, normal_edge_deg=0.0):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import (
@@ -6507,6 +6521,8 @@ class AtlasCleanPlateLayer:
             # only corrupts a field with no noise to remove.
             far_clip_percentile=(0.0 if geometry != "relief" else 97.0),
             smooth_iterations=(0 if geometry != "relief" else 2),
+            max_edge_factor=float(max_edge_factor),
+            normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
             overhang_bevel_rel=float(skirt_bevel),
             exclude_choke_cells=choke,
             edge_overhang_cells=overhang_cells)
