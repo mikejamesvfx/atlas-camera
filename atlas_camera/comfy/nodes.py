@@ -889,11 +889,14 @@ class AtlasLearnedSolveFromImage:
                 "camera_height_m": ("FLOAT", {"default": 1.6, "min": 0.01, "max": 1000.0,
                     "tooltip": "Fallback / assumed camera height when not measured or low-confidence."}),
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
-                    {"default": "depth-anything/DA3METRIC-LARGE",
-                    "tooltip": "Metric depth model for height measurement (Outdoor=exteriors, "
-                               "Indoor=interiors). DA3* = Depth Anything 3, needs the [neural-da3] "
-                               "extra; DA3METRIC uses the solved focal; DA3NESTED is non-commercial "
-                               "(CC BY-NC)."}),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                    "tooltip": "Metric depth backend (fed the solved focal). V2-Metric-Outdoor "
+                               "(DEFAULT) / V2-Metric-Indoor: Apache, transformers-only (NO extra "
+                               "install), best all-round; Outdoor wins on sky/exterior scenes. "
+                               "MoGe-2 (Ruicheng/moge-*): MIT, cleanest on ENCLOSED/INTERIOR shots "
+                               "but masks sky (poor outdoors) — needs [moge]. DA3* (EXPERIMENTAL): "
+                               "strong metric, heavy deps, DA3NESTED is non-commercial CC BY-NC — "
+                               "needs [neural-da3]. (4-scene A/B 2026-07-13.)"}),
                 "sensor_width_mm": ("FLOAT", {"default": 36.0, "min": 0.01}),
                 "weights": (["pinhole", "simple_radial"], {"default": "pinhole",
                     "tooltip": "pinhole = no lens distortion (best for clean AI renders)."}),
@@ -902,7 +905,7 @@ class AtlasLearnedSolveFromImage:
         }
 
     def solve(self, image, height_mode="measure_from_depth", camera_height_m=1.6,
-              depth_model="depth-anything/DA3METRIC-LARGE",
+              depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
               sensor_width_mm=36.0, weights="pinhole", device="auto"):
         from atlas_camera.core.solver import solve_still_image_learned
         tmp = _save_image_tensor_to_tmp(image)
@@ -942,7 +945,7 @@ class AtlasDepthAnything:
             "optional": {
                 "depth_model": (
                     list(_DEPTH_MODEL_CHOICES) + ["depth-anything/Depth-Anything-V2-Small-hf"],
-                    {"default": "depth-anything/DA3METRIC-LARGE"}),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "solve": ("ATLAS_SOLVE", {"tooltip": "Optional — supplies the SOLVED focal "
                           "(GeoCalib/VP) for DA3METRIC's canonical→metric conversion "
@@ -951,7 +954,7 @@ class AtlasDepthAnything:
             },
         }
 
-    def estimate(self, image, depth_model="depth-anything/DA3METRIC-LARGE",
+    def estimate(self, image, depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                  device="auto", solve=None):
         from atlas_camera.inference.depth_estimator import estimate_depth
         np = _require_numpy()
@@ -1509,7 +1512,7 @@ class AtlasDeriveProjectionGeometry:
             },
             "optional": {
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
-                    {"default": "depth-anything/DA3METRIC-LARGE"}),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
                 "max_walls": ("INT", {"default": 4, "min": 0, "max": 64}),
                 "max_objects": ("INT", {"default": 3, "min": 0, "max": 32,
                                         "tooltip": "Max foreground boxes/cylinders. Street-level scenes: try 0 — the 2D occupancy clustering merges cars/fences/trees into oversized near-camera boxes that dominate any orbit."}),
@@ -1611,20 +1614,23 @@ class AtlasDeriveProjectionGeometry:
         "forests": {"geometry_mode": "relief_mesh", "relief_quality": "high", "depth_edge_rel": 1.0},
         "aerial": {"geometry_mode": "both", "primitive_method": "azimuth_walls",
                    "relief_quality": "medium", "max_objects": 6},
-        # indoor/outdoor both use DA3METRIC since the 2026-07-09 default flip —
-        # one focal-conditioned metric model serves both, no more V2 indoor/
-        # outdoor split (A/B evidence: docs/dev/da3_backend_test_plan.md).
+        # Presets use the zero-extra-install V2 metric models (Apache, transformers
+        # only) so a fresh install never errors on a missing DA3/MoGe extra. A 4-scene
+        # A/B (2026-07-13) reverted the 2026-07-09 DA3 default: V2-Metric-Outdoor was
+        # best-or-tied on every outdoor/sky scene; MoGe masks sky (poor outdoors, great
+        # indoors); DA3 is the experimental branch's default. Artists opt into DA3/MoGe
+        # per shot via the depth_model widget.
         "indoor": {"geometry_mode": "primitives", "primitive_method": "room_cuboid",
-                   "depth_model": "depth-anything/DA3METRIC-LARGE"},
+                   "depth_model": "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"},
         "outdoor": {"geometry_mode": "primitives", "primitive_method": "ransac_planes",
-                    "depth_model": "depth-anything/DA3METRIC-LARGE"},
+                    "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"},
         "simple_walls": {"geometry_mode": "primitives", "primitive_method": "azimuth_walls"},
         "towers_spires": {"geometry_mode": "primitives", "primitive_method": "vertical_extrusion"},
     }
     _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
     def derive(self, solve, image,
-               depth_model="depth-anything/DA3METRIC-LARGE",
+               depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                max_walls=4, max_objects=3, device="auto",
                geometry_mode="relief_mesh", relief_grid=128, relief_quality="custom",
                depth_edge_rel=0.5,
@@ -2125,7 +2131,7 @@ class AtlasDepthMap:
             "required": {"image": ("IMAGE",)},
             "optional": {
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
-                    {"default": "depth-anything/DA3METRIC-LARGE"}),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "solve": ("ATLAS_SOLVE", {"tooltip": "Optional — supplies the SOLVED focal "
                           "(GeoCalib/VP) for DA3METRIC's canonical→metric conversion "
@@ -2134,7 +2140,7 @@ class AtlasDepthMap:
             },
         }
 
-    def estimate(self, image, depth_model="depth-anything/DA3METRIC-LARGE",
+    def estimate(self, image, depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                  device="auto", solve=None):
         from atlas_camera.inference.depth_estimator import estimate_depth
         tmp = _save_image_tensor_to_tmp(image)
@@ -3139,7 +3145,7 @@ class AtlasAddPatchView:
                                "(recovered-camera handedness) — a calibration convenience."}),
                 "name": ("STRING", {"default": "patch"}),
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
-                    {"default": "depth-anything/DA3METRIC-LARGE"}),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
                 "relief_grid": ("INT", {"default": 96, "min": 16, "max": 4096,
                     "tooltip": "Patch relief-mesh density (long-edge grid columns)."}),
                 "priority": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 1.0,
@@ -3218,7 +3224,7 @@ class AtlasAddPatchView:
                   source_azimuth_view="front view",
                   source_elevation_view="eye-level shot",
                   flip_azimuth=False, name="patch",
-                  depth_model="depth-anything/DA3METRIC-LARGE",
+                  depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                   relief_grid=96, priority=1.0, plate_ref=None, device="auto",
                   patch_view_override="", mask_unseen_only=True, unseen_dilate_px=16,
                   primary_depth=None, exclude_mask=None, geometry_source="reuse_scene",
@@ -3662,7 +3668,7 @@ class AtlasOcclusionMask:
                 "flip_azimuth": ("BOOLEAN", {"default": False,
                     "tooltip": "Must match the AtlasAddPatchView setting for this patch."}),
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
-                    {"default": "depth-anything/DA3METRIC-LARGE"}),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "angle_threshold": ("FLOAT", {"default": 90.0, "min": 0.0, "max": 90.0, "step": 1.0,
                     "tooltip": "Facing-angle gate in degrees for the PRIMARY camera's coverage. "
@@ -3711,7 +3717,7 @@ class AtlasOcclusionMask:
                  source_azimuth_view="front view",
                  source_elevation_view="eye-level shot",
                  flip_azimuth=False,
-                 depth_model="depth-anything/DA3METRIC-LARGE",
+                 depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                  device="auto",
                  angle_threshold=90.0, dilate_px=0, soft_edge_px=0, power=1.0,
                  occlusion_mode="simple", primary_depth=None, depth_bias=0.05,
@@ -3888,7 +3894,7 @@ class AtlasExportReliefMesh:
                 "depth_edge_rel": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 5.0, "step": 0.05,
                     "tooltip": "Relative depth jump that tears the mesh (silhouette holes)."}),
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
-                    {"default": "depth-anything/DA3METRIC-LARGE"}),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "format": (["both", "obj", "glb"], {"default": "both"}),
             },
@@ -3896,7 +3902,7 @@ class AtlasExportReliefMesh:
 
     def export(self, solve, image, output_dir="atlas_exports", grid_long_edge=128,
                depth_edge_rel=0.5,
-               depth_model="depth-anything/DA3METRIC-LARGE",
+               depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                device="auto", format="both"):
         from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
         from atlas_camera.core.solver import _resize_depth
@@ -5546,12 +5552,15 @@ class AtlasInput:
                                "surfaces, then set ~40-70 here to keep genuine edges torn. "
                                "(No effect in layers>0 band mode.)"}),
                 "depth_model": (list(_DEPTH_MODEL_CHOICES),
-                    {"default": "depth-anything/DA3METRIC-LARGE",
-                     "tooltip": "Monocular depth backend (fed the solved focal). DA3METRIC = "
-                                "default, strong metric geometry (needs [neural-da3]; note "
-                                "DA3NESTED is non-commercial CC BY-NC). MoGe-2 (Ruicheng/moge-*) "
-                                "= MIT-licensed, light-dependency alternative with predicted "
-                                "normals (needs [moge]). V2 = transformers-only, no extra install."}),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                     "tooltip": "Monocular depth backend (fed the solved focal). "
+                                "V2-Metric-Outdoor (DEFAULT) = Apache, transformers-only (NO extra "
+                                "install), best all-round on OUTDOOR/sky scenes; V2-Metric-Indoor "
+                                "is its interior twin. MoGe-2 (Ruicheng/moge-*) = MIT, cleanest on "
+                                "ENCLOSED/INTERIOR shots but masks sky (poor outdoors) — needs "
+                                "[moge]. DA3* (EXPERIMENTAL) = strong metric, heavy deps, DA3NESTED "
+                                "is non-commercial CC BY-NC — needs [neural-da3]. Pick per shot: "
+                                "outdoor->V2-Outdoor, interior->MoGe or V2-Indoor. (A/B 2026-07-13.)"}),
             },
         }
 
@@ -5561,7 +5570,7 @@ class AtlasInput:
               sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
               upscale_model="", edge_extend_px=24, max_edge_factor=12.0,
               sky_heuristic=True, normal_edge_deg=0.0,
-              depth_model="depth-anything/DA3METRIC-LARGE", **_extra):
+              depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", **_extra):
         registry = _comfy_registry()
         have_sam = "SAM3Segment" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry

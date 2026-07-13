@@ -19,19 +19,21 @@ def test_organic_preset_only_overrides_geometry_mode():
 
 
 def test_indoor_preset_selects_room_cuboid_and_metric_depth_model():
-    # Since the 2026-07-09 default flip, indoor/outdoor both use DA3METRIC —
-    # one focal-conditioned metric model, no more V2 indoor/outdoor split.
+    # A/B 2026-07-13 reverted the 2026-07-09 DA3 default: presets use the
+    # zero-extra-install V2 metric models (Apache, transformers-only) so a fresh
+    # install never errors on a missing DA3/MoGe extra. DA3 is the experimental
+    # branch's default; MoGe is the opt-in interior specialist.
     preset = AtlasDeriveProjectionGeometry._SCENE_TYPE_PRESETS["indoor"]
     assert preset["geometry_mode"] == "primitives"
     assert preset["primitive_method"] == "room_cuboid"
-    assert preset["depth_model"] == "depth-anything/DA3METRIC-LARGE"
+    assert preset["depth_model"] == "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"
 
 
 def test_outdoor_preset_selects_ransac_planes_and_metric_depth_model():
     preset = AtlasDeriveProjectionGeometry._SCENE_TYPE_PRESETS["outdoor"]
     assert preset["geometry_mode"] == "primitives"
     assert preset["primitive_method"] == "ransac_planes"
-    assert preset["depth_model"] == "depth-anything/DA3METRIC-LARGE"
+    assert preset["depth_model"] == "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
 
 
 def test_scene_type_widget_exposed_with_manual_default():
