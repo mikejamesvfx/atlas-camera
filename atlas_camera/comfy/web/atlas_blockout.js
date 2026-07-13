@@ -1641,55 +1641,29 @@ function buildNodeUI(node, containerEl) {
     spr.renderOrder = 100003;
     return spr;
   }
-  function buildBandBox() {
-    disposeBandBox();
-    if (!bandBoxOn || !THREE) return;
-    // The bounded foreground = the patch group with the smallest FINITE far_m
-    // (the background card's far_m is null/+inf).
-    let fg = null;
-    scene.traverse((c) => {
-      if (!c.userData?.atlasPatchGroup) return;
-      const f = c.userData.far_m;
-      if (typeof f === "number" && isFinite(f) && (!fg || f < fg.userData.far_m)) fg = c;
-    });
-    if (!fg) return; // no bounded band in this scene — nothing to box
+  // Build ONE bounded-band box (cage + cutoff plane + distance label) for a
+  // patch group, into `parent`. Geometry is emitted in `M`'s VIEW space (so the
+  // back face lands exactly on the cutoff plane at any camera pitch) when M is
+  // given, else in world space; the caller applies cam->world once to `parent`.
+  function addBandBoxFor(fg, parent, M) {
     const cutoff = Math.abs(fg.userData.far_m);
-    scene.updateMatrixWorld(true);
     const wbox = new THREE.Box3().setFromObject(fg);
     if (wbox.isEmpty()) return;
-
-    // Build the box in the RECOVERED camera's frame so its BACK face sits exactly
-    // at the cutoff depth (the AtlasBoundedBand clip plane) regardless of camera
-    // pitch — this is the whole point of the overlay: WHERE the relief is capped.
-    // Lateral bounds hug the actual foreground; depth spans the foreground's near
-    // out to the cutoff (so the box reaches past where the geometry ends, showing
-    // the headroom). Falls back to the plain world AABB if the recovered camera
-    // isn't in the payload.
-    const vm = recoveredData && recoveredData.view_matrix;
-    let boxGeo = null, cutGeo = null, place = null, labelPos = null;
-    if (vm && vm.length === 4) {
-      const M = new THREE.Matrix4().set(
-        vm[0][0], vm[0][1], vm[0][2], vm[0][3],
-        vm[1][0], vm[1][1], vm[1][2], vm[1][3],
-        vm[2][0], vm[2][1], vm[2][2], vm[2][3],
-        vm[3][0], vm[3][1], vm[3][2], vm[3][3]);
-      place = M.clone().invert();            // cam -> world
+    let boxGeo = null, cutGeo = null, labelPos = null;
+    if (M) {
       const vb = new THREE.Box3();           // fg AABB corners in view space
       const mn = wbox.min, mx = wbox.max;
       for (let i = 0; i < 8; i++) {
         vb.expandByPoint(new THREE.Vector3(
           (i & 1) ? mx.x : mn.x, (i & 2) ? mx.y : mn.y, (i & 4) ? mx.z : mn.z).applyMatrix4(M));
       }
-      const nearZ = vb.max.z;                // camera looks -Z; nearest = largest z
-      const farZ = -cutoff;                  // the cutoff plane
+      const nearZ = vb.max.z, farZ = -cutoff;              // camera looks -Z
       const zLo = Math.min(nearZ, farZ), zHi = Math.max(nearZ, farZ);
       const cx = (vb.min.x + vb.max.x) / 2, cy = (vb.min.y + vb.max.y) / 2, cz = (zLo + zHi) / 2;
       const sx = Math.max(vb.max.x - vb.min.x, 1e-3), sy = Math.max(vb.max.y - vb.min.y, 1e-3);
-      boxGeo = new THREE.BoxGeometry(sx, sy, Math.max(zHi - zLo, 1e-3));
-      boxGeo.translate(cx, cy, cz);
-      cutGeo = new THREE.PlaneGeometry(sx, sy);
-      cutGeo.translate(cx, cy, farZ);        // highlighted clip plane at the cutoff
-      labelPos = new THREE.Vector3(cx, vb.max.y, farZ);  // top of the cutoff plane
+      boxGeo = new THREE.BoxGeometry(sx, sy, Math.max(zHi - zLo, 1e-3)); boxGeo.translate(cx, cy, cz);
+      cutGeo = new THREE.PlaneGeometry(sx, sy); cutGeo.translate(cx, cy, farZ);
+      labelPos = new THREE.Vector3(cx, vb.max.y, farZ);    // top of the cutoff plane
     } else {
       const size = new THREE.Vector3(); wbox.getSize(size);
       const center = new THREE.Vector3(); wbox.getCenter(center);
@@ -1697,32 +1671,49 @@ function buildNodeUI(node, containerEl) {
       boxGeo.translate(center.x, center.y, center.z);
       labelPos = new THREE.Vector3(center.x, center.y + size.y / 2, center.z);
     }
-
-    bandBox = new THREE.Group();
-    bandBox.name = "atlas_band_box";
     const fill = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({
       color: 0xff2020, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false }));
-    // Edges draw with depthTest OFF so the outline is ALWAYS visible over the
-    // projected geometry — reads as a bounding cage, not a faint tint.
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo),
       new THREE.LineBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.95, depthTest: false }));
     fill.renderOrder = 100001; edges.renderOrder = 100002;
-    bandBox.add(fill); bandBox.add(edges);
+    parent.add(fill); parent.add(edges);
     if (cutGeo) {
-      // The cutoff plane itself, brighter — this is the clip boundary the artist
-      // is tuning (extrude_multiplier); everything in front is foreground relief,
-      // everything behind is the pushed-back sky card.
       const cut = new THREE.Mesh(cutGeo, new THREE.MeshBasicMaterial({
         color: 0xff0000, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
-      cut.renderOrder = 100001;
-      bandBox.add(cut);
+      cut.renderOrder = 100001; parent.add(cut);
     }
-    if (labelPos) {
-      // Distance label so the cutoff plane is self-explanatory (e.g. "cutoff 9.7 m").
-      const label = makeBandLabel(`cutoff ${cutoff.toFixed(1)} m`);
-      label.position.copy(labelPos);
-      bandBox.add(label);
+    const label = makeBandLabel(`cutoff ${cutoff.toFixed(1)} m`);
+    label.position.copy(labelPos); parent.add(label);
+  }
+  function buildBandBox() {
+    disposeBandBox();
+    if (!bandBoxOn || !THREE) return;
+    // EVERY bounded foreground layer = a patch group with a FINITE far_m (a
+    // clean-plate layer the bounded band clipped at its own cutoff). Box EACH,
+    // so a multi-plane matte (one fg layer per building/object) shows one red
+    // cage + cutoff label per layer. The background card's far_m is null/+inf.
+    const bounded = [];
+    scene.traverse((c) => {
+      if (c.userData?.atlasPatchGroup && typeof c.userData.far_m === "number" && isFinite(c.userData.far_m)) bounded.push(c);
+    });
+    if (!bounded.length) return; // no bounded band in this scene — nothing to box
+    scene.updateMatrixWorld(true);
+    // Build every box in the RECOVERED camera's frame so each back face lands on
+    // its own cutoff plane regardless of camera pitch; one cam->world applied to
+    // the shared parent. Falls back to world-space AABBs if no view matrix.
+    const vm = recoveredData && recoveredData.view_matrix;
+    let M = null, place = null;
+    if (vm && vm.length === 4) {
+      M = new THREE.Matrix4().set(
+        vm[0][0], vm[0][1], vm[0][2], vm[0][3],
+        vm[1][0], vm[1][1], vm[1][2], vm[1][3],
+        vm[2][0], vm[2][1], vm[2][2], vm[2][3],
+        vm[3][0], vm[3][1], vm[3][2], vm[3][3]);
+      place = M.clone().invert();
     }
+    bandBox = new THREE.Group();
+    bandBox.name = "atlas_band_box";
+    for (const fg of bounded) addBandBoxFor(fg, bandBox, M);
     if (place) bandBox.applyMatrix4(place);
     scene.add(bandBox);
   }
