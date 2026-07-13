@@ -67,6 +67,15 @@ otherwise be a black hole.
 and re-export that scene; the projected texture is already full-res, so this only
 sharpens the geometry.
 
+**If a foreground subject's relief runs away backward** (monocular depth
+"bananas" tall/soft structures), drop an `AtlasBoundedBand` between the solve and
+the layers: feed it the subject's mask and it measures the subject's own depth
+extent `W`, emitting one cutoff at `near + 2·W`. Wire its `band_split` into both
+the foreground clean-plate layer (`band_side=foreground` — relief clipped at the
+cutoff) and the background card (`band_side=background` — the card falls back
+behind the cutoff for stronger dolly parallax). One measured boundary, both
+layers, no hand-tuned distances.
+
 ## Performance & memory
 
 The full band + inpaint pipeline at 4–8K is **RAM-heavy**: each full-resolution

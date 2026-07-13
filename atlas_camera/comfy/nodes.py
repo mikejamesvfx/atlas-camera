@@ -4964,6 +4964,107 @@ def _apply_band_split(band_split, band_side, metric, valid,
     return boundary, float("inf")
 
 
+# A partition split can never be a true no-op for BOTH sides (one side always
+# gets the empty tail). When AtlasBoundedBand can't measure, it emits this large
+# sentinel so the FOREGROUND (the layer we care about) is effectively unclipped
+# ([0, 1e6m] passes every real scene depth); the background tail goes empty and
+# the report says why. Never emit split_m=0 — that collapses the foreground band
+# to [0, 0] and empties the relief.
+_BOUNDED_BAND_NOOP_M = 1.0e6
+
+
+class AtlasBoundedBand:
+    """📏 Measure the FOREGROUND's own metric depth extent and emit ONE
+    `ATLAS_BAND_SPLIT` that clips a relief layer at a guessed distance while
+    the background card falls back behind it.
+
+    The classic single-photo failure: monocular depth "bananas" a foreground
+    subject (buildings, a statue, a foreground ridge) so its relief mesh
+    extrudes far past where the object actually ends, with no bound on how far
+    back it runs. This node measures the subject's front-to-back depth extent
+    `W = P(far_pct) − P(near_pct)` over its mask and returns a cutoff at
+    `near + extrude_multiplier · W` (default 2×).
+
+    Wire the ONE `band_split` output into BOTH clean-plate layers'
+    `band_split` input, with `band_side` set:
+      • foreground layer (`band_side=foreground`) → `[0, cutoff]`: the relief
+        is clipped at the guessed distance — no runaway extrusion.
+      • background layer (`band_side=background`) → `[cutoff, +inf]`: the card
+        sits at the median depth of everything beyond the cutoff — pushed back
+        for dolly parallax.
+    The split is an ABSOLUTE distance (`split_m`), so both layers resolve the
+    identical boundary regardless of their own pixel populations — no band
+    drift, no `band_ref_mask` needed (unlike percentile splits).
+
+    Composition-only: reuses `AtlasCleanPlateLayer`'s existing `band_split`
+    input, so it respects that node's capability freeze. `foreground_mask` is
+    the subject segmentation (e.g. the same SAM3 mask that scopes the
+    foreground layer). Needs the `[neural]` extra (metric depth). Fails soft to
+    an unclipped sentinel + an explanatory report when it can't measure.
+    """
+    RETURN_TYPES = ("ATLAS_BAND_SPLIT", "FLOAT", "STRING")
+    RETURN_NAMES = ("band_split", "cutoff_m", "report")
+    FUNCTION = "measure"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+                "foreground_mask": ("MASK",),
+            },
+            "optional": {
+                "extrude_multiplier": ("FLOAT", {"default": 2.0, "min": 0.0, "max": 20.0, "step": 0.25,
+                    "tooltip": "cutoff = near + this × (foreground depth extent W). 2.0 = the "
+                               "relief may extrude back at most twice its own front-to-back width "
+                               "before being clipped. 0 = clip at the near edge."}),
+                "near_pct": ("FLOAT", {"default": 5.0, "min": 0.0, "max": 100.0, "step": 1.0,
+                    "tooltip": "Percentile of the foreground pixels' metric depth taken as the "
+                               "subject's NEAR edge (robust to a few stray near pixels)."}),
+                "far_pct": ("FLOAT", {"default": 95.0, "min": 0.0, "max": 100.0, "step": 1.0,
+                    "tooltip": "Percentile taken as the subject's FAR edge. W = P(far_pct) − P(near_pct)."}),
+            },
+        }
+
+    def measure(self, solve, depth, foreground_mask,
+                extrude_multiplier=2.0, near_pct=5.0, far_pct=95.0):
+        np = _require_numpy()
+        noop = ({"split": 0.0, "split_m": _BOUNDED_BAND_NOOP_M}, float(_BOUNDED_BAND_NOOP_M))
+        setup = _metric_depth_and_validity(solve, depth)
+        if setup is None:
+            return noop + (
+                "AtlasBoundedBand: no metric depth (needs [neural] + a solved focal length) — "
+                "emitting an unclipped sentinel so the foreground relief is unaffected.",)
+        valid = setup.valid & np.isfinite(setup.metric)
+        fg = _resolve_exclude_mask(foreground_mask, setup.height, setup.width)
+        if fg is not None:
+            valid = valid & fg.astype(bool)
+        n = int(valid.sum())
+        if n < 16:
+            return noop + (
+                f"AtlasBoundedBand: foreground mask covers only {n} valid-depth pixels (need ≥16) — "
+                "emitting an unclipped sentinel (check the mask / solve).",)
+        lo, hi = sorted((float(near_pct), float(far_pct)))
+        vals = setup.metric[valid]
+        near = float(np.percentile(vals, lo))
+        far = float(np.percentile(vals, hi))
+        width = max(far - near, 0.0)
+        cutoff = near + float(extrude_multiplier) * width
+        if width <= 1e-6 or not (cutoff > 0.0):
+            return noop + (
+                f"AtlasBoundedBand: degenerate extent (near={near:.2f}m far={far:.2f}m W={width:.3f}m) — "
+                "the mask has no depth spread; emitting an unclipped sentinel.",)
+        report = (
+            f"AtlasBoundedBand: foreground {n} px | near(P{lo:.0f})={near:.2f}m "
+            f"far(P{hi:.0f})={far:.2f}m | W={width:.2f}m ×{extrude_multiplier:.2f} "
+            f"→ cutoff={cutoff:.2f}m\n"
+            f"  band_split → foreground layer (band_side=foreground): relief clipped to [0, {cutoff:.2f}m]\n"
+            f"  band_split → background layer (band_side=background): card median beyond {cutoff:.2f}m")
+        return ({"split": 0.0, "split_m": float(cutoff)}, float(cutoff), report)
+
+
 class AtlasDepthLayerMask:
     """One depth band -> (layer_mask, occlusion_mask). Composable: instantiate
     once per background layer you plan to clean-plate.
@@ -7103,6 +7204,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasDefineShotCam":         AtlasDefineShotCam,
     # Track 7 — inpaint layers
     "AtlasDepthBandSplit":        AtlasDepthBandSplit,
+    "AtlasBoundedBand":           AtlasBoundedBand,
     "AtlasDepthLayerMask":        AtlasDepthLayerMask,
     "AtlasCleanPlateLayer":       AtlasCleanPlateLayer,
     "AtlasSkyDomeLayer":          AtlasSkyDomeLayer,
@@ -7170,6 +7272,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDefineShotCam":         "Atlas Define Shot Cam 🎬",
     # Track 7 — inpaint layers
     "AtlasDepthBandSplit":        "Atlas Depth Band Split 🎚",
+    "AtlasBoundedBand":           "Atlas Bounded Band 📏",
     "AtlasDepthLayerMask":        "Atlas Depth Layer Mask 🎭",
     "AtlasCleanPlateLayer":       "Atlas Clean Plate Layer 🖼",
     "AtlasSkyDomeLayer":          "Atlas Sky Dome Layer ☁",

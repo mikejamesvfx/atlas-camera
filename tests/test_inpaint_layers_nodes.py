@@ -17,10 +17,15 @@ torch = pytest.importorskip("torch")
 
 from atlas_camera.comfy.nodes import (
     NODE_CLASS_MAPPINGS,
+    AtlasBoundedBand,
     AtlasCleanPlateLayer,
     AtlasDepthLayerMask,
     AtlasSkyDomeLayer,
+    _BOUNDED_BAND_NOOP_M,
+    _apply_band_split,
     _extract_blockout_camera,
+    _metric_depth_and_validity,
+    _resolve_exclude_mask,
 )
 from atlas_camera.core.proxy_geometry import PROXY_ROLE
 from atlas_camera.core.schema import AtlasExtrinsics, AtlasIntrinsics, AtlasSolve, LatentCamera
@@ -1198,3 +1203,106 @@ def test_band_override_wins_and_stays_watertight():
         solve, depth, near_m=99.0, far_m=100.0,
         band_override="near_pct=0.000 far_pct=0.400")
     assert float(lm.sum()) > 0
+
+
+# --- AtlasBoundedBand --------------------------------------------------------
+
+def _foreground_lower_half_mask():
+    """A mask over the lower frame (ground + walls) — a region with a REAL
+    metric depth spread, unlike a single fronto-parallel wall (W≈0)."""
+    m = torch.zeros(1, H, W, dtype=torch.float32)
+    m[:, int(CY) + 8:, :] = 1.0
+    return m
+
+
+def test_bounded_band_registered():
+    node = NODE_CLASS_MAPPINGS["AtlasBoundedBand"]
+    assert node.RETURN_TYPES == ("ATLAS_BAND_SPLIT", "FLOAT", "STRING")
+    assert node.RETURN_NAMES == ("band_split", "cutoff_m", "report")
+
+
+def test_bounded_band_cutoff_is_near_plus_multiplier_times_width():
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    mask = _foreground_lower_half_mask()
+
+    band_split, cutoff, report = AtlasBoundedBand().measure(
+        solve, depth, mask, extrude_multiplier=2.0, near_pct=5.0, far_pct=95.0)
+
+    # Recompute the expected cutoff from the IDENTICAL metric setup the node used.
+    setup = _metric_depth_and_validity(solve, depth)
+    fg = _resolve_exclude_mask(mask, setup.height, setup.width)
+    valid = setup.valid & np.isfinite(setup.metric) & fg.astype(bool)
+    vals = setup.metric[valid]
+    near = float(np.percentile(vals, 5.0))
+    far = float(np.percentile(vals, 95.0))
+    assert far - near > 0.1                      # sanity: the region has real spread
+    expected = near + 2.0 * (far - near)
+
+    assert cutoff == pytest.approx(expected, rel=1e-6)
+    assert band_split["split_m"] == pytest.approx(cutoff)
+    assert f"{cutoff:.2f}m" in report
+
+
+def test_bounded_band_multiplier_scales_the_extent():
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    mask = _foreground_lower_half_mask()
+
+    _bs1, cutoff1, _ = AtlasBoundedBand().measure(solve, depth, mask, extrude_multiplier=1.0)
+    _bs3, cutoff3, _ = AtlasBoundedBand().measure(solve, depth, mask, extrude_multiplier=3.0)
+
+    setup = _metric_depth_and_validity(solve, depth)
+    fg = _resolve_exclude_mask(mask, setup.height, setup.width)
+    valid = setup.valid & np.isfinite(setup.metric) & fg.astype(bool)
+    vals = setup.metric[valid]
+    near = float(np.percentile(vals, 5.0))
+    width = float(np.percentile(vals, 95.0)) - near
+    # cutoff3 - cutoff1 == (3-1) * W ; cutoff1 == near + W
+    assert (cutoff3 - cutoff1) == pytest.approx(2.0 * width, rel=1e-6)
+    assert cutoff1 == pytest.approx(near + width, rel=1e-6)
+
+
+def test_bounded_band_split_partitions_both_layers_at_the_cutoff():
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    mask = _foreground_lower_half_mask()
+
+    band_split, cutoff, _ = AtlasBoundedBand().measure(solve, depth, mask)
+
+    setup = _metric_depth_and_validity(solve, depth)
+    # The ONE split, fed to both sides, partitions exactly at the cutoff.
+    near_fg, far_fg = _apply_band_split(band_split, "foreground", setup.metric, setup.valid, 0, 0, 0, 0)
+    near_bg, far_bg = _apply_band_split(band_split, "background", setup.metric, setup.valid, 0, 0, 0, 0)
+    assert near_fg == 0.0
+    assert far_fg == pytest.approx(cutoff)       # foreground relief clipped to [0, cutoff]
+    assert near_bg == pytest.approx(cutoff)      # background card median beyond the cutoff
+    assert far_bg == float("inf")
+
+
+def test_bounded_band_empty_mask_emits_unclipped_sentinel():
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    empty = torch.zeros(1, H, W, dtype=torch.float32)
+
+    band_split, cutoff, report = AtlasBoundedBand().measure(solve, depth, empty)
+
+    # A partition can't no-op both sides; the sentinel keeps the FOREGROUND
+    # unclipped ([0, 1e6m]) rather than collapsing it to [0, 0].
+    assert cutoff == _BOUNDED_BAND_NOOP_M
+    assert band_split["split_m"] == _BOUNDED_BAND_NOOP_M
+    assert "sentinel" in report.lower()
+    setup = _metric_depth_and_validity(solve, depth)
+    near_fg, far_fg = _apply_band_split(band_split, "foreground", setup.metric, setup.valid, 0, 0, 0, 0)
+    assert near_fg == 0.0 and far_fg == pytest.approx(_BOUNDED_BAND_NOOP_M)
+
+
+def test_bounded_band_no_focal_passes_through_as_sentinel():
+    intr = AtlasIntrinsics(image_width=W, image_height=H)  # no fx_px -> no metric depth
+    solve = AtlasSolve(camera=LatentCamera(intrinsics=intr))
+    depth = _depth_result(_occluder_depth())
+    mask = _foreground_lower_half_mask()
+
+    band_split, cutoff, report = AtlasBoundedBand().measure(solve, depth, mask)
+    assert cutoff == _BOUNDED_BAND_NOOP_M
+    assert band_split["split_m"] == _BOUNDED_BAND_NOOP_M
