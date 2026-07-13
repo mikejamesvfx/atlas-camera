@@ -676,6 +676,8 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform float uSceneScale;
   uniform float uBumpStrength;
   uniform float uBumpScale;
+  uniform sampler2D uNormalMap;   // predicted WORLD normals (MoGe *-normal), (n+1)/2 in RGB
+  uniform float uHasNormalMap;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
@@ -747,10 +749,16 @@ const PROJECTION_FRAGMENT_SHADER = `
     float facing = abs(dot(normalize(vWorldNormal), toCam));
     if (facing < uFacingThreshold) discard;       // too grazing for this projector
     vec4 col = texture2D(uTexture, uv);
-    // Relight normal: geometry normal, optionally perturbed with photo-luminance
-    // surface detail (uBumpStrength > 0). Only the LIGHTS read this — the facing
-    // discard above stays on the true geometry normal.
+    // Relight normal: the model's predicted WORLD normal (uNormalMap, already
+    // aligned to the recovered frame — image-resolution, cleaner than the coarse
+    // mesh normal) when present, else the geometry normal; then optionally
+    // perturbed with photo-luminance micro-detail (uBumpStrength > 0). Only the
+    // LIGHTS read this — the facing discard above stays on the true geometry normal.
     vec3 N = normalize(vWorldNormal);
+    if (uHasNormalMap > 0.5) {
+      vec3 mn = texture2D(uNormalMap, uv).rgb * 2.0 - 1.0;
+      if (dot(mn, mn) > 0.25) N = normalize(mn);
+    }
     if (uBumpStrength > 0.0) N = atlasBumpNormal(N, vWorldPos, uv, uBumpStrength);
     vec3 relight = vec3(1.0)
       + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, N)
@@ -879,6 +887,8 @@ function makeProjectionMaterial(data, texture, opts) {
       uLight3Color: { value: new THREE.Color(0xffffff) },
       uLight3Intensity: { value: 0 },
       uSceneScale: { value: sceneScale },   // scale-aware relight falloff (cam height / 1.6m)
+      uNormalMap: { value: null },          // predicted world-normal relight map (loaded below if present)
+      uHasNormalMap: { value: 0 },
       // Detail-relight bump strength (💡 Lights panel "Detail" slider); 0 = off
       // = the geometry normal, so backward-compatible. Live-synced like lights.
       uBumpStrength: { value: 0 },
@@ -897,6 +907,18 @@ function makeProjectionMaterial(data, texture, opts) {
     mat.polygonOffset = true;
     mat.polygonOffsetFactor = 0;
     mat.polygonOffsetUnits = priorityToOffsetUnits(options.priority);
+  }
+  // Predicted world-normal relight map (MoGe *-normal), loaded async and gated by
+  // uHasNormalMap. NoColorSpace (raw data, never gamma-decoded) + flipY:false so
+  // it samples at the same projected uv as the photo.
+  if (data.normal_map_b64) {
+    new THREE.TextureLoader().load(data.normal_map_b64, (tex) => {
+      tex.colorSpace = THREE.NoColorSpace;
+      tex.flipY = false;
+      tex.needsUpdate = true;
+      mat.uniforms.uNormalMap.value = tex;
+      mat.uniforms.uHasNormalMap.value = 1;
+    });
   }
   return mat;
 }

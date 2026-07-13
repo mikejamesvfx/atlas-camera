@@ -224,6 +224,12 @@ class DepthResult:
     near: float = 0.0
     far: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Per-pixel predicted surface normals (HxWx3 float32) when the model provides
+    # them (MoGe *-normal variants) — in the MODEL's camera frame, so a consumer
+    # must align them to the recovered world frame (see normals.align_predicted_
+    # normals_to_world). None otherwise. Deliberately NOT in summary()/metadata
+    # (which must stay JSON-safe); it's a heavy array like `depth`.
+    normal: Any = None
 
     def summary(self) -> dict[str, Any]:
         """JSON-safe summary (no heavy array) for the depth LatentComponent."""
@@ -544,9 +550,16 @@ def _estimate_depth_moge(
         mask = out["mask"].detach().cpu().numpy().astype(bool)
         depth = np.where(mask, depth, np.nan)
         metadata["valid_fraction"] = float(mask.mean())
+    predicted_normal = None
     if "normal" in out:
-        # Predicted per-pixel world/camera normals — kept for the mesh's
-        # normal-bend tear test (cleaner than gradient-of-depth normals).
+        # Predicted per-pixel surface normals in the MODEL's camera frame — kept
+        # for the relight (aligned to world downstream) and the mesh's normal-bend
+        # tear test (both cleaner than gradient-of-depth normals).
+        predicted_normal = np.asarray(out["normal"].detach().cpu().numpy(), dtype=np.float32)
+        if predicted_normal.ndim == 4:          # (B,H,W,3) or (B,3,H,W)
+            predicted_normal = predicted_normal[0]
+        if predicted_normal.ndim == 3 and predicted_normal.shape[0] == 3:  # (3,H,W) -> (H,W,3)
+            predicted_normal = np.moveaxis(predicted_normal, 0, -1)
         metadata["has_predicted_normals"] = True
 
     depth, metadata = _record_and_clamp_negative(depth, metadata)
@@ -562,6 +575,7 @@ def _estimate_depth_moge(
         near=near,
         far=far,
         metadata=metadata,
+        normal=predicted_normal,
     )
 
 

@@ -1306,3 +1306,29 @@ def test_bounded_band_no_focal_passes_through_as_sentinel():
     band_split, cutoff, report = AtlasBoundedBand().measure(solve, depth, mask)
     assert cutoff == _BOUNDED_BAND_NOOP_M
     assert band_split["split_m"] == _BOUNDED_BAND_NOOP_M
+
+
+# --- MoGe predicted-normal relight map ---------------------------------------
+
+def test_clean_plate_layer_embeds_aligned_normal_map_when_present():
+    """A depth result carrying predicted normals (MoGe *-normal) → the layer's
+    ProjectionSource gets a world-aligned normal-map data URI for the relight."""
+    pytest.importorskip("PIL")
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    rng = np.random.default_rng(0)
+    nrm = rng.normal(size=(H, W, 3)).astype(np.float32)
+    nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
+    depth.normal = nrm                                   # simulate MoGe's per-pixel normals
+    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        solve, depth, _plate_image(), near_m=5.0, far_m=12.0, relief_grid=32)
+    src = out.projection_sources[-1]
+    assert src.normal_map_b64 and src.normal_map_b64.startswith("data:image/png;base64,")
+
+
+def test_clean_plate_layer_no_normal_map_without_predicted_normals():
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())      # DepthResult.normal defaults to None
+    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        solve, depth, _plate_image(), near_m=5.0, far_m=12.0, relief_grid=32)
+    assert out.projection_sources[-1].normal_map_b64 is None

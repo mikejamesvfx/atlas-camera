@@ -425,6 +425,9 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
             "image_height": s_intr.image_height,
             "image_b64": src.image_b64 or "",
             "mask_b64": getattr(src, "mask_b64", None) or "",
+            # Predicted world-normal relight map (MoGe *-normal), aligned to the
+            # recovered frame — the projection shader samples it for the lights.
+            "normal_map_b64": getattr(src, "normal_map_b64", None) or "",
             "plate_ref": _plate_ref_to_dict(getattr(src, "plate_ref", None)),
             "priority": float(src.priority),
             "azimuth_deg": float(src.azimuth_deg),
@@ -6835,6 +6838,29 @@ class AtlasCleanPlateLayer:
         except Exception:
             plate_padded = None
 
+        # Predicted-normal relight map (MoGe *-normal): align the model-frame
+        # per-pixel normals to the recovered WORLD frame and embed them so the
+        # viewport lights read the true surface orientation at image resolution.
+        # Skipped when the source is frame-outpainted (pad > 0) — the normal map
+        # would then be out of uv-registration with the widened plate; the
+        # geometry normal + luminance bump still apply there.
+        normal_map_b64 = None
+        raw_normal = getattr(depth, "normal", None)
+        if raw_normal is not None and pad == 0:
+            try:
+                from atlas_camera.core.normals import (
+                    align_predicted_normals_to_world,
+                    encode_normal_map_b64,
+                )
+                rn = np.asarray(raw_normal, dtype=np.float64)
+                if rn.ndim == 3 and rn.shape[:2] == setup.depth_map.shape:
+                    world_n, n_valid = align_predicted_normals_to_world(
+                        rn, setup.depth_map, view_matrix=extr.camera_view_matrix,
+                        fx=fx, fy=fy, cx=cx, cy=cy)
+                    normal_map_b64 = encode_normal_map_b64(world_n, n_valid)
+            except Exception:
+                normal_map_b64 = None
+
         source = ProjectionSource(
             camera=src_camera,  # primary POSE unchanged; intrinsics widened when outpainted
             name=name,
@@ -6842,6 +6868,7 @@ class AtlasCleanPlateLayer:
             plate_ref=plate_ref if isinstance(plate_ref, AtlasPlateRef) else AtlasPlateRef.from_dict(plate_ref),
             proxy_geometry=patch_geom,
             priority=float(priority),
+            normal_map_b64=normal_map_b64,
             metadata={
                 "projection_mode": "clean_plate",
                 "source": "inpaint_layer",
