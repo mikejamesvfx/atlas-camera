@@ -1,8 +1,8 @@
 {
   "id": "atlas-input-quickstart",
   "revision": 0,
-  "last_node_id": 7,
-  "last_link_id": 6,
+  "last_node_id": 8,
+  "last_link_id": 8,
   "nodes": [
     {
       "id": 1,
@@ -71,7 +71,8 @@
             2,
             4,
             5,
-            6
+            6,
+            7
           ],
           "slot_index": 0
         },
@@ -79,7 +80,8 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            3
+            3,
+            8
           ],
           "slot_index": 1
         },
@@ -336,6 +338,61 @@
       "widgets_values": [
         "atlas_exports"
       ]
+    },
+    {
+      "id": 8,
+      "type": "AtlasExportReliefMesh",
+      "pos": [
+        760,
+        560
+      ],
+      "size": [
+        330,
+        210
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 7
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "obj_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "glb_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportReliefMesh"
+      },
+      "widgets_values": [
+        "atlas_exports/relief_mesh",
+        128,
+        0.5,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        "both",
+        true,
+        12.0,
+        0.0
+      ]
     }
   ],
   "links": [
@@ -386,6 +443,22 @@
       7,
       0,
       "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      2,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      8,
+      2,
+      1,
+      8,
+      1,
+      "IMAGE"
     ]
   ],
   "groups": [

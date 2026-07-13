@@ -1,8 +1,8 @@
 {
   "id": "atlas-input-quickstart",
   "revision": 0,
-  "last_node_id": 10,
-  "last_link_id": 10,
+  "last_node_id": 11,
+  "last_link_id": 13,
   "nodes": [
     {
       "id": 1,
@@ -105,7 +105,8 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            4
+            4,
+            12
           ],
           "slot_index": 1
         },
@@ -447,7 +448,8 @@
             7,
             8,
             9,
-            10
+            10,
+            11
           ],
           "slot_index": 0
         }
@@ -481,6 +483,14 @@
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
           "link": null
+        },
+        {
+          "name": "relief_mesh_obj_path",
+          "type": "STRING",
+          "link": 13,
+          "widget": {
+            "name": "relief_mesh_obj_path"
+          }
         }
       ],
       "outputs": [
@@ -501,8 +511,64 @@
         "Node name for S&R": "AtlasExportNuke"
       },
       "widgets_values": [
-        "atlas_exports/nuke_single",
-        ""
+        "atlas_exports/nuke_single"
+      ]
+    },
+    {
+      "id": 11,
+      "type": "AtlasExportReliefMesh",
+      "pos": [
+        1480,
+        720
+      ],
+      "size": [
+        330,
+        210
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "obj_path",
+          "type": "STRING",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "glb_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportReliefMesh"
+      },
+      "widgets_values": [
+        "atlas_exports/relief_mesh",
+        128,
+        0.5,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        "both",
+        true,
+        12.0,
+        0.0
       ]
     }
   ],
@@ -586,6 +652,30 @@
       10,
       0,
       "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      9,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      2,
+      1,
+      11,
+      1,
+      "IMAGE"
+    ],
+    [
+      13,
+      11,
+      0,
+      10,
+      2,
+      "STRING"
     ]
   ],
   "groups": [
