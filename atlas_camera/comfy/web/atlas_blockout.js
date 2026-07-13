@@ -1469,6 +1469,50 @@ function buildNodeUI(node, containerEl) {
   movableLights[1].position.set(-2, 3, -2);
   movableLights[2].position.set(0, 4, 3);
   movableLights.forEach((l) => scene.add(l));
+  // Place the (unmoved) relight lights NEAR the recovered geometry, scaled to
+  // the scene, on each execution. The fixed near-origin defaults sit ~scene-
+  // depth away at a large AtlasScaleOverride (geometry 100 m+), so the lights
+  // never reach it and raising them does nothing (user-reported). We put each
+  // light in front of + above the geometry pivot at ~0.36× the camera→pivot
+  // distance (→ a strong-but-not-saturating relight through the scale-aware
+  // atten). Respects manual placement: a light the artist has dragged (its
+  // panel X/Y/Z edited → `atlasMoved`) is never repositioned.
+  function placeDefaultLights() {
+    // Pivot + scale from ALL projected geometry (derived proxies AND patch/clean-
+    // plate meshes) — computeGeometryPivot deliberately excludes patch sources
+    // and runs before they're built, so it can't be reused for this.
+    const box = new THREE.Box3();
+    let any = false;
+    scene.traverse((o) => {
+      if (o.isMesh && (o.userData.atlasPatch || o.userData.atlasDerived)) { box.expandByObject(o); any = true; }
+    });
+    if (!any || box.isEmpty()) return;
+    const pivot = box.getCenter(new THREE.Vector3());
+    const camPos = (recoveredData && recoveredData.camera_position)
+      ? new THREE.Vector3(recoveredData.camera_position[0], recoveredData.camera_position[1], recoveredData.camera_position[2])
+      : camera.position.clone();
+    const toCam = camPos.clone().sub(pivot);
+    const D = toCam.length() || 10;
+    toCam.normalize();
+    const up = new THREE.Vector3(0, 1, 0);
+    let right = new THREE.Vector3().crossVectors(toCam, up);
+    if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
+    right.normalize();
+    const offs = [[0.18, 0.22, 0.22], [-0.18, 0.22, 0.22], [0.0, 0.28, 0.28]];
+    movableLights.forEach((l, i) => {
+      if (l.userData.atlasMoved) return;
+      const o = offs[i] || offs[0];
+      l.position.copy(pivot)
+        .addScaledVector(right, o[0] * D)
+        .addScaledVector(up, o[1] * D)
+        .addScaledVector(toCam, o[2] * D);
+      if (l._atlasInputs) {
+        l._atlasInputs[0].value = l.position.x.toFixed(1);
+        l._atlasInputs[1].value = l.position.y.toFixed(1);
+        l._atlasInputs[2].value = l.position.z.toFixed(1);
+      }
+    });
+  }
   let _lightsWereActive = false;
   // 🩻 hidden-geometry provenance overlay toggle — synced into every
   // projection material by the same live mechanism as the lights (materials
@@ -2878,6 +2922,7 @@ function buildNodeUI(node, containerEl) {
     label.textContent = `Light ${idx + 1}`;
     label.style.cssText = "color:#ddd;font-weight:600;";
     group.appendChild(label);
+    light._atlasInputs = [];
     ["x", "y", "z"].forEach((axis) => {
       const axisLabel = document.createElement("span");
       axisLabel.textContent = axis.toUpperCase();
@@ -2887,8 +2932,10 @@ function buildNodeUI(node, containerEl) {
       input.step = "0.1";
       input.value = light.position[axis].toFixed(1);
       input.style.cssText = "width:52px;background:#1e1e1e;color:#ddd;border:1px solid #444;border-radius:3px;padding:1px 3px;";
-      input.oninput = () => { light.position[axis] = parseFloat(input.value) || 0; };
+      // Editing a position pins the light — placeDefaultLights won't move it again.
+      input.oninput = () => { light.position[axis] = parseFloat(input.value) || 0; light.userData.atlasMoved = true; };
       group.append(axisLabel, input);
+      light._atlasInputs.push(input);
     });
     const intLabel = document.createElement("span");
     intLabel.textContent = "Intensity";
@@ -3391,6 +3438,7 @@ function buildNodeUI(node, containerEl) {
       buildPatchSources(scene, data, () => { if (projectionOn) applyProjection(true); });
       if (projectionOn) applyProjection(true); // grey until textures arrive
       buildBandBox(); // rebuild the 📏 overlay against this execution's geometry
+      placeDefaultLights(); // relight lights follow the (now-built) geometry + scale
     },
     setBackground(imgBase64) {
       if (!imgBase64 || !THREE) return;
