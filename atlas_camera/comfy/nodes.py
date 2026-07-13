@@ -2541,13 +2541,28 @@ class AtlasDeriveReliefMesh:
                                "SAM/RMBG) ORed on top of the internal sky heuristic before "
                                "triangulation - never replaces it, only excludes more. Any "
                                "resolution - resized to match depth."}),
+                "max_edge_factor": ("FLOAT", {"default": 12.0, "min": 2.0, "max": 200.0, "step": 1.0,
+                    "tooltip": "World-space edge tear threshold: a quad tears when its world edge "
+                               "exceeds this x the expected local sample spacing. SEPARATE from "
+                               "depth_edge_rel, and often the DOMINANT tear cause on deep / "
+                               "narrow-FOV / interior scenes, where grazing walls and receding "
+                               "floors span large world distances between adjacent samples and "
+                               "trip the default 12x even where the surface is continuous. Raise "
+                               "(20-40) to close spurious 'comb' tears; too high (>80) rubber-"
+                               "sheets real foreground silhouettes onto the background."}),
+                "sky_heuristic": ("BOOLEAN", {"default": True,
+                    "tooltip": "Exclude above-horizon far/rough regions as sky before "
+                               "triangulation. Correct for OUTDOOR plates; turn OFF for INTERIORS "
+                               "(it otherwise eats the ceiling / vault / far wall as 'sky', "
+                               "punching large holes). Automatically off when exclude_mask is "
+                               "wired (an explicit mask always governs)."}),
             },
         }
 
     _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
     def derive(self, solve, depth, relief_grid=128, relief_quality="custom", depth_edge_rel=0.5,
-               exclude_mask=None):
+               exclude_mask=None, max_edge_factor=12.0, sky_heuristic=True):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -2579,7 +2594,8 @@ class AtlasDeriveReliefMesh:
             depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
             grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
             scale=scale, horizon_y=horizon_y, exclude_mask=resolved_exclude,
-            apply_sky_heuristic=resolved_exclude is None)
+            max_edge_factor=float(max_edge_factor),
+            apply_sky_heuristic=(resolved_exclude is None) and bool(sky_heuristic))
         prims = [backdrop, relief_mesh_primitive(mesh)]
         stats = {
             "ground_scale": scale, "ground_fit": ground_info,
@@ -2587,7 +2603,8 @@ class AtlasDeriveReliefMesh:
         }
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "relief_grid": int(relief_grid), "relief_quality": relief_quality,
-            "depth_edge_rel": float(depth_edge_rel), "derive_node": "AtlasDeriveReliefMesh",
+            "depth_edge_rel": float(depth_edge_rel), "max_edge_factor": float(max_edge_factor),
+            "sky_heuristic": bool(sky_heuristic), "derive_node": "AtlasDeriveReliefMesh",
         })
         hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
         return (out, hole_t)
@@ -5489,6 +5506,20 @@ class AtlasInput:
                                "always keeps a clean 0 cut. Was baked at 64 (tuned for smooth "
                                "ridgelines); lower it for high-frequency content like foliage, "
                                "which 64 shreds into halos. 0 = clean cut on every band."}),
+                "max_edge_factor": ("FLOAT", {"default": 12.0, "min": 2.0, "max": 200.0, "step": 1.0,
+                    "tooltip": "layers=0 relief mesh: world-space edge tear threshold, SEPARATE "
+                               "from the internal depth_edge_rel and often the DOMINANT tear cause "
+                               "on deep / narrow-FOV / interior scenes — grazing walls and "
+                               "receding floors trip the default 12x even where continuous, "
+                               "shredding the mesh into 'combs'. Raise to 20-40 to close them; "
+                               ">80 rubber-sheets real foreground silhouettes onto the background. "
+                               "(No effect in layers>0 band mode.)"}),
+                "sky_heuristic": ("BOOLEAN", {"default": True,
+                    "tooltip": "layers=0 relief mesh: exclude above-horizon far/rough regions as "
+                               "sky before triangulation. Correct OUTDOORS; turn OFF for INTERIORS "
+                               "(it eats the ceiling / vault / far wall as 'sky', punching large "
+                               "holes). Ignored when sky (the SAM card) is on — that mask governs. "
+                               "(No effect in layers>0 band mode.)"}),
             },
         }
 
@@ -5496,7 +5527,8 @@ class AtlasInput:
     def build(self, image, layers=0, mesh="relief", mesh_resolution=512,
               use_vlm=False, vlm_provider="lmstudio", vlm_model="",
               sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
-              upscale_model="", edge_extend_px=24, **_extra):
+              upscale_model="", edge_extend_px=24, max_edge_factor=12.0,
+              sky_heuristic=True, **_extra):
         registry = _comfy_registry()
         have_sam = "SAM3Segment" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry
@@ -5564,7 +5596,9 @@ class AtlasInput:
                 relief = g.node("AtlasDeriveReliefMesh", solve=solve_chain,
                                 depth=depth.out(0),
                                 relief_grid=int(mesh_resolution),
-                                depth_edge_rel=0.5, **exclude_kw)
+                                depth_edge_rel=0.5,
+                                max_edge_factor=float(max_edge_factor),
+                                sky_heuristic=bool(sky_heuristic), **exclude_kw)
                 solve_chain = relief.out(0)
                 notes.append(f"single relief mesh, grid {int(mesh_resolution)}")
             else:
