@@ -26,12 +26,17 @@ from atlas_camera.importers.usd_camera_loader import USDCameraLoader
 # metres using the solve's focal when the node has one (else an assumed
 # normal-lens focal — it predicts no intrinsics itself; ground-pinning
 # re-normalizes downstream). DA3NESTED is CC BY-NC 4.0 — non-commercial license.
+# MoGe-2 (Ruicheng/moge-*) is the MIT-licensed, light-dependency alternative:
+# metric depth + predicted normals, fed the solve's focal as fov_x. Needs the
+# [moge] extra (`pip install git+https://github.com/microsoft/MoGe.git`).
 _DEPTH_MODEL_CHOICES = [
     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
     "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
     "depth-anything/DA3METRIC-LARGE",
     "depth-anything/DA3MONO-LARGE",
     "depth-anything/DA3NESTED-GIANT-LARGE-1.1",
+    "Ruicheng/moge-2-vitl-normal",
+    "Ruicheng/moge-2-vitb-normal",
 ]
 
 # Module-level cache: node_id → camera_data dict, populated by AtlasBlockoutViewport.render()
@@ -5540,6 +5545,13 @@ class AtlasInput:
                                "max_edge_factor: raise mef to stop comb-tearing continuous grazing "
                                "surfaces, then set ~40-70 here to keep genuine edges torn. "
                                "(No effect in layers>0 band mode.)"}),
+                "depth_model": (list(_DEPTH_MODEL_CHOICES),
+                    {"default": "depth-anything/DA3METRIC-LARGE",
+                     "tooltip": "Monocular depth backend (fed the solved focal). DA3METRIC = "
+                                "default, strong metric geometry (needs [neural-da3]; note "
+                                "DA3NESTED is non-commercial CC BY-NC). MoGe-2 (Ruicheng/moge-*) "
+                                "= MIT-licensed, light-dependency alternative with predicted "
+                                "normals (needs [moge]). V2 = transformers-only, no extra install."}),
             },
         }
 
@@ -5548,7 +5560,8 @@ class AtlasInput:
               use_vlm=False, vlm_provider="lmstudio", vlm_model="",
               sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
               upscale_model="", edge_extend_px=24, max_edge_factor=12.0,
-              sky_heuristic=True, normal_edge_deg=0.0, **_extra):
+              sky_heuristic=True, normal_edge_deg=0.0,
+              depth_model="depth-anything/DA3METRIC-LARGE", **_extra):
         registry = _comfy_registry()
         have_sam = "SAM3Segment" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry
@@ -5578,9 +5591,11 @@ class AtlasInput:
                 notes.append(f"layers {layers} → 4 (the VLM plan has 4 band slots)")
                 layers = 4
 
-        # 1. solve + shared depth (always).
+        # 1. solve + shared depth (always). depth_model is fed the solve so
+        # DA3METRIC / MoGe get the recovered focal (metric scale / fov_x).
         solve = g.node("AtlasLearnedSolveFromImage", image=image_ref)
-        depth = g.node("AtlasDepthMap", image=image_ref, solve=solve.out(0))
+        depth = g.node("AtlasDepthMap", image=image_ref, solve=solve.out(0),
+                       depth_model=depth_model)
 
         # 2. sky mask (SolidMask zero when off/unavailable — every consumer
         # nearest-resizes masks, so the 64px placeholder is fine).

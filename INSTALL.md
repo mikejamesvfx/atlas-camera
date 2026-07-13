@@ -214,6 +214,35 @@ heavy export deps (`gsplat`/`open3d`/`pycolmap`/...) - Atlas stubs them. Model w
 download from Hugging Face on first use. A GPU (cuda) is recommended: DA3's inference
 autocasts to bf16/fp16 by device type.
 
+## Optional MoGe-2 Depth Backend
+
+MoGe-2 (Microsoft, **MIT-licensed**) is a light-dependency alternative to DA3 in
+the `depth_model` combo (`Ruicheng/moge-2-vitl-normal`, `Ruicheng/moge-2-vitb-normal`).
+It predicts metric depth PLUS per-pixel normals, and Atlas feeds it the solved
+focal as `fov_x` so its geometry lands in the recovered camera's frame. Unlike
+DA3 it needs no export-only stubbing (no gsplat/open3d/pycolmap stack) and no
+non-commercial license caveat.
+
+Into a fresh/dedicated venv:
+
+```powershell
+pip install -e ".[moge]"
+```
+
+Into an existing ComfyUI venv install `--no-deps` (moge's own list pulls
+gradio/matplotlib/pipeline); torch/torchvision/opencv/scipy are already present:
+
+```powershell
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps "git+https://github.com/microsoft/MoGe.git"
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps "git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183"
+# Verify:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -c "from moge.model.v2 import MoGeModel; print('MoGe OK')"
+```
+
+Weights download from Hugging Face on first use. If the import fails on a missing
+small dependency (e.g. `scipy`), install just that package. A GPU is recommended;
+`infer()` autocasts to fp16 by default.
+
 ### Second backend: World Tracing (diffusion, also research-only)
 
 The node's `model` combo can select `world-tracing-scene` — WT-DiT's r69l

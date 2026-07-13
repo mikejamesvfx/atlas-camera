@@ -58,6 +58,17 @@ neural-da3 = [
     "torch>=2.0",
     "depth-anything-3 @ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git",
 ]
+# MoGe-2 monocular geometry backend (opt-in). MIT-licensed, light-dependency
+# alternative to DA3: metric depth + predicted normals, fed the solve's focal as
+# fov_x. GitHub-only like GeoCalib/DA3; torch/torchvision/opencv/scipy expected
+# from the host env. Into an existing ComfyUI venv prefer the --no-deps route in
+# INSTALL.md (moge's own list pulls gradio/matplotlib/pipeline).
+moge = [
+    "numpy>=1.24",
+    "torch>=2.0",
+    "moge @ git+https://github.com/microsoft/MoGe.git",
+    "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183",
+]
 image = [
     "pillow>=10",
 ]
