@@ -1668,12 +1668,6 @@ function buildNodeUI(node, containerEl) {
   // `if (projectionOn) applyProjection(true)` — starting true just makes
   // those paths fire when the first texture lands.
   let projectionOn = true;
-  // See-through backdrop on/off (🕳 toggle below). When on (default) the
-  // enlarged background-photo plane fills any pixel the projection discards
-  // (matte silhouettes, tears, out-of-frame) so holes read as the photo, not
-  // black; off restores the plain diagnostic view where discarded pixels are
-  // black (and the enlarged plane's edge-smear is gone).
-  let seeThroughOn = true;
   let projMaterial = null;
   const projBtn = document.createElement("button");
   projBtn.textContent = "📽 Project";
@@ -1703,15 +1697,13 @@ function buildNodeUI(node, containerEl) {
         delete c.userData._prevMaterial;
       }
     });
-    // See-through backdrop: the background photo plane STAYS visible under
-    // 📽 Project (renderOrder -100000, depthTest false) so it fills any pixel the
-    // projection discards (matte silhouettes, tears, out-of-frame) with the photo
-    // instead of black — the projected geometry draws on top of it everywhere it
-    // actually paints, so it only shows through in the holes. Gated by the 🕳
-    // See-through toggle under Project; in the grey (Project OFF) view the plane
-    // is the plain photo backdrop and always shows. Hidden only during the
-    // deterministic export passes (renderAllPasses / Safe Zone probe).
-    if (bgMesh) bgMesh.visible = on ? seeThroughOn : true;
+    // The background photo plane is the grey (Project OFF) backdrop only. Under
+    // 📽 Project it is HIDDEN, so any pixel the projection discards (matte
+    // silhouette, torn quad, out-of-frame) reads as the black clear colour. (The
+    // former 🕳 See-through hole-fill — keeping this plane visible under Project —
+    // was removed as too buggy.) Also hidden during the deterministic export
+    // passes (renderAllPasses / Safe Zone probe), handled separately.
+    if (bgMesh) bgMesh.visible = !on;
   }
 
   projBtn.onclick = () => {
@@ -1748,24 +1740,6 @@ function buildNodeUI(node, containerEl) {
   }
   backdropBtn.onclick = () => setBackdropVisible(!backdropVisible);
   toolbar.appendChild(backdropBtn);
-
-  // 🕳 See-through toggle — governs the enlarged background-photo plane (bgMesh)
-  // that fills discarded projection pixels under 📽 Project (see applyProjection).
-  // ON (default) = holes show the softened photo backdrop instead of black; OFF
-  // = plain view, discarded pixels are black and the enlarged plane's edge-smear
-  // is gone. Distinct from 🎬 Backdrop (that governs the flat projection_backdrop
-  // primitive). Display-only, session state, like every other viewport toggle.
-  const seeThruBtn = document.createElement("button");
-  seeThruBtn.textContent = "🕳 See-through";
-  seeThruBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a3a2a;color:#cfc;border:1px solid #465;border-radius:3px";
-  function setSeeThrough(v) {
-    seeThroughOn = v;
-    seeThruBtn.style.background = v ? "#2a3a2a" : "#3a1a1a";
-    seeThruBtn.style.color = v ? "#cfc" : "#faa";
-    if (bgMesh) bgMesh.visible = projectionOn ? seeThroughOn : true;
-  }
-  seeThruBtn.onclick = () => setSeeThrough(!seeThroughOn);
-  toolbar.appendChild(seeThruBtn);
 
   // 📏 Band Box overlay — a translucent red box around the AtlasBoundedBand
   // FOREGROUND: the clean-plate layer whose far_m is FINITE is the one the
@@ -3620,11 +3594,10 @@ function buildNodeUI(node, containerEl) {
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
         bgMesh.position.copy(camera.position).addScaledVector(fwd, D);
         bgMesh.quaternion.copy(camera.quaternion);
-        // The "see-through to backdrop": stays visible UNDER 📽 Project so the
-        // matte/tear outliers see through to the photo, not black — unless the 🕳
-        // See-through toggle is off. Independent of the 🎬 Backdrop toggle (which
-        // only governs the projection_backdrop plane).
-        bgMesh.visible = projectionOn ? seeThroughOn : true;
+        // Grey (Project OFF) photo backdrop only; HIDDEN under 📽 Project so
+        // discarded pixels read as the black clear colour (the 🕳 See-through
+        // hole-fill was removed — too buggy).
+        bgMesh.visible = !projectionOn;
         scene.add(bgMesh);
         node._atlasBgMesh = bgMesh;
       });
