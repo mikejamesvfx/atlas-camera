@@ -2244,6 +2244,102 @@ class AtlasDepthMap:
         return (result,)
 
 
+def _resize_normal_field(normals, target_hw):
+    """Resize an (H,W,3) unit-normal field to ``target_hw`` (h, w) and
+    renormalize. Bilinear via PIL mode 'F' per channel; nearest-neighbour numpy
+    fallback if PIL is unavailable. A no-op when already the right shape."""
+    import numpy as np
+    th, tw = int(target_hw[0]), int(target_hw[1])
+    n = np.asarray(normals, dtype=np.float32)
+    if n.ndim != 3 or n.shape[2] < 3:
+        raise ValueError(f"expected an (H,W,3) normal field, got {n.shape}")
+    if n.shape[:2] == (th, tw):
+        out = n[..., :3]
+    else:
+        try:
+            PILImage = _require_pil()
+            chans = []
+            for c in range(3):
+                im = PILImage.fromarray(np.ascontiguousarray(n[..., c]), mode="F")
+                chans.append(np.asarray(im.resize((tw, th), PILImage.BILINEAR), dtype=np.float32))
+            out = np.stack(chans, axis=-1)
+        except Exception:
+            ys = np.linspace(0, n.shape[0] - 1, th).astype(int)
+            xs = np.linspace(0, n.shape[1] - 1, tw).astype(int)
+            out = n[np.ix_(ys, xs)][..., :3].astype(np.float32)
+    norm = np.linalg.norm(out, axis=-1, keepdims=True)
+    return (out / np.maximum(norm, 1e-12)).astype(np.float32)
+
+
+class AtlasMogeNormals:
+    """🧭 Predicted surface normals from MoGe, DECOUPLED from the depth source.
+
+    Wire BETWEEN AtlasDepthMap (any model) and AtlasCleanPlateLayer. Runs a MoGe
+    ``*-normal`` model PURELY for its per-pixel normals, discards MoGe's own
+    depth, and attaches those normals (resized to the input depth's resolution)
+    onto a COPY of the input ATLAS_DEPTH_MAP. The clean-plate layer then embeds
+    them as its world-normal relight map exactly as if MoGe had been the depth
+    model — so you keep V2/DA3 depth (whose far-field behaves on exteriors, where
+    MoGe's runs away) AND get MoGe's cleaner predicted normals for the lights.
+
+    Reuses AtlasCleanPlateLayer's existing ``depth.normal`` channel — no new
+    widget on that node (its capability freeze). The attach on the layer still
+    requires ``frame_outpaint_px == 0`` there (an outpainted plate's normal map
+    would be out of uv-registration with the widened plate). Pass-through (depth
+    unchanged) if the chosen model returns no normals. Requires the [moge] extra.
+    """
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "STRING")
+    RETURN_NAMES = ("depth", "report")
+    FUNCTION = "attach"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "depth": ("ATLAS_DEPTH_MAP",),
+                "image": ("IMAGE",),
+            },
+            "optional": {
+                "normal_model": (["Ruicheng/moge-2-vitl-normal", "Ruicheng/moge-2-vitb-normal"],
+                    {"default": "Ruicheng/moge-2-vitl-normal"}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+                "solve": ("ATLAS_SOLVE", {"tooltip": "Optional — feeds the SOLVED focal to MoGe "
+                          "(fov_x) for better geometry; the normals are aligned to the recovered "
+                          "world frame downstream regardless, so this is a minor quality knob."}),
+            },
+        }
+
+    def attach(self, depth, image, normal_model="Ruicheng/moge-2-vitl-normal",
+               device="auto", solve=None):
+        import copy
+        base = getattr(depth, "depth", None)
+        if base is None:
+            return (depth, "AtlasMogeNormals: input depth carries no array — passed through unchanged.")
+        from atlas_camera.inference.depth_estimator import estimate_depth
+        tmp = _save_image_tensor_to_tmp(image)
+        try:
+            moge = estimate_depth(tmp, model_id=normal_model,
+                                  device=None if device == "auto" else device,
+                                  focal_px=_solve_focal_px_for_image(solve, image))
+        finally:
+            os.unlink(tmp)
+        raw = getattr(moge, "normal", None)
+        if raw is None:
+            return (depth, f"AtlasMogeNormals: '{normal_model}' returned no normals — is it a "
+                           "'*-normal' variant? Depth passed through unchanged (no relight normals).")
+        import numpy as np
+        target_hw = np.asarray(base).shape[:2]
+        rn = _resize_normal_field(raw, target_hw)
+        out = copy.copy(depth)            # new instance sharing arrays; override only .normal
+        out.normal = rn
+        report = ("AtlasMogeNormals: attached {model} normals resized to {hw} onto the depth map "
+                  "(depth itself unchanged). Feed into AtlasCleanPlateLayer with frame_outpaint_px=0 "
+                  "to embed them as the world-normal relight map.").format(
+                      model=normal_model, hw=tuple(int(v) for v in target_hw))
+        return (out, report)
+
+
 class AtlasPredictHiddenGeometry:
     """🔬 EXPERIMENTAL, RESEARCH-ONLY — "X-ray" depth map via LaRI layered ray
     intersections.
@@ -7309,6 +7405,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasExportCameraPathUSD":   AtlasExportCameraPathUSD,
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              AtlasDepthMap,
+    "AtlasMogeNormals":           AtlasMogeNormals,
     # Experimental (research-only)
     "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
     "AtlasDeriveWalls":           AtlasDeriveWalls,
@@ -7379,6 +7476,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              "Atlas Depth Map 🌊",
+    "AtlasMogeNormals":           "Atlas MoGe Normals 🧭",
     "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
     "AtlasDeriveWalls":           "Atlas Derive Walls 🧱",
     "AtlasDeriveTowersSpires":    "Atlas Derive Towers & Spires 🗼",
