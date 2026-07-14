@@ -120,16 +120,41 @@ def test_band_layers_watertight_and_prioritized(monkeypatch):
     assert all(b["inputs"]["edge_extend_px"] == 8 for b in by_depth[1:])
 
 
-def test_sky_and_scope_skip_gracefully_without_sam(monkeypatch):
+def test_sky_and_scope_skip_gracefully_without_any_segmenter(monkeypatch):
+    # Empty registry: neither SAM3 nor AtlasSemanticMask -> drop to heuristic.
     graph, result = _expand(monkeypatch, sky=True, layers=2,
                             scope_prompts="rocks\nperson")
     report = result[4]
-    assert "sky SKIPPED" in report and "SAM3Segment not installed" in report
+    assert "sky SKIPPED" in report and "no segmenter" in report
     assert "scope SKIPPED" in report
     assert not any(n["class_type"] == "SAM3Segment" for n in graph.values())
+    assert not any(n["class_type"] == "AtlasSemanticMask" for n in graph.values())
     # sky_mask output degrades to the SolidMask zero
     solid_id = next(i for i, n in graph.items() if n["class_type"] == "SolidMask")
     assert result[3] == [solid_id, 0]
+
+
+def test_sky_and_scope_fall_back_to_semantic_mask_without_sam(monkeypatch):
+    # Non-CUDA box: SAM3 (triton) can't load, but our SegFormer node can — sky
+    # and scope must route to AtlasSemanticMask, not collapse to the heuristic.
+    graph, result = _expand(monkeypatch, registry={"AtlasSemanticMask": object},
+                            sky=True, layers=2, scope_prompts="rocks")
+    report = result[4]
+    assert "AtlasSemanticMask" in report and "fallback" in report
+    assert not any(n["class_type"] == "SAM3Segment" for n in graph.values())
+    sems = [n for n in graph.values() if n["class_type"] == "AtlasSemanticMask"]
+    assert len(sems) == 2                        # sky + one scope line
+    # The sky dome is actually built (not skipped), fed by the SegFormer mask.
+    assert any(n["class_type"] == "AtlasSkyDomeLayer" for n in graph.values())
+    assert any(n["inputs"].get("classes") == "sky" for n in sems)
+    # Scope wires AtlasScopeMask off the SegFormer mask — which is out(0), not
+    # SAM3's out(1).
+    scopes = [n for n in graph.values() if n["class_type"] == "AtlasScopeMask"]
+    assert len(scopes) == 1
+    rocks_id = next(i for i, n in graph.items()
+                    if n["class_type"] == "AtlasSemanticMask"
+                    and n["inputs"].get("classes") == "rocks")
+    assert scopes[0]["inputs"]["segment_mask"] == [rocks_id, 0]
 
 
 def test_sky_and_scope_wire_when_sam_present(monkeypatch):

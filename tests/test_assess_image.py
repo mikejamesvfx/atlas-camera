@@ -21,6 +21,7 @@ from atlas_camera.inference.assessor import (
     format_assessment_report,
     staged_layer_prompts,
 )
+from atlas_camera.inference.multimodal_helper import _VLM_MAX_IMAGE_SIDE, _image_data_url
 
 _PAYLOAD = {
     "scene_summary": "Desert vista with buttes; clear layered depth.",
@@ -451,3 +452,40 @@ def test_staged_layer_bands_joint_boundaries():
     bad = {"staged_layers": {"fg": {"present": True, "sam_prompt": "x", "far_pct": 0.9},
                              "mid": {"present": True, "sam_prompt": "y", "far_pct": 0.2}}}
     assert staged_layer_bands(bad)["fg"] == "near_pct=0.000 far_pct=0.300"
+
+
+# --- VLM image downscaling ---------------------------------------------------
+
+def test_image_data_url_downscales_oversized_plate(tmp_path):
+    """A large plate (e.g. a 9K matte plate) must be downscaled before it's sent
+    to the VLM — lmstudio rejects an oversized payload with 'Invalid image
+    detected', so the assessment never even runs on the real marketing plates."""
+    import base64
+    from io import BytesIO
+
+    from PIL import Image
+
+    big = tmp_path / "plate.png"
+    Image.new("RGB", (9216, 3840), (120, 90, 60)).save(big)
+    url = _image_data_url(big)
+
+    assert url.startswith("data:image/jpeg;base64,")   # re-encoded, not the raw 37 MB PNG
+    raw = base64.b64decode(url.split(",", 1)[1])
+    w, h = Image.open(BytesIO(raw)).size
+    assert max(w, h) == _VLM_MAX_IMAGE_SIDE            # long edge capped
+    assert (w, h) == (_VLM_MAX_IMAGE_SIDE, 533)        # aspect preserved (9216x3840)
+    assert len(raw) < 1_000_000                        # comfortably under provider limits
+
+
+def test_image_data_url_leaves_small_image_untouched_in_size(tmp_path):
+    """A small image is never upscaled — only re-encoded."""
+    import base64
+    from io import BytesIO
+
+    from PIL import Image
+
+    small = tmp_path / "s.png"
+    Image.new("RGB", (640, 480)).save(small)
+    url = _image_data_url(small)
+    raw = base64.b64decode(url.split(",", 1)[1])
+    assert Image.open(BytesIO(raw)).size == (640, 480)

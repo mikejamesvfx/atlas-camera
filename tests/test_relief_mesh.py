@@ -440,10 +440,14 @@ def test_fill_mask_synthesized_geometry_stays_plausible():
     occl = depth < 5.0
     filled = _build(depth, band_min_m=5.0, band_max_m=12.0, grid_long_edge=64,
                     fill_mask=occl)
-    # Nothing below the floor clamp (synthesized ground rides the existing
-    # clamp-along-view-ray), nothing beyond the band's far edge.
-    assert float(filled.vertices[:, 1].min()) >= -0.3
-    assert float((-filled.vertices[:, 2]).max()) <= 12.5
+    # Synthesized fill must stay WITHIN the band [band_min, band_max]: never
+    # nearer than band_min (the near-clip — else it intrudes into a nearer band's
+    # zone and renders in front of it), never beyond band_max. It may dip below
+    # the nominal floor when band_min pushes a downward ray past the ground; that
+    # region is occluded background, not visible ground.
+    fwd = -filled.vertices[:, 2]
+    assert float(fwd.min()) >= 5.0 - 0.05
+    assert float(fwd.max()) <= 12.5
 
 
 def test_fill_mask_none_is_backward_compatible():
@@ -586,3 +590,116 @@ def test_overhang_never_grows_into_excluded_region():
     assert (py >= 16 - cell).all()
     # Sanity: the skirt DID grow somewhere (below/sides are plain invalid).
     assert (py > 48).any()
+
+
+# --- normal-bend tear test (normal_edge_deg) -------------------------------
+
+def _ramp_depth():
+    """Continuous tilted plane: depth increases linearly L->R. Constant normal."""
+    xs = np.linspace(5.0, 15.0, W)[None, :].repeat(H, 0)
+    return xs.astype(np.float64)
+
+
+def _tent_depth():
+    """Two symmetric planes meeting at a sharp V ridge down the middle."""
+    half = W // 2
+    left = np.linspace(15.0, 6.0, half)
+    right = np.linspace(6.0, 15.0, W - half)
+    row = np.concatenate([left, right])
+    return row[None, :].repeat(H, 0).astype(np.float64)
+
+
+def _torn(depth, **kw):
+    m = build_relief_mesh(
+        depth, view_matrix=_view_matrix(0.0), fx=FX, fy=FY, cx=CX, cy=CY,
+        grid_long_edge=150, depth_edge_rel=5.0, max_edge_factor=0.0,
+        far_clip_percentile=100.0, smooth_iterations=0,
+        apply_sky_heuristic=False, floor_clamp=None, **kw)
+    return m.stats["torn_fraction"]
+
+
+def test_normal_edge_deg_off_is_a_noop():
+    tent = _tent_depth()
+    base = _torn(tent)
+    assert _torn(tent, normal_edge_deg=None) == base
+    assert _torn(tent, normal_edge_deg=0.0) == base
+
+
+def test_normal_edge_deg_keeps_continuous_grazing_plane():
+    """A smooth tilted plane has a constant normal, so the bend test must not
+    tear it even at a tight threshold (isolates it from max_edge_factor, off)."""
+    ramp = _ramp_depth()
+    assert _torn(ramp, normal_edge_deg=30.0) == _torn(ramp)
+
+
+def test_normal_edge_deg_tears_a_sharp_crease():
+    """A ~90 deg fold tears at a tight threshold but not a loose one."""
+    tent = _tent_depth()
+    base = _torn(tent)
+    assert _torn(tent, normal_edge_deg=45.0) > base
+    assert _torn(tent, normal_edge_deg=120.0) == base
+
+
+# --- band near-clip: fill geometry must stay behind band_min_m ---------------
+
+def test_band_min_m_near_clips_fill_geometry():
+    """A behind band's fill_occluded (and floor-clamped) geometry must never sit
+    nearer than band_min_m — otherwise it intrudes into a nearer band's depth
+    zone and, with farthest-highest priority, renders its blurry inpaint in front
+    of the nearer band's real content (the measured 7.09 m intrusion bug)."""
+    hh = ww = 128
+    depth = np.full((hh, ww), 20.0)      # far band content (~20 m)
+    depth[40:90, 40:90] = 8.0            # a near occluder in front of the band
+    band_min = 15.0
+    fill = depth < band_min              # synthesize depth across the occluder
+    m = build_relief_mesh(
+        depth, view_matrix=_view_matrix(0.0), fx=200.0, fy=200.0, cx=ww / 2, cy=hh / 2,
+        grid_long_edge=100, depth_edge_rel=5.0, scale=1.0,
+        band_min_m=band_min, fill_mask=fill,
+        apply_sky_heuristic=False, far_clip_percentile=100.0, smooth_iterations=0)
+    v = np.asarray(m.vertices)
+    assert len(v) > 0
+    c2w = np.linalg.inv(np.asarray(_view_matrix(0.0), dtype=float))
+    cam, rcw = c2w[:3, 3], c2w[:3, :3]
+    fwd = -((v - cam) @ rcw[:, 2])       # forward depth (metres)
+    assert fwd.min() >= band_min - 1e-6, f"vertex at {fwd.min():.3f} m < band_min {band_min}"
+
+
+def test_band_min_m_none_leaves_geometry_unclipped():
+    """Single-relief mode (band_min_m=None) must be a no-op for the near-clip."""
+    depth = np.full((64, 64), 12.0)
+    depth[20:44, 20:44] = 5.0
+    m = build_relief_mesh(
+        depth, view_matrix=_view_matrix(0.0), fx=200.0, fy=200.0, cx=32, cy=32,
+        grid_long_edge=60, depth_edge_rel=5.0, scale=1.0, band_min_m=None,
+        apply_sky_heuristic=False, far_clip_percentile=100.0, smooth_iterations=0)
+    v = np.asarray(m.vertices)
+    c2w = np.linalg.inv(np.asarray(_view_matrix(0.0), dtype=float))
+    cam, rcw = c2w[:3, 3], c2w[:3, :3]
+    fwd = -((v - cam) @ rcw[:, 2])
+    assert fwd.min() < 8.0   # the 5 m content survives, not clipped to anything
+
+
+def test_relief_mesh_from_solve_prefers_the_derived_mesh():
+    """AtlasExportReliefMesh's helper must return the relief mesh already on the
+    solve (so its edge tuning carries into the OBJ), and None for a bare solve."""
+    from atlas_camera.comfy.nodes import _relief_mesh_from_solve
+    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+    from atlas_camera.core.schema import (
+        AtlasCamera, AtlasExtrinsics, AtlasProjectionScene, AtlasSolve)
+    from atlas_camera.core.intrinsics import build_intrinsics
+
+    depth = np.full((40, 40), 10.0)
+    mesh = _build(depth, h=0.0, grid_long_edge=24, apply_sky_heuristic=False,
+                  far_clip_percentile=100.0)
+    intr = build_intrinsics(image_width=40, image_height=40, focal_length_mm=35.0,
+                            sensor_width_mm=36.0)
+    cam = AtlasCamera(intrinsics=intr, extrinsics=AtlasExtrinsics(
+        camera_position=(0.0, 0.0, 0.0),
+        camera_world_matrix=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))))
+    solve = AtlasSolve(camera=cam, image_width=40, image_height=40)
+
+    assert _relief_mesh_from_solve(solve) is None            # bare solve
+    solve.projection_scene = AtlasProjectionScene(proxy_geometry=[relief_mesh_primitive(mesh)])
+    got = _relief_mesh_from_solve(solve)                      # now present
+    assert got is not None and len(got.faces) == len(mesh.faces)

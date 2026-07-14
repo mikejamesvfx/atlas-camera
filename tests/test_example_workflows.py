@@ -38,12 +38,13 @@ _WORKFLOWS = _ui_workflows()
 
 
 def test_examples_directory_has_ui_workflows():
-    # Shipping catalog deliberately trimmed to TWO workflows (2026-07-12,
-    # user decision): the quickstart + the staged master. The guard now pins
-    # exactly that, so an accidental deletion OR an unreviewed addition both
-    # fail loudly. The removed examples live in git history (< 10e600b).
+    # Shipping catalog: the quickstart + the staged master (2026-07-12), plus the
+    # OCIO/ACEScg EXR-handoff quickstart (2026-07-13). The guard pins exactly
+    # these, so an accidental deletion OR an unreviewed addition both fail loudly.
+    # The trimmed-out examples live in git history (< 10e600b).
     names = sorted(n for n, _ in _WORKFLOWS)
     assert names == ["atlas_camera_staged_master_workflow.json",
+                     "atlas_input_ocio_quickstart_workflow.json",
                      "atlas_input_quickstart_workflow.json"]
 
 

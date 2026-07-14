@@ -26,11 +26,38 @@ git clone https://github.com/mikejamesvfx/atlas-camera.git
 
 No requirements step is needed for the core nodes — ComfyUI already ships
 numpy/Pillow/torch. The `[neural]` features (learned solve, depth, derive
-nodes) additionally need GeoCalib in ComfyUI's venv:
+nodes) additionally need GeoCalib in ComfyUI's Python. Pick the recipe that
+matches your ComfyUI install:
+
+**Standard `venv` install** - pip resolves GeoCalib's dependency tree normally:
 
 ```powershell
-& "<COMFYUI_ROOT>env\Scripts\python.exe" -m pip install "git+https://github.com/cvg/GeoCalib.git" transformers
+& "<COMFYUI_ROOT>\venv\Scripts\python.exe" -m pip install "git+https://github.com/cvg/GeoCalib.git" transformers
 ```
+
+**Portable ComfyUI (`python_embeded`) - `--no-deps`, protect the CUDA stack.**
+The embedded build ships torch/torchvision/numpy compiled against a specific
+ABI, and the standard command above lets pip re-resolve GeoCalib's (unpinned)
+dependency tree, which can pull a numpy or torch wheel that clobbers that ABI
+and breaks torch or other custom nodes (the same hazard as the DA3 `--no-deps`
+note below). GeoCalib itself is pure Python (`py3-none-any`), so install it with
+no deps and add its runtime deps separately:
+
+```powershell
+# GeoCalib (pure Python) - no deps, so pip can't touch your torch/numpy:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps "git+https://github.com/cvg/GeoCalib.git"
+# GeoCalib eager-imports cv2 + kornia at load; transformers powers depth.
+# Install these normally - their only shared dep, numpy, is already present and
+# satisfied (left untouched), and `kornia` pulls its required `kornia-rs`:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install opencv-python kornia transformers
+```
+
+> `--no-deps` on GeoCalib **alone is not enough** - it imports `cv2` and `kornia`
+> at module load and fails with `ModuleNotFoundError: No module named 'cv2'`
+> without the second line. GeoCalib also declares `matplotlib`, but that is used
+> only by its visualization helpers, never the camera solve, so it is omitted
+> here. Restart ComfyUI after installing so the embedded interpreter picks up
+> the new packages.
 
 **Development install (editable + symlink):** keeps the checkout wherever you
 work on it; Python changes are live without reinstalling. See CLAUDE.md's
@@ -129,13 +156,14 @@ runtime error.
 
 Depth Anything 3 (DA3) is a second depth backend selected per node via the
 `depth_model` combo (`depth-anything/DA3METRIC-LARGE`, `DA3MONO-LARGE`,
-`DA3NESTED-GIANT-LARGE-1.1`). **Since 2026-07-09, `DA3METRIC-LARGE` is the
-default for newly added nodes** (measured A/B: ~3× fewer relief-mesh tears,
-much stronger metric ground fits — see `docs/dev/da3_backend_test_plan.md`).
-Existing saved workflows keep their stored V2 values, and every V2 model
-remains in the combo. Without the `[neural-da3]` extra installed, a node left
-on the DA3 default fails with an informative install hint — switch it to a V2
-model or install the extra below. `DA3METRIC-LARGE` converts canonical depth to
+`DA3NESTED-GIANT-LARGE-1.1`). It was briefly the default (2026-07-09) but on
+**2026-07-13 the `main` default reverted to `V2-Metric-Outdoor`** (a 4-scene
+A/B found V2 best-or-tied on exteriors, and V2 needs no extra install — see
+`docs/dev/da3_backend_test_plan.md`). **DA3 is now a selectable choice, and the
+default only on the `experimental-da3-default` branch.** Every V2 model remains
+in the combo. Without the `[neural-da3]` extra installed, selecting a DA3 model
+fails with an informative install hint — switch it to a V2 model or install the
+extra below. `DA3METRIC-LARGE` converts canonical depth to
 metres using the *solved* focal length when the node has one (`focal_source:
 "solve"` in the depth summary); on image-only nodes it falls back to an
 assumed normal-lens focal (`"assumed"` — the metric model is a depth-only
@@ -149,21 +177,72 @@ Into a fresh/dedicated venv the extra works directly:
 pip install -e ".[neural-da3]"
 ```
 
-**Into an existing ComfyUI venv, do NOT install with dependencies.** The
-`depth-anything-3` package hard-requires `xformers` and `numpy<2` and pins
-`moviepy==1.0.3` — a full dependency install can downgrade or clobber ComfyUI's
-torch/numpy. Install the package alone and let it use what ComfyUI already has:
+**Into an existing ComfyUI install, do NOT install with dependencies.** The
+`depth-anything-3` package declares `xformers`, `numpy<2`, `moviepy==1.0.3`, and a
+full gaussian-splat/COLMAP export stack (`gsplat`, `open3d`, `pycolmap`, `trimesh`,
+...) - a normal install can downgrade or clobber ComfyUI's torch/numpy, and several
+of those export deps have no wheels for recent torch/Python on Windows. None are
+used by depth inference, so install the package alone: Atlas auto-stubs the export
+stack at import time (`depth_estimator._install_da3_export_stubs`), leaving you only
+DA3 itself plus a few small pure-Python deps.
+
+Standard `venv`:
 
 ```powershell
 & "<COMFYUI_ROOT>\venv\Scripts\python.exe" -m pip install --no-deps "git+https://github.com/ByteDance-Seed/Depth-Anything-3.git"
-# Then verify the import and that torch/numpy were untouched:
-& "<COMFYUI_ROOT>\venv\Scripts\python.exe" -c "import torch, numpy; print(torch.__version__, numpy.__version__); from depth_anything_3.api import DepthAnything3; print('DA3 OK')"
+& "<COMFYUI_ROOT>\venv\Scripts\python.exe" -m pip install omegaconf einops addict "moviepy==1.0.3"
 ```
 
-If the import fails on a missing small dependency (e.g. `einops`, `omegaconf`,
-`safetensors`), install just that package — never the full dependency set.
-Model weights download from Hugging Face on first use. A GPU (cuda) is
-recommended: DA3's inference autocasts to bf16/fp16 by device type.
+Portable ComfyUI (`python_embeded`) - same idea, but DA3's hatchling build backend
+and a too-tight `requires-python` upper bound (`<=3.13`, which pip reads as excluding
+3.13.1+) need two extra flags:
+
+```powershell
+# DA3 builds with hatchling; install it, then build without isolation and ignore the
+# over-strict requires-python pin (3.13.x is fine):
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install hatchling
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps --no-build-isolation --ignore-requires-python "git+https://github.com/ByteDance-Seed/Depth-Anything-3.git"
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install omegaconf einops addict "moviepy==1.0.3"
+# Verify torch/numpy were untouched:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -c "import torch, numpy; print(torch.__version__, numpy.__version__)"
+```
+
+Notes: `moviepy` MUST be `<2` (DA3 imports the removed `moviepy.editor`); DA3's
+`numpy<2` pin is conservative - inference is verified working on numpy 2.x. `xformers`
+is left absent on purpose so DINOv2 falls back to standard attention (a MagicMock stub
+would flip its availability flag and corrupt the forward pass). Do NOT install the
+heavy export deps (`gsplat`/`open3d`/`pycolmap`/...) - Atlas stubs them. Model weights
+download from Hugging Face on first use. A GPU (cuda) is recommended: DA3's inference
+autocasts to bf16/fp16 by device type.
+
+## Optional MoGe-2 Depth Backend
+
+MoGe-2 (Microsoft, **MIT-licensed**) is a light-dependency alternative to DA3 in
+the `depth_model` combo (`Ruicheng/moge-2-vitl-normal`, `Ruicheng/moge-2-vitb-normal`).
+It predicts metric depth PLUS per-pixel normals, and Atlas feeds it the solved
+focal as `fov_x` so its geometry lands in the recovered camera's frame. Unlike
+DA3 it needs no export-only stubbing (no gsplat/open3d/pycolmap stack) and no
+non-commercial license caveat.
+
+Into a fresh/dedicated venv:
+
+```powershell
+pip install -e ".[moge]"
+```
+
+Into an existing ComfyUI venv install `--no-deps` (moge's own list pulls
+gradio/matplotlib/pipeline); torch/torchvision/opencv/scipy are already present:
+
+```powershell
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps "git+https://github.com/microsoft/MoGe.git"
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps "git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183"
+# Verify:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -c "from moge.model.v2 import MoGeModel; print('MoGe OK')"
+```
+
+Weights download from Hugging Face on first use. If the import fails on a missing
+small dependency (e.g. `scipy`), install just that package. A GPU is recommended;
+`infer()` autocasts to fp16 by default.
 
 ### Second backend: World Tracing (diffusion, also research-only)
 
@@ -301,10 +380,19 @@ KSampler → VAE decode subgraph instead, and feed its output into
 The hero workflow `examples/atlas_camera_staged_master_workflow.json` uses three
 optional external pieces — each fails soft or has a documented placeholder:
 
-- **Sky segmentation** — [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)
-  provides the `SAM3Segment` node (prompt it with `sky`). Its MASK output
-  feeds `AtlasSkyDomeLayer.sky_mask` AND every layer node's `exclude_mask`
-  (a real segmentation replaces Atlas's internal sky heuristic).
+- **Sky / scope segmentation** — [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)
+  provides the `SAM3Segment` node (prompt it with `sky`, `buildings`, etc.).
+  Its MASK output feeds `AtlasSkyDomeLayer.sky_mask` AND every layer node's
+  `exclude_mask` (a real segmentation replaces Atlas's internal sky heuristic).
+  **SAM3 requires `triton`** (CUDA-only). On **Windows + NVIDIA**, install it
+  into the ComfyUI env — `python_embeded\python.exe -m pip install triton-windows`
+  — or `SAM3Segment` fails to load ("No module named 'triton'", Manager reports
+  the pack "missing"). **On Mac (MPS) / CPU / AMD there is no triton**, so SAM3
+  can't run there at all: `AtlasInput` automatically falls back to
+  **`AtlasSemanticMask`** (SegFormer/ADE20K, `[neural]`, no triton — a learned
+  CPU/MPS sky/scope mask), and the numpy sky heuristic is the zero-dependency
+  floor. Grounded-SAM2 (GroundingDINO + a SAM2 pack) is an optional premium
+  Mac tier for SAM-grade edges, at the cost of two extra models.
 - **VLM pre-flight** — `AtlasAssessImage` talks to a local vision-language
   server: Ollama (`ollama run gemma3:4b`, default `http://127.0.0.1:11434`),
   LM Studio (default `http://127.0.0.1:1234/v1`), or llama.cpp

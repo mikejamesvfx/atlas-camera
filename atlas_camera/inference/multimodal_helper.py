@@ -614,9 +614,36 @@ def _image_base64(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode("ascii")
 
 
+# VLMs assess scene STRUCTURE, not fine detail — they downsample internally to
+# ~<1k px anyway — and several providers (lmstudio in particular) reject an
+# oversized payload with "Invalid image detected", so a full-res 4-8K plate
+# never even gets looked at. Downscale the long edge to this before encoding.
+_VLM_MAX_IMAGE_SIDE = 1280
+
+
 def _image_data_url(path: Path) -> str:
-    mime = mimetypes.guess_type(path.name)[0] or "image/png"
-    return f"data:{mime};base64,{_image_base64(path)}"
+    # Downscale large plates so the VLM actually accepts the image (found live:
+    # a 4K plate → lmstudio 400 "Invalid image detected"). Falls back to the raw
+    # bytes if Pillow isn't installed, preserving the previous behavior.
+    try:
+        import io
+
+        from PIL import Image
+
+        with Image.open(path) as im:
+            im = im.convert("RGB")
+            w, h = im.size
+            longest = max(w, h)
+            if longest > _VLM_MAX_IMAGE_SIDE:
+                s = _VLM_MAX_IMAGE_SIDE / float(longest)
+                im = im.resize((max(1, round(w * s)), max(1, round(h * s))))
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=90)
+            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            return f"data:image/jpeg;base64,{b64}"
+    except Exception:
+        mime = mimetypes.guess_type(path.name)[0] or "image/png"
+        return f"data:{mime};base64,{_image_base64(path)}"
 
 
 _MAX_RESPONSE_CHARS = 32_000

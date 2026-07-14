@@ -66,6 +66,46 @@ def test_detect_sky_mask_ignores_region_below_horizon_regardless_of_noise():
     assert not mask.any()
 
 
+def test_sky_mask_disarm_flags_scattered_interior_not_coherent_sky():
+    from atlas_camera.core.depth_geometry import _sky_mask_incoherent
+
+    kw = dict(min_coverage=0.08, top_anchored_max=0.35, runs_per_col_min=4.0)
+    h, w = 120, 160
+
+    # Interior misfire analog: scattered fragments above the horizon (the
+    # roughness term firing on greebled detail) — not top-anchored, many runs.
+    rr, cc = np.mgrid[0:h, 0:w]
+    scattered = np.zeros((h, w), bool)
+    scattered[:70][(rr[:70] + cc[:70]) % 2 == 0] = True
+    assert _sky_mask_incoherent(np, scattered, **kw)
+
+    # Real sky analog: one solid region anchored to the top of frame.
+    solid = np.zeros((h, w), bool)
+    solid[:50, :] = True
+    assert not _sky_mask_incoherent(np, solid, **kw)
+
+    # Real sky with a building silhouette poking up: still top-anchored/contiguous.
+    silhouette = solid.copy()
+    silhouette[30:50, 60:100] = False
+    assert not _sky_mask_incoherent(np, silhouette, **kw)
+
+    # A tiny scattered patch (e.g. sky through a small window) is below the
+    # coverage gate — never disarmed, so genuine small sky still gets excluded.
+    tiny = np.zeros((h, w), bool)
+    tiny[:12, :20] = ((rr + cc) % 2 == 0)[:12, :20]  # <1% of frame
+    assert not _sky_mask_incoherent(np, tiny, **kw)
+
+
+def test_detect_sky_mask_disarm_default_on_but_toggleable():
+    # The existing solid-block sky fixture is coherent -> flagged either way.
+    horizon_y = 45.0
+    depth, sky_rows = _building_and_noisy_sky_depth(horizon_y=horizon_y)
+    assert detect_sky_mask(depth, horizon_y=horizon_y)[:sky_rows].mean() > 0.95
+    # And the raw heuristic is still reachable for callers that want it.
+    raw = detect_sky_mask(depth, horizon_y=horizon_y, disarm_on_incoherent=False)
+    assert raw[:sky_rows].mean() > 0.95
+
+
 def test_detect_sky_mask_requires_numpy(monkeypatch):
     import atlas_camera.core.depth_geometry as dg
 

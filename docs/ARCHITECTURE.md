@@ -123,10 +123,12 @@ interfaces should follow the same rule: produce suggestions with confidence and
 uncertainty, but do not directly alter the deterministic camera solve without
 artist or pipeline confirmation.
 
-As of 2026-07-09 the layer hosts four model families behind guarded imports:
-GeoCalib (learned camera prior), Depth Anything V2 and **Depth Anything 3**
-(monocular depth — DA3 is the default; its canonical depth is converted to
-metres with the *solved* focal), and the experimental layered-ray backends
+As of 2026-07-13 the layer hosts several model families behind guarded imports:
+GeoCalib (learned camera prior), monocular depth — **Depth Anything V2**
+(`V2-Metric-Outdoor` is the default on `main`; Apache, transformers-only),
+**MoGe-2** (MIT, interior specialist), and **Depth Anything 3** (default on the
+`experimental-da3-default` branch; its canonical depth is converted to metres
+with the *solved* focal) — and the experimental layered-ray backends
 (LaRI, World Tracing — user-cloned, research-only; see THIRD_PARTY.md). Each
 wrapper returns torch-free dataclasses so torch never leaks into
 `atlas_camera.core`.

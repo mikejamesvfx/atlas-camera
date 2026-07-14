@@ -670,6 +670,14 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform vec3 uLight2Pos;
   uniform vec3 uLight2Color;
   uniform float uLight2Intensity;
+  uniform vec3 uLight3Pos;
+  uniform vec3 uLight3Color;
+  uniform float uLight3Intensity;
+  uniform float uSceneScale;
+  uniform float uBumpStrength;
+  uniform float uBumpScale;
+  uniform sampler2D uNormalMap;   // predicted WORLD normals (MoGe *-normal), (n+1)/2 in RGB
+  uniform float uHasNormalMap;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
@@ -679,8 +687,43 @@ const PROJECTION_FRAGMENT_SHADER = `
     vec3 toLight = lightPos - worldPos;
     float dist = length(toLight);
     float ndotl = max(dot(normalize(worldNormal), normalize(toLight)), 0.0);
-    float atten = 1.0 / (1.0 + 0.05 * dist * dist);
+    // Scale-aware falloff: distance is measured relative to the scene's metric
+    // scale (uSceneScale = recovered camera height / 1.6 m default eye height),
+    // so a light placed proportionally to the scene gives the same relight at
+    // any AtlasScaleOverride. uSceneScale=1 (the ~1.6 m default) reproduces the
+    // original 1/(1+0.05·dist²) exactly — backward-compatible.
+    float ds = dist / max(uSceneScale, 1e-3);
+    float atten = 1.0 / (1.0 + 0.05 * ds * ds);
     return intensity * ndotl * atten;
+  }
+  // Detail relight: perturb the surface normal using the PHOTO's own luminance
+  // as a heightfield, so the lights sculpt fine surface detail (brick, foliage,
+  // rock) the coarse projection geometry lacks. The height gradient is sampled
+  // in TEXEL space (zoom-stable — the detail scale doesn't change as you orbit),
+  // then mapped tangent→world by a cotangent frame built from screen-space
+  // derivatives of world position + uv (no precomputed tangents needed). Feeds
+  // the relight ONLY — the base texture is never altered. Brighter = higher.
+  vec3 atlasBumpNormal(vec3 N, vec3 p, vec2 uv, float strength) {
+    // Sampling offset in texels (uBumpScale) sets the detail scale: 1 texel is
+    // too fine to register on a big plate (adjacent-pixel luminance is near-
+    // identical), so the default samples several texels apart for real
+    // meso-detail (brick/foliage). Larger = coarser/stronger.
+    vec2 texel = max(uBumpScale, 1.0) / uImageSize;
+    vec3 lw = vec3(0.299, 0.587, 0.114);
+    float hL = dot(texture2D(uTexture, uv - vec2(texel.x, 0.0)).rgb, lw);
+    float hR = dot(texture2D(uTexture, uv + vec2(texel.x, 0.0)).rgb, lw);
+    float hD = dot(texture2D(uTexture, uv - vec2(0.0, texel.y)).rgb, lw);
+    float hU = dot(texture2D(uTexture, uv + vec2(0.0, texel.y)).rgb, lw);
+    vec3 tn = normalize(vec3((hL - hR) * strength, (hD - hU) * strength, 1.0));
+    vec3 dp1 = dFdx(p), dp2 = dFdy(p);
+    vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
+    vec3 dp2perp = cross(dp2, N);
+    vec3 dp1perp = cross(N, dp1);
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+    float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
+    mat3 tbn = mat3(T * invmax, B * invmax, N);
+    return normalize(tbn * tn);
   }
   // Matches THREE.ShaderChunk's own LinearTosRGB (r0.41666 ~= 1/2.4). uTexture
   // is tagged colorSpace=SRGBColorSpace, so the GPU already decodes it to
@@ -706,9 +749,21 @@ const PROJECTION_FRAGMENT_SHADER = `
     float facing = abs(dot(normalize(vWorldNormal), toCam));
     if (facing < uFacingThreshold) discard;       // too grazing for this projector
     vec4 col = texture2D(uTexture, uv);
+    // Relight normal: the model's predicted WORLD normal (uNormalMap, already
+    // aligned to the recovered frame — image-resolution, cleaner than the coarse
+    // mesh normal) when present, else the geometry normal; then optionally
+    // perturbed with photo-luminance micro-detail (uBumpStrength > 0). Only the
+    // LIGHTS read this — the facing discard above stays on the true geometry normal.
+    vec3 N = normalize(vWorldNormal);
+    if (uHasNormalMap > 0.5) {
+      vec3 mn = texture2D(uNormalMap, uv).rgb * 2.0 - 1.0;
+      if (dot(mn, mn) > 0.25) N = normalize(mn);
+    }
+    if (uBumpStrength > 0.0) N = atlasBumpNormal(N, vWorldPos, uv, uBumpStrength);
     vec3 relight = vec3(1.0)
-      + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, vWorldNormal)
-      + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, vWorldNormal);
+      + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, N)
+      + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, N)
+      + uLight3Color * atlasRelightTerm(uLight3Pos, uLight3Color, uLight3Intensity, vWorldPos, N);
     vec3 outColor = atlasLinearToSRGB(clamp(col.rgb * relight, 0.0, 1.0));
     // 🩻 hidden-geometry provenance overlay (debug): tint the surface region
     // whose depth was SUBSTITUTED by AtlasPredictHiddenGeometry (the node's
@@ -784,6 +839,12 @@ function makeProjectionMaterial(data, texture, opts) {
     flat[12], flat[13], flat[14], flat[15]
   );
   const camPos = data.camera_position || [0, 0, 0];
+  // Scale-aware relight falloff (see PROJECTION_FRAGMENT_SHADER): the light
+  // attenuation distance scales with the scene's metric scale, proxied by the
+  // recovered camera height vs the 1.6 m default eye height — so a large
+  // AtlasScaleOverride (geometry 100 m+) no longer starves the lights. Exactly
+  // 1 at the default height, so existing ~1.6 m-camera looks are unchanged.
+  const sceneScale = Math.max(Math.abs(camPos[1]) / 1.6, 0.1);
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uAtlasViewMatrix: { value: vm },
@@ -822,6 +883,16 @@ function makeProjectionMaterial(data, texture, opts) {
       uLight2Pos: { value: new THREE.Vector3() },
       uLight2Color: { value: new THREE.Color(0xffffff) },
       uLight2Intensity: { value: 0 },
+      uLight3Pos: { value: new THREE.Vector3() },
+      uLight3Color: { value: new THREE.Color(0xffffff) },
+      uLight3Intensity: { value: 0 },
+      uSceneScale: { value: sceneScale },   // scale-aware relight falloff (cam height / 1.6m)
+      uNormalMap: { value: null },          // predicted world-normal relight map (loaded below if present)
+      uHasNormalMap: { value: 0 },
+      // Detail-relight bump strength (💡 Lights panel "Detail" slider); 0 = off
+      // = the geometry normal, so backward-compatible. Live-synced like lights.
+      uBumpStrength: { value: 0 },
+      uBumpScale: { value: 8.0 },   // luminance-gradient sampling offset in texels ("Scale")
     },
     vertexShader: PROJECTION_VERTEX_SHADER,
     fragmentShader: PROJECTION_FRAGMENT_SHADER,
@@ -836,6 +907,18 @@ function makeProjectionMaterial(data, texture, opts) {
     mat.polygonOffset = true;
     mat.polygonOffsetFactor = 0;
     mat.polygonOffsetUnits = priorityToOffsetUnits(options.priority);
+  }
+  // Predicted world-normal relight map (MoGe *-normal), loaded async and gated by
+  // uHasNormalMap. NoColorSpace (raw data, never gamma-decoded) + flipY:false so
+  // it samples at the same projected uv as the photo.
+  if (data.normal_map_b64) {
+    new THREE.TextureLoader().load(data.normal_map_b64, (tex) => {
+      tex.colorSpace = THREE.NoColorSpace;
+      tex.flipY = false;
+      tex.needsUpdate = true;
+      mat.uniforms.uNormalMap.value = tex;
+      mat.uniforms.uHasNormalMap.value = 1;
+    });
   }
   return mat;
 }
@@ -996,6 +1079,13 @@ function buildPatchSources(scene, data, onSourceReady) {
     const group = new THREE.Group();
     group.name = `atlas_patch_${idx}`;
     group.userData.atlasPatchGroup = true;
+    // Band metrics for the 📏 Band Box overlay: a finite far_m on a clean-plate
+    // layer is the AtlasBoundedBand cutoff (the foreground's back edge).
+    group.userData.sourceName = src.name;
+    group.userData.near_m = src.near_m;
+    group.userData.far_m = src.far_m;
+    group.userData.band_geometry = src.band_geometry;
+    group.userData.projection_mode = src.projection_mode;
     const meshes = [];
     for (const e of (src.proxy_geometry || [])) {
       const geo = proxyEntryToGeometry(e);
@@ -1395,19 +1485,74 @@ function buildNodeUI(node, containerEl) {
   const movableLights = [
     new THREE.PointLight(0xffffff, 0, 0, 2),
     new THREE.PointLight(0xffffff, 0, 0, 2),
+    new THREE.PointLight(0xffffff, 0, 0, 2),
   ];
   movableLights[0].position.set(2, 3, 2);
   movableLights[1].position.set(-2, 3, -2);
+  movableLights[2].position.set(0, 4, 3);
   movableLights.forEach((l) => scene.add(l));
+  // Place the (unmoved) relight lights NEAR the recovered geometry, scaled to
+  // the scene, on each execution. The fixed near-origin defaults sit ~scene-
+  // depth away at a large AtlasScaleOverride (geometry 100 m+), so the lights
+  // never reach it and raising them does nothing (user-reported). We put each
+  // light in front of + above the geometry pivot at ~0.36× the camera→pivot
+  // distance (→ a strong-but-not-saturating relight through the scale-aware
+  // atten). Respects manual placement: a light the artist has dragged (its
+  // panel X/Y/Z edited → `atlasMoved`) is never repositioned.
+  function placeDefaultLights() {
+    // Pivot + scale from ALL projected geometry (derived proxies AND patch/clean-
+    // plate meshes) — computeGeometryPivot deliberately excludes patch sources
+    // and runs before they're built, so it can't be reused for this.
+    const box = new THREE.Box3();
+    let any = false;
+    scene.traverse((o) => {
+      if (o.isMesh && (o.userData.atlasPatch || o.userData.atlasDerived)) { box.expandByObject(o); any = true; }
+    });
+    if (!any || box.isEmpty()) return;
+    const pivot = box.getCenter(new THREE.Vector3());
+    // Scene scale → the 🎯 pivot-offset step, so a nudge stays proportional at
+    // any AtlasScaleOverride (a 1m step is useless when geometry sits at 150m).
+    lastSceneRadius = box.getSize(new THREE.Vector3()).length() * 0.5 || 10;
+    if (pivotInputs) {
+      const step = Math.max(lastSceneRadius / 40, 0.05).toPrecision(2);
+      pivotInputs.forEach((inp) => { inp.step = step; });
+    }
+    const camPos = (recoveredData && recoveredData.camera_position)
+      ? new THREE.Vector3(recoveredData.camera_position[0], recoveredData.camera_position[1], recoveredData.camera_position[2])
+      : camera.position.clone();
+    const toCam = camPos.clone().sub(pivot);
+    const D = toCam.length() || 10;
+    toCam.normalize();
+    const up = new THREE.Vector3(0, 1, 0);
+    let right = new THREE.Vector3().crossVectors(toCam, up);
+    if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
+    right.normalize();
+    const offs = [[0.18, 0.22, 0.22], [-0.18, 0.22, 0.22], [0.0, 0.28, 0.28]];
+    movableLights.forEach((l, i) => {
+      if (l.userData.atlasMoved) return;
+      const o = offs[i] || offs[0];
+      l.position.copy(pivot)
+        .addScaledVector(right, o[0] * D)
+        .addScaledVector(up, o[1] * D)
+        .addScaledVector(toCam, o[2] * D);
+      if (l._atlasInputs) {
+        l._atlasInputs[0].value = l.position.x.toFixed(1);
+        l._atlasInputs[1].value = l.position.y.toFixed(1);
+        l._atlasInputs[2].value = l.position.z.toFixed(1);
+      }
+    });
+  }
   let _lightsWereActive = false;
   // 🩻 hidden-geometry provenance overlay toggle — synced into every
   // projection material by the same live mechanism as the lights (materials
   // are rebuilt on every execution, so a set-once approach would go stale).
   let debugHiddenOn = false;
   let layerDebugOn = false; // 🎨 per-layer identity tint toggle
+  let bumpStrength = 0;     // 💡 Lights panel "Detail" — photo-luminance relight bump
+  let bumpScale = 8;        // 💡 Lights panel "Scale" — bump sampling offset (texels)
   function syncProjectionLightUniforms() {
     const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn
-      || layerDebugOn;
+      || layerDebugOn || bumpStrength > 0;
     // Skip the traverse entirely while both lights have always been off (the
     // default), but still run once on the on->off transition so any material
     // that previously picked up a nonzero uLightNIntensity gets zeroed out.
@@ -1418,6 +1563,7 @@ function buildNodeUI(node, containerEl) {
       if (!mat?.isShaderMaterial || !mat.uniforms?.uLight1Pos) return;
       movableLights.forEach((l, i) => {
         const n = i + 1;
+        if (!mat.uniforms[`uLight${n}Pos`]) return; // material predates this light count
         mat.uniforms[`uLight${n}Pos`].value.copy(l.position);
         mat.uniforms[`uLight${n}Color`].value.copy(l.color);
         mat.uniforms[`uLight${n}Intensity`].value = l.intensity;
@@ -1427,6 +1573,12 @@ function buildNodeUI(node, containerEl) {
       }
       if (mat.uniforms.uLayerDebug) {
         mat.uniforms.uLayerDebug.value = layerDebugOn ? 1 : 0;
+      }
+      if (mat.uniforms.uBumpStrength) {
+        mat.uniforms.uBumpStrength.value = bumpStrength;
+      }
+      if (mat.uniforms.uBumpScale) {
+        mat.uniforms.uBumpScale.value = bumpScale;
       }
     });
   }
@@ -1452,6 +1604,64 @@ function buildNodeUI(node, containerEl) {
   // by 📷 Camera View so a reset never regresses to the ground-point heuristic.
   let lastGeometryPivot = null;
 
+  // 🎯 Manual orbit-pivot offset (world metres, session-only). Added on top of
+  // whatever base pivot the auto-logic picks (geometry median-depth or the
+  // ground-point fallback), so the artist can nudge the point the orbit swings
+  // around — useful once AtlasScaleOverride pushes geometry out to 100m+ and the
+  // auto centroid isn't where you want to look. `pivotBase` is the un-offset
+  // pivot the auto-logic last set; `applyPivotOffset` re-targets base+offset live.
+  const pivotOffset = new THREE.Vector3(0, 0, 0);
+  let pivotBase = null;              // un-offset world pivot (set at every setTarget site)
+  let lastSceneRadius = 10;          // geometry bounding radius — scales the panel step
+  let pivotInputs = null;            // [x,y,z] <input> refs, for step rescaling on execute
+  function targetWithOffset(base) {  // base (Vector3) + the manual offset
+    pivotBase = base.clone();
+    return base.clone().add(pivotOffset);
+  }
+  function applyPivotOffset() {      // live re-target when the offset changes
+    if (!pivotBase) return;
+    controls.setTarget(pivotBase.clone().add(pivotOffset));
+    controls.syncFromCamera();
+    updatePivotGizmo();              // move the marker immediately (don't wait a frame)
+  }
+
+  // 🎯 Pivot gizmo — an always-on-top marker at the orbit target so the artist
+  // can SEE the point the orbit rotates around (a small sphere + short RGB axis
+  // lines). depthTest:false / high renderOrder so it reads through geometry.
+  // Sized to the scene each frame; visible only while the 🎯 Pivot panel is
+  // open. NOT tagged atlasDerived/atlasPatch, so it never enters the pivot /
+  // light-placement / band-box / projection logic. Hidden during the
+  // deterministic export/Safe-Zone passes (they stash + restore its visibility).
+  let pivotGizmo = null;
+  function ensurePivotGizmo() {
+    if (pivotGizmo || !THREE) return;
+    pivotGizmo = new THREE.Group();
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffcc33, depthTest: false, transparent: true, opacity: 0.95 }));
+    dot.renderOrder = 100003;
+    pivotGizmo.add(dot);
+    [[[3.5, 0, 0], 0xff5555], [[0, 3.5, 0], 0x55ff55], [[0, 0, 3.5], 0x5599ff]].forEach(([v, col]) => {
+      const g = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-v[0], -v[1], -v[2]), new THREE.Vector3(v[0], v[1], v[2])]);
+      const ln = new THREE.Line(g, new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: true, opacity: 0.95 }));
+      ln.renderOrder = 100002;
+      pivotGizmo.add(ln);
+    });
+    pivotGizmo.visible = false;
+    scene.add(pivotGizmo);
+  }
+  function updatePivotGizmo() {      // called per-frame from animate()
+    if (!pivotGizmo || !pivotGizmo.visible) return;
+    const t = controls.target || (controls.getTarget && controls.getTarget());
+    if (t) pivotGizmo.position.set(t.x, t.y, t.z);
+    // Size by camera→pivot distance, NOT the scene bounds (which include the far
+    // backdrop card and would balloon the marker) — so it stays a small,
+    // ~constant on-screen size as you dolly/orbit at any AtlasScaleOverride.
+    const dist = camera.position.distanceTo(pivotGizmo.position) || 10;
+    pivotGizmo.scale.setScalar(Math.max(dist * 0.02, 0.02));
+  }
+
   // Animation loop — assign to node._atlasRafId each frame so cancelAnimationFrame works.
   // The orbit/fly controllers update the camera on input events; pathPlayback
   // (set by the Camera Path "Play" button, below) drives it during path preview.
@@ -1471,6 +1681,7 @@ function buildNodeUI(node, containerEl) {
       if (t >= 1) { const done = pathPlayback.onDone; pathPlayback = null; done?.(); }
     }
     syncProjectionLightUniforms();
+    updatePivotGizmo();   // track the orbit target + rescale to the scene
     // Deferred aspect snap: execution can finish while the node is scrolled
     // off-screen, where ComfyUI hides the DOM widget and every rect measures
     // 0 — snapNodeHeightToRenderAspect stashes the aspect instead, and this
@@ -1525,8 +1736,12 @@ function buildNodeUI(node, containerEl) {
         delete c.userData._prevMaterial;
       }
     });
-    // The projection IS the image now — the floating background photo plane
-    // only duplicates/confuses projected views.
+    // The background photo plane is the grey (Project OFF) backdrop only. Under
+    // 📽 Project it is HIDDEN, so any pixel the projection discards (matte
+    // silhouette, torn quad, out-of-frame) reads as the black clear colour. (The
+    // former 🕳 See-through hole-fill — keeping this plane visible under Project —
+    // was removed as too buggy.) Also hidden during the deterministic export
+    // passes (renderAllPasses / Safe Zone probe), handled separately.
     if (bgMesh) bgMesh.visible = !on;
   }
 
@@ -1564,6 +1779,144 @@ function buildNodeUI(node, containerEl) {
   }
   backdropBtn.onclick = () => setBackdropVisible(!backdropVisible);
   toolbar.appendChild(backdropBtn);
+
+  // 📏 Band Box overlay — a translucent red box around the AtlasBoundedBand
+  // FOREGROUND: the clean-plate layer whose far_m is FINITE is the one the
+  // bounded band clipped at the cutoff (near + N·W); its axis-aligned bounds
+  // show exactly where the foreground relief is capped and where the sky card
+  // falls back behind it. Session-only display state, rebuilt each execution.
+  let bandBoxOn = false;
+  let bandBox = null;
+  function disposeBandBox() {
+    if (!bandBox) return;
+    scene.remove(bandBox);
+    bandBox.traverse((o) => { o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); });
+    bandBox = null;
+  }
+  // A camera-facing text sprite (canvas texture — self-contained, no font/CSS2D
+  // loader needed) used to label the cutoff distance on the 📏 Band Box.
+  function makeBandLabel(text, worldHeight = 0.9, color = 0xff2020) {
+    const r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255;
+    const canvas = document.createElement("canvas");
+    let ctx = canvas.getContext("2d");
+    const fontPx = 48;
+    ctx.font = `bold ${fontPx}px sans-serif`;
+    const w = Math.ceil(ctx.measureText(text).width) + 40;
+    const h = fontPx + 28;
+    canvas.width = w; canvas.height = h;
+    ctx = canvas.getContext("2d");         // resizing the canvas clears state
+    ctx.font = `bold ${fontPx}px sans-serif`;
+    // Darkened box color as the background, bright box color as the border, white
+    // text — so any palette color stays legible and matches its box.
+    ctx.fillStyle = `rgba(${(r * 0.42) | 0},${(g * 0.42) | 0},${(b * 0.42) | 0},0.9)`;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = `rgba(${r},${g},${b},0.95)`; ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, w - 4, h - 4);
+    ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(text, w / 2, h / 2 + 2);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, depthTest: false, transparent: true }));
+    spr.scale.set(worldHeight * (w / h), worldHeight, 1);
+    spr.renderOrder = 100003;
+    return spr;
+  }
+  // Build ONE bounded-band box (cage + cutoff plane + distance label) for a
+  // patch group, into `parent`. Geometry is emitted in `M`'s VIEW space (so the
+  // back face lands exactly on the cutoff plane at any camera pitch) when M is
+  // given, else in world space; the caller applies cam->world once to `parent`.
+  function addBandBoxFor(fg, parent, M, fillOp, planeOp, color) {
+    const cutoff = Math.abs(fg.userData.far_m);
+    const wbox = new THREE.Box3().setFromObject(fg);
+    if (wbox.isEmpty()) return;
+    let boxGeo = null, cutGeo = null, labelPos = null;
+    if (M) {
+      const vb = new THREE.Box3();           // fg AABB corners in view space
+      const mn = wbox.min, mx = wbox.max;
+      for (let i = 0; i < 8; i++) {
+        vb.expandByPoint(new THREE.Vector3(
+          (i & 1) ? mx.x : mn.x, (i & 2) ? mx.y : mn.y, (i & 4) ? mx.z : mn.z).applyMatrix4(M));
+      }
+      const nearZ = vb.max.z, farZ = -cutoff;              // camera looks -Z
+      const zLo = Math.min(nearZ, farZ), zHi = Math.max(nearZ, farZ);
+      const cx = (vb.min.x + vb.max.x) / 2, cy = (vb.min.y + vb.max.y) / 2, cz = (zLo + zHi) / 2;
+      const sx = Math.max(vb.max.x - vb.min.x, 1e-3), sy = Math.max(vb.max.y - vb.min.y, 1e-3);
+      boxGeo = new THREE.BoxGeometry(sx, sy, Math.max(zHi - zLo, 1e-3)); boxGeo.translate(cx, cy, cz);
+      cutGeo = new THREE.PlaneGeometry(sx, sy); cutGeo.translate(cx, cy, farZ);
+      labelPos = new THREE.Vector3(cx, vb.max.y, farZ);    // top of the cutoff plane
+    } else {
+      const size = new THREE.Vector3(); wbox.getSize(size);
+      const center = new THREE.Vector3(); wbox.getCenter(center);
+      boxGeo = new THREE.BoxGeometry(Math.max(size.x, 1e-3), Math.max(size.y, 1e-3), Math.max(size.z, 1e-3));
+      boxGeo.translate(center.x, center.y, center.z);
+      labelPos = new THREE.Vector3(center.x, center.y + size.y / 2, center.z);
+    }
+    const fill = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({
+      color: color, transparent: true, opacity: fillOp, side: THREE.DoubleSide, depthWrite: false }));
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo),
+      new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.95, depthTest: false }));
+    fill.renderOrder = 100001; edges.renderOrder = 100002;
+    parent.add(fill); parent.add(edges);
+    if (cutGeo) {
+      const cut = new THREE.Mesh(cutGeo, new THREE.MeshBasicMaterial({
+        color: color, transparent: true, opacity: planeOp, side: THREE.DoubleSide, depthWrite: false }));
+      cut.renderOrder = 100001; parent.add(cut);
+    }
+    const label = makeBandLabel(`cutoff ${cutoff.toFixed(1)} m`, 0.9, color);
+    label.position.copy(labelPos); parent.add(label);
+  }
+  function buildBandBox() {
+    disposeBandBox();
+    if (!bandBoxOn || !THREE) return;
+    // EVERY bounded foreground layer = a patch group with a FINITE far_m (a
+    // clean-plate layer the bounded band clipped at its own cutoff). Box EACH,
+    // so a multi-plane matte (one fg layer per building/object) shows one red
+    // cage + cutoff label per layer. The background card's far_m is null/+inf.
+    const bounded = [];
+    scene.traverse((c) => {
+      if (c.userData?.atlasPatchGroup && typeof c.userData.far_m === "number" && isFinite(c.userData.far_m)) bounded.push(c);
+    });
+    if (!bounded.length) return; // no bounded band in this scene — nothing to box
+    bounded.sort((a, b) => a.userData.far_m - b.userData.far_m); // near -> far, for stable colors
+    scene.updateMatrixWorld(true);
+    // Build every box in the RECOVERED camera's frame so each back face lands on
+    // its own cutoff plane regardless of camera pitch; one cam->world applied to
+    // the shared parent. Falls back to world-space AABBs if no view matrix.
+    const vm = recoveredData && recoveredData.view_matrix;
+    let M = null, place = null;
+    if (vm && vm.length === 4) {
+      M = new THREE.Matrix4().set(
+        vm[0][0], vm[0][1], vm[0][2], vm[0][3],
+        vm[1][0], vm[1][1], vm[1][2], vm[1][3],
+        vm[2][0], vm[2][1], vm[2][2], vm[2][3],
+        vm[3][0], vm[3][1], vm[3][2], vm[3][3]);
+      place = M.clone().invert();
+    }
+    bandBox = new THREE.Group();
+    bandBox.name = "atlas_band_box";
+    // Frame-spanning band boxes stack, so scale the fill/plane opacity down with
+    // the count — one box stays bold, three read light so the scene shows through
+    // (the always-visible edges + cutoff plane + label still define each).
+    const N = bounded.length;
+    const fillOp = Math.min(0.13, 0.16 / N), planeOp = Math.min(0.28, 0.42 / N);
+    // Distinct color per box (by depth: near -> far). A single box is red, matching
+    // the original; multiple bands get their own hue so they're tellable apart.
+    const PALETTE = [0xff3838, 0xffb020, 0x30c8ff, 0x44e05a, 0xb060ff, 0xf5e030];
+    bounded.forEach((fg, i) => addBandBoxFor(fg, bandBox, M, fillOp, planeOp, PALETTE[i % PALETTE.length]));
+    if (place) bandBox.applyMatrix4(place);
+    scene.add(bandBox);
+  }
+  const bandBoxBtn = document.createElement("button");
+  bandBoxBtn.textContent = "📏 Band Box";
+  bandBoxBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  bandBoxBtn.onclick = () => {
+    bandBoxOn = !bandBoxOn;
+    bandBoxBtn.style.background = bandBoxOn ? "#3a1a1a" : "#2a2a2a";
+    bandBoxBtn.style.color = bandBoxOn ? "#f88" : "#ddd";
+    buildBandBox();
+  };
+  toolbar.appendChild(bandBoxBtn);
 
   // 🩻 X-ray provenance overlay — tints the surface region whose depth was
   // SUBSTITUTED by AtlasPredictHiddenGeometry (red = LaRI, blue = World
@@ -1812,9 +2165,11 @@ function buildNodeUI(node, containerEl) {
     // (found live: baseline read 0 holes at every angle, so the scan always
     // ran to the hard max and the clamp never changed). Null it for the probe.
     const sceneBgWas = scene.background;
+    const gizmoWas = pivotGizmo ? pivotGizmo.visible : false;
     scene.background = null;
     grid.visible = false;
     if (bgMesh) bgMesh.visible = false;
+    if (pivotGizmo) pivotGizmo.visible = false;
     try {
       probeCam.aspect = W / H;
       probeCam.updateProjectionMatrix();
@@ -1834,6 +2189,7 @@ function buildNodeUI(node, containerEl) {
       renderer.setClearColor(prevColor, prevAlpha);
       grid.visible = gridWas;
       if (bgMesh) bgMesh.visible = bgWas;
+      if (pivotGizmo) pivotGizmo.visible = gizmoWas;
       scene.background = sceneBgWas;
     }
   }
@@ -2324,6 +2680,8 @@ function buildNodeUI(node, containerEl) {
     let outputRt = null;
     pathPlayback = null;
     pathGroup.visible = false; // exclude keyframe markers/line from baked frames
+    const bakeGizmoWas = pivotGizmo ? pivotGizmo.visible : false;
+    if (pivotGizmo) pivotGizmo.visible = false; // keep the 🎯 marker out of baked frames
     try {
       const frames = [];
       outputRt = new THREE.WebGLRenderTarget(W, H);
@@ -2366,6 +2724,7 @@ function buildNodeUI(node, containerEl) {
       camera.aspect = savedAspect;
       camera.updateProjectionMatrix();
       pathGroup.visible = pathMode;
+      if (pivotGizmo) pivotGizmo.visible = bakeGizmoWas;
       bakeBtn.disabled = false;
       bakeBtn.textContent = "⏺ Bake Proxy Path";
       if (wasPlaying) playBtn.onclick();
@@ -2591,6 +2950,61 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(lightBtn);
 
+  // 🎯 Orbit pivot offset — nudge the point the orbit swings around (world
+  // metres, ADDED on top of the auto pivot). Session-only; default (0,0,0) = the
+  // auto pivot exactly, so nothing changes until dialled. Useful once
+  // AtlasScaleOverride pushes geometry to 100m+ and the auto centroid isn't
+  // where you want to look. The step auto-scales with the scene (placeDefaultLights).
+  let pivotOn = false;
+  const pivotBtn = document.createElement("button");
+  pivotBtn.textContent = "🎯 Pivot";
+  pivotBtn.title = "Manually offset the orbit pivot (world metres)";
+  pivotBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  pivotBtn.onclick = () => {
+    pivotOn = !pivotOn;
+    pivotBtn.style.background = pivotOn ? "#1a2a3a" : "#2a2a2a";
+    pivotPanel.style.display = pivotOn ? "flex" : "none";
+    ensurePivotGizmo();               // show the on-screen marker while adjusting
+    if (pivotGizmo) { pivotGizmo.visible = pivotOn; updatePivotGizmo(); }
+  };
+  toolbar.appendChild(pivotBtn);
+
+  const pivotPanel = document.createElement("div");
+  pivotPanel.style.cssText = "display:none;flex-wrap:wrap;align-items:center;gap:8px;padding:4px 6px;background:#181818;border-top:1px solid #333;font-size:11px;color:#ccc";
+  const pivotLabel = document.createElement("span");
+  pivotLabel.textContent = "Orbit pivot offset (m):";
+  pivotPanel.appendChild(pivotLabel);
+  pivotInputs = ["x", "y", "z"].map((axis) => {
+    const wrap = document.createElement("span");
+    wrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
+    const lab = document.createElement("span");
+    lab.textContent = axis.toUpperCase();
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.value = "0";
+    inp.step = "0.25";
+    inp.style.cssText = "width:60px;background:#111;color:#ddd;border:1px solid #444;border-radius:3px;padding:2px 4px;font-size:11px";
+    inp.onchange = () => {
+      const v = parseFloat(inp.value);
+      pivotOffset[axis] = Number.isFinite(v) ? v : 0;
+      applyPivotOffset();
+    };
+    wrap.appendChild(lab);
+    wrap.appendChild(inp);
+    pivotPanel.appendChild(wrap);
+    return inp;
+  });
+  const pivotReset = document.createElement("button");
+  pivotReset.textContent = "Reset";
+  pivotReset.title = "Recentre the orbit pivot on the auto (geometry) point";
+  pivotReset.style.cssText = "padding:2px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  pivotReset.onclick = () => {
+    pivotOffset.set(0, 0, 0);
+    pivotInputs.forEach((inp) => { inp.value = "0"; });
+    applyPivotOffset();
+  };
+  pivotPanel.appendChild(pivotReset);
+
   // ⛶ Fullscreen — the browser Fullscreen API on canvasWrap (canvas + all
   // HUD/diagram/legend overlays; NOT the container, whose toolbar may live in
   // a detached Output Desk — canvasWrap behaves identically in both modes).
@@ -2631,6 +3045,7 @@ function buildNodeUI(node, containerEl) {
     label.textContent = `Light ${idx + 1}`;
     label.style.cssText = "color:#ddd;font-weight:600;";
     group.appendChild(label);
+    light._atlasInputs = [];
     ["x", "y", "z"].forEach((axis) => {
       const axisLabel = document.createElement("span");
       axisLabel.textContent = axis.toUpperCase();
@@ -2640,14 +3055,16 @@ function buildNodeUI(node, containerEl) {
       input.step = "0.1";
       input.value = light.position[axis].toFixed(1);
       input.style.cssText = "width:52px;background:#1e1e1e;color:#ddd;border:1px solid #444;border-radius:3px;padding:1px 3px;";
-      input.oninput = () => { light.position[axis] = parseFloat(input.value) || 0; };
+      // Editing a position pins the light — placeDefaultLights won't move it again.
+      input.oninput = () => { light.position[axis] = parseFloat(input.value) || 0; light.userData.atlasMoved = true; };
       group.append(axisLabel, input);
+      light._atlasInputs.push(input);
     });
     const intLabel = document.createElement("span");
     intLabel.textContent = "Intensity";
     intLabel.style.cssText = "color:#888;margin-left:4px;";
     const intSlider = document.createElement("input");
-    intSlider.type = "range"; intSlider.min = "0"; intSlider.max = "5"; intSlider.step = "0.05"; intSlider.value = "0";
+    intSlider.type = "range"; intSlider.min = "0"; intSlider.max = "10"; intSlider.step = "0.05"; intSlider.value = "0";
     intSlider.style.cssText = "width:70px;vertical-align:middle;";
     intSlider.oninput = () => { light.intensity = parseFloat(intSlider.value) || 0; };
     const colorInput = document.createElement("input");
@@ -2658,6 +3075,36 @@ function buildNodeUI(node, containerEl) {
     group.append(intLabel, intSlider, colorInput);
     lightPanel.appendChild(group);
   });
+
+  // Detail relight — photo-luminance bump strength. Perturbs the normal the
+  // lights read (uBumpStrength), so they sculpt fine surface detail the coarse
+  // geometry lacks. 0 = off (geometry normal only). Needs a light raised above 0.
+  {
+    const group = document.createElement("span");
+    group.style.cssText = "display:inline-flex;align-items:center;gap:4px;";
+    const label = document.createElement("span");
+    label.textContent = "Detail";
+    label.style.cssText = "color:#ddd;font-weight:600;";
+    label.title = "Photo-luminance surface detail for the lights (raise a light too).";
+    const slider = document.createElement("input");
+    slider.type = "range"; slider.min = "0"; slider.max = "6"; slider.step = "0.05"; slider.value = "0";
+    slider.style.cssText = "width:90px;vertical-align:middle;";
+    const val = document.createElement("span");
+    val.textContent = "0.00"; val.style.cssText = "color:#888;width:28px;";
+    slider.oninput = () => { bumpStrength = parseFloat(slider.value) || 0; val.textContent = bumpStrength.toFixed(2); };
+    group.append(label, slider, val);
+    // Scale = luminance-gradient sampling offset in texels (detail coarseness).
+    const sLabel = document.createElement("span");
+    sLabel.textContent = "Scale"; sLabel.style.cssText = "color:#888;margin-left:4px;";
+    const sSlider = document.createElement("input");
+    sSlider.type = "range"; sSlider.min = "1"; sSlider.max = "32"; sSlider.step = "1"; sSlider.value = String(bumpScale);
+    sSlider.style.cssText = "width:70px;vertical-align:middle;";
+    const sVal = document.createElement("span");
+    sVal.textContent = String(bumpScale); sVal.style.cssText = "color:#888;width:20px;";
+    sSlider.oninput = () => { bumpScale = parseFloat(sSlider.value) || 1; sVal.textContent = String(bumpScale); };
+    group.append(sLabel, sSlider, sVal);
+    lightPanel.appendChild(group);
+  }
 
   // (Clear button removed 2026-07-09 along with the primitive/proxy buttons —
   // its only job was removing the user meshes those buttons created.)
@@ -2673,7 +3120,7 @@ function buildNodeUI(node, containerEl) {
     try {
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
-      const passes = await renderAllPasses(renderer, scene, camera, W, H, [bgMesh]);
+      const passes = await renderAllPasses(renderer, scene, camera, W, H, [bgMesh, pivotGizmo].filter(Boolean));
       if (!passes) return;
       // Merge into client_data rather than overwrite — preserves a previously
       // baked camera_path/path_frames (same widget, see ⏺ Bake Proxy Path) instead
@@ -2733,6 +3180,7 @@ function buildNodeUI(node, containerEl) {
     if (lightTarget !== _atlasLightMountTarget) {
       _atlasLightMountTarget = lightTarget;
       lightTarget.appendChild(lightPanel);
+      lightTarget.appendChild(pivotPanel);
     }
     if (recoveredData) updateLinkedOutputDesk(recoveredData);
   }
@@ -2851,13 +3299,13 @@ function buildNodeUI(node, containerEl) {
       // point way behind the subject (artist-reported 2026-07-09). The
       // heuristic remains only the no-geometry-yet fallback.
       if (lastGeometryPivot) {
-        controls.setTarget(lastGeometryPivot);
+        controls.setTarget(targetWithOffset(lastGeometryPivot));
       } else {
         // Prefer the solved scene depth (when a derive-geometry node ran) over
         // the generic 30m default so the orbit radius matches this scene.
         const sceneDepth = data.camera_meta?.scene_depth_m;
         const pivotMax = sceneDepth ? sceneDepth * 1.5 : 30;
-        controls.setTarget(groundPointInView(camera, pivotMax));
+        controls.setTarget(targetWithOffset(groundPointInView(camera, pivotMax)));
       }
       controls.syncFromCamera();                     // init orbit state from recovered pose
     }
@@ -3099,7 +3547,7 @@ function buildNodeUI(node, containerEl) {
       const geometryPivot = computeGeometryPivot(data);
       if (geometryPivot) {
         lastGeometryPivot = geometryPivot;
-        controls.setTarget(geometryPivot);
+        controls.setTarget(targetWithOffset(geometryPivot));
         controls.syncFromCamera();
       }
       loadProjectionTexture(data, (tex) => {
@@ -3113,6 +3561,8 @@ function buildNodeUI(node, containerEl) {
       // the primary to fill areas the primary camera couldn't see.
       buildPatchSources(scene, data, () => { if (projectionOn) applyProjection(true); });
       if (projectionOn) applyProjection(true); // grey until textures arrive
+      buildBandBox(); // rebuild the 📏 overlay against this execution's geometry
+      placeDefaultLights(); // relight lights follow the (now-built) geometry + scale
     },
     setBackground(imgBase64) {
       if (!imgBase64 || !THREE) return;
@@ -3141,14 +3591,60 @@ function buildNodeUI(node, containerEl) {
         const fovRad = (camera.fov * Math.PI) / 180;
         const ph = 2 * D * Math.tan(fovRad / 2);
         const pw = ph * (camera.aspect || 1);
-        const geo = new THREE.PlaneGeometry(pw, ph);
-        const mat = new THREE.MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false });
+        // As a see-through backdrop the plane must cover well PAST the recovered
+        // frustum so orbiting off-axis doesn't run the view off its edge into
+        // black. Enlarge the plane by K but keep the photo itself frustum-sized
+        // (UVs scaled about centre by 1/K) and clamp the border, so the photo
+        // stays aligned with the geometry at Camera View while the outer ring is
+        // the edge pixels stretched outward — a soft fill, never black.
+        const K = 3.0;
+        const geo = new THREE.PlaneGeometry(pw * K, ph * K);
+        const uvA = geo.attributes.uv;
+        for (let i = 0; i < uvA.count; i++) {
+          uvA.setXY(i, 0.5 + (uvA.getX(i) - 0.5) * K, 0.5 + (uvA.getY(i) - 0.5) * K);
+        }
+        uvA.needsUpdate = true;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.needsUpdate = true;
+        // In the outer ring (UV outside [0,1]) don't STREAK the clamped edge
+        // pixels — softly fade toward the photo's own average colour, so the
+        // backdrop dissolves into a soft ambient instead of stretched streaks
+        // (still never black). Average = a 1x1 downscale of the photo.
+        let ambient = new THREE.Color(0.02, 0.02, 0.03);
+        try {
+          const cnv = document.createElement("canvas"); cnv.width = cnv.height = 1;
+          const cx = cnv.getContext("2d"); cx.drawImage(tex.image, 0, 0, 1, 1);
+          const px = cx.getImageData(0, 0, 1, 1).data;
+          ambient = new THREE.Color(px[0] / 255, px[1] / 255, px[2] / 255).convertSRGBToLinear();
+        } catch (e) { /* tainted canvas -> keep the dark default */ }
+        const mat = new THREE.ShaderMaterial({
+          uniforms: { map: { value: tex }, uAmbient: { value: ambient } },
+          depthWrite: false, depthTest: false,
+          vertexShader:
+            "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+          fragmentShader:
+            "uniform sampler2D map; uniform vec3 uAmbient; varying vec2 vUv;" +
+            "vec3 l2s(vec3 c){ return mix(pow(c,vec3(0.41666))*1.055-0.055, c*12.92, vec3(lessThanEqual(c,vec3(0.0031308)))); }" +
+            "void main(){ vec3 p = texture2D(map, clamp(vUv,0.0,1.0)).rgb;" +
+            " vec2 d = max(vec2(0.0), max(-vUv, vUv-1.0)); float f = smoothstep(0.0, 0.45, length(d));" +
+            " gl_FragColor = vec4(l2s(mix(p, uAmbient, f)), 1.0); }",
+        });
         bgMesh = new THREE.Mesh(geo, mat);
-        bgMesh.renderOrder = -1;
+        // Deepest renderOrder so it draws FIRST as a pure background canvas: every
+        // projected layer (renderOrder >= 1 via priorityToRenderOrder, primary
+        // 100000) draws on top and overwrites it where it paints, while any pixel
+        // the projection DISCARDS (matte-cut silhouette, torn quad, out-of-frame)
+        // reveals this backdrop photo instead of the black clear colour. depthTest
+        // false means it can never occlude geometry regardless of its D distance.
+        bgMesh.renderOrder = -100000;
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
         bgMesh.position.copy(camera.position).addScaledVector(fwd, D);
         bgMesh.quaternion.copy(camera.quaternion);
-        bgMesh.visible = !projectionOn; // hidden while 📽 Project is active
+        // Grey (Project OFF) photo backdrop only; HIDDEN under 📽 Project so
+        // discarded pixels read as the black clear colour (the 🕳 See-through
+        // hole-fill was removed — too buggy).
+        bgMesh.visible = !projectionOn;
         scene.add(bgMesh);
         node._atlasBgMesh = bgMesh;
       });

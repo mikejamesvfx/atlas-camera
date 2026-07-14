@@ -83,6 +83,13 @@ clean-plate bands, X-ray layer, patches — through the shared
   as `{layer}_extend_matte.png` with a labeled, deliberately-unwired Read and a
   StickyNote ("invented pixels — use as a mask to regrain / degrade / replace") so
   the compositor decides its treatment.
+- the **render camera is animatable**: it uses `translate`/`rotate` +
+  `rot_order XYZ` (not `useMatrix`, which greys out the channels), so you can
+  keyframe a camera move — dolly it and occluded areas fill from the X-ray layer
+  instead of tearing to black. `Root.onScriptLoad` auto-wires it into
+  `ScanlineRender` on open. Each band also gets a `resize none` conform Reformat
+  so a swapped original-resolution EXR fits the band's (outpainted) projection
+  format.
 
 ## Maya — native `.ma`, verified live
 
@@ -96,7 +103,10 @@ caught two API facts now baked into **both** Maya exporters:
   perspective frustum comes solely from `cameraShape.message →
   projection.linkedCamera`;
 - Maya's OBJ importer lands raw values as internal **centimetres** regardless of
-  the scene's declared metre unit — imported layer groups get a ×100 scale.
+  the scene's declared metre unit — imported layer groups get a ×100 scale,
+  applied **about the world origin** (the scriptNode zeroes the group pivots
+  first; scaling about the import pivot instead left every band collapsed onto
+  the camera and the projection tiled — fixed 2026-07-13).
 
 Mattes ride plate alpha → `file.outTransparency` → `lambert.transparency`, the
 same doctrine as the Nuke export, because both consume the identical shared layer

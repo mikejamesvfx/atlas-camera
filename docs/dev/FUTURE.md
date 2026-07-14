@@ -49,3 +49,18 @@ queue cycles.
   future role is the patch-registration spike, not mono depth.
 - **Band-layer `depth_edge_rel` recalibration under DA3** — can the 1.5
   default come back down with DA3's cleaner depth?
+
+## Peak-RAM of the full band + inpaint pipeline (parked 2026-07-13, smoke-test)
+
+**Observed:** a full `AtlasInput` run (`layers=4` + `inpaint`) on a 7680×4512
+plate hit `Unable to allocate 529 MiB for a (4512,7680,4) float array` — a host
+**RAM** OOM (not VRAM), with ~26 GB free. The same image runs fine at a lighter
+config, and a 9216×3840 plate ran fine the same session, so it's a peak-memory
+ceiling, not a bug. Root cause: several full-resolution RGBA-float plates/mattes
+(~0.5 GB each) plus per-band relief meshes and LaMa crops are live at once
+across the 4 bands. **Deferred fix ideas:** free each band's full-res plate/mask
+as soon as its `ProjectionSource` is built (don't hold all bands' plates
+simultaneously); process bands more strictly sequentially in the node-expansion;
+or cap the working-plate resolution for the mask/matte ops (the mesh already
+decimates). For now it's a **doc note** (see `docs/CAMERA_MOVES.md` →
+Performance) — lower `mesh_resolution`/`layers` or free host RAM.

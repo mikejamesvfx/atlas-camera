@@ -459,6 +459,20 @@ def _atlas_load_layers():
                 # imported geometry needs a x100 compensation to line up
                 # with the native cameras (confirmed live in Maya 2027: an
                 # unscaled 300m sky card measured 3m).
+                #
+                # The x100 MUST scale about the world origin, not the import
+                # group's own pivot. groupReference lands the pivot at the
+                # cm-imported geometry CENTRE, so scaling about it grows the
+                # geometry's size x100 but leaves its centre where the cm
+                # import put it (~1m from origin) -> every band collapses onto
+                # the camera and the projection tiles/garbles (verified live
+                # in Maya 2027: a wall that belongs 9m ahead landed ~0.5m
+                # away, engulfing the camera). Zero the scale/rotate pivots
+                # first so the x100 carries POSITION too (band_1 -> true
+                # -8..-10m; render lines up exactly).
+                for _piv in (".scalePivot", ".scalePivotTranslate",
+                             ".rotatePivot", ".rotatePivotTranslate"):
+                    cmds.setAttr(node + _piv, 0, 0, 0, type="double3")
                 cmds.setAttr(node + ".scale", 100, 100, 100, type="double3")
                 cmds.sets(node, edit=True, forceElement=sg)
                 try:

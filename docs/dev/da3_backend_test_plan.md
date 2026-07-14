@@ -3,6 +3,13 @@
 Goal: decide, with numbers and eyes, whether `depth-anything/DA3METRIC-LARGE`
 should replace `Depth-Anything-V2-Metric-Outdoor-Large-hf` as a default.
 
+**UPDATE 2026-07-13 — this decision was REVERSED on `main`.** A 4-scene A/B
+(V2 vs DA3 vs MoGe) found V2-Metric best-or-tied on every exterior, so `main`
+defaults reverted to the zero-extra-install **V2-Metric** models (Outdoor /
+Indoor); DA3 stays selectable and is the default only on the
+`experimental-da3-default` branch. The original decision below is kept for
+history.
+
 **DECISION 2026-07-09: defaults flipped to DA3METRIC-LARGE** (all node combo
 defaults + method kwargs + the indoor/outdoor `scene_type` presets, which now
 both point at the one DA3 metric model). Basis: the Part-1 automated A/B below

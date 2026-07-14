@@ -65,6 +65,12 @@ def _is_da3_model(model_id: str) -> bool:
     return "/da3" in model_id.lower()
 
 
+def _is_moge_model(model_id: str) -> bool:
+    """True for MoGe ids (e.g. ``Ruicheng/moge-2-vitl-normal``). MIT-licensed,
+    light-dependency alternative to the DA3 backend (canonical depth + normals)."""
+    return "moge" in model_id.lower()
+
+
 def _require_depth_backend() -> tuple[Any, Any, Any]:
     """Import torch + transformers depth-estimation classes lazily."""
     try:
@@ -90,8 +96,105 @@ def _require_torch() -> Any:
     return torch
 
 
+# DA3's ``api`` module eagerly imports its gaussian-splat/COLMAP export, trajectory
+# eval, and plotting stack (gsplat, open3d, e3nn, pycolmap, trimesh, plyfile,
+# pillow_heif, evo, matplotlib) — none of which the depth forward pass touches, and
+# several of which have no wheels for recent torch/Python on Windows. When the
+# package is installed with ``--no-deps`` (the documented ComfyUI route, see
+# INSTALL.md) those imports would abort the whole load. We fabricate the missing
+# export-only modules on demand so inference works without the heavy 3D stack.
+#
+# ``xformers`` is deliberately NOT stubbed: DINOv2 guards it with
+# ``try: from xformers.ops import ... ; XFORMERS_AVAILABLE = True / except
+# ImportError: False`` and then uses it when available — a stub would flip that flag
+# true and route attention through a fake module, corrupting inference. Left absent,
+# the guard correctly falls back to standard attention.
+_DA3_EXPORT_ONLY_ROOTS = (
+    "gsplat", "open3d", "e3nn", "pycolmap", "trimesh",
+    "plyfile", "pillow_heif", "evo", "matplotlib",
+)
+_DA3_STUBS_INSTALLED = False
+
+
+class _DA3StubAny:
+    """Permissive placeholder: any attribute access or call yields another one.
+
+    Enough for ``import x`` / ``from x import Y`` / class-body attribute reads to
+    succeed at import time. Never actually invoked during a depth forward pass.
+    """
+
+    def __call__(self, *args: Any, **kwargs: Any) -> "_DA3StubAny":
+        return _DA3StubAny()
+
+    def __getattr__(self, name: str) -> "_DA3StubAny":
+        # Dunders must read as genuinely absent so ``inspect``/``torch.library``
+        # stack-walking over sys.modules (e.g. probing ``__file__``) sees None
+        # instead of a stub object and does not crash.
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        return _DA3StubAny()
+
+
+def _install_da3_export_stubs() -> None:
+    """Register a meta-path finder for DA3's export-only deps, once, if absent.
+
+    Only roots that are genuinely not installed are stubbed, so a user's real
+    matplotlib (etc.) is never shadowed.
+    """
+    global _DA3_STUBS_INSTALLED
+    if _DA3_STUBS_INSTALLED:
+        return
+
+    import sys
+    import types
+    import importlib.abc
+    import importlib.machinery
+    import importlib.util
+
+    absent = set()
+    for root in _DA3_EXPORT_ONLY_ROOTS:
+        try:
+            if importlib.util.find_spec(root) is None:
+                absent.add(root)
+        except (ImportError, ValueError):
+            absent.add(root)
+
+    if absent:
+
+        class _StubLoader(importlib.abc.Loader):
+            def create_module(self, spec):  # type: ignore[override]
+                module = types.ModuleType(spec.name)
+                module.__path__ = []  # treat as a package so submodules resolve
+
+                def _stub_getattr(name):
+                    # Absent dunders (e.g. __file__) must raise so introspection
+                    # over sys.modules treats them as unset, not as a stub object.
+                    if name.startswith("__") and name.endswith("__"):
+                        raise AttributeError(name)
+                    return _DA3StubAny()
+
+                module.__getattr__ = _stub_getattr  # type: ignore[attr-defined]
+                return module
+
+            def exec_module(self, module):  # type: ignore[override]
+                pass
+
+        class _StubFinder(importlib.abc.MetaPathFinder):
+            def find_spec(self, name, path, target=None):  # type: ignore[override]
+                if name.split(".")[0] in absent:
+                    return importlib.machinery.ModuleSpec(
+                        name, _StubLoader(), is_package=True
+                    )
+                return None
+
+        sys.meta_path.insert(0, _StubFinder())
+
+    _DA3_STUBS_INSTALLED = True
+
+
 def _require_da3() -> Any:
     """Import the Depth Anything 3 API lazily with an informative error."""
+    _install_da3_export_stubs()
     try:
         from depth_anything_3.api import DepthAnything3
     except ImportError as exc:  # pragma: no cover - exercised only without the extra
@@ -121,6 +224,12 @@ class DepthResult:
     near: float = 0.0
     far: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Per-pixel predicted surface normals (HxWx3 float32) when the model provides
+    # them (MoGe *-normal variants) — in the MODEL's camera frame, so a consumer
+    # must align them to the recovered world frame (see normals.align_predicted_
+    # normals_to_world). None otherwise. Deliberately NOT in summary()/metadata
+    # (which must stay JSON-safe); it's a heavy array like `depth`.
+    normal: Any = None
 
     def summary(self) -> dict[str, Any]:
         """JSON-safe summary (no heavy array) for the depth LatentComponent."""
@@ -358,6 +467,118 @@ def _estimate_depth_da3(
     )
 
 
+_MOGE_MODEL_CACHE: dict[tuple[str, str], Any] = {}
+_MOGE_MODEL_CACHE_MAX = 1
+
+
+def _require_moge() -> Any:
+    """Import the MoGe-2 model class lazily with an informative error.
+
+    MoGe is MIT-licensed and light on dependencies (no gsplat/open3d/pycolmap
+    stack), so unlike DA3 it needs no export-only stubbing — just the package
+    plus its ``utils3d`` companion.
+    """
+    try:
+        from moge.model.v2 import MoGeModel
+    except ImportError as exc:  # pragma: no cover - exercised only without the extra
+        raise RuntimeError(
+            "MoGe depth models require the 'moge' package (MIT licensed). Install with:\n"
+            "    pip install --no-deps git+https://github.com/microsoft/MoGe.git\n"
+            "    pip install --no-deps "
+            "'git+https://github.com/EasternJournalist/utils3d.git"
+            "@3fab839f0be9931dac7c8488eb0e1600c236e183'"
+        ) from exc
+    return MoGeModel
+
+
+def _get_moge_model(model_id: str, device: str):
+    cached = _MOGE_MODEL_CACHE.get((model_id, device))
+    if cached is not None:
+        return cached
+    MoGeModel = _require_moge()
+    model = MoGeModel.from_pretrained(model_id).to(device).eval()
+    bounded_cache_set(_MOGE_MODEL_CACHE, (model_id, device), model, _MOGE_MODEL_CACHE_MAX,
+                      release_cuda=True)
+    return model
+
+
+def _estimate_depth_moge(
+    image_path: str | Path,
+    *,
+    model_id: str,
+    device: str,
+    focal_px: float | None,
+) -> DepthResult:
+    """MoGe-2 inference path: metric forward-Z depth from the point map.
+
+    MoGe predicts its own camera, but ``infer`` accepts a known horizontal FOV;
+    when the solve supplies a focal we feed it (``fov_x`` in degrees) so the
+    geometry lands in the RECOVERED camera's frame rather than MoGe's own guess.
+    ``depth`` is already forward-Z (== ``points[..., 2]``, verified live); the
+    validity ``mask`` becomes NaN holes, and downstream ground-pinning
+    re-normalizes absolute scale regardless of the model's metric estimate.
+    ``normal`` (from ``*-normal`` variants) rides in metadata for future use by
+    the relief mesh's normal-bend tear test.
+    """
+    import math
+    import numpy as np
+    from PIL import Image
+
+    torch = _require_torch()
+    model = _get_moge_model(model_id, device)
+    image = Image.open(image_path).convert("RGB")
+    width, height = image.size
+    arr = np.asarray(image, dtype=np.float32) / 255.0
+    tensor = torch.from_numpy(arr).permute(2, 0, 1).to(device)  # (3,H,W) in [0,1]
+
+    fov_x = None
+    focal_source = "predicted"
+    if focal_px is not None and float(focal_px) > 0:
+        fov_x = math.degrees(2.0 * math.atan(width / (2.0 * float(focal_px))))
+        focal_source = "solve"
+
+    with torch.inference_mode():
+        out = model.infer(tensor, fov_x=fov_x)
+
+    depth = out["depth"].float().cpu().numpy()  # forward-Z metres
+    metadata: dict[str, Any] = {
+        "device": device, "backend": "moge", "focal_source": focal_source,
+    }
+    if fov_x is not None:
+        metadata["fov_x_deg"] = float(fov_x)
+    if "mask" in out:
+        mask = out["mask"].detach().cpu().numpy().astype(bool)
+        depth = np.where(mask, depth, np.nan)
+        metadata["valid_fraction"] = float(mask.mean())
+    predicted_normal = None
+    if "normal" in out:
+        # Predicted per-pixel surface normals in the MODEL's camera frame — kept
+        # for the relight (aligned to world downstream) and the mesh's normal-bend
+        # tear test (both cleaner than gradient-of-depth normals).
+        predicted_normal = np.asarray(out["normal"].detach().cpu().numpy(), dtype=np.float32)
+        if predicted_normal.ndim == 4:          # (B,H,W,3) or (B,3,H,W)
+            predicted_normal = predicted_normal[0]
+        if predicted_normal.ndim == 3 and predicted_normal.shape[0] == 3:  # (3,H,W) -> (H,W,3)
+            predicted_normal = np.moveaxis(predicted_normal, 0, -1)
+        metadata["has_predicted_normals"] = True
+
+    depth, metadata = _record_and_clamp_negative(depth, metadata)
+    valid = np.isfinite(depth)
+    near = float(np.nanmin(depth[valid])) if valid.any() else 0.0
+    far = float(np.nanmax(depth[valid])) if valid.any() else 0.0
+    return DepthResult(
+        depth=depth,
+        is_metric=True,
+        model_id=model_id,
+        image_width=width,
+        image_height=height,
+        near=near,
+        far=far,
+        metadata=metadata,
+        normal=predicted_normal,
+    )
+
+
 def estimate_depth(
     image_path: str | Path,
     *,
@@ -365,23 +586,26 @@ def estimate_depth(
     device: str | None = None,
     focal_px: float | None = None,
 ) -> DepthResult:
-    """Predict a depth map for a single image (Depth Anything V2 or 3).
+    """Predict a depth map for a single image (Depth Anything V2 / V3, or MoGe-2).
 
     Returns forward distance (metres for metric models). The map is resized back
     to the source image resolution. ``focal_px`` (the solve's focal length in
-    source-image pixels) is consumed only by DA3METRIC — it converts canonical
-    depth to metres using the *solved* focal instead of the model's own predicted
-    intrinsics; every other model ignores it.
+    source-image pixels) is consumed by DA3METRIC (converts canonical depth to
+    metres using the *solved* focal) and by MoGe (fed as ``fov_x`` so its
+    geometry lands in the recovered camera's frame); every other model ignores
+    it. Backend is chosen by ``model_id``: ``depth-anything/DA3*`` -> DA3,
+    anything with ``moge`` -> MoGe-2, else transformers Depth Anything V2.
     """
     torch = _require_torch()
 
     device = resolve_device(device, torch)
 
     content_hash = hashlib.sha256(Path(image_path).read_bytes()).hexdigest()
-    # Only the model family that consumes focal_px fragments the cache on it.
+    # Only the model families that consume focal_px fragment the cache on it
+    # (DA3METRIC's canonical->metric conversion, and MoGe's fov_x injection).
     focal_key = (
         round(float(focal_px), 3)
-        if (focal_px and "da3metric" in model_id.lower())
+        if (focal_px and ("da3metric" in model_id.lower() or _is_moge_model(model_id)))
         else None
     )
     cache_key = (content_hash, model_id, device, focal_key)
@@ -391,6 +615,10 @@ def estimate_depth(
 
     if _is_da3_model(model_id):
         result = _estimate_depth_da3(
+            image_path, model_id=model_id, device=device, focal_px=focal_px
+        )
+    elif _is_moge_model(model_id):
+        result = _estimate_depth_moge(
             image_path, model_id=model_id, device=device, focal_px=focal_px
         )
     else:

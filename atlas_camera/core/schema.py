@@ -401,6 +401,12 @@ class ProjectionSource:
     # by the DCC layer writers as {layer}_extend_matte.png so compositors can
     # process the extension separately (regrain, blur, replace).
     extend_mask_b64: str | None = None
+    # Per-pixel WORLD-space surface normal map (PNG data URI, (n+1)/2 in RGB),
+    # aligned to the recovered camera frame from a model that predicts normals
+    # (MoGe *-normal). The viewport samples it at the projected uv so the lights
+    # read the true surface orientation at image resolution instead of the coarse
+    # mesh normal. None when the depth model predicts no normals.
+    normal_map_b64: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProjectionSource":
@@ -420,6 +426,7 @@ class ProjectionSource:
             metadata=dict(data.get("metadata", {})),
             mask_b64=data.get("mask_b64"),
             extend_mask_b64=data.get("extend_mask_b64"),
+            normal_map_b64=data.get("normal_map_b64"),
         )
 
 

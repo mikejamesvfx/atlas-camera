@@ -146,6 +146,7 @@ def build_relief_mesh(
     floor_clamp: float | None = -0.25,
     smooth_iterations: int = 2,
     max_edge_factor: float = 12.0,
+    normal_edge_deg: float | None = None,
     horizon_y: float | None = None,
     band_min_m: float | None = None,
     band_max_m: float | None = None,
@@ -162,7 +163,16 @@ def build_relief_mesh(
     image edge). Triangles whose corner depths differ by more than
     ``depth_edge_rel`` (relative), or whose world edges stretch beyond
     ``max_edge_factor`` × the expected local sample spacing, are torn —
-    silhouettes become holes instead of stretched shards. Depth is sampled with
+    silhouettes become holes instead of stretched shards. ``normal_edge_deg``
+    (default None = off) adds a third, orthogonal tear test: a triangle is torn
+    when any pair of its corner surface-normals differ by more than that angle.
+    Unlike ``max_edge_factor`` (which trips on any grazing/receding surface,
+    continuous or not), the normal-bend test fires only where the surface
+    *orientation* changes sharply — a real crease or occlusion silhouette — so
+    it can catch those edges while leaving a smoothly-receding wall/floor intact.
+    That lets a caller raise ``max_edge_factor`` (fewer spurious "comb" tears on
+    grazing continuous surfaces) and rely on ``normal_edge_deg`` to still tear
+    genuine silhouettes. Depth is sampled with
     a 3×3 median (kills single-pixel spikes) and smoothed edge-aware for
     ``smooth_iterations`` rounds. Depths above ``far_clip_percentile`` are
     clamped so the sky becomes a smooth distant shell.
@@ -464,6 +474,21 @@ def build_relief_mesh(
             s_fix = (cam[1] - floor_clamp) / np.maximum(cam[1] - py[low], 1e-9)
             pts[low] = cam + s_fix[:, None] * (pts[low] - cam)
 
+    # Near-clip: no vertex may sit nearer than band_min_m (metres). Without it, a
+    # behind band's fill_occluded/floor-clamped geometry leaks into a NEARER
+    # band's depth zone (measured: every behind band reached 7.09 m into the
+    # front band's 6.6-11.4 m range), and farthest-highest priority then renders
+    # its blurry inpaint IN FRONT of the nearer band's real content. Push
+    # offenders back along their own view ray to band_min_m — same ray-preserving
+    # move as floor_clamp, so the baked camera projection is untouched. Runs after
+    # floor_clamp precisely because floor_clamp is one source of the intrusion.
+    if band_min_m is not None:
+        fwd = -((pts - cam) @ R_cw[:, 2])  # metres (pts already scaled about cam)
+        near_bad = (fwd > 1e-6) & (fwd < float(band_min_m))
+        if near_bad.any():
+            s_near = float(band_min_m) / fwd[near_bad]
+            pts[near_bad] = cam + s_near[:, None] * (pts[near_bad] - cam)
+
     # UVs: each vertex is its own image pixel. OBJ vt origin is bottom-left.
     u_uv = cols.astype(np.float64) / max(width - 1, 1)
     v_uv = 1.0 - rows.astype(np.float64) / max(height - 1, 1)
@@ -487,7 +512,24 @@ def build_relief_mesh(
     P10, P11 = pts[1:, :-1], pts[1:, 1:]
     edge_budget = (max_edge_factor * float(scale) * step / min(fx, fy))
 
-    def _tri_ok(da, db, dc, va, vb, vc, pa, pb, pc):
+    # Optional normal-bend tear: per-grid-vertex world normal from the local
+    # surface tangents (np.gradient of the world positions). Invalid vertices
+    # hold NaN depth -> NaN position -> NaN normal, which fails the angle test
+    # and tears — including the one-cell valid border a hole touches, which is
+    # the desired "clean silhouette" behaviour, not a bug.
+    normal_cos = None
+    N00 = N01 = N10 = N11 = None
+    if normal_edge_deg and float(normal_edge_deg) > 0.0:
+        import math
+        normal_cos = math.cos(math.radians(float(normal_edge_deg)))
+        gu = np.gradient(pts, axis=1)
+        gv = np.gradient(pts, axis=0)
+        vnrm = np.cross(gu, gv)
+        vnrm = vnrm / np.maximum(np.linalg.norm(vnrm, axis=-1, keepdims=True), 1e-9)
+        N00, N01 = vnrm[:-1, :-1], vnrm[:-1, 1:]
+        N10, N11 = vnrm[1:, :-1], vnrm[1:, 1:]
+
+    def _tri_ok(da, db, dc, va, vb, vc, pa, pb, pc, na=None, nb=None, nc=None):
         dmax = np.maximum(np.maximum(da, db), dc)
         dmin = np.minimum(np.minimum(da, db), dc)
         ok = (va & vb & vc & (dmin > 1e-4)
@@ -496,10 +538,15 @@ def build_relief_mesh(
             limit = dmax * edge_budget  # expected spacing ≈ depth·step/f
             for e0, e1 in ((pa, pb), (pb, pc), (pa, pc)):
                 ok &= np.linalg.norm(e1 - e0, axis=-1) <= np.maximum(limit, 0.05)
+        if normal_cos is not None and na is not None:
+            with np.errstate(invalid="ignore"):
+                for m0, m1 in ((na, nb), (nb, nc), (na, nc)):
+                    # both unit; NaN dot -> comparison False -> triangle torn
+                    ok &= (np.sum(m0 * m1, axis=-1) >= normal_cos)
         return ok
 
-    ok_a = _tri_ok(d00, d10, d01, v00, v10, v01, P00, P10, P01)
-    ok_b = _tri_ok(d10, d11, d01, v10, v11, v01, P10, P11, P01)
+    ok_a = _tri_ok(d00, d10, d01, v00, v10, v01, P00, P10, P01, N00, N10, N01)
+    ok_b = _tri_ok(d10, d11, d01, v10, v11, v01, P10, P11, P01, N10, N11, N01)
     tri_a = np.stack([i00[ok_a], i10[ok_a], i01[ok_a]], axis=1)
     tri_b = np.stack([i10[ok_b], i11[ok_b], i01[ok_b]], axis=1)
     faces = np.concatenate([tri_a, tri_b], axis=0)

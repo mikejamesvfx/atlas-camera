@@ -24,7 +24,7 @@ section, why that makes it a fundamentally different tool.
   source photo. Geometry at slightly-wrong depth still receives exactly the
   pixels its silhouette subtends — the classic Nuke/Maya camera-projection model.
 - **CPU-first, zero-dependency core.** The core is pure Python/NumPy. `torch` is
-  imported lazily *inside* the neural nodes, so **all 54 nodes register with no
+  imported lazily *inside* the neural nodes, so **all 56 nodes register with no
   GPU and no torch present** — only the AI features need `[neural]`.
 - **DCC-native handoff verified in the real applications.** The Nuke `.nk` and
   Maya `.ma` exporters were validated by actually rendering in Nuke and opening
@@ -147,7 +147,7 @@ The dependency architecture is a deliberate feature, and it is verifiable:
 
 - `atlas_camera.core` imports **no torch at all**.
 - In the ComfyUI node module, `import torch` / `import numpy` live **inside** the
-  functions that use them — never at module load — so **all 54 nodes register in
+  functions that use them — never at module load — so **all 56 nodes register in
   ComfyUI with zero heavy dependencies present**. Only the neural nodes raise an
   informative install hint if `[neural]` is missing; the pack never fails to load.
 
@@ -300,7 +300,7 @@ what you move the camera through matches what you export.
 | Determinism | Diffusion, seed-dependent | Deterministic depth | **Closed-form solve; learned prior is calibration only** |
 | Texture model | Baked into UVs once | Baked | **Live camera projection — exact from the recovered view** |
 | Metric scale | None (unit cube) | None | **Measured, tiered, confidence-tagged** |
-| GPU to load | Required (CUDA torch + weights) | Usually required | **None — 54 nodes register on CPU; GPU only for AI features** |
+| GPU to load | Required (CUDA torch + weights) | Usually required | **None — 56 nodes register on CPU; GPU only for AI features** |
 | DCC handoff | `.glb`/`.obj` to wrangle | Mesh | **Native Nuke/Maya/USD projection rigs, verified in-app** |
 | Reveals on camera move | N/A (full mesh) | Stretches | **Clean-plate layers + patches + X-ray predicted geometry** |
 | Interactive viewport | None (export & open elsewhere) | None | **Realtime, fullscreen, cinematic camera moves, in-graph** |
