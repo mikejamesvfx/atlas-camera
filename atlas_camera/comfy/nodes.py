@@ -37,6 +37,18 @@ _DEPTH_MODEL_CHOICES = [
     "depth-anything/DA3NESTED-GIANT-LARGE-1.1",
     "Ruicheng/moge-2-vitl-normal",
     "Ruicheng/moge-2-vitb-normal",
+    "Ruicheng/moge-2-vits-normal",
+]
+
+# MoGe `*-normal` checkpoints, largest→smallest — the models that predict surface
+# normals (used by AtlasMogeNormals, and the normal-capable subset of the depth
+# choices above). ViT-S (35M) is the CPU/MPS-viable one for non-CUDA users; ViT-B
+# (104M) a lighter GPU option; ViT-L (331M) the best quality. MIT-licensed,
+# auto-downloaded from HuggingFace. APPEND-ONLY (values serialize into workflows).
+_MOGE_NORMAL_MODEL_CHOICES = [
+    "Ruicheng/moge-2-vitl-normal",
+    "Ruicheng/moge-2-vitb-normal",
+    "Ruicheng/moge-2-vits-normal",
 ]
 
 # Module-level cache: node_id → camera_data dict, populated by AtlasBlockoutViewport.render()
@@ -2301,8 +2313,10 @@ class AtlasMogeNormals:
                 "image": ("IMAGE",),
             },
             "optional": {
-                "normal_model": (["Ruicheng/moge-2-vitl-normal", "Ruicheng/moge-2-vitb-normal"],
-                    {"default": "Ruicheng/moge-2-vitl-normal"}),
+                "normal_model": (list(_MOGE_NORMAL_MODEL_CHOICES),
+                    {"default": "Ruicheng/moge-2-vitl-normal",
+                     "tooltip": "MoGe *-normal checkpoint. vitl=best quality, vitb=lighter GPU, "
+                     "vits=35M CPU/MPS-viable (non-CUDA). Auto-downloads from HuggingFace."}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "solve": ("ATLAS_SOLVE", {"tooltip": "Optional — feeds the SOLVED focal to MoGe "
                           "(fov_x) for better geometry; the normals are aligned to the recovered "
