@@ -1622,6 +1622,44 @@ function buildNodeUI(node, containerEl) {
     if (!pivotBase) return;
     controls.setTarget(pivotBase.clone().add(pivotOffset));
     controls.syncFromCamera();
+    updatePivotGizmo();              // move the marker immediately (don't wait a frame)
+  }
+
+  // 🎯 Pivot gizmo — an always-on-top marker at the orbit target so the artist
+  // can SEE the point the orbit rotates around (a small sphere + short RGB axis
+  // lines). depthTest:false / high renderOrder so it reads through geometry.
+  // Sized to the scene each frame; visible only while the 🎯 Pivot panel is
+  // open. NOT tagged atlasDerived/atlasPatch, so it never enters the pivot /
+  // light-placement / band-box / projection logic. Hidden during the
+  // deterministic export/Safe-Zone passes (they stash + restore its visibility).
+  let pivotGizmo = null;
+  function ensurePivotGizmo() {
+    if (pivotGizmo || !THREE) return;
+    pivotGizmo = new THREE.Group();
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffcc33, depthTest: false, transparent: true, opacity: 0.95 }));
+    dot.renderOrder = 100003;
+    pivotGizmo.add(dot);
+    [[[3.5, 0, 0], 0xff5555], [[0, 3.5, 0], 0x55ff55], [[0, 0, 3.5], 0x5599ff]].forEach(([v, col]) => {
+      const g = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-v[0], -v[1], -v[2]), new THREE.Vector3(v[0], v[1], v[2])]);
+      const ln = new THREE.Line(g, new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: true, opacity: 0.95 }));
+      ln.renderOrder = 100002;
+      pivotGizmo.add(ln);
+    });
+    pivotGizmo.visible = false;
+    scene.add(pivotGizmo);
+  }
+  function updatePivotGizmo() {      // called per-frame from animate()
+    if (!pivotGizmo || !pivotGizmo.visible) return;
+    const t = controls.target || (controls.getTarget && controls.getTarget());
+    if (t) pivotGizmo.position.set(t.x, t.y, t.z);
+    // Size by camera→pivot distance, NOT the scene bounds (which include the far
+    // backdrop card and would balloon the marker) — so it stays a small,
+    // ~constant on-screen size as you dolly/orbit at any AtlasScaleOverride.
+    const dist = camera.position.distanceTo(pivotGizmo.position) || 10;
+    pivotGizmo.scale.setScalar(Math.max(dist * 0.02, 0.02));
   }
 
   // Animation loop — assign to node._atlasRafId each frame so cancelAnimationFrame works.
@@ -1643,6 +1681,7 @@ function buildNodeUI(node, containerEl) {
       if (t >= 1) { const done = pathPlayback.onDone; pathPlayback = null; done?.(); }
     }
     syncProjectionLightUniforms();
+    updatePivotGizmo();   // track the orbit target + rescale to the scene
     // Deferred aspect snap: execution can finish while the node is scrolled
     // off-screen, where ComfyUI hides the DOM widget and every rect measures
     // 0 — snapNodeHeightToRenderAspect stashes the aspect instead, and this
@@ -2126,9 +2165,11 @@ function buildNodeUI(node, containerEl) {
     // (found live: baseline read 0 holes at every angle, so the scan always
     // ran to the hard max and the clamp never changed). Null it for the probe.
     const sceneBgWas = scene.background;
+    const gizmoWas = pivotGizmo ? pivotGizmo.visible : false;
     scene.background = null;
     grid.visible = false;
     if (bgMesh) bgMesh.visible = false;
+    if (pivotGizmo) pivotGizmo.visible = false;
     try {
       probeCam.aspect = W / H;
       probeCam.updateProjectionMatrix();
@@ -2148,6 +2189,7 @@ function buildNodeUI(node, containerEl) {
       renderer.setClearColor(prevColor, prevAlpha);
       grid.visible = gridWas;
       if (bgMesh) bgMesh.visible = bgWas;
+      if (pivotGizmo) pivotGizmo.visible = gizmoWas;
       scene.background = sceneBgWas;
     }
   }
@@ -2638,6 +2680,8 @@ function buildNodeUI(node, containerEl) {
     let outputRt = null;
     pathPlayback = null;
     pathGroup.visible = false; // exclude keyframe markers/line from baked frames
+    const bakeGizmoWas = pivotGizmo ? pivotGizmo.visible : false;
+    if (pivotGizmo) pivotGizmo.visible = false; // keep the 🎯 marker out of baked frames
     try {
       const frames = [];
       outputRt = new THREE.WebGLRenderTarget(W, H);
@@ -2680,6 +2724,7 @@ function buildNodeUI(node, containerEl) {
       camera.aspect = savedAspect;
       camera.updateProjectionMatrix();
       pathGroup.visible = pathMode;
+      if (pivotGizmo) pivotGizmo.visible = bakeGizmoWas;
       bakeBtn.disabled = false;
       bakeBtn.textContent = "⏺ Bake Proxy Path";
       if (wasPlaying) playBtn.onclick();
@@ -2919,6 +2964,8 @@ function buildNodeUI(node, containerEl) {
     pivotOn = !pivotOn;
     pivotBtn.style.background = pivotOn ? "#1a2a3a" : "#2a2a2a";
     pivotPanel.style.display = pivotOn ? "flex" : "none";
+    ensurePivotGizmo();               // show the on-screen marker while adjusting
+    if (pivotGizmo) { pivotGizmo.visible = pivotOn; updatePivotGizmo(); }
   };
   toolbar.appendChild(pivotBtn);
 
@@ -3073,7 +3120,7 @@ function buildNodeUI(node, containerEl) {
     try {
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
-      const passes = await renderAllPasses(renderer, scene, camera, W, H, [bgMesh]);
+      const passes = await renderAllPasses(renderer, scene, camera, W, H, [bgMesh, pivotGizmo].filter(Boolean));
       if (!passes) return;
       // Merge into client_data rather than overwrite — preserves a previously
       // baked camera_path/path_frames (same widget, see ⏺ Bake Proxy Path) instead
