@@ -4128,6 +4128,25 @@ class AtlasExportReliefMesh:
                 "normal_edge_deg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 180.0, "step": 1.0,
                     "tooltip": "Re-derive only: 0 = off; tears on surface-normal bend (real creases) "
                                "while leaving smooth grazing surfaces intact."}),
+                "fill_interior_holes": ("BOOLEAN", {"default": False,
+                    "tooltip": "EXPORT-ONLY (the live viewport projection mesh is never touched). "
+                               "Fan-fill small interior tear holes in the OBJ/GLB so it retopologizes "
+                               "and booleans cleanly in a DCC. Fills ONLY interior enclosed boundary "
+                               "loops — never the outer silhouette/frame boundary — by re-using each "
+                               "hole's existing boundary vertices, so projection-baked UVs stay valid. "
+                               "Off by default: a torn silhouette is the DMP-correct look."}),
+                "max_hole_edges": ("INT", {"default": 64, "min": 3, "max": 4096,
+                    "tooltip": "A boundary loop is filled only if its edge count is below this. "
+                               "The outer frame is ~the grid perimeter (e.g. ~512 at grid 128), "
+                               "interior tears are ~4-30, so 64 separates them by construction."}),
+                "fill_depth_near_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10000.0, "step": 0.1,
+                    "tooltip": "Band-box spatial scope: only fill loops whose EVERY boundary "
+                               "vertex's forward depth (recovered-camera view space, same axis "
+                               "as AtlasBoundedBand's cutoff) lies within [near, far] metres. "
+                               "Transcribe off a bounded band's near and cutoff_m. 0 = off "
+                               "(edge-count-only mode; the single largest loop is always left open)."}),
+                "fill_depth_far_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 0.1,
+                    "tooltip": "Band-box far bound (the cutoff). 0 = off (see fill_depth_near_m)."}),
             },
         }
 
@@ -4135,7 +4154,9 @@ class AtlasExportReliefMesh:
                depth_edge_rel=0.5,
                depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                device="auto", format="both", use_solve_mesh=True,
-               max_edge_factor=12.0, normal_edge_deg=0.0):
+               max_edge_factor=12.0, normal_edge_deg=0.0,
+               fill_interior_holes=False, max_hole_edges=64,
+               fill_depth_near_m=0.0, fill_depth_far_m=0.0):
         from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
         from atlas_camera.core.solver import _resize_depth
         from atlas_camera.exporters.relief_mesh_exporter import (
@@ -4198,6 +4219,18 @@ class AtlasExportReliefMesh:
                 horizon_y=horizon_y,
                 max_edge_factor=float(max_edge_factor),
                 normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
+            )
+        # EXPORT-ONLY interior hole fill. Never touches the live projection
+        # mesh (which keeps its deliberate silhouette tears for DMP); caps the
+        # exported OBJ/GLB so it retopologizes/booleans cleanly in a DCC.
+        if fill_interior_holes:
+            from atlas_camera.core.mesh_repair import apply_interior_hole_fill
+            apply_interior_hole_fill(
+                mesh,
+                max_hole_edges=int(max_hole_edges),
+                view_matrix=extr.camera_view_matrix,
+                depth_near_m=float(fill_depth_near_m),
+                depth_far_m=float(fill_depth_far_m),
             )
         texture = _image_tensor_to_pil(image)
         plate = getattr(solve, "source_plate", None)
