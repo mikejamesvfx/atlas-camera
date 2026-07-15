@@ -1,0 +1,2584 @@
+{
+ "id": "atlas_castle_dcc_handoff",
+ "revision": 0,
+ "last_node_id": 42,
+ "last_link_id": 31,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "LoadImage",
+   "pos": [
+    0,
+    40
+   ],
+   "size": [
+    320,
+    320
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      1
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "atlas_seacliff_castle.png",
+    "image"
+   ],
+   "title": "Castle plate"
+  },
+  {
+   "id": 2,
+   "type": "AtlasRegisterPlate",
+   "pos": [
+    360,
+    40
+   ],
+   "size": [
+    420,
+    220
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 1
+    },
+    {
+     "name": "plate_path",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "colorspace",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "bit_depth",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "role",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "lut_path",
+     "type": "STRING",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      2
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "plate_ref",
+     "type": "ATLAS_PLATE_REF",
+     "links": [
+      3
+     ],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasRegisterPlate"
+   },
+   "widgets_values": [
+    "",
+    "sRGB",
+    "auto",
+    "source",
+    ""
+   ],
+   "title": "Register plate"
+  },
+  {
+   "id": 3,
+   "type": "SetNode",
+   "pos": [
+    360,
+    300
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "link": 2
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "plate"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Set_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 4,
+   "type": "SetNode",
+   "pos": [
+    360,
+    380
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "ATLAS_PLATE_REF",
+     "type": "ATLAS_PLATE_REF",
+     "link": 3
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_PLATE_REF",
+     "type": "ATLAS_PLATE_REF",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "plate_ref"
+   },
+   "widgets_values": [
+    "plate_ref"
+   ],
+   "title": "Set_plate_ref",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 5,
+   "type": "Note",
+   "pos": [
+    820,
+    40
+   ],
+   "size": [
+    620,
+    400
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "Note"
+   },
+   "widgets_values": [
+    "🎨 OUTPUT DESK — why register the plate\n\nplate_path is BLANK here, so the ref is marked is_proxy=True and the\nexporters correctly refuse to treat this browser/8-bit preview as\nfinal data — they author a PNG instead.\n\nFor a real VFX handoff: put the ORIGINAL .exr path in plate_path and\nset colorspace=ACEScg. The Nuke Read / Maya file nodes then point at\nthat float original instead of the preview, and bit_depth=auto infers\n16f/32f from the .exr extension.\n\nFor the full float path use OCIORead (ComfyUI-OCIO) + the shipping\natlas_input_ocio_quickstart_workflow.json. Needs OPENCV_IO_ENABLE_\nOPENEXR=1 set BEFORE python starts, and opencv-python 4.x (5.x\ndropped the EXR codec)."
+   ],
+   "color": "#432",
+   "bgcolor": "#653"
+  },
+  {
+   "id": 6,
+   "type": "GetNode",
+   "pos": [
+    1580,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      4
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Get_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 7,
+   "type": "AtlasLearnedSolveFromImage",
+   "pos": [
+    1580,
+    140
+   ],
+   "size": [
+    400,
+    240
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 4
+    },
+    {
+     "name": "height_mode",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "camera_height_m",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "depth_model",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "sensor_width_mm",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "weights",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "device",
+     "type": "COMBO",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      5
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasLearnedSolveFromImage"
+   },
+   "widgets_values": [
+    "assume",
+    40.0,
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    36.0,
+    "pinhole",
+    "auto"
+   ],
+   "title": "Learned solve"
+  },
+  {
+   "id": 8,
+   "type": "GetNode",
+   "pos": [
+    1580,
+    420
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      6
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Get_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 9,
+   "type": "AtlasSolveGate",
+   "pos": [
+    1580,
+    520
+   ],
+   "size": [
+    400,
+    200
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 5
+    },
+    {
+     "name": "source_image",
+     "type": "IMAGE",
+     "link": 6
+    },
+    {
+     "name": "proceed",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "approved_for",
+     "type": "STRING",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      7
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasSolveGate"
+   },
+   "widgets_values": [
+    false,
+    ""
+   ],
+   "title": "✅ Solve gate"
+  },
+  {
+   "id": 10,
+   "type": "GetNode",
+   "pos": [
+    2020,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_PLATE_REF",
+     "type": "ATLAS_PLATE_REF",
+     "links": [
+      8
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate_ref"
+   ],
+   "title": "Get_plate_ref",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 11,
+   "type": "AtlasAttachSourcePlate",
+   "pos": [
+    2020,
+    140
+   ],
+   "size": [
+    340,
+    100
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 7
+    },
+    {
+     "name": "plate_ref",
+     "type": "ATLAS_PLATE_REF",
+     "link": 8
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      9
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasAttachSourcePlate"
+   },
+   "widgets_values": [],
+   "title": "Attach source plate"
+  },
+  {
+   "id": 12,
+   "type": "SetNode",
+   "pos": [
+    2400,
+    140
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 12,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "link": 9
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "solve"
+   },
+   "widgets_values": [
+    "solve"
+   ],
+   "title": "Set_solve",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 13,
+   "type": "GetNode",
+   "pos": [
+    2820,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 13,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      10
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Get_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 14,
+   "type": "GetNode",
+   "pos": [
+    2820,
+    120
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 14,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      11
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "solve"
+   ],
+   "title": "Get_solve",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 15,
+   "type": "AtlasDepthMap",
+   "pos": [
+    2820,
+    220
+   ],
+   "size": [
+    400,
+    130
+   ],
+   "flags": {},
+   "order": 15,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 10
+    },
+    {
+     "name": "depth_model",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "device",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 11
+    }
+   ],
+   "outputs": [
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "links": [
+      12
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasDepthMap"
+   },
+   "widgets_values": [
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    "auto"
+   ],
+   "title": "Depth (V2-Outdoor)"
+  },
+  {
+   "id": 16,
+   "type": "SetNode",
+   "pos": [
+    2820,
+    380
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 16,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "ATLAS_DEPTH_MAP",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 12
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_DEPTH_MAP",
+     "type": "ATLAS_DEPTH_MAP",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "depth"
+   },
+   "widgets_values": [
+    "depth"
+   ],
+   "title": "Set_depth",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 17,
+   "type": "GetNode",
+   "pos": [
+    3260,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 17,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      13
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Get_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 18,
+   "type": "SAM3Segment",
+   "pos": [
+    3260,
+    140
+   ],
+   "size": [
+    340,
+    300
+   ],
+   "flags": {},
+   "order": 18,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 13
+    },
+    {
+     "name": "prompt",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "output_mode",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "confidence_threshold",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "max_segments",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "segment_pick",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "mask_blur",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "mask_offset",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "device",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "invert_output",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "unload_model",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "background",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "background_color",
+     "type": "COLORCODE",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [
+      14
+     ],
+     "slot_index": 1
+    },
+    {
+     "name": "MASK_IMAGE",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 2
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SAM3Segment"
+   },
+   "widgets_values": [
+    "sky",
+    "Merged",
+    0.5,
+    0,
+    0,
+    0,
+    0,
+    "Auto",
+    false,
+    false,
+    "Alpha"
+   ],
+   "title": "SAM3 · sky"
+  },
+  {
+   "id": 19,
+   "type": "SetNode",
+   "pos": [
+    3260,
+    470
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 19,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "link": 14
+    }
+   ],
+   "outputs": [
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "sky_matte"
+   },
+   "widgets_values": [
+    "sky_matte"
+   ],
+   "title": "Set_sky_matte",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 20,
+   "type": "GetNode",
+   "pos": [
+    3640,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 20,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      15
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "solve"
+   ],
+   "title": "Get_solve",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 21,
+   "type": "GetNode",
+   "pos": [
+    3640,
+    120
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 21,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_DEPTH_MAP",
+     "type": "ATLAS_DEPTH_MAP",
+     "links": [
+      16,
+      20
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "depth"
+   ],
+   "title": "Get_depth",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 22,
+   "type": "GetNode",
+   "pos": [
+    3640,
+    200
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 22,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [
+      17
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "sky_matte"
+   ],
+   "title": "Get_sky_matte",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 23,
+   "type": "GetNode",
+   "pos": [
+    3640,
+    280
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 23,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      18
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Get_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 24,
+   "type": "AtlasSkyDomeLayer",
+   "pos": [
+    3940,
+    140
+   ],
+   "size": [
+    400,
+    300
+   ],
+   "flags": {},
+   "order": 24,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 15
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 16
+    },
+    {
+     "name": "sky_mask",
+     "type": "MASK",
+     "link": 17
+    },
+    {
+     "name": "plate_image",
+     "type": "IMAGE",
+     "link": 18
+    },
+    {
+     "name": "radius_m",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "relief_grid",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "name",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "priority",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "plate_ref",
+     "type": "ATLAS_PLATE_REF",
+     "link": null
+    },
+    {
+     "name": "edge_extend_px",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "frame_outpaint_px",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "distance_m",
+     "type": "FLOAT",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      19
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "hole_mask",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 1
+    },
+    {
+     "name": "extend_mask",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 2
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasSkyDomeLayer"
+   },
+   "widgets_values": [
+    800.0,
+    96,
+    "sky",
+    -10.0,
+    48,
+    96,
+    1200.0
+   ],
+   "title": "☁ Sky card"
+  },
+  {
+   "id": 25,
+   "type": "GetNode",
+   "pos": [
+    3940,
+    480
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 25,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      21
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Get_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 26,
+   "type": "AtlasCleanPlateLayer",
+   "pos": [
+    4180,
+    480
+   ],
+   "size": [
+    400,
+    300
+   ],
+   "flags": {},
+   "order": 26,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 19
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 20
+    },
+    {
+     "name": "plate_image",
+     "type": "IMAGE",
+     "link": 21
+    },
+    {
+     "name": "near_m",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "far_m",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "near_pct",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "far_pct",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "name",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "priority",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "plate_ref",
+     "type": "ATLAS_PLATE_REF",
+     "link": null
+    },
+    {
+     "name": "relief_grid",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "depth_edge_rel",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "exclude_mask",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "fill_occluded",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "embed_matte",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "layer_matte",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "edge_extend_px",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "skirt_bevel",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "frame_outpaint_px",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "exclude_choke_cells",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "band_side",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "band_split",
+     "type": "ATLAS_BAND_SPLIT",
+     "link": null
+    },
+    {
+     "name": "band_geometry",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "geometry_override",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "band_ref_mask",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "band_override",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "max_edge_factor",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "normal_edge_deg",
+     "type": "FLOAT",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      22
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "hole_mask",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 1
+    },
+    {
+     "name": "extend_mask",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 2
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasCleanPlateLayer"
+   },
+   "widgets_values": [
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    "body",
+    0.0,
+    384,
+    1.5,
+    false,
+    true,
+    0,
+    0.0,
+    0,
+    2,
+    "manual",
+    "relief",
+    "",
+    "",
+    12.0,
+    0.0
+   ],
+   "title": "🏰 Castle body layer"
+  },
+  {
+   "id": 27,
+   "type": "SetNode",
+   "pos": [
+    4180,
+    700
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 27,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "link": 22
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "previousName": "solve_layers"
+   },
+   "widgets_values": [
+    "solve_layers"
+   ],
+   "title": "Set_solve_layers",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 28,
+   "type": "GetNode",
+   "pos": [
+    4660,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 28,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      23
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "solve_layers"
+   ],
+   "title": "Get_solve_layers",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 29,
+   "type": "AtlasExportNukeLayers",
+   "pos": [
+    4660,
+    140
+   ],
+   "size": [
+    360,
+    130
+   ],
+   "flags": {},
+   "order": 29,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 23
+    },
+    {
+     "name": "output_dir",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "output_profile",
+     "type": "ATLAS_OUTPUT_PROFILE",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "nk_path",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "summary",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasExportNukeLayers"
+   },
+   "widgets_values": [
+    "atlas_exports/castle_dcc"
+   ],
+   "title": "🎞 Nuke layers (.nk)"
+  },
+  {
+   "id": 30,
+   "type": "GetNode",
+   "pos": [
+    4660,
+    320
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 30,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      24
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "solve_layers"
+   ],
+   "title": "Get_solve_layers",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 31,
+   "type": "AtlasExportMayaLayers",
+   "pos": [
+    4660,
+    420
+   ],
+   "size": [
+    360,
+    130
+   ],
+   "flags": {},
+   "order": 31,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 24
+    },
+    {
+     "name": "output_dir",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "output_profile",
+     "type": "ATLAS_OUTPUT_PROFILE",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ma_path",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "summary",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasExportMayaLayers"
+   },
+   "widgets_values": [
+    "atlas_exports/castle_dcc"
+   ],
+   "title": "🧊 Maya layers (.ma)"
+  },
+  {
+   "id": 32,
+   "type": "GetNode",
+   "pos": [
+    4660,
+    600
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 32,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      25
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "solve_layers"
+   ],
+   "title": "Get_solve_layers",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 33,
+   "type": "AtlasExportUSD",
+   "pos": [
+    4660,
+    690
+   ],
+   "size": [
+    360,
+    90
+   ],
+   "flags": {},
+   "order": 33,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 25
+    },
+    {
+     "name": "output_dir",
+     "type": "STRING",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "usd_path",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasExportUSD"
+   },
+   "widgets_values": [
+    "atlas_exports/castle_dcc"
+   ],
+   "title": "USD camera (.usda)"
+  },
+  {
+   "id": 34,
+   "type": "Note",
+   "pos": [
+    5060,
+    140
+   ],
+   "size": [
+    1020,
+    620
+   ],
+   "flags": {},
+   "order": 34,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "Note"
+   },
+   "widgets_values": [
+    "WHAT EACH EXPORT ACTUALLY GIVES YOU\n\n🎞 .nk — EVERY ProjectionSource as one native script: per-layer Read +\nits OWN Camera2 (patches orbit, outpainted skies widen) + Project3D2 +\nReadGeo2, merged through one Scene into a ScanlineRender from the\nprimary camera. Layer overlap resolves by real z-depth. Drag-and-drop;\nno Script Editor. The render cam is wired by a Root onScriptLoad\ncallback — .nk's push/pop stack cannot re-resolve a Camera2 already\nconsumed by Project3D2 (reverse-engineered by round-tripping, not read\nin a manual).\n\n🧊 .ma — the Maya twin: per-layer projector cameras as NATIVE nodes +\nan on-open scriptNode that imports the OBJs and builds the projection\nnetworks. Verified live in Maya 2027 via mayapy (37 checks), which\ncaught two real bugs: the `projection` node has NO focalLength/aperture\n(the frustum comes solely from cameraShape.message → linkedCamera), and\nMaya's OBJ importer lands raw values as internal CENTIMETRES whatever\nthe scene unit — so imported groups get a ×100 that MUST scale about\nthe WORLD ORIGIN, not the import pivot.\n\nUSD — camera only (camera.usda). Needs the [usd] extra (usd-core).\n\nBoth layer exports need at least ONE ProjectionSource — they degrade\ngracefully at zero rather than crashing the queue."
+   ],
+   "color": "#432",
+   "bgcolor": "#653"
+  },
+  {
+   "id": 35,
+   "type": "GetNode",
+   "pos": [
+    6200,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 35,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      26
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "solve"
+   ],
+   "title": "Get_solve",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 36,
+   "type": "GetNode",
+   "pos": [
+    6200,
+    120
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 36,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "ATLAS_DEPTH_MAP",
+     "type": "ATLAS_DEPTH_MAP",
+     "links": [
+      27
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "depth"
+   ],
+   "title": "Get_depth",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 37,
+   "type": "AtlasDeriveReliefMesh",
+   "pos": [
+    6200,
+    220
+   ],
+   "size": [
+    400,
+    260
+   ],
+   "flags": {},
+   "order": 37,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 26
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 27
+    },
+    {
+     "name": "relief_grid",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "relief_quality",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "depth_edge_rel",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "exclude_mask",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "max_edge_factor",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "sky_heuristic",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "normal_edge_deg",
+     "type": "FLOAT",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      28
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "hole_mask",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasDeriveReliefMesh"
+   },
+   "widgets_values": [
+    1024,
+    "custom",
+    1.5,
+    12.0,
+    true,
+    0.0
+   ],
+   "title": "Relief mesh"
+  },
+  {
+   "id": 38,
+   "type": "GetNode",
+   "pos": [
+    6200,
+    520
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 38,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      29
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Get_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 39,
+   "type": "AtlasExportReliefMesh",
+   "pos": [
+    6640,
+    220
+   ],
+   "size": [
+    400,
+    480
+   ],
+   "flags": {},
+   "order": 39,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 28
+    },
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 29
+    },
+    {
+     "name": "output_dir",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "grid_long_edge",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "depth_edge_rel",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "depth_model",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "device",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "format",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "use_solve_mesh",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "max_edge_factor",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "normal_edge_deg",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "fill_interior_holes",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "max_hole_edges",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "fill_depth_near_m",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "fill_depth_far_m",
+     "type": "FLOAT",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "obj_path",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "glb_path",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 1
+    },
+    {
+     "name": "preview_solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      30
+     ],
+     "slot_index": 2
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 3
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasExportReliefMesh"
+   },
+   "widgets_values": [
+    "atlas_exports/castle_dcc",
+    128,
+    0.5,
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    "auto",
+    "both",
+    true,
+    12.0,
+    0.0,
+    true,
+    128,
+    0.0,
+    0.0
+   ],
+   "title": "🔧 Export + hole fill"
+  },
+  {
+   "id": 40,
+   "type": "GetNode",
+   "pos": [
+    7080,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 40,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      31
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetNode",
+    "aux_id": "kijai/ComfyUI-KJNodes"
+   },
+   "widgets_values": [
+    "plate"
+   ],
+   "title": "Get_plate",
+   "color": "#2a363b",
+   "bgcolor": "#3f5159"
+  },
+  {
+   "id": 41,
+   "type": "AtlasBlockoutViewport",
+   "pos": [
+    7080,
+    140
+   ],
+   "size": [
+    840,
+    700
+   ],
+   "flags": {},
+   "order": 41,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 30
+    },
+    {
+     "name": "source_image",
+     "type": "IMAGE",
+     "link": 31
+    },
+    {
+     "name": "resolution",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "client_data",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "preview_expand",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "controls",
+     "type": "ATLAS_VIEWPORT_LINK",
+     "link": null
+    },
+    {
+     "name": "shot_cam",
+     "type": "ATLAS_SHOT_CAM",
+     "link": null
+    },
+    {
+     "name": "output_profile",
+     "type": "ATLAS_OUTPUT_PROFILE",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "shaded",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "depth",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 1
+    },
+    {
+     "name": "normal",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 2
+    },
+    {
+     "name": "mask",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 3
+    },
+    {
+     "name": "path_frames",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 4
+    },
+    {
+     "name": "camera_path",
+     "type": "ATLAS_CAMERA_PATH",
+     "links": [],
+     "slot_index": 5
+    },
+    {
+     "name": "patch_azimuth_view",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 6
+    },
+    {
+     "name": "patch_elevation_view",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 7
+    },
+    {
+     "name": "patch_distance",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 8
+    },
+    {
+     "name": "patch_prompt",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 9
+    },
+    {
+     "name": "patch_exact",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 10
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasBlockoutViewport"
+   },
+   "widgets_values": [
+    768,
+    "",
+    1.0
+   ],
+   "title": "🔍 Fill preview (what ships)"
+  },
+  {
+   "id": 42,
+   "type": "Note",
+   "pos": [
+    6200,
+    560
+   ],
+   "size": [
+    400,
+    280
+   ],
+   "flags": {},
+   "order": 42,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "Note"
+   },
+   "widgets_values": [
+    "🔧 The OBJ is a DIFFERENT product from the .nk/.ma layers.\n\nAtlasExportReliefMesh reads projection_scene.proxy_geometry (what\nAtlasDeriveReliefMesh writes). The layer exports read\nprojection_sources (what the clean-plate/sky nodes append). Hence\ntwo branches off one solve.\n\nuse_solve_mesh=true inherits the derive node's grid/edge tuning\nverbatim, so the OBJ matches the viewport and no second depth\ninference runs.\n\nWire preview_solve → the viewport to SEE the fill; it is invisible\nin a normal viewport by design."
+   ],
+   "color": "#432",
+   "bgcolor": "#653"
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "IMAGE"
+  ],
+  [
+   2,
+   2,
+   0,
+   3,
+   0,
+   "IMAGE"
+  ],
+  [
+   3,
+   2,
+   1,
+   4,
+   0,
+   "ATLAS_PLATE_REF"
+  ],
+  [
+   4,
+   6,
+   0,
+   7,
+   0,
+   "IMAGE"
+  ],
+  [
+   5,
+   7,
+   0,
+   9,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   6,
+   8,
+   0,
+   9,
+   1,
+   "IMAGE"
+  ],
+  [
+   7,
+   9,
+   0,
+   11,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   8,
+   10,
+   0,
+   11,
+   1,
+   "ATLAS_PLATE_REF"
+  ],
+  [
+   9,
+   11,
+   0,
+   12,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   10,
+   13,
+   0,
+   15,
+   0,
+   "IMAGE"
+  ],
+  [
+   11,
+   14,
+   0,
+   15,
+   3,
+   "ATLAS_SOLVE"
+  ],
+  [
+   12,
+   15,
+   0,
+   16,
+   0,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   13,
+   17,
+   0,
+   18,
+   0,
+   "IMAGE"
+  ],
+  [
+   14,
+   18,
+   1,
+   19,
+   0,
+   "MASK"
+  ],
+  [
+   15,
+   20,
+   0,
+   24,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   16,
+   21,
+   0,
+   24,
+   1,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   17,
+   22,
+   0,
+   24,
+   2,
+   "MASK"
+  ],
+  [
+   18,
+   23,
+   0,
+   24,
+   3,
+   "IMAGE"
+  ],
+  [
+   19,
+   24,
+   0,
+   26,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   20,
+   21,
+   0,
+   26,
+   1,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   21,
+   25,
+   0,
+   26,
+   2,
+   "IMAGE"
+  ],
+  [
+   22,
+   26,
+   0,
+   27,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   23,
+   28,
+   0,
+   29,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   24,
+   30,
+   0,
+   31,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   25,
+   32,
+   0,
+   33,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   26,
+   35,
+   0,
+   37,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   27,
+   36,
+   0,
+   37,
+   1,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   28,
+   37,
+   0,
+   39,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   29,
+   38,
+   0,
+   39,
+   1,
+   "IMAGE"
+  ],
+  [
+   30,
+   39,
+   2,
+   41,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   31,
+   40,
+   0,
+   41,
+   1,
+   "IMAGE"
+  ]
+ ],
+ "groups": [
+  {
+   "id": 1,
+   "title": "0 · PLATE REGISTRATION (Output Desk) — records the DURABLE file path + colorspace so exporters never mistake the 8-bit preview for final data",
+   "bounding": [
+    -40,
+    -40,
+    1500,
+    800
+   ],
+   "color": "#355",
+   "flags": {}
+  },
+  {
+   "id": 2,
+   "title": "1 · SOLVE + ✅ GATE + attach the plate",
+   "bounding": [
+    1540,
+    -40,
+    1200,
+    800
+   ],
+   "color": "#353",
+   "flags": {}
+  },
+  {
+   "id": 3,
+   "title": "2 · DEPTH + LAYERS — a sky card and the castle relief. The DCC layer exports need at least ONE ProjectionSource",
+   "bounding": [
+    2780,
+    -40,
+    1800,
+    800
+   ],
+   "color": "#335",
+   "flags": {}
+  },
+  {
+   "id": 4,
+   "title": "3 · 🎞 DCC EXPORTS — the same layer collection feeds Nuke and Maya, so the two DCCs can never drift",
+   "bounding": [
+    4620,
+    -40,
+    1500,
+    800
+   ],
+   "color": "#443",
+   "flags": {}
+  },
+  {
+   "id": 5,
+   "title": "4 · 🔧 EXPORT MESH + HOLE FILL + PREVIEW — the OBJ/GLB for Maya/ZBrush retopo",
+   "bounding": [
+    6160,
+    -40,
+    1800,
+    900
+   ],
+   "color": "#453",
+   "flags": {}
+  }
+ ],
+ "config": {},
+ "extra": {},
+ "version": 0.4
+}
