@@ -4064,6 +4064,61 @@ class AtlasOcclusionMask:
         return (mask_t, coverage_t)
 
 
+def _format_hole_fill_report(enabled, n_filled, filled, faces_added, loops_left,
+                             max_hole_edges, near_m, far_m):
+    """Human-readable summary of an interior hole fill, for the export node.
+
+    The fill is export-only, so this and ``preview_solve`` are the ONLY ways an
+    artist learns what it did without a DCC round-trip — state the scope that
+    was actually applied, not just the counts, since a disappointing result is
+    usually a too-tight scope rather than a failed fill.
+    """
+    if not enabled:
+        return "🔧 interior hole fill: off"
+    lines = ["🔧 interior hole fill: ON"]
+    if n_filled:
+        lo, hi = min(filled), max(filled)
+        span = f"{lo} edges" if lo == hi else f"{lo}–{hi} edges"
+        lines.append(f"  filled {n_filled} hole{'s' if n_filled != 1 else ''} "
+                     f"({span}, +{faces_added} faces)")
+    else:
+        lines.append("  filled 0 holes — nothing matched the scope below")
+    # The outer frame is always one of these and must stay open by design.
+    lines.append(f"  still open: {loops_left} boundary loop"
+                 f"{'s' if loops_left != 1 else ''} (the outer frame is one)")
+    scope = [f"max_hole_edges={int(max_hole_edges)}"]
+    if near_m > 0.0 and far_m > 0.0:
+        scope.append(f"band box {near_m:g}–{far_m:g} m")
+    else:
+        scope.append("band box off (set BOTH bounds > 0)")
+    lines.append("  scope: " + ", ".join(scope))
+    return "\n".join(lines)
+
+
+def _solve_with_relief_mesh(solve, mesh):
+    """A deep copy of ``solve`` whose relief-mesh primitive is ``mesh``.
+
+    Lets the export node hand the viewport the geometry it ACTUALLY wrote,
+    without touching the input solve (whose live projection mesh keeps its
+    deliberate tears).
+    """
+    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+    out = copy.deepcopy(solve)
+    scene = getattr(out, "projection_scene", None)
+    if scene is None:
+        return out
+    prim = relief_mesh_primitive(mesh)
+    prims = list(getattr(scene, "proxy_geometry", None) or [])
+    for i, p in enumerate(prims):
+        if p.primitive_type == "mesh" and (p.metadata or {}).get("source") == "depth_relief_mesh":
+            prims[i] = prim
+            break
+    else:
+        prims.append(prim)
+    scene.proxy_geometry = prims
+    return out
+
+
 def _relief_mesh_from_solve(solve):
     """The relief mesh already derived onto a solve (AtlasDeriveReliefMesh /
     AtlasInput), reconstructed for export so its edge tuning carries over
@@ -4091,8 +4146,8 @@ class AtlasExportReliefMesh:
     payload with embedded PNG texture. Ground lands on Y=0 (scale reconciled to
     the solve's camera height). Requires the [neural] extra.
     """
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("obj_path", "glb_path")
+    RETURN_TYPES = ("STRING", "STRING", "ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("obj_path", "glb_path", "preview_solve", "report")
     FUNCTION = "export"
     CATEGORY = "Atlas Camera/Export"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
@@ -4223,15 +4278,32 @@ class AtlasExportReliefMesh:
         # EXPORT-ONLY interior hole fill. Never touches the live projection
         # mesh (which keeps its deliberate silhouette tears for DMP); caps the
         # exported OBJ/GLB so it retopologizes/booleans cleanly in a DCC.
+        n_filled, filled, faces_added, loops_left = 0, [], 0, 0
         if fill_interior_holes:
-            from atlas_camera.core.mesh_repair import apply_interior_hole_fill
-            apply_interior_hole_fill(
+            from atlas_camera.core.mesh_repair import (
+                apply_interior_hole_fill,
+                boundary_edges,
+                walk_loops,
+            )
+            n_before = len(mesh.faces)
+            n_filled, filled = apply_interior_hole_fill(
                 mesh,
                 max_hole_edges=int(max_hole_edges),
                 view_matrix=extr.camera_view_matrix,
                 depth_near_m=float(fill_depth_near_m),
                 depth_far_m=float(fill_depth_far_m),
             )
+            faces_added = len(mesh.faces) - n_before
+            # What's STILL open is the actionable half: a disappointing fill is
+            # usually a too-tight scope, and the count says so at a glance.
+            be = boundary_edges(mesh.faces)
+            loops_left = len(walk_loops(be, faces=mesh.faces)) if len(be) else 0
+        report = _format_hole_fill_report(
+            fill_interior_holes, n_filled, filled, faces_added, loops_left,
+            max_hole_edges, float(fill_depth_near_m), float(fill_depth_far_m))
+        # The viewport gets the geometry that was ACTUALLY written, off the same
+        # widgets — so what an artist tunes here is what lands in Maya/Nuke.
+        preview_solve = _solve_with_relief_mesh(solve, mesh)
         texture = _image_tensor_to_pil(image)
         plate = getattr(solve, "source_plate", None)
         texture_path = None
@@ -4247,7 +4319,8 @@ class AtlasExportReliefMesh:
             )["obj"]
         if format in ("both", "glb"):
             glb_path = export_relief_mesh_glb(mesh, output_dir, texture=texture)["glb"]
-        return (obj_path, glb_path)
+        return {"ui": {"text": [report]},
+                "result": (obj_path, glb_path, preview_solve, report)}
 
 
 class AtlasLoadSolveJSON:

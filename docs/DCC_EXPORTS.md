@@ -66,6 +66,23 @@ non-manifold edges. A hole it cannot triangulate cleanly is simply left open.
 Measured against a real export, filling adds none of those three defects, and
 `is_winding_consistent` stays true.
 
+**Seeing it before Maya.** The fill is invisible in the viewport by design — the
+live projection mesh must keep its tears. So the node reports on itself:
+
+```
+🔧 interior hole fill: ON
+  filled 12 holes (4–18 edges, +31 faces)
+  still open: 4 boundary loops (the outer frame is one)
+  scope: max_hole_edges=64, band box 2.1–18.4 m
+```
+
+If that says `filled 0 holes`, read the scope line — a disappointing fill is
+almost always a too-tight scope, not a failed fill. To *see* the geometry, wire
+the **`preview_solve`** output into an `AtlasBlockoutViewport`: it carries the
+mesh that was actually written, off the same widgets, so what you tune is what
+lands in the DCC. Your input solve (and everything downstream of it) is
+untouched, so the main viewport keeps showing the real torn projection.
+
 **What it is not.** This is purely topological — it caps holes that already
 exist. It does **not** predict geometry hidden behind an occluder; that is the
 experimental `AtlasPredictHiddenGeometry` (LaRI / World-Tracing) track. The two

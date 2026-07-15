@@ -93,9 +93,15 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   is the **main-branch** answer to filling mesh holes without the experimental
   LaRI / World-Tracing branch — purely topological, no learned model, no extra
   deps, no Docker. It repairs what's there; it does not *predict* geometry behind
-  occluders (`AtlasPredictHiddenGeometry` still does that). Guarantees, measured
-  against a real export: a fill never adds a back-facing face, a zero-area
-  sliver, or a non-manifold edge — an unfillable hole is left open instead.
+  occluders (`AtlasPredictHiddenGeometry` still does that). The node now **reports
+  what it did on the node itself** (how many holes filled, how many boundary loops
+  are still open, and the scope applied — a disappointing fill is usually a
+  too-tight scope) and emits a **`preview_solve`** carrying the mesh actually
+  written: wire it into an Atlas Viewport to tune the fill without a Maya/Nuke
+  round-trip. The fill stays invisible in the *live* projection mesh by design.
+  Guarantees, measured against a real export: a fill never adds a back-facing
+  face, a zero-area sliver, or a non-manifold edge — an unfillable hole is left
+  open instead.
 - **`AtlasExportReliefMesh` exports the tuned solve mesh** (`use_solve_mesh`,
   default on) — the viewport's `max_edge_factor` / `normal_edge_deg` / band
   near-clip / sky-heuristic edge tuning now carries into the OBJ/GLB verbatim.
