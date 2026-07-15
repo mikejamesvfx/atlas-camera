@@ -20,6 +20,7 @@ plate, V2-Outdoor depth, grid 256 derive). Measured results:
 | `atlas_retopo_quad_dcc_handoff_workflow.json` | hole-fill (48) → **quad** retopo (pure quad, crease 25°) + USD camera | fill: 12 holes +99 faces, 2 loops left (frame is one). Retopo: 36,772 → 12,481 verts / 72,321 → 24,208 faces. OBJ 1:1 v/vt, all UVs in [0,1] |
 | `atlas_retopo_decimate_budget_workflow.json` | **decimate** to a 1500-vert budget + dense-mesh viewport | 36,772 → 1,554 verts / 72,222 → 2,999 faces — lands on the ~2× face target exactly |
 | `atlas_retopo_smooth_ab_workflow.json` | **smooth** (Taubin ×12) A/B against the OFF baseline | identical topology both sides (9,346 verts / 18,168 faces), UVs untouched |
+| `atlas_retopo_portal_test_workflow.json` | ONE interior chain (`atlas_00024_portal.png`, MoGe solve+depth, sky_heuristic OFF, mef 40, grid 384) fanned into **all three** paths + viewport on the quad's `preview_solve` | quad: fill 6 holes then 87,282 → **3,221** verts (quad-dominant lands ON the 3000 target — the 4× inflation above was `pure_quad=True`); decimate: → 2,081 verts / 3,999 faces; smooth: topology identical (87,282 / 172,747). Viewport payload = exactly the quad-retopo'd mesh |
 
 **Honest note on the quad target:** Instant Meshes treats
 `retopo_target_vertex_count` as a *hint*, not a contract — with

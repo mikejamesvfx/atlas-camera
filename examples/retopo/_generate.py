@@ -434,12 +434,148 @@ def workflow_3():
     return g.finalize("atlas-retopo-decimate-budget")
 
 
+# ---------------------------------------------------------------------------
+# Workflow 4 — portal interior: ONE chain fanned into all three retopo paths
+# ---------------------------------------------------------------------------
+
+MOGE = "Ruicheng/moge-2-vitl-normal"
+
+
+def workflow_4():
+    g = Graph()
+    li = load_image_node(1, [40, 120], filename="atlas_00024_portal.png")
+    g.nodes.append(li)
+    l1 = g.link(1, 0, 2, 0, "IMAGE")   # -> solve.image
+    l2 = g.link(1, 0, 3, 0, "IMAGE")   # -> depth.image
+    l3 = g.link(1, 0, 5, 1, "IMAGE")   # -> quad.image
+    l4 = g.link(1, 0, 6, 1, "IMAGE")   # -> decimate.image
+    l5 = g.link(1, 0, 7, 1, "IMAGE")   # -> smooth.image
+    l6 = g.link(1, 0, 8, 1, "IMAGE")   # -> viewport.source_image
+    li["outputs"][0]["links"] = [l1, l2, l3, l4, l5, l6]
+
+    solve = learned_solve_node(2, [380, 120], l1)
+    # Interior: MoGe is the interior depth specialist (V2-Outdoor is the
+    # exterior pick) — keep solve + AtlasDepthMap on the SAME model.
+    solve["widgets_values"] = ["measure_from_depth", 1.6, MOGE, 36.0,
+                               "pinhole", "auto"]
+    solve["title"] = "Atlas Learned Solve (MoGe depth — interior)"
+    g.nodes.append(solve)
+    l7 = g.link(2, 0, 3, 1, "ATLAS_SOLVE")  # -> depth.solve
+    l8 = g.link(2, 0, 4, 0, "ATLAS_SOLVE")  # -> derive.solve
+    solve["outputs"][0]["links"] = [l7, l8]
+
+    depth = {
+        "id": 3, "type": "AtlasDepthMap", "pos": [380, 420],
+        "size": [340, 150], "flags": {}, "mode": 0,
+        "inputs": [
+            {"name": "image", "type": "IMAGE", "link": l2},
+            {"name": "solve", "type": "ATLAS_SOLVE", "link": l7},
+        ],
+        "outputs": [
+            {"name": "depth", "type": "ATLAS_DEPTH_MAP", "links": [], "slot_index": 0},
+        ],
+        "properties": {"Node name for S&R": "AtlasDepthMap"},
+        "widgets_values": [MOGE, "auto"],
+        "title": "AtlasDepthMap (MoGe — interior specialist)",
+    }
+    g.nodes.append(depth)
+    l9 = g.link(3, 0, 4, 1, "ATLAS_DEPTH_MAP")  # -> derive.depth
+    depth["outputs"][0]["links"] = [l9]
+
+    derive = {
+        "id": 4, "type": "AtlasDeriveReliefMesh", "pos": [760, 120],
+        "size": [360, 230], "flags": {}, "mode": 0,
+        "inputs": [
+            {"name": "solve", "type": "ATLAS_SOLVE", "link": l8},
+            {"name": "depth", "type": "ATLAS_DEPTH_MAP", "link": l9},
+        ],
+        "outputs": [
+            {"name": "solve", "type": "ATLAS_SOLVE", "links": [], "slot_index": 0},
+            {"name": "hole_mask", "type": "MASK", "links": None, "slot_index": 1},
+        ],
+        "properties": {"Node name for S&R": "AtlasDeriveReliefMesh"},
+        # Interior tuning: sky_heuristic OFF (it eats ceilings/vaults — the
+        # self-disarm usually catches it, but an interior build should not
+        # rely on it), max_edge_factor 40 (deep interior — stops combs),
+        # edge_rel 1.0 (MoGe depth is clean; 0.5 shreds fine machinery).
+        "widgets_values": [384, "custom", 1.0, 40.0, False, 0.0],
+        "title": "AtlasDeriveReliefMesh (grid 384, interior tuning)",
+    }
+    g.nodes.append(derive)
+    l10 = g.link(4, 0, 5, 0, "ATLAS_SOLVE")  # -> quad.solve
+    l11 = g.link(4, 0, 6, 0, "ATLAS_SOLVE")  # -> decimate.solve
+    l12 = g.link(4, 0, 7, 0, "ATLAS_SOLVE")  # -> smooth.solve
+    derive["outputs"][0]["links"] = [l10, l11, l12]
+
+    def export_node(id, pos, solve_link, image_link, widgets, title,
+                    preview_links=None):
+        return {
+            "id": id, "type": "AtlasExportReliefMesh", "pos": pos,
+            "size": [360, 420], "flags": {}, "mode": 0,
+            "inputs": [
+                {"name": "solve", "type": "ATLAS_SOLVE", "link": solve_link},
+                {"name": "image", "type": "IMAGE", "link": image_link},
+            ],
+            "outputs": [
+                {"name": "obj_path", "type": "STRING", "links": None, "slot_index": 0},
+                {"name": "glb_path", "type": "STRING", "links": None, "slot_index": 1},
+                {"name": "preview_solve", "type": "ATLAS_SOLVE",
+                 "links": preview_links, "slot_index": 2},
+                {"name": "report", "type": "STRING", "links": None, "slot_index": 3},
+            ],
+            "properties": {"Node name for S&R": "AtlasExportReliefMesh"},
+            "widgets_values": widgets,
+            "title": title,
+        }
+
+    l13 = g.link(5, 2, 8, 0, "ATLAS_SOLVE")  # quad.preview_solve -> viewport
+    g.nodes.append(export_node(
+        5, [1160, 120], l10, l3,
+        relief_widgets("atlas_exports/portal_retopo_quad", retopo="quad",
+                       target=3000, crease=30.0, pure_quad=False,
+                       fill=True, max_hole=64),
+        "Export — hole-fill + QUAD retopo (quad-dominant)",
+        preview_links=[l13]))
+    g.nodes.append(export_node(
+        6, [1160, 580], l11, l4,
+        relief_widgets("atlas_exports/portal_retopo_decimate",
+                       retopo="decimate", target=2000),
+        "Export — DECIMATE to ~2000 verts"))
+    g.nodes.append(export_node(
+        7, [1160, 1040], l12, l5,
+        relief_widgets("atlas_exports/portal_retopo_smooth",
+                       retopo="smooth", smooth=12),
+        "Export — SMOOTH (Taubin x12, UVs preserved)"))
+
+    g.nodes.append(viewport_node(8, [1560, 120], l13, l6))
+
+    g.nodes.append(note_node(9, [40, 640], [680, 420],
+        "RETOPO TEST — sci-fi portal interior (atlas_00024_portal.png).\n\n"
+        "ONE interior-tuned chain (MoGe solve+depth, sky_heuristic OFF,\n"
+        "max_edge_factor 40, edge_rel 1.0, grid 384) fanned into all three\n"
+        "retopo paths on AtlasExportReliefMesh:\n"
+        "  · QUAD (top)     — hole-fill 64 first, then pyinstantmeshes\n"
+        "    quad-dominant remesh, target 3000 (a HINT, not a contract).\n"
+        "  · DECIMATE (mid) — fast-simplification to ~2000 verts (~4000\n"
+        "    faces) — the hard-budget path.\n"
+        "  · SMOOTH (bot)   — trimesh Taubin x12, topology + UVs preserved.\n\n"
+        "The viewport shows the QUAD export's preview_solve — the mesh\n"
+        "ACTUALLY written to atlas_exports/portal_retopo_quad — so 📽 Project\n"
+        "on it is a direct texture-fidelity check of the regenerated UVs.\n"
+        "Each export's on-node report prints the 🔧 fill and 🔻 retopo lines.\n\n"
+        "Deps: pip install pyinstantmeshes fast-simplification trimesh"))
+
+    g.nodes.sort(key=lambda n: n["id"])
+    return g.finalize("atlas-retopo-portal-test")
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     for name, wf in [
         ("atlas_retopo_smooth_ab_workflow.json", workflow_1()),
         ("atlas_retopo_quad_dcc_handoff_workflow.json", workflow_2()),
         ("atlas_retopo_decimate_budget_workflow.json", workflow_3()),
+        ("atlas_retopo_portal_test_workflow.json", workflow_4()),
     ]:
         path = os.path.join(here, name)
         with open(path, "w", encoding="utf-8") as f:
