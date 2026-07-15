@@ -11,10 +11,11 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/mikejamesvfx/atlas-camera/actions/workflows/tests.yml"><img src="https://github.com/mikejamesvfx/atlas-camera/actions/workflows/tests.yml/badge.svg?branch=main" alt="tests"></a>
   <a href="https://registry.comfy.org/nodes/atlas-camera"><img src="https://img.shields.io/badge/ComfyUI_Registry-atlas--camera-eaa03a" alt="ComfyUI Registry"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2fb7a6" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/python-3.10+-c4b29a" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/ComfyUI-56_nodes-8f8571" alt="56 nodes">
+  <img src="https://img.shields.io/badge/ComfyUI-57_nodes-8f8571" alt="57 nodes">
   <a href="https://mikejamesvfx.com"><img src="https://img.shields.io/badge/a-mikejamesvfx_tool-c4b29a" alt="a mikejamesvfx tool"></a>
 </p>
 

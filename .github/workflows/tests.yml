@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+    branches: [main, experimental, "release/**"]
+  pull_request:
+
+jobs:
+  pytest:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # The core package has zero required runtime deps. [dev] adds
+      # numpy/opencv/pytest; [ui,image] cover the FastAPI backend tests
+      # (httpx2 is starlette's TestClient transport). Torch-dependent tests
+      # skip via importorskip, so this exercises the deterministic core,
+      # node plumbing, and every exporter on both OSes per push —
+      # verified against a fresh torch-less venv before this workflow
+      # was committed (316 passed / 77 skipped).
+      - run: pip install -e ".[dev,ui,image]" httpx2
+      - run: python -m pytest -q
