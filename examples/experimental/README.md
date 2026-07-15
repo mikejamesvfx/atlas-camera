@@ -13,9 +13,17 @@ defaults.
 
 All three were **verified 2026-07-15** against a real ComfyUI: they load with
 zero node errors, every `GetNode` rail resolves with no type mismatch, and
-`/prompt` server-side validation returns 200. **None has been run to
-completion** — that needs the VLM, SAM3, LaMa, DA3/MoGe and (for the X-ray)
-LaRI all firing for minutes.
+`/prompt` server-side validation returns 200. On **2026-07-16 all three were
+run to COMPLETION** on that ComfyUI (VLM + SAM3 + LaMa + MoGe + DA3 + LaRI all
+firing) — per-workflow results below. Headless runs go through
+`tools/run_ui_workflow.py`, which flattens the UI JSON to API format off the
+live `/object_info` (Set/Get rails resolved, muted/bypassed nodes dropped) and
+opens the shipped-closed solve gate for that run only:
+
+```
+python tools/run_ui_workflow.py examples/experimental/<wf>.json \
+    --set <gateNodeId>.proceed=true          # DMP: 10 · handoff: 9 · X-ray: 6
+```
 
 | Workflow | Plate | Nodes | Executing | Shows off |
 |---|---|---|---|---|
@@ -35,11 +43,19 @@ what stops positional `widgets_values` drifting out of sync with the nodes.
 The full 2.5D matte-painting build on the sea-cliff castle plate — sky, ocean,
 and castle+rocks as separate projected layers, plus an exportable castle mesh.
 
-**Verified 2026-07-15** against a real ComfyUI: 84 nodes / 65 links / 10 groups
-load with zero node errors, all 37 `GetNode` rails resolve, and `/prompt`
-server-side validation returns 200 (the 84 UI nodes flatten to 24 executing
-nodes — Set/Get are frontend-only virtual nodes). It has **not** been run to
-completion end-to-end.
+**Run to COMPLETION 2026-07-16** (84 nodes / 64 links flatten to 24 executing
+nodes). Verified in the master viewport payload: exactly 3 `projection_sources`
+with real geometry and embedded mattes — castle 176k verts (relief, far =
+142.1 m), water 48k (ground, near = 142.1 m — the two layers share the
+`AtlasBoundedBand` cutoff exactly), sky 7.9k (prio −10); the export branch
+wrote OBJ + MTL + texture + GLB and its fill report read "filled 86 holes
+(3–100 edges, +1100 faces), 14 boundary loops still open" (the hole census
+below was measured with the pre-04f3ba2 matte, so the exact counts drifted —
+the scaling argument is what transfers). **One env prerequisite found by the
+run:** the `[moge]` extra was NOT actually installed in this machine's ComfyUI
+venv until now — install per the node's own error message
+(`pip install --no-deps git+https://github.com/microsoft/MoGe.git` + the
+pinned `utils3d` commit); the running server picks it up without a restart.
 
 ### The shape
 
@@ -128,6 +144,16 @@ must sit at the root of `input/`.
 LaRI predicts the surfaces hidden *behind* the temple, LaMa paints them, and the
 move is authored in the viewport and baked.
 
+**Run to COMPLETION 2026-07-16** (on a server started with
+`ATLAS_EXPERIMENTAL=1` — without it `AtlasPredictHiddenGeometry` is not even
+registered and the graph can't convert/queue). The X-ray layer landed with
+124k verts, embedded paint matte AND the 🩻 hidden-mask provenance
+(`backend=lari`); the Nuke layer export wrote plate/matte/mesh. One honest
+note: on this plate `height_mode=measure_from_depth` did NOT clear its
+confidence threshold — the solve fell back to `scale_source=assumed_default`
+(1.6 m), which is fine at jungle-floor eye level but means the metric numbers
+are the tier-3 guess, not measured.
+
 ```
 solve → ✅ gate → MoGe depth → 🩻 AtlasPredictHiddenGeometry (LaRI)
                                   ├─ depth (patched)  ─┐
@@ -167,6 +193,14 @@ through nearly unchanged.
 
 🎞 The professional-output path: plate registration → solve → layers → **Nuke +
 Maya + USD + a hole-filled OBJ**, all off one solve.
+
+**Run to COMPLETION 2026-07-16:** all four products written to
+`atlas_exports/castle_dcc/` — `nuke_layers.nk` (Root `onScriptLoad` camera
+wiring + per-layer Camera2/Project3D2/ReadGeo2), `maya_layers.ma` (scriptNode +
+projection networks), camera-only `camera.usda` (Y-up), and the 68 MB
+grid-1024 relief OBJ + GLB, plus per-layer plates/mattes/meshes for both
+layers (sky + body). Needs the `[usd]` extra (present) and, like the DMP,
+the `[moge]` extra actually installed.
 
 - **`AtlasRegisterPlate` with a blank `plate_path`** marks the ref `is_proxy=True`,
   so exporters correctly refuse to treat the 8-bit browser preview as final data.
