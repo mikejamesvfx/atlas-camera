@@ -28,9 +28,49 @@ govern every exporter:
 | `AtlasExportMayaLayers` | **Native `.ma`** with per-layer projector cameras + an on-open scriptNode that imports the OBJs and builds the projection networks | 37 live checks via Maya 2027 mayapy |
 | `AtlasExportUSD` | Static `camera.usda` | Round-trip via `AtlasUSDCameraLoader` |
 | `AtlasExportCameraPathUSD` | Time-sampled animated camera from the viewport's baked move (24 fps, Y-up) | Inspected sample-by-sample after a real browser bake; errors loudly pre-bake |
-| `AtlasExportReliefMesh` | Textured OBJ+MTL and/or self-contained GLB, camera projection baked into UVs | Imported textured into Maya, Nuke, Blender |
+| `AtlasExportReliefMesh` | Textured OBJ+MTL and/or self-contained GLB, camera projection baked into UVs; optional interior hole fill | Imported textured into Maya, Nuke, Blender |
 | `AtlasExportBlender` | Python scene-builder (`build_scene.py`) with the Y-up→Z-up conversion at the boundary | Script inspection |
 | `AtlasExportReviewPackage` | Full review bundle (JSON + overlays + docs) | — |
+
+## Relief mesh — closing interior tear holes for the DCC
+
+Atlas relief meshes are **deliberately torn** at depth discontinuities, so the
+live 📽 projection never rubber-sheets background onto foreground. That is
+load-bearing and unchanged. But the mesh you hand a DCC is a different artifact
+from the one the viewport projects: small interior tear holes (depth noise, fine
+structure, band-clip seams) become stray open boundaries that block retopo,
+booleans and 3D-print prep in Maya / ZBrush / Blender.
+
+`AtlasExportReliefMesh.fill_interior_holes` (default **off** — a torn silhouette
+is the DMP-correct look) caps them **in the export only**. The live projection
+mesh and the solve's own geometry are never touched, and fills reuse existing
+vertices only, so the projection baked into the UVs stays valid on filled faces.
+
+**Only interior enclosed loops fill — never the outer silhouette/frame.** Two
+composable scopes:
+
+| Widget | Default | What it does |
+|---|---|---|
+| `fill_interior_holes` | off | Master switch. |
+| `max_hole_edges` | 64 | A loop fills only if its edge count is below this. The frame perimeter is ~512 edges at grid 128 while tears are ~4–30, so 64 separates them by construction. The single largest loop is always left open as a backstop. |
+| `fill_depth_near_m` / `fill_depth_far_m` | 0 / 0 (off) | **Band box.** A loop fills only if *every* one of its boundary vertices sits within `[near, far]` metres of the recovered camera. Transcribe the near depth and `AtlasBoundedBand`'s `cutoff_m`. |
+
+The band box is the cleaner way to say "fill holes inside the subject": the frame
+spans near-to-far, so it falls outside the window automatically, and background /
+sky holes beyond the cutoff stay open — which is what you want. Note both bounds
+must be **> 0**; a `0` means "window not set" and falls back to edge-count only.
+
+**What it guarantees.** A fill may leave a hole open, but it will never make the
+mesh worse than not filling: no back-facing faces, no zero-area slivers, no
+non-manifold edges. A hole it cannot triangulate cleanly is simply left open.
+Measured against a real export, filling adds none of those three defects, and
+`is_winding_consistent` stays true.
+
+**What it is not.** This is purely topological — it caps holes that already
+exist. It does **not** predict geometry hidden behind an occluder; that is the
+experimental `AtlasPredictHiddenGeometry` (LaRI / World-Tracing) track. The two
+are complementary: this repairs what's there, that invents what isn't. If you
+only need a clean mesh for a DCC, you no longer need the experimental branch.
 
 ## Nuke — the verified projection topology
 

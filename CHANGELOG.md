@@ -81,6 +81,21 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
 ### Exports + workflows
 
+- **Interior hole fill on exported relief meshes** (`AtlasExportReliefMesh`,
+  `fill_interior_holes`, default **off**) — caps the small interior tear holes
+  (depth noise, fine structure, band-clip seams) that block retopo, booleans and
+  3D-print prep in Maya / ZBrush / Blender. **Export-only**: the live 📽
+  projection mesh keeps its deliberate silhouette tears, and the solve is never
+  touched. Only interior enclosed loops fill — never the outer frame — scoped by
+  `max_hole_edges` (64) and/or a **band box** (`fill_depth_near_m` /
+  `fill_depth_far_m`, transcribed off `AtlasBoundedBand`'s `cutoff_m`; 0 = off).
+  Fills reuse existing vertices only, so projection-baked UVs stay valid. This
+  is the **main-branch** answer to filling mesh holes without the experimental
+  LaRI / World-Tracing branch — purely topological, no learned model, no extra
+  deps, no Docker. It repairs what's there; it does not *predict* geometry behind
+  occluders (`AtlasPredictHiddenGeometry` still does that). Guarantees, measured
+  against a real export: a fill never adds a back-facing face, a zero-area
+  sliver, or a non-manifold edge — an unfillable hole is left open instead.
 - **`AtlasExportReliefMesh` exports the tuned solve mesh** (`use_solve_mesh`,
   default on) — the viewport's `max_edge_factor` / `normal_edge_deg` / band
   near-clip / sky-heuristic edge tuning now carries into the OBJ/GLB verbatim.
