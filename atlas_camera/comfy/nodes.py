@@ -1703,8 +1703,8 @@ class AtlasDeriveProjectionGeometry:
                                "parameter and default as AtlasExportReliefMesh."}),
                 "exclude_mask": ("MASK", {
                     "tooltip": "Optional external exclusion (e.g. a real sky segmentation from "
-                               "SAM/RMBG) ORed on top of the internal sky heuristic before "
-                               "triangulation - never replaces it, only excludes more. Only "
+                               "SAM/RMBG) which REPLACES the internal sky heuristic before "
+                               "triangulation - so it must cover EVERYTHING you want gone. Only "
                                "affects the relief_mesh branch (geometry_mode both/relief_mesh); "
                                "the primitives/wall-fitting branch is unaffected. Any resolution - "
                                "resized to match depth."}),
@@ -2750,8 +2750,8 @@ class AtlasDeriveReliefMesh:
                                "risks rubber-sheeting a real silhouette onto the background."}),
                 "exclude_mask": ("MASK", {
                     "tooltip": "Optional external exclusion (e.g. a real sky segmentation from "
-                               "SAM/RMBG) ORed on top of the internal sky heuristic before "
-                               "triangulation - never replaces it, only excludes more. Any "
+                               "SAM/RMBG) which REPLACES the internal sky heuristic before "
+                               "triangulation - so it must cover EVERYTHING you want gone. Any "
                                "resolution - resized to match depth."}),
                 "max_edge_factor": ("FLOAT", {"default": 12.0, "min": 2.0, "max": 200.0, "step": 1.0,
                     "tooltip": "World-space edge tear threshold: a quad tears when its world edge "
@@ -5459,8 +5459,8 @@ class AtlasDepthLayerMask:
                                "the actual final mesh (default 1.5 = the band-layer calibration)."}),
                 "exclude_mask": ("MASK", {
                     "tooltip": "Optional external exclusion (e.g. a real sky segmentation from "
-                               "SAM/RMBG) ORed on top of the internal sky heuristic - never "
-                               "replaces it, only excludes more. Affects layer_mask/occlusion_mask "
+                               "SAM/RMBG) which REPLACES the internal sky heuristic - so it "
+                               "must cover EVERYTHING you want gone. Affects layer_mask/occlusion_mask "
                                "(excluded pixels can't belong to any band) AND hole_mask when "
                                "compute_hole_mask=True. Any resolution - resized to match depth."}),
                 "fill_occluded": ("BOOLEAN", {"default": False,
@@ -6708,8 +6708,13 @@ class AtlasCleanPlateLayer:
                                "produced plate_image. 0 means no upper bound (+inf)."}),
                 "name": ("STRING", {"default": "layer"}),
                 "priority": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 1.0,
-                    "tooltip": "Blend priority among layers (higher wins) — nearer bands should "
-                               "get a higher priority. Ordering is by depth + priority, never "
+                    "tooltip": "Blend priority among layers (higher wins). FARTHEST bands take the "
+                               "HIGHER priority (far 15 / bg 10 / mid 5 / fg 0): at a watertight "
+                               "seam the surfaces are depth-adjacent and this near-tie bias picks "
+                               "the winner, so nearest-highest renders a band's edge smear IN "
+                               "FRONT of the layer behind it (striped seams). Min is 0; a sky "
+                               "dome goes negative via AtlasSkyDomeLayer. "
+                               "Ordering is by depth + priority, never "
                                "facing angle (clean-plate sources paint head-on AND grazing, "
                                "unlike multi-angle patches)."}),
                 "plate_ref": ("ATLAS_PLATE_REF", {

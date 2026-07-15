@@ -77,7 +77,7 @@ gated solve, not one chain.
 |---|---|
 | `camera_height_m = 40`, `height_mode = assume` | Single-image scale is ambiguous; the 1.6 m default is ~25× small on a clifftop and **every** metric follows it (band cutoffs, the hole-fill band box, DCC cameras). 40 is a sighting-in guess — dial it against the ℹ Info HUD. |
 | MoGe near / DA3 far | MoGe's far field runs away (>1000 m) and it culls sky — disqualifying for a sky dome. Depth model is a **per-band** choice, not a global default. |
-| Priorities sky −10 < water −5 < castle 0 | **Farthest-highest.** At a watertight seam the layer *behind* must win the depth near-tie; nearest-highest renders each band's edge smear in front of the layer behind it (striped seams). |
+| Priorities sky −10 · castle 0 · **water 10** | **Farthest-highest** — the farther layer takes the *higher* number, so water outranks castle. At a watertight seam the two surfaces are depth-adjacent and this near-tie bias picks the winner; nearest-highest renders a band's edge smear in front of the layer behind it (striped seams). Note `AtlasCleanPlateLayer.priority` has **min 0** — only `AtlasSkyDomeLayer` may go negative. |
 | `edge_extend_px`: castle 0, others 32/48 | The smear lives on the layers **behind**; the frontmost band keeps a clean cut matte. |
 | LaMa `seed = 0, fixed` | ComfyUI auto-adds `randomize` to any widget named `seed`, silently re-rolling the plate every queue. |
 | `fill_depth_near_m/far_m = 0` (band box off) | Both must be > 0; it needs a trustworthy metric scale; and window mode bypasses the largest-loop guard — the one way to accidentally cap the outer frame. |

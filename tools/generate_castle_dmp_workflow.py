@@ -320,7 +320,7 @@ g_ssky = rail_get("solve_sky", [6700, 40]); g_db2 = rail_get("depth_bg", [6700, 
 g_p10 = rail_get("plate", [6700, 200]); g_nw = rail_get("not_water", [6700, 280])
 g_b1 = rail_get("band", [6700, 360])
 water = w.node("AtlasCleanPlateLayer", [6700, 460], [400, 420], "🌊 Water (ground plane)",
-               {"name": "water", "priority": -5.0, "band_side": "background",
+               {"name": "water", "priority": 10.0, "band_side": "background",
                 "band_geometry": "ground", "relief_grid": 384, "depth_edge_rel": 1.5,
                 "embed_matte": True, "edge_extend_px": 32, "frame_outpaint_px": 64})
 w.link(g_ssky, 0, water, "solve"); w.link(g_db2, 0, water, "depth")

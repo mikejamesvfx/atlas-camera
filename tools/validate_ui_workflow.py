@@ -41,6 +41,31 @@ for n in d["nodes"]:
         inp = next((i for i in n["inputs"] if i["name"]==k), None)
         if inp is None: errs.append(f"{n['type']} id{n['id']}: missing input {k}")
         elif inp["link"] is None: errs.append(f"{n['type']} id{n['id']}: required '{k}' NOT CONNECTED")
+# widget VALUE RANGES. Types/links can all be valid while a number sits outside
+# its min/max — ComfyUI then refuses the queue with "Input out of range", which
+# no amount of link checking catches.
+for n in d["nodes"]:
+    if n["type"] in VIRTUAL or n["type"] not in oi: continue
+    vals = n.get("widgets_values") or []
+    vi = 0
+    for k, v in items(n["type"]):
+        if not is_widget(v): continue
+        if vi >= len(vals): break
+        val = vals[vi]; vi += 1
+        if k in ("seed","noise_seed"): vi += 1
+        cfg = v[1] if len(v) > 1 else {}
+        if v[0] in ("INT","FLOAT") and isinstance(val,(int,float)) and not isinstance(val,bool):
+            lo, hi = cfg.get("min"), cfg.get("max")
+            if lo is not None and val < lo:
+                errs.append(f"{n['type']} id{n['id']}: {k}={val} BELOW min {lo}")
+            if hi is not None and val > hi:
+                errs.append(f"{n['type']} id{n['id']}: {k}={val} ABOVE max {hi}")
+        if v[0] == "COMBO" or isinstance(v[0], list):
+            opts = v[1].get("options") if (len(v)>1 and isinstance(v[1],dict)) else None
+            if opts is None and isinstance(v[0], list): opts = v[0]
+            if opts and val not in opts:
+                errs.append(f"{n['type']} id{n['id']}: {k}={val!r} not a valid option")
+
 sets={n["widgets_values"][0] for n in d["nodes"] if n["type"]=="SetNode"}
 for n in d["nodes"]:
     if n["type"]=="GetNode" and n["widgets_values"][0] not in sets: errs.append(f"rail '{n['widgets_values'][0]}' has no Set")
