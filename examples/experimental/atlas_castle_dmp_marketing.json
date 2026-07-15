@@ -2,7 +2,7 @@
  "id": "atlas-castle-dmp-marketing",
  "revision": 0,
  "last_node_id": 84,
- "last_link_id": 65,
+ "last_link_id": 64,
  "nodes": [
   {
    "id": 1,
@@ -154,15 +154,15 @@
     {
      "name": "sam_prompt_mid",
      "type": "STRING",
-     "links": [],
+     "links": [
+      4
+     ],
      "slot_index": 6
     },
     {
      "name": "sam_prompt_fg",
      "type": "STRING",
-     "links": [
-      4
-     ],
+     "links": [],
      "slot_index": 7
     },
     {
@@ -341,12 +341,12 @@
    "properties": {
     "Node name for S&R": "SetNode",
     "aux_id": "kijai/ComfyUI-KJNodes",
-    "previousName": "sam_fg"
+    "previousName": "sam_mid"
    },
    "widgets_values": [
-    "sam_fg"
+    "sam_mid"
    ],
-   "title": "Set_sam_fg",
+   "title": "Set_sam_mid",
    "color": "#2a363b",
    "bgcolor": "#3f5159"
   },
@@ -1277,42 +1277,6 @@
   },
   {
    "id": 27,
-   "type": "GetNode",
-   "pos": [
-    3380,
-    120
-   ],
-   "size": [
-    210,
-    60
-   ],
-   "flags": {},
-   "order": 27,
-   "mode": 0,
-   "inputs": [],
-   "outputs": [
-    {
-     "name": "STRING",
-     "type": "STRING",
-     "links": [
-      19
-     ],
-     "slot_index": 0
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "GetNode",
-    "aux_id": "kijai/ComfyUI-KJNodes"
-   },
-   "widgets_values": [
-    "sam_fg"
-   ],
-   "title": "Get_sam_fg",
-   "color": "#2a363b",
-   "bgcolor": "#3f5159"
-  },
-  {
-   "id": 28,
    "type": "SAM3Segment",
    "pos": [
     3380,
@@ -1323,7 +1287,7 @@
     300
    ],
    "flags": {},
-   "order": 28,
+   "order": 27,
    "mode": 0,
    "inputs": [
     {
@@ -1334,7 +1298,7 @@
     {
      "name": "prompt",
      "type": "STRING",
-     "link": 19
+     "link": null
     },
     {
      "name": "output_mode",
@@ -1403,8 +1367,8 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      20,
-      21
+      19,
+      20
      ],
      "slot_index": 1
     },
@@ -1419,7 +1383,7 @@
     "Node name for S&R": "SAM3Segment"
    },
    "widgets_values": [
-    "castle and rocks",
+    "castle and cliff and rocks and grass",
     "Merged",
     0.5,
     0,
@@ -1431,10 +1395,10 @@
     false,
     "Alpha"
    ],
-   "title": "SAM3 · castle + rocks"
+   "title": "SAM3 · castle + rocks (LITERAL)"
   },
   {
-   "id": 29,
+   "id": 28,
    "type": "SetNode",
    "pos": [
     3380,
@@ -1445,13 +1409,13 @@
     60
    ],
    "flags": {},
-   "order": 29,
+   "order": 28,
    "mode": 0,
    "inputs": [
     {
      "name": "MASK",
      "type": "MASK",
-     "link": 20
+     "link": 19
     }
    ],
    "outputs": [
@@ -1474,7 +1438,7 @@
    "bgcolor": "#3f5159"
   },
   {
-   "id": 30,
+   "id": 29,
    "type": "InvertMask",
    "pos": [
     3380,
@@ -1485,13 +1449,13 @@
     60
    ],
    "flags": {},
-   "order": 30,
+   "order": 29,
    "mode": 0,
    "inputs": [
     {
      "name": "mask",
      "type": "MASK",
-     "link": 21
+     "link": 20
     }
    ],
    "outputs": [
@@ -1499,7 +1463,7 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      22
+      21
      ],
      "slot_index": 0
     }
@@ -1511,7 +1475,7 @@
    "title": "NOT(castle) → exclude"
   },
   {
-   "id": 31,
+   "id": 30,
    "type": "SetNode",
    "pos": [
     3380,
@@ -1522,13 +1486,13 @@
     60
    ],
    "flags": {},
-   "order": 31,
+   "order": 30,
    "mode": 0,
    "inputs": [
     {
      "name": "MASK",
      "type": "MASK",
-     "link": 22
+     "link": 21
     }
    ],
    "outputs": [
@@ -1551,7 +1515,7 @@
    "bgcolor": "#3f5159"
   },
   {
-   "id": 32,
+   "id": 31,
    "type": "GetNode",
    "pos": [
     3760,
@@ -1562,7 +1526,7 @@
     60
    ],
    "flags": {},
-   "order": 32,
+   "order": 31,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -1570,7 +1534,7 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      23
+      22
      ],
      "slot_index": 0
     }
@@ -1587,7 +1551,7 @@
    "bgcolor": "#3f5159"
   },
   {
-   "id": 33,
+   "id": 32,
    "type": "SAM3Segment",
    "pos": [
     3760,
@@ -1598,13 +1562,13 @@
     300
    ],
    "flags": {},
-   "order": 33,
+   "order": 32,
    "mode": 0,
    "inputs": [
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 23
+     "link": 22
     },
     {
      "name": "prompt",
@@ -1678,8 +1642,8 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      24,
-      25
+      23,
+      24
      ],
      "slot_index": 1
     },
@@ -1694,7 +1658,7 @@
     "Node name for S&R": "SAM3Segment"
    },
    "widgets_values": [
-    "ocean sea water",
+    "ocean and sea and water",
     "Merged",
     0.5,
     0,
@@ -1709,7 +1673,7 @@
    "title": "SAM3 · ocean/water"
   },
   {
-   "id": 34,
+   "id": 33,
    "type": "SetNode",
    "pos": [
     3760,
@@ -1720,13 +1684,13 @@
     60
    ],
    "flags": {},
-   "order": 34,
+   "order": 33,
    "mode": 0,
    "inputs": [
     {
      "name": "MASK",
      "type": "MASK",
-     "link": 24
+     "link": 23
     }
    ],
    "outputs": [
@@ -1749,7 +1713,7 @@
    "bgcolor": "#3f5159"
   },
   {
-   "id": 35,
+   "id": 34,
    "type": "InvertMask",
    "pos": [
     3760,
@@ -1760,13 +1724,13 @@
     60
    ],
    "flags": {},
-   "order": 35,
+   "order": 34,
    "mode": 0,
    "inputs": [
     {
      "name": "mask",
      "type": "MASK",
-     "link": 25
+     "link": 24
     }
    ],
    "outputs": [
@@ -1774,7 +1738,7 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      26
+      25
      ],
      "slot_index": 0
     }
@@ -1786,7 +1750,7 @@
    "title": "NOT(water) → exclude"
   },
   {
-   "id": 36,
+   "id": 35,
    "type": "SetNode",
    "pos": [
     3760,
@@ -1797,13 +1761,13 @@
     60
    ],
    "flags": {},
-   "order": 36,
+   "order": 35,
    "mode": 0,
    "inputs": [
     {
      "name": "MASK",
      "type": "MASK",
-     "link": 26
+     "link": 25
     }
    ],
    "outputs": [
@@ -1824,6 +1788,31 @@
    "title": "Set_not_water",
    "color": "#2a363b",
    "bgcolor": "#3f5159"
+  },
+  {
+   "id": 36,
+   "type": "Note",
+   "pos": [
+    3000,
+    830
+   ],
+   "size": [
+    1100,
+    210
+   ],
+   "flags": {},
+   "order": 36,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "Note"
+   },
+   "widgets_values": [
+    "SAM3 PROMPTS — measured on THIS plate (coverage of the castle band vs the bottom rocks):\n  'medieval castle and rocky cliff'             castle 44.1%  bottom  6.2%   <- loses the foreground rocks\n  'medieval castle, rocky cliff, grass, rocks'  castle  0.0%  bottom  0.0%   <- COMMAS = EMPTY MASK, silently\n  'castle and cliff and rocks and grass'        castle 44.3%  bottom 70.8%   <- SHIPPED: castle AND the rocks\n\nJoin terms with AND. A comma-separated list is the obvious way to ask for several objects, and it no-matches to\nZERO with no error — which then INVERTS into an exclude-EVERYTHING mask and empties the layer to zero mesh."
+   ],
+   "color": "#432",
+   "bgcolor": "#653"
   },
   {
    "id": 37,
@@ -1851,7 +1840,7 @@
      "name": "inpaint model",
      "type": "INPAINT_MODEL",
      "links": [
-      30
+      29
      ],
      "slot_index": 0
     }
@@ -1884,7 +1873,7 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      27
+      26
      ],
      "slot_index": 0
     }
@@ -1918,7 +1907,7 @@
     {
      "name": "mask",
      "type": "MASK",
-     "link": 27
+     "link": 26
     },
     {
      "name": "grow",
@@ -1941,7 +1930,7 @@
      "name": "mask",
      "type": "MASK",
      "links": [
-      29
+      28
      ],
      "slot_index": 0
     }
@@ -1976,7 +1965,7 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      28
+      27
      ],
      "slot_index": 0
     }
@@ -2010,12 +1999,12 @@
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 28
+     "link": 27
     },
     {
      "name": "mask",
      "type": "MASK",
-     "link": 29
+     "link": 28
     },
     {
      "name": "context_pad_px",
@@ -2028,7 +2017,7 @@
      "name": "cropped_image",
      "type": "IMAGE",
      "links": [
-      31
+      30
      ],
      "slot_index": 0
     },
@@ -2036,7 +2025,7 @@
      "name": "cropped_mask",
      "type": "MASK",
      "links": [
-      32
+      31
      ],
      "slot_index": 1
     },
@@ -2044,7 +2033,7 @@
      "name": "crop_region",
      "type": "ATLAS_CROP_REGION",
      "links": [
-      35
+      34
      ],
      "slot_index": 2
     }
@@ -2075,17 +2064,17 @@
     {
      "name": "inpaint_model",
      "type": "INPAINT_MODEL",
-     "link": 30
+     "link": 29
     },
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 31
+     "link": 30
     },
     {
      "name": "mask",
      "type": "MASK",
-     "link": 32
+     "link": 31
     },
     {
      "name": "seed",
@@ -2103,7 +2092,7 @@
      "name": "inpainted image",
      "type": "IMAGE",
      "links": [
-      34
+      33
      ],
      "slot_index": 0
     }
@@ -2137,7 +2126,7 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      33
+      32
      ],
      "slot_index": 0
     }
@@ -2171,17 +2160,17 @@
     {
      "name": "original_image",
      "type": "IMAGE",
-     "link": 33
+     "link": 32
     },
     {
      "name": "inpainted_crop",
      "type": "IMAGE",
-     "link": 34
+     "link": 33
     },
     {
      "name": "crop_region",
      "type": "ATLAS_CROP_REGION",
-     "link": 35
+     "link": 34
     },
     {
      "name": "mask",
@@ -2199,7 +2188,7 @@
      "name": "image",
      "type": "IMAGE",
      "links": [
-      39
+      38
      ],
      "slot_index": 0
     }
@@ -2232,7 +2221,7 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      36
+      35
      ],
      "slot_index": 0
     }
@@ -2268,7 +2257,7 @@
      "name": "ATLAS_DEPTH_MAP",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      37
+      36
      ],
      "slot_index": 0
     }
@@ -2304,7 +2293,7 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      38
+      37
      ],
      "slot_index": 0
     }
@@ -2338,22 +2327,22 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 36
+     "link": 35
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 37
+     "link": 36
     },
     {
      "name": "sky_mask",
      "type": "MASK",
-     "link": 38
+     "link": 37
     },
     {
      "name": "plate_image",
      "type": "IMAGE",
-     "link": 39
+     "link": 38
     },
     {
      "name": "radius_m",
@@ -2401,7 +2390,7 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      40
+      39
      ],
      "slot_index": 0
     },
@@ -2450,7 +2439,7 @@
     {
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
-     "link": 40
+     "link": 39
     }
    ],
    "outputs": [
@@ -2517,7 +2506,7 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      41
+      40
      ],
      "slot_index": 0
     }
@@ -2553,7 +2542,7 @@
      "name": "ATLAS_DEPTH_MAP",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      42
+      41
      ],
      "slot_index": 0
     }
@@ -2589,7 +2578,7 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      43
+      42
      ],
      "slot_index": 0
     }
@@ -2623,17 +2612,17 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 41
+     "link": 40
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 42
+     "link": 41
     },
     {
      "name": "foreground_mask",
      "type": "MASK",
-     "link": 43
+     "link": 42
     },
     {
      "name": "extrude_multiplier",
@@ -2656,7 +2645,7 @@
      "name": "band_split",
      "type": "ATLAS_BAND_SPLIT",
      "links": [
-      44
+      43
      ],
      "slot_index": 0
     },
@@ -2701,7 +2690,7 @@
     {
      "name": "ATLAS_BAND_SPLIT",
      "type": "ATLAS_BAND_SPLIT",
-     "link": 44
+     "link": 43
     }
    ],
    "outputs": [
@@ -2768,7 +2757,7 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      45
+      44
      ],
      "slot_index": 0
     }
@@ -2804,7 +2793,7 @@
      "name": "ATLAS_DEPTH_MAP",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      46
+      45
      ],
      "slot_index": 0
     }
@@ -2840,7 +2829,7 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      47
+      46
      ],
      "slot_index": 0
     }
@@ -2876,7 +2865,7 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      48
+      47
      ],
      "slot_index": 0
     }
@@ -2912,7 +2901,7 @@
      "name": "ATLAS_BAND_SPLIT",
      "type": "ATLAS_BAND_SPLIT",
      "links": [
-      49
+      48
      ],
      "slot_index": 0
     }
@@ -2946,17 +2935,17 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 45
+     "link": 44
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 46
+     "link": 45
     },
     {
      "name": "plate_image",
      "type": "IMAGE",
-     "link": 47
+     "link": 46
     },
     {
      "name": "near_m",
@@ -3006,7 +2995,7 @@
     {
      "name": "exclude_mask",
      "type": "MASK",
-     "link": 48
+     "link": 47
     },
     {
      "name": "fill_occluded",
@@ -3051,7 +3040,7 @@
     {
      "name": "band_split",
      "type": "ATLAS_BAND_SPLIT",
-     "link": 49
+     "link": 48
     },
     {
      "name": "band_geometry",
@@ -3089,7 +3078,7 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      50
+      49
      ],
      "slot_index": 0
     },
@@ -3151,7 +3140,7 @@
     {
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
-     "link": 50
+     "link": 49
     }
    ],
    "outputs": [
@@ -3193,7 +3182,7 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      51
+      50
      ],
      "slot_index": 0
     }
@@ -3229,7 +3218,7 @@
      "name": "ATLAS_DEPTH_MAP",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      52
+      51
      ],
      "slot_index": 0
     }
@@ -3265,7 +3254,7 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      53
+      52
      ],
      "slot_index": 0
     }
@@ -3301,7 +3290,7 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      54
+      53
      ],
      "slot_index": 0
     }
@@ -3337,7 +3326,7 @@
      "name": "ATLAS_BAND_SPLIT",
      "type": "ATLAS_BAND_SPLIT",
      "links": [
-      55
+      54
      ],
      "slot_index": 0
     }
@@ -3371,17 +3360,17 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 51
+     "link": 50
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 52
+     "link": 51
     },
     {
      "name": "plate_image",
      "type": "IMAGE",
-     "link": 53
+     "link": 52
     },
     {
      "name": "near_m",
@@ -3431,7 +3420,7 @@
     {
      "name": "exclude_mask",
      "type": "MASK",
-     "link": 54
+     "link": 53
     },
     {
      "name": "fill_occluded",
@@ -3476,7 +3465,7 @@
     {
      "name": "band_split",
      "type": "ATLAS_BAND_SPLIT",
-     "link": 55
+     "link": 54
     },
     {
      "name": "band_geometry",
@@ -3514,7 +3503,7 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      56
+      55
      ],
      "slot_index": 0
     },
@@ -3576,7 +3565,7 @@
     {
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
-     "link": 56
+     "link": 55
     }
    ],
    "outputs": [
@@ -3643,7 +3632,7 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      57
+      56
      ],
      "slot_index": 0
     }
@@ -3679,7 +3668,7 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      58
+      57
      ],
      "slot_index": 0
     }
@@ -3713,12 +3702,12 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 57
+     "link": 56
     },
     {
      "name": "source_image",
      "type": "IMAGE",
-     "link": 58
+     "link": 57
     },
     {
      "name": "resolution",
@@ -3849,7 +3838,7 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      59
+      58
      ],
      "slot_index": 0
     }
@@ -3885,7 +3874,7 @@
      "name": "ATLAS_DEPTH_MAP",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      60
+      59
      ],
      "slot_index": 0
     }
@@ -3921,7 +3910,7 @@
      "name": "MASK",
      "type": "MASK",
      "links": [
-      61
+      60
      ],
      "slot_index": 0
     }
@@ -3955,12 +3944,12 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 59
+     "link": 58
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 60
+     "link": 59
     },
     {
      "name": "relief_grid",
@@ -3980,7 +3969,7 @@
     {
      "name": "exclude_mask",
      "type": "MASK",
-     "link": 61
+     "link": 60
     },
     {
      "name": "max_edge_factor",
@@ -4003,7 +3992,7 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      62
+      61
      ],
      "slot_index": 0
     },
@@ -4047,7 +4036,7 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      63
+      62
      ],
      "slot_index": 0
     }
@@ -4081,12 +4070,12 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 62
+     "link": 61
     },
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 63
+     "link": 62
     },
     {
      "name": "output_dir",
@@ -4171,7 +4160,7 @@
      "name": "preview_solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      64
+      63
      ],
      "slot_index": 2
     },
@@ -4222,7 +4211,7 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      65
+      64
      ],
      "slot_index": 0
     }
@@ -4256,12 +4245,12 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 64
+     "link": 63
     },
     {
      "name": "source_image",
      "type": "IMAGE",
-     "link": 65
+     "link": 64
     },
     {
      "name": "resolution",
@@ -4451,7 +4440,7 @@
   [
    4,
    2,
-   7,
+   6,
    5,
    0,
    "STRING"
@@ -4564,21 +4553,21 @@
    18,
    26,
    0,
-   28,
+   27,
    0,
    "IMAGE"
   ],
   [
    19,
    27,
-   0,
-   28,
    1,
-   "STRING"
+   28,
+   0,
+   "MASK"
   ],
   [
    20,
-   28,
+   27,
    1,
    29,
    0,
@@ -4586,31 +4575,31 @@
   ],
   [
    21,
-   28,
-   1,
+   29,
+   0,
    30,
    0,
    "MASK"
   ],
   [
    22,
-   30,
-   0,
    31,
    0,
-   "MASK"
-  ],
-  [
-   23,
    32,
-   0,
-   33,
    0,
    "IMAGE"
   ],
   [
-   24,
+   23,
+   32,
+   1,
    33,
+   0,
+   "MASK"
+  ],
+  [
+   24,
+   32,
    1,
    34,
    0,
@@ -4618,22 +4607,14 @@
   ],
   [
    25,
-   33,
-   1,
+   34,
+   0,
    35,
    0,
    "MASK"
   ],
   [
    26,
-   35,
-   0,
-   36,
-   0,
-   "MASK"
-  ],
-  [
-   27,
    38,
    0,
    39,
@@ -4641,7 +4622,7 @@
    "MASK"
   ],
   [
-   28,
+   27,
    40,
    0,
    41,
@@ -4649,7 +4630,7 @@
    "IMAGE"
   ],
   [
-   29,
+   28,
    39,
    0,
    41,
@@ -4657,7 +4638,7 @@
    "MASK"
   ],
   [
-   30,
+   29,
    37,
    0,
    42,
@@ -4665,7 +4646,7 @@
    "INPAINT_MODEL"
   ],
   [
-   31,
+   30,
    41,
    0,
    42,
@@ -4673,7 +4654,7 @@
    "IMAGE"
   ],
   [
-   32,
+   31,
    41,
    1,
    42,
@@ -4681,7 +4662,7 @@
    "MASK"
   ],
   [
-   33,
+   32,
    43,
    0,
    44,
@@ -4689,7 +4670,7 @@
    "IMAGE"
   ],
   [
-   34,
+   33,
    42,
    0,
    44,
@@ -4697,7 +4678,7 @@
    "IMAGE"
   ],
   [
-   35,
+   34,
    41,
    2,
    44,
@@ -4705,7 +4686,7 @@
    "ATLAS_CROP_REGION"
   ],
   [
-   36,
+   35,
    45,
    0,
    48,
@@ -4713,7 +4694,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   37,
+   36,
    46,
    0,
    48,
@@ -4721,7 +4702,7 @@
    "ATLAS_DEPTH_MAP"
   ],
   [
-   38,
+   37,
    47,
    0,
    48,
@@ -4729,7 +4710,7 @@
    "MASK"
   ],
   [
-   39,
+   38,
    44,
    0,
    48,
@@ -4737,7 +4718,7 @@
    "IMAGE"
   ],
   [
-   40,
+   39,
    48,
    0,
    49,
@@ -4745,7 +4726,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   41,
+   40,
    51,
    0,
    54,
@@ -4753,7 +4734,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   42,
+   41,
    52,
    0,
    54,
@@ -4761,7 +4742,7 @@
    "ATLAS_DEPTH_MAP"
   ],
   [
-   43,
+   42,
    53,
    0,
    54,
@@ -4769,7 +4750,7 @@
    "MASK"
   ],
   [
-   44,
+   43,
    54,
    0,
    55,
@@ -4777,7 +4758,7 @@
    "ATLAS_BAND_SPLIT"
   ],
   [
-   45,
+   44,
    57,
    0,
    62,
@@ -4785,7 +4766,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   46,
+   45,
    58,
    0,
    62,
@@ -4793,7 +4774,7 @@
    "ATLAS_DEPTH_MAP"
   ],
   [
-   47,
+   46,
    59,
    0,
    62,
@@ -4801,7 +4782,7 @@
    "IMAGE"
   ],
   [
-   48,
+   47,
    60,
    0,
    62,
@@ -4809,7 +4790,7 @@
    "MASK"
   ],
   [
-   49,
+   48,
    61,
    0,
    62,
@@ -4817,7 +4798,7 @@
    "ATLAS_BAND_SPLIT"
   ],
   [
-   50,
+   49,
    62,
    0,
    63,
@@ -4825,7 +4806,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   51,
+   50,
    64,
    0,
    69,
@@ -4833,7 +4814,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   52,
+   51,
    65,
    0,
    69,
@@ -4841,7 +4822,7 @@
    "ATLAS_DEPTH_MAP"
   ],
   [
-   53,
+   52,
    66,
    0,
    69,
@@ -4849,7 +4830,7 @@
    "IMAGE"
   ],
   [
-   54,
+   53,
    67,
    0,
    69,
@@ -4857,7 +4838,7 @@
    "MASK"
   ],
   [
-   55,
+   54,
    68,
    0,
    69,
@@ -4865,7 +4846,7 @@
    "ATLAS_BAND_SPLIT"
   ],
   [
-   56,
+   55,
    69,
    0,
    70,
@@ -4873,7 +4854,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   57,
+   56,
    72,
    0,
    74,
@@ -4881,7 +4862,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   58,
+   57,
    73,
    0,
    74,
@@ -4889,7 +4870,7 @@
    "IMAGE"
   ],
   [
-   59,
+   58,
    75,
    0,
    78,
@@ -4897,7 +4878,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   60,
+   59,
    76,
    0,
    78,
@@ -4905,7 +4886,7 @@
    "ATLAS_DEPTH_MAP"
   ],
   [
-   61,
+   60,
    77,
    0,
    78,
@@ -4913,7 +4894,7 @@
    "MASK"
   ],
   [
-   62,
+   61,
    78,
    0,
    80,
@@ -4921,7 +4902,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   63,
+   62,
    79,
    0,
    80,
@@ -4929,7 +4910,7 @@
    "IMAGE"
   ],
   [
-   64,
+   63,
    80,
    2,
    82,
@@ -4937,7 +4918,7 @@
    "ATLAS_SOLVE"
   ],
   [
-   65,
+   64,
    81,
    0,
    82,
@@ -4984,7 +4965,7 @@
   },
   {
    "id": 4,
-   "title": "3 · 🎯 SAM3 MATTES — sky · castle+rocks · water. The FG matte drives BOTH the layer scope and the exported mesh cut",
+   "title": "3 · 🎯 SAM3 MATTES — sky · castle+rocks · water. Join terms with AND: a COMMA-separated prompt silently returns an EMPTY mask (measured 0.0%)",
    "bounding": [
     2960,
     -40,

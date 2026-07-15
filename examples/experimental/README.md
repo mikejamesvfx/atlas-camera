@@ -90,10 +90,34 @@ comfyui-inpaint-nodes + `big-lama.pt`, the `[moge]` and `[neural-da3]` extras,
 a vision VLM on lmstudio `:1234`, and `atlas_seacliff_castle.png` in
 `ComfyUI/input/`.
 
-No VLM? The SAM3 prompts fall back to the literals typed into the nodes
-(`sky` / `castle and rocks` / `ocean sea water`) — everything downstream still
-works. **Note:** this ComfyUI's `LoadImage` lists no subdirectories, so the
-plate must sit at the root of `input/`.
+### Two traps found by running it
+
+**`sam_prompt_*` are DEPTH-BAND slots, not semantic roles.** The 🧭 VLM divides
+the plate into its own fixed five bands (sky / far 80-100 / bg 60-80 / mid 30-60
+/ fg 0-30). On this plate it correctly put the **castle in `mid`** and the
+**rocks in `fg`** — so wiring `sam_prompt_fg` into a semantic "castle" layer
+segments the *rocks* and the castle never appears (measured: castle-band coverage
+0.2%). Only `sky` maps cleanly onto a semantic layer, so only `sky` is wired; the
+castle/water prompts are literals and the report stays advisory. A five-band
+build (the staged master) is where those slots belong.
+
+**A comma-separated SAM3 prompt silently returns an EMPTY mask.** Measured on
+this plate:
+
+| prompt | total | castle band | bottom rocks |
+|---|---|---|---|
+| `medieval castle and rocky cliff` | 25.6% | 44.1% | 6.2% — loses the foreground rocks |
+| `medieval castle, rocky cliff, grass, rocks` | **0.0%** | 0.0% | 0.0% — **commas no-match, silently** |
+| **`castle and cliff and rocks and grass`** | 45.9% | **44.3%** | **70.8%** — shipped |
+
+Join terms with **and**. The comma list is the obvious way to ask for several
+objects and it returns zero with no error — which then inverts into an
+exclude-**everything** mask and empties the layer to zero mesh. (This is the
+failure mode `AtlasScopeMask` exists to disarm; these workflows wire SAM3 →
+`InvertMask` → `exclude_mask` directly, so the prompt has to be right.)
+
+**Plate path:** this ComfyUI's `LoadImage` lists no subdirectories, so the plate
+must sit at the root of `input/`.
 
 
 ---

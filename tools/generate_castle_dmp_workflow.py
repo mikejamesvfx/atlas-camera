@@ -176,7 +176,7 @@ assess = w.node("AtlasAssessImage", [360, 40], [420, 460], "🧭 Assess (VLM pre
 w.link(load, 0, assess, "image")
 rail_set("plate", assess, 0, [360, 560])
 rail_set("sam_sky", assess, 3, [360, 640])
-rail_set("sam_fg", assess, 7, [360, 720])
+rail_set("sam_mid", assess, 6, [360, 720])   # slot 6 = mid; the castle lives here
 w.note([0, 400], [320, 380],
        "CASTLE DMP — MARKETING BUILD\n\n"
        "Sea-cliff castle: sky · ocean · castle+rocks.\n\n"
@@ -233,16 +233,16 @@ w.note([2500, 300], [380, 260],
        "DA3 needs the [neural-da3] extra (--no-deps, see INSTALL.md).")
 
 # ── 3 · SAM3 MATTES ────────────────────────────────────────────────────────
-w.group("3 · 🎯 SAM3 MATTES — sky · castle+rocks · water. The FG matte drives BOTH the layer scope and the exported mesh cut", [2960, -40, 1180, 900], "#535")
+w.group("3 · 🎯 SAM3 MATTES — sky · castle+rocks · water. Join terms with AND: a COMMA-separated prompt silently returns an EMPTY mask (measured 0.0%)", [2960, -40, 1180, 900], "#535")
 g_p5 = rail_get("plate", [3000, 40]); g_sk = rail_get("sam_sky", [3000, 120])
 sam_sky = w.node("SAM3Segment", [3000, 220], [340, 300], "SAM3 · sky", {"prompt": "sky"})
 w.link(g_p5, 0, sam_sky, "image"); w.link(g_sk, 0, sam_sky, "prompt")
 rail_set("sky_matte", sam_sky, 1, [3000, 560])
 
-g_p6 = rail_get("plate", [3380, 40]); g_fgp = rail_get("sam_fg", [3380, 120])
-sam_fg = w.node("SAM3Segment", [3380, 220], [340, 300], "SAM3 · castle + rocks",
-                {"prompt": "castle and rocks"})
-w.link(g_p6, 0, sam_fg, "image"); w.link(g_fgp, 0, sam_fg, "prompt")
+g_p6 = rail_get("plate", [3380, 40])
+sam_fg = w.node("SAM3Segment", [3380, 220], [340, 300], "SAM3 · castle + rocks (LITERAL)",
+                {"prompt": "castle and cliff and rocks and grass"})
+w.link(g_p6, 0, sam_fg, "image")
 rail_set("fg_matte", sam_fg, 1, [3380, 560])
 inv_fg = w.node("InvertMask", [3380, 660], [280, 60], "NOT(castle) → exclude")
 w.link(sam_fg, 1, inv_fg, "mask")
@@ -250,12 +250,19 @@ rail_set("not_fg", inv_fg, 0, [3380, 750])
 
 g_p7 = rail_get("plate", [3760, 40])
 sam_w = w.node("SAM3Segment", [3760, 220], [340, 300], "SAM3 · ocean/water",
-               {"prompt": "ocean sea water"})
+               {"prompt": "ocean and sea and water"})
 w.link(g_p7, 0, sam_w, "image")
 rail_set("water_matte", sam_w, 1, [3760, 560])
 inv_w = w.node("InvertMask", [3760, 660], [280, 60], "NOT(water) → exclude")
 w.link(sam_w, 1, inv_w, "mask")
 rail_set("not_water", inv_w, 0, [3760, 750])
+w.note([3000, 830], [1100, 210],
+       "SAM3 PROMPTS — measured on THIS plate (coverage of the castle band vs the bottom rocks):\n"
+       "  'medieval castle and rocky cliff'             castle 44.1%  bottom  6.2%   <- loses the foreground rocks\n"
+       "  'medieval castle, rocky cliff, grass, rocks'  castle  0.0%  bottom  0.0%   <- COMMAS = EMPTY MASK, silently\n"
+       "  'castle and cliff and rocks and grass'        castle 44.3%  bottom 70.8%   <- SHIPPED: castle AND the rocks\n\n"
+       "Join terms with AND. A comma-separated list is the obvious way to ask for several objects, and it no-matches to\n"
+       "ZERO with no error — which then INVERTS into an exclude-EVERYTHING mask and empties the layer to zero mesh.")
 
 # ── 4 · SKY DOME + INPAINT ─────────────────────────────────────────────────
 w.group("4 · ☁ SKY DOME + LaMa INPAINT — the classic DMP sky separation. ✂ crop spends LaMa's fixed 256² on the hole, not the whole 4K frame", [4180, -40, 1500, 900], "#453")
