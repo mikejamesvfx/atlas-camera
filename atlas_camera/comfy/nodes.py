@@ -4202,6 +4202,31 @@ class AtlasExportReliefMesh:
                                "(edge-count-only mode; the single largest loop is always left open)."}),
                 "fill_depth_far_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 0.1,
                     "tooltip": "Band-box far bound (the cutoff). 0 = off (see fill_depth_near_m)."}),
+                "retopo_method": (["off", "quad", "decimate", "smooth"],
+                    {"default": "off",
+                     "tooltip": "EXPORT-ONLY retopology pass on the OBJ/GLB (the live viewport "
+                                "projection mesh is never touched). off = no change (default, so "
+                                "every saved workflow keeps working). quad = pyinstantmeshes "
+                                "orientation-field quad remesh (cleanest DCC handoff; needs the "
+                                "pyinstantmeshes package). decimate = quadric decimation via "
+                                "fast-simplification (fewer faces, same topology class). smooth = "
+                                "trimesh Taubin relax (topology-preserving, UVs kept). quad/decimate "
+                                "change the vertex count so projection-baked UVs are REGENERATED "
+                                "from the recovered camera (pure numpy) and the retopologized mesh "
+                                "stays textured. Runs AFTER any interior hole-fill."}),
+                "retopo_target_vertex_count": ("INT", {"default": 2000, "min": 4, "max": 2000000,
+                    "tooltip": "Target vertex count for quad / target face count for decimate "
+                               "(decimate targets ~2x this in faces). Ignored by smooth."}),
+                "retopo_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 100,
+                    "tooltip": "quad: Instant Meshes post-smooth iterations. smooth: Taubin "
+                               "relax iterations (the actual smoothing strength). decimate: "
+                               "ignored."}),
+                "retopo_crease_angle": ("FLOAT", {"default": 30.0, "min": 0.0, "max": 180.0, "step": 1.0,
+                    "tooltip": "quad only: crease angle (deg) below which adjacent faces are "
+                               "treated as one smooth surface in the orientation field."}),
+                "retopo_pure_quad": ("BOOLEAN", {"default": False,
+                    "tooltip": "quad only: force a pure-quad output (no triangles). False allows "
+                               "quad-dominant (triangles where the field can't place a quad)."}),
             },
         }
 
@@ -4211,7 +4236,10 @@ class AtlasExportReliefMesh:
                device="auto", format="both", use_solve_mesh=True,
                max_edge_factor=12.0, normal_edge_deg=0.0,
                fill_interior_holes=False, max_hole_edges=64,
-               fill_depth_near_m=0.0, fill_depth_far_m=0.0):
+               fill_depth_near_m=0.0, fill_depth_far_m=0.0,
+               retopo_method="off", retopo_target_vertex_count=2000,
+               retopo_smooth_iterations=0, retopo_crease_angle=30.0,
+               retopo_pure_quad=False):
         from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
         from atlas_camera.core.solver import _resize_depth
         from atlas_camera.exporters.relief_mesh_exporter import (
@@ -4298,9 +4326,41 @@ class AtlasExportReliefMesh:
             # usually a too-tight scope, and the count says so at a glance.
             be = boundary_edges(mesh.faces)
             loops_left = len(walk_loops(be, faces=mesh.faces)) if len(be) else 0
+        # EXPORT-ONLY retopology (quad / decimate / smooth) — same doctrine as
+        # the hole-fill above: never touches the live viewport projection mesh
+        # or solve.proxy_geometry. Runs AFTER the hole-fill so it retopologizes
+        # the capped mesh. quad/decimate change the vertex count, so the 1:1
+        # vertex-UV mapping is regenerated from the recovered camera (pure
+        # numpy); smooth preserves topology and keeps the existing UVs.
+        retopo_note = ""
+        if retopo_method and retopo_method != "off":
+            from atlas_camera.core.mesh_retopo import apply_retopo
+            rrep = apply_retopo(
+                mesh,
+                method=str(retopo_method),
+                target_vertex_count=int(retopo_target_vertex_count),
+                view_matrix=extr.camera_view_matrix,
+                fx=fx, fy=fy, cx=cx, cy=cy,
+                image_width=width, image_height=height,
+                pure_quad=bool(retopo_pure_quad),
+                crease_angle=float(retopo_crease_angle),
+                smooth_iterations=int(retopo_smooth_iterations),
+            )
+            if rrep.get("changed"):
+                retopo_note = (
+                    f"\n\U0001f53b retopo [{rrep.get('method', retopo_method)}]: "
+                    f"{rrep.get('in_verts', '?')} → {rrep.get('out_verts', '?')} verts, "
+                    f"{rrep.get('in_faces', '?')} → {rrep.get('out_faces', '?')} faces "
+                    f"— {rrep.get('note', '')}"
+                )
+            else:
+                retopo_note = (
+                    f"\n\U0001f53b retopo [{retopo_method}]: no change "
+                    f"— {rrep.get('note', '')}"
+                )
         report = _format_hole_fill_report(
             fill_interior_holes, n_filled, filled, faces_added, loops_left,
-            max_hole_edges, float(fill_depth_near_m), float(fill_depth_far_m))
+            max_hole_edges, float(fill_depth_near_m), float(fill_depth_far_m)) + retopo_note
         # The viewport gets the geometry that was ACTUALLY written, off the same
         # widgets — so what an artist tunes here is what lands in Maya/Nuke.
         preview_solve = _solve_with_relief_mesh(solve, mesh)

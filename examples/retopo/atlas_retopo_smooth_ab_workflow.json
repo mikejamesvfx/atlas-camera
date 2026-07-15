@@ -1,0 +1,314 @@
+{
+  "id": "atlas-retopo-smooth-ab",
+  "revision": 0,
+  "last_node_id": 5,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        120
+      ],
+      "size": [
+        280,
+        314
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            3
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "atlas_monument_valley.png",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        380,
+        120
+      ],
+      "size": [
+        340,
+        230
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            4,
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto"
+      ],
+      "title": "Atlas Learned Solve (GeoCalib prior + depth-measured height)"
+    },
+    {
+      "id": 3,
+      "type": "AtlasExportReliefMesh",
+      "pos": [
+        780,
+        120
+      ],
+      "size": [
+        360,
+        360
+      ],
+      "flags": {},
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "obj_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "glb_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "preview_solve",
+          "type": "ATLAS_SOLVE",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportReliefMesh"
+      },
+      "widgets_values": [
+        "atlas_exports/relief_off",
+        128,
+        0.5,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        "both",
+        true,
+        12.0,
+        0.0,
+        false,
+        64,
+        0.0,
+        0.0,
+        "off",
+        2000,
+        0,
+        30.0,
+        false
+      ],
+      "title": "Export — baseline (retopo OFF)"
+    },
+    {
+      "id": 4,
+      "type": "AtlasExportReliefMesh",
+      "pos": [
+        780,
+        520
+      ],
+      "size": [
+        360,
+        360
+      ],
+      "flags": {},
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 5
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "obj_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "glb_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "preview_solve",
+          "type": "ATLAS_SOLVE",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportReliefMesh"
+      },
+      "widgets_values": [
+        "atlas_exports/relief_smooth",
+        128,
+        0.5,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        "both",
+        true,
+        12.0,
+        0.0,
+        false,
+        64,
+        0.0,
+        0.0,
+        "smooth",
+        2000,
+        12,
+        30.0,
+        false
+      ],
+      "title": "Export — trimesh Taubin SMOOTH (UVs preserved)"
+    },
+    {
+      "id": 5,
+      "type": "Note",
+      "pos": [
+        40,
+        470
+      ],
+      "size": [
+        720,
+        360
+      ],
+      "flags": {},
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "RETOPOLGY SMOOTH — A/B against the OFF baseline.\n\nTwo AtlasExportReliefMesh nodes share ONE solve + image:\n· left = retopo_method OFF  (the default; torn silhouette, DMP-correct)\n· right = retopo_method SMOOTH (trimesh Taubin relax, 12 iterations)\n\nSMOOTH is topology-PRESERVING — same faces, same vertex count — so the\n1:1 vertex-UV mapping baked in build_relief_mesh stays valid and UVs are\nNOT regenerated (pure numpy, trimesh is already a dep — runs everywhere,\nno extra install). It only moves vertex positions: relaxes the noisy mono-\ndepth ripple into a smoother surface for a cleaner DCC import.\n\nExport-only doctrine: retopology NEVER touches the live viewport projection\nmesh or solve.proxy_geometry — it runs once on the resolved ReliefMesh,\nafter any hole-fill, before the OBJ/GLB writers.\n\nCompare the two OBJs in Maya/ZBrush/Blender: same vert/face count, smoother\nsurface on the right, identical UVs/textures."
+      ],
+      "title": "Note"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      1,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      2,
+      0,
+      3,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

@@ -1,0 +1,397 @@
+{
+  "id": "atlas-retopo-quad-dcc-handoff",
+  "revision": 0,
+  "last_node_id": 7,
+  "last_link_id": 8,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        120
+      ],
+      "size": [
+        280,
+        314
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            3
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "atlas_monument_valley.png",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        380,
+        120
+      ],
+      "size": [
+        340,
+        230
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            4,
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto"
+      ],
+      "title": "Atlas Learned Solve (GeoCalib prior + depth-measured height)"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        380,
+        400
+      ],
+      "size": [
+        340,
+        150
+      ],
+      "flags": {},
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto"
+      ],
+      "title": "AtlasDepthMap (run once, feed the derive + export)"
+    },
+    {
+      "id": 4,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        760,
+        120
+      ],
+      "size": [
+        360,
+        230
+      ],
+      "flags": {},
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 5
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            7,
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        256,
+        "custom",
+        0.5,
+        12.0,
+        true,
+        0.0
+      ],
+      "title": "AtlasDeriveReliefMesh (grid 256, edge_rel 0.5)"
+    },
+    {
+      "id": 5,
+      "type": "AtlasExportReliefMesh",
+      "pos": [
+        1160,
+        120
+      ],
+      "size": [
+        360,
+        420
+      ],
+      "flags": {},
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 7
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "obj_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "glb_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "preview_solve",
+          "type": "ATLAS_SOLVE",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportReliefMesh"
+      },
+      "widgets_values": [
+        "atlas_exports/relief_quad",
+        128,
+        0.5,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        "both",
+        true,
+        12.0,
+        0.0,
+        true,
+        48,
+        0.0,
+        0.0,
+        "quad",
+        3000,
+        0,
+        25.0,
+        true
+      ],
+      "title": "Export — hole-FILL then QUAD retopo (pure quad)"
+    },
+    {
+      "id": 6,
+      "type": "AtlasExportUSD",
+      "pos": [
+        1160,
+        580
+      ],
+      "size": [
+        320,
+        90
+      ],
+      "flags": {},
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "usd_path",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportUSD"
+      },
+      "widgets_values": [
+        "atlas_exports"
+      ],
+      "title": "AtlasExportUSD — camera.usda (needs [usd])"
+    },
+    {
+      "id": 7,
+      "type": "Note",
+      "pos": [
+        40,
+        700
+      ],
+      "size": [
+        1100,
+        260
+      ],
+      "flags": {},
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "QUAD RETOPO + INTERIOR HOLE-FILL — the clean DCC handoff.\n\nPipeline: Solve → DepthMap → DeriveReliefMesh → AtlasExportReliefMesh\n(fill_interior_holes ON, max_hole_edges 48  →  retopo_method QUAD,\ntarget 3000 verts, pure_quad True, crease 25°) + AtlasExportUSD (camera).\n\nThe hole-fill runs FIRST (export-only: fans closed the small interior tear\nloops so the retopologizer gets a cleanable surface, never the outer\nsilhouette/frame boundary). QUAD retopo runs AFTER on the capped mesh:\npyinstantmeshes orientation-field quad remesh → N×4 quads → triangulated\nfor the OBJ writer. Vertex count changes → the 1:1 vertex-UV mapping is\nREGENERATED from the recovered camera (pure numpy, no writer change) so the\nretopologized mesh stays textured with the source photo.\n\nNeeds the pyinstantmeshes package (BSD, CPU-only, macOS arm64 wheels):\n    pip install pyinstantmeshes\nAtlasExportUSD needs the [usd] extra:  pip install atlas-camera[usd]\nMissing the quad dep → the node raises an actionable ImportError (the\nworkflow still loads; swap retopo_method to 'decimate' or 'smooth' to run\nwithout it). AtlasDeriveReliefMesh's edge tuning (grid 256 / edge_rel 0.5)\ncarries into the OBJ because use_solve_mesh defaults True."
+      ],
+      "title": "Note"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      5,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      2,
+      0,
+      3,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      6,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      7,
+      4,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      8,
+      4,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
