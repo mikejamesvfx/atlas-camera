@@ -281,14 +281,16 @@ METRIC SCALE — measured, not assumed, and often WRONG on elevated vantages:
   scale_source=assumed_default (1.6 m) fires on AI vistas AND real photos shot
   from height (a street-level ground fit breaks over cars). Fix with
   AtlasScaleOverride camera_height_m (temple city ≈16 m) or a known-size
-  reference (AtlasReferenceScaleSolve). GROUND TRUTH, NYC birdseye plate
-  (photographer-provided, 2026-07-17): the camera was ~70-100 m up — the
-  showcase workflows' 25 m dial is ~3-4x SMALL. Use ~85 m for real-world
-  metres on that plate; the building at frame right is ~3-4 m per storey,
-  which is the countable per-plate scale reference (storeys x 3.5 m ≈ height).
-  Lesson: when the photographer is available, ASK — an eyeballed dial can be
-  off severalfold while looking plausible in the viewport, because projection
-  is angular and only parallax/exports expose absolute scale.
+  reference (AtlasReferenceScaleSolve). THE SKY-RISE DOCTRINE (NYC birdseye,
+  2026-07-17): on any plate with buildings, COUNT THE STOREYS — pick one fully
+  visible base-to-roof, count levels x 3.5 m, and give
+  AtlasReferenceScaleSolve its bbox with height_override_m
+  (reference_id=building_story_3m). On the NYC plate the counted 5-storey
+  tenement (17.5 m, bbox 3820,1775-4470,2480) locks the camera at 63.7 m,
+  conf 0.96, scale_source=reference_object — the photographer recalled
+  70-100 m and the original eyeballed 25 m dial was ~2.5x small. Lesson: an
+  eyeballed dial can be off severalfold while looking plausible (projection
+  is angular); counted geometry beats memory, and both beat a guess.
 
 RELIEF / BANDS:
   generic relief: grid 128 / edge_rel 0.5 · organic canopy: grid 512 / 1.0
