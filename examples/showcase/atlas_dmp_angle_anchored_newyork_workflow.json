@@ -121,14 +121,14 @@
   },
   {
    "id": 3,
-   "type": "AtlasScaleOverride",
+   "type": "AtlasReferenceScaleSolve",
    "pos": [
     360,
     330
    ],
    "size": [
     400,
-    150
+    280
    ],
    "flags": {},
    "order": 3,
@@ -140,12 +140,32 @@
      "link": 2
     },
     {
-     "name": "scale",
+     "name": "reference_id",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "bbox_x0",
      "type": "FLOAT",
      "link": null
     },
     {
-     "name": "camera_height_m",
+     "name": "bbox_y0",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "bbox_x1",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "bbox_y1",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "height_override_m",
      "type": "FLOAT",
      "link": null
     }
@@ -160,20 +180,24 @@
      "slot_index": 0
     },
     {
-     "name": "report",
-     "type": "STRING",
+     "name": "camera_height_m",
+     "type": "FLOAT",
      "links": [],
      "slot_index": 1
     }
    ],
    "properties": {
-    "Node name for S&R": "AtlasScaleOverride"
+    "Node name for S&R": "AtlasReferenceScaleSolve"
    },
    "widgets_values": [
-    1.0,
-    25.0
+    "building_story_3m",
+    3820.0,
+    1775.0,
+    4470.0,
+    2480.0,
+    17.5
    ],
-   "title": "📐 Camera height → 25m"
+   "title": "📐 Counted storeys (5 × 3.5m tenement) → tier-1 scale"
   },
   {
    "id": 4,
@@ -220,7 +244,7 @@
    "type": "SetNode",
    "pos": [
     360,
-    540
+    660
    ],
    "size": [
     210,
@@ -264,7 +288,7 @@
    ],
    "size": [
     320,
-    200
+    220
    ],
    "flags": {},
    "order": 6,
@@ -275,7 +299,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "From a high window, FOREGROUND buildings meet the street IN-FRAME —\ntheir geometry runs to Y=0. BACKGROUND buildings' bases are occluded\nbehind nearer rooftops: the relief tears at the roofline and their\nmeshes FLOAT. This workflow closes that gap with anchored facades.\nThe street-level ground fit fails from 25m up (cars break it), so the\nsolve falls back to 1.6m — the 📐 dial restores real-world metres."
+    "From a high vantage, FOREGROUND buildings meet the street IN-FRAME —\ntheir geometry runs to Y=0. BACKGROUND buildings' bases are occluded\nbehind nearer rooftops: the relief tears at the roofline and their\nmeshes FLOAT. This workflow closes that gap with anchored facades.\nThe ground fit fails up here (cars break it) → 1.6m fallback; the 📐\nreference node fixes it by COUNTED STOREYS (the 'PALM TOO' tenement:\n5 × 3.5m) → camera ≈ 60-64m, so anchored heights come out in real\nstoreys (× 3.5m ≈ the floor count you can verify by eye)."
    ],
    "color": "#432",
    "bgcolor": "#653"

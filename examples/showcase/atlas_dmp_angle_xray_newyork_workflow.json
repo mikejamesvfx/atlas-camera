@@ -121,14 +121,14 @@
   },
   {
    "id": 3,
-   "type": "AtlasScaleOverride",
+   "type": "AtlasReferenceScaleSolve",
    "pos": [
     360,
     330
    ],
    "size": [
     400,
-    150
+    280
    ],
    "flags": {},
    "order": 3,
@@ -140,12 +140,32 @@
      "link": 2
     },
     {
-     "name": "scale",
+     "name": "reference_id",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "bbox_x0",
      "type": "FLOAT",
      "link": null
     },
     {
-     "name": "camera_height_m",
+     "name": "bbox_y0",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "bbox_x1",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "bbox_y1",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "height_override_m",
      "type": "FLOAT",
      "link": null
     }
@@ -160,20 +180,24 @@
      "slot_index": 0
     },
     {
-     "name": "report",
-     "type": "STRING",
+     "name": "camera_height_m",
+     "type": "FLOAT",
      "links": [],
      "slot_index": 1
     }
    ],
    "properties": {
-    "Node name for S&R": "AtlasScaleOverride"
+    "Node name for S&R": "AtlasReferenceScaleSolve"
    },
    "widgets_values": [
-    1.0,
-    25.0
+    "building_story_3m",
+    3820.0,
+    1775.0,
+    4470.0,
+    2480.0,
+    17.5
    ],
-   "title": "📐 Camera height → 25m"
+   "title": "📐 Counted storeys (5 × 3.5m tenement) → tier-1 scale"
   },
   {
    "id": 4,
@@ -220,7 +244,7 @@
    "type": "SetNode",
    "pos": [
     360,
-    540
+    660
    ],
    "size": [
     210,
@@ -264,7 +288,7 @@
    ],
    "size": [
     320,
-    180
+    200
    ],
    "flags": {},
    "order": 6,
@@ -275,7 +299,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "🩻 Dense architecture is LaRI's STRONG domain — and 'predict the far\nbuilding's occluded lower floors behind the near roofline' is the\nlayered-ray-intersection use case. The restrict mask is the FOREGROUND\nDEPTH BAND (the node's own report recommends exactly this).\n📐 25m restores real metres (the 1.6m fallback fires on this vantage)."
+    "🩻 Dense architecture is LaRI's STRONG domain — and 'predict the far\nbuilding's occluded lower floors behind the near roofline' is the\nlayered-ray-intersection use case. The restrict mask is the FOREGROUND\nDEPTH BAND (the node's own report recommends exactly this).\n📐 Metric scale comes from COUNTED STOREYS (the 'PALM TOO' tenement,\n5 × 3.5m → camera ≈ 60-64m) — the 1.6m fallback fires on this vantage."
    ],
    "color": "#432",
    "bgcolor": "#653"

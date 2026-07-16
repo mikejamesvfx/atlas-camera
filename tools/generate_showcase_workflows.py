@@ -218,17 +218,25 @@ def build_city_blocks():
     solve = w.node("AtlasLearnedSolveFromImage", [360, 40], [400, 230], "Learned solve (GeoCalib)",
                    {"depth_model": V2_OUT})
     w.link(load, 0, solve, "image")
-    scale = w.node("AtlasScaleOverride", [360, 330], [400, 150], "📐 Camera height → 25m (window vantage)",
-                   {"camera_height_m": 25.0})
+    scale = w.node("AtlasReferenceScaleSolve", [360, 330], [400, 280],
+                   "📐 COUNT THE STOREYS → tier-1 metric scale",
+                   {"reference_id": "building_story_3m",
+                    "bbox_x0": 3820.0, "bbox_y0": 1775.0,
+                    "bbox_x1": 4470.0, "bbox_y1": 2480.0,
+                    "height_override_m": 17.5})
     w.link(solve, 0, scale, "solve")
     b.rset("plate", load, 0, [0, 400])
-    b.rset("solve", scale, 0, [360, 540])
-    w.note([0, 480], [320, 200],
+    b.rset("solve", scale, 0, [360, 660])
+    w.note([0, 480], [320, 240],
            "Heads-up: this plate is HUGE (177MB PNG). The browser preview is heavy —\n"
            "server-side solve/derive are fine. Real photography: GeoCalib gravity is\n"
            "trustworthy here (no roll trim needed) — but the street-level ground fit\n"
-           "fails from a 25m window (cars break it), so the solve falls back to the\n"
-           "1.6m default: the 📐 dial restores real-world metres for the exports.")
+           "fails from this vantage (cars break it) → 1.6m fallback. THE FIX, and the\n"
+           "doctrine for any sky-rise plate: COUNT THE LEVELS. The white tenement mid-\n"
+           "frame ('PALM TOO') is 5 storeys × 3.5m = 17.5m; its bbox + that height in\n"
+           "AtlasReferenceScaleSolve locks tier-1 metric scale by single-view geometry\n"
+           "→ camera ≈ 60-64m up (photographer-confirmed high vantage). Every metre\n"
+           "downstream is now MEASURED, not dialed.")
 
     w.group("2 · AERIAL PRESET — one node, buildings-as-boxes over a relief ground", [820, -40, 760, 620], "#345")
     g_i = b.rget("plate", [860, 0])
@@ -909,18 +917,24 @@ def build_dmp_angle_anchored():
     solve = w.node("AtlasLearnedSolveFromImage", [360, 40], [400, 230], "Learned solve",
                    {"depth_model": V2_OUT})
     w.link(load, 0, solve, "image")
-    scale = w.node("AtlasScaleOverride", [360, 330], [400, 150], "📐 Camera height → 25m",
-                   {"camera_height_m": 25.0})
+    scale = w.node("AtlasReferenceScaleSolve", [360, 330], [400, 280],
+                   "📐 Counted storeys (5 × 3.5m tenement) → tier-1 scale",
+                   {"reference_id": "building_story_3m",
+                    "bbox_x0": 3820.0, "bbox_y0": 1775.0,
+                    "bbox_x1": 4470.0, "bbox_y1": 2480.0,
+                    "height_override_m": 17.5})
     w.link(solve, 0, scale, "solve")
     b.rset("plate", load, 0, [0, 400])
-    b.rset("solve", scale, 0, [360, 540])
-    w.note([0, 480], [320, 200],
-           "From a high window, FOREGROUND buildings meet the street IN-FRAME —\n"
+    b.rset("solve", scale, 0, [360, 660])
+    w.note([0, 480], [320, 220],
+           "From a high vantage, FOREGROUND buildings meet the street IN-FRAME —\n"
            "their geometry runs to Y=0. BACKGROUND buildings' bases are occluded\n"
            "behind nearer rooftops: the relief tears at the roofline and their\n"
            "meshes FLOAT. This workflow closes that gap with anchored facades.\n"
-           "The street-level ground fit fails from 25m up (cars break it), so the\n"
-           "solve falls back to 1.6m — the 📐 dial restores real-world metres.")
+           "The ground fit fails up here (cars break it) → 1.6m fallback; the 📐\n"
+           "reference node fixes it by COUNTED STOREYS (the 'PALM TOO' tenement:\n"
+           "5 × 3.5m) → camera ≈ 60-64m, so anchored heights come out in real\n"
+           "storeys (× 3.5m ≈ the floor count you can verify by eye).")
 
     w.group("1 · GROUND-ANCHORED WALLS + RELIEF MERGE", [820, -40, 1000, 620], "#345")
     g_i = b.rget("plate", [860, 0])
@@ -976,17 +990,22 @@ def build_dmp_angle_xray():
     solve = w.node("AtlasLearnedSolveFromImage", [360, 40], [400, 230], "Learned solve",
                    {"depth_model": V2_OUT})
     w.link(load, 0, solve, "image")
-    scale = w.node("AtlasScaleOverride", [360, 330], [400, 150], "📐 Camera height → 25m",
-                   {"camera_height_m": 25.0})
+    scale = w.node("AtlasReferenceScaleSolve", [360, 330], [400, 280],
+                   "📐 Counted storeys (5 × 3.5m tenement) → tier-1 scale",
+                   {"reference_id": "building_story_3m",
+                    "bbox_x0": 3820.0, "bbox_y0": 1775.0,
+                    "bbox_x1": 4470.0, "bbox_y1": 2480.0,
+                    "height_override_m": 17.5})
     w.link(solve, 0, scale, "solve")
     b.rset("plate", load, 0, [0, 400])
-    b.rset("solve", scale, 0, [360, 540])
-    w.note([0, 480], [320, 180],
+    b.rset("solve", scale, 0, [360, 660])
+    w.note([0, 480], [320, 200],
            "🩻 Dense architecture is LaRI's STRONG domain — and 'predict the far\n"
            "building's occluded lower floors behind the near roofline' is the\n"
            "layered-ray-intersection use case. The restrict mask is the FOREGROUND\n"
            "DEPTH BAND (the node's own report recommends exactly this).\n"
-           "📐 25m restores real metres (the 1.6m fallback fires on this vantage).")
+           "📐 Metric scale comes from COUNTED STOREYS (the 'PALM TOO' tenement,\n"
+           "5 × 3.5m → camera ≈ 60-64m) — the 1.6m fallback fires on this vantage.")
 
     w.group("1 · DEPTH + FG-BAND RESTRICT + 🩻 PREDICTION", [820, -40, 1140, 620], "#345")
     g_i = b.rget("plate", [860, 0])

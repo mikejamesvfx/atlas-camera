@@ -121,14 +121,14 @@
   },
   {
    "id": 3,
-   "type": "AtlasScaleOverride",
+   "type": "AtlasReferenceScaleSolve",
    "pos": [
     360,
     330
    ],
    "size": [
     400,
-    150
+    280
    ],
    "flags": {},
    "order": 3,
@@ -140,12 +140,32 @@
      "link": 2
     },
     {
-     "name": "scale",
+     "name": "reference_id",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "bbox_x0",
      "type": "FLOAT",
      "link": null
     },
     {
-     "name": "camera_height_m",
+     "name": "bbox_y0",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "bbox_x1",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "bbox_y1",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "height_override_m",
      "type": "FLOAT",
      "link": null
     }
@@ -160,20 +180,24 @@
      "slot_index": 0
     },
     {
-     "name": "report",
-     "type": "STRING",
+     "name": "camera_height_m",
+     "type": "FLOAT",
      "links": [],
      "slot_index": 1
     }
    ],
    "properties": {
-    "Node name for S&R": "AtlasScaleOverride"
+    "Node name for S&R": "AtlasReferenceScaleSolve"
    },
    "widgets_values": [
-    1.0,
-    25.0
+    "building_story_3m",
+    3820.0,
+    1775.0,
+    4470.0,
+    2480.0,
+    17.5
    ],
-   "title": "📐 Camera height → 25m (window vantage)"
+   "title": "📐 COUNT THE STOREYS → tier-1 metric scale"
   },
   {
    "id": 4,
@@ -220,7 +244,7 @@
    "type": "SetNode",
    "pos": [
     360,
-    540
+    660
    ],
    "size": [
     210,
@@ -264,7 +288,7 @@
    ],
    "size": [
     320,
-    200
+    240
    ],
    "flags": {},
    "order": 6,
@@ -275,7 +299,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "Heads-up: this plate is HUGE (177MB PNG). The browser preview is heavy —\nserver-side solve/derive are fine. Real photography: GeoCalib gravity is\ntrustworthy here (no roll trim needed) — but the street-level ground fit\nfails from a 25m window (cars break it), so the solve falls back to the\n1.6m default: the 📐 dial restores real-world metres for the exports."
+    "Heads-up: this plate is HUGE (177MB PNG). The browser preview is heavy —\nserver-side solve/derive are fine. Real photography: GeoCalib gravity is\ntrustworthy here (no roll trim needed) — but the street-level ground fit\nfails from this vantage (cars break it) → 1.6m fallback. THE FIX, and the\ndoctrine for any sky-rise plate: COUNT THE LEVELS. The white tenement mid-\nframe ('PALM TOO') is 5 storeys × 3.5m = 17.5m; its bbox + that height in\nAtlasReferenceScaleSolve locks tier-1 metric scale by single-view geometry\n→ camera ≈ 60-64m up (photographer-confirmed high vantage). Every metre\ndownstream is now MEASURED, not dialed."
    ],
    "color": "#432",
    "bgcolor": "#653"
