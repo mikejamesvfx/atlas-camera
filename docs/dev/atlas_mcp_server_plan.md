@@ -1,11 +1,16 @@
 # Atlas v1 MCP Server — design plan
 
-**Status:** design groundwork (2026-07-16), written alongside the showcase
-workflow build. Nothing here is implemented yet; every proposed tool is
-grounded in an operation that was *actually needed and performed* while
-driving Atlas headlessly through the 2026-07-15/16 verification sessions —
-this is the operational surface an AI assistant provably needs, not a
-speculative one.
+**Status:** v1 IMPLEMENTED (2026-07-16, same day) — `atlas_camera/mcp/`
+(`python -m atlas_camera.mcp`, `[mcp]` extra). Eight tools + three resources,
+live-verified against a running ComfyUI (health, validate, catalog, viewport
+census, and the full solve round-trip: upload → VP solve → JSON read-back).
+`atlas_bake_camera_move` is the one deferred tool (browser-bound, per below).
+The UI→API flattening/validation moved to `atlas_camera/mcp/comfy_http.py`
+as the canonical implementation; the `tools/` CLIs are now thin wrappers.
+Every tool is grounded in an operation that was *actually needed and
+performed* while driving Atlas headlessly through the 2026-07-15/16
+verification sessions — this is the operational surface an AI assistant
+provably needs, not a speculative one.
 
 ## Why an MCP server
 

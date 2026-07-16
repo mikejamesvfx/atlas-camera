@@ -139,6 +139,7 @@ Atlas differs from other ComfyUI 3D systems, and the
 - [User guide](docs/USER_GUIDE.md) · [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md) — full node catalog
 - [Camera moves & marketing renders](docs/CAMERA_MOVES.md) — single photo → Nuke dolly with X-ray hidden-geometry fill
 - [DCC exports](docs/DCC_EXPORTS.md) · [Third-party & licenses](docs/THIRD_PARTY.md)
+- **MCP server** — `pip install atlas-camera[mcp]` then `python -m atlas_camera.mcp`: drive Atlas from any MCP-capable assistant ([design](docs/dev/atlas_mcp_server_plan.md))
 - [Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md)
 
 ## License
