@@ -2367,6 +2367,7 @@ function buildNodeUI(node, containerEl) {
     if (!pathMode) {
       pathPlayback = null; // cancelling mid-play skips onDone —
       if (pivotGizmo) pivotGizmo.visible = pivotOn; // — so restore the gizmo here
+      grid.visible = true; // — and the floor grid
       if (recoveredData) { // — and undo the 🔭 playback lens
         camera.fov = solvedFovDeg();
         camera.updateProjectionMatrix();
@@ -2612,20 +2613,23 @@ function buildNodeUI(node, containerEl) {
   playBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
   playBtn.onclick = () => {
     if (pathKeyframes.length === 0) return;
-    // Clean playback: hide the 🎯 pivot gizmo + the orange path markers for
-    // the duration of ANY preview (artist request — playback is what gets
-    // screen-recorded for marketing). Restore is derived from the helpers'
-    // OWNER states (pivotOn / pathMode), never a stashed .visible — a
+    // Clean playback: hide the 🎯 pivot gizmo + the orange path markers + the
+    // floor grid for the duration of ANY preview (artist request — playback
+    // is what gets screen-recorded for marketing). Restore is derived from
+    // the helpers' OWNER states (pivotOn / pathMode; the grid is always-on
+    // outside the deterministic passes), never a stashed .visible — a
     // mid-play re-click would stash the already-hidden value and restore to
     // hidden forever.
     if (pivotGizmo) pivotGizmo.visible = false;
     pathGroup.visible = false;
+    grid.visible = false;
     pathPlayback = {
       startTime: performance.now(),
       durationSec: Math.max(0.2, pathFrameCount / pathFps),
       onDone: () => {
         if (pivotGizmo) pivotGizmo.visible = pivotOn;
         pathGroup.visible = pathMode;
+        grid.visible = true;
         if (recoveredData) applyRecoveredView(recoveredData, { force: true });
       },
     };
@@ -2646,7 +2650,7 @@ function buildNodeUI(node, containerEl) {
     let outputRt = null;
     pathPlayback = null;
     pathGroup.visible = false; // exclude keyframe markers/line from baked frames
-    const bakeGizmoWas = pivotGizmo ? pivotGizmo.visible : false;
+    grid.visible = false; // keep the floor grid out of baked frames
     if (pivotGizmo) pivotGizmo.visible = false; // keep the 🎯 marker out of baked frames
     try {
       const frames = [];
@@ -2695,7 +2699,12 @@ function buildNodeUI(node, containerEl) {
       camera.fov = savedFov;
       camera.updateProjectionMatrix();
       pathGroup.visible = pathMode;
-      if (pivotGizmo) pivotGizmo.visible = bakeGizmoWas;
+      // Owner-state restores (grid is always-on outside the deterministic
+      // passes; the gizmo follows the 🎯 panel) — a stash here would capture
+      // "already hidden" when Bake is clicked mid-preview (Bake cancels the
+      // preview, so its onDone restore never fires) and leave them off forever.
+      grid.visible = true;
+      if (pivotGizmo) pivotGizmo.visible = pivotOn;
       bakeBtn.disabled = false;
       bakeBtn.textContent = "⏺ Bake Proxy Path";
       if (wasPlaying) playBtn.onclick();
