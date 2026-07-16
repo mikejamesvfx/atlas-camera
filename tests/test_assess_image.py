@@ -453,6 +453,20 @@ def test_staged_layer_bands_joint_boundaries():
                              "mid": {"present": True, "sam_prompt": "y", "far_pct": 0.2}}}
     assert staged_layer_bands(bad)["fg"] == "near_pct=0.000 far_pct=0.300"
 
+    # DEGENERATE boundaries reset too (found live 2026-07-16 on the ghost-town
+    # plate): a VLM suggesting far.near_pct=1.0 passed the old <= check and made
+    # the far band ZERO-WIDTH ([1.0, 1.0]) with bg unbounded to P100 — bg's
+    # fill_occluded smear then outranked every real layer (farthest-highest).
+    degenerate = {"staged_layers": {"far": {"present": True, "sam_prompt": "m",
+                                            "near_pct": 1.0}}}
+    bands = staged_layer_bands(degenerate)
+    assert bands["far"] == "near_pct=0.800 far_pct=1.000"   # reset, not [1,1]
+    assert bands["bg"] == "near_pct=0.600 far_pct=0.800"    # far edge restored
+    # Equal adjacent boundaries are just as degenerate.
+    equal = {"staged_layers": {"fg": {"present": True, "sam_prompt": "x", "far_pct": 0.6},
+                               "mid": {"present": True, "sam_prompt": "y", "far_pct": 0.6}}}
+    assert staged_layer_bands(equal)["mid"] == "near_pct=0.300 far_pct=0.600"
+
 
 # --- VLM image downscaling ---------------------------------------------------
 

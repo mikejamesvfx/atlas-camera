@@ -559,7 +559,12 @@ def staged_layer_bands(payload: dict[str, Any]) -> dict[str, str]:
     b1 = boundary("fg", "mid", STAGED_DEFAULT_BOUNDARIES[0])
     b2 = boundary("mid", "bg", STAGED_DEFAULT_BOUNDARIES[1])
     b3 = boundary("bg", "far", STAGED_DEFAULT_BOUNDARIES[2])
-    if not (0.0 <= b1 <= b2 <= b3 <= 1.0):
+    # STRICT ordering, strictly inside (0, 1): a boundary at 0.0 or 1.0 (or two
+    # equal boundaries) makes some band ZERO-WIDTH and its neighbour unbounded —
+    # found live 2026-07-16 when a VLM suggested far=[1.0, 1.0]: the far card
+    # collapsed and the bg band ran to infinity, its fill_occluded diffusion
+    # smear then outranking (farthest-highest) every real layer below it.
+    if not (0.0 < b1 < b2 < b3 < 1.0):
         b1, b2, b3 = STAGED_DEFAULT_BOUNDARIES
     fmt = "near_pct={:.3f} far_pct={:.3f}".format
     return {"fg": fmt(0.0, b1), "mid": fmt(b1, b2),

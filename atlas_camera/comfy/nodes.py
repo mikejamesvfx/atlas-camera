@@ -6194,12 +6194,20 @@ class AtlasInput:
                                 "[moge]. DA3* (EXPERIMENTAL) = strong metric, heavy deps, DA3NESTED "
                                 "is non-commercial CC BY-NC — needs [neural-da3]. Pick per shot: "
                                 "outdoor->V2-Outdoor, interior->MoGe or V2-Indoor. (A/B 2026-07-13.)"}),
+                "vlm_scope": ("BOOLEAN", {"default": True,
+                    "tooltip": "When use_vlm: also SCOPE each band by the VLM's SAM prompt "
+                               "(band ∩ segment). A PARTIAL segment match legitimately keeps "
+                               "the scope and can cut real band geometry — found live on the "
+                               "ghost-town plate, where the mid band's 4.6% segment left the "
+                               "rest of the band exposing the behind-band's fill smear. OFF = "
+                               "VLM still drives bands/geometry, layers stay band-only "
+                               "(robust full coverage — best for camera moves)."}),
             },
         }
 
     # --- assembly ---------------------------------------------------------
     def build(self, image, layers=0, mesh="relief", mesh_resolution=512,
-              use_vlm=False, vlm_provider="lmstudio", vlm_model="",
+              use_vlm=False, vlm_scope=True, vlm_provider="lmstudio", vlm_model="",
               sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
               upscale_model="", edge_extend_px=24, max_edge_factor=12.0,
               sky_heuristic=True, normal_edge_deg=0.0,
@@ -6347,7 +6355,7 @@ class AtlasInput:
                 prompt_val = scope_lines[i] if i < len(scope_lines) else ""
                 if vlm is not None:
                     prompt_val = None  # replaced by the VLM output below
-                wants_scope = (vlm is not None) or bool(prompt_val)
+                wants_scope = (vlm is not None and vlm_scope) or bool(prompt_val)
                 if wants_scope:
                     p_ref = vlm.out(4 + i) if vlm is not None else prompt_val
                     seg_ref = segment(image_ref, p_ref)

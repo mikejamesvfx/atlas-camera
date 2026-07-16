@@ -33,7 +33,7 @@ for l in d["links"]:
     if t["inputs"][tslot]["link"]!=lid: errs.append(f"link {lid} dst mismatch")
     st,tt = s["outputs"][sslot]["type"], t["inputs"][tslot]["type"]
     if s["type"] in VIRTUAL or t["type"] in VIRTUAL: continue
-    if st!=tt and tt!="COMBO" and st!="*": errs.append(f"link {lid}: TYPE {s['type']}.{st} -> {t['type']}.{tt}")
+    if st!=tt and tt!="COMBO" and st!="*" and tt!="*": errs.append(f"link {lid}: TYPE {s['type']}.{st} -> {t['type']}.{tt}")
 for n in d["nodes"]:
     if n["type"] in VIRTUAL: continue
     for k,v in (oi[n["type"]]["input"].get("required") or {}).items():
