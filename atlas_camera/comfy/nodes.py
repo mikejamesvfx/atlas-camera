@@ -1086,6 +1086,121 @@ class AtlasScaleOverride:
         return (out, report)
 
 
+class AtlasRollTrim:
+    """🎚 Manual roll trim for a solve — level a leaning solve by eye.
+
+    GeoCalib's gravity estimate can drift a few degrees on AI-generated plates
+    with no true horizon (measured live: −5.6° solved vs ~−2.6° implied by the
+    architecture's verticals on a sci-fi interior), and the classical VP
+    cross-check often finds nothing on greebled/non-rectilinear scenes. This is
+    the roll counterpart of `AtlasScaleOverride`'s scale dial: rotate the
+    recovered camera about its own VIEW AXIS by `roll_deg` and let everything
+    downstream follow. The camera position and view direction are INVARIANT —
+    only the camera's up/right spin — so framing is preserved and the fix is
+    purely orientational.
+
+    Wire it between the solve and the depth/derive nodes (like the scale
+    dial): geometry back-projects through the view matrix, so a trim applied
+    AFTER derivation leaves already-built geometry in the old frame (the
+    report warns if the incoming solve carries proxy geometry). Pure Python,
+    zero deps; composable after any solve; stamps
+    `debug_metadata["roll_trim_deg"]` (accumulates across chained trims).
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "trim"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"solve": ("ATLAS_SOLVE",)},
+            "optional": {
+                "roll_deg": ("FLOAT", {"default": 0.0, "min": -45.0, "max": 45.0, "step": 0.05,
+                    "tooltip": "Extra roll (degrees) about the recovered camera's view axis. "
+                               "0 = no-op. Positive rotates the projected scene counter-clockwise "
+                               "on screen (the horizon's right end rises); negative clockwise. "
+                               "Dial until verticals/horizon read level. Position and view "
+                               "direction never move."}),
+            },
+        }
+
+    def trim(self, solve, roll_deg=0.0):
+        import copy
+        import math
+        out = copy.deepcopy(solve)
+        d = float(roll_deg)
+        if abs(d) < 1e-9:
+            return (out, "AtlasRollTrim: 0.00° — no-op (dial roll_deg to level the solve)")
+        extr = out.camera.extrinsics
+        c, s = math.cos(math.radians(d)), math.sin(math.radians(d))
+
+        # V' = Rz(d) @ V — an extra roll in the CAMERA frame, left-multiplied
+        # onto the world→cam view matrix. Rz preserves the camera z axis, so
+        # the view direction is untouched; the rigid inverse below shows the
+        # position is too (Rz's translation is zero).
+        vm = [list(r) for r in extr.camera_view_matrix]
+        rz = ((c, -s, 0.0, 0.0), (s, c, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+        vm2 = [[sum(rz[r][k] * vm[k][col] for k in range(4)) for col in range(4)] for r in range(4)]
+        extr.camera_view_matrix = tuple(tuple(row) for row in vm2)
+
+        # Rigid inverse → world matrix; R_cw (columns = camera axes in world)
+        # is the transpose of the view rotation block.
+        r_wc = [[vm2[r][k] for k in range(3)] for r in range(3)]
+        t_wc = [vm2[r][3] for r in range(3)]
+        r_cw = [[r_wc[k][r] for k in range(3)] for r in range(3)]
+        pos = [-sum(r_cw[r][k] * t_wc[k] for k in range(3)) for r in range(3)]
+        extr.camera_world_matrix = tuple(
+            tuple([*r_cw[r], pos[r]]) for r in range(3)
+        ) + ((0.0, 0.0, 0.0, 1.0),)
+        extr.camera_rotation_matrix = tuple(tuple(row) for row in r_cw)
+        extr.camera_position = tuple(pos)
+
+        # Recompute the stored horizon LINE for the rolled camera (no longer a
+        # single image row): the vanishing line of world-horizontal planes is
+        # the set of pixels whose backprojected rays have zero world-Y
+        # direction — linear in (u, v). Ray(u,v) ∝ ((u-cx)/fx, -(v-cy)/fy, -1)
+        # in the camera frame; world-Y component = R_cw row 1 · ray = 0.
+        horizon_note = ""
+        intr = out.camera.intrinsics
+        if out.horizon_line is not None and intr.fx_px and intr.image_width:
+            fx = float(intr.fx_px)
+            fy = float(intr.fy_px or intr.fx_px)
+            cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
+            cy = float(intr.cy_px if intr.cy_px is not None else (intr.image_height or 0) / 2.0)
+            w = float(intr.image_width)
+            a = r_cw[1][0] / fx
+            b = -r_cw[1][1] / fy
+            cc = -r_cw[1][0] * cx / fx + r_cw[1][1] * cy / fy - r_cw[1][2]
+            if abs(b) > 1e-12:
+                y_at = lambda u: (-cc - a * u) / b  # noqa: E731
+                y0, y1 = y_at(0.0), y_at(w)
+                out.horizon_line.endpoints_px = ((0.0, y0), (w, y1))
+                out.horizon_line.line_coefficients = (a, b, cc)
+                tilt = math.degrees(math.atan2(y1 - y0, w))
+                horizon_note = f"  |  horizon tilt now {tilt:+.2f}°"
+                meta_ce = dict((out.debug_metadata or {}).get("camera_estimation") or {})
+                meta_ce["horizon_angle"] = tilt
+                meta = dict(out.debug_metadata or {})
+                meta["camera_estimation"] = meta_ce
+                out.debug_metadata = meta
+
+        meta = dict(out.debug_metadata or {})
+        meta["roll_trim_deg"] = float(meta.get("roll_trim_deg", 0.0)) + d
+        out.debug_metadata = meta
+
+        geom_warn = ""
+        scene = getattr(out, "projection_scene", None)
+        if scene is not None and getattr(scene, "proxy_geometry", None):
+            geom_warn = ("\n  ⚠ this solve already carries derived geometry, built in the UN-trimmed "
+                         "frame — wire AtlasRollTrim BEFORE the depth/derive nodes instead.")
+        report = (
+            f"AtlasRollTrim: {d:+.2f}° about the view axis{horizon_note}\n"
+            "  Camera position and view direction unchanged — only up/right rotate; every "
+            "downstream derive/export follows. Composable after any solve." + geom_warn)
+        return (out, report)
+
+
 class AtlasReferenceScaleSolve:
     """Fix a solve's metric scale from a known-size reference object.
 
@@ -7557,6 +7672,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasSolveFromImage":        AtlasSolveFromImage,
     "AtlasLearnedSolveFromImage": AtlasLearnedSolveFromImage,
     "AtlasScaleOverride":         AtlasScaleOverride,
+    "AtlasRollTrim":              AtlasRollTrim,
     "AtlasReferenceScaleSolve":   AtlasReferenceScaleSolve,
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
     "AtlasAssessImage":           AtlasAssessImage,
@@ -7628,6 +7744,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasSolveFromImage":        "Atlas Solve Camera from Image",
     "AtlasLearnedSolveFromImage": "Atlas Learned Solve (GeoCalib) 🧠",
     "AtlasScaleOverride":         "Atlas Scale Override 📐",
+    "AtlasRollTrim":              "Atlas Roll Trim 🎚",
     "AtlasReferenceScaleSolve":   "Atlas Reference-Object Scale 📏",
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
