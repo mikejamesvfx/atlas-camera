@@ -2356,7 +2356,10 @@ function buildNodeUI(node, containerEl) {
     pathPanel.style.display = pathMode ? "flex" : "none";
     // Orbit controls stay ENABLED in path mode (the fly controller they used
     // to yield to is gone) — playback re-poses the camera per-frame anyway.
-    if (!pathMode) pathPlayback = null;
+    if (!pathMode) {
+      pathPlayback = null; // cancelling mid-play skips onDone —
+      if (pivotGizmo) pivotGizmo.visible = pivotOn; // — so restore the gizmo here
+    }
   };
   toolbar.appendChild(pathBtn);
 
@@ -2509,10 +2512,22 @@ function buildNodeUI(node, containerEl) {
   playBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
   playBtn.onclick = () => {
     if (pathKeyframes.length === 0) return;
+    // Clean playback: hide the 🎯 pivot gizmo + the orange path markers for
+    // the duration of ANY preview (artist request — playback is what gets
+    // screen-recorded for marketing). Restore is derived from the helpers'
+    // OWNER states (pivotOn / pathMode), never a stashed .visible — a
+    // mid-play re-click would stash the already-hidden value and restore to
+    // hidden forever.
+    if (pivotGizmo) pivotGizmo.visible = false;
+    pathGroup.visible = false;
     pathPlayback = {
       startTime: performance.now(),
       durationSec: Math.max(0.2, pathFrameCount / pathFps),
-      onDone: () => { if (recoveredData) applyRecoveredView(recoveredData, { force: true }); },
+      onDone: () => {
+        if (pivotGizmo) pivotGizmo.visible = pivotOn;
+        pathGroup.visible = pathMode;
+        if (recoveredData) applyRecoveredView(recoveredData, { force: true });
+      },
     };
   };
 
