@@ -2278,6 +2278,14 @@ function buildNodeUI(node, containerEl) {
     camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     camera.up.set(0, 1, 0);
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
+    // 🔭 playback lens (display/bake-only FOV multiplier; slider below). Read
+    // per-frame so dragging the slider mid-preview applies live. Playback end
+    // restores the solved FOV via applyRecoveredView; cancel restores it in
+    // the 🎥 toggle.
+    if (recoveredData) {
+      camera.fov = playbackLensFovDeg();
+      camera.updateProjectionMatrix();
+    }
   };
 
   function rebuildPathVisualization() {
@@ -2359,6 +2367,10 @@ function buildNodeUI(node, containerEl) {
     if (!pathMode) {
       pathPlayback = null; // cancelling mid-play skips onDone —
       if (pivotGizmo) pivotGizmo.visible = pivotOn; // — so restore the gizmo here
+      if (recoveredData) { // — and undo the 🔭 playback lens
+        camera.fov = solvedFovDeg();
+        camera.updateProjectionMatrix();
+      }
     }
   };
   toolbar.appendChild(pathBtn);
@@ -2449,15 +2461,77 @@ function buildNodeUI(node, containerEl) {
     return { position: tmp.position.clone(), quaternion: tmp.quaternion.clone(), pivot };
   }
 
+  // -------------------------------------------------------------------------
+  // 🔭 Playback lens — a focal MULTIPLIER applied to the viewing camera's FOV
+  // during path playback and bake ONLY (never the projection shader's own
+  // camera/uniforms, never the solve, never the USD export — those keep the
+  // recovered intrinsics). Slider left = wider (the left end is recomputed at
+  // every move click so full-wide frames the projection geometry's edges),
+  // right = zoomed in. Default 1.2 = the gentle push-in the moves used to get
+  // by physically lerping toward the pivot (which raised the eye — see the
+  // move comment below).
+  // -------------------------------------------------------------------------
+  let pathLensScale = 1.2;
+  const LENS_MAX = 2.5;
+  function solvedFovDeg() {
+    const imageH = recoveredData?.render_image_height ?? recoveredData?.image_height ?? 1080;
+    const fy = recoveredData?.render_fy ?? recoveredData?.fy ?? 1;
+    return 2 * Math.atan(imageH / (2 * fy)) * (180 / Math.PI);
+  }
+  function playbackLensFovDeg() {
+    const fov0 = solvedFovDeg();
+    const m = Math.max(0.05, pathLensScale);
+    return 2 * Math.atan(Math.tan((fov0 * Math.PI) / 360) / m) * (180 / Math.PI);
+  }
+  // Bounding radius of the ACTUAL projection geometry about the pivot —
+  // derived proxies + patch/clean-plate groups, excluding the far catch-all
+  // "projection_backdrop" plane (it would balloon the wide end out to the
+  // backdrop distance instead of the photographed geometry's edges).
+  function geometryBoundingRadius(center) {
+    let r = 0;
+    const box = new THREE.Box3();
+    const groups = scene.children.filter(
+      (c) => c.name === "atlas_derived_proxies" || /^atlas_patch_/.test(c.name || ""));
+    groups.forEach((g) => g.traverse((o) => {
+      if (!o.isMesh || o.name === "projection_backdrop") return;
+      box.setFromObject(o);
+      if (box.isEmpty()) return;
+      for (const cx of [box.min.x, box.max.x])
+        for (const cy of [box.min.y, box.max.y])
+          for (const cz of [box.min.z, box.max.z])
+            r = Math.max(r, center.distanceTo(new THREE.Vector3(cx, cy, cz)));
+    }));
+    return r;
+  }
+  function updateLensWideLimit(E, P) {
+    const d = E.distanceTo(P) || 1;
+    const R = geometryBoundingRadius(P);
+    let min = 0.5; // fallback wide end when there is no geometry to measure
+    if (R > 0) {
+      // FOV that fits a sphere of radius R at distance d (capped: past 120°
+      // the perspective distortion stops being useful for a marketing move).
+      const fovFit = Math.min(120, 2 * Math.asin(Math.min(0.999, R / d)) * (180 / Math.PI));
+      const fov0 = solvedFovDeg();
+      min = Math.tan((fov0 * Math.PI) / 360) / Math.tan((fovFit * Math.PI) / 360);
+      min = Math.min(1.0, Math.max(0.2, min)); // wide end is never a zoom-in
+    }
+    lensSlider.min = String(Math.round(min * 100) / 100);
+    if (pathLensScale < min) { pathLensScale = min; lensSlider.value = String(min); }
+    lensReadout.textContent = `${Number(pathLensScale).toFixed(2)}×`;
+  }
+
   // One-click moves. Fixed grammar (user-specified, 2026-07-16): slow filmic
-  // moves, 24 fps / 100 frames, ease_in_out. Orbit/Pan BEGIN pre-zoomed 20%
-  // toward the mesh centre (frame 0 still catches the geometry's edge as the
-  // move progresses) and look at the pivot; Orbit arcs ±15° about world-Y
-  // through the pivot, Pan swivels ±15° in place. Dolly In starts at the FULL
-  // recovered framing and pushes 20% of the camera→pivot distance along the
-  // recovered view axis (framing preserved — the target sits ON that axis).
+  // moves, 24 fps / 100 frames, ease_in_out. EVERY move's frame 0 sits at the
+  // EXACT recovered camera position (the earlier 20% positional pre-zoom
+  // lerped toward the pivot, which sits higher than the eye on most plates —
+  // it visibly RAISED frame 0; artist-reported, removed 2026-07-16). Orbit/Pan
+  // look at the pivot (which lies on the recovered central view ray, so
+  // composition holds) — Orbit arcs ±15° about world-Y through the pivot, Pan
+  // swivels ±15° in place. Dolly In pushes 20% of the camera→pivot distance
+  // along the recovered view axis (target ON that axis — framing preserved).
+  // The "zoom in a little" now comes from the playback LENS (slider below),
+  // never from moving the camera.
   const MOVE_ANGLE_DEG = 15;
-  const MOVE_ZOOM_FRAC = 0.2;   // orbit/pan pre-zoom toward the pivot
   const MOVE_DOLLY_FRAC = 0.2;  // dolly-in travel as a fraction of cam→pivot
   function applyMovePreset(kind) {
     const basis = recoveredMoveBasis();
@@ -2472,10 +2546,10 @@ function buildNodeUI(node, containerEl) {
       startPose = { position: v3o(E), target: v3o(T) };
       endPose = computePresetEndPose(startPose, "dolly_in", 0, MOVE_DOLLY_FRAC);
     } else {
-      const Ez = E.clone().lerp(P, MOVE_ZOOM_FRAC); // 20% of the way in
-      startPose = { position: v3o(Ez), target: v3o(P) };
+      startPose = { position: v3o(E), target: v3o(P) }; // locked at the recovered eye
       endPose = computePresetEndPose(startPose, kind, MOVE_ANGLE_DEG, 0);
     }
+    updateLensWideLimit(E, P); // widen the slider's left end to fit this scene
     // A move click always restores the fixed film timing (an earlier FBX
     // import may have overridden it) and replaces any existing keyframes.
     pathFps = PATH_FPS;
@@ -2490,10 +2564,10 @@ function buildNodeUI(node, containerEl) {
   }
 
   const MOVES = [
-    ["orbit_left", "⟲ Orbit L", "Arc 15° left around the mesh centre, starting pre-zoomed 20% in"],
-    ["orbit_right", "⟳ Orbit R", "Arc 15° right around the mesh centre, starting pre-zoomed 20% in"],
-    ["pan_left", "⇠ Pan L", "Swivel 15° left in place, starting pre-zoomed 20% toward the mesh centre"],
-    ["pan_right", "⇢ Pan R", "Swivel 15° right in place, starting pre-zoomed 20% toward the mesh centre"],
+    ["orbit_left", "⟲ Orbit L", "Arc 15° left around the mesh centre from the exact recovered eye"],
+    ["orbit_right", "⟳ Orbit R", "Arc 15° right around the mesh centre from the exact recovered eye"],
+    ["pan_left", "⇠ Pan L", "Swivel 15° left in place at the exact recovered eye"],
+    ["pan_right", "⇢ Pan R", "Swivel 15° right in place at the exact recovered eye"],
     ["dolly_in", "⭢ Dolly In", "Push in 20% of the distance to the mesh centre from the full recovered framing"],
   ];
   const moveWrap = document.createElement("span");
@@ -2506,6 +2580,32 @@ function buildNodeUI(node, containerEl) {
     b.onclick = () => applyMovePreset(kind);
     moveWrap.appendChild(b);
   });
+
+  // 🔭 Lens slider — see the playback-lens comment block above.
+  const lensWrap = document.createElement("span");
+  lensWrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;padding-left:6px;border-left:1px solid #333;";
+  lensWrap.title = "Playback lens: slide left = wider (full left frames the projection geometry's edges), " +
+    "right = zoomed in. Applies to path playback + baked frames ONLY — the solve, the projection, " +
+    "and the USD camera keep the recovered lens. Live while a preview plays.";
+  const lensLabel = document.createElement("span");
+  lensLabel.textContent = "🔭";
+  const lensSlider = document.createElement("input");
+  lensSlider.type = "range";
+  lensSlider.min = "0.5"; // widened per-scene at each move click (updateLensWideLimit)
+  lensSlider.max = String(LENS_MAX);
+  lensSlider.step = "0.01";
+  lensSlider.value = String(pathLensScale);
+  lensSlider.style.cssText = "width:90px;";
+  const lensReadout = document.createElement("span");
+  lensReadout.textContent = `${pathLensScale.toFixed(2)}×`;
+  lensReadout.style.cssText = "min-width:38px;color:#9ad;";
+  lensSlider.oninput = () => {
+    pathLensScale = parseFloat(lensSlider.value) || 1.0;
+    lensReadout.textContent = `${pathLensScale.toFixed(2)}×`;
+    // applyPathPoseAtT reads pathLensScale per frame — a mid-preview drag
+    // applies live with no extra wiring.
+  };
+  lensWrap.append(lensLabel, lensSlider, lensReadout);
 
   const playBtn = document.createElement("button");
   playBtn.textContent = "▶ Play";
@@ -2541,6 +2641,7 @@ function buildNodeUI(node, containerEl) {
     const savedPos = camera.position.clone();
     const savedQuat = camera.quaternion.clone();
     const savedAspect = camera.aspect;
+    const savedFov = camera.fov;
     const wasPlaying = !!pathPlayback;
     let outputRt = null;
     pathPlayback = null;
@@ -2551,6 +2652,9 @@ function buildNodeUI(node, containerEl) {
       const frames = [];
       outputRt = new THREE.WebGLRenderTarget(W, H);
       camera.aspect = W / H;
+      // Baked frames honor the 🔭 playback lens so the recording matches the
+      // preview exactly (the USD camera still ships the solved intrinsics).
+      if (recoveredData) camera.fov = playbackLensFovDeg();
       camera.updateProjectionMatrix();
       for (let frame = 0; frame < pathFrameCount; frame++) {
         const pose = sampleKeyframePoseAtFrame(frame);
@@ -2576,6 +2680,7 @@ function buildNodeUI(node, containerEl) {
         height: H,
         fps: pathFps,
         frame_count: pathFrameCount,
+        lens_scale: pathLensScale, // 🔭 display lens baked into the frames (provenance)
       };
       if (widget) {
         widget.value = JSON.stringify(existing);
@@ -2587,6 +2692,7 @@ function buildNodeUI(node, containerEl) {
       camera.position.copy(savedPos);
       camera.quaternion.copy(savedQuat);
       camera.aspect = savedAspect;
+      camera.fov = savedFov;
       camera.updateProjectionMatrix();
       pathGroup.visible = pathMode;
       if (pivotGizmo) pivotGizmo.visible = bakeGizmoWas;
@@ -2727,7 +2833,7 @@ function buildNodeUI(node, containerEl) {
   importWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;padding-left:6px;border-left:1px solid #333;";
   importWrap.append(importBtn, importFbxInput, importSamplesInput, importScaleInput, importStatusEl);
 
-  pathPanel.append(moveWrap, playBtn, bakeBtn, importWrap);
+  pathPanel.append(moveWrap, lensWrap, playBtn, bakeBtn, importWrap);
 
   // 📊 Diagram toggle — layered VP / horizon / ground SVG overlay, each layer
   // independently dimmable. Vanishing points are populated only by the
