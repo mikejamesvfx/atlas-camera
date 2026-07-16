@@ -280,8 +280,15 @@ DEPTH MODEL — per shot, never global:
 METRIC SCALE — measured, not assumed, and often WRONG on elevated vantages:
   scale_source=assumed_default (1.6 m) fires on AI vistas AND real photos shot
   from height (a street-level ground fit breaks over cars). Fix with
-  AtlasScaleOverride camera_height_m (temple city ≈16 m, NYC window ≈25 m) or
-  a known-size reference (AtlasReferenceScaleSolve).
+  AtlasScaleOverride camera_height_m (temple city ≈16 m) or a known-size
+  reference (AtlasReferenceScaleSolve). GROUND TRUTH, NYC birdseye plate
+  (photographer-provided, 2026-07-17): the camera was ~70-100 m up — the
+  showcase workflows' 25 m dial is ~3-4x SMALL. Use ~85 m for real-world
+  metres on that plate; the building at frame right is ~3-4 m per storey,
+  which is the countable per-plate scale reference (storeys x 3.5 m ≈ height).
+  Lesson: when the photographer is available, ASK — an eyeballed dial can be
+  off severalfold while looking plausible in the viewport, because projection
+  is angular and only parallax/exports expose absolute scale.
 
 RELIEF / BANDS:
   generic relief: grid 128 / edge_rel 0.5 · organic canopy: grid 512 / 1.0
