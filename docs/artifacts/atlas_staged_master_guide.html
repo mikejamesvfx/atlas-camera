@@ -228,6 +228,26 @@
     <a href="#numbers">the numbers</a>
   </nav>
 
+  <div class="rule warn">
+    <span class="t">UPDATED — v10 + the v0.6.0 beta (2026-07-17)</span>
+    <p><b>Band priorities are now FARTHEST-HIGHEST</b> (far 15 / bg 10 / mid 5 / fg 0; sky −10),
+    inverted from the v9 this page was written against. At a watertight seam the two bands'
+    surfaces are depth-adjacent and priority decides the near-tie: nearest-highest let a band's
+    edge smear render <em>in front of</em> the layer behind it (striped seams). The front band's
+    smear must lose every tie — don't re-invert.</p>
+    <p><b>Two guards landed from live failures:</b> the assessor now rejects zero-width VLM band
+    plans (a <code>far=[1.0,1.0]</code> reply used to collapse the far card and let the bg band's
+    fill smear outrank every layer), and <code>AtlasInput</code> gained a <code>vlm_scope</code>
+    toggle — OFF keeps VLM bands/geometry but leaves layers band-only, since a partial SAM match
+    can gut a band (measured: 96k → 6k verts).</p>
+    <p><b>Know when to skip the bands entirely:</b> a continuously-receding scene (a street to the
+    horizon) is not a stack of separable layers — the flat far card slices the midground. Use the
+    quickstart's instant-relief mode (<code>layers=0</code>, ultra mesh) for those shots.</p>
+    <p>The run-verified showcase set now has its own illustrated
+    <a href="https://claude.ai/code/artifact/372a4f7f-96a1-4383-a6cf-f8238d2f9ae2">field guide</a>
+    with 11 per-workflow deep-dives (live viewport captures, grey-mesh angles, per-plate knobs).</p>
+  </div>
+
   <h2 id="autopilot">The autopilot — what the VLM fills in, and what stays yours</h2>
   <p>
     On Queue&nbsp;1 the 🧭 assess node sends the photo to your local VLM with the staged

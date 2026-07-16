@@ -83,7 +83,7 @@
 
 <main>
   <header class="hero">
-    <p class="eyebrow">Atlas Camera · v0.4.0</p>
+    <p class="eyebrow">Atlas Camera · v0.6.0 beta</p>
     <h1>Examples Catalog &mdash; two workflows, four plates</h1>
     <p class="lede">Atlas ships deliberately lean: one workflow that gets a photo projected
     onto 3D in a single queue, one that runs the full layered matte-painting pipeline with
@@ -91,8 +91,16 @@
     plates that produced the best measured results during development.</p>
   </header>
 
-  <h2>The two shipped workflows</h2>
-  <p class="sub">Both live in <code>examples/</code> in the repo. Drag the JSON onto the
+  <h2>The shipped workflows</h2>
+  <p class="sub">The catalog below documents the two core entries in <code>examples/</code>.
+  Since the v0.6.0 beta there are more: a third core workflow
+  (<code>atlas_input_ocio_quickstart_workflow.json</code> — the ACEScg float/OCIO handoff:
+  OCIORead &rarr; RegisterPlate &rarr; AtlasInput &rarr; Nuke/Maya/USD exports pointing at the
+  ORIGINAL EXR), plus three run-verified companion sets: <code>examples/showcase/</code>
+  (<b>11 workflows covering every Atlas node</b>, each with an illustrated deep-dive — see the
+  <a href="https://claude.ai/code/artifact/372a4f7f-96a1-4383-a6cf-f8238d2f9ae2">showcase field
+  guide</a>), <code>examples/retopo/</code> (export-only quad/decimate/smooth retopology), and
+  <code>examples/experimental/</code> (X-ray / RenderFix, env-gated). Drag any JSON onto the
   ComfyUI canvas, point the Load Image node at a sample plate (or any photo), and Queue.</p>
   <div class="wf-grid">
     <div class="wf">

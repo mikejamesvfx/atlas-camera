@@ -196,6 +196,30 @@
     <a href="#presets">shipped presets</a>
   </nav>
 
+  <div class="rule warn">
+    <span class="t">UPDATED — the v0.6.0 beta toolkit (2026-07-17)</span>
+    <p><b>New companion nodes since this guide was written:</b>
+    📏 <code>AtlasBoundedBand</code> measures the foreground's own depth extent and emits ONE
+    absolute split both clean-plate layers share — the fg relief is clipped at
+    <code>near + 2×width</code> (no more runaway "banana" extrusion) and the bg card falls behind
+    it; the 📏 Band Box viewport toggle draws the cutoff plane with its metric label.
+    🧭 <code>AtlasMogeNormals</code> decouples relight normals from the depth source — keep
+    V2-Outdoor depth AND get MoGe's cleaner per-pixel normals for the 💡 relight.
+    🎚 <code>AtlasRollTrim</code> levels a solve whose learned gravity drifted (dial by eye
+    against verticals; sits between solve and derive).</p>
+    <p><b>Scale doctrine upgrade:</b> on any plate with buildings, count a fully-visible
+    building's storeys (×3.5 m) into <code>AtlasReferenceScaleSolve</code>
+    (<code>building_story_3m</code> + <code>height_override_m</code>) — tier-1 measured scale.
+    An eyeballed height dial was proven ~2.5× off against photographer ground truth while
+    looking perfectly plausible in the viewport.</p>
+    <p><b>Camera moves are now one-click:</b> Orbit L/R, Pan L/R, Dolly In (24 fps / 100 frames,
+    frame 0 locked to the recovered camera) + a 🔭 playback-lens slider; ⏺ Bake fills the JPEG
+    sequence / MP4 / USD camera. The keyframe editor and free-fly controller are gone.</p>
+    <p>The run-verified showcase set (11 workflows, every node) has its own
+    <a href="https://claude.ai/code/artifact/372a4f7f-96a1-4383-a6cf-f8238d2f9ae2">illustrated field
+    guide</a> with per-workflow deep-dives including grey-mesh viewport captures.</p>
+  </div>
+
   <h2 id="model">The mental model — three sentences</h2>
   <p>
     <b>One camera, one photo, many surfaces.</b> Atlas recovers the camera that took the

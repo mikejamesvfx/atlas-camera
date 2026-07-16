@@ -1,0 +1,239 @@
+<meta charset="utf-8">
+<title>Atlas Technical Details — The Measurements</title>
+<style>
+  :root {
+    --ground: #16181a; --panel: #1f2226; --panel-2: #24282c; --line: #33383d;
+    --ink: #d5dad3; --ink-dim: #9aa39c; --ink-faint: #6b736d;
+    --teal: #0fa896; --orange: #e04b1f; --lari: #e05252; --wt: #3d8bff;
+    --accent: #2fd6c3; --warn: #ffd23d;
+    --mono: "Cascadia Code", "Consolas", ui-monospace, "SF Mono", monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  html { background: var(--ground); }
+  body { background: var(--ground); color: var(--ink); font: 15px/1.65 var(--sans); margin: 0; padding: 0 20px 96px; }
+  main { max-width: 880px; margin: 0 auto; }
+  h1, h2, h3 { font-family: var(--mono); text-wrap: balance; line-height: 1.2; }
+  h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; margin: 56px 0 8px; }
+  h2 { font-size: 20px; font-weight: 600; margin: 64px 0 12px; padding-top: 20px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; font-weight: 600; margin: 26px 0 8px; }
+  p { max-width: 70ch; margin: 10px 0; }
+  .lede { color: var(--ink-dim); font-size: 16px; max-width: 64ch; }
+  .eyebrow { font: 600 11px/1 var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--ink-faint); display: block; margin-bottom: 10px; }
+  code, .mono { font-family: var(--mono); font-size: 0.92em; }
+  code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
+  a { color: var(--accent); }
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 6px; }
+  .toc a { font: 500 12px/1 var(--mono); text-decoration: none; color: var(--ink-dim);
+           background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 7px 11px; }
+  .toc a:hover { color: var(--ink); border-color: #4a5157; }
+
+  figure { margin: 20px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 16px 10px; overflow-x: auto; }
+  figure svg { width: 100%; height: auto; display: block; min-width: 540px; }
+  figcaption { font-size: 12.5px; color: var(--ink-faint); padding: 10px 4px 4px; line-height: 1.5; max-width: 76ch; }
+  .mark { cursor: default; }
+  .mark:hover { filter: brightness(1.25); }
+  #tt { position: fixed; pointer-events: none; background: #0e1012; border: 1px solid #4a5157; border-radius: 5px;
+        padding: 5px 9px; font: 500 12px/1.4 var(--mono); color: var(--ink); z-index: 10; display: none; max-width: 280px; }
+
+  .formula { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px;
+             margin: 14px 0; font-family: var(--mono); font-size: 13.5px; color: var(--ink); overflow-x: auto; white-space: nowrap; }
+  .formula .why { display: block; white-space: normal; font-family: var(--sans); font-size: 12.5px; color: var(--ink-faint); margin-top: 6px; }
+
+  .tablewrap { overflow-x: auto; margin: 14px 0; }
+  table { border-collapse: collapse; font-size: 13px; min-width: 620px; }
+  th { font: 600 11px/1.4 var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--ink-faint);
+       text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 14px 8px 0; border-bottom: 1px solid #24282c; vertical-align: top; color: var(--ink-dim);
+       font-variant-numeric: tabular-nums; }
+  td:first-child, th:first-child { padding-left: 2px; }
+  td b { color: var(--ink); font-weight: 600; }
+
+  .rule { border-left: 3px solid var(--accent); background: var(--panel); border-radius: 0 6px 6px 0;
+          padding: 12px 16px; margin: 18px 0; max-width: 76ch; }
+  .rule.warn { border-left-color: var(--warn); }
+  .rule .t { font: 600 11px/1 var(--mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint); display: block; margin-bottom: 6px; }
+  .rule p { margin: 4px 0; font-size: 14px; }
+</style>
+
+<main>
+  <span class="eyebrow">Atlas Camera · engineering notes · measured 2026-07</span>
+  <h1>Technical Details — The Measurements Behind the Defaults</h1>
+  <p class="lede">
+    Every default in the shipped workflows traces back to a number from a live run.
+    This page shows those numbers as charts, and the math each one calibrates.
+    Companion to the <a href="https://claude.ai/code/artifact/77b10784-a6d5-4def-89bd-84cbfaabc21e">🥞 Build-Up Guide</a>
+    and the <a href="https://claude.ai/code/artifact/186c3a6a-a778-40f0-8f39-fe29cfa6aace">🎞 Examples Catalog</a>.
+  </p>
+
+  <nav class="toc">
+    <a href="#mesh">relief mesh mechanics</a>
+    <a href="#depth">depth backend</a>
+    <a href="#registration">x-ray registration</a>
+    <a href="#layers">layer selection</a>
+    <a href="#coherence">coherence pass</a>
+    <a href="#cost">cost &amp; latency</a>
+  </nav>
+
+  <div class="rule warn">
+    <span class="t">UPDATED — new measurements since first publish (2026-07-17)</span>
+    <p><b>The DA3 default was REVERTED</b> (2026-07-13): a 4-scene A/B (hangar interior +
+    ghost-town / jungle / castle exteriors; V2 vs DA3 vs MoGe, default and tuned) put
+    <b>V2-Metric-Outdoor best-or-tied on every exterior</b>, so main defaults are V2 metric again
+    (zero-extra-install); DA3 stays selectable and is the <code>experimental-da3-default</code>
+    branch's default. MoGe-2 joined as the <b>interior specialist</b> — cleanest on enclosed
+    shots, but its far field runs away outdoors and it culls sky. The chart below remains a valid
+    measurement of what it measured.</p>
+    <p><b>Export hole-fill, fan vs ear-clip A/B</b> (12 synthetic torn meshes + a real relief
+    A/B): fills completed 30 → 38, triangles-outside-the-hole 9 → <b>0</b>, degenerates 2 → <b>0</b>,
+    non-manifold reuses → <b>0</b>, winding consistency preserved; ~0.15 s on a 31k-face mesh.
+    The transferable lesson: flat/convex fixtures pass by luck — two of the three bugs only
+    surfaced against real <code>build_relief_mesh</code> output.</p>
+    <p><b>Counted-storey scale beats the eyeballed dial</b>: on the NYC birdseye plate a counted
+    5-storey tenement (17.5 m) into <code>AtlasReferenceScaleSolve</code> locked the camera at
+    <b>63.7 m</b> (conf 0.96, tier-1) — the plausible-looking hand dial had been 25 m, ~2.5× small
+    against photographer ground truth. Projection is angular; only parallax and exports expose
+    absolute scale.</p>
+    <p><b>Bands vs single mesh</b>: on a continuously-receding street the 4-band stack's flat far
+    card sliced the midground and inpaint smear leaked through seams; instant-relief mode
+    (<code>layers=0</code>, grid 1024) produced the clean 1920×1080 dolly used in the
+    <a href="https://claude.ai/code/artifact/372a4f7f-96a1-4383-a6cf-f8238d2f9ae2">showcase field
+    guide</a>'s filmstrip. Banding is for genuinely separable layers.</p>
+  </div>
+
+  <h2 id="mesh">Relief mesh mechanics — why 384 / 1.5</h2>
+  <p>
+    The relief mesh tears a quad into a hole whenever its corner depths differ by more than
+    a threshold. That test is load-bearing (silhouettes must not rubber-sheet onto the
+    background), but noisy monocular depth trips it where no real edge exists. The tear test:
+  </p>
+  <div class="formula">
+    tear if&nbsp; max|z<sub>corner</sub> − z<sub>corner</sub>| &gt; depth_edge_rel × cell_size(z)
+    <span class="why">Relative to the cell's own world size, so one threshold behaves the same at 3&nbsp;m and 300&nbsp;m.</span>
+  </div>
+  <figure><svg viewBox='0 0 760 280' role='img' aria-label='Torn fraction versus relief grid density'><line x1='62' y1='236.0' x2='610' y2='236.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='239.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.00</text><line x1='62' y1='168.7' x2='610' y2='168.7' stroke='#2a2e32' stroke-width='1'/><text x='54' y='172.2' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.02</text><line x1='62' y1='101.3' x2='610' y2='101.3' stroke='#2a2e32' stroke-width='1'/><text x='54' y='104.8' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.04</text><line x1='62' y1='34.0' x2='610' y2='34.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='37.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.06</text><text x='62' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>32</text><text x='140' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>64</text><text x='219' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>96</text><text x='297' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>128</text><text x='375' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>192</text><text x='453' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>256</text><text x='532' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>384</text><text x='610' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>512</text><text x='336' y='274' text-anchor='middle' font-size='11' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>relief_grid (grid_long_edge)</text><path d='M 62.0 54.9 L 140.3 141.1 L 218.6 173.0 L 296.9 186.2 L 375.1 198.6 L 453.4 206.4 L 531.7 161.9 L 610.0 161.9' fill='none' stroke='#0fa896' stroke-width='2' stroke-linejoin='round'/><circle cx='62.0' cy='54.9' r='4' fill='#0fa896' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 0.5, grid 32: torn 0.0538"/><circle cx='140.3' cy='141.1' r='4' fill='#0fa896' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 0.5, grid 64: torn 0.0282"/><circle cx='218.6' cy='173.0' r='4' fill='#0fa896' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 0.5, grid 96: torn 0.0187"/><circle cx='296.9' cy='186.2' r='4' fill='#0fa896' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 0.5, grid 128: torn 0.0148"/><circle cx='375.1' cy='198.6' r='4' fill='#0fa896' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 0.5, grid 192: torn 0.0111"/><circle cx='453.4' cy='206.4' r='4' fill='#0fa896' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 0.5, grid 256: torn 0.0088"/><circle cx='531.7' cy='161.9' r='4' fill='#0fa896' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 0.5, grid 384: torn 0.0220"/><circle cx='610.0' cy='161.9' r='4' fill='#0fa896' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 0.5, grid 512: torn 0.0220"/><rect x='620' y='146' width='9' height='9' rx='2' fill='#0fa896'/><text x='634' y='154' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>edge_rel 0.5</text><path d='M 62.0 81.1 L 140.3 119.2 L 218.6 133.7 L 296.9 146.8 L 375.1 175.7 L 453.4 187.5 L 531.7 157.6 L 610.0 157.6' fill='none' stroke='#e04b1f' stroke-width='2' stroke-linejoin='round'/><circle cx='62.0' cy='81.1' r='4' fill='#e04b1f' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 1.5, grid 32: torn 0.0460"/><circle cx='140.3' cy='119.2' r='4' fill='#e04b1f' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 1.5, grid 64: torn 0.0347"/><circle cx='218.6' cy='133.7' r='4' fill='#e04b1f' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 1.5, grid 96: torn 0.0304"/><circle cx='296.9' cy='146.8' r='4' fill='#e04b1f' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 1.5, grid 128: torn 0.0265"/><circle cx='375.1' cy='175.7' r='4' fill='#e04b1f' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 1.5, grid 192: torn 0.0179"/><circle cx='453.4' cy='187.5' r='4' fill='#e04b1f' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 1.5, grid 256: torn 0.0144"/><circle cx='531.7' cy='157.6' r='4' fill='#e04b1f' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 1.5, grid 384: torn 0.0233"/><circle cx='610.0' cy='157.6' r='4' fill='#e04b1f' stroke='#16181a' stroke-width='2' class='mark' data-tip="edge_rel 1.5, grid 512: torn 0.0233"/><rect x='620' y='165' width='9' height='9' rx='2' fill='#e04b1f'/><text x='634' y='173' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>edge_rel 1.5</text><rect x='62' y='10' width='10' height='10' rx='2' fill='#0fa896'/><text x='77' y='19' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>depth_edge_rel 0.5</text><rect x='250.6' y='10' width='10' height='10' rx='2' fill='#e04b1f'/><text x='265.6' y='19' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>depth_edge_rel 1.5</text><text x='372' y='132' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>cells reach pixel scale →</text><text x='372' y='145' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>noise re-trips the edge test</text><line x1='493.7142857142858' y1='139.93333333333334' x2='523.7142857142858' y2='155.93333333333334' stroke='#6b736d' stroke-width='1'/></svg>
+    <figcaption><b>Torn fraction vs grid density</b>, measured live on a synthetic scene with exactly one
+    real depth edge plus monocular-style noise (σ 0.35&nbsp;m), 960×540, both shipped edge thresholds.
+    Finer grids reduce spurious tears — each quad spans less world area, so noise is less likely to
+    straddle it — until cells approach pixel scale (grid ≳ 384 on this resolution), where adjacent-pixel
+    noise itself becomes the edge signal and the curve turns back up. The 384 and 512 points are identical
+    because the internal step size clamps at one pixel.</figcaption>
+  </figure>
+  <div class="rule"><span class="t">Why band layers ship at 384 / 1.5, not 128 / 0.5</span>
+    <p>Band-clipped meshes tear at band boundaries <em>on top of</em> silhouette tearing, so the
+    per-layer defaults moved to grid 384 with the threshold relaxed to 1.5 — safe inside a band
+    because the band clip already bounds the mesh's depth range. At the generic 128/0.5 defaults
+    the hangar's ship was mostly holes; three live calibration iterations landed 384/1.5.</p>
+  </div>
+
+  <h2 id="depth">Depth backend — the DA3 default flip (since reverted)</h2>
+  <p class="lede" style="font-size:13.5px">Historical note: this flip shipped 2026-07-09 and was
+  reverted on main 2026-07-13 after the broader 4-scene A/B (see the update box above). The
+  measurements stand; the conclusion drawn from them changed when more scenes joined the set.</p>
+  <p>
+    DA3METRIC emits <em>canonical</em> depth; Atlas converts it to metres using the focal the
+    camera solve already recovered — closing a loop V2's fixed-FOV metric heads structurally can't:
+  </p>
+  <div class="formula">
+    z<sub>metres</sub> = focal_px<sub>@processed res</sub> × canonical / 300
+    <span class="why">The solved focal comes from GeoCalib or vanishing points — independent of any depth model — so the depth scale inherits the camera solve's accuracy.</span>
+  </div>
+  <figure><svg viewBox='0 0 760 316' role='img' aria-label='Torn fraction, Depth Anything V2 versus DA3, four scenes'><rect x='62' y='10' width='10' height='10' rx='2' fill='#e04b1f'/><text x='77' y='19' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>Depth Anything V2</text><rect x='242.39999999999998' y='10' width='10' height='10' rx='2' fill='#0fa896'/><text x='257.4' y='19' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>DA3METRIC-LARGE</text><line x1='62' y1='258.0' x2='740' y2='258.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='261.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.00</text><line x1='62' y1='209.0' x2='740' y2='209.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='212.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.25</text><line x1='62' y1='160.0' x2='740' y2='160.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='163.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.50</text><line x1='62' y1='111.0' x2='740' y2='111.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='114.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.75</text><line x1='62' y1='62.0' x2='740' y2='62.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='65.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>1.00</text><path d='M 101.8 258.0 L 101.8 169.0 Q 101.8 166.0 104.8 166.0 L 142.8 166.0 Q 145.8 166.0 145.8 169.0 L 145.8 258.0 Z' fill='#e04b1f' class='mark' data-tip="long lens — V2: torn 0.469"/><text x='124' y='160' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.47</text><path d='M 147.8 258.0 L 147.8 169.1 Q 147.8 166.1 150.8 166.1 L 188.8 166.1 Q 191.8 166.1 191.8 169.1 L 191.8 258.0 Z' fill='#0fa896' class='mark' data-tip="long lens — DA3: torn 0.469"/><text x='170' y='160' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.47</text><text x='147' y='276' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>long lens</text><path d='M 271.2 258.0 L 271.2 65.0 Q 271.2 62.0 274.2 62.0 L 312.2 62.0 Q 315.2 62.0 315.2 65.0 L 315.2 258.0 Z' fill='#e04b1f' class='mark' data-tip="steep ridge (pitch 22°) — V2: torn 1.000"/><text x='293' y='56' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>1.00</text><path d='M 317.2 258.0 L 317.2 110.1 Q 317.2 107.1 320.2 107.1 L 358.2 107.1 Q 361.2 107.1 361.2 110.1 L 361.2 258.0 Z' fill='#0fa896' class='mark' data-tip="steep ridge (pitch 22°) — DA3: torn 0.770"/><text x='339' y='101' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.77</text><text x='316' y='276' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>steep ridge</text><text x='316' y='289' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>(pitch 22°)</text><path d='M 440.8 258.0 L 440.8 199.6 Q 440.8 196.6 443.8 196.6 L 481.8 196.6 Q 484.8 196.6 484.8 199.6 L 484.8 258.0 Z' fill='#e04b1f' class='mark' data-tip="canyon — V2: torn 0.313"/><text x='463' y='191' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.31</text><path d='M 486.8 258.0 L 486.8 240.3 Q 486.8 237.3 489.8 237.3 L 527.8 237.3 Q 530.8 237.3 530.8 240.3 L 530.8 258.0 Z' fill='#0fa896' class='mark' data-tip="canyon — DA3: torn 0.105"/><text x='509' y='231' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.11</text><text x='486' y='276' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>canyon</text><path d='M 610.2 258.0 L 610.2 181.0 Q 610.2 178.0 613.2 178.0 L 651.2 178.0 Q 654.2 178.0 654.2 181.0 L 654.2 258.0 Z' fill='#e04b1f' class='mark' data-tip="wide valley — V2: torn 0.408"/><text x='632' y='172' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.41</text><path d='M 656.2 258.0 L 656.2 233.2 Q 656.2 230.2 659.2 230.2 L 697.2 230.2 Q 700.2 230.2 700.2 233.2 L 700.2 258.0 Z' fill='#0fa896' class='mark' data-tip="wide valley — DA3: torn 0.142"/><text x='678' y='224' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.14</text><text x='655' y='276' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>wide valley</text><text x='316' y='42' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>V2: 0 faces — mesh shattered</text></svg>
+    <figcaption><b>Relief-mesh torn fraction per scene</b>, V2 vs DA3 on the 4K test set
+    (<code>tools/compare_depth_backends.py</code>). DA3 cuts tearing ~3× on two scenes and keeps a
+    usable mesh (4,240 faces) on the pitched shot where V2's shattered to zero faces. On the
+    long-lens vista both struggle equally — extreme focal lengths remain hard for monocular depth.
+    Ground-height confidence moved the same way: 0.76 and 0.96 for DA3 where V2 sat at 0.46 and 0.71.</figcaption>
+  </figure>
+
+  <h2 id="registration">X-ray registration — one scale moves the whole stack</h2>
+  <p>
+    A layered-ray model predicts its depth stack in its own arbitrary units. Because all layers
+    share the same rays, registering <b>layer 0</b> (the visible surface) against the pipeline's
+    DA3 depth aligns every hidden layer with a single robust scalar:
+  </p>
+  <div class="formula">
+    s = median( z<sub>pipeline</sub> / z<sub>layer0</sub> )&nbsp;&nbsp;·&nbsp;&nbsp;quality = median( |z<sub>pipeline</sub> − s·z<sub>layer0</sub>| / z<sub>pipeline</sub> )&nbsp; ← rel&nbsp;MAD
+    <span class="why">rel MAD is the shipped go/no-go: under 0.2 the backend registered; above it, its geometry would corrupt the layer — switch backends.</span>
+  </div>
+  <figure><svg viewBox='0 0 760 300' role='img' aria-label='Registration rel-MAD by scene, LaRI versus World Tracing'><rect x='62' y='10' width='10' height='10' rx='2' fill='#e05252'/><text x='77' y='19' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>LaRI</text><rect x='135.8' y='10' width='10' height='10' rx='2' fill='#3d8bff'/><text x='150.8' y='19' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>World Tracing</text><line x1='62' y1='256.0' x2='740' y2='256.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='259.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.00</text><line x1='62' y1='196.0' x2='740' y2='196.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='199.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.20</text><line x1='62' y1='136.0' x2='740' y2='136.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='139.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.40</text><line x1='62' y1='76.0' x2='740' y2='76.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='79.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.60</text><line x1='62' y1='196.0' x2='740' y2='196.0' stroke='#9aa39c' stroke-width='1.5' stroke-dasharray='6 5'/><text x='68' y='188.0' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>trust gate 0.2</text><path d='M 101.8 256.0 L 101.8 223.6 Q 101.8 220.6 104.8 220.6 L 142.8 220.6 Q 145.8 220.6 145.8 223.6 L 145.8 256.0 Z' fill='#e05252' class='mark' data-tip="cathedral — LaRI: rel MAD 0.118"/><text x='124' y='215' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.118</text><path d='M 147.8 256.0 L 147.8 240.7 Q 147.8 237.7 150.8 237.7 L 188.8 237.7 Q 191.8 237.7 191.8 240.7 L 191.8 256.0 Z' fill='#3d8bff' class='mark' data-tip="cathedral — World Tracing: rel MAD 0.061"/><text x='170' y='232' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.061</text><text x='147' y='274' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>cathedral</text><path d='M 271.2 256.0 L 271.2 218.8 Q 271.2 215.8 274.2 215.8 L 312.2 215.8 Q 315.2 215.8 315.2 218.8 L 315.2 256.0 Z' fill='#e05252' class='mark' data-tip="steep ridge — LaRI: rel MAD 0.134"/><text x='293' y='210' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.134</text><path d='M 317.2 256.0 L 317.2 167.5 Q 317.2 164.5 320.2 164.5 L 358.2 164.5 Q 361.2 164.5 361.2 167.5 L 361.2 256.0 Z' fill='#3d8bff' class='mark' data-tip="steep ridge — World Tracing: rel MAD 0.305"/><text x='339' y='158' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.305</text><text x='316' y='274' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>steep ridge</text><path d='M 440.8 256.0 L 440.8 67.3 Q 440.8 64.3 443.8 64.3 L 481.8 64.3 Q 484.8 64.3 484.8 67.3 L 484.8 256.0 Z' fill='#e05252' class='mark' data-tip="canyon — LaRI: rel MAD 0.639"/><text x='463' y='58' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.639</text><path d='M 486.8 256.0 L 486.8 225.1 Q 486.8 222.1 489.8 222.1 L 527.8 222.1 Q 530.8 222.1 530.8 225.1 L 530.8 256.0 Z' fill='#3d8bff' class='mark' data-tip="canyon — World Tracing: rel MAD 0.113"/><text x='509' y='216' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.113</text><text x='486' y='274' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>canyon</text><path d='M 610.2 256.0 L 610.2 79.9 Q 610.2 76.9 613.2 76.9 L 651.2 76.9 Q 654.2 76.9 654.2 79.9 L 654.2 256.0 Z' fill='#e05252' class='mark' data-tip="wide valley — LaRI: rel MAD 0.597"/><text x='632' y='71' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.597</text><path d='M 656.2 256.0 L 656.2 217.3 Q 656.2 214.3 659.2 214.3 L 697.2 214.3 Q 700.2 214.3 700.2 217.3 L 700.2 256.0 Z' fill='#3d8bff' class='mark' data-tip="wide valley — World Tracing: rel MAD 0.139"/><text x='678' y='208' text-anchor='middle' font-size='11' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.139</text><text x='655' y='274' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>wide valley</text></svg>
+    <figcaption><b>Registration rel&nbsp;MAD by scene and backend.</b> The sweep's central finding:
+    backend choice is per-scene, and it flips both ways. LaRI (regression, ~0.2&nbsp;s) owns the
+    architectural/steep cases; World Tracing (diffusion, ~20–34&nbsp;s) owns the landscapes LaRI
+    misregisters. No backend wins everywhere — which is why the 🔬 node prints this number every run.</figcaption>
+  </figure>
+  <p>
+    Selection then walks each ray's layer stack for the first surface that genuinely clears the
+    occluder by a scene-adaptive margin:
+  </p>
+  <div class="formula">
+    hidden(px) = first layer with&nbsp; z &gt; z<sub>visible</sub> + max( clear_rel × z<sub>visible</sub>,&nbsp; min_clear )
+    <span class="why">Fixed margins fail on shallow scenes — the hangar needed clear_rel 0.10 (coverage 3%→25%); deep scenes tolerate 0.30.</span>
+  </div>
+
+  <h2 id="layers">Layer selection — where the continuation actually lives</h2>
+  <figure><svg viewBox='0 0 760 280' role='img' aria-label='First-clearing layer histogram, cathedral, LaRI versus World Tracing'><rect x='62' y='10' width='10' height='10' rx='2' fill='#e05252'/><text x='77' y='19' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>LaRI</text><rect x='135.8' y='10' width='10' height='10' rx='2' fill='#3d8bff'/><text x='150.8' y='19' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>World Tracing</text><line x1='62' y1='236.0' x2='740' y2='236.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='239.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.0M</text><line x1='62' y1='188.5' x2='740' y2='188.5' stroke='#2a2e32' stroke-width='1'/><text x='54' y='192.0' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.5M</text><line x1='62' y1='141.0' x2='740' y2='141.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='144.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>1.0M</text><line x1='62' y1='93.5' x2='740' y2='93.5' stroke='#2a2e32' stroke-width='1'/><text x='54' y='97.0' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>1.5M</text><line x1='62' y1='46.0' x2='740' y2='46.0' stroke='#2a2e32' stroke-width='1'/><text x='54' y='49.5' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>2.0M</text><path d='M 88.8 236.0 L 88.8 73.7 Q 88.8 70.7 91.8 70.7 L 125.8 70.7 Q 128.8 70.7 128.8 73.7 L 128.8 236.0 Z' fill='#e05252' class='mark' data-tip="layer 1 — LaRI: 1.74M px first clear here"/><text x='109' y='65' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>1.74</text><path d='M 130.8 236.0 L 130.8 225.7 Q 130.8 222.7 133.8 222.7 L 167.8 222.7 Q 170.8 222.7 170.8 225.7 L 170.8 236.0 Z' fill='#3d8bff' class='mark' data-tip="layer 1 — World Tracing: 0.14M px first clear here"/><text x='151' y='217' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.14</text><text x='130' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>layer 1</text><path d='M 224.4 236.0 L 224.4 85.1 Q 224.4 82.1 227.4 82.1 L 261.4 82.1 Q 264.4 82.1 264.4 85.1 L 264.4 236.0 Z' fill='#e05252' class='mark' data-tip="layer 2 — LaRI: 1.62M px first clear here"/><text x='244' y='76' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>1.62</text><path d='M 266.4 236.0 L 266.4 105.1 Q 266.4 102.1 269.4 102.1 L 303.4 102.1 Q 306.4 102.1 306.4 105.1 L 306.4 236.0 Z' fill='#3d8bff' class='mark' data-tip="layer 2 — World Tracing: 1.41M px first clear here"/><text x='286' y='96' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>1.41</text><text x='265' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>layer 2</text><path d='M 360.0 236.0 L 360.0 161.1 Q 360.0 158.1 363.0 158.1 L 397.0 158.1 Q 400.0 158.1 400.0 161.1 L 400.0 236.0 Z' fill='#e05252' class='mark' data-tip="layer 3 — LaRI: 0.82M px first clear here"/><text x='380' y='152' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.82</text><path d='M 402.0 236.0 L 402.0 160.1 Q 402.0 157.1 405.0 157.1 L 439.0 157.1 Q 442.0 157.1 442.0 160.1 L 442.0 236.0 Z' fill='#3d8bff' class='mark' data-tip="layer 3 — World Tracing: 0.83M px first clear here"/><text x='422' y='151' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.83</text><text x='401' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>layer 3</text><path d='M 495.6 236.0 L 495.6 188.7 Q 495.6 185.7 498.6 185.7 L 532.6 185.7 Q 535.6 185.7 535.6 188.7 L 535.6 236.0 Z' fill='#e05252' class='mark' data-tip="layer 4 — LaRI: 0.53M px first clear here"/><text x='516' y='180' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.53</text><path d='M 537.6 236.0 L 537.6 140.2 Q 537.6 137.2 540.6 137.2 L 574.6 137.2 Q 577.6 137.2 577.6 140.2 L 577.6 236.0 Z' fill='#3d8bff' class='mark' data-tip="layer 4 — World Tracing: 1.04M px first clear here"/><text x='558' y='131' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>1.04</text><text x='537' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>layer 4</text><path d='M 673.2 236.0 L 673.2 188.7 Q 673.2 185.7 676.2 185.7 L 710.2 185.7 Q 713.2 185.7 713.2 188.7 L 713.2 236.0 Z' fill='#3d8bff' class='mark' data-tip="layer 5 — World Tracing: 0.53M px first clear here"/><text x='693' y='180' text-anchor='middle' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>0.53</text><text x='672' y='254' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>layer 5</text><text x='136' y='49' font-size='10.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>layer 1 ≈ the occluder's own back face</text></svg>
+    <figcaption><b>First-clearing-layer histogram, cathedral</b> (millions of pixels). The spike-proven
+    fact that shaped the selector: LaRI's layer&nbsp;1 is usually the occluder's own <em>back face</em> —
+    the true continuation lives in layers 2–4. World Tracing barely populates layer&nbsp;1 at all
+    (0.14M vs 1.74M), skipping past the back face on its own. Either way, "take layer&nbsp;1" would
+    have been wrong — hence the clearing-margin walk above.</figcaption>
+  </figure>
+
+  <h2 id="coherence">The coherence pass — why gaussian, not median</h2>
+  <p>
+    Raw per-pixel layer selections are fragmented; adjacent pixels picking different layers create
+    ~15&nbsp;cm depth steps that trip the mesh's world-edge check <em>everywhere</em> — measured
+    immune to <code>depth_edge_rel</code> (identical at 1.5 vs 3.0), grid density, and mask dilation.
+    The fix operates at the source: <code>fill_gaps</code> diffuses the predictions into one surface
+    (dual-field Jacobi on an 8× downsampled grid), then <code>smooth_px</code> smooths the seams.
+  </p>
+  <figure><svg viewBox='0 0 560 210' role='img' aria-label='Jungle hole-in-paint under three coherence treatments'><line x1='240.0' y1='22' x2='240.0' y2='180' stroke='#2a2e32' stroke-width='1'/><text x='240.0' y='196' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.0</text><line x1='311.4' y1='22' x2='311.4' y2='180' stroke='#2a2e32' stroke-width='1'/><text x='311.4' y='196' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.2</text><line x1='382.9' y1='22' x2='382.9' y2='180' stroke='#2a2e32' stroke-width='1'/><text x='382.9' y='196' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.4</text><line x1='454.3' y1='22' x2='454.3' y2='180' stroke='#2a2e32' stroke-width='1'/><text x='454.3' y='196' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.6</text><rect x='240' y='30' width='239.3' height='34' rx='3' fill='#4a5157' class='mark' data-tip="no coherence pass: hole-in-paint 0.670"/><text x='230' y='51.0' text-anchor='end' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>no coherence pass</text><text x='487.3' y='51.0' font-size='12' fill='#d5dad3' font-family='Cascadia Code,Consolas,monospace'>0.670</text><rect x='240' y='82' width='162.5' height='34' rx='3' fill='#4a5157' class='mark' data-tip="median smooth 31px: hole-in-paint 0.455"/><text x='230' y='103.0' text-anchor='end' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>median smooth 31px</text><text x='410.5' y='103.0' font-size='12' fill='#d5dad3' font-family='Cascadia Code,Consolas,monospace'>0.455</text><rect x='240' y='134' width='92.9' height='34' rx='3' fill='#0fa896' class='mark' data-tip="gaussian smooth 31px + fill_gaps: hole-in-paint 0.260"/><text x='230' y='155.0' text-anchor='end' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>gaussian smooth 31px + fill_gaps</text><text x='340.9' y='155.0' font-size='12' fill='#d5dad3' font-family='Cascadia Code,Consolas,monospace'>0.260</text></svg>
+    <figcaption><b>Jungle hole-in-paint under three treatments</b> (fraction of the painted hidden
+    surface with no geometry behind it — lower is better). The instructive failure: a median filter
+    is <em>edge-preserving</em>, so it faithfully kept the very steps that tear — nearly useless here.
+    Gaussian smoothing (σ = 0.75 × smooth_px) plus gap-fill is what shipped as the default (31&nbsp;px, on).</figcaption>
+  </figure>
+  <figure><svg viewBox='0 0 560 190' role='img' aria-label='Final shipped hole-in-paint per scene'><line x1='240.0' y1='22' x2='240.0' y2='160' stroke='#2a2e32' stroke-width='1'/><text x='240.0' y='176' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.0</text><line x1='311.4' y1='22' x2='311.4' y2='160' stroke='#2a2e32' stroke-width='1'/><text x='311.4' y='176' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.2</text><line x1='382.9' y1='22' x2='382.9' y2='160' stroke='#2a2e32' stroke-width='1'/><text x='382.9' y='176' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.4</text><line x1='454.3' y1='22' x2='454.3' y2='160' stroke='#2a2e32' stroke-width='1'/><text x='454.3' y='176' text-anchor='middle' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>0.6</text><rect x='240' y='28' width='25.0' height='30' rx='3' fill='#0fa896' class='mark' data-tip="space hangar: hole-in-paint 0.07"/><text x='230' y='47.0' text-anchor='end' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>space hangar</text><text x='273.0' y='47.0' font-size='12' fill='#d5dad3' font-family='Cascadia Code,Consolas,monospace'>0.07</text><rect x='240' y='74' width='67.9' height='30' rx='3' fill='#0fa896' class='mark' data-tip="canyon: hole-in-paint 0.19"/><text x='230' y='93.0' text-anchor='end' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>canyon</text><text x='315.9' y='93.0' font-size='12' fill='#d5dad3' font-family='Cascadia Code,Consolas,monospace'>0.19</text><rect x='240' y='120' width='92.9' height='30' rx='3' fill='#0fa896' class='mark' data-tip="jungle temple: hole-in-paint 0.26"/><text x='230' y='139.0' text-anchor='end' font-size='11.5' fill='#9aa39c' font-family='Cascadia Code,Consolas,monospace'>jungle temple</text><text x='340.9' y='139.0' font-size='12' fill='#d5dad3' font-family='Cascadia Code,Consolas,monospace'>0.26</text><line x1='479.3' y1='22' x2='479.3' y2='160' stroke='#6b736d' stroke-width='1.5' stroke-dasharray='5 5'/><text x='471.3' y='16' text-anchor='end' font-size='10.5' fill='#6b736d' font-family='Cascadia Code,Consolas,monospace'>jungle, session start: 0.67</text></svg>
+    <figcaption><b>Shipped hole-in-paint per hero scene</b> after all six calibration rounds. Jungle's
+    residue is genuinely fragmented canopy — the honest floor without exposing the mesh's
+    <code>max_edge_factor</code>, noted as a possible core follow-up. The mask-membership change alone
+    mattered as much as the smoothing: depth-band membership lost 76–97% of predictions at <em>every</em>
+    split value tried (0.30–0.55), because surfaces hidden behind near occluders are themselves near.</figcaption>
+  </figure>
+
+  <h2 id="cost">Cost &amp; latency — what each knob buys</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Stage</th><th>Cost</th><th>Scaling</th><th>Notes</th></tr>
+    <tr><td><b>GeoCalib solve</b></td><td>~1 s</td><td>fixed</td><td>Once per image; focal + gravity.</td></tr>
+    <tr><td><b>DA3METRIC-LARGE depth</b></td><td>~2 s</td><td>fixed (~504 px internal)</td><td>Estimate once via AtlasDepthMap, fan out everywhere.</td></tr>
+    <tr><td><b>LaRI X-ray</b></td><td>~0.2 s</td><td>fixed (512 px)</td><td>Regression, deterministic.</td></tr>
+    <tr><td><b>World Tracing X-ray</b></td><td>~20–34 s</td><td>∝ steps (20 default)</td><td>Diffusion at 840² — seed changes the geometry, so seeds ship pinned.</td></tr>
+    <tr><td><b>Relief mesh build</b></td><td>sub-second → minutes</td><td>∝ grid²</td><td>Grid 384 ≈ 80k verts/band; the ultra workflow's grid-1024 bg band measured 966k verts.</td></tr>
+    <tr><td><b>Viewport payload</b></td><td>~1 MB → hundreds of MB</td><td>∝ grid² per layer</td><td>The browser, not the backend, is the ceiling; detail itself caps at the depth model's internal resolution (~504 px) — beyond grid ~1024 you sample interpolation, not new structure.</td></tr>
+  </table></div>
+
+  <div class="rule warn"><span class="t">How to read this page</span>
+    <p>None of these numbers is a universal constant — they're calibrations on this test set,
+    kept honest by being reproducible: the tear curve re-measures in seconds
+    (<code>build_relief_mesh</code> on synthetic depth), the backend comparison is
+    <code>tools/compare_depth_backends.py</code>, and every 🔬 run prints its own rel&nbsp;MAD.
+    When your scene disagrees with a default, trust your scene's number.</p>
+  </div>
+</main>
+
+<div id="tt"></div>
+<script>
+  (function () {
+    var tt = document.getElementById("tt");
+    document.addEventListener("mousemove", function (e) {
+      var m = e.target.closest ? e.target.closest(".mark") : null;
+      if (m && m.dataset.tip) {
+        tt.textContent = m.dataset.tip;
+        tt.style.display = "block";
+        var x = Math.min(e.clientX + 14, window.innerWidth - tt.offsetWidth - 8);
+        tt.style.left = x + "px";
+        tt.style.top = (e.clientY + 16) + "px";
+      } else { tt.style.display = "none"; }
+    });
+  })();
+</script>
