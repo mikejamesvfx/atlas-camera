@@ -218,12 +218,17 @@ def build_city_blocks():
     solve = w.node("AtlasLearnedSolveFromImage", [360, 40], [400, 230], "Learned solve (GeoCalib)",
                    {"depth_model": V2_OUT})
     w.link(load, 0, solve, "image")
+    scale = w.node("AtlasScaleOverride", [360, 330], [400, 150], "📐 Camera height → 25m (window vantage)",
+                   {"camera_height_m": 25.0})
+    w.link(solve, 0, scale, "solve")
     b.rset("plate", load, 0, [0, 400])
-    b.rset("solve", solve, 0, [360, 320])
-    w.note([360, 420], [400, 140],
+    b.rset("solve", scale, 0, [360, 540])
+    w.note([0, 480], [320, 200],
            "Heads-up: this plate is HUGE (177MB PNG). The browser preview is heavy —\n"
            "server-side solve/derive are fine. Real photography: GeoCalib gravity is\n"
-           "trustworthy here, unlike AI plates (see the portal workflow's roll trim).")
+           "trustworthy here (no roll trim needed) — but the street-level ground fit\n"
+           "fails from a 25m window (cars break it), so the solve falls back to the\n"
+           "1.6m default: the 📐 dial restores real-world metres for the exports.")
 
     w.group("2 · AERIAL PRESET — one node, buildings-as-boxes over a relief ground", [820, -40, 760, 620], "#345")
     g_i = b.rget("plate", [860, 0])
@@ -893,6 +898,174 @@ def build_xray_wreck():
     return b.dump()
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# W10 · DMP ANGLE, ANCHORED — NYC: ground-anchored facades vs floating relief
+# ══════════════════════════════════════════════════════════════════════════
+def build_dmp_angle_anchored():
+    b = Builder("atlas-showcase-dmp-angle-anchored")
+    w = b.w
+    w.group("0 · THE CLASSIC DMP ANGLE — high vantage, street = ground plane", [-40, -40, 820, 620], "#355")
+    load = b.load_image("newyork_Birdseye.png", [0, 40], "NYC birdseye (REAL photo)")
+    solve = w.node("AtlasLearnedSolveFromImage", [360, 40], [400, 230], "Learned solve",
+                   {"depth_model": V2_OUT})
+    w.link(load, 0, solve, "image")
+    scale = w.node("AtlasScaleOverride", [360, 330], [400, 150], "📐 Camera height → 25m",
+                   {"camera_height_m": 25.0})
+    w.link(solve, 0, scale, "solve")
+    b.rset("plate", load, 0, [0, 400])
+    b.rset("solve", scale, 0, [360, 540])
+    w.note([0, 480], [320, 200],
+           "From a high window, FOREGROUND buildings meet the street IN-FRAME —\n"
+           "their geometry runs to Y=0. BACKGROUND buildings' bases are occluded\n"
+           "behind nearer rooftops: the relief tears at the roofline and their\n"
+           "meshes FLOAT. This workflow closes that gap with anchored facades.\n"
+           "The street-level ground fit fails from 25m up (cars break it), so the\n"
+           "solve falls back to 1.6m — the 📐 dial restores real-world metres.")
+
+    w.group("1 · GROUND-ANCHORED WALLS + RELIEF MERGE", [820, -40, 1000, 620], "#345")
+    g_i = b.rget("plate", [860, 0])
+    g_s = b.rget("solve", [860, 80])
+    dm = w.node("AtlasDepthMap", [1120, 0], [340, 150], "Shared depth", {"depth_model": V2_OUT})
+    w.link(g_i, 0, dm, "image")
+    w.link(g_s, 0, dm, "solve")
+    g_s2 = b.rget("solve", [860, 200])
+    walls = w.node("AtlasDeriveWalls", [1120, 200], [380, 240],
+                   "⚓ Anchored facades (footprint = ray∩ground)",
+                   {"max_walls": 24, "max_objects": 8, "distance_modes": 3,
+                    "ground_anchor": True})
+    w.link(g_s2, 0, walls, "solve")
+    w.link(dm, 0, walls, "depth")
+    g_s3 = b.rget("solve", [860, 320])
+    relief = w.node("AtlasDeriveReliefMesh", [1120, 500], [340, 200], "Relief (visible surfaces)",
+                    {"relief_grid": 384, "depth_edge_rel": 1.0})
+    w.link(g_s3, 0, relief, "solve")
+    w.link(dm, 0, relief, "depth")
+    merge = w.node("AtlasMergeGeometry", [1540, 300], [300, 110], "Walls + relief")
+    w.link(walls, 0, merge, "solve_a")
+    w.link(relief, 0, merge, "solve_b")
+    b.rset("scene", merge, 0, [1540, 460])
+
+    w.group("2 · VIEWPORT — orbit: anchored facades SIT on the street", [1820, -40, 1300, 700], "#453")
+    g_sc = b.rget("scene", [1860, 0])
+    g_i2 = b.rget("plate", [1860, 80])
+    vpn = w.node("AtlasBlockoutViewport", [2120, 0], [860, 560], "Compare with the aerial-preset build",
+                 {"resolution": 1280})
+    w.link(g_sc, 0, vpn, "solve")
+    w.link(g_i2, 0, vpn, "source_image")
+    w.note([2120, 580], [860, 200],
+           "AtlasDeriveWalls ground_anchor=True: where a facade VISIBLY meets the\n"
+           "street, its footprint comes from pure ray∩ground geometry (the depth\n"
+           "model is demoted to grouping pixels) and the wall extrudes FROM Y=0 —\n"
+           "so anchored buildings sit on the ground. The anchor deliberately\n"
+           "REFUSES occluded bases (the contamination/occlusion gates), so the\n"
+           "deepest rows still float — that residual gap is what the X-ray\n"
+           "variant (atlas_dmp_angle_xray_newyork, experimental) fills with\n"
+           "PREDICTED structure. distance_modes=3 fits one wall per depth mode\n"
+           "per azimuth — the street-grid skyline case.")
+    return b.dump()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# W11 · DMP ANGLE, X-RAY — NYC: LaRI predicts the occluded building bases
+# ══════════════════════════════════════════════════════════════════════════
+def build_dmp_angle_xray():
+    b = Builder("atlas-showcase-dmp-angle-xray")
+    w = b.w
+    w.group("0 · PLATE + SOLVE (EXPERIMENTAL — ATLAS_EXPERIMENTAL=1 + a LaRI clone)", [-40, -40, 820, 620], "#533")
+    load = b.load_image("newyork_Birdseye.png", [0, 40], "NYC birdseye (REAL photo)")
+    solve = w.node("AtlasLearnedSolveFromImage", [360, 40], [400, 230], "Learned solve",
+                   {"depth_model": V2_OUT})
+    w.link(load, 0, solve, "image")
+    scale = w.node("AtlasScaleOverride", [360, 330], [400, 150], "📐 Camera height → 25m",
+                   {"camera_height_m": 25.0})
+    w.link(solve, 0, scale, "solve")
+    b.rset("plate", load, 0, [0, 400])
+    b.rset("solve", scale, 0, [360, 540])
+    w.note([0, 480], [320, 180],
+           "🩻 Dense architecture is LaRI's STRONG domain — and 'predict the far\n"
+           "building's occluded lower floors behind the near roofline' is the\n"
+           "layered-ray-intersection use case. The restrict mask is the FOREGROUND\n"
+           "DEPTH BAND (the node's own report recommends exactly this).\n"
+           "📐 25m restores real metres (the 1.6m fallback fires on this vantage).")
+
+    w.group("1 · DEPTH + FG-BAND RESTRICT + 🩻 PREDICTION", [820, -40, 1140, 620], "#345")
+    g_i = b.rget("plate", [860, 0])
+    g_s = b.rget("solve", [860, 80])
+    dm = w.node("AtlasDepthMap", [1120, 0], [340, 150], "Shared depth", {"depth_model": V2_OUT})
+    w.link(g_i, 0, dm, "image")
+    w.link(g_s, 0, dm, "solve")
+    b.rset("depth", dm, 0, [1120, 190])
+    g_s2 = b.rget("solve", [860, 200])
+    dlm = w.node("AtlasDepthLayerMask", [1120, 300], [340, 240],
+                 "FG band [0–45%] = the occluders",
+                 {"near_pct": 0.0, "far_pct": 0.45})
+    w.link(g_s2, 0, dlm, "solve")
+    w.link(dm, 0, dlm, "depth")
+    g_i2 = b.rget("plate", [860, 420])
+    xr = w.node("AtlasPredictHiddenGeometry", [1500, 0], [400, 300],
+                "🩻 LaRI — restricted to the fg band")
+    w.link(dm, 0, xr, "depth")
+    w.link(g_i2, 0, xr, "image")
+    w.link(dlm, 0, xr, "restrict_mask")
+    show = w.node("ShowText|pysssss", [1500, 360], [400, 200], "Registration + coverage report")
+    w.link(xr, 2, show, "text")
+
+    w.group("2 · BASE MESH + X-RAY LAYER (mask membership)", [1960, -40, 1400, 900], "#435")
+    g_s3 = b.rget("solve", [2000, 0])
+    g_d = b.rget("depth", [2000, 80])
+    base = w.node("AtlasDeriveReliefMesh", [2260, 0], [340, 200], "Base relief (ORIGINAL depth)",
+                  {"relief_grid": 384, "depth_edge_rel": 1.0, "max_edge_factor": 40.0})
+    w.link(g_s3, 0, base, "solve")
+    w.link(g_d, 0, base, "depth")
+    grow = w.node("GrowMask", [2260, 260], [280, 130], "Grow hidden 32", {"expand": 32})
+    w.link(xr, 1, grow, "mask")
+    inv = w.node("InvertMask", [2580, 260], [240, 60], "Invert → exclude")
+    w.link(grow, 0, inv, "mask")
+    lam = w.node("INPAINT_LoadInpaintModel", [2000, 440], [300, 90], "LaMa", {"model_name": "big-lama.pt"})
+    exp = w.node("INPAINT_ExpandMask", [2260, 440], [280, 130], None, {"grow": 48, "blur": 16})
+    w.link(xr, 1, exp, "mask")
+    g_i3 = b.rget("plate", [2000, 620])
+    crop = w.node("AtlasInpaintCrop", [2580, 440], [300, 130], "✂ crop")
+    w.link(g_i3, 0, crop, "image")
+    w.link(exp, 0, crop, "mask")
+    paint = w.node("INPAINT_InpaintWithModel", [2580, 620], [300, 150], "LaMa fill")
+    w.link(lam, 0, paint, "inpaint_model")
+    w.link(crop, 0, paint, "image")
+    w.link(crop, 1, paint, "mask")
+    g_i4 = b.rget("plate", [2920, 620])
+    stitch = w.node("AtlasInpaintStitch", [2920, 700], [300, 150], "✂ stitch")
+    w.link(g_i4, 0, stitch, "original_image")
+    w.link(paint, 0, stitch, "inpainted_crop")
+    w.link(crop, 2, stitch, "crop_region")
+    cpl = w.node("AtlasCleanPlateLayer", [2920, 0], [400, 560], "🩻 X-ray layer (patched depth)",
+                 {"name": "xray", "priority": 5.0, "relief_grid": 384, "depth_edge_rel": 1.5,
+                  "band_side": "manual", "skirt_bevel": 1.5, "embed_matte": True})
+    w.link(base, 0, cpl, "solve")
+    w.link(xr, 0, cpl, "depth")
+    w.link(stitch, 0, cpl, "plate_image")
+    w.link(inv, 0, cpl, "exclude_mask")
+    w.link(xr, 3, cpl, "layer_matte")
+    b.rset("scene", cpl, 0, [3360, 600])
+
+    w.group("3 · VIEWPORT + MOVE — dolly past the roofline", [-40, 900, 2200, 700], "#453")
+    g_sc = b.rget("scene", [0, 960])
+    g_i5 = b.rget("plate", [0, 1040])
+    vpn = w.node("AtlasBlockoutViewport", [260, 960], [860, 560],
+                 "Reveals show PREDICTED lower floors", {"resolution": 1280})
+    w.link(g_sc, 0, vpn, "solve")
+    w.link(g_i5, 0, vpn, "source_image")
+    vc = w.node("VideoCombinePlus", [1180, 960], [380, 300], "MP4 of the baked move",
+                {"frame_rate": 24.0, "filename_prefix": "showcase_nyc_xray_move"})
+    w.link(vpn, 4, vc, "images")
+    w.note([1180, 1300], [700, 180],
+           "The anchored-walls variant (atlas_dmp_angle_anchored_newyork) closes\n"
+           "the gap with GEOMETRY where a base is visible; this one INVENTS the\n"
+           "occluded structure — LaRI hidden depth + LaMa pixels — so a dolly\n"
+           "past the near roofline reveals plausible lower floors instead of a\n"
+           "tear. Restricting to the fg band keeps visible surfaces untouched.")
+    return b.dump()
+
+
 BUILDERS = {
     "atlas_solve_lab_coastal_alley": build_solve_lab,
     "atlas_city_blocks_newyork": build_city_blocks,
@@ -903,6 +1076,8 @@ BUILDERS = {
     "atlas_organic_relief_jungleruins": build_jungleruins,
     "atlas_rolltrim_shotcam_portal": build_portal,
     "atlas_xray_wreck": build_xray_wreck,
+    "atlas_dmp_angle_anchored_newyork": build_dmp_angle_anchored,
+    "atlas_dmp_angle_xray_newyork": build_dmp_angle_xray,
 }
 
 
