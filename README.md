@@ -15,7 +15,7 @@
   <a href="https://registry.comfy.org/nodes/atlas-camera"><img src="https://img.shields.io/badge/ComfyUI_Registry-atlas--camera-eaa03a" alt="ComfyUI Registry"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2fb7a6" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/python-3.10+-c4b29a" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/ComfyUI-57_nodes-8f8571" alt="57 nodes">
+  <img src="https://img.shields.io/badge/ComfyUI-58_nodes-8f8571" alt="58 nodes">
   <a href="https://mikejamesvfx.com"><img src="https://img.shields.io/badge/a-mikejamesvfx_tool-c4b29a" alt="a mikejamesvfx tool"></a>
 </p>
 
@@ -93,7 +93,7 @@ Full setup, including the research-only tier, is in **[INSTALL.md](INSTALL.md)**
 
 ## The node pack
 
-A **56-node ComfyUI pack** (category *Atlas Camera*; 58 with the experimental
+A **58-node ComfyUI pack** (category *Atlas Camera*; 60 with the experimental
 tier) covering the whole pipeline as a graph:
 
 - **Solve** — geometric (vanishing points, no deps) and learned (GeoCalib,
@@ -121,11 +121,14 @@ tier) covering the whole pipeline as a graph:
   Nuke/Maya, USD (+ camera path), Blender, and relief mesh (OBJ/GLB with the
   projection baked into UVs).
 
-Two ready-to-load workflows ship in [`examples/`](examples/): start with
+Three ready-to-load workflows ship in [`examples/`](examples/): start with
 `atlas_input_quickstart_workflow.json` (4 nodes — image in, projected relief
 out), then `atlas_camera_staged_master_workflow.json` (the same logic with
 stages, gates and per-layer debug). Point the LoadImage node at any photo of
-your own. See the [technical brief](docs/TECH_AND_DIFFERENTIATION.md) for how
+your own. Beyond those, [`examples/showcase/`](examples/showcase/) holds
+**eleven run-verified showcase builds** — one per scene type, together
+exercising every node in the pack — with a findings report; the plates they
+reference are distributed separately (any photo of your own works too). See the [technical brief](docs/TECH_AND_DIFFERENTIATION.md) for how
 Atlas differs from other ComfyUI 3D systems, and the
 [ecosystem guide](docs/ECOSYSTEM_GUIDE.md) for the full node catalog.
 
@@ -136,7 +139,7 @@ Atlas differs from other ComfyUI 3D systems, and the
 - [User guide](docs/USER_GUIDE.md) · [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md) — full node catalog
 - [Camera moves & marketing renders](docs/CAMERA_MOVES.md) — single photo → Nuke dolly with X-ray hidden-geometry fill
 - [DCC exports](docs/DCC_EXPORTS.md) · [Third-party & licenses](docs/THIRD_PARTY.md)
-- [DCC exports](docs/DCC_EXPORTS.md) · [Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md)
+- [Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md)
 
 ## License
 
