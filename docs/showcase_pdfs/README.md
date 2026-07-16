@@ -1,7 +1,8 @@
 # Showcase documentation — PDF exports
 
-Print-to-PDF snapshots (Chrome headless, backgrounds + embedded imagery
-included) of the illustrated showcase documentation. The live pages are
+Branded dark-theme PDF exports (Chrome headless print, full-bleed charcoal,
+the amber reticle-A mark + wordmark on every document) of the illustrated
+showcase documentation. The live pages are
 Claude artifacts; these PDFs are the offline/shareable copies, exported
 2026-07-17 against the v0.6.0 beta.
 
