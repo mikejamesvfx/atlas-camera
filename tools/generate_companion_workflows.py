@@ -148,7 +148,7 @@ def build_xray():
            "hidden behind NEAR occluders are themselves near. So the layer uses MASK MEMBERSHIP: hidden_mask→Grow→Invert→exclude_mask\n"
            "(the geometry region) and paint_matte→layer_matte (the paint). band_side=manual, far uncapped. No split node at all.")
 
-    w.group("4 · 🎥 CAMERA MOVE + EXPORT — author the move in the viewport (fly nav), ⏺ Bake, then ship the .nk / .usda", [6280, -40, 1700, 900], "#446")
+    w.group("4 · 🎥 CAMERA MOVE + EXPORT — author the move in the viewport (one-click move buttons), ⏺ Bake, then ship the .nk / .usda", [6280, -40, 1700, 900], "#446")
     g17 = b.rget("solve_xray", [6320, 40]); g18 = b.rget("plate", [6320, 120])
     vp = w.node("AtlasBlockoutViewport", [6320, 220], [960, 640], "🎥 Viewport — author + ⏺ Bake the move",
                 {"resolution": 1024, "preview_expand": 1.0})
@@ -168,8 +168,8 @@ def build_xray():
            "2. 🧭 Safe Zone probe-renders around the recovered camera and CLAMPS\n"
            "   the orbit to the measured hole-free arc — your move stays inside\n"
            "   what actually exists.\n"
-           "3. 🎥 Camera Path → a preset (Dolly In / Orbit L) or fly-nav\n"
-           "   keyframes → ▶ Play → ⏺ Bake Path.\n"
+           "3. 🎥 Camera Path → click a move (Orbit L/R, Pan L/R, Dolly In\n"
+           "   — 24fps, 100 frames, auto-previews) → ⏺ Bake Path.\n"
            "4. Bake fills path_frames (→ a Video Combine node, NOT installed\n"
            "   here) and camera_path (→ the .usda export, MUTED until baked —\n"
            "   un-mute it after ⏺ Bake or it errors by design).\n\n"

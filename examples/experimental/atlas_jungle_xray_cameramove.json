@@ -2478,7 +2478,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "THE MOVE\n\n1. 📽 Project ON (default). Orbit to check coverage.\n2. 🧭 Safe Zone probe-renders around the recovered camera and CLAMPS\n   the orbit to the measured hole-free arc — your move stays inside\n   what actually exists.\n3. 🎥 Camera Path → a preset (Dolly In / Orbit L) or fly-nav\n   keyframes → ▶ Play → ⏺ Bake Path.\n4. Bake fills path_frames (→ a Video Combine node, NOT installed\n   here) and camera_path (→ the .usda export, MUTED until baked —\n   un-mute it after ⏺ Bake or it errors by design).\n\nThe .nk carries every layer with its OWN camera; the move can also\nbe authored in Nuke against the same geometry."
+    "THE MOVE\n\n1. 📽 Project ON (default). Orbit to check coverage.\n2. 🧭 Safe Zone probe-renders around the recovered camera and CLAMPS\n   the orbit to the measured hole-free arc — your move stays inside\n   what actually exists.\n3. 🎥 Camera Path → click a move (Orbit L/R, Pan L/R, Dolly In\n   — 24fps, 100 frames, auto-previews) → ⏺ Bake Path.\n4. Bake fills path_frames (→ a Video Combine node, NOT installed\n   here) and camera_path (→ the .usda export, MUTED until baked —\n   un-mute it after ⏺ Bake or it errors by design).\n\nThe .nk carries every layer with its OWN camera; the move can also\nbe authored in Nuke against the same geometry."
    ],
    "color": "#432",
    "bgcolor": "#653"
@@ -2857,7 +2857,7 @@
   },
   {
    "id": 5,
-   "title": "4 · 🎥 CAMERA MOVE + EXPORT — author the move in the viewport (fly nav), ⏺ Bake, then ship the .nk / .usda",
+   "title": "4 · 🎥 CAMERA MOVE + EXPORT — author the move in the viewport (one-click move buttons), ⏺ Bake, then ship the .nk / .usda",
    "bounding": [
     6280,
     -40,

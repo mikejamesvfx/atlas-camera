@@ -434,8 +434,8 @@ class ProjectionSource:
 class AtlasCameraKeyframe:
     """One waypoint of a ``AtlasCameraPath`` — an eye/target/up pose plus timing.
 
-    Authored client-side in the blockout viewport's Camera Path mode (fly nav,
-    not the clamped orbit control) and sampled server-side by
+    Authored client-side in the blockout viewport's Camera Path mode (one-click
+    move buttons or FBX import) and sampled server-side by
     ``camera_path.sample_camera_path`` via Catmull-Rom + easing into a full
     ``AtlasExtrinsics`` per output frame, reusing ``camera_math.look_at_view_matrix``
     so every sampled pose shares the same view/world matrix convention as the

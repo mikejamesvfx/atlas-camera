@@ -282,8 +282,9 @@ function createOrbitControls(camera, dom) {
   const target = new THREE.Vector3(0, 1, 0);
   const sph = { radius: 5, theta: 0, phi: Math.PI / 3 };
   let dragging = false, panning = false, lx = 0, ly = 0;
-  // Disabled while Camera Path fly-mode is active (createFlyControls) so the
-  // two controllers never fight over the same pointer/wheel events.
+  // setEnabled(false) is available to callers, but since the fly controller's
+  // removal (2026-07-16) the orbit controller stays enabled even in Camera
+  // Path mode — path playback re-poses the camera per-frame after input.
   let enabled = true;
   // UE-style tracking keys, scoped to THIS element's focus (no global
   // listeners — clicking the viewport focuses it; unrelated keys pass
@@ -489,97 +490,12 @@ function createOrbitControls(camera, dom) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Fly-mode controller for Camera Path authoring.
-//
-// The orbit controller above is deliberately clamped to a small arc around
-// the recovered camera's own direction (see its comment) because derived
-// geometry only covers what that camera actually photographed. Authoring a
-// dolly/pan camera move is the opposite case — leaving that cone is the
-// whole point of testing how projection degrades under motion — so this is
-// a separate, UNCLAMPED free-fly controller (RMB-hold + WASD/QE, mirroring
-// spiritform/comfyblockout's fly nav), only active while Camera Path mode is on.
-// ---------------------------------------------------------------------------
-function createFlyControls(camera, dom) {
-  let enabled = false;
-  let dragging = false, lx = 0, ly = 0;
-  let yaw = 0, pitch = 0;
-  const keys = new Set();
-  const MOVE_UNITS_PER_SEC = 4;
-
-  function syncFromCamera() {
-    const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, "YXZ");
-    yaw = euler.y;
-    pitch = euler.x;
-  }
-  function applyLook() {
-    camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
-  }
-  function onDown(e) {
-    if (!enabled || e.button !== 2) return;
-    dragging = true;
-    lx = e.clientX; ly = e.clientY;
-    dom.style.cursor = "grabbing";
-    e.preventDefault();
-    e.stopPropagation();
-  }
-  function onUp() {
-    dragging = false;
-    keys.clear();
-    if (enabled) dom.style.cursor = "crosshair";
-  }
-  function onMove(e) {
-    if (!enabled || !dragging) return;
-    const dx = e.clientX - lx, dy = e.clientY - ly;
-    lx = e.clientX; ly = e.clientY;
-    yaw -= dx * 0.004;
-    pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch - dy * 0.004));
-    applyLook();
-    e.stopPropagation();
-  }
-  function onKeyDown(e) { if (enabled && dragging) keys.add(e.key.toLowerCase()); }
-  function onKeyUp(e) { keys.delete(e.key.toLowerCase()); }
-  function onContext(e) { if (enabled) { e.preventDefault(); e.stopPropagation(); } }
-
-  function tick(dt) {
-    if (!enabled || !dragging || keys.size === 0) return;
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    const step = MOVE_UNITS_PER_SEC * dt;
-    if (keys.has("w")) camera.position.addScaledVector(forward, step);
-    if (keys.has("s")) camera.position.addScaledVector(forward, -step);
-    if (keys.has("d")) camera.position.addScaledVector(right, step);
-    if (keys.has("a")) camera.position.addScaledVector(right, -step);
-    if (keys.has("e")) camera.position.y += step;
-    if (keys.has("q")) camera.position.y -= step;
-  }
-
-  dom.addEventListener("pointerdown", onDown);
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp);
-  window.addEventListener("keydown", onKeyDown);
-  window.addEventListener("keyup", onKeyUp);
-  dom.addEventListener("contextmenu", onContext);
-
-  return {
-    tick,
-    setEnabled(v) {
-      enabled = v;
-      dragging = false;
-      keys.clear();
-      dom.style.cursor = v ? "crosshair" : "grab";
-      if (v) syncFromCamera();
-    },
-    dispose() {
-      dom.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-      dom.removeEventListener("contextmenu", onContext);
-    },
-  };
-}
+// NOTE (2026-07-16): the free-fly controller (createFlyControls, RMB+WASD/QE)
+// that powered manual Camera Path keyframing was removed along with the
+// keyframe editor — the panel is now five deterministic one-click moves (see
+// the Camera Path block below). The orbit controller stays ENABLED in path
+// mode; recover the fly controller from git history if free navigation is
+// ever wanted again.
 
 // NOTE (2026-07-09): the primitive toolbar (Box/Plane/Cylinder/Person) and the
 // 🧍/🚗 OBJ scale-proxy buttons were removed — browser-only meshes that never
@@ -1593,9 +1509,6 @@ function buildNodeUI(node, containerEl) {
   controls.setTarget(new THREE.Vector3(0, 1, 0));
   controls.syncFromCamera();
 
-  // Fly controls for Camera Path authoring (disabled until that mode is toggled on).
-  const fly = createFlyControls(camera, canvas);
-
   // Background reference image (loaded after camera data is set)
   let bgMesh = null;
   // The exact recovered camera pose, stored so "Camera View" can snap back to it.
@@ -1663,17 +1576,13 @@ function buildNodeUI(node, containerEl) {
   }
 
   // Animation loop — assign to node._atlasRafId each frame so cancelAnimationFrame works.
-  // The orbit/fly controllers update the camera on input events; pathPlayback
+  // The orbit controller updates the camera on input events; pathPlayback
   // (set by the Camera Path "Play" button, below) drives it during path preview.
   let pathPlayback = null; // { startTime, durationSec, onDone }
   let applyPathPoseAtT = null; // assigned once the Camera Path block below runs
-  let lastTickTime = performance.now();
   function animate() {
     node._atlasRafId = requestAnimationFrame(animate);
     const now = performance.now();
-    const dt = Math.min(0.1, (now - lastTickTime) / 1000);
-    lastTickTime = now;
-    fly.tick(dt);
     controls.updateKeys();  // UE-style tracking keys (self-timed; no-op when idle)
     if (pathPlayback) {
       const t = Math.min(1, (now - pathPlayback.startTime) / 1000 / pathPlayback.durationSec);
@@ -1974,7 +1883,7 @@ function buildNodeUI(node, containerEl) {
   toolbar.appendChild(layerBtn);
 
   // ---------------------------------------------------------------------------
-  // 📐 Extract Angle — orbit/fly to the view you want a patch generated at
+  // 📐 Extract Angle — orbit to the view you want a patch generated at
   // (e.g. the last frame of an intended camera move, MPTK style), click, and
   // the orbit delta from the RECOVERED camera is measured about the payload's
   // `orbit_pivot` (camera_math.ground_lookat_pivot — the SAME pivot
@@ -2097,7 +2006,7 @@ function buildNodeUI(node, containerEl) {
   const angleBtn = document.createElement("button");
   angleBtn.textContent = "📐 Extract Angle";
   angleBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
-  angleBtn.title = "Orbit/fly to the view you want a patch at, then click: measures the orbit " +
+  angleBtn.title = "Orbit to the view you want a patch at, then click: measures the orbit " +
     "delta from the recovered camera, snaps it to the Qwen Multiple-Angles named views, and " +
     "re-queues so the patch_* STRING outputs go live.";
   angleBtn.onclick = () => {
@@ -2300,19 +2209,26 @@ function buildNodeUI(node, containerEl) {
   toolbar.appendChild(envBtn);
 
   // ---------------------------------------------------------------------------
-  // 🎥 Camera Path — author a keyframed camera move (fly nav, unclamped) to
-  // test how 📽 Project holds up while the camera moves, then bake it to an
-  // IMAGE batch (path_frames) for a core Video Combine node, or hand the raw
-  // keyframes (camera_path) to AtlasExportCameraPathUSD for a DCC-facing
-  // animated camera. See camera_path.py's sample_camera_path — the functions
-  // below (catmullRom3JS/applyEasingJS/sampleKeyframePoseAtFrame) MUST stay in
-  // sync with it; they exist here (rather than round-tripping to Python) so
-  // Play can scrub live at 60fps.
+  // 🎥 Camera Path — five deterministic one-click moves (Orbit L/R, Pan L/R,
+  // Dolly In) to test how 📽 Project holds up while the camera moves, then
+  // bake to an IMAGE batch (path_frames) for a core Video Combine node, or
+  // hand the raw keyframes (camera_path) to AtlasExportCameraPathUSD for a
+  // DCC-facing animated camera. Every move is computed from the RECOVERED
+  // camera pose + the geometry pivot (never the live orbited camera), always
+  // 24 fps / 100 frames, ease_in_out — 📥 FBX import is the one exception
+  // that may override fps/frame_count (a DCC clip defines its own timing).
+  // The manual keyframe editor + free-fly controller were removed 2026-07-16
+  // (git history has them). See camera_path.py's sample_camera_path — the
+  // functions below (catmullRom3JS/applyEasingJS/sampleKeyframePoseAtFrame)
+  // MUST stay in sync with it; they exist here (rather than round-tripping
+  // to Python) so Play can scrub live at 60fps.
   // ---------------------------------------------------------------------------
+  const PATH_FPS = 24;          // film — fixed; FBX import may override
+  const PATH_FRAME_COUNT = 100; // always 100 frames; FBX import may override
   let pathMode = false;
   let pathKeyframes = []; // [{frame_index, position:{x,y,z}, target:{x,y,z}, up:{x,y,z}, easing}]
-  let pathFrameCount = 48;
-  let pathFps = 24;
+  let pathFrameCount = PATH_FRAME_COUNT;
+  let pathFps = PATH_FPS;
   const pathGroup = new THREE.Group();
   pathGroup.userData.atlasHelper = true; // excluded from render passes like the grid
   pathGroup.visible = false;
@@ -2423,8 +2339,8 @@ function buildNodeUI(node, containerEl) {
       const cp = existing.camera_path;
       if (cp?.keyframes) {
         pathKeyframes = cp.keyframes.map(kfFromJSON);
-        pathFps = cp.fps || 24;
-        pathFrameCount = cp.frame_count || 48;
+        pathFps = cp.fps || PATH_FPS;
+        pathFrameCount = cp.frame_count || PATH_FRAME_COUNT;
       }
     } catch (_) { /* no persisted path yet */ }
   }
@@ -2438,8 +2354,8 @@ function buildNodeUI(node, containerEl) {
     pathBtn.style.background = pathMode ? "#3a2a1a" : "#2a2a2a";
     pathGroup.visible = pathMode;
     pathPanel.style.display = pathMode ? "flex" : "none";
-    controls.setEnabled(!pathMode);
-    fly.setEnabled(pathMode);
+    // Orbit controls stay ENABLED in path mode (the fly controller they used
+    // to yield to is gone) — playback re-poses the camera per-frame anyway.
     if (!pathMode) pathPlayback = null;
   };
   toolbar.appendChild(pathBtn);
@@ -2449,47 +2365,11 @@ function buildNodeUI(node, containerEl) {
   const pathPanel = document.createElement("div");
   pathPanel.style.cssText = "display:none;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 6px;background:#181818;border-top:1px solid #333;font-size:11px;color:#ccc";
 
-  const kfListEl = document.createElement("div");
-  kfListEl.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;";
-
-  function renderKeyframeList() {
-    kfListEl.replaceChildren();
-    pathKeyframes
-      .slice()
-      .sort((a, b) => a.frame_index - b.frame_index)
-      .forEach((kf) => {
-        const row = document.createElement("span");
-        row.style.cssText = "display:inline-flex;align-items:center;gap:3px;background:#242424;border:1px solid #3a3a3a;border-radius:3px;padding:1px 4px;";
-        const label = document.createElement("span");
-        label.textContent = `#${kf.frame_index}`;
-        const easingSel = document.createElement("select");
-        easingSel.style.cssText = "font-size:10px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
-        ["linear", "ease_in", "ease_out", "ease_in_out"].forEach((opt) => {
-          const o = document.createElement("option");
-          o.value = opt; o.textContent = opt;
-          if (opt === kf.easing) o.selected = true;
-          easingSel.appendChild(o);
-        });
-        easingSel.onchange = () => { kf.easing = easingSel.value; persistPathToClientData(); };
-        const delBtn = document.createElement("button");
-        delBtn.textContent = "✕";
-        delBtn.style.cssText = "font-size:10px;cursor:pointer;background:none;color:#f88;border:none;";
-        delBtn.onclick = () => {
-          pathKeyframes = pathKeyframes.filter((k) => k !== kf);
-          renderKeyframeList();
-          rebuildPathVisualization();
-          persistPathToClientData();
-        };
-        row.append(label, easingSel, delBtn);
-        kfListEl.appendChild(row);
-      });
-  }
-  renderKeyframeList();
   rebuildPathVisualization();
 
   // Current camera pose as a {position, target} pair (target = a point straight
-  // ahead at the solved scene depth, or a 10m fallback) — shared by "+ Keyframe"
-  // and the presets below so both capture the camera identically.
+  // ahead at the solved scene depth, or a 10m fallback). Now used only by the
+  // 📥 FBX import below as the base pose the imported clip is applied onto.
   function captureCurrentPose() {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     const captureDist = recoveredData?.camera_meta?.scene_depth_m || 10;
@@ -2500,37 +2380,15 @@ function buildNodeUI(node, containerEl) {
     };
   }
 
-  const addKfBtn = document.createElement("button");
-  addKfBtn.textContent = "+ Keyframe";
-  addKfBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a3a2a;color:#cfc;border:1px solid #464;border-radius:3px";
-  addKfBtn.onclick = () => {
-    const pose = captureCurrentPose();
-    const nextFrame = pathKeyframes.length
-      ? Math.max(...pathKeyframes.map((k) => k.frame_index)) + Math.max(1, Math.round(pathFrameCount / 4))
-      : 0;
-    pathKeyframes.push({
-      frame_index: Math.min(nextFrame, Math.max(0, pathFrameCount - 1)),
-      position: pose.position,
-      target: pose.target,
-      up: { x: 0, y: 1, z: 0 },
-      easing: "linear",
-    });
-    renderKeyframeList();
-    rebuildPathVisualization();
-    persistPathToClientData();
-  };
-
   // ---------------------------------------------------------------------------
-  // Presets — quick-start 2-keyframe moves (start = current pose, end = the
-  // same pose transformed) instead of hand-placing keyframes with fly nav
-  // every time. Pan rotates the TARGET around the (fixed) camera position —
-  // the camera swivels in place, like a real pan. Orbit moves the POSITION
-  // around the (fixed) target — the camera arcs around the subject. Dolly
-  // moves the POSITION toward/away from the (fixed) target along the view
-  // axis. All three are plain vector math (no Euler/yaw sign ambiguity):
-  // "right"/"left" and "in"/"out" are derived directly from the camera's own
-  // forward/right vectors at the moment the preset is applied, so they're
-  // unambiguous regardless of world orientation.
+  // Shared move math for the one-click buttons. Pan rotates the TARGET around
+  // the (fixed) camera position — the camera swivels in place, like a real
+  // pan. Orbit moves the POSITION around the (fixed) target — the camera arcs
+  // around the subject. Dolly moves the POSITION toward the (fixed) target
+  // along the view axis. All three are plain vector math (no Euler/yaw sign
+  // ambiguity): "right"/"left" and "in" are derived directly from the base
+  // pose's own forward/right vectors, so they're unambiguous regardless of
+  // world orientation. (Numerically verified — see git history.)
   // ---------------------------------------------------------------------------
   function computePresetEndPose(basePose, presetKey, angleDeg, distanceFrac) {
     const E = basePose.position, T = basePose.target;
@@ -2567,92 +2425,84 @@ function buildNodeUI(node, containerEl) {
     };
   }
 
-  // Directional presets (Pan/Orbit) are framed as "arrive at my current
-  // vantage from the other side" rather than "leave from here" — Pan Left
-  // starts with the geo/subject swung to the right of frame and sweeps to
-  // center (camera position never moves for a true pan, only the view
-  // direction); Orbit Left starts with the camera itself physically
-  // positioned to the right of the pivot and arcs to center (position DOES
-  // move for orbit). Both are built the same way: compute the START pose by
-  // running the OPPOSITE preset (e.g. pan_right for a pan_left request) on
-  // the current pose, then set the END to the current pose unchanged — so
-  // applying a preset always finishes on whatever you're currently looking
-  // at, arriving from the named side. Dolly has no left/right, so it keeps
-  // the original current-pose-is-the-start shape.
-  const PRESET_OPPOSITE = {
-    pan_left: "pan_right", pan_right: "pan_left",
-    orbit_left: "orbit_right", orbit_right: "orbit_left",
-  };
-
-  const PRESET_OPTIONS = [
-    { key: "", label: "— Preset —" },
-    { key: "pan_left", label: "Pan Left" },
-    { key: "pan_right", label: "Pan Right" },
-    { key: "orbit_left", label: "Orbit Left" },
-    { key: "orbit_right", label: "Orbit Right" },
-    { key: "dolly_in", label: "Dolly In" },
-    { key: "dolly_out", label: "Dolly Out" },
-  ];
-  const presetSelect = document.createElement("select");
-  presetSelect.style.cssText = "font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
-  PRESET_OPTIONS.forEach(({ key, label }) => {
-    const o = document.createElement("option");
-    o.value = key; o.textContent = label;
-    presetSelect.appendChild(o);
-  });
-  const presetAngleInput = document.createElement("input");
-  presetAngleInput.type = "number"; presetAngleInput.min = "1"; presetAngleInput.max = "180"; presetAngleInput.value = "30";
-  presetAngleInput.title = "angle (degrees) — used by Pan/Orbit presets";
-  presetAngleInput.style.cssText = "width:38px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
-  const presetAmountInput = document.createElement("input");
-  presetAmountInput.type = "number"; presetAmountInput.min = "0.05"; presetAmountInput.max = "0.9"; presetAmountInput.step = "0.05"; presetAmountInput.value = "0.4";
-  presetAmountInput.title = "distance fraction — used by Dolly In/Out presets";
-  presetAmountInput.style.cssText = "width:42px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
-  const applyPresetBtn = document.createElement("button");
-  applyPresetBtn.textContent = "Apply Preset";
-  applyPresetBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
-  applyPresetBtn.onclick = () => {
-    const presetKey = presetSelect.value;
-    if (!presetKey) return;
-    const basePose = captureCurrentPose();
-    const angleDeg = parseFloat(presetAngleInput.value) || 30;
-    const amountFrac = parseFloat(presetAmountInput.value) || 0.4;
-
-    let startPose, endPose;
-    const opposite = PRESET_OPPOSITE[presetKey];
-    if (opposite) {
-      startPose = computePresetEndPose(basePose, opposite, angleDeg, amountFrac);
-      endPose = basePose;
-    } else {
-      startPose = basePose;
-      endPose = computePresetEndPose(basePose, presetKey, angleDeg, amountFrac);
+  // Deterministic basis for the one-click moves: the RECOVERED camera pose
+  // (never the live orbited camera — "full frame" means the photo's own
+  // framing, and re-clicking a move after hand-orbiting must produce the
+  // identical path) + the geometry pivot (median-depth mesh centre, same
+  // cascade as applyRecoveredView's reset) + the artist's 🎯 offset.
+  // Deliberately NOT targetWithOffset() — that helper re-baselines pivotBase
+  // as a side effect, which would silently move what applyPivotOffset()
+  // re-targets later.
+  function recoveredMoveBasis() {
+    if (!recoveredData?.view_matrix || !THREE) return null;
+    const tmp = new THREE.PerspectiveCamera();
+    applyRecoveredCamera(tmp, recoveredData); // pose only; throwaway camera
+    let base = lastGeometryPivot ? lastGeometryPivot.clone() : null;
+    if (!base) {
+      const sceneDepth = recoveredData.camera_meta?.scene_depth_m;
+      base = groundPointInView(tmp, sceneDepth ? sceneDepth * 1.5 : 30);
     }
+    const pivot = base.add(pivotOffset);
+    return { position: tmp.position.clone(), quaternion: tmp.quaternion.clone(), pivot };
+  }
 
-    const endFrame = Math.max(1, pathFrameCount - 1);
-    // Replaces any existing keyframes — presets are a fresh quick-start, not
-    // an addition to hand-placed ones (which would rarely combine sensibly).
+  // One-click moves. Fixed grammar (user-specified, 2026-07-16): slow filmic
+  // moves, 24 fps / 100 frames, ease_in_out. Orbit/Pan BEGIN pre-zoomed 20%
+  // toward the mesh centre (frame 0 still catches the geometry's edge as the
+  // move progresses) and look at the pivot; Orbit arcs ±15° about world-Y
+  // through the pivot, Pan swivels ±15° in place. Dolly In starts at the FULL
+  // recovered framing and pushes 20% of the camera→pivot distance along the
+  // recovered view axis (framing preserved — the target sits ON that axis).
+  const MOVE_ANGLE_DEG = 15;
+  const MOVE_ZOOM_FRAC = 0.2;   // orbit/pan pre-zoom toward the pivot
+  const MOVE_DOLLY_FRAC = 0.2;  // dolly-in travel as a fraction of cam→pivot
+  function applyMovePreset(kind) {
+    const basis = recoveredMoveBasis();
+    if (!basis) return; // no solve yet — nothing to move around
+    const { position: E, quaternion, pivot: P } = basis;
+    const v3o = (v) => ({ x: v.x, y: v.y, z: v.z });
+    let startPose, endPose;
+    if (kind === "dolly_in") {
+      const d = E.distanceTo(P) || 1;
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion);
+      const T = E.clone().addScaledVector(fwd, d); // target ON the view axis
+      startPose = { position: v3o(E), target: v3o(T) };
+      endPose = computePresetEndPose(startPose, "dolly_in", 0, MOVE_DOLLY_FRAC);
+    } else {
+      const Ez = E.clone().lerp(P, MOVE_ZOOM_FRAC); // 20% of the way in
+      startPose = { position: v3o(Ez), target: v3o(P) };
+      endPose = computePresetEndPose(startPose, kind, MOVE_ANGLE_DEG, 0);
+    }
+    // A move click always restores the fixed film timing (an earlier FBX
+    // import may have overridden it) and replaces any existing keyframes.
+    pathFps = PATH_FPS;
+    pathFrameCount = PATH_FRAME_COUNT;
     pathKeyframes = [
       { frame_index: 0, position: startPose.position, target: startPose.target, up: { x: 0, y: 1, z: 0 }, easing: "ease_in_out" },
-      { frame_index: endFrame, position: endPose.position, target: endPose.target, up: { x: 0, y: 1, z: 0 }, easing: "linear" },
+      { frame_index: PATH_FRAME_COUNT - 1, position: endPose.position, target: endPose.target, up: { x: 0, y: 1, z: 0 }, easing: "linear" },
     ];
-    renderKeyframeList();
     rebuildPathVisualization();
     persistPathToClientData();
-  };
+    playBtn.onclick(); // auto-preview once; snaps back to the recovered view on done
+  }
 
-  const frameCountInput = document.createElement("input");
-  frameCountInput.type = "number"; frameCountInput.min = "1"; frameCountInput.max = "2000";
-  frameCountInput.value = String(pathFrameCount);
-  frameCountInput.style.cssText = "width:48px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
-  frameCountInput.title = "frame_count";
-  frameCountInput.onchange = () => { pathFrameCount = Math.max(1, parseInt(frameCountInput.value, 10) || 48); persistPathToClientData(); };
-
-  const fpsInput = document.createElement("input");
-  fpsInput.type = "number"; fpsInput.min = "1"; fpsInput.max = "240";
-  fpsInput.value = String(pathFps);
-  fpsInput.style.cssText = "width:40px;font-size:11px;background:#1e1e1e;color:#ccc;border:1px solid #444;";
-  fpsInput.title = "fps";
-  fpsInput.onchange = () => { pathFps = Math.max(1, parseFloat(fpsInput.value) || 24); persistPathToClientData(); };
+  const MOVES = [
+    ["orbit_left", "⟲ Orbit L", "Arc 15° left around the mesh centre, starting pre-zoomed 20% in"],
+    ["orbit_right", "⟳ Orbit R", "Arc 15° right around the mesh centre, starting pre-zoomed 20% in"],
+    ["pan_left", "⇠ Pan L", "Swivel 15° left in place, starting pre-zoomed 20% toward the mesh centre"],
+    ["pan_right", "⇢ Pan R", "Swivel 15° right in place, starting pre-zoomed 20% toward the mesh centre"],
+    ["dolly_in", "⭢ Dolly In", "Push in 20% of the distance to the mesh centre from the full recovered framing"],
+  ];
+  const moveWrap = document.createElement("span");
+  moveWrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
+  MOVES.forEach(([kind, label, tip]) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.title = tip + " — 100 frames @ 24 fps, ease in/out; computed from the recovered camera, not the current view";
+    b.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
+    b.onclick = () => applyMovePreset(kind);
+    moveWrap.appendChild(b);
+  });
 
   const playBtn = document.createElement("button");
   playBtn.textContent = "▶ Play";
@@ -2731,16 +2581,6 @@ function buildNodeUI(node, containerEl) {
     }
   };
 
-  const fcWrap = document.createElement("span");
-  fcWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;";
-  fcWrap.append(document.createTextNode("frames"), frameCountInput);
-  const fpsWrap = document.createElement("span");
-  fpsWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;";
-  fpsWrap.append(document.createTextNode("fps"), fpsInput);
-
-  const presetWrap = document.createElement("span");
-  presetWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;padding-left:6px;border-left:1px solid #333;";
-  presetWrap.append(presetSelect, presetAngleInput, presetAmountInput, applyPresetBtn);
 
   // ---------------------------------------------------------------------------
   // Import Camera FBX (Phase B) — a DCC-authored camera move (Blender/Maya
@@ -2841,13 +2681,12 @@ function buildNodeUI(node, containerEl) {
         };
       });
 
+      // The one sanctioned override of the fixed 24/100 timing: a DCC clip
+      // defines its own duration. Any move-button click restores the defaults.
       pathFrameCount = sampleCount;
-      frameCountInput.value = String(pathFrameCount);
       if (clip.duration > 0) {
         pathFps = Math.max(1, Math.round(sampleCount / clip.duration));
-        fpsInput.value = String(pathFps);
       }
-      renderKeyframeList();
       rebuildPathVisualization();
       persistPathToClientData();
       importStatusEl.textContent = `Imported ${sampleCount} kf from "${clip.name || "FBX clip"}"`;
@@ -2873,7 +2712,7 @@ function buildNodeUI(node, containerEl) {
   importWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;padding-left:6px;border-left:1px solid #333;";
   importWrap.append(importBtn, importFbxInput, importSamplesInput, importScaleInput, importStatusEl);
 
-  pathPanel.append(addKfBtn, presetWrap, importWrap, kfListEl, fcWrap, fpsWrap, playBtn, bakeBtn);
+  pathPanel.append(moveWrap, playBtn, bakeBtn, importWrap);
 
   // 📊 Diagram toggle — layered VP / horizon / ground SVG overlay, each layer
   // independently dimmable. Vanishing points are populated only by the
@@ -3191,7 +3030,6 @@ function buildNodeUI(node, containerEl) {
   node._atlasScene = scene;
   node._atlasCamera = camera;
   node._atlasControls = controls;
-  node._atlasFly = fly;
   node._atlasBgMesh = null;
   node._atlasW = W;
   node._atlasH = H;
@@ -4068,7 +3906,6 @@ app.registerExtension({
       cancelAnimationFrame(node._atlasRafId);
       node._atlasRenderer?.dispose();
       node._atlasControls?.dispose();
-      node._atlasFly?.dispose();
       // Belt-and-braces for frontends whose addDOMWidget cleanup semantics
       // differ: removing an already-detached element is a no-op.
       container.remove();
