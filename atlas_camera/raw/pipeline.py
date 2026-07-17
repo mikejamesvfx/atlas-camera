@@ -69,13 +69,23 @@ def import_raw(path: str, *, undistort: bool = True, half_size: bool = False,
     undistort_status = "disabled"
     distortion: dict[str, float] = {}
     if undistort:
-        undistort_status, distortion, coords = _try_build_undistort(meta, width, height)
+        undistort_status, distortion, coords, profile = _try_build_undistort(
+            meta, width, height)
+        if profile:
+            # Name the matched lensfun profile — a derived "24mm f/1.4"
+            # descriptor can't distinguish same-spec lenses, so the artist
+            # must be able to see (and judge) which calibration was used.
+            meta.warnings.append(f"lensfun profile: {profile}")
         if coords is not None:
+            import numpy as np
             from atlas_camera.raw.undistort import apply_undistort
             # ONE shared remap grid for both arrays — the EXR sidecar and the
-            # solve tensor must stay geometrically identical.
-            linear = apply_undistort(linear, coords)
-            display = apply_undistort(display, coords)
+            # solve tensor must stay geometrically identical. Lanczos overshoots
+            # at hard edges (found live: -0.09 on a D810 frame), so clamp:
+            # negatives are non-physical in both; display re-caps at 1.0,
+            # linear keeps its >1.0 highlights.
+            linear = np.clip(apply_undistort(linear, coords), 0.0, None)
+            display = np.clip(apply_undistort(display, coords), 0.0, 1.0)
             undistort_applied = True
 
     # Sensor resolution uses the DECODED width — half_size halves pixels but
@@ -109,13 +119,17 @@ def import_raw(path: str, *, undistort: bool = True, half_size: bool = False,
 def _try_build_undistort(meta, width: int, height: int):
     """Build the lensfun remap grid, degrading to a status — never an error."""
     if not meta.lens_model and not meta.camera_model:
-        return "no_lens_metadata", {}, None
+        return "no_lens_metadata", {}, None, None
     try:
         from atlas_camera.raw.undistort import build_undistort_map
     except ImportError:
-        return "lensfunpy_missing", {}, None
+        return "lensfunpy_missing", {}, None, None
     try:
         result = build_undistort_map(meta, width, height)
     except RuntimeError:
-        return "lensfunpy_missing", {}, None
-    return result.status, result.distortion, result.coords
+        return "lensfunpy_missing", {}, None, None
+    profile = None
+    if result.lens_name:
+        profile = (f"{result.lens_name} on {result.cam_name}"
+                   if result.cam_name else str(result.lens_name))
+    return result.status, result.distortion, result.coords, profile

@@ -4,6 +4,7 @@ import pytest
 
 from atlas_camera.raw.metadata import (
     RawMetadata,
+    _lens_descriptor_from_makernote,
     _metadata_from_tags,
     resolve_sensor_size,
 )
@@ -71,6 +72,34 @@ def test_metadata_rational_and_zero_sentinels():
     })
     assert meta.focal_length_mm == pytest.approx(70.0)
     assert meta.focal_length_35mm is None
+
+
+def test_lens_descriptor_from_makernote():
+    # The live D810 case: no lens name, MakerNote [24, 24, 7/5, 7/5].
+    assert _lens_descriptor_from_makernote("[24, 24, 7/5, 7/5]") == "24mm f/1.4"
+    assert _lens_descriptor_from_makernote("[24, 70, 14/5, 14/5]") == "24-70mm f/2.8"
+    assert _lens_descriptor_from_makernote("[18, 55, 7/2, 28/5]") == "18-55mm f/3.5-5.6"
+    assert _lens_descriptor_from_makernote(None) is None
+    assert _lens_descriptor_from_makernote("[0, 0, 0, 0]") is None
+    assert _lens_descriptor_from_makernote("garbage") is None
+
+
+def test_missing_lens_name_derives_descriptor_with_warning():
+    meta = _metadata_from_tags({
+        "Image Model": "NIKON D810",
+        "MakerNote LensMinMaxFocalMaxAperture": "[24, 24, 7/5, 7/5]",
+    })
+    assert meta.lens_model == "24mm f/1.4"
+    assert any("best-effort" in w for w in meta.warnings)
+
+
+def test_explicit_lens_name_wins_over_makernote():
+    meta = _metadata_from_tags({
+        "EXIF LensModel": "AF-S NIKKOR 20mm f/1.8G ED",
+        "MakerNote LensMinMaxFocalMaxAperture": "[24, 24, 7/5, 7/5]",
+    })
+    assert meta.lens_model == "AF-S NIKKOR 20mm f/1.8G ED"
+    assert meta.warnings == []
 
 
 def test_sensor_tier1_camera_db():

@@ -104,7 +104,7 @@ def _metadata_from_tags(tags: dict[str, Any]) -> RawMetadata:
         camera_make=_to_str(tag("Image Make", "Make")),
         camera_model=_to_str(tag("Image Model", "Model")),
         lens_make=_to_str(tag("EXIF LensMake", "LensMake")),
-        lens_model=_to_str(tag("EXIF LensModel", "LensModel", "MakerNote LensType")),
+        lens_model=_to_str(tag("EXIF LensModel", "LensModel")),
         focal_length_mm=_to_float(tag("EXIF FocalLength", "FocalLength")),
         focal_length_35mm=_to_float(
             tag("EXIF FocalLengthIn35mmFilm", "FocalLengthIn35mmFilm")),
@@ -115,14 +115,58 @@ def _metadata_from_tags(tags: dict[str, Any]) -> RawMetadata:
         focal_plane_res_unit=_to_int(
             tag("EXIF FocalPlaneResolutionUnit", "FocalPlaneResolutionUnit")),
         orientation=_to_int(tag("Image Orientation", "Orientation")),
-        raw_tags={key: str(value) for key, value in tags.items()},
+        # MakerNote blobs (LensData etc.) can be huge — cap for the debug dump.
+        raw_tags={key: str(value)[:120] for key, value in tags.items()},
     )
     # A 35mm-equivalent of 0 is EXIF's "unknown" sentinel, not a real value.
     if meta.focal_length_35mm is not None and meta.focal_length_35mm <= 0:
         meta.focal_length_35mm = None
     if meta.focal_length_mm is not None and meta.focal_length_mm <= 0:
         meta.focal_length_mm = None
+    if meta.lens_model is None:
+        # Many Nikon NEFs carry no lens NAME, only MakerNote focal/aperture
+        # specs (found live on a D810 file: LensMinMaxFocalMaxAperture =
+        # [24, 24, 7/5, 7/5] = a 24mm f/1.4 prime). Derive a descriptor so
+        # lensfun's loose search has something to match — best-effort, and
+        # flagged, since it can't distinguish same-spec lenses (e.g. Nikkor
+        # vs Sigma Art 24/1.4); the undistort report names the profile used.
+        derived = _lens_descriptor_from_makernote(
+            tag("MakerNote LensMinMaxFocalMaxAperture", "LensMinMaxFocalMaxAperture",
+                "MakerNote LensSpec", "LensSpec"))
+        if derived:
+            meta.lens_model = derived
+            meta.warnings.append(
+                f"Lens name absent from EXIF — derived '{derived}' from "
+                "MakerNote specs; lensfun profile match is best-effort.")
     return meta
+
+
+def _lens_descriptor_from_makernote(value: Any) -> str | None:
+    """[min_focal, max_focal, max_ap_wide, max_ap_tele] -> "24mm f/1.4" /
+    "24-70mm f/2.8" / "18-55mm f/3.5-5.6". Accepts exifread IfdTag values
+    (list of Ratios) or their stringified "[24, 24, 7/5, 7/5]" form."""
+    if value is None:
+        return None
+    parts: list[float] = []
+    raw_values = getattr(value, "values", None)
+    if raw_values is not None and not isinstance(raw_values, str):
+        candidates = list(raw_values)
+    else:
+        text = str(value).strip().strip("[]")
+        candidates = [p.strip() for p in text.split(",") if p.strip()]
+    for item in candidates[:4]:
+        number = _to_float(item)
+        if number is None:
+            return None
+        parts.append(number)
+    if len(parts) < 4 or parts[0] <= 0 or parts[2] <= 0:
+        return None
+    min_f, max_f, ap_wide, ap_tele = parts[:4]
+    focal = (f"{min_f:g}mm" if abs(max_f - min_f) < 0.5
+             else f"{min_f:g}-{max_f:g}mm")
+    aperture = (f"f/{ap_wide:g}" if abs(ap_tele - ap_wide) < 0.05
+                else f"f/{ap_wide:g}-{ap_tele:g}")
+    return f"{focal} {aperture}"
 
 
 def read_raw_metadata(path: str) -> RawMetadata:
@@ -137,7 +181,9 @@ def read_raw_metadata(path: str) -> RawMetadata:
     tags: dict[str, Any] = {}
     try:
         with open(path, "rb") as handle:
-            tags = dict(exifread.process_file(handle, details=False))
+            # details=True: MakerNote parsing is required for lens metadata on
+            # Nikon NEFs (no standard LensModel tag — found live on a D810).
+            tags = dict(exifread.process_file(handle, details=True))
     except Exception as exc:  # noqa: BLE001 — any parse failure degrades soft
         meta = RawMetadata()
         meta.warnings.append(f"exifread failed on {path}: {exc}")
