@@ -76,6 +76,41 @@ pip install -e ".[image]"
 
 Without Pillow, pass `image_size=(width, height)`.
 
+## Optional Camera RAW Input (NEF / CR2 / CR3 / RAF / ARW)
+
+Install the `[raw]` extra for the `AtlasLoadRAW` 📷 node — native camera-RAW
+decode (rawpy/libraw, incl. Canon CR3 and Fuji X-Trans), EXIF focal-length +
+camera-model→sensor-size metadata feeding the solve's intrinsics, and a
+scene-linear EXR sidecar for the Output Desk / OCIO path:
+
+```powershell
+pip install -e ".[raw]"
+
+# Optional: lensfun geometry correction for the node's undistort toggle.
+# A separate extra because lensfunpy wheels can lag new Python/Windows
+# releases — RAW decode and metadata work fine without it.
+pip install -e ".[raw-lens]"
+```
+
+Notes:
+
+- **EXR sidecar codec:** writing the linear `.exr` uses OpenCV's OpenEXR
+  codec, which requires **opencv-python 4.x** (the 5.x wheels dropped the
+  codec — `[raw]` pins `<5`) and the environment variable
+  `OPENCV_IO_ENABLE_OPENEXR=1` set **before Python starts** (put it in your
+  ComfyUI launch `.bat`, same requirement as the ComfyUI-OCIO workflow). If
+  the write fails, the node degrades gracefully: the plate_ref is marked
+  proxy and the report says exactly what to fix.
+- **Colorspace:** the sidecar is scene-linear with **sRGB/Rec.709 primaries**
+  (tagged `Linear Rec.709 (sRGB)`), *not* ACEScg — convert downstream with
+  OCIO nodes.
+- **CR3 metadata is best-effort** (pure-Python readers; no ExifTool
+  dependency): when EXIF can't be read, the report says so and you can type
+  focal/sensor into the solve node manually.
+- **Fuji RAF:** decode works, but lensfun profile coverage for X-mount is
+  thin (Fuji applies corrections in-body) — the undistort step will usually
+  report `no_profile_lens` and pass pixels through unchanged.
+
 ## Optional Vision Solver Support
 
 Install NumPy and OpenCV when you want automatic line detection, vanishing-point

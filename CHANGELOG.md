@@ -3,6 +3,32 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## Unreleased — camera RAW support (2026-07-18)
+
+Native camera-RAW input, replacing the Adobe Camera Raw round-trip for
+solve-bound plates.
+
+- **`AtlasLoadRAW` 📷** (Atlas Camera/Color, `[raw]` extra) — decodes
+  NEF / CR2 / CR3 / RAF / ARW via rawpy/libraw into a solve/preview tensor
+  AND a scene-linear EXR sidecar (one demosaic, one undistort grid — the two
+  can never disagree geometrically). The sidecar rides an `ATLAS_PLATE_REF`
+  into the Output Desk / OCIO chain exactly where OCIORead sits, honestly
+  tagged `Linear Rec.709 (sRGB)` (not ACEScg).
+- **EXIF-driven intrinsics** — focal length + a new camera-body sensor
+  registry (`reference_data/camera_bodies.json`, ~34 Nikon/Canon/Fujifilm/
+  Sony bodies) flow into both solve nodes via a new `raw_meta` link input;
+  sensor-size falls back EXIF FocalPlane arithmetic → 35mm-equivalent ratio →
+  flagged 36mm assumption, with provenance (`sensor_source`).
+- **EXIF focal now overrides GeoCalib** in `AtlasLearnedSolveFromImage`
+  (new appended `focal_length_mm` widget / wired `raw_meta`): trusted focal
+  replaces the predicted one across the whole metric cascade, gravity stays
+  GeoCalib's; disagreement recorded, warned above 25%.
+- **Lensfun undistortion** (`[raw-lens]` extra) — EXIF lens model → lensfun
+  profile → geometry correction on both outputs; every profile miss is a
+  report status, never an error (Fuji X commonly `no_profile_lens`).
+- 31 new tests (registry/fallback math, focal override, mocked node,
+  opt-in `ATLAS_TEST_RAW_FILE` end-to-end).
+
 ## Unreleased — stale-code cleanout (2026-07-18)
 
 Verified pass over `ATLAS_PROJECT_WIDE_ENGINEERING_REPORT.md` (most of its P0
