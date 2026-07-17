@@ -52,3 +52,24 @@ This is intentional: the MVP does not re-estimate a camera or snap to a named 45
 - Color metadata is recorded but not transformed. ACES/OCIO conversion belongs in the next pass.
 
 Focused tests cover crop bounds, manifest creation, exact-angle preservation, import, and empty-matte rejection.
+
+## Planned: one-button Photoshop launch with OCIO (user request, 2026-07-17)
+
+- **`ATLAS_PHOTOSHOP`** env var → full path to the Photoshop executable —
+  specifically **Photoshop (Beta)**, which carries full OCIO v2 color
+  management, so the ACEScg float round trip stops being a proxy/LDR
+  compromise.
+- **"🎨 Open in Photoshop" button** on the extract node (or the viewport
+  toolbar next to 📐): one click launches Photoshop with the just-written
+  patch. Implementation shape: the existing aiohttp route pattern
+  (`comfy/__init__.py`, like `/atlas/camera_data`) gains a
+  `POST /atlas/open_photoshop` that `subprocess.Popen`s
+  `[ATLAS_PHOTOSHOP, patch_path]` — path-validated to files inside the
+  extraction output dir only.
+- **"Open as OCIO":** write the patch as float EXR (ACEScg) when the OCIO
+  path is available, and launch Photoshop with the `OCIO` env var pointed at
+  the project's ACES config so PS Beta's OCIO pipeline picks it up and the
+  artist paints in managed color — the manifest's `colorspace_intent` then
+  finally matches `colorspace_written`.
+- Import side unchanged: the paste-back contract already carries any bit
+  depth once the EXR writer lands (the planned float step above).
