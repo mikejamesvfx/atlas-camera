@@ -113,9 +113,12 @@ def ui_to_api(ui: dict, oi: dict) -> dict:
                             if i.get("link") is not None
                             and (i.get("type") == want or want == "*")), None)
                 if nxt is None:
-                    raise RuntimeError(
-                        f"bypassed node {sid} ({src['type']}) has no "
-                        f"same-type input to forward for {want}")
+                    # A bypassed SOURCE node (e.g. a bypassed LoadImage) has
+                    # nothing to forward — the real frontend simply DROPS the
+                    # downstream link (an optional input reverts to its
+                    # default; a required one fails /prompt validation, which
+                    # mirrors what the browser does). Match that.
+                    return None
                 link_id = nxt
                 continue
             if mode == 2:
@@ -136,7 +139,11 @@ def ui_to_api(ui: dict, oi: dict) -> dict:
         for inp in n.get("inputs", []):
             if inp.get("link") is None:
                 continue
-            sid, sslot = upstream(inp["link"])
+            resolved = upstream(inp["link"])
+            if resolved is None:      # dropped: bypassed source with no forward
+                inputs.pop(inp["name"], None)
+                continue
+            sid, sslot = resolved
             inputs[inp["name"]] = [str(sid), sslot]
         api[str(n["id"])] = {"class_type": t, "inputs": inputs}
     return api
