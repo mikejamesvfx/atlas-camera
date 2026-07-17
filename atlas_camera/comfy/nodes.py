@@ -3397,6 +3397,224 @@ def _named_view_orbit_delta(
     return float(d_azimuth), float(d_elevation), float(distance_scale)
 
 
+class AtlasExtractAnglePatch:
+    """Write a Photoshop-friendly patch package from an extracted viewport angle.
+
+    This is the MVP bridge for the ``Extract Angle`` control. The incoming
+    ``plate_image`` is normally the viewport's shaded/projection render and
+    ``matte`` is the artist-selected region to repair. The node crops both to
+    one padded rectangle, writes image/matte/depth/normal passes plus a JSON
+    sidecar containing the exact orbit string and source solve, and returns a
+    typed package for :class:`AtlasImportAnglePatch`.
+
+    It deliberately does not invent a new camera: ``patch_exact`` is preserved
+    byte-for-byte so the downstream ``AtlasAddPatchView.exact_view_override``
+    can reconstruct the same pose after Photoshop round-tripping.
+    """
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "ATLAS_PATCH")
+    RETURN_NAMES = ("patch_image", "patch_matte", "manifest_path", "patch_package")
+    FUNCTION = "extract"
+    CATEGORY = "Atlas Camera/Patches"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "plate_image": ("IMAGE",),
+                "matte": ("MASK",),
+                "patch_exact": ("STRING", {"forceInput": True}),
+                "output_dir": ("STRING", {"default": "atlas_exports/angle_patches"}),
+            },
+            "optional": {
+                "depth": ("IMAGE",),
+                "normal": ("IMAGE",),
+                "name": ("STRING", {"default": "angle_patch"}),
+                "padding_px": ("INT", {"default": 128, "min": 0, "max": 2048}),
+                "colorspace": (["ACEScg", "sRGB - Display"], {"default": "ACEScg"}),
+            },
+        }
+
+    def extract(self, solve, plate_image, matte, patch_exact, output_dir,
+                depth=None, normal=None, name="angle_patch", padding_px=128,
+                colorspace="ACEScg"):
+        np = _require_numpy()
+        torch = _require_torch()
+        PILImage = _require_pil()
+        if not patch_exact or not patch_exact.strip():
+            raise ValueError("patch_exact is empty; click Extract Angle before exporting a patch.")
+        if plate_image.ndim != 4 or plate_image.shape[0] < 1:
+            raise ValueError("plate_image must be a non-empty ComfyUI IMAGE batch.")
+        rgb = plate_image[0].detach().cpu().numpy().clip(0.0, 1.0)
+        mask_arr = matte[0].detach().cpu().numpy().clip(0.0, 1.0)
+        if mask_arr.shape != rgb.shape[:2]:
+            raise ValueError("matte dimensions must match plate_image dimensions.")
+        ys, xs = np.where(mask_arr > 1.0 / 255.0)
+        if len(xs) == 0:
+            raise ValueError("matte contains no non-zero pixels; select the Photoshop repair region first.")
+        pad = max(0, int(padding_px))
+        y0, y1 = max(0, int(ys.min()) - pad), min(rgb.shape[0], int(ys.max()) + pad + 1)
+        x0, x1 = max(0, int(xs.min()) - pad), min(rgb.shape[1], int(xs.max()) + pad + 1)
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(name or "angle_patch")).strip("._") or "angle_patch"
+        root = Path(output_dir).expanduser().resolve() / safe_name
+        root.mkdir(parents=True, exist_ok=True)
+
+        def save_rgb(arr, path):
+            PILImage.fromarray((arr * 255.0).clip(0, 255).astype("uint8"), mode="RGB").save(path, format="PNG")
+
+        patch_rgb = rgb[y0:y1, x0:x1]
+        patch_mask = mask_arr[y0:y1, x0:x1]
+        image_path = root / "patch.png"
+        matte_path = root / "patch_matte.png"
+        save_rgb(patch_rgb, image_path)
+        PILImage.fromarray((patch_mask * 255.0).clip(0, 255).astype("uint8"), mode="L").save(matte_path, format="PNG")
+        # The FULL frame is required for reprojection: AtlasAddPatchView's
+        # ProjectionSource samples uv across the whole patch-camera frustum, so
+        # the import node must paste the edited crop back into this frame — a
+        # bare crop fed downstream would stretch across the frustum and
+        # misregister. The crop exists purely as the Photoshop convenience.
+        full_path = root / "plate_full.png"
+        save_rgb(rgb, full_path)
+
+        pass_paths = {"image": str(image_path), "matte": str(matte_path),
+                      "plate_full": str(full_path)}
+        for label, tensor in (("depth", depth), ("normal", normal)):
+            if tensor is not None:
+                arr = tensor[0].detach().cpu().numpy().clip(0.0, 1.0)
+                pass_path = root / f"patch_{label}.png"
+                save_rgb(arr[y0:y1, x0:x1], pass_path)
+                pass_paths[label] = str(pass_path)
+
+        # Camera block only — never the full solve: a layered solve's to_dict()
+        # carries megabytes of base64 plates and would balloon the sidecar.
+        try:
+            camera_dict = solve.camera.to_dict()
+        except Exception:
+            camera_dict = {}
+        from atlas_camera import __version__ as _atlas_version
+        manifest = {
+            "schema": 1,
+            "kind": "atlas_angle_patch",
+            "atlas_version": _atlas_version,
+            "patch_exact": patch_exact.strip(),
+            "source_camera": camera_dict,
+            "crop_bbox_xyxy": [x0, y0, x1, y1],
+            "padding_px": pad,
+            "image_wh": [int(x1 - x0), int(y1 - y0)],
+            "full_wh": [int(rgb.shape[1]), int(rgb.shape[0])],
+            "colorspace_intent": colorspace,
+            "colorspace_written": "sRGB 8-bit PNG (proxy/LDR viewport plate; EXR is the planned float path)",
+            "premultiplied": False,
+            "photoshop_roundtrip": {
+                "edit_image": "patch.png",
+                "preserve_matte": "patch_matte.png",
+                "write_back_as": "patch_edited.png",
+            },
+            "passes": pass_paths,
+        }
+        manifest_path = root / "atlas_angle_patch.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+        package = {"manifest": str(manifest_path), "passes": pass_paths, "patch_exact": patch_exact.strip(), "crop_bbox_xyxy": manifest["crop_bbox_xyxy"]}
+        return (_pil_to_image_tensor(PILImage.fromarray((patch_rgb * 255).astype("uint8"), mode="RGB")),
+                torch.from_numpy(patch_mask.astype("float32")).unsqueeze(0), str(manifest_path), package)
+
+
+class AtlasImportAnglePatch:
+    """Load an edited angle patch, paste it back into the FULL frame, and
+    expose the exact pose for reprojection.
+
+    The extraction crop is a Photoshop convenience only — reprojection needs
+    the full frame, because ``AtlasAddPatchView``'s ProjectionSource samples
+    uv across the whole patch-camera frustum (a bare crop would stretch
+    across the frustum and misregister). This node loads ``plate_full.png``,
+    pastes the edited crop at the manifest's ``crop_bbox_xyxy``, and returns
+    FULL-FRAME image and matte tensors.
+
+    Wire ``patch_image`` into ``AtlasAddPatchView.patch_image`` and
+    ``patch_exact`` into its ``exact_view_override`` input. This keeps the
+    Photoshop edit in the same camera frame that produced the extraction.
+    """
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "ATLAS_PATCH")
+    RETURN_NAMES = ("patch_image", "patch_matte", "patch_exact", "patch_package")
+    FUNCTION = "import_patch"
+    CATEGORY = "Atlas Camera/Patches"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"patch_package": ("ATLAS_PATCH",)},
+            "optional": {
+                "edited_image": ("IMAGE", {"tooltip": "Optional Photoshop-edited CROP (same size as patch.png); otherwise patch.png is loaded."}),
+                "edited_matte": ("MASK", {"tooltip": "Optional edited CROP matte; otherwise patch_matte.png is loaded."}),
+            },
+        }
+
+    def import_patch(self, patch_package, edited_image=None, edited_matte=None):
+        np = _require_numpy()
+        torch = _require_torch()
+        PILImage = _require_pil()
+        if not isinstance(patch_package, dict) or not patch_package.get("manifest"):
+            raise ValueError("patch_package is not an Atlas angle-patch package.")
+        manifest_path = Path(str(patch_package["manifest"])).expanduser().resolve()
+        if not manifest_path.is_file():
+            raise FileNotFoundError(f"Atlas angle-patch manifest not found: {manifest_path}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("kind") != "atlas_angle_patch":
+            raise ValueError("manifest kind is not atlas_angle_patch")
+        passes = manifest.get("passes", {})
+        bbox = manifest.get("crop_bbox_xyxy")
+        if not bbox or len(bbox) != 4:
+            raise ValueError("angle patch manifest has no crop_bbox_xyxy — re-extract with a current Atlas.")
+        x0, y0, x1, y1 = (int(v) for v in bbox)
+
+        full_path = Path(passes.get("plate_full", ""))
+        if not full_path.is_file():
+            raise FileNotFoundError(
+                "plate_full.png missing from the patch package — reprojection "
+                "needs the full frame to paste the edited crop into. "
+                "Re-extract with a current Atlas.")
+        full = np.asarray(PILImage.open(full_path).convert("RGB"), dtype=np.float32) / 255.0
+
+        if edited_image is None:
+            image_path = Path(passes.get("image", ""))
+            if not image_path.is_file():
+                raise FileNotFoundError("No edited_image was supplied and patch.png is missing.")
+            crop = np.asarray(PILImage.open(image_path).convert("RGB"), dtype=np.float32) / 255.0
+        else:
+            crop = edited_image[0].detach().cpu().numpy()[..., :3].clip(0.0, 1.0)
+        want_hw = (y1 - y0, x1 - x0)
+        if crop.shape[:2] != want_hw:
+            raise ValueError(
+                f"edited patch is {crop.shape[1]}x{crop.shape[0]} but the extraction "
+                f"crop was {want_hw[1]}x{want_hw[0]} — Photoshop must not resize the "
+                "canvas (crop/uncrop changes registration).")
+        full[y0:y1, x0:x1] = crop
+        image_tensor = torch.from_numpy(full.astype("float32")).unsqueeze(0)
+
+        full_mask = np.zeros(full.shape[:2], dtype=np.float32)
+        if edited_matte is None:
+            matte_path = Path(passes.get("matte", ""))
+            if not matte_path.is_file():
+                raise FileNotFoundError("No edited_matte was supplied and patch_matte.png is missing.")
+            crop_mask = np.asarray(PILImage.open(matte_path).convert("L"), dtype=np.float32) / 255.0
+        else:
+            crop_mask = edited_matte[0].detach().cpu().numpy().clip(0.0, 1.0)
+        if crop_mask.shape != want_hw:
+            raise ValueError(
+                f"edited matte is {crop_mask.shape[1]}x{crop_mask.shape[0]} but the "
+                f"extraction crop was {want_hw[1]}x{want_hw[0]}.")
+        full_mask[y0:y1, x0:x1] = crop_mask
+        matte_tensor = torch.from_numpy(full_mask).unsqueeze(0)
+
+        exact = str(manifest.get("patch_exact", "")).strip()
+        if not exact:
+            raise ValueError("angle patch manifest has no patch_exact camera pose.")
+        package = dict(patch_package)
+        package["manifest_data"] = manifest
+        package["imported"] = True
+        return image_tensor, matte_tensor, exact, package
+
+
 class AtlasAddPatchView:
     """Add an AI novel-view "patch" to fill areas the primary camera can't see.
 
@@ -7823,11 +8041,15 @@ ATLAS_EXPERIMENTAL_DEFAULT = "0"
 EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasPredictHiddenGeometry": AtlasPredictHiddenGeometry,
     "AtlasRenderFix": AtlasRenderFix,
+    "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
+    "AtlasImportAnglePatch": AtlasImportAnglePatch,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasPredictHiddenGeometry": "Atlas Predict Hidden Geometry 🔬 (research)",
     "AtlasRenderFix": "Atlas Render Fix 🔬 (experimental)",
+    "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
+    "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
 }
 
 
