@@ -1,8 +1,8 @@
 {
  "id": "atlas_canonical_quickstart_ghosttown_workflow-canonical",
  "revision": 0,
- "last_node_id": 48,
- "last_link_id": 49,
+ "last_node_id": 52,
+ "last_link_id": 50,
  "nodes": [
   {
    "id": 1,
@@ -2293,53 +2293,6 @@
    ]
   },
   {
-   "id": 41,
-   "type": "AtlasSemanticMask",
-   "pos": [
-    2920,
-    20
-   ],
-   "size": [
-    340,
-    130
-   ],
-   "flags": {},
-   "order": 0,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 40
-    }
-   ],
-   "outputs": [
-    {
-     "name": "mask",
-     "type": "MASK",
-     "links": [
-      41
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "title": "\ud83e\udde9 car + sign matte (SegFormer, deterministic)",
-   "properties": {
-    "Node name for S&R": "AtlasSemanticMask"
-   },
-   "widgets_values": [
-    "car, signboard",
-    "nvidia/segformer-b0-finetuned-ade-512-512",
-    "auto"
-   ]
-  },
-  {
    "id": 42,
    "type": "GrowMask",
    "pos": [
@@ -2375,7 +2328,7 @@
     "Node name for S&R": "GrowMask"
    },
    "widgets_values": [
-    12,
+    16,
     true
    ]
   },
@@ -2700,6 +2653,170 @@
    ],
    "color": "#432",
    "bgcolor": "#653"
+  },
+  {
+   "id": 49,
+   "type": "SAM3Segment",
+   "pos": [
+    2920,
+    20
+   ],
+   "size": [
+    360,
+    320
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 40
+    },
+    {
+     "name": "background_color",
+     "type": "COLORCODE",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [
+      41
+     ],
+     "slot_index": 1
+    },
+    {
+     "name": "MASK_IMAGE",
+     "type": "MASK_IMAGE",
+     "links": [],
+     "slot_index": 2
+    }
+   ],
+   "title": "\ud83e\udde9 SAM3 \u2014 car + shadow + sign matte",
+   "properties": {
+    "Node name for S&R": "SAM3Segment"
+   },
+   "widgets_values": [
+    "rusty car with its shadow and fallen sign",
+    "Merged",
+    0.5,
+    0,
+    0,
+    0,
+    0,
+    "Auto",
+    false,
+    false,
+    "Alpha"
+   ]
+  },
+  {
+   "id": 50,
+   "type": "LoadImage",
+   "pos": [
+    2920,
+    560
+   ],
+   "size": [
+    300,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 4,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [
+      50
+     ],
+     "slot_index": 1
+    }
+   ],
+   "title": "\ud83c\udfa8 artist matte override (PNG with alpha)",
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "ghosttown.jpg",
+    "image"
+   ]
+  },
+  {
+   "id": 51,
+   "type": "InvertMask",
+   "pos": [
+    3260,
+    620
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 4,
+   "inputs": [
+    {
+     "name": "mask",
+     "type": "MASK",
+     "link": 50
+    }
+   ],
+   "outputs": [
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "title": "alpha -> matte",
+   "properties": {
+    "Node name for S&R": "InvertMask"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 52,
+   "type": "Note",
+   "pos": [
+    3500,
+    560
+   ],
+   "size": [
+    340,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "\ud83c\udfa8 ARTIST MATTE OVERRIDE (parked):\nThe painted cleanplate's own region IS the fg\nmatte \u2014 one Photoshop session gives you both.\nSave the matte as a PNG with alpha, point this\nLoadImage at it, un-bypass both nodes, then wire\nthe InvertMask output into the FG OCCLUDER\nlayer's layer_matte (replacing the SAM3 chain).\n\nSAM3 with the shadow-inclusive prompt is the\nautomatic default; the artist matte is the\nhero-shot override."
+   ],
+   "color": "#432",
+   "bgcolor": "#653"
   }
  ],
  "links": [
@@ -2995,14 +3112,14 @@
    40,
    38,
    0,
-   41,
+   49,
    0,
    "IMAGE"
   ],
   [
    41,
-   41,
-   0,
+   49,
+   1,
    42,
    0,
    "MASK"
@@ -3070,6 +3187,14 @@
    47,
    1,
    "ATLAS_DEPTH_MAP"
+  ],
+  [
+   50,
+   50,
+   1,
+   51,
+   0,
+   "MASK"
   ]
  ],
  "groups": [
