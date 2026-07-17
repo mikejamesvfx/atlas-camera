@@ -144,6 +144,44 @@ def _save_image_tensor_to_tmp(image_tensor) -> str:
         return f.name
 
 
+def _resolve_raw_hints(focal_widget_mm, sensor_widget_mm, raw_meta):
+    """Resolve (focal_hint, sensor_w, sensor_h) from widget values + an
+    optionally wired ATLAS_RAW_META (AtlasLoadRAW's RawImportResult).
+
+    Precedence: an explicit widget value (>0 focal / non-default sensor)
+    always beats the wired metadata, so an artist override never fights
+    the EXIF. sensor_height flows only from raw_meta (no widget exists).
+    """
+    focal_hint = float(focal_widget_mm) if focal_widget_mm and focal_widget_mm > 0 else None
+    sensor_w = float(sensor_widget_mm)
+    sensor_h = None
+    if raw_meta is not None:
+        if focal_hint is None and getattr(raw_meta, "focal_length_mm", None):
+            focal_hint = float(raw_meta.focal_length_mm)
+        if sensor_w == 36.0 and getattr(raw_meta, "sensor_width_mm", None):
+            sensor_w = float(raw_meta.sensor_width_mm)
+            if getattr(raw_meta, "sensor_height_mm", None):
+                sensor_h = float(raw_meta.sensor_height_mm)
+    return focal_hint, sensor_w, sensor_h
+
+
+def _stamp_raw_provenance(solve, raw_meta):
+    """Record where a RAW import's hints came from on the solve (in place)."""
+    if raw_meta is None:
+        return
+    solve.debug_metadata["raw_import"] = {
+        "source_path": getattr(raw_meta, "source_path", None),
+        "camera_make": getattr(raw_meta, "camera_make", None),
+        "camera_model": getattr(raw_meta, "camera_model", None),
+        "lens_model": getattr(raw_meta, "lens_model", None),
+        "focal_length_mm": getattr(raw_meta, "focal_length_mm", None),
+        "sensor_width_mm": getattr(raw_meta, "sensor_width_mm", None),
+        "sensor_height_mm": getattr(raw_meta, "sensor_height_mm", None),
+        "sensor_source": getattr(raw_meta, "sensor_source", None),
+        "undistort_status": getattr(raw_meta, "undistort_status", None),
+    }
+
+
 def _extend_edge_colors(rgb, valid, px):
     """Deterministic edge-extend (the classic Nuke premult->dilate trick):
     push ``valid`` pixels' colors outward into the invalid region by ``px``
@@ -842,24 +880,34 @@ class AtlasSolveFromImage:
             },
             "optional": {
                 "focal_length_mm": ("FLOAT", {"default": 0.0, "min": 0.0,
-                                              "tooltip": "0 = auto-detect or EXIF"}),
+                    "tooltip": "0 = auto-detect, or EXIF via a wired raw_meta"}),
                 "sensor_width_mm": ("FLOAT", {"default": 36.0, "min": 0.01}),
                 "detect_vanishing_points": ("BOOLEAN", {"default": True,
                     "tooltip": "Run line/VP detection. Off = metadata-only solve "
                                "(no fx, cam_y=0 -> black depth/blockout)."}),
+                # Link input (not a widget — saved-workflow-safe): AtlasLoadRAW's
+                # metadata; supplies EXIF focal + measured sensor unless the
+                # widgets above are explicitly set.
+                "raw_meta": ("ATLAS_RAW_META",),
             },
         }
 
     def solve(self, image, focal_length_mm=0.0, sensor_width_mm=36.0,
-              detect_vanishing_points=True):
+              detect_vanishing_points=True, raw_meta=None):
         tmp = _save_image_tensor_to_tmp(image)
         try:
+            focal_hint, sensor_w, sensor_h = _resolve_raw_hints(
+                focal_length_mm, sensor_width_mm, raw_meta)
             hints: dict[str, Any] = {}
-            if focal_length_mm and focal_length_mm > 0:
-                hints["focal_length_mm"] = focal_length_mm
-                hints["sensor_width_mm"] = sensor_width_mm
-            return (solve_still_image(tmp, intrinsics_hint=hints or None,
-                                      detect_vanishing_points=detect_vanishing_points),)
+            if focal_hint:
+                hints["focal_length_mm"] = focal_hint
+                hints["sensor_width_mm"] = sensor_w
+                if sensor_h:
+                    hints["sensor_height_mm"] = sensor_h
+            solve = solve_still_image(tmp, intrinsics_hint=hints or None,
+                                      detect_vanishing_points=detect_vanishing_points)
+            _stamp_raw_provenance(solve, raw_meta)
+            return (solve,)
         finally:
             os.unlink(tmp)
 
@@ -933,26 +981,40 @@ class AtlasLearnedSolveFromImage:
                 "weights": (["pinhole", "simple_radial"], {"default": "pinhole",
                     "tooltip": "pinhole = no lens distortion (best for clean AI renders)."}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+                # APPENDED 2026-07-18 (positional widget rule: new widgets go last).
+                "focal_length_mm": ("FLOAT", {"default": 0.0, "min": 0.0,
+                    "tooltip": "0 = GeoCalib predicts the focal. >0 (or a wired AtlasLoadRAW "
+                               "raw_meta) = trusted focal (e.g. EXIF) wins; GeoCalib still "
+                               "supplies gravity/roll."}),
+                # Link input (not a widget — saved-workflow-safe).
+                "raw_meta": ("ATLAS_RAW_META",),
             },
         }
 
     def solve(self, image, height_mode="measure_from_depth", camera_height_m=1.6,
               depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-              sensor_width_mm=36.0, weights="pinhole", device="auto"):
+              sensor_width_mm=36.0, weights="pinhole", device="auto",
+              focal_length_mm=0.0, raw_meta=None):
         from atlas_camera.core.solver import solve_still_image_learned
+        focal_hint, sensor_w, sensor_h = _resolve_raw_hints(
+            focal_length_mm, sensor_width_mm, raw_meta)
         tmp = _save_image_tensor_to_tmp(image)
         try:
             h, w = int(image.shape[1]), int(image.shape[2])
             camera_height = "auto" if height_mode == "measure_from_depth" else camera_height_m
-            return (solve_still_image_learned(
+            solve = solve_still_image_learned(
                 tmp,
                 image_size=(w, h),
                 camera_height=camera_height,
-                sensor_width_mm=sensor_width_mm,
+                sensor_width_mm=sensor_w,
+                sensor_height_mm=sensor_h,
+                focal_length_mm_hint=focal_hint,
                 weights=weights,
                 depth_model=depth_model,
                 device=None if device == "auto" else device,
-            ),)
+            )
+            _stamp_raw_provenance(solve, raw_meta)
+            return (solve,)
         finally:
             os.unlink(tmp)
 

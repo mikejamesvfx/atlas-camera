@@ -510,6 +510,8 @@ def solve_from_learned_prior(
     image_size: tuple[int, int] | None = None,
     camera_height: float = 1.6,
     sensor_width_mm: float = 36.0,
+    sensor_height_mm: float | None = None,
+    focal_length_mm_hint: float | None = None,
     seed: int = 0,
 ) -> AtlasSolve:
     """Build an :class:`AtlasSolve` from a learned :class:`CameraPrior`.
@@ -517,18 +519,36 @@ def solve_from_learned_prior(
     Pure numpy — takes the plain-Python prior so `atlas_camera.core` stays free of
     torch. The prior supplies focal + gravity; camera height sets metric scale
     (same convention as the vanishing-point path).
+
+    ``focal_length_mm_hint`` (e.g. trusted EXIF from a RAW import) REPLACES the
+    prior's focal estimate for fx/fy while the rotation stays GeoCalib's.
+    GeoCalib jointly estimates focal and gravity, so reusing its up-vector with
+    a different focal is an approximation — a good one when EXIF ≈ predicted
+    (typical), and EXIF is ground truth for fx/fy; the predicted-vs-hint
+    disagreement is recorded in debug_metadata so a horizon/pitch residual
+    stays explainable.
     """
     np = _require_numpy()
     width, height = image_size or (prior.image_width, prior.image_height)
 
-    fx_px = prior.focal_px * (width / max(prior.image_width, 1))
-    fy_px = fx_px
-    focal_mm = fx_px * sensor_width_mm / max(width, 1)
+    predicted_fx_px = prior.focal_px * (width / max(prior.image_width, 1))
+    if focal_length_mm_hint is not None and focal_length_mm_hint > 0:
+        fx_px = focal_length_mm_hint / sensor_width_mm * width
+        fy_px = (focal_length_mm_hint / sensor_height_mm * height
+                 if sensor_height_mm else fx_px)
+        focal_mm = float(focal_length_mm_hint)
+        focal_source = "known_focal_length_hint"
+    else:
+        fx_px = predicted_fx_px
+        fy_px = fx_px
+        focal_mm = fx_px * sensor_width_mm / max(width, 1)
+        focal_source = "learned_geocalib"
     intrinsics = build_intrinsics(
         image_width=width,
         image_height=height,
         focal_length_mm=focal_mm,
         sensor_width_mm=sensor_width_mm,
+        sensor_height_mm=sensor_height_mm,
         principal_point_px=(width / 2.0, height / 2.0),
         fx_px=fx_px,
         fy_px=fy_px,
@@ -557,6 +577,22 @@ def solve_from_learned_prior(
     )
 
     global_c, orient_c, focal_c = _learned_prior_confidence(prior)
+    warnings: list[str] = []
+    debug_extra: dict[str, Any] = {"focal_source": focal_source}
+    if focal_source == "known_focal_length_hint":
+        # A trusted (EXIF) focal is measured, not inferred — lift the focal
+        # confidence component and recombine, mirroring the VP path's
+        # known_focal treatment.
+        focal_c = max(focal_c, 0.9)
+        global_c = 0.5 * orient_c + 0.5 * focal_c
+        debug_extra["learned_focal_px_predicted"] = float(predicted_fx_px)
+        disagreement = abs(predicted_fx_px - fx_px) / max(fx_px, 1e-6)
+        debug_extra["focal_disagreement"] = float(disagreement)
+        if disagreement > 0.25:
+            warnings.append(
+                f"GeoCalib's predicted focal differs from the EXIF hint by "
+                f"{disagreement:.0%} — gravity is retained from GeoCalib's "
+                f"joint estimate, so expect a horizon/pitch residual.")
     scene = create_default_projection_scene()
     scene.debug_metadata["solve_mode"] = "learned_prior"
 
@@ -570,7 +606,7 @@ def solve_from_learned_prior(
                 horizon=orient_c,
                 focal=focal_c,
                 extrinsics=orient_c,
-                sensor=0.75,
+                sensor=0.9 if focal_source == "known_focal_length_hint" else 0.75,
             ),
             seed=seed,
         ),
@@ -580,7 +616,7 @@ def solve_from_learned_prior(
         horizon_line=horizon_line,
         confidence=global_c,
         source_method=f"automatic_still_image_learned_prior:{prior.source_model}",
-        known_intrinsics_used=False,
+        known_intrinsics_used=focal_source == "known_focal_length_hint",
         projection_scene=scene,
         debug_metadata={
             "solver_status": "learned-prior solve",
@@ -589,7 +625,8 @@ def solve_from_learned_prior(
             "pitch_deg": float(prior.pitch_deg),
             "seed": seed,
             "notes": [],
-            "warnings": [],
+            "warnings": warnings,
+            **debug_extra,
         },
     )
 
@@ -979,6 +1016,8 @@ def solve_still_image_learned(
     camera_height: float | str = 1.6,
     scale_references: list[dict[str, Any]] | None = None,
     sensor_width_mm: float = 36.0,
+    sensor_height_mm: float | None = None,
+    focal_length_mm_hint: float | None = None,
     device: str | None = None,
     weights: str = "pinhole",
     depth_model: str | None = None,
@@ -1008,8 +1047,17 @@ def solve_still_image_learned(
     prior = estimate_camera_prior(image_path, device=device, weights=weights)
 
     width, height = image_size or (prior.image_width, prior.image_height)
-    fx = prior.focal_px * (width / max(prior.image_width, 1))
-    fy = fx
+    use_focal_hint = focal_length_mm_hint is not None and focal_length_mm_hint > 0
+    if use_focal_hint:
+        # Trusted (EXIF) focal replaces GeoCalib's estimate EVERYWHERE the
+        # metric-scale cascade looks — reference scale, ground fit, horizon —
+        # so the cascade and the final solve agree on one focal.
+        fx = focal_length_mm_hint / sensor_width_mm * width
+        fy = (focal_length_mm_hint / sensor_height_mm * height
+              if sensor_height_mm else fx)
+    else:
+        fx = prior.focal_px * (width / max(prior.image_width, 1))
+        fy = fx
     rotation = np.asarray(_rotation_from_up_vector(prior.up_cam))
 
     measure_height = isinstance(camera_height, str) and camera_height.lower() in (
@@ -1041,9 +1089,10 @@ def solve_still_image_learned(
 
         depth_result = estimate_depth(
             image_path, model_id=depth_model or DEFAULT_METRIC_OUTDOOR, device=device,
-            # prior.focal_px is at the prior's native image size — the resolution
+            # The focal must be at the prior's native image size — the resolution
             # estimate_depth itself opens — not the resized `fx` local above.
-            focal_px=prior.focal_px,
+            focal_px=(focal_length_mm_hint / sensor_width_mm * prior.image_width
+                      if use_focal_hint else prior.focal_px),
         )
         depth_map = depth_result.depth
         if depth_map.shape != (height, width):
@@ -1065,6 +1114,8 @@ def solve_still_image_learned(
         image_size=image_size,
         camera_height=resolved_height,
         sensor_width_mm=sensor_width_mm,
+        sensor_height_mm=sensor_height_mm,
+        focal_length_mm_hint=focal_length_mm_hint,
         seed=seed,
     )
 
