@@ -7605,6 +7605,117 @@ class AtlasCleanPlateLayer:
         return (out, hole_t, ext_t)
 
 
+class AtlasCleanPlateStack:
+    """🧽 Up to FOUR artist-painted cleanplates + alphas → layered scene.
+
+    The multi-slot cleanplate injection port: the artist separates the plate
+    in Photoshop (e.g. sky / mountains / buildings / dirt road), saves each
+    stratum as a full-frame plate plus an alpha matte, and wires each pair
+    into a slot. Slot 1 is the FARTHEST stratum, slot 4 the nearest —
+    priorities are assigned farthest-highest (15/10/5/0, the seam doctrine),
+    and every used slot except the NEAREST gets `edge_extend_px` smear while
+    the nearest keeps a clean cut (the DMP seam rule, baked in).
+
+    Pure composition over :class:`AtlasCleanPlateLayer` (its capability
+    freeze is respected — this node adds no math): per slot the matte is
+    grown by `grow_px`, its inverse becomes the geometry `exclude_mask`
+    (mask-membership, the X-ray layer pattern) and the raw matte becomes the
+    paint `layer_matte`. Slots missing a plate OR a matte — or with an empty
+    matte — are skipped and named in the report, never an error. With no
+    complete slot the input solve passes through untouched.
+
+    Tip: save each separation as a PNG with alpha and wire ONE LoadImage per
+    slot — IMAGE → plate_N and MASK → matte_N. ComfyUI's LoadImage MASK
+    output marks TRANSPARENT pixels, so flip `mattes_are_transparency` ON
+    for that wiring (or pre-invert with InvertMask).
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "stack"
+    CATEGORY = "Atlas Camera"
+
+    _PRIORITIES = (15.0, 10.0, 5.0, 0.0)   # slot 1..4, farthest-highest
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        opt = {}
+        defaults_name = ("far_sky", "background", "midground", "foreground")
+        defaults_geo = ("card", "relief", "relief", "relief")
+        for i in range(1, 5):
+            opt[f"plate_{i}"] = ("IMAGE",)
+            opt[f"matte_{i}"] = ("MASK",)
+        for i in range(1, 5):
+            opt[f"name_{i}"] = ("STRING", {"default": defaults_name[i - 1]})
+            opt[f"geometry_{i}"] = (["relief", "card", "ground"],
+                                    {"default": defaults_geo[i - 1]})
+        opt["grow_px"] = ("INT", {"default": 12, "min": 0, "max": 256,
+                                  "tooltip": "matte safety grow before the geometry cut"})
+        opt["edge_extend_px"] = ("INT", {"default": 24, "min": 0, "max": 256,
+                                         "tooltip": "smear on the BEHIND slots; the nearest used slot always stays a clean cut"})
+        opt["relief_grid"] = ("INT", {"default": 384, "min": 16, "max": 4096})
+        opt["depth_edge_rel"] = ("FLOAT", {"default": 1.5, "min": 0.05, "max": 8.0, "step": 0.05})
+        opt["mattes_are_transparency"] = ("BOOLEAN", {"default": False,
+                                          "tooltip": "ON when mattes come straight from LoadImage's MASK output (which marks TRANSPARENT pixels) — inverts them"})
+        return {"required": {"solve": ("ATLAS_SOLVE",), "depth": ("ATLAS_DEPTH_MAP",)},
+                "optional": opt}
+
+    def stack(self, solve, depth, grow_px=12, edge_extend_px=24, relief_grid=384,
+              depth_edge_rel=1.5, mattes_are_transparency=False, **slots):
+        torch = _require_torch()
+        import torch.nn.functional as F
+
+        def grown(matte):
+            if grow_px <= 0:
+                return matte
+            k = 2 * int(grow_px) + 1
+            return F.max_pool2d(matte.unsqueeze(1), kernel_size=k, stride=1,
+                                padding=int(grow_px)).squeeze(1)
+
+        used = []
+        report = []
+        for i in range(1, 5):
+            plate = slots.get(f"plate_{i}")
+            matte = slots.get(f"matte_{i}")
+            if plate is None and matte is None:
+                continue
+            if plate is None or matte is None:
+                report.append(f"slot {i}: SKIPPED — needs BOTH plate_{i} and matte_{i}")
+                continue
+            if mattes_are_transparency:
+                matte = 1.0 - matte
+            if float(matte.max()) <= 0.0:
+                report.append(f"slot {i}: SKIPPED — matte is empty")
+                continue
+            used.append((i, plate, matte))
+
+        if not used:
+            report.append("no complete plate+matte slots — solve passes through untouched")
+            return (copy.deepcopy(solve), "\n".join(report))
+
+        nearest_i = used[-1][0]
+        cur = solve
+        layer_node = AtlasCleanPlateLayer()
+        for i, plate, matte in used:
+            g = grown(matte)
+            exclude = 1.0 - g
+            smear = 0 if i == nearest_i else int(edge_extend_px)
+            name = slots.get(f"name_{i}") or f"cleanplate_{i}"
+            geometry = slots.get(f"geometry_{i}") or "relief"
+            cur = layer_node.add_layer(
+                cur, depth, plate,
+                near_pct=0.0, far_pct=1.0,
+                name=name, priority=self._PRIORITIES[i - 1],
+                relief_grid=int(relief_grid), depth_edge_rel=float(depth_edge_rel),
+                exclude_mask=exclude, fill_occluded=False,
+                embed_matte=True, layer_matte=matte,
+                edge_extend_px=smear, band_geometry=geometry,
+            )[0]
+            report.append(f"slot {i}: '{name}' added — geometry={geometry} "
+                          f"priority={self._PRIORITIES[i - 1]:g} edge_extend={smear}"
+                          + ("  (nearest: clean cut)" if i == nearest_i else ""))
+        return (cur, "\n".join(report))
+
+
 class AtlasSkyDomeLayer:
     """Same-camera sky clean-plate, projected onto a simple constant-depth
     card instead of a depth-following relief mesh — the standard DMP move
@@ -7947,6 +8058,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasBoundedBand":           AtlasBoundedBand,
     "AtlasDepthLayerMask":        AtlasDepthLayerMask,
     "AtlasCleanPlateLayer":       AtlasCleanPlateLayer,
+    "AtlasCleanPlateStack":       AtlasCleanPlateStack,
     "AtlasSkyDomeLayer":          AtlasSkyDomeLayer,
     "AtlasInpaintCrop":           AtlasInpaintCrop,
     "AtlasInpaintStitch":         AtlasInpaintStitch,
@@ -8018,6 +8130,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasBoundedBand":           "Atlas Bounded Band 📏",
     "AtlasDepthLayerMask":        "Atlas Depth Layer Mask 🎭",
     "AtlasCleanPlateLayer":       "Atlas Clean Plate Layer 🖼",
+    "AtlasCleanPlateStack":       "Atlas Clean Plate Stack 🧽 (up to 4 plates + alphas)",
     "AtlasSkyDomeLayer":          "Atlas Sky Dome Layer ☁",
     "AtlasInpaintCrop":           "Atlas Inpaint Crop ✂",
     "AtlasInpaintStitch":         "Atlas Inpaint Stitch ✂",

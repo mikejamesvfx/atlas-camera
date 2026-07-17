@@ -1,8 +1,8 @@
 {
  "id": "atlas_canonical_quickstart_ghosttown_workflow-canonical",
  "revision": 0,
- "last_node_id": 46,
- "last_link_id": 47,
+ "last_node_id": 48,
+ "last_link_id": 49,
  "nodes": [
   {
    "id": 1,
@@ -400,7 +400,7 @@
      "type": "ATLAS_SOLVE",
      "links": [
       43,
-      44
+      48
      ],
      "slot_index": 0
     }
@@ -2410,7 +2410,8 @@
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      45
+      45,
+      49
      ],
      "slot_index": 0
     }
@@ -2574,6 +2575,131 @@
    ],
    "color": "#232",
    "bgcolor": "#353"
+  },
+  {
+   "id": 47,
+   "type": "AtlasCleanPlateStack",
+   "pos": [
+    3860,
+    20
+   ],
+   "size": [
+    420,
+    640
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 48
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 49
+    },
+    {
+     "name": "plate_1",
+     "type": "IMAGE",
+     "link": null
+    },
+    {
+     "name": "matte_1",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "plate_2",
+     "type": "IMAGE",
+     "link": null
+    },
+    {
+     "name": "matte_2",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "plate_3",
+     "type": "IMAGE",
+     "link": null
+    },
+    {
+     "name": "matte_3",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "plate_4",
+     "type": "IMAGE",
+     "link": null
+    },
+    {
+     "name": "matte_4",
+     "type": "MASK",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      44
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "title": "\ud83e\uddfd CLEANPLATE STACK \u2014 up to 4 painted plates + alphas (optional)",
+   "properties": {
+    "Node name for S&R": "AtlasCleanPlateStack"
+   },
+   "widgets_values": [
+    "far_sky",
+    "card",
+    "background",
+    "relief",
+    "midground",
+    "relief",
+    "foreground",
+    "relief",
+    12,
+    24,
+    384,
+    1.5,
+    false
+   ]
+  },
+  {
+   "id": 48,
+   "type": "Note",
+   "pos": [
+    3860,
+    700
+   ],
+   "size": [
+    420,
+    330
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "\ud83e\uddfd FULL SEPARATION (optional, artist's choice):\npaint the plate into up to FOUR strata in Photoshop \u2014\ne.g. sky / mountains / buildings / dirt road \u2014 each a\nfull-frame plate + alpha. Save each as PNG-with-alpha\nand wire ONE LoadImage per slot:\n   IMAGE -> plate_N,  MASK -> matte_N\nthen turn mattes_are_transparency ON (LoadImage's MASK\nmarks transparent pixels).\n\nSlot 1 = FARTHEST stratum, slot 4 = nearest. Priorities\nare farthest-highest automatically, behind slots get the\nedge smear, the nearest keeps a clean cut (seam doctrine\nbaked in). Unwired slots are skipped; with none wired the\nsolve passes through untouched \u2014 as shipped."
+   ],
+   "color": "#432",
+   "bgcolor": "#653"
   }
  ],
  "links": [
@@ -2899,7 +3025,7 @@
   ],
   [
    44,
-   4,
+   47,
    0,
    44,
    0,
@@ -2928,6 +3054,22 @@
    44,
    5,
    "MASK"
+  ],
+  [
+   48,
+   4,
+   0,
+   47,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   49,
+   43,
+   0,
+   47,
+   1,
+   "ATLAS_DEPTH_MAP"
   ]
  ],
  "groups": [
@@ -2992,11 +3134,11 @@
    "flags": {}
   },
   {
-   "title": "0b \u00b7 \ud83e\uddfd FG OCCLUDER LAYER \u2014 original pixels over the cleanplate base",
+   "title": "0b \u00b7 \ud83e\uddfd FG OCCLUDER + CLEANPLATE STACK \u2014 original pixels over painted strata",
    "bounding": [
     2620,
     -40,
-    1180,
+    2480,
     700
    ],
    "color": "#355",
