@@ -79,6 +79,23 @@ vision = [
 usd = [
     "usd-core>=22.11",
 ]
+# Camera RAW input (AtlasLoadRAW 📷): rawpy bundles libraw (NEF/CR2/CR3/RAF/
+# ARW incl. X-Trans). opencv pinned <5 — the 5.x wheels dropped the EXR codec
+# the linear-sidecar write depends on (same constraint as the OCIO path; also
+# needs OPENCV_IO_ENABLE_OPENEXR=1 set before python starts).
+raw = [
+    "numpy>=1.24",
+    "pillow>=10",
+    "rawpy>=0.19",
+    "exifread>=3.0",
+    "opencv-python>=4.8,<5",
+]
+# Lensfun geometry correction for AtlasLoadRAW's undistort toggle. A separate
+# extra deliberately: lensfunpy wheels can lag new Python/Windows releases,
+# and RAW decode/metadata must keep working without it.
+raw-lens = [
+    "lensfunpy>=1.12",
+]
 # The Atlas MCP server (python -m atlas_camera.mcp) — a thin stdio server
 # exposing a running ComfyUI to MCP-capable assistants. Stdlib + the mcp SDK
 # only; never imports torch/numpy (ComfyUI stays the execution engine).

@@ -862,6 +862,144 @@ class AtlasAttachSourcePlate:
         return (_clone_solve_with_metadata(solve, source_plate=plate_ref),)
 
 
+class AtlasLoadRAW:
+    """📷 Camera RAW loader (NEF / CR2 / CR3 / RAF / ARW) — [raw] extra.
+
+    One node replaces the ACR round-trip: rawpy demosaic -> IMAGE tensor for
+    solve/preview, EXIF focal + camera-model->sensor lookup -> `raw_meta`
+    (wire into a solve node's raw_meta input so the solve stops guessing
+    intrinsics), optional lensfun undistort ([raw-lens]), and a scene-linear
+    EXR sidecar + ATLAS_PLATE_REF so RAW slots into the OCIO Output Desk path
+    exactly where OCIORead does. The EXR and the tensor share one demosaic
+    and one undistort grid — geometrically identical by construction.
+    """
+
+    RETURN_TYPES = ("IMAGE", "ATLAS_PLATE_REF", "ATLAS_RAW_META", "FLOAT", "FLOAT", "STRING")
+    RETURN_NAMES = ("image", "plate_ref", "raw_meta", "focal_length_mm",
+                    "sensor_width_mm", "report")
+    FUNCTION = "load"
+    CATEGORY = "Atlas Camera/Color"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "file_path": ("STRING", {"default": "",
+                    "tooltip": "Path to a camera RAW file (.nef .cr2 .cr3 .raf .arw .dng)."}),
+            },
+            "optional": {
+                # Widget order below is FROZEN (positional serialization) —
+                # new widgets append at the end only.
+                "undistort": ("BOOLEAN", {"default": True,
+                    "tooltip": "Lensfun geometry correction from the EXIF lens model "
+                               "([raw-lens] extra). Skipped with a report line when no "
+                               "profile matches (common for Fuji X — in-body corrections)."}),
+                "half_size": ("BOOLEAN", {"default": False,
+                    "tooltip": "Half-resolution demosaic for fast iteration on 36-100MP files."}),
+                "white_balance": (["camera", "auto"], {"default": "camera"}),
+                "exposure_ev": ("FLOAT", {"default": 0.0, "min": -6.0, "max": 6.0,
+                                          "step": 0.1}),
+                "write_exr": ("BOOLEAN", {"default": True,
+                    "tooltip": "Write a scene-linear EXR sidecar and reference it in "
+                               "plate_ref (needs opencv 4.x + OPENCV_IO_ENABLE_OPENEXR=1 "
+                               "set before ComfyUI starts — same constraint as the OCIO "
+                               "path). On failure the plate_ref degrades to proxy."}),
+                "output_dir": ("STRING", {"default": "atlas_exports/raw_plates"}),
+                "colorspace": ("STRING", {"default": "Linear Rec.709 (sRGB)",
+                    "tooltip": "Colorspace TAG for the sidecar. rawpy's linear output has "
+                               "sRGB/Rec.709 primaries — NOT ACEScg; convert downstream "
+                               "via OCIO. Retag only if your config names it differently."}),
+            },
+        }
+
+    @classmethod
+    def IS_CHANGED(cls, file_path, **kwargs):
+        try:
+            stat = os.stat(str(file_path))
+            return f"{file_path}:{stat.st_mtime_ns}:{stat.st_size}:{sorted(kwargs.items())}"
+        except OSError:
+            return f"{file_path}:missing:{sorted(kwargs.items())}"
+
+    def load(self, file_path, undistort=True, half_size=False, white_balance="camera",
+             exposure_ev=0.0, write_exr=True, output_dir="atlas_exports/raw_plates",
+             colorspace="Linear Rec.709 (sRGB)"):
+        np = _require_numpy()
+        torch = _require_torch()
+        from atlas_camera.core.schema import AtlasPlateRef
+        try:
+            from atlas_camera.raw import import_raw
+        except ImportError as exc:
+            raise RuntimeError(
+                "AtlasLoadRAW requires the [raw] extra. "
+                "Install with: pip install -e .[raw]") from exc
+
+        path = str(file_path or "").strip()
+        if not path or not Path(path).is_file():
+            raise RuntimeError(f"AtlasLoadRAW: RAW file not found: {path!r}")
+
+        result = import_raw(path, undistort=bool(undistort),
+                            half_size=bool(half_size),
+                            white_balance=white_balance,
+                            exposure_ev=float(exposure_ev))
+
+        image = torch.from_numpy(
+            np.ascontiguousarray(result.display_srgb)).unsqueeze(0)
+
+        exr_path, exr_warning = (None, None)
+        if write_exr:
+            exr_path, exr_warning = self._write_exr_sidecar(
+                result.linear_rgb, path, output_dir)
+
+        report_lines = result.summary_lines()
+        if exr_path:
+            report_lines.append(f"linear EXR: {exr_path} ({colorspace})")
+        elif exr_warning:
+            report_lines.append(exr_warning)
+
+        plate_ref = AtlasPlateRef(
+            image_path=exr_path,
+            preview_b64=_image_tensor_to_preview_b64(image, quality=85),
+            colorspace=colorspace or "Linear Rec.709 (sRGB)",
+            bit_depth="16f" if exr_path else "8-bit/proxy",
+            role="source",
+            is_proxy=exr_path is None,
+            metadata={
+                "registered_from": "AtlasLoadRAW",
+                "raw_source": path,
+                "camera_model": result.camera_model,
+                "undistort_status": result.undistort_status,
+            },
+        )
+        return (image, plate_ref, result,
+                float(result.focal_length_mm or 0.0),
+                float(result.sensor_width_mm or 36.0),
+                "\n".join(report_lines))
+
+    @staticmethod
+    def _write_exr_sidecar(linear_rgb, raw_path, output_dir):
+        """Write the scene-linear half-float EXR. Returns (path, warning)."""
+        try:
+            import cv2
+        except ImportError:
+            return None, ("EXR sidecar skipped: opencv-python missing "
+                          "(pip install -e .[raw]).")
+        out_dir = Path(str(output_dir or "atlas_exports/raw_plates"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        exr_path = out_dir / (Path(raw_path).stem + "_linear.exr")
+        bgr = linear_rgb[..., ::-1].astype("float32")
+        try:
+            ok = cv2.imwrite(str(exr_path),
+                             bgr, [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_HALF])
+        except Exception:  # noqa: BLE001 — codec-disabled builds raise
+            ok = False
+        if not ok or not exr_path.is_file():
+            return None, ("EXR sidecar FAILED: opencv needs the OpenEXR codec — "
+                          "use opencv-python 4.x and set OPENCV_IO_ENABLE_OPENEXR=1 "
+                          "before ComfyUI starts (same requirement as the OCIO path). "
+                          "plate_ref downgraded to proxy.")
+        return str(exr_path), None
+
+
 # ---------------------------------------------------------------------------
 # Track 1 — New Python-only nodes
 # ---------------------------------------------------------------------------
@@ -8078,6 +8216,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasUSDCameraLoader":       AtlasUSDCameraLoader,
     "AtlasRegisterPlate":         AtlasRegisterPlate,
     "AtlasAttachSourcePlate":     AtlasAttachSourcePlate,
+    "AtlasLoadRAW":               AtlasLoadRAW,
     # Track 1 — solve
     "AtlasSolveFromImage":        AtlasSolveFromImage,
     "AtlasLearnedSolveFromImage": AtlasLearnedSolveFromImage,
@@ -8151,6 +8290,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasUSDCameraLoader":       "Atlas USD Camera Loader",
     "AtlasRegisterPlate":         "Atlas Register Plate (Float-Safe) 🎞",
     "AtlasAttachSourcePlate":     "Atlas Attach Source Plate 🎞",
+    "AtlasLoadRAW":               "Atlas Load RAW (NEF/CR2/CR3/RAF/ARW) 📷",
     # Track 1 — solve
     "AtlasSolveFromImage":        "Atlas Solve Camera from Image",
     "AtlasLearnedSolveFromImage": "Atlas Learned Solve (GeoCalib) 🧠",
