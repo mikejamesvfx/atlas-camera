@@ -300,8 +300,12 @@ RELIEF / BANDS:
   One AtlasDepthBandSplit (absolute metres) may feed both sides of a split —
   percentile bands with scoped excludes need band_ref_mask to avoid drift.
 
-SAM3 PROMPTS: join multi-object prompts with "and" — a comma-separated prompt
-  silently returns an EMPTY mask.
+SAM3 PROMPTS: SIMPLE NOUN PHRASES joined with "and" — a comma-separated prompt
+  silently returns an EMPTY mask, and a relational clause silently DROPS
+  objects (measured 2026-07-17: "rusty car with its shadow and fallen sign"
+  returned the car only; "rusty car and fallen sign" returned both). Shadows
+  are not segmentable objects — cover a contact shadow with GrowMask
+  (~24 px at 4K), never the prompt.
 
 GATES: AtlasSolveGate ships closed (proceed=False); AtlasAssessImage
   auto_continue=True is advisory flow; approvals are fingerprinted per image.

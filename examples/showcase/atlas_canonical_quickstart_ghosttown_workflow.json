@@ -2328,7 +2328,7 @@
     "Node name for S&R": "GrowMask"
    },
    "widgets_values": [
-    16,
+    24,
     true
    ]
   },
@@ -2702,12 +2702,12 @@
      "slot_index": 2
     }
    ],
-   "title": "\ud83e\udde9 SAM3 \u2014 car + shadow + sign matte",
+   "title": "\ud83e\udde9 SAM3 \u2014 car + sign matte (simple noun phrases + 'and')",
    "properties": {
     "Node name for S&R": "SAM3Segment"
    },
    "widgets_values": [
-    "rusty car with its shadow and fallen sign",
+    "rusty car and fallen sign",
     "Merged",
     0.5,
     0,
