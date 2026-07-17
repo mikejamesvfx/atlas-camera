@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "atlas": {
+      "command": "python",
+      "args": ["-m", "atlas_camera.mcp"],
+      "env": {
+        "COMFY_HOST": "127.0.0.1:8188"
+      }
+    }
+  }
+}
