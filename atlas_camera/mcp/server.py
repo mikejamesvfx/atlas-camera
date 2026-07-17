@@ -1,7 +1,7 @@
 """The Atlas Camera MCP server (v1) — stdio, thin, HTTP-only.
 
 Exposes a running ComfyUI (with the Atlas node pack) to any MCP-capable
-assistant. Design: docs/dev/atlas_mcp_server_plan.md — every tool is an
+assistant. Design: docs/dev/archive/atlas_mcp_server_plan.md — every tool is an
 operation the 2026-07 verification sessions actually performed. This process
 never imports torch/numpy; ComfyUI stays the execution engine.
 

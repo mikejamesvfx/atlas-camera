@@ -1,3 +1,5 @@
+> ARCHIVED 2026-07-18 — superseded by the shipped atlas_camera/mcp server + docs/MCP_SERVER.md
+
 # Atlas v1 MCP Server — design plan
 
 **Status:** v1 IMPLEMENTED (2026-07-16, same day) — `atlas_camera/mcp/`

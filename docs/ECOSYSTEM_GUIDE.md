@@ -45,7 +45,6 @@ atlas_camera.comfy      ← ComfyUI node library (56 nodes; +2 experimental behi
 atlas_camera.ui         ← Optional FastAPI project service + React/Three.js workbench
 atlas_camera.reference_data ← Curated scale-reference registry (person/door/car/etc.)
 atlas_camera.inference  ← Depth Anything V2, GeoCalib, local VLM helpers
-atlas_camera.gaussian   ← Future 3DGS / point-cloud interfaces (placeholder)
 ```
 
 The core package has **zero required runtime dependencies**. Every optional
@@ -92,7 +91,7 @@ actually wire them in.
 | `AtlasLearnedSolveFromImage` | **Recommended default.** GeoCalib neural prior predicts focal length + gravity direction directly from image content. Robust on AI-generated images (27/33 usable on a test set, vs. 18/33 for VP solving) and reports genuine, meaningful confidence. |
 | `AtlasSolveFromImage` | Classical vanishing-point solve — detects and triangulates converging line families. Best on real photographs with clean architectural lines; fragile on AI imagery (locally-plausible-but-globally-inconsistent perspective breaks the RANSAC fit) and reports a constant, uninformative 0.75 confidence regardless of fit quality. |
 | `AtlasConstrainedSolve` | Artist-guided solve from explicit line/scale constraints JSON. |
-| `AtlasLoadImageSolveCamera` | Legacy file-path-based solve. |
+| `AtlasLoadImageSolveCamera` | **DEPRECATED** legacy file-path-based solve (`DEPRECATED = True`, hidden from node search). Kept registered so saved workflows load; use `AtlasSolveFromImage` / `AtlasLearnedSolveFromImage` instead. Removal in a later release. |
 | `AtlasLoadSolveJSON` | Reload a previously exported solve. |
 
 ### Scale (tiered — see USER_GUIDE.md Part 1 for the full mental model)
@@ -741,7 +740,7 @@ to a second backend alongside the transformers V2 path. DA3METRIC emits
 points), closing a loop V2's fixed-FOV metric heads structurally can't. All
 solve-bearing call sites thread the solved focal; the image-only nodes take
 an optional `solve` input for the same. Measured (see
-`docs/dev/da3_backend_test_plan.md` and the chart below): ~3x fewer relief
+`docs/dev/archive/da3_backend_test_plan.md` and the chart below): ~3x fewer relief
 tears on 2 of 4 scenes, a usable mesh where V2 shattered to 0 faces, ground
 confidence to 0.96. Combo VALUES are append-only (they serialize into saved
 workflows); core-library defaults deliberately stay V2 so `[neural]`-only
@@ -829,5 +828,5 @@ the [🥞 Build-Up Guide](https://claude.ai/code/artifact/77b10784-a6d5-4def-89b
 output), and [📊 Technical Details](https://claude.ai/code/artifact/4781289c-50dd-47fc-8571-1ef67513b7ba)
 (the measured numbers as charts). Repo-side: CLAUDE.md (full catalog +
 design rules), `docs/dev/hidden_geometry_training_free_research.md` (the
-complete research/calibration saga), `docs/dev/da3_backend_test_plan.md`,
+complete research/calibration saga), `docs/dev/archive/da3_backend_test_plan.md`,
 and THIRD_PARTY.md (license boundaries).

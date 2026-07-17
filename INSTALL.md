@@ -159,7 +159,7 @@ Depth Anything 3 (DA3) is a second depth backend selected per node via the
 `DA3NESTED-GIANT-LARGE-1.1`). It was briefly the default (2026-07-09) but on
 **2026-07-13 the `main` default reverted to `V2-Metric-Outdoor`** (a 4-scene
 A/B found V2 best-or-tied on exteriors, and V2 needs no extra install — see
-`docs/dev/da3_backend_test_plan.md`). **DA3 is now a selectable choice, and the
+`docs/dev/archive/da3_backend_test_plan.md`). **DA3 is now a selectable choice, and the
 default only on the `experimental-da3-default` branch.** Every V2 model remains
 in the combo. Without the `[neural-da3]` extra installed, selecting a DA3 model
 fails with an informative install hint — switch it to a V2 model or install the
@@ -263,7 +263,7 @@ a read token) so the first-use download works. License: **CC BY-NC-ND 4.0**
 (non-commercial research, no redistributed derivatives).
 
 For the V2-vs-DA3 accuracy comparison protocol, see
-`docs/dev/da3_backend_test_plan.md` and `tools/compare_depth_backends.py`.
+`docs/dev/archive/da3_backend_test_plan.md` and `tools/compare_depth_backends.py`.
 
 ## Experimental: Hidden-Geometry Prediction (research-only)
 > **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI (the `experimental` branch enables it by default; `main` hides it so the node menu stays universal).

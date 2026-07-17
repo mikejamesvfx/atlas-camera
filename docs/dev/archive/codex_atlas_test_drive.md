@@ -1,3 +1,5 @@
+> ARCHIVED 2026-07-18 — one-off external-review snapshot (2026-07)
+
 # Test drive: driving Atlas from OpenAI Codex via the Atlas MCP server
 
 A hands-on test case: use **Codex** (a non-Claude agent) to operate Atlas in

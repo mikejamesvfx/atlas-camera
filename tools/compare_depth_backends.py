@@ -15,7 +15,7 @@ the depth_anything_3 package — see INSTALL.md):
     python tools/compare_depth_backends.py path/to/images/*.png
     python tools/compare_depth_backends.py img.png --models default --json out.json
 
-See docs/dev/da3_backend_test_plan.md for how to read the results.
+See docs/dev/archive/da3_backend_test_plan.md for how to read the results.
 """
 
 from __future__ import annotations

@@ -611,9 +611,16 @@ def _ground_depth_compute(solve, width: int, height: int, near: float, far: floa
 # ---------------------------------------------------------------------------
 
 class AtlasLoadImageSolveCamera:
+    """DEPRECATED — file-path-based solve kept only so saved workflows load.
+
+    Prefer AtlasSolveFromImage (geometric VP solve) or AtlasLearnedSolveFromImage
+    (GeoCalib prior) — both take an IMAGE tensor and sit in a normal image chain.
+    """
+
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "solve"
     CATEGORY = "Atlas Camera"
+    DEPRECATED = True
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -633,6 +640,10 @@ class AtlasLoadImageSolveCamera:
 
     def solve(self, image_path, image_width, image_height,
               focal_length_mm=None, sensor_width_mm=36.0):
+        import logging
+        logging.warning(
+            "AtlasLoadImageSolveCamera is deprecated — use AtlasSolveFromImage "
+            "or AtlasLearnedSolveFromImage (IMAGE-tensor inputs) instead.")
         hints = {}
         if focal_length_mm:
             hints["focal_length_mm"] = focal_length_mm
@@ -5591,7 +5602,7 @@ class AtlasBlockoutViewport:
 # "Orbit coverage" rule — for the SAME camera, no angle calibration needed
 # (contrast AtlasAddPatchView, which fills gaps via novel AI views at OTHER
 # angles). Deliberately reuses ProjectionSource rather than inventing new
-# schema (see docs/dev/atlas_inpaint_layers_design.md §2) — the viewport's
+# schema (see docs/dev/archive/atlas_inpaint_layers_design.md §2) — the viewport's
 # per-source projection material already does everything needed; these nodes
 # are orchestration only. Masking/inpainting itself is NOT implemented here —
 # it's delegated to external ComfyUI node packs wired into the graph
@@ -8071,7 +8082,7 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     # Existing
-    "AtlasLoadImageSolveCamera":  "Atlas Load Image / Solve Camera",
+    "AtlasLoadImageSolveCamera":  "Atlas Load Image / Solve Camera (Deprecated)",
     "AtlasExportReviewPackage":   "Atlas Export Review Package",
     "AtlasExportSolveJSON":       "Atlas Export Solve JSON",
     "AtlasExportMayaReviewScene": "Atlas Export Maya Review Scene",

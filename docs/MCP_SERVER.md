@@ -175,7 +175,7 @@ doctrine travels with the tools:
 The v1 tool surface is not speculative: every tool maps to an operation
 that was actually needed while driving Atlas headlessly during the
 showcase-verification sessions (the design log is
-[docs/dev/atlas_mcp_server_plan.md](dev/atlas_mcp_server_plan.md)). The
+[docs/dev/archive/atlas_mcp_server_plan.md](dev/archive/atlas_mcp_server_plan.md)). The
 UI→API flattening the tools share lives in
 `atlas_camera/mcp/comfy_http.py` (stdlib-only) and is unit-tested offline
 in `tests/test_mcp_comfy_http.py`; the CLI twins

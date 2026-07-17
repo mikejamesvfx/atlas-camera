@@ -3,6 +3,26 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## Unreleased — stale-code cleanout (2026-07-18)
+
+Verified pass over `ATLAS_PROJECT_WIDE_ENGINEERING_REPORT.md` (most of its P0
+findings turned out to describe the ComfyUI-install clone's local untracked
+files, not the repo — see `docs/dev/stale_code_report_response.md` for the
+claim-by-claim verification).
+
+- **`AtlasLoadImageSolveCamera` deprecated** — `DEPRECATED = True` +
+  "(Deprecated)" display name + log warning; still registered so saved
+  workflows load. Use `AtlasSolveFromImage` / `AtlasLearnedSolveFromImage`.
+  Removal planned for a later release.
+- **`atlas_camera/gaussian` removed** — the 3DGS `NotImplementedError`
+  placeholder package (and its placeholder test). One `git revert` away if
+  3DGS work ever starts.
+- **`tools/generate_atlas_canonical_workflows.py` committed as guarded
+  provenance** — the bootstrap that produced the canonical workflows; refuses
+  to overwrite the (since hand-calibrated) outputs without `--force`.
+- **`docs/dev/archive/`** — seven fully-superseded plan/research docs moved
+  there with `ARCHIVED` headers; repo links updated.
+
 ## 0.6.0 — `release/beta-0.6` (2026-07-16)
 
 ### Camera moves, reworked for film
@@ -39,7 +59,7 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
   X-ray predicted building bases) and a full findings report.
 - `tools/run_ui_workflow.py` — headless UI→API runner (rails flattened,
   gates openable) and `tools/generate_showcase_workflows.py`.
-- `docs/dev/atlas_mcp_server_plan.md` — the Atlas v1 MCP server design.
+- `docs/dev/archive/atlas_mcp_server_plan.md` — the Atlas v1 MCP server design.
 - Experimental example set (`examples/experimental/`) now fully run-verified;
   CI (pytest matrix, ubuntu+windows, py3.11/3.12).
 
@@ -401,7 +421,7 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
 ### Docs
 
-- README, INSTALL, CLAUDE.md refreshed; new `docs/dev/da3_backend_test_plan.md`
+- README, INSTALL, CLAUDE.md refreshed; new `docs/dev/archive/da3_backend_test_plan.md`
   and `docs/dev/hidden_geometry_training_free_research.md`; DCC_EXPORTS,
   USER_GUIDE, ECOSYSTEM_GUIDE updated 2026-07-09; new CHANGELOG and
   THIRD_PARTY notices; three published companion guides (build-up, examples

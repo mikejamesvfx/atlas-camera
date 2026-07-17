@@ -81,9 +81,11 @@ root of `ComfyUI/input/`; the four ACEScg EXRs are read by absolute path via
    this configuration — not a per-frame sequence. The authoritative JPEG
    sequence is extracted from the baked `client_data` (the frames are already
    JPEG bytes); the saver is kept as an in-graph preview of frame delivery.
-6. **Stale-node verdicts:** `AtlasLoadImageSolveCamera` — deprecation
-   candidate (file-path input predates the tensor solve nodes; can't join
-   image chains; kept in the solve lab's "legacy corner" with a note).
+6. **Stale-node verdicts:** `AtlasLoadImageSolveCamera` — now formally
+   deprecated (`DEPRECATED = True` + "(Deprecated)" display name; file-path
+   input predates the tensor solve nodes; can't join image chains; kept
+   registered so saved workflows load, removal in a later release; still
+   shown in the solve lab's "legacy corner" with a note).
    `AtlasDepthAnything` — keep, but it is a *preview* (normalized IMAGE,
    metric data discarded); never wire it toward geometry. Every other node
    earned its place.

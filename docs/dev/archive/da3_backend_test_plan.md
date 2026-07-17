@@ -1,3 +1,5 @@
+> ARCHIVED 2026-07-18 — evaluation complete; default reverted to V2-Metric on main 2026-07-13 (DA3 remains selectable; branch experimental-da3-default)
+
 # DA3 backend test plan (V2 vs Depth Anything 3 A/B)
 
 Goal: decide, with numbers and eyes, whether `depth-anything/DA3METRIC-LARGE`

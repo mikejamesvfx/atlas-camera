@@ -1,3 +1,5 @@
+> ARCHIVED 2026-07-18 — Angle Patch MVP shipped 2026-07-17
+
 # Angle Patch MVP
 
 This prototype implements the Photoshop round trip discussed for the canonical Ghost Town workflow.

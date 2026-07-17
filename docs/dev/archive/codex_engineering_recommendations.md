@@ -1,3 +1,5 @@
+> ARCHIVED 2026-07-18 — one-off external-review snapshot (2026-07); see docs/dev/stale_code_report_response.md for the verified follow-up
+
 # Atlas Engineering Recommendations
 
 **Audience:** Atlas core, ComfyUI integration, DCC/export, and workflow authors  

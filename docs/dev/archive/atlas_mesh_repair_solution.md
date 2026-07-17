@@ -1,3 +1,5 @@
+> ARCHIVED 2026-07-18 — shipped as core/mesh_repair.py + AtlasExportReliefMesh fill_interior_holes
+
 # Interior Hole-Fill on Exported Relief Meshes (Mesh-Topology, No Experimental Branch)
 
 **Status:** Complete & verified (`tests/test_mesh_repair.py` — 19/19 green; full
@@ -338,7 +340,7 @@ caveat.
   the two scope gates, in-place node-facing wrapper).
 - `tests/test_mesh_repair.py` — 19 tests pinning the selective-fill behavior and
   the "never degrade the mesh" contract (incl. real-relief-mesh regressions).
-- `docs/dev/atlas_mesh_repair_solution.md` — this document.
+- `docs/dev/archive/atlas_mesh_repair_solution.md` — this document.
 
 **Edited files:**
 - `atlas_camera/comfy/nodes.py` — `AtlasExportReliefMesh`:

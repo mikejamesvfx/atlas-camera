@@ -1,3 +1,5 @@
+> ARCHIVED 2026-07-18 — shipped as AtlasDepthLayerMask / AtlasCleanPlateLayer (see CLAUDE.md inpaint-layers design rule)
+
 # Atlas Inpaint Layers — 2.5D Clean-Plate Parallax
 
 **Status:** design + implementation brief for Claude Code

@@ -16,7 +16,6 @@ with a small `atlas` facade for the vision-facing API.
 - `atlas_camera.reference_data`: local curated scale-reference registry.
 - `atlas_camera.inference`: optional local multimodal provider helpers and
   future object-detector interfaces.
-- `atlas_camera.gaussian`: future 3DGS / point-cloud scene-prior interfaces.
 - `atlas_camera.ui`: optional FastAPI project service for image-backed local
   UI sessions.
 - `ui/`: optional React/Vite workbench. It owns interactive presentation state

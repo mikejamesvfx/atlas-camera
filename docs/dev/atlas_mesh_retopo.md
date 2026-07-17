@@ -4,7 +4,7 @@
 (H:\ComfyUI_windows_GLM, local branch `claude/atlas-pytest-pil-error-f87721`,
 research dated 2026-07-15). The research doc there also carried a fan-fill
 hole-fill implementation — that half was **discarded**: main's ear-clipping
-`mesh_repair.py` (see `docs/dev/atlas_mesh_repair_solution.md` and the
+`mesh_repair.py` (see `docs/dev/archive/atlas_mesh_repair_solution.md` and the
 CLAUDE.md design bullet) superseded fan-fill after it was measured emitting
 triangles outside non-convex holes. Only the retopology half was new, and it
 is what this document describes.

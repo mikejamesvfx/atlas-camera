@@ -7,7 +7,7 @@ Standard library only — the MCP server must not drag torch/numpy into its own
 process; ComfyUI stays the execution engine.
 
 Conventions this module encodes (learned by running every Atlas workflow
-headlessly — see docs/dev/atlas_mcp_server_plan.md):
+headlessly — see docs/dev/archive/atlas_mcp_server_plan.md):
 
 - KJNodes ``SetNode``/``GetNode`` rails are frontend-only virtual nodes and
   must be resolved through their rail name.
