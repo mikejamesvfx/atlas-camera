@@ -1,8 +1,8 @@
 {
  "id": "atlas_canonical_quickstart_ghosttown_workflow-canonical",
  "revision": 0,
- "last_node_id": 34,
- "last_link_id": 36,
+ "last_node_id": 46,
+ "last_link_id": 47,
  "nodes": [
   {
    "id": 1,
@@ -172,7 +172,8 @@
      "name": "image",
      "type": "IMAGE",
      "links": [
-      2
+      37,
+      39
      ],
      "slot_index": 0
     },
@@ -398,7 +399,8 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      5
+      43,
+      44
      ],
      "slot_index": 0
     }
@@ -2060,6 +2062,518 @@
    ],
    "color": "#432",
    "bgcolor": "#653"
+  },
+  {
+   "id": 35,
+   "type": "LoadImage",
+   "pos": [
+    10,
+    420
+   ],
+   "size": [
+    320,
+    320
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      38
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "title": "\ud83e\uddfd cleanplate (paint car+sign OUT in Photoshop)",
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "ghosttown.jpg",
+    "image"
+   ]
+  },
+  {
+   "id": 36,
+   "type": "ImageCompositeMasked",
+   "pos": [
+    380,
+    460
+   ],
+   "size": [
+    320,
+    190
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 4,
+   "inputs": [
+    {
+     "name": "destination",
+     "type": "IMAGE",
+     "link": 37
+    },
+    {
+     "name": "source",
+     "type": "IMAGE",
+     "link": 38
+    },
+    {
+     "name": "mask",
+     "type": "MASK",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      2
+     ],
+     "slot_index": 0
+    }
+   ],
+   "title": "\u2b05 CLEANPLATE INJECTION PORT \u2014 un-bypass after painting",
+   "properties": {
+    "Node name for S&R": "ImageCompositeMasked"
+   },
+   "widgets_values": [
+    0,
+    0,
+    false
+   ]
+  },
+  {
+   "id": 37,
+   "type": "SetNode",
+   "pos": [
+    380,
+    680
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "link": 39
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": null,
+     "slot_index": 0
+    }
+   ],
+   "title": "Set_original",
+   "properties": {
+    "previousName": "original"
+   },
+   "widgets_values": [
+    "original"
+   ]
+  },
+  {
+   "id": 38,
+   "type": "GetNode",
+   "pos": [
+    2660,
+    40
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      40
+     ],
+     "slot_index": 0
+    }
+   ],
+   "title": "Get_original",
+   "properties": {},
+   "widgets_values": [
+    "original"
+   ]
+  },
+  {
+   "id": 39,
+   "type": "GetNode",
+   "pos": [
+    2660,
+    120
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      42
+     ],
+     "slot_index": 0
+    }
+   ],
+   "title": "Get_original",
+   "properties": {},
+   "widgets_values": [
+    "original"
+   ]
+  },
+  {
+   "id": 40,
+   "type": "GetNode",
+   "pos": [
+    2660,
+    200
+   ],
+   "size": [
+    210,
+    60
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      46
+     ],
+     "slot_index": 0
+    }
+   ],
+   "title": "Get_original",
+   "properties": {},
+   "widgets_values": [
+    "original"
+   ]
+  },
+  {
+   "id": 41,
+   "type": "AtlasSemanticMask",
+   "pos": [
+    2920,
+    20
+   ],
+   "size": [
+    340,
+    130
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 40
+    }
+   ],
+   "outputs": [
+    {
+     "name": "mask",
+     "type": "MASK",
+     "links": [
+      41
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "title": "\ud83e\udde9 car + sign matte (SegFormer, deterministic)",
+   "properties": {
+    "Node name for S&R": "AtlasSemanticMask"
+   },
+   "widgets_values": [
+    "car, signboard",
+    "nvidia/segformer-b0-finetuned-ade-512-512",
+    "auto"
+   ]
+  },
+  {
+   "id": 42,
+   "type": "GrowMask",
+   "pos": [
+    2920,
+    200
+   ],
+   "size": [
+    280,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "mask",
+     "type": "MASK",
+     "link": 41
+    }
+   ],
+   "outputs": [
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [
+      47
+     ],
+     "slot_index": 0
+    }
+   ],
+   "title": "matte safety grow",
+   "properties": {
+    "Node name for S&R": "GrowMask"
+   },
+   "widgets_values": [
+    12,
+    true
+   ]
+  },
+  {
+   "id": 43,
+   "type": "AtlasDepthMap",
+   "pos": [
+    2920,
+    350
+   ],
+   "size": [
+    340,
+    150
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 42
+    },
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 43
+    }
+   ],
+   "outputs": [
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "links": [
+      45
+     ],
+     "slot_index": 0
+    }
+   ],
+   "title": "depth of the ORIGINAL (the car's geometry)",
+   "properties": {
+    "Node name for S&R": "AtlasDepthMap"
+   },
+   "widgets_values": [
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    "auto"
+   ]
+  },
+  {
+   "id": 44,
+   "type": "AtlasCleanPlateLayer",
+   "pos": [
+    3320,
+    20
+   ],
+   "size": [
+    400,
+    560
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 44
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 45
+    },
+    {
+     "name": "plate_image",
+     "type": "IMAGE",
+     "link": 46
+    },
+    {
+     "name": "plate_ref",
+     "type": "ATLAS_PLATE_REF",
+     "link": null
+    },
+    {
+     "name": "exclude_mask",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "layer_matte",
+     "type": "MASK",
+     "link": 47
+    },
+    {
+     "name": "band_split",
+     "type": "ATLAS_BAND_SPLIT",
+     "link": null
+    },
+    {
+     "name": "band_ref_mask",
+     "type": "MASK",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      5
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "hole_mask",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 1
+    },
+    {
+     "name": "extend_mask",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 2
+    }
+   ],
+   "title": "FG OCCLUDER \u2014 original plate, matte-cut",
+   "properties": {
+    "Node name for S&R": "AtlasCleanPlateLayer"
+   },
+   "widgets_values": [
+    0.0,
+    0.0,
+    0.0,
+    0.55,
+    "fg_car_sign",
+    0.0,
+    384,
+    1.5,
+    false,
+    true,
+    0,
+    0.0,
+    0,
+    2,
+    "manual",
+    "relief",
+    "",
+    "",
+    12.0,
+    0.0
+   ]
+  },
+  {
+   "id": 45,
+   "type": "Note",
+   "pos": [
+    2660,
+    300
+   ],
+   "size": [
+    230,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "FG OCCLUDER LAYER:\nthe car + fallen sign keep their\nORIGINAL pixels on their OWN\ndepth geometry, matte-cut by a\ndeterministic SegFormer mask.\n\nThe base scene projects the\nCLEANPLATE \u2014 so orbits reveal\npainted street behind them,\nnot inpaint smear.\n\nFront layer keeps a CLEAN cut\n(edge_extend 0) per the seam\ndoctrine."
+   ],
+   "color": "#432",
+   "bgcolor": "#653"
+  },
+  {
+   "id": 46,
+   "type": "Note",
+   "pos": [
+    10,
+    780
+   ],
+   "size": [
+    700,
+    260
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "\ud83e\uddfd THE CLEANPLATE DOCTRINE (do this FIRST, before queueing):\n1. Open the plate in Photoshop and paint OUT the foreground\n   occluders (here: the car and the fallen sign). Content-aware\n   fill / clone at source quality \u2014 this is the classic DMP prep.\n2. Save it into ComfyUI/input, point the \ud83e\uddfd LoadImage at it,\n   un-bypass the INJECTION PORT.\n3. Queue. The cleanplate becomes the projection plate for the\n   BASE scene (solve, depth, mesh, exports); the original pixels\n   ride the FG OCCLUDER layer (group 0b) on their own geometry.\n\nBypassed (as shipped) the port forwards the original untouched,\nso the workflow runs out-of-box. \ud83d\udcd0 Extract Angle (group 4) is\nthen only for RESIDUAL fixes: small stretching on the cleanplate\nmesh at grazing angles \u2014 not for painting out whole objects."
+   ],
+   "color": "#232",
+   "bgcolor": "#353"
   }
  ],
  "links": [
@@ -2073,7 +2587,7 @@
   ],
   [
    2,
-   2,
+   36,
    0,
    3,
    0,
@@ -2097,7 +2611,7 @@
   ],
   [
    5,
-   4,
+   44,
    0,
    5,
    0,
@@ -2326,6 +2840,94 @@
    33,
    1,
    "IMAGE"
+  ],
+  [
+   37,
+   2,
+   0,
+   36,
+   0,
+   "IMAGE"
+  ],
+  [
+   38,
+   35,
+   0,
+   36,
+   1,
+   "IMAGE"
+  ],
+  [
+   39,
+   2,
+   0,
+   37,
+   0,
+   "IMAGE"
+  ],
+  [
+   40,
+   38,
+   0,
+   41,
+   0,
+   "IMAGE"
+  ],
+  [
+   41,
+   41,
+   0,
+   42,
+   0,
+   "MASK"
+  ],
+  [
+   42,
+   39,
+   0,
+   43,
+   0,
+   "IMAGE"
+  ],
+  [
+   43,
+   4,
+   0,
+   43,
+   1,
+   "ATLAS_SOLVE"
+  ],
+  [
+   44,
+   4,
+   0,
+   44,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   45,
+   43,
+   0,
+   44,
+   1,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   46,
+   40,
+   0,
+   44,
+   2,
+   "IMAGE"
+  ],
+  [
+   47,
+   42,
+   0,
+   44,
+   5,
+   "MASK"
   ]
  ],
  "groups": [
@@ -2336,7 +2938,7 @@
     -40,
     -40,
     1260,
-    700
+    1120
    ],
    "color": "#355",
    "flags": {}
@@ -2378,7 +2980,7 @@
    "flags": {}
   },
   {
-   "title": "4 \u00b7 \ud83d\udcd0 ANGLE PATCH \u2192 PHOTOSHOP \u2014 repair the holes, reproject from the exact pose",
+   "title": "4 \u00b7 \ud83d\udcd0 ANGLE PATCH \u2014 RESIDUAL cleanup only (stretching at grazing angles); big paint-outs belong in the \ud83e\uddfd cleanplate",
    "bounding": [
     -70,
     1260,
@@ -2386,6 +2988,18 @@
     800
    ],
    "color": "#535",
+   "font_size": 24,
+   "flags": {}
+  },
+  {
+   "title": "0b \u00b7 \ud83e\uddfd FG OCCLUDER LAYER \u2014 original pixels over the cleanplate base",
+   "bounding": [
+    2620,
+    -40,
+    1180,
+    700
+   ],
+   "color": "#355",
    "font_size": 24,
    "flags": {}
   }
