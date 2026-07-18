@@ -303,14 +303,14 @@
     },
     {
       "id": 5,
-      "type": "AtlasPitchTrim",
+      "type": "AtlasGravityOverride",
       "pos": [
         480,
         560
       ],
       "size": [
         400,
-        130
+        140
       ],
       "flags": {},
       "order": 5,
@@ -322,12 +322,12 @@
           "link": 5
         },
         {
-          "name": "mirror_gravity",
-          "type": "BOOLEAN",
+          "name": "pitch_deg",
+          "type": "FLOAT",
           "link": null
         },
         {
-          "name": "pitch_deg",
+          "name": "roll_deg",
           "type": "FLOAT",
           "link": null
         }
@@ -351,13 +351,13 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "AtlasPitchTrim"
+        "Node name for S&R": "AtlasGravityOverride"
       },
       "widgets_values": [
-        true,
-        0.0
+        32.0,
+        0.9
       ],
-      "title": "🎚 Gravity mirror — repairs THIS plate's flip"
+      "title": "🎚 Gravity override — TRUE angles for this plate"
     },
     {
       "id": 6,
