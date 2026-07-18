@@ -556,10 +556,16 @@ class LatentScene:
         return self.projection_scene
 
     def to_dict(self) -> dict[str, Any]:
+        from atlas_camera.core.scene_health import scale_health
+
         data = _json_ready(self)
         data["schema_version"] = self.schema_version
         data["scene_type"] = "latent_scene"
         data["confidence_detail"] = self.camera.confidence.to_dict()
+        # Derived trust stamp (like confidence_detail): every exported solve
+        # JSON carries the scale provenance verdict. scale_health never raises
+        # and from_dict ignores unknown keys, so old/new JSONs interop freely.
+        data["scale_health"] = scale_health(self).to_dict()
         return data
 
     def to_json(self, *, indent: int = 2) -> str:
