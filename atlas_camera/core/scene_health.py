@@ -14,8 +14,8 @@ scale_health() being exception-proof: any surprise degrades to the
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
 SCALE_STATUS_MEASURED = "measured"
 SCALE_STATUS_MANUAL = "manual"
@@ -146,3 +146,202 @@ def _scale_health_inner(solve: Any) -> ScaleHealth:
         SCALE_STATUS_UNKNOWN, source if isinstance(source, str) else None,
         None, height, False,
         "No metric-scale provenance recorded on this solve.")
+
+
+# ---------------------------------------------------------------------------
+# Scene-health engine (M4): THE single red-flag evaluator. AtlasDebugReport
+# and AtlasSceneHealthGate both consume this — change a check here and both
+# stay in lockstep (the parity test in tests/test_debug_report_parity.py pins
+# the exact flag text). Logic moved VERBATIM from AtlasDebugReport.report();
+# severity/codes are new metadata layered on top for the gate.
+# ---------------------------------------------------------------------------
+
+# fail = the scene is structurally broken for export; warn = reviewable.
+_FLAG_SEVERITY = {
+    "camera_below_ground": "fail",
+    "zero_vertex_layer": "fail",
+    "near_empty_matte": "warn",
+    "band_gap": "warn",
+    "band_overlap": "warn",
+    "scope_fallback": "warn",
+    "negative_depth": "warn",
+    "scale_unverified": "warn",
+}
+
+
+@dataclass(slots=True)
+class HealthFlag:
+    severity: str            # "warn" | "fail"
+    code: str
+    message: str
+    layer: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"severity": self.severity, "code": self.code,
+                "message": self.message, "layer": self.layer}
+
+
+@dataclass(slots=True)
+class HealthReport:
+    level: str                              # pass | warn | fail
+    flags: list[HealthFlag] = field(default_factory=list)
+    camera: dict[str, Any] = field(default_factory=dict)
+    per_layer: list[dict[str, Any]] = field(default_factory=list)
+    depth: dict[str, Any] | None = None
+    scale: ScaleHealth | None = None
+
+    @property
+    def flag_messages(self) -> list[str]:
+        return [f.message for f in self.flags]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "level": self.level,
+            "flags": [f.to_dict() for f in self.flags],
+            "camera": self.camera,
+            "per_layer": self.per_layer,
+            "depth": self.depth,
+            "scale": self.scale.to_dict() if self.scale else None,
+        }
+
+
+def _flag(code: str, message: str, layer: str | None = None) -> HealthFlag:
+    return HealthFlag(_FLAG_SEVERITY.get(code, "warn"), code, message, layer)
+
+
+def evaluate_scene_health(
+    solve: Any,
+    depth: Any = None,
+    *,
+    scope_statuses: dict[str, str] | None = None,
+    matte_coverage_fn: Callable[[Any], float | None] | None = None,
+    include_scale_flag: bool = True,
+) -> HealthReport:
+    """Evaluate the layered scene's red flags (the AtlasDebugReport checks).
+
+    ``depth`` is a live DepthResult-like object (model_id/is_metric/near/far/
+    image_width/image_height/metadata[/depth]); ``matte_coverage_fn`` decodes
+    a mask_b64 to a coverage fraction (PIL lives in the caller, never here).
+    """
+    flags: list[HealthFlag] = []
+    cam = solve.camera
+    intr, extr = cam.intrinsics, cam.extrinsics
+
+    # Camera height from the full 4x4 (the view-matrix convention rule) —
+    # extrinsics.camera_position can legitimately be an unset default.
+    cam_y = None
+    if extr is not None and extr.camera_view_matrix is not None:
+        try:
+            import numpy as np
+            cam_y = round(float(np.linalg.inv(np.asarray(
+                extr.camera_view_matrix, dtype=float))[1, 3]), 4)
+        except Exception:  # noqa: BLE001
+            cam_y = None
+    camera = {
+        "image_wh": [intr.image_width, intr.image_height],
+        "focal_mm": intr.focal_length_mm, "sensor_mm": intr.sensor_width_mm,
+        "fx_px": intr.fx_px, "camera_height_m": cam_y,
+        "confidence": getattr(solve, "confidence", None),
+        "confidence_detail": dict(getattr(cam.confidence, "individual_metrics", {}) or {}),
+        "source_method": getattr(solve, "source_method", None),
+        "scale_source": (getattr(solve, "debug_metadata", None) or {}).get("scale_source"),
+    }
+    if cam_y is not None and cam_y <= 0:
+        flags.append(_flag(
+            "camera_below_ground",
+            "camera height <= 0 — ground-based features (ground depth, "
+            "band_geometry=ground) will fail"))
+
+    sources: list[dict[str, Any]] = []
+    for src in getattr(solve, "projection_sources", None) or []:
+        meta = src.metadata or {}
+        n_verts = sum(int((g.metadata or {}).get("n_vertices") or 0)
+                      for g in (src.proxy_geometry or []))
+        n_faces = sum(int((g.metadata or {}).get("n_faces") or 0)
+                      for g in (src.proxy_geometry or []))
+        cov = matte_coverage_fn(getattr(src, "mask_b64", None)) \
+            if matte_coverage_fn else None
+        entry = {
+            "name": src.name, "priority": src.priority,
+            "projection_mode": meta.get("projection_mode"),
+            "band_geometry": meta.get("band_geometry"),
+            "near_m": meta.get("near_m"), "far_m": meta.get("far_m"),
+            "n_vertices": n_verts, "n_faces": n_faces,
+            "n_filled_cells": meta.get("n_filled_cells"),
+            "source_camera_wh": [src.camera.intrinsics.image_width,
+                                 src.camera.intrinsics.image_height]
+                                if src.camera else None,
+            "matte_coverage": cov,
+            "has_extend_mask": bool(getattr(src, "extend_mask_b64", None)),
+            "scale_source": meta.get("scale_source"),
+        }
+        sources.append(entry)
+        if n_verts == 0:
+            flags.append(_flag(
+                "zero_vertex_layer",
+                f"{src.name}: ZERO vertices — this layer contributes no "
+                "geometry (empty band, exclude-everything scope, or a "
+                "failed flat-mode region)", src.name))
+        elif cov is not None and cov < 0.005:
+            flags.append(_flag(
+                "near_empty_matte",
+                f"{src.name}: matte covers only {cov:.2%} of the frame — "
+                "layer will paint almost nothing", src.name))
+
+    # Band continuity (clean-plate band layers only, sorted by near edge).
+    # NOTE: the membership expression's operator precedence is preserved
+    # verbatim from the original AtlasDebugReport implementation.
+    bands = sorted((s for s in sources
+                    if s["projection_mode"] == "clean_plate" and s["near_m"] is not None
+                    or (s["near_m"] is None and s["far_m"] is not None)),
+                   key=lambda s: s["near_m"] or 0.0)
+    for a, b in zip(bands, bands[1:]):
+        fa, nb = a.get("far_m"), b.get("near_m")
+        if fa is not None and nb is not None and abs(fa - nb) > max(0.05, 0.02 * fa):
+            kind = "GAP" if nb > fa else "OVERLAP"
+            flags.append(_flag(
+                "band_gap" if nb > fa else "band_overlap",
+                f"band {kind} between {a['name']} (far {fa:.2f}m) and "
+                f"{b['name']} (near {nb:.2f}m)"))
+
+    for k, s in (scope_statuses or {}).items():
+        if "FALLBACK" in s:
+            flags.append(_flag("scope_fallback", f"scope {k}: {s}"))
+
+    # DA3 watch-item made measurable (see AtlasDebugReport's original note).
+    depth_info = None
+    if depth is not None:
+        depth_info = {"model_id": depth.model_id, "is_metric": depth.is_metric,
+                      "near": depth.near, "far": depth.far,
+                      "wh": [depth.image_width, depth.image_height]}
+        try:
+            import numpy as np
+            recorded = (depth.metadata or {}).get("negative_fraction")
+            if recorded is not None:
+                neg = float(recorded)
+            else:
+                arr = np.asarray(depth.depth)
+                neg = float((arr < 0).mean())
+            depth_info["negative_fraction"] = round(neg, 4)
+            if neg > 0.01:
+                flags.append(_flag(
+                    "negative_depth",
+                    f"depth: {neg:.1%} of raw depth is NEGATIVE (DA3 watch-item) — "
+                    "ground-pinning renormalizes it, but suspect this first if a "
+                    "band's geometry misbehaves on this shot"))
+        except Exception:  # noqa: BLE001
+            pass
+
+    scale = scale_health(solve)
+    if include_scale_flag and not scale.safe_to_export:
+        flags.append(_flag(
+            "scale_unverified",
+            f"scale {scale.status.upper()} — not verified: {scale.detail}"))
+
+    level = "pass"
+    if any(f.severity == "fail" for f in flags):
+        level = "fail"
+    elif flags:
+        level = "warn"
+    return HealthReport(level=level, flags=flags, camera=camera,
+                        per_layer=sources, depth=depth_info, scale=scale)

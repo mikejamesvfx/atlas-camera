@@ -6260,109 +6260,22 @@ class AtlasDebugReport:
                **_extra):
         import datetime
 
-        flags: list = []
-        cam = solve.camera
-        intr, extr = cam.intrinsics, cam.extrinsics
-        # Camera height from the full 4x4 (the view-matrix convention rule) —
-        # extrinsics.camera_position can legitimately be an unset default.
-        cam_y = None
-        if extr is not None and extr.camera_view_matrix is not None:
-            try:
-                np = _require_numpy()
-                cam_y = round(float(np.linalg.inv(np.asarray(
-                    extr.camera_view_matrix, dtype=float))[1, 3]), 4)
-            except Exception:
-                cam_y = None
-        camera = {
-            "image_wh": [intr.image_width, intr.image_height],
-            "focal_mm": intr.focal_length_mm, "sensor_mm": intr.sensor_width_mm,
-            "fx_px": intr.fx_px, "camera_height_m": cam_y,
-            "confidence": getattr(solve, "confidence", None),
-            "confidence_detail": dict(getattr(cam.confidence, "individual_metrics", {}) or {}),
-            "source_method": getattr(solve, "source_method", None),
-            "scale_source": (solve.debug_metadata or {}).get("scale_source"),
-        }
-        if cam_y is not None and cam_y <= 0:
-            flags.append("camera height <= 0 — ground-based features (ground depth, "
-                         "band_geometry=ground) will fail")
+        from atlas_camera.core.scene_health import evaluate_scene_health
 
-        sources = []
-        for src in getattr(solve, "projection_sources", None) or []:
-            meta = src.metadata or {}
-            n_verts = sum(int((g.metadata or {}).get("n_vertices") or 0)
-                          for g in (src.proxy_geometry or []))
-            n_faces = sum(int((g.metadata or {}).get("n_faces") or 0)
-                          for g in (src.proxy_geometry or []))
-            cov = self._matte_coverage(getattr(src, "mask_b64", None))
-            entry = {
-                "name": src.name, "priority": src.priority,
-                "projection_mode": meta.get("projection_mode"),
-                "band_geometry": meta.get("band_geometry"),
-                "near_m": meta.get("near_m"), "far_m": meta.get("far_m"),
-                "n_vertices": n_verts, "n_faces": n_faces,
-                "n_filled_cells": meta.get("n_filled_cells"),
-                "source_camera_wh": [src.camera.intrinsics.image_width,
-                                     src.camera.intrinsics.image_height]
-                                    if src.camera else None,
-                "matte_coverage": cov,
-                "has_extend_mask": bool(getattr(src, "extend_mask_b64", None)),
-            }
-            sources.append(entry)
-            if n_verts == 0:
-                flags.append(f"{src.name}: ZERO vertices — this layer contributes no "
-                             "geometry (empty band, exclude-everything scope, or a "
-                             "failed flat-mode region)")
-            elif cov is not None and cov < 0.005:
-                flags.append(f"{src.name}: matte covers only {cov:.2%} of the frame — "
-                             "layer will paint almost nothing")
-
-        # Band continuity (clean-plate band layers only, sorted by near edge).
-        bands = sorted((s for s in sources
-                        if s["projection_mode"] == "clean_plate" and s["near_m"] is not None
-                        or (s["near_m"] is None and s["far_m"] is not None)),
-                       key=lambda s: s["near_m"] or 0.0)
-        for a, b in zip(bands, bands[1:]):
-            fa, nb = a.get("far_m"), b.get("near_m")
-            if fa is not None and nb is not None and abs(fa - nb) > max(0.05, 0.02 * fa):
-                kind = "GAP" if nb > fa else "OVERLAP"
-                flags.append(f"band {kind} between {a['name']} (far {fa:.2f}m) and "
-                             f"{b['name']} (near {nb:.2f}m)")
-
+        # The check logic lives in core.scene_health (the single red-flag
+        # engine, shared with AtlasSceneHealthGate 🩺) — this node is a thin
+        # consumer that renders the identical JSON/text it always did.
+        # test_debug_report_parity.py pins the exact flag strings.
         statuses = {f"status_{i}": s for i, s in
                     enumerate((status_1, status_2, status_3, status_4), 1) if s}
-        for k, s in statuses.items():
-            if "FALLBACK" in s:
-                flags.append(f"scope {k}: {s}")
-
-        # DA3 watch-item made measurable: the DA3 backend occasionally emits
-        # NEGATIVE raw depth (documented; ground-pinning renormalizes, so it
-        # has been harmless so far) — surface the actual fraction so a shot
-        # where a band misbehaves points here first (observed live: an alpine
-        # ridge shot reported depth.near = -11.4m).
-        depth_info = None
-        if depth is not None:
-            depth_info = {"model_id": depth.model_id, "is_metric": depth.is_metric,
-                          "near": depth.near, "far": depth.far,
-                          "wh": [depth.image_width, depth.image_height]}
-            try:
-                np = _require_numpy()
-                # Prefer the estimator's recorded PRE-CLAMP fraction (the
-                # source now clamps metric depth at >= 0, so recomputing from
-                # the array would always read 0 and hide the watch-item).
-                recorded = (depth.metadata or {}).get("negative_fraction")
-                if recorded is not None:
-                    neg = float(recorded)
-                else:
-                    arr = np.asarray(depth.depth)
-                    neg = float((arr < 0).mean())
-                depth_info["negative_fraction"] = round(neg, 4)
-                if neg > 0.01:
-                    flags.append(
-                        f"depth: {neg:.1%} of raw depth is NEGATIVE (DA3 watch-item) — "
-                        "ground-pinning renormalizes it, but suspect this first if a "
-                        "band's geometry misbehaves on this shot")
-            except Exception:
-                pass
+        health = evaluate_scene_health(
+            solve, depth, scope_statuses=statuses,
+            matte_coverage_fn=self._matte_coverage)
+        camera = health.camera
+        cam_y = camera.get("camera_height_m")
+        sources = health.per_layer
+        depth_info = health.depth
+        flags = health.flag_messages
 
         try:
             from atlas_camera import __version__ as _atlas_version
