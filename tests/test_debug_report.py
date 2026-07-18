@@ -24,6 +24,9 @@ from atlas_camera.comfy.nodes import (
 
 def _layered_solve():
     solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
+    # A "healthy" stack includes VERIFIED scale since the P0 trust tier —
+    # without provenance the (deliberate) scale_unverified flag fires.
+    solve.debug_metadata["scale_source"] = "manual_override"
     out, _h, _e = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=8.0, far_m=12.0, name="band_bg",
         priority=5, embed_matte=True)
