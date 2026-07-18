@@ -29,6 +29,19 @@ replace missing coverage with a deliberate layer.
   `AtlasSegmentedSDXLInpaint` 🏢 (SAM3-separated instances ∩ LaRI paint
   matte, per-crop, stitched) — avoids the single-mega-structure failure,
   live-verified on the D810 NYC plate.
+- **`tools/orbit_stress_test.py`** — the worklog's final acceptance item:
+  headless ±3°/±6° orbit scoring (hole% + stretched-coverage% per pose via
+  rasterized mesh coverage; geometry-only floor — the browser 🧭 Safe Zone
+  stays the exact oracle). Acceptance run on the NYC bird's-eye (63.7 m
+  counted-storey scale): 0.96% holes at the recovered pose → 7.4% at ±6°,
+  0.00% stretched coverage (quad coherence + outlier mask), torn 1.3%.
+- **Gravity-flip guard (`camera_looks_up` health flag)** — found BY the
+  acceptance run: on a D810 window shot, bright window-reflection haze at
+  the frame bottom read as sky and flipped GeoCalib's gravity (solve looked
+  UP 39° on an obvious bird's-eye; cropping the haze fixed it — the
+  original "ground plane completely off" report was scale AND this). An
+  up-looking solve now warns through the scene-health engine, 🩺 gate and
+  every export report.
 
 ## Unreleased — P0 reliability & trust tier (2026-07-18)
 

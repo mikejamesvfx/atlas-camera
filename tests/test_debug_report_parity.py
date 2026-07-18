@@ -198,3 +198,29 @@ def test_torn_flag_skips_band_clipped_layers():
     codes = {f.code for f in health.flags}
     assert "torn_excessive" not in codes
     assert "stretch_excessive" in codes
+
+
+def test_camera_looks_up_flag():
+    """Gravity-flip guard (D810 haze incident): up-looking solves warn."""
+    solve = AtlasSolve(camera=_cam())
+    solve.debug_metadata["scale_source"] = "manual_override"
+    # World matrix whose -Z column (forward) points up ~30 deg.
+    import math
+    s, c = math.sin(math.radians(30)), math.cos(math.radians(30))
+    solve.camera.extrinsics.camera_world_matrix = (
+        (1.0, 0.0, 0.0, 0.0), (0.0, c, -s, 10.0),
+        (0.0, s, c, 0.0), (0.0, 0.0, 0.0, 1.0))
+    solve.camera.extrinsics.camera_view_matrix = (
+        (1.0, 0.0, 0.0, 0.0), (0.0, c, s, -10.0 * c),
+        (0.0, -s, c, 10.0 * s), (0.0, 0.0, 0.0, 1.0))
+    health = evaluate_scene_health(solve)
+    codes = {f.code for f in health.flags}
+    assert "camera_looks_up" in codes
+    assert any("gravity flipped" in f.message for f in health.flags)
+
+    # A level camera does not flag.
+    level = AtlasSolve(camera=_cam())
+    level.debug_metadata["scale_source"] = "manual_override"
+    level.camera.extrinsics.camera_view_matrix = (
+        (1.0, 0, 0, 0), (0, 1.0, 0, -1.6), (0, 0, 1.0, 0), (0, 0, 0, 1.0))
+    assert "camera_looks_up" not in {f.code for f in evaluate_scene_health(level).flags}

@@ -171,7 +171,12 @@ _FLAG_SEVERITY = {
     # / segmented inpaint instead of raising global relief thresholds).
     "torn_excessive": "warn",
     "stretch_excessive": "warn",
+    "camera_looks_up": "warn",
 }
+
+# Solved camera looking up by more than ~9 deg (sin) — on ground-based plates
+# this almost always means the learned gravity flipped, not a real up-shot.
+_LOOKS_UP_SIN = 0.15
 
 
 @dataclass(slots=True)
@@ -256,6 +261,25 @@ def evaluate_scene_health(
             "camera_below_ground",
             "camera height <= 0 — ground-based features (ground depth, "
             "band_geometry=ground) will fail"))
+    # Gravity-flip guard (found live 2026-07-18 on a D810 window shot:
+    # bright window-reflection haze at the frame bottom read as sky and
+    # flipped GeoCalib's gravity — the solve looked UP 39 deg on an obvious
+    # bird's-eye; cropping the haze fixed it). Atlas plates are overwhelmingly
+    # ground-based, so an up-looking solve is almost always this failure.
+    try:
+        wm = extr.camera_world_matrix
+        forward_y = -float(wm[1][2])
+        if forward_y > _LOOKS_UP_SIN:
+            import math
+            flags.append(_flag(
+                "camera_looks_up",
+                f"camera solved looking UP {math.degrees(math.asin(min(1.0, forward_y))):.0f}° — "
+                "on ground-based plates this usually means the learned "
+                "gravity flipped (bright haze/reflection near the frame "
+                "bottom reads as sky). Verify against the plate; re-render "
+                "or crop the haze, or acknowledge if genuinely an up-shot."))
+    except Exception:  # noqa: BLE001 — hand-built extrinsics
+        pass
 
     sources: list[dict[str, Any]] = []
     for src in getattr(solve, "projection_sources", None) or []:
