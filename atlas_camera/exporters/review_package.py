@@ -152,6 +152,23 @@ def _report_markdown(solve: AtlasSolve, result: ReviewPackageResult) -> str:
     height_text = (f"{sh.camera_height_m:.2f} m"
                    if sh.camera_height_m is not None else "Unavailable")
     conf_text = f"{sh.confidence:.2f}" if sh.confidence is not None else "Unavailable"
+    stamp = solve.debug_metadata.get("scene_health")
+    if isinstance(stamp, dict) and stamp.get("level"):
+        marks = {"fail": "✖", "warn": "⚠"}
+        flag_lines = "\n".join(
+            f"- {marks.get(f.get('severity'), '•')} {f.get('message')}"
+            for f in (stamp.get("flags") or [])) or "- None"
+        ack = "yes" if stamp.get("acknowledged") else "no"
+        health_section = f"""## Scene health
+
+- Level: {stamp['level']}
+- Acknowledged: {ack} ({stamp.get('evaluated_at', 'unknown time')})
+
+{flag_lines}
+
+"""
+    else:
+        health_section = ""
     return f"""# Atlas Camera Review Package
 
 ## Scale trust
@@ -169,7 +186,7 @@ def _report_markdown(solve: AtlasSolve, result: ReviewPackageResult) -> str:
 |---|---|
 {conf_table}
 
-## Solve
+{health_section}## Solve
 
 - Source method: {solve.source_method}
 - Confidence: {solve.confidence}

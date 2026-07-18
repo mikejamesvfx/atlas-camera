@@ -179,6 +179,20 @@ def _scale_summary_suffix(solve) -> str:
     return f" | ⚠ scale {sh.status.upper()} — not verified"
 
 
+def _health_summary_suffix(solve) -> str:
+    """Export-summary marker when a scene-health stamp records warn/fail.
+
+    Reads only the AtlasSceneHealthGate stamp (debug_metadata["scene_health"])
+    — an acknowledged warning must survive into every artifact's summary.
+    """
+    stamp = (getattr(solve, "debug_metadata", None) or {}).get("scene_health")
+    if not isinstance(stamp, dict) or stamp.get("level") in (None, "pass"):
+        return ""
+    n = len(stamp.get("flags") or [])
+    ack = "acknowledged" if stamp.get("acknowledged") else "UNACKNOWLEDGED"
+    return f" | 🩺 health: {str(stamp['level']).upper()} ({n} flag(s) {ack})"
+
+
 def _stamp_raw_provenance(solve, raw_meta):
     """Record where a RAW import's hints came from on the solve (in place)."""
     if raw_meta is None:
@@ -1783,6 +1797,107 @@ class AtlasSolveGate:
             lines.insert(0, "*** GATE RE-ARMED: the solve or image changed since "
                             "approval — review and ✅ Approve again. ***")
         report = "\n".join(l for l in lines if l)
+
+        if effective:
+            out = solve
+        else:
+            blocker = _execution_blocker()
+            out = blocker if blocker is not None else solve
+        return {"ui": {"text": [report], "fingerprint": [fp]},
+                "result": (out, report)}
+
+
+class AtlasSceneHealthGate:
+    """🩺 Scene-health checkpoint before the exporters — Gate 4 of the family.
+
+    Runs core.scene_health.evaluate_scene_health (the SAME red-flag engine
+    AtlasDebugReport renders) and, when the level is warn/fail, holds the
+    solve until the artist clicks ✅ Acknowledge & Continue. Ship-closed
+    approval-gate semantics (the SolveGate pattern, `_solve_fingerprint`
+    identity) rather than a hard fail — per the engineering-recommendations
+    doctrine: the user may OVERRIDE a warning but never LOSE it. Every
+    execution (blocked or flowing) stamps
+    ``debug_metadata["scene_health"] = {**report, acknowledged, evaluated_at}``
+    onto the solve (in place — additive metadata, geometry untouched), so an
+    acknowledged warning rides into every DCC export, review report, and
+    manifest downstream. ``pass_through_on_pass`` (default ON) means a clean
+    scene flows with zero clicks — the gate only costs friction when
+    something is actually wrong.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "gate"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "source_image": ("IMAGE",),
+            },
+            "optional": {
+                "depth": ("ATLAS_DEPTH_MAP", {
+                    "tooltip": "Shared AtlasDepthMap — enables the negative-depth check."}),
+                "status_1": ("STRING", {"forceInput": True, "default": ""}),
+                "status_2": ("STRING", {"forceInput": True, "default": ""}),
+                "status_3": ("STRING", {"forceInput": True, "default": ""}),
+                "status_4": ("STRING", {"forceInput": True, "default": ""}),
+                "pass_through_on_pass": ("BOOLEAN", {"default": True,
+                    "tooltip": "A PASS-level report flows without a click; warn/fail "
+                               "always needs ✅ Acknowledge & Continue."}),
+                "proceed": ("BOOLEAN", {"default": False,
+                    "tooltip": "Acknowledge the current flags and let the solve flow. "
+                               "Ships OFF; the ✅ button sets it + the fingerprint."}),
+                "approved_for": ("STRING", {"default": "",
+                    "tooltip": "Fingerprint of the acknowledged solve+image; a re-solve "
+                               "or swapped photo re-arms the gate."}),
+            },
+        }
+
+    def gate(self, solve, source_image, depth=None,
+             status_1="", status_2="", status_3="", status_4="",
+             pass_through_on_pass=True, proceed=False, approved_for="", **_extra):
+        import datetime
+
+        from atlas_camera.core.scene_health import evaluate_scene_health
+
+        statuses = {f"status_{i}": s for i, s in
+                    enumerate((status_1, status_2, status_3, status_4), 1) if s}
+        health = evaluate_scene_health(
+            solve, depth, scope_statuses=statuses,
+            matte_coverage_fn=AtlasDebugReport._matte_coverage)
+        fp = _solve_fingerprint(solve, source_image)
+        approval = bool(proceed) and (not approved_for or approved_for == fp)
+        effective = (health.level == "pass" and bool(pass_through_on_pass)) or approval
+
+        # The indelible stamp — acknowledged=True only for an explicit
+        # override of a warn/fail report, never for a clean pass-through.
+        meta = getattr(solve, "debug_metadata", None)
+        if isinstance(meta, dict):
+            meta["scene_health"] = {
+                **health.to_dict(),
+                "acknowledged": bool(approval and health.level != "pass"),
+                "evaluated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            }
+
+        marks = {"fail": "✖", "warn": "⚠"}
+        lines = []
+        if health.level == "pass":
+            lines.append("🩺 SCENE HEALTH: PASS — no flags."
+                         + ("" if effective else "  (pass_through_on_pass is OFF — ✅ to continue.)"))
+        else:
+            state = ("acknowledged — exporting WITH warnings recorded" if effective
+                     else "downstream paused. Review, fix, or ✅ Acknowledge & Continue.")
+            lines.append(f"🩺 SCENE HEALTH: {health.level.upper()} "
+                         f"({len(health.flags)} flag(s)) — {state}")
+            for f in health.flags:
+                lines.append(f"  {marks.get(f.severity, '•')} {f.message}")
+        if proceed and approved_for and approved_for != fp:
+            lines.insert(0, "*** GATE RE-ARMED: the solve or image changed since the "
+                            "acknowledgement — review and ✅ again. ***")
+        report = "\n".join(lines)
 
         if effective:
             out = solve
@@ -5409,7 +5524,7 @@ class AtlasExportNukeLayers:
         summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
-        summary += _scale_summary_suffix(solve)
+        summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
         return (result["nk_path"], summary)
 
 
@@ -5463,7 +5578,7 @@ class AtlasExportMayaLayers:
         summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
-        summary += _scale_summary_suffix(solve)
+        summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
         return (result["ma_path"], summary)
 
 
@@ -8171,6 +8286,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
     "AtlasAssessImage":           AtlasAssessImage,
     "AtlasSolveGate":             AtlasSolveGate,
+    "AtlasSceneHealthGate":       AtlasSceneHealthGate,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
     "AtlasAddPatchView":          AtlasAddPatchView,
@@ -8244,6 +8360,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasReferenceScaleSolve":   "Atlas Reference-Object Scale 📏",
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
+    "AtlasSceneHealthGate":       "Atlas Scene Health Gate 🩺",
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",

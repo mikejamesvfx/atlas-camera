@@ -1,6 +1,6 @@
 # Gate state table — the ExecutionBlocker family's full scenario matrix
 
-The staged pipeline has three gates built on the same native pause mechanism
+The staged pipeline has four gates built on the same native pause mechanism
 (`comfy_execution.graph.ExecutionBlocker`), each with a persisted approval
 widget that must be identity-scoped ("any persisted widget that gates
 execution needs an identity fingerprint" — the rule every live-found gate bug
@@ -41,6 +41,35 @@ split is its whole purpose). Tests: `tests/test_solve_gate.py` (6 tests).
 exists in `client_data` with a fingerprint matching the CURRENT solve+image;
 mismatch re-arms and the frontend clears the stale entry + shows a HUD hint.
 Tests: viewport/extraction suites (`test_exact_patch_view.py` and friends).
+
+## Gate 4 — `AtlasSceneHealthGate` 🩺 (solve output, before exporters)
+
+State variables: `pass_through_on_pass` (bool widget, default ON), `proceed`
+(bool widget, set by ✅ Acknowledge & Continue), `approved_for` (fingerprint
+stamped by ✅), current solve+image fingerprint (`_solve_fingerprint` — same
+identity as Gate 2), and the computed health level (pass/warn/fail from
+`core.scene_health.evaluate_scene_health`).
+
+The semantic difference from Gate 2: this one is an ACKNOWLEDGEMENT gate —
+the artist may override a warn/fail report, but the report is stamped into
+`debug_metadata["scene_health"]` (with `acknowledged` + `evaluated_at`) on
+EVERY execution, blocked or flowing, so the warning survives into exporter
+summaries, review report.md, and the project manifest. Overridable, never
+losable.
+
+| # | Given                                        | When queued | Then                                                     | Test |
+|---|----------------------------------------------|-------------|----------------------------------------------------------|------|
+| 1 | level PASS, pass_through_on_pass ON (default)| any         | solve FLOWS, zero clicks; stamp level=pass, acknowledged=false | `test_pass_level_flows_without_click`, `test_pass_stamp_is_not_marked_acknowledged` |
+| 2 | level PASS, pass_through_on_pass OFF         | any         | solve BLOCKED until ✅ (deliberate manual checkpoint)     | `test_pass_through_off_still_gates` |
+| 3 | level WARN/FAIL, proceed OFF                 | fresh scene | solve BLOCKED; per-flag report (✖ fail / ⚠ warn) + fingerprint emitted; stamp acknowledged=false | `test_warn_level_ships_closed`, `test_stamp_is_indelible_both_states` |
+| 4 | level WARN/FAIL, proceed ON, approved_for == fp | same scene | solve FLOWS; stamp acknowledged=true                     | `test_acknowledge_with_matching_fingerprint_flows` |
+| 5 | level WARN/FAIL, proceed ON, approved_for != fp | scene changed since ✅ | solve BLOCKED; "GATE RE-ARMED" banner          | `test_stale_fingerprint_rearms` |
+| 6 | level WARN/FAIL, proceed ON, approved_for empty | any       | solve FLOWS (manual unconditional override)              | `test_manual_unconditional_override` |
+| 7 | outside ComfyUI (no ExecutionBlocker)        | any         | degrades to pass-through (stamp still applied)           | `test_pass_through_outside_comfy` |
+
+Downstream consumers of the stamp: `_health_summary_suffix` (Nuke/Maya layer
+summaries), review `report.md` "## Scene health" section, and the
+`atlas_project.json` manifest (`scene_health` key).
 
 ## Shared invariants
 
