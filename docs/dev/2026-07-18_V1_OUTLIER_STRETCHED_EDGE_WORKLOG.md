@@ -142,15 +142,17 @@ The generated clean-plate previews were:
 
 The segmented result was visibly more coherent than the single giant crop: building textures remained individually plausible instead of collapsing into dense, surreal architecture.
 
-### Current runtime mismatch
+### Current runtime mismatch (resolved after reload)
 
-The running server exposes:
+Before the final restart, the running server exposed:
 
 - `AtlasDepthOutlierMask` — loaded;
 - `AtlasDeriveReliefMesh.quad_coherence` — loaded;
 - `AtlasCleanPlateLayer.quad_coherence` — not loaded in the observed server schema.
 
-The repository source does contain the updated layer implementation. A full ComfyUI process restart/custom-node reload is required before the final inpaint-layer runtime check can be considered verified.
+After the requested restart, the server exposed the updated layer implementation, including `AtlasCleanPlateLayer.quad_coherence`. The final regenerated segmented workflow then completed successfully with `node_errors: {}`.
+
+Final live prompt: `8a473990-91e2-437c-88dd-1b486ba50cb6`. The final preview was written as `ComfyUI_temp_xntye_00001_.png`; the debug report returned zero flags and the segmented report remained `4 instance slot(s), SDXL denoise 0.65`.
 
 ## Test evidence
 
@@ -239,4 +241,4 @@ Documentation and workflow artifacts:
 
 The v1 direction is now technically defensible: reject bad geometry, measure the remaining risk, and replace missing coverage with a deliberate layer. The system should not promise perfect parallax from one photograph; it should deliver an honest, layered scene whose failures are local, visible, and artist-controllable.
 
-The final acceptance gate is a fresh ComfyUI reload followed by a live run of the updated `AtlasCleanPlateLayer` path and an orbit stress test using the reported torn/stretch metrics.
+The final acceptance gate is now a live run of the updated layer path plus an orbit stress test using the reported torn/stretch metrics. The refreshed segmented workflow passed the live execution gate; an automated multi-angle orbit render remains recommended before declaring a production-quality v1 lock.
