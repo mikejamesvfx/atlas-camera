@@ -1124,6 +1124,19 @@ def solve_still_image_learned(
     if reference_scale is not None:
         _attach_reference_scale(solve, reference_scale, adopted=scale_source == "reference_object")
     solve.debug_metadata["scale_source"] = scale_source
+    # Confidence-vector population (P0 trust tier): the winning scale tier's
+    # own consistency + the ground fit's confidence, as first-class metrics.
+    # global_score recombination deliberately untouched.
+    if scale_source == "reference_object":
+        scale_conf = float((reference_scale or {}).get("confidence", 0.0))
+    elif scale_source == "depth_ground_plane":
+        scale_conf = float((ground or {}).get("confidence", 0.0))
+    else:  # assumed_default — a guess, not a measurement
+        scale_conf = 0.15
+    depth_conf = float((ground or {}).get("confidence", 0.0)) if ground else 0.0
+    solve.camera.confidence = (solve.camera.confidence
+                               .with_metric("scale", scale_conf)
+                               .with_metric("depth", depth_conf))
     return solve
 
 
@@ -1189,6 +1202,8 @@ def apply_reference_scale(
         rescale_camera_height(solve, result["camera_height"])
         solve.source_method = f"{solve.source_method}+reference_scale"
         solve.debug_metadata["scale_source"] = "reference_object"
+        solve.camera.confidence = solve.camera.confidence.with_metric(
+            "scale", float(result.get("confidence", 0.0)))
     _attach_reference_scale(solve, result, adopted=adopted)
     return solve
 

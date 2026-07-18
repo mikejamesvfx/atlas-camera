@@ -83,3 +83,8 @@ def test_scale_flows_into_metric_ground_scale():
     s1, _ = estimate_ground_scale(depth, view_matrix=out.camera.extrinsics.camera_view_matrix,
                                   fx=FX, fy=FY, cx=CX, cy=CY)
     assert s1 == pytest.approx(s0 * 10.0, rel=1e-6)
+
+
+def test_override_sets_scale_confidence_metric():
+    out, _ = AtlasScaleOverride().override(_solve(1.6), scale=10.0)
+    assert out.camera.confidence.individual_metrics["scale"] == pytest.approx(1.0)

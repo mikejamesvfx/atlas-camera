@@ -13,6 +13,12 @@ LATENT_CAMERA_CONFIDENCE_KEYS = (
     "focal",
     "extrinsics",
     "sensor",
+    # APPENDED 2026-07-18 (append-only tuple — serialized dicts must stay
+    # loadable both directions): metric-scale trust + depth ground-fit
+    # confidence, per the P0 trust tier. Per-layer mask/hidden confidences
+    # deliberately live in scene-health per_layer, not on the camera.
+    "scale",
+    "depth",
 )
 
 

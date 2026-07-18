@@ -1306,6 +1306,10 @@ class AtlasScaleOverride:
         meta["scale_override"] = factor
         meta["scale_source"] = "manual_override"
         out.debug_metadata = meta
+        try:
+            out.camera.confidence = out.camera.confidence.with_metric("scale", 1.0)
+        except Exception:  # noqa: BLE001 — hand-built solves without a model
+            pass
 
         new_h = extr.camera_position[1]
         report = (
@@ -6274,6 +6278,7 @@ class AtlasDebugReport:
             "focal_mm": intr.focal_length_mm, "sensor_mm": intr.sensor_width_mm,
             "fx_px": intr.fx_px, "camera_height_m": cam_y,
             "confidence": getattr(solve, "confidence", None),
+            "confidence_detail": dict(getattr(cam.confidence, "individual_metrics", {}) or {}),
             "source_method": getattr(solve, "source_method", None),
             "scale_source": (solve.debug_metadata or {}).get("scale_source"),
         }

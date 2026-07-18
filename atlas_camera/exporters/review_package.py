@@ -144,6 +144,10 @@ def _report_markdown(solve: AtlasSolve, result: ReviewPackageResult) -> str:
     )
     from atlas_camera.core.scene_health import scale_health
     sh = scale_health(solve)
+    conf_metrics = dict(getattr(solve.camera.confidence, "individual_metrics", {}) or {})
+    conf_table = "\n".join(
+        f"| {key} | {value:.2f} |" for key, value in sorted(conf_metrics.items())
+    ) or "| (none) | — |"
     safe_text = "yes" if sh.safe_to_export else "**NO — verify before delivery**"
     height_text = (f"{sh.camera_height_m:.2f} m"
                    if sh.camera_height_m is not None else "Unavailable")
@@ -158,6 +162,12 @@ def _report_markdown(solve: AtlasSolve, result: ReviewPackageResult) -> str:
 - Confidence: {conf_text}
 - Camera height: {height_text}
 - {sh.detail}
+
+## Confidence vector
+
+| metric | value |
+|---|---|
+{conf_table}
 
 ## Solve
 
