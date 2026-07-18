@@ -3,6 +3,33 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## Unreleased — outlier & stretched-edge quality tier (2026-07-18)
+
+Ported from the portable-clone session's worklog
+(`docs/dev/2026-07-18_V1_OUTLIER_STRETCHED_EDGE_WORKLOG.md`) and integrated
+on top of the trust tier: reject bad geometry, measure the remaining risk,
+replace missing coverage with a deliberate layer.
+
+- **`AtlasDepthOutlierMask` 🛡** — local median/MAD depth-outlier detection;
+  hallucinated samples become explicit holes (new `outlier_mask` input on the
+  relief nodes) instead of stretched frame-spanning shards.
+- **Quad-coherent relief** — `quad_coherence` rejects both triangles of a
+  grid quad when either fails (no surviving stretched-diagonal wedges);
+  node defaults ON, core default OFF for compatibility. The world-edge
+  budget now uses the triangle's MEDIAN depth, so one bad corner can't
+  inflate it.
+- **Mesh QA metrics as health flags** — `torn_fraction` /
+  `stretch_ratio_p95` / `stretch_fraction_gt12` ride relief metadata into
+  the scene-health engine (and therefore the 🩺 gate + exports):
+  `stretch_excessive` and `torn_excessive` (band-scoped — global torn
+  fraction is deliberate on clipped bands) trigger card/ground/inpaint
+  fallbacks instead of global threshold raises.
+- **Segmented SDXL disocclusion inpainting** — `AtlasSDXLInpaint` ✨ (native
+  InpaintModelConditioning path) + `AtlasInstanceMask` 🎭 +
+  `AtlasSegmentedSDXLInpaint` 🏢 (SAM3-separated instances ∩ LaRI paint
+  matte, per-crop, stitched) — avoids the single-mega-structure failure,
+  live-verified on the D810 NYC plate.
+
 ## Unreleased — P0 reliability & trust tier (2026-07-18)
 
 Response to the external engineering review (`docs/dev/

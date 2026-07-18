@@ -1,0 +1,261 @@
+{
+  "1": {
+    "inputs": {
+      "file_path": "C:\\Users\\miike\\ComfyUI_V91\\ComfyUI\\input\\CameraRaw\\DSC_2330.NEF",
+      "undistort": true,
+      "half_size": true,
+      "white_balance": "camera",
+      "exposure_ev": 0,
+      "write_exr": true,
+      "output_dir": "atlas_exports/raw_plates",
+      "colorspace": "Linear Rec.709 (sRGB)"
+    },
+    "class_type": "AtlasLoadRAW",
+    "_meta": {
+      "title": "📷 Load RAW (D810 NEF)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "source": [
+        "1",
+        5
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "RAW report — camera · focal · sensor · undistort"
+    }
+  },
+  "4": {
+    "inputs": {
+      "height_mode": "measure_from_depth",
+      "camera_height_m": 1.6,
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "sensor_width_mm": 36,
+      "weights": "pinhole",
+      "device": "auto",
+      "focal_length_mm": 24,
+      "image": [
+        "1",
+        0
+      ],
+      "raw_meta": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "AtlasLearnedSolveFromImage",
+    "_meta": {
+      "title": "Learned solve (EXIF focal wins via raw_meta)"
+    }
+  },
+  "5": {
+    "inputs": {
+      "scale": 1,
+      "camera_height_m": 100,
+      "solve": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "AtlasScaleOverride",
+    "_meta": {
+      "title": "📐 Camera height dial — SET YOUR ALTITUDE"
+    }
+  },
+  "7": {
+    "inputs": {
+      "depth_model": "depth-anything/DA3METRIC-LARGE",
+      "device": "auto",
+      "image": [
+        "1",
+        0
+      ],
+      "solve": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "AtlasDepthMap",
+    "_meta": {
+      "title": "Shared metric depth (fed the solved focal)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "relief_grid": 128,
+      "relief_quality": "ultra",
+      "depth_edge_rel": 1.5,
+      "max_edge_factor": 60,
+      "sky_heuristic": false,
+      "normal_edge_deg": 0,
+      "solve": [
+        "5",
+        0
+      ],
+      "depth": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "AtlasDeriveReliefMesh",
+    "_meta": {
+      "title": "Relief mesh"
+    }
+  },
+  "9": {
+    "inputs": {
+      "solve": [
+        "8",
+        0
+      ],
+      "plate_ref": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "AtlasAttachSourcePlate",
+    "_meta": {
+      "title": "Attach EXR plate_ref (Output Desk)"
+    }
+  },
+  "11": {
+    "inputs": {
+      "lari_path": "C:\\Users\\miike\\lari",
+      "device": "auto",
+      "clear_rel": 0.02,
+      "min_clear_m": 2,
+      "model": "lari-scene",
+      "wt_path": "C:\\Users\\miike\\world-tracing",
+      "steps": 20,
+      "seed": 845740604,
+      "smooth_px": 31,
+      "fill_gaps": true,
+      "depth": [
+        "7",
+        0
+      ],
+      "image": [
+        "1",
+        0
+      ],
+      "restrict_mask": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "AtlasPredictHiddenGeometry",
+    "_meta": {
+      "title": "Atlas Predict Hidden Geometry 🔬 (research)"
+    }
+  },
+  "12": {
+    "inputs": {
+      "images": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "14": {
+    "inputs": {
+      "mask": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "MaskPreview+",
+    "_meta": {
+      "title": "🔧 Mask Preview"
+    }
+  },
+  "15": {
+    "inputs": {
+      "mask": [
+        "16",
+        2
+      ]
+    },
+    "class_type": "MaskPreview+",
+    "_meta": {
+      "title": "🔧 Mask Preview"
+    }
+  },
+  "16": {
+    "inputs": {
+      "near_m": 0,
+      "far_m": 0,
+      "near_pct": 0,
+      "far_pct": 0.5,
+      "feather_px": 4,
+      "compute_hole_mask": true,
+      "relief_grid": 384,
+      "depth_edge_rel": 1.5,
+      "fill_occluded": false,
+      "band_side": "manual",
+      "band_override": "",
+      "solve": [
+        "4",
+        0
+      ],
+      "depth": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "AtlasDepthLayerMask",
+    "_meta": {
+      "title": "Atlas Depth Layer Mask 🎭"
+    }
+  },
+  "17": {
+    "inputs": {
+      "relief_grid": 128,
+      "relief_quality": "ultra",
+      "depth_edge_rel": 0.5,
+      "max_edge_factor": 12,
+      "sky_heuristic": false,
+      "normal_edge_deg": 80,
+      "solve": [
+        "8",
+        0
+      ],
+      "depth": [
+        "11",
+        0
+      ],
+      "exclude_mask": [
+        "11",
+        1
+      ]
+    },
+    "class_type": "AtlasDeriveReliefMesh",
+    "_meta": {
+      "title": "Atlas Derive Relief Mesh 🏔"
+    }
+  },
+  "19": {
+    "inputs": {
+      "resolution": 768,
+      "client_data": "",
+      "preview_expand": 1,
+      "solve": [
+        "17",
+        0
+      ],
+      "source_image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "AtlasBlockoutViewport",
+    "_meta": {
+      "title": "Atlas Viewport 🧊"
+    }
+  }
+}

@@ -156,6 +156,7 @@ def build_relief_mesh(
     edge_overhang_cells: int = 0,
     overhang_bevel_rel: float = 0.0,
     exclude_choke_cells: int = 0,
+    quad_coherence: bool = False,
 ) -> ReliefMesh:
     """Triangulate a forward-z depth map into a world-space relief mesh.
 
@@ -254,6 +255,14 @@ def build_relief_mesh(
     the 3x3 median keeps it); cells with no valid neighbors anywhere stay
     holes. Filled pixels are reported in ``ReliefMesh.filled_mask`` and
     removed from ``hole_mask``.
+
+    ``quad_coherence`` (default ``False``) rejects both triangles of a grid
+    quad when either triangle fails a tear test. This is slightly more
+    conservative than retaining the surviving diagonal, but prevents a
+    single skinny triangle from spanning an outlier or silhouette and
+    producing a stretched UV wedge. The ComfyUI relief node enables this for
+    final/viewport output; the low-level default remains off for backwards
+    compatibility with callers that intentionally keep partial quads.
     """
     from atlas_camera.core.depth_geometry import detect_sky_mask
 
@@ -535,7 +544,12 @@ def build_relief_mesh(
         ok = (va & vb & vc & (dmin > 1e-4)
               & ((dmax / np.maximum(dmin, 1e-6) - 1.0) <= depth_edge_rel))
         if max_edge_factor:
-            limit = dmax * edge_budget  # expected spacing ≈ depth·step/f
+            # Use the triangle's median depth for the local edge budget. Using
+            # dmax lets one hallucinated far-depth corner enlarge the budget
+            # enough to preserve a frame-spanning stretched shard; the depth
+            # ratio test above still tears genuine foreground/background jumps.
+            dmed = np.median(np.stack([da, db, dc], axis=0), axis=0)
+            limit = dmed * edge_budget  # expected spacing ≈ depth·step/f
             for e0, e1 in ((pa, pb), (pb, pc), (pa, pc)):
                 ok &= np.linalg.norm(e1 - e0, axis=-1) <= np.maximum(limit, 0.05)
         if normal_cos is not None and na is not None:
@@ -547,9 +561,35 @@ def build_relief_mesh(
 
     ok_a = _tri_ok(d00, d10, d01, v00, v10, v01, P00, P10, P01, N00, N10, N01)
     ok_b = _tri_ok(d10, d11, d01, v10, v11, v01, P10, P11, P01, N10, N11, N01)
+    if quad_coherence:
+        # A passing diagonal beside a failed diagonal is the classic source
+        # of a long, stretched UV shard. Tear the whole quad so the raster
+        # hole and geometry agree at the same boundary.
+        coherent = ok_a & ok_b
+        ok_a = coherent
+        ok_b = coherent
     tri_a = np.stack([i00[ok_a], i10[ok_a], i01[ok_a]], axis=1)
     tri_b = np.stack([i10[ok_b], i11[ok_b], i01[ok_b]], axis=1)
     faces = np.concatenate([tri_a, tri_b], axis=0)
+
+    # QA-only stretch diagnostic. UVs are image-registered, so an extreme
+    # world-space edge anisotropy is a useful proxy for a visible stretched
+    # texel even when the triangle passed the binary tear tests. This does not
+    # alter topology; callers can use the percentile to choose a card/inpaint
+    # fallback without making the relief builder silently change modes.
+    stretch_ratio_p95 = 0.0
+    stretch_fraction_gt12 = 0.0
+    if len(faces):
+        flat_pts = pts.reshape(-1, 3)
+        pa, pb, pc = (flat_pts[faces[:, 0]], flat_pts[faces[:, 1]],
+                      flat_pts[faces[:, 2]])
+        el = np.stack((np.linalg.norm(pb - pa, axis=1),
+                       np.linalg.norm(pc - pb, axis=1),
+                       np.linalg.norm(pa - pc, axis=1)), axis=1)
+        emin = np.maximum(np.min(el, axis=1), 1e-8)
+        ratios = np.max(el, axis=1) / emin
+        stretch_ratio_p95 = float(np.percentile(ratios, 95))
+        stretch_fraction_gt12 = float(np.mean(ratios > 12.0))
 
     # Rasterize torn quads (partially or fully) back into the full-resolution
     # hole mask. rows/cols are literal pixel indices, so a per-pixel gather
@@ -587,6 +627,9 @@ def build_relief_mesh(
         "grid": (int(nr), int(nc)),
         "scale": float(scale),
         "torn_fraction": float(1.0 - len(faces) / max(n_quads, 1)),
+        "quad_coherence": bool(quad_coherence),
+        "stretch_ratio_p95": stretch_ratio_p95,
+        "stretch_fraction_gt12": stretch_fraction_gt12,
         "n_filled_cells": int(filled_grid.sum()) if filled_grid is not None else 0,
     }
     return ReliefMesh(vertices=verts, faces=faces, uvs=uvs_flat, stats=stats,

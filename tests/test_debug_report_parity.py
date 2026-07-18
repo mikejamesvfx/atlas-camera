@@ -158,3 +158,43 @@ def test_engine_degrades_without_matte_fn():
     # Coverage unknown -> no near-empty flag, but zero-vertex still fires.
     assert "near_empty_matte" not in {f.code for f in health.flags}
     assert "zero_vertex_layer" in {f.code for f in health.flags}
+
+
+def _mesh_qa_solve(far_m=None):
+    solve = AtlasSolve(camera=_cam())
+    solve.camera.extrinsics.camera_view_matrix = (
+        (1.0, 0, 0, 0), (0, 1.0, 0, -1.6), (0, 0, 1.0, 0), (0, 0, 0, 1.0))
+    solve.debug_metadata["scale_source"] = "manual_override"
+    prim = AtlasProxyPrimitive(
+        name="m", primitive_type="mesh",
+        metadata={"source": "depth_relief_mesh", "n_vertices": 100,
+                  "n_faces": 98, "torn_fraction": 0.8,
+                  "quad_coherence": True, "stretch_ratio_p95": 20.0,
+                  "stretch_fraction_gt12": 0.3})
+    solve.projection_sources = [ProjectionSource(
+        camera=_cam(320, 240), name="xray", proxy_geometry=[prim],
+        metadata={"projection_mode": "clean_plate", "near_m": 0.0,
+                  "far_m": far_m})]
+    return solve
+
+
+def test_mesh_qa_flags_fire_on_unbanded_layer():
+    """Ported outlier/stretched-edge tier: torn + stretch as health flags."""
+    health = evaluate_scene_health(_mesh_qa_solve(far_m=None))
+    codes = {f.code for f in health.flags}
+    assert "torn_excessive" in codes
+    assert "stretch_excessive" in codes
+    entry = health.per_layer[0]
+    assert entry["torn_fraction"] == 0.8
+    assert entry["stretch_ratio_p95"] == 20.0
+    assert entry["quad_coherence"] is True
+
+
+def test_torn_flag_skips_band_clipped_layers():
+    """Global torn_fraction always reads high on a deliberately band-clipped
+    layer (found live: a correct narrow band flagged at 73.8%) — the torn
+    check is scoped to layers without a finite far edge; stretch is not."""
+    health = evaluate_scene_health(_mesh_qa_solve(far_m=5.0))
+    codes = {f.code for f in health.flags}
+    assert "torn_excessive" not in codes
+    assert "stretch_excessive" in codes

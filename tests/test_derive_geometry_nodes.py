@@ -185,3 +185,10 @@ def test_derive_node_does_not_mutate_input_solve():
     AtlasDeriveWalls().derive(solve, depth)
 
     assert len(solve.projection_scene.proxy_geometry) == before
+
+
+def test_layer_nodes_expose_shared_quad_coherence_guard():
+    from atlas_camera.comfy.nodes import AtlasCleanPlateLayer, AtlasDepthLayerMask
+
+    assert "quad_coherence" in AtlasCleanPlateLayer.INPUT_TYPES()["optional"]
+    assert "quad_coherence" in AtlasDepthLayerMask.INPUT_TYPES()["optional"]

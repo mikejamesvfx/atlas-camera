@@ -166,6 +166,11 @@ _FLAG_SEVERITY = {
     "scope_fallback": "warn",
     "negative_depth": "warn",
     "scale_unverified": "warn",
+    # Ported from the portable outlier/stretched-edge worklog (2026-07-18):
+    # mesh quality metrics as quality-based fallback triggers (card / ground
+    # / segmented inpaint instead of raising global relief thresholds).
+    "torn_excessive": "warn",
+    "stretch_excessive": "warn",
 }
 
 
@@ -261,12 +266,21 @@ def evaluate_scene_health(
                       for g in (src.proxy_geometry or []))
         cov = matte_coverage_fn(getattr(src, "mask_b64", None)) \
             if matte_coverage_fn else None
+        # Mesh QA metrics ride the relief-mesh primitive's metadata (the
+        # outlier/stretched-edge tier): surface them per layer and use them
+        # as quality-based fallback triggers.
+        mesh_meta = next((g.metadata or {} for g in (src.proxy_geometry or [])
+                          if (g.metadata or {}).get("source") == "depth_relief_mesh"), {})
         entry = {
             "name": src.name, "priority": src.priority,
             "projection_mode": meta.get("projection_mode"),
             "band_geometry": meta.get("band_geometry"),
             "near_m": meta.get("near_m"), "far_m": meta.get("far_m"),
             "n_vertices": n_verts, "n_faces": n_faces,
+            "torn_fraction": mesh_meta.get("torn_fraction"),
+            "quad_coherence": mesh_meta.get("quad_coherence"),
+            "stretch_ratio_p95": mesh_meta.get("stretch_ratio_p95"),
+            "stretch_fraction_gt12": mesh_meta.get("stretch_fraction_gt12"),
             "n_filled_cells": meta.get("n_filled_cells"),
             "source_camera_wh": [src.camera.intrinsics.image_width,
                                  src.camera.intrinsics.image_height]
@@ -287,6 +301,27 @@ def evaluate_scene_health(
                 "near_empty_matte",
                 f"{src.name}: matte covers only {cov:.2%} of the frame — "
                 "layer will paint almost nothing", src.name))
+        torn = entry.get("torn_fraction")
+        # torn_fraction is GLOBAL (1 - faces/n_quads over the whole grid), so
+        # a deliberately band-clipped layer always reads high — found by the
+        # healthy-stack fixture flagging a correct narrow band at 73.8%. The
+        # worklog's 65% threshold was calibrated on full-frame/mask-membership
+        # meshes, so the check only applies where band clipping isn't the
+        # dominant tear cause (no finite far edge).
+        if (torn is not None and float(torn) > 0.65
+                and entry.get("far_m") is None):
+            flags.append(_flag(
+                "torn_excessive",
+                f"{src.name}: {float(torn):.1%} of relief quads torn — "
+                "expect local coverage gaps; add/increase clean-plate matte",
+                src.name))
+        stretch = entry.get("stretch_ratio_p95")
+        if stretch is not None and float(stretch) > 12.0:
+            flags.append(_flag(
+                "stretch_excessive",
+                f"{src.name}: p95 world/UV edge ratio {float(stretch):.1f} — "
+                "likely stretched texels; prefer card or segmented inpaint",
+                src.name))
 
     # Band continuity (clean-plate band layers only, sorted by near edge).
     # NOTE: the membership expression's operator precedence is preserved

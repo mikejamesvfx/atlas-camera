@@ -2768,6 +2768,50 @@ class AtlasDepthMap:
         return (result,)
 
 
+class AtlasDepthOutlierMask:
+    """Build an explicit mask for local monocular-depth outliers."""
+    RETURN_TYPES = ("MASK", "STRING")
+    RETURN_NAMES = ("outlier_mask", "report")
+    FUNCTION = "detect"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"depth": ("ATLAS_DEPTH_MAP",)}, "optional": {
+            "solve": ("ATLAS_SOLVE",),
+            "relative_threshold": ("FLOAT", {"default": 0.35, "min": 0.05, "max": 3.0, "step": 0.05}),
+            "mad_threshold": ("FLOAT", {"default": 6.0, "min": 0.5, "max": 50.0, "step": 0.5}),
+            "dilate_px": ("INT", {"default": 2, "min": 0, "max": 32}),
+        }}
+
+    def detect(self, depth, solve=None, relative_threshold=0.35,
+               mad_threshold=6.0, dilate_px=2):
+        torch = _require_torch()
+        np = _require_numpy()
+        h = int(getattr(depth, "image_height", depth.depth.shape[0]))
+        w = int(getattr(depth, "image_width", depth.depth.shape[1]))
+        d = _depth_map_for_solve(depth, w, h).astype(np.float32)
+        valid = np.isfinite(d) & (d > 1e-4)
+        pad = np.pad(d, 1, mode="edge")
+        samples = np.stack([pad[dy:dy + h, dx:dx + w]
+                            for dy in range(3) for dx in range(3)], axis=0)
+        med = np.nanmedian(np.where(samples > 1e-4, samples, np.nan), axis=0)
+        abs_dev = np.abs(samples - med[None])
+        mad = np.nanmedian(np.where(samples > 1e-4, abs_dev, np.nan), axis=0)
+        rel_bad = np.abs(d - med) / np.maximum(med, 1e-4) > float(relative_threshold)
+        robust_bad = np.abs(d - med) > float(mad_threshold) * np.maximum(mad, 1e-3)
+        bad = valid & np.isfinite(med) & rel_bad & robust_bad
+        # Small dilation keeps the bad cell from becoming a one-cell stretched
+        # bridge when the relief grid samples just beside it.
+        for _ in range(max(0, int(dilate_px))):
+            b = bad.copy()
+            b[1:] |= bad[:-1]; b[:-1] |= bad[1:]
+            b[:, 1:] |= bad[:, :-1]; b[:, :-1] |= bad[:, 1:]
+            bad = b
+        mask = torch.from_numpy(bad.astype(np.float32)).unsqueeze(0)
+        return mask, f"depth outlier mask: {int(bad.sum())} px ({float(bad.mean()):.2%})"
+
+
 def _resize_normal_field(normals, target_hw):
     """Resize an (H,W,3) unit-normal field to ``target_hw`` (h, w) and
     renormalize. Bilinear via PIL mode 'F' per channel; nearest-neighbour numpy
@@ -3265,6 +3309,9 @@ class AtlasDeriveReliefMesh:
                                "SAM/RMBG) which REPLACES the internal sky heuristic before "
                                "triangulation - so it must cover EVERYTHING you want gone. Any "
                                "resolution - resized to match depth."}),
+                "outlier_mask": ("MASK", {
+                    "tooltip": "Optional local depth outlier mask from AtlasDepthOutlierMask. "
+                               "Those cells become explicit holes instead of stretched shards."}),
                 "max_edge_factor": ("FLOAT", {"default": 12.0, "min": 2.0, "max": 200.0, "step": 1.0,
                     "tooltip": "World-space edge tear threshold: a quad tears when its world edge "
                                "exceeds this x the expected local sample spacing. SEPARATE from "
@@ -3290,13 +3337,17 @@ class AtlasDeriveReliefMesh:
                                "a HIGHER max_edge_factor: raise mef to stop comb-tearing continuous "
                                "grazing surfaces, then set ~40-70 here to keep real silhouettes "
                                "torn. Lower = tears more readily."}),
+                "quad_coherence": ("BOOLEAN", {"default": True,
+                    "tooltip": "Reject both triangles when either half of a grid quad fails. "
+                               "Prevents one surviving diagonal from becoming a stretched UV wedge."}),
             },
         }
 
     _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
     def derive(self, solve, depth, relief_grid=128, relief_quality="custom", depth_edge_rel=0.5,
-               exclude_mask=None, max_edge_factor=12.0, sky_heuristic=True, normal_edge_deg=0.0):
+               exclude_mask=None, outlier_mask=None, max_edge_factor=12.0,
+               sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -3314,6 +3365,10 @@ class AtlasDeriveReliefMesh:
         horizon_y = _horizon_y_from_solve(solve)
         extr = solve.camera.extrinsics
         resolved_exclude = _resolve_exclude_mask(exclude_mask, height, width)
+        resolved_outliers = _resolve_exclude_mask(outlier_mask, height, width)
+        if resolved_outliers is not None:
+            resolved_exclude = (resolved_outliers if resolved_exclude is None else
+                                (resolved_exclude | resolved_outliers))
 
         scale, ground_info = estimate_ground_scale(
             depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
@@ -3330,16 +3385,23 @@ class AtlasDeriveReliefMesh:
             scale=scale, horizon_y=horizon_y, exclude_mask=resolved_exclude,
             max_edge_factor=float(max_edge_factor),
             normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
+            quad_coherence=bool(quad_coherence),
             apply_sky_heuristic=(resolved_exclude is None) and bool(sky_heuristic))
         prims = [backdrop, relief_mesh_primitive(mesh)]
         stats = {
             "ground_scale": scale, "ground_fit": ground_info,
-            "relief_mesh": {"n_vertices": mesh.stats["n_vertices"], "n_faces": mesh.stats["n_faces"]},
+            "relief_mesh": {
+                "n_vertices": mesh.stats["n_vertices"],
+                "n_faces": mesh.stats["n_faces"],
+                "torn_fraction": mesh.stats.get("torn_fraction", 0.0),
+                "quad_coherence": mesh.stats.get("quad_coherence", bool(quad_coherence)),
+            },
         }
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "relief_grid": int(relief_grid), "relief_quality": relief_quality,
             "depth_edge_rel": float(depth_edge_rel), "max_edge_factor": float(max_edge_factor),
             "sky_heuristic": bool(sky_heuristic), "normal_edge_deg": float(normal_edge_deg),
+            "quad_coherence": bool(quad_coherence),
             "derive_node": "AtlasDeriveReliefMesh",
         })
         hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
@@ -6305,13 +6367,16 @@ class AtlasDepthLayerMask:
                                "subject-aware band boundaries flow in (jointly derived, so "
                                "adjacent bands always share edges exactly). Loses to a "
                                "connected band_split. Errors loudly on garbage."}),
+                "quad_coherence": ("BOOLEAN", {"default": True,
+                    "tooltip": "Only used when compute_hole_mask=True. Match AtlasCleanPlateLayer "
+                               "to keep hole QA identical to the final mesh."}),
             },
         }
 
     def generate(self, solve, depth, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5, feather_px=4,
                  compute_hole_mask=False, relief_grid=384, depth_edge_rel=1.5, exclude_mask=None,
                  fill_occluded=False, band_side="manual", band_split=None, band_ref_mask=None,
-                 band_override=""):
+                 band_override="", quad_coherence=True):
         np = _require_numpy()
         torch = _require_torch()
 
@@ -6344,7 +6409,8 @@ class AtlasDepthLayerMask:
                 scale=setup.scale, horizon_y=setup.horizon_y,
                 band_min_m=near, band_max_m=(None if far == float("inf") else far),
                 exclude_mask=setup.exclude_mask, fill_mask=fill,
-                apply_sky_heuristic=setup.exclude_mask is None)
+                apply_sky_heuristic=setup.exclude_mask is None,
+                quad_coherence=bool(quad_coherence))
             # No edge overhang here, deliberately: the layer's mesh only
             # overhangs when embed_matte is on (this node can't know that),
             # and a PESSIMISTIC hole_mask (a couple of boundary cells extra)
@@ -7327,6 +7393,161 @@ class AtlasInpaintStitch:
         return (out,)
 
 
+class AtlasSDXLInpaint:
+    """Native ComfyUI SDXL inpaint adapter.
+
+    This deliberately expands to ComfyUI's stock checkpoint/conditioning/
+    latent inpaint nodes instead of importing a model implementation. It can
+    therefore use SDXL checkpoints already installed in ``models/checkpoints``
+    and stays compatible with ComfyUI's memory/offload policies. Feed it a
+    cropped image and mask (usually from AtlasInpaintCrop), then stitch its
+    IMAGE output with AtlasInpaintStitch.
+    """
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "report")
+    FUNCTION = "expand_sdxl"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "image": ("IMAGE",),
+            "mask": ("MASK",),
+            "checkpoint": ("STRING", {"default": "SDXL\\sd_xl_base_1.0.safetensors",
+                "tooltip": "Checkpoint filename in models/checkpoints. Use an SDXL-compatible "
+                           "inpaint/base checkpoint."}),
+            "positive_prompt": ("STRING", {"default": "high detail, coherent architecture",
+                "multiline": True}),
+            "negative_prompt": ("STRING", {"default": "blurry, warped, duplicate, text",
+                "multiline": True}),
+            "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            "steps": ("INT", {"default": 30, "min": 1, "max": 100}),
+            "cfg": ("FLOAT", {"default": 5.5, "min": 0.0, "max": 30.0, "step": 0.1}),
+            "denoise": ("FLOAT", {"default": 0.85, "min": 0.0, "max": 1.0, "step": 0.01}),
+            "grow_mask_by": ("INT", {"default": 8, "min": 0, "max": 64}),
+        }}
+
+    def expand_sdxl(self, image, mask, checkpoint, positive_prompt,
+                    negative_prompt, seed=0, steps=30, cfg=5.5,
+                    denoise=0.85, grow_mask_by=8):
+        registry = _comfy_registry()
+        required = ("CheckpointLoaderSimple", "CLIPTextEncode",
+                    "InpaintModelConditioning", "KSampler", "VAEDecode")
+        missing = [name for name in required if name not in registry]
+        if missing:
+            raise RuntimeError("Native SDXL inpaint requires ComfyUI nodes missing from "
+                               "the registry: " + ", ".join(missing))
+        g = _graph_builder()
+        ckpt = g.node("CheckpointLoaderSimple", ckpt_name=str(checkpoint))
+        positive = g.node("CLIPTextEncode", text=str(positive_prompt), clip=ckpt.out(1))
+        negative = g.node("CLIPTextEncode", text=str(negative_prompt), clip=ckpt.out(1))
+        conditioning = g.node("InpaintModelConditioning",
+                               positive=positive.out(0), negative=negative.out(0),
+                               pixels=image, vae=ckpt.out(2), mask=mask,
+                               noise_mask=True)
+        sampled = g.node("KSampler", model=ckpt.out(0), seed=int(seed),
+                         steps=int(steps), cfg=float(cfg), sampler_name="dpmpp_2m",
+                         scheduler="karras", positive=conditioning.out(0),
+                         negative=conditioning.out(1), latent_image=conditioning.out(2),
+                         denoise=float(denoise))
+        decoded = g.node("VAEDecode", samples=sampled.out(0), vae=ckpt.out(2))
+        report = (f"SDXL inpaint via InpaintModelConditioning — checkpoint={checkpoint}, "
+                  f"steps={int(steps)}, cfg={float(cfg):g}, denoise={float(denoise):g}")
+        return {"result": (decoded.out(0), report), "expand": g.finalize()}
+
+
+class AtlasInstanceMask:
+    """Select one SAM3 ``Separate`` instance and optionally scope it."""
+    RETURN_TYPES = ("MASK", "STRING")
+    RETURN_NAMES = ("mask", "report")
+    FUNCTION = "select"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "mask": ("MASK",),
+            "instance_index": ("INT", {"default": 0, "min": 0, "max": 127}),
+        }, "optional": {
+            "restrict_mask": ("MASK",),
+            "min_coverage": ("FLOAT", {"default": 0.001, "min": 0.0, "max": 1.0, "step": 0.0001}),
+        }}
+
+    def select(self, mask, instance_index=0, restrict_mask=None, min_coverage=0.001):
+        torch = _require_torch()
+        import torch.nn.functional as F
+        m = mask if mask.dim() == 3 else mask.unsqueeze(0)
+        idx = int(instance_index)
+        if idx < 0 or idx >= int(m.shape[0]):
+            out = torch.zeros((1, m.shape[1], m.shape[2]), dtype=m.dtype, device=m.device)
+            return out, f"instance {idx}: empty (SAM3 returned {int(m.shape[0])} instance(s))"
+        out = m[idx:idx + 1].float().clamp(0, 1)
+        if restrict_mask is not None:
+            r = restrict_mask if restrict_mask.dim() == 3 else restrict_mask.unsqueeze(0)
+            if tuple(r.shape[-2:]) != tuple(out.shape[-2:]):
+                r = F.interpolate(r.unsqueeze(1).float(), size=out.shape[-2:], mode="nearest").squeeze(1)
+            out = out * r[:1].to(out.device)
+        coverage = float((out > 0.5).float().mean())
+        if coverage < float(min_coverage):
+            out.zero_()
+            return out, f"instance {idx}: rejected ({coverage:.3%} coverage)"
+        return out, f"instance {idx}: {coverage:.3%} coverage"
+
+
+class AtlasSegmentedSDXLInpaint:
+    """SAM3-separated building masks -> per-instance SDXL crop/stitch stack."""
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "report")
+    FUNCTION = "expand_stack"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "image": ("IMAGE",),
+            "restrict_mask": ("MASK",),
+            "prompt": ("STRING", {"default": "building facade, photorealistic continuation", "multiline": True}),
+            "checkpoint": ("STRING", {"default": "SDXL\\sd_xl_base_1.0.safetensors"}),
+            "max_instances": ("INT", {"default": 4, "min": 1, "max": 8}),
+            "steps": ("INT", {"default": 30, "min": 1, "max": 100}),
+            "cfg": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 30.0, "step": 0.1}),
+            "denoise": ("FLOAT", {"default": 0.65, "min": 0.0, "max": 1.0, "step": 0.01}),
+            "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+        }}
+
+    def expand_stack(self, image, restrict_mask, prompt, checkpoint, max_instances=4,
+                     steps=30, cfg=4.0, denoise=0.65, seed=0):
+        registry = _comfy_registry()
+        for name in ("SAM3Segment", "INPAINT_ExpandMask", "AtlasInpaintCrop",
+                     "AtlasSDXLInpaint", "AtlasInpaintStitch"):
+            if name not in registry:
+                raise RuntimeError(f"Segmented SDXL inpaint requires node '{name}'")
+        g = _graph_builder()
+        sam = g.node("SAM3Segment", image=image, prompt="building",
+                     output_mode="Separate", confidence_threshold=0.5,
+                     max_segments=int(max_instances), segment_pick=0,
+                     mask_blur=0, mask_offset=0, device="Auto",
+                     invert_output=False, unload_model=False,
+                     background="Alpha", background_color="#222222")
+        plate = image
+        for i in range(int(max_instances)):
+            selected = g.node("AtlasInstanceMask", mask=sam.out(1), restrict_mask=restrict_mask,
+                              instance_index=i, min_coverage=0.001)
+            grown = g.node("INPAINT_ExpandMask", mask=selected.out(0), grow=32,
+                           blur=16, blur_type="gaussian")
+            crop = g.node("AtlasInpaintCrop", image=plate, mask=grown.out(0), context_pad_px=128)
+            fill = g.node("AtlasSDXLInpaint", image=crop.out(0), mask=crop.out(1),
+                          checkpoint=checkpoint, positive_prompt=prompt,
+                          negative_prompt="fantasy, sci-fi, warped, duplicate, text, seams",
+                          seed=int(seed) + i, steps=int(steps), cfg=float(cfg),
+                          denoise=float(denoise), grow_mask_by=8)
+            plate = g.node("AtlasInpaintStitch", original_image=plate,
+                           inpainted_crop=fill.out(0), crop_region=crop.out(2),
+                           mask=grown.out(0), feather_px=24).out(0)
+        report = f"SAM3 Separate building stack — {int(max_instances)} instance slot(s), SDXL denoise {float(denoise):g}"
+        return {"result": (plate, report), "expand": g.finalize()}
+
+
 _BAND_GEOMETRY_CHOICES = ("relief", "card", "ground")
 
 
@@ -7589,6 +7810,9 @@ class AtlasCleanPlateLayer:
                                "creases / occlusion silhouettes — while leaving smoothly-receding "
                                "walls intact. Pair with a higher max_edge_factor: raise mef to kill "
                                "spurious combs, then ~40-70 here to keep genuine edges torn."}),
+                "quad_coherence": ("BOOLEAN", {"default": True,
+                    "tooltip": "Reject both triangles when either half of a grid quad fails; avoids "
+                               "surviving diagonal UV wedges at band boundaries."}),
             },
         }
 
@@ -7598,7 +7822,8 @@ class AtlasCleanPlateLayer:
                   edge_extend_px=0, skirt_bevel=0.0, frame_outpaint_px=0,
                   exclude_choke_cells=2, band_side="manual", band_split=None,
                   band_geometry="relief", geometry_override="", band_ref_mask=None,
-                  band_override="", max_edge_factor=12.0, normal_edge_deg=0.0):
+                  band_override="", max_edge_factor=12.0, normal_edge_deg=0.0,
+                  quad_coherence=True):
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import (
@@ -7747,6 +7972,7 @@ class AtlasCleanPlateLayer:
             smooth_iterations=(0 if geometry != "relief" else 2),
             max_edge_factor=float(max_edge_factor),
             normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
+            quad_coherence=bool(quad_coherence),
             overhang_bevel_rel=float(skirt_bevel),
             exclude_choke_cells=choke,
             edge_overhang_cells=overhang_cells)
@@ -7835,6 +8061,7 @@ class AtlasCleanPlateLayer:
                 "n_faces": mesh.stats.get("n_faces"),
                 "n_filled_cells": mesh.stats.get("n_filled_cells", 0),
                 "skirt_bevel": float(skirt_bevel),
+                "quad_coherence": bool(quad_coherence),
             },
         )
 
@@ -8397,6 +8624,10 @@ NODE_CLASS_MAPPINGS = {
     "AtlasSkyDomeLayer":          AtlasSkyDomeLayer,
     "AtlasInpaintCrop":           AtlasInpaintCrop,
     "AtlasInpaintStitch":         AtlasInpaintStitch,
+    "AtlasSDXLInpaint":           AtlasSDXLInpaint,
+    "AtlasInstanceMask":          AtlasInstanceMask,
+    "AtlasSegmentedSDXLInpaint":  AtlasSegmentedSDXLInpaint,
+    "AtlasDepthOutlierMask":      AtlasDepthOutlierMask,
     "AtlasScopeMask":             AtlasScopeMask,
     "AtlasSemanticMask":          AtlasSemanticMask,
     "AtlasDebugReport":           AtlasDebugReport,
@@ -8471,6 +8702,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasSkyDomeLayer":          "Atlas Sky Dome Layer ☁",
     "AtlasInpaintCrop":           "Atlas Inpaint Crop ✂",
     "AtlasInpaintStitch":         "Atlas Inpaint Stitch ✂",
+    "AtlasSDXLInpaint":           "Atlas SDXL Inpaint (native) ✨",
+    "AtlasInstanceMask":          "Atlas Instance Mask (SAM3) 🎭",
+    "AtlasSegmentedSDXLInpaint":  "Atlas Segmented SDXL Inpaint 🏢",
+    "AtlasDepthOutlierMask":      "Atlas Depth Outlier Mask 🛡",
     "AtlasScopeMask":             "Atlas Scope Mask 🎯",
     "AtlasSemanticMask":          "Atlas Semantic Mask 🧩",
     "AtlasDebugReport":           "Atlas Debug Report 🔍",
