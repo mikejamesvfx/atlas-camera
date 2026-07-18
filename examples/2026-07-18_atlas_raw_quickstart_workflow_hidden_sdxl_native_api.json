@@ -1,0 +1,607 @@
+{
+  "1": {
+    "inputs": {
+      "file_path": "C:\\Users\\miike\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\input\\CameraRaw\\DSC_2330.NEF",
+      "undistort": true,
+      "half_size": true,
+      "white_balance": "camera",
+      "exposure_ev": 0,
+      "write_exr": true,
+      "output_dir": "atlas_exports/raw_plates",
+      "colorspace": "Linear Rec.709 (sRGB)"
+    },
+    "class_type": "AtlasLoadRAW",
+    "_meta": {
+      "title": "\ud83d\udcf7 Load RAW (D810 NEF)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "source": [
+        "1",
+        5
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "RAW report \u2014 camera \u00b7 focal \u00b7 sensor \u00b7 undistort"
+    }
+  },
+  "4": {
+    "inputs": {
+      "height_mode": "measure_from_depth",
+      "camera_height_m": 1.6,
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "sensor_width_mm": 36,
+      "weights": "pinhole",
+      "device": "auto",
+      "focal_length_mm": 24,
+      "image": [
+        "1",
+        0
+      ],
+      "raw_meta": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "AtlasLearnedSolveFromImage",
+    "_meta": {
+      "title": "Learned solve (EXIF focal wins via raw_meta)"
+    }
+  },
+  "5": {
+    "inputs": {
+      "scale": 1,
+      "camera_height_m": 100,
+      "solve": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "AtlasScaleOverride",
+    "_meta": {
+      "title": "\ud83d\udcd0 Camera height dial \u2014 SET YOUR ALTITUDE"
+    }
+  },
+  "7": {
+    "inputs": {
+      "depth_model": "depth-anything/DA3METRIC-LARGE",
+      "device": "auto",
+      "image": [
+        "1",
+        0
+      ],
+      "solve": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "AtlasDepthMap",
+    "_meta": {
+      "title": "Shared metric depth (fed the solved focal)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "relief_grid": 128,
+      "relief_quality": "ultra",
+      "depth_edge_rel": 1.5,
+      "max_edge_factor": 60,
+      "sky_heuristic": false,
+      "normal_edge_deg": 0,
+      "solve": [
+        "5",
+        0
+      ],
+      "depth": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "AtlasDeriveReliefMesh",
+    "_meta": {
+      "title": "Relief mesh"
+    }
+  },
+  "9": {
+    "inputs": {
+      "solve": [
+        "8",
+        0
+      ],
+      "plate_ref": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "AtlasAttachSourcePlate",
+    "_meta": {
+      "title": "Attach EXR plate_ref (Output Desk)"
+    }
+  },
+  "11": {
+    "inputs": {
+      "lari_path": "C:\\Users\\miike\\lari",
+      "device": "auto",
+      "clear_rel": 0.02,
+      "min_clear_m": 2,
+      "model": "lari-scene",
+      "wt_path": "C:\\Users\\miike\\world-tracing",
+      "steps": 20,
+      "seed": 845740604,
+      "smooth_px": 31,
+      "fill_gaps": true,
+      "depth": [
+        "7",
+        0
+      ],
+      "image": [
+        "1",
+        0
+      ],
+      "restrict_mask": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "AtlasPredictHiddenGeometry",
+    "_meta": {
+      "title": "Atlas Predict Hidden Geometry \ud83d\udd2c (research)"
+    }
+  },
+  "12": {
+    "inputs": {
+      "images": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "14": {
+    "inputs": {
+      "source": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "\ud83d\udd27 Mask Preview"
+    }
+  },
+  "15": {
+    "inputs": {
+      "source": [
+        "16",
+        2
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "\ud83d\udd27 Mask Preview"
+    }
+  },
+  "16": {
+    "inputs": {
+      "near_m": 0,
+      "far_m": 0,
+      "near_pct": 0,
+      "far_pct": 0.5,
+      "feather_px": 4,
+      "compute_hole_mask": true,
+      "relief_grid": 384,
+      "depth_edge_rel": 1.5,
+      "fill_occluded": false,
+      "band_side": "manual",
+      "band_override": "",
+      "solve": [
+        "4",
+        0
+      ],
+      "depth": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "AtlasDepthLayerMask",
+    "_meta": {
+      "title": "Atlas Depth Layer Mask \ud83c\udfad"
+    }
+  },
+  "17": {
+    "inputs": {
+      "relief_grid": 128,
+      "relief_quality": "ultra",
+      "depth_edge_rel": 0.5,
+      "max_edge_factor": 12,
+      "sky_heuristic": false,
+      "normal_edge_deg": 80,
+      "solve": [
+        "8",
+        0
+      ],
+      "depth": [
+        "11",
+        0
+      ],
+      "exclude_mask": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "AtlasDeriveReliefMesh",
+    "_meta": {
+      "title": "Atlas Derive Relief Mesh \ud83c\udfd4"
+    }
+  },
+  "19": {
+    "inputs": {
+      "resolution": 768,
+      "client_data": "",
+      "preview_expand": 1,
+      "solve": [
+        "21",
+        0
+      ],
+      "source_image": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "AtlasBlockoutViewport",
+    "_meta": {
+      "title": "Atlas Viewport \ud83e\uddca"
+    }
+  },
+  "18": {
+    "inputs": {
+      "mask": [
+        "11",
+        1
+      ],
+      "expand": 32,
+      "tapered_corners": true
+    },
+    "class_type": "GrowMask",
+    "_meta": {
+      "title": "Grow predicted hidden region (geometry support)"
+    }
+  },
+  "20": {
+    "inputs": {
+      "mask": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "InvertMask",
+    "_meta": {
+      "title": "Keep only predicted hidden region"
+    }
+  },
+  "21": {
+    "inputs": {
+      "solve_a": [
+        "8",
+        0
+      ],
+      "solve_b": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "AtlasMergeGeometry",
+    "_meta": {
+      "title": "Merge visible relief + hidden relief"
+    }
+  },
+  "22": {
+    "inputs": {
+      "source": [
+        "11",
+        2
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "LaRI diagnostic report \u2014 registration / coverage / layer histogram"
+    }
+  },
+  "23": {
+    "inputs": {
+      "source": [
+        "11",
+        3
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "LaRI paint matte \u2014 only genuinely behind FG"
+    }
+  },
+  "24": {
+    "inputs": {
+      "solve": [
+        "21",
+        0
+      ],
+      "depth": [
+        "7",
+        0
+      ],
+      "file_path": "atlas_debug/raw_hidden_diagnostic.json"
+    },
+    "class_type": "AtlasDebugReport",
+    "_meta": {
+      "title": "Merged geometry report \u2014 vertex counts / red flags"
+    }
+  },
+  "25": {
+    "inputs": {
+      "source": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Merged geometry report text"
+    }
+  },
+  "26": {
+    "inputs": {
+      "mask": [
+        "11",
+        3
+      ],
+      "grow": 72,
+      "blur": 24,
+      "blur_type": "gaussian"
+    },
+    "class_type": "INPAINT_ExpandMask",
+    "_meta": {
+      "title": "HIDDEN PAINT MATTE \u2014 grow/feather"
+    }
+  },
+  "27": {
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "mask": [
+        "26",
+        0
+      ],
+      "context_pad_px": 192
+    },
+    "class_type": "AtlasInpaintCrop",
+    "_meta": {
+      "title": "HIDDEN REGION \u2014 crop for inference"
+    }
+  },
+  "30": {
+    "inputs": {
+      "original_image": [
+        "1",
+        0
+      ],
+      "inpainted_crop": [
+        "41",
+        0
+      ],
+      "crop_region": [
+        "27",
+        2
+      ],
+      "mask": [
+        "26",
+        0
+      ],
+      "feather_px": 32
+    },
+    "class_type": "AtlasInpaintStitch",
+    "_meta": {
+      "title": "Stitch clean plate back into RAW frame"
+    }
+  },
+  "31": {
+    "inputs": {
+      "image": [
+        "30",
+        0
+      ],
+      "mask": [
+        "16",
+        0
+      ],
+      "layer_index": 0,
+      "color_hex": "ff6a3d"
+    },
+    "class_type": "AtlasLayerPreview",
+    "_meta": {
+      "title": "TAG \u2014 foreground occluder (orange)"
+    }
+  },
+  "41": {
+    "inputs": {
+      "samples": [
+        "40",
+        0
+      ],
+      "vae": [
+        "36",
+        2
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "32": {
+    "inputs": {
+      "image": [
+        "30",
+        0
+      ],
+      "mask": [
+        "11",
+        1
+      ],
+      "layer_index": 0,
+      "color_hex": "c95aff"
+    },
+    "class_type": "AtlasLayerPreview",
+    "_meta": {
+      "title": "TAG \u2014 inferred hidden geometry (purple)"
+    }
+  },
+  "42": {
+    "inputs": {
+      "images": [
+        "32",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "TAG \u2014 inferred hidden geometry (purple)"
+    }
+  },
+  "33": {
+    "inputs": {
+      "image": [
+        "30",
+        0
+      ],
+      "mask": [
+        "11",
+        3
+      ],
+      "layer_index": 0,
+      "color_hex": "6aff5a"
+    },
+    "class_type": "AtlasLayerPreview",
+    "_meta": {
+      "title": "TAG \u2014 inpaint paint matte (green)"
+    }
+  },
+  "43": {
+    "inputs": {
+      "images": [
+        "33",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "TAG \u2014 inpaint paint matte (green)"
+    }
+  },
+  "34": {
+    "inputs": {
+      "images": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "STITCHED CLEAN PLATE \u2014 inspect before projection"
+    }
+  },
+  "35": {
+    "inputs": {
+      "source": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "SDXL inpaint report"
+    }
+  },
+  "36": {
+    "inputs": {
+      "ckpt_name": "SDXL\\sd_xl_base_1.0.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "37": {
+    "inputs": {
+      "text": "high detail, coherent architecture, realistic texture continuation",
+      "clip": [
+        "36",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "38": {
+    "inputs": {
+      "text": "blurry, warped geometry, duplicate structures, text, seams",
+      "clip": [
+        "36",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "39": {
+    "inputs": {
+      "positive": [
+        "37",
+        0
+      ],
+      "negative": [
+        "38",
+        0
+      ],
+      "pixels": [
+        "27",
+        0
+      ],
+      "vae": [
+        "36",
+        2
+      ],
+      "mask": [
+        "27",
+        1
+      ],
+      "noise_mask": true
+    },
+    "class_type": "InpaintModelConditioning"
+  },
+  "40": {
+    "inputs": {
+      "model": [
+        "36",
+        0
+      ],
+      "seed": 1045806427285297,
+      "steps": 30,
+      "cfg": 5.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "positive": [
+        "39",
+        0
+      ],
+      "negative": [
+        "39",
+        1
+      ],
+      "latent_image": [
+        "39",
+        2
+      ],
+      "denoise": 0.85
+    },
+    "class_type": "KSampler"
+  }
+}

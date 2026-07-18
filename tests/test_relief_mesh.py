@@ -640,6 +640,21 @@ def test_normal_edge_deg_tears_a_sharp_crease():
     assert _torn(tent, normal_edge_deg=120.0) == base
 
 
+def test_quad_coherence_never_keeps_a_surviving_diagonal():
+    """The conservative final-output mode may remove coverage, but must not
+    add faces relative to legacy partial-quad triangulation."""
+    depth = _ramp_depth()
+    kw = dict(view_matrix=_view_matrix(0.0), fx=FX, fy=FY, cx=CX, cy=CY,
+              grid_long_edge=80, depth_edge_rel=5.0, max_edge_factor=2.0,
+              far_clip_percentile=100.0, smooth_iterations=0,
+              apply_sky_heuristic=False, floor_clamp=None)
+    legacy = build_relief_mesh(depth, quad_coherence=False, **kw)
+    coherent = build_relief_mesh(depth, quad_coherence=True, **kw)
+    assert len(coherent.faces) <= len(legacy.faces)
+    assert np.isfinite(coherent.stats["stretch_ratio_p95"])
+    assert 0.0 <= coherent.stats["stretch_fraction_gt12"] <= 1.0
+
+
 # --- band near-clip: fill geometry must stay behind band_min_m ---------------
 
 def test_band_min_m_near_clips_fill_geometry():
