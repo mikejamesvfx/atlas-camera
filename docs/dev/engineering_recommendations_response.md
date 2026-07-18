@@ -67,5 +67,11 @@ incident is the acceptance test for the accepted work below.
 
 ## Status
 
-Implemented on branch `claude/atlas-trust-tier` (milestones M0–M7); this note
-is updated with "shipped in <version>" markers as milestones land.
+**All four accepted tracks SHIPPED 2026-07-18** on branch
+`claude/atlas-trust-tier` (milestones M0–M7, one commit each):
+`core/scene_health.py` (scale_health + evaluate_scene_health, with the
+frozen-parity DebugReport refactor), the surfacing set (HUD ⚠ / gate banner /
+export summaries / report.md), the `scale`+`depth` confidence keys,
+`AtlasSceneHealthGate` 🩺 (gate_state_table.md Gate 4), and
+`exporters/manifest.py` (`atlas_project.json` schema v1 + identity-hash
+embeds). ~45 new tests; full suite green.

@@ -47,6 +47,20 @@ atlas_camera.reference_data ← Curated scale-reference registry (person/door/ca
 atlas_camera.inference  ← Depth Anything V2, GeoCalib, local VLM helpers
 ```
 
+### Is my scale safe to export? (the trust tier, 2026-07-18)
+
+A projection can look perfect while the metric scale is silently wrong —
+projection is angular; scale is not. Every solve now carries a
+`scale_health` verdict (measured / manual / assumed / unknown + an explicit
+safe-to-export flag) derived from the tiered scale cascade's own provenance:
+the viewport ℹ HUD shows an orange ⚠ when scale is unverified, the ✅ Solve
+Gate report says why, export summaries carry the warning, and
+`AtlasSceneHealthGate` 🩺 (the acknowledgement gate before the exporters)
+holds the solve on any red flag until you fix it or knowingly continue —
+the acknowledged report rides into every export and the `atlas_project.json`
+reproducibility manifest. Fix an assumed scale with 📐 `AtlasScaleOverride`
+(camera height = floors × ~3.2 m on elevated plates) or a scale reference.
+
 The core package has **zero required runtime dependencies**. Every optional
 capability (numpy/opencv vision math, USD export, the FastAPI UI, the neural
 solvers) is guarded by `try/except` with an actionable `pip install -e .[extra]`

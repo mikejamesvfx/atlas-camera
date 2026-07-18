@@ -3,6 +3,39 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## Unreleased — P0 reliability & trust tier (2026-07-18)
+
+Response to the external engineering review (`docs/dev/
+ATLAS_ENGINEERING_RECOMMENDATIONS.md`, committed with a claim-by-claim
+response note): trust made legible. The motivating incident: a D810
+bird's-eye plate whose projection looked perfect while the metric scale was
+silently ~30× off on the assumed-eye-height tier.
+
+- **Scale trust, surfaced everywhere** — `core/scene_health.scale_health()`
+  maps recorded scale provenance to measured / manual / assumed / unknown
+  with an explicit **safe-to-export** verdict, stamped into every solve JSON
+  and shown as an orange ⚠ warning in the viewport ℹ HUD, a banner in the
+  ✅ Solve Gate report, a suffix on Nuke/Maya export summaries, and a
+  leading "Scale trust" section in review `report.md`.
+- **Confidence vector** — `scale` and `depth` join the camera confidence
+  key set (append-only; old solve JSONs load unchanged), populated from the
+  winning scale tier's own consistency and the ground fit's confidence.
+- **`AtlasSceneHealthGate` 🩺** — the acknowledgement gate before export:
+  the `AtlasDebugReport` red-flag engine (now shared in
+  `core/scene_health.evaluate_scene_health`, refactored behavior-identical
+  under a frozen parity test) holds the solve on warn/fail until
+  ✅ Acknowledge & Continue; clean scenes flow with zero clicks. The health
+  report is stamped indelibly into the solve — an acknowledged warning
+  survives into every artifact ("override a warning, never lose it").
+- **`atlas_project.json`** — a schema-versioned reproducibility manifest
+  (plate checksum, solve fingerprint, model provenance, seeds, scale +
+  health verdicts, settings, artifact list) written by the review package
+  and all standalone export nodes; `.nk`/`.py`/`.ma` artifacts carry an
+  `atlas_project_identity` comment tying them back to it.
+- Pushed back, with rationale recorded: per-solve "reprojection error"
+  (ill-defined for a single-image solve) and CI DCC import smoke tests
+  (no licenses in CI; the live-verification doctrine stands).
+
 ## Unreleased — camera RAW support (2026-07-18)
 
 Native camera-RAW input, replacing the Adobe Camera Raw round-trip for
