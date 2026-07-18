@@ -139,6 +139,8 @@ def build_project_manifest(solve: Any, *, artifacts: Iterable[ManifestArtifact] 
             "proxy_derivation": scene_meta.get("proxy_derivation"),
             "solve_mode": scene_meta.get("solve_mode"),
             "roll_trim_deg": meta.get("roll_trim_deg"),
+            "pitch_trim_deg": meta.get("pitch_trim_deg"),
+            "gravity_mirrored": meta.get("gravity_mirrored"),
         },
         "artifacts": [a.to_dict() for a in artifacts],
     }
