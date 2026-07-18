@@ -61,7 +61,7 @@ raw_rep = w.node("PreviewAny", [0, 380], [420, 180], "RAW report")
 w.link(raw, 5, raw_rep, "source")
 
 # ── 2 · SOLVE + SCALE ──────────────────────────────────────────────────────
-w.group("2 · SOLVE + 📐", [440, -40, 480, 660], "#345")
+w.group("2 · SOLVE + 📐🎚", [440, -40, 480, 780], "#345")
 solve = w.node("AtlasLearnedSolveFromImage", [480, 40], [400, 280],
                "Learned solve (EXIF via raw_meta)")
 w.link(raw, 0, solve, "image")
@@ -69,22 +69,26 @@ w.link(raw, 2, solve, "raw_meta")
 scale = w.node("AtlasScaleOverride", [480, 380], [400, 140],
                "📐 Camera height 45m", {"camera_height_m": 45.0})
 w.link(solve, 0, scale, "solve")
+pitch = w.node("AtlasPitchTrim", [480, 560], [400, 130],
+               "🎚 Gravity mirror — repairs THIS plate's flip",
+               {"mirror_gravity": True})
+w.link(scale, 0, pitch, "solve")
 
 # ── 3 · VISIBLE GEOMETRY ───────────────────────────────────────────────────
 w.group("3 · 🛡 VISIBLE GEOMETRY", [920, -40, 500, 660], "#435")
 dm = w.node("AtlasDepthMap", [960, 40], [420, 160], "Shared metric depth")
 w.link(raw, 0, dm, "image")
-w.link(scale, 0, dm, "solve")
+w.link(pitch, 0, dm, "solve")
 outlier = w.node("AtlasDepthOutlierMask", [960, 240], [420, 150],
                  "🛡 Outlier shield",
                  {"relative_threshold": 0.35, "mad_threshold": 6.0, "dilate_px": 2})
 w.link(dm, 0, outlier, "depth")
 relief = w.node("AtlasDeriveReliefMesh", [960, 430], [420, 200],
-                "Visible relief — measured geometry",
-                {"relief_quality": "ultra", "depth_edge_rel": 1.5,
+                "Visible relief — measured geometry (ultra for finals)",
+                {"relief_quality": "high", "depth_edge_rel": 1.5,
                  "max_edge_factor": 24.0, "sky_heuristic": False,
                  "normal_edge_deg": 60.0})
-w.link(scale, 0, relief, "solve")
+w.link(pitch, 0, relief, "solve")
 w.link(dm, 0, relief, "depth")
 w.link(outlier, 0, relief, "outlier_mask")
 
@@ -94,7 +98,7 @@ band = w.node("AtlasDepthLayerMask", [1460, 40], [420, 240], "FG band restrict [
               {"near_pct": 0.0, "far_pct": 0.5, "feather_px": 4,
                "compute_hole_mask": True, "relief_grid": 384,
                "depth_edge_rel": 1.5})
-w.link(solve, 0, band, "solve")
+w.link(pitch, 0, band, "solve")
 w.link(dm, 0, band, "depth")
 lari = w.node(LARI, [1460, 330], [420, 300], "🩻 LaRI — predict occluded surfaces",
               {"lari_path": r"C:\Users\miike\lari", "model": "lari-scene",
@@ -113,7 +117,7 @@ inv = w.raw("InvertMask", [1930, 190], [260, 80], "Invert → exclude", [],
 w.link(grow, 0, inv, "mask")
 hidden = w.node("AtlasDeriveReliefMesh", [1930, 310], [420, 200],
                 "Hidden relief — synthesized, tighter budget",
-                {"relief_quality": "ultra", "depth_edge_rel": 0.5,
+                {"relief_quality": "high", "depth_edge_rel": 0.5,
                  "max_edge_factor": 8.0, "sky_heuristic": False,
                  "normal_edge_deg": 45.0})
 w.link(relief, 0, hidden, "solve")

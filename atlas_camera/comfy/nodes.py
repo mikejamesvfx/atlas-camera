@@ -1492,6 +1492,124 @@ class AtlasRollTrim:
         return (out, report)
 
 
+class AtlasPitchTrim:
+    """🎚 Manual pitch trim / gravity-mirror for a solve — RollTrim's sibling.
+
+    Motivated by the live-found GeoCalib gravity FLIP (a D810 window shot:
+    bright reflection haze at the frame bottom read as sky and the solve came
+    out looking UP 39° on an obvious bird's-eye — the `camera_looks_up`
+    health flag's exact failure mode). `mirror_gravity` reflects the camera's
+    pitch about the horizon (new forward.y = −forward.y, heading and roll
+    preserved) — the one-click repair for a flipped solve; `pitch_deg` then
+    fine-tunes (positive tilts the view DOWN). Rotation happens about the
+    camera's own RIGHT axis, so position is invariant and roll never changes.
+
+    Wire it between the solve and the depth/derive nodes (the RollTrim /
+    ScaleOverride slot); the report warns if the solve already carries
+    derived geometry. Pure Python, zero deps; stamps
+    `debug_metadata["pitch_trim_deg"]` (+ `gravity_mirrored`).
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "trim"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"solve": ("ATLAS_SOLVE",)},
+            "optional": {
+                "mirror_gravity": ("BOOLEAN", {"default": False,
+                    "tooltip": "Reflect the camera's pitch about the horizon (forward.y "
+                               "flips sign; heading + roll preserved). THE repair for a "
+                               "flipped GeoCalib gravity — e.g. bottom-of-frame haze read "
+                               "as sky turning a bird's-eye into an up-shot."}),
+                "pitch_deg": ("FLOAT", {"default": 0.0, "min": -90.0, "max": 90.0, "step": 0.05,
+                    "tooltip": "Extra pitch (degrees) about the camera's RIGHT axis, applied "
+                               "after any mirror. Positive tilts the view DOWN. 0 = no-op."}),
+            },
+        }
+
+    def trim(self, solve, mirror_gravity=False, pitch_deg=0.0):
+        import copy
+        import math
+        out = copy.deepcopy(solve)
+        extr = out.camera.extrinsics
+
+        wm = extr.camera_world_matrix
+        fwd_y = -float(wm[1][2])
+        old_pitch = math.degrees(math.asin(max(-1.0, min(1.0, fwd_y))))
+        # Mirror = rotate view DOWN by 2×(current up-pitch): new forward.y
+        # becomes exactly −forward.y while the horizontal heading (and roll,
+        # since we rotate about the camera's own right axis) is untouched.
+        d = (2.0 * old_pitch if mirror_gravity else 0.0) + float(pitch_deg)
+        if abs(d) < 1e-9:
+            return (out, "AtlasPitchTrim: 0.00° — no-op (mirror_gravity repairs a "
+                         "flipped solve; pitch_deg fine-tunes)")
+        c, s = math.cos(math.radians(d)), math.sin(math.radians(d))
+
+        # V' = Rx(d) @ V — extra rotation about the CAMERA's x (right) axis,
+        # left-multiplied onto the world→cam view matrix. Rx preserves the
+        # camera x axis (roll untouched) and has zero translation, so the
+        # rigid inverse below shows the position is invariant too. With the
+        # camera frame y-up/z-back, positive d pitches the view DOWN.
+        vm = [list(r) for r in extr.camera_view_matrix]
+        rx = ((1.0, 0.0, 0.0, 0.0), (0.0, c, -s, 0.0), (0.0, s, c, 0.0), (0.0, 0.0, 0.0, 1.0))
+        vm2 = [[sum(rx[r][k] * vm[k][col] for k in range(4)) for col in range(4)] for r in range(4)]
+        extr.camera_view_matrix = tuple(tuple(row) for row in vm2)
+
+        r_wc = [[vm2[r][k] for k in range(3)] for r in range(3)]
+        t_wc = [vm2[r][3] for r in range(3)]
+        r_cw = [[r_wc[k][r] for k in range(3)] for r in range(3)]
+        pos = [-sum(r_cw[r][k] * t_wc[k] for k in range(3)) for r in range(3)]
+        extr.camera_world_matrix = tuple(
+            tuple([*r_cw[r], pos[r]]) for r in range(3)
+        ) + ((0.0, 0.0, 0.0, 1.0),)
+        extr.camera_rotation_matrix = tuple(tuple(row) for row in r_cw)
+        extr.camera_position = tuple(pos)
+
+        new_fwd_y = -float(extr.camera_world_matrix[1][2])
+        new_pitch = math.degrees(math.asin(max(-1.0, min(1.0, new_fwd_y))))
+
+        # Recompute the stored horizon line (same vanishing-line math as
+        # AtlasRollTrim — world-Y ray component zero, linear in (u, v)).
+        horizon_note = ""
+        intr = out.camera.intrinsics
+        if out.horizon_line is not None and intr.fx_px and intr.image_width:
+            fx = float(intr.fx_px)
+            fy = float(intr.fy_px or intr.fx_px)
+            cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
+            cy = float(intr.cy_px if intr.cy_px is not None else (intr.image_height or 0) / 2.0)
+            w = float(intr.image_width)
+            a = r_cw[1][0] / fx
+            b = -r_cw[1][1] / fy
+            cc = -r_cw[1][0] * cx / fx + r_cw[1][1] * cy / fy - r_cw[1][2]
+            if abs(b) > 1e-12:
+                y_at = lambda u: (-cc - a * u) / b  # noqa: E731
+                y0, y1 = y_at(0.0), y_at(w)
+                out.horizon_line.endpoints_px = ((0.0, y0), (w, y1))
+                out.horizon_line.line_coefficients = (a, b, cc)
+
+        meta = dict(out.debug_metadata or {})
+        meta["pitch_trim_deg"] = float(meta.get("pitch_trim_deg", 0.0)) + d
+        if mirror_gravity:
+            meta["gravity_mirrored"] = True
+        out.debug_metadata = meta
+
+        geom_warn = ""
+        scene = getattr(out, "projection_scene", None)
+        if scene is not None and getattr(scene, "proxy_geometry", None):
+            geom_warn = ("\n  ⚠ this solve already carries derived geometry, built in the "
+                         "UN-trimmed frame — wire AtlasPitchTrim BEFORE the depth/derive nodes.")
+        mirror_note = "gravity MIRRORED, " if mirror_gravity else ""
+        report = (
+            f"AtlasPitchTrim: {mirror_note}pitch {old_pitch:+.1f}° → {new_pitch:+.1f}° "
+            f"(rotated {d:+.2f}° about the camera's right axis)\n"
+            "  Position, heading and roll unchanged — every downstream derive/export "
+            "follows. Composable after any solve." + geom_warn)
+        return (out, report)
+
+
 class AtlasReferenceScaleSolve:
     """Fix a solve's metric scale from a known-size reference object.
 
@@ -7425,11 +7543,20 @@ class AtlasSDXLInpaint:
             "cfg": ("FLOAT", {"default": 5.5, "min": 0.0, "max": 30.0, "step": 0.1}),
             "denoise": ("FLOAT", {"default": 0.85, "min": 0.0, "max": 1.0, "step": 0.01}),
             "grow_mask_by": ("INT", {"default": 8, "min": 0, "max": 64}),
+            # APPENDED 2026-07-18 (positional rule): perf clamp. Oversized
+            # crops force the sampler + VAE through OOM-retry ladders and
+            # tiled encoding (measured live: 782s for 4 crops on a 3690px
+            # plate). 0 = off (back-compat).
+            "max_side": ("INT", {"default": 0, "min": 0, "max": 4096,
+                "tooltip": "Downscale the crop to this long edge before SDXL (1024 = "
+                           "SDXL native) and lanczos-upscale the result back. Kills the "
+                           "OOM/tiled-VAE slow path on big crops; inpainted content is "
+                           "generative, so the quality cost is minor. 0 = off."}),
         }}
 
     def expand_sdxl(self, image, mask, checkpoint, positive_prompt,
                     negative_prompt, seed=0, steps=30, cfg=5.5,
-                    denoise=0.85, grow_mask_by=8):
+                    denoise=0.85, grow_mask_by=8, max_side=0):
         registry = _comfy_registry()
         required = ("CheckpointLoaderSimple", "CLIPTextEncode",
                     "InpaintModelConditioning", "KSampler", "VAEDecode")
@@ -7437,6 +7564,24 @@ class AtlasSDXLInpaint:
         if missing:
             raise RuntimeError("Native SDXL inpaint requires ComfyUI nodes missing from "
                                "the registry: " + ", ".join(missing))
+
+        # Perf clamp: python-side downscale (real tensors are available at
+        # expansion time), upscale back to the EXACT original size via an
+        # in-graph ImageScale so AtlasInpaintStitch pastes 1:1.
+        orig_h, orig_w = int(image.shape[1]), int(image.shape[2])
+        scaled = False
+        if max_side and max(orig_h, orig_w) > int(max_side):
+            import torch.nn.functional as F
+            factor = float(max_side) / float(max(orig_h, orig_w))
+            nh = max(8, int(round(orig_h * factor / 8.0)) * 8)
+            nw = max(8, int(round(orig_w * factor / 8.0)) * 8)
+            image = F.interpolate(image.movedim(-1, 1), size=(nh, nw),
+                                  mode="bilinear", antialias=True).movedim(1, -1)
+            m = mask if mask.dim() == 3 else mask.unsqueeze(0)
+            mask = F.interpolate(m.unsqueeze(1).float(), size=(nh, nw),
+                                 mode="bilinear").squeeze(1)
+            scaled = True
+
         g = _graph_builder()
         ckpt = g.node("CheckpointLoaderSimple", ckpt_name=str(checkpoint))
         positive = g.node("CLIPTextEncode", text=str(positive_prompt), clip=ckpt.out(1))
@@ -7451,9 +7596,18 @@ class AtlasSDXLInpaint:
                          negative=conditioning.out(1), latent_image=conditioning.out(2),
                          denoise=float(denoise))
         decoded = g.node("VAEDecode", samples=sampled.out(0), vae=ckpt.out(2))
+        out_ref = decoded.out(0)
+        size_note = ""
+        if scaled:
+            up = g.node("ImageScale", image=decoded.out(0), upscale_method="lanczos",
+                        width=orig_w, height=orig_h, crop="disabled")
+            out_ref = up.out(0)
+            size_note = (f", sampled at {int(image.shape[2])}x{int(image.shape[1])} "
+                         f"(max_side {int(max_side)}) → {orig_w}x{orig_h}")
         report = (f"SDXL inpaint via InpaintModelConditioning — checkpoint={checkpoint}, "
-                  f"steps={int(steps)}, cfg={float(cfg):g}, denoise={float(denoise):g}")
-        return {"result": (decoded.out(0), report), "expand": g.finalize()}
+                  f"steps={int(steps)}, cfg={float(cfg):g}, denoise={float(denoise):g}"
+                  + size_note)
+        return {"result": (out_ref, report), "expand": g.finalize()}
 
 
 class AtlasInstanceMask:
@@ -7513,10 +7667,17 @@ class AtlasSegmentedSDXLInpaint:
             "cfg": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 30.0, "step": 0.1}),
             "denoise": ("FLOAT", {"default": 0.65, "min": 0.0, "max": 1.0, "step": 0.01}),
             "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+        }, "optional": {
+            # APPENDED 2026-07-18: perf default ON — building crops on a big
+            # plate blow past SDXL's native scale and hit the OOM/tiled-VAE
+            # slow path (782s measured for 4 crops). See AtlasSDXLInpaint.
+            "crop_max_side": ("INT", {"default": 1024, "min": 0, "max": 4096,
+                "tooltip": "Per-crop long-edge clamp fed to the inner SDXL inpaint "
+                           "(1024 = SDXL native; result upscaled back). 0 = off."}),
         }}
 
     def expand_stack(self, image, restrict_mask, prompt, checkpoint, max_instances=4,
-                     steps=30, cfg=4.0, denoise=0.65, seed=0):
+                     steps=30, cfg=4.0, denoise=0.65, seed=0, crop_max_side=1024):
         registry = _comfy_registry()
         for name in ("SAM3Segment", "INPAINT_ExpandMask", "AtlasInpaintCrop",
                      "AtlasSDXLInpaint", "AtlasInpaintStitch"):
@@ -7540,7 +7701,8 @@ class AtlasSegmentedSDXLInpaint:
                           checkpoint=checkpoint, positive_prompt=prompt,
                           negative_prompt="fantasy, sci-fi, warped, duplicate, text, seams",
                           seed=int(seed) + i, steps=int(steps), cfg=float(cfg),
-                          denoise=float(denoise), grow_mask_by=8)
+                          denoise=float(denoise), grow_mask_by=8,
+                          max_side=int(crop_max_side))
             plate = g.node("AtlasInpaintStitch", original_image=plate,
                            inpainted_crop=fill.out(0), crop_region=crop.out(2),
                            mask=grown.out(0), feather_px=24).out(0)
@@ -8576,6 +8738,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasAssessImage":           AtlasAssessImage,
     "AtlasSolveGate":             AtlasSolveGate,
     "AtlasSceneHealthGate":       AtlasSceneHealthGate,
+    "AtlasPitchTrim":             AtlasPitchTrim,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
     "AtlasAddPatchView":          AtlasAddPatchView,
@@ -8654,6 +8817,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
     "AtlasSceneHealthGate":       "Atlas Scene Health Gate 🩺",
+    "AtlasPitchTrim":             "Atlas Pitch Trim 🎚",
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",
