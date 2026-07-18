@@ -106,6 +106,23 @@ def build_review_package(
         except RuntimeError as exc:
             result.warnings.append(str(exc))
 
+    # The reproducibility manifest — the review package is the flagship
+    # aggregation point, so it always writes one. Never fatal.
+    try:
+        from atlas_camera.exporters.manifest import (
+            ManifestArtifact,
+            write_project_manifest,
+        )
+        artifacts = [
+            ManifestArtifact(name, str(path.name), "AtlasExportReviewPackage")
+            for name, path in sorted(result.files.items())
+        ]
+        manifest_path = write_project_manifest(solve, package_dir,
+                                               artifacts=artifacts)
+        result.files["manifest"] = manifest_path
+    except Exception as exc:  # noqa: BLE001
+        result.warnings.append(f"atlas_project.json manifest skipped: {exc}")
+
     report_path = package_dir / "report.md"
     report_path.write_text(_report_markdown(solve, result), encoding="utf-8")
     result.files["report"] = report_path
@@ -152,6 +169,11 @@ def _report_markdown(solve: AtlasSolve, result: ReviewPackageResult) -> str:
     height_text = (f"{sh.camera_height_m:.2f} m"
                    if sh.camera_height_m is not None else "Unavailable")
     conf_text = f"{sh.confidence:.2f}" if sh.confidence is not None else "Unavailable"
+    try:
+        from atlas_camera.exporters.manifest import manifest_identity_hash
+        identity_line = f"\nManifest identity: `{manifest_identity_hash(solve)}`\n"
+    except Exception:  # noqa: BLE001
+        identity_line = ""
     stamp = solve.debug_metadata.get("scene_health")
     if isinstance(stamp, dict) and stamp.get("level"):
         marks = {"fail": "✖", "warn": "⚠"}
@@ -219,4 +241,4 @@ projection-prep starting point, not a replacement for full sequence matchmove.
 Scale references are explicit artist guides unless `metric_depth_solved` is true
 in `atlas_solve.json`. Metric depth fitting and broader real-image confidence
 tuning are planned.
-"""
+{identity_line}"""

@@ -179,6 +179,46 @@ def _scale_summary_suffix(solve) -> str:
     return f" | ⚠ scale {sh.status.upper()} — not verified"
 
 
+_IDENTITY_COMMENT_PREFIX = {".nk": "# ", ".py": "# ", ".ma": "// "}
+
+
+def _write_export_manifest(solve, output_dir, kind_paths, exporter: str) -> None:
+    """Write/merge atlas_project.json beside an export + embed the identity
+    hash as a leading comment in text artifacts that tolerate one (.nk/.py/.ma).
+
+    A manifest failure must NEVER fail the export — everything degrades to a
+    log line. Called with [(kind, path), ...]; empty paths are skipped.
+    """
+    import logging
+    try:
+        from atlas_camera.exporters.manifest import (
+            ManifestArtifact,
+            manifest_identity_hash,
+            write_project_manifest,
+        )
+        pairs = [(k, str(p)) for k, p in kind_paths if p]
+        if not pairs:
+            return
+        write_project_manifest(
+            solve, output_dir,
+            artifacts=[ManifestArtifact(k, p, exporter) for k, p in pairs])
+        ident = manifest_identity_hash(solve)
+        for _, p in pairs:
+            prefix = _IDENTITY_COMMENT_PREFIX.get(Path(p).suffix.lower())
+            if not prefix or not Path(p).is_file():
+                continue
+            try:
+                text = Path(p).read_text(encoding="utf-8")
+                marker = f"{prefix}atlas_project_identity: "
+                if text.startswith(marker):
+                    text = text.split("\n", 1)[-1]
+                Path(p).write_text(f"{marker}{ident}\n{text}", encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("atlas_project.json manifest skipped: %s", exc)
+
+
 def _health_summary_suffix(solve) -> str:
     """Export-summary marker when a scene-health stamp records warn/fail.
 
@@ -763,7 +803,10 @@ class AtlasExportSolveJSON:
         }
 
     def export(self, solve, output_path):
-        return (str(save_solve_json(solve, output_path)),)
+        dest = str(save_solve_json(solve, output_path))
+        _write_export_manifest(solve, Path(dest).parent or Path("."),
+                               [("solve_json", dest)], "AtlasExportSolveJSON")
+        return (dest,)
 
 
 class AtlasExportMayaReviewScene:
@@ -5067,6 +5110,9 @@ class AtlasExportReliefMesh:
             )["obj"]
         if format in ("both", "glb"):
             glb_path = export_relief_mesh_glb(mesh, output_dir, texture=texture)["glb"]
+        _write_export_manifest(solve, output_dir,
+                               [("relief_obj", obj_path), ("relief_glb", glb_path)],
+                               "AtlasExportReliefMesh")
         return {"ui": {"text": [report]},
                 "result": (obj_path, glb_path, preview_solve, report)}
 
@@ -5374,6 +5420,8 @@ class AtlasExportUSD:
         out.mkdir(parents=True, exist_ok=True)
         dest = out / "camera.usda"
         USDExporter().export_camera(solve, dest)
+        _write_export_manifest(solve, out, [("usd_camera", str(dest))],
+                               "AtlasExportUSD")
         return (str(dest),)
 
 
@@ -5405,6 +5453,8 @@ class AtlasExportBlender:
         out.mkdir(parents=True, exist_ok=True)
         dest = out / "build_scene.py"
         write_blender_scene_script(solve, dest)
+        _write_export_manifest(solve, out, [("blender_script", str(dest))],
+                               "AtlasExportBlender")
         return (str(dest),)
 
 
@@ -5464,6 +5514,10 @@ class AtlasExportNuke:
         mesh_path = str(Path(relief_mesh_obj_path).resolve()) if relief_mesh_obj_path else None
         write_nuke_projection_script(solve, py_dest, relief_mesh_obj_path=mesh_path)
         write_nuke_native_script(solve, nk_dest, relief_mesh_obj_path=mesh_path)
+        _write_export_manifest(solve, out,
+                               [("nuke_script", str(py_dest)),
+                                ("nuke_scene", str(nk_dest))],
+                               "AtlasExportNuke")
         return (str(py_dest), str(nk_dest))
 
 
@@ -5525,6 +5579,9 @@ class AtlasExportNukeLayers:
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
         summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
+        _write_export_manifest(solve, output_dir,
+                               [("nuke_scene", result["nk_path"])],
+                               "AtlasExportNukeLayers")
         return (result["nk_path"], summary)
 
 
@@ -5579,6 +5636,9 @@ class AtlasExportMayaLayers:
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
         summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
+        _write_export_manifest(solve, output_dir,
+                               [("maya_scene", result["ma_path"])],
+                               "AtlasExportMayaLayers")
         return (result["ma_path"], summary)
 
 
@@ -5621,6 +5681,8 @@ class AtlasExportCameraPathUSD:
         out.mkdir(parents=True, exist_ok=True)
         dest = out / "camera_path.usda"
         USDExporter().export_camera_animation(camera_path, solve.camera.intrinsics, dest)
+        _write_export_manifest(solve, out, [("usd_camera_path", str(dest))],
+                               "AtlasExportCameraPathUSD")
         return (str(dest),)
 
 
