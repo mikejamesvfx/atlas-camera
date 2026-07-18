@@ -80,3 +80,42 @@ def test_mirror_clears_camera_looks_up_flag():
     assert "camera_looks_up" in {f.code for f in evaluate_scene_health(s).flags}
     out, _ = AtlasPitchTrim().trim(s, mirror_gravity=True)
     assert "camera_looks_up" not in {f.code for f in evaluate_scene_health(out).flags}
+
+
+def test_gravity_override_sets_absolute_angles():
+    from atlas_camera.comfy.nodes import AtlasGravityOverride
+    s = _solve(pitch_deg=39.0)  # solved looking UP 39 (the flipped shape)
+    out, report = AtlasGravityOverride().override(s, pitch_deg=32.0, roll_deg=0.9)
+    # forward.y = -sin(32 down)
+    assert _forward_y(out) == pytest.approx(-math.sin(math.radians(32.0)), abs=1e-6)
+    # position untouched, heading preserved (horizontal forward unchanged dir)
+    assert out.camera.extrinsics.camera_position == pytest.approx((0.0, 45.0, 0.0))
+    wm_in = s.camera.extrinsics.camera_world_matrix
+    wm_out = out.camera.extrinsics.camera_world_matrix
+    import math as m
+    az_in = m.atan2(-wm_in[0][2], -wm_in[2][2])
+    az_out = m.atan2(-wm_out[0][2], -wm_out[2][2])
+    assert az_out == pytest.approx(az_in, abs=1e-6)
+    assert out.debug_metadata["gravity_override"]["pitch_deg"] == 32.0
+    assert "32.0" in report or "-32.0" in report
+
+
+def test_gravity_override_level_and_roll():
+    from atlas_camera.comfy.nodes import AtlasGravityOverride
+    s = _solve(pitch_deg=10.0)
+    out, _ = AtlasGravityOverride().override(s, pitch_deg=0.0, roll_deg=0.0)
+    assert _forward_y(out) == pytest.approx(0.0, abs=1e-9)
+    # Roll: up vector stays world-up for zero roll.
+    assert out.camera.extrinsics.camera_world_matrix[1][1] == pytest.approx(1.0, abs=1e-9)
+    out2, _ = AtlasGravityOverride().override(s, pitch_deg=0.0, roll_deg=30.0)
+    assert out2.camera.extrinsics.camera_world_matrix[1][1] == pytest.approx(
+        math.cos(math.radians(30.0)), abs=1e-6)
+
+
+def test_gravity_override_clears_camera_looks_up():
+    from atlas_camera.comfy.nodes import AtlasGravityOverride
+    from atlas_camera.core.scene_health import evaluate_scene_health
+    s = _solve(pitch_deg=39.0)
+    s.debug_metadata["scale_source"] = "manual_override"
+    out, _ = AtlasGravityOverride().override(s, pitch_deg=32.0)
+    assert "camera_looks_up" not in {f.code for f in evaluate_scene_health(out).flags}

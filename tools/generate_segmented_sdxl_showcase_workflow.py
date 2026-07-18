@@ -69,9 +69,9 @@ w.link(raw, 2, solve, "raw_meta")
 scale = w.node("AtlasScaleOverride", [480, 380], [400, 140],
                "📐 Camera height 45m", {"camera_height_m": 45.0})
 w.link(solve, 0, scale, "solve")
-pitch = w.node("AtlasPitchTrim", [480, 560], [400, 130],
-               "🎚 Gravity mirror — repairs THIS plate's flip",
-               {"mirror_gravity": True})
+pitch = w.node("AtlasGravityOverride", [480, 560], [400, 140],
+               "🎚 Gravity override — TRUE angles for this plate",
+               {"pitch_deg": 32.0, "roll_deg": 0.9})
 w.link(scale, 0, pitch, "solve")
 
 # ── 3 · VISIBLE GEOMETRY ───────────────────────────────────────────────────

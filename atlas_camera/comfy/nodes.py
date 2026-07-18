@@ -1492,6 +1492,137 @@ class AtlasRollTrim:
         return (out, report)
 
 
+def _extrinsics_from_view(extr, vm2):
+    """Write a new 4x4 world→cam view matrix onto ``extr`` and rebuild the
+    rigid family (world matrix, 3x3 rotation, position) from it. Returns the
+    cam→world rotation rows (r_cw) for horizon recomputation."""
+    extr.camera_view_matrix = tuple(tuple(row) for row in vm2)
+    r_wc = [[vm2[r][k] for k in range(3)] for r in range(3)]
+    t_wc = [vm2[r][3] for r in range(3)]
+    r_cw = [[r_wc[k][r] for k in range(3)] for r in range(3)]
+    pos = [-sum(r_cw[r][k] * t_wc[k] for k in range(3)) for r in range(3)]
+    extr.camera_world_matrix = tuple(
+        tuple([*r_cw[r], pos[r]]) for r in range(3)
+    ) + ((0.0, 0.0, 0.0, 1.0),)
+    extr.camera_rotation_matrix = tuple(tuple(row) for row in r_cw)
+    extr.camera_position = tuple(pos)
+    return r_cw
+
+
+def _recompute_horizon_line(out, r_cw):
+    """Refresh the stored horizon line for a re-oriented camera (the RollTrim
+    vanishing-line math: world-Y ray component zero, linear in (u, v))."""
+    intr = out.camera.intrinsics
+    if out.horizon_line is None or not intr.fx_px or not intr.image_width:
+        return
+    fx = float(intr.fx_px)
+    fy = float(intr.fy_px or intr.fx_px)
+    cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
+    cy = float(intr.cy_px if intr.cy_px is not None else (intr.image_height or 0) / 2.0)
+    w = float(intr.image_width)
+    a = r_cw[1][0] / fx
+    b = -r_cw[1][1] / fy
+    cc = -r_cw[1][0] * cx / fx + r_cw[1][1] * cy / fy - r_cw[1][2]
+    if abs(b) > 1e-12:
+        y0 = (-cc - a * 0.0) / b
+        y1 = (-cc - a * w) / b
+        out.horizon_line.endpoints_px = ((0.0, y0), (w, y1))
+        out.horizon_line.line_coefficients = (a, b, cc)
+
+
+class AtlasGravityOverride:
+    """🎚 ABSOLUTE gravity override — set the solve's pitch and roll directly.
+
+    The trims (`AtlasRollTrim`/`AtlasPitchTrim`) are RELATIVE dials; this is
+    the absolute version, born from the D810 haze incident's second act: the
+    gravity MIRROR repaired the flip's sign, but the flipped estimate itself
+    was ~7° off in pitch and ~9° in roll, so the mirrored scene still leaned.
+    When you know the true angles (crop-probe, level references, or by eye),
+    set them here: ``pitch_deg`` (positive = looking DOWN) and ``roll_deg``
+    re-pose the camera about its own position, preserving the horizontal
+    HEADING (yaw stays unobservable/canonical). Position never moves.
+
+    Wire it between the solve and the depth/derive nodes, like the other
+    dials. Stamps `debug_metadata["gravity_override"]`.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "override"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"solve": ("ATLAS_SOLVE",)},
+            "optional": {
+                "pitch_deg": ("FLOAT", {"default": 0.0, "min": -89.0, "max": 89.0, "step": 0.05,
+                    "tooltip": "ABSOLUTE camera pitch: positive = looking DOWN that many "
+                               "degrees below the horizon, negative = up, 0 = level."}),
+                "roll_deg": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.05,
+                    "tooltip": "ABSOLUTE roll about the view axis (0 = level horizon). "
+                               "Same screen direction as AtlasRollTrim: positive turns "
+                               "the projected scene counter-clockwise."}),
+            },
+        }
+
+    def override(self, solve, pitch_deg=0.0, roll_deg=0.0):
+        import copy
+        import math
+
+        from atlas_camera.core.camera_math import look_at_view_matrix
+
+        out = copy.deepcopy(solve)
+        extr = out.camera.extrinsics
+
+        wm = extr.camera_world_matrix
+        fwd = (-float(wm[0][2]), -float(wm[1][2]), -float(wm[2][2]))
+        old_pitch = math.degrees(math.asin(max(-1.0, min(1.0, fwd[1]))))
+        # Preserve heading: the horizontal component of the current forward.
+        hx, hz = fwd[0], fwd[2]
+        norm = math.hypot(hx, hz)
+        if norm < 1e-9:
+            hx, hz = 0.0, -1.0  # straight up/down: canonical -Z heading
+            norm = 1.0
+        hx, hz = hx / norm, hz / norm
+
+        p = math.radians(float(pitch_deg))  # positive = down
+        new_fwd = (hx * math.cos(p), -math.sin(p), hz * math.cos(p))
+        eye = tuple(float(v) for v in extr.camera_position)
+        target = (eye[0] + new_fwd[0], eye[1] + new_fwd[1], eye[2] + new_fwd[2])
+        view, _world, _rot3 = look_at_view_matrix(eye, target)
+        vm = [list(r) for r in view]
+
+        d = float(roll_deg)
+        if abs(d) > 1e-9:
+            c, s = math.cos(math.radians(d)), math.sin(math.radians(d))
+            rz = ((c, -s, 0.0, 0.0), (s, c, 0.0, 0.0),
+                  (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+            vm = [[sum(rz[r][k] * vm[k][col] for k in range(4)) for col in range(4)]
+                  for r in range(4)]
+
+        r_cw = _extrinsics_from_view(extr, vm)
+        _recompute_horizon_line(out, r_cw)
+
+        meta = dict(out.debug_metadata or {})
+        meta["gravity_override"] = {"pitch_deg": float(pitch_deg),
+                                    "roll_deg": float(roll_deg),
+                                    "previous_pitch_deg": round(old_pitch, 2)}
+        out.debug_metadata = meta
+
+        geom_warn = ""
+        scene = getattr(out, "projection_scene", None)
+        if scene is not None and getattr(scene, "proxy_geometry", None):
+            geom_warn = ("\n  ⚠ this solve already carries derived geometry, built in the "
+                         "old frame — wire AtlasGravityOverride BEFORE the derive nodes.")
+        report = (
+            f"AtlasGravityOverride: pitch {old_pitch:+.1f}° → {-float(pitch_deg):+.1f}° "
+            f"(looking {'down' if pitch_deg > 0 else 'up' if pitch_deg < 0 else 'level'}), "
+            f"roll set to {float(roll_deg):+.1f}°\n"
+            "  Absolute orientation; heading and position preserved. Every downstream "
+            "derive/export follows." + geom_warn)
+        return (out, report)
+
+
 class AtlasPitchTrim:
     """🎚 Manual pitch trim / gravity-mirror for a solve — RollTrim's sibling.
 
@@ -8739,6 +8870,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasSolveGate":             AtlasSolveGate,
     "AtlasSceneHealthGate":       AtlasSceneHealthGate,
     "AtlasPitchTrim":             AtlasPitchTrim,
+    "AtlasGravityOverride":       AtlasGravityOverride,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
     "AtlasAddPatchView":          AtlasAddPatchView,
@@ -8818,6 +8950,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
     "AtlasSceneHealthGate":       "Atlas Scene Health Gate 🩺",
     "AtlasPitchTrim":             "Atlas Pitch Trim 🎚",
+    "AtlasGravityOverride":       "Atlas Gravity Override 🎚",
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",
