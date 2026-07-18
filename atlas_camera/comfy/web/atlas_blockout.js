@@ -3489,7 +3489,19 @@ function buildNodeUI(node, containerEl) {
     if (m.confidence != null) lines.push(`Confidence  ${Math.round(m.confidence * 100)}%`);
     if (m.source_method) lines.push(`Method    ${m.source_method}`);
     if (m.scale_source) lines.push(`Scale     ${m.scale_source}`);
+    // textContent clears children, so the warning render below stays
+    // idempotent across repeated updates.
     metaHud.textContent = lines.join("\n") || "(no camera metadata)";
+    const sh = m.scale_health;
+    if (sh && !sh.safe_to_export) {
+      const warn = document.createElement("div");
+      warn.textContent = `⚠ SCALE ${String(sh.status || "").toUpperCase()} — ${sh.detail || "not verified"}`;
+      warn.style.color = "#ff6a3d";
+      warn.style.marginTop = "3px";
+      warn.style.maxWidth = "340px";
+      warn.style.whiteSpace = "normal";
+      metaHud.appendChild(warn);
+    }
   }
 
   // Return setter so caller can apply camera and background image

@@ -94,3 +94,20 @@ def test_report_carries_solve_summary(comfy_runtime):
     assert "35.0mm" in report          # focal
     assert "1.60m" in report           # camera height
     assert "pitch:" in report
+
+
+def test_gate_report_warns_on_unverified_scale(comfy_runtime):
+    torch = pytest.importorskip("torch")
+    s = _solve()
+    s.debug_metadata["scale_source"] = "assumed_default"
+    out = AtlasSolveGate().gate(s, torch.rand(1, 600, 800, 3))
+    assert "SCALE NOT VERIFIED" in out["result"][1]
+
+
+def test_gate_report_no_warning_on_manual_scale(comfy_runtime):
+    torch = pytest.importorskip("torch")
+    s = _solve()
+    s.debug_metadata["scale_source"] = "manual_override"
+    out = AtlasSolveGate().gate(s, torch.rand(1, 600, 800, 3))
+    assert "SCALE NOT VERIFIED" not in out["result"][1]
+    assert "scale: manual" in out["result"][1]

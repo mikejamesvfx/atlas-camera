@@ -165,6 +165,20 @@ def _resolve_raw_hints(focal_widget_mm, sensor_widget_mm, raw_meta):
     return focal_hint, sensor_w, sensor_h
 
 
+def _scale_summary_suffix(solve) -> str:
+    """Export-summary warning when the solve's metric scale isn't verified.
+
+    Single source of truth is core.scene_health — never re-derive from
+    scale_source ad hoc. Empty string when the scale is trustworthy, so
+    healthy summaries are unchanged.
+    """
+    from atlas_camera.core.scene_health import scale_health
+    sh = scale_health(solve)
+    if sh.safe_to_export:
+        return ""
+    return f" | ⚠ scale {sh.status.upper()} — not verified"
+
+
 def _stamp_raw_provenance(solve, raw_meta):
     """Record where a RAW import's hints came from on the solve (in place)."""
     if raw_meta is None:
@@ -527,6 +541,8 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         if prim.name == "projection_backdrop":
             scene_depth_m = (prim.metadata or {}).get("distance_m")
             break
+    from atlas_camera.core.scene_health import scale_health
+    sh = scale_health(solve)
     camera_meta = {
         "confidence": float(getattr(solve, "confidence", 0.0) or 0.0),
         "source_method": getattr(solve, "source_method", None),
@@ -536,6 +552,9 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         "fov_h_deg": fov_h_deg,
         "camera_height_m": float(extr.camera_position[1]) if extr.camera_position else None,
         "scene_depth_m": scene_depth_m,
+        "scale_health": {"status": sh.status,
+                         "safe_to_export": sh.safe_to_export,
+                         "detail": sh.detail},
     }
 
     return {
@@ -1740,17 +1759,22 @@ class AtlasSolveGate:
                (2 * intr.fx_px))) if intr.fx_px else float("nan"))
         cam_h = (extr.camera_position or (0, float("nan"), 0))[1]
         meta = solve.debug_metadata or {}
+        from atlas_camera.core.scene_health import scale_health
+        sh = scale_health(solve)
         effective = bool(proceed) and (not approved_for or approved_for == fp)
         lines = [
             "✅ SOLVE APPROVED — heavy graph running." if effective else
             "⏸ SOLVE GATE — downstream paused. Review, then ✅ Approve Solve.",
             (f"focal: {intr.focal_length_mm:.1f}mm ({fov:.1f}° hFOV) on "
              f"{intr.sensor_width_mm}mm") if intr.focal_length_mm else "focal: n/a",
-            f"camera height: {cam_h:.2f}m  (scale: {meta.get('scale_source', 'n/a')})",
+            f"camera height: {cam_h:.2f}m  (scale: {sh.status} / "
+            f"{meta.get('scale_source', 'n/a')})",
             f"pitch: {pitch:+.1f}°",
             (f"confidence: {solve.confidence:.2f}  ({solve.source_method})"
              if getattr(solve, "confidence", None) is not None else ""),
         ]
+        if not sh.safe_to_export:
+            lines.insert(1, f"⚠ SCALE NOT VERIFIED — {sh.detail}")
         if proceed and approved_for and approved_for != fp:
             lines.insert(0, "*** GATE RE-ARMED: the solve or image changed since "
                             "approval — review and ✅ Approve again. ***")
@@ -4904,7 +4928,8 @@ class AtlasExportReliefMesh:
                 )
         report = _format_hole_fill_report(
             fill_interior_holes, n_filled, filled, faces_added, loops_left,
-            max_hole_edges, float(fill_depth_near_m), float(fill_depth_far_m)) + retopo_note
+            max_hole_edges, float(fill_depth_near_m), float(fill_depth_far_m)) \
+            + retopo_note + _scale_summary_suffix(solve)
         # The viewport gets the geometry that was ACTUALLY written, off the same
         # widgets — so what an artist tunes here is what lands in Maya/Nuke.
         preview_solve = _solve_with_relief_mesh(solve, mesh)
@@ -5380,6 +5405,7 @@ class AtlasExportNukeLayers:
         summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
+        summary += _scale_summary_suffix(solve)
         return (result["nk_path"], summary)
 
 
@@ -5433,6 +5459,7 @@ class AtlasExportMayaLayers:
         summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
+        summary += _scale_summary_suffix(solve)
         return (result["ma_path"], summary)
 
 

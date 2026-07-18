@@ -116,3 +116,20 @@ def test_old_json_without_scale_health_loads():
     data.pop("scale_health")
     again = AtlasSolve.from_dict(data)
     assert scale_health(again).status == SCALE_STATUS_MANUAL
+
+
+def test_scale_summary_suffix():
+    from atlas_camera.comfy.nodes import _scale_summary_suffix
+    assert _scale_summary_suffix(_solve(scale_source="manual_override")) == ""
+    suffix = _scale_summary_suffix(_solve(scale_source="assumed_default"))
+    assert "scale ASSUMED" in suffix and "not verified" in suffix
+
+
+def test_review_report_markdown_scale_trust_section(tmp_path):
+    from atlas_camera.exporters.review_package import ReviewPackageResult, _report_markdown
+    result = ReviewPackageResult(package_dir=tmp_path, files={}, warnings=[])
+    md = _report_markdown(_solve(scale_source="assumed_default"), result)
+    assert "## Scale trust" in md
+    assert "**NO — verify before delivery**" in md
+    md_ok = _report_markdown(_solve(scale_source="manual_override"), result)
+    assert "Safe to export: yes" in md_ok

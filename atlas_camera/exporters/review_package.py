@@ -142,7 +142,22 @@ def _report_markdown(solve: AtlasSolve, result: ReviewPackageResult) -> str:
         if isinstance(fov_horizontal, (float, int)) and isinstance(fov_vertical, (float, int))
         else "Unavailable"
     )
+    from atlas_camera.core.scene_health import scale_health
+    sh = scale_health(solve)
+    safe_text = "yes" if sh.safe_to_export else "**NO — verify before delivery**"
+    height_text = (f"{sh.camera_height_m:.2f} m"
+                   if sh.camera_height_m is not None else "Unavailable")
+    conf_text = f"{sh.confidence:.2f}" if sh.confidence is not None else "Unavailable"
     return f"""# Atlas Camera Review Package
+
+## Scale trust
+
+- Status: {sh.status}
+- Safe to export: {safe_text}
+- Source: {sh.scale_source or "none recorded"}
+- Confidence: {conf_text}
+- Camera height: {height_text}
+- {sh.detail}
 
 ## Solve
 
