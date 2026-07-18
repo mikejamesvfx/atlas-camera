@@ -28,6 +28,17 @@ solve-bound plates.
   report status, never an error (Fuji X commonly `no_profile_lens`).
 - 31 new tests (registry/fallback math, focal override, mocked node,
   opt-in `ATLAS_TEST_RAW_FILE` end-to-end).
+- **Live-verified on a real D810 NEF** (7360×4912 NYC bird's-eye), which
+  surfaced and fixed two real gaps: Nikon NEFs carry no lens-name EXIF tag
+  (lens now derived from MakerNote specs, e.g. "24mm f/1.4", with the matched
+  lensfun profile named in the report), and the Lanczos undistort remap
+  overshoots at hard edges (outputs now clamped). Full run in ComfyUI:
+  `camera_db` sensor, EXIF focal adopted, undistort applied, EXR written.
+- **`examples/showcase/atlas_raw_quickstart_workflow.json`** — run-verified
+  quickstart: AtlasLoadRAW → learned solve (raw_meta) → 📐 camera-height
+  dial → relief → viewport + Output Desk plate attach. The dial matters:
+  elevated plates still fall back to the assumed 1.6 m scale tier (metric
+  scale is orthogonal to focal — the documented single-image ambiguity).
 
 ## Unreleased — stale-code cleanout (2026-07-18)
 
