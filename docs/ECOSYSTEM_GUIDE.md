@@ -83,7 +83,7 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (56 nodes, category "Atlas Camera")
+## 2. The Node Catalog (67 standard + 4 experimental nodes)
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in.
