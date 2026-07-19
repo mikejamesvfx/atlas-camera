@@ -75,3 +75,15 @@ docs/applications/
 dist/
 build/
 *.egg-info/
+
+# Codex machine-specific tooling — never commit
+.codex/
+
+# Graphify: keep the curated top-level outputs (graph.json, graph.html,
+# GRAPH_REPORT.md, .graphify_labels.json, manifest.json) but never commit the
+# local caches, snapshot subdirectories, per-machine roots, or cost logs.
+graphify-out/*/
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/cost.json
