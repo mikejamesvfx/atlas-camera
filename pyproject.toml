@@ -69,6 +69,17 @@ moge = [
     "moge @ git+https://github.com/microsoft/MoGe.git",
     "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183",
 ]
+# Native SAM3 (AtlasSAM3Mask) — transformers-only, no triton/comfyui-rmbg dependency, so it
+# works on Mac (MPS) / CPU / AMD where the third-party SAM3Segment node (which hard-requires
+# triton) cannot load at all. SAM3's model classes only exist from transformers ~5.5, hence
+# the separate, narrower pin from [neural]'s own >=4.40 floor. facebook/sam3 is GATED on
+# Hugging Face (Meta's SAM-License-1.0) — one-time `hf auth login` (or HF_TOKEN env) required
+# after requesting access at https://huggingface.co/facebook/sam3.
+sam3 = [
+    "numpy>=1.24",
+    "torch>=2.0",
+    "transformers>=5.5.4,<6",
+]
 image = [
     "pillow>=10",
 ]
