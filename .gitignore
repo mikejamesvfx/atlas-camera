@@ -79,11 +79,12 @@ build/
 # Codex machine-specific tooling — never commit
 .codex/
 
-# Graphify: keep the curated top-level outputs (graph.json, graph.html,
-# GRAPH_REPORT.md, .graphify_labels.json, manifest.json) but never commit the
-# local caches, snapshot subdirectories, per-machine roots, or cost logs.
-graphify-out/*/
-graphify-out/cache/
-graphify-out/.graphify_python
-graphify-out/.graphify_root
-graphify-out/cost.json
+# Graphify knowledge graph — a local tooling artifact, kept on disk but never
+# published (it also bloated the Registry archive by ~12 MB).
+graphify-out/
+
+# Development documentation — worklogs, design plans, research notes and the
+# generated guide artifacts. Kept locally; the published tree carries only the
+# user-facing docs (README, INSTALL, CHANGELOG, docs/*.md).
+docs/dev/
+docs/artifacts/

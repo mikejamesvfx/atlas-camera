@@ -10,6 +10,11 @@ integration), see [docs/ECOSYSTEM_GUIDE.md](docs/ECOSYSTEM_GUIDE.md). For the
 single-photo → Nuke camera-move / X-ray marketing pipeline, see
 [docs/CAMERA_MOVES.md](docs/CAMERA_MOVES.md).
 
+**`docs/dev/` and `docs/artifacts/` are local-only** (gitignored, and excluded
+from the published Registry archive). The design rules below still cite them as
+provenance — those paths resolve in a working checkout that has them on disk,
+not in a fresh clone. The published tree carries the user-facing docs only.
+
 ## Commands
 
 ```powershell
