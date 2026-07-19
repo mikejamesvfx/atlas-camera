@@ -1,8 +1,8 @@
 {
  "id": "atlas-canonical-ocio-spacehangar-dcc",
  "revision": 0,
- "last_node_id": 23,
- "last_link_id": 40,
+ "last_node_id": 25,
+ "last_link_id": 43,
  "nodes": [
   {
    "id": 1,
@@ -177,8 +177,8 @@
       5,
       9,
       13,
-      25,
-      31
+      28,
+      34
      ],
      "slot_index": 0
     },
@@ -186,8 +186,8 @@
      "name": "plate_ref",
      "type": "ATLAS_PLATE_REF",
      "links": [
-      26,
-      29
+      29,
+      32
      ],
      "slot_index": 1
     }
@@ -272,7 +272,7 @@
      "links": [
       4,
       18,
-      20
+      22
      ],
      "slot_index": 0
     }
@@ -332,8 +332,8 @@
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      24,
-      40
+      27,
+      43
      ],
      "slot_index": 0
     }
@@ -441,7 +441,7 @@
      "links": [
       6,
       8,
-      27
+      30
      ],
      "slot_index": 1
     },
@@ -822,7 +822,9 @@
      "links": [
       17,
       19,
-      22
+      20,
+      21,
+      24
      ],
      "slot_index": 0
     }
@@ -879,7 +881,7 @@
    ],
    "size": [
     800,
-    170
+    250
    ],
    "flags": {},
    "order": 13,
@@ -890,7 +892,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "CLEANPLATE APPROVAL GATE\nLarge removals are model- and plate-dependent. Inspect both mask and cleanplate previews. For final/hero work, replace the stitched image feeding Generated background layer with an artist-painted cleanplate when the neural fill changes perspective, repeats the object, or smears texture."
+    "CLEANPLATE APPROVAL GATE\nLarge removals are model- and plate-dependent. Inspect both mask and cleanplate previews. For final/hero work, replace the stitched image feeding Generated background layer with an artist-painted cleanplate when the neural fill changes perspective, repeats the object, or smears texture.\n\nPLATE REF: the generated cleanplate is written back to ACEScg (OCIOWrite, 16f EXR) and that file is registered into the background layer's plate_ref. Without it the layer exporters fall back to an 8-bit sRGB PNG carrying no colorspace — a mismatch in an ACEScg pipeline. The EXR lands under ComfyUI's output directory; repoint the DCC Read if it runs elsewhere."
    ],
    "color": "#432",
    "bgcolor": "#653"
@@ -918,12 +920,12 @@
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 21
+     "link": 23
     },
     {
      "name": "plate_image",
      "type": "IMAGE",
-     "link": 22
+     "link": 24
     },
     {
      "name": "near_m",
@@ -958,7 +960,7 @@
     {
      "name": "plate_ref",
      "type": "ATLAS_PLATE_REF",
-     "link": null
+     "link": 25
     },
     {
      "name": "relief_grid",
@@ -1061,7 +1063,7 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      23
+      26
      ],
      "slot_index": 0
     },
@@ -1108,6 +1110,229 @@
   },
   {
    "id": 15,
+   "type": "OCIOWrite",
+   "pos": [
+    2780,
+    40
+   ],
+   "size": [
+    500,
+    430
+   ],
+   "flags": {},
+   "order": 15,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 19
+    },
+    {
+     "name": "from_colorspace",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "output_colorspace",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "container",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "still_format",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "video_codec",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "bit_depth",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "auto_range",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "first_frame",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "last_frame",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "start_number",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "source_start",
+     "type": "INT",
+     "link": null
+    },
+    {
+     "name": "raw_data",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "output_folder",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "filename",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "colorspace_in_name",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "auto_colorspace",
+     "type": "BOOLEAN",
+     "link": null
+    },
+    {
+     "name": "compression",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "alpha",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "fps",
+     "type": "FLOAT",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "path",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "OCIOWrite"
+   },
+   "widgets_values": [
+    "sRGB - Display",
+    "ACEScg",
+    "still image",
+    "exr",
+    "prores_4444",
+    "16f",
+    true,
+    1,
+    0,
+    1,
+    1,
+    false,
+    "atlas_exports/spacehangar_canonical/cleanplate",
+    "spacehangar_cleanplate_generated",
+    true,
+    true,
+    "zip",
+    24.0
+   ],
+   "title": "Generated cleanplate → ACEScg EXR (float DCC handoff)"
+  },
+  {
+   "id": 16,
+   "type": "AtlasRegisterPlate",
+   "pos": [
+    2780,
+    500
+   ],
+   "size": [
+    500,
+    210
+   ],
+   "flags": {},
+   "order": 16,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 20
+    },
+    {
+     "name": "plate_path",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "colorspace",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "bit_depth",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "role",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "lut_path",
+     "type": "STRING",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "plate_ref",
+     "type": "ATLAS_PLATE_REF",
+     "links": [
+      25
+     ],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasRegisterPlate"
+   },
+   "widgets_values": [
+    "atlas_exports/spacehangar_canonical/cleanplate/spacehangar_cleanplate_generated_acescg.exr",
+    "ACEScg",
+    "auto",
+    "clean_plate",
+    ""
+   ],
+   "title": "Register the written ACEScg cleanplate"
+  },
+  {
+   "id": 17,
    "type": "AtlasDepthMap",
    "pos": [
     1200,
@@ -1118,13 +1343,13 @@
     190
    ],
    "flags": {},
-   "order": 15,
+   "order": 17,
    "mode": 0,
    "inputs": [
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 19
+     "link": 21
     },
     {
      "name": "depth_model",
@@ -1139,7 +1364,7 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 20
+     "link": 22
     }
    ],
    "outputs": [
@@ -1147,7 +1372,7 @@
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      21
+      23
      ],
      "slot_index": 0
     }
@@ -1162,7 +1387,7 @@
    "title": "Cleanplate depth — continuous hidden support"
   },
   {
-   "id": 16,
+   "id": 18,
    "type": "AtlasCleanPlateLayer",
    "pos": [
     430,
@@ -1173,23 +1398,23 @@
     500
    ],
    "flags": {},
-   "order": 16,
+   "order": 18,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 23
+     "link": 26
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 24
+     "link": 27
     },
     {
      "name": "plate_image",
      "type": "IMAGE",
-     "link": 25
+     "link": 28
     },
     {
      "name": "near_m",
@@ -1224,7 +1449,7 @@
     {
      "name": "plate_ref",
      "type": "ATLAS_PLATE_REF",
-     "link": 26
+     "link": 29
     },
     {
      "name": "relief_grid",
@@ -1254,7 +1479,7 @@
     {
      "name": "layer_matte",
      "type": "MASK",
-     "link": 27
+     "link": 30
     },
     {
      "name": "edge_extend_px",
@@ -1327,7 +1552,7 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      28
+      31
      ],
      "slot_index": 0
     },
@@ -1373,7 +1598,7 @@
    "title": "Untouched foreground occluder"
   },
   {
-   "id": 17,
+   "id": 19,
    "type": "AtlasAttachSourcePlate",
    "pos": [
     860,
@@ -1384,18 +1609,18 @@
     100
    ],
    "flags": {},
-   "order": 17,
+   "order": 19,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 28
+     "link": 31
     },
     {
      "name": "plate_ref",
      "type": "ATLAS_PLATE_REF",
-     "link": 29
+     "link": 32
     }
    ],
    "outputs": [
@@ -1403,11 +1628,11 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      30,
-      34,
-      36,
-      38,
-      39
+      33,
+      37,
+      39,
+      41,
+      42
      ],
      "slot_index": 0
     }
@@ -1419,7 +1644,7 @@
    "title": "Attach float source identity"
   },
   {
-   "id": 18,
+   "id": 20,
    "type": "AtlasViewportControls",
    "pos": [
     1710,
@@ -1430,7 +1655,7 @@
     280
    ],
    "flags": {},
-   "order": 18,
+   "order": 20,
    "mode": 0,
    "inputs": [
     {
@@ -1474,7 +1699,7 @@
      "name": "controls",
      "type": "ATLAS_VIEWPORT_LINK",
      "links": [
-      32
+      35
      ],
      "slot_index": 0
     },
@@ -1482,9 +1707,9 @@
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
      "links": [
-      33,
-      35,
-      37
+      36,
+      38,
+      40
      ],
      "slot_index": 1
     }
@@ -1504,7 +1729,7 @@
    "title": "ACES 2.0 Output Desk"
   },
   {
-   "id": 19,
+   "id": 21,
    "type": "AtlasBlockoutViewport",
    "pos": [
     1710,
@@ -1515,18 +1740,18 @@
     500
    ],
    "flags": {},
-   "order": 19,
+   "order": 21,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 30
+     "link": 33
     },
     {
      "name": "source_image",
      "type": "IMAGE",
-     "link": 31
+     "link": 34
     },
     {
      "name": "resolution",
@@ -1546,7 +1771,7 @@
     {
      "name": "controls",
      "type": "ATLAS_VIEWPORT_LINK",
-     "link": 32
+     "link": 35
     },
     {
      "name": "shot_cam",
@@ -1556,7 +1781,7 @@
     {
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
-     "link": 33
+     "link": 36
     }
    ],
    "outputs": [
@@ -1638,7 +1863,7 @@
    "title": "Layered projection — inspect seams before export"
   },
   {
-   "id": 20,
+   "id": 22,
    "type": "AtlasExportNukeLayers",
    "pos": [
     1710,
@@ -1649,13 +1874,13 @@
     300
    ],
    "flags": {},
-   "order": 20,
+   "order": 22,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 34
+     "link": 37
     },
     {
      "name": "output_dir",
@@ -1665,7 +1890,7 @@
     {
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
-     "link": 35
+     "link": 38
     },
     {
      "name": "retopo_method",
@@ -1721,7 +1946,7 @@
    "title": "Nuke layered projection — quadric retopo"
   },
   {
-   "id": 21,
+   "id": 23,
    "type": "AtlasExportMayaLayers",
    "pos": [
     2200,
@@ -1732,13 +1957,13 @@
     300
    ],
    "flags": {},
-   "order": 21,
+   "order": 23,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 36
+     "link": 39
     },
     {
      "name": "output_dir",
@@ -1748,7 +1973,7 @@
     {
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
-     "link": 37
+     "link": 40
     },
     {
      "name": "retopo_method",
@@ -1804,7 +2029,7 @@
    "title": "Maya layered projection — identical quadric retopo"
   },
   {
-   "id": 22,
+   "id": 24,
    "type": "AtlasExportUSD",
    "pos": [
     1710,
@@ -1815,13 +2040,13 @@
     120
    ],
    "flags": {},
-   "order": 22,
+   "order": 24,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 38
+     "link": 41
     },
     {
      "name": "output_dir",
@@ -1846,7 +2071,7 @@
    "title": "Static camera USD"
   },
   {
-   "id": 23,
+   "id": 25,
    "type": "AtlasDebugReport",
    "pos": [
     2150,
@@ -1857,18 +2082,18 @@
     260
    ],
    "flags": {},
-   "order": 23,
+   "order": 25,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 39
+     "link": 42
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 40
+     "link": 43
     },
     {
      "name": "file_path",
@@ -2079,22 +2304,38 @@
   ],
   [
    20,
+   11,
+   0,
+   16,
+   0,
+   "IMAGE"
+  ],
+  [
+   21,
+   11,
+   0,
+   17,
+   0,
+   "IMAGE"
+  ],
+  [
+   22,
    3,
    0,
-   15,
+   17,
    3,
    "ATLAS_SOLVE"
   ],
   [
-   21,
-   15,
+   23,
+   17,
    0,
    14,
    1,
    "ATLAS_DEPTH_MAP"
   ],
   [
-   22,
+   24,
    11,
    0,
    14,
@@ -2102,136 +2343,120 @@
    "IMAGE"
   ],
   [
-   23,
-   14,
-   0,
-   16,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   24,
-   4,
-   0,
-   16,
-   1,
-   "ATLAS_DEPTH_MAP"
-  ],
-  [
    25,
-   2,
-   0,
    16,
-   2,
-   "IMAGE"
-  ],
-  [
-   26,
-   2,
    1,
-   16,
+   14,
    9,
    "ATLAS_PLATE_REF"
   ],
   [
+   26,
+   14,
+   0,
+   18,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
    27,
-   5,
+   4,
+   0,
+   18,
    1,
-   16,
-   15,
-   "MASK"
+   "ATLAS_DEPTH_MAP"
   ],
   [
    28,
-   16,
+   2,
    0,
-   17,
-   0,
-   "ATLAS_SOLVE"
+   18,
+   2,
+   "IMAGE"
   ],
   [
    29,
    2,
    1,
-   17,
-   1,
+   18,
+   9,
    "ATLAS_PLATE_REF"
   ],
   [
    30,
-   17,
+   5,
+   1,
+   18,
+   15,
+   "MASK"
+  ],
+  [
+   31,
+   18,
    0,
    19,
    0,
    "ATLAS_SOLVE"
   ],
   [
-   31,
+   32,
+   2,
+   1,
+   19,
+   1,
+   "ATLAS_PLATE_REF"
+  ],
+  [
+   33,
+   19,
+   0,
+   21,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   34,
    2,
    0,
-   19,
+   21,
    1,
    "IMAGE"
   ],
   [
-   32,
-   18,
+   35,
+   20,
    0,
-   19,
+   21,
    5,
    "ATLAS_VIEWPORT_LINK"
   ],
   [
-   33,
-   18,
+   36,
+   20,
    1,
-   19,
+   21,
    7,
    "ATLAS_OUTPUT_PROFILE"
   ],
   [
-   34,
-   17,
-   0,
-   20,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   35,
-   18,
-   1,
-   20,
-   2,
-   "ATLAS_OUTPUT_PROFILE"
-  ],
-  [
-   36,
-   17,
-   0,
-   21,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
    37,
-   18,
-   1,
-   21,
-   2,
-   "ATLAS_OUTPUT_PROFILE"
-  ],
-  [
-   38,
-   17,
+   19,
    0,
    22,
    0,
    "ATLAS_SOLVE"
   ],
   [
+   38,
+   20,
+   1,
+   22,
+   2,
+   "ATLAS_OUTPUT_PROFILE"
+  ],
+  [
    39,
-   17,
+   19,
    0,
    23,
    0,
@@ -2239,9 +2464,33 @@
   ],
   [
    40,
+   20,
+   1,
+   23,
+   2,
+   "ATLAS_OUTPUT_PROFILE"
+  ],
+  [
+   41,
+   19,
+   0,
+   24,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   42,
+   19,
+   0,
+   25,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   43,
    4,
    0,
-   23,
+   25,
    1,
    "ATLAS_DEPTH_MAP"
   ]
@@ -2277,7 +2526,7 @@
    "bounding": [
     1660,
     -40,
-    1080,
+    1680,
     1580
    ],
    "color": "#614b38",
