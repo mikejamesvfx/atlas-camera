@@ -397,6 +397,13 @@ def apply_retopo(
         # Decimation is face-count-driven; derive a face target from the vertex
         # target (~2 faces per vert for a triangle mesh).
         target_faces = max(4, int(target_vertex_count) * 2)
+        if target_faces >= in_f:
+            return {
+                "method": "decimate", "changed": False,
+                "in_verts": in_v, "out_verts": in_v,
+                "in_faces": in_f, "out_faces": in_f,
+                "note": f"already below target ({in_f} faces <= {target_faces})",
+            }
         out_v, out_f = decimate_quadric(vertices, faces, target_face_count=target_faces)
         lib = "fast-simplification"
 

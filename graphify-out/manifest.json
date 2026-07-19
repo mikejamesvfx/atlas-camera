@@ -1,0 +1,1787 @@
+{
+  ".comfyui-agent.example.json": {
+    "mtime": 1783243289.9952087,
+    "ast_hash": "e8906a35542b1c047b03cca019e0d4ab",
+    "semantic_hash": "e8906a35542b1c047b03cca019e0d4ab"
+  },
+  ".mcp.json": {
+    "mtime": 1784252890.111442,
+    "ast_hash": "b84ceee3492830b735696e2efd52b546",
+    "semantic_hash": "b84ceee3492830b735696e2efd52b546"
+  },
+  "__init__.py": {
+    "mtime": 1783771961.412341,
+    "ast_hash": "5f55d9d0f28ef830ba79ac5d0e13e17d",
+    "semantic_hash": "5f55d9d0f28ef830ba79ac5d0e13e17d"
+  },
+  "atlas/__init__.py": {
+    "mtime": 1782641225.3888369,
+    "ast_hash": "2224814526edb00f62b7fd85decdb254",
+    "semantic_hash": "2224814526edb00f62b7fd85decdb254"
+  },
+  "atlas_camera/__init__.py": {
+    "mtime": 1784268625.6992283,
+    "ast_hash": "6d3b032d19a12029d7a74adc1bfddcbd",
+    "semantic_hash": "6d3b032d19a12029d7a74adc1bfddcbd"
+  },
+  "atlas_camera/comfy/__init__.py": {
+    "mtime": 1783831874.1966343,
+    "ast_hash": "7861600da9a0d3ad3590c330a0b2a406",
+    "semantic_hash": "7861600da9a0d3ad3590c330a0b2a406"
+  },
+  "atlas_camera/comfy/nodes.py": {
+    "mtime": 1784431533.4847672,
+    "ast_hash": "40e5a25176897520948b4cad2004d50e",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/web/atlas_assess.js": {
+    "mtime": 1783766963.5105827,
+    "ast_hash": "63ed5e5170fabbce3f0d65d22c5c1b63",
+    "semantic_hash": "63ed5e5170fabbce3f0d65d22c5c1b63"
+  },
+  "atlas_camera/comfy/web/atlas_blockout.js": {
+    "mtime": 1784350476.905857,
+    "ast_hash": "2905880d3a2887d57a0016301d445c32",
+    "semantic_hash": "2905880d3a2887d57a0016301d445c32"
+  },
+  "atlas_camera/comfy/web/atlas_derive_geometry.js": {
+    "mtime": 1784072774.4160686,
+    "ast_hash": "1191abc213852d47b9d6645e8544c603",
+    "semantic_hash": "1191abc213852d47b9d6645e8544c603"
+  },
+  "atlas_camera/comfy/web/atlas_export_relief.js": {
+    "mtime": 1784079542.196654,
+    "ast_hash": "71757a470262aa79e2bdc99bd355bacc",
+    "semantic_hash": "71757a470262aa79e2bdc99bd355bacc"
+  },
+  "atlas_camera/comfy/web/atlas_scene_health_gate.js": {
+    "mtime": 1784350476.9068546,
+    "ast_hash": "1ad0b0f8c0c2c0642396c222da2f6848",
+    "semantic_hash": "1ad0b0f8c0c2c0642396c222da2f6848"
+  },
+  "atlas_camera/comfy/web/atlas_solve_gate.js": {
+    "mtime": 1783663176.786499,
+    "ast_hash": "8b6a31ef23d0ae721d781700f3c7e789",
+    "semantic_hash": "8b6a31ef23d0ae721d781700f3c7e789"
+  },
+  "atlas_camera/comfy/web/lib/atlas-three.bundle.js": {
+    "mtime": 1783767983.234217,
+    "ast_hash": "c4a105f2f7aed7881f4054f571a1f38f",
+    "semantic_hash": "c4a105f2f7aed7881f4054f571a1f38f"
+  },
+  "atlas_camera/core/__init__.py": {
+    "mtime": 1783243289.9982536,
+    "ast_hash": "c59c7f493d551311e7d5d85ee22071a6",
+    "semantic_hash": "c59c7f493d551311e7d5d85ee22071a6"
+  },
+  "atlas_camera/core/base.py": {
+    "mtime": 1782790189.5091822,
+    "ast_hash": "41051a9e856fe2d2afdb6afd83e888bf",
+    "semantic_hash": "41051a9e856fe2d2afdb6afd83e888bf"
+  },
+  "atlas_camera/core/camera_math.py": {
+    "mtime": 1783243289.9982536,
+    "ast_hash": "4d9e8f54af480163b861eaeb2237999c",
+    "semantic_hash": "4d9e8f54af480163b861eaeb2237999c"
+  },
+  "atlas_camera/core/camera_path.py": {
+    "mtime": 1783243289.999253,
+    "ast_hash": "b35228ef87bf8f018bb3d38996c1db52",
+    "semantic_hash": "b35228ef87bf8f018bb3d38996c1db52"
+  },
+  "atlas_camera/core/confidence.py": {
+    "mtime": 1784350476.9068546,
+    "ast_hash": "3736892c2e95b9112cb4a8000502ae9d",
+    "semantic_hash": "3736892c2e95b9112cb4a8000502ae9d"
+  },
+  "atlas_camera/core/depth_geometry.py": {
+    "mtime": 1784072774.4170752,
+    "ast_hash": "ed448d084020ba5ffa2ffa28b93cfe54",
+    "semantic_hash": "ed448d084020ba5ffa2ffa28b93cfe54"
+  },
+  "atlas_camera/core/extrinsics.py": {
+    "mtime": 1782360811.846334,
+    "ast_hash": "26b6d831e33727a97715cfed56ddff21",
+    "semantic_hash": "26b6d831e33727a97715cfed56ddff21"
+  },
+  "atlas_camera/core/hidden_geometry.py": {
+    "mtime": 1783649810.1761022,
+    "ast_hash": "aadb8108ce14a8fa65d0fcc13d95a920",
+    "semantic_hash": "aadb8108ce14a8fa65d0fcc13d95a920"
+  },
+  "atlas_camera/core/intrinsics.py": {
+    "mtime": 1783243290.0002587,
+    "ast_hash": "36b8754aebf5eade7d97cb502dcb529f",
+    "semantic_hash": "36b8754aebf5eade7d97cb502dcb529f"
+  },
+  "atlas_camera/core/io.py": {
+    "mtime": 1782360817.2388933,
+    "ast_hash": "4da3b5b3cbe85e18841f5a0b546ca9b4",
+    "semantic_hash": "4da3b5b3cbe85e18841f5a0b546ca9b4"
+  },
+  "atlas_camera/core/mesh_repair.py": {
+    "mtime": 1784075765.3194041,
+    "ast_hash": "eff4386a72a460b547c0429fdf4043fb",
+    "semantic_hash": "eff4386a72a460b547c0429fdf4043fb"
+  },
+  "atlas_camera/core/mesh_retopo.py": {
+    "mtime": 1784431688.9555278,
+    "ast_hash": "4febe6b38b8d077dc252b64e6bc976e6",
+    "semantic_hash": ""
+  },
+  "atlas_camera/core/normals.py": {
+    "mtime": 1784072774.418074,
+    "ast_hash": "3c8d46bf9fd6deed7a1eafee9f14763c",
+    "semantic_hash": "3c8d46bf9fd6deed7a1eafee9f14763c"
+  },
+  "atlas_camera/core/plane_extraction.py": {
+    "mtime": 1783649810.177101,
+    "ast_hash": "954f4561a7cfef7bc3325c7d65553fdc",
+    "semantic_hash": "954f4561a7cfef7bc3325c7d65553fdc"
+  },
+  "atlas_camera/core/projection_scene.py": {
+    "mtime": 1783243290.0002587,
+    "ast_hash": "a5add89d216d569ab6c8bbfbd9531cef",
+    "semantic_hash": "a5add89d216d569ab6c8bbfbd9531cef"
+  },
+  "atlas_camera/core/proxy_geometry.py": {
+    "mtime": 1784350476.9078555,
+    "ast_hash": "31b75aec574feb941998222d001f0b91",
+    "semantic_hash": "31b75aec574feb941998222d001f0b91"
+  },
+  "atlas_camera/core/relief_mesh.py": {
+    "mtime": 1784350476.908856,
+    "ast_hash": "11c9173ef1772563c683ac0430958f34",
+    "semantic_hash": "11c9173ef1772563c683ac0430958f34"
+  },
+  "atlas_camera/core/room_layout.py": {
+    "mtime": 1782988060.559383,
+    "ast_hash": "4c19c0c014a22208115e011a828fbb57",
+    "semantic_hash": "4c19c0c014a22208115e011a828fbb57"
+  },
+  "atlas_camera/core/scene_health.py": {
+    "mtime": 1784351384.385401,
+    "ast_hash": "9402ec78aca0813a5272f70d898e2313",
+    "semantic_hash": "9402ec78aca0813a5272f70d898e2313"
+  },
+  "atlas_camera/core/schema.py": {
+    "mtime": 1784350476.9100075,
+    "ast_hash": "a6629dab107ed46be4e34b849d49f17a",
+    "semantic_hash": "a6629dab107ed46be4e34b849d49f17a"
+  },
+  "atlas_camera/core/solver.py": {
+    "mtime": 1784350476.9100075,
+    "ast_hash": "60874cb6110be411843107c52e20e8d0",
+    "semantic_hash": "60874cb6110be411843107c52e20e8d0"
+  },
+  "atlas_camera/core/validators.py": {
+    "mtime": 1782360816.1780176,
+    "ast_hash": "674b4f8ebd826b18a3895dbd1eb9156b",
+    "semantic_hash": "674b4f8ebd826b18a3895dbd1eb9156b"
+  },
+  "atlas_camera/core/vanishing_points.py": {
+    "mtime": 1782363882.413349,
+    "ast_hash": "0bc8b19bf6a2ea8cec067ec8f3d6c57c",
+    "semantic_hash": "0bc8b19bf6a2ea8cec067ec8f3d6c57c"
+  },
+  "atlas_camera/datasets/__init__.py": {
+    "mtime": 1782523976.1042335,
+    "ast_hash": "9fb0f2956d11b74a3ed19b4005f6e9dc",
+    "semantic_hash": "9fb0f2956d11b74a3ed19b4005f6e9dc"
+  },
+  "atlas_camera/datasets/benchmark.py": {
+    "mtime": 1782987876.671324,
+    "ast_hash": "3f0f3401aa492c038e749eba652e8308",
+    "semantic_hash": "3f0f3401aa492c038e749eba652e8308"
+  },
+  "atlas_camera/datasets/colmap.py": {
+    "mtime": 1782524124.7634096,
+    "ast_hash": "dae7f5077139a44092bfc70972741cea",
+    "semantic_hash": "dae7f5077139a44092bfc70972741cea"
+  },
+  "atlas_camera/datasets/dtu.py": {
+    "mtime": 1782523979.4518437,
+    "ast_hash": "14b03bc37441ed316739eaf6a7e78991",
+    "semantic_hash": "14b03bc37441ed316739eaf6a7e78991"
+  },
+  "atlas_camera/datasets/eth3d.py": {
+    "mtime": 1782523978.542702,
+    "ast_hash": "7b1fb8401626997d0926a433809e8474",
+    "semantic_hash": "7b1fb8401626997d0926a433809e8474"
+  },
+  "atlas_camera/exporters/__init__.py": {
+    "mtime": 1782871404.2180636,
+    "ast_hash": "c18f8bf059a06977a9891615478dced5",
+    "semantic_hash": "c18f8bf059a06977a9891615478dced5"
+  },
+  "atlas_camera/exporters/_layers.py": {
+    "mtime": 1784431081.46006,
+    "ast_hash": "6b77c23ebb4918a7202b281d53f28c28",
+    "semantic_hash": ""
+  },
+  "atlas_camera/exporters/_plate.py": {
+    "mtime": 1783649810.1821313,
+    "ast_hash": "b43c6e738daa40a71533c7dede966659",
+    "semantic_hash": "b43c6e738daa40a71533c7dede966659"
+  },
+  "atlas_camera/exporters/blender_exporter.py": {
+    "mtime": 1782884474.422418,
+    "ast_hash": "811b04eefd1cae4dae0249d6e1c54bd7",
+    "semantic_hash": "811b04eefd1cae4dae0249d6e1c54bd7"
+  },
+  "atlas_camera/exporters/manifest.py": {
+    "mtime": 1784360291.3529892,
+    "ast_hash": "d30e14de6f15e643e6c4b9e68d2ba17a",
+    "semantic_hash": "d30e14de6f15e643e6c4b9e68d2ba17a"
+  },
+  "atlas_camera/exporters/maya_exporter.py": {
+    "mtime": 1784430319.5863945,
+    "ast_hash": "e6c9b025a7e4b0f3b8bf61c0450184c1",
+    "semantic_hash": ""
+  },
+  "atlas_camera/exporters/nuke_exporter.py": {
+    "mtime": 1784430318.325925,
+    "ast_hash": "371cc0367ccb914c5bbb35ecf9aa2a82",
+    "semantic_hash": ""
+  },
+  "atlas_camera/exporters/relief_mesh_exporter.py": {
+    "mtime": 1783300435.3249846,
+    "ast_hash": "df2c15bd9aa4d28760b93acf7cb90375",
+    "semantic_hash": "df2c15bd9aa4d28760b93acf7cb90375"
+  },
+  "atlas_camera/exporters/review_package.py": {
+    "mtime": 1784350476.911008,
+    "ast_hash": "ed61f45a2674c0e2374e455c88379e9a",
+    "semantic_hash": "ed61f45a2674c0e2374e455c88379e9a"
+  },
+  "atlas_camera/exporters/usd_exporter.py": {
+    "mtime": 1783243290.0022526,
+    "ast_hash": "0cfa65c2f84b9748786e9dd70c2e84f7",
+    "semantic_hash": "0cfa65c2f84b9748786e9dd70c2e84f7"
+  },
+  "atlas_camera/importers/__init__.py": {
+    "mtime": 1782360934.1630986,
+    "ast_hash": "300ff043cc7f13d263f294f72a28bfdb",
+    "semantic_hash": "300ff043cc7f13d263f294f72a28bfdb"
+  },
+  "atlas_camera/importers/atlas_json_loader.py": {
+    "mtime": 1782360935.2009184,
+    "ast_hash": "053ab5f164e18214afd61b54d6802351",
+    "semantic_hash": "053ab5f164e18214afd61b54d6802351"
+  },
+  "atlas_camera/importers/usd_camera_loader.py": {
+    "mtime": 1783649810.1862438,
+    "ast_hash": "4e5fae33de1c853df489c3647faff9c4",
+    "semantic_hash": "4e5fae33de1c853df489c3647faff9c4"
+  },
+  "atlas_camera/inference/__init__.py": {
+    "mtime": 1782854959.3972974,
+    "ast_hash": "8d6776eee8d112b6eba9ab664e447862",
+    "semantic_hash": "8d6776eee8d112b6eba9ab664e447862"
+  },
+  "atlas_camera/inference/_common.py": {
+    "mtime": 1783829320.7902043,
+    "ast_hash": "0a94aceda07270c4c119da01742ac1d6",
+    "semantic_hash": "0a94aceda07270c4c119da01742ac1d6"
+  },
+  "atlas_camera/inference/assessor.py": {
+    "mtime": 1784176468.9714909,
+    "ast_hash": "ac9bbeb6ed0baa0f036b9a7fee04519d",
+    "semantic_hash": "ac9bbeb6ed0baa0f036b9a7fee04519d"
+  },
+  "atlas_camera/inference/depth_estimator.py": {
+    "mtime": 1784072774.421681,
+    "ast_hash": "97c9dbae7e6f30edfcdcdbb0d7b55a87",
+    "semantic_hash": "97c9dbae7e6f30edfcdcdbb0d7b55a87"
+  },
+  "atlas_camera/inference/fixer_render_fix.py": {
+    "mtime": 1783649810.187978,
+    "ast_hash": "73e26b88e902118295dcb699308a01f3",
+    "semantic_hash": "73e26b88e902118295dcb699308a01f3"
+  },
+  "atlas_camera/inference/fixer_shim/sitecustomize.py": {
+    "mtime": 1783649810.1889842,
+    "ast_hash": "0cc40c52b813cb161e18ac1db6f074a3",
+    "semantic_hash": "0cc40c52b813cb161e18ac1db6f074a3"
+  },
+  "atlas_camera/inference/lari_hidden_geometry.py": {
+    "mtime": 1783649810.1889842,
+    "ast_hash": "02477d8ac7c7b0a421c6a92d33d51ced",
+    "semantic_hash": "02477d8ac7c7b0a421c6a92d33d51ced"
+  },
+  "atlas_camera/inference/learned_prior.py": {
+    "mtime": 1783649810.189983,
+    "ast_hash": "820cb4ae1240a3b5bb28d864c1afc42d",
+    "semantic_hash": "820cb4ae1240a3b5bb28d864c1afc42d"
+  },
+  "atlas_camera/inference/multimodal_helper.py": {
+    "mtime": 1784072774.4226813,
+    "ast_hash": "5df329afd58d6747a8067fb3a6571d41",
+    "semantic_hash": "5df329afd58d6747a8067fb3a6571d41"
+  },
+  "atlas_camera/inference/semantic_segmenter.py": {
+    "mtime": 1783819132.201099,
+    "ast_hash": "d3191ff810201f2143b976b2e6e2a259",
+    "semantic_hash": "d3191ff810201f2143b976b2e6e2a259"
+  },
+  "atlas_camera/inference/wt_hidden_geometry.py": {
+    "mtime": 1783649810.189983,
+    "ast_hash": "119faeac3fe09048e3448d2a7aa7ed92",
+    "semantic_hash": "119faeac3fe09048e3448d2a7aa7ed92"
+  },
+  "atlas_camera/mcp/__init__.py": {
+    "mtime": 1784188282.6444209,
+    "ast_hash": "6d15b64e430d6ea7a9894c96da45b62e",
+    "semantic_hash": "6d15b64e430d6ea7a9894c96da45b62e"
+  },
+  "atlas_camera/mcp/__main__.py": {
+    "mtime": 1784188282.6444209,
+    "ast_hash": "a6e5d171db831f71435c0c5061dafeb3",
+    "semantic_hash": "a6e5d171db831f71435c0c5061dafeb3"
+  },
+  "atlas_camera/mcp/comfy_http.py": {
+    "mtime": 1784441776.2012432,
+    "ast_hash": "5b5fbe1061c9d55fcdfa4fbfb9b8fe4e",
+    "semantic_hash": ""
+  },
+  "atlas_camera/mcp/server.py": {
+    "mtime": 1784441777.6615698,
+    "ast_hash": "06b1ee63c28bf816e8cf1a522111bb3c",
+    "semantic_hash": ""
+  },
+  "atlas_camera/raw/__init__.py": {
+    "mtime": 1784337676.6191316,
+    "ast_hash": "523431f1db08ed200ed4e5359a0f75cb",
+    "semantic_hash": "523431f1db08ed200ed4e5359a0f75cb"
+  },
+  "atlas_camera/raw/decode.py": {
+    "mtime": 1784337676.6191316,
+    "ast_hash": "919fc95bf8f18ef2fccd1030ff38773a",
+    "semantic_hash": "919fc95bf8f18ef2fccd1030ff38773a"
+  },
+  "atlas_camera/raw/metadata.py": {
+    "mtime": 1784337676.6191316,
+    "ast_hash": "e78616011607669aab60e23a6f5bab1b",
+    "semantic_hash": "e78616011607669aab60e23a6f5bab1b"
+  },
+  "atlas_camera/raw/pipeline.py": {
+    "mtime": 1784337676.6201313,
+    "ast_hash": "1bc173c794923680950fe12de5c83d5e",
+    "semantic_hash": "1bc173c794923680950fe12de5c83d5e"
+  },
+  "atlas_camera/raw/undistort.py": {
+    "mtime": 1784337676.6206374,
+    "ast_hash": "1562d5ee1f7de2cc0e6e45316fbed338",
+    "semantic_hash": "1562d5ee1f7de2cc0e6e45316fbed338"
+  },
+  "atlas_camera/reference_data/__init__.py": {
+    "mtime": 1784337676.6206374,
+    "ast_hash": "464c05f17e2a39172315603758eeab2b",
+    "semantic_hash": "464c05f17e2a39172315603758eeab2b"
+  },
+  "atlas_camera/reference_data/camera_bodies.json": {
+    "mtime": 1784337676.6216404,
+    "ast_hash": "c3c4da8036fd35ad63386befb675c7cd",
+    "semantic_hash": "c3c4da8036fd35ad63386befb675c7cd"
+  },
+  "atlas_camera/reference_data/camera_registry.py": {
+    "mtime": 1784337676.6216404,
+    "ast_hash": "a3f2b00b6a379aa121be469eb498d6db",
+    "semantic_hash": "a3f2b00b6a379aa121be469eb498d6db"
+  },
+  "atlas_camera/reference_data/common_scale_references.json": {
+    "mtime": 1782364807.5668697,
+    "ast_hash": "2f10c882c34e9525d21714628e6c9ad5",
+    "semantic_hash": "2f10c882c34e9525d21714628e6c9ad5"
+  },
+  "atlas_camera/reference_data/registry.py": {
+    "mtime": 1783649810.1909833,
+    "ast_hash": "6e2f5abf1673b041f075e02a6a85671f",
+    "semantic_hash": "6e2f5abf1673b041f075e02a6a85671f"
+  },
+  "atlas_camera/ui/__init__.py": {
+    "mtime": 1783333815.6066468,
+    "ast_hash": "6d585e175e6c8301da88c4ce5dd4fc75",
+    "semantic_hash": "6d585e175e6c8301da88c4ce5dd4fc75"
+  },
+  "atlas_camera/ui/__main__.py": {
+    "mtime": 1782985531.490624,
+    "ast_hash": "077836bfc06c4062cdaabeb86901d487",
+    "semantic_hash": "077836bfc06c4062cdaabeb86901d487"
+  },
+  "atlas_camera/ui/api.py": {
+    "mtime": 1783649810.1909833,
+    "ast_hash": "bcec6a0e23cb1ef5a430a4854e858514",
+    "semantic_hash": "bcec6a0e23cb1ef5a430a4854e858514"
+  },
+  "atlas_camera/ui/project.py": {
+    "mtime": 1782872960.431432,
+    "ast_hash": "15f7b4f78973473af45432db8b19a777",
+    "semantic_hash": "15f7b4f78973473af45432db8b19a777"
+  },
+  "atlas_camera/utils/__init__.py": {
+    "mtime": 1782360942.8235624,
+    "ast_hash": "0ce6688707da853009ebc6e90811fb83",
+    "semantic_hash": "0ce6688707da853009ebc6e90811fb83"
+  },
+  "atlas_camera/utils/paths.py": {
+    "mtime": 1782360943.8855715,
+    "ast_hash": "6c556eefd2fd24f38f5977acacb0542f",
+    "semantic_hash": "6c556eefd2fd24f38f5977acacb0542f"
+  },
+  "examples/api_format/atlas_camera_core_projection.api.json": {
+    "mtime": 1783243290.0065234,
+    "ast_hash": "03363c2a4f8e33f3a73544b915c27cd6",
+    "semantic_hash": "03363c2a4f8e33f3a73544b915c27cd6"
+  },
+  "examples/api_format/atlas_camera_core_projection_qwen_dataset_example_01.json": {
+    "mtime": 1783651575.172619,
+    "ast_hash": "829834370d623587d6aca2eaa2e78f50",
+    "semantic_hash": "829834370d623587d6aca2eaa2e78f50"
+  },
+  "examples/api_format/atlas_camera_learned_full_pipeline.api.json": {
+    "mtime": 1783243290.0065234,
+    "ast_hash": "b93a990578c275de741dad48f1c3ac43",
+    "semantic_hash": "b93a990578c275de741dad48f1c3ac43"
+  },
+  "examples/api_format/atlas_camera_multiangle_patch_selfcontained.api.json": {
+    "mtime": 1783243290.0065234,
+    "ast_hash": "ef36d43498cbbfecd101b2aa98d9b1ad",
+    "semantic_hash": "ef36d43498cbbfecd101b2aa98d9b1ad"
+  },
+  "examples/api_format/atlas_camera_vertical_extrusion_comparison_workflow.json": {
+    "mtime": 1783651575.172619,
+    "ast_hash": "4ab1095b6f8f1bd18a4d3d7d9813d491",
+    "semantic_hash": "4ab1095b6f8f1bd18a4d3d7d9813d491"
+  },
+  "examples/api_format/atlas_camera_vfx_ocio_output.api.json": {
+    "mtime": 1783243290.0075216,
+    "ast_hash": "0b95a731819d82335f36e62e475388d8",
+    "semantic_hash": "0b95a731819d82335f36e62e475388d8"
+  },
+  "examples/atlas_camera_staged_master_workflow.json": {
+    "mtime": 1784072774.433174,
+    "ast_hash": "047a0ffcfdc57de9e9caf0a796dcf8b8",
+    "semantic_hash": "047a0ffcfdc57de9e9caf0a796dcf8b8"
+  },
+  "examples/atlas_input_ocio_quickstart_workflow.json": {
+    "mtime": 1784072774.4341733,
+    "ast_hash": "cf85a08c1bfc0198ae3c627eb4cbf0aa",
+    "semantic_hash": "cf85a08c1bfc0198ae3c627eb4cbf0aa"
+  },
+  "examples/atlas_input_quickstart_workflow.json": {
+    "mtime": 1784072774.4351737,
+    "ast_hash": "eaee9b3a62d13407c2d706736327bd14",
+    "semantic_hash": "eaee9b3a62d13407c2d706736327bd14"
+  },
+  "examples/experimental/2026-07-18_atlas_raw_quickstart_workflow_hidden.json": {
+    "mtime": 1784350476.914007,
+    "ast_hash": "35d5e2666f00b1b764ca6b208afbf813",
+    "semantic_hash": "35d5e2666f00b1b764ca6b208afbf813"
+  },
+  "examples/experimental/2026-07-18_atlas_raw_quickstart_workflow_hidden_diagnostic.json": {
+    "mtime": 1784350476.915511,
+    "ast_hash": "15182c8bf40b8933f8a1e6bf47b63529",
+    "semantic_hash": "15182c8bf40b8933f8a1e6bf47b63529"
+  },
+  "examples/experimental/2026-07-18_atlas_raw_quickstart_workflow_hidden_inpaint_sdxl.json": {
+    "mtime": 1784350476.915511,
+    "ast_hash": "df83eb15794d99fda9a3eb4f1db84c09",
+    "semantic_hash": "df83eb15794d99fda9a3eb4f1db84c09"
+  },
+  "examples/experimental/2026-07-18_atlas_raw_quickstart_workflow_hidden_inpaint_tagged.json": {
+    "mtime": 1784350476.9165168,
+    "ast_hash": "eab89a4f1ee567cecd81ef4befa56738",
+    "semantic_hash": "eab89a4f1ee567cecd81ef4befa56738"
+  },
+  "examples/experimental/2026-07-18_atlas_raw_quickstart_workflow_hidden_sdxl_native_api.json": {
+    "mtime": 1784350476.9165168,
+    "ast_hash": "c10dfcabe60ffeecbc8d8c8d92f25dd8",
+    "semantic_hash": "c10dfcabe60ffeecbc8d8c8d92f25dd8"
+  },
+  "examples/experimental/2026-07-18_atlas_raw_quickstart_workflow_hidden_segmented_sdxl.json": {
+    "mtime": 1784350476.9165168,
+    "ast_hash": "8972f4d57c1b556096cbbd44d2773b15",
+    "semantic_hash": "8972f4d57c1b556096cbbd44d2773b15"
+  },
+  "examples/experimental/atlas_castle_dcc_handoff.json": {
+    "mtime": 1784089800.6980095,
+    "ast_hash": "22d580e2e575134206819c4adcc0cfb1",
+    "semantic_hash": "22d580e2e575134206819c4adcc0cfb1"
+  },
+  "examples/experimental/atlas_castle_dmp_marketing.json": {
+    "mtime": 1784089800.5581148,
+    "ast_hash": "e784d28138be1b97d3707d65320623ce",
+    "semantic_hash": "e784d28138be1b97d3707d65320623ce"
+  },
+  "examples/experimental/atlas_jungle_xray_cameramove.json": {
+    "mtime": 1784163093.2034352,
+    "ast_hash": "0d8d35bbe0a5415a8c2550745608327f",
+    "semantic_hash": "0d8d35bbe0a5415a8c2550745608327f"
+  },
+  "examples/retopo/_generate.py": {
+    "mtime": 1784159148.1071126,
+    "ast_hash": "91ed594d65fbf3be818fff6db08093e3",
+    "semantic_hash": "91ed594d65fbf3be818fff6db08093e3"
+  },
+  "examples/retopo/atlas_retopo_decimate_budget_workflow.json": {
+    "mtime": 1784159148.1071126,
+    "ast_hash": "368a67ad1ffd2682c5a5a67fd7ad9d30",
+    "semantic_hash": "368a67ad1ffd2682c5a5a67fd7ad9d30"
+  },
+  "examples/retopo/atlas_retopo_portal_test_workflow.json": {
+    "mtime": 1784159148.1071126,
+    "ast_hash": "afd9c9bcd5cbc78c452d1a2b4d34e56b",
+    "semantic_hash": "afd9c9bcd5cbc78c452d1a2b4d34e56b"
+  },
+  "examples/retopo/atlas_retopo_quad_dcc_handoff_workflow.json": {
+    "mtime": 1784159148.108114,
+    "ast_hash": "c7fa833898bb9dda1f6751ebe3e436fd",
+    "semantic_hash": "c7fa833898bb9dda1f6751ebe3e436fd"
+  },
+  "examples/retopo/atlas_retopo_smooth_ab_workflow.json": {
+    "mtime": 1784159148.108114,
+    "ast_hash": "98c8e928c15d49475c0eb590d438a14b",
+    "semantic_hash": "98c8e928c15d49475c0eb590d438a14b"
+  },
+  "examples/showcase/atlas_canonical_cleanplate_ghosttown_workflow.json": {
+    "mtime": 1784277171.4007154,
+    "ast_hash": "035992f06baebdb1797659f2bbcda011",
+    "semantic_hash": "035992f06baebdb1797659f2bbcda011"
+  },
+  "examples/showcase/atlas_canonical_production_templecity_workflow.json": {
+    "mtime": 1784268625.7052608,
+    "ast_hash": "4ec3fb352e85cd16fa99b4395a2680bd",
+    "semantic_hash": "4ec3fb352e85cd16fa99b4395a2680bd"
+  },
+  "examples/showcase/atlas_canonical_quickstart_ghosttown_workflow.json": {
+    "mtime": 1784274907.811395,
+    "ast_hash": "0f705bc4389659b547779b9589ad89ad",
+    "semantic_hash": "0f705bc4389659b547779b9589ad89ad"
+  },
+  "examples/showcase/atlas_canonical_research_newyork_lari_workflow.json": {
+    "mtime": 1784268625.7062602,
+    "ast_hash": "7292bd14fa4b1ea65875945835c6703e",
+    "semantic_hash": "7292bd14fa4b1ea65875945835c6703e"
+  },
+  "examples/showcase/atlas_canonical_trust_d810raw_workflow.json": {
+    "mtime": 1784352995.5622313,
+    "ast_hash": "d51ca059d129ce3b616b63de75e8a9f4",
+    "semantic_hash": "d51ca059d129ce3b616b63de75e8a9f4"
+  },
+  "examples/showcase/atlas_city_blocks_newyork_workflow.json": {
+    "mtime": 1784216446.4750087,
+    "ast_hash": "3aff4fe0dd65e9204b10d2d7cad3bb3f",
+    "semantic_hash": "3aff4fe0dd65e9204b10d2d7cad3bb3f"
+  },
+  "examples/showcase/atlas_composable_geometry_templecity_workflow.json": {
+    "mtime": 1784176468.974491,
+    "ast_hash": "fed8ec97b72e268b31de1e30e42e55e4",
+    "semantic_hash": "fed8ec97b72e268b31de1e30e42e55e4"
+  },
+  "examples/showcase/atlas_dmp_angle_anchored_newyork_workflow.json": {
+    "mtime": 1784216446.477013,
+    "ast_hash": "1e858e22219804ce76d885d90c875dfa",
+    "semantic_hash": "1e858e22219804ce76d885d90c875dfa"
+  },
+  "examples/showcase/atlas_dmp_angle_xray_newyork_workflow.json": {
+    "mtime": 1784216446.4790127,
+    "ast_hash": "620c596ac3b5cb299641064e86c42985",
+    "semantic_hash": "620c596ac3b5cb299641064e86c42985"
+  },
+  "examples/showcase/atlas_input_cameramove_ghosttown_workflow.json": {
+    "mtime": 1784176468.975491,
+    "ast_hash": "038d3519f0ec1a9b5bcc581e78f8904a",
+    "semantic_hash": "038d3519f0ec1a9b5bcc581e78f8904a"
+  },
+  "examples/showcase/atlas_interior_hangar_workflow.json": {
+    "mtime": 1784176468.975491,
+    "ast_hash": "04639bb441094cd20cbea3f001bbcbec",
+    "semantic_hash": "04639bb441094cd20cbea3f001bbcbec"
+  },
+  "examples/showcase/atlas_ocio_dmp_oceancastle_workflow.json": {
+    "mtime": 1784176468.9764917,
+    "ast_hash": "fb5ea58e75f73cb191d08ac72e72ef9b",
+    "semantic_hash": "fb5ea58e75f73cb191d08ac72e72ef9b"
+  },
+  "examples/showcase/atlas_organic_relief_jungleruins_workflow.json": {
+    "mtime": 1784176468.9764917,
+    "ast_hash": "b4ac162ea77a8427c2c2f02f5b3418f7",
+    "semantic_hash": "b4ac162ea77a8427c2c2f02f5b3418f7"
+  },
+  "examples/showcase/atlas_raw_quickstart_workflow.json": {
+    "mtime": 1784337899.4709518,
+    "ast_hash": "a4f987e9faed42050a9c82d01e11f8d2",
+    "semantic_hash": "a4f987e9faed42050a9c82d01e11f8d2"
+  },
+  "examples/showcase/atlas_rolltrim_shotcam_portal_workflow.json": {
+    "mtime": 1784176468.9774914,
+    "ast_hash": "994e2cadd09f75faac2ccb57ebe6db15",
+    "semantic_hash": "994e2cadd09f75faac2ccb57ebe6db15"
+  },
+  "examples/showcase/atlas_segmented_sdxl_hidden_d810raw_workflow.json": {
+    "mtime": 1784429102.4409928,
+    "ast_hash": "fddfa898e3e398bf60ff288b30802eed",
+    "semantic_hash": ""
+  },
+  "examples/showcase/atlas_segmented_sdxl_manual_debug_workflow.json": {
+    "mtime": 1784429100.861781,
+    "ast_hash": "d12555b862a9c158bbd00138bcc3f8c6",
+    "semantic_hash": ""
+  },
+  "examples/showcase/atlas_solve_lab_coastal_alley_workflow.json": {
+    "mtime": 1784176468.9784906,
+    "ast_hash": "dc9bce2b8637a983dabd4de58c1fc5d8",
+    "semantic_hash": "dc9bce2b8637a983dabd4de58c1fc5d8"
+  },
+  "examples/showcase/atlas_xray_wreck_workflow.json": {
+    "mtime": 1784176468.9784906,
+    "ast_hash": "222731f12f5ea6ec07a001b551345ebe",
+    "semantic_hash": "222731f12f5ea6ec07a001b551345ebe"
+  },
+  "pyproject.toml": {
+    "mtime": 1784337676.6216404,
+    "ast_hash": "1eb996e5fdaf8ed7b8c70957355d6228",
+    "semantic_hash": "1eb996e5fdaf8ed7b8c70957355d6228"
+  },
+  "tests/conftest.py": {
+    "mtime": 1783291929.3547373,
+    "ast_hash": "92b862cb590494febcfa70ecc4560057",
+    "semantic_hash": "92b862cb590494febcfa70ecc4560057"
+  },
+  "tests/test_add_patch_view.py": {
+    "mtime": 1783649810.255776,
+    "ast_hash": "da160bdb08af296825f52fd038483f5f",
+    "semantic_hash": "da160bdb08af296825f52fd038483f5f"
+  },
+  "tests/test_angle_patch_nodes.py": {
+    "mtime": 1784268625.7072606,
+    "ast_hash": "0c337c4110c21cb706b6c855d5998d4f",
+    "semantic_hash": "0c337c4110c21cb706b6c855d5998d4f"
+  },
+  "tests/test_artist_guided_constraints.py": {
+    "mtime": 1782790520.0328815,
+    "ast_hash": "3f6560ba0d54d8a077e88eb8a00782ea",
+    "semantic_hash": "3f6560ba0d54d8a077e88eb8a00782ea"
+  },
+  "tests/test_assess_image.py": {
+    "mtime": 1784176468.9794915,
+    "ast_hash": "852cae21792f5b0104259229e9137f1f",
+    "semantic_hash": "852cae21792f5b0104259229e9137f1f"
+  },
+  "tests/test_atlas_input.py": {
+    "mtime": 1784072774.436684,
+    "ast_hash": "492b5473299175651c0dfa61c714f837",
+    "semantic_hash": "492b5473299175651c0dfa61c714f837"
+  },
+  "tests/test_blender_exporter.py": {
+    "mtime": 1782884558.2848995,
+    "ast_hash": "c2256e93fbd34aaec9a6d061d6c84d4b",
+    "semantic_hash": "c2256e93fbd34aaec9a6d061d6c84d4b"
+  },
+  "tests/test_camera_facing_convention.py": {
+    "mtime": 1783662637.2824805,
+    "ast_hash": "8aeb4520ce9142ac8ecc412b3b0a573b",
+    "semantic_hash": "8aeb4520ce9142ac8ecc412b3b0a573b"
+  },
+  "tests/test_camera_math.py": {
+    "mtime": 1783243290.0129628,
+    "ast_hash": "14d77a996b3f2d1d8fdbed842739bbcf",
+    "semantic_hash": "14d77a996b3f2d1d8fdbed842739bbcf"
+  },
+  "tests/test_camera_path.py": {
+    "mtime": 1783243290.0129628,
+    "ast_hash": "a0b8918b66ab67d40824a8fae21cf74e",
+    "semantic_hash": "a0b8918b66ab67d40824a8fae21cf74e"
+  },
+  "tests/test_camera_path_export_node.py": {
+    "mtime": 1783302322.969023,
+    "ast_hash": "aeb8f53c48295aa7847e6131ffad1957",
+    "semantic_hash": "aeb8f53c48295aa7847e6131ffad1957"
+  },
+  "tests/test_camera_registry.py": {
+    "mtime": 1784337676.6231441,
+    "ast_hash": "9eda971f716156fa83c41610744eb0cf",
+    "semantic_hash": "9eda971f716156fa83c41610744eb0cf"
+  },
+  "tests/test_camera_solver_vanishing_points.py": {
+    "mtime": 1782362836.3293078,
+    "ast_hash": "d240bfa5c39dccfa5739a5a58fb1b734",
+    "semantic_hash": "d240bfa5c39dccfa5739a5a58fb1b734"
+  },
+  "tests/test_cleanplate_stack.py": {
+    "mtime": 1784271230.9314246,
+    "ast_hash": "4996428d5798ac25cf4c3325e2359ea8",
+    "semantic_hash": "4996428d5798ac25cf4c3325e2359ea8"
+  },
+  "tests/test_confidence_contract.py": {
+    "mtime": 1784350476.9180207,
+    "ast_hash": "18240e53b04845028c8aa62b15b77225",
+    "semantic_hash": "18240e53b04845028c8aa62b15b77225"
+  },
+  "tests/test_dataset_adapters.py": {
+    "mtime": 1782524125.95634,
+    "ast_hash": "1b96117399705ef4278585402cf5b783",
+    "semantic_hash": "1b96117399705ef4278585402cf5b783"
+  },
+  "tests/test_debug_report.py": {
+    "mtime": 1784350476.9190266,
+    "ast_hash": "6e2a45970ec1b904f894c6875343b7bd",
+    "semantic_hash": "6e2a45970ec1b904f894c6875343b7bd"
+  },
+  "tests/test_debug_report_parity.py": {
+    "mtime": 1784351384.3864014,
+    "ast_hash": "f8ebdac71b830ce81a1105f6def6637b",
+    "semantic_hash": "f8ebdac71b830ce81a1105f6def6637b"
+  },
+  "tests/test_depth_estimator.py": {
+    "mtime": 1783649810.2567773,
+    "ast_hash": "15b71aab9395ac5a44749d63b3c48ab6",
+    "semantic_hash": "15b71aab9395ac5a44749d63b3c48ab6"
+  },
+  "tests/test_depth_estimator_da3.py": {
+    "mtime": 1783649810.257777,
+    "ast_hash": "bfbe114795d689e1b9b6ff1f998dc68c",
+    "semantic_hash": "bfbe114795d689e1b9b6ff1f998dc68c"
+  },
+  "tests/test_depth_estimator_moge.py": {
+    "mtime": 1784072774.437683,
+    "ast_hash": "6982f5153b83048189f396a30a5a9734",
+    "semantic_hash": "6982f5153b83048189f396a30a5a9734"
+  },
+  "tests/test_depth_geometry.py": {
+    "mtime": 1784072774.4386847,
+    "ast_hash": "e554db69b2e40344963ec672b9724a21",
+    "semantic_hash": "e554db69b2e40344963ec672b9724a21"
+  },
+  "tests/test_depth_height.py": {
+    "mtime": 1783830580.5375726,
+    "ast_hash": "7ee4b9691830aee860a1fc9f898387b7",
+    "semantic_hash": "7ee4b9691830aee860a1fc9f898387b7"
+  },
+  "tests/test_depth_map_node.py": {
+    "mtime": 1783649810.2597756,
+    "ast_hash": "9916dcabc566f9cad01ebab6e3c78ba1",
+    "semantic_hash": "9916dcabc566f9cad01ebab6e3c78ba1"
+  },
+  "tests/test_depth_outlier_mask.py": {
+    "mtime": 1784350476.9200265,
+    "ast_hash": "30395bca731e01559c2c26497b73bbad",
+    "semantic_hash": "30395bca731e01559c2c26497b73bbad"
+  },
+  "tests/test_derive_geometry_nodes.py": {
+    "mtime": 1784350476.921026,
+    "ast_hash": "a878bcedaa7bcab5bde4580b67649894",
+    "semantic_hash": "a878bcedaa7bcab5bde4580b67649894"
+  },
+  "tests/test_exact_patch_view.py": {
+    "mtime": 1783649810.2607758,
+    "ast_hash": "37f733eea8b1f84dcbbcc3cbaef97d8f",
+    "semantic_hash": "37f733eea8b1f84dcbbcc3cbaef97d8f"
+  },
+  "tests/test_example_workflows.py": {
+    "mtime": 1784072774.4396834,
+    "ast_hash": "2363959e442c0465ee189a3b4b28a84a",
+    "semantic_hash": "2363959e442c0465ee189a3b4b28a84a"
+  },
+  "tests/test_experimental_gate.py": {
+    "mtime": 1784268625.707765,
+    "ast_hash": "a86b0cf7eb6942aa4aee153e3ef41474",
+    "semantic_hash": "a86b0cf7eb6942aa4aee153e3ef41474"
+  },
+  "tests/test_export_relief_mesh_fill.py": {
+    "mtime": 1784079542.1976538,
+    "ast_hash": "e2e1f8a5c845a25af85ea56ce4e5e910",
+    "semantic_hash": "e2e1f8a5c845a25af85ea56ce4e5e910"
+  },
+  "tests/test_extract_angle.py": {
+    "mtime": 1783649810.261776,
+    "ast_hash": "c33cea28c9c2f086c3b1557b80f73451",
+    "semantic_hash": "c33cea28c9c2f086c3b1557b80f73451"
+  },
+  "tests/test_fixer_render_fix.py": {
+    "mtime": 1783649810.261776,
+    "ast_hash": "8c596e855f1889925c2c3e72be291b59",
+    "semantic_hash": "8c596e855f1889925c2c3e72be291b59"
+  },
+  "tests/test_fixer_training_pairs.py": {
+    "mtime": 1783649810.261776,
+    "ast_hash": "be8f6d66ee08fd7f4eb8195ede7b8b46",
+    "semantic_hash": "be8f6d66ee08fd7f4eb8195ede7b8b46"
+  },
+  "tests/test_frontend_mirrors.py": {
+    "mtime": 1783767698.9014418,
+    "ast_hash": "31b17233f75d4b69da32238829208e63",
+    "semantic_hash": "31b17233f75d4b69da32238829208e63"
+  },
+  "tests/test_ground_anchored_walls.py": {
+    "mtime": 1783662637.2834806,
+    "ast_hash": "bfb027b6848cfc8b997724dec9e6facb",
+    "semantic_hash": "bfb027b6848cfc8b997724dec9e6facb"
+  },
+  "tests/test_hidden_geometry.py": {
+    "mtime": 1783649810.2627754,
+    "ast_hash": "afe7643e085a3d445db76aa690f742aa",
+    "semantic_hash": "afe7643e085a3d445db76aa690f742aa"
+  },
+  "tests/test_inpaint_crop_stitch.py": {
+    "mtime": 1783765698.346158,
+    "ast_hash": "80976c36d8e75ee5fc47afbaf7fe02b4",
+    "semantic_hash": "80976c36d8e75ee5fc47afbaf7fe02b4"
+  },
+  "tests/test_inpaint_layers_nodes.py": {
+    "mtime": 1784072774.4406838,
+    "ast_hash": "59583b465e558cbc89652bbb1f3f6d72",
+    "semantic_hash": "59583b465e558cbc89652bbb1f3f6d72"
+  },
+  "tests/test_intrinsics.py": {
+    "mtime": 1782361093.81314,
+    "ast_hash": "b324f921916b692d8f68a6154f54bd37",
+    "semantic_hash": "b324f921916b692d8f68a6154f54bd37"
+  },
+  "tests/test_latent_api.py": {
+    "mtime": 1782643674.1884923,
+    "ast_hash": "8ca1540ef779f927f4c4a503064fcf0b",
+    "semantic_hash": "8ca1540ef779f927f4c4a503064fcf0b"
+  },
+  "tests/test_learned_focal_override.py": {
+    "mtime": 1784337676.6231441,
+    "ast_hash": "a2a9106986d179eb118d945a20d32681",
+    "semantic_hash": "a2a9106986d179eb118d945a20d32681"
+  },
+  "tests/test_learned_prior.py": {
+    "mtime": 1782960906.6610627,
+    "ast_hash": "43bcc821d9b4a74df5ff0f153d290cb8",
+    "semantic_hash": "43bcc821d9b4a74df5ff0f153d290cb8"
+  },
+  "tests/test_load_raw_node.py": {
+    "mtime": 1784337676.6231441,
+    "ast_hash": "df7e3f22aa5f873b484ee56db9720729",
+    "semantic_hash": "df7e3f22aa5f873b484ee56db9720729"
+  },
+  "tests/test_maya_exporter.py": {
+    "mtime": 1783649810.2642798,
+    "ast_hash": "6064d4446905acea2440079b61aa32de",
+    "semantic_hash": "6064d4446905acea2440079b61aa32de"
+  },
+  "tests/test_maya_layers_export.py": {
+    "mtime": 1784431536.33375,
+    "ast_hash": "4fff44297442991863515fabc47a1805",
+    "semantic_hash": ""
+  },
+  "tests/test_mcp_comfy_http.py": {
+    "mtime": 1784441779.0159922,
+    "ast_hash": "acbcd9e7a9dcc26c9dd5ed077ce515a7",
+    "semantic_hash": ""
+  },
+  "tests/test_merge_geometry.py": {
+    "mtime": 1783243290.0149565,
+    "ast_hash": "df238ee4a1552b90d04e66157164e428",
+    "semantic_hash": "df238ee4a1552b90d04e66157164e428"
+  },
+  "tests/test_mesh_repair.py": {
+    "mtime": 1784075765.3204038,
+    "ast_hash": "32203e80e8365c6ef4da2c61fe30c2f2",
+    "semantic_hash": "32203e80e8365c6ef4da2c61fe30c2f2"
+  },
+  "tests/test_mesh_retopo.py": {
+    "mtime": 1784431690.4721377,
+    "ast_hash": "50c11e1caf31cec9ef1b6ce71c6850dc",
+    "semantic_hash": ""
+  },
+  "tests/test_moge_normals_node.py": {
+    "mtime": 1784072774.4406838,
+    "ast_hash": "9c3cbbe61c524b35dfc266ee94bbc34e",
+    "semantic_hash": "9c3cbbe61c524b35dfc266ee94bbc34e"
+  },
+  "tests/test_multimodal_helper.py": {
+    "mtime": 1783765698.348156,
+    "ast_hash": "7bff0ecc78cd0a12edb8f16f819b6968",
+    "semantic_hash": "7bff0ecc78cd0a12edb8f16f819b6968"
+  },
+  "tests/test_node_pack_entrypoint.py": {
+    "mtime": 1783831026.5449483,
+    "ast_hash": "4f837f6e44492e95c0b3afb079d51331",
+    "semantic_hash": "4f837f6e44492e95c0b3afb079d51331"
+  },
+  "tests/test_normals.py": {
+    "mtime": 1784072774.4423132,
+    "ast_hash": "2197bcf896280200c686b8d568a8d13d",
+    "semantic_hash": "2197bcf896280200c686b8d568a8d13d"
+  },
+  "tests/test_nuke_exporter.py": {
+    "mtime": 1783649810.2652853,
+    "ast_hash": "0458c221efad5c14bac21a338a5fb17a",
+    "semantic_hash": "0458c221efad5c14bac21a338a5fb17a"
+  },
+  "tests/test_nuke_layers_export.py": {
+    "mtime": 1784431535.0345132,
+    "ast_hash": "f39e735ff488c12f3e82904a48f1d656",
+    "semantic_hash": ""
+  },
+  "tests/test_occlusion_mask.py": {
+    "mtime": 1783649810.2664762,
+    "ast_hash": "31a7c5de28864c6034c189daa96b2779",
+    "semantic_hash": "31a7c5de28864c6034c189daa96b2779"
+  },
+  "tests/test_orbit_stress.py": {
+    "mtime": 1784351384.386906,
+    "ast_hash": "8f8623546d3dd4708c12db49cd505254",
+    "semantic_hash": "8f8623546d3dd4708c12db49cd505254"
+  },
+  "tests/test_pitch_trim.py": {
+    "mtime": 1784362131.6551535,
+    "ast_hash": "635c2de8b98fcb521d81595d10e11594",
+    "semantic_hash": "635c2de8b98fcb521d81595d10e11594"
+  },
+  "tests/test_plane_extraction.py": {
+    "mtime": 1782987884.3833814,
+    "ast_hash": "775520dedd632a9b76589c6d16ef3994",
+    "semantic_hash": "775520dedd632a9b76589c6d16ef3994"
+  },
+  "tests/test_preview_dilation.py": {
+    "mtime": 1782982472.2008915,
+    "ast_hash": "4d8866f4b1df54224788f02d659341db",
+    "semantic_hash": "4d8866f4b1df54224788f02d659341db"
+  },
+  "tests/test_project_manifest.py": {
+    "mtime": 1784350476.921026,
+    "ast_hash": "dc0aac3c762d0ccb4824cffeaf284d94",
+    "semantic_hash": "dc0aac3c762d0ccb4824cffeaf284d94"
+  },
+  "tests/test_projection_scene.py": {
+    "mtime": 1783243290.0149565,
+    "ast_hash": "c3911fdad2efcae10da9106bc247aa9a",
+    "semantic_hash": "c3911fdad2efcae10da9106bc247aa9a"
+  },
+  "tests/test_proxy_geometry.py": {
+    "mtime": 1783243290.016467,
+    "ast_hash": "63eaeda66a281ed8bdb5c95957386720",
+    "semantic_hash": "63eaeda66a281ed8bdb5c95957386720"
+  },
+  "tests/test_raw_integration.py": {
+    "mtime": 1784337676.6241522,
+    "ast_hash": "a59b22e2652a20a3bf80086ce74a8ed5",
+    "semantic_hash": "a59b22e2652a20a3bf80086ce74a8ed5"
+  },
+  "tests/test_reference_data.py": {
+    "mtime": 1782364876.5753417,
+    "ast_hash": "26019260491b40ff1fa57d3838378c39",
+    "semantic_hash": "26019260491b40ff1fa57d3838378c39"
+  },
+  "tests/test_reference_scale.py": {
+    "mtime": 1783649810.2679808,
+    "ast_hash": "05b35f92324546059368ad0f7f361e39",
+    "semantic_hash": "05b35f92324546059368ad0f7f361e39"
+  },
+  "tests/test_relief_mesh.py": {
+    "mtime": 1784350476.9220293,
+    "ast_hash": "d6b2da1cb744875e906d60a42db344ff",
+    "semantic_hash": "d6b2da1cb744875e906d60a42db344ff"
+  },
+  "tests/test_review_package.py": {
+    "mtime": 1782874617.776221,
+    "ast_hash": "b05e913d2edcae457cd9ef7fe8b1f23b",
+    "semantic_hash": "b05e913d2edcae457cd9ef7fe8b1f23b"
+  },
+  "tests/test_roll_trim.py": {
+    "mtime": 1784166695.7693422,
+    "ast_hash": "32392bfeb3fd8b7781353a1cd2b366bd",
+    "semantic_hash": "32392bfeb3fd8b7781353a1cd2b366bd"
+  },
+  "tests/test_room_layout.py": {
+    "mtime": 1782978225.962595,
+    "ast_hash": "d7f9e9922437d39316ad88d631d1601f",
+    "semantic_hash": "d7f9e9922437d39316ad88d631d1601f"
+  },
+  "tests/test_scale_override.py": {
+    "mtime": 1784350476.923026,
+    "ast_hash": "db2061d86451656258959c3f3dd088e6",
+    "semantic_hash": "db2061d86451656258959c3f3dd088e6"
+  },
+  "tests/test_scene_health.py": {
+    "mtime": 1784350476.923026,
+    "ast_hash": "abc7c28d954336fe6a214d54b7caffc7",
+    "semantic_hash": "abc7c28d954336fe6a214d54b7caffc7"
+  },
+  "tests/test_scene_health_gate.py": {
+    "mtime": 1784350476.923026,
+    "ast_hash": "1a8b12f8c6f32e5d92fad37f586ac31b",
+    "semantic_hash": "1a8b12f8c6f32e5d92fad37f586ac31b"
+  },
+  "tests/test_scene_type_preset.py": {
+    "mtime": 1784072774.444321,
+    "ast_hash": "9cf1b8f1bc02d38373aac0a18d5633ed",
+    "semantic_hash": "9cf1b8f1bc02d38373aac0a18d5633ed"
+  },
+  "tests/test_schema.py": {
+    "mtime": 1783300225.947389,
+    "ast_hash": "841898ea5548f8d0b03f70a30f36dc12",
+    "semantic_hash": "841898ea5548f8d0b03f70a30f36dc12"
+  },
+  "tests/test_semantic_segmenter.py": {
+    "mtime": 1783819132.202099,
+    "ast_hash": "aa63951fceff281ebef716d5ce05ea1b",
+    "semantic_hash": "aa63951fceff281ebef716d5ce05ea1b"
+  },
+  "tests/test_shot_cam.py": {
+    "mtime": 1783243290.0174782,
+    "ast_hash": "ad6f03c2b41780273e9c3d9473acacbd",
+    "semantic_hash": "ad6f03c2b41780273e9c3d9473acacbd"
+  },
+  "tests/test_skyline_walls.py": {
+    "mtime": 1783662637.2834806,
+    "ast_hash": "f450005ae8d484454fbdee1605b3daa3",
+    "semantic_hash": "f450005ae8d484454fbdee1605b3daa3"
+  },
+  "tests/test_solve_constraints_cli.py": {
+    "mtime": 1782364878.8285215,
+    "ast_hash": "c0c310fc14bfb60d393b1a04cea50e11",
+    "semantic_hash": "c0c310fc14bfb60d393b1a04cea50e11"
+  },
+  "tests/test_solve_gate.py": {
+    "mtime": 1784350476.9240263,
+    "ast_hash": "9b0b88e8ddddc55ccb92b93140760fd4",
+    "semantic_hash": "9b0b88e8ddddc55ccb92b93140760fd4"
+  },
+  "tests/test_solve_image_cli.py": {
+    "mtime": 1782363748.2363915,
+    "ast_hash": "29dee2b4cf6f00ac37180c45ab603b2f",
+    "semantic_hash": "29dee2b4cf6f00ac37180c45ab603b2f"
+  },
+  "tests/test_ui_api_error_handling.py": {
+    "mtime": 1783649810.2704911,
+    "ast_hash": "8c2daa482b670edc2f9e973b3f10a29e",
+    "semantic_hash": "8c2daa482b670edc2f9e973b3f10a29e"
+  },
+  "tests/test_ui_backend.py": {
+    "mtime": 1784072774.445825,
+    "ast_hash": "97dbb19386ad5525f1d412c418f4cdca",
+    "semantic_hash": "97dbb19386ad5525f1d412c418f4cdca"
+  },
+  "tests/test_usd_camera_loader.py": {
+    "mtime": 1783649810.2704911,
+    "ast_hash": "54c0a19e26b3a62499a9a3119b058712",
+    "semantic_hash": "54c0a19e26b3a62499a9a3119b058712"
+  },
+  "tests/test_usd_exporter.py": {
+    "mtime": 1783333815.6076472,
+    "ast_hash": "d6dab31c33cf7f452b3e238d0aff47f8",
+    "semantic_hash": "d6dab31c33cf7f452b3e238d0aff47f8"
+  },
+  "tests/test_vanishing_points.py": {
+    "mtime": 1782361094.9002624,
+    "ast_hash": "0a0e9db24c1501f06341fa34daa9b8ba",
+    "semantic_hash": "0a0e9db24c1501f06341fa34daa9b8ba"
+  },
+  "tests/test_viewport_controls_node.py": {
+    "mtime": 1783300285.4054203,
+    "ast_hash": "f8e3c2c4f68ad156d6028dac30913ecd",
+    "semantic_hash": "f8e3c2c4f68ad156d6028dac30913ecd"
+  },
+  "tests/test_vlm_scale_cues.py": {
+    "mtime": 1782987916.2776809,
+    "ast_hash": "549cea1650690a0c75e08f422cee697a",
+    "semantic_hash": "549cea1650690a0c75e08f422cee697a"
+  },
+  "tools/benchmark_datasets.py": {
+    "mtime": 1782524003.7861843,
+    "ast_hash": "7f70f165eb3a4bb30d8781070523e7ed",
+    "semantic_hash": "7f70f165eb3a4bb30d8781070523e7ed"
+  },
+  "tools/build_raw_hidden_diagnostic.py": {
+    "mtime": 1784350476.9240263,
+    "ast_hash": "6f8475095da7aa5dd472f33d8a0600ca",
+    "semantic_hash": "6f8475095da7aa5dd472f33d8a0600ca"
+  },
+  "tools/build_raw_hidden_inpaint_sdxl.py": {
+    "mtime": 1784350476.9250264,
+    "ast_hash": "6a91538fdd386261b5cbb7678b2a249a",
+    "semantic_hash": "6a91538fdd386261b5cbb7678b2a249a"
+  },
+  "tools/build_raw_hidden_inpaint_sdxl_native_api.py": {
+    "mtime": 1784350476.9250264,
+    "ast_hash": "06a8b48418d9d36b15c6982a4ffa1eea",
+    "semantic_hash": "06a8b48418d9d36b15c6982a4ffa1eea"
+  },
+  "tools/build_raw_hidden_inpaint_tagged.py": {
+    "mtime": 1784350476.9250264,
+    "ast_hash": "c729fb96fdc1bafbffa9e5c89df906ca",
+    "semantic_hash": "c729fb96fdc1bafbffa9e5c89df906ca"
+  },
+  "tools/build_raw_hidden_segmented_sdxl.py": {
+    "mtime": 1784350476.926026,
+    "ast_hash": "a20d5d85d73e81c0fda21812e0e1a539",
+    "semantic_hash": "a20d5d85d73e81c0fda21812e0e1a539"
+  },
+  "tools/build_review_package.py": {
+    "mtime": 1782361090.7198765,
+    "ast_hash": "444ec8d8a0456894b2cd54fba18cad38",
+    "semantic_hash": "444ec8d8a0456894b2cd54fba18cad38"
+  },
+  "tools/compare_depth_backends.py": {
+    "mtime": 1784325145.1378267,
+    "ast_hash": "7c812e369831b379f24ab885d083d923",
+    "semantic_hash": "7c812e369831b379f24ab885d083d923"
+  },
+  "tools/export_depth_v2_onnx.py": {
+    "mtime": 1783831874.199643,
+    "ast_hash": "a5b16a1863817436b8a19557607bfd3b",
+    "semantic_hash": "a5b16a1863817436b8a19557607bfd3b"
+  },
+  "tools/generate_atlas_canonical_workflows.py": {
+    "mtime": 1784325145.138334,
+    "ast_hash": "47aa24c70e36ced226232d3f09d0246c",
+    "semantic_hash": "47aa24c70e36ced226232d3f09d0246c"
+  },
+  "tools/generate_canonical_trust_workflow.py": {
+    "mtime": 1784352995.5622313,
+    "ast_hash": "9dda9c9c232a93647f220e33608d39e3",
+    "semantic_hash": "9dda9c9c232a93647f220e33608d39e3"
+  },
+  "tools/generate_castle_dmp_workflow.py": {
+    "mtime": 1784089788.0547986,
+    "ast_hash": "9acd6b139542fc39fe52511976300062",
+    "semantic_hash": "9acd6b139542fc39fe52511976300062"
+  },
+  "tools/generate_companion_workflows.py": {
+    "mtime": 1784163093.2044358,
+    "ast_hash": "3b8ebfad257207d934d468072680fa00",
+    "semantic_hash": "3b8ebfad257207d934d468072680fa00"
+  },
+  "tools/generate_fixer_training_pairs.py": {
+    "mtime": 1783649810.271496,
+    "ast_hash": "444211b33f11c8ecd5d92481bf98c596",
+    "semantic_hash": "444211b33f11c8ecd5d92481bf98c596"
+  },
+  "tools/generate_segmented_sdxl_manual_debug_workflow.py": {
+    "mtime": 1784429067.8497863,
+    "ast_hash": "9272fe0cba0a25a55ca1847fad568665",
+    "semantic_hash": ""
+  },
+  "tools/generate_segmented_sdxl_showcase_workflow.py": {
+    "mtime": 1784429069.2245622,
+    "ast_hash": "db0905331643b04f2a3dab1f62686898",
+    "semantic_hash": ""
+  },
+  "tools/generate_showcase_workflows.py": {
+    "mtime": 1784216398.005002,
+    "ast_hash": "a7e77e384e45a9437a78f180cea05a89",
+    "semantic_hash": "a7e77e384e45a9437a78f180cea05a89"
+  },
+  "tools/list_references.py": {
+    "mtime": 1782364829.1997385,
+    "ast_hash": "76b1a838614a2f83dfed1778a6ba4c1a",
+    "semantic_hash": "76b1a838614a2f83dfed1778a6ba4c1a"
+  },
+  "tools/orbit_stress_test.py": {
+    "mtime": 1784351384.386906,
+    "ast_hash": "a79192894af20cbbcc28deb7f6c112a9",
+    "semantic_hash": "a79192894af20cbbcc28deb7f6c112a9"
+  },
+  "tools/run_ui_workflow.py": {
+    "mtime": 1784188282.6474192,
+    "ast_hash": "22e9ba3c3c1905fe3bad516513698b96",
+    "semantic_hash": "22e9ba3c3c1905fe3bad516513698b96"
+  },
+  "tools/smoke_check.py": {
+    "mtime": 1783855896.7797117,
+    "ast_hash": "3a557fa971665c737c86dddc90788790",
+    "semantic_hash": "3a557fa971665c737c86dddc90788790"
+  },
+  "tools/solve_constraints.py": {
+    "mtime": 1782364890.4996164,
+    "ast_hash": "6ddd66425722ed1055f7196dde1d6489",
+    "semantic_hash": "6ddd66425722ed1055f7196dde1d6489"
+  },
+  "tools/solve_image.py": {
+    "mtime": 1782363762.6637397,
+    "ast_hash": "243b70eb9f48103fbee20ab77446f166",
+    "semantic_hash": "243b70eb9f48103fbee20ab77446f166"
+  },
+  "tools/validate_review_package.py": {
+    "mtime": 1782361091.7376914,
+    "ast_hash": "ea7ae147e30f6d96ca2285940e2f14cd",
+    "semantic_hash": "ea7ae147e30f6d96ca2285940e2f14cd"
+  },
+  "tools/validate_ui_workflow.py": {
+    "mtime": 1784188282.6474192,
+    "ast_hash": "da58bf3362b4882185d3f0663f3cd303",
+    "semantic_hash": "da58bf3362b4882185d3f0663f3cd303"
+  },
+  "ui/bundle/atlas-three-entry.js": {
+    "mtime": 1783649810.2724965,
+    "ast_hash": "8d98acaba944e60ec951e5a03e61d578",
+    "semantic_hash": "8d98acaba944e60ec951e5a03e61d578"
+  },
+  "ui/package.json": {
+    "mtime": 1783649810.2744973,
+    "ast_hash": "d3accb1658dfe548a7de2748080e1400",
+    "semantic_hash": "d3accb1658dfe548a7de2748080e1400"
+  },
+  "ui/src/App.test.tsx": {
+    "mtime": 1782857347.537426,
+    "ast_hash": "efdb461883a638dfd96956b5f72e83ae",
+    "semantic_hash": "efdb461883a638dfd96956b5f72e83ae"
+  },
+  "ui/src/App.tsx": {
+    "mtime": 1782951868.5217552,
+    "ast_hash": "9f3eacb52c964414af58949640d2a891",
+    "semantic_hash": "9f3eacb52c964414af58949640d2a891"
+  },
+  "ui/src/ProjectionMaterial.ts": {
+    "mtime": 1782947448.9475977,
+    "ast_hash": "c03b53f9f1b468a4edbbf414065c40e1",
+    "semantic_hash": "c03b53f9f1b468a4edbbf414065c40e1"
+  },
+  "ui/src/Viewport3D.tsx": {
+    "mtime": 1782949129.08946,
+    "ast_hash": "b8d8bdaaadd7f4d2e363bc0a05aebb46",
+    "semantic_hash": "b8d8bdaaadd7f4d2e363bc0a05aebb46"
+  },
+  "ui/src/api.test.ts": {
+    "mtime": 1782855304.4375098,
+    "ast_hash": "d64eb3c408724e91f7d3aae1790c04fd",
+    "semantic_hash": "d64eb3c408724e91f7d3aae1790c04fd"
+  },
+  "ui/src/api.ts": {
+    "mtime": 1782872980.788345,
+    "ast_hash": "1a3406718d6e451b4076beb67a6dc66f",
+    "semantic_hash": "1a3406718d6e451b4076beb67a6dc66f"
+  },
+  "ui/src/gridGeometry.test.ts": {
+    "mtime": 1782515526.0555947,
+    "ast_hash": "28a33a8f92a67db4c8c71f0fe1cb8df7",
+    "semantic_hash": "28a33a8f92a67db4c8c71f0fe1cb8df7"
+  },
+  "ui/src/gridGeometry.ts": {
+    "mtime": 1782515494.4515853,
+    "ast_hash": "5fe780048275953c78dba1006794b10d",
+    "semantic_hash": "5fe780048275953c78dba1006794b10d"
+  },
+  "ui/src/main.tsx": {
+    "mtime": 1782514176.862008,
+    "ast_hash": "9bae72f8da025c3c4c99edc696405e2c",
+    "semantic_hash": "9bae72f8da025c3c4c99edc696405e2c"
+  },
+  "ui/src/test/setup.ts": {
+    "mtime": 1782514338.0943646,
+    "ast_hash": "3709e3aa95abf0544678f0f2d9b46702",
+    "semantic_hash": "3709e3aa95abf0544678f0f2d9b46702"
+  },
+  "ui/src/three.d.ts": {
+    "mtime": 1782885438.4987848,
+    "ast_hash": "c83bd30f8c2fac226fa82fa57bd2fe9c",
+    "semantic_hash": "c83bd30f8c2fac226fa82fa57bd2fe9c"
+  },
+  "ui/src/types.ts": {
+    "mtime": 1782947421.924822,
+    "ast_hash": "0f09b2982ff0d7626bcc86356c2b06fd",
+    "semantic_hash": "0f09b2982ff0d7626bcc86356c2b06fd"
+  },
+  "ui/src/viewport3dMath.test.ts": {
+    "mtime": 1782857378.6505916,
+    "ast_hash": "6fb0ec7060cf7dac475f615231b13ebd",
+    "semantic_hash": "6fb0ec7060cf7dac475f615231b13ebd"
+  },
+  "ui/src/viewport3dMath.ts": {
+    "mtime": 1782856728.3491964,
+    "ast_hash": "0a64f734e1fe3bfa2cf8352cb4fe02f6",
+    "semantic_hash": "0a64f734e1fe3bfa2cf8352cb4fe02f6"
+  },
+  "ui/src/viewport3dState.test.ts": {
+    "mtime": 1782857346.280032,
+    "ast_hash": "70d974ff1b6733b5dbd406c67bf56172",
+    "semantic_hash": "70d974ff1b6733b5dbd406c67bf56172"
+  },
+  "ui/src/viewport3dState.ts": {
+    "mtime": 1782947424.8687751,
+    "ast_hash": "6bd37993fe11e795f9559867589e1db4",
+    "semantic_hash": "6bd37993fe11e795f9559867589e1db4"
+  },
+  "ui/tsconfig.json": {
+    "mtime": 1782514172.5381823,
+    "ast_hash": "477be7fd1ecef1acc1856477fe38944b",
+    "semantic_hash": "477be7fd1ecef1acc1856477fe38944b"
+  },
+  "ui/vite.config.ts": {
+    "mtime": 1782514249.1295452,
+    "ast_hash": "b00b8852e6477312aa520e241401e6de",
+    "semantic_hash": "b00b8852e6477312aa520e241401e6de"
+  },
+  ".github/workflows/publish-comfyui-registry.yml": {
+    "mtime": 1784205875.8910139,
+    "ast_hash": "122ce7efa2ee4599a8a24abb6d69f684",
+    "semantic_hash": "122ce7efa2ee4599a8a24abb6d69f684"
+  },
+  ".github/workflows/tests.yml": {
+    "mtime": 1784094007.7046795,
+    "ast_hash": "4a1a251da2d90e0c9129cdcf2a319f10",
+    "semantic_hash": "4a1a251da2d90e0c9129cdcf2a319f10"
+  },
+  "AGENTS.md": {
+    "mtime": 1784427238.658425,
+    "ast_hash": "1f0b360b989b007ffaca998c5e5ba1c7",
+    "semantic_hash": ""
+  },
+  "CHANGELOG.md": {
+    "mtime": 1784351384.3834016,
+    "ast_hash": "5f7155889589a804011344a2dbcf2a1d",
+    "semantic_hash": "5f7155889589a804011344a2dbcf2a1d"
+  },
+  "CLAUDE.md": {
+    "mtime": 1784441658.9863963,
+    "ast_hash": "580daf6e095ae30b0b16e6579e1a2950",
+    "semantic_hash": ""
+  },
+  "INSTALL.md": {
+    "mtime": 1784441557.3349695,
+    "ast_hash": "8762236ae2b01206508b0ea0bb2d2bad",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1784441556.1990793,
+    "ast_hash": "b030bf6ec0311949a705fea079fe7f63",
+    "semantic_hash": ""
+  },
+  "THIRD_PARTY.md": {
+    "mtime": 1783832397.276961,
+    "ast_hash": "c747bd5cdc58960309e8ffcea0fc9ea3",
+    "semantic_hash": "c747bd5cdc58960309e8ffcea0fc9ea3"
+  },
+  "atlas_camera/inference/README.md": {
+    "mtime": 1782365059.0654874,
+    "ast_hash": "705b1213bcfab4edf41a70185735b74a",
+    "semantic_hash": "705b1213bcfab4edf41a70185735b74a"
+  },
+  "docs/ARCHITECTURE.md": {
+    "mtime": 1784325145.1296437,
+    "ast_hash": "f28625a3624e7efec9409d0c374b8b8e",
+    "semantic_hash": "f28625a3624e7efec9409d0c374b8b8e"
+  },
+  "docs/CAMERA_MOVES.md": {
+    "mtime": 1784072774.4241853,
+    "ast_hash": "8cdfc4bc49619cfafbe25bd24d808f3b",
+    "semantic_hash": "8cdfc4bc49619cfafbe25bd24d808f3b"
+  },
+  "docs/COMFY_WORKFLOW.md": {
+    "mtime": 1784072774.4251912,
+    "ast_hash": "384a5ff2a1161b877f3dcac6ee57086f",
+    "semantic_hash": "384a5ff2a1161b877f3dcac6ee57086f"
+  },
+  "docs/DCC_EXPORTS.md": {
+    "mtime": 1784441558.7096655,
+    "ast_hash": "b0dd8e7f8b896448ec775611df1d811d",
+    "semantic_hash": ""
+  },
+  "docs/ECOSYSTEM_GUIDE.md": {
+    "mtime": 1784441726.8500154,
+    "ast_hash": "f7fc09436ae5be67accb81bf3cb3f3ac",
+    "semantic_hash": ""
+  },
+  "docs/MCP_SERVER.md": {
+    "mtime": 1784441560.0545416,
+    "ast_hash": "c48f3c20518f14c59835f3cc04da810a",
+    "semantic_hash": ""
+  },
+  "docs/PROJECT_VISION.md": {
+    "mtime": 1783649810.1984863,
+    "ast_hash": "f0b6091842825ac50c41d2b06cd9b4dc",
+    "semantic_hash": "f0b6091842825ac50c41d2b06cd9b4dc"
+  },
+  "docs/ROADMAP.md": {
+    "mtime": 1784072774.4281924,
+    "ast_hash": "7917953d949f8f9a182af5cdedd061fa",
+    "semantic_hash": "7917953d949f8f9a182af5cdedd061fa"
+  },
+  "docs/TECH_AND_DIFFERENTIATION.md": {
+    "mtime": 1784072774.4281924,
+    "ast_hash": "1693cdaf89b0ca69f28f7e1e4653e7d0",
+    "semantic_hash": "1693cdaf89b0ca69f28f7e1e4653e7d0"
+  },
+  "docs/THIRD_PARTY.md": {
+    "mtime": 1784072774.4296966,
+    "ast_hash": "5c43a7025334518124c88dcb5a1f47e0",
+    "semantic_hash": "5c43a7025334518124c88dcb5a1f47e0"
+  },
+  "docs/UI_WORKBENCH.md": {
+    "mtime": 1782860288.3578014,
+    "ast_hash": "6c3dc5595c2efd49c8edd94ea41eaf2c",
+    "semantic_hash": "6c3dc5595c2efd49c8edd94ea41eaf2c"
+  },
+  "docs/USER_GUIDE.md": {
+    "mtime": 1784441725.2728043,
+    "ast_hash": "ed7aac3d5e9003c58d5626cb6e789869",
+    "semantic_hash": ""
+  },
+  "docs/artifacts/README.md": {
+    "mtime": 1783834172.0850701,
+    "ast_hash": "54c6098ae1792dffb0f166b56ffc88de",
+    "semantic_hash": "54c6098ae1792dffb0f166b56ffc88de"
+  },
+  "docs/artifacts/atlas_examples_catalog.html": {
+    "mtime": 1784243772.472464,
+    "ast_hash": "f4449d656042a9c2eabef5f8da370ea8",
+    "semantic_hash": "f4449d656042a9c2eabef5f8da370ea8"
+  },
+  "docs/artifacts/atlas_layered_guide.html": {
+    "mtime": 1784243709.2538755,
+    "ast_hash": "9dee928c7bfa9801495193171ab0f6f6",
+    "semantic_hash": "9dee928c7bfa9801495193171ab0f6f6"
+  },
+  "docs/artifacts/atlas_staged_master_guide.html": {
+    "mtime": 1784243680.4504623,
+    "ast_hash": "d3dff4ffed66738aedc9582de9249681",
+    "semantic_hash": "d3dff4ffed66738aedc9582de9249681"
+  },
+  "docs/artifacts/atlas_tech_details.html": {
+    "mtime": 1784243907.3131557,
+    "ast_hash": "77af289bf99fbe3938c80d75dcd75fe9",
+    "semantic_hash": "77af289bf99fbe3938c80d75dcd75fe9"
+  },
+  "docs/dev/2026-07-18_V1_OUTLIER_STRETCHED_EDGE_WORKLOG.md": {
+    "mtime": 1784350476.9130063,
+    "ast_hash": "b10eb8eabf45c153bcc19e5bdd8ad60e",
+    "semantic_hash": "b10eb8eabf45c153bcc19e5bdd8ad60e"
+  },
+  "docs/dev/ATLAS_ENGINEERING_RECOMMENDATIONS.md": {
+    "mtime": 1784359992.6901844,
+    "ast_hash": "7579c830e7a3ae84395fd5e5e444f197",
+    "semantic_hash": "7579c830e7a3ae84395fd5e5e444f197"
+  },
+  "docs/dev/FUTURE.md": {
+    "mtime": 1784072774.4307024,
+    "ast_hash": "306819329a3e1f9737f9e83f64e266f2",
+    "semantic_hash": "306819329a3e1f9737f9e83f64e266f2"
+  },
+  "docs/dev/V1_EDGE_OUTLIER_CLEANUP.md": {
+    "mtime": 1784350476.914007,
+    "ast_hash": "36a007c48201c0b69f81552bf1c4c529",
+    "semantic_hash": "36a007c48201c0b69f81552bf1c4c529"
+  },
+  "docs/dev/archive/atlas_angle_patch_mvp.md": {
+    "mtime": 1784325145.1317775,
+    "ast_hash": "10b9a5159711f6e54f42cc780a44b196",
+    "semantic_hash": "10b9a5159711f6e54f42cc780a44b196"
+  },
+  "docs/dev/archive/atlas_inpaint_layers_design.md": {
+    "mtime": 1784325145.1317775,
+    "ast_hash": "bb7d8ad0990ed7c219e84a327e53962d",
+    "semantic_hash": "bb7d8ad0990ed7c219e84a327e53962d"
+  },
+  "docs/dev/archive/atlas_mcp_server_plan.md": {
+    "mtime": 1784325145.1317775,
+    "ast_hash": "a4a0d46074757d99d5c904d705c80bf6",
+    "semantic_hash": "a4a0d46074757d99d5c904d705c80bf6"
+  },
+  "docs/dev/archive/atlas_mesh_repair_solution.md": {
+    "mtime": 1784325145.1332836,
+    "ast_hash": "e5cdde3b72ed53c4132006442c7e3a0d",
+    "semantic_hash": "e5cdde3b72ed53c4132006442c7e3a0d"
+  },
+  "docs/dev/archive/codex_atlas_test_drive.md": {
+    "mtime": 1784325145.1332836,
+    "ast_hash": "ab9891b1f1372301bf05f7d1e1b8432f",
+    "semantic_hash": "ab9891b1f1372301bf05f7d1e1b8432f"
+  },
+  "docs/dev/archive/codex_engineering_recommendations.md": {
+    "mtime": 1784325145.1342905,
+    "ast_hash": "d31a33ff6fd4bfa4190213d411913c28",
+    "semantic_hash": "d31a33ff6fd4bfa4190213d411913c28"
+  },
+  "docs/dev/archive/da3_backend_test_plan.md": {
+    "mtime": 1784325145.1342905,
+    "ast_hash": "1059879fac03c795681f1bf5496ab815",
+    "semantic_hash": "1059879fac03c795681f1bf5496ab815"
+  },
+  "docs/dev/atlas_mesh_retopo.md": {
+    "mtime": 1784325145.1342905,
+    "ast_hash": "f2f78f475a6ee399a1d3ea5a7a888931",
+    "semantic_hash": "f2f78f475a6ee399a1d3ea5a7a888931"
+  },
+  "docs/dev/atlas_occlusion_mask_implementation_plan.md": {
+    "mtime": 1783855896.7762022,
+    "ast_hash": "9e25fa8b04e3a38034ce14726ec92062",
+    "semantic_hash": "9e25fa8b04e3a38034ce14726ec92062"
+  },
+  "docs/dev/atlas_viewport_edge_feather_idea.md": {
+    "mtime": 1784273860.5321224,
+    "ast_hash": "ef5bdc32c026ff7136216d5f623688ab",
+    "semantic_hash": "ef5bdc32c026ff7136216d5f623688ab"
+  },
+  "docs/dev/engineering_recommendations_response.md": {
+    "mtime": 1784350476.914007,
+    "ast_hash": "9d67317416d98079cd9e8b883552056c",
+    "semantic_hash": "9d67317416d98079cd9e8b883552056c"
+  },
+  "docs/dev/fixer_finetune_data_plan.md": {
+    "mtime": 1783649810.202492,
+    "ast_hash": "ff74de8c817e49321ffaf9f3dde179e1",
+    "semantic_hash": "ff74de8c817e49321ffaf9f3dde179e1"
+  },
+  "docs/dev/gate_state_table.md": {
+    "mtime": 1784350476.914007,
+    "ast_hash": "51bfbdbf625db8b88917963fb0faf442",
+    "semantic_hash": "51bfbdbf625db8b88917963fb0faf442"
+  },
+  "docs/dev/hidden_geometry_training_free_research.md": {
+    "mtime": 1783831874.198639,
+    "ast_hash": "32840472ed7f73e88e089046485f5032",
+    "semantic_hash": "32840472ed7f73e88e089046485f5032"
+  },
+  "docs/dev/stale_code_report_response.md": {
+    "mtime": 1784325145.1358154,
+    "ast_hash": "a43dc4f44e204c3fe3888d4798abc3da",
+    "semantic_hash": "a43dc4f44e204c3fe3888d4798abc3da"
+  },
+  "docs/showcase_pdfs/README.md": {
+    "mtime": 1784245389.1185803,
+    "ast_hash": "22bfd97154ab7fa1d86103b52cc16e9d",
+    "semantic_hash": "22bfd97154ab7fa1d86103b52cc16e9d"
+  },
+  "examples/api_format/README.md": {
+    "mtime": 1783243290.005522,
+    "ast_hash": "1a88315d7aacfbcc8854089dae04228c",
+    "semantic_hash": "1a88315d7aacfbcc8854089dae04228c"
+  },
+  "examples/experimental/README.md": {
+    "mtime": 1784159148.105114,
+    "ast_hash": "bc2caf1483f6cc9ede65655c0ca603a2",
+    "semantic_hash": "bc2caf1483f6cc9ede65655c0ca603a2"
+  },
+  "examples/retopo/README.md": {
+    "mtime": 1784159148.1061132,
+    "ast_hash": "993a71aec534d21ccbb36011e112fe06",
+    "semantic_hash": "993a71aec534d21ccbb36011e112fe06"
+  },
+  "examples/showcase/ATLAS_CANONICAL_WORKFLOWS.md": {
+    "mtime": 1784439723.9647563,
+    "ast_hash": "f15480759397b0a4f9fa598c736bbaeb",
+    "semantic_hash": ""
+  },
+  "examples/showcase/README.md": {
+    "mtime": 1784439722.709334,
+    "ast_hash": "359f541cebdabcc5a29cbd76e939a2e7",
+    "semantic_hash": ""
+  },
+  "requirements.txt": {
+    "mtime": 1782362896.6628158,
+    "ast_hash": "ed5861032bef4b50dc73d31e3dfc8007",
+    "semantic_hash": "ed5861032bef4b50dc73d31e3dfc8007"
+  },
+  "ui/index.html": {
+    "mtime": 1782514170.8636658,
+    "ast_hash": "c18396e2a19616606d5de3373bfcc1f9",
+    "semantic_hash": "c18396e2a19616606d5de3373bfcc1f9"
+  },
+  "docs/showcase_pdfs/atlas_showcase_field_guide.pdf": {
+    "mtime": 1784245293.7171068,
+    "ast_hash": "2f9c6896119fd59ab959ac1d03bee8cd",
+    "semantic_hash": "2f9c6896119fd59ab959ac1d03bee8cd"
+  },
+  "docs/showcase_pdfs/atlas_wf_city_blocks.pdf": {
+    "mtime": 1784245294.671831,
+    "ast_hash": "7d5b215d391c1251aaa1c01edb9793ee",
+    "semantic_hash": "7d5b215d391c1251aaa1c01edb9793ee"
+  },
+  "docs/showcase_pdfs/atlas_wf_composable.pdf": {
+    "mtime": 1784245295.8752587,
+    "ast_hash": "bd6e36aed7b2bab1c170b95c98ff30a3",
+    "semantic_hash": "bd6e36aed7b2bab1c170b95c98ff30a3"
+  },
+  "docs/showcase_pdfs/atlas_wf_dmp_anchored.pdf": {
+    "mtime": 1784245296.8134456,
+    "ast_hash": "6501c3540838ceb960a1543411cfdf10",
+    "semantic_hash": "6501c3540838ceb960a1543411cfdf10"
+  },
+  "docs/showcase_pdfs/atlas_wf_dmp_xray.pdf": {
+    "mtime": 1784245297.8141057,
+    "ast_hash": "c05b41bcb4ee3b6a47107330c328937b",
+    "semantic_hash": "c05b41bcb4ee3b6a47107330c328937b"
+  },
+  "docs/showcase_pdfs/atlas_wf_ghosttown.pdf": {
+    "mtime": 1784245298.8301828,
+    "ast_hash": "b1d77a3db529e1a78df350580a3332ee",
+    "semantic_hash": "b1d77a3db529e1a78df350580a3332ee"
+  },
+  "docs/showcase_pdfs/atlas_wf_hangar.pdf": {
+    "mtime": 1784245299.8411384,
+    "ast_hash": "03ba91089c9d9f47cd004a9e104bd75d",
+    "semantic_hash": "03ba91089c9d9f47cd004a9e104bd75d"
+  },
+  "docs/showcase_pdfs/atlas_wf_jungleruins.pdf": {
+    "mtime": 1784245300.8478868,
+    "ast_hash": "5efb6c8c8b5a31ae22343d80aaa63288",
+    "semantic_hash": "5efb6c8c8b5a31ae22343d80aaa63288"
+  },
+  "docs/showcase_pdfs/atlas_wf_oceancastle.pdf": {
+    "mtime": 1784245301.9185388,
+    "ast_hash": "322733f6bfb04ec29593fbee916be2ec",
+    "semantic_hash": "322733f6bfb04ec29593fbee916be2ec"
+  },
+  "docs/showcase_pdfs/atlas_wf_portal.pdf": {
+    "mtime": 1784245303.105775,
+    "ast_hash": "c7239274624b24d81aacea0907a0185a",
+    "semantic_hash": "c7239274624b24d81aacea0907a0185a"
+  },
+  "docs/showcase_pdfs/atlas_wf_solve_lab.pdf": {
+    "mtime": 1784245304.1227033,
+    "ast_hash": "00618b0480859401e3feb7b1f903f957",
+    "semantic_hash": "00618b0480859401e3feb7b1f903f957"
+  },
+  "docs/showcase_pdfs/atlas_wf_wreck.pdf": {
+    "mtime": 1784245305.1300464,
+    "ast_hash": "1e6fa4b01282a86c0df470728fe24ec0",
+    "semantic_hash": "1e6fa4b01282a86c0df470728fe24ec0"
+  },
+  "assets/atlas_camera_icon.png": {
+    "mtime": 1783855896.7702024,
+    "ast_hash": "ff755b901e5648b587822c5c1806859a",
+    "semantic_hash": "ff755b901e5648b587822c5c1806859a"
+  },
+  "assets/atlas_camera_icon.svg": {
+    "mtime": 1783855896.7712016,
+    "ast_hash": "948f5c26266d0cac58f11e969b4c75f2",
+    "semantic_hash": "948f5c26266d0cac58f11e969b4c75f2"
+  },
+  "assets/atlas_camera_mark.svg": {
+    "mtime": 1783855896.772202,
+    "ast_hash": "694aee16eccbb3fe05b6884e80a06722",
+    "semantic_hash": "694aee16eccbb3fe05b6884e80a06722"
+  },
+  "docs/images/chart_da3_vs_v2.svg": {
+    "mtime": 1783649810.2039964,
+    "ast_hash": "b3bacb128a95868eb3d8a0c8a37619c1",
+    "semantic_hash": "b3bacb128a95868eb3d8a0c8a37619c1"
+  },
+  "docs/images/chart_relmad_backends.svg": {
+    "mtime": 1783649810.2039964,
+    "ast_hash": "ece468a0a6ebde7c602e1a88c19ae25c",
+    "semantic_hash": "ece468a0a6ebde7c602e1a88c19ae25c"
+  },
+  "docs/images/chart_torn_vs_grid.svg": {
+    "mtime": 1783649810.2050023,
+    "ast_hash": "41b7740c9fd0e6874a390cb48671e9c0",
+    "semantic_hash": "41b7740c9fd0e6874a390cb48671e9c0"
+  },
+  "docs/images/layer_stack.svg": {
+    "mtime": 1783649810.2050023,
+    "ast_hash": "71ef57d44620f0949b3d31ec2b7514cf",
+    "semantic_hash": "71ef57d44620f0949b3d31ec2b7514cf"
+  },
+  "docs/images/nuke_projection_topology.svg": {
+    "mtime": 1783649810.2050023,
+    "ast_hash": "608ae3b3f2b74a846676d196b5a49369",
+    "semantic_hash": "608ae3b3f2b74a846676d196b5a49369"
+  },
+  "docs/images/scene_alpine_village.jpg": {
+    "mtime": 1783649810.2060025,
+    "ast_hash": "9f65e9a9d2a01e44b267fef7aafdb821",
+    "semantic_hash": "9f65e9a9d2a01e44b267fef7aafdb821"
+  },
+  "docs/images/scene_canyon.jpg": {
+    "mtime": 1783649810.2060025,
+    "ast_hash": "f3b65aee7038d0801aa08516af7bd981",
+    "semantic_hash": "f3b65aee7038d0801aa08516af7bd981"
+  },
+  "docs/images/scene_cathedral_nave.jpg": {
+    "mtime": 1783649810.2060025,
+    "ast_hash": "17afcf7a6d1a7963bd79c51df23220b4",
+    "semantic_hash": "17afcf7a6d1a7963bd79c51df23220b4"
+  },
+  "docs/images/scene_ghost_town.jpg": {
+    "mtime": 1783649810.207507,
+    "ast_hash": "74202423c9a922f2fc31bdd75601ab25",
+    "semantic_hash": "74202423c9a922f2fc31bdd75601ab25"
+  },
+  "docs/images/scene_jungle_temple.jpg": {
+    "mtime": 1783649810.2085123,
+    "ast_hash": "81c6ac7a855733c921f6d2cc56766ac1",
+    "semantic_hash": "81c6ac7a855733c921f6d2cc56766ac1"
+  },
+  "docs/images/scene_monument_valley.jpg": {
+    "mtime": 1783649810.2085123,
+    "ast_hash": "ffaaea9bb4d5bd1977386b1247c3655b",
+    "semantic_hash": "ffaaea9bb4d5bd1977386b1247c3655b"
+  },
+  "docs/images/scene_mountain_ridge_figure.jpg": {
+    "mtime": 1783649810.209513,
+    "ast_hash": "f3b65aee7038d0801aa08516af7bd981",
+    "semantic_hash": "f3b65aee7038d0801aa08516af7bd981"
+  },
+  "docs/images/scene_scifi_hangar.jpg": {
+    "mtime": 1783649810.209513,
+    "ast_hash": "365842d73ced288ae37eb7ed337a6dcb",
+    "semantic_hash": "365842d73ced288ae37eb7ed337a6dcb"
+  },
+  "docs/images/scene_seacliff_castle.jpg": {
+    "mtime": 1783649810.209513,
+    "ast_hash": "85b2c4864de14cb11af339f0ab54f398",
+    "semantic_hash": "85b2c4864de14cb11af339f0ab54f398"
+  },
+  "docs/images/scene_snowcapped_peaks.jpg": {
+    "mtime": 1783649810.2110186,
+    "ast_hash": "73f3d6be80d752030dbd70378fba3b5a",
+    "semantic_hash": "73f3d6be80d752030dbd70378fba3b5a"
+  },
+  "docs/images/scene_steep_ridge.jpg": {
+    "mtime": 1783649810.2110186,
+    "ast_hash": "73f3d6be80d752030dbd70378fba3b5a",
+    "semantic_hash": "73f3d6be80d752030dbd70378fba3b5a"
+  },
+  "docs/images/scene_wide_valley.jpg": {
+    "mtime": 1783649810.2120237,
+    "ast_hash": "ffaaea9bb4d5bd1977386b1247c3655b",
+    "semantic_hash": "ffaaea9bb4d5bd1977386b1247c3655b"
+  },
+  "tests/test_sdxl_inpaint.py": {
+    "mtime": 1784429070.6843407,
+    "ast_hash": "8a4d93a31e7fd276a8339d20197ea505",
+    "semantic_hash": ""
+  },
+  "examples/showcase/atlas_canonical_ocio_ghosttown_dcc_workflow.json": {
+    "mtime": 1784443399.6011188,
+    "ast_hash": "d3bc59445f64a9d80034427a62ba1f7e",
+    "semantic_hash": ""
+  },
+  "examples/showcase/atlas_canonical_ocio_oceancastle_dcc_workflow.json": {
+    "mtime": 1784443399.595111,
+    "ast_hash": "e11a41256708b1a29df5d57afe84f9ab",
+    "semantic_hash": ""
+  },
+  "examples/showcase/atlas_canonical_ocio_spacehangar_dcc_workflow.json": {
+    "mtime": 1784443399.5991192,
+    "ast_hash": "d7527a957583fefd11348aa12619439b",
+    "semantic_hash": ""
+  },
+  "tests/test_canonical_ocio_dcc_workflows.py": {
+    "mtime": 1784439479.4116912,
+    "ast_hash": "8c8c0f6d75711b53561b093749b89de3",
+    "semantic_hash": ""
+  },
+  "tools/generate_canonical_ocio_dcc_workflows.py": {
+    "mtime": 1784443386.9541223,
+    "ast_hash": "4d243d2ae6c40a72d942b03ff2fab62d",
+    "semantic_hash": ""
+  },
+  "examples/showcase/marketing/workflows/atlas_marketing_ocio_ghosttown_dcc_workflow.json": {
+    "mtime": 1784443399.6034951,
+    "ast_hash": "01a79f9480a4c3ec372331c5199dec9e",
+    "semantic_hash": ""
+  },
+  "examples/showcase/marketing/workflows/atlas_marketing_ocio_oceancastle_dcc_workflow.json": {
+    "mtime": 1784443399.5971189,
+    "ast_hash": "c004d5da885d8e9a612719c714f613fc",
+    "semantic_hash": ""
+  },
+  "examples/showcase/marketing/workflows/atlas_marketing_ocio_spacehangar_dcc_workflow.json": {
+    "mtime": 1784443399.600119,
+    "ast_hash": "6734fa30bd10fc914b8eb1fa46b04aed",
+    "semantic_hash": ""
+  },
+  "examples/showcase/marketing/README.md": {
+    "mtime": 1784439725.39386,
+    "ast_hash": "250d116df02166cf3a29d420832d7e41",
+    "semantic_hash": ""
+  }
+}

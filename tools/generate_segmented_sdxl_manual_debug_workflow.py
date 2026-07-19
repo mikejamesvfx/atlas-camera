@@ -134,7 +134,8 @@ for i in (0, 1):
                    "positive_prompt": PROMPT,
                    "negative_prompt": "fantasy, sci-fi, warped, duplicate, text, seams",
                    "seed": 48192037 + i, "steps": 30, "cfg": 4.0,
-                   "denoise": 0.65, "grow_mask_by": 8, "max_side": 1024})
+                   "denoise": 0.5, "grow_mask_by": 8, "max_side": 1024,
+                   "preserve_perspective": True})
     w.link(crop, 0, fill, "image")
     w.link(crop, 1, fill, "mask")
     preview_img(fill, 0, [2000, y + 40], f"i{i} fill")

@@ -392,6 +392,24 @@ Restart ComfyUI. Wire `INPAINT_LoadInpaintModel` (loads `big-lama.pt`) →
 ~16-32) → `INPAINT_InpaintWithModel` (image + expanded mask → clean plate) →
 `AtlasCleanPlateLayer`'s `plate_image` input.
 
+### Geometry beneath a removed subject
+
+The cleanplate image and the geometry supporting it are separate decisions.
+For a removed car, castle, person, or other foreground object whose contact
+surface must remain continuous during an orbit, run a second `AtlasDepthMap`
+on the **approved full-frame cleanplate** and feed that depth to a full-range
+background `AtlasCleanPlateLayer` (`band_side=manual`, `near_pct=0`,
+`far_pct=0`, `fill_occluded=false`). Keep the original image depth only for a
+SAM/artist-matted foreground layer. This is the pattern used by the canonical
+OCIO/DCC workflows in `examples/showcase/`.
+
+Do not use a far `AtlasBoundedBand` plus `fill_occluded` as the support surface
+for a large removal. That mode interpolates depth from the surrounding band's
+boundary; it is useful for narrow disocclusion slivers, but on a road or
+headland it can place the filled footprint at the far cutoff and produce the
+visible vertical cliff/floating-object failure. `AtlasBoundedBand` remains the
+right tool for limiting a foreground relief that otherwise extrudes too far.
+
 **Optional generative tier for hard disocclusions — `scraed/LanPaint`:**
 
 ```powershell

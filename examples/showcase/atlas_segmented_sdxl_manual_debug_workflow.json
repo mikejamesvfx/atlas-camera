@@ -1269,6 +1269,11 @@
           "name": "max_side",
           "type": "INT",
           "link": null
+        },
+        {
+          "name": "preserve_perspective",
+          "type": "BOOLEAN",
+          "link": null
         }
       ],
       "outputs": [
@@ -1299,9 +1304,10 @@
         "fixed",
         30,
         4.0,
-        0.65,
+        0.5,
         8,
-        1024
+        1024,
+        true
       ],
       "title": "✨ SDXL fill 0"
     },
@@ -1739,6 +1745,11 @@
           "name": "max_side",
           "type": "INT",
           "link": null
+        },
+        {
+          "name": "preserve_perspective",
+          "type": "BOOLEAN",
+          "link": null
         }
       ],
       "outputs": [
@@ -1769,9 +1780,10 @@
         "fixed",
         30,
         4.0,
-        0.65,
+        0.5,
         8,
-        1024
+        1024,
+        true
       ],
       "title": "✨ SDXL fill 1"
     },

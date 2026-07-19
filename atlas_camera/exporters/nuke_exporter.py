@@ -431,6 +431,11 @@ def write_nuke_layers_script(
     output_dir: str | Path,
     *,
     name: str = "nuke_layers",
+    retopo_method: str = "off",
+    retopo_target_vertex_count: int = 2000,
+    retopo_smooth_iterations: int = 0,
+    retopo_crease_angle: float = 30.0,
+    retopo_pure_quad: bool = False,
 ) -> dict:
     """Export EVERY projection layer on a solve — each ``ProjectionSource``
     (sky dome, clean-plate bands, multi-angle patches) — as one native ``.nk``
@@ -473,7 +478,14 @@ def write_nuke_layers_script(
     image_h = intr.image_height or 1080
     fmt_name = f"atlas_{image_w}x{image_h}"
 
-    layers, skipped = collect_projection_layers(solve, out)
+    layers, skipped = collect_projection_layers(
+        solve, out,
+        retopo_method=retopo_method,
+        retopo_target_vertex_count=retopo_target_vertex_count,
+        retopo_smooth_iterations=retopo_smooth_iterations,
+        retopo_crease_angle=retopo_crease_angle,
+        retopo_pure_quad=retopo_pure_quad,
+    )
 
     if not layers:
         raise ValueError(

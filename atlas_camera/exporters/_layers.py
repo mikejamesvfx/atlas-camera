@@ -14,6 +14,88 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from collections import OrderedDict
+import hashlib
+import threading
+
+
+_RETOPO_CACHE: OrderedDict[str, tuple[Any, Any, Any, dict[str, Any]]] = OrderedDict()
+_RETOPO_CACHE_LOCK = threading.Lock()
+_RETOPO_CACHE_MAX = 64
+
+
+def _retopo_cache_key(mesh, camera, *, method, target_vertex_count,
+                      smooth_iterations, crease_angle, pure_quad) -> str:
+    """Content key shared by the Nuke/Maya exporter calls in one process."""
+    import numpy as np
+
+    intr = camera.intrinsics
+    extr = camera.extrinsics
+    h = hashlib.sha256()
+    for arr in (mesh.vertices, mesh.faces, mesh.uvs,
+                np.asarray(extr.camera_view_matrix, dtype=np.float64)):
+        a = np.ascontiguousarray(arr)
+        h.update(str(a.dtype).encode("ascii"))
+        h.update(str(a.shape).encode("ascii"))
+        h.update(a.tobytes())
+    h.update(repr((method, int(target_vertex_count), int(smooth_iterations),
+                   float(crease_angle), bool(pure_quad),
+                   intr.fx_px, intr.fy_px, intr.cx_px, intr.cy_px,
+                   intr.image_width, intr.image_height)).encode("utf-8"))
+    return h.hexdigest()
+
+
+def _retopologize_layer_mesh(mesh, camera, *, method, target_vertex_count,
+                             smooth_iterations, crease_angle, pure_quad):
+    """Retopologize once per source mesh/config and reuse exact arrays.
+
+    Instant Meshes' ``deterministic`` flag still showed small topology drift
+    across two independent calls in a live Nuke/Maya export. A content cache
+    makes the shared-collector promise literal: both DCC packages get the
+    byte-identical retopology without writing into a shared output folder.
+    """
+    import copy
+
+    key = _retopo_cache_key(
+        mesh, camera, method=method, target_vertex_count=target_vertex_count,
+        smooth_iterations=smooth_iterations, crease_angle=crease_angle,
+        pure_quad=pure_quad,
+    )
+    with _RETOPO_CACHE_LOCK:
+        cached = _RETOPO_CACHE.get(key)
+        if cached is not None:
+            _RETOPO_CACHE.move_to_end(key)
+            vertices, faces, uvs, report = cached
+            mesh.vertices = vertices.copy()
+            mesh.faces = faces.copy()
+            mesh.uvs = uvs.copy()
+            return copy.deepcopy(report)
+
+    from atlas_camera.core.mesh_retopo import apply_retopo
+
+    intr = camera.intrinsics
+    extr = camera.extrinsics
+    width = int(intr.image_width or 0)
+    height = int(intr.image_height or 0)
+    fx = float(intr.fx_px or 0.0)
+    fy = float(intr.fy_px or fx)
+    report = apply_retopo(
+        mesh, method=str(method), target_vertex_count=int(target_vertex_count),
+        view_matrix=extr.camera_view_matrix, fx=fx, fy=fy,
+        cx=(float(intr.cx_px) if intr.cx_px is not None else width / 2.0),
+        cy=(float(intr.cy_px) if intr.cy_px is not None else height / 2.0),
+        image_width=width, image_height=height, pure_quad=bool(pure_quad),
+        crease_angle=float(crease_angle), smooth_iterations=int(smooth_iterations),
+    )
+    with _RETOPO_CACHE_LOCK:
+        _RETOPO_CACHE[key] = (
+            mesh.vertices.copy(), mesh.faces.copy(), mesh.uvs.copy(),
+            copy.deepcopy(report),
+        )
+        _RETOPO_CACHE.move_to_end(key)
+        while len(_RETOPO_CACHE) > _RETOPO_CACHE_MAX:
+            _RETOPO_CACHE.popitem(last=False)
+    return report
 
 
 def layer_focal_mm(intr) -> float:
@@ -70,7 +152,16 @@ def mesh_from_primitive(prim):
     return ReliefMesh(vertices=verts, faces=faces, uvs=uvs)
 
 
-def collect_projection_layers(solve, output_dir: str | Path) -> tuple[list[dict[str, Any]], list[str]]:
+def collect_projection_layers(
+    solve,
+    output_dir: str | Path,
+    *,
+    retopo_method: str = "off",
+    retopo_target_vertex_count: int = 2000,
+    retopo_smooth_iterations: int = 0,
+    retopo_crease_angle: float = 30.0,
+    retopo_pure_quad: bool = False,
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Materialize every exportable ProjectionSource into ``output_dir``.
 
     Returns ``(layers, skipped)`` where each layer dict carries:
@@ -95,6 +186,17 @@ def collect_projection_layers(solve, output_dir: str | Path) -> tuple[list[dict[
         if mesh is None:
             skipped.append(f"{src.name}: no mesh geometry")
             continue
+
+        retopo_report = {"method": "off", "changed": False,
+                         "note": "retopology off"}
+        if retopo_method and retopo_method != "off":
+            retopo_report = _retopologize_layer_mesh(
+                mesh, src.camera, method=str(retopo_method),
+                target_vertex_count=int(retopo_target_vertex_count),
+                smooth_iterations=int(retopo_smooth_iterations),
+                crease_angle=float(retopo_crease_angle),
+                pure_quad=bool(retopo_pure_quad),
+            )
 
         safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in (src.name or "layer"))
         plate_ref = getattr(src, "plate_ref", None)
@@ -135,6 +237,11 @@ def collect_projection_layers(solve, output_dir: str | Path) -> tuple[list[dict[
             plate_file = out / f"{safe}_plate.png"
             pil.save(plate_file)
             plate_path = str(plate_file.resolve())
+            # IMAGE tensors embedded by Atlas clean-plate/inpaint nodes are
+            # display-referred previews (the neural/image graph works in the
+            # same sRGB display space ComfyUI shows). Tag the authored PNG
+            # explicitly so Nuke/Maya do not guess Raw or scene-linear ACEScg.
+            colorspace = "sRGB - Display"
 
         written = export_relief_mesh(mesh, out, name=f"{safe}_mesh")
         layers.append({
@@ -145,5 +252,6 @@ def collect_projection_layers(solve, output_dir: str | Path) -> tuple[list[dict[
             "obj_path": str(Path(written["obj"]).resolve()).replace("\\", "/"),
             "has_matte": matte is not None,
             "extend_matte_path": extend_matte_path,
+            "retopo": retopo_report,
         })
     return layers, skipped
