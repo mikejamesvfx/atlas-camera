@@ -4,6 +4,9 @@
 
 Shares the castle generator's helpers: every widget list is derived from the
 LIVE /object_info so positional widgets_values cannot drift.
+
+Human-readable guide (purpose, usage, architecture, gotchas):
+docs/dev/generate_companion_workflows.md
 """
 import importlib.util, json, sys, pathlib
 
