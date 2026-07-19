@@ -116,6 +116,14 @@ dev = [
     # any real ComfyUI venv (which always ships torch) hits a bare
     # ModuleNotFoundError instead.
     "trimesh>=4.0",
+    # ...and trimesh alone is not enough. Its only REQUIRED dependency is
+    # numpy; scipy is an optional `trimesh[easy]` extra, lazily raised only
+    # when a scipy-backed path is touched. smooth_relax() calls Taubin
+    # smoothing, whose laplacian goes through trimesh.graph -> scipy, so
+    # declaring trimesh here UN-SKIPS the retopo smooth test and it then dies
+    # on `ModuleNotFoundError: No module named 'scipy'`. Depended on directly
+    # rather than via trimesh[easy], which pulls considerably more.
+    "scipy>=1.10",
 ]
 ui = [
     "fastapi>=0.110",
