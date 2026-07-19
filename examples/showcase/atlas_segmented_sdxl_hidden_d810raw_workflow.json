@@ -1167,7 +1167,7 @@
       },
       "widgets_values": [
         "photorealistic continuation of the existing Manhattan apartment buildings, matching brick, concrete, glass windows and cloudy daylight",
-        "SDXL\\sd_xl_base_1.0.safetensors",
+        "SDXL/sd_xl_base_1.0.safetensors",
         4,
         30,
         4.0,

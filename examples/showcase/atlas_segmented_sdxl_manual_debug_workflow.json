@@ -1297,7 +1297,7 @@
         "Node name for S&R": "AtlasSDXLInpaint"
       },
       "widgets_values": [
-        "SDXL\\sd_xl_base_1.0.safetensors",
+        "SDXL/sd_xl_base_1.0.safetensors",
         "photorealistic continuation of the existing Manhattan apartment buildings, matching brick, concrete, glass windows and cloudy daylight",
         "fantasy, sci-fi, warped, duplicate, text, seams",
         48192037,
@@ -1773,7 +1773,7 @@
         "Node name for S&R": "AtlasSDXLInpaint"
       },
       "widgets_values": [
-        "SDXL\\sd_xl_base_1.0.safetensors",
+        "SDXL/sd_xl_base_1.0.safetensors",
         "photorealistic continuation of the existing Manhattan apartment buildings, matching brick, concrete, glass windows and cloudy daylight",
         "fantasy, sci-fi, warped, duplicate, text, seams",
         48192038,

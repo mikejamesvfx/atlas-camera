@@ -395,7 +395,7 @@
         "27",
         1
       ],
-      "checkpoint": "SDXL\\sd_xl_base_1.0.safetensors",
+      "checkpoint": "SDXL/sd_xl_base_1.0.safetensors",
       "positive_prompt": "high detail, coherent architecture, realistic texture continuation",
       "negative_prompt": "blurry, warped geometry, duplicate structures, text, seams",
       "seed": 0,

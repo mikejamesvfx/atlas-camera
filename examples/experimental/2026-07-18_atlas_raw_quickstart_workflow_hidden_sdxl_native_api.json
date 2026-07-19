@@ -527,7 +527,7 @@
   },
   "36": {
     "inputs": {
-      "ckpt_name": "SDXL\\sd_xl_base_1.0.safetensors"
+      "ckpt_name": "SDXL/sd_xl_base_1.0.safetensors"
     },
     "class_type": "CheckpointLoaderSimple"
   },
