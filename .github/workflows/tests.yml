@@ -27,3 +27,13 @@ jobs:
       # was committed (316 passed / 77 skipped).
       - run: pip install -e ".[dev,ui,image]" httpx2
       - run: python -m pytest -q
+      # Clean-env node-pack load: the registry + all six responsibility modules
+      # must import and register on a torch-less install (node classes import
+      # torch lazily). Catches an import regression in a module that no test
+      # imports directly. 67 standard nodes; the gate adds the 4 experimental.
+      - name: node pack registers (default)
+        run: python -c "from atlas_camera.comfy import NODE_CLASS_MAPPINGS as m; assert len(m)==67, len(m); print('standard nodes:', len(m))"
+      - name: experimental gate registers
+        env:
+          ATLAS_EXPERIMENTAL: "1"
+        run: python -c "from atlas_camera.comfy import NODE_CLASS_MAPPINGS as m; assert len(m)==71, len(m); print('with experimental:', len(m))"

@@ -3,7 +3,52 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
-## Unreleased — outlier & stretched-edge quality tier (2026-07-18)
+## 0.7.0 — 2026-07-19
+
+### OCIO DCC workflows + cleanplate-derived hidden support
+
+Three canonical ACEScg clean-plate/DCC workflows (ocean castle, space hangar,
+ghost town): OCIO input conversion, semantic foreground matte, localized SDXL
+or LaMa clean-plate with mask/plate approval previews, ACES Output Desk
+metadata, and matched per-layer retopology into Nuke/Maya. Their generator
+(`tools/generate_canonical_ocio_dcc_workflows.py`) is portable — repo-relative
+asset paths by default, `--asset-root`/`--output-root` for local marketing
+renders. New doctrine: for a removed foreground subject on a continuous
+surface, depth-solve the *approved clean-plate* and project it as a full-range
+background layer (`fill_occluded=false`) so the road/floor/headland stays
+continuous under a camera move instead of dropping onto a far-band cliff.
+Documented across README/INSTALL/USER_GUIDE/DCC_EXPORTS/ECOSYSTEM/MCP.
+
+### SDXL inpaint perspective preservation
+
+`AtlasSDXLInpaint` gains an optional (default-on) `preserve_perspective` that
+appends camera-geometry guidance (continue the source viewpoint, facade angle,
+foreshortening, vanishing directions) and negatively conditions straight-on /
+orthographic facades — large facade removals no longer collapse to front
+elevations. Appended as an optional widget; old workflows stay executable.
+
+### Layered-export retopology (Nuke + Maya)
+
+`AtlasExportNukeLayers` / `AtlasExportMayaLayers` gain export-only retopology
+(`retopo_method` off/quad/decimate/smooth), applied per `ProjectionSource`
+mesh with projective UVs regenerated from that layer's own camera, shared
+through `exporters/_layers.py` so the two DCCs cannot drift.
+
+### nodes.py modularization
+
+The 9,110-line `atlas_camera/comfy/nodes.py` was split into a ~180-line
+compatibility façade over responsibility modules (`node_helpers`,
+`nodes_solve` / `nodes_depth` / `nodes_geometry` / `nodes_inpaint` /
+`nodes_export` / `nodes_viewport`) and `node_registry`. Every node key,
+display name, the experimental gate, and every public/private import from
+`atlas_camera.comfy.nodes` are byte-for-byte unchanged
+(`tests/test_comfy_node_registry.py` pins the surface);
+`tools/audit_node_usage.py` classifies each node's reference sites.
+
+The 0.7.0 line also finalizes the reliability, RAW, and quality tiers cut on
+2026-07-18 (below).
+
+### Outlier & stretched-edge quality tier (2026-07-18)
 
 Ported from the portable-clone session's worklog
 (`docs/dev/2026-07-18_V1_OUTLIER_STRETCHED_EDGE_WORKLOG.md`) and integrated
@@ -43,7 +88,7 @@ replace missing coverage with a deliberate layer.
   up-looking solve now warns through the scene-health engine, 🩺 gate and
   every export report.
 
-## Unreleased — P0 reliability & trust tier (2026-07-18)
+### P0 reliability & trust tier (2026-07-18)
 
 Response to the external engineering review (`docs/dev/
 ATLAS_ENGINEERING_RECOMMENDATIONS.md`, committed with a claim-by-claim
@@ -76,7 +121,7 @@ silently ~30× off on the assumed-eye-height tier.
   (ill-defined for a single-image solve) and CI DCC import smoke tests
   (no licenses in CI; the live-verification doctrine stands).
 
-## Unreleased — camera RAW support (2026-07-18)
+### Camera RAW support (2026-07-18)
 
 Native camera-RAW input, replacing the Adobe Camera Raw round-trip for
 solve-bound plates.
@@ -113,7 +158,7 @@ solve-bound plates.
   elevated plates still fall back to the assumed 1.6 m scale tier (metric
   scale is orthogonal to focal — the documented single-image ambiguity).
 
-## Unreleased — stale-code cleanout (2026-07-18)
+### Stale-code cleanout (2026-07-18)
 
 Verified pass over `ATLAS_PROJECT_WIDE_ENGINEERING_REPORT.md` (most of its P0
 findings turned out to describe the ComfyUI-install clone's local untracked

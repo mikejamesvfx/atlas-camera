@@ -154,7 +154,7 @@ way ComfyUI would.
 
 Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/{node_id}` to be registered twice, which raises `RuntimeError: method HEAD is already registered`. The fix in `__init__.py` checks `if not any(r.path == ... for r in _routes)` before registering.
 
-### Node catalog (65 nodes + 4 experimental)
+### Node catalog (67 nodes + 4 experimental)
 
 **Category: Atlas Camera**
 

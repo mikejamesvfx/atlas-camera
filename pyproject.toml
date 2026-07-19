@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlas-camera"
-version = "0.6.0"
+version = "0.7.0"
 description = "Recover the camera from a single still (up to 8K) and build a color-managed projection scene for Nuke, Maya and USD, reviewable with simple camera moves in a real-time viewport."
 readme = "README.md"
 requires-python = ">=3.10"
