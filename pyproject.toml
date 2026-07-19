@@ -106,6 +106,24 @@ dev = [
     "numpy>=1.24",
     "opencv-python>=4.8",
     "pytest>=8",
+    # mesh_retopo.smooth_relax() treats trimesh as always-available ("the
+    # guaranteed runnable baseline on every machine" — see its docstring) and
+    # test_{nuke,maya}_layers_export.py exercise that path for real rather
+    # than skipping it. Undeclared here, `pip install -e ".[dev]"` followed
+    # by `pytest -q` (INSTALL.md's documented test recipe) only stays green
+    # by accident: torch's absence in a bare dev venv makes those two test
+    # modules importorskip themselves out entirely. The same command inside
+    # any real ComfyUI venv (which always ships torch) hits a bare
+    # ModuleNotFoundError instead.
+    "trimesh>=4.0",
+    # ...and trimesh alone is not enough. Its only REQUIRED dependency is
+    # numpy; scipy is an optional `trimesh[easy]` extra, lazily raised only
+    # when a scipy-backed path is touched. smooth_relax() calls Taubin
+    # smoothing, whose laplacian goes through trimesh.graph -> scipy, so
+    # declaring trimesh here UN-SKIPS the retopo smooth test and it then dies
+    # on `ModuleNotFoundError: No module named 'scipy'`. Depended on directly
+    # rather than via trimesh[easy], which pulls considerably more.
+    "scipy>=1.10",
 ]
 ui = [
     "fastapi>=0.110",

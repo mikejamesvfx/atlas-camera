@@ -280,23 +280,40 @@ def smooth_relax(
 
     Topology is **unchanged** — same faces, same vertex count — so the 1:1
     vertex-UV mapping is preserved and the caller should NOT regenerate UVs
-    after this. This is the guaranteed runnable baseline on every machine
-    (trimesh is a light pure-python install); raises an informative ``ImportError`` if
-    trimesh is somehow absent.
+    after this. This is the runnable baseline on every machine (no CUDA, no
+    native remesher), and raises an informative ``ImportError`` when a piece
+    of it is missing.
+
+    Needs **both** trimesh and scipy. trimesh's only required dependency is
+    numpy — scipy is an optional ``trimesh[easy]`` extra that it imports
+    lazily, and Taubin smoothing's laplacian goes through
+    ``trimesh.graph`` -> scipy. Without the explicit check below, a
+    trimesh-but-no-scipy environment fails deep inside trimesh with a bare
+    ``ModuleNotFoundError`` instead of an actionable message.
     """
     try:
         import trimesh
-    except ImportError as exc:  # pragma: no cover - trimesh is a core dep
+    except ImportError as exc:  # pragma: no cover - trimesh is a dev/test dep
         raise ImportError(
-            "Smoothing needs 'trimesh' (MIT, pure-numpy).\n"
-            "Install it with:  pip install trimesh"
+            "Smoothing needs 'trimesh' (MIT).\n"
+            "Install it with:  pip install trimesh scipy"
+        ) from exc
+    try:
+        import scipy  # noqa: F401  (trimesh imports it lazily, inside the filter)
+    except ImportError as exc:
+        raise ImportError(
+            "Smoothing needs 'scipy' as well as trimesh — Taubin smoothing's "
+            "laplacian is scipy-backed, and trimesh does not require scipy "
+            "itself.\n"
+            "Install it with:  pip install scipy"
         ) from exc
 
     v = np.asarray(vertices, dtype=np.float64)
     f = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
     tm = trimesh.Trimesh(vertices=v, faces=f, process=False)
-    # filter_taubin is pure numpy (lamb/nu alternating shrink/grow — net
-    # volume-preserving). Kept faces identical; only tm.vertices move.
+    # filter_taubin alternates lamb/nu shrink/grow — net volume-preserving.
+    # Kept faces identical; only tm.vertices move. (Its laplacian is
+    # scipy-backed, hence the scipy guard above.)
     trimesh.smoothing.filter_taubin(
         tm, lamb=0.5, nu=-0.53, iterations=int(max(iterations, 0))
     )
