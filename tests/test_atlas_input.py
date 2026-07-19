@@ -10,7 +10,10 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-import atlas_camera.comfy.nodes as nodes_mod
+# AtlasInput lives in nodes_viewport after the nodes.py modularization; its
+# node-expansion helpers (_comfy_registry) resolve in that module's namespace,
+# so the registry-probe monkeypatch must target it there.
+import atlas_camera.comfy.nodes_viewport as nodes_mod
 from atlas_camera.comfy.nodes import (
     NODE_CLASS_MAPPINGS,
     AtlasInput,
