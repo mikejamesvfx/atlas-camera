@@ -268,7 +268,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # The `experimental` branch ships ATLAS_EXPERIMENTAL_DEFAULT = "1" (that one
 # line is the entire branch delta); on any branch, setting
 # ATLAS_EXPERIMENTAL=1 (or 0) before launching ComfyUI overrides the default.
-ATLAS_EXPERIMENTAL_DEFAULT = "0"
+ATLAS_EXPERIMENTAL_DEFAULT = "1"
 
 EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasPredictHiddenGeometry": AtlasPredictHiddenGeometry,
