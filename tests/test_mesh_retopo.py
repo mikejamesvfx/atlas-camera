@@ -367,8 +367,12 @@ def test_apply_retopo_decimate_missing_dep_raises_importerror():
         import fast_simplification  # noqa: F401
     except ImportError:
         mesh = _flat_grid_mesh()
+        # target must be BELOW the mesh's face count (8) so decimation is
+        # actually attempted — otherwise apply_retopo takes the legitimate
+        # "already below target" no-op path (test_decimate_is_noop_...) and the
+        # backend is never needed. target_vertex_count=2 → target_faces=4 < 8.
         with pytest.raises(ImportError) as excinfo:
-            apply_retopo(mesh, method="decimate", target_vertex_count=20,
+            apply_retopo(mesh, method="decimate", target_vertex_count=2,
                          view_matrix=_identity_view(),
                          fx=100.0, fy=100.0, cx=50.0, cy=50.0,
                          image_width=100, image_height=100)

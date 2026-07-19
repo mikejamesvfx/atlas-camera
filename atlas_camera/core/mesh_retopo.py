@@ -233,24 +233,6 @@ def retopo_quad(
 # Quadric decimation (fast-simplification via trimesh — guarded)
 # ---------------------------------------------------------------------------
 
-def _require_fast_simplification() -> None:
-    """Raise a clean install hint when the decimation backend is absent.
-
-    Called at the TOP of the decimate path (before any early-out), so that
-    requesting ``decimate`` without the dependency always fails loudly — even
-    when the mesh is already under the target face count and no decimation
-    would actually run.
-    """
-    try:
-        import fast_simplification  # noqa: F401 — presence check
-    except ImportError as exc:  # pragma: no cover - environment-dependent
-        raise ImportError(
-            "Quadric decimation needs the 'fast-simplification' package "
-            "(BSD, CPU-only, macOS arm64 wheels).\n"
-            "Install it with:  pip install fast-simplification"
-        ) from exc
-
-
 def decimate_quadric(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -265,7 +247,14 @@ def decimate_quadric(
     install hint rather than a trimesh-internal traceback. Decimation keeps
     the original topology class (no remeshing) — just fewer faces.
     """
-    _require_fast_simplification()
+    try:
+        import fast_simplification  # noqa: F401 — presence check
+    except ImportError as exc:  # pragma: no cover - environment-dependent
+        raise ImportError(
+            "Quadric decimation needs the 'fast-simplification' package "
+            "(BSD, CPU-only, macOS arm64 wheels).\n"
+            "Install it with:  pip install fast-simplification"
+        ) from exc
     import trimesh
 
     v = np.asarray(vertices, dtype=np.float64)
@@ -405,9 +394,6 @@ def apply_retopo(
         )
         lib = "pyinstantmeshes"
     elif method == "decimate":
-        # Requesting decimate requires the backend even if the mesh is already
-        # under target — honor the missing-dependency contract before any no-op.
-        _require_fast_simplification()
         # Decimation is face-count-driven; derive a face target from the vertex
         # target (~2 faces per vert for a triangle mesh).
         target_faces = max(4, int(target_vertex_count) * 2)
