@@ -760,7 +760,7 @@
     "Node name for S&R": "AtlasSDXLInpaint"
    },
    "widgets_values": [
-    "SDXL\\sd_xl_base_1.0.safetensors",
+    "SDXL/sd_xl_base_1.0.safetensors",
     "completely empty futuristic hangar interior through the entire masked region, continuous reflective floor, receding wall panels, matching cyan lights and strong central perspective, no vehicle",
     "spaceship, spacecraft, aircraft, vehicle, machinery, front elevation, orthographic, warped architecture, duplicate objects, text, seams, blurry",
     41002,

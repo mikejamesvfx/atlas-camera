@@ -386,7 +386,7 @@ class AtlasSDXLInpaint:
         return {"required": {
             "image": ("IMAGE",),
             "mask": ("MASK",),
-            "checkpoint": ("STRING", {"default": "SDXL\\sd_xl_base_1.0.safetensors",
+            "checkpoint": ("STRING", {"default": "SDXL/sd_xl_base_1.0.safetensors",
                 "tooltip": "Checkpoint filename in models/checkpoints. Use an SDXL-compatible "
                            "inpaint/base checkpoint."}),
             "positive_prompt": ("STRING", {"default": "high detail, coherent architecture",
@@ -540,7 +540,7 @@ class AtlasSegmentedSDXLInpaint:
             "image": ("IMAGE",),
             "restrict_mask": ("MASK",),
             "prompt": ("STRING", {"default": "building facade, photorealistic continuation", "multiline": True}),
-            "checkpoint": ("STRING", {"default": "SDXL\\sd_xl_base_1.0.safetensors"}),
+            "checkpoint": ("STRING", {"default": "SDXL/sd_xl_base_1.0.safetensors"}),
             "max_instances": ("INT", {"default": 4, "min": 1, "max": 8}),
             "steps": ("INT", {"default": 30, "min": 1, "max": 100}),
             "cfg": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 30.0, "step": 0.1}),
