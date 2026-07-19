@@ -72,9 +72,12 @@ moge = [
 image = [
     "pillow>=10",
 ]
+# opencv pinned <5 for the same reason as the raw extra below: the 5.x wheels
+# dropped the EXR codec. Without the upper bound a fresh install resolves to
+# 5.x and every EXR read/write (the OCIO/ACEScg path) fails at runtime.
 vision = [
     "numpy>=1.24",
-    "opencv-python>=4.8",
+    "opencv-python>=4.8,<5",
 ]
 usd = [
     "usd-core>=22.11",
@@ -104,7 +107,8 @@ mcp = [
 ]
 dev = [
     "numpy>=1.24",
-    "opencv-python>=4.8",
+    # <5 for the EXR codec, matching the vision/raw extras.
+    "opencv-python>=4.8,<5",
     "pytest>=8",
     # mesh_retopo.smooth_relax() treats trimesh as always-available ("the
     # guaranteed runnable baseline on every machine" — see its docstring) and
