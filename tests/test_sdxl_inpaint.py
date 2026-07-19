@@ -4,7 +4,10 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-import atlas_camera.comfy.nodes as nodes_mod
+# AtlasSDXLInpaint lives in nodes_inpaint after modularization; its node-
+# expansion helpers (_comfy_registry, _graph_builder) resolve in that module's
+# namespace, so the monkeypatches must target it there.
+import atlas_camera.comfy.nodes_inpaint as nodes_mod
 from atlas_camera.comfy.nodes import AtlasSDXLInpaint, _MiniGraphBuilder
 
 
