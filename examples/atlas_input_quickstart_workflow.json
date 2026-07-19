@@ -115,7 +115,13 @@
         "sky",
         "",
         false,
-        ""
+        "",
+        24,
+        12.0,
+        true,
+        0.0,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        true
       ],
       "title": "\ud83c\udfac Atlas Input \u2014 instant relief (turn knobs up from here)"
     },
@@ -253,7 +259,12 @@
         "Node name for S&R": "AtlasExportNukeLayers"
       },
       "widgets_values": [
-        "atlas_exports/nuke_layers"
+        "atlas_exports/nuke_layers",
+        "off",
+        2000,
+        0,
+        30.0,
+        false
       ]
     },
     {
@@ -300,7 +311,12 @@
         "Node name for S&R": "AtlasExportMayaLayers"
       },
       "widgets_values": [
-        "atlas_exports/maya_layers"
+        "atlas_exports/maya_layers",
+        "off",
+        2000,
+        0,
+        30.0,
+        false
       ]
     },
     {
@@ -391,7 +407,16 @@
         "both",
         true,
         12.0,
-        0.0
+        0.0,
+        false,
+        64,
+        0.0,
+        0.0,
+        "off",
+        2000,
+        0,
+        30.0,
+        false
       ]
     }
   ],

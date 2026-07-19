@@ -277,7 +277,8 @@
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         36,
         "pinhole",
-        "auto"
+        "auto",
+        0.0
       ]
     },
     {
@@ -549,8 +550,7 @@
       "widgets_values": [
         768,
         "",
-        1,
-        ""
+        1
       ]
     },
     {
@@ -1586,7 +1586,8 @@
         1.5,
         false,
         "manual",
-        ""
+        "",
+        true
       ]
     },
     {
@@ -2178,7 +2179,10 @@
         "manual",
         "relief",
         "",
-        ""
+        "",
+        12.0,
+        0.0,
+        true
       ]
     },
     {
@@ -2443,7 +2447,8 @@
         1.5,
         false,
         "manual",
-        ""
+        "",
+        true
       ]
     },
     {
@@ -3035,7 +3040,10 @@
         "manual",
         "relief",
         "",
-        ""
+        "",
+        12.0,
+        0.0,
+        true
       ]
     },
     {
@@ -3300,7 +3308,8 @@
         1.5,
         false,
         "manual",
-        ""
+        "",
+        true
       ]
     },
     {
@@ -3892,7 +3901,10 @@
         "manual",
         "relief",
         "",
-        ""
+        "",
+        12.0,
+        0.0,
+        true
       ]
     },
     {
@@ -4157,7 +4169,8 @@
         1.5,
         false,
         "manual",
-        ""
+        "",
+        true
       ]
     },
     {
@@ -4755,7 +4768,10 @@
         "manual",
         "relief",
         "",
-        ""
+        "",
+        12.0,
+        0.0,
+        true
       ]
     },
     {
@@ -4981,8 +4997,7 @@
         "ACES - ACEScg",
         "sRGB - Display",
         "ACES 2.0 SDR-video",
-        1,
-        ""
+        1
       ]
     },
     {
@@ -5137,8 +5152,7 @@
       "widgets_values": [
         1464,
         "",
-        1,
-        ""
+        1
       ]
     },
     {
@@ -5278,7 +5292,12 @@
         "Node name for S&R": "AtlasExportNukeLayers"
       },
       "widgets_values": [
-        "output/atlas_staged_master"
+        "output/atlas_staged_master",
+        "off",
+        2000,
+        0,
+        30.0,
+        false
       ]
     },
     {
@@ -5337,7 +5356,12 @@
         "Node name for S&R": "AtlasExportMayaLayers"
       },
       "widgets_values": [
-        "output/atlas_staged_master"
+        "output/atlas_staged_master",
+        "off",
+        2000,
+        0,
+        30.0,
+        false
       ]
     },
     {
@@ -8929,7 +8953,16 @@
         "both",
         true,
         12.0,
-        0.0
+        0.0,
+        false,
+        64,
+        0.0,
+        0.0,
+        "off",
+        2000,
+        0,
+        30.0,
+        false
       ]
     }
   ],
