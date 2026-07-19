@@ -7683,11 +7683,23 @@ class AtlasSDXLInpaint:
                            "SDXL native) and lanczos-upscale the result back. Kills the "
                            "OOM/tiled-VAE slow path on big crops; inpainted content is "
                            "generative, so the quality cost is minor. 0 = off."}),
+        }, "optional": {
+            # APPENDED 2026-07-19 (positional rule). SDXL's architectural
+            # prior strongly prefers eye-level front elevations when a large
+            # mask removes most of an oblique facade. Keep this optional so
+            # old API/UI workflows that do not serialize it use the Python
+            # default and remain executable.
+            "preserve_perspective": ("BOOLEAN", {"default": True,
+                "tooltip": "Append camera-geometry guidance that tells SDXL to continue "
+                           "the source viewpoint, facade angle, foreshortening, and "
+                           "converging lines; negatively conditions straight-on and "
+                           "orthographic facades. Disable for intentionally novel views."}),
         }}
 
     def expand_sdxl(self, image, mask, checkpoint, positive_prompt,
                     negative_prompt, seed=0, steps=30, cfg=5.5,
-                    denoise=0.85, grow_mask_by=8, max_side=0):
+                    denoise=0.85, grow_mask_by=8, max_side=0,
+                    preserve_perspective=True):
         registry = _comfy_registry()
         required = ("CheckpointLoaderSimple", "CLIPTextEncode",
                     "InpaintModelConditioning", "KSampler", "VAEDecode")
@@ -7715,8 +7727,19 @@ class AtlasSDXLInpaint:
 
         g = _graph_builder()
         ckpt = g.node("CheckpointLoaderSimple", ckpt_name=str(checkpoint))
-        positive = g.node("CLIPTextEncode", text=str(positive_prompt), clip=ckpt.out(1))
-        negative = g.node("CLIPTextEncode", text=str(negative_prompt), clip=ckpt.out(1))
+        positive_text = str(positive_prompt).strip()
+        negative_text = str(negative_prompt).strip()
+        if preserve_perspective:
+            positive_text += (
+                ", same subject seen from the exact source camera viewpoint, preserve "
+                "the source camera perspective and facade angle, preserve strong "
+                "foreshortening, continue vertical and horizontal lines with the same "
+                "vanishing directions as the surrounding unmasked image")
+            negative_text += (
+                ", front elevation, straight-on facade, eye-level view, orthographic "
+                "view, centered symmetrical building, flat perspective")
+        positive = g.node("CLIPTextEncode", text=positive_text, clip=ckpt.out(1))
+        negative = g.node("CLIPTextEncode", text=negative_text, clip=ckpt.out(1))
         conditioning = g.node("InpaintModelConditioning",
                                positive=positive.out(0), negative=negative.out(0),
                                pixels=image, vae=ckpt.out(2), mask=mask,
@@ -7736,7 +7759,8 @@ class AtlasSDXLInpaint:
             size_note = (f", sampled at {int(image.shape[2])}x{int(image.shape[1])} "
                          f"(max_side {int(max_side)}) → {orig_w}x{orig_h}")
         report = (f"SDXL inpaint via InpaintModelConditioning — checkpoint={checkpoint}, "
-                  f"steps={int(steps)}, cfg={float(cfg):g}, denoise={float(denoise):g}"
+                  f"steps={int(steps)}, cfg={float(cfg):g}, denoise={float(denoise):g}, "
+                  f"perspective={'preserve' if preserve_perspective else 'prompt-only'}"
                   + size_note)
         return {"result": (out_ref, report), "expand": g.finalize()}
 

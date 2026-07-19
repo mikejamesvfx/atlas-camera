@@ -9,7 +9,7 @@ INPAINTED clean plate + USD export with manifest.
 
 Widget values are the live-calibrated ones from that experiment (band 0–50%,
 grow 32, visible relief ultra/mef24/normal60, hidden ultra/mef8/normal45,
-SDXL denoise 0.65 seed 48192037 — seeds ship PINNED). Requires
+SDXL denoise 0.50 seed 48192037 — seeds ship PINNED). Requires
 ATLAS_EXPERIMENTAL=1 + a LaRI clone + SAM3 (comfyui-rmbg) + an SDXL
 checkpoint. Usage:
     python tools/generate_segmented_sdxl_showcase_workflow.py <object_info.json> \
@@ -136,7 +136,7 @@ sdxl = w.node("AtlasSegmentedSDXLInpaint", [2440, 40], [440, 320],
                          "windows and cloudy daylight",
                "checkpoint": "SDXL\\sd_xl_base_1.0.safetensors",
                "max_instances": 4, "steps": 30, "cfg": 4.0,
-               "denoise": 0.65, "seed": 48192037})
+               "denoise": 0.5, "seed": 48192037})
 w.link(raw, 0, sdxl, "image")
 w.link(lari, LARI_PAINT, sdxl, "restrict_mask")
 sdxl_prev = w.raw("PreviewImage", [2440, 420], [440, 300], "Segmented clean plate", [],
