@@ -66,7 +66,9 @@ The core package has **zero required runtime dependencies**. All vision, USD, an
 atlas_camera.core       ← DCC-agnostic schema, solver, math (no host deps)
 atlas_camera.exporters  ← Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  ← Atlas JSON and USD camera loaders
-atlas_camera.comfy      ← ComfyUI node library (65 nodes + 4 experimental, no hard Comfy dep)
+atlas_camera.comfy      ← ComfyUI node library (67 nodes + 4 experimental, no hard Comfy dep;
+                          nodes.py is a façade over node_helpers / node_registry / nodes_*
+                          responsibility modules — see "Module layout" below)
 atlas_camera.ui         ← Optional FastAPI project service
 atlas_camera.reference_data ← Curated scale-reference registry (JSON)
 atlas_camera.inference  ← Optional local multimodal provider helpers
@@ -77,6 +79,46 @@ examples/               ← Example ComfyUI workflows and test images
 The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). The stable package name is `atlas_camera`.
 
 ## ComfyUI integration (`atlas_camera/comfy/`)
+
+### Module layout (nodes.py modularization, 2026-07-19)
+
+The former 9,110-line `nodes.py` was split into responsibility modules; the 71
+node classes (67 standard + 4 experimental) now live in six group modules, and
+`nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
+class, shared helper, and the registry mappings so `from atlas_camera.comfy.nodes
+import X`, `comfy/__init__` (`NODE_CLASS_MAPPINGS` / `_ATLAS_BLOCKOUT_CACHE`), and
+saved workflows keep working unchanged. New code should import from the specific
+module.
+
+- `node_helpers.py` — leaf module: guarded optional-import shims, tensor/PIL
+  conversions, fingerprints, metadata/band/scale helpers, shared constants, and
+  the internal `_MetricDepthSetup` / `_MiniGraphBuilder`. Depends only on
+  `core`/exporters/importers (never on a node class), so it cannot cause a cycle.
+- `nodes_solve.py` — loading, registration, camera solving, scale/gravity/pitch/
+  roll, assessment, solve/health gates, decompose. Imports `AtlasDebugReport`
+  from `nodes_viewport` (the one cross-module class edge — a clean DAG, because
+  `AtlasSceneHealthGate` reuses `AtlasDebugReport._matte_coverage`).
+- `nodes_depth.py` — depth maps, outlier/ground/horizon/VP masks, MoGe normals,
+  band split/bounded band, depth-layer mask.
+- `nodes_geometry.py` — projection-geometry derivation, relief/walls/towers/roofs/
+  interior, merge, shot cam, patch views, occlusion, and the four experimental
+  nodes.
+- `nodes_inpaint.py` — crop/stitch, SDXL, SAM3/semantic/scope masks, clean-plate
+  layer/stack, sky dome.
+- `nodes_export.py` — JSON/review/USD/Maya/Blender/Nuke/camera-path/relief-mesh
+  exporters.
+- `nodes_viewport.py` — viewport, output-desk controls, debug report, layer
+  preview, and the `AtlasInput` node-expansion entry.
+- `node_registry.py` — imports every class and builds `NODE_CLASS_MAPPINGS` /
+  `NODE_DISPLAY_NAME_MAPPINGS` + the `ATLAS_EXPERIMENTAL` gate (dict literals live
+  here). The keys/display names are a saved-workflow contract — never rename or
+  reorder an existing entry. `tests/test_comfy_node_registry.py` pins the whole
+  surface; `tools/audit_node_usage.py` (read-only) classifies each node's
+  reference sites.
+
+Three tests monkeypatch a nodes-module helper on the class's own module
+(`_comfy_registry` for `AtlasInput`/`AtlasSDXLInpaint`, `_save_image_tensor_to_tmp`
+for `AtlasMogeNormals`); their patch targets follow the class into its new module.
 
 ### Setup
 
