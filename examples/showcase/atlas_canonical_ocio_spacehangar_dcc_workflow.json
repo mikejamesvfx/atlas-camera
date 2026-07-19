@@ -1,8 +1,8 @@
 {
  "id": "atlas-canonical-ocio-spacehangar-dcc",
  "revision": 0,
- "last_node_id": 23,
- "last_link_id": 40,
+ "last_node_id": 25,
+ "last_link_id": 44,
  "nodes": [
   {
    "id": 1,
@@ -119,7 +119,7 @@
     "hold",
     0.0
    ],
-   "title": "OCIO Read — source ACEScg → sRGB neural working space"
+   "title": "OCIO Read \u2014 source ACEScg \u2192 sRGB neural working space"
   },
   {
    "id": 2,
@@ -468,7 +468,7 @@
     false,
     "Alpha"
    ],
-   "title": "Foreground mask — spaceship"
+   "title": "Foreground mask \u2014 spaceship"
   },
   {
    "id": 6,
@@ -540,7 +540,7 @@
     "Node name for S&R": "PreviewImage"
    },
    "widgets_values": [],
-   "title": "Foreground mask — inspect"
+   "title": "Foreground mask \u2014 inspect"
   },
   {
    "id": 8,
@@ -772,7 +772,7 @@
     1024,
     true
    ],
-   "title": "SDXL cleanplate — preserve perspective"
+   "title": "SDXL cleanplate \u2014 preserve perspective"
   },
   {
    "id": 11,
@@ -822,7 +822,9 @@
      "links": [
       17,
       19,
-      22
+      22,
+      41,
+      42
      ],
      "slot_index": 0
     }
@@ -958,7 +960,7 @@
     {
      "name": "plate_ref",
      "type": "ATLAS_PLATE_REF",
-     "link": null
+     "link": 44
     },
     {
      "name": "relief_grid",
@@ -1159,7 +1161,7 @@
     "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
     "auto"
    ],
-   "title": "Cleanplate depth — continuous hidden support"
+   "title": "Cleanplate depth \u2014 continuous hidden support"
   },
   {
    "id": 16,
@@ -1635,7 +1637,7 @@
     "",
     1.0
    ],
-   "title": "Layered projection — inspect seams before export"
+   "title": "Layered projection \u2014 inspect seams before export"
   },
   {
    "id": 20,
@@ -1718,7 +1720,7 @@
     45.0,
     false
    ],
-   "title": "Nuke layered projection — quadric retopo"
+   "title": "Nuke layered projection \u2014 quadric retopo"
   },
   {
    "id": 21,
@@ -1801,7 +1803,7 @@
     45.0,
     false
    ],
-   "title": "Maya layered projection — identical quadric retopo"
+   "title": "Maya layered projection \u2014 identical quadric retopo"
   },
   {
    "id": 22,
@@ -1922,6 +1924,149 @@
     "atlas_debug/canonical_ocio_spacehangar.json"
    ],
    "title": "Layer/seam diagnostic JSON"
+  },
+  {
+   "id": 24,
+   "type": "OCIOWrite",
+   "pos": [
+    1130,
+    900
+   ],
+   "size": [
+    270,
+    632
+   ],
+   "flags": {},
+   "order": 24,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 41
+    },
+    {
+     "name": "video",
+     "type": "COMFYUI_VIDEO",
+     "shape": 7,
+     "link": null
+    },
+    {
+     "name": "alpha",
+     "type": "MASK",
+     "shape": 7,
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "path",
+     "type": "STRING",
+     "links": [
+      43
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "OCIOWrite"
+   },
+   "widgets_values": [
+    "none",
+    "sRGB - Display",
+    "ACEScg",
+    "sequence",
+    "exr",
+    "prores_4444",
+    "16f",
+    "zip",
+    true,
+    1,
+    0,
+    1,
+    1,
+    false,
+    true,
+    "atlas_exports/canonical_ocio_spacehangar/clean_plate",
+    "clean_plate_generated",
+    true,
+    24,
+    "",
+    null,
+    null
+   ],
+   "title": "OCIO Write \u2014 generated cleanplate sRGB \u2192 ACEScg"
+  },
+  {
+   "id": 25,
+   "type": "AtlasRegisterPlate",
+   "pos": [
+    1460,
+    900
+   ],
+   "size": [
+    300,
+    250
+   ],
+   "flags": {},
+   "order": 25,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 42
+    },
+    {
+     "name": "plate_path",
+     "type": "STRING",
+     "link": 43
+    },
+    {
+     "name": "colorspace",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "bit_depth",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "role",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "lut_path",
+     "type": "STRING",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "name": "plate_ref",
+     "type": "ATLAS_PLATE_REF",
+     "links": [
+      44
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasRegisterPlate"
+   },
+   "widgets_values": [
+    "",
+    "ACEScg",
+    "16f",
+    "clean_plate",
+    ""
+   ],
+   "title": "Register generated cleanplate (ACEScg)"
   }
  ],
  "links": [
@@ -2244,12 +2389,44 @@
    23,
    1,
    "ATLAS_DEPTH_MAP"
+  ],
+  [
+   41,
+   11,
+   0,
+   24,
+   0,
+   "IMAGE"
+  ],
+  [
+   42,
+   11,
+   0,
+   25,
+   0,
+   "IMAGE"
+  ],
+  [
+   43,
+   24,
+   0,
+   25,
+   1,
+   "STRING"
+  ],
+  [
+   44,
+   25,
+   1,
+   14,
+   9,
+   "ATLAS_PLATE_REF"
   ]
  ],
  "groups": [
   {
    "id": 1,
-   "title": "0 · SPACE HANGAR — ACEScg solve + semantic foreground",
+   "title": "0 \u00b7 SPACE HANGAR \u2014 ACEScg solve + semantic foreground",
    "bounding": [
     -40,
     -40,
@@ -2261,7 +2438,7 @@
   },
   {
    "id": 2,
-   "title": "1 · LOCALIZED PERSPECTIVE-PRESERVING CLEANPLATE",
+   "title": "1 \u00b7 LOCALIZED PERSPECTIVE-PRESERVING CLEANPLATE",
    "bounding": [
     -40,
     760,
@@ -2273,7 +2450,7 @@
   },
   {
    "id": 3,
-   "title": "2 · OUTPUT DESK + MATCHED NUKE/MAYA RETOPOLOGY",
+   "title": "2 \u00b7 OUTPUT DESK + MATCHED NUKE/MAYA RETOPOLOGY",
    "bounding": [
     1660,
     -40,
@@ -2286,7 +2463,7 @@
  ],
  "config": {},
  "extra": {
-  "workflow_name": "ATLAS CANONICAL OCIO DCC — SPACE HANGAR",
+  "workflow_name": "ATLAS CANONICAL OCIO DCC \u2014 SPACE HANGAR",
   "atlas_tier": "Canonical OCIO DCC",
   "description": "Enclosed interior: no sky heuristic/card; a semantic ship matte preserves the original foreground layer. Localized SAM3 + SDXL cleanplate.",
   "source_colorspace": "ACEScg",
