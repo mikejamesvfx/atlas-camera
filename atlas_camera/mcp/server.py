@@ -191,20 +191,12 @@ def atlas_read_debug_report(json_path: str = "atlas_debug/master_debug.json") ->
 @mcp.tool()
 def atlas_inspect_viewport(node_id: int) -> str:
     """Summarize a viewport's live payload (GET /atlas/camera_data/{id}):
-    camera meta + every projection layer's name/priority/band/verts/mattes.
-    The census that catches empty layers and band drift without a browser."""
+    camera meta + every projection layer's name/priority/band/verts/mattes,
+    synthesized fill-cell count, and tear/stretch QA. The census that catches
+    empty layers, band drift, and far-fill support cliffs without a browser."""
     d = C.http_json(f"http://{HOST}/atlas/camera_data/{node_id}", timeout=60)
-    layers = []
-    for s in d.get("projection_sources") or []:
-        verts = sum(len(p.get("vertices") or []) for p in s.get("proxy_geometry") or []) // 3
-        layers.append({
-            "name": s.get("name"), "priority": s.get("priority"),
-            "band_m": [s.get("near_m"), s.get("far_m")],
-            "band_geometry": s.get("band_geometry"), "verts": verts,
-            "matte": bool(s.get("mask_b64")),
-            "normal_map": bool(s.get("normal_map_b64")),
-            "hidden_provenance": bool(s.get("hidden_mask_b64")),
-        })
+    layers = [C.summarize_viewport_layer(s)
+              for s in d.get("projection_sources") or []]
     prims = [{"name": p.get("name"), "type": p.get("type")}
              for p in d.get("proxy_geometry") or []]
     return json.dumps({
@@ -299,6 +291,19 @@ RELIEF / BANDS:
   edge-extend smear belongs on the layers BEHIND (frontmost keeps a clean cut).
   One AtlasDepthBandSplit (absolute metres) may feed both sides of a split —
   percentile bands with scoped excludes need band_ref_mask to avoid drift.
+
+HIDDEN SUPPORT BENEATH A REMOVED SUBJECT:
+  The cleanplate image does not inherit trustworthy hidden geometry from the
+  original depth map. For a removed car/castle/person on a continuous road,
+  floor, or headland, run a SECOND AtlasDepthMap on the approved full-frame
+  cleanplate. Feed that depth to a full-range background AtlasCleanPlateLayer
+  (manual, near_pct=0, far_pct=0, fill_occluded=False). Keep original depth
+  only on the explicitly SAM/artist-matted foreground layer. AtlasBoundedBand
+  remains useful to restrain a foreground that extrudes too far; do NOT use
+  its far side + fill_occluded as broad support geometry. That diffusion can
+  place the removed footprint at the cutoff and create a vertical cliff.
+  Verify with atlas_inspect_viewport: the cleanplate support layer should
+  normally report n_filled_cells=0, then orbit-check before DCC export.
 
 SAM3 PROMPTS: SIMPLE NOUN PHRASES joined with "and" — a comma-separated prompt
   silently returns an EMPTY mask, and a relational clause silently DROPS

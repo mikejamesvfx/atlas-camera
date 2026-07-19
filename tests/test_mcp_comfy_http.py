@@ -34,6 +34,35 @@ OI = {
 }
 
 
+def test_summarize_viewport_layer_exposes_hidden_support_qa():
+    source = {
+        "name": "background_clean",
+        "priority": 10.0,
+        "near_m": 0.0,
+        "far_m": None,
+        "band_geometry": "relief",
+        "mask_b64": "png",
+        "normal_map_b64": "",
+        "hidden_mask_b64": "",
+        "proxy_geometry": [
+            {"vertices": [0.0] * 9,
+             "metadata": {"n_filled_cells": 0, "torn_fraction": 0.29,
+                          "stretch_ratio_p95": 3.2}},
+            {"vertices": [0.0] * 6,
+             "metadata": {"n_filled_cells": 4, "torn_fraction": 0.12,
+                          "stretch_ratio_p95": 2.1}},
+        ],
+    }
+
+    summary = C.summarize_viewport_layer(source)
+
+    assert summary["verts"] == 5
+    assert summary["n_filled_cells"] == 4
+    assert summary["torn_fraction_max"] == pytest.approx(0.29)
+    assert summary["stretch_ratio_p95_max"] == pytest.approx(3.2)
+    assert summary["matte"] is True
+
+
 def _out(name, type_, links=None):
     return {"name": name, "type": type_, "links": links if links is not None else [], "slot_index": 0}
 

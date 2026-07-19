@@ -105,11 +105,13 @@ tier) covering the whole pipeline as a graph:
 - **Geometry** — one composable node per strategy (relief mesh, walls,
   towers/spires, roofs/facades, interior room) combined with a Nuke-Merge-style
   `AtlasMergeGeometry`, plus a project-level shot-camera format.
-- **2.5D DMP layer stack** — sky-dome separation, depth-band clean plates with
-  disocclusion fill, `AtlasBoundedBand` (clip a foreground at its own measured
-  depth extent so it stops running away), per-pixel edge mattes and beveled
-  skirts, and hole masks (the literal "where projection shows black" signal).
-  Inpainting stays graph-level.
+- **2.5D DMP layer stack** — sky-dome separation, depth-band clean plates,
+  `AtlasBoundedBand` (clip a foreground at its own measured depth extent so it
+  stops running away), per-pixel edge mattes and beveled skirts, and hole masks
+  (the literal "where projection shows black" signal). For subject removal,
+  the approved cleanplate can be depth-solved independently so road, ground,
+  or architecture continues beneath the removed subject instead of dropping
+  onto a far-band cliff. Inpainting stays graph-level.
 - **Viewport** — `AtlasBlockoutViewport`: real-time camera-projection preview,
   camera-path authoring (dolly/orbit/pan) with baked-frame output, measured
   safe-zone orbit clamps, render passes, and diagnostic overlays (a see-through

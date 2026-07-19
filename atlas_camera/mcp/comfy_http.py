@@ -45,6 +45,31 @@ def fetch_object_info(host: str = DEFAULT_HOST, timeout: int = 120):
     return http_json(f"http://{host}/object_info", timeout=timeout)
 
 
+def summarize_viewport_layer(source: dict) -> dict:
+    """Compact one serialized ProjectionSource for MCP/debug consumers."""
+    geometry = source.get("proxy_geometry") or []
+    verts = sum(len(p.get("vertices") or []) for p in geometry) // 3
+    metadata = [p.get("metadata") or {} for p in geometry]
+    filled_cells = sum(int(m.get("n_filled_cells") or 0) for m in metadata)
+    torn = [float(m["torn_fraction"]) for m in metadata
+            if m.get("torn_fraction") is not None]
+    stretch = [float(m["stretch_ratio_p95"]) for m in metadata
+               if m.get("stretch_ratio_p95") is not None]
+    return {
+        "name": source.get("name"),
+        "priority": source.get("priority"),
+        "band_m": [source.get("near_m"), source.get("far_m")],
+        "band_geometry": source.get("band_geometry"),
+        "verts": verts,
+        "n_filled_cells": filled_cells,
+        "torn_fraction_max": max(torn) if torn else None,
+        "stretch_ratio_p95_max": max(stretch) if stretch else None,
+        "matte": bool(source.get("mask_b64")),
+        "normal_map": bool(source.get("normal_map_b64")),
+        "hidden_provenance": bool(source.get("hidden_mask_b64")),
+    }
+
+
 def is_widget(spec) -> bool:
     """Whether an input spec serializes into positional ``widgets_values``.
 

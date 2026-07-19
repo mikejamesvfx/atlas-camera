@@ -799,6 +799,14 @@ sky heuristic (SolidMask 0 -> `exclude_mask`). Seeds ship pinned
 (`control_after_generate="fixed"` — ComfyUI silently randomizes any widget
 named `seed` otherwise).
 
+**Contact/support surfaces use cleanplate depth.** When a foreground removal
+reveals a continuous road, floor, shoreline, or facade, run a second depth solve
+on the approved cleanplate and project it as a full-range background relief with
+`fill_occluded=false`. Keep original depth on the explicit foreground matte.
+Using the far side of `AtlasBoundedBand` as broad support geometry can diffuse
+the footprint onto the cutoff plane and export a vertical drop; the bounded band
+is still appropriate for clipping a foreground that extrudes too far.
+
 Band-layer meshes stay at the calibrated 384 / 1.5 defaults. The measured
 tear curve explains both numbers — finer grids reduce spurious tears until
 cells approach pixel scale, and the looser edge threshold is safe inside a

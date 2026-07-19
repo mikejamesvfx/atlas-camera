@@ -433,6 +433,14 @@ photo, matte-cut at the real silhouettes — this is what keeps camera view
 honest). Tears in the base mesh are *load-bearing*: they're the openings the
 deeper layers show through.
 
+For a large removed foreground subject sitting on a continuous surface, the
+background support is a special case: depth-solve the approved cleanplate and
+use that full-range result for the cleanplate relief. Keep the original depth
+only on the matte-cut foreground. Do not stretch a far band underneath the
+subject with `fill_occluded`; that can turn the far cutoff into a visible cliff
+under a car, building, or headland. The canonical OCIO/DCC workflows demonstrate
+the two-depth pattern.
+
 Tuning loop: queue at defaults → **🎨 Layers** and fix any black or
 wrong-color region by adjusting the foreground band (and SAM prompts) until
 subjects are solid orange → read the 🔬 node's report (registration rel MAD

@@ -108,7 +108,7 @@ Everything returns compact JSON. Paths passed **to** tools are paths on
 | `atlas_run_workflow` | Flatten a UI-format workflow JSON (KJ Set/Get rails resolved, muted/bypassed nodes handled) and run it to completion. | `workflow_path`; `open_gates=True` (default) opens shipped-closed `AtlasSolveGate`s; `overrides={"12.image": "my.png"}` retargets any widget by node id. |
 | `atlas_validate_workflow` | Lint a workflow against the *live* server's node definitions — positional-widget drift, broken links, out-of-range widgets, dangling rails. | `workflow_path`. Run before `atlas_run_workflow` on hand-edited JSON. |
 | `atlas_read_debug_report` | Read the 🔍 `AtlasDebugReport` JSON — per-layer vertex counts, band ranges, matte coverage, red flags. The one-file autopsy for "why is this layer empty". | `json_path` (default `atlas_debug/master_debug.json`, server-relative). |
-| `atlas_inspect_viewport` | Layer census of a viewport's last execution: projection sources, priorities, band ranges, vertex counts, camera meta. | `node_id` of the `AtlasBlockoutViewport` in the workflow you just ran. |
+| `atlas_inspect_viewport` | Layer census of a viewport's last execution: projection sources, priorities, band ranges, geometry type, vertex counts, synthesized fill cells, tear/stretch QA, and camera meta. | `node_id` of the `AtlasBlockoutViewport` in the workflow you just ran. |
 | `atlas_export_scene` | Fan a saved solve into DCC exporters. | `solve_json_path` (server-relative, from `AtlasExportSolveJSON`); `formats` ⊆ `nuke · nuke_layers · maya_layers · maya_review · blender · usd · review_package`. Layer formats need a solve carrying projection sources. |
 | `atlas_node_catalog` | Machine-readable list of every Atlas node on the server with inputs (widget vs link) and outputs. | Optional `name_filter` substring. |
 
@@ -124,7 +124,8 @@ doctrine travels with the tools:
 
 - **`atlas://calibration`** — the per-scene playbook: which depth model for
   exteriors vs interiors, relief grid/edge values per band, seam-priority
-  rules, and the metric-scale doctrine (including the sky-rise rule: on any
+  rules, the cleanplate-derived hidden-support doctrine, and the metric-scale
+  doctrine (including the sky-rise rule: on any
   plate with buildings, *count a visible building's storeys × 3.5 m* into
   `AtlasReferenceScaleSolve` rather than eyeballing a height — a
   plausible-looking guess was measured ~2.5× off on a real plate).
@@ -158,6 +159,13 @@ doctrine travels with the tools:
                        formats=["nuke_layers", "usd"]
      → written file paths under output_dir
 ```
+
+For subject-removal workflows, inspect the layer census before export. A
+full-frame background cleanplate should normally report zero synthesized fill
+cells and carry relief derived from a second depth solve of the approved
+cleanplate; the original-depth foreground should be explicitly matted. A large
+`n_filled_cells` count beneath a removed subject is a warning that the graph is
+using far-band diffusion instead of continuous support geometry.
 
 ## 7 · Troubleshooting
 

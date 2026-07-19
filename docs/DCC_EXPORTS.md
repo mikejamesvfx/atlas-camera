@@ -91,6 +91,23 @@ only need a clean mesh for a DCC, you no longer need the experimental branch.
 
 ## Nuke — the verified projection topology
 
+### Hidden-support geometry for cleanplates
+
+Nuke and Maya receive exactly the geometry carried by each
+`ProjectionSource`; the exporters cannot repair a poor layer topology. When a
+cleanplate removes a foreground subject from a continuous road, floor, or
+headland, depth-solve the approved cleanplate itself and use that full-range
+depth for the background cleanplate layer. Keep the original depth and an
+explicit SAM/artist matte for the original foreground layer.
+
+This two-depth pattern is intentionally different from a foreground/background
+`AtlasBoundedBand` partition. A bounded split is excellent for stopping a
+foreground relief from running away, but `fill_occluded` on its far side
+diffuses from the far-band boundary. Large subject footprints can therefore be
+placed at the cutoff and export as a vertical drop. The canonical OCIO/DCC
+workflows set `fill_occluded=false` and carry cleanplate-derived support relief
+into both `AtlasExportNukeLayers` and `AtlasExportMayaLayers`.
+
 The projection graph was corrected by *building it live* in Nuke 16.1 with
 `nuke.createNode()` and probing each node's real knobs and inputs. Reading the
 docs produced a plausible-looking graph; running it surfaced four real bugs:
