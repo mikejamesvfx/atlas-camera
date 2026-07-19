@@ -77,12 +77,30 @@ _MODEL_CACHE: dict[tuple[str, str], Any] = {}
 _MODEL_CACHE_MAX = 4
 
 
+# Fixed so that solving the same image twice returns the same camera. The exact
+# value is arbitrary; only its stability matters.
+_CALIBRATE_SEED = 0
+
+
+def _fork_devices(torch: Any, device: str) -> list:
+    """CUDA devices whose RNG fork_rng must also save/restore (empty on CPU —
+    passing a CUDA index there would force a needless CUDA init)."""
+    if not str(device).startswith("cuda") or not torch.cuda.is_available():
+        return []
+    index = torch.device(device).index
+    return [torch.cuda.current_device() if index is None else index]
+
+
 def _get_model(weights: str, device: str) -> Any:
     key = (weights, device)
     model = _MODEL_CACHE.get(key)
     if model is None:
         _, GeoCalib = _require_geocalib()
         model = GeoCalib(weights=weights).to(device)
+        # Inference posture. GeoCalib ships the module in its default
+        # training=True state (21 Dropout + 47 BatchNorm submodules); nothing
+        # here ever trains it.
+        model.eval()
         bounded_cache_set(_MODEL_CACHE, key, model, _MODEL_CACHE_MAX)
     return model
 
@@ -125,7 +143,19 @@ def estimate_camera_prior(
 
     model = _get_model(weights, device)
     image = model.load_image(str(image_path)).to(device)
-    with torch.no_grad():
+    # GeoCalib's calibrate() draws from torch's global RNG, so the SAME image
+    # solved twice used to return a different camera: measured on one plate,
+    # focal spread ~2.5% (1613-1653 px) and roll ~0.7 deg (-1.50 to -2.22) over
+    # four consecutive runs, on both CPU and CUDA. For a camera-solve tool that
+    # is a correctness problem, not noise: roll is exactly what AtlasRollTrim
+    # exists to dial in by hand, and every downstream metric rides the solve.
+    #
+    # fork_rng, NOT a bare torch.manual_seed(): this runs inside ComfyUI, where
+    # clobbering the global RNG would silently change any sampler seeded later
+    # in the same queue. Forking restores the caller's RNG state on exit, so the
+    # determinism is scoped strictly to this call.
+    with torch.no_grad(), torch.random.fork_rng(devices=_fork_devices(torch, device)):
+        torch.manual_seed(_CALIBRATE_SEED)
         result = model.calibrate(image)
 
     cam = result["camera"]
