@@ -21,7 +21,9 @@ def _depth(h, w, normal=None):
 
 
 def _patch_moge(monkeypatch, moge_result):
-    import atlas_camera.comfy.nodes as nodes
+    # AtlasMogeNormals lives in nodes_depth after modularization; its helper
+    # lookups (_save_image_tensor_to_tmp, os) resolve there, so patch that module.
+    import atlas_camera.comfy.nodes_depth as nodes
     monkeypatch.setattr(nodes, "_save_image_tensor_to_tmp", lambda img: "dummy.png")
     monkeypatch.setattr(nodes.os, "unlink", lambda p: None)
     monkeypatch.setattr(

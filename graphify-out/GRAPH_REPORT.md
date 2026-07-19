@@ -1,16 +1,16 @@
 # Graph Report - AtlasCamera_Claude  (2026-07-19)
 
 ## Corpus Check
-- 317 files · ~543,398 words
+- 328 files · ~546,097 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4577 nodes · 12236 edges · 227 communities (204 shown, 23 thin omitted)
-- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 1607 edges (avg confidence: 0.55)
+- 4621 nodes · 11639 edges · 239 communities (208 shown, 31 thin omitted)
+- Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 942 edges (avg confidence: 0.67)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `99b2c2a9`
+- Built from commit: `ce478232`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -179,8 +179,10 @@
 - Atlas Wf Portal Pdf
 - Atlas Wf Solve Lab Pdf
 - Test Node Pack Entrypoint
+- test_comfy_node_registry.py
 - Atlas Viewport Edge Feather Idea
 - Atlas Occlusion Mask Implementation Plan
+- AtlasScopeMask
 - Atlas Wf Ghosttown Pdf
 - Test Ui Api Error Handling
 - Paths
@@ -188,6 +190,7 @@
 - Fixer Finetune Data Plan
 - Atlas Wf City Blocks Pdf
 - Generate Segmented Sdxl Manual Debug Workflo
+- --no-deps Portable-Install Doctrine
 - Init
 - Third Party
 - Comfy Workflow
@@ -230,37 +233,45 @@
 - Readme
 - Readme
 - Pyproject Toml
+- test_angle_patch_nodes.py
 - ConfidenceModel
+- test_node_usage_audit.py
+- compare_depth_backends.py
+- _extrinsics_from_world_matrix
+- __main__.py
+- ExecutionBlocker Gate Family
+- Self-Disarming Scope Fallbacks (AtlasScopeMask)
+- Fixer Render Repair Docker Setup
+- [raw] Camera RAW Extra (rawpy + EXR sidecar)
 
 ## God Nodes (most connected - your core abstractions)
-1. `AtlasIntrinsics` - 154 edges
-2. `LatentCamera` - 145 edges
-3. `DepthResult` - 115 edges
-4. `AtlasProjectionScene` - 113 edges
-5. `USDExporter` - 112 edges
-6. `AtlasCameraPath` - 99 edges
-7. `ProjectionSource` - 98 edges
-8. `constructor()` - 95 edges
-9. `AtlasShotCam` - 93 edges
-10. `AtlasExtrinsics` - 92 edges
+1. `AtlasIntrinsics` - 105 edges
+2. `LatentCamera` - 96 edges
+3. `constructor()` - 95 edges
+4. `AtlasExtrinsics` - 92 edges
+5. `push()` - 75 edges
+6. `AtlasPlateRef` - 67 edges
+7. `AtlasProxyPrimitive` - 60 edges
+8. `copy()` - 57 edges
+9. `DepthResult` - 55 edges
+10. `build_intrinsics()` - 49 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Two Branches: projection_sources vs proxy_geometry` --references--> `AtlasExportReliefMesh`  [EXTRACTED]
-  examples/experimental/README.md → atlas_camera/comfy/nodes.py
-- `Camera RAW Support (release entry)` --references--> `AtlasLoadRAW`  [EXTRACTED]
-  CHANGELOG.md → atlas_camera/comfy/nodes.py
-- `Camera RAW Import Design Rule (EXIF beats GeoCalib)` --rationale_for--> `AtlasLoadRAW`  [EXTRACTED]
-  CLAUDE.md → atlas_camera/comfy/nodes.py
-- `Canonical Workflow Tiers (Quickstart→Cleanplate→Production→Trust→Research)` --references--> `AtlasLoadRAW`  [EXTRACTED]
-  examples/showcase/ATLAS_CANONICAL_WORKFLOWS.md → atlas_camera/comfy/nodes.py
-- `Atlas v1 Showcase Workflow Set (full node coverage)` --references--> `AtlasLoadRAW`  [EXTRACTED]
-  examples/showcase/README.md → atlas_camera/comfy/nodes.py
+- `test_resize_normal_field_direct()` --calls--> `_resize_normal_field()`  [INFERRED]
+  tests/test_moge_normals_node.py → atlas_camera/comfy/node_helpers.py
+- `test_parse_view_prompt_rejects_garbage()` --calls--> `_parse_view_prompt()`  [INFERRED]
+  tests/test_extract_angle.py → atlas_camera/comfy/node_helpers.py
+- `test_parse_view_prompt_round_trips_every_named_view_combination()` --calls--> `_parse_view_prompt()`  [INFERRED]
+  tests/test_extract_angle.py → atlas_camera/comfy/node_helpers.py
+- `test_derive_applies_preset_overrides_for_relief_quality_depth_edge_rel_and_max_objects()` --calls--> `AtlasDeriveProjectionGeometry`  [INFERRED]
+  tests/test_scene_type_preset.py → atlas_camera/comfy/nodes_geometry.py
+- `test_preset_resolution_matches_derive_override_logic()` --calls--> `AtlasDeriveProjectionGeometry`  [INFERRED]
+  tests/test_scene_type_preset.py → atlas_camera/comfy/nodes_geometry.py
 
 ## Import Cycles
 - None detected.
 
 ## Hyperedges (group relationships)
-- **Research-Only Hidden-Geometry Tier** — third_party_lari, third_party_world_tracing, atlas_camera_comfy_nodes_atlaspredicthiddengeometry, install_lari_setup, third_party_research_only_backends, claude_atlas_experimental_gate [EXTRACTED 1.00]
 - **Selectable Depth Backend Family (V2 / DA3 / MoGe)** — third_party_depth_anything_v2, third_party_depth_anything_3, install_moge_backend, changelog_da3_default_reversal [EXTRACTED 1.00]
 - **Run-Verified Example Catalogs Outside the Shipping Pin** — examples_api_format_readme_api_workflows, examples_retopo_readme_retopo_demos, examples_showcase_readme_showcase_set, examples_showcase_atlas_canonical_workflows_canonical_tiers, examples_experimental_readme_shipping_pin [INFERRED 0.85]
 - **Published Documentation Artifact Family** — docs_artifacts_readme_artifact_sources, docs_artifacts_atlas_examples_catalog_examples_catalog, docs_artifacts_atlas_layered_guide_buildup_guide, docs_artifacts_atlas_staged_master_guide_operators_guide, docs_artifacts_atlas_tech_details_measurements [EXTRACTED 1.00]
@@ -274,23 +285,23 @@
 - **OCIO / ACEScg Float Pipeline Workflows** — docs_showcase_pdfs_atlas_wf_oceancastle_ocio_layered_dmp_workflow, docs_showcase_pdfs_atlas_wf_hangar_interior_hangar_workflow, docs_showcase_pdfs_atlas_wf_ghosttown_ghosttown_cameramove_workflow, docs_showcase_pdfs_atlas_wf_jungleruins_jungleruins_workflow [EXTRACTED 1.00]
 - **Measurement Charts Behind Atlas Defaults (torn fraction backends, torn vs grid, registration rel-MAD)** — docs_images_chart_da3_vs_v2_chart_torn_fraction_v2_vs_da3, docs_images_chart_torn_vs_grid_chart_torn_fraction_vs_relief_grid, docs_images_chart_relmad_backends_chart_registration_rel_mad [INFERRED 0.75]
 
-## Communities (227 total, 23 thin omitted)
+## Communities (239 total, 31 thin omitted)
 
 ### Community 0 - "Three.js Bundle Core"
 Cohesion: 0.01
-Nodes (97): a0(), absarc(), absellipse(), apply(), arc(), Bc(), Br(), contain() (+89 more)
+Nodes (102): a0(), absarc(), absellipse(), apply(), arc(), Bc(), Br(), contain() (+94 more)
 
 ### Community 1 - "Three.js Math Primitives"
 Cohesion: 0.03
 Nodes (150): ab(), accumulate(), accumulateAdditive(), add(), addLevel(), addScalar(), addScaledSH(), addScaledVector() (+142 more)
 
 ### Community 2 - "ComfyUI Atlas Node Registry"
-Cohesion: 0.04
-Nodes (107): AtlasApplyScaleReferences, AtlasAttachSourcePlate, AtlasBoundedBand, AtlasConstrainedSolve, AtlasDebugReport, AtlasDecomposeCamera, AtlasDecomposeSolve, AtlasDepthAnything (+99 more)
+Cohesion: 0.08
+Nodes (48): Central ComfyUI registration for Atlas Camera.  Imports every node class from it, AtlasDefineShotCam, AtlasDeriveInteriorRoom, AtlasDeriveProjectionGeometry, AtlasDeriveReliefMesh, AtlasDeriveRoofsFacades, AtlasDeriveTowersSpires, AtlasDeriveWalls (+40 more)
 
 ### Community 3 - "FBX Loader & Scene Assembly"
 Cohesion: 0.04
-Nodes (84): addGlobalSceneSettings(), addGroup(), _applyTexData(), bindLightTargets(), bindSkeletons(), cb(), createCurve(), createDataTexture() (+76 more)
+Nodes (83): addGlobalSceneSettings(), addGroup(), _applyTexData(), bindLightTargets(), bindSkeletons(), cb(), convertSRGBToLinear(), copySRGBToLinear() (+75 more)
 
 ### Community 4 - "Mesh Hole Repair"
 Cohesion: 0.05
@@ -309,60 +320,60 @@ Cohesion: 0.08
 Nodes (50): _abs_error(), _benchmark_colmap_image(), benchmark_eth3d(), BenchmarkOptions, BenchmarkRecord, _error_record(), _fov_error(), _matrix_multiply() (+42 more)
 
 ### Community 8 - "VLM Image Assessment"
-Cohesion: 0.06
-Nodes (59): _image_fingerprint(), Short identity hash of an IMAGE tensor (16x-subsampled digest) — the     approv, assess_image(), _assessment_response_format(), AssessmentResult, format_assessment_report(), format_parse_failure_report(), _looks_like_assessment() (+51 more)
+Cohesion: 0.10
+Nodes (31): AtlasAssessImage, VLM pre-flight for the whole DMP pipeline — wire it directly after     LoadImage, AssessmentResult, Parsed VLM assessment plus a formatted human-readable report., _canned(), _fake_provider(), _FakeVisionHelper, Tests for the VLM image-assessment pre-flight (inference.assessor + AtlasAssess (+23 more)
 
 ### Community 9 - "Node Method Dispatch"
-Cohesion: 0.11
-Nodes (26): build_relief_mesh(), build_sky_dome_mesh(), Any, Depth relief mesh — a triangulated, decimated depth map for DCC handoff.  Unli, Triangulate a forward-z depth map into a world-space relief mesh.      ``grid_, Triangulated depth mesh in Atlas world space (Y-up, metres).      ``vertices``, Build a same-camera 'sky dome' patch: a constant-radius shell covering     only, ReliefMesh (+18 more)
+Cohesion: 0.10
+Nodes (29): assess_image(), _assessment_response_format(), format_assessment_report(), format_parse_failure_report(), _looks_like_assessment(), _offload_after_assessment(), Any, Path (+21 more)
 
 ### Community 10 - "Export-Only Retopology"
-Cohesion: 0.08
-Nodes (51): apply_retopo(), decimate_quadric(), Any, ndarray, Export-only retopology for Atlas relief meshes — CPU, M2-safe, no CUDA.  Atlas, Convert a quad / quad-dominant face array to triangles.      ``pyinstantmeshes, Quad-retopologize via ``pyinstantmeshes.remesh``.      Returns ``(out_vertices, Quadric-decimate via ``trimesh.simplify_quadric_decimation``.      ``trimesh`` (+43 more)
+Cohesion: 0.07
+Nodes (58): AtlasExportReliefMesh, Export a depth relief mesh (OBJ + MTL + texture) for Maya / Nuke / ZBrush., apply_retopo(), decimate_quadric(), Any, ndarray, Export-only retopology for Atlas relief meshes — CPU, M2-safe, no CUDA.  Atlas, Convert a quad / quad-dominant face array to triangles.      ``pyinstantmeshes (+50 more)
 
 ### Community 11 - "Depth Band & Sky Layers"
-Cohesion: 0.13
-Nodes (45): AtlasCleanPlateLayer, AtlasDepthLayerMask, One depth band -> (layer_mask, occlusion_mask). Composable: instantiate     onc, Inpainted clean plate + depth band -> append a ProjectionSource.      Behaves, _depth_result(), _occluder_depth(), Per-layer scoped excludes change each layer's depth population, so the     same, A depth result carrying predicted normals (MoGe *-normal) → the layer's     Pro (+37 more)
+Cohesion: 0.05
+Nodes (103): AtlasBoundedBand, AtlasDepthLayerMask, 📏 Measure the FOREGROUND's own metric depth extent and emit ONE     `ATLAS_BAND_, One depth band -> (layer_mask, occlusion_mask). Composable: instantiate     once, AtlasCleanPlateLayer, AtlasSkyDomeLayer, Same-camera sky clean-plate, projected onto a simple constant-depth     card ins, Inpainted clean plate + depth band -> append a ProjectionSource.      Behaves li (+95 more)
 
 ### Community 12 - "Multimodal VLM Providers"
-Cohesion: 0.08
-Nodes (28): _apply_band_split(), Resolve a metric depth band from explicit metres (``near_m``/``far_m``,     0 =, Resolve the effective band, honoring a connected `band_split`.      With a spl, _resolve_depth_band(), _DynPromptStub, _foreground_lower_half_mask(), Tests for the inpaint-layers nodes (AtlasDepthLayerMask, AtlasCleanPlateLayer), Minimal DynPrompt: reports the named inputs as graph links (lists),     mirrori (+20 more)
+Cohesion: 0.05
+Nodes (44): _blockout_cache_set(), _clone_solve_with_metadata(), _comfy_registry(), _decode_b64_to_tensor(), _execution_blocker(), _extract_blockout_camera(), _fit_long_edge(), _graph_builder() (+36 more)
 
 ### Community 13 - "Inference Shared Helpers"
 Cohesion: 0.12
-Nodes (30): bounded_cache_set(), Any, Shared helpers for the inference layer's lazily-imported torch models.  A leaf, cuda -> mps -> cpu autodetect. Was duplicated verbatim in     depth_estimator.p, Insert into a module-level cache dict, evicting the oldest entry (dict     pres, resolve_device(), _get_lari_model(), LayeredDepthResult (+22 more)
+Nodes (29): bounded_cache_set(), Any, Shared helpers for the inference layer's lazily-imported torch models.  A leaf, cuda -> mps -> cpu autodetect. Was duplicated verbatim in     depth_estimator.p, Insert into a module-level cache dict, evicting the oldest entry (dict     pres, resolve_device(), _get_lari_model(), LayeredDepthResult (+21 more)
 
 ### Community 14 - "Maya Export & Film Units"
 Cohesion: 0.19
 Nodes (19): arbitrary_plane_axes(), back_project_normals(), BackProjection, build_backdrop_primitive(), fit_ground_and_scale(), GroundFit, plane_transform(), Any (+11 more)
 
 ### Community 15 - "Camera Solver Core"
-Cohesion: 0.10
-Nodes (49): AtlasExtrinsics, _attach_depth_component(), _attach_reference_scale(), _attach_scale_measurements(), _camera_confidence(), CameraFromVanishingPoints, _constraint_image_size(), _constraint_intrinsics_hint() (+41 more)
+Cohesion: 0.14
+Nodes (29): _attach_scale_measurements(), CameraFromVanishingPoints, _constraint_scale_measurements(), _fallback_focal_note(), _first_available(), _guided_vp_result(), _horizon_endpoints(), _json_safe_camera_result() (+21 more)
 
 ### Community 16 - "UI Package Dependencies"
 Cohesion: 0.05
 Nodes (41): esbuild, jsdom, lucide-react, react, react-dom, @testing-library/jest-dom, @testing-library/react, @testing-library/user-event (+33 more)
 
 ### Community 17 - "DCC Exporter Package"
-Cohesion: 0.09
-Nodes (31): load_solve_json(), AtlasSolve, Path, JSON IO for Atlas solves., save_solve_json(), Portable Atlas latent-scene data schema.  Core convention: - World coordinate, BlenderExporter, DCC and package exporters. (+23 more)
+Cohesion: 0.03
+Nodes (62): _extrinsics_from_view(), _format_hole_fill_report(), Human-readable summary of an interior hole fill, for the export node.      The f, A deep copy of ``solve`` whose relief-mesh primitive is ``mesh``.      Lets the, The relief mesh already derived onto a solve (AtlasDeriveReliefMesh /     AtlasI, Record where a RAW import's hints came from on the solve (in place)., Write a new 4x4 world→cam view matrix onto ``extr`` and rebuild the     rigid fa, Refresh the stored horizon line for a re-oriented camera (the RollTrim     vanis (+54 more)
 
 ### Community 18 - "Atlas Three Bundle"
-Cohesion: 0.13
-Nodes (17): center(), convertSRGBToLinear(), copySRGBToLinear(), createMaterialFromType(), Ei(), getWorldDirection(), Hy(), makeScale() (+9 more)
+Cohesion: 0.06
+Nodes (39): addInstance(), addMorphTargets(), copyPosition(), createMaterialFromType(), cS(), Da(), determinantAffine(), dh() (+31 more)
 
 ### Community 19 - "Schema"
-Cohesion: 0.05
-Nodes (44): addInstance(), addMorphTargets(), Af(), clone(), convertArray(), copyPosition(), cS(), Da() (+36 more)
+Cohesion: 0.09
+Nodes (25): Af(), clone(), convertArray(), e_(), fromEquirectangularTexture(), gM(), ib(), Jm() (+17 more)
 
 ### Community 20 - "Nodes"
-Cohesion: 0.07
-Nodes (39): AtlasBlockoutViewport, AtlasDefineShotCam, AtlasRegisterPlate, _blockout_cache_set(), _extract_blockout_camera(), _fit_long_edge(), _output_profile_to_dict(), _plate_ref_to_dict() (+31 more)
+Cohesion: 0.18
+Nodes (19): _fit_aspect_to_long_edge(), intrinsics_from_shot_cam(), Canonical pinhole intrinsics for a project-level shot format —     independent, Pixel (width, height) preserving the sensor's mm aspect ratio, with the     lon, AtlasShotCam, Project-level render/output camera format — sensor + lens + target     resoluti, Tests for AtlasShotCam — the project-level render/output camera format (sensor, _solve() (+11 more)
 
 ### Community 21 - "Proxy Geometry"
-Cohesion: 0.20
-Nodes (22): _anchor_wall_to_ground(), _cluster_walls_by_azimuth(), _derive_objects(), derive_projection_proxies(), derive_vertical_extrusion_proxies(), _dilate_mesh_primitive(), _dilate_plane_primitive(), _dilate_volume_primitive() (+14 more)
+Cohesion: 0.14
+Nodes (36): _anchor_wall_to_ground(), _cluster_walls_by_azimuth(), _derive_objects(), derive_projection_proxies(), derive_vertical_extrusion_proxies(), _dilate_mesh_primitive(), _dilate_plane_primitive(), dilate_proxy_geometry_for_preview() (+28 more)
 
 ### Community 22 - "App"
 Cohesion: 0.07
@@ -370,11 +381,11 @@ Nodes (27): AnalysisPanel(), buildCameraSpec(), CameraSpec, confidenceTone(), co
 
 ### Community 23 - "Nodes"
 Cohesion: 0.10
-Nodes (42): build_intrinsics(), derive_sensor_height_mm(), Build normalized pinhole intrinsics from lens or pixel hints., AtlasProxyPrimitive, write_maya_scene_script(), _extrinsics_from_world_matrix(), Any, Matrix4 (+34 more)
+Nodes (24): DCC-agnostic camera solve core., build_intrinsics(), derive_sensor_height_mm(), focal_length_mm_to_pixels(), Camera intrinsics helpers., Build normalized pinhole intrinsics from lens or pixel hints., Path, AtlasCamera (+16 more)
 
 ### Community 24 - "Vanishing-Point Solve"
-Cohesion: 0.14
-Nodes (27): AtlasVanishingPoint, solve_still_image(), draw_debug_overlay(), fit_vanishing_point_from_lines(), flatten_line_segment(), horizon_from_vanishing_points(), intersect_lines(), line_from_points() (+19 more)
+Cohesion: 0.13
+Nodes (29): AtlasHorizon, AtlasVanishingPoint, solve_still_image(), draw_debug_overlay(), fit_vanishing_point_from_lines(), flatten_line_segment(), horizon_from_vanishing_points(), intersect_lines() (+21 more)
 
 ### Community 25 - "Scene Health & Trust"
 Cohesion: 0.24
@@ -389,24 +400,24 @@ Cohesion: 0.09
 Nodes (38): addGeometry(), applyBoneTransform(), cn(), computeLineDistances(), computeTangents(), computeVertexNormals(), createMesh(), Fr() (+30 more)
 
 ### Community 28 - "Relief Mesh Tests"
-Cohesion: 0.13
-Nodes (37): _build(), _occluder_scene(), Tests for the depth relief mesh (DCC handoff geometry).  Analytic depth scenes, Analytic z-depth: min over sky, ground plane Y=0, wall at z=wall_z., Ground + far wall + a finite-width near occluder (columns col_lo..col_hi)., Same analytic scene, but the flat SKY constant is replaced with noisy,     spat, AtlasExportReliefMesh's helper must return the relief mesh already on the     s, _scene_depth() (+29 more)
+Cohesion: 0.06
+Nodes (75): build_sky_dome_mesh(), Any, Depth relief mesh — a triangulated, decimated depth map for DCC handoff.  Unli, Triangulated depth mesh in Atlas world space (Y-up, metres).      ``vertices``, Build a same-camera 'sky dome' patch: a constant-radius shell covering     only, ReliefMesh, _require_numpy(), export_relief_mesh() (+67 more)
 
 ### Community 29 - "ComfyUI Adapter & MCP Server"
 Cohesion: 0.06
 Nodes (31): _atlas_get_camera_data(), ComfyUI adapter package.  Importing this package must not require ComfyUI. Nod, Atlas Camera MCP server — expose a running ComfyUI + Atlas node pack to MCP-cap, atlas_export_scene(), atlas_health(), atlas_inspect_viewport(), atlas_node_catalog(), atlas_read_debug_report() (+23 more)
 
 ### Community 30 - "Scene Health Report Parity"
-Cohesion: 0.06
-Nodes (62): Export-summary warning when the solve's metric scale isn't verified.      Sing, _scale_summary_suffix(), _camera_height(), _depth_is_metric(), evaluate_scene_health(), _flag(), HealthFlag, HealthReport (+54 more)
+Cohesion: 0.17
+Nodes (21): evaluate_scene_health(), Evaluate the layered scene's red flags (the AtlasDebugReport checks).      ``d, _black_png_b64(), _cam(), _FakeDepth, _flagged_solve(), _mesh_qa_solve(), _prim() (+13 more)
 
 ### Community 31 - "Depth Estimation Backends"
 Cohesion: 0.09
 Nodes (37): _da3_metric_from_canonical(), _DA3StubAny, _disparity_to_depth(), estimate_depth(), _estimate_depth_da3(), _estimate_depth_moge(), _estimate_depth_v2(), _get_da3_model() (+29 more)
 
 ### Community 32 - "Geometry Derivation Nodes"
-Cohesion: 0.13
-Nodes (28): AtlasDeriveInteriorRoom, AtlasDeriveReliefMesh, AtlasDeriveRoofsFacades, AtlasDeriveTowersSpires, AtlasDeriveWalls, Continuous depth-following relief mesh — one job, so there's no     geometry_mo, Vertical wall planes + foreground boxes/cylinders (azimuth_walls) — one     job, Vertical wall planes extruded to the real image-space silhouette top     (verti (+20 more)
+Cohesion: 0.29
+Nodes (17): _all_tagged(), _depth_result(), _proxy_names(), Tests for the composable geometry-derivation nodes (AtlasDeriveReliefMesh, Atla, Level camera at (0, h, 0), identity rotation — world->cam translation only., Ground plane (Y=0) + one fronto-parallel wall at world z=wall_z, height wall_h., _room_depth(), _solve() (+9 more)
 
 ### Community 33 - "PMREM Environment Prefiltering"
 Cohesion: 0.08
@@ -414,131 +425,127 @@ Nodes (34): _allocateTargets(), am(), _applyGGXFilter(), _applyPMREM(), _blur(),
 
 ### Community 34 - "Camera Math & Units"
 Cohesion: 0.12
-Nodes (34): estimate_focal_with_fallback(), focal_length_to_fov(), fov_to_focal_length(), inches_to_mm(), look_at_view_matrix(), normalized_film_offset_to_pixel_offset(), orbit_camera(), pixel_offset_to_normalized_film_offset() (+26 more)
+Nodes (33): estimate_focal_with_fallback(), focal_length_to_fov(), fov_to_focal_length(), inches_to_mm(), look_at_view_matrix(), mm_to_inches(), normalized_film_offset_to_pixel_offset(), orbit_camera() (+25 more)
 
 ### Community 35 - "Three.js Minified Internals"
-Cohesion: 0.08
-Nodes (40): a_(), aa(), ar(), be(), c_(), conjugate(), d_(), em() (+32 more)
+Cohesion: 0.10
+Nodes (33): a_(), aa(), ar(), be(), c_(), conjugate(), d_(), em() (+25 more)
 
 ### Community 36 - "React Projection Viewport"
 Cohesion: 0.12
 Nodes (30): texture(), addDepthOverlay(), addProjectionGround(), buildAtlasViewUniform(), createProjectionMaterial(), CameraAnalysis, Viewport3DMode, Viewport3DProxyObject (+22 more)
 
 ### Community 37 - "Project Manifest"
-Cohesion: 0.15
-Nodes (30): build_project_manifest(), file_md5(), _identity_hash_of(), load_project_manifest(), manifest_identity_hash(), _models_info(), _plate_info(), Any (+22 more)
+Cohesion: 0.16
+Nodes (31): build_project_manifest(), file_md5(), _identity_hash_of(), load_project_manifest(), manifest_identity_hash(), ManifestArtifact, _models_info(), _plate_info() (+23 more)
 
 ### Community 38 - "Clean Plate Stack"
-Cohesion: 0.33
-Nodes (11): AtlasCleanPlateStack, 🧽 Up to FOUR artist-painted cleanplates + alphas → layered scene.      The mul, _depth(), _matte(), _plate(), AtlasCleanPlateStack — up to four artist plates + alphas as one node.  Contracts, _solve(), test_incomplete_and_empty_slots_skip_soft() (+3 more)
+Cohesion: 0.32
+Nodes (11): AtlasCleanPlateStack, 🧽 Up to FOUR artist-painted cleanplates + alphas → layered scene.      The multi, _depth(), _matte(), _plate(), AtlasCleanPlateStack — up to four artist plates + alphas as one node.  Contracts, _solve(), test_incomplete_and_empty_slots_skip_soft() (+3 more)
 
 ### Community 39 - "Plate Registration & Export"
-Cohesion: 0.23
-Nodes (14): Camera RAW import (NEF / CR2 / CR3 / RAF / ARW) — optional [raw] extra.  Impor, Best-evidence-first sensor-size cascade, provenance recorded.      Mirrors the, RawMetadata, resolve_sensor_size(), SensorResolution, Camera-body registry + RAW sensor-size fallback chain (stdlib-only)., test_explicit_lens_name_wins_over_makernote(), test_missing_lens_name_derives_descriptor_with_warning() (+6 more)
+Cohesion: 0.14
+Nodes (27): _mel_safe_path(), AtlasSolve, Path, Write a MEL launcher beside maya_open_scene.py in the review package directory., write_maya_mel_launcher(), write_maya_scene_script(), _solve_with_proxies(), test_maya_exporter_applies_world_matrix() (+19 more)
 
 ### Community 40 - "Marketing Workflow Generators"
 Cohesion: 0.08
 Nodes (27): build(), _cleanplate_source(), _exr_source(), main(), _parse_args(), Namespace, Generate the three canonical ACEScg clean-plate/DCC workflows.  The UI-format wi, Scene (+19 more)
 
 ### Community 41 - "Intrinsics & USD Camera Load"
-Cohesion: 0.07
-Nodes (26): Shared recovered-object contracts for Atlas core types., clamp_confidence(), ConfidenceModel, Any, Structured confidence metadata for recovered Atlas objects., Relative heuristic confidence, not calibrated probability., DCC-agnostic camera solve core., AtlasHorizon (+18 more)
+Cohesion: 0.09
+Nodes (19): Any, Protocol, Shared recovered-object contracts for Atlas core types., Minimal shared surface for concrete recovered objects., RecoveredObject, clamp_confidence(), ConfidenceModel, Any (+11 more)
 
 ### Community 42 - "Patch View Projection"
 Cohesion: 0.14
-Nodes (25): AtlasAddPatchView, Add an AI novel-view "patch" to fill areas the primary camera can't see., _decode_matte(), _patch_estimate_depth(), Tests for AtlasAddPatchView — the multi-angle patch projection node.  The heav, mask_unseen_only embeds a matte of where the PRIMARY can't project at     the p, When primary_depth is wired, the patch's metric scale is REGISTERED to     the, A SAM mask of the PATCH image's sky must keep those pixels out of the     patch (+17 more)
+Nodes (25): AtlasAddPatchView, Add an AI novel-view "patch" to fill areas the primary camera can't see.      Ca, _decode_matte(), _patch_estimate_depth(), Tests for AtlasAddPatchView — the multi-angle patch projection node.  The heav, mask_unseen_only embeds a matte of where the PRIMARY can't project at     the p, When primary_depth is wired, the patch's metric scale is REGISTERED to     the, A SAM mask of the PATCH image's sky must keep those pixels out of the     patch (+17 more)
 
 ### Community 43 - "Hidden Geometry Prediction"
-Cohesion: 0.13
-Nodes (23): fill_hidden_gaps(), Any, Hidden-surface selection from layered ray intersections (EXPERIMENTAL).  Pure-, Per-pixel first-clearing-layer selection -> hidden-surface depth map.      For, Robust scale registering a layered stack's layer-0 to a trusted depth map., Diffuse sparse hidden-depth predictions across ``region`` -> one     coherent s, register_layers_to_depth(), _require_numpy() (+15 more)
+Cohesion: 0.12
+Nodes (25): fill_hidden_gaps(), Any, Hidden-surface selection from layered ray intersections (EXPERIMENTAL).  Pure-, Per-pixel first-clearing-layer selection -> hidden-surface depth map.      For, Robust scale registering a layered stack's layer-0 to a trusted depth map., Diffuse sparse hidden-depth predictions across ``region`` -> one     coherent s, register_layers_to_depth(), _require_numpy() (+17 more)
 
 ### Community 44 - "Sky Mask & Camera Validity"
 Cohesion: 0.16
 Nodes (28): detect_sky_mask(), primary_camera_validity_mask(), Test a field of world points against a SECOND ("primary") camera's     projecti, Heuristic sky mask: pixels above the horizon whose depth is unreliable.      M, True when a candidate sky mask has the interior-misfire signature:     meaningf, _sky_mask_incoherent(), _building_and_noisy_sky_depth(), _primary_camera() (+20 more)
 
 ### Community 45 - "Multimodal Provider Factory"
-Cohesion: 0.07
-Nodes (46): Optional inference helpers around the Atlas core., _capability_info(), create_multimodal_provider(), _extend_warnings(), _humanize_guidance_text(), _image_base64(), _image_data_url(), LlamaCppVisionProvider (+38 more)
+Cohesion: 0.09
+Nodes (17): Optional inference helpers around the Atlas core., create_multimodal_provider(), LlamaCppVisionProvider, LMStudioVisionProvider, MultimodalProvider, MultimodalSceneHelper, OllamaVisionProvider, OllamaVisionSceneHelper (+9 more)
 
 ### Community 46 - "Relief Mesh Construction"
 Cohesion: 0.15
-Nodes (20): _define_ground_plane(), _define_projection_material(), _gf_mat4(), _import_pxr(), _import_pxr_full(), Any, AtlasSolve, Path (+12 more)
+Nodes (19): _define_ground_plane(), _define_projection_material(), _gf_mat4(), _import_pxr(), _import_pxr_full(), Any, AtlasSolve, Path (+11 more)
 
 ### Community 47 - "Confidence Model"
-Cohesion: 0.22
-Nodes (10): _ramp_depth(), Continuous tilted plane: depth increases linearly L->R. Constant normal., Two symmetric planes meeting at a sharp V ridge down the middle., A smooth tilted plane has a constant normal, so the bend test must not     tear, A ~90 deg fold tears at a tight threshold but not a loose one., _tent_depth(), test_normal_edge_deg_keeps_continuous_grazing_plane(), test_normal_edge_deg_off_is_a_noop() (+2 more)
+Cohesion: 0.17
+Nodes (20): _extend_warnings(), _humanize_guidance_text(), _image_base64(), _image_data_url(), _longest_guidance_word(), _looks_space_stripped(), _model_string_list(), MultimodalSceneObservation (+12 more)
 
 ### Community 48 - "UI Project Analysis"
-Cohesion: 0.09
-Nodes (62): create_or_open_project(), get_file(), get_project(), post_analyze(), post_export(), post_export_camera_usd(), post_llm_guidance(), post_llm_models() (+54 more)
+Cohesion: 0.20
+Nodes (24): _analysis_notes(), _analysis_readiness(), _analysis_solve(), analyze_project(), AtlasUiProject, camera_analysis_response(), default_constraints(), _determinant3() (+16 more)
 
 ### Community 49 - "Proxy Geometry Tests"
 Cohesion: 0.20
 Nodes (25): _by_prefix(), _derive(), _ground_depth(), _local_z(), Tests for depth-derived proxy geometry (camera-projection blockout).  Analytic, A wall (azimuth_walls' own documented ceiling) with a wide, smoothly     sloped, Level camera at (0, h, 0), identity rotation (world→cam translation only)., z-depth of the ground plane Y=0 for a camera at height h (inf if none). (+17 more)
 
 ### Community 50 - "Extract Angle & Gates"
-Cohesion: 0.11
-Nodes (25): _execution_blocker(), _parse_view_prompt(), Parse a Multiple-Angles LoRA prompt — "<sks> [azimuth] [elevation]     [distanc, Short identity hash of (recovered camera, source image) — stamped into     📐 Ex, ComfyUI's ExecutionBlocker sentinel (silent variant), or None outside a     Com, _solve_fingerprint(), ground_lookat_pivot(), Point3D (+17 more)
+Cohesion: 0.12
+Nodes (24): Short identity hash of (recovered camera, source image) — stamped into     📐 Ext, _solve_fingerprint(), AtlasBlockoutViewport, Browser-based 3D blockout viewport initialized with the recovered camera.     Pa, ground_lookat_pivot(), Point3D, Where the camera's forward ray meets the ground plane Y=0.      The natural or, _extract_delta_js_mirror() (+16 more)
 
 ### Community 51 - "Depth Back-Projection"
 Cohesion: 0.11
 Nodes (22): addUpdateRange(), fb(), getCurrentNode(), getPrevNode(), getValueSize(), InterpolantFactoryMethodBezier(), InterpolantFactoryMethodDiscrete(), InterpolantFactoryMethodLinear() (+14 more)
 
 ### Community 52 - "Nuke Exporter"
-Cohesion: 0.15
-Nodes (24): AtlasSolve, Path, Write the same camera-projection graph as `write_nuke_projection_script`     as, write_nuke_native_script(), write_nuke_projection_script(), test_nuke_exporter_creates_required_nodes(), test_nuke_exporter_defaults_to_flat_card_without_relief_mesh(), test_nuke_exporter_embeds_world_matrix() (+16 more)
+Cohesion: 0.11
+Nodes (30): AtlasSolve, Path, Write the same camera-projection graph as `write_nuke_projection_script`     as, write_nuke_native_script(), write_nuke_projection_script(), primary_plate_colorspace(), primary_plate_path(), AtlasSolve (+22 more)
 
 ### Community 53 - "UI Backend Entry"
-Cohesion: 0.15
-Nodes (19): MultimodalSceneObservation, Run the Atlas Camera local UI backend., create_project(), _image_size(), save_constraints(), _guided_constraints(), test_load_constraints_merges_solver_and_ui_state(), test_save_constraints_splits_viewport3d_to_ui_state() (+11 more)
+Cohesion: 0.17
+Nodes (22): create_project(), _image_size(), load_constraints(), promote_scale_cue(), Convert an LLM-detected bbox into a scale constraint and append it to constraint, reference_response(), save_constraints(), _guided_constraints() (+14 more)
 
 ### Community 54 - "UI REST API"
 Cohesion: 0.31
 Nodes (15): extract_room_cuboid(), Any, Derive a floor + up to 4 Manhattan-aligned walls + optional ceiling     (+ back, _require_numpy(), _by_prefix(), Tests for gravity-aligned Manhattan room-cuboid fitting (interiors).  Self-conta, Analytic depth of a (possibly Y-rotated) corridor room: floor, optional     ceil, _room_depth() (+7 more)
 
 ### Community 55 - "RAW Load Node"
-Cohesion: 0.16
-Nodes (16): Resolve (focal_hint, sensor_w, sensor_h) from widget values + an     optionally, _resolve_raw_hints(), _fake_result(), _patch_import(), AtlasLoadRAW node + raw_meta hint precedence (mocked import_raw — no rawpy)., Positional widget serialization: these orders are frozen forever., test_exr_failure_degrades_to_proxy(), test_hint_precedence_explicit_sensor_widget_wins() (+8 more)
+Cohesion: 0.12
+Nodes (20): Resolve (focal_hint, sensor_w, sensor_h) from widget values + an     optionally, _resolve_raw_hints(), AtlasLoadRAW, 📷 Camera RAW loader (NEF / CR2 / CR3 / RAF / ARW) — [raw] extra.      One node r, Write the scene-linear half-float EXR. Returns (path, warning)., RawImportResult, _fake_result(), _patch_import() (+12 more)
 
 ### Community 56 - "Occlusion Mask"
 Cohesion: 0.21
-Nodes (19): AtlasOcclusionMask, Mask where a target/patch novel view has geometry the PRIMARY camera     could, _patch_estimate_depth(), _primary_depth_result(), Tests for AtlasOcclusionMask — the primary-camera-coverage mask node.  Mirrors, Wiring 📐 Extract Angle's patch_prompt into patch_view_override must     produce, Replace the depth model with a synthetic downward ground ramp., _synthetic_primary() (+11 more)
+Nodes (19): AtlasOcclusionMask, Mask where a target/patch novel view has geometry the PRIMARY camera     could n, _patch_estimate_depth(), _primary_depth_result(), Tests for AtlasOcclusionMask — the primary-camera-coverage mask node.  Mirrors, Wiring 📐 Extract Angle's patch_prompt into patch_view_override must     produce, Replace the depth model with a synthetic downward ground ramp., _synthetic_primary() (+11 more)
 
 ### Community 57 - "Scene Health Gate"
-Cohesion: 0.21
-Nodes (22): AtlasSceneHealthGate, _health_summary_suffix(), 🩺 Scene-health checkpoint before the exporters — Gate 4 of the family.      Ru, Export-summary marker when a scene-health stamp records warn/fail.      Reads, ExecutionBlocker Gate Family, _cam(), comfy_runtime(), FakeBlocker (+14 more)
+Cohesion: 0.25
+Nodes (19): AtlasSceneHealthGate, 🩺 Scene-health checkpoint before the exporters — Gate 4 of the family.      Runs, _cam(), comfy_runtime(), FakeBlocker, _healthy_solve(), _img(), AtlasSceneHealthGate 🩺 — Gate 4: scene-health checkpoint before export.  Mirro (+11 more)
 
 ### Community 58 - "Three.js Texture Conversion"
-Cohesion: 0.18
-Nodes (21): make_atlas_solve(), Tests for the upgraded USDExporter.  usd-core is an optional dependency so eve, test_usd_export_camera_animation_has_time_sampled_transform(), test_usd_export_camera_animation_sets_time_codes(), test_usd_export_camera_animation_writes_file(), test_usd_export_camera_sets_focal_and_aperture(), test_usd_export_camera_sets_principal_point_offsets(), test_usd_export_camera_sets_vertical_aperture_from_aspect() (+13 more)
+Cohesion: 0.24
+Nodes (22): USDExporter, make_atlas_solve(), Tests for the upgraded USDExporter.  usd-core is an optional dependency so eve, test_usd_export_camera_animation_has_time_sampled_transform(), test_usd_export_camera_animation_sets_time_codes(), test_usd_export_camera_animation_writes_file(), test_usd_export_camera_sets_focal_and_aperture(), test_usd_export_camera_sets_principal_point_offsets() (+14 more)
 
 ### Community 59 - "Learned Prior Solve"
-Cohesion: 0.10
-Nodes (33): _face_camera_toward_negative_z(), _learned_prior_confidence(), Canonicalize the arbitrary yaw: the recovered camera faces world -Z.      Yaw, Build a world->cam rotation (Atlas Y-up) from the world-up direction in cam coor, Map GeoCalib uncertainties to (global, orientation, focal) confidences in [0,1]., Build an :class:`AtlasSolve` from a learned :class:`CameraPrior`.      Pure nu, _rotation_from_up_vector(), solve_from_learned_prior() (+25 more)
+Cohesion: 0.16
+Nodes (22): Build a world->cam rotation (Atlas Y-up) from the world-up direction in cam coor, Build an :class:`AtlasSolve` from a learned :class:`CameraPrior`.      Pure nu, _rotation_from_up_vector(), solve_from_learned_prior(), _FakePrior, EXIF focal override on the learned-prior solve (pure numpy, no torch)., CameraPrior-shaped stand-in (solve_from_learned_prior duck-types it)., test_close_agreement_no_warning() (+14 more)
 
 ### Community 60 - "Relief Fill Export Tests"
-Cohesion: 0.32
-Nodes (5): AtlasAssessImage, AtlasVLMScaleCues, VLM pre-flight for the whole DMP pipeline — wire it directly after     LoadImag, Detect scale-reference objects with a local vision-language model.      Runs a, test_api_key_widget_appended_last()
+Cohesion: 0.09
+Nodes (14): _health_summary_suffix(), Export-summary warning when the solve's metric scale isn't verified.      Single, Write/merge atlas_project.json beside an export + embed the identity     hash as, Export-summary marker when a scene-health stamp records warn/fail.      Reads on, _scale_summary_suffix(), _write_export_manifest(), AtlasExportBlender, AtlasExportCameraPathUSD (+6 more)
 
 ### Community 61 - "Reference Scale Measurement"
-Cohesion: 0.14
-Nodes (21): apply_reference_scale(), metric_height_from_reference(), Measure metric camera height from reference objects and rescale the solve., Recover metric camera height from one vertical reference object of known height., Extract (base_px, top_px) from a reference spec (bbox, segment, or points)., Aggregate metric camera height from one or more reference objects.      Each r, _reference_segment(), resolve_reference_scale() (+13 more)
-
-### Community 62 - "Relief Mesh Export Helpers"
-Cohesion: 0.29
-Nodes (6): AtlasLoadRAW, Write the scene-linear half-float EXR. Returns (path, warning)., 📷 Camera RAW loader (NEF / CR2 / CR3 / RAF / ARW) — [raw] extra.      One node, Camera RAW Support (release entry), Camera RAW Import Design Rule (EXIF beats GeoCalib), [raw] Camera RAW Extra (rawpy + EXR sidecar)
+Cohesion: 0.23
+Nodes (15): metric_height_from_reference(), Recover metric camera height from one vertical reference object of known height., Aggregate metric camera height from one or more reference objects.      Each r, resolve_reference_scale(), _project(), Tests for the reference-object metric scale tier (single-view geometry)., Project a world point (camera at origin) to a pixel using Atlas conventions., Base/top pixels of a vertical object standing on the ground, camera at Y=0. (+7 more)
 
 ### Community 63 - "AtlasInput & Scope Nodes"
-Cohesion: 0.12
-Nodes (12): AtlasInput, AtlasScopeMask, 🎬 The all-in-one entry point — one node between LoadImage and the     viewport, Fraction of the frame a MASK covers (first batch item, >0.5).      Shared by A, 🎯 Per-band scope exclude builder — `sky ∪ NOT(grow(segment))`, with     SELF-DI, True when `name` is an actual graph link on this node. A lazy kwarg         is, _seg_coverage(), Self-Disarming Scope Fallbacks (AtlasScopeMask) (+4 more)
+Cohesion: 0.67
+Nodes (3): SAM3 Comma-Prompt Empty-Mask Trap, SAM3 Triton Requirement + Segmentation Fallback Cascade, SAM 3 (via ComfyUI-RMBG SAM3Segment)
 
 ### Community 64 - "RAW Decode"
 Cohesion: 0.16
 Nodes (16): decode_raw(), display_from_linear(), rawpy demosaic -> (scene-linear, display-sRGB) float arrays.  ONE demosaic per, Pure-numpy sRGB OETF (matches the viewport shader's atlasLinearToSRGB)., Deterministic display render: map the given luminance percentile to 1.0     (re, Decode a RAW file. Returns ``(linear_rgb, display_srgb)`` float32 HxWx3., _require_numpy(), _require_rawpy() (+8 more)
 
 ### Community 65 - "Agent Guidance Docs"
-Cohesion: 0.13
-Nodes (15): ATLAS_EXPERIMENTAL Gate, DMP Edge Doctrine (per-pixel mattes + boundary overhang), Relief Mesh Tearing at Depth Discontinuities, Seam Doctrine: Farthest-Highest Band Priorities, API-Format Workflow Set, atlas_castle_dmp_marketing workflow, atlas_jungle_xray_cameramove workflow, Non-Recursive Shipping-Catalog Pin Convention (+7 more)
+Cohesion: 0.12
+Nodes (15): Inference Helpers Charter (suggest, never solve), ATLAS_EXPERIMENTAL Gate, DMP Edge Doctrine (per-pixel mattes + boundary overhang), Relief Mesh Tearing at Depth Discontinuities, Seam Doctrine: Farthest-Highest Band Priorities, Tiered Metric-Scale Cascade (measured, not assumed), API-Format Workflow Set, atlas_castle_dmp_marketing workflow (+7 more)
 
 ### Community 66 - "Scale Reference Registry"
 Cohesion: 0.20
@@ -549,12 +556,12 @@ Cohesion: 0.19
 Nodes (21): align_predicted_normals_to_world(), encode_normal_map_b64(), procrustes_rotation(), Predicted-normal alignment + encoding for the viewport relight.  MoGe (`*-norm, Encode HxWx3 WORLD normals as a PNG data URI: ``(n+1)/2`` in RGB (the     stand, Per-pixel WORLD-space normals from a forward-Z depth map, via back-     project, Orthogonal Procrustes: the proper rotation ``R`` (3x3, det +1) minimizing     `, Rotate model-frame per-pixel normals (``predicted`` HxWx3) into the     recover (+13 more)
 
 ### Community 68 - "GeoCalib Learned Prior"
-Cohesion: 0.16
-Nodes (18): estimate_camera_prior(), _get_model(), _gravity_to_atlas_up(), Any, Path, Learned single-image camera prior (GeoCalib).  This is an *optional* neural fr, Predict a :class:`CameraPrior` from a single image with GeoCalib.      ``weigh, Import torch + geocalib lazily with an informative error. (+10 more)
+Cohesion: 0.14
+Nodes (20): _face_camera_toward_negative_z(), Canonicalize the arbitrary yaw: the recovered camera faces world -Z.      Yaw, CameraPrior, estimate_camera_prior(), _get_model(), _gravity_to_atlas_up(), Any, Path (+12 more)
 
 ### Community 69 - "USD Exporter"
-Cohesion: 0.17
-Nodes (19): _Vec3, Keyframed camera path sampling for testing projection under a moving camera., Sample ``path`` into one ``AtlasExtrinsics`` per frame in ``0..frame_count-1``., sample_camera_path(), _vadd(), _vscale(), AtlasCameraKeyframe, One waypoint of a ``AtlasCameraPath`` — an eye/target/up pose plus timing. (+11 more)
+Cohesion: 0.15
+Nodes (23): Keyframed camera path sampling for testing projection under a moving camera., Sample ``path`` into one ``AtlasExtrinsics`` per frame in ``0..frame_count-1``., sample_camera_path(), AtlasCameraKeyframe, AtlasCameraPath, Portable Atlas latent-scene data schema.  Core convention: - World coordinate, One waypoint of a ``AtlasCameraPath`` — an eye/target/up pose plus timing., A keyframed camera move (orbit/dolly/pan) for testing projection under motion. (+15 more)
 
 ### Community 70 - "TypeScript Config"
 Cohesion: 0.09
@@ -565,32 +572,32 @@ Cohesion: 0.12
 Nodes (22): _activateAction(), _addInactiveAction(), _addInactiveBinding(), _bindAction(), clipAction(), create(), _deactivateAction(), existingAction() (+14 more)
 
 ### Community 72 - "Keyframe Interpolants"
-Cohesion: 0.29
-Nodes (13): AtlasSkyDomeLayer, Same-camera sky clean-plate, projected onto a simple constant-depth     card in, _plate_image(), frame_outpaint_px pads the plate canvas and widens THIS source's own     intrin, _sky_mask_tensor(), test_blockout_payload_carries_mask_b64(), test_sky_card_distance_m_places_card_and_radius_becomes_size(), test_sky_dome_embeds_its_segmentation_as_edge_matte() (+5 more)
+Cohesion: 0.14
+Nodes (21): create_or_open_project(), get_file(), get_project(), post_analyze(), post_export(), post_llm_guidance(), post_llm_models(), post_promote_scale_cue() (+13 more)
 
 ### Community 73 - "Nuke Layers Export"
-Cohesion: 0.13
-Nodes (25): _matrix_to_nuke_euler_xyz(), Decompose a cam->world 4x4's rotation to Nuke XYZ Euler degrees.      R = Rx(a, Export EVERY projection layer on a solve — each ``ProjectionSource``     (sky d, write_nuke_layers_script(), _depth_result(), _layered_solve(), Tests for the multi-layer Nuke export (write_nuke_layers_script + AtlasExportNu, Nuke and Maya must not get two slightly different remeshes. (+17 more)
+Cohesion: 0.08
+Nodes (39): AtlasExportNukeLayers, Export EVERY projection layer on a solve (sky dome, clean-plate bands,     multi, collect_projection_layers(), layer_focal_mm(), Any, Path, Shared per-ProjectionSource layer collection for the all-in-one DCC exporters (, Focal length for a layer camera, with the standard pinhole fallback.      Patc (+31 more)
 
 ### Community 74 - "VLM JSON Recovery"
 Cohesion: 0.17
 Nodes (20): _close_partial_json(), _parse_model_json(), Detect a repetition loop (common in local LLMs) and truncate before it starts., Synthesize closing brackets to parse truncated JSON from a looping model., _truncate_looping_response(), Tests for _parse_model_json robustness — LLM repetition-loop recovery., test_clean_json_parses_directly(), test_close_balanced_but_invalid_returns_none() (+12 more)
 
 ### Community 75 - "USD Exporter Tests"
-Cohesion: 0.29
-Nodes (12): dilate_proxy_geometry_for_preview(), Return NEW primitives dilated outward from ``pivot`` by ``scale`` (>1     grows, JSON-safe payload entries for derivation proxies (role == projection_proxy)., serialize_proxy_geometry(), _plane_prim(), Tests for preview-only geometry dilation (blockout viewport orbit coverage).  Fo, test_mesh_dilation_agrees_with_plane_closed_form_on_a_flat_quad(), test_plane_dilation_preserves_normal_depth_and_scales_extent() (+4 more)
+Cohesion: 0.22
+Nodes (19): Map the solve's recorded scale provenance to a trust status.      Reads only w, scale_health(), LatentComponent, Future scene component slot with explicit recovery metadata., P0 Reliability & Trust Tier (release entry), P0 Trust Tier (scene_health + manifest doctrine), scale_health() — scale provenance -> safe-to-export mapping (pure Python)., _solve() (+11 more)
 
 ### Community 76 - "Clean Plate Layer"
-Cohesion: 0.16
-Nodes (13): AtlasSDXLInpaint, _comfy_registry(), _graph_builder(), _MiniGraphBuilder, _Node, ComfyUI's global node registry, or {} outside ComfyUI — used by     AtlasInput', Test-shim mirror of comfy_execution.graph_utils.GraphBuilder (same     node()/o, Native ComfyUI SDXL inpaint adapter.      This deliberately expands to ComfyUI (+5 more)
+Cohesion: 0.19
+Nodes (8): _MiniGraphBuilder, _Node, Test-shim mirror of comfy_execution.graph_utils.GraphBuilder (same     node()/ou, _clip_texts(), _expand(), Perspective-conditioning regressions for AtlasSDXLInpaint., test_perspective_guidance_can_be_disabled(), test_perspective_guidance_is_appended_by_default()
 
 ### Community 77 - "Depth Map Nodes"
-Cohesion: 0.13
-Nodes (18): AtlasDepthMap, AtlasPredictHiddenGeometry, AtlasRenderFix, Shared metric depth estimate — wire this into one or more of     AtlasDeriveRel, 🔬 EXPERIMENTAL, RESEARCH-ONLY — "X-ray" depth map via LaRI layered ray     inte, 🔬 EXPERIMENTAL — repair projected-render artifacts with NVIDIA Fixer.      Run, DepthResult, A recovered depth map plus provenance.      ``depth`` is a HxW float32 numpy a (+10 more)
+Cohesion: 0.27
+Nodes (8): AtlasDepthMap, Shared metric depth estimate — wire this into one or more of     AtlasDeriveReli, _patch_estimate_depth(), Tests for AtlasDepthMap — the shared metric depth pass for the composable geome, The optional `solve` input supplies the GeoCalib focal for DA3METRIC,     resca, test_estimate_passes_through_model_id(), test_estimate_returns_depth_result(), test_optional_solve_input_threads_solved_focal()
 
 ### Community 78 - "Depth Band Resolution Tests"
-Cohesion: 0.05
-Nodes (69): _analytic_ground_forward_depth(), _b64_png_to_mask(), _band_resolution_validity(), _decode_b64_to_tensor(), _depth_map_for_solve(), _extend_edge_colors(), _extrinsics_from_view(), _flood_mask_to_frame_borders() (+61 more)
+Cohesion: 0.06
+Nodes (68): _analytic_ground_forward_depth(), _apply_band_split(), _b64_png_to_mask(), _band_resolution_validity(), _depth_map_for_solve(), _extend_edge_colors(), _flood_mask_to_frame_borders(), _ground_scale_cached() (+60 more)
 
 ### Community 79 - "Vector & Quaternion Ops"
 Cohesion: 0.10
@@ -609,24 +616,24 @@ Cohesion: 0.17
 Nodes (19): axisFromLabel(), AxisGrid, AxisName, boundaryAnchors(), buildXyzGrid(), clamp(), clipLineToRect(), dedupePoints() (+11 more)
 
 ### Community 83 - "Band Split Helpers"
-Cohesion: 0.16
-Nodes (3): _as_tuple(), _json_ready(), Any
+Cohesion: 0.22
+Nodes (14): AtlasPitchTrim, 🎚 Manual pitch trim / gravity-mirror for a solve — RollTrim's sibling.      Moti, _forward_y(), AtlasPitchTrim 🎚 — pitch trim / gravity mirror (the D810 haze repair)., Camera at (0,h,0) pitched UP by pitch_deg (the flipped-gravity shape)., _solve(), test_gravity_override_clears_camera_looks_up(), test_gravity_override_level_and_roll() (+6 more)
 
 ### Community 84 - "Maya Layers Export"
-Cohesion: 0.07
-Nodes (41): mm_to_inches(), layer_focal_mm(), Focal length for a layer camera, with the standard pinhole fallback.      Patc, _ma_camera_blocks(), _matrix_to_maya_trs(), _maya_layers_on_open_script(), _maya_matrix_from_atlas(), _mel_safe_path() (+33 more)
+Cohesion: 0.10
+Nodes (32): AtlasExportMayaLayers, Export EVERY projection layer on a solve (sky dome, clean-plate bands,     multi, pixel_offset_to_normalized_film_offset(), Convert a principal-point pixel offset to a film-aperture fraction., _ma_camera_blocks(), _matrix_to_maya_trs(), _maya_layers_on_open_script(), _maya_matrix_from_atlas() (+24 more)
 
 ### Community 85 - "Fixer Render Repair"
-Cohesion: 0.19
-Nodes (18): build_docker_command(), Path, NVIDIA Fixer render repair (EXPERIMENTAL) — Docker-container inference.  Fixer, Run Fixer over every PNG in ``in_dir``; fixed frames land in ``out_dir``., Directory holding the bundled sitecustomize.py TE-compat shim., Locate the user's Fixer clone (widget value wins over ATLAS_FIXER_PATH)., The exact spike-proven invocation, as an argv list (no shell quoting).      Mo, resolve_fixer_root() (+10 more)
+Cohesion: 0.22
+Nodes (16): build_docker_command(), Path, NVIDIA Fixer render repair (EXPERIMENTAL) — Docker-container inference.  Fixer, Directory holding the bundled sitecustomize.py TE-compat shim., Locate the user's Fixer clone (widget value wins over ATLAS_FIXER_PATH)., The exact spike-proven invocation, as an argv list (no shell quoting).      Mo, resolve_fixer_root(), shim_dir() (+8 more)
 
 ### Community 86 - "Roll Trim Node"
-Cohesion: 0.21
-Nodes (15): AtlasRollTrim, 🎚 Manual roll trim for a solve — level a leaning solve by eye.      GeoCalib's, _forward_world(), AtlasRollTrim — roll a solve about the view axis, everything else invariant., Sign convention pinned: +roll tips the horizon's LEFT end down and     RIGHT en, _solve(), test_horizon_double_trim_round_trips(), test_input_solve_never_mutated() (+7 more)
+Cohesion: 0.20
+Nodes (15): AtlasRollTrim, 🎚 Manual roll trim for a solve — level a leaning solve by eye.      GeoCalib's g, _forward_world(), AtlasRollTrim — roll a solve about the view axis, everything else invariant., Sign convention pinned: +roll tips the horizon's LEFT end down and     RIGHT en, _solve(), test_horizon_double_trim_round_trips(), test_input_solve_never_mutated() (+7 more)
 
 ### Community 87 - "Skeleton Binding"
 Cohesion: 0.12
-Nodes (19): bind(), bindSkeleton(), calculateInverses(), findNode(), getBoneByName(), getNormalMatrix(), getValue(), _getValue_unbound() (+11 more)
+Nodes (19): bind(), bindSkeleton(), calculateInverses(), center(), findNode(), getBoneByName(), getNormalMatrix(), getValue() (+11 more)
 
 ### Community 88 - "Engineering Recommendations"
 Cohesion: 0.16
@@ -646,19 +653,19 @@ Nodes (5): Tests for AtlasDeriveProjectionGeometry's scene_type convenience pres
 
 ### Community 92 - "Test Scale Override"
 Cohesion: 0.21
-Nodes (14): AtlasScaleOverride, 📐 Manual metric-scale dial for a solve — the artist's scale override.      Sin, LatentCamera, AtlasScaleOverride — the artist's manual metric-scale dial.  Single-image scal, Level camera at (0, h, 0), identity rotation — world->cam translation only., The real proof: estimate_ground_scale on the rescaled solve is factor× the, _solve(), test_absolute_camera_height_computes_factor() (+6 more)
+Nodes (13): AtlasScaleOverride, 📐 Manual metric-scale dial for a solve — the artist's scale override.      Singl, AtlasScaleOverride — the artist's manual metric-scale dial.  Single-image scal, Level camera at (0, h, 0), identity rotation — world->cam translation only., The real proof: estimate_ground_scale on the rescaled solve is factor× the, _solve(), test_absolute_camera_height_computes_factor(), test_default_is_a_noop() (+5 more)
 
 ### Community 93 - "Test Solve Gate"
-Cohesion: 0.26
-Nodes (14): AtlasSolveGate, ✅ Solve-confirm checkpoint — pause the heavy graph until the artist     approve, comfy_runtime(), FakeBlocker, Tests for AtlasSolveGate — the solve-confirm checkpoint.  Third member of the, _solve(), test_degrades_to_passthrough_outside_comfy(), test_gate_blocks_until_proceed() (+6 more)
+Cohesion: 0.25
+Nodes (14): AtlasSolveGate, ✅ Solve-confirm checkpoint — pause the heavy graph until the artist     approves, comfy_runtime(), FakeBlocker, Tests for AtlasSolveGate — the solve-confirm checkpoint.  Third member of the, _solve(), test_degrades_to_passthrough_outside_comfy(), test_gate_blocks_until_proceed() (+6 more)
 
 ### Community 94 - "Test Camera Registry"
-Cohesion: 0.25
-Nodes (8): AtlasDepthOutlierMask, AtlasSegmentedSDXLInpaint, Build an explicit mask for local monocular-depth outliers., SAM3-separated building masks -> per-instance SDXL crop/stitch stack., Outlier & Stretched-Edge Quality Tier (release entry), Outlier / Stretched-Edge Tier, test_depth_outlier_mask_does_not_flag_smooth_gradient(), test_depth_outlier_mask_isolates_spike_and_dilates()
+Cohesion: 0.40
+Nodes (4): AtlasDepthOutlierMask, Build an explicit mask for local monocular-depth outliers., test_depth_outlier_mask_does_not_flag_smooth_gradient(), test_depth_outlier_mask_isolates_spike_and_dilates()
 
 ### Community 95 - "Metadata"
-Cohesion: 0.21
-Nodes (16): _lens_descriptor_from_makernote(), _metadata_from_tags(), _pillow_exif_tags(), Any, EXIF metadata extraction for camera RAW files.  The parse core (`_metadata_fro, [min_focal, max_focal, max_ap_wide, max_ap_tele] -> "24mm f/1.4" /     "24-70mm, Read EXIF from a RAW file — exifread first, Pillow TIFF fallback., Coerce EXIF rational/string/number representations to float. (+8 more)
+Cohesion: 0.17
+Nodes (18): Camera RAW import (NEF / CR2 / CR3 / RAF / ARW) — optional [raw] extra.  Impor, _lens_descriptor_from_makernote(), _metadata_from_tags(), _pillow_exif_tags(), Any, EXIF metadata extraction for camera RAW files.  The parse core (`_metadata_fro, [min_focal, max_focal, max_ap_wide, max_ap_tele] -> "24mm f/1.4" /     "24-70mm, Read EXIF from a RAW file — exifread first, Pillow TIFF fallback. (+10 more)
 
 ### Community 96 - "Test Example Workflows"
 Cohesion: 0.15
@@ -673,28 +680,28 @@ Cohesion: 0.12
 Nodes (16): AnalyzePreanalysisStatus, AnalyzeResponse, LineGroups, LlmProvider, LlmProviderModel, LlmProviderModelsResponse, ProjectInfo, ReadinessItem (+8 more)
 
 ### Community 99 - "Test Inpaint Crop Stitch"
-Cohesion: 0.22
-Nodes (12): AtlasInpaintCrop, AtlasInpaintStitch, ✂ Crop a padded box around the inpaint mask BEFORE the inpaint model.      The, ✂ Paste an inpainted crop back into the original frame.      The other half of, _image(), _mask_blob(), Tests for AtlasInpaintCrop / AtlasInpaintStitch — the crop-before-LaMa quality, test_crop_bounds_are_mask_bbox_plus_padding_clamped() (+4 more)
+Cohesion: 0.21
+Nodes (12): AtlasInpaintCrop, AtlasInpaintStitch, ✂ Crop a padded box around the inpaint mask BEFORE the inpaint model.      The q, ✂ Paste an inpainted crop back into the original frame.      The other half of `, _image(), _mask_blob(), Tests for AtlasInpaintCrop / AtlasInpaintStitch — the crop-before-LaMa quality, test_crop_bounds_are_mask_bbox_plus_padding_clamped() (+4 more)
 
 ### Community 100 - "Test Exact Patch View"
-Cohesion: 0.24
-Nodes (14): _parse_exact_view(), Parse an EXACT orbit delta — "azimuth_deg=<f> elevation_deg=<f>     distance_sc, _patch_estimate_depth(), Tests for the exact-angle patch channel (the render-conditioned patch loop's re, The never-drift contract, extended to the exact channel: an exact     string eq, _solve(), test_add_patch_exact_override_errors_loudly(), test_add_patch_exact_override_places_camera_at_raw_delta() (+6 more)
+Cohesion: 0.23
+Nodes (14): _parse_exact_view(), Parse an EXACT orbit delta — "azimuth_deg=<f> elevation_deg=<f>     distance_sca, _patch_estimate_depth(), Tests for the exact-angle patch channel (the render-conditioned patch loop's re, The never-drift contract, extended to the exact channel: an exact     string eq, _solve(), test_add_patch_exact_override_errors_loudly(), test_add_patch_exact_override_places_camera_at_raw_delta() (+6 more)
 
 ### Community 101 - "Test Blender Exporter"
 Cohesion: 0.22
 Nodes (13): derive_sensor_height_mm(), Return sensor height in mm, falling back to aspect-ratio computation., AtlasSolve, Path, Blender handoff script writer.  Atlas core is Y-up right-handed. Blender is Z-up, write_blender_scene_script(), test_blender_exporter_applies_world_matrix_z_up(), test_blender_exporter_bakes_scale_factors() (+5 more)
 
 ### Community 102 - "Test Camera Path"
-Cohesion: 0.33
-Nodes (5): Any, Protocol, Minimal shared surface for concrete recovered objects., RecoveredObject, RecoveredObjectT
+Cohesion: 0.22
+Nodes (10): _capability_info(), _model_info_from_lmstudio(), _model_info_from_ollama(), _model_info_from_openai_compatible(), _model_items(), _provider_diagnostic_status(), _provider_error_detail(), provider_models_response() (+2 more)
 
 ### Community 103 - "Io"
 Cohesion: 0.50
 Nodes (3): Atlas marketing cleanplate bundle, Deliverables, Final edit prompts
 
 ### Community 104 - "Test Room Layout"
-Cohesion: 0.14
-Nodes (17): _format_hole_fill_report(), Human-readable summary of an interior hole fill, for the export node.      The, A deep copy of ``solve`` whose relief-mesh primitive is ``mesh``.      Lets th, The relief mesh already derived onto a solve (AtlasDeriveReliefMesh /     Atlas, _relief_mesh_from_solve(), _solve_with_relief_mesh(), export_relief_mesh(), export_relief_mesh_glb() (+9 more)
+Cohesion: 0.19
+Nodes (11): _camera_height(), _depth_is_metric(), _flag(), HealthFlag, HealthReport, Any, Derived trust/health evaluation for Atlas solves — pure Python, zero deps.  Th, # NOTE: the membership expression's operator precedence is preserved (+3 more)
 
 ### Community 105 - "Test Depth Height"
 Cohesion: 0.22
@@ -704,21 +711,17 @@ Nodes (14): estimate_ground_height_from_depth(), Measure camera height above the
 Cohesion: 0.22
 Nodes (14): _assert_atlas_inputs_valid(), _expand(), Tests for AtlasInput 🎬 — the all-in-one expansion-wrapper entry node.  The exp, Every emitted Atlas-class node's input names must exist on the real     class's, test_band_layers_watertight_and_prioritized(), test_card_and_ground_route_to_full_range_layer(), test_inpaint_chain_per_occluded_band(), test_inpaint_skips_gracefully_without_pack() (+6 more)
 
-### Community 107 - "Test Plane Extraction"
-Cohesion: 0.40
-Nodes (3): Any, Exactly the dict ``solve_still_image(intrinsics_hint=...)`` consumes., RawImportResult
-
 ### Community 108 - "Chart Relmad Backends Svg"
 Cohesion: 0.15
 Nodes (15): Atlas Camera App Icon, Atlas Camera Logo Mark (Reticle A), Reticle A Design: A-Legs Converge to Vertical Vanishing Point, Horizon as Crossbar, Survey Reticle on Solved Point, Chart: Torn Fraction, Depth Anything V2 vs DA3METRIC-LARGE Across Four Scenes, DA3 Depth Backend Cuts Relief Mesh Tearing vs V2 (V2 Shatters to 0 Faces on Steep Ridge), Chart: Hidden-Geometry Registration rel-MAD by Scene, LaRI vs World Tracing, LaRI vs World Tracing: Backend Registration Quality is Scene-Dependent (LaRI Wins Indoor/Architectural, World Tracing Wins Terrain), Registration Trust Gate (rel-MAD 0.2) for Hidden-Geometry Backends (+7 more)
 
 ### Community 109 - "collect_projection_layers"
-Cohesion: 0.22
-Nodes (9): collect_projection_layers(), decode_plate_b64(), Any, Path, data:image/...;base64 payload -> PIL Image (None when empty/undecodable)., Materialize every exportable ProjectionSource into ``output_dir``.      Return, edge_extend_px on a band layer: plate colors pushed past the matte     edge, em, test_clean_plate_edge_extend_smears_colors_and_reports_mask() (+1 more)
+Cohesion: 0.13
+Nodes (10): _ground_depth_compute(), Resolve output dimensions, auto-adopting the source image's size/aspect.      ``, Per-pixel ray-plane intersection against Y=0 ground plane.     Returns (depth_rg, _solve_image_size(), AtlasGroundDepthMap, AtlasGroundMask, AtlasHorizonMask, Generate a ground-plane depth heatmap as an IMAGE tensor.     Ports the GLSL DEP (+2 more)
 
 ### Community 110 - "test_debug_report.py"
-Cohesion: 0.33
-Nodes (8): _layered_solve(), Tests for AtlasDebugReport — the machine-readable master-workflow diagnostic (2, The exact live failure this node exists for., DA3 watch-item made measurable: negative raw depth fraction is     reported, an, test_debug_report_flags_negative_depth(), test_debug_report_flags_zero_vertex_layer(), test_debug_report_healthy_stack_says_so(), test_debug_report_json_and_flags()
+Cohesion: 0.23
+Nodes (14): _constraint_image_size(), _constraint_intrinsics_hint(), _image_size_from_cv2(), _image_size_from_pillow(), _load_image_bgr(), Path, _require_cv2(), solve_from_constraints() (+6 more)
 
 ### Community 111 - "Test Ground Anchored Walls"
 Cohesion: 0.36
@@ -738,23 +741,23 @@ Nodes (13): Constraints, LlmGuidance, addLlmScaleCandidates(), addProxyObject(),
 
 ### Community 115 - "Orbit Stress Test"
 Cohesion: 0.25
-Nodes (10): mesh_from_primitive(), Rebuild a ReliefMesh from a mesh proxy-primitive's flattened metadata     (reli, Gravity-Flip Guard (camera_looks_up health flag), main(), _meshes_from_solve(), _project(), Orbit stress test — the outlier/stretched-edge worklog's final acceptance item., Every mesh-type primitive (primary proxy geometry + all layers) as     (name, v (+2 more)
+Nodes (10): Gravity-Flip Guard (camera_looks_up health flag), Outlier & Stretched-Edge Quality Tier (release entry), Outlier / Stretched-Edge Tier, main(), _meshes_from_solve(), _project(), Orbit stress test — the outlier/stretched-edge worklog's final acceptance item., Every mesh-type primitive (primary proxy geometry + all layers) as     (name, v (+2 more)
 
 ### Community 116 - "Camera Path"
 Cohesion: 0.43
 Nodes (6): tools/orbit_stress_test.py — headless orbit coverage/stretch scoring., Camera at (0,1.6,0) looking at a huge wall z=-10 that fills the frame., test_full_wall_has_no_holes_at_any_small_orbit(), test_no_geometry_exits_clearly(), test_stretched_sliver_is_scored(), _wall_solve()
 
 ### Community 117 - "Schema"
-Cohesion: 0.16
-Nodes (24): _export(), _n_faces(), AtlasExportReliefMesh's interior-hole-fill report + viewport preview.  The fil, AtlasExportReliefMesh is an OUTPUT_NODE, so the report belongs on it., The preview must be the mesh that was ACTUALLY written, so tuning in the     vi, Export-only stays export-only: the live projection mesh keeps its tears., So the wire can stay put while A/B-ing the widget., It must be viewport-renderable: same recovered camera, same intrinsics. (+16 more)
+Cohesion: 0.06
+Nodes (33): _as_tuple(), _json_ready(), LatentScene, _matrix4_from(), Any, Deprecated alias for `projection_scene`. Used to be a separate         stored f, _export(), _n_faces() (+25 more)
 
 ### Community 118 - "Camera Registry"
-Cohesion: 0.20
-Nodes (12): CameraBody, find_camera_body(), load_camera_bodies(), _normalize(), Any, Camera-body sensor-dimension registry (EXIF model string -> sensor mm).  Mirro, Match an EXIF make/model pair against the registry.      EXIF strings are mess, test_d810_lookup_returns_manufacturer_sensor() (+4 more)
+Cohesion: 0.15
+Nodes (24): Best-evidence-first sensor-size cascade, provenance recorded.      Mirrors the, RawMetadata, resolve_sensor_size(), CameraBody, find_camera_body(), load_camera_bodies(), _normalize(), Any (+16 more)
 
 ### Community 119 - "Test Depth Estimator"
-Cohesion: 0.21
-Nodes (10): dict, _FakeInputs, _FakeOutputs, _patch_fake_backend(), Tests for atlas_camera.inference.depth_estimator: device resolution and cross-c, Replace _get_model with a fake processor+model pair, counting how many     time, test_estimate_depth_cache_is_bounded(), test_estimate_depth_cache_miss_on_different_image() (+2 more)
+Cohesion: 0.19
+Nodes (11): dict, _FakeInputs, _FakeOutputs, _patch_fake_backend(), Tests for atlas_camera.inference.depth_estimator: device resolution and cross-c, Replace _get_model with a fake processor+model pair, counting how many     time, test_estimate_depth_cache_is_bounded(), test_estimate_depth_cache_miss_on_different_image() (+3 more)
 
 ### Community 120 - "2026 07 18 V1 Outlier Stretched Edge Worklog"
 Cohesion: 0.20
@@ -765,24 +768,24 @@ Cohesion: 0.27
 Nodes (12): _patch_fake_da3(), Tests for the Depth Anything 3 (DA3) opt-in backend in atlas_camera.inference.d, DA3METRIC-LARGE is a depth-only head (intrinsics=None, confirmed live) —     an, Replace _get_da3_model with a fake whose .inference() returns a     DA3-shaped, test_da3_cache_key_includes_focal_only_when_used(), test_da3_dispatch_routes_by_model_id(), test_da3_is_metric_per_family(), test_da3_live_end_to_end() (+4 more)
 
 ### Community 122 - "_layers.py"
-Cohesion: 0.40
-Nodes (5): Shared per-ProjectionSource layer collection for the all-in-one DCC exporters (, Content key shared by the Nuke/Maya exporter calls in one process., Retopologize once per source mesh/config and reuse exact arrays.      Instant Me, _retopo_cache_key(), _retopologize_layer_mesh()
+Cohesion: 0.16
+Nodes (13): apply_reference_scale(), _attach_depth_component(), _attach_reference_scale(), AtlasSolve, Solve a camera from a single image using the learned GeoCalib prior.      Robu, Measure metric camera height from reference objects and rescale the solve., Record the reference-object scale solve on the solve (landmarks + metadata)., Populate the depth LatentComponent and record the measured camera height. (+5 more)
 
 ### Community 123 - "camera_path.py"
-Cohesion: 0.36
-Nodes (8): _apply_easing(), _catmull_rom(), Standard (non-uniform-agnostic, centripetal-free) Catmull-Rom, t in [0, 1]., Cross-language mirror-sync tests (spec-panel long-term tier, 2026-07-11).  Thr, _read(), test_catmull_rom_and_easing_numerically_match_js(), test_layer_debug_palette_mirrors_js(), test_scene_type_presets_mirror_js()
+Cohesion: 0.24
+Nodes (11): _apply_easing(), _catmull_rom(), _Vec3, Standard (non-uniform-agnostic, centripetal-free) Catmull-Rom, t in [0, 1]., _vadd(), _vscale(), Cross-language mirror-sync tests (spec-panel long-term tier, 2026-07-11).  Thr, _read() (+3 more)
 
 ### Community 124 - "Install"
-Cohesion: 0.12
-Nodes (19): AGENTS.md Agent Guidance, Append-Only Widget Rule, DA3 → V2-Metric-Outdoor Default Reversal, Atlas Camera Changelog, Atlas ComfyUI Node Catalog (65 nodes + 4 experimental), CLAUDE.md Project Guide, CI pytest Matrix Workflow (ubuntu+windows, py3.11/3.12), Depth Anything 3 Backend Install ([neural-da3]) (+11 more)
+Cohesion: 0.17
+Nodes (12): AGENTS.md Agent Guidance, Append-Only Widget Rule, Non-Recursive Shipping-Catalog Pin Convention, Instant Meshes Vertex Target Is a Hint, Retopology Demo Workflow Set, Full-Coverage Sweep Findings, CI pytest Matrix Workflow (ubuntu+windows, py3.11/3.12), GeoCalib Install Recipe ([neural]) (+4 more)
 
 ### Community 125 - "Third Party"
 Cohesion: 0.18
-Nodes (12): Inference Helpers Charter (suggest, never solve), P0 Reliability & Trust Tier (release entry), Tiered Metric-Scale Cascade (measured, not assumed), P0 Trust Tier (scene_health + manifest doctrine), Canonical Workflow Tiers (Quickstart→Cleanplate→Production→Trust→Research), Counted-Storey Reference Scale Doctrine, LaRI / World-Tracing Hidden-Geometry Setup (research-only), LaRI (layered ray intersections, no upstream license) (+4 more)
+Nodes (12): Atlas Camera Changelog, Atlas ComfyUI Node Catalog (65 nodes + 4 experimental), CLAUDE.md Project Guide, Canonical Workflow Tiers (Quickstart→Cleanplate→Production→Trust→Research), LaRI / World-Tracing Hidden-Geometry Setup (research-only), Atlas Camera (project), Solves a Camera, Not a Mesh, LaRI (layered ray intersections, no upstream license) (+4 more)
 
 ### Community 126 - "Test Merge Geometry"
-Cohesion: 0.30
-Nodes (12): AtlasMergeGeometry, Explicit combinator for two independently-derived solves' geometry —     the Nu, _prim(), Tests for AtlasMergeGeometry — the explicit combinator for two independently-de, _solve(), test_merge_combines_both_solves_geometry(), test_merge_deduplicates_backdrop_keeping_solve_a(), test_merge_does_not_duplicate_pass_through_non_proxy_role_geometry() (+4 more)
+Cohesion: 0.29
+Nodes (12): AtlasMergeGeometry, Explicit combinator for two independently-derived solves' geometry —     the Nuk, _prim(), Tests for AtlasMergeGeometry — the explicit combinator for two independently-de, _solve(), test_merge_combines_both_solves_geometry(), test_merge_deduplicates_backdrop_keeping_solve_a(), test_merge_does_not_duplicate_pass_through_non_proxy_role_geometry() (+4 more)
 
 ### Community 127 - "Smoke Check"
 Cohesion: 0.26
@@ -794,7 +797,7 @@ Nodes (9): atlasIntrinsicsToThreeCamera(), atlasViewMatrixToWorldMatrix(), flatt
 
 ### Community 129 - "test_band_geometry_card_is_fronto_parallel_plane"
 Cohesion: 0.33
-Nodes (6): _layer_verts(), card = ONE flat constant-forward-Z plane at the band's median depth     (the ha, ground = the exact analytic Y=0 plane (the desert-floor case): every     vertex, test_band_geometry_card_is_fronto_parallel_plane(), test_band_geometry_ground_lands_on_y0_plane(), test_band_geometry_relief_default_unchanged()
+Nodes (11): post_export_camera_usd(), Export only the solved camera as a USD file (camera.usda in the project director, export_camera_usd(), export_review_package(), load_project_solve(), open_project(), _project_from_meta(), Path (+3 more)
 
 ### Community 130 - "Test Vlm Scale Cues"
 Cohesion: 0.47
@@ -805,8 +808,8 @@ Cohesion: 0.46
 Nodes (7): _depth(), _patch_moge(), AtlasMogeNormals — the decoupled predicted-normal pass.  Runs a MoGe `*-normal, test_attach_resizes_to_input_depth_and_renormalizes(), test_matching_resolution_is_a_noop_resize(), test_pass_through_when_model_returns_no_normals(), test_resize_normal_field_direct()
 
 ### Community 132 - "AtlasExtractAnglePatch"
-Cohesion: 0.47
-Nodes (5): _build_detection_options(), main(), _optional_float(), Namespace, Solve one still image and build an Atlas review package.
+Cohesion: 0.16
+Nodes (18): BlenderExporter, DCC and package exporters., MayaExporter, NukeExporter, build_review_package(), _copy_if_present(), AtlasSolve, Path (+10 more)
 
 ### Community 133 - "Test Depth Estimator Moge"
 Cohesion: 0.22
@@ -888,13 +891,13 @@ Nodes (8): Vendored Three.js Bundle, Recover-Derive-Project-Export Through-line,
 Cohesion: 0.25
 Nodes (3): OrbitControls, three, three/examples/jsm/controls/OrbitControls.js
 
-### Community 153 - "Test Experimental Gate"
-Cohesion: 0.33
-Nodes (4): _experimental_enabled(), Tests for the ATLAS_EXPERIMENTAL registration gate.  Main ships ATLAS_EXPERIME, test_gate_helper_truthiness(), test_registration_state_matches_the_gate()
-
 ### Community 154 - "Atlas Derive Geometry"
 Cohesion: 0.48
 Nodes (6): ALL_PRESET_CONTROLLED_WIDGETS, applySceneTypeVisibility(), computeHiddenWidgets(), nodeCreated(), SCENE_TYPE_PRESETS, setWidgetHidden()
+
+### Community 155 - "test_layer_nodes_expose_shared_quad_coherence_guard"
+Cohesion: 0.31
+Nodes (10): audit(), _history_counts(), _iter_files(), main(), Path, Read-only usage audit for the registered Atlas ComfyUI nodes.  Classifies every, Return ({name: 'standard'|'experimental'}, all_names)., Node class_type/type strings present in a UI- or API-format workflow. (+2 more)
 
 ### Community 156 - "Validators"
 Cohesion: 0.43
@@ -936,6 +939,10 @@ Nodes (6): Relief-mesh stretch diagnostics (stretch_ratio_p95 / stretch_fraction
 Cohesion: 0.47
 Nodes (6): Atlas Occlusion Mask implementation plan, AtlasOcclusionMask Phase 1 (projection-validity mask), Phase 2 depth-shadow occlusion (MPTK-style), MPTK shadow occlusion (Glyph Mattepainting Toolkit concept), Phase 3 viewport primary-occlusion cull (planned), View-dependent confidence fallback
 
+### Community 167 - "AtlasScopeMask"
+Cohesion: 0.25
+Nodes (5): Fraction of the frame a MASK covers (first batch item, >0.5).      Shared by Atl, _seg_coverage(), AtlasScopeMask, True when `name` is an actual graph link on this node. A lazy kwarg         is N, 🎯 Per-band scope exclude builder — `sky ∪ NOT(grow(segment))`, with     SELF-DIS
+
 ### Community 168 - "Atlas Wf Ghosttown Pdf"
 Cohesion: 0.33
 Nodes (6): AtlasDebugReport, AtlasExportCameraPathUSD, AtlasInput, AtlasViewportControls, One Node to a Camera Move — Ghost Town Workflow, Know When to Skip the Bands (layers=0)
@@ -959,6 +966,10 @@ Nodes (5): Sky-Rise Scale Doctrine (Count the Storeys), scene_type=aerial Preset
 ### Community 174 - "Generate Segmented Sdxl Manual Debug Workflo"
 Cohesion: 0.50
 Nodes (3): mask_preview(), preview_img(), Generate the MANUAL-DEBUG segmented-SDXL workflow — the 🏢 node unrolled.  `Atl
+
+### Community 175 - "--no-deps Portable-Install Doctrine"
+Cohesion: 0.33
+Nodes (7): DA3 → V2-Metric-Outdoor Default Reversal, Depth Anything 3 Backend Install ([neural-da3]), INSTALL.md Install Guide, MoGe-2 Depth Backend ([moge], MIT), --no-deps Portable-Install Doctrine, Depth Anything 3 (DA3), Depth Anything V2
 
 ### Community 176 - "Init"
 Cohesion: 0.33
@@ -1044,33 +1055,49 @@ Nodes (3): Automatic Photo Pop-up (Hoiem/Efros/Hebert, SIGGRAPH 2005), Primitive
 Cohesion: 0.67
 Nodes (3): REGISTRY_ACCESS_TOKEN Secret, Version-Change Publish Gate, Publish to Comfy Registry Workflow
 
+### Community 229 - "test_angle_patch_nodes.py"
+Cohesion: 0.43
+Nodes (6): _extract(), AtlasExtractAnglePatch / AtlasImportAnglePatch — the Photoshop round trip.  Th, test_extract_rejects_empty_matte(), test_extract_writes_crop_full_frame_and_manifest(), test_import_pastes_edit_back_into_full_frame(), test_import_rejects_resized_edit()
+
 ### Community 230 - "ConfidenceModel"
 Cohesion: 0.39
 Nodes (7): _marketing_workflow(), _node(), Structural contracts for the three generated canonical OCIO/DCC graphs., test_canonical_ocio_dcc_contract(), test_hangar_uses_interior_recipe_and_outdoors_use_sky_cards(), test_marketing_variant_exports_the_approved_4k_cleanplate(), _workflow()
+
+### Community 231 - "test_node_usage_audit.py"
+Cohesion: 0.48
+Nodes (6): _load_audit(), Contract for the read-only node-usage audit (tools/audit_node_usage.py)., test_audit_covers_every_registered_node(), test_audit_is_read_only(), test_experimental_nodes_flagged(), test_pitch_trim_is_tested_not_unused()
+
+### Community 232 - "compare_depth_backends.py"
+Cohesion: 0.43
+Nodes (6): _expand_images(), _fmt(), main(), print_report(), A/B-compare depth backends (Depth Anything V2 vs DA3) on real images.  For eac, Expand globs ourselves — PowerShell/cmd don't.
+
+### Community 233 - "_extrinsics_from_world_matrix"
+Cohesion: 0.33
+Nodes (6): _extrinsics_from_world_matrix(), Any, Matrix4, Read a USD prim's world-space transform and convert to Atlas's 4x4     row-majo, Derive full AtlasExtrinsics (position, rotation, world+view matrices)     from, _world_matrix_from_usd_prim()
 
 ## Ambiguous Edges - Review These
 - `Reticle A Design: A-Legs Converge to Vertical Vanishing Point, Horizon as Crossbar, Survey Reticle on Solved Point` → `Layered 2.5D Projection Stack: One Photo Projected From the Recovered Camera Onto Depth-Ordered Layers`  [AMBIGUOUS]
   assets/atlas_camera_mark.svg · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **163 isolated node(s):** `python`, `COMFY_HOST`, `LAYER_DEBUG_PALETTE`, `_cameraDataCache`, `SCENE_TYPE_PRESETS` (+158 more)
+- **166 isolated node(s):** `python`, `COMFY_HOST`, `LAYER_DEBUG_PALETTE`, `_cameraDataCache`, `SCENE_TYPE_PRESETS` (+161 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **23 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **31 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **What is the exact relationship between `Reticle A Design: A-Legs Converge to Vertical Vanishing Point, Horizon as Crossbar, Survey Reticle on Solved Point` and `Layered 2.5D Projection Stack: One Photo Projected From the Recovered Camera Onto Depth-Ordered Layers`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `AtlasProjectionScene` connect `ComfyUI Atlas Node Registry` to `Export-Only Retopology`, `Depth Band & Sky Layers`, `Camera Solver Core`, `DCC Exporter Package`, `Nodes`, `Test Debug Report`, `Proxy Geometry`, `Nodes`, `Scene Health & Trust`, `Relief Mesh Tests`, `Geometry Derivation Nodes`, `Clean Plate Stack`, `Intrinsics & USD Camera Load`, `Patch View Projection`, `Proxy Geometry Tests`, `UI REST API`, `Occlusion Mask`, `Scene Health Gate`, `Relief Fill Export Tests`, `Relief Mesh Export Helpers`, `AtlasInput & Scope Nodes`, `Keyframe Interpolants`, `USD Exporter Tests`, `Clean Plate Layer`, `Depth Map Nodes`, `Depth Band Resolution Tests`, `Band Split Helpers`, `Roll Trim Node`, `Test Scale Override`, `Test Solve Gate`, `Test Camera Registry`, `Test Inpaint Crop Stitch`, `Test Room Layout`, `Schema`, `Test Merge Geometry`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
-- **Why does `AtlasIntrinsics` connect `Geometry Derivation Nodes` to `ComfyUI Atlas Node Registry`, `Solver Benchmark Harness`, `Depth Band & Sky Layers`, `Multimodal VLM Providers`, `DCC Exporter Package`, `Nodes`, `Nodes`, `Scene Health Report Parity`, `Project Manifest`, `Clean Plate Stack`, `Intrinsics & USD Camera Load`, `Patch View Projection`, `Relief Mesh Construction`, `Extract Angle & Gates`, `Occlusion Mask`, `Scene Health Gate`, `Relief Fill Export Tests`, `Reference Scale Measurement`, `Relief Mesh Export Helpers`, `AtlasInput & Scope Nodes`, `Keyframe Interpolants`, `Nuke Layers Export`, `Clean Plate Layer`, `Depth Map Nodes`, `Depth Band Resolution Tests`, `Band Split Helpers`, `Maya Layers Export`, `Roll Trim Node`, `Test Scale Override`, `Test Solve Gate`, `Test Camera Registry`, `Test Inpaint Crop Stitch`, `Test Exact Patch View`, `Test Ground Anchored Walls`, `Test Skyline Walls`, `Camera Path`, `Schema`, `Test Merge Geometry`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
-- **Why does `AtlasExtrinsics` connect `Camera Solver Core` to `ComfyUI Atlas Node Registry`, `Solver Benchmark Harness`, `Export-Only Retopology`, `Depth Band & Sky Layers`, `Multimodal VLM Providers`, `DCC Exporter Package`, `Test Debug Report`, `Nodes`, `Nodes`, `Relief Mesh Tests`, `Scene Health Report Parity`, `Geometry Derivation Nodes`, `Camera Math & Units`, `Project Manifest`, `Clean Plate Stack`, `Intrinsics & USD Camera Load`, `Patch View Projection`, `Extract Angle & Gates`, `Occlusion Mask`, `Scene Health Gate`, `Learned Prior Solve`, `Reference Scale Measurement`, `USD Exporter`, `Nuke Layers Export`, `Depth Band Resolution Tests`, `Band Split Helpers`, `Maya Layers Export`, `Roll Trim Node`, `Test Scale Override`, `Test Solve Gate`, `Test Exact Patch View`, `Test Room Layout`, `Test Ground Anchored Walls`, `Test Skyline Walls`, `Camera Path`, `Schema`, `Test Merge Geometry`?**
-  _High betweenness centrality (0.021) - this node is a cross-community bridge._
-- **Are the 84 inferred relationships involving `AtlasIntrinsics` (e.g. with `AtlasAddPatchView` and `AtlasApplyScaleReferences`) actually correct?**
-  _`AtlasIntrinsics` has 84 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 81 inferred relationships involving `LatentCamera` (e.g. with `AtlasAddPatchView` and `AtlasApplyScaleReferences`) actually correct?**
-  _`LatentCamera` has 81 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 76 inferred relationships involving `DepthResult` (e.g. with `AtlasAddPatchView` and `AtlasApplyScaleReferences`) actually correct?**
-  _`DepthResult` has 76 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `AtlasExtrinsics` connect `Test Debug Report` to `ComfyUI Atlas Node Registry`, `Solver Benchmark Harness`, `Export-Only Retopology`, `Depth Band & Sky Layers`, `Camera Solver Core`, `DCC Exporter Package`, `Nodes`, `Nodes`, `Vanishing-Point Solve`, `Relief Mesh Tests`, `Scene Health Report Parity`, `Geometry Derivation Nodes`, `Camera Math & Units`, `Project Manifest`, `Clean Plate Stack`, `Plate Registration & Export`, `Intrinsics & USD Camera Load`, `Patch View Projection`, `Extract Angle & Gates`, `Occlusion Mask`, `Scene Health Gate`, `Learned Prior Solve`, `Reference Scale Measurement`, `USD Exporter`, `Nuke Layers Export`, `USD Exporter Tests`, `Depth Band Resolution Tests`, `Band Split Helpers`, `Maya Layers Export`, `Roll Trim Node`, `Test Scale Override`, `Test Solve Gate`, `Test Exact Patch View`, `_extrinsics_from_world_matrix`, `Test Ground Anchored Walls`, `Test Skyline Walls`, `Camera Path`, `Schema`, `Test Merge Geometry`?**
+  _High betweenness centrality (0.030) - this node is a cross-community bridge._
+- **Why does `AtlasIntrinsics` connect `ComfyUI Atlas Node Registry` to `Solver Benchmark Harness`, `Depth Band & Sky Layers`, `Nodes`, `Nodes`, `Vanishing-Point Solve`, `Scene Health Report Parity`, `Geometry Derivation Nodes`, `Project Manifest`, `Clean Plate Stack`, `AtlasScopeMask`, `Intrinsics & USD Camera Load`, `Patch View Projection`, `Relief Mesh Construction`, `Extract Angle & Gates`, `Occlusion Mask`, `Scene Health Gate`, `Three.js Texture Conversion`, `Reference Scale Measurement`, `USD Exporter`, `Nuke Layers Export`, `USD Exporter Tests`, `Depth Band Resolution Tests`, `Band Split Helpers`, `Maya Layers Export`, `Test Scale Override`, `Test Solve Gate`, `Test Inpaint Crop Stitch`, `Test Exact Patch View`, `Test Ground Anchored Walls`, `Test Skyline Walls`, `Camera Path`, `Schema`, `Test Merge Geometry`?**
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
+- **Why does `create_multimodal_provider()` connect `Multimodal Provider Factory` to `Test Camera Path`, `VLM Image Assessment`, `Node Method Dispatch`, `Depth Band Resolution Tests`, `Confidence Model`, `UI Project Analysis`, `DCC Exporter Package`?**
+  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+- **Are the 34 inferred relationships involving `AtlasIntrinsics` (e.g. with `AtlasAddPatchView` and `AtlasDefineShotCam`) actually correct?**
+  _`AtlasIntrinsics` has 34 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 31 inferred relationships involving `LatentCamera` (e.g. with `AtlasAddPatchView` and `AtlasDefineShotCam`) actually correct?**
+  _`LatentCamera` has 31 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 4 inferred relationships involving `constructor()` (e.g. with `at()` and `w()`) actually correct?**
+  _`constructor()` has 4 INFERRED edges - model-reasoned connections that need verification._

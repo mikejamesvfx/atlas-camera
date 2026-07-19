@@ -30,8 +30,8 @@
     "semantic_hash": "7861600da9a0d3ad3590c330a0b2a406"
   },
   "atlas_camera/comfy/nodes.py": {
-    "mtime": 1784431533.4847672,
-    "ast_hash": "40e5a25176897520948b4cad2004d50e",
+    "mtime": 1784446863.4761283,
+    "ast_hash": "596e60a717c5a661bc1acc94677e45ae",
     "semantic_hash": ""
   },
   "atlas_camera/comfy/web/atlas_assess.js": {
@@ -670,9 +670,9 @@
     "semantic_hash": "852cae21792f5b0104259229e9137f1f"
   },
   "tests/test_atlas_input.py": {
-    "mtime": 1784072774.436684,
-    "ast_hash": "492b5473299175651c0dfa61c714f837",
-    "semantic_hash": "492b5473299175651c0dfa61c714f837"
+    "mtime": 1784446303.0184367,
+    "ast_hash": "c14cf71f94d7e95d7d8b340bf07b77fb",
+    "semantic_hash": ""
   },
   "tests/test_blender_exporter.py": {
     "mtime": 1782884558.2848995,
@@ -890,9 +890,9 @@
     "semantic_hash": ""
   },
   "tests/test_moge_normals_node.py": {
-    "mtime": 1784072774.4406838,
-    "ast_hash": "9c3cbbe61c524b35dfc266ee94bbc34e",
-    "semantic_hash": "9c3cbbe61c524b35dfc266ee94bbc34e"
+    "mtime": 1784446419.9324834,
+    "ast_hash": "721c18ec838fdca64cb1b1755c4ccad4",
+    "semantic_hash": ""
   },
   "tests/test_multimodal_helper.py": {
     "mtime": 1783765698.348156,
@@ -1330,8 +1330,8 @@
     "semantic_hash": "5f7155889589a804011344a2dbcf2a1d"
   },
   "CLAUDE.md": {
-    "mtime": 1784441658.9863963,
-    "ast_hash": "580daf6e095ae30b0b16e6579e1a2950",
+    "mtime": 1784447253.1580064,
+    "ast_hash": "4e6c23836e0f80c7e19f579dde892669",
     "semantic_hash": ""
   },
   "INSTALL.md": {
@@ -1735,8 +1735,8 @@
     "semantic_hash": "ffaaea9bb4d5bd1977386b1247c3655b"
   },
   "tests/test_sdxl_inpaint.py": {
-    "mtime": 1784429070.6843407,
-    "ast_hash": "8a4d93a31e7fd276a8339d20197ea505",
+    "mtime": 1784446535.1752095,
+    "ast_hash": "f5b8cb87082801708cef8c8ed86d34bc",
     "semantic_hash": ""
   },
   "examples/showcase/atlas_canonical_ocio_ghosttown_dcc_workflow.json": {
@@ -1782,6 +1782,61 @@
   "examples/showcase/marketing/README.md": {
     "mtime": 1784439725.39386,
     "ast_hash": "250d116df02166cf3a29d420832d7e41",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/node_helpers.py": {
+    "mtime": 1784445669.8095763,
+    "ast_hash": "46f47973f69dfb340878401b585d95b3",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/node_registry.py": {
+    "mtime": 1784446863.4761283,
+    "ast_hash": "2d4f6192148e773b13f8b0ce49d60cdc",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/nodes_depth.py": {
+    "mtime": 1784446398.7972353,
+    "ast_hash": "975521118df9d943aa19684751edd36a",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/nodes_export.py": {
+    "mtime": 1784446573.818985,
+    "ast_hash": "ba5c0da446eff82d3504d67ca81927f1",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/nodes_geometry.py": {
+    "mtime": 1784446462.476405,
+    "ast_hash": "407678f569aaed3642db3aabb289b213",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/nodes_inpaint.py": {
+    "mtime": 1784446512.088382,
+    "ast_hash": "12a93058ff2f79423bdb7486fbeb2b1f",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/nodes_solve.py": {
+    "mtime": 1784446349.993355,
+    "ast_hash": "478859184c1672266ae37f91bca7dfc8",
+    "semantic_hash": ""
+  },
+  "atlas_camera/comfy/nodes_viewport.py": {
+    "mtime": 1784446281.1822205,
+    "ast_hash": "e6be1d1c3ea7a2c7841dbd106dba0c70",
+    "semantic_hash": ""
+  },
+  "tests/test_comfy_node_registry.py": {
+    "mtime": 1784446896.6047428,
+    "ast_hash": "1be53e4f37feb0a0637a8b76a8a2d097",
+    "semantic_hash": ""
+  },
+  "tests/test_node_usage_audit.py": {
+    "mtime": 1784447057.2638006,
+    "ast_hash": "5c5c984bd081f17bc8e14b5d60cca429",
+    "semantic_hash": ""
+  },
+  "tools/audit_node_usage.py": {
+    "mtime": 1784447028.594841,
+    "ast_hash": "74634bdc51f770c25742b560d5eeff59",
     "semantic_hash": ""
   }
 }
