@@ -91,16 +91,19 @@ def test_experimental_gate_off_by_default():
 
 
 def test_experimental_gate_merges_when_enabled(monkeypatch):
-    # With ATLAS_EXPERIMENTAL truthy, a fresh import merges the 4 experimental
-    # nodes into the standard registry.
+    # With ATLAS_EXPERIMENTAL truthy, a fresh import of the registration module
+    # (where the gate + dict literals live post-modularization) merges the 4
+    # experimental nodes into the standard registry.
+    import atlas_camera.comfy.node_registry as registry
     monkeypatch.setenv("ATLAS_EXPERIMENTAL", "1")
-    reloaded = importlib.reload(nodes)
+    importlib.reload(registry)
     try:
-        assert EXPERIMENTAL_KEYS <= set(reloaded.NODE_CLASS_MAPPINGS)
-        assert EXPERIMENTAL_KEYS <= set(reloaded.NODE_DISPLAY_NAME_MAPPINGS)
+        assert EXPERIMENTAL_KEYS <= set(registry.NODE_CLASS_MAPPINGS)
+        assert EXPERIMENTAL_KEYS <= set(registry.NODE_DISPLAY_NAME_MAPPINGS)
     finally:
         monkeypatch.delenv("ATLAS_EXPERIMENTAL", raising=False)
-        importlib.reload(nodes)  # restore the default (gate-off) module state
+        importlib.reload(registry)  # rebuild the default (gate-off) dicts
+        importlib.reload(nodes)     # rebind the façade to the restored mappings
 
 
 def test_representative_public_class_imports():
