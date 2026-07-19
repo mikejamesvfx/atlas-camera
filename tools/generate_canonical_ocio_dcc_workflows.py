@@ -87,6 +87,25 @@ def _cleanplate_source(slug: str) -> str:
     return str((OUTDIR / "marketing" / "cleanplates" / name).resolve())
 
 
+def _generated_plate_ref(slug: str) -> tuple[str, str, str]:
+    """OCIOWrite's ``output_folder``/``filename`` plus the EXACT file it writes.
+
+    ComfyUI-OCIO names a still as ``<folder>/<filename>_<cs-tag>.<ext>`` — for
+    ACEScg EXR that is ``<filename>_acescg.exr`` (``_cs_tag`` in the pack's
+    ``io_nodes.py``; verified live by queueing a write and reading the result
+    off disk). Because the name is fully determined by those two widgets, the
+    companion ``AtlasRegisterPlate`` can point at the written file without
+    guessing — and both nodes are fed from HERE so they cannot drift apart.
+
+    The path stays relative for portability. OCIOWrite resolves it against
+    ComfyUI's output directory; the DCC exporters copy it verbatim into the
+    .nk/.ma, so repoint the Read there if the DCC's working directory differs.
+    """
+    folder = f"atlas_exports/{slug}_canonical/cleanplate"
+    name = f"{slug}_cleanplate_generated"
+    return folder, name, f"{folder}/{name}_acescg.exr"
+
+
 @dataclass(frozen=True)
 class Scene:
     slug: str
@@ -224,11 +243,21 @@ def build(scene: Scene, *, marketing: bool = False) -> dict:
         filled_preview = w.node("PreviewImage", [1130, 1030], [430, 350], "Inspect cleanplate before export")
         w.link(stitch, 0, filled_preview, "images")
     w.note(
-        [660, 1330], [800, 170],
+        [660, 1330], [800, 250],
         "CLEANPLATE APPROVAL GATE\n"
         "Large removals are model- and plate-dependent. Inspect both mask and cleanplate previews. "
         "For final/hero work, replace the stitched image feeding Generated background layer with "
-        "an artist-painted cleanplate when the neural fill changes perspective, repeats the object, or smears texture.",
+        "an artist-painted cleanplate when the neural fill changes perspective, repeats the object, or smears texture.\n\n"
+        + (
+            "PLATE REF: the approved cleanplate is a real file, so it is registered with its true "
+            "colorspace (sRGB - Display) and wired into the background layer's plate_ref — Nuke/Maya "
+            "Read nodes point straight at that 4K plate instead of a re-encoded preview tensor."
+            if marketing else
+            "PLATE REF: the generated cleanplate is written back to ACEScg (OCIOWrite, 16f EXR) and that "
+            "file is registered into the background layer's plate_ref. Without it the layer exporters "
+            "fall back to an 8-bit sRGB PNG carrying no colorspace — a mismatch in an ACEScg pipeline. "
+            "The EXR lands under ComfyUI's output directory; repoint the DCC Read if it runs elsewhere."
+        ),
     )
 
     # Build the scene far-to-near: optional sky, full-frame generated
@@ -258,6 +287,7 @@ def build(scene: Scene, *, marketing: bool = False) -> dict:
                  "max_edge_factor": scene.max_edge_factor, "normal_edge_deg": scene.normal_edge_deg})
     w.link(scene_solve, 0, bg, "solve")
     approved_plate = stitch
+    clean_ref = None
     if marketing:
         approved_plate = w.node(
             "OCIORead", [2780, 40], [500, 330], "APPROVED 4K MARKETING CLEANPLATE",
@@ -269,6 +299,45 @@ def build(scene: Scene, *, marketing: bool = False) -> dict:
             "PreviewImage", [2780, 410], [500, 520], "HERO OUTPUT — screenshot this preview"
         )
         w.link(approved_plate, 0, approved_preview, "images")
+        # The approved cleanplate is a real file on disk, so the background
+        # layer can carry a durable, non-proxy plate_ref: the DCC exporters
+        # then point Nuke's Read / Maya's file node straight at that 4K plate
+        # instead of re-encoding the preview tensor to PNG.
+        clean_ref = w.node(
+            "AtlasRegisterPlate", [2780, 960], [500, 210],
+            "Register approved cleanplate — durable ref for the DCC exports",
+            {"plate_path": _cleanplate_source(scene.slug),
+             "colorspace": "sRGB - Display", "bit_depth": "auto",
+             "role": "clean_plate"},
+        )
+        w.link(approved_plate, 0, clean_ref, "image")
+    else:
+        # The canonical background is generated in-graph, so no file exists to
+        # register. Write one: sRGB - Display (ComfyUI's working space) back to
+        # ACEScg as a 16f EXR, then register THAT file. Without this the layer
+        # exporters fall back to an 8-bit sRGB PNG with no colour metadata, in a
+        # pipeline where every other plate is ACEScg.
+        ocio_folder, ocio_name, generated_exr = _generated_plate_ref(scene.slug)
+        writer = w.node(
+            "OCIOWrite", [2780, 40], [500, 430],
+            "Generated cleanplate → ACEScg EXR (float DCC handoff)",
+            {"from_colorspace": "sRGB - Display", "output_colorspace": "ACEScg",
+             "container": "still image", "still_format": "exr",
+             "video_codec": "prores_4444", "bit_depth": "16f", "auto_range": True,
+             "first_frame": 1, "last_frame": 0, "start_number": 1,
+             "source_start": 1, "raw_data": False,
+             "output_folder": ocio_folder, "filename": ocio_name,
+             "colorspace_in_name": True, "auto_colorspace": True,
+             "compression": "zip"},
+        )
+        w.link(stitch, 0, writer, "images")
+        clean_ref = w.node(
+            "AtlasRegisterPlate", [2780, 500], [500, 210],
+            "Register the written ACEScg cleanplate",
+            {"plate_path": generated_exr, "colorspace": "ACEScg",
+             "bit_depth": "auto", "role": "clean_plate"},
+        )
+        w.link(stitch, 0, clean_ref, "image")
     clean_depth = w.node(
         "AtlasDepthMap", [1200, 1390], [400, 190],
         "Cleanplate depth — continuous hidden support",
@@ -278,6 +347,14 @@ def build(scene: Scene, *, marketing: bool = False) -> dict:
     w.link(solve, 0, clean_depth, "solve")
     w.link(clean_depth, 0, bg, "depth")
     w.link(approved_plate, 0, bg, "plate_image")
+    if clean_ref is not None:
+        # Marketing tier only. The canonical tier's background is generated
+        # in-graph (LaMa/SDXL) and has no durable file on disk, so it is left
+        # WITHOUT a plate_ref on purpose: the layer exporters then author a
+        # real PNG from the tensor. Wiring a guessed path here would be worse
+        # than nothing — exporters/_layers.py uses plate_path verbatim with no
+        # existence check AND skips the PNG fallback once it is set.
+        w.link(clean_ref, 1, bg, "plate_ref")
     if scene.sky:
         w.link(sky_seg, 1, bg, "exclude_mask")
     fg = w.node("AtlasCleanPlateLayer", [430, 1390], [390, 500], "Untouched foreground occluder",
@@ -295,7 +372,10 @@ def build(scene: Scene, *, marketing: bool = False) -> dict:
     w.link(fg, 0, attach, "solve")
     w.link(register, 1, attach, "plate_ref")
 
-    w.group("2 · OUTPUT DESK + MATCHED NUKE/MAYA RETOPOLOGY", [1660, -40, 1680 if marketing else 1080, 1580], "#614b38")
+    # Both tiers now place plate-registration nodes at x=2780, so the group is
+    # the same width either way (marketing: OCIORead + preview + register;
+    # canonical: OCIOWrite + register).
+    w.group("2 · OUTPUT DESK + MATCHED NUKE/MAYA RETOPOLOGY", [1660, -40, 1680, 1580], "#614b38")
     desk = w.node(
         "AtlasViewportControls", [1710, 40], [360, 280], "ACES 2.0 Output Desk",
         {"config_label": "ACES 2.0 / Studio", "working_colorspace": "ACEScg",

@@ -1,8 +1,8 @@
 {
  "id": "atlas-marketing-ocio-oceancastle-dcc",
  "revision": 0,
- "last_node_id": 27,
- "last_link_id": 48,
+ "last_node_id": 28,
+ "last_link_id": 50,
  "nodes": [
   {
    "id": 1,
@@ -179,8 +179,8 @@
       14,
       18,
       22,
-      33,
-      39
+      35,
+      41
      ],
      "slot_index": 0
     },
@@ -189,8 +189,8 @@
      "type": "ATLAS_PLATE_REF",
      "links": [
       23,
-      34,
-      37
+      36,
+      39
      ],
      "slot_index": 1
     }
@@ -275,7 +275,7 @@
      "links": [
       4,
       19,
-      27
+      28
      ],
      "slot_index": 0
     }
@@ -336,8 +336,8 @@
      "type": "ATLAS_DEPTH_MAP",
      "links": [
       20,
-      32,
-      48
+      34,
+      50
      ],
      "slot_index": 0
     }
@@ -445,7 +445,7 @@
      "links": [
       6,
       8,
-      35
+      37
      ],
      "slot_index": 1
     },
@@ -833,7 +833,7 @@
    ],
    "size": [
     800,
-    170
+    250
    ],
    "flags": {},
    "order": 13,
@@ -844,7 +844,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "CLEANPLATE APPROVAL GATE\nLarge removals are model- and plate-dependent. Inspect both mask and cleanplate previews. For final/hero work, replace the stitched image feeding Generated background layer with an artist-painted cleanplate when the neural fill changes perspective, repeats the object, or smears texture."
+    "CLEANPLATE APPROVAL GATE\nLarge removals are model- and plate-dependent. Inspect both mask and cleanplate previews. For final/hero work, replace the stitched image feeding Generated background layer with an artist-painted cleanplate when the neural fill changes perspective, repeats the object, or smears texture.\n\nPLATE REF: the approved cleanplate is a real file, so it is registered with its true colorspace (sRGB - Display) and wired into the background layer's plate_ref — Nuke/Maya Read nodes point straight at that 4K plate instead of a re-encoded preview tensor."
    ],
    "color": "#432",
    "bgcolor": "#653"
@@ -942,7 +942,7 @@
      "type": "MASK",
      "links": [
       21,
-      30
+      32
      ],
      "slot_index": 1
     },
@@ -1106,12 +1106,12 @@
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 28
+     "link": 29
     },
     {
      "name": "plate_image",
      "type": "IMAGE",
-     "link": 29
+     "link": 30
     },
     {
      "name": "near_m",
@@ -1146,7 +1146,7 @@
     {
      "name": "plate_ref",
      "type": "ATLAS_PLATE_REF",
-     "link": null
+     "link": 31
     },
     {
      "name": "relief_grid",
@@ -1161,7 +1161,7 @@
     {
      "name": "exclude_mask",
      "type": "MASK",
-     "link": 30
+     "link": 32
     },
     {
      "name": "fill_occluded",
@@ -1249,7 +1249,7 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      31
+      33
      ],
      "slot_index": 0
     },
@@ -1372,7 +1372,8 @@
      "links": [
       25,
       26,
-      29
+      27,
+      30
      ],
      "slot_index": 0
     },
@@ -1450,6 +1451,80 @@
   },
   {
    "id": 19,
+   "type": "AtlasRegisterPlate",
+   "pos": [
+    2780,
+    960
+   ],
+   "size": [
+    500,
+    210
+   ],
+   "flags": {},
+   "order": 19,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 26
+    },
+    {
+     "name": "plate_path",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "colorspace",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "bit_depth",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "role",
+     "type": "COMBO",
+     "link": null
+    },
+    {
+     "name": "lut_path",
+     "type": "STRING",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "plate_ref",
+     "type": "ATLAS_PLATE_REF",
+     "links": [
+      31
+     ],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasRegisterPlate"
+   },
+   "widgets_values": [
+    "examples/showcase/marketing/cleanplates/oceancastle_marketing_cleanplate_4k.png",
+    "sRGB - Display",
+    "auto",
+    "clean_plate",
+    ""
+   ],
+   "title": "Register approved cleanplate — durable ref for the DCC exports"
+  },
+  {
+   "id": 20,
    "type": "AtlasDepthMap",
    "pos": [
     1200,
@@ -1460,13 +1535,13 @@
     190
    ],
    "flags": {},
-   "order": 19,
+   "order": 20,
    "mode": 0,
    "inputs": [
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 26
+     "link": 27
     },
     {
      "name": "depth_model",
@@ -1481,7 +1556,7 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 27
+     "link": 28
     }
    ],
    "outputs": [
@@ -1489,7 +1564,7 @@
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      28
+      29
      ],
      "slot_index": 0
     }
@@ -1504,7 +1579,7 @@
    "title": "Cleanplate depth — continuous hidden support"
   },
   {
-   "id": 20,
+   "id": 21,
    "type": "AtlasCleanPlateLayer",
    "pos": [
     430,
@@ -1515,23 +1590,23 @@
     500
    ],
    "flags": {},
-   "order": 20,
+   "order": 21,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 31
+     "link": 33
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 32
+     "link": 34
     },
     {
      "name": "plate_image",
      "type": "IMAGE",
-     "link": 33
+     "link": 35
     },
     {
      "name": "near_m",
@@ -1566,7 +1641,7 @@
     {
      "name": "plate_ref",
      "type": "ATLAS_PLATE_REF",
-     "link": 34
+     "link": 36
     },
     {
      "name": "relief_grid",
@@ -1596,7 +1671,7 @@
     {
      "name": "layer_matte",
      "type": "MASK",
-     "link": 35
+     "link": 37
     },
     {
      "name": "edge_extend_px",
@@ -1669,7 +1744,7 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      36
+      38
      ],
      "slot_index": 0
     },
@@ -1715,7 +1790,7 @@
    "title": "Untouched foreground occluder"
   },
   {
-   "id": 21,
+   "id": 22,
    "type": "AtlasAttachSourcePlate",
    "pos": [
     860,
@@ -1726,18 +1801,18 @@
     100
    ],
    "flags": {},
-   "order": 21,
+   "order": 22,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 36
+     "link": 38
     },
     {
      "name": "plate_ref",
      "type": "ATLAS_PLATE_REF",
-     "link": 37
+     "link": 39
     }
    ],
    "outputs": [
@@ -1745,11 +1820,11 @@
      "name": "ATLAS_SOLVE",
      "type": "ATLAS_SOLVE",
      "links": [
-      38,
-      42,
+      40,
       44,
       46,
-      47
+      48,
+      49
      ],
      "slot_index": 0
     }
@@ -1761,7 +1836,7 @@
    "title": "Attach float source identity"
   },
   {
-   "id": 22,
+   "id": 23,
    "type": "AtlasViewportControls",
    "pos": [
     1710,
@@ -1772,7 +1847,7 @@
     280
    ],
    "flags": {},
-   "order": 22,
+   "order": 23,
    "mode": 0,
    "inputs": [
     {
@@ -1816,7 +1891,7 @@
      "name": "controls",
      "type": "ATLAS_VIEWPORT_LINK",
      "links": [
-      40
+      42
      ],
      "slot_index": 0
     },
@@ -1824,9 +1899,9 @@
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
      "links": [
-      41,
       43,
-      45
+      45,
+      47
      ],
      "slot_index": 1
     }
@@ -1846,7 +1921,7 @@
    "title": "ACES 2.0 Output Desk"
   },
   {
-   "id": 23,
+   "id": 24,
    "type": "AtlasBlockoutViewport",
    "pos": [
     1710,
@@ -1857,18 +1932,18 @@
     500
    ],
    "flags": {},
-   "order": 23,
+   "order": 24,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 38
+     "link": 40
     },
     {
      "name": "source_image",
      "type": "IMAGE",
-     "link": 39
+     "link": 41
     },
     {
      "name": "resolution",
@@ -1888,7 +1963,7 @@
     {
      "name": "controls",
      "type": "ATLAS_VIEWPORT_LINK",
-     "link": 40
+     "link": 42
     },
     {
      "name": "shot_cam",
@@ -1898,7 +1973,7 @@
     {
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
-     "link": 41
+     "link": 43
     }
    ],
    "outputs": [
@@ -1980,7 +2055,7 @@
    "title": "Layered projection — inspect seams before export"
   },
   {
-   "id": 24,
+   "id": 25,
    "type": "AtlasExportNukeLayers",
    "pos": [
     1710,
@@ -1991,13 +2066,13 @@
     300
    ],
    "flags": {},
-   "order": 24,
+   "order": 25,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 42
+     "link": 44
     },
     {
      "name": "output_dir",
@@ -2007,7 +2082,7 @@
     {
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
-     "link": 43
+     "link": 45
     },
     {
      "name": "retopo_method",
@@ -2063,7 +2138,7 @@
    "title": "Nuke layered projection — quadric retopo"
   },
   {
-   "id": 25,
+   "id": 26,
    "type": "AtlasExportMayaLayers",
    "pos": [
     2200,
@@ -2074,13 +2149,13 @@
     300
    ],
    "flags": {},
-   "order": 25,
+   "order": 26,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 44
+     "link": 46
     },
     {
      "name": "output_dir",
@@ -2090,7 +2165,7 @@
     {
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
-     "link": 45
+     "link": 47
     },
     {
      "name": "retopo_method",
@@ -2146,7 +2221,7 @@
    "title": "Maya layered projection — identical quadric retopo"
   },
   {
-   "id": 26,
+   "id": 27,
    "type": "AtlasExportUSD",
    "pos": [
     1710,
@@ -2157,13 +2232,13 @@
     120
    ],
    "flags": {},
-   "order": 26,
+   "order": 27,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 46
+     "link": 48
     },
     {
      "name": "output_dir",
@@ -2188,7 +2263,7 @@
    "title": "Static camera USD"
   },
   {
-   "id": 27,
+   "id": 28,
    "type": "AtlasDebugReport",
    "pos": [
     2150,
@@ -2199,18 +2274,18 @@
     260
    ],
    "flags": {},
-   "order": 27,
+   "order": 28,
    "mode": 0,
    "inputs": [
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 47
+     "link": 49
     },
     {
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 48
+     "link": 50
     },
     {
      "name": "file_path",
@@ -2477,22 +2552,30 @@
   ],
   [
    27,
+   17,
+   0,
+   20,
+   0,
+   "IMAGE"
+  ],
+  [
+   28,
    3,
    0,
-   19,
+   20,
    3,
    "ATLAS_SOLVE"
   ],
   [
-   28,
-   19,
+   29,
+   20,
    0,
    16,
    1,
    "ATLAS_DEPTH_MAP"
   ],
   [
-   29,
+   30,
    17,
    0,
    16,
@@ -2500,7 +2583,15 @@
    "IMAGE"
   ],
   [
-   30,
+   31,
+   19,
+   1,
+   16,
+   9,
+   "ATLAS_PLATE_REF"
+  ],
+  [
+   32,
    14,
    1,
    16,
@@ -2508,112 +2599,96 @@
    "MASK"
   ],
   [
-   31,
+   33,
    16,
    0,
-   20,
+   21,
    0,
    "ATLAS_SOLVE"
   ],
   [
-   32,
+   34,
    4,
    0,
-   20,
+   21,
    1,
    "ATLAS_DEPTH_MAP"
   ],
   [
-   33,
+   35,
    2,
    0,
-   20,
+   21,
    2,
    "IMAGE"
   ],
   [
-   34,
+   36,
    2,
    1,
-   20,
+   21,
    9,
    "ATLAS_PLATE_REF"
   ],
   [
-   35,
+   37,
    5,
    1,
-   20,
+   21,
    15,
    "MASK"
-  ],
-  [
-   36,
-   20,
-   0,
-   21,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   37,
-   2,
-   1,
-   21,
-   1,
-   "ATLAS_PLATE_REF"
   ],
   [
    38,
    21,
    0,
-   23,
+   22,
    0,
    "ATLAS_SOLVE"
   ],
   [
    39,
    2,
-   0,
-   23,
    1,
-   "IMAGE"
+   22,
+   1,
+   "ATLAS_PLATE_REF"
   ],
   [
    40,
    22,
-   0,
-   23,
-   5,
-   "ATLAS_VIEWPORT_LINK"
-  ],
-  [
-   41,
-   22,
-   1,
-   23,
-   7,
-   "ATLAS_OUTPUT_PROFILE"
-  ],
-  [
-   42,
-   21,
    0,
    24,
    0,
    "ATLAS_SOLVE"
   ],
   [
+   41,
+   2,
+   0,
+   24,
+   1,
+   "IMAGE"
+  ],
+  [
+   42,
+   23,
+   0,
+   24,
+   5,
+   "ATLAS_VIEWPORT_LINK"
+  ],
+  [
    43,
-   22,
+   23,
    1,
    24,
-   2,
+   7,
    "ATLAS_OUTPUT_PROFILE"
   ],
   [
    44,
-   21,
+   22,
    0,
    25,
    0,
@@ -2621,7 +2696,7 @@
   ],
   [
    45,
-   22,
+   23,
    1,
    25,
    2,
@@ -2629,7 +2704,7 @@
   ],
   [
    46,
-   21,
+   22,
    0,
    26,
    0,
@@ -2637,17 +2712,33 @@
   ],
   [
    47,
-   21,
+   23,
+   1,
+   26,
+   2,
+   "ATLAS_OUTPUT_PROFILE"
+  ],
+  [
+   48,
+   22,
    0,
    27,
    0,
    "ATLAS_SOLVE"
   ],
   [
-   48,
+   49,
+   22,
+   0,
+   28,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   50,
    4,
    0,
-   27,
+   28,
    1,
    "ATLAS_DEPTH_MAP"
   ]
