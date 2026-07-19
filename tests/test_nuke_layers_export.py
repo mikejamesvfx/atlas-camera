@@ -93,6 +93,7 @@ def _layered_solve():
 def test_node_registered():
     assert NODE_CLASS_MAPPINGS["AtlasExportNukeLayers"] is AtlasExportNukeLayers
     assert AtlasExportNukeLayers.RETURN_TYPES == ("STRING", "STRING")
+    assert list(AtlasExportNukeLayers.INPUT_TYPES()["optional"])[0] == "output_profile"
 
 
 def test_layers_export_writes_nk_plates_and_objs(tmp_path):
@@ -110,6 +111,7 @@ def test_layers_export_writes_nk_plates_and_objs(tmp_path):
         assert (tmp_path / f"{layer}_plate.png").exists()
         assert (tmp_path / f"{layer}_mesh.obj").exists()
     assert "Scene {" in nk and "inputs 2" in nk
+    assert nk.count("colorspace sRGB - Display") == 2
     assert "ScanlineRender1" in nk
     # Render camera wired via the proven onScriptLoad callback, never pushed.
     assert "onScriptLoad" in nk and "RenderCam1" in nk
@@ -142,11 +144,65 @@ def test_export_errors_loudly_without_layers(tmp_path):
         write_nuke_layers_script(_solve(), tmp_path)
 
 
+def test_node_wrapper_does_not_mask_retopology_value_errors(monkeypatch, tmp_path):
+    import atlas_camera.exporters.nuke_exporter as exporter
+
+    def fail(*args, **kwargs):
+        raise ValueError("retopology backend failed")
+
+    monkeypatch.setattr(exporter, "write_nuke_layers_script", fail)
+    with pytest.raises(ValueError, match="retopology backend failed"):
+        AtlasExportNukeLayers().export(_layered_solve(), str(tmp_path))
+
+
 def test_node_wrapper_returns_paths_and_summary(tmp_path):
     solve = _layered_solve()
     nk_path, summary = AtlasExportNukeLayers().export(solve, str(tmp_path))
     assert nk_path.endswith("nuke_layers.nk")
     assert "2 layer(s): sky, bg" in summary
+
+
+def test_node_wrapper_retopologizes_every_layer(tmp_path):
+    solve = _layered_solve()
+    nk_path, summary = AtlasExportNukeLayers().export(
+        solve, str(tmp_path), retopo_method="smooth",
+        retopo_smooth_iterations=1,
+    )
+    assert nk_path.endswith("nuke_layers.nk")
+    assert "smooth retopo" in summary
+    assert (tmp_path / "sky_mesh.obj").exists()
+    assert (tmp_path / "bg_mesh.obj").exists()
+
+
+def test_shared_collector_reuses_byte_identical_retopology(monkeypatch, tmp_path):
+    """Nuke and Maya must not get two slightly different remeshes."""
+    from pathlib import Path
+
+    from atlas_camera.exporters import _layers
+    import atlas_camera.core.mesh_retopo as retopo_mod
+
+    _layers._RETOPO_CACHE.clear()
+    calls = {"n": 0}
+
+    def deliberately_drifting_retopo(mesh, **kwargs):
+        calls["n"] += 1
+        mesh.vertices = mesh.vertices.copy()
+        mesh.vertices[:, 0] += calls["n"] * 0.001
+        return {"method": kwargs["method"], "changed": True, "note": "test"}
+
+    monkeypatch.setattr(retopo_mod, "apply_retopo", deliberately_drifting_retopo)
+    solve = _layered_solve()
+    a, _ = _layers.collect_projection_layers(
+        solve, tmp_path / "nuke", retopo_method="smooth",
+        retopo_smooth_iterations=17,
+    )
+    b, _ = _layers.collect_projection_layers(
+        solve, tmp_path / "maya", retopo_method="smooth",
+        retopo_smooth_iterations=17,
+    )
+    assert calls["n"] == len(solve.projection_sources)
+    for left, right in zip(a, b):
+        assert Path(left["obj_path"]).read_bytes() == Path(right["obj_path"]).read_bytes()
 
 
 def test_matte_lands_in_plate_alpha_and_standalone_file(tmp_path):

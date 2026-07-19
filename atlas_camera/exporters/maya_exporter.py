@@ -491,6 +491,11 @@ def write_maya_layers_scene(
     output_dir: str | Path,
     *,
     name: str = "maya_layers",
+    retopo_method: str = "off",
+    retopo_target_vertex_count: int = 2000,
+    retopo_smooth_iterations: int = 0,
+    retopo_crease_angle: float = 30.0,
+    retopo_pure_quad: bool = False,
 ) -> dict:
     """Export EVERY projection layer on a solve — each ``ProjectionSource``
     (sky dome, clean-plate bands, multi-angle patches) — as ONE Maya ASCII
@@ -519,7 +524,14 @@ def write_maya_layers_scene(
 
     from atlas_camera.exporters._layers import collect_projection_layers
 
-    layers, skipped = collect_projection_layers(solve, out)
+    layers, skipped = collect_projection_layers(
+        solve, out,
+        retopo_method=retopo_method,
+        retopo_target_vertex_count=retopo_target_vertex_count,
+        retopo_smooth_iterations=retopo_smooth_iterations,
+        retopo_crease_angle=retopo_crease_angle,
+        retopo_pure_quad=retopo_pure_quad,
+    )
     if not layers:
         raise ValueError(
             "No exportable projection layers on this solve — add layers with "

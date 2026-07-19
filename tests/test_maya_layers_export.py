@@ -91,6 +91,7 @@ def _layered_solve():
 def test_node_registered():
     assert NODE_CLASS_MAPPINGS["AtlasExportMayaLayers"] is AtlasExportMayaLayers
     assert AtlasExportMayaLayers.RETURN_TYPES == ("STRING", "STRING")
+    assert list(AtlasExportMayaLayers.INPUT_TYPES()["optional"])[0] == "output_profile"
 
 
 @pytest.mark.parametrize("eye,target", [
@@ -135,6 +136,7 @@ def test_layers_export_writes_ma_with_cameras_and_scriptnode(tmp_path):
     # node has no focal/aperture attrs — confirmed live in Maya 2027), and
     # imported OBJs get the cm->m x100 compensation.
     assert "projType" in ma and "linkedCamera" in ma
+    assert "sRGB - Display" in ma
     assert "100, 100, 100" in ma
     # The x100 MUST scale about world origin, not the import group's own
     # pivot — groupReference lands the pivot at the geometry centre, so a
@@ -165,8 +167,31 @@ def test_export_errors_loudly_without_layers(tmp_path):
         write_maya_layers_scene(_solve(), tmp_path)
 
 
+def test_node_wrapper_does_not_mask_retopology_value_errors(monkeypatch, tmp_path):
+    import atlas_camera.exporters.maya_exporter as exporter
+
+    def fail(*args, **kwargs):
+        raise ValueError("retopology backend failed")
+
+    monkeypatch.setattr(exporter, "write_maya_layers_scene", fail)
+    with pytest.raises(ValueError, match="retopology backend failed"):
+        AtlasExportMayaLayers().export(_layered_solve(), str(tmp_path))
+
+
 def test_node_wrapper_returns_paths_and_summary(tmp_path):
     solve = _layered_solve()
     ma_path, summary = AtlasExportMayaLayers().export(solve, str(tmp_path))
     assert ma_path.endswith("maya_layers.ma")
     assert "2 layer(s): sky, bg" in summary
+
+
+def test_node_wrapper_retopologizes_every_layer(tmp_path):
+    solve = _layered_solve()
+    ma_path, summary = AtlasExportMayaLayers().export(
+        solve, str(tmp_path), retopo_method="smooth",
+        retopo_smooth_iterations=1,
+    )
+    assert ma_path.endswith("maya_layers.ma")
+    assert "smooth retopo" in summary
+    assert (tmp_path / "sky_mesh.obj").exists()
+    assert (tmp_path / "bg_mesh.obj").exists()

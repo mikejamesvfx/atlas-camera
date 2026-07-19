@@ -5871,22 +5871,42 @@ class AtlasExportNukeLayers:
             "optional": {
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata for annotations."}),
+                "retopo_method": (["off", "quad", "decimate", "smooth"], {
+                    "default": "off", "tooltip": "Export-only retopology applied to EVERY layer mesh before Nuke writes its OBJs."}),
+                "retopo_target_vertex_count": ("INT", {"default": 2000, "min": 100, "max": 100000, "step": 100}),
+                "retopo_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 20}),
+                "retopo_crease_angle": ("FLOAT", {"default": 30.0, "min": 0.0, "max": 180.0, "step": 1.0}),
+                "retopo_pure_quad": ("BOOLEAN", {"default": False}),
             },
         }
 
-    def export(self, solve, output_dir, output_profile=None):
+    def export(self, solve, output_dir, output_profile=None,
+               retopo_method="off", retopo_target_vertex_count=2000,
+               retopo_smooth_iterations=0, retopo_crease_angle=30.0,
+               retopo_pure_quad=False):
         from atlas_camera.exporters.nuke_exporter import write_nuke_layers_script
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
         try:
-            result = write_nuke_layers_script(solve, output_dir)
+            result = write_nuke_layers_script(
+                solve, output_dir,
+                retopo_method=retopo_method,
+                retopo_target_vertex_count=retopo_target_vertex_count,
+                retopo_smooth_iterations=retopo_smooth_iterations,
+                retopo_crease_angle=retopo_crease_angle,
+                retopo_pure_quad=retopo_pure_quad,
+            )
         except ValueError as exc:
             # The LAYER export needs ProjectionSources (sky / clean-plate bands /
             # patches). A layers=0 single relief mesh has none — don't crash the
             # queue; return a clear pointer. Use AtlasInput layers>=1 for the full
             # DCC handoff, or AtlasExportUSD (camera) for the single-relief case.
+            if "No exportable projection layers" not in str(exc):
+                raise
             return ("", f"Nuke layer export skipped — {exc}")
         summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
+        if retopo_method != "off":
+            summary += f" | {retopo_method} retopo ≤{int(retopo_target_vertex_count)} verts/layer"
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
         summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
@@ -5930,20 +5950,40 @@ class AtlasExportMayaLayers:
             "optional": {
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata for annotations."}),
+                "retopo_method": (["off", "quad", "decimate", "smooth"], {
+                    "default": "off", "tooltip": "Export-only retopology applied to EVERY layer mesh before Maya writes its OBJs."}),
+                "retopo_target_vertex_count": ("INT", {"default": 2000, "min": 100, "max": 100000, "step": 100}),
+                "retopo_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 20}),
+                "retopo_crease_angle": ("FLOAT", {"default": 30.0, "min": 0.0, "max": 180.0, "step": 1.0}),
+                "retopo_pure_quad": ("BOOLEAN", {"default": False}),
             },
         }
 
-    def export(self, solve, output_dir, output_profile=None):
+    def export(self, solve, output_dir, output_profile=None,
+               retopo_method="off", retopo_target_vertex_count=2000,
+               retopo_smooth_iterations=0, retopo_crease_angle=30.0,
+               retopo_pure_quad=False):
         from atlas_camera.exporters.maya_exporter import write_maya_layers_scene
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
         try:
-            result = write_maya_layers_scene(solve, output_dir)
+            result = write_maya_layers_scene(
+                solve, output_dir,
+                retopo_method=retopo_method,
+                retopo_target_vertex_count=retopo_target_vertex_count,
+                retopo_smooth_iterations=retopo_smooth_iterations,
+                retopo_crease_angle=retopo_crease_angle,
+                retopo_pure_quad=retopo_pure_quad,
+            )
         except ValueError as exc:
             # See AtlasExportNukeLayers: the LAYER export needs ProjectionSources;
             # a layers=0 single relief mesh has none. Graceful skip, not a crash.
+            if "No exportable projection layers" not in str(exc):
+                raise
             return ("", f"Maya layer export skipped — {exc}")
         summary = f"{len(result['layers'])} layer(s): {', '.join(result['layers'])}"
+        if retopo_method != "off":
+            summary += f" | {retopo_method} retopo ≤{int(retopo_target_vertex_count)} verts/layer"
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
         summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)

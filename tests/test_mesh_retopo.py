@@ -277,6 +277,23 @@ def test_apply_retopo_off_is_noop():
     np.testing.assert_array_equal(mesh.faces, f_before)
 
 
+def test_decimate_is_noop_when_mesh_is_already_below_target():
+    """fast-simplification rejects a target >= input faces; that is already
+    the desired topology budget and must pass through instead of erroring."""
+    mesh = _flat_grid_mesh()
+    v_before = mesh.vertices.copy()
+    f_before = mesh.faces.copy()
+    rep = apply_retopo(
+        mesh, method="decimate", target_vertex_count=100,
+        view_matrix=_identity_view(), fx=100.0, fy=100.0,
+        cx=50.0, cy=50.0, image_width=100, image_height=100,
+    )
+    assert rep["changed"] is False
+    assert "already below target" in rep["note"]
+    np.testing.assert_array_equal(mesh.vertices, v_before)
+    np.testing.assert_array_equal(mesh.faces, f_before)
+
+
 def test_apply_retopo_no_faces_is_noop():
     mesh = _flat_grid_mesh()
     mesh.faces = np.zeros((0, 3), dtype=np.int64)
