@@ -93,7 +93,7 @@ def write_maya_scene_script(
         for p in proxies if p.primitive_type != "mesh"
     ]
     relief_mesh_obj_path_str = str(relief_mesh_obj_path) if relief_mesh_obj_path else None
-    source_plate_path = None if use_package_source else primary_plate_path(solve)
+    source_plate_path = None if use_package_source else primary_plate_path(solve, must_exist=True)
     source_colorspace = primary_plate_colorspace(solve)
     output_profile = getattr(solve, "output_profile", None)
     ocio_summary = (

@@ -202,3 +202,30 @@ def test_nuke_native_script_imports_relief_mesh_when_given(tmp_path, make_atlas_
     assert str(mesh_path).replace("\\", "/") in script
     # The camera-fixup callback still applies regardless of geometry type.
     assert "onScriptLoad" in script
+
+
+def test_dangling_temp_plate_is_not_baked_into_the_script(tmp_path, make_atlas_solve):
+    """Every tensor-based solve records a NamedTemporaryFile as image_path and
+    then unlinks it, so by export time the path is dangling. Baking it into the
+    Read node produced a .nk/.py that could not resolve its plate (found by the
+    Linux beta test on the shipped quickstart)."""
+    solve = make_atlas_solve()
+    missing = tmp_path / "deleted_temp_plate.png"
+    solve.image_path = str(missing)
+    assert not missing.exists()
+
+    for writer, name in ((write_nuke_projection_script, "nuke_cards.py"),
+                         (write_nuke_native_script, "nuke_cards.nk")):
+        script = writer(solve, tmp_path / name).read_text(encoding="utf-8")
+        assert "deleted_temp_plate.png" not in script
+
+
+def test_existing_plate_is_still_baked_into_the_script(tmp_path, make_atlas_solve):
+    """The existence check must not cost a real plate its path."""
+    solve = make_atlas_solve()
+    real = tmp_path / "real_plate.png"
+    real.write_bytes(b"\x89PNG\r\n\x1a\n")
+    solve.image_path = str(real)
+
+    script = write_nuke_projection_script(solve, tmp_path / "nuke_cards.py").read_text(encoding="utf-8")
+    assert "real_plate.png" in script

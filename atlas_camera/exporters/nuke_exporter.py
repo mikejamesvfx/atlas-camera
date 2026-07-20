@@ -36,6 +36,7 @@ and the world matrix pass through unchanged.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm
@@ -76,7 +77,7 @@ def write_nuke_projection_script(
 
     # Camera world matrix, row-major flat list (Nuke Camera2 matrix knob format).
     flat_world = [v for row in solve.camera.extrinsics.camera_world_matrix for v in row]
-    source_plate_path = None if use_package_source else primary_plate_path(solve)
+    source_plate_path = None if use_package_source else primary_plate_path(solve, must_exist=True)
     if source_plate_path:
         # Nuke's live knob-setting API (Node["file"].setValue(...)) runs the
         # value through TCL escape interpretation regardless of how the string
@@ -284,14 +285,18 @@ def write_nuke_native_script(
         "     {" + " ".join(repr(v) for v in row) + "}" for row in m
     )
 
-    source_plate_path = None if use_package_source else primary_plate_path(solve)
+    source_plate_path = None if use_package_source else primary_plate_path(solve, must_exist=True)
     if source_plate_path:
         source_plate_path = source_plate_path.replace("\\", "/")
     else:
         # No registered float plate - fall back to whatever preview path the
         # solve itself carries (e.g. a browser-uploaded proxy), same
-        # forward-slash normalisation as the .py writer.
-        source_plate_path = str(solve.image_path or "").replace("\\", "/")
+        # forward-slash normalisation as the .py writer. Only when it is
+        # actually on disk: a tensor-based solve records a NamedTemporaryFile
+        # the solve node has already unlinked, and baking that dead path here
+        # is what made the quickstart's .nk unable to resolve its plate.
+        fallback = str(solve.image_path or "")
+        source_plate_path = fallback.replace("\\", "/") if os.path.exists(fallback) else ""
     source_colorspace = primary_plate_colorspace(solve)
     suffix = Path(source_plate_path).suffix.lower().lstrip(".") or "exr"
 
