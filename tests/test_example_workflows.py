@@ -13,12 +13,18 @@ this checker. Promoted to a permanent test per the beta-0.3 spec-panel review
 import glob
 import json
 import os
+import re
 
 import pytest
 
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "examples")
 
 STAGED_MASTER = "atlas_camera_staged_master_workflow.json"
+
+# ComfyUI frontend zod schema: workflow id is z.string().uuid().optional()
+UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
 def _ui_workflows():
@@ -160,3 +166,35 @@ def test_staged_master_scope_rows_are_always_active():
     scopes = [n for n in wf["nodes"] if n["type"] == "AtlasScopeMask"]
     assert len(scopes) == 4
     assert all(n.get("mode", 0) == 0 for n in scopes)
+
+
+@pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])
+def test_workflow_id_is_a_uuid(name, wf):
+    """The ComfyUI frontend validates loaded workflows against a zod schema
+    whose top-level `id` is `z.string().uuid().optional()` — a human-readable
+    slug raises the yellow toast "Invalid workflow against zod schema:
+    Validation error: Invalid uuid at \"id\"". The graph still loads (the
+    frontend falls back to the unvalidated data, `validatedGraphData ??
+    graphData`) but it silently SKIPS the `tryFixLinks` repair pass, so a
+    rejected workflow also loses the link-integrity fixups every other
+    workflow gets. Three shipped quickstarts carried hand-written slugs
+    ("atlas-input-quickstart"), two of them identical — found live 2026-07-21
+    against the frontend bundled with ComfyUI 0.3.49, reproduced with a
+    positive control. The key is optional — omitting it lets the frontend
+    generate one — but every workflow here ships a stable id, so it must be a
+    real UUID."""
+    wf_id = wf.get("id")
+    if wf_id is None:
+        return  # omitted is valid: the frontend auto-generates
+    assert UUID_RE.match(str(wf_id)), (
+        f"{name}: workflow id {wf_id!r} is not a UUID — the frontend's zod "
+        f"schema will reject this workflow on load")
+
+
+def test_workflow_ids_are_unique():
+    """Two quickstarts shipped the SAME id ("atlas-input-quickstart"), which
+    would collide in the frontend's workflow store once both became valid
+    UUIDs. Distinct ids are what make a stable id worth having at all."""
+    ids = [wf["id"] for _, wf in _WORKFLOWS if wf.get("id") is not None]
+    dupes = {i for i in ids if ids.count(i) > 1}
+    assert not dupes, f"duplicate workflow ids: {sorted(dupes)}"
