@@ -2,8 +2,12 @@
 
 The expansion assembly is pure graph construction, so it's tested here via
 the _MiniGraphBuilder shim (no ComfyUI needed): outside ComfyUI the registry
-is {} which exercises exactly the graceful-degrade paths, and the SAM/inpaint
-paths are exercised by monkeypatching the registry probe.
+is {} which exercises exactly the graceful-degrade paths. The inpaint path is
+exercised by monkeypatching the registry probe (_comfy_registry); the native
+SAM3 path is exercised by monkeypatching the separate capability probe
+(_native_sam3_available), since AtlasSAM3Mask is Atlas's own node and is
+therefore always present in the registry regardless of whether its actual
+[sam3] dependency is satisfied.
 """
 
 import pytest
@@ -11,8 +15,8 @@ import pytest
 torch = pytest.importorskip("torch")
 
 # AtlasInput lives in nodes_viewport after the nodes.py modularization; its
-# node-expansion helpers (_comfy_registry) resolve in that module's namespace,
-# so the registry-probe monkeypatch must target it there.
+# node-expansion helpers (_comfy_registry, _native_sam3_available) resolve in
+# that module's namespace, so both probe monkeypatches must target it there.
 import atlas_camera.comfy.nodes_viewport as nodes_mod
 from atlas_camera.comfy.nodes import (
     NODE_CLASS_MAPPINGS,
@@ -20,14 +24,15 @@ from atlas_camera.comfy.nodes import (
     _parse_band_override,
 )
 
-FULL_REGISTRY = {"SAM3Segment": object, "INPAINT_InpaintWithModel": object,
+FULL_REGISTRY = {"INPAINT_InpaintWithModel": object,
                  "INPAINT_LoadInpaintModel": object, "INPAINT_ExpandMask": object}
 
 IMG = "IMAGE_SENTINEL"
 
 
-def _expand(monkeypatch, registry=None, **kw):
+def _expand(monkeypatch, registry=None, native_sam3=False, **kw):
     monkeypatch.setattr(nodes_mod, "_comfy_registry", lambda: registry or {})
+    monkeypatch.setattr(nodes_mod, "_native_sam3_available", lambda: native_sam3)
     out = AtlasInput().build(IMG, **kw)
     assert set(out) == {"result", "expand"}
     _assert_atlas_inputs_valid(out["expand"])
@@ -42,8 +47,8 @@ def _assert_atlas_inputs_valid(graph):
     """Every emitted Atlas-class node's input names must exist on the real
     class's INPUT_TYPES (code-review minor #7): a typo'd kwarg in build()
     would pass every value-assertion test and only explode at ComfyUI
-    prompt validation at runtime. Third-party classes (SAM3Segment,
-    INPAINT_*) are skipped — their schemas aren't importable here."""
+    prompt validation at runtime. Third-party classes (INPAINT_*) are
+    skipped — their schemas aren't importable here."""
     for node in graph.values():
         cls = NODE_CLASS_MAPPINGS.get(node["class_type"])
         if cls is None:
@@ -124,34 +129,33 @@ def test_band_layers_watertight_and_prioritized(monkeypatch):
 
 
 def test_sky_and_scope_skip_gracefully_without_any_segmenter(monkeypatch):
-    # Empty registry: neither SAM3 nor AtlasSemanticMask -> drop to heuristic.
+    # Empty registry + native SAM3 unavailable -> drop to heuristic.
     graph, result = _expand(monkeypatch, sky=True, layers=2,
                             scope_prompts="rocks\nperson")
     report = result[4]
     assert "sky SKIPPED" in report and "no segmenter" in report
     assert "scope SKIPPED" in report
-    assert not any(n["class_type"] == "SAM3Segment" for n in graph.values())
+    assert not any(n["class_type"] == "AtlasSAM3Mask" for n in graph.values())
     assert not any(n["class_type"] == "AtlasSemanticMask" for n in graph.values())
     # sky_mask output degrades to the SolidMask zero
     solid_id = next(i for i, n in graph.items() if n["class_type"] == "SolidMask")
     assert result[3] == [solid_id, 0]
 
 
-def test_sky_and_scope_fall_back_to_semantic_mask_without_sam(monkeypatch):
-    # Non-CUDA box: SAM3 (triton) can't load, but our SegFormer node can — sky
-    # and scope must route to AtlasSemanticMask, not collapse to the heuristic.
+def test_sky_and_scope_fall_back_to_semantic_mask_without_native_sam3(monkeypatch):
+    # Non-CUDA box, or [sam3] not installed: native SAM3 unavailable, but our
+    # SegFormer node can still run — sky and scope must route to
+    # AtlasSemanticMask, not collapse to the heuristic.
     graph, result = _expand(monkeypatch, registry={"AtlasSemanticMask": object},
                             sky=True, layers=2, scope_prompts="rocks")
     report = result[4]
     assert "AtlasSemanticMask" in report and "fallback" in report
-    assert not any(n["class_type"] == "SAM3Segment" for n in graph.values())
+    assert not any(n["class_type"] == "AtlasSAM3Mask" for n in graph.values())
     sems = [n for n in graph.values() if n["class_type"] == "AtlasSemanticMask"]
     assert len(sems) == 2                        # sky + one scope line
     # The sky dome is actually built (not skipped), fed by the SegFormer mask.
     assert any(n["class_type"] == "AtlasSkyDomeLayer" for n in graph.values())
     assert any(n["inputs"].get("classes") == "sky" for n in sems)
-    # Scope wires AtlasScopeMask off the SegFormer mask — which is out(0), not
-    # SAM3's out(1).
     scopes = [n for n in graph.values() if n["class_type"] == "AtlasScopeMask"]
     assert len(scopes) == 1
     rocks_id = next(i for i, n in graph.items()
@@ -160,10 +164,10 @@ def test_sky_and_scope_fall_back_to_semantic_mask_without_sam(monkeypatch):
     assert scopes[0]["inputs"]["segment_mask"] == [rocks_id, 0]
 
 
-def test_sky_and_scope_wire_when_sam_present(monkeypatch):
-    graph, result = _expand(monkeypatch, registry=FULL_REGISTRY, sky=True,
+def test_sky_and_scope_wire_when_native_sam3_available(monkeypatch):
+    graph, result = _expand(monkeypatch, native_sam3=True, sky=True,
                             layers=2, scope_prompts="rocks")
-    sams = [n for n in graph.values() if n["class_type"] == "SAM3Segment"]
+    sams = [n for n in graph.values() if n["class_type"] == "AtlasSAM3Mask"]
     assert len(sams) == 2                        # sky + one scope line
     sky_layer = next(n for n in graph.values()
                      if n["class_type"] == "AtlasSkyDomeLayer")
@@ -175,9 +179,9 @@ def test_sky_and_scope_wire_when_sam_present(monkeypatch):
     # sky mask feeds band_ref_mask on every band layer (the drift rule)
     bands = [n for n in graph.values() if n["class_type"] == "AtlasCleanPlateLayer"]
     sky_sam_id = next(i for i, n in graph.items()
-                      if n["class_type"] == "SAM3Segment"
-                      and n["inputs"]["prompt"] == "sky")
-    assert all(b["inputs"].get("band_ref_mask") == [sky_sam_id, 1] for b in bands)
+                      if n["class_type"] == "AtlasSAM3Mask"
+                      and n["inputs"]["concepts"] == "sky")
+    assert all(b["inputs"].get("band_ref_mask") == [sky_sam_id, 0] for b in bands)
 
 
 def test_inpaint_chain_per_occluded_band(monkeypatch):
@@ -209,8 +213,8 @@ def test_inpaint_skips_gracefully_without_pack(monkeypatch):
 
 
 def test_vlm_wires_plan_and_forces_four_bands(monkeypatch):
-    graph, result = _expand(monkeypatch, registry=FULL_REGISTRY, use_vlm=True,
-                            layers=2, sky=True)
+    graph, result = _expand(monkeypatch, registry=FULL_REGISTRY, native_sam3=True,
+                            use_vlm=True, layers=2, sky=True)
     assess_id = next(i for i, n in graph.items()
                      if n["class_type"] == "AtlasAssessImage")
     assess = graph[assess_id]
@@ -227,7 +231,7 @@ def test_vlm_wires_plan_and_forces_four_bands(monkeypatch):
     assert geom_refs == [8, 9, 10, 11]
     assert all(b["inputs"]["band_override"][0] == assess_id for b in bands)
     # sky SAM prompt comes from the plan too (output 3)
-    sky_sam = next(n for n in graph.values() if n["class_type"] == "SAM3Segment"
-                   and isinstance(n["inputs"]["prompt"], list)
-                   and n["inputs"]["prompt"][1] == 3)
-    assert sky_sam["inputs"]["prompt"][0] == assess_id
+    sky_sam = next(n for n in graph.values() if n["class_type"] == "AtlasSAM3Mask"
+                   and isinstance(n["inputs"]["concepts"], list)
+                   and n["inputs"]["concepts"][1] == 3)
+    assert sky_sam["inputs"]["concepts"][0] == assess_id

@@ -19,6 +19,7 @@ from atlas_camera.comfy.node_helpers import (
     _blockout_cache_set,
     _clone_solve_with_metadata,
     _comfy_registry,
+    _native_sam3_available,
     _decode_b64_to_tensor,
     _execution_blocker,
     _extract_blockout_camera,
@@ -543,9 +544,9 @@ class AtlasInput:
     """🎬 The all-in-one entry point — one node between LoadImage and the
     viewport that wraps the staged master's logic via NODE EXPANSION: at
     execution it emits the real mini-graph (our nodes by class, third-party
-    SAM3Segment / LaMa by registry name) so every inner step keeps its own
-    cache, and missing packs degrade gracefully (skipped + named in the
-    `report` output) instead of erroring.
+    LaMa by registry name; native SAM3 via AtlasSAM3Mask, our own node) so
+    every inner step keeps its own cache, and missing packs degrade
+    gracefully (skipped + named in the `report` output) instead of erroring.
 
     Out of the box (instant relief): layers=0, VLM/SAM/inpaint off — the
     first queue costs solve + depth + ONE high-resolution relief mesh, and
@@ -602,8 +603,9 @@ class AtlasInput:
                     "tooltip": "Blank = the provider's default model."}),
                 "sky": ("BOOLEAN", {"default": False,
                     "tooltip": "SAM-segment the sky onto its own flat card, and feed the mask "
-                               "into every mesh's exclude_mask + band_ref_mask. Needs "
-                               "ComfyUI-RMBG (SAM3Segment) — skipped + noted if absent."}),
+                               "into every mesh's exclude_mask + band_ref_mask. Uses native "
+                               "SAM3 (transformers>=5.5.4, [sam3] extra) or falls back to "
+                               "AtlasSemanticMask — skipped + noted if neither is available."}),
                 "sky_prompt": ("STRING", {"default": "sky",
                     "tooltip": "Manual sky segmentation prompt; the VLM's wins when use_vlm."}),
                 "scope_prompts": ("STRING", {"default": "", "multiline": True,
@@ -611,7 +613,7 @@ class AtlasInput:
                                "(line 1 = farthest band). Blank line = that band stays "
                                "band-only. Self-disarming: a no-match segment falls back to "
                                "band-only automatically. The VLM's prompts win when use_vlm. "
-                               "Needs ComfyUI-RMBG."}),
+                               "Uses native SAM3 ([sam3] extra) or AtlasSemanticMask."}),
                 "inpaint": ("BOOLEAN", {"default": False,
                     "tooltip": "Build each occluded band's clean plate: occlusion mask → "
                                "expand → ✂crop → LaMa → ✂stitch (the 256²-bottleneck fix). "
@@ -677,12 +679,13 @@ class AtlasInput:
               sky_heuristic=True, normal_edge_deg=0.0,
               depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", **_extra):
         registry = _comfy_registry()
-        have_sam = "SAM3Segment" in registry
-        # AtlasSemanticMask is our own node (SegFormer/ADE20K, pure transformers,
-        # NO triton/CUDA requirement) — the non-CUDA fallback for text-prompt
-        # segmentation. SAM3 needs triton, which does not exist on Mac(MPS)/CPU/
-        # AMD, so those users can never load it; SegFormer keeps sky+scope on a
-        # LEARNED mask there instead of collapsing to the bare heuristic.
+        # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
+        # supersedes the third-party SAM3Segment (comfyui-rmbg) in Atlas's own
+        # cascade — it works on CUDA/CPU/MPS alike, so there's no case where
+        # preferring the triton-locked node is better. AtlasSemanticMask
+        # (SegFormer/ADE20K, [neural], no triton) remains the learned fallback
+        # for transformers<5.5.4 / [sam3] not installed.
+        have_native_sam3 = _native_sam3_available()
         have_semantic = "AtlasSemanticMask" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry
                         and "INPAINT_LoadInpaintModel" in registry
@@ -690,30 +693,25 @@ class AtlasInput:
         notes: list = []
         g = _graph_builder()
 
-        def sam3(image_ref, prompt_value):
-            return g.node("SAM3Segment", image=image_ref, prompt=prompt_value,
-                          output_mode="Merged", confidence_threshold=0.5,
-                          max_segments=0, segment_pick=0, mask_blur=0,
-                          mask_offset=0, device="Auto", invert_output=False,
-                          unload_model=False, background="Alpha",
-                          background_color="#222222")
-
         def segment(image_ref, prompt_value):
-            """Text-prompt segmentation with an automatic non-CUDA fallback.
-            SAM3 (open-vocab, needs triton/CUDA) is preferred; on a box without
-            it we fall back to AtlasSemanticMask (SegFormer, CPU/MPS) so sky and
-            scope still get a learned mask with no rewiring. Returns a MASK ref,
-            or None when neither segmenter is installed (caller then drops to the
-            heuristic). SAM3 mask is out(1); AtlasSemanticMask mask is out(0)."""
-            if have_sam:
-                return sam3(image_ref, prompt_value).out(1)
+            """Text-prompt segmentation with an automatic fallback cascade.
+            Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) is
+            preferred; on a box without it (or [sam3] not installed) we fall
+            back to AtlasSemanticMask (SegFormer, CPU/MPS) so sky and scope
+            still get a learned mask with no rewiring. Returns a MASK ref, or
+            None when neither segmenter is available (caller then drops to
+            the heuristic). Both AtlasSAM3Mask's and AtlasSemanticMask's mask
+            are out(0)."""
+            if have_native_sam3:
+                return g.node("AtlasSAM3Mask", image=image_ref,
+                              concepts=prompt_value).out(0)
             if have_semantic:
                 return g.node("AtlasSemanticMask", image=image_ref,
                               classes=prompt_value).out(0)
             return None
 
-        if not have_sam and have_semantic:
-            notes.append("SAM3 absent -> AtlasSemanticMask (SegFormer, CPU/MPS) "
+        if not have_native_sam3 and have_semantic:
+            notes.append("native SAM3 absent -> AtlasSemanticMask (SegFormer, CPU/MPS) "
                          "fallback for sky/scope")
 
         # 0. optional VLM assessment (advisory: auto_continue never blocks).
@@ -744,7 +742,7 @@ class AtlasInput:
             sky_prompt_ref = vlm.out(3) if vlm is not None else sky_prompt
             sky_mask = segment(image_ref, sky_prompt_ref)
             if sky_mask is None:
-                notes.append("sky SKIPPED — no segmenter (SAM3 / AtlasSemanticMask absent)")
+                notes.append("sky SKIPPED — no segmenter (native SAM3 / AtlasSemanticMask absent)")
                 sky_on = False
             else:
                 sky_mask_ref = sky_mask
@@ -825,7 +823,7 @@ class AtlasInput:
                     seg_ref = segment(image_ref, p_ref)
                     if seg_ref is None:
                         if prompt_val:
-                            notes.append(f"{name} scope SKIPPED — no segmenter (SAM3 / AtlasSemanticMask absent)")
+                            notes.append(f"{name} scope SKIPPED — no segmenter (native SAM3 / AtlasSemanticMask absent)")
                     else:
                         scope = g.node("AtlasScopeMask",
                                        sky_mask=(sky_mask_ref if sky_on else zero_mask.out(0)),

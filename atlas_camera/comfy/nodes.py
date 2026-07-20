@@ -76,6 +76,7 @@ from atlas_camera.comfy.node_helpers import (
     _LAYER_DEBUG_PRIMARY_HEX,
     _LAYER_DEBUG_PALETTE_HEX,
     _comfy_registry,
+    _native_sam3_available,
     _MiniGraphBuilder,
     _graph_builder,
     _ATLAS_INPUT_BOUNDARIES,
@@ -147,6 +148,7 @@ from atlas_camera.comfy.nodes_geometry import (
 from atlas_camera.comfy.nodes_inpaint import (
     AtlasScopeMask,
     AtlasSemanticMask,
+    AtlasSAM3Mask,
     AtlasInpaintCrop,
     AtlasInpaintStitch,
     AtlasSDXLInpaint,

@@ -15,7 +15,7 @@ import atlas_camera.comfy.nodes as nodes
 
 
 # The exact registered node keys at the time of the nodes.py modularization
-# (67 standard + 4 experimental = 71). ComfyUI serializes these keys into saved
+# (68 standard + 4 experimental = 72). ComfyUI serializes these keys into saved
 # workflows, so this set is a compatibility contract, not an implementation
 # detail.
 NORMAL_KEYS = {
@@ -36,7 +36,8 @@ NORMAL_KEYS = {
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage", "AtlasLoadImageSolveCamera",
     "AtlasLoadRAW", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasMogeNormals",
     "AtlasOcclusionMask", "AtlasPitchTrim", "AtlasReferenceScaleSolve",
-    "AtlasRegisterPlate", "AtlasRollTrim", "AtlasSDXLInpaint", "AtlasScaleOverride",
+    "AtlasRegisterPlate", "AtlasRollTrim", "AtlasSAM3Mask", "AtlasSDXLInpaint",
+    "AtlasScaleOverride",
     "AtlasSceneHealthGate", "AtlasScopeMask", "AtlasSegmentedSDXLInpaint",
     "AtlasSemanticMask", "AtlasSkyDomeLayer", "AtlasSolveFromImage",
     "AtlasSolveGate", "AtlasUSDCameraLoader", "AtlasVLMScaleCues",
@@ -61,7 +62,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 67
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 68
 
 
 def test_experimental_registry_keys_exact():
