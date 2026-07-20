@@ -3,7 +3,44 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
-## Unreleased
+## 0.8.1 — 2026-07-21
+
+Completes the arm64 story 0.8.0 started — the node pack no longer requires
+`triton` anywhere — and bundles the pre-beta cleanup: the node menu is
+foldered, three unused nodes are removed, and the shipping catalog is trimmed
+to three download-free example workflows.
+
+### Per-instance SAM3, natively
+
+- **`AtlasSAM3Mask` 🪄 gains `output_mode`** (`merged` default / `separate`)
+  and `max_instances`. `separate` returns the `(N,H,W)` per-instance stack that
+  SAM3's `post_process_instance_segmentation` was always producing — 0.8.0
+  simply unioned it before anything could see it.
+- **`AtlasSegmentedSDXLInpaint` 🏢 now prefers the native node**, using the same
+  availability cascade `AtlasInput` does, and falls back to the third-party
+  `SAM3Segment` only when native SAM3 is unavailable. The report names which
+  path ran. This was **the last node in the pack that required `triton`**, so
+  per-instance inpainting now runs on Mac (MPS), CPU and AMD.
+
+> **Behaviour change worth checking.** Atlas orders instances **largest first**;
+> `SAM3Segment` orders by score, which is unstable between runs and would
+> silently repoint a saved index at a different object. If you ported a graph
+> that used `output_mode=Separate`, re-check each `AtlasInstanceMask`'s
+> `instance_index`.
+
+### Node menu + node removals
+
+- **Every node now lives in an `Atlas Camera/<folder>` submenu** — the flat
+  top-level list (35 loose nodes) is gone. New folders: **Solve**, **Scale &
+  Trim**, **Masks & Depth**, **Gates & QA**; the rest folded into the existing
+  **Derive Geometry** / **Inpaint Layers** / **Patches** / **Export**. Menu
+  placement only — no node key changed, so saved workflows are unaffected.
+- **Three nodes removed** (their keys are gone, so a saved workflow that uses
+  one will fail to load — recover from git history): `AtlasMegaPipeline` 🔬 (the
+  experimental monolith — unused, and it crashed on first queue),
+  `AtlasLoadImageSolveCamera` (long-deprecated file-path solve; use
+  `AtlasSolveFromImage` / `AtlasLearnedSolveFromImage`), and `AtlasPitchTrim`
+  (the pitch/gravity-mirror dial — `AtlasGravityOverride` sets pitch absolutely).
 
 ### Shipping catalog trimmed to three workflows
 
@@ -14,43 +51,35 @@ ComfyUI's bundled `example.png` with **nothing to download**:
 
 - **Removed from the repo:** the OCIO/ACEScg quickstart and all of
   `examples/showcase/`, `examples/experimental/`, and `examples/retopo/` (~35
-  workflows). Those demonstrate the colour-managed float and camera-RAW paths,
-  which need a float plate / RAW that is **not** shipped — they are distributed
-  as workflow + image bundles from the project website instead. The workflow
-  generators that built them were removed from `tools/` as well, along with
-  `examples/api_format/` and `examples/solves/` — `examples/` now holds exactly
-  the three UI workflows. Recover anything removed from git history (before the
-  trim commit).
+  workflows), plus `examples/api_format/`, `examples/solves/`, and the workflow
+  generators in `tools/` that built them. Those demonstrate the colour-managed
+  float and camera-RAW paths, which need a float plate / RAW that is **not**
+  shipped — distributed as workflow + image bundles from the project website
+  instead. Recover anything removed from git history (before the trim commit).
 - **New guards:** `tests/test_shipping_workflow_paths.py` forbids absolute
   machine paths in any shipped workflow, and every workflow (not a
   hand-maintained subset) is now checked for positional-widget drift. Two
-  reusable repair tools: `tools/fix_workflow_widget_drift.py` and
-  `tools/normalize_workflow_paths.py`.
+  reusable repair tools ship in `tools/`: `fix_workflow_widget_drift.py` and
+  `normalize_workflow_paths.py`.
 
-### Node menu cleanup
+### Install
 
-- **Every node now lives in an `Atlas Camera/<folder>` submenu** — the flat
-  top-level list (35 loose nodes) is gone. New folders: **Solve**, **Scale &
-  Trim**, **Masks & Depth**, **Gates & QA**; the stragglers folded into the
-  existing **Derive Geometry** / **Inpaint Layers** / **Patches** / **Export**.
-  Menu placement only — no node key changed, so saved workflows are unaffected.
+- **INSTALL.md now warns that `[sam3]` forces a major `transformers` bump**
+  (>=5.5.4) shared with every pack in the environment. Observed live:
+  `ComfyUI-CoreMLSuite` fails on `ImportError: FLAX_WEIGHTS_NAME` (removed in
+  transformers 5) after installing it. Not an Atlas bug and not workaroundable —
+  the note documents the `--dry-run` pre-check, the skip path (the SegFormer
+  fallback still segments), and venv isolation.
 
-### Removed
+### Fixed
 
-Three nodes were deleted. Their keys are gone, so a saved workflow that uses one
-will fail to load (recover any from git history):
-
-- **`AtlasMegaPipeline` 🔬** — the experimental monolith. Unused, and it crashed
-  on the first real queue (called `AtlasDeriveProjectionGeometry.derive()` with a
-  `depth` kwarg that node doesn't accept). Removed rather than fixed.
-- **`AtlasLoadImageSolveCamera`** — the long-deprecated file-path solve; it
-  couldn't sit in a normal image chain. Use `AtlasSolveFromImage` /
-  `AtlasLearnedSolveFromImage`. Its "legacy corner" in the solve-lab showcase is
-  gone.
-- **`AtlasPitchTrim`** — the pitch/gravity-mirror dial (the D810 gravity-flip
-  repair). Absent from every shipped workflow. `AtlasRollTrim` and
-  `AtlasGravityOverride` remain; recover this from git if the flip-repair is
-  wanted back.
+- **CI was red on `main` from the 0.8.0 merge.** Two hardcoded node counts in
+  the test workflow (`==67`, `==71`) went stale when the pack grew. The numbers
+  lived only in the workflow YAML, so no local `pytest -q` could reproduce it.
+  Those steps now assert invariants instead — torch-less import,
+  display-name/class-mapping parity, no experimental leak into the default
+  tier, and that the gate registers every experimental node — which covers
+  strictly more and cannot go stale as nodes are added.
 
 ## 0.8.0 — 2026-07-20
 
