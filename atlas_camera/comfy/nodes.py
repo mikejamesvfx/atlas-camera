@@ -9,6 +9,12 @@ keep working unchanged. New code should import from the specific module.
 """
 from __future__ import annotations
 
+from atlas_camera.comfy.viewport_payload import (  # noqa: F401
+    _fit_long_edge,
+    _plate_ref_to_dict,
+    _output_profile_to_dict,
+    _extract_blockout_camera,
+)
 from atlas_camera.comfy.node_helpers import (
     _DEPTH_MODEL_CHOICES,
     _MOGE_NORMAL_MODEL_CHOICES,
@@ -32,14 +38,11 @@ from atlas_camera.comfy.node_helpers import (
     _b64_png_to_mask,
     _mask_to_b64_png,
     _image_tensor_to_preview_b64,
-    _plate_ref_to_dict,
-    _output_profile_to_dict,
     _clone_solve_with_metadata,
     _decode_b64_to_tensor,
     _image_fingerprint,
     _solve_fingerprint,
     _execution_blocker,
-    _extract_blockout_camera,
     _ground_depth_compute,
     _reference_id_choices,
     _extrinsics_from_view,
@@ -70,7 +73,6 @@ from atlas_camera.comfy.node_helpers import (
     _solve_with_relief_mesh,
     _relief_mesh_from_solve,
     _solve_image_size,
-    _fit_long_edge,
     _apply_band_split,
     _BOUNDED_BAND_NOOP_M,
     _LAYER_DEBUG_PRIMARY_HEX,

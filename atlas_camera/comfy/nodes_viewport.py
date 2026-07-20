@@ -10,6 +10,10 @@ import io
 import json
 import os
 
+from atlas_camera.comfy.viewport_payload import (
+    _extract_blockout_camera,
+    _fit_long_edge,
+)
 from atlas_camera.comfy.node_helpers import (
     _ATLAS_INPUT_BAND_NAMES,
     _ATLAS_INPUT_BOUNDARIES,
@@ -22,8 +26,6 @@ from atlas_camera.comfy.node_helpers import (
     _native_sam3_available,
     _decode_b64_to_tensor,
     _execution_blocker,
-    _extract_blockout_camera,
-    _fit_long_edge,
     _graph_builder,
     _named_view_orbit_delta,
     _require_numpy,
