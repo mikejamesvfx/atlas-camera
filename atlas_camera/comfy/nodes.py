@@ -170,6 +170,9 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportMayaLayers,
     AtlasExportCameraPathUSD,
 )
+from atlas_camera.comfy.nodes_experimental import (
+    AtlasMegaPipeline,
+)
 
 from atlas_camera.comfy.node_registry import (
     NODE_CLASS_MAPPINGS,

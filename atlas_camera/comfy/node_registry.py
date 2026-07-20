@@ -94,6 +94,9 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportMayaLayers,
     AtlasExportCameraPathUSD,
 )
+from atlas_camera.comfy.nodes_experimental import (
+    AtlasMegaPipeline,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +281,7 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasRenderFix": AtlasRenderFix,
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
+    "AtlasMegaPipeline": AtlasMegaPipeline,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -285,6 +289,7 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasRenderFix": "Atlas Render Fix 🔬 (experimental)",
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
+    "AtlasMegaPipeline": "Atlas Mega Pipeline 🔬 (monolith)",
 }
 
 

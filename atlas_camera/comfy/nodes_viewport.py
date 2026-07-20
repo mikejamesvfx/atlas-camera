@@ -170,6 +170,10 @@ class AtlasBlockoutViewport:
                 "client_data": ("STRING", {"default": "", "multiline": False}),
             },
             "optional": {
+                "primary_depth": ("ATLAS_DEPTH_MAP", {
+                    "tooltip": "Optional depth map matching the source image. "
+                               "Used by the viewport to power the ray-traced "
+                               "occlusion culling feature (✂ Occlude)."}),
                 "preview_expand": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 5.0, "step": 0.05,
                     "tooltip": "Dilate derived geometry outward from the camera for wider orbit "
                                "coverage before it disappears into unreconstructed space. "
@@ -199,7 +203,7 @@ class AtlasBlockoutViewport:
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    def render(self, solve, source_image, resolution, client_data, preview_expand=1.0, controls=None,
+    def render(self, solve, source_image, resolution, client_data, primary_depth=None, preview_expand=1.0, controls=None,
                shot_cam=None, output_profile=None, unique_id=None):
         torch = _require_torch()
         if output_profile is not None:
@@ -225,7 +229,7 @@ class AtlasBlockoutViewport:
         _blockout_cache_set(node_id, _extract_blockout_camera(
             solve, source_image, width, height, preview_expand=float(preview_expand),
             shot_intrinsics=shot_intrinsics, output_profile=output_profile,
-            solve_fingerprint=solve_fingerprint))
+            solve_fingerprint=solve_fingerprint, primary_depth=primary_depth))
 
         # IMPORTANT: return a "ui" payload. ComfyUI only emits the "executed"
         # websocket message (which triggers node.onExecuted / the frontend's
