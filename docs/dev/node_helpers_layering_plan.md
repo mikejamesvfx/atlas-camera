@@ -205,7 +205,8 @@ which is what #29 did.
 
 ### Deferred
 
-- `_extend_edge_colors` / `_flood_mask_to_frame_borders` -> `plate/ops.py`, now
-  unblocked once this PR (#24) lands.
+- ~~`_extend_edge_colors` / `_flood_mask_to_frame_borders` -> `plate/ops.py`~~
+  **DONE** — moved once #24 landed and `atlas_camera/plate/` existed.
+  `node_helpers.py` 881 -> 812 lines. The plan is now fully executed.
 - Splitting the node GROUP modules (`nodes_geometry.py` 2,228 lines) — large but
   cohesive by domain; judge separately.
