@@ -231,6 +231,72 @@ class AtlasSemanticMask:
         return (mask, report)
 
 
+class AtlasSAM3Mask:
+    """🪄 Native SAM3 concept mask via transformers — no triton/comfyui-rmbg
+    dependency.
+
+    The third-party `SAM3Segment` node (comfyui-rmbg) hard-requires triton,
+    which does not exist on Mac (MPS) / CPU / AMD — those users could never
+    load real SAM3 and always fell back to `AtlasSemanticMask` (SegFormer).
+    This node loads SAM3 straight from `transformers>=5.5.4`
+    (`Sam3Model`/`Sam3Processor`), so it works everywhere `[sam3]` installs:
+    CUDA, CPU, and MPS (best-effort — see the device note below).
+
+    `AtlasInput`'s sky/scope cascade now prefers this node over
+    `AtlasSemanticMask`, which remains the learned fallback tier when
+    `transformers<5.5.4` (or `[sam3]` isn't installed).
+
+    `facebook/sam3` is GATED on Hugging Face (Meta's SAM-License-1.0).
+    One-time setup: request access at https://huggingface.co/facebook/sam3,
+    then `hf auth login` (or set HF_TOKEN). A gated-repo failure is caught
+    and returned as the `report` string rather than raised — it's a one-time
+    auth step, not a broken install. See INSTALL.md.
+    """
+    RETURN_TYPES = ("MASK", "STRING")
+    RETURN_NAMES = ("mask", "report")
+    FUNCTION = "segment"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "concepts": ("STRING", {"default": "sky",
+                    "tooltip": "Comma-separated open-vocabulary concepts (e.g. 'sky', "
+                               "'person, vehicle'). The mask is the UNION of all detected "
+                               "instances across every concept."}),
+            },
+            "optional": {
+                "confidence_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0,
+                    "step": 0.01}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+            },
+        }
+
+    def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto", **_extra):
+        from atlas_camera.inference.sam3_segmenter import (
+            DEFAULT_SAM3_MODEL, Sam3GatedRepoError, sam3_concept_mask)
+        torch = _require_torch()
+
+        pil = _image_tensor_to_pil(image)
+        dev = None if device == "auto" else device
+        try:
+            mask_np, matched, coverage = sam3_concept_mask(
+                pil, concepts, model_id=DEFAULT_SAM3_MODEL, device=dev,
+                confidence_threshold=confidence_threshold)
+        except Sam3GatedRepoError as exc:
+            empty = torch.zeros((1, pil.height, pil.width), dtype=torch.float32)
+            return (empty, str(exc))
+        mask = torch.from_numpy(mask_np.astype("float32")).unsqueeze(0)
+        if matched:
+            report = (f"matched {sorted(set(matched))} -> {coverage:.1%} of frame "
+                      f"({DEFAULT_SAM3_MODEL})")
+        else:
+            report = f"NO MATCH for '{concepts}' — mask is empty ({DEFAULT_SAM3_MODEL})."
+        return (mask, report)
+
+
 class AtlasInpaintCrop:
     """✂ Crop a padded box around the inpaint mask BEFORE the inpaint model.
 
