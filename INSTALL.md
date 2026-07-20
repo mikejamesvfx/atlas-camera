@@ -48,8 +48,9 @@ no deps and add its runtime deps separately:
 & "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install --no-deps "git+https://github.com/cvg/GeoCalib.git"
 # GeoCalib eager-imports cv2 + kornia at load; transformers powers depth.
 # Install these normally - their only shared dep, numpy, is already present and
-# satisfied (left untouched), and `kornia` pulls its required `kornia-rs`:
-& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install opencv-python kornia transformers
+# satisfied (left untouched), and `kornia` pulls its required `kornia-rs`.
+# kornia is CAPPED below 0.8.3 - see the ComfyUI-LTXVideo note below:
+& "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install opencv-python "kornia<0.8.3" transformers
 ```
 
 > `--no-deps` on GeoCalib **alone is not enough** - it imports `cv2` and `kornia`
@@ -58,6 +59,33 @@ no deps and add its runtime deps separately:
 > only by its visualization helpers, never the camera solve, so it is omitted
 > here. Restart ComfyUI after installing so the embedded interpreter picks up
 > the new packages.
+
+> **Why kornia is capped at `<0.8.3` (ComfyUI-LTXVideo coexistence).** GeoCalib
+> declares a bare, unpinned `kornia`, so an uncapped install resolves to the
+> newest release. kornia **0.8.3** dropped the `pad` re-export from
+> `kornia.geometry.transform.pyramid` (it had been re-exported from
+> `kornia.core` in every release from 0.7.2 through 0.8.2), and
+> ComfyUI-LTXVideo's `pyramid_blending.py` imports that exact name. The result
+> is that installing Atlas's neural extras silently breaks LTXVideo with
+> `ImportError: cannot import name 'pad' from
+> 'kornia.geometry.transform.pyramid'` - LTXVideo fails to load entirely, and
+> nothing points at Atlas as the cause.
+>
+> Atlas itself never imports kornia; it arrives purely as a GeoCalib
+> dependency, and GeoCalib works fine on 0.8.2. The cap costs Atlas nothing and
+> keeps both node packs working side by side. Strictly the upstream bug is
+> LTXVideo's (it imports a re-exported name without pinning), but Atlas's
+> install is what pulls the breaking version, so the cap lives here.
+>
+> Already broken? Repair an existing environment with:
+>
+> ```powershell
+> & "<COMFYUI_ROOT>\python_embeded\python.exe" -m pip install "kornia==0.8.2"
+> ```
+>
+> Verified on a real install: LTXVideo went from a hard import failure to
+> loading all 78 of its nodes, with atlas-camera (68 nodes), `geocalib`,
+> `pixeloe` and `transparent-background` all still importing cleanly.
 
 **Development install (editable + symlink):** keeps the checkout wherever you
 work on it; Python changes are live without reinstalling. See CLAUDE.md's
