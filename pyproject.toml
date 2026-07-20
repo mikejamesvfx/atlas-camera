@@ -48,6 +48,14 @@ neural = [
     "torch>=2.0",
     "transformers>=4.40",        # Depth Anything V2 monocular depth
     "geocalib @ git+https://github.com/cvg/GeoCalib.git",
+    # Atlas never imports kornia — it is a GeoCalib dependency, declared bare
+    # and unpinned upstream, so an uncapped resolve grabs the newest release.
+    # kornia 0.8.3 dropped the `pad` re-export from
+    # kornia.geometry.transform.pyramid (present 0.7.2–0.8.2), which
+    # ComfyUI-LTXVideo imports by name — installing Atlas's neural extras
+    # otherwise breaks LTXVideo's import entirely, with nothing pointing back
+    # here as the cause. GeoCalib is unaffected on 0.8.2. See INSTALL.md.
+    "kornia<0.8.3",
 ]
 # Depth Anything 3 backend (opt-in). GitHub-only package whose own dependency
 # list is heavy and includes xformers and numpy<2 — installing this extra into
