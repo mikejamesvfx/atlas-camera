@@ -153,31 +153,45 @@ def _run_sam3_detector(image, token: str, model_id: str, device: str,
     instance_masks = results[0].get("masks")
     if instance_masks is None:
         return mask, False
-    n = int(instance_masks.shape[0]) if hasattr(instance_masks, "shape") else 0
+    if hasattr(instance_masks, "shape"):
+        n = int(instance_masks.shape[0])
+    elif isinstance(instance_masks, (list, tuple)):
+        n = len(instance_masks)
+    else:
+        n = 0
     for i in range(n):
         m = instance_masks[i]
         m_np = (m.float().cpu().numpy() if hasattr(m, "float")
                else np.asarray(m, dtype="float32"))
         mask |= (m_np > 0.5)
-    return mask, n > 0
+    return mask, bool(mask.any())
 
 
 def _detect_one_concept(image, token: str, model_id: str, device: str,
                         confidence_threshold: float):
     """One concept's mask, with a one-shot MPS -> CPU retry: SAM3's ops are
     new to transformers and untested on MPS (LiveActionAOV's own SAM3
-    integration never tries MPS at all), so a RuntimeError from an
-    unsupported op reloads the model on cpu and retries once instead of
-    crashing the whole mask build."""
+    integration never tries MPS at all), so a RuntimeError matching a
+    recognized MPS-unsupported-op message reloads the model on cpu and
+    retries once instead of crashing the whole mask build. Any other
+    RuntimeError re-raises rather than being silently treated as an MPS
+    incompatibility. Returns (mask, hit, device_used) -- device_used lets
+    sam3_concept_mask's loop stick with the working device for subsequent
+    tokens in the same call, instead of re-discovering the MPS failure
+    once per concept."""
     try:
-        return _run_sam3_detector(image, token, model_id, device,
-                                  confidence_threshold)
-    except RuntimeError:
-        if device != "mps":
+        mask, hit = _run_sam3_detector(image, token, model_id, device,
+                                       confidence_threshold)
+        return mask, hit, device
+    except RuntimeError as exc:
+        text = str(exc).lower()
+        is_mps_op_error = "mps" in text and "not" in text and "implement" in text
+        if device != "mps" or not is_mps_op_error:
             raise
         _SAM3_MODEL_CACHE.pop((model_id, "mps"), None)
-        return _run_sam3_detector(image, token, model_id, "cpu",
-                                  confidence_threshold)
+        mask, hit = _run_sam3_detector(image, token, model_id, "cpu",
+                                       confidence_threshold)
+        return mask, hit, "cpu"
 
 
 def sam3_concept_mask(image, concepts: str,
@@ -205,7 +219,7 @@ def sam3_concept_mask(image, concepts: str,
     mask = np.zeros((image.height, image.width), dtype=bool)
     matched: list[str] = []
     for token in tokens:
-        token_mask, hit = _detect_one_concept(
+        token_mask, hit, device = _detect_one_concept(
             image, token, model_id, device, confidence_threshold)
         if hit:
             matched.append(token)

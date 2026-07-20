@@ -108,7 +108,7 @@ def test_sam3_concept_mask_unions_across_comma_separated_concepts(monkeypatch):
             m[0, :] = True
         elif token == "person":
             m[:, 0] = True
-        return m, token in ("sky", "person")
+        return m, token in ("sky", "person"), device
 
     monkeypatch.setattr(sam3_mod, "_detect_one_concept", fake_detect)
     img = types.SimpleNamespace(height=h, width=w)
@@ -125,3 +125,71 @@ def test_sam3_concept_mask_empty_concepts_returns_empty_mask(monkeypatch):
     img = types.SimpleNamespace(height=4, width=4)
     mask, matched, coverage = sam3_mod.sam3_concept_mask(img, "")
     assert not mask.any() and matched == [] and coverage == 0.0
+
+
+def test_detect_one_concept_retries_on_mps_op_error_then_sticks_to_cpu(monkeypatch):
+    # A real-shaped MPS "not implemented" RuntimeError on the first call
+    # (device="mps") should retry once on cpu and report device_used="cpu"
+    # so sam3_concept_mask's loop carries the working device forward for
+    # the rest of the tokens in the same call.
+    calls = []
+
+    def fake_run(image, token, model_id, device, confidence_threshold):
+        calls.append(device)
+        if device == "mps":
+            raise RuntimeError(
+                "The operator 'aten::foo' is not currently implemented "
+                "for the MPS device."
+            )
+        return np.ones((2, 2), dtype=bool), True
+
+    monkeypatch.setattr(sam3_mod, "_run_sam3_detector", fake_run)
+    img = types.SimpleNamespace(height=2, width=2)
+
+    mask, hit, device_used = sam3_mod._detect_one_concept(
+        img, "sky", "facebook/sam3", "mps", 0.5)
+
+    assert calls == ["mps", "cpu"]
+    assert device_used == "cpu"
+    assert hit is True
+    assert mask.all()
+
+
+def test_detect_one_concept_reraises_unrelated_runtime_error(monkeypatch):
+    # A RuntimeError that doesn't match the MPS-unsupported-op shape must
+    # propagate rather than being silently retried/swallowed -- narrowing
+    # the except so real bugs aren't masked as "MPS incompatibility".
+    def fake_run(image, token, model_id, device, confidence_threshold):
+        raise RuntimeError("CUDA out of memory")
+
+    monkeypatch.setattr(sam3_mod, "_run_sam3_detector", fake_run)
+    img = types.SimpleNamespace(height=2, width=2)
+
+    with pytest.raises(RuntimeError, match="out of memory"):
+        sam3_mod._detect_one_concept(img, "sky", "facebook/sam3", "mps", 0.5)
+
+
+def test_sam3_concept_mask_carries_device_forward_after_mps_fallback(monkeypatch):
+    # Once one token falls back mps -> cpu, subsequent tokens in the same
+    # sam3_concept_mask call should be dispatched directly on cpu, not
+    # re-attempt (and re-fail) on mps.
+    monkeypatch.setattr(sam3_mod, "_require_sam3", lambda: (torch, None, None))
+    monkeypatch.setattr(sam3_mod, "resolve_device", lambda device, torch: "mps")
+
+    seen_devices = []
+
+    def fake_detect(image, token, model_id, device, confidence_threshold):
+        seen_devices.append(device)
+        if device == "mps":
+            return np.zeros((2, 2), dtype=bool), False, "cpu"
+        return np.ones((2, 2), dtype=bool), True, device
+
+    monkeypatch.setattr(sam3_mod, "_detect_one_concept", fake_detect)
+    img = types.SimpleNamespace(height=2, width=2)
+
+    mask, matched, coverage = sam3_mod.sam3_concept_mask(img, "sky, person")
+
+    # First token is attempted on mps (falls back internally to cpu);
+    # second token should be dispatched with device already == "cpu".
+    assert seen_devices == ["mps", "cpu"]
+    assert matched == ["person"]
