@@ -398,16 +398,23 @@ class AtlasLoadRAW:
             exr_path, exr_warning = self._write_exr_sidecar(
                 result.linear_rgb, path, output_dir)
 
+        # 'auto' is a WIDGET value, not a colourspace — recording it on the ref
+        # hands Nuke/Maya a string they cannot resolve. The sidecar is written
+        # (and tagged) as scene-linear Rec.709, which is what rawpy's linear
+        # output actually is, so say that.
+        resolved_colorspace = (colorspace if colorspace and colorspace != "auto"
+                               else "Linear Rec.709 (sRGB)")
+
         report_lines = result.summary_lines()
         if exr_path:
-            report_lines.append(f"linear EXR: {exr_path} ({colorspace})")
+            report_lines.append(f"linear EXR: {exr_path} ({resolved_colorspace})")
         elif exr_warning:
             report_lines.append(exr_warning)
 
         plate_ref = AtlasPlateRef(
             image_path=exr_path,
             preview_b64=_image_tensor_to_preview_b64(image, quality=85),
-            colorspace=colorspace or "Linear Rec.709 (sRGB)",
+            colorspace=resolved_colorspace,
             bit_depth="16f" if exr_path else "8-bit/proxy",
             role="source",
             is_proxy=exr_path is None,
@@ -425,26 +432,45 @@ class AtlasLoadRAW:
 
     @staticmethod
     def _write_exr_sidecar(linear_rgb, raw_path, output_dir):
-        """Write the scene-linear half-float EXR. Returns (path, warning)."""
-        try:
-            import cv2
-        except ImportError:
-            return None, ("EXR sidecar skipped: opencv-python missing "
-                          "(pip install -e .[raw]).")
+        """Write the scene-linear half-float EXR. Returns (path, warning).
+
+        Writes through OpenImageIO, NOT opencv. opencv's EXR codec is disabled
+        at runtime by default, is absent entirely from the opencv-python 5.x
+        wheels, and is shipped by three distributions that overwrite each other
+        and arrive as transitive deps of unrelated node packs — so on a machine
+        with (say) mediapipe installed, the sidecar silently failed and there
+        was nothing the user could do about it from Atlas's side.
+
+        Note the old failure message advised setting OPENCV_IO_ENABLE_OPENEXR=1.
+        That can only lift a RUNTIME disable of a codec that was COMPILED IN; on
+        a 5.x wheel the codec does not exist, so the advice was a dead end. The
+        fallback below now reports what is actually wrong.
+
+        The written file is TAGGED with its colourspace, so it can be read back
+        correctly with no out-of-band knowledge — something opencv's writer
+        cannot do at all.
+        """
+        from atlas_camera.plate import oiio_available, oiio_diagnostics, write_exr
+
+        if not oiio_available():
+            return None, ("EXR sidecar skipped: OpenImageIO missing "
+                          "(pip install -e .[oiio]). " + oiio_diagnostics())
+
         out_dir = Path(str(output_dir or "atlas_exports/raw_plates"))
         out_dir.mkdir(parents=True, exist_ok=True)
         exr_path = out_dir / (Path(raw_path).stem + "_linear.exr")
-        bgr = linear_rgb[..., ::-1].astype("float32")
         try:
-            ok = cv2.imwrite(str(exr_path),
-                             bgr, [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_HALF])
-        except Exception:  # noqa: BLE001 — codec-disabled builds raise
-            ok = False
-        if not ok or not exr_path.is_file():
-            return None, ("EXR sidecar FAILED: opencv needs the OpenEXR codec — "
-                          "use opencv-python 4.x and set OPENCV_IO_ENABLE_OPENEXR=1 "
-                          "before ComfyUI starts (same requirement as the OCIO path). "
-                          "plate_ref downgraded to proxy.")
+            # rawpy's linear output carries sRGB/Rec.709 primaries, so that is
+            # what the file is tagged as — never ACEScg. OCIO converts later.
+            write_exr(str(exr_path), linear_rgb, bit_depth="half",
+                      source_colorspace="Linear Rec.709 (sRGB)",
+                      extra_attribs={"atlas:source_raw": str(raw_path)})
+        except Exception as exc:  # noqa: BLE001 — report, never fail the load
+            return None, (f"EXR sidecar FAILED: {exc} · plate_ref downgraded to "
+                          f"proxy. Backend: {oiio_diagnostics()}")
+        if not exr_path.is_file():
+            return None, ("EXR sidecar FAILED: writer reported success but no "
+                          "file appeared · plate_ref downgraded to proxy.")
         return str(exr_path), None
 
 
