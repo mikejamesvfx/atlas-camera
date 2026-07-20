@@ -165,10 +165,47 @@ describe the new map. It currently documents the 2026-07-19 layout only.
   runtime; if that becomes the goal, profile first.
 - Import/startup time. Plausible small win, but unmeasured — do not claim it.
 
-## Status
+## Status — COMPLETE (2026-07-20)
 
-- **Phase 0 — DONE** (`refactor/phase0-facade-pin`). `tests/test_facade_surface.py`
-  pins all 155 façade names (79 public + 76 underscore helpers) and was verified
-  to FAIL when a symbol is dropped, not merely to pass today.
-- Destination question resolved (see above) — no new `core/` module is needed.
-- **Phase 1 — next.** Depends on nothing outstanding.
+| Phase | Merged as | Result |
+|---|---|---|
+| 0 | #25 | `tests/test_facade_surface.py` pins the façade; verified to FAIL on a dropped symbol |
+| 1 | #26 | `comfy/viewport_payload.py` — the 231-line wire protocol + 3 helpers |
+| 2 | #27 | 327 lines of math into `core/depth_geometry`, `core/relief_mesh`, `core/schema`, `core/normals`, `raw/metadata` |
+| 3-5 | #29 | `comfy/view_prompts.py`, `node_reports.py`, `fingerprints.py`; leaf docstring + `__all__` audit; `CLAUDE.md` |
+
+`node_helpers.py`: **1,591 -> 881 lines**. Suite green at every phase.
+
+**The goal, verified:** importing `core.depth_geometry` / `relief_mesh` / `schema`
+/ `normals` and `raw.metadata` loads ZERO `atlas_camera.comfy` modules, and the
+moved math runs there. No `core -> comfy` import exists in `core/`, `raw/` or
+`exporters/`.
+
+### Three corrections the work forced
+
+1. **The Bucket A move set was over-inclusive.** The classifier tested whether a
+   body MENTIONS torch/PIL/comfy — a direct check. `_metric_depth_and_validity`
+   and `_band_resolution_validity` passed while being TRANSITIVELY bound via
+   `_resolve_exclude_mask` ("Convert an optional ComfyUI MASK tensor"). Caught
+   before any code moved; trusting the plan would have created a NEW
+   `core -> comfy` import, worse than the starting state.
+2. **The dangling-ref check needed a stdlib pass.** Phase 2's destinations were
+   missing `import copy`; 12 tests caught it. Phase 3 ran the combined check up
+   front and moved cleanly first time.
+3. **`__all__` was NOT stale.** Three entries read as stale to the analyser but
+   are `AnnAssign` caches it could not parse. Verified against the live module
+   first — deleting them would have broken the façade.
+
+### Note for future stacked work
+
+Squash-merging rewrites parent commits, so a stacked child branch loses shared
+ancestry and conflicts (this happened to phases 3-5, #28). Either merge stacks
+bottom-up rebasing each child, or cherry-pick the child onto the squashed main —
+which is what #29 did.
+
+### Deferred
+
+- `_extend_edge_colors` / `_flood_mask_to_frame_borders` -> `plate/ops.py`, now
+  unblocked once this PR (#24) lands.
+- Splitting the node GROUP modules (`nodes_geometry.py` 2,228 lines) — large but
+  cohesive by domain; judge separately.
