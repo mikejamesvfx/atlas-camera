@@ -6,69 +6,76 @@
   "nodes": [
     {
       "id": 1,
-      "type": "OCIORead",
+      "type": "AtlasLoadPlate",
       "pos": [
         40,
         120
       ],
-      "size": [
-        360,
-        320
-      ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "input_colorspace",
+          "type": "COMBO",
+          "link": null
+        },
+        {
+          "name": "output_colorspace",
+          "type": "COMBO",
+          "link": null
+        },
+        {
+          "name": "raw_data",
+          "type": "BOOLEAN",
+          "link": null
+        }
+      ],
       "outputs": [
         {
-          "name": "image/sequence/video",
+          "name": "image",
           "type": "IMAGE",
           "links": [
-            1
+            2
           ],
           "slot_index": 0
         },
         {
           "name": "alpha",
           "type": "MASK",
-          "links": null,
+          "links": [],
           "slot_index": 1
         },
         {
-          "name": "fps",
-          "type": "FLOAT",
-          "links": null,
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "links": [
+            6
+          ],
           "slot_index": 2
         },
         {
-          "name": "info",
+          "name": "report",
           "type": "STRING",
-          "links": null,
+          "links": [],
           "slot_index": 3
-        },
-        {
-          "name": "ComfyUI Video",
-          "type": "VIDEO",
-          "links": null,
-          "slot_index": 4
         }
       ],
       "properties": {
-        "Node name for S&R": "OCIORead"
+        "Node name for S&R": "AtlasLoadPlate"
       },
       "widgets_values": [
         "C:\\Users\\miike\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\input\\atlas_ACEScg_Examples\\spacehangar_32bit_acescg.exr",
-        "auto",
         "ACEScg",
         "sRGB - Display",
-        false,
-        0,
-        0,
-        0,
-        "black",
-        "hold",
-        0.0
-      ]
+        false
+      ],
+      "title": "\ud83c\udf9e Atlas Load Plate (ACEScg EXR \u2014 no third-party pack)"
     },
     {
       "id": 2,
@@ -381,56 +388,6 @@
       ]
     },
     {
-      "id": 8,
-      "type": "AtlasRegisterPlate",
-      "pos": [
-        740,
-        40
-      ],
-      "size": [
-        320,
-        150
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 1
-        }
-      ],
-      "outputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            2
-          ],
-          "slot_index": 0
-        },
-        {
-          "name": "plate_ref",
-          "type": "ATLAS_PLATE_REF",
-          "links": [
-            6
-          ],
-          "slot_index": 1
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasRegisterPlate"
-      },
-      "widgets_values": [
-        "C:\\Users\\miike\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\input\\atlas_ACEScg_Examples\\spacehangar_32bit_acescg.exr",
-        "ACEScg",
-        "auto",
-        "source",
-        ""
-      ]
-    },
-    {
       "id": 9,
       "type": "AtlasAttachSourcePlate",
       "pos": [
@@ -600,16 +557,8 @@
   ],
   "links": [
     [
-      1,
-      1,
-      0,
-      8,
-      0,
-      "IMAGE"
-    ],
-    [
       2,
-      8,
+      1,
       0,
       2,
       0,
@@ -641,8 +590,8 @@
     ],
     [
       6,
-      8,
       1,
+      2,
       9,
       1,
       "ATLAS_PLATE_REF"
