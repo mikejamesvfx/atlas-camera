@@ -12,6 +12,7 @@ import base64
 import copy
 import io
 import json
+import logging
 import math
 import os
 import re
@@ -620,14 +621,26 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
 
     primary_depth_b64 = ""
     if primary_depth is not None:
-        try:
-            from atlas_camera.core.solver import _depth_map_for_solve, _horizon_y_from_solve
-            from atlas_camera.core.camera_math import estimate_ground_scale
-            import numpy as np
-            import cv2
-            import base64
+        # Metric depth for the viewport's ✂ Occlude cull, packed into a 24-bit
+        # RGB PNG in MILLIMETRES: R = high byte, G = mid, B = low, clipped to
+        # 0xFFFFFF mm (~16.7 km) at 1 mm resolution. atlas_blockout.js unpacks
+        # it as `z_mm = R*65536 + G*256 + B` — the byte order here and that
+        # shader line are a contract; change neither alone.
+        #
+        # Resolution note: `_depth_map_for_solve` / `_horizon_y_from_solve` are
+        # module-local (defined below — resolved at call time, so the forward
+        # reference is fine), and `estimate_ground_scale` lives in
+        # core.relief_mesh. Both this import and the numpy/PIL requires sit
+        # OUTSIDE the try deliberately: a wrong module path must fail loudly
+        # rather than be swallowed into a silent no-op that leaves the cull
+        # permanently dark.
+        from atlas_camera.core.relief_mesh import estimate_ground_scale
 
-            # Calculate metric depth map precisely the way OcclusionMask does
+        np = _require_numpy()
+        PILImage = _require_pil()
+        try:
+            # Metric depth exactly the way AtlasOcclusionMask derives it, so the
+            # cull compares against the same metric space the mask node uses.
             p_map = _depth_map_for_solve(primary_depth, intr.image_width, intr.image_height)
             p_scale, _ = estimate_ground_scale(
                 p_map, view_matrix=extr.camera_view_matrix,
@@ -635,24 +648,22 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
                 horizon_y=_horizon_y_from_solve(solve))
             primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
 
-            # Pack 0-1000m float depth into a 24-bit RGB PNG
-            # We scale by 1000 to get millimeters, then clip to 0-16777215 (about 16km max)
-            depth_scaled = np.clip(primary_metric_map * 1000.0, 0, 16777215).astype(np.uint32)
-            
-            # Create an RGB image (H, W, 3) where R=high, G=mid, B=low
-            # OpenCV imencode expects BGR, so index 2 is Red (high), index 1 is Green, index 0 is Blue (low).
-            h, w = depth_scaled.shape
-            rgb_depth = np.zeros((h, w, 3), dtype=np.uint8)
-            rgb_depth[..., 2] = (depth_scaled >> 16) & 0xFF
-            rgb_depth[..., 1] = (depth_scaled >> 8) & 0xFF
-            rgb_depth[..., 0] = depth_scaled & 0xFF
+            depth_mm = np.clip(primary_metric_map * 1000.0, 0, 0xFFFFFF).astype(np.uint32)
+            rgb_depth = np.zeros(depth_mm.shape + (3,), dtype=np.uint8)
+            rgb_depth[..., 0] = (depth_mm >> 16) & 0xFF   # R = high byte
+            rgb_depth[..., 1] = (depth_mm >> 8) & 0xFF    # G = mid byte
+            rgb_depth[..., 2] = depth_mm & 0xFF           # B = low byte
 
-            success, encoded = cv2.imencode('.png', rgb_depth)
-            if success:
-                primary_depth_b64 = "data:image/png;base64," + base64.b64encode(encoded).decode('utf-8')
-        except Exception as e:
-            import logging
-            logging.error(f"Failed to encode primary_depth: {e}")
+            buf = io.BytesIO()
+            PILImage.fromarray(rgb_depth, mode="RGB").save(buf, format="PNG", optimize=True)
+            primary_depth_b64 = ("data:image/png;base64,"
+                                 + base64.b64encode(buf.getvalue()).decode("ascii"))
+        except (ValueError, TypeError, AttributeError, IndexError, ArithmeticError) as exc:
+            # Bad/degenerate depth data degrades to "no cull" (the viewport
+            # simply keeps drawing the full projection); it must never take the
+            # whole viewport execution down. Import errors are NOT caught here.
+            logging.warning("primary_depth could not be packed for the occlusion "
+                            "cull; it will stay disabled: %s", exc)
 
     return {
         "view_matrix": vm,
