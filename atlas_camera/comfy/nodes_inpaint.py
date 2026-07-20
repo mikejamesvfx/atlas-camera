@@ -240,7 +240,9 @@ class AtlasSAM3Mask:
     load real SAM3 and always fell back to `AtlasSemanticMask` (SegFormer).
     This node loads SAM3 straight from `transformers>=5.5.4`
     (`Sam3Model`/`Sam3Processor`), so it works everywhere `[sam3]` installs:
-    CUDA, CPU, and MPS (best-effort — see the device note below).
+    CUDA, CPU, and MPS alike (MPS support is best-effort — the underlying
+    sam3_concept_mask() falls back to CPU automatically if an op isn't yet
+    supported on MPS).
 
     `AtlasInput`'s sky/scope cascade now prefers this node over
     `AtlasSemanticMask`, which remains the learned fallback tier when

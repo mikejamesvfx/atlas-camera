@@ -54,3 +54,13 @@ def test_segment_catches_gated_repo_error_into_report(monkeypatch):
 
     assert not bool(mask.any())                 # empty mask, never raises
     assert "huggingface.co/facebook/sam3" in report
+
+
+def test_segment_lets_non_gated_errors_propagate(monkeypatch):
+    def _boom(*a, **k):
+        raise RuntimeError("transformers>=5.5.4 required, found 4.40.0")
+    monkeypatch.setattr(
+        "atlas_camera.inference.sam3_segmenter.sam3_concept_mask", _boom)
+
+    with pytest.raises(RuntimeError, match="transformers"):
+        AtlasSAM3Mask().segment(_image(), concepts="sky")
