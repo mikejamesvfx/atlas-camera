@@ -96,7 +96,6 @@ from atlas_camera.comfy.nodes_export import (
 )
 from atlas_camera.comfy.nodes_experimental import (
     AtlasMegaPipeline,
-    AtlasWorkflowGenerator,
 )
 
 
@@ -283,7 +282,6 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
     "AtlasMegaPipeline": AtlasMegaPipeline,
-    "AtlasWorkflowGenerator": AtlasWorkflowGenerator,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -292,7 +290,6 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
     "AtlasMegaPipeline": "Atlas Mega Pipeline 🔬 (monolith)",
-    "AtlasWorkflowGenerator": "Atlas Workflow Generator 🔬",
 }
 
 

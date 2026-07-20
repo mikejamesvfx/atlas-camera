@@ -171,7 +171,6 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportCameraPathUSD,
 )
 from atlas_camera.comfy.nodes_experimental import (
-    AtlasWorkflowGenerator,
     AtlasMegaPipeline,
 )
 

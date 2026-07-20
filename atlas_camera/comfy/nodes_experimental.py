@@ -89,22 +89,3 @@ class AtlasMegaPipeline:
         
         logging.info(f"[AtlasMegaPipeline] Done! Exported to: {maya_path}")
         return (maya_path,)
-
-
-class AtlasWorkflowGenerator:
-    """A dummy node hosting the Generate Workflow UI widget.
-    Actual workflow generation logic lives in atlas_workflow_generator.js
-    """
-    RETURN_TYPES = ()
-    FUNCTION = "noop"
-    CATEGORY = "Atlas Camera"
-    OUTPUT_NODE = True
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {},
-        }
-
-    def noop(self, **kwargs):
-        return ()
