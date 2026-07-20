@@ -946,7 +946,9 @@
       "widgets_values": [
         "sky",
         0.5,
-        "auto"
+        "auto",
+        "merged",
+        0
       ],
       "color": "#222e40",
       "bgcolor": "#364254"
@@ -5390,7 +5392,9 @@
       "widgets_values": [
         "rock formations",
         0.5,
-        "auto"
+        "auto",
+        "merged",
+        0
       ],
       "title": "SAM scope \u00b7 far"
     },
@@ -5560,7 +5564,9 @@
       "widgets_values": [
         "buildings",
         0.5,
-        "auto"
+        "auto",
+        "merged",
+        0
       ],
       "title": "SAM scope \u00b7 bg"
     },
@@ -5730,7 +5736,9 @@
       "widgets_values": [
         "rocks",
         0.5,
-        "auto"
+        "auto",
+        "merged",
+        0
       ],
       "title": "SAM scope \u00b7 mid"
     },
@@ -5900,7 +5908,9 @@
       "widgets_values": [
         "person",
         0.5,
-        "auto"
+        "auto",
+        "merged",
+        0
       ],
       "title": "SAM scope \u00b7 fg"
     },

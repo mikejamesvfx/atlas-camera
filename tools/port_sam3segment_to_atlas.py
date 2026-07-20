@@ -18,14 +18,20 @@ MAPPING (verified against a real workflow and the live /object_info):
     outputs IMAGE(0), MASK(1), MASK_IMAGE(2)   mask(0), report(1)
     widgets [prompt, output_mode, confidence, max_segments, segment_pick,
              mask_blur, mask_offset, device, invert_output, unload_model,
-             background, background_color]  ->  [concepts, confidence, device]
+             background, background_color]
+          -> [concepts, confidence, device, output_mode, max_instances]
 
 Only slot 1 (MASK) is ever wired in the shipped set, so links move 1 -> 0.
 
-NOT PORTED — `output_mode="Separate"`. AtlasSAM3Mask unions every detected
-instance, so it cannot express instance separation. Those nodes are left alone
-and reported; they need native per-instance support first (the data exists in
-`post_process_instance_segmentation`, `sam3_concept_mask` just unions it).
+BOTH output modes port (2026-07-21). `Separate` used to be skipped because
+AtlasSAM3Mask only ever returned a union; it now has its own
+`output_mode="separate"` returning the (N,H,W) stack that
+`post_process_instance_segmentation` was already producing, so instance
+separation survives the port and `max_segments` carries over as
+`max_instances`. Atlas orders instances LARGEST FIRST (SAM3's own score order
+is unstable between runs), so a saved `AtlasInstanceMask` index may select a
+different instance than it did under SAM3Segment — re-check the index after
+porting a Separate graph.
 
     python tools/port_sam3segment_to_atlas.py --dry-run examples/**/*.json
     python tools/port_sam3segment_to_atlas.py examples/showcase/foo.json
@@ -43,7 +49,7 @@ TARGET_TYPE = "AtlasSAM3Mask"
 SOURCE_TYPE = "SAM3Segment"
 
 # SAM3Segment widget order, as serialized by ComfyUI.
-W_PROMPT, W_OUTPUT_MODE, W_CONFIDENCE, W_DEVICE = 0, 1, 2, 7
+W_PROMPT, W_OUTPUT_MODE, W_CONFIDENCE, W_MAX_SEGMENTS, W_DEVICE = 0, 1, 2, 3, 7
 
 
 def _device(value: Any) -> str:
@@ -55,9 +61,10 @@ def _device(value: Any) -> str:
 def port_node(node: dict, links: list) -> str | None:
     """Rewrite one SAM3Segment node in place. Returns a skip reason, or None."""
     widgets = node.get("widgets_values") or []
-    mode = widgets[W_OUTPUT_MODE] if len(widgets) > W_OUTPUT_MODE else "Merged"
-    if mode != "Merged":
-        return f"output_mode={mode!r} (AtlasSAM3Mask unions instances; needs native separation)"
+    mode = str(widgets[W_OUTPUT_MODE] if len(widgets) > W_OUTPUT_MODE else "Merged")
+    if mode.lower() not in ("merged", "separate"):
+        return f"unknown output_mode={mode!r}"
+    separate = mode.lower() == "separate"
 
     outputs = node.get("outputs") or []
     for i, out in enumerate(outputs):
@@ -76,6 +83,8 @@ def port_node(node: dict, links: list) -> str | None:
         {"name": "concepts", "type": "STRING", "link": old_inputs.get("prompt", {}).get("link")},
         {"name": "confidence_threshold", "type": "FLOAT", "link": None},
         {"name": "device", "type": "COMBO", "link": None},
+        {"name": "output_mode", "type": "COMBO", "link": None},
+        {"name": "max_instances", "type": "INT", "link": None},
     ]
     node["outputs"] = [
         {"name": "mask", "type": "MASK", "links": mask_links, "slot_index": 0},
@@ -85,8 +94,12 @@ def port_node(node: dict, links: list) -> str | None:
         widgets[W_PROMPT] if len(widgets) > W_PROMPT else "sky",
         widgets[W_CONFIDENCE] if len(widgets) > W_CONFIDENCE else 0.5,
         _device(widgets[W_DEVICE] if len(widgets) > W_DEVICE else "auto"),
+        "separate" if separate else "merged",
+        # max_instances only applies to the separated view; 0 = unlimited.
+        (int(widgets[W_MAX_SEGMENTS]) if separate and len(widgets) > W_MAX_SEGMENTS
+         else 0),
     ]
-    # The node box was sized for 12 widgets; let ComfyUI recompute for 3.
+    # The node box was sized for 12 widgets; let ComfyUI recompute for 5.
     node.pop("size", None)
 
     for link in links:

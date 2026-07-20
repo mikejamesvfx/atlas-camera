@@ -477,6 +477,30 @@ optional external pieces — each fails soft or has a documented placeholder:
   pip install -e ".[sam3]"
   ```
 
+  > **⚠ `[sam3]` forces a MAJOR transformers bump (>=5.5.4), and that upgrade
+  > is shared with every other node pack in the same environment.** SAM3's
+  > model classes simply do not exist below transformers ~5.5, so there is no
+  > gentler pin available. Transformers 5 removed a number of long-deprecated
+  > symbols, and any pack still importing one will fail at *its* import, not
+  > at Atlas's — the failure looks unrelated to this install. Observed live:
+  > `ComfyUI-CoreMLSuite` dies on `ImportError: cannot import name
+  > 'FLAX_WEIGHTS_NAME'` (removed in transformers 5) after installing
+  > `[sam3]`. Older diffusers-based packs are the usual casualties.
+  >
+  > This is not an Atlas bug and Atlas cannot work around it — one `cv2`-style
+  > shared namespace, one resolved version. Your options:
+  >
+  > - **Check first.** `pip install --dry-run -e ".[sam3]"` shows the
+  >   transformers delta before anything is written.
+  > - **Skip it.** Everything degrades: `AtlasInput`'s cascade falls to
+  >   `AtlasSemanticMask` (SegFormer, `[neural]`, no triton, works on
+  >   CPU/MPS), so segmentation still runs — just not SAM3-grade.
+  > - **Isolate it.** A separate ComfyUI venv for the Atlas-heavy work is the
+  >   only true fix if a pack you depend on is pinned below transformers 5.
+  >
+  > If a pack breaks after this install, upgrade *that* pack before rolling
+  > transformers back — most have shipped a transformers-5 fix by now.
+
   `facebook/sam3` is **gated** on Hugging Face (Meta's SAM-License-1.0 —
   commercial use permitted, military/ITAR use carved out). One-time setup:
 

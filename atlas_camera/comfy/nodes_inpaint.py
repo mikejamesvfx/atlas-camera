@@ -22,6 +22,7 @@ from atlas_camera.comfy.node_helpers import (
     _image_tensor_to_pil,
     _mask_to_b64_png,
     _metric_depth_and_validity,
+    _native_sam3_available,
     _parse_band_override,
     _require_numpy,
     _require_pil,
@@ -273,22 +274,59 @@ class AtlasSAM3Mask:
                 "confidence_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0,
                     "step": 0.01}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+                # APPENDED 2026-07-21 (positional widgets_values rule): the
+                # per-instance view. SAM3 has always returned a stack from
+                # post_process_instance_segmentation; `merged` just unions it.
+                # Exposing `separate` is what lets AtlasInstanceMask /
+                # AtlasSegmentedSDXLInpaint stop calling the third-party
+                # SAM3Segment, which hard-requires triton and therefore cannot
+                # load on Mac/CPU/AMD at all.
+                "output_mode": (["merged", "separate"], {"default": "merged",
+                    "tooltip": "merged = one union mask (the default, and what every "
+                               "sky/scope consumer wants). separate = an (N,H,W) stack, "
+                               "one instance per slice, ordered LARGEST FIRST — feed "
+                               "AtlasInstanceMask to pick one."}),
+                "max_instances": ("INT", {"default": 0, "min": 0, "max": 128,
+                    "tooltip": "separate mode only: keep at most N instances (largest "
+                               "first). 0 = unlimited. Ignored when merged."}),
             },
         }
 
-    def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto", **_extra):
+    def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto",
+                output_mode="merged", max_instances=0, **_extra):
         from atlas_camera.inference.sam3_segmenter import (
-            DEFAULT_SAM3_MODEL, Sam3GatedRepoError, sam3_concept_mask)
+            DEFAULT_SAM3_MODEL, Sam3GatedRepoError, sam3_concept_mask,
+            sam3_instance_masks)
         torch = _require_torch()
 
         pil = _image_tensor_to_pil(image)
         dev = None if device == "auto" else device
+        empty = torch.zeros((1, pil.height, pil.width), dtype=torch.float32)
+
+        if str(output_mode) == "separate":
+            try:
+                instances, matched = sam3_instance_masks(
+                    pil, concepts, model_id=DEFAULT_SAM3_MODEL, device=dev,
+                    confidence_threshold=confidence_threshold,
+                    max_instances=int(max_instances))
+            except Sam3GatedRepoError as exc:
+                return (empty, str(exc))
+            if not instances:
+                return (empty, f"NO MATCH for '{concepts}' — no instances "
+                               f"({DEFAULT_SAM3_MODEL}).")
+            import numpy as np
+            stack = torch.from_numpy(
+                np.stack(instances).astype("float32"))
+            sizes = ", ".join(f"{float(m.mean()):.1%}" for m in instances[:8])
+            return (stack, f"matched {sorted(set(matched))} -> {len(instances)} "
+                           f"instance(s), largest first [{sizes}] "
+                           f"({DEFAULT_SAM3_MODEL})")
+
         try:
             mask_np, matched, coverage = sam3_concept_mask(
                 pil, concepts, model_id=DEFAULT_SAM3_MODEL, device=dev,
                 confidence_threshold=confidence_threshold)
         except Sam3GatedRepoError as exc:
-            empty = torch.zeros((1, pil.height, pil.width), dtype=torch.float32)
             return (empty, str(exc))
         mask = torch.from_numpy(mask_np.astype("float32")).unsqueeze(0)
         if matched:
@@ -626,20 +664,34 @@ class AtlasSegmentedSDXLInpaint:
     def expand_stack(self, image, restrict_mask, prompt, checkpoint, max_instances=4,
                      steps=30, cfg=4.0, denoise=0.65, seed=0, crop_max_side=1024):
         registry = _comfy_registry()
-        for name in ("SAM3Segment", "INPAINT_ExpandMask", "AtlasInpaintCrop",
-                     "AtlasSDXLInpaint", "AtlasInpaintStitch"):
+        # Native SAM3 (transformers, no triton) is PREFERRED — the same
+        # cascade AtlasInput's segment() uses. The third-party SAM3Segment
+        # stays as the fallback for installs that predate [sam3], but it
+        # cannot load on Mac/CPU/AMD at all, which is why this node was
+        # arm64-blocked before AtlasSAM3Mask grew output_mode="separate".
+        use_native = _native_sam3_available()
+        for name in (("AtlasSAM3Mask",) if use_native else ("SAM3Segment",)) + (
+                "INPAINT_ExpandMask", "AtlasInpaintCrop",
+                "AtlasSDXLInpaint", "AtlasInpaintStitch"):
             if name not in registry:
                 raise RuntimeError(f"Segmented SDXL inpaint requires node '{name}'")
         g = _graph_builder()
-        sam = g.node("SAM3Segment", image=image, prompt="building",
-                     output_mode="Separate", confidence_threshold=0.5,
-                     max_segments=int(max_instances), segment_pick=0,
-                     mask_blur=0, mask_offset=0, device="Auto",
-                     invert_output=False, unload_model=False,
-                     background="Alpha", background_color="#222222")
+        if use_native:
+            sam = g.node("AtlasSAM3Mask", image=image, concepts="building",
+                         confidence_threshold=0.5, device="auto",
+                         output_mode="separate", max_instances=int(max_instances))
+            instances = sam.out(0)          # AtlasSAM3Mask: mask is slot 0
+        else:
+            sam = g.node("SAM3Segment", image=image, prompt="building",
+                         output_mode="Separate", confidence_threshold=0.5,
+                         max_segments=int(max_instances), segment_pick=0,
+                         mask_blur=0, mask_offset=0, device="Auto",
+                         invert_output=False, unload_model=False,
+                         background="Alpha", background_color="#222222")
+            instances = sam.out(1)          # SAM3Segment: IMAGE(0), MASK(1)
         plate = image
         for i in range(int(max_instances)):
-            selected = g.node("AtlasInstanceMask", mask=sam.out(1), restrict_mask=restrict_mask,
+            selected = g.node("AtlasInstanceMask", mask=instances, restrict_mask=restrict_mask,
                               instance_index=i, min_coverage=0.001)
             grown = g.node("INPAINT_ExpandMask", mask=selected.out(0), grow=32,
                            blur=16, blur_type="gaussian")
@@ -653,7 +705,9 @@ class AtlasSegmentedSDXLInpaint:
             plate = g.node("AtlasInpaintStitch", original_image=plate,
                            inpainted_crop=fill.out(0), crop_region=crop.out(2),
                            mask=grown.out(0), feather_px=24).out(0)
-        report = f"SAM3 Separate building stack — {int(max_instances)} instance slot(s), SDXL denoise {float(denoise):g}"
+        report = (f"SAM3 Separate building stack via "
+                  f"{'AtlasSAM3Mask (native)' if use_native else 'SAM3Segment (triton)'} — "
+                  f"{int(max_instances)} instance slot(s), SDXL denoise {float(denoise):g}")
         return {"result": (plate, report), "expand": g.finalize()}
 
 
