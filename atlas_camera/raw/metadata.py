@@ -278,3 +278,44 @@ def resolve_sensor_size(meta: RawMetadata, image_width_px: int,
         "Sensor size assumed 36.0mm full frame — no registry match and no "
         "usable EXIF sensor evidence.")
     return SensorResolution(36.0, None, "assumed_default", warnings)
+
+
+# --------------------------------------------------------------------------
+# RAW intrinsics-hint precedence + provenance stamping (phase 2 move from
+# comfy/node_helpers.py). Pure dict/dataclass work; no ComfyUI import.
+# --------------------------------------------------------------------------
+
+def _resolve_raw_hints(focal_widget_mm, sensor_widget_mm, raw_meta):
+    """Resolve (focal_hint, sensor_w, sensor_h) from widget values + an
+    optionally wired ATLAS_RAW_META (AtlasLoadRAW's RawImportResult).
+
+    Precedence: an explicit widget value (>0 focal / non-default sensor)
+    always beats the wired metadata, so an artist override never fights
+    the EXIF. sensor_height flows only from raw_meta (no widget exists).
+    """
+    focal_hint = float(focal_widget_mm) if focal_widget_mm and focal_widget_mm > 0 else None
+    sensor_w = float(sensor_widget_mm)
+    sensor_h = None
+    if raw_meta is not None:
+        if focal_hint is None and getattr(raw_meta, "focal_length_mm", None):
+            focal_hint = float(raw_meta.focal_length_mm)
+        if sensor_w == 36.0 and getattr(raw_meta, "sensor_width_mm", None):
+            sensor_w = float(raw_meta.sensor_width_mm)
+            if getattr(raw_meta, "sensor_height_mm", None):
+                sensor_h = float(raw_meta.sensor_height_mm)
+    return focal_hint, sensor_w, sensor_h
+def _stamp_raw_provenance(solve, raw_meta):
+    """Record where a RAW import's hints came from on the solve (in place)."""
+    if raw_meta is None:
+        return
+    solve.debug_metadata["raw_import"] = {
+        "source_path": getattr(raw_meta, "source_path", None),
+        "camera_make": getattr(raw_meta, "camera_make", None),
+        "camera_model": getattr(raw_meta, "camera_model", None),
+        "lens_model": getattr(raw_meta, "lens_model", None),
+        "focal_length_mm": getattr(raw_meta, "focal_length_mm", None),
+        "sensor_width_mm": getattr(raw_meta, "sensor_width_mm", None),
+        "sensor_height_mm": getattr(raw_meta, "sensor_height_mm", None),
+        "sensor_source": getattr(raw_meta, "sensor_source", None),
+        "undistort_status": getattr(raw_meta, "undistort_status", None),
+    }

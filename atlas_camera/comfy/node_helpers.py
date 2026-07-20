@@ -27,6 +27,34 @@ from atlas_camera.exporters.nuke_exporter import write_nuke_native_script, write
 from atlas_camera.exporters.review_package import build_review_package
 from atlas_camera.importers.usd_camera_loader import USDCameraLoader
 
+# Phase 2 (node_helpers_layering_plan.md): these are host-agnostic math and now
+# live in core/ and raw/. Re-exported here so every existing importer — and
+# the comfy.nodes façade contract — keeps working unchanged.
+from atlas_camera.core.depth_geometry import (  # noqa: F401
+    _solve_camera_params,
+    _horizon_y_from_solve,
+    _recompute_horizon_line,
+    _depth_map_for_solve,
+    _resolve_depth_band,
+    _apply_band_split,
+    _ground_depth_compute,
+    _analytic_ground_forward_depth,
+)
+from atlas_camera.core.relief_mesh import (  # noqa: F401
+    _relief_mesh_from_solve,
+    _solve_with_relief_mesh,
+)
+from atlas_camera.core.schema import (  # noqa: F401
+    _clone_solve_with_metadata,
+)
+from atlas_camera.core.normals import (  # noqa: F401
+    _resize_normal_field,
+)
+from atlas_camera.raw.metadata import (  # noqa: F401
+    _resolve_raw_hints,
+    _stamp_raw_provenance,
+)
+
 
 # Shared depth_model combo choices. APPEND-ONLY: ComfyUI serializes combo VALUES,
 # so adding entries is safe; removing/renaming breaks saved workflows.
@@ -152,25 +180,6 @@ def _save_image_tensor_to_tmp(image_tensor) -> str:
         return f.name
 
 
-def _resolve_raw_hints(focal_widget_mm, sensor_widget_mm, raw_meta):
-    """Resolve (focal_hint, sensor_w, sensor_h) from widget values + an
-    optionally wired ATLAS_RAW_META (AtlasLoadRAW's RawImportResult).
-
-    Precedence: an explicit widget value (>0 focal / non-default sensor)
-    always beats the wired metadata, so an artist override never fights
-    the EXIF. sensor_height flows only from raw_meta (no widget exists).
-    """
-    focal_hint = float(focal_widget_mm) if focal_widget_mm and focal_widget_mm > 0 else None
-    sensor_w = float(sensor_widget_mm)
-    sensor_h = None
-    if raw_meta is not None:
-        if focal_hint is None and getattr(raw_meta, "focal_length_mm", None):
-            focal_hint = float(raw_meta.focal_length_mm)
-        if sensor_w == 36.0 and getattr(raw_meta, "sensor_width_mm", None):
-            sensor_w = float(raw_meta.sensor_width_mm)
-            if getattr(raw_meta, "sensor_height_mm", None):
-                sensor_h = float(raw_meta.sensor_height_mm)
-    return focal_hint, sensor_w, sensor_h
 
 
 def _scale_summary_suffix(solve) -> str:
@@ -241,21 +250,6 @@ def _health_summary_suffix(solve) -> str:
     return f" | 🩺 health: {str(stamp['level']).upper()} ({n} flag(s) {ack})"
 
 
-def _stamp_raw_provenance(solve, raw_meta):
-    """Record where a RAW import's hints came from on the solve (in place)."""
-    if raw_meta is None:
-        return
-    solve.debug_metadata["raw_import"] = {
-        "source_path": getattr(raw_meta, "source_path", None),
-        "camera_make": getattr(raw_meta, "camera_make", None),
-        "camera_model": getattr(raw_meta, "camera_model", None),
-        "lens_model": getattr(raw_meta, "lens_model", None),
-        "focal_length_mm": getattr(raw_meta, "focal_length_mm", None),
-        "sensor_width_mm": getattr(raw_meta, "sensor_width_mm", None),
-        "sensor_height_mm": getattr(raw_meta, "sensor_height_mm", None),
-        "sensor_source": getattr(raw_meta, "sensor_source", None),
-        "undistort_status": getattr(raw_meta, "undistort_status", None),
-    }
 
 
 def _extend_edge_colors(rgb, valid, px):
@@ -358,27 +352,6 @@ def _image_tensor_to_preview_b64(image_tensor, *, quality: int = 85) -> str:
 
 
 
-def _clone_solve_with_metadata(solve, *, source_plate=None, output_profile=None):
-    from atlas_camera.core.schema import AtlasOutputProfile, AtlasPlateRef
-
-    # copy.deepcopy, not AtlasSolve.from_dict(solve.to_dict()): the JSON
-    # round-trip walks every nested array (relief-mesh vertices/faces/uvs can
-    # be hundreds of thousands of floats) through _json_ready and back twice —
-    # once serializing, once reconstructing — purely to get an independent
-    # copy for in-process mutation. deepcopy is the C-optimized recursive
-    # copy for exactly this case; to_dict()/from_dict() remain the right tool
-    # at actual serialization boundaries (file export, cache keys).
-    out = copy.deepcopy(solve)
-    if source_plate is not None:
-        out.source_plate = source_plate if isinstance(source_plate, AtlasPlateRef) else AtlasPlateRef.from_dict(source_plate)
-        if out.source_plate and out.source_plate.image_path and not out.source_plate.is_proxy:
-            out.image_path = out.source_plate.image_path
-    if output_profile is not None:
-        out.output_profile = (
-            output_profile if isinstance(output_profile, AtlasOutputProfile)
-            else AtlasOutputProfile.from_dict(output_profile)
-        )
-    return out
 
 
 def _decode_b64_to_tensor(b64str: str, width: int, height: int):
@@ -457,72 +430,6 @@ def _execution_blocker():
 
 
 
-def _ground_depth_compute(solve, width: int, height: int, near: float, far: float):
-    """
-    Per-pixel ray-plane intersection against Y=0 ground plane.
-    Returns (depth_rgb, valid_mask) both as H×W numpy float32 arrays.
-    Port of DEPTH_FRAGMENT_SHADER in ui/src/ProjectionMaterial.ts.
-    """
-    np = _require_numpy()
-
-    cam = solve.camera
-    intr = cam.intrinsics
-    extr = cam.extrinsics
-
-    fx = intr.fx_px or 0.0
-    fy = intr.fy_px or fx
-    if fx <= 0 or fy <= 0:
-        return None, None
-
-    cx = intr.cx_px if intr.cx_px is not None else width / 2.0
-    cy = intr.cy_px if intr.cy_px is not None else height / 2.0
-
-    vm = np.array(extr.camera_view_matrix, dtype=np.float64)  # 4×4
-    cam_to_world = np.linalg.inv(vm)
-    cam_y = float(extr.camera_position[1])
-
-    uu, vv = np.meshgrid(np.arange(width, dtype=np.float64),
-                         np.arange(height, dtype=np.float64))
-
-    # Camera-space rays (cam looks along -Z, image Y is downward)
-    ray_x = (uu - cx) / fx
-    ray_y = -(vv - cy) / fy
-    ray_z = -np.ones((height, width), dtype=np.float64)
-    rays_cam = np.stack([ray_x, ray_y, ray_z], axis=-1)  # H×W×3
-    norms = np.linalg.norm(rays_cam, axis=-1, keepdims=True)
-    rays_cam = rays_cam / np.maximum(norms, 1e-12)
-
-    # Rotate to world space (direction only — upper-left 3×3 of camToWorld)
-    R = cam_to_world[:3, :3]
-    rays_world = rays_cam @ R.T  # H×W×3
-
-    ry = rays_world[..., 1]  # H×W
-
-    # Ground intersect: cameraPos.y + t * ry = 0  →  t = -cam_y / ry
-    valid = (np.abs(ry) > 1e-5) & (cam_y > 0)
-    t = np.where(valid, -cam_y / ry, 0.0)
-    valid = valid & (t > 0.001)
-
-    # Normalize to [0, 1] in [near, far]
-    t_norm = np.clip((t - near) / max(far - near, 1e-6), 0.0, 1.0)
-    t_norm[~valid] = 0.0
-
-    # 4-stop warm→cool heatmap (identical stops to DEPTH_FRAGMENT_SHADER)
-    c0 = np.array([0.90, 0.12, 0.04], dtype=np.float32)  # near: red
-    c1 = np.array([0.96, 0.72, 0.08], dtype=np.float32)  # yellow
-    c2 = np.array([0.20, 0.84, 0.60], dtype=np.float32)  # teal
-    c3 = np.array([0.08, 0.22, 0.86], dtype=np.float32)  # far: blue
-
-    t3 = t_norm[..., np.newaxis].astype(np.float32)
-    rgb = np.where(t3 < 0.333,
-                   c0 + (c1 - c0) * (t3 * 3.0),
-                   np.where(t3 < 0.667,
-                            c1 + (c2 - c1) * ((t3 - 0.333) * 3.0),
-                            c2 + (c3 - c2) * ((t3 - 0.667) * 3.0)))
-    rgb = np.clip(rgb, 0.0, 1.0)
-    rgb[~valid] = 0.0
-
-    return rgb.astype(np.float32), valid.astype(np.float32)
 
 
 def _reference_id_choices() -> list[str]:
@@ -550,25 +457,6 @@ def _extrinsics_from_view(extr, vm2):
     return r_cw
 
 
-def _recompute_horizon_line(out, r_cw):
-    """Refresh the stored horizon line for a re-oriented camera (the RollTrim
-    vanishing-line math: world-Y ray component zero, linear in (u, v))."""
-    intr = out.camera.intrinsics
-    if out.horizon_line is None or not intr.fx_px or not intr.image_width:
-        return
-    fx = float(intr.fx_px)
-    fy = float(intr.fy_px or intr.fx_px)
-    cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
-    cy = float(intr.cy_px if intr.cy_px is not None else (intr.image_height or 0) / 2.0)
-    w = float(intr.image_width)
-    a = r_cw[1][0] / fx
-    b = -r_cw[1][1] / fy
-    cc = -r_cw[1][0] * cx / fx + r_cw[1][1] * cy / fy - r_cw[1][2]
-    if abs(b) > 1e-12:
-        y0 = (-cc - a * 0.0) / b
-        y1 = (-cc - a * w) / b
-        out.horizon_line.endpoints_px = ((0.0, y0), (w, y1))
-        out.horizon_line.line_coefficients = (a, b, cc)
 
 
 _ATLAS_ASSESS_CACHE: dict = {}
@@ -583,44 +471,10 @@ _ATLAS_ASSESS_CACHE: dict = {}
 # itself is untouched; these are additive.
 # ---------------------------------------------------------------------------
 
-def _solve_camera_params(solve, depth_result):
-    """fx/fy/cx/cy/width/height for a solve, falling back to the depth
-    estimate's own resolution — same fallback logic AtlasDeriveProjectionGeometry
-    uses (there falling back to the source IMAGE tensor's shape instead, since
-    that node takes an image directly; these nodes take an ATLAS_DEPTH_MAP,
-    which already carries its own width/height from DepthResult).
-    Returns None when there's no usable focal length (caller should return the
-    solve unchanged, matching AtlasDeriveProjectionGeometry's own behavior).
-    """
-    intr = solve.camera.intrinsics
-    width = int(intr.image_width or depth_result.image_width)
-    height = int(intr.image_height or depth_result.image_height)
-    fx = intr.fx_px or 0.0
-    fy = intr.fy_px or fx
-    if fx <= 0:
-        return None
-    cx = intr.cx_px if intr.cx_px is not None else width / 2.0
-    cy = intr.cy_px if intr.cy_px is not None else height / 2.0
-    return width, height, fx, fy, cx, cy
 
 
-def _horizon_y_from_solve(solve):
-    """Image row of the solved horizon, or None — same extraction
-    AtlasDeriveProjectionGeometry already does from solve.horizon_line."""
-    if solve.horizon_line and solve.horizon_line.endpoints_px:
-        p1, p2 = solve.horizon_line.endpoints_px
-        return 0.5 * (float(p1[1]) + float(p2[1]))
-    return None
 
 
-def _depth_map_for_solve(depth_result, width, height):
-    """The depth estimate's raw array, resized to match the solve's
-    intrinsics resolution if they disagree (same as AtlasDeriveProjectionGeometry)."""
-    from atlas_camera.core.solver import _resize_depth
-    depth_map = depth_result.depth
-    if depth_map.shape != (height, width):
-        depth_map = _resize_depth(depth_map, width, height)
-    return depth_map
 
 
 def _replace_proxy_role_geometry(solve, new_prims, stats, extra_metadata):
@@ -799,54 +653,6 @@ def _metric_depth_and_validity(solve, depth, exclude_mask=None) -> "_MetricDepth
                               resolved_exclude)
 
 
-def _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct):
-    """Resolve a metric depth band from explicit metres (``near_m``/``far_m``,
-    0 = unset) or, as a fallback, POSITIONS ALONG THE SCENE'S LOG-DEPTH RANGE
-    (``near_pct``/``far_pct``, 0..1; 0.5 = the geometric mean of the robust
-    depth range — see ``log_depth_position`` below for why this replaced
-    pixel-count percentiles).
-
-    Shared by ``AtlasDepthLayerMask`` and ``AtlasCleanPlateLayer`` so the two
-    nodes' bands can never drift apart — the inpaint-layers design requires the
-    mask node's band and the clean-plate node's mesh clip to match exactly.
-    ``far_pct<=0`` is a deliberate explicit "no upper bound" (+inf) rather than
-    a degenerate zero-position far edge, since ``near_pct``/``far_pct`` share
-    the same 0..1 range but mean different things at 0 (near defaults to the
-    very nearest pixels; far defaults to "no cap" via ``far_pct=0.5``, and an
-    artist setting ``far_pct=0`` clearly means "no upper band edge", not
-    "collapse the band to nothing").
-    """
-    np = _require_numpy()
-    values = metric[valid] if valid.any() else None
-
-    def log_depth_position(t):
-        # LOG-DEPTH interpolation, not a pixel-count percentile: metric depth
-        # is hugely skewed (near ground dominates the pixel count, the whole
-        # far scene compresses into the top percentiles), so a linear
-        # percentile slider wasted 0-0.9 on the foreground (user-measured:
-        # useful bg splits landed at 0.9-0.95). Position t along the scene's
-        # log depth range is perceptually linear: 0.5 = the geometric mean of
-        # the (robust, 1st-99th percentile) depth range. t>=0.995 = no cap.
-        import math
-        d_lo = float(np.percentile(values, 1.0))
-        d_hi = float(np.percentile(values, 99.0))
-        if not (d_hi > d_lo > 0):
-            return float(np.percentile(values, t * 100.0))  # degenerate scene
-        return math.exp(math.log(d_lo) + t * (math.log(d_hi) - math.log(d_lo)))
-
-    if near_m and near_m > 0:
-        near = float(near_m)
-    elif values is not None and near_pct > 0:
-        near = log_depth_position(min(float(near_pct), 1.0))
-    else:
-        near = 0.0
-    if far_m and far_m > 0:
-        far = float(far_m)
-    elif values is not None and 0 < far_pct < 0.995:
-        far = log_depth_position(float(far_pct))
-    else:
-        far = float("inf")
-    return near, far
 
 
 def _parse_band_override(text):
@@ -893,31 +699,6 @@ def _band_resolution_validity(setup, band_ref_mask):
     return v
 
 
-def _resize_normal_field(normals, target_hw):
-    """Resize an (H,W,3) unit-normal field to ``target_hw`` (h, w) and
-    renormalize. Bilinear via PIL mode 'F' per channel; nearest-neighbour numpy
-    fallback if PIL is unavailable. A no-op when already the right shape."""
-    import numpy as np
-    th, tw = int(target_hw[0]), int(target_hw[1])
-    n = np.asarray(normals, dtype=np.float32)
-    if n.ndim != 3 or n.shape[2] < 3:
-        raise ValueError(f"expected an (H,W,3) normal field, got {n.shape}")
-    if n.shape[:2] == (th, tw):
-        out = n[..., :3]
-    else:
-        try:
-            PILImage = _require_pil()
-            chans = []
-            for c in range(3):
-                im = PILImage.fromarray(np.ascontiguousarray(n[..., c]), mode="F")
-                chans.append(np.asarray(im.resize((tw, th), PILImage.BILINEAR), dtype=np.float32))
-            out = np.stack(chans, axis=-1)
-        except Exception:
-            ys = np.linspace(0, n.shape[0] - 1, th).astype(int)
-            xs = np.linspace(0, n.shape[1] - 1, tw).astype(int)
-            out = n[np.ix_(ys, xs)][..., :3].astype(np.float32)
-    norm = np.linalg.norm(out, axis=-1, keepdims=True)
-    return (out / np.maximum(norm, 1e-12)).astype(np.float32)
 
 
 # Exact named views from ComfyUI-qwenmultiangle / the Multiple-Angles LoRA, shared
@@ -1041,44 +822,8 @@ def _format_hole_fill_report(enabled, n_filled, filled, faces_added, loops_left,
     return "\n".join(lines)
 
 
-def _solve_with_relief_mesh(solve, mesh):
-    """A deep copy of ``solve`` whose relief-mesh primitive is ``mesh``.
-
-    Lets the export node hand the viewport the geometry it ACTUALLY wrote,
-    without touching the input solve (whose live projection mesh keeps its
-    deliberate tears).
-    """
-    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
-    out = copy.deepcopy(solve)
-    scene = getattr(out, "projection_scene", None)
-    if scene is None:
-        return out
-    prim = relief_mesh_primitive(mesh)
-    prims = list(getattr(scene, "proxy_geometry", None) or [])
-    for i, p in enumerate(prims):
-        if p.primitive_type == "mesh" and (p.metadata or {}).get("source") == "depth_relief_mesh":
-            prims[i] = prim
-            break
-    else:
-        prims.append(prim)
-    scene.proxy_geometry = prims
-    return out
 
 
-def _relief_mesh_from_solve(solve):
-    """The relief mesh already derived onto a solve (AtlasDeriveReliefMesh /
-    AtlasInput), reconstructed for export so its edge tuning carries over
-    exactly. Looks for the ``depth_relief_mesh``-sourced primitive in the
-    projection scene; returns a ReliefMesh, or None when the solve carries no
-    relief mesh (bare solve, or a bands-only / primitives-only solve)."""
-    from atlas_camera.exporters._layers import mesh_from_primitive
-    scene = getattr(solve, "projection_scene", None)
-    prims = (getattr(scene, "proxy_geometry", None) or []) if scene is not None else []
-    for p in prims:
-        meta = p.metadata or {}
-        if p.primitive_type == "mesh" and meta.get("source") == "depth_relief_mesh":
-            return mesh_from_primitive(p)
-    return None
 
 
 def _solve_image_size(solve, width: int = 0, height: int = 0) -> tuple[int, int]:
@@ -1097,23 +842,6 @@ def _solve_image_size(solve, width: int = 0, height: int = 0) -> tuple[int, int]
 
 
 
-def _apply_band_split(band_split, band_side, metric, valid,
-                      near_m, far_m, near_pct, far_pct):
-    """Resolve the effective band, honoring a connected `band_split`.
-
-    With a split connected and a side chosen, the node's own near/far widgets
-    are ignored: foreground = [0, split), background = [split, +inf). Both
-    sides resolve the boundary through the same `_resolve_depth_band` log
-    mapping, so fg and bg partition EXACTLY (shared helper = no drift).
-    """
-    if band_split is None or band_side == "manual":
-        return _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct)
-    s_pct = float(band_split.get("split", 0.55))
-    s_m = float(band_split.get("split_m", 0.0))
-    boundary, _ = _resolve_depth_band(metric, valid, s_m, 0.0, s_pct, 0.0)
-    if band_side == "foreground":
-        return 0.0, boundary
-    return boundary, float("inf")
 
 
 # A partition split can never be a true no-op for BOTH sides (one side always
@@ -1228,33 +956,6 @@ def _resolve_band_geometry(band_geometry: str, geometry_override: str) -> str:
     return value
 
 
-def _analytic_ground_forward_depth(extr, fx, fy, cx, cy, height, width):
-    """Per-pixel forward depth of the ray∩(Y=0 ground plane) intersection,
-    NaN where the ray never hits ground (at/above horizon) or the camera is
-    at/below ground. Matches build_relief_mesh's back-projection EXACTLY:
-    with the unnormalized camera ray ((u-cx)/fx, -(v-cy)/fy, -1), the ray
-    parameter IS forward depth, so feeding this array back through the mesh
-    builder lands every vertex on Y=0 by construction (same ray-plane math
-    as _ground_depth_compute / the viewport's DEPTH_FRAGMENT_SHADER)."""
-    np = _require_numpy()
-    vm = np.array(extr.camera_view_matrix, dtype=np.float64)
-    c2w = np.linalg.inv(vm)
-    R = c2w[:3, :3]
-    cam_y = float(c2w[1, 3])
-    out = np.full((height, width), np.nan)
-    if cam_y <= 1e-6:
-        return out
-    uu, vv = np.meshgrid(np.arange(width, dtype=np.float64),
-                         np.arange(height, dtype=np.float64))
-    kx = (uu - cx) / fx
-    ky = -(vv - cy) / fy
-    # World-Y component of the unnormalized ray direction.
-    ry = R[1, 0] * kx + R[1, 1] * ky - R[1, 2]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        s = -cam_y / ry
-    ok = np.isfinite(s) & (s > 1e-3)
-    out[ok] = s[ok]
-    return out
 
 
 __all__ = [

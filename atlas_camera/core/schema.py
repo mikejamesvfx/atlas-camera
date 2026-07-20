@@ -8,6 +8,8 @@ Core convention:
 
 from __future__ import annotations
 
+import copy
+
 from dataclasses import asdict, dataclass, field, is_dataclass
 import json
 from typing import Any, ClassVar
@@ -624,3 +626,30 @@ class LatentScene:
 
 AtlasCamera = LatentCamera
 AtlasSolve = LatentScene
+
+
+# --------------------------------------------------------------------------
+# Solve cloning helper (phase 2 move from comfy/node_helpers.py).
+# --------------------------------------------------------------------------
+
+def _clone_solve_with_metadata(solve, *, source_plate=None, output_profile=None):
+    from atlas_camera.core.schema import AtlasOutputProfile, AtlasPlateRef
+
+    # copy.deepcopy, not AtlasSolve.from_dict(solve.to_dict()): the JSON
+    # round-trip walks every nested array (relief-mesh vertices/faces/uvs can
+    # be hundreds of thousands of floats) through _json_ready and back twice —
+    # once serializing, once reconstructing — purely to get an independent
+    # copy for in-process mutation. deepcopy is the C-optimized recursive
+    # copy for exactly this case; to_dict()/from_dict() remain the right tool
+    # at actual serialization boundaries (file export, cache keys).
+    out = copy.deepcopy(solve)
+    if source_plate is not None:
+        out.source_plate = source_plate if isinstance(source_plate, AtlasPlateRef) else AtlasPlateRef.from_dict(source_plate)
+        if out.source_plate and out.source_plate.image_path and not out.source_plate.is_proxy:
+            out.image_path = out.source_plate.image_path
+    if output_profile is not None:
+        out.output_profile = (
+            output_profile if isinstance(output_profile, AtlasOutputProfile)
+            else AtlasOutputProfile.from_dict(output_profile)
+        )
+    return out
