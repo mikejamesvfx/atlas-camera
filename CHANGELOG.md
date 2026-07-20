@@ -3,6 +3,68 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## 0.8.0 — 2026-07-20
+
+### Apple Silicon / arm64
+
+- **Native SAM3 (`AtlasSAM3Mask` 🪄)** loads SAM3 straight from `transformers`
+  (`[sam3]` extra) instead of the third-party `SAM3Segment`, which hard-requires
+  `triton` and therefore cannot load on Mac (MPS), CPU-only or AMD machines.
+  Verified running on Apple Silicon.
+- **All 24 `SAM3Segment` references across the 14 shipped workflows are ported**
+  to `AtlasSAM3Mask`, so the showcase actually runs on a Mac. The one exception
+  is the segmented-SDXL debug graph, which needs per-instance separation that
+  `AtlasSAM3Mask` does not yet expose.
+- `AtlasInput`'s sky/scope cascade prefers native SAM3, falling back to
+  `AtlasSemanticMask` (SegFormer, no gate, CPU/MPS-viable) and then to the
+  heuristic. `report` names which tier fired.
+
+### Colour-managed float I/O
+
+- **`AtlasLoadPlate` 🎞 and `atlas_camera.plate`** — Atlas's own OpenImageIO
+  EXR/DPX reader and writer with OCIO conversion. The OCIO quickstart now needs
+  **no third-party node pack at all**.
+- The RAW scene-linear EXR sidecar writes through OpenImageIO. It previously
+  used opencv's EXR codec, which is disabled at runtime by default, absent from
+  the opencv-python 5.x wheels, and shipped by three distributions that
+  overwrite each other — so it silently failed on machines where another pack
+  had pulled in a 5.x build.
+- OpenImageIO carries a built-in ACES OCIO config, so ACEScg/ACEScct/ACES2065-1
+  work with no `opencolorio` install and no `$OCIO` to configure.
+
+### Correctness
+
+- **Learned solves are reproducible.** GeoCalib's `calibrate()` drew from the
+  global RNG, so the same image solved twice returned a different camera
+  (~2.5% focal, ~0.7° roll). Now seeded inside `fork_rng`, so the determinism
+  cannot leak into a sampler seeded later in the same queue. Bit-identical
+  across runs.
+- Exporters no longer bake a deleted temp plate path into `.nk`/`.ma`
+  artifacts.
+- `kornia` capped `<0.8.3` — 0.8.3 dropped a re-export that ComfyUI-LTXVideo
+  imports, so installing Atlas's neural extras broke LTXVideo entirely.
+- The obsolete opencv `<5` cap is removed; Atlas's remaining cv2 use (Canny,
+  HoughLinesP, `remap`, LDR I/O) is verified on opencv 5.
+
+### Architecture
+
+- **Layering refactor**: ~780 lines of host-agnostic math moved out of the
+  ComfyUI adapter into `core/`, `raw/` and `plate/`, where the architecture
+  already said they belonged. `comfy/node_helpers.py` 1,591 → 812 lines, split
+  into `viewport_payload`, `view_prompts`, `node_reports` and `fingerprints`.
+  Importing `core`/`plate`/`raw` now loads zero ComfyUI modules.
+- The `comfy.nodes` façade surface is pinned by a test, so a re-export dropped
+  during a move fails loudly.
+
+### Examples
+
+- Shipped workflows default `LoadImage` to `example.png` — the image ComfyUI
+  itself ships — so they RUN on first queue instead of erroring on a plate that
+  is a separate download. It is a placeholder; swap in a real plate.
+- Fourth shipped workflow: the ✂ Occlude / `primary_depth` demo.
+- `docs/dev/` and `docs/artifacts/` are local-only, trimming ~12 MB from the
+  published archive.
+
 ## 0.7.0 — 2026-07-19
 
 ### OCIO DCC workflows + cleanplate-derived hidden support

@@ -353,14 +353,10 @@
   },
   {
    "id": 5,
-   "type": "SAM3Segment",
+   "type": "AtlasSAM3Mask",
    "pos": [
     1230,
     40
-   ],
-   "size": [
-    380,
-    340
    ],
    "flags": {},
    "order": 5,
@@ -372,13 +368,8 @@
      "link": 5
     },
     {
-     "name": "prompt",
+     "name": "concepts",
      "type": "STRING",
-     "link": null
-    },
-    {
-     "name": "output_mode",
-     "type": "COMBO",
      "link": null
     },
     {
@@ -387,90 +378,36 @@
      "link": null
     },
     {
-     "name": "max_segments",
-     "type": "INT",
-     "link": null
-    },
-    {
-     "name": "segment_pick",
-     "type": "INT",
-     "link": null
-    },
-    {
-     "name": "mask_blur",
-     "type": "INT",
-     "link": null
-    },
-    {
-     "name": "mask_offset",
-     "type": "INT",
-     "link": null
-    },
-    {
      "name": "device",
      "type": "COMBO",
-     "link": null
-    },
-    {
-     "name": "invert_output",
-     "type": "BOOLEAN",
-     "link": null
-    },
-    {
-     "name": "unload_model",
-     "type": "BOOLEAN",
-     "link": null
-    },
-    {
-     "name": "background",
-     "type": "COMBO",
-     "link": null
-    },
-    {
-     "name": "background_color",
-     "type": "COLORCODE",
      "link": null
     }
    ],
    "outputs": [
     {
-     "name": "IMAGE",
-     "type": "IMAGE",
-     "links": [],
-     "slot_index": 0
-    },
-    {
-     "name": "MASK",
+     "name": "mask",
      "type": "MASK",
      "links": [
       6,
       8,
       37
      ],
-     "slot_index": 1
+     "slot_index": 0
     },
     {
-     "name": "MASK_IMAGE",
-     "type": "IMAGE",
+     "name": "report",
+     "type": "STRING",
      "links": [],
-     "slot_index": 2
+     "slot_index": 1
     }
    ],
    "properties": {
-    "Node name for S&R": "SAM3Segment"
+    "Node name for S&R": "AtlasSAM3Mask"
    },
    "widgets_values": [
     "rusty car and fallen sign",
-    "Merged",
     0.5,
-    0,
-    0,
-    0,
-    0,
-    "Auto",
-    false,
-    false,
-    "Alpha"
+    "auto"
    ],
    "title": "Foreground mask — rusty car and fallen sign"
   },
@@ -851,14 +788,10 @@
   },
   {
    "id": 14,
-   "type": "SAM3Segment",
+   "type": "AtlasSAM3Mask",
    "pos": [
     0,
     1010
-   ],
-   "size": [
-    300,
-    300
    ],
    "flags": {},
    "order": 14,
@@ -870,13 +803,8 @@
      "link": 18
     },
     {
-     "name": "prompt",
+     "name": "concepts",
      "type": "STRING",
-     "link": null
-    },
-    {
-     "name": "output_mode",
-     "type": "COMBO",
      "link": null
     },
     {
@@ -885,89 +813,35 @@
      "link": null
     },
     {
-     "name": "max_segments",
-     "type": "INT",
-     "link": null
-    },
-    {
-     "name": "segment_pick",
-     "type": "INT",
-     "link": null
-    },
-    {
-     "name": "mask_blur",
-     "type": "INT",
-     "link": null
-    },
-    {
-     "name": "mask_offset",
-     "type": "INT",
-     "link": null
-    },
-    {
      "name": "device",
      "type": "COMBO",
-     "link": null
-    },
-    {
-     "name": "invert_output",
-     "type": "BOOLEAN",
-     "link": null
-    },
-    {
-     "name": "unload_model",
-     "type": "BOOLEAN",
-     "link": null
-    },
-    {
-     "name": "background",
-     "type": "COMBO",
-     "link": null
-    },
-    {
-     "name": "background_color",
-     "type": "COLORCODE",
      "link": null
     }
    ],
    "outputs": [
     {
-     "name": "IMAGE",
-     "type": "IMAGE",
-     "links": [],
-     "slot_index": 0
-    },
-    {
-     "name": "MASK",
+     "name": "mask",
      "type": "MASK",
      "links": [
       21,
       32
      ],
-     "slot_index": 1
+     "slot_index": 0
     },
     {
-     "name": "MASK_IMAGE",
-     "type": "IMAGE",
+     "name": "report",
+     "type": "STRING",
      "links": [],
-     "slot_index": 2
+     "slot_index": 1
     }
    ],
    "properties": {
-    "Node name for S&R": "SAM3Segment"
+    "Node name for S&R": "AtlasSAM3Mask"
    },
    "widgets_values": [
     "sky",
-    "Merged",
     0.5,
-    0,
-    0,
-    0,
-    0,
-    "Auto",
-    false,
-    false,
-    "Alpha"
+    "auto"
    ],
    "title": "Sky mask"
   },
@@ -2385,7 +2259,7 @@
   [
    6,
    5,
-   1,
+   0,
    6,
    0,
    "MASK"
@@ -2401,7 +2275,7 @@
   [
    8,
    5,
-   1,
+   0,
    8,
    0,
    "MASK"
@@ -2505,7 +2379,7 @@
   [
    21,
    14,
-   1,
+   0,
    15,
    2,
    "MASK"
@@ -2593,7 +2467,7 @@
   [
    32,
    14,
-   1,
+   0,
    16,
    12,
    "MASK"
@@ -2633,7 +2507,7 @@
   [
    37,
    5,
-   1,
+   0,
    21,
    15,
    "MASK"
