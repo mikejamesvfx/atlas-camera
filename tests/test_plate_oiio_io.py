@@ -123,3 +123,26 @@ def test_bad_colorspace_names_the_available_ones(tmp_path):
     p = write_exr(str(tmp_path / "x.exr"), np.zeros((4, 4, 3), "float32"))
     with pytest.raises(RuntimeError, match="Colour conversion"):
         read_plate(p, input_colorspace="ACEScg", output_colorspace="NotARealSpace")
+
+
+def test_associated_alpha_is_handled_correctly(tmp_path):
+    """Colour conversion must unpremultiply, convert, then re-premultiply.
+
+    EXR alpha is ASSOCIATED (premultiplied). Applying a transfer function to
+    premultiplied values directly is wrong, and wrong in a way that looks
+    merely "a bit dark" rather than broken — the worst kind of colour bug.
+
+    0.18 at alpha 0.5 must give srgb(0.18/0.5)*0.5 = 0.3171, not srgb(0.18) =
+    0.4614. Pinned because this is a correctness property opencv's codec does
+    not provide, and it is a large part of why this migration is worth doing.
+    """
+    def srgb(x):
+        return 1.055 * x ** (1 / 2.4) - 0.055 if x > 0.0031308 else 12.92 * x
+
+    for alpha in (1.0, 0.5):
+        px = np.full((8, 8, 4), 0.18, dtype="float32")
+        px[..., 3] = alpha
+        p = write_exr(str(tmp_path / f"a{alpha}.exr"), px, bit_depth="float",
+                      source_colorspace="ACEScg")
+        got = float(read_plate(p, output_colorspace="sRGB - Display").pixels[1, 1, 0])
+        assert abs(got - srgb(0.18 / alpha) * alpha) < 0.01, (alpha, got)

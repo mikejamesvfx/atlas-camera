@@ -161,6 +161,135 @@ class AtlasRegisterPlate:
         return (image, plate_ref)
 
 
+def _plate_colorspace_choices(include_auto: bool = True) -> list:
+    """Colourspace combo contents, safe to call at NODE REGISTRATION time.
+
+    INPUT_TYPES runs when ComfyUI imports the pack, long before anyone has
+    decided to use this node, so it must never raise or import OpenImageIO
+    eagerly — a missing [oiio] extra has to degrade to a usable node that
+    explains itself, not break the whole pack's registration.
+    """
+    head = ["auto"] if include_auto else []
+    try:
+        from atlas_camera.plate import list_colorspaces, oiio_available
+
+        if oiio_available():
+            spaces = list_colorspaces()
+            if spaces:
+                return head + spaces
+    except Exception:  # noqa: BLE001 — registration must survive anything
+        pass
+    # Names from OIIO's built-in ACES config, so a graph authored without the
+    # extra installed still carries valid values once it IS installed.
+    return head + ["ACEScg", "ACES2065-1", "ACEScct", "sRGB - Display",
+                   "Rec.1886 Rec.709 - Display", "Linear Rec.709 (sRGB)"]
+
+
+class AtlasLoadPlate:
+    """🎞 Colour-managed plate loader — Atlas's own float reader (OpenImageIO).
+
+    Reads EXR/DPX/TIFF/PNG/JPEG as float and converts colour through OCIO,
+    replacing the third-party OCIORead in the colour-managed path so Atlas owns
+    the float pipeline end to end.
+
+    Why not opencv: its EXR codec is disabled at runtime by default, is absent
+    from the opencv-python 5.x wheels entirely, and is shipped by three
+    distributions that overwrite each other and arrive as transitive deps of
+    unrelated node packs. OpenImageIO is the VFX-industry library and carries a
+    BUILT-IN ACES OCIO config, so ACEScg/ACEScct/ACES2065-1 work with nothing
+    else installed and no $OCIO to configure ($OCIO is honoured when set).
+
+    Outputs a ready `plate_ref`, so this one node replaces OCIORead +
+    AtlasRegisterPlate — and the ref carries the colourspace and bit depth read
+    from the FILE rather than typed by hand, which is what the DCC exporters
+    want.
+
+    `raw_data` is Nuke's "raw data": pass the file's values through untouched.
+    Use it for DATA passes (depth, normals, mattes, UV) — colour-converting
+    those corrupts them silently.
+
+    ASSOCIATED ALPHA: EXR alpha is premultiplied, and the conversion correctly
+    unpremultiplies, converts, then re-premultiplies. So 0.18 at alpha 0.5
+    reads back as 0.317, not 0.461 — that is right, not a bug. Applying a
+    transfer function straight to premultiplied values looks merely "a bit
+    dark" rather than obviously broken, which is why it is worth stating.
+
+    Needs `[oiio]`.
+    """
+
+    RETURN_TYPES = ("IMAGE", "MASK", "ATLAS_PLATE_REF", "STRING")
+    RETURN_NAMES = ("image", "alpha", "plate_ref", "report")
+    FUNCTION = "load"
+    CATEGORY = "Atlas Camera/Color"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "file_path": ("STRING", {"default": "",
+                    "tooltip": "Path to an EXR/DPX/TIFF/PNG/JPEG plate."}),
+            },
+            "optional": {
+                "input_colorspace": (_plate_colorspace_choices(), {"default": "auto",
+                    "tooltip": "What the FILE holds. 'auto' infers from the extension "
+                               "(EXR/DPX -> ACEScg, 8-bit -> sRGB - Display). A file that "
+                               "records its own colourspace always wins over this."}),
+                "output_colorspace": (_plate_colorspace_choices(include_auto=False),
+                    {"default": "sRGB - Display",
+                     "tooltip": "What the IMAGE output should be in. ComfyUI's working "
+                                "space is display-referred sRGB."}),
+                "raw_data": ("BOOLEAN", {"default": False,
+                    "tooltip": "Nuke 'raw data': skip colour conversion entirely. REQUIRED "
+                               "for data passes (depth/normals/mattes) — converting data as "
+                               "if it were colour corrupts it silently."}),
+            },
+        }
+
+    def load(self, file_path, input_colorspace="auto",
+             output_colorspace="sRGB - Display", raw_data=False, **_extra):
+        from atlas_camera.core.schema import AtlasPlateRef
+        from atlas_camera.plate import oiio_diagnostics, read_plate
+
+        torch = _require_torch()
+        np = _require_numpy()
+
+        path = str(file_path or "").strip()
+        if not path:
+            raise RuntimeError("AtlasLoadPlate needs a file_path.")
+        if not Path(path).is_file():
+            raise RuntimeError(f"AtlasLoadPlate: no such file: {path}")
+
+        result = read_plate(path, input_colorspace=input_colorspace,
+                            output_colorspace=output_colorspace, raw_data=bool(raw_data))
+
+        image = torch.from_numpy(np.ascontiguousarray(result.pixels)).unsqueeze(0)
+        if result.alpha is not None:
+            alpha = torch.from_numpy(np.ascontiguousarray(result.alpha)).unsqueeze(0)
+        else:
+            alpha = torch.ones((1, result.height, result.width), dtype=torch.float32)
+
+        # The ref records what the FILE is, not what the preview tensor became —
+        # the exporters need the original for the DCC handoff.
+        plate_ref = AtlasPlateRef(
+            image_path=path,
+            preview_b64=_image_tensor_to_preview_b64(image, quality=85),
+            colorspace=result.input_colorspace or "unknown",
+            bit_depth=result.file_bit_depth or "unknown",
+            role="source",
+            is_proxy=not result.is_float,
+            lut_path=None,
+            metadata={"reader": "openimageio", "file_format": result.file_format,
+                      "channels": list(result.channel_names)},
+        )
+
+        report = (f"{Path(path).name} · {result.summary()}\n"
+                  f"backend: {oiio_diagnostics()}")
+        if not result.is_float:
+            report += ("\nNOTE: this is an integer file, so plate_ref is marked proxy — "
+                       "wire a float EXR/DPX for a true colour-managed DCC handoff.")
+        return (image, alpha, plate_ref, report)
+
+
 class AtlasAttachSourcePlate:
     """Attach a registered source plate to an Atlas solve."""
 

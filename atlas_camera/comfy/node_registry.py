@@ -19,6 +19,7 @@ from atlas_camera.comfy.nodes_viewport import (
 )
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadImageSolveCamera,
+    AtlasLoadPlate,
     AtlasRegisterPlate,
     AtlasAttachSourcePlate,
     AtlasLoadRAW,
@@ -111,6 +112,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasExportMayaReviewScene": AtlasExportMayaReviewScene,
     "AtlasUSDCameraLoader":       AtlasUSDCameraLoader,
     "AtlasRegisterPlate":         AtlasRegisterPlate,
+    "AtlasLoadPlate":             AtlasLoadPlate,
     "AtlasAttachSourcePlate":     AtlasAttachSourcePlate,
     "AtlasLoadRAW":               AtlasLoadRAW,
     # Track 1 — solve
@@ -192,6 +194,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportSolveJSON":       "Atlas Export Solve JSON",
     "AtlasExportMayaReviewScene": "Atlas Export Maya Review Scene",
     "AtlasUSDCameraLoader":       "Atlas USD Camera Loader",
+    "AtlasLoadPlate":             "Atlas Load Plate 🎞",
     "AtlasRegisterPlate":         "Atlas Register Plate (Float-Safe) 🎞",
     "AtlasAttachSourcePlate":     "Atlas Attach Source Plate 🎞",
     "AtlasLoadRAW":               "Atlas Load RAW (NEF/CR2/CR3/RAF/ARW) 📷",
