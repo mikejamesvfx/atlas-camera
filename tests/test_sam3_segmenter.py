@@ -9,12 +9,15 @@ comma-separated-concept union logic (via mocking the actual per-concept
 detector call).
 """
 
+import importlib.util
 import sys
 import types
 
 import numpy as np
 import pytest
 
+# Not used directly by these tests, but kept module-level because Task 3
+# appends tests to this same file that need a real torch module.
 torch = pytest.importorskip("torch")
 
 import atlas_camera.inference.sam3_segmenter as sam3_mod
@@ -59,6 +62,20 @@ def test_native_sam3_available_false_with_old_transformers(monkeypatch):
 
 def test_native_sam3_available_false_when_transformers_missing(monkeypatch):
     monkeypatch.setitem(sys.modules, "transformers", None)
+    assert native_sam3_available() is False
+
+
+def test_native_sam3_available_false_when_torch_missing(monkeypatch):
+    # transformers is present at a sufficient version, but torch is not
+    # importable -- native_sam3_available() must still report False (its
+    # docstring/_require_sam3's error message both promise a torch check).
+    fake = types.SimpleNamespace(__version__="5.5.4")
+    monkeypatch.setitem(sys.modules, "transformers", fake)
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util, "find_spec",
+        lambda name, *a, **kw: None if name == "torch" else real_find_spec(name, *a, **kw),
+    )
     assert native_sam3_available() is False
 
 

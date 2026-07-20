@@ -58,11 +58,17 @@ def _meets_min_version(version_str: str,
 
 
 def native_sam3_available() -> bool:
-    """Cheap, network-free capability probe: transformers importable AND
-    >= _MIN_TRANSFORMERS_VERSION (SAM3's model classes only exist from
-    transformers ~5.5). Never imports torch, downloads weights, or touches
-    the network. Used by node_helpers._native_sam3_available(), which
-    AtlasInput's build-time cascade decision calls."""
+    """Cheap, network-free capability probe: torch AND transformers
+    importable, with transformers >= _MIN_TRANSFORMERS_VERSION (SAM3's model
+    classes only exist from transformers ~5.5). Never imports torch,
+    downloads weights, or touches the network — torch's presence is checked
+    via `importlib.util.find_spec` (importable without importing). Used by
+    node_helpers._native_sam3_available(), which AtlasInput's build-time
+    cascade decision calls."""
+    import importlib.util
+
+    if importlib.util.find_spec("torch") is None:
+        return False
     try:
         import transformers
     except ImportError:
