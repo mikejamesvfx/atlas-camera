@@ -70,16 +70,32 @@ The core package has **zero required runtime dependencies**. All vision, USD, an
 
 ```
 atlas_camera.core       ← DCC-agnostic schema, solver, math (no host deps)
+atlas_camera.plate      ← Colour-managed float plate I/O + pixel ops (OpenImageIO;
+                          EXR/DPX read+write with OCIO conversion, edge-extend,
+                          mask flood). Needs [oiio]; no ComfyUI dependency
+atlas_camera.raw        ← Camera RAW decode/metadata/undistort (rawpy, lensfun,
+                          EXIF→intrinsics). Needs [raw]
 atlas_camera.exporters  ← Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  ← Atlas JSON and USD camera loaders
-atlas_camera.comfy      ← ComfyUI node library (68 nodes + 4 experimental, no hard Comfy dep;
+atlas_camera.comfy      ← ComfyUI node library (69 nodes + 5 experimental, no hard Comfy dep;
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
                           responsibility modules — see "Module layout" below)
+atlas_camera.inference  ← Optional local multimodal provider helpers, depth/normal
+                          backends, SAM3, GeoCalib
+atlas_camera.mcp        ← Optional stdio MCP server exposing a running ComfyUI to
+                          MCP-capable assistants. Stdlib + the mcp SDK only. Needs [mcp]
+atlas_camera.datasets   ← Benchmark dataset loaders (COLMAP, DTU, ETH3D) for
+                          accuracy evaluation — not part of the node runtime
 atlas_camera.ui         ← Optional FastAPI project service
 atlas_camera.reference_data ← Curated scale-reference registry (JSON)
-atlas_camera.inference  ← Optional local multimodal provider helpers
+atlas_camera.utils      ← Tiny shared path helpers
 ui/                     ← React/Vite workbench (Three.js 3D viewport)
 examples/               ← Example ComfyUI workflows and test images
+
+**Dependency direction is one-way and enforced by the 2026-07-20 layering
+refactor:** `comfy/` may import anything; nothing outside `comfy/` may import it.
+`core`, `plate` and `raw` are host-agnostic and load with zero ComfyUI modules —
+which is what makes their math unit-testable without a ComfyUI install.
 ```
 
 The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). The stable package name is `atlas_camera`.
@@ -89,7 +105,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 ### Module layout (nodes.py modularization, 2026-07-19)
 
 The former 9,110-line `nodes.py` was split into responsibility modules; the 72
-node classes (68 standard + 4 experimental) now live in six group modules, and
+node classes (69 standard + 5 experimental) now live in the group modules, and
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
 class, shared helper, and the registry mappings so `from atlas_camera.comfy.nodes
 import X`, `comfy/__init__` (`NODE_CLASS_MAPPINGS` / `_ATLAS_BLOCKOUT_CACHE`), and
@@ -194,7 +210,7 @@ way ComfyUI would.
 
 Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/{node_id}` to be registered twice, which raises `RuntimeError: method HEAD is already registered`. The fix in `__init__.py` checks `if not any(r.path == ... for r in _routes)` before registering.
 
-### Node catalog (68 nodes + 4 experimental)
+### Node catalog (69 nodes + 5 experimental)
 
 **Category: Atlas Camera**
 
