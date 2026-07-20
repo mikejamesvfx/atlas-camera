@@ -45,6 +45,25 @@ try:
             data = _ATLAS_BLOCKOUT_CACHE.get(node_id, {})
             return aiohttp_web.json_response(data)
 
+        @_routes.get("/atlas/recipes/{recipe_name}")
+        async def _atlas_get_recipe(request: aiohttp_web.Request) -> aiohttp_web.Response:
+            recipe_name = request.match_info["recipe_name"]
+            # A simple dynamic graph for the requested recipe
+            graph = {
+                "nodes": [
+                    {"id": 1, "type": "AtlasInput", "pos": [100, 100], "flags": {}, "order": 0, "mode": 0, "inputs": [], "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [1]}], "properties": {}, "widgets_values": []},
+                    {"id": 2, "type": "AtlasMegaPipeline", "pos": [500, 100], "flags": {}, "order": 1, "mode": 0, "inputs": [{"name": "image", "type": "IMAGE", "link": 1}], "outputs": [{"name": "maya_scene_path", "type": "STRING", "links": []}], "properties": {}, "widgets_values": ["atlas_exports", 1.6, "outdoor"]}
+                ],
+                "links": [
+                    [1, 1, 0, 2, 0, "IMAGE"]
+                ],
+                "groups": [],
+                "config": {},
+                "extra": {},
+                "version": 0.4
+            }
+            return aiohttp_web.json_response(graph)
+
     # (The /atlas/proxy_model route was removed 2026-07-12 for the public
     # release: its only frontend callers — the viewport's OBJ scale-proxy
     # buttons — were removed 2026-07-09, and examples/models no longer ships.)

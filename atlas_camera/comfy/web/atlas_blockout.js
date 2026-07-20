@@ -594,6 +594,10 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform float uBumpScale;
   uniform sampler2D uNormalMap;   // predicted WORLD normals (MoGe *-normal), (n+1)/2 in RGB
   uniform float uHasNormalMap;
+  uniform sampler2D uPrimaryDepth;
+  uniform float uHasPrimaryDepth;
+  uniform float uOccludePrimary;
+  uniform float uOccludeBias;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
@@ -656,6 +660,15 @@ const PROJECTION_FRAGMENT_SHADER = `
     if (vCamZ >= 0.0) discard;                    // behind the projector camera
     vec2 uv = vImagePx / uImageSize;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+    if (uOccludePrimary > 0.5 && uHasPrimaryDepth > 0.5) {
+      vec3 pCol = texture2D(uPrimaryDepth, uv).rgb;
+      float r = floor(pCol.r * 255.0 + 0.5);
+      float g = floor(pCol.g * 255.0 + 0.5);
+      float b = floor(pCol.b * 255.0 + 0.5);
+      float z_mm = r * 65536.0 + g * 256.0 + b;
+      float storedZ = z_mm / 1000.0;
+      if (-vCamZ > storedZ + uOccludeBias) discard;
+    }
     // Per-pixel edge matte (ProjectionSource.mask_b64) — the classic DMP move:
     // geometry silhouettes tear at grid-quad resolution (blocky staircases),
     // so the full-resolution matte cuts the TRUE edge instead. Sampled at the
@@ -783,6 +796,10 @@ function makeProjectionMaterial(data, texture, opts) {
       uHasHiddenMask: { value: options.hiddenMaskTexture ? 1.0 : 0.0 },
       uDebugHidden: { value: 0 },
       uHiddenTint: { value: options.hiddenTint || new THREE.Color(1.0, 0.15, 0.15) },
+      uPrimaryDepth: { value: options.primaryDepthTexture || null },
+      uHasPrimaryDepth: { value: options.primaryDepthTexture ? 1.0 : 0.0 },
+      uOccludePrimary: { value: 0 },
+      uOccludeBias: { value: 0.1 },
       // 🎨 layer-debug identity color (fixed per source at build; toggle is
       // uLayerDebug, live-synced like uDebugHidden/the light uniforms).
       uLayerDebug: { value: 0 },
@@ -1463,12 +1480,14 @@ function buildNodeUI(node, containerEl) {
   // projection material by the same live mechanism as the lights (materials
   // are rebuilt on every execution, so a set-once approach would go stale).
   let debugHiddenOn = false;
+  let occludePrimaryOn = false;
+  let occludeBias = 0.1;
   let layerDebugOn = false; // 🎨 per-layer identity tint toggle
   let bumpStrength = 0;     // 💡 Lights panel "Detail" — photo-luminance relight bump
   let bumpScale = 8;        // 💡 Lights panel "Scale" — bump sampling offset (texels)
   function syncProjectionLightUniforms() {
     const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn
-      || layerDebugOn || bumpStrength > 0;
+      || layerDebugOn || bumpStrength > 0 || occludePrimaryOn;
     // Skip the traverse entirely while both lights have always been off (the
     // default), but still run once on the on->off transition so any material
     // that previously picked up a nonzero uLightNIntensity gets zeroed out.
@@ -1486,6 +1505,12 @@ function buildNodeUI(node, containerEl) {
       });
       if (mat.uniforms.uDebugHidden) {
         mat.uniforms.uDebugHidden.value = debugHiddenOn ? 1 : 0;
+      }
+      if (mat.uniforms.uOccludePrimary) {
+        mat.uniforms.uOccludePrimary.value = occludePrimaryOn ? 1 : 0;
+      }
+      if (mat.uniforms.uOccludeBias) {
+        mat.uniforms.uOccludeBias.value = occludeBias;
       }
       if (mat.uniforms.uLayerDebug) {
         mat.uniforms.uLayerDebug.value = layerDebugOn ? 1 : 0;
@@ -1842,6 +1867,18 @@ function buildNodeUI(node, containerEl) {
     dbgHiddenBtn.style.color = debugHiddenOn ? "#fac" : "#ddd";
   };
   toolbar.appendChild(dbgHiddenBtn);
+
+  // ✂ Occlude ray-traced shadow map cull
+  const dbgOccludeBtn = document.createElement("button");
+  dbgOccludeBtn.textContent = "✂ Occlude";
+  dbgOccludeBtn.title = "Cull projection onto occluded geometry using the primary depth map";
+  dbgOccludeBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  dbgOccludeBtn.onclick = () => {
+    occludePrimaryOn = !occludePrimaryOn;
+    dbgOccludeBtn.style.background = occludePrimaryOn ? "#4a3a1a" : "#2a2a2a";
+    dbgOccludeBtn.style.color = occludePrimaryOn ? "#fd4" : "#ddd";
+  };
+  toolbar.appendChild(dbgOccludeBtn);
 
   // 🎨 Layers — per-layer identity overlay: tints EVERYTHING each projection
   // source paints with its own color (base/primary teal; each
@@ -3530,12 +3567,26 @@ function buildNodeUI(node, containerEl) {
         controls.setTarget(targetWithOffset(geometryPivot));
         controls.syncFromCamera();
       }
-      loadProjectionTexture(data, (tex) => {
-        const old = projMaterial;
-        projMaterial = makeProjectionMaterial(data, tex);
-        if (projectionOn) applyProjection(true);
-        if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
-      });
+      
+      const buildPrimaryMat = (dTex) => {
+        loadProjectionTexture(data, (tex) => {
+          const old = projMaterial;
+          projMaterial = makeProjectionMaterial(data, tex, { primaryDepthTexture: dTex });
+          if (projectionOn) applyProjection(true);
+          if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
+        });
+      };
+      
+      if (data.primary_depth_b64) {
+        new THREE.TextureLoader().load(data.primary_depth_b64, (dTex) => {
+          dTex.magFilter = THREE.NearestFilter;
+          dTex.minFilter = THREE.NearestFilter;
+          buildPrimaryMat(dTex);
+        });
+      } else {
+        buildPrimaryMat(null);
+      }
+      
       // Multi-angle patch sources: each builds its own geometry + a projection
       // material (bound to its camera+image, facing-masked) that layers over
       // the primary to fill areas the primary camera couldn't see.

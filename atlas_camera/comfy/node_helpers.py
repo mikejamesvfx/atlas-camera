@@ -472,7 +472,7 @@ def _execution_blocker():
 
 def _extract_blockout_camera(solve, source_image, target_width: int, target_height: int,
                               preview_expand: float = 1.0, shot_intrinsics=None,
-                              output_profile=None, solve_fingerprint: str = "") -> dict[str, Any]:
+                              output_profile=None, solve_fingerprint: str = "", primary_depth=None) -> dict[str, Any]:
     """Serialize the recovered camera into a dict the browser extension can consume.
 
     `shot_intrinsics` (optional, from AtlasShotCam via intrinsics_from_shot_cam)
@@ -618,6 +618,42 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
                          "detail": sh.detail},
     }
 
+    primary_depth_b64 = ""
+    if primary_depth is not None:
+        try:
+            from atlas_camera.core.solver import _depth_map_for_solve, _horizon_y_from_solve
+            from atlas_camera.core.camera_math import estimate_ground_scale
+            import numpy as np
+            import cv2
+            import base64
+
+            # Calculate metric depth map precisely the way OcclusionMask does
+            p_map = _depth_map_for_solve(primary_depth, intr.image_width, intr.image_height)
+            p_scale, _ = estimate_ground_scale(
+                p_map, view_matrix=extr.camera_view_matrix,
+                fx=fx, fy=fy, cx=cx, cy=cy,
+                horizon_y=_horizon_y_from_solve(solve))
+            primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
+
+            # Pack 0-1000m float depth into a 24-bit RGB PNG
+            # We scale by 1000 to get millimeters, then clip to 0-16777215 (about 16km max)
+            depth_scaled = np.clip(primary_metric_map * 1000.0, 0, 16777215).astype(np.uint32)
+            
+            # Create an RGB image (H, W, 3) where R=high, G=mid, B=low
+            # OpenCV imencode expects BGR, so index 2 is Red (high), index 1 is Green, index 0 is Blue (low).
+            h, w = depth_scaled.shape
+            rgb_depth = np.zeros((h, w, 3), dtype=np.uint8)
+            rgb_depth[..., 2] = (depth_scaled >> 16) & 0xFF
+            rgb_depth[..., 1] = (depth_scaled >> 8) & 0xFF
+            rgb_depth[..., 0] = depth_scaled & 0xFF
+
+            success, encoded = cv2.imencode('.png', rgb_depth)
+            if success:
+                primary_depth_b64 = "data:image/png;base64," + base64.b64encode(encoded).decode('utf-8')
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to encode primary_depth: {e}")
+
     return {
         "view_matrix": vm,
         "fx": fx,
@@ -653,6 +689,7 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         "vanishing_points": vanishing_points,
         "horizon_line": horizon_line,
         "camera_meta": camera_meta,
+        "primary_depth_b64": primary_depth_b64,
     }
 
 

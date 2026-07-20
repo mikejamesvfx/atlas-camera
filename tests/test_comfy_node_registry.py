@@ -47,6 +47,7 @@ NORMAL_KEYS = {
 EXPERIMENTAL_KEYS = {
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
     "AtlasPredictHiddenGeometry", "AtlasRenderFix",
+    "AtlasWorkflowGenerator", "AtlasMegaPipeline",
 }
 
 # Public helper/constant names some tests import directly from the module; the
@@ -67,7 +68,7 @@ def test_normal_registry_keys_exact():
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 4
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 6
 
 
 def test_display_name_mapping_covers_registry():
@@ -117,6 +118,7 @@ def test_representative_public_class_imports():
     from atlas_camera.comfy.nodes import (  # noqa: F401
         AtlasPredictHiddenGeometry, AtlasRenderFix,
         AtlasExtractAnglePatch, AtlasImportAnglePatch,
+        AtlasWorkflowGenerator, AtlasMegaPipeline,
     )
 
 
