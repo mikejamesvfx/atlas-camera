@@ -47,8 +47,8 @@ def _assert_atlas_inputs_valid(graph):
     """Every emitted Atlas-class node's input names must exist on the real
     class's INPUT_TYPES (code-review minor #7): a typo'd kwarg in build()
     would pass every value-assertion test and only explode at ComfyUI
-    prompt validation at runtime. Third-party classes (SAM3Segment,
-    INPAINT_*) are skipped — their schemas aren't importable here."""
+    prompt validation at runtime. Third-party classes (INPAINT_*) are
+    skipped — their schemas aren't importable here."""
     for node in graph.values():
         cls = NODE_CLASS_MAPPINGS.get(node["class_type"])
         if cls is None:
