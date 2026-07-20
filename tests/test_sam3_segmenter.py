@@ -96,3 +96,32 @@ def test_wrap_if_gated_repo_detects_gated_shape():
 def test_wrap_if_gated_repo_passes_through_unrelated_errors():
     exc = ValueError("some unrelated failure")
     assert _wrap_if_gated_repo("facebook/sam3", exc) is None
+
+
+def test_sam3_concept_mask_unions_across_comma_separated_concepts(monkeypatch):
+    monkeypatch.setattr(sam3_mod, "_require_sam3", lambda: (torch, None, None))
+
+    h, w = 4, 4
+    def fake_detect(image, token, model_id, device, confidence_threshold):
+        m = np.zeros((h, w), dtype=bool)
+        if token == "sky":
+            m[0, :] = True
+        elif token == "person":
+            m[:, 0] = True
+        return m, token in ("sky", "person")
+
+    monkeypatch.setattr(sam3_mod, "_detect_one_concept", fake_detect)
+    img = types.SimpleNamespace(height=h, width=w)
+
+    mask, matched, coverage = sam3_mod.sam3_concept_mask(img, "sky, person, ghost")
+
+    assert matched == ["sky", "person"]           # "ghost" never detected
+    assert mask[0, :].all() and mask[:, 0].all()  # union of both hits
+    assert coverage == pytest.approx(float(mask.mean()))
+
+
+def test_sam3_concept_mask_empty_concepts_returns_empty_mask(monkeypatch):
+    monkeypatch.setattr(sam3_mod, "_require_sam3", lambda: (torch, None, None))
+    img = types.SimpleNamespace(height=4, width=4)
+    mask, matched, coverage = sam3_mod.sam3_concept_mask(img, "")
+    assert not mask.any() and matched == [] and coverage == 0.0

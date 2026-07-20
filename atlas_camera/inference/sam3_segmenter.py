@@ -108,3 +108,106 @@ def _require_sam3():
     import torch
     from transformers import Sam3Model, Sam3Processor
     return torch, Sam3Model, Sam3Processor
+
+
+def _get_sam3(model_id: str, device: str):
+    cached = _SAM3_MODEL_CACHE.get((model_id, device))
+    if cached is not None:
+        return cached
+    torch, Sam3Model, Sam3Processor = _require_sam3()
+    try:
+        processor = Sam3Processor.from_pretrained(model_id)
+        model = Sam3Model.from_pretrained(model_id)
+    except Exception as exc:
+        wrapped = _wrap_if_gated_repo(model_id, exc)
+        if wrapped is not None:
+            raise wrapped from exc
+        raise
+    model = model.to(device).eval()
+    bounded_cache_set(_SAM3_MODEL_CACHE, (model_id, device), (processor, model),
+                      _SAM3_MODEL_CACHE_MAX, release_cuda=True)
+    return processor, model
+
+
+def _run_sam3_detector(image, token: str, model_id: str, device: str,
+                       confidence_threshold: float):
+    """One SAM3 forward pass for a single concept -> a unioned instance
+    mask. Mirrors the exact processor/model call shape verified against a
+    real SAM3 integration (lettidude/LiveActionAOV, passes/matte/sam3.py):
+    `processor(images=..., text=..., return_tensors="pt")` -> `model(**inputs)`
+    -> `processor.post_process_instance_segmentation(...)` returning a list
+    of {"masks", "scores"} dicts, one per input image."""
+    import numpy as np
+    torch, _, _ = _require_sam3()
+    processor, model = _get_sam3(model_id, device)
+
+    inputs = processor(images=image, text=token, return_tensors="pt").to(device)
+    with torch.inference_mode():
+        outputs = model(**inputs)
+    results = processor.post_process_instance_segmentation(
+        outputs, threshold=confidence_threshold, mask_threshold=0.5,
+        target_sizes=[(image.height, image.width)])
+    mask = np.zeros((image.height, image.width), dtype=bool)
+    if not results:
+        return mask, False
+    instance_masks = results[0].get("masks")
+    if instance_masks is None:
+        return mask, False
+    n = int(instance_masks.shape[0]) if hasattr(instance_masks, "shape") else 0
+    for i in range(n):
+        m = instance_masks[i]
+        m_np = (m.float().cpu().numpy() if hasattr(m, "float")
+               else np.asarray(m, dtype="float32"))
+        mask |= (m_np > 0.5)
+    return mask, n > 0
+
+
+def _detect_one_concept(image, token: str, model_id: str, device: str,
+                        confidence_threshold: float):
+    """One concept's mask, with a one-shot MPS -> CPU retry: SAM3's ops are
+    new to transformers and untested on MPS (LiveActionAOV's own SAM3
+    integration never tries MPS at all), so a RuntimeError from an
+    unsupported op reloads the model on cpu and retries once instead of
+    crashing the whole mask build."""
+    try:
+        return _run_sam3_detector(image, token, model_id, device,
+                                  confidence_threshold)
+    except RuntimeError:
+        if device != "mps":
+            raise
+        _SAM3_MODEL_CACHE.pop((model_id, "mps"), None)
+        return _run_sam3_detector(image, token, model_id, "cpu",
+                                  confidence_threshold)
+
+
+def sam3_concept_mask(image, concepts: str,
+                      model_id: str = DEFAULT_SAM3_MODEL,
+                      device: str | None = None,
+                      confidence_threshold: float = 0.5):
+    """Segment `image` (PIL) and return a bool mask covering `concepts`.
+
+    Returns ``(mask, matched, coverage)``: an (H, W) bool numpy array at the
+    image's own resolution, the list of concept tokens that had >=1
+    detection above `confidence_threshold`, and the mask's frame-coverage
+    fraction — same return shape as semantic_segmenter.semantic_class_mask.
+    Comma-separated `concepts` runs one SAM3 forward pass per token (its
+    classification head is single-concept-per-forward) and unions every
+    detected instance across all tokens.
+    """
+    import numpy as np
+
+    torch, _, _ = _require_sam3()
+    device = resolve_device(device, torch)
+    tokens = [t.strip() for t in (concepts or "").split(",") if t.strip()]
+    if not tokens:
+        return np.zeros((image.height, image.width), dtype=bool), [], 0.0
+
+    mask = np.zeros((image.height, image.width), dtype=bool)
+    matched: list[str] = []
+    for token in tokens:
+        token_mask, hit = _detect_one_concept(
+            image, token, model_id, device, confidence_threshold)
+        if hit:
+            matched.append(token)
+        mask |= token_mask
+    return mask, matched, float(mask.mean())
