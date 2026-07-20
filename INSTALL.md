@@ -122,13 +122,19 @@ pip install -e ".[raw-lens]"
 
 Notes:
 
-- **EXR sidecar codec:** writing the linear `.exr` uses OpenCV's OpenEXR
-  codec, which requires **opencv-python 4.x** (the 5.x wheels dropped the
-  codec — `[raw]` pins `<5`) and the environment variable
-  `OPENCV_IO_ENABLE_OPENEXR=1` set **before Python starts** (put it in your
-  ComfyUI launch `.bat`, same requirement as the ComfyUI-OCIO workflow). If
-  the write fails, the node degrades gracefully: the plate_ref is marked
-  proxy and the report says exactly what to fix.
+- **EXR sidecar codec:** writing the linear `.exr` needs the **`[oiio]` extra**
+  (OpenImageIO) — `pip install -e ".[raw,oiio]"`. It no longer touches OpenCV.
+  If the write fails the node degrades gracefully: the plate_ref is marked
+  proxy and the report names the real cause.
+
+  > **`OPENCV_IO_ENABLE_OPENEXR=1` is no longer needed, and never could have
+  > helped on opencv 5.** That variable only lifts a *runtime* disable of a
+  > codec that was *compiled in*; the opencv-python 5.x wheels do not build the
+  > OpenEXR codec at all (`cv2.getBuildInformation()` reports `OpenEXR: NO`).
+  > OpenCV 5 itself kept EXR — the wheel build dropped it, cf. opencv#26673.
+  > Atlas now writes EXR through OpenImageIO, which ships wheels for Windows,
+  > Linux and macOS (including Apple Silicon) and carries a built-in ACES OCIO
+  > config, so there is nothing to configure.
 - **Colorspace:** the sidecar is scene-linear with **sRGB/Rec.709 primaries**
   (tagged `Linear Rec.709 (sRGB)`), *not* ACEScg — convert downstream with
   OCIO nodes.
