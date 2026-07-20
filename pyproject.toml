@@ -91,6 +91,22 @@ sam3 = [
 image = [
     "pillow>=10",
 ]
+# Colour-managed float plate I/O (EXR/DPX) — Atlas's own, replacing opencv's
+# image codec for anything scene-referred. opencv's EXR support is disabled at
+# runtime by default (security, since 4.5.5), is absent entirely from the
+# opencv-python 5.x wheels (the wheel reports `OpenEXR: NO`; opencv 5 itself
+# kept EXR — cf. opencv#26673), and is shipped by three distributions that all
+# own the `cv2` namespace and arrive as transitive deps of unrelated packs. No
+# pin can make that reliable, so the float path does not depend on it.
+#
+# OpenImageIO is the VFX-industry library (same foundation as OpenEXR/OpenColorIO)
+# and carries a BUILT-IN ACES OCIO config, so ACEScg/ACEScct/ACES2065-1 work with
+# no `opencolorio` install and no $OCIO for the user to configure. Wheels cover
+# Windows, Linux and macOS including Apple Silicon (macosx_11_0_arm64, cp39-cp314).
+oiio = [
+    "numpy>=1.24",
+    "OpenImageIO>=3.0",
+]
 vision = [
     "numpy>=1.24",
     "opencv-python>=4.8",
