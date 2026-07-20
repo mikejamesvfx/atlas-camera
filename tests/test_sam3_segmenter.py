@@ -108,7 +108,7 @@ def test_sam3_concept_mask_unions_across_comma_separated_concepts(monkeypatch):
             m[0, :] = True
         elif token == "person":
             m[:, 0] = True
-        return m, token in ("sky", "person"), device
+        return ([m] if token in ("sky", "person") else []), device
 
     monkeypatch.setattr(sam3_mod, "_detect_one_concept", fake_detect)
     img = types.SimpleNamespace(height=h, width=w)
@@ -141,18 +141,18 @@ def test_detect_one_concept_retries_on_mps_op_error_then_sticks_to_cpu(monkeypat
                 "The operator 'aten::foo' is not currently implemented "
                 "for the MPS device."
             )
-        return np.ones((2, 2), dtype=bool), True
+        return [np.ones((2, 2), dtype=bool)]
 
     monkeypatch.setattr(sam3_mod, "_run_sam3_detector", fake_run)
     img = types.SimpleNamespace(height=2, width=2)
 
-    mask, hit, device_used = sam3_mod._detect_one_concept(
+    instances, device_used = sam3_mod._detect_one_concept(
         img, "sky", "facebook/sam3", "mps", 0.5)
 
     assert calls == ["mps", "cpu"]
     assert device_used == "cpu"
-    assert hit is True
-    assert mask.all()
+    assert len(instances) == 1
+    assert instances[0].all()
 
 
 def test_detect_one_concept_reraises_unrelated_runtime_error(monkeypatch):
@@ -181,8 +181,8 @@ def test_sam3_concept_mask_carries_device_forward_after_mps_fallback(monkeypatch
     def fake_detect(image, token, model_id, device, confidence_threshold):
         seen_devices.append(device)
         if device == "mps":
-            return np.zeros((2, 2), dtype=bool), False, "cpu"
-        return np.ones((2, 2), dtype=bool), True, device
+            return [], "cpu"
+        return [np.ones((2, 2), dtype=bool)], device
 
     monkeypatch.setattr(sam3_mod, "_detect_one_concept", fake_detect)
     img = types.SimpleNamespace(height=2, width=2)
@@ -207,3 +207,46 @@ def test_node_helpers_native_sam3_available_fails_soft(monkeypatch):
         raise RuntimeError("simulated broken inference module")
     monkeypatch.setattr(sam3_mod, "native_sam3_available", _boom)
     assert node_helpers._native_sam3_available() is False
+
+
+def test_sam3_instance_masks_returns_separate_instances_largest_first(monkeypatch):
+    # The whole point of the separated view: instances survive as instances
+    # instead of being unioned. Ordering is largest-first BY DESIGN -- SAM3's
+    # own order is score-based and unstable between runs, which would make a
+    # saved AtlasInstanceMask index silently point at a different object.
+    monkeypatch.setattr(sam3_mod, "_require_sam3", lambda: (torch, None, None))
+
+    h, w = 4, 4
+    small = np.zeros((h, w), dtype=bool)
+    small[0, 0] = True
+    big = np.zeros((h, w), dtype=bool)
+    big[:2, :] = True
+
+    def fake_detect(image, token, model_id, device, confidence_threshold):
+        return ([small, big] if token == "building" else []), device
+
+    monkeypatch.setattr(sam3_mod, "_detect_one_concept", fake_detect)
+    img = types.SimpleNamespace(height=h, width=w)
+
+    instances, matched = sam3_mod.sam3_instance_masks(img, "building, ghost")
+
+    assert matched == ["building"]
+    assert len(instances) == 2
+    assert instances[0].sum() == 8 and instances[1].sum() == 1  # largest first
+
+
+def test_sam3_instance_masks_respects_max_instances(monkeypatch):
+    monkeypatch.setattr(sam3_mod, "_require_sam3", lambda: (torch, None, None))
+    masks = [np.ones((2, 2), dtype=bool) for _ in range(5)]
+    monkeypatch.setattr(sam3_mod, "_detect_one_concept",
+                        lambda image, token, m, d, c: (masks, d))
+    img = types.SimpleNamespace(height=2, width=2)
+
+    assert len(sam3_mod.sam3_instance_masks(img, "x", max_instances=2)[0]) == 2
+    assert len(sam3_mod.sam3_instance_masks(img, "x", max_instances=0)[0]) == 5
+
+
+def test_sam3_instance_masks_empty_concepts(monkeypatch):
+    monkeypatch.setattr(sam3_mod, "_require_sam3", lambda: (torch, None, None))
+    img = types.SimpleNamespace(height=2, width=2)
+    assert sam3_mod.sam3_instance_masks(img, "  ") == ([], [])

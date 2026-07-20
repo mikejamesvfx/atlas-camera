@@ -713,14 +713,10 @@
     },
     {
       "id": 10,
-      "type": "SAM3Segment",
+      "type": "AtlasSAM3Mask",
       "pos": [
         0,
         760
-      ],
-      "size": [
-        380,
-        300
       ],
       "flags": {},
       "order": 10,
@@ -732,13 +728,8 @@
           "link": 14
         },
         {
-          "name": "prompt",
+          "name": "concepts",
           "type": "STRING",
-          "link": null
-        },
-        {
-          "name": "output_mode",
-          "type": "COMBO",
           "link": null
         },
         {
@@ -747,90 +738,48 @@
           "link": null
         },
         {
-          "name": "max_segments",
-          "type": "INT",
-          "link": null
-        },
-        {
-          "name": "segment_pick",
-          "type": "INT",
-          "link": null
-        },
-        {
-          "name": "mask_blur",
-          "type": "INT",
-          "link": null
-        },
-        {
-          "name": "mask_offset",
-          "type": "INT",
-          "link": null
-        },
-        {
           "name": "device",
           "type": "COMBO",
           "link": null
         },
         {
-          "name": "invert_output",
-          "type": "BOOLEAN",
-          "link": null
-        },
-        {
-          "name": "unload_model",
-          "type": "BOOLEAN",
-          "link": null
-        },
-        {
-          "name": "background",
+          "name": "output_mode",
           "type": "COMBO",
           "link": null
         },
         {
-          "name": "background_color",
-          "type": "COLORCODE",
+          "name": "max_instances",
+          "type": "INT",
           "link": null
         }
       ],
       "outputs": [
         {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [],
-          "slot_index": 0
-        },
-        {
-          "name": "MASK",
+          "name": "mask",
           "type": "MASK",
           "links": [
             15,
             17,
             32
           ],
-          "slot_index": 1
+          "slot_index": 0
         },
         {
-          "name": "MASK_IMAGE",
-          "type": "IMAGE",
+          "name": "report",
+          "type": "STRING",
           "links": [],
-          "slot_index": 2
+          "slot_index": 1
         }
       ],
       "properties": {
-        "Node name for S&R": "SAM3Segment"
+        "Node name for S&R": "AtlasSAM3Mask"
       },
       "widgets_values": [
         "building",
-        "Separate",
         0.5,
-        4,
-        0,
-        0,
-        0,
-        "Auto",
-        false,
-        false,
-        "Alpha"
+        "auto",
+        "separate",
+        4
       ],
       "title": "SAM3 'building' (Separate)"
     },
@@ -2019,7 +1968,7 @@
     [
       15,
       10,
-      1,
+      0,
       11,
       0,
       "MASK"
@@ -2035,7 +1984,7 @@
     [
       17,
       10,
-      1,
+      0,
       14,
       0,
       "MASK"
@@ -2155,7 +2104,7 @@
     [
       32,
       10,
-      1,
+      0,
       23,
       0,
       "MASK"

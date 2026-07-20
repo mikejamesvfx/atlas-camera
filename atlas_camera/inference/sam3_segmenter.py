@@ -131,12 +131,22 @@ def _get_sam3(model_id: str, device: str):
 
 def _run_sam3_detector(image, token: str, model_id: str, device: str,
                        confidence_threshold: float):
-    """One SAM3 forward pass for a single concept -> a unioned instance
-    mask. Mirrors the exact processor/model call shape verified against a
-    real SAM3 integration (lettidude/LiveActionAOV, passes/matte/sam3.py):
+    """One SAM3 forward pass for a single concept -> the list of PER-INSTANCE
+    bool masks it detected (possibly empty).
+
+    Returns the instances rather than a union so that the merged and separated
+    views share ONE detection path and cannot drift apart — the union is one
+    `|=` in the caller. SAM3 has always produced instances here; the previous
+    version simply collapsed them before anyone could see them, which is why
+    per-instance work still had to go through the triton-locked third-party
+    node.
+
+    Mirrors the processor/model call shape verified against a real SAM3
+    integration (lettidude/LiveActionAOV, passes/matte/sam3.py):
     `processor(images=..., text=..., return_tensors="pt")` -> `model(**inputs)`
-    -> `processor.post_process_instance_segmentation(...)` returning a list
-    of {"masks", "scores"} dicts, one per input image."""
+    -> `processor.post_process_instance_segmentation(...)` returning a list of
+    {"masks", "scores"} dicts, one per input image.
+    """
     import numpy as np
     torch, _, _ = _require_sam3()
     processor, model = _get_sam3(model_id, device)
@@ -147,24 +157,26 @@ def _run_sam3_detector(image, token: str, model_id: str, device: str,
     results = processor.post_process_instance_segmentation(
         outputs, threshold=confidence_threshold, mask_threshold=0.5,
         target_sizes=[(image.height, image.width)])
-    mask = np.zeros((image.height, image.width), dtype=bool)
     if not results:
-        return mask, False
+        return []
     instance_masks = results[0].get("masks")
     if instance_masks is None:
-        return mask, False
+        return []
     if hasattr(instance_masks, "shape"):
         n = int(instance_masks.shape[0])
     elif isinstance(instance_masks, (list, tuple)):
         n = len(instance_masks)
     else:
         n = 0
+    instances = []
     for i in range(n):
         m = instance_masks[i]
         m_np = (m.float().cpu().numpy() if hasattr(m, "float")
                else np.asarray(m, dtype="float32"))
-        mask |= (m_np > 0.5)
-    return mask, bool(mask.any())
+        inst = m_np > 0.5
+        if inst.any():
+            instances.append(inst)
+    return instances
 
 
 def _detect_one_concept(image, token: str, model_id: str, device: str,
@@ -175,23 +187,20 @@ def _detect_one_concept(image, token: str, model_id: str, device: str,
     recognized MPS-unsupported-op message reloads the model on cpu and
     retries once instead of crashing the whole mask build. Any other
     RuntimeError re-raises rather than being silently treated as an MPS
-    incompatibility. Returns (mask, hit, device_used) -- device_used lets
-    sam3_concept_mask's loop stick with the working device for subsequent
-    tokens in the same call, instead of re-discovering the MPS failure
-    once per concept."""
+    incompatibility. Returns (instances, device_used) -- device_used lets the
+    callers' loops stick with the working device for subsequent tokens in the
+    same call, instead of re-discovering the MPS failure once per concept."""
     try:
-        mask, hit = _run_sam3_detector(image, token, model_id, device,
-                                       confidence_threshold)
-        return mask, hit, device
+        return _run_sam3_detector(image, token, model_id, device,
+                                  confidence_threshold), device
     except RuntimeError as exc:
         text = str(exc).lower()
         is_mps_op_error = "mps" in text and "not" in text and "implement" in text
         if device != "mps" or not is_mps_op_error:
             raise
         _SAM3_MODEL_CACHE.pop((model_id, "mps"), None)
-        mask, hit = _run_sam3_detector(image, token, model_id, "cpu",
-                                       confidence_threshold)
-        return mask, hit, "cpu"
+        return _run_sam3_detector(image, token, model_id, "cpu",
+                                  confidence_threshold), "cpu"
 
 
 def sam3_concept_mask(image, concepts: str,
@@ -219,9 +228,58 @@ def sam3_concept_mask(image, concepts: str,
     mask = np.zeros((image.height, image.width), dtype=bool)
     matched: list[str] = []
     for token in tokens:
-        token_mask, hit, device = _detect_one_concept(
+        instances, device = _detect_one_concept(
             image, token, model_id, device, confidence_threshold)
+        token_mask = np.zeros((image.height, image.width), dtype=bool)
+        for inst in instances:
+            token_mask |= inst
+        hit = bool(instances)
         if hit:
             matched.append(token)
         mask |= token_mask
     return mask, matched, float(mask.mean())
+
+
+def sam3_instance_masks(image, concepts: str,
+                        model_id: str = DEFAULT_SAM3_MODEL,
+                        device: str | None = None,
+                        confidence_threshold: float = 0.5,
+                        max_instances: int = 0):
+    """Segment `image` (PIL) and return the SEPARATED per-instance masks.
+
+    Returns ``(instances, matched)``: a list of (H, W) bool numpy arrays, one
+    per detected instance across every comma-separated concept, plus the
+    tokens that matched. Instances are ordered largest-first so that
+    ``instance_index=0`` is the most prominent object — SAM3's own ordering is
+    score-based and unstable across runs, which would make a saved
+    ``AtlasInstanceMask`` index point at a different building next time.
+
+    ``max_instances=0`` means unlimited.
+
+    This is the same detection path ``sam3_concept_mask`` uses; that one just
+    unions the result. Exposing it is what lets per-instance work
+    (``AtlasInstanceMask``, ``AtlasSegmentedSDXLInpaint``) stop depending on
+    the third-party ``SAM3Segment`` node, which hard-requires triton and
+    therefore cannot load on Mac/CPU/AMD.
+    """
+    import numpy as np
+
+    torch, _, _ = _require_sam3()
+    device = resolve_device(device, torch)
+    tokens = [t.strip() for t in (concepts or "").split(",") if t.strip()]
+    if not tokens:
+        return [], []
+
+    instances: list = []
+    matched: list[str] = []
+    for token in tokens:
+        found, device = _detect_one_concept(
+            image, token, model_id, device, confidence_threshold)
+        if found:
+            matched.append(token)
+        instances.extend(found)
+
+    instances.sort(key=lambda m: int(np.count_nonzero(m)), reverse=True)
+    if max_instances and max_instances > 0:
+        instances = instances[:int(max_instances)]
+    return instances, matched
