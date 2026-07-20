@@ -21,6 +21,8 @@
 # --- Agent / development config, not needed by end users ---
 /CLAUDE.md
 /AGENTS.md
+# Graphify knowledge graph (~12 MB) — internal tooling, never part of the pack:
+/graphify-out/
 /.comfyui-agent.example.json
 /.claude/
 # CI config, not a runtime asset:

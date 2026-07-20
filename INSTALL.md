@@ -227,8 +227,8 @@ Depth Anything 3 (DA3) is a second depth backend selected per node via the
 `depth_model` combo (`depth-anything/DA3METRIC-LARGE`, `DA3MONO-LARGE`,
 `DA3NESTED-GIANT-LARGE-1.1`). It was briefly the default (2026-07-09) but on
 **2026-07-13 the `main` default reverted to `V2-Metric-Outdoor`** (a 4-scene
-A/B found V2 best-or-tied on exteriors, and V2 needs no extra install — see
-`docs/dev/archive/da3_backend_test_plan.md`). **DA3 is now a selectable choice, and the
+A/B found V2 best-or-tied on exteriors, and V2 needs no extra install).
+**DA3 is now a selectable choice, and the
 default only on the `experimental-da3-default` branch.** Every V2 model remains
 in the combo. Without the `[neural-da3]` extra installed, selecting a DA3 model
 fails with an informative install hint — switch it to a V2 model or install the
@@ -331,8 +331,8 @@ authenticate the machine once (`huggingface-cli login` / `hf auth login` with
 a read token) so the first-use download works. License: **CC BY-NC-ND 4.0**
 (non-commercial research, no redistributed derivatives).
 
-For the V2-vs-DA3 accuracy comparison protocol, see
-`docs/dev/archive/da3_backend_test_plan.md` and `tools/compare_depth_backends.py`.
+To run the V2-vs-DA3 accuracy comparison yourself, see
+`tools/compare_depth_backends.py`.
 
 ## Experimental: Hidden-Geometry Prediction (research-only)
 > **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI (the `experimental` branch enables it by default; `main` hides it so the node menu stays universal).
@@ -342,8 +342,9 @@ For the V2-vs-DA3 accuracy comparison protocol, see
 occluders (LaRI layered ray intersections) and outputs an "X-ray" copy of an
 `ATLAS_DEPTH_MAP` with occluders replaced by predicted hidden depth — wire it
 into background band layers so disocclusion reveals get predicted geometry
-instead of diffusion-smoothed guesses. Best on indoor/architectural scenes;
-see `docs/dev/hidden_geometry_training_free_research.md` for measured limits.
+instead of diffusion-smoothed guesses. Best on indoor/architectural scenes —
+coverage can collapse toward zero on open terrain, where the depth then passes
+through nearly unchanged (a graceful no-op rather than a failure).
 
 **The upstream LaRI repository has NO license (all rights reserved) — research
 use only, and atlas_camera bundles none of it.** You must clone it yourself:
