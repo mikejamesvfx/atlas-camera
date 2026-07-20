@@ -433,19 +433,36 @@ KSampler → VAE decode subgraph instead, and feed its output into
 The hero workflow `examples/atlas_camera_staged_master_workflow.json` uses three
 optional external pieces — each fails soft or has a documented placeholder:
 
-- **Sky / scope segmentation** — [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)
-  provides the `SAM3Segment` node (prompt it with `sky`, `buildings`, etc.).
-  Its MASK output feeds `AtlasSkyDomeLayer.sky_mask` AND every layer node's
-  `exclude_mask` (a real segmentation replaces Atlas's internal sky heuristic).
-  **SAM3 requires `triton`** (CUDA-only). On **Windows + NVIDIA**, install it
-  into the ComfyUI env — `python_embeded\python.exe -m pip install triton-windows`
-  — or `SAM3Segment` fails to load ("No module named 'triton'", Manager reports
-  the pack "missing"). **On Mac (MPS) / CPU / AMD there is no triton**, so SAM3
-  can't run there at all: `AtlasInput` automatically falls back to
-  **`AtlasSemanticMask`** (SegFormer/ADE20K, `[neural]`, no triton — a learned
-  CPU/MPS sky/scope mask), and the numpy sky heuristic is the zero-dependency
-  floor. Grounded-SAM2 (GroundingDINO + a SAM2 pack) is an optional premium
-  Mac tier for SAM-grade edges, at the cost of two extra models.
+- **Sky / scope segmentation** — `AtlasSAM3Mask` (this package's own node,
+  `[sam3]` extra) is the preferred segmenter in `AtlasInput`'s cascade: real
+  SAM3 loaded straight from `transformers>=5.5.4`, no `triton` dependency, so
+  it works on CUDA, CPU, **and Mac (MPS)** alike.
+
+  ```powershell
+  pip install -e ".[sam3]"
+  ```
+
+  `facebook/sam3` is **gated** on Hugging Face (Meta's SAM-License-1.0 —
+  commercial use permitted, military/ITAR use carved out). One-time setup:
+
+  1. Request access at https://huggingface.co/facebook/sam3 (click "Agree
+     and access repository").
+  2. Create a token at https://huggingface.co/settings/tokens (Read scope).
+  3. Run `hf auth login` (or set `HF_TOKEN`) and paste the token.
+
+  If `transformers<5.5.4` (or `[sam3]` isn't installed), `AtlasInput`
+  automatically falls back to **`AtlasSemanticMask`** (SegFormer/ADE20K,
+  `[neural]`, no triton either — a learned CPU/MPS sky/scope mask), and the
+  numpy sky heuristic is the zero-dependency floor.
+
+  The third-party `SAM3Segment` node
+  ([ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)) still works if
+  manually wired (e.g. in `examples/atlas_camera_staged_master_workflow.json`)
+  but is no longer preferred by `AtlasInput`'s own cascade. It hard-requires
+  `triton` (CUDA-only — on Windows + NVIDIA, `python_embeded\python.exe -m pip
+  install triton-windows`; on Mac/CPU/AMD it cannot load at all). Grounded-SAM2
+  (GroundingDINO + a SAM2 pack) remains an optional premium Mac tier for
+  SAM-grade edges outside Atlas's own cascade, at the cost of two extra models.
 - **VLM pre-flight** — `AtlasAssessImage` talks to a local vision-language
   server: Ollama (`ollama run gemma3:4b`, default `http://127.0.0.1:11434`),
   LM Studio (default `http://127.0.0.1:1234/v1`), or llama.cpp
