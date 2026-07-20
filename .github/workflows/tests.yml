@@ -30,10 +30,36 @@ jobs:
       # Clean-env node-pack load: the registry + all six responsibility modules
       # must import and register on a torch-less install (node classes import
       # torch lazily). Catches an import regression in a module that no test
-      # imports directly. 67 standard nodes; the gate adds the 4 experimental.
+      # imports directly.
+      #
+      # DELIBERATELY NOT a hardcoded node count. These steps used to assert
+      # ==67 / ==71 and went stale the moment nodes were added, turning CI red
+      # for a week on a drift no local `pytest -q` could reproduce — the magic
+      # number lived only in this YAML. The exact registry surface (every key
+      # and display name) is pinned by tests/test_comfy_node_registry.py, which
+      # the step above already runs; duplicating the count here bought nothing
+      # and broke on its own. What is genuinely NOT covered by that test is the
+      # torch-less import, so that is all these steps check.
       - name: node pack registers (default)
-        run: python -c "from atlas_camera.comfy import NODE_CLASS_MAPPINGS as m; assert len(m)==67, len(m); print('standard nodes:', len(m))"
+        run: |
+          python -c "
+          from atlas_camera.comfy import NODE_CLASS_MAPPINGS as m, NODE_DISPLAY_NAME_MAPPINGS as d
+          from atlas_camera.comfy.node_registry import EXPERIMENTAL_NODE_CLASS_MAPPINGS as x
+          assert m, 'registry is empty'
+          assert set(d) == set(m), f'display-name drift: {set(d) ^ set(m)}'
+          leaked = sorted(set(x) & set(m))
+          assert not leaked, f'experimental nodes leaked into the default tier: {leaked}'
+          print('standard nodes:', len(m))
+          "
       - name: experimental gate registers
         env:
           ATLAS_EXPERIMENTAL: "1"
-        run: python -c "from atlas_camera.comfy import NODE_CLASS_MAPPINGS as m; assert len(m)==71, len(m); print('with experimental:', len(m))"
+        run: |
+          python -c "
+          from atlas_camera.comfy import NODE_CLASS_MAPPINGS as m, NODE_DISPLAY_NAME_MAPPINGS as d
+          from atlas_camera.comfy.node_registry import EXPERIMENTAL_NODE_CLASS_MAPPINGS as x
+          assert set(d) == set(m), f'display-name drift: {set(d) ^ set(m)}'
+          missing = sorted(set(x) - set(m))
+          assert not missing, f'gate did not register: {missing}'
+          print('with experimental:', len(m), f'(+{len(x)})')
+          "
