@@ -1350,6 +1350,22 @@ def _comfy_registry():
         return {}
 
 
+def _native_sam3_available() -> bool:
+    """Cheap, network-free capability probe for native SAM3 (AtlasSAM3Mask),
+    used by AtlasInput's build-time cascade decision. Native SAM3 is
+    ALWAYS registered (it's Atlas's own node class), so registry presence
+    (unlike third-party packs) can't distinguish "the [sam3] extra +
+    transformers>=5.5.4 actually works" from "the class merely exists" —
+    this delegates to the real inference-layer check instead. Any failure
+    (module missing, unexpected error) is treated as unavailable, the same
+    fail-soft contract as _comfy_registry()."""
+    try:
+        from atlas_camera.inference.sam3_segmenter import native_sam3_available
+        return native_sam3_available()
+    except Exception:
+        return False
+
+
 class _MiniGraphBuilder:
     """Test-shim mirror of comfy_execution.graph_utils.GraphBuilder (same
     node()/out()/finalize() surface) so AtlasInput's expansion assembly is
@@ -1515,6 +1531,7 @@ __all__ = [
     '_LAYER_DEBUG_PRIMARY_HEX',
     '_LAYER_DEBUG_PALETTE_HEX',
     '_comfy_registry',
+    '_native_sam3_available',
     '_MiniGraphBuilder',
     '_graph_builder',
     '_ATLAS_INPUT_BOUNDARIES',

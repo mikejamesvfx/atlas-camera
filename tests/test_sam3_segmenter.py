@@ -193,3 +193,17 @@ def test_sam3_concept_mask_carries_device_forward_after_mps_fallback(monkeypatch
     # second token should be dispatched with device already == "cpu".
     assert seen_devices == ["mps", "cpu"]
     assert matched == ["person"]
+
+
+def test_node_helpers_native_sam3_available_delegates(monkeypatch):
+    from atlas_camera.comfy import node_helpers
+    monkeypatch.setattr(sam3_mod, "native_sam3_available", lambda: True)
+    assert node_helpers._native_sam3_available() is True
+
+
+def test_node_helpers_native_sam3_available_fails_soft(monkeypatch):
+    from atlas_camera.comfy import node_helpers
+    def _boom():
+        raise RuntimeError("simulated broken inference module")
+    monkeypatch.setattr(sam3_mod, "native_sam3_available", _boom)
+    assert node_helpers._native_sam3_available() is False
