@@ -72,6 +72,7 @@ from atlas_camera.comfy.nodes_geometry import (
 from atlas_camera.comfy.nodes_inpaint import (
     AtlasScopeMask,
     AtlasSemanticMask,
+    AtlasSAM3Mask,
     AtlasInpaintCrop,
     AtlasInpaintStitch,
     AtlasSDXLInpaint,
@@ -175,6 +176,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasDepthOutlierMask":      AtlasDepthOutlierMask,
     "AtlasScopeMask":             AtlasScopeMask,
     "AtlasSemanticMask":          AtlasSemanticMask,
+    "AtlasSAM3Mask":              AtlasSAM3Mask,
     "AtlasDebugReport":           AtlasDebugReport,
     "AtlasLayerPreview":          AtlasLayerPreview,
     "AtlasInput":                 AtlasInput,
@@ -255,6 +257,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDepthOutlierMask":      "Atlas Depth Outlier Mask 🛡",
     "AtlasScopeMask":             "Atlas Scope Mask 🎯",
     "AtlasSemanticMask":          "Atlas Semantic Mask 🧩",
+    "AtlasSAM3Mask":              "Atlas SAM3 Mask 🪄",
     "AtlasDebugReport":           "Atlas Debug Report 🔍",
     "AtlasLayerPreview":          "Atlas Layer Preview 🎨",
     "AtlasInput":                 "Atlas Input 🎬",

@@ -22,7 +22,7 @@ def test_audit_covers_every_registered_node():
     kinds, names = audit.registered_nodes()
     data = audit.audit()
     assert set(data) == names            # exactly the registered set, nothing invented
-    assert len(names) == 71
+    assert len(names) == 72
     for name, rec in data.items():
         assert rec["kind"] in ("standard", "experimental")
         assert rec["status"] in ("referenced", "registered_only")

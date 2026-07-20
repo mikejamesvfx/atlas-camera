@@ -147,6 +147,7 @@ from atlas_camera.comfy.nodes_geometry import (
 from atlas_camera.comfy.nodes_inpaint import (
     AtlasScopeMask,
     AtlasSemanticMask,
+    AtlasSAM3Mask,
     AtlasInpaintCrop,
     AtlasInpaintStitch,
     AtlasSDXLInpaint,
