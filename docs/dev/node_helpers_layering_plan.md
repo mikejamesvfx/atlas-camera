@@ -69,13 +69,38 @@ Per the "fold into existing" decision:
 | `_ground_scale_cached` | **stays in `comfy/`** | it is a memoisation of `relief_mesh.estimate_ground_scale`; per-execution caching is an ADAPTER concern, not math |
 | `_clone_solve_with_metadata`, `_solve_with_relief_mesh`, `_relief_mesh_from_solve` | `core/schema.py` or `core/relief_mesh.py` | solve/mesh construction |
 | `_resolve_raw_hints`, `_stamp_raw_provenance` | `atlas_camera/raw/metadata.py` | RAW domain already exists |
-| `_extend_edge_colors`, `_flood_mask_to_frame_borders`, `_resize_normal_field` | **`core/image_ops.py` (NEW)** | see deviation below |
+| `_resize_normal_field` | `core/normals.py` | see resolution below |
+| `_extend_edge_colors`, `_flood_mask_to_frame_borders` | `atlas_camera/plate/ops.py` | see resolution below |
 
-**One deviation to approve:** the three image-array ops have no natural existing
-home — they are generic mask/plate array work, not depth or mesh code. Options:
-(a) one new `core/image_ops.py`, (b) fold into `core/relief_mesh.py` (their main
-consumer), (c) leave them in `comfy/`. Recommend (a); it is the only new core
-module in the plan.
+### Resolved (2026-07-20) — no new `core/` module needed
+
+The first draft called these three "no natural home" and proposed a new
+`core/image_ops.py`. Checking the actual call sites dissolved that:
+
+- **`_resize_normal_field` was never ambiguous.** `core/normals.py` already
+  exists and already does this work (`world_normals_from_depth`,
+  `align_predicted_normals_to_world`, `encode_normal_map_b64`) — and already
+  imports PIL locally at line 117, so the "PIL means it must stay in comfy"
+  assumption behind the original classification was simply wrong. Its only
+  caller is `nodes_depth.py`. → `core/normals.py`.
+
+- **The other two have exactly ONE consumer module** (`nodes_inpaint.py`). They
+  were never shared utilities; they sat in `node_helpers` because it was the
+  default dumping ground. That tempts a move into `nodes_inpaint.py` itself,
+  which would slim the leaf with no new module — but both are pure numpy,
+  host-agnostic algorithms (quarter-res colour propagation; mask flood), so
+  leaving them in `comfy/` preserves exactly the layering violation this
+  refactor exists to fix. They belong in a library layer.
+
+  Not `core/image_ops.py` though: that name says nothing, and it would be a
+  module invented for two functions. They are *plate* operations, and
+  `atlas_camera/plate/` now means precisely that — I/O, colour, and pixel ops
+  on plates — sitting beside `plate/oiio_io.py`.
+
+**Sequencing note:** `atlas_camera/plate/` arrives with PR #24 (the OIIO work).
+Phase 2 is several phases out so #24 should land first; if it has not, the
+fallback is the original `core/image_ops.py`. Phases 0 and 1 do not depend on
+this at all.
 
 New `comfy/` modules for bucket B and the payload:
 
@@ -140,8 +165,10 @@ describe the new map. It currently documents the 2026-07-19 layout only.
   runtime; if that becomes the goal, profile first.
 - Import/startup time. Plausible small win, but unmeasured — do not claim it.
 
-## Open question for the author
+## Status
 
-The one call that needs a decision before Phase 2: **`core/image_ops.py` (new)
-vs folding those three array ops into `core/relief_mesh.py` vs leaving them in
-`comfy/`.** Everything else has an unambiguous existing home.
+- **Phase 0 — DONE** (`refactor/phase0-facade-pin`). `tests/test_facade_surface.py`
+  pins all 155 façade names (79 public + 76 underscore helpers) and was verified
+  to FAIL when a symbol is dropped, not merely to pass today.
+- Destination question resolved (see above) — no new `core/` module is needed.
+- **Phase 1 — next.** Depends on nothing outstanding.
