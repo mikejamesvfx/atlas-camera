@@ -28,7 +28,7 @@ pytest.importorskip("PIL")
 
 from test_inpaint_layers_nodes import _depth_result, _occluder_depth, _solve  # noqa: E402
 
-from atlas_camera.comfy.node_helpers import _extract_blockout_camera  # noqa: E402
+from atlas_camera.comfy.viewport_payload import _extract_blockout_camera  # noqa: E402
 
 
 def _payload_with_depth():
