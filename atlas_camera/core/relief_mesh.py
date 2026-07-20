@@ -14,6 +14,8 @@ Convention: same as proxy_geometry — the full 4×4 ``camera_view_matrix``
 
 from __future__ import annotations
 
+import copy
+
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
@@ -689,3 +691,45 @@ def build_sky_dome_mesh(
         apply_sky_heuristic=False,
         edge_overhang_cells=edge_overhang_cells,
     )
+
+
+# --------------------------------------------------------------------------
+# Solve <-> relief-mesh round-trip helpers (phase 2 move from comfy/node_helpers.py).
+# --------------------------------------------------------------------------
+
+def _relief_mesh_from_solve(solve):
+    """The relief mesh already derived onto a solve (AtlasDeriveReliefMesh /
+    AtlasInput), reconstructed for export so its edge tuning carries over
+    exactly. Looks for the ``depth_relief_mesh``-sourced primitive in the
+    projection scene; returns a ReliefMesh, or None when the solve carries no
+    relief mesh (bare solve, or a bands-only / primitives-only solve)."""
+    from atlas_camera.exporters._layers import mesh_from_primitive
+    scene = getattr(solve, "projection_scene", None)
+    prims = (getattr(scene, "proxy_geometry", None) or []) if scene is not None else []
+    for p in prims:
+        meta = p.metadata or {}
+        if p.primitive_type == "mesh" and meta.get("source") == "depth_relief_mesh":
+            return mesh_from_primitive(p)
+    return None
+def _solve_with_relief_mesh(solve, mesh):
+    """A deep copy of ``solve`` whose relief-mesh primitive is ``mesh``.
+
+    Lets the export node hand the viewport the geometry it ACTUALLY wrote,
+    without touching the input solve (whose live projection mesh keeps its
+    deliberate tears).
+    """
+    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+    out = copy.deepcopy(solve)
+    scene = getattr(out, "projection_scene", None)
+    if scene is None:
+        return out
+    prim = relief_mesh_primitive(mesh)
+    prims = list(getattr(scene, "proxy_geometry", None) or [])
+    for i, p in enumerate(prims):
+        if p.primitive_type == "mesh" and (p.metadata or {}).get("source") == "depth_relief_mesh":
+            prims[i] = prim
+            break
+    else:
+        prims.append(prim)
+    scene.proxy_geometry = prims
+    return out

@@ -522,3 +522,222 @@ def build_backdrop_primitive(
         metadata={"role": PROXY_ROLE, "source": "depth_derivation",
                   "distance_m": float(D), "depth_scale_applied": scale},
     )
+
+
+# --------------------------------------------------------------------------
+# Solve-facing depth/band helpers, moved out of comfy/node_helpers.py in phase 2
+# of docs/dev/node_helpers_layering_plan.md. All host-agnostic: they take a view
+# matrix + intrinsics + a depth array and return numbers, with no ComfyUI import.
+# --------------------------------------------------------------------------
+
+def _solve_camera_params(solve, depth_result):
+    """fx/fy/cx/cy/width/height for a solve, falling back to the depth
+    estimate's own resolution — same fallback logic AtlasDeriveProjectionGeometry
+    uses (there falling back to the source IMAGE tensor's shape instead, since
+    that node takes an image directly; these nodes take an ATLAS_DEPTH_MAP,
+    which already carries its own width/height from DepthResult).
+    Returns None when there's no usable focal length (caller should return the
+    solve unchanged, matching AtlasDeriveProjectionGeometry's own behavior).
+    """
+    intr = solve.camera.intrinsics
+    width = int(intr.image_width or depth_result.image_width)
+    height = int(intr.image_height or depth_result.image_height)
+    fx = intr.fx_px or 0.0
+    fy = intr.fy_px or fx
+    if fx <= 0:
+        return None
+    cx = intr.cx_px if intr.cx_px is not None else width / 2.0
+    cy = intr.cy_px if intr.cy_px is not None else height / 2.0
+    return width, height, fx, fy, cx, cy
+def _horizon_y_from_solve(solve):
+    """Image row of the solved horizon, or None — same extraction
+    AtlasDeriveProjectionGeometry already does from solve.horizon_line."""
+    if solve.horizon_line and solve.horizon_line.endpoints_px:
+        p1, p2 = solve.horizon_line.endpoints_px
+        return 0.5 * (float(p1[1]) + float(p2[1]))
+    return None
+def _recompute_horizon_line(out, r_cw):
+    """Refresh the stored horizon line for a re-oriented camera (the RollTrim
+    vanishing-line math: world-Y ray component zero, linear in (u, v))."""
+    intr = out.camera.intrinsics
+    if out.horizon_line is None or not intr.fx_px or not intr.image_width:
+        return
+    fx = float(intr.fx_px)
+    fy = float(intr.fy_px or intr.fx_px)
+    cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
+    cy = float(intr.cy_px if intr.cy_px is not None else (intr.image_height or 0) / 2.0)
+    w = float(intr.image_width)
+    a = r_cw[1][0] / fx
+    b = -r_cw[1][1] / fy
+    cc = -r_cw[1][0] * cx / fx + r_cw[1][1] * cy / fy - r_cw[1][2]
+    if abs(b) > 1e-12:
+        y0 = (-cc - a * 0.0) / b
+        y1 = (-cc - a * w) / b
+        out.horizon_line.endpoints_px = ((0.0, y0), (w, y1))
+        out.horizon_line.line_coefficients = (a, b, cc)
+def _depth_map_for_solve(depth_result, width, height):
+    """The depth estimate's raw array, resized to match the solve's
+    intrinsics resolution if they disagree (same as AtlasDeriveProjectionGeometry)."""
+    from atlas_camera.core.solver import _resize_depth
+    depth_map = depth_result.depth
+    if depth_map.shape != (height, width):
+        depth_map = _resize_depth(depth_map, width, height)
+    return depth_map
+def _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct):
+    """Resolve a metric depth band from explicit metres (``near_m``/``far_m``,
+    0 = unset) or, as a fallback, POSITIONS ALONG THE SCENE'S LOG-DEPTH RANGE
+    (``near_pct``/``far_pct``, 0..1; 0.5 = the geometric mean of the robust
+    depth range — see ``log_depth_position`` below for why this replaced
+    pixel-count percentiles).
+
+    Shared by ``AtlasDepthLayerMask`` and ``AtlasCleanPlateLayer`` so the two
+    nodes' bands can never drift apart — the inpaint-layers design requires the
+    mask node's band and the clean-plate node's mesh clip to match exactly.
+    ``far_pct<=0`` is a deliberate explicit "no upper bound" (+inf) rather than
+    a degenerate zero-position far edge, since ``near_pct``/``far_pct`` share
+    the same 0..1 range but mean different things at 0 (near defaults to the
+    very nearest pixels; far defaults to "no cap" via ``far_pct=0.5``, and an
+    artist setting ``far_pct=0`` clearly means "no upper band edge", not
+    "collapse the band to nothing").
+    """
+    np = _require_numpy()
+    values = metric[valid] if valid.any() else None
+
+    def log_depth_position(t):
+        # LOG-DEPTH interpolation, not a pixel-count percentile: metric depth
+        # is hugely skewed (near ground dominates the pixel count, the whole
+        # far scene compresses into the top percentiles), so a linear
+        # percentile slider wasted 0-0.9 on the foreground (user-measured:
+        # useful bg splits landed at 0.9-0.95). Position t along the scene's
+        # log depth range is perceptually linear: 0.5 = the geometric mean of
+        # the (robust, 1st-99th percentile) depth range. t>=0.995 = no cap.
+        import math
+        d_lo = float(np.percentile(values, 1.0))
+        d_hi = float(np.percentile(values, 99.0))
+        if not (d_hi > d_lo > 0):
+            return float(np.percentile(values, t * 100.0))  # degenerate scene
+        return math.exp(math.log(d_lo) + t * (math.log(d_hi) - math.log(d_lo)))
+
+    if near_m and near_m > 0:
+        near = float(near_m)
+    elif values is not None and near_pct > 0:
+        near = log_depth_position(min(float(near_pct), 1.0))
+    else:
+        near = 0.0
+    if far_m and far_m > 0:
+        far = float(far_m)
+    elif values is not None and 0 < far_pct < 0.995:
+        far = log_depth_position(float(far_pct))
+    else:
+        far = float("inf")
+    return near, far
+def _apply_band_split(band_split, band_side, metric, valid,
+                      near_m, far_m, near_pct, far_pct):
+    """Resolve the effective band, honoring a connected `band_split`.
+
+    With a split connected and a side chosen, the node's own near/far widgets
+    are ignored: foreground = [0, split), background = [split, +inf). Both
+    sides resolve the boundary through the same `_resolve_depth_band` log
+    mapping, so fg and bg partition EXACTLY (shared helper = no drift).
+    """
+    if band_split is None or band_side == "manual":
+        return _resolve_depth_band(metric, valid, near_m, far_m, near_pct, far_pct)
+    s_pct = float(band_split.get("split", 0.55))
+    s_m = float(band_split.get("split_m", 0.0))
+    boundary, _ = _resolve_depth_band(metric, valid, s_m, 0.0, s_pct, 0.0)
+    if band_side == "foreground":
+        return 0.0, boundary
+    return boundary, float("inf")
+def _ground_depth_compute(solve, width: int, height: int, near: float, far: float):
+    """
+    Per-pixel ray-plane intersection against Y=0 ground plane.
+    Returns (depth_rgb, valid_mask) both as H×W numpy float32 arrays.
+    Port of DEPTH_FRAGMENT_SHADER in ui/src/ProjectionMaterial.ts.
+    """
+    np = _require_numpy()
+
+    cam = solve.camera
+    intr = cam.intrinsics
+    extr = cam.extrinsics
+
+    fx = intr.fx_px or 0.0
+    fy = intr.fy_px or fx
+    if fx <= 0 or fy <= 0:
+        return None, None
+
+    cx = intr.cx_px if intr.cx_px is not None else width / 2.0
+    cy = intr.cy_px if intr.cy_px is not None else height / 2.0
+
+    vm = np.array(extr.camera_view_matrix, dtype=np.float64)  # 4×4
+    cam_to_world = np.linalg.inv(vm)
+    cam_y = float(extr.camera_position[1])
+
+    uu, vv = np.meshgrid(np.arange(width, dtype=np.float64),
+                         np.arange(height, dtype=np.float64))
+
+    # Camera-space rays (cam looks along -Z, image Y is downward)
+    ray_x = (uu - cx) / fx
+    ray_y = -(vv - cy) / fy
+    ray_z = -np.ones((height, width), dtype=np.float64)
+    rays_cam = np.stack([ray_x, ray_y, ray_z], axis=-1)  # H×W×3
+    norms = np.linalg.norm(rays_cam, axis=-1, keepdims=True)
+    rays_cam = rays_cam / np.maximum(norms, 1e-12)
+
+    # Rotate to world space (direction only — upper-left 3×3 of camToWorld)
+    R = cam_to_world[:3, :3]
+    rays_world = rays_cam @ R.T  # H×W×3
+
+    ry = rays_world[..., 1]  # H×W
+
+    # Ground intersect: cameraPos.y + t * ry = 0  →  t = -cam_y / ry
+    valid = (np.abs(ry) > 1e-5) & (cam_y > 0)
+    t = np.where(valid, -cam_y / ry, 0.0)
+    valid = valid & (t > 0.001)
+
+    # Normalize to [0, 1] in [near, far]
+    t_norm = np.clip((t - near) / max(far - near, 1e-6), 0.0, 1.0)
+    t_norm[~valid] = 0.0
+
+    # 4-stop warm→cool heatmap (identical stops to DEPTH_FRAGMENT_SHADER)
+    c0 = np.array([0.90, 0.12, 0.04], dtype=np.float32)  # near: red
+    c1 = np.array([0.96, 0.72, 0.08], dtype=np.float32)  # yellow
+    c2 = np.array([0.20, 0.84, 0.60], dtype=np.float32)  # teal
+    c3 = np.array([0.08, 0.22, 0.86], dtype=np.float32)  # far: blue
+
+    t3 = t_norm[..., np.newaxis].astype(np.float32)
+    rgb = np.where(t3 < 0.333,
+                   c0 + (c1 - c0) * (t3 * 3.0),
+                   np.where(t3 < 0.667,
+                            c1 + (c2 - c1) * ((t3 - 0.333) * 3.0),
+                            c2 + (c3 - c2) * ((t3 - 0.667) * 3.0)))
+    rgb = np.clip(rgb, 0.0, 1.0)
+    rgb[~valid] = 0.0
+
+    return rgb.astype(np.float32), valid.astype(np.float32)
+def _analytic_ground_forward_depth(extr, fx, fy, cx, cy, height, width):
+    """Per-pixel forward depth of the ray∩(Y=0 ground plane) intersection,
+    NaN where the ray never hits ground (at/above horizon) or the camera is
+    at/below ground. Matches build_relief_mesh's back-projection EXACTLY:
+    with the unnormalized camera ray ((u-cx)/fx, -(v-cy)/fy, -1), the ray
+    parameter IS forward depth, so feeding this array back through the mesh
+    builder lands every vertex on Y=0 by construction (same ray-plane math
+    as _ground_depth_compute / the viewport's DEPTH_FRAGMENT_SHADER)."""
+    np = _require_numpy()
+    vm = np.array(extr.camera_view_matrix, dtype=np.float64)
+    c2w = np.linalg.inv(vm)
+    R = c2w[:3, :3]
+    cam_y = float(c2w[1, 3])
+    out = np.full((height, width), np.nan)
+    if cam_y <= 1e-6:
+        return out
+    uu, vv = np.meshgrid(np.arange(width, dtype=np.float64),
+                         np.arange(height, dtype=np.float64))
+    kx = (uu - cx) / fx
+    ky = -(vv - cy) / fy
+    # World-Y component of the unnormalized ray direction.
+    ry = R[1, 0] * kx + R[1, 1] * ky - R[1, 2]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        s = -cam_y / ry
+    ok = np.isfinite(s) & (s > 1e-3)
+    out[ok] = s[ok]
+    return out

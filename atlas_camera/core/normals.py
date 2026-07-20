@@ -28,6 +28,14 @@ def _require_numpy():
     return np
 
 
+def _require_pil():
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover - guarded like the rest of core
+        raise ImportError("normal-map resampling needs Pillow — pip install -e .[image]") from exc
+    return Image
+
+
 def world_normals_from_depth(depth, *, view_matrix, fx, fy, cx, cy):
     """Per-pixel WORLD-space normals from a forward-Z depth map, via back-
     projection + a neighbour cross product (same convention as
@@ -123,3 +131,34 @@ def encode_normal_map_b64(world_normals, valid=None):
     buf = io.BytesIO()
     Image.fromarray(rgb, mode="RGB").save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+# --------------------------------------------------------------------------
+# Normal-field resampling (phase 2 move from comfy/node_helpers.py).
+# --------------------------------------------------------------------------
+
+def _resize_normal_field(normals, target_hw):
+    """Resize an (H,W,3) unit-normal field to ``target_hw`` (h, w) and
+    renormalize. Bilinear via PIL mode 'F' per channel; nearest-neighbour numpy
+    fallback if PIL is unavailable. A no-op when already the right shape."""
+    import numpy as np
+    th, tw = int(target_hw[0]), int(target_hw[1])
+    n = np.asarray(normals, dtype=np.float32)
+    if n.ndim != 3 or n.shape[2] < 3:
+        raise ValueError(f"expected an (H,W,3) normal field, got {n.shape}")
+    if n.shape[:2] == (th, tw):
+        out = n[..., :3]
+    else:
+        try:
+            PILImage = _require_pil()
+            chans = []
+            for c in range(3):
+                im = PILImage.fromarray(np.ascontiguousarray(n[..., c]), mode="F")
+                chans.append(np.asarray(im.resize((tw, th), PILImage.BILINEAR), dtype=np.float32))
+            out = np.stack(chans, axis=-1)
+        except Exception:
+            ys = np.linspace(0, n.shape[0] - 1, th).astype(int)
+            xs = np.linspace(0, n.shape[1] - 1, tw).astype(int)
+            out = n[np.ix_(ys, xs)][..., :3].astype(np.float32)
+    norm = np.linalg.norm(out, axis=-1, keepdims=True)
+    return (out / np.maximum(norm, 1e-12)).astype(np.float32)
