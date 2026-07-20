@@ -83,3 +83,70 @@ def test_estimate_camera_prior_end_to_end_if_available(tmp_path):
     assert len(prior.up_cam) == 3
     solve = solve_from_learned_prior(prior, image_size=(640, 480))
     assert solve.camera.intrinsics.fx_px > 0
+
+
+# --- reproducibility of the GeoCalib call -----------------------------------
+# GeoCalib's calibrate() draws from torch's global RNG, so the same image used
+# to solve to a different camera each run (measured: ~2.5% focal spread, ~0.7deg
+# roll, on both CPU and CUDA). estimate_camera_prior seeds inside a fork_rng so
+# the solve is reproducible WITHOUT clobbering the caller's RNG - it runs inside
+# ComfyUI, where a global reseed would silently change a later sampler.
+
+def test_calibrate_is_seeded_and_leaves_the_callers_rng_untouched(monkeypatch):
+    torch = pytest.importorskip("torch")
+    from atlas_camera.inference import learned_prior as lp
+
+    seen = []
+
+    class _FakeModel:
+        def __init__(self):
+            self.training = True
+            self.eval_calls = 0
+
+        def eval(self):
+            self.eval_calls += 1
+            self.training = False
+            return self
+
+        def to(self, _device):
+            return self
+
+        def load_image(self, _path):
+            return torch.zeros(1)
+
+        def calibrate(self, _image):
+            # Record what the RNG produces INSIDE the call: a seeded fork means
+            # every invocation observes the same draw.
+            seen.append(torch.randn(1).item())
+            raise _Stop
+
+    class _Stop(Exception):
+        pass
+
+    model = _FakeModel()
+    monkeypatch.setattr(lp, "_get_model", lambda *_a, **_k: model)
+    monkeypatch.setattr(lp, "_require_geocalib", lambda: (torch, object))
+    monkeypatch.setattr(lp, "resolve_device", lambda *_a, **_k: "cpu")
+
+    torch.manual_seed(1234)
+    caller_before = torch.randn(3).tolist()
+
+    torch.manual_seed(1234)
+    for _ in range(3):
+        with pytest.raises(_Stop):
+            lp.estimate_camera_prior("unused.png")
+    caller_after = torch.randn(3).tolist()
+
+    assert len(set(seen)) == 1, f"calibrate saw a different RNG draw per run: {seen}"
+    assert caller_before == caller_after, "estimate_camera_prior clobbered the caller's RNG"
+
+
+def test_model_is_put_in_eval_mode():
+    """GeoCalib ships the module in its default training=True state (21 Dropout
+    + 47 BatchNorm submodules) and nothing here ever trains it."""
+    pytest.importorskip("torch")
+    pytest.importorskip("geocalib")
+    from atlas_camera.inference import learned_prior as lp
+
+    model = lp._get_model("pinhole", "cpu")
+    assert model.training is False
