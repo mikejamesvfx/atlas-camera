@@ -83,7 +83,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ### Module layout (nodes.py modularization, 2026-07-19)
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 71
+The former 9,110-line `nodes.py` was split into responsibility modules; the 72
 node classes (68 standard + 4 experimental) now live in six group modules, and
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
 class, shared helper, and the registry mappings so `from atlas_camera.comfy.nodes

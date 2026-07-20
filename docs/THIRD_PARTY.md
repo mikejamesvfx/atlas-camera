@@ -23,6 +23,7 @@ for authoritative license text; the notes below are a map, not legal advice.
 | `[ui]` | FastAPI, uvicorn, Pillow | MIT / BSD | optional workbench backend |
 | `[usd]` | usd-core | Apache-2.0 (modified, Pixar) | USD export |
 | `[neural]` | torch, GeoCalib, Depth-Anything-V2 (via transformers) | BSD-3 / Apache-2.0 / Apache-2.0 | **default** learned solve + depth; SegFormer (`AtlasSemanticMask`) rides transformers |
+| `[sam3]` | transformers (SAM3 model classes) | Apache-2.0 (transformers); `facebook/sam3` weights **Meta SAM-License-1.0**, gated on Hugging Face | preferred sky/scope segmenter in `AtlasInput`'s cascade, no `triton`; commercial use permitted, military/ITAR use carved out — one-time `hf auth login` after requesting access, see INSTALL.md |
 | `[moge]` | MoGe-2 (`Ruicheng/MoGe`) | **MIT** | interior-specialist depth |
 | `[neural-da3]` | Depth Anything 3 | see upstream (GitHub-only) | selectable depth; default only on `experimental-da3-default` branch. `DA3NESTED-GIANT` weights are **CC BY-NC-ND (non-commercial)** |
 
@@ -33,7 +34,7 @@ whole `[neural]` tier are permissive (Apache/BSD/MIT).
 
 | Pack | Provides | License | Commercial note |
 |---|---|---|---|
-| [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG) | `SAM3Segment` (sky/scope) | see upstream | needs `triton` (CUDA-only); non-CUDA users fall back to `AtlasSemanticMask` — see INSTALL.md |
+| [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG) | `SAM3Segment` (still used directly by `AtlasSegmentedSDXLInpaint` for per-instance separation; no longer part of `AtlasInput`'s own sky/scope cascade, which now prefers native `AtlasSAM3Mask`) | see upstream | needs `triton` (CUDA-only) — see INSTALL.md |
 | [comfyui-inpaint-nodes](https://github.com/Acly/comfyui-inpaint-nodes) | LaMa / MAT clean plates | **GPL-3.0** | graph-level use only; never linked into Atlas |
 | [LanPaint](https://github.com/scraed/LanPaint) | generative inpaint tier | see upstream | optional hard-disocclusion tier |
 | ComfyUI-OCIO | `OCIORead` (ACEScg EXR) | see upstream | OCIO color-managed handoff |
