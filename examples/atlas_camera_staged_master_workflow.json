@@ -65,7 +65,7 @@
         "#sdppp_label": ""
       },
       "widgets_values": [
-        "atlas_sample_monument_valley.png",
+        "example.png",
         "image"
       ]
     },
@@ -890,185 +890,63 @@
     },
     {
       "id": 15,
-      "type": "SAM3Segment",
+      "type": "AtlasSAM3Mask",
       "pos": [
         620,
         1120
-      ],
-      "size": [
-        340,
-        394
       ],
       "flags": {},
       "order": 47,
       "mode": 0,
       "inputs": [
         {
-          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "link": 15
         },
         {
-          "localized_name": "prompt",
-          "name": "prompt",
+          "name": "concepts",
           "type": "STRING",
-          "widget": {
-            "name": "prompt"
-          },
           "link": 115
         },
         {
-          "localized_name": "output_mode",
-          "name": "output_mode",
-          "type": "COMBO",
-          "widget": {
-            "name": "output_mode"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "confidence_threshold",
           "name": "confidence_threshold",
           "type": "FLOAT",
-          "widget": {
-            "name": "confidence_threshold"
-          },
           "link": null
         },
         {
-          "localized_name": "max_segments",
-          "name": "max_segments",
-          "shape": 7,
-          "type": "INT",
-          "widget": {
-            "name": "max_segments"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "segment_pick",
-          "name": "segment_pick",
-          "shape": 7,
-          "type": "INT",
-          "widget": {
-            "name": "segment_pick"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "mask_blur",
-          "name": "mask_blur",
-          "shape": 7,
-          "type": "INT",
-          "widget": {
-            "name": "mask_blur"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "mask_offset",
-          "name": "mask_offset",
-          "shape": 7,
-          "type": "INT",
-          "widget": {
-            "name": "mask_offset"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "device",
           "name": "device",
-          "shape": 7,
           "type": "COMBO",
-          "widget": {
-            "name": "device"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "invert_output",
-          "name": "invert_output",
-          "shape": 7,
-          "type": "BOOLEAN",
-          "widget": {
-            "name": "invert_output"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "unload_model",
-          "name": "unload_model",
-          "shape": 7,
-          "type": "BOOLEAN",
-          "widget": {
-            "name": "unload_model"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "background",
-          "name": "background",
-          "shape": 7,
-          "type": "COMBO",
-          "widget": {
-            "name": "background"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "background_color",
-          "name": "background_color",
-          "shape": 7,
-          "type": "COLORCODE",
-          "widget": {
-            "name": "background_color"
-          },
           "link": null
         }
       ],
       "outputs": [
         {
-          "localized_name": "IMAGE",
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "localized_name": "MASK",
-          "name": "MASK",
+          "name": "mask",
           "type": "MASK",
           "links": [
             16,
             19
-          ]
+          ],
+          "slot_index": 0
         },
         {
-          "localized_name": "MASK_IMAGE",
-          "name": "MASK_IMAGE",
-          "type": "IMAGE",
-          "links": null
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
         }
       ],
       "title": "SAM3 \u2014 sky",
       "properties": {
         "cnr_id": "comfyui-rmbg",
         "ver": "3.0.0",
-        "Node name for S&R": "SAM3Segment"
+        "Node name for S&R": "AtlasSAM3Mask"
       },
       "widgets_values": [
         "sky",
-        "Merged",
         0.5,
-        0,
-        0,
-        0,
-        0,
-        "Auto",
-        false,
-        false,
-        "Alpha",
-        "#222222"
+        "auto"
       ],
       "color": "#222e40",
       "bgcolor": "#364254"
@@ -5458,14 +5336,10 @@
     },
     {
       "id": 93,
-      "type": "SAM3Segment",
+      "type": "AtlasSAM3Mask",
       "pos": [
         40,
         2300
-      ],
-      "size": [
-        340,
-        394
       ],
       "flags": {},
       "order": 0,
@@ -5477,51 +5351,46 @@
           "link": 90
         },
         {
-          "name": "prompt",
+          "name": "concepts",
           "type": "STRING",
-          "widget": {
-            "name": "prompt"
-          },
           "link": 116
+        },
+        {
+          "name": "confidence_threshold",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "device",
+          "type": "COMBO",
+          "link": null
         }
       ],
       "outputs": [
         {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "name": "MASK",
+          "name": "mask",
           "type": "MASK",
           "links": [
             91
-          ]
+          ],
+          "slot_index": 0
         },
         {
-          "name": "MASK_IMAGE",
-          "type": "IMAGE",
-          "links": null
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
         }
       ],
       "properties": {
         "cnr_id": "comfyui-rmbg",
         "ver": "3.0.0",
-        "Node name for S&R": "SAM3Segment"
+        "Node name for S&R": "AtlasSAM3Mask"
       },
       "widgets_values": [
         "rock formations",
-        "Merged",
         0.5,
-        0,
-        0,
-        0,
-        0,
-        "Auto",
-        false,
-        false,
-        "Alpha",
-        "#222222"
+        "auto"
       ],
       "title": "SAM scope \u00b7 far"
     },
@@ -5637,14 +5506,10 @@
     },
     {
       "id": 100,
-      "type": "SAM3Segment",
+      "type": "AtlasSAM3Mask",
       "pos": [
         40,
         2830
-      ],
-      "size": [
-        340,
-        394
       ],
       "flags": {},
       "order": 0,
@@ -5656,51 +5521,46 @@
           "link": 96
         },
         {
-          "name": "prompt",
+          "name": "concepts",
           "type": "STRING",
-          "widget": {
-            "name": "prompt"
-          },
           "link": 117
+        },
+        {
+          "name": "confidence_threshold",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "device",
+          "type": "COMBO",
+          "link": null
         }
       ],
       "outputs": [
         {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "name": "MASK",
+          "name": "mask",
           "type": "MASK",
           "links": [
             97
-          ]
+          ],
+          "slot_index": 0
         },
         {
-          "name": "MASK_IMAGE",
-          "type": "IMAGE",
-          "links": null
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
         }
       ],
       "properties": {
         "cnr_id": "comfyui-rmbg",
         "ver": "3.0.0",
-        "Node name for S&R": "SAM3Segment"
+        "Node name for S&R": "AtlasSAM3Mask"
       },
       "widgets_values": [
         "buildings",
-        "Merged",
         0.5,
-        0,
-        0,
-        0,
-        0,
-        "Auto",
-        false,
-        false,
-        "Alpha",
-        "#222222"
+        "auto"
       ],
       "title": "SAM scope \u00b7 bg"
     },
@@ -5816,14 +5676,10 @@
     },
     {
       "id": 107,
-      "type": "SAM3Segment",
+      "type": "AtlasSAM3Mask",
       "pos": [
         40,
         3360
-      ],
-      "size": [
-        340,
-        394
       ],
       "flags": {},
       "order": 0,
@@ -5835,51 +5691,46 @@
           "link": 102
         },
         {
-          "name": "prompt",
+          "name": "concepts",
           "type": "STRING",
-          "widget": {
-            "name": "prompt"
-          },
           "link": 118
+        },
+        {
+          "name": "confidence_threshold",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "device",
+          "type": "COMBO",
+          "link": null
         }
       ],
       "outputs": [
         {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "name": "MASK",
+          "name": "mask",
           "type": "MASK",
           "links": [
             103
-          ]
+          ],
+          "slot_index": 0
         },
         {
-          "name": "MASK_IMAGE",
-          "type": "IMAGE",
-          "links": null
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
         }
       ],
       "properties": {
         "cnr_id": "comfyui-rmbg",
         "ver": "3.0.0",
-        "Node name for S&R": "SAM3Segment"
+        "Node name for S&R": "AtlasSAM3Mask"
       },
       "widgets_values": [
         "rocks",
-        "Merged",
         0.5,
-        0,
-        0,
-        0,
-        0,
-        "Auto",
-        false,
-        false,
-        "Alpha",
-        "#222222"
+        "auto"
       ],
       "title": "SAM scope \u00b7 mid"
     },
@@ -5995,14 +5846,10 @@
     },
     {
       "id": 114,
-      "type": "SAM3Segment",
+      "type": "AtlasSAM3Mask",
       "pos": [
         40,
         3890
-      ],
-      "size": [
-        340,
-        394
       ],
       "flags": {},
       "order": 0,
@@ -6014,51 +5861,46 @@
           "link": 108
         },
         {
-          "name": "prompt",
+          "name": "concepts",
           "type": "STRING",
-          "widget": {
-            "name": "prompt"
-          },
           "link": 119
+        },
+        {
+          "name": "confidence_threshold",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "device",
+          "type": "COMBO",
+          "link": null
         }
       ],
       "outputs": [
         {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "name": "MASK",
+          "name": "mask",
           "type": "MASK",
           "links": [
             109
-          ]
+          ],
+          "slot_index": 0
         },
         {
-          "name": "MASK_IMAGE",
-          "type": "IMAGE",
-          "links": null
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
         }
       ],
       "properties": {
         "cnr_id": "comfyui-rmbg",
         "ver": "3.0.0",
-        "Node name for S&R": "SAM3Segment"
+        "Node name for S&R": "AtlasSAM3Mask"
       },
       "widgets_values": [
         "person",
-        "Merged",
         0.5,
-        0,
-        0,
-        0,
-        0,
-        "Auto",
-        false,
-        false,
-        "Alpha",
-        "#222222"
+        "auto"
       ],
       "title": "SAM scope \u00b7 fg"
     },
@@ -9090,7 +8932,7 @@
     [
       16,
       15,
-      1,
+      0,
       17,
       0,
       "MASK"
@@ -9114,7 +8956,7 @@
     [
       19,
       15,
-      1,
+      0,
       18,
       2,
       "MASK"
@@ -9578,7 +9420,7 @@
     [
       91,
       93,
-      1,
+      0,
       170,
       2,
       "MASK"
@@ -9610,7 +9452,7 @@
     [
       97,
       100,
-      1,
+      0,
       171,
       2,
       "MASK"
@@ -9642,7 +9484,7 @@
     [
       103,
       107,
-      1,
+      0,
       172,
       2,
       "MASK"
@@ -9674,7 +9516,7 @@
     [
       109,
       114,
-      1,
+      0,
       173,
       2,
       "MASK"

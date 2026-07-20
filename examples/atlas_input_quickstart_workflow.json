@@ -38,7 +38,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "atlas_sample_monument_valley.png",
+        "example.png",
         "image"
       ]
     },

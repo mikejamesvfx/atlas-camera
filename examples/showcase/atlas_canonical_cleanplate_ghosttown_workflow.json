@@ -2656,14 +2656,10 @@
   },
   {
    "id": 49,
-   "type": "SAM3Segment",
+   "type": "AtlasSAM3Mask",
    "pos": [
     2120,
     534
-   ],
-   "size": [
-    360,
-    320
    ],
    "flags": {},
    "order": 0,
@@ -2675,49 +2671,45 @@
      "link": 40
     },
     {
-     "name": "background_color",
-     "type": "COLORCODE",
+     "name": "concepts",
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "name": "confidence_threshold",
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "name": "device",
+     "type": "COMBO",
      "link": null
     }
    ],
    "outputs": [
     {
-     "name": "IMAGE",
-     "type": "IMAGE",
-     "links": [],
-     "slot_index": 0
-    },
-    {
-     "name": "MASK",
+     "name": "mask",
      "type": "MASK",
      "links": [
       41
      ],
-     "slot_index": 1
+     "slot_index": 0
     },
     {
-     "name": "MASK_IMAGE",
-     "type": "MASK_IMAGE",
+     "name": "report",
+     "type": "STRING",
      "links": [],
-     "slot_index": 2
+     "slot_index": 1
     }
    ],
    "title": "\ud83e\udde9 SAM3 \u2014 car + sign matte (simple noun phrases + 'and')",
    "properties": {
-    "Node name for S&R": "SAM3Segment"
+    "Node name for S&R": "AtlasSAM3Mask"
    },
    "widgets_values": [
     "rusty car and fallen sign",
-    "Merged",
     0.5,
-    0,
-    0,
-    0,
-    0,
-    "Auto",
-    false,
-    false,
-    "Alpha"
+    "auto"
    ]
   },
   {
@@ -3119,7 +3111,7 @@
   [
    41,
    49,
-   1,
+   0,
    42,
    0,
    "MASK"
