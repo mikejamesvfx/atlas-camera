@@ -1,10 +1,41 @@
-"""Shared helpers, constants, and internal adapter classes for the
-Atlas ComfyUI node library.
+"""The ComfyUI ADAPTER leaf — things that genuinely need the host.
 
-Extracted verbatim from ``nodes.py`` during its modularization. This is a
-leaf module: it depends only on ``atlas_camera.core`` / exporters /
-importers, never on any registered node class, so it cannot introduce an
-import cycle.
+Extracted verbatim from ``nodes.py`` during its 2026-07-19 modularization,
+then reduced from 1,591 to ~850 lines by
+``docs/dev/node_helpers_layering_plan.md`` (2026-07-20), which moved the
+host-agnostic math into ``core/`` where the architecture says it belongs.
+
+Still a leaf: depends only on ``atlas_camera.core`` / exporters / importers /
+raw, never on a registered node class, so it cannot introduce a cycle.
+
+WHAT BELONGS HERE — anything that needs torch, PIL, base64 or ComfyUI itself:
+
+* guarded-import shims (``_require_torch`` / ``_require_numpy`` / ``_require_pil``)
+* tensor <-> PIL <-> base64 conversion
+* ComfyUI registry probes and the ExecutionBlocker shim
+* the node-expansion graph builder and its test double
+* per-execution caches (memoisation is an adapter concern, not math)
+* math that is TRANSITIVELY host-bound — ``_metric_depth_and_validity`` and
+  ``_band_resolution_validity`` never mention torch, but they call
+  ``_resolve_exclude_mask``, which converts a ComfyUI MASK tensor. They stay
+  here for that reason; moving them would need a signature change, which is
+  not code motion.
+
+WHAT LEFT, and where to look for it now:
+
+* ``comfy/viewport_payload.py``  the viewport wire protocol (phase 1)
+* ``core/depth_geometry.py``     depth bands, ground fit, horizon (phase 2)
+* ``core/relief_mesh.py``        solve <-> mesh round-trip (phase 2)
+* ``core/schema.py``             solve cloning (phase 2)
+* ``core/normals.py``            normal-field resampling (phase 2)
+* ``raw/metadata.py``            RAW hint precedence + provenance (phase 2)
+* ``comfy/view_prompts.py``      named-view vocabulary + parsers (phase 3)
+* ``comfy/node_reports.py``      report suffixes + atlas_project.json (phase 3)
+* ``comfy/fingerprints.py``      gate identity hashes (phase 3)
+
+Everything moved is RE-EXPORTED below, so ``from ...node_helpers import X``
+and the ``comfy.nodes`` façade both keep working unchanged. That contract is
+pinned by ``tests/test_facade_surface.py``.
 """
 from __future__ import annotations
 
@@ -26,6 +57,28 @@ from atlas_camera.exporters.blender_exporter import write_blender_scene_script
 from atlas_camera.exporters.nuke_exporter import write_nuke_native_script, write_nuke_projection_script
 from atlas_camera.exporters.review_package import build_review_package
 from atlas_camera.importers.usd_camera_loader import USDCameraLoader
+
+# Phase 3 (node_helpers_layering_plan.md): moved to their own modules;
+# re-exported so every importer and the comfy.nodes façade keep working.
+from atlas_camera.comfy.view_prompts import (  # noqa: F401
+    _AZIMUTH_VIEWS,
+    _ELEVATION_VIEWS,
+    _DISTANCE_VIEWS,
+    _named_view_orbit_delta,
+    _parse_view_prompt,
+    _parse_exact_view,
+)
+from atlas_camera.comfy.node_reports import (  # noqa: F401
+    _IDENTITY_COMMENT_PREFIX,
+    _scale_summary_suffix,
+    _health_summary_suffix,
+    _write_export_manifest,
+    _format_hole_fill_report,
+)
+from atlas_camera.comfy.fingerprints import (  # noqa: F401
+    _image_fingerprint,
+    _solve_fingerprint,
+)
 
 # Phase 2 (node_helpers_layering_plan.md): these are host-agnostic math and now
 # live in core/ and raw/. Re-exported here so every existing importer — and
@@ -182,72 +235,12 @@ def _save_image_tensor_to_tmp(image_tensor) -> str:
 
 
 
-def _scale_summary_suffix(solve) -> str:
-    """Export-summary warning when the solve's metric scale isn't verified.
-
-    Single source of truth is core.scene_health — never re-derive from
-    scale_source ad hoc. Empty string when the scale is trustworthy, so
-    healthy summaries are unchanged.
-    """
-    from atlas_camera.core.scene_health import scale_health
-    sh = scale_health(solve)
-    if sh.safe_to_export:
-        return ""
-    return f" | ⚠ scale {sh.status.upper()} — not verified"
 
 
-_IDENTITY_COMMENT_PREFIX = {".nk": "# ", ".py": "# ", ".ma": "// "}
 
 
-def _write_export_manifest(solve, output_dir, kind_paths, exporter: str) -> None:
-    """Write/merge atlas_project.json beside an export + embed the identity
-    hash as a leading comment in text artifacts that tolerate one (.nk/.py/.ma).
-
-    A manifest failure must NEVER fail the export — everything degrades to a
-    log line. Called with [(kind, path), ...]; empty paths are skipped.
-    """
-    import logging
-    try:
-        from atlas_camera.exporters.manifest import (
-            ManifestArtifact,
-            manifest_identity_hash,
-            write_project_manifest,
-        )
-        pairs = [(k, str(p)) for k, p in kind_paths if p]
-        if not pairs:
-            return
-        write_project_manifest(
-            solve, output_dir,
-            artifacts=[ManifestArtifact(k, p, exporter) for k, p in pairs])
-        ident = manifest_identity_hash(solve)
-        for _, p in pairs:
-            prefix = _IDENTITY_COMMENT_PREFIX.get(Path(p).suffix.lower())
-            if not prefix or not Path(p).is_file():
-                continue
-            try:
-                text = Path(p).read_text(encoding="utf-8")
-                marker = f"{prefix}atlas_project_identity: "
-                if text.startswith(marker):
-                    text = text.split("\n", 1)[-1]
-                Path(p).write_text(f"{marker}{ident}\n{text}", encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-    except Exception as exc:  # noqa: BLE001
-        logging.warning("atlas_project.json manifest skipped: %s", exc)
 
 
-def _health_summary_suffix(solve) -> str:
-    """Export-summary marker when a scene-health stamp records warn/fail.
-
-    Reads only the AtlasSceneHealthGate stamp (debug_metadata["scene_health"])
-    — an acknowledged warning must survive into every artifact's summary.
-    """
-    stamp = (getattr(solve, "debug_metadata", None) or {}).get("scene_health")
-    if not isinstance(stamp, dict) or stamp.get("level") in (None, "pass"):
-        return ""
-    n = len(stamp.get("flags") or [])
-    ack = "acknowledged" if stamp.get("acknowledged") else "UNACKNOWLEDGED"
-    return f" | 🩺 health: {str(stamp['level']).upper()} ({n} flag(s) {ack})"
 
 
 
@@ -370,42 +363,8 @@ def _decode_b64_to_tensor(b64str: str, width: int, height: int):
         return torch.zeros(1, height, width, 3, dtype=torch.float32)
 
 
-def _image_fingerprint(image) -> str:
-    """Short identity hash of an IMAGE tensor (16x-subsampled digest) — the
-    approval token for AtlasAssessImage's ▶ Continue: proceed only applies to
-    the image it was clicked FOR, so swapping the input photo re-arms the
-    assessment gate instead of sailing through a stale approval (the same
-    staleness class as 📐 Extract Angle's solve fingerprint)."""
-    import hashlib
-
-    arr = image[0, ::16, ::16].cpu().numpy()
-    h = hashlib.md5()
-    h.update(repr(arr.shape).encode())
-    h.update(arr.tobytes())
-    return h.hexdigest()[:16]
 
 
-def _solve_fingerprint(solve, source_image) -> str:
-    """Short identity hash of (recovered camera, source image) — stamped into
-    📐 Extract Angle's client_data.patch_angle by the frontend and validated
-    by AtlasBlockoutViewport.render(): an extraction from a DIFFERENT solve/
-    image than the current one is treated as not-extracted, so swapping the
-    input photo re-arms the patch-branch pause instead of silently running
-    the previous image's stale angle. Image identity uses a 16x-subsampled
-    tensor digest (full 4K hashing per execution is needless cost; a swapped
-    photo always changes the subsample)."""
-    import hashlib
-
-    h = hashlib.md5()
-    extr = solve.camera.extrinsics
-    intr = solve.camera.intrinsics
-    h.update(repr(extr.camera_view_matrix).encode())
-    h.update(repr((intr.fx_px, intr.fy_px, intr.cx_px, intr.cy_px,
-                   intr.image_width, intr.image_height)).encode())
-    arr = source_image[0, ::16, ::16].cpu().numpy()
-    h.update(repr(arr.shape).encode())
-    h.update(arr.tobytes())
-    return h.hexdigest()[:16]
 
 
 def _execution_blocker():
@@ -701,125 +660,14 @@ def _band_resolution_validity(setup, band_ref_mask):
 
 
 
-# Exact named views from ComfyUI-qwenmultiangle / the Multiple-Angles LoRA, shared
-# by every node that places a patch/target camera relative to a source photo
-# (`AtlasAddPatchView`, `AtlasOcclusionMask`) so the same choice is picked
-# everywhere and the two nodes' camera placement can never drift apart. Azimuth
-# is absolute about the subject's front; distance scales the orbit radius
-# (close-up pulls in).
-_AZIMUTH_VIEWS = {
-    "front view": 0.0, "front-right quarter view": 45.0, "right side view": 90.0,
-    "back-right quarter view": 135.0, "back view": 180.0, "back-left quarter view": 225.0,
-    "left side view": 270.0, "front-left quarter view": 315.0,
-}
-_ELEVATION_VIEWS = {
-    "low-angle shot": -30.0, "eye-level shot": 0.0, "elevated shot": 30.0, "high-angle shot": 60.0,
-}
-_DISTANCE_VIEWS = {"close-up": 0.6, "medium shot": 1.0, "wide shot": 1.8}
 
 
-def _parse_view_prompt(text):
-    """Parse a Multiple-Angles LoRA prompt — "<sks> [azimuth] [elevation]
-    [distance]", the exact string 📐 Extract Angle's `patch_prompt` output
-    emits — back into the three named views. Returns (azimuth, elevation,
-    distance) or None when the text doesn't match the vocabulary.
-
-    Exists because ComfyUI's backend REJECTS a STRING link into a combo-list
-    input ("received_type(STRING) mismatch input_type([...])" at prompt
-    validation), so the viewport's per-view STRING outputs can't wire into
-    the named-view dropdowns directly — instead one `patch_view_override`
-    STRING socket takes the whole prompt and this parses it. The names
-    contain spaces, so parsing is greedy prefix-matching against the known
-    vocabularies (longest first), which is unambiguous because the LoRA's
-    view names are a fixed, non-overlapping set.
-    """
-    rest = (text or "").strip()
-    if rest.startswith("<sks>"):
-        rest = rest[len("<sks>"):].strip()
-    parsed = []
-    for table in (_AZIMUTH_VIEWS, _ELEVATION_VIEWS, _DISTANCE_VIEWS):
-        match = next((name for name in sorted(table, key=len, reverse=True)
-                      if rest.startswith(name)), None)
-        if match is None:
-            return None
-        parsed.append(match)
-        rest = rest[len(match):].strip()
-    if rest:
-        return None
-    return tuple(parsed)
 
 
-def _parse_exact_view(text):
-    """Parse an EXACT orbit delta — "azimuth_deg=<f> elevation_deg=<f>
-    distance_scale=<f>", the string 📐 Extract Angle's `patch_exact` output
-    emits (raw measured floats, BEFORE named-view snapping). Returns
-    (d_azimuth_deg, d_elevation_deg, distance_scale) or None when the text
-    doesn't carry all three keys.
-
-    The render-conditioned patch loop needs this precision: a frame baked at
-    the artist's real orbit must be projected back from the IDENTICAL pose —
-    snapping to the LoRA's 45° azimuth grid would misregister the projection.
-    Key=value format (any order, comma or space separated) so the string is
-    self-documenting in Show Text nodes and export logs.
-    """
-    import re
-
-    vals = dict(re.findall(
-        r"(azimuth_deg|elevation_deg|distance_scale)\s*=\s*(-?\d+(?:\.\d+)?)",
-        text or ""))
-    if set(vals) != {"azimuth_deg", "elevation_deg", "distance_scale"}:
-        return None
-    return (float(vals["azimuth_deg"]), float(vals["elevation_deg"]),
-            float(vals["distance_scale"]))
 
 
-def _named_view_orbit_delta(
-    patch_azimuth_view, patch_elevation_view, patch_distance,
-    source_azimuth_view, source_elevation_view, flip_azimuth,
-):
-    """Resolve absolute (subject-relative) LoRA named views into the actual
-    orbit delta to apply to the recovered/source camera: ``patch - source``.
-
-    Returns ``(d_azimuth_deg, d_elevation_deg, distance_scale)``.
-    """
-    d_azimuth = _AZIMUTH_VIEWS[patch_azimuth_view] - _AZIMUTH_VIEWS[source_azimuth_view]
-    d_azimuth = ((d_azimuth + 180.0) % 360.0) - 180.0   # shortest way round
-    if flip_azimuth:
-        d_azimuth = -d_azimuth
-    d_elevation = _ELEVATION_VIEWS[patch_elevation_view] - _ELEVATION_VIEWS[source_elevation_view]
-    distance_scale = _DISTANCE_VIEWS[patch_distance]  # source assumed "medium shot"
-    return float(d_azimuth), float(d_elevation), float(distance_scale)
 
 
-def _format_hole_fill_report(enabled, n_filled, filled, faces_added, loops_left,
-                             max_hole_edges, near_m, far_m):
-    """Human-readable summary of an interior hole fill, for the export node.
-
-    The fill is export-only, so this and ``preview_solve`` are the ONLY ways an
-    artist learns what it did without a DCC round-trip — state the scope that
-    was actually applied, not just the counts, since a disappointing result is
-    usually a too-tight scope rather than a failed fill.
-    """
-    if not enabled:
-        return "🔧 interior hole fill: off"
-    lines = ["🔧 interior hole fill: ON"]
-    if n_filled:
-        lo, hi = min(filled), max(filled)
-        span = f"{lo} edges" if lo == hi else f"{lo}–{hi} edges"
-        lines.append(f"  filled {n_filled} hole{'s' if n_filled != 1 else ''} "
-                     f"({span}, +{faces_added} faces)")
-    else:
-        lines.append("  filled 0 holes — nothing matched the scope below")
-    # The outer frame is always one of these and must stay open by design.
-    lines.append(f"  still open: {loops_left} boundary loop"
-                 f"{'s' if loops_left != 1 else ''} (the outer frame is one)")
-    scope = [f"max_hole_edges={int(max_hole_edges)}"]
-    if near_m > 0.0 and far_m > 0.0:
-        scope.append(f"band box {near_m:g}–{far_m:g} m")
-    else:
-        scope.append("band box off (set BOTH bounds > 0)")
-    lines.append("  scope: " + ", ".join(scope))
-    return "\n".join(lines)
 
 
 

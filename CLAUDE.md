@@ -91,10 +91,44 @@ import X`, `comfy/__init__` (`NODE_CLASS_MAPPINGS` / `_ATLAS_BLOCKOUT_CACHE`), a
 saved workflows keep working unchanged. New code should import from the specific
 module.
 
-- `node_helpers.py` — leaf module: guarded optional-import shims, tensor/PIL
-  conversions, fingerprints, metadata/band/scale helpers, shared constants, and
-  the internal `_MetricDepthSetup` / `_MiniGraphBuilder`. Depends only on
-  `core`/exporters/importers (never on a node class), so it cannot cause a cycle.
+- `node_helpers.py` — the ComfyUI ADAPTER leaf: guarded optional-import shims,
+  tensor/PIL/base64 conversion, registry probes, the ExecutionBlocker shim, the
+  node-expansion graph builder, and per-execution caches. Depends only on
+  `core`/exporters/importers/raw (never on a node class), so it cannot cause a
+  cycle. **Reduced 1,591 → ~850 lines by the layering refactor (2026-07-20,
+  `docs/dev/node_helpers_layering_plan.md`)**, which moved the host-agnostic
+  math into `core/` where the architecture already said it belonged. Everything
+  moved is RE-EXPORTED here, so `from ...node_helpers import X` and the
+  `comfy.nodes` façade both keep working unchanged — a contract pinned by
+  `tests/test_facade_surface.py` (all 155 façade names; verified to FAIL when a
+  symbol is dropped, not merely to pass).
+  What stayed and why: `_metric_depth_and_validity` and
+  `_band_resolution_validity` never mention torch, but they call
+  `_resolve_exclude_mask`, which converts a ComfyUI MASK tensor — they are
+  TRANSITIVELY host-bound, and moving them would need a signature change rather
+  than code motion. `_ground_scale_cached` stays because memoisation is an
+  adapter concern, not math. (The first draft of the plan classified all three
+  as "pure" by checking direct references only; the dangling-ref check caught it
+  before any code moved.)
+- `viewport_payload.py` — the viewport WIRE PROTOCOL: `_extract_blockout_camera`
+  (231 lines on its own) plus `_fit_long_edge` / `_plate_ref_to_dict` /
+  `_output_profile_to_dict`. The serialization boundary between a solved scene
+  and `atlas_blockout.js`. Two conventions here are load-bearing: `fx/fy/cx/cy`
+  describe the PHOTO (read by `makeProjectionMaterial`) while
+  `render_fy`/`render_image_height` are separate keys for the VIEWING camera, so
+  a ShotCam cannot corrupt the projection; and `primary_depth_b64` is bit-packed
+  R/G/B = high/mid/low bytes of a 24-bit millimetre integer, unpacked as
+  `z_mm = R*65536 + G*256 + B` and requiring NEAREST sampling.
+- `view_prompts.py` — the Qwen named-view vocabulary (`_AZIMUTH_VIEWS` etc.) and
+  its STRING parsers. Module-level on purpose: `AtlasOcclusionMask` must place
+  its target camera identically to `AtlasAddPatchView`, and drift between the two
+  would silently misalign a precomputed mask from the patch geometry.
+- `node_reports.py` — on-node report suffixes (scale trust, scene health) and the
+  `atlas_project.json` manifest writer. Rule: a manifest failure must NEVER fail
+  an export.
+- `fingerprints.py` — content hashes behind every gate approval. Gate widgets
+  persist in a saved workflow, so approval must be scoped to WHAT was approved;
+  without this a new image sails through the previous image's approval.
 - `nodes_solve.py` — loading, registration, camera solving, scale/gravity/pitch/
   roll, assessment, solve/health gates, decompose. Imports `AtlasDebugReport`
   from `nodes_viewport` (the one cross-module class edge — a clean DAG, because
