@@ -115,15 +115,25 @@ usd = [
     "usd-core>=22.11",
 ]
 # Camera RAW input (AtlasLoadRAW 📷): rawpy bundles libraw (NEF/CR2/CR3/RAF/
-# ARW incl. X-Trans). opencv pinned <5 — the 5.x wheels dropped the EXR codec
-# the linear-sidecar write depends on (same constraint as the OCIO path; also
-# needs OPENCV_IO_ENABLE_OPENEXR=1 set before python starts).
+# ARW incl. X-Trans). opencv here is ONLY the lensfun undistort remap.
+#
+# The `<5` cap this used to carry is GONE, deliberately. It existed because the
+# scene-linear sidecar was written with opencv's EXR codec, which the 5.x wheels
+# do not build. That write now goes through OpenImageIO (see [oiio]), so nothing
+# in Atlas needs opencv's codecs at all — what remains is Canny/HoughLinesP for
+# vanishing points, `remap` for undistort, the debug overlay's drawing calls, and
+# LDR imread/imwrite. All verified working on opencv 5.0.0.
+#
+# Keeping the cap would have been actively harmful: three opencv distributions
+# share the `cv2` namespace and arrive as transitive deps of unrelated node packs
+# (mediapipe -> contrib, albumentations -> headless), so pinning `<5` forces a
+# DOWNGRADE fight in exactly the environments that are already fragile.
 raw = [
     "numpy>=1.24",
     "pillow>=10",
     "rawpy>=0.19",
     "exifread>=3.0",
-    "opencv-python>=4.8,<5",
+    "opencv-python>=4.8",
 ]
 # Lensfun geometry correction for AtlasLoadRAW's undistort toggle. A separate
 # extra deliberately: lensfunpy wheels can lag new Python/Windows releases,
