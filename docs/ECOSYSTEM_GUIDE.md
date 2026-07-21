@@ -549,10 +549,10 @@ For a full Nuke/Maya round-trip beyond just writing files, wire an
 needs a *linear* `IMAGE` tensor for further ComfyUI-side compositing, rather
 than only writing to disk.
 
-See `examples/atlas_camera_vfx_ocio_output_workflow.json` for the full,
-validated, ready-to-open graph (with an in-canvas Note explaining all of the
-above), or `examples/api_format/atlas_camera_vfx_ocio_output.api.json` for
-the scripted-testing equivalent.
+The asset-dependent OCIO/RAW workflow bundles are distributed separately from
+the three repository examples. Their current recipe is `AtlasLoadPlate` or
+`AtlasLoadRAW` → solve/attach → Output Desk → DCC exporters; Atlas's loaders
+use OpenImageIO/rawpy rather than an OpenCV EXR dependency.
 
 ---
 
@@ -563,30 +563,26 @@ ComfyUI's browser canvas for interactive, click-around testing:
 
 | File | Demonstrates |
 |---|---|
-| `atlas_input_quickstart_workflow.json` | The 4-node fastest path: LoadImage → 🎬 AtlasInput → Atlas Viewport. Instant relief by default; layers/VLM/sky/scope/inpaint all reachable by widgets on the one node. Start here. |
-| `atlas_camera_staged_master_workflow.json` | 🏗 The 5-stage layered master — the same logic with stages, gates (VLM + solve), KJ rails, SAM sky + per-band scope, per-band LaMa clean plates, per-layer debug previews, 🔍 debug JSON, and both DCC layer exports. |
-| `atlas_input_ocio_quickstart_workflow.json` | 🎨 The float VFX color-managed handoff (added 2026-07-13): `OCIORead` (ACEScg `.exr`) → `AtlasRegisterPlate` → `AtlasInput` → `AtlasAttachSourcePlate` → Nuke/Maya/USD exporters that read the original EXR at `ACEScg`. Needs ComfyUI-OCIO + opencv-python 4.x + `[usd]`. |
+| `atlas_input_quickstart_workflow.json` | Fast relief path: LoadImage → 🎬 AtlasInput → Atlas Viewport, with Output Desk and working `layers=0` SolveJSON/Nuke-relief/Maya-relief/Blender/USD/OBJ/GLB outputs plus optional Nuke/Maya layer packages. Native-SAM segmentation guidance; distinct relative export folders. Start here. |
+| `atlas_camera_staged_master_workflow.json` | 🏗 The five-layer master — five native ComfyUI subgraphs, VLM + solve gates, native SAM3 sky/scope, four cropped SDXL clean plates, per-layer previews, 🔍 debug JSON, and Nuke/Maya/Blender/USD exports. No LaMa, KJ rails, or rgthree dependency. |
+| `atlas_occlusion_cull_quickstart_workflow.json` | Controlled Project/✂ Occlude A/B: identical to the fast quickstart plus exactly `AtlasInput.depth → viewport.primary_depth`, so culling uses the metric map that produced the relief mesh. |
 
-**The shipping catalog was deliberately trimmed to these three on 2026-07-12
-(the OCIO quickstart added 2026-07-13)** (release focus). Every workflow this guide's earlier sections mention by name
+**The shipping catalog is deliberately pinned to these three** (release
+focus). Every workflow this guide's earlier sections mention by name
 (core projection, learned pipeline, VP-only, merge scenarios, hidden-geometry
 heroes, master DMP variants, OCIO/plate proofs, calibration tests) still
 exists in git history — recover any of them with
 `git show 10e600b:examples/<name>.json`. The narrative sections below are a
 chronicle and intentionally keep the historical file names.
 
-`examples/api_format/*.json` **(new)** — ComfyUI's raw **API format**
-(node-id → `{class_type, inputs}`), no layout data, **cannot be opened in the
-browser canvas** — POST directly to `/prompt`, or use the `comfyui` skill's
-`comfy_client.py`. All three were run end-to-end against a live ComfyUI
-instance and confirmed successful:
+Raw API-format snapshots are intentionally not shipped because node schemas
+move faster than frozen positional widgets. For headless verification, run a
+current UI workflow through the canonical live-schema converter:
 
-| File | Demonstrates |
-|---|---|
-| `atlas_camera_core_projection.api.json` | Scripted equivalent of the core 6-node workflow. |
-| `atlas_camera_learned_full_pipeline.api.json` | Scripted equivalent of the full 26-node pipeline, incl. USD export. |
-| `atlas_camera_multiangle_patch_selfcontained.api.json` | Fully self-contained multi-angle patch demo — generates its own source photo and novel-view patch (Qwen-Image-2512 + Qwen-Image-Edit-2511 + Multiple-Angles LoRA), no external image needed. |
-| `atlas_camera_vfx_ocio_output.api.json` | Scripted equivalent of the VFX/OCIO workflow. |
+`python tools/run_ui_workflow.py examples/atlas_input_quickstart_workflow.json --host 127.0.0.1:8188`
+
+Use `--convert-only <path>` when an API JSON is needed for inspection or a
+separate `/prompt` client.
 
 ---
 

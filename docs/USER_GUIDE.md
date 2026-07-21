@@ -478,36 +478,49 @@ speed; W/S and Q/E work as Unreal-style aliases). Keys only respond while the vi
 shortcuts are untouched. Display sharpness in fullscreen follows the
 `resolution` widget, same as resizing the node.
 
-`examples/atlas_input_quickstart_workflow.json` is now the fastest way in:
-LoadImage → **🎬 Atlas Input** → viewport. By default the first queue costs a
+`examples/atlas_input_quickstart_workflow.json` is the fastest way in:
+LoadImage → **🎬 Atlas Input** → viewport + Output Desk + shipping exporters.
+By default the first queue costs a
 solve, a shared depth pass, and one high-resolution relief mesh — image to
 projected 3D in seconds. The same node then grows into the master workflow's
 behaviors by widgets alone: `layers` (2–4 watertight depth bands), `use_vlm`
 (the 🧭 assessment configures prompts/geometry/bands per image), `sky` +
-`scope_prompts` (SAM segmentation), and `inpaint` (per-band LaMa clean plates
-with the ✂ crop quality chain). Missing node packs never error — the feature
-skips and the `report` output says so. Under the hood it expands into the
-real Atlas nodes at execution, so every step caches individually.
+`scope_prompts` (native SAM3 with semantic fallback), and the optional legacy
+fast `inpaint` mode (per-band LaMa clean plates with the ✂ crop quality chain).
+Missing optional packs never error — the feature skips and the `report` output
+says so. Under the hood it expands into real Atlas nodes at execution, so every
+step caches individually. At `layers=0` the graph writes Solve JSON, USD,
+Blender, textured Relief OBJ/GLB, and relief-based Nuke/Maya scenes. Separate
+Nuke/Maya layer packages activate at `layers>=1`. Color-aware handoffs inherit
+Output Desk metadata.
 
-## What's new (2026-07-11) — the staged master runs itself
+`examples/atlas_occlusion_cull_quickstart_workflow.json` is the matched A/B
+twin. It adds exactly `AtlasInput.depth → viewport.primary_depth`; queue it,
+enable Project, then toggle ✂ Occlude while orbiting. Do not replace that map
+with depth from a different model, crop, retopo pass, or camera. Keep
+`preview_expand=1.0` while projecting.
 
-The staged master (`examples/atlas_camera_staged_master_workflow.json`) is now
-the flagship: five fixed layers — a sky card plus far/bg/mid/fg depth bands —
-each its own bypasser-switched stage, with a local VLM configuring the rig per
-image on the first queue.
+## What's new (2026-07-21) — five native layer subgraphs + SDXL
+
+The staged master (`examples/atlas_camera_staged_master_workflow.json`) is the
+flagship: five fixed layers — a sky card plus far/bg/mid/fg depth bands — now
+live in five real ComfyUI subgraphs. The old LaMa nodes, KJ Set/Get rails,
+shared upscaler, and rgthree group bypasser are gone. Open a layer subgraph to
+edit its mask, geometry, and inpaint internals; the top-level graph stays a
+readable back-to-front chain.
 
 **The queue rhythm.** Queue 1 runs assessment → camera solve → preview in one
 go (`auto_continue` is on by default; the VLM is offloaded from VRAM right
 after, and the report proves it with a before/after number). Read the report's
 STAGED 5-LAYER PLAN — each layer marked + or − with its segmentation prompt,
 geometry type, and band range — check the camera in the preview, click
-✅ Approve Solve, and Queue 2 runs the enabled stages. Work far → near;
-finished stages re-queue for free.
+✅ Approve Solve, and Queue 2 runs the stack. Work far → near; Ctrl+B an absent
+depth-layer subgraph when the VLM marks it −. Finished stages cache for free.
 
 **The autopilot is visible and overridable.** Everything the VLM decides
-flows into real widget boxes (SAM prompts, per-band `geometry_override`,
-watertight `band_override` boundaries) and can be taken manual by unlinking a
-rail. Absent layers self-disarm: an empty prompt or a SAM no-match falls back
+flows directly into subgraph inputs (SAM prompts, per-band
+`geometry_override`, watertight `band_override` boundaries) and can be taken
+manual by unlinking that input. Absent scopes self-disarm: an empty prompt or a SAM no-match falls back
 to plain band membership automatically, and the 🎯 status line says so —
 "not every image has a sky" is now handled end-to-end.
 
@@ -518,10 +531,12 @@ desert floor with zero depth-noise bumps). The VLM recommends per band; your
 eye overrides.
 
 **Inpaint quality.** Every occluded band's clean plate runs
-✂ crop → LaMa + 4× upscale → ✂ stitch. The crop's `context_pad_px` is the
-per-band quality slider (the LaMa node internally works at 256² — cropping
-first is worth ~1.5× fill detail, and the upscaler takes the chain to a
-measured 6.5× over the old whole-frame path).
+✂ crop → native `AtlasSDXLInpaint` → ✂ feathered stitch. The official SDXL
+base checkpoint runs at its native 1024-pixel long edge with 32 DPM++ 2M
+Karras steps, fixed per-layer seeds, and perspective-preservation guidance.
+Only the generated mask is stitched back, with a 12-pixel feather. Prompts,
+seed, steps, CFG, and denoise are promoted to each subgraph's face; advanced
+crop/mask/geometry controls remain inside.
 
 **It debugs itself.** One 🎨 cutout preview per layer (the plate's pixels
 inside the matte, the layer's legend color outside), 🎯 scope statuses in

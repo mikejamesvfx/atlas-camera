@@ -631,7 +631,7 @@ def format_assessment_report(payload: dict[str, Any], *, provider: str = "",
     staged = payload.get("staged_layers") or {}
     if staged:
         bands = staged_layer_bands(payload)
-        lines += ["", "STAGED 5-LAYER PLAN  (SAM prompts are wired to the scope rows)"]
+        lines += ["", "STAGED 5-LAYER PLAN  (SAM prompts drive each layer scope)"]
         for key in STAGED_LAYER_KEYS:
             entry = staged.get(key) or {}
             if key == "sky":
@@ -647,11 +647,11 @@ def format_assessment_report(payload: dict[str, Any], *, provider: str = "",
                 if key != "sky" and geometry in STAGED_GEOMETRY_CHOICES:
                     prompt += f"  · geometry: {geometry}"
             else:
-                mark, prompt = "-", "absent — leave this stage bypassed"
+                mark, prompt = "-", "absent — bypass this layer when using the staged master"
             lines.append(f"  {mark} {key:4s} {band_label:8s} {prompt}")
             if entry.get("notes"):
                 lines.append(f"           {entry['notes']}")
-        lines.append("  Un-bypass the + rows' MaskComposite in SAM SCOPE (and each + stage's group).")
+        lines.append("  Staged master: keep + layer subgraphs active; Ctrl+B absent depth-layer subgraphs.")
 
     rs = payload.get("recommended_settings") or {}
     if rs:
@@ -677,6 +677,6 @@ def format_assessment_report(payload: dict[str, Any], *, provider: str = "",
         lines += ["", "WARNINGS"]
         lines += [f"  ! {w}" for w in warns]
 
-    lines += ["", "Apply the settings above, then click ▶ Continue Workflow (or toggle",
-              "`proceed`) and Queue — the graph is paused until you do."]
+    lines += ["", "Review the settings above. With auto_continue ON the same queue proceeds;",
+              "with it OFF, click ▶ Continue Workflow (or toggle `proceed`) and Queue."]
     return "\n".join(lines)
