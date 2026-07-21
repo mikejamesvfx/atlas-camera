@@ -31,6 +31,35 @@ def _require_numpy() -> Any:
     return np
 
 
+def _binomial_average_5x5(values: Any) -> Any:
+    """Return a separable 5x5 binomial average of a 2D scalar field.
+
+    The ``[1, 4, 6, 4, 1] / 16`` kernel is a compact Gaussian approximation
+    implemented with numpy only. Edge padding keeps the field size unchanged.
+    This is used for viewport coverage metadata, never vertex positions.
+    """
+    np = _require_numpy()
+    field = np.asarray(values, dtype=np.float32)
+    if field.ndim != 2:
+        raise ValueError("binomial averaging expects a 2D scalar field")
+    padded_x = np.pad(field, ((0, 0), (2, 2)), mode="edge")
+    horizontal = (
+        padded_x[:, :-4]
+        + 4.0 * padded_x[:, 1:-3]
+        + 6.0 * padded_x[:, 2:-2]
+        + 4.0 * padded_x[:, 3:-1]
+        + padded_x[:, 4:]
+    ) * (1.0 / 16.0)
+    padded_y = np.pad(horizontal, ((2, 2), (0, 0)), mode="edge")
+    return ((
+        padded_y[:-4, :]
+        + 4.0 * padded_y[1:-3, :]
+        + 6.0 * padded_y[2:-2, :]
+        + 4.0 * padded_y[3:-1, :]
+        + padded_y[4:, :]
+    ) * (1.0 / 16.0)).astype(np.float32)
+
+
 @dataclass(slots=True)
 class ReliefMesh:
     """Triangulated depth mesh in Atlas world space (Y-up, metres).
@@ -52,6 +81,14 @@ class ReliefMesh:
     ``hole_mask``), but the depth there is a smooth interpolation of the
     surrounding background, not data — surfaced so artists can QA what was
     invented. None when no fill was requested.
+
+    ``edge_risk`` (N,) float32 — a compact viewport-only coverage field on the
+    mesh vertices. 1.0 marks the kept side of a torn-quad or frame boundary;
+    two inward topology rings are binomial-averaged before the true boundary is
+    restored. The projection shader interpolates this prefiltered field into a
+    soft inward alpha feather, so deliberate silhouette tears do not rasterize
+    as a hard saw-tooth edge. Exporters ignore it: geometry, UVs and DCC topology
+    remain byte-for-byte unchanged.
     """
 
     vertices: Any
@@ -60,6 +97,7 @@ class ReliefMesh:
     stats: dict[str, Any] = field(default_factory=dict)
     hole_mask: Any = None
     filled_mask: Any = None
+    edge_risk: Any = None
 
 
 def estimate_ground_scale(
@@ -613,6 +651,52 @@ def build_relief_mesh(
         filled_mask_full = quad_filled[row_idx[:, None], col_idx[None, :]]
         hole_mask &= ~filled_mask_full
 
+    # Viewport coverage field for the *kept* side of topology tears. Fragment
+    # alpha alone cannot discover that a triangle edge is a mesh boundary, and
+    # ordinary MSAA only softens it by about one pixel — leaving the comb/saw
+    # silhouette visible during orbit. Mark vertices touching a torn quad (plus
+    # the outer frame), then propagate two diminishing rings on the structured
+    # grid. A compact 5x5 binomial prefilter averages single-grid spikes and
+    # staircase direction changes *before* GLSL interpolates/feathers the field.
+    # Restoring the literal boundary to 1.0 guarantees zero coverage at the real
+    # open edge; clipping the average back to ring_two avoids widening the fade.
+    # This costs one float per compacted vertex and does not alter faces,
+    # positions, UVs, the full-resolution hole mask, or any exported mesh.
+    boundary = np.zeros((nr, nc), dtype=bool)
+    boundary[:-1, :-1] |= quad_hole
+    boundary[:-1, 1:] |= quad_hole
+    boundary[1:, :-1] |= quad_hole
+    boundary[1:, 1:] |= quad_hole
+    boundary[0, :] = True
+    boundary[-1, :] = True
+    boundary[:, 0] = True
+    boundary[:, -1] = True
+
+    def _grow_one_ring(mask):
+        grown = mask.copy()
+        grown[1:, :] |= mask[:-1, :]
+        grown[:-1, :] |= mask[1:, :]
+        grown[:, 1:] |= mask[:, :-1]
+        grown[:, :-1] |= mask[:, 1:]
+        grown[1:, 1:] |= mask[:-1, :-1]
+        grown[1:, :-1] |= mask[:-1, 1:]
+        grown[:-1, 1:] |= mask[1:, :-1]
+        grown[:-1, :-1] |= mask[1:, 1:]
+        return grown
+
+    ring_one = _grow_one_ring(boundary)
+    ring_two = _grow_one_ring(ring_one)
+    raw_edge_risk = np.zeros((nr, nc), dtype=np.float32)
+    raw_edge_risk[ring_two] = 0.15
+    raw_edge_risk[ring_one] = 0.45
+    raw_edge_risk[boundary] = 1.0
+    averaged_edge_risk = _binomial_average_5x5(raw_edge_risk)
+    edge_risk_grid = (
+        0.25 * raw_edge_risk + 0.75 * averaged_edge_risk
+    ).astype(np.float32)
+    edge_risk_grid[~ring_two] = 0.0
+    edge_risk_grid[boundary] = 1.0
+
     verts = pts.reshape(-1, 3)
     uvs_flat = uvs.reshape(-1, 2)
 
@@ -621,6 +705,7 @@ def build_relief_mesh(
     faces = remap.reshape(-1, 3).astype(np.int32)
     verts = verts[used].astype(np.float32)
     uvs_flat = uvs_flat[used].astype(np.float32)
+    edge_risk = edge_risk_grid.reshape(-1)[used].astype(np.float32)
 
     n_quads = 2 * (nr - 1) * (nc - 1)
     stats = {
@@ -635,7 +720,8 @@ def build_relief_mesh(
         "n_filled_cells": int(filled_grid.sum()) if filled_grid is not None else 0,
     }
     return ReliefMesh(vertices=verts, faces=faces, uvs=uvs_flat, stats=stats,
-                      hole_mask=hole_mask, filled_mask=filled_mask_full)
+                      hole_mask=hole_mask, filled_mask=filled_mask_full,
+                      edge_risk=edge_risk)
 
 
 def build_sky_dome_mesh(

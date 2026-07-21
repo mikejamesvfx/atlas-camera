@@ -1357,6 +1357,9 @@ def serialize_proxy_geometry(
             entry["vertices"] = md.get("vertices", [])
             entry["faces"] = md.get("faces", [])
             entry["uvs"] = md.get("uvs", [])
+            # Per-vertex linear coverage risk for viewport-only soft tear edges.
+            # Exporters never consume it; positions/faces/UVs remain unchanged.
+            entry["edge_risk"] = md.get("edge_risk", [])
         out.append(entry)
     return out
 
@@ -1375,6 +1378,9 @@ def relief_mesh_primitive(mesh: Any, *, name: str = "projection_relief_mesh") ->
     verts = np.round(mesh.vertices.reshape(-1).astype(np.float64), 3).tolist()
     faces = mesh.faces.reshape(-1).astype(np.int64).tolist()
     uvs = np.round(mesh.uvs.reshape(-1).astype(np.float64), 4).tolist()
+    edge_risk_array = getattr(mesh, "edge_risk", None)
+    edge_risk = (np.round(np.asarray(edge_risk_array).reshape(-1), 3).tolist()
+                 if edge_risk_array is not None else [])
     return AtlasProxyPrimitive(
         name=name,
         primitive_type="mesh",
@@ -1392,5 +1398,6 @@ def relief_mesh_primitive(mesh: Any, *, name: str = "projection_relief_mesh") ->
             "vertices": verts,
             "faces": faces,
             "uvs": uvs,
+            "edge_risk": edge_risk,
         },
     )

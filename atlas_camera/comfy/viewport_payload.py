@@ -20,6 +20,9 @@ are load-bearing and easy to break from a distance:
   millimetre integer. `atlas_blockout.js` unpacks it as
   ``z_mm = R*65536 + G*256 + B``; the two are a contract, and the texture must
   be sampled NEAREST because interpolating the bytes yields garbage distances.
+  The transport map is capped at a 2048px long edge (still above the default
+  viewport render) and carries its own width/height; shipping a full 7K RAW
+  map as high-entropy RGB otherwise produces a ~34MB data URI for one toggle.
 
 This module stays in `comfy/` deliberately — it is adapter code by definition,
 not host-agnostic math.
@@ -40,6 +43,31 @@ from atlas_camera.comfy.node_helpers import (
     _require_numpy,
     _require_pil,
 )
+
+_PRIMARY_DEPTH_MAX_EDGE = 2048
+
+
+def _decimate_metric_depth_for_viewport(metric_depth, max_edge: int = _PRIMARY_DEPTH_MAX_EDGE):
+    """Nearest-sample a metric depth map for browser transport.
+
+    Packed RGB depth cannot use ordinary image interpolation: interpolating
+    the three bytes independently corrupts the integer, while averaging metric
+    depth across a discontinuity invents a false surface.  A deterministic
+    nearest grid preserves exact millimetre samples and sharp jumps.
+    """
+    np = _require_numpy()
+    arr = np.asarray(metric_depth)
+    if arr.ndim != 2:
+        raise ValueError("metric depth must be a 2D array")
+    h, w = arr.shape
+    if max(h, w) <= int(max_edge):
+        return arr
+    scale = float(max_edge) / float(max(h, w))
+    out_h = max(1, int(round(h * scale)))
+    out_w = max(1, int(round(w * scale)))
+    ys = np.rint(np.linspace(0, h - 1, out_h)).astype(np.int64)
+    xs = np.rint(np.linspace(0, w - 1, out_w)).astype(np.int64)
+    return arr[ys[:, None], xs[None, :]]
 
 def _fit_long_edge(width: int, height: int, long_edge: int, multiple: int = 8) -> tuple[int, int]:
     """Scale (width, height) so its longest side is ``long_edge``, rounded to ``multiple``."""
@@ -214,6 +242,8 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
     }
 
     primary_depth_b64 = ""
+    primary_depth_width = 0
+    primary_depth_height = 0
     if primary_depth is not None:
         # Metric depth for the viewport's ✂ Occlude cull, packed into a 24-bit
         # RGB PNG in MILLIMETRES: R = high byte, G = mid, B = low, clipped to
@@ -241,6 +271,8 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
                 fx=fx, fy=fy, cx=cx, cy=cy,
                 horizon_y=_horizon_y_from_solve(solve))
             primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
+            primary_metric_map = _decimate_metric_depth_for_viewport(primary_metric_map)
+            primary_depth_height, primary_depth_width = primary_metric_map.shape
 
             depth_mm = np.clip(primary_metric_map * 1000.0, 0, 0xFFFFFF).astype(np.uint32)
             rgb_depth = np.zeros(depth_mm.shape + (3,), dtype=np.uint8)
@@ -295,11 +327,14 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         "horizon_line": horizon_line,
         "camera_meta": camera_meta,
         "primary_depth_b64": primary_depth_b64,
+        "primary_depth_width": primary_depth_width,
+        "primary_depth_height": primary_depth_height,
     }
 
 __all__ = [
     "_fit_long_edge",
     "_plate_ref_to_dict",
     "_output_profile_to_dict",
+    "_decimate_metric_depth_for_viewport",
     "_extract_blockout_camera",
 ]

@@ -173,7 +173,9 @@ class AtlasBlockoutViewport:
             },
             "optional": {
                 "primary_depth": ("ATLAS_DEPTH_MAP", {
-                    "tooltip": "Optional depth map matching the source image. "
+                    "tooltip": "Optional depth map matching the source image AND the depth object "
+                               "used to derive the displayed relief mesh. Do not pair a DCC retopo "
+                               "preview regenerated with another depth model. "
                                "Used by the viewport to power the ray-traced "
                                "occlusion culling feature (✂ Occlude)."}),
                 "preview_expand": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 5.0, "step": 0.05,

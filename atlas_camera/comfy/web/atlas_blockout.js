@@ -535,10 +535,13 @@ const PROJECTION_VERTEX_SHADER = `
   varying float vCamZ;
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
+  attribute float atlasEdgeRisk;
+  varying float vAtlasEdgeRisk;
   void main() {
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vWorldPos = worldPos.xyz;
     vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    vAtlasEdgeRisk = atlasEdgeRisk;
     vec4 cam = uAtlasViewMatrix * worldPos;
     vCamZ = cam.z;
     float depth = -cam.z;   // Atlas camera looks along -Z
@@ -596,12 +599,17 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform float uHasNormalMap;
   uniform sampler2D uPrimaryDepth;
   uniform float uHasPrimaryDepth;
+  uniform vec2 uPrimaryDepthSize;
   uniform float uOccludePrimary;
   uniform float uOccludeBias;
+  uniform float uOccludeFeather;
+  uniform float uStretchStart;
+  uniform float uStretchEnd;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
+  varying float vAtlasEdgeRisk;
   float atlasRelightTerm(vec3 lightPos, vec3 lightColor, float intensity, vec3 worldPos, vec3 worldNormal) {
     if (intensity <= 0.0) return 0.0;
     vec3 toLight = lightPos - worldPos;
@@ -656,27 +664,139 @@ const PROJECTION_FRAGMENT_SHADER = `
   vec3 atlasLinearToSRGB(vec3 value) {
     return mix(pow(value, vec3(0.41666)) * 1.055 - vec3(0.055), value * 12.92, vec3(lessThanEqual(value, vec3(0.0031308))));
   }
+  float atlasUnpackMetricDepth(vec2 depthUv) {
+    vec3 pCol = texture2D(uPrimaryDepth, depthUv).rgb;
+    float r = floor(pCol.r * 255.0 + 0.5);
+    float g = floor(pCol.g * 255.0 + 0.5);
+    float b = floor(pCol.b * 255.0 + 0.5);
+    return (r * 65536.0 + g * 256.0 + b) / 1000.0;
+  }
+  float atlasRelativeDepthJump(float centerZ, float sampleZ) {
+    if (sampleZ <= 0.0005) return 0.0;
+    return abs(sampleZ - centerZ) / max(min(sampleZ, centerZ), 0.001);
+  }
   void main() {
     if (vCamZ >= 0.0) discard;                    // behind the projector camera
     vec2 uv = vImagePx / uImageSize;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+    float coverage = 1.0;
+    float depthEdge = 0.0;
+    vec2 texelDx = dFdx(uv) * uImageSize;
+    vec2 texelDy = dFdy(uv) * uImageSize;
+    float majorFootprint = max(length(texelDx), length(texelDy));
     if (uOccludePrimary > 0.5 && uHasPrimaryDepth > 0.5) {
-      vec3 pCol = texture2D(uPrimaryDepth, uv).rgb;
-      float r = floor(pCol.r * 255.0 + 0.5);
-      float g = floor(pCol.g * 255.0 + 0.5);
-      float b = floor(pCol.b * 255.0 + 0.5);
-      float z_mm = r * 65536.0 + g * 256.0 + b;
-      float storedZ = z_mm / 1000.0;
-      if (-vCamZ > storedZ + uOccludeBias) discard;
+      float storedZ = atlasUnpackMetricDepth(uv);
+      // Only trust a shadow comparison beside a REAL discontinuity in the
+      // primary depth map.  A separately retopologized/exported mesh may have
+      // been regenerated with another depth model; treating that broad model
+      // disagreement as occlusion erased entire front-facing facades.  The
+      // multi-scale neighbour jump turns this into the intended edge operation.
+      // Zero is the packer's invalid/no-depth sentinel and never occludes.
+      if (storedZ > 0.0005) {
+        vec2 depthTexel = 1.0 / max(uPrimaryDepthSize, vec2(1.0));
+        vec2 depthDx = dFdx(uv) * uPrimaryDepthSize;
+        vec2 depthDy = dFdy(uv) * uPrimaryDepthSize;
+        float depthProbeRadius = clamp(
+          max(length(depthDx), length(depthDy)), 1.0, 4.0);
+        vec2 wideDepthTexel = depthTexel * depthProbeRadius;
+        float zL = atlasUnpackMetricDepth(uv - vec2(depthTexel.x, 0.0));
+        float zR = atlasUnpackMetricDepth(uv + vec2(depthTexel.x, 0.0));
+        float zU = atlasUnpackMetricDepth(uv - vec2(0.0, depthTexel.y));
+        float zD = atlasUnpackMetricDepth(uv + vec2(0.0, depthTexel.y));
+        float zWL = atlasUnpackMetricDepth(uv - vec2(wideDepthTexel.x, 0.0));
+        float zWR = atlasUnpackMetricDepth(uv + vec2(wideDepthTexel.x, 0.0));
+        float zWU = atlasUnpackMetricDepth(uv - vec2(0.0, wideDepthTexel.y));
+        float zWD = atlasUnpackMetricDepth(uv + vec2(0.0, wideDepthTexel.y));
+        float maxDepthJump = 0.0;
+        maxDepthJump = max(maxDepthJump, atlasRelativeDepthJump(storedZ, zL));
+        maxDepthJump = max(maxDepthJump, atlasRelativeDepthJump(storedZ, zR));
+        maxDepthJump = max(maxDepthJump, atlasRelativeDepthJump(storedZ, zU));
+        maxDepthJump = max(maxDepthJump, atlasRelativeDepthJump(storedZ, zD));
+        maxDepthJump = max(maxDepthJump, atlasRelativeDepthJump(storedZ, zWL));
+        maxDepthJump = max(maxDepthJump, atlasRelativeDepthJump(storedZ, zWR));
+        maxDepthJump = max(maxDepthJump, atlasRelativeDepthJump(storedZ, zWU));
+        maxDepthJump = max(maxDepthJump, atlasRelativeDepthJump(storedZ, zWD));
+        float relativeDepthJump = maxDepthJump;
+        depthEdge = smoothstep(0.015, 0.08, relativeDepthJump);
+
+        // A curtain triangle straddles the depth step. On the foreground side
+        // its interpolated depth lies BEHIND the stored surface; on the
+        // background side it lies IN FRONT. A one-sided "behind" test therefore
+        // always leaves half of the rubber sheet. Compare the absolute relative
+        // mismatch, still gated to real multi-scale depth discontinuities, and
+        // resolve it through derivative-filtered linear coverage.
+        float relativeDepthMismatch = abs(-vCamZ - storedZ) / max(storedZ, 0.001);
+        float compareFeather = max(
+          uOccludeFeather, 1.5 * fwidth(relativeDepthMismatch));
+        float depthMismatch = smoothstep(
+          uOccludeBias, uOccludeBias + compareFeather, relativeDepthMismatch);
+        coverage *= 1.0 - depthEdge * depthMismatch;
+      }
     }
     // Per-pixel edge matte (ProjectionSource.mask_b64) — the classic DMP move:
     // geometry silhouettes tear at grid-quad resolution (blocky staircases),
     // so the full-resolution matte cuts the TRUE edge instead. Sampled at the
     // same projected pixel as the photo itself, so it needs no separate UVs.
-    if (uHasMatte > 0.5 && texture2D(uMatte, uv).r < 0.5) discard;
+    if (uHasMatte > 0.5) {
+      float matte = texture2D(uMatte, uv).r;
+      if (uOccludePrimary > 0.5) {
+        // Mattes are linear DATA. Filter only their coverage; never pass them
+        // through the RGB display transform below. fwidth gives a roughly
+        // one-pixel transition at any viewport scale.
+        float matteFeather = clamp(0.5 * fwidth(matte), 0.04, 0.25);
+        coverage *= smoothstep(0.5 - matteFeather, 0.5 + matteFeather, matte);
+      } else if (matte < 0.5) {
+        discard;
+      }
+    }
     vec3 toCam = normalize(uCamPos - vWorldPos);
     float facing = abs(dot(normalize(vWorldNormal), toCam));
-    if (facing < uFacingThreshold) discard;       // too grazing for this projector
+    if (uOccludePrimary > 0.5) {
+      // The backend marks the kept side of every deliberately torn quad and
+      // supplies two diminishing inward rings. Interpolation turns that exact
+      // topology boundary into a several-pixel alpha roll-off even without a
+      // primary depth texture (the reference workflow case). This erodes into
+      // existing geometry only; it never invents pixels outside the mesh.
+      float topologyRisk = clamp(vAtlasEdgeRisk, 0.0, 1.0);
+      // Coverage dilation: at/near Camera View the source texel footprint is
+      // compact, so keep the existing STRAIGHT RGB opaque farther toward the
+      // true mesh edge before beginning the inward feather. This cancels the
+      // apparent boundary growth caused by a symmetric fade. As orbiting makes
+      // the footprint large, relax the dilation so the wider tear-suppression
+      // feather returns. A fragment shader cannot paint outside missing
+      // triangles; this deliberately expands coverage only over fragments that
+      // already exist and therefore never samples/bleeds neighbouring RGB.
+      float topologyStretch = smoothstep(2.0, 8.0, majorFootprint);
+      float topologyDilate = mix(0.38, 0.08, topologyStretch);
+      float topologyCoverage = 1.0 - smoothstep(
+        topologyDilate, 1.0, topologyRisk);
+      coverage *= topologyCoverage;
+
+      float facingFeather = clamp(1.5 * fwidth(facing), 0.01, 0.12);
+      coverage *= smoothstep(uFacingThreshold - facingFeather,
+                             uFacingThreshold + facingFeather, facing);
+
+      // Fade only a LARGE source-texel footprint that is also grazing or sits
+      // on a true depth edge.  The old major/minor anisotropy ratio classified
+      // ordinary perspective foreshortening on broad building faces as a tear,
+      // producing the large triangular holes seen in the regression captures.
+      float footprintFeather = clamp(1.5 * fwidth(majorFootprint), 0.5, 4.0);
+      float footprintRisk = smoothstep(uStretchStart - footprintFeather,
+                                       uStretchEnd + footprintFeather,
+                                       majorFootprint);
+      float grazingRisk = 1.0 - smoothstep(0.06, 0.30, facing);
+      float edgeRisk = max(depthEdge, grazingRisk);
+      coverage *= 1.0 - footprintRisk * edgeRisk;
+
+      // A projected plate edge is coverage too. Resolve it over about one
+      // screen pixel instead of exposing a hard staircase at the UV border.
+      float frameEdge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+      float frameFeather = max(1.5 * fwidth(frameEdge), 1.0 / max(uImageSize.x, uImageSize.y));
+      coverage *= smoothstep(0.0, frameFeather, frameEdge);
+
+    } else if (facing < uFacingThreshold) {
+      discard;                                    // too grazing for this projector
+    }
     vec4 col = texture2D(uTexture, uv);
     // Relight normal: the model's predicted WORLD normal (uNormalMap, already
     // aligned to the recovered frame — image-resolution, cleaner than the coarse
@@ -693,6 +813,12 @@ const PROJECTION_FRAGMENT_SHADER = `
       + uLight1Color * atlasRelightTerm(uLight1Pos, uLight1Color, uLight1Intensity, vWorldPos, N)
       + uLight2Color * atlasRelightTerm(uLight2Pos, uLight2Color, uLight2Intensity, vWorldPos, N)
       + uLight3Color * atlasRelightTerm(uLight3Pos, uLight3Color, uLight3Intensity, vWorldPos, N);
+    // OCIO/associated-alpha rule: colour transforms operate on STRAIGHT RGB;
+    // alpha/coverage is linear data and is not transformed. If RGB ever arrives
+    // premultiplied it must be unpremultiplied before this line. The current
+    // projection textures are straight; Three.js uses straight-alpha blending
+    // below (premultipliedAlpha:false) and multiplies RGB exactly once at the
+    // blend boundary. Multiplying RGB by coverage here would double-premultiply.
     vec3 outColor = atlasLinearToSRGB(clamp(col.rgb * relight, 0.0, 1.0));
     // 🩻 hidden-geometry provenance overlay (debug): tint the surface region
     // whose depth was SUBSTITUTED by AtlasPredictHiddenGeometry (the node's
@@ -710,7 +836,13 @@ const PROJECTION_FRAGMENT_SHADER = `
     if (uLayerDebug > 0.5) {
       outColor = mix(outColor, uLayerTint, 0.65);
     }
-    gl_FragColor = vec4(outColor, col.a * uOpacity);
+    // WebGL's sRGB texture decode and atlasLinearToSRGB affect RGB only. Combine
+    // source alpha with the independently filtered linear coverage, then hand
+    // straight RGB + straight alpha to the fixed-function blend stage. A tiny
+    // fully-hidden cutoff avoids writing depth for numerically-zero fragments.
+    float finalAlpha = clamp(col.a * uOpacity * coverage, 0.0, 1.0);
+    if (finalAlpha <= (1.0 / 255.0)) discard;
+    gl_FragColor = vec4(outColor, finalAlpha);
   }
 `;
 
@@ -721,7 +853,7 @@ const PROJECTION_FRAGMENT_SHADER = `
 // two patches) by actual depth; these two mechanisms only disambiguate the
 // band where depth is coincident or near-coincident (independently-derived
 // meshes rarely align exactly):
-//   - renderOrder makes EXACT depth ties deterministic (Three sorts opaque
+//   - renderOrder makes EXACT depth ties deterministic (Three sorts
 //     renderables by renderOrder before the per-object depth test) instead
 //     of scene-graph/load-order-dependent.
 //   - polygonOffsetUnits biases the effective depth-buffer value by a small,
@@ -798,8 +930,18 @@ function makeProjectionMaterial(data, texture, opts) {
       uHiddenTint: { value: options.hiddenTint || new THREE.Color(1.0, 0.15, 0.15) },
       uPrimaryDepth: { value: options.primaryDepthTexture || null },
       uHasPrimaryDepth: { value: options.primaryDepthTexture ? 1.0 : 0.0 },
+      uPrimaryDepthSize: { value: new THREE.Vector2(
+        data.primary_depth_width || data.image_width || 1,
+        data.primary_depth_height || data.image_height || 1,
+      ) },
       uOccludePrimary: { value: 0 },
-      uOccludeBias: { value: 0.1 },
+      // Relative-depth units: reject only after 1.5% behind the stored surface,
+      // feathering over another 2%.  The depth-edge gate in the shader is the
+      // primary safety boundary; these values tune its soft alpha roll-off.
+      uOccludeBias: { value: 0.015 },
+      uOccludeFeather: { value: 0.02 },
+      uStretchStart: { value: 4.0 },
+      uStretchEnd: { value: 16.0 },
       // 🎨 layer-debug identity color (fixed per source at build; toggle is
       // uLayerDebug, live-synced like uDebugHidden/the light uniforms).
       uLayerDebug: { value: 0 },
@@ -830,7 +972,8 @@ function makeProjectionMaterial(data, texture, opts) {
     vertexShader: PROJECTION_VERTEX_SHADER,
     fragmentShader: PROJECTION_FRAGMENT_SHADER,
     side: THREE.DoubleSide,
-    transparent: false,
+    transparent: true,
+    premultipliedAlpha: false,
     depthWrite: true,
     depthTest: true,
   });
@@ -902,6 +1045,19 @@ function loadProjectionTexture(data, cb) {
   });
 }
 
+// Every projection geometry supplies the custom shader attribute. Relief
+// meshes receive Python's compact per-vertex torn-boundary field; ordinary
+// proxy primitives receive zeros and remain completely unaffected.
+function attachAtlasEdgeRisk(geo, entry) {
+  const count = geo?.attributes?.position?.count || 0;
+  const source = entry?.edge_risk;
+  const values = Array.isArray(source) && source.length === count
+    ? new Float32Array(source)
+    : new Float32Array(count);
+  geo.setAttribute("atlasEdgeRisk", new THREE.BufferAttribute(values, 1));
+  return geo;
+}
+
 // Build meshes for the Python-derived projection proxies (ground/walls/boxes/
 // cylinders/backdrop). Transforms arrive as row-major 16-float arrays — the
 // same convention THREE.Matrix4.set() takes.
@@ -944,6 +1100,7 @@ function buildDerivedProxies(scene, data) {
     } else {
       geo = new THREE.PlaneGeometry(d[0], d[1]);
     }
+    attachAtlasEdgeRisk(geo, e);
     const mat = new THREE.MeshStandardMaterial({
       color: 0x9a9a9a, roughness: 0.85, side: THREE.DoubleSide,
     });
@@ -966,20 +1123,24 @@ function buildDerivedProxies(scene, data) {
 // Shared by the primary derived proxies and the multi-angle patch sources.
 function proxyEntryToGeometry(e) {
   const d = e.dimensions || [1, 1, 1];
+  let geo;
   if (e.type === "mesh") {
     if (!e.vertices?.length || !e.faces?.length) return null;
-    const geo = new THREE.BufferGeometry();
+    geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(e.vertices), 3));
     if (e.uvs?.length) {
       geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(e.uvs), 2));
     }
     geo.setIndex(new THREE.BufferAttribute(new Uint32Array(e.faces), 1));
     geo.computeVertexNormals();
-    return geo;
+  } else if (e.type === "box") {
+    geo = new THREE.BoxGeometry(d[0], d[1], d[2]);
+  } else if (e.type === "cylinder") {
+    geo = new THREE.CylinderGeometry(d[0] / 2, d[0] / 2, d[1], 24);
+  } else {
+    geo = new THREE.PlaneGeometry(d[0], d[1]);
   }
-  if (e.type === "box") return new THREE.BoxGeometry(d[0], d[1], d[2]);
-  if (e.type === "cylinder") return new THREE.CylinderGeometry(d[0] / 2, d[0] / 2, d[1], 24);
-  return new THREE.PlaneGeometry(d[0], d[1]);
+  return attachAtlasEdgeRisk(geo, e);
 }
 
 // Build the multi-angle patch sources (AtlasAddPatchView). Each source is its
@@ -1481,7 +1642,7 @@ function buildNodeUI(node, containerEl) {
   // are rebuilt on every execution, so a set-once approach would go stale).
   let debugHiddenOn = false;
   let occludePrimaryOn = false;
-  let occludeBias = 0.1;
+  let occludeBias = 0.015;
   let layerDebugOn = false; // 🎨 per-layer identity tint toggle
   let bumpStrength = 0;     // 💡 Lights panel "Detail" — photo-luminance relight bump
   let bumpScale = 8;        // 💡 Lights panel "Scale" — bump sampling offset (texels)
@@ -1868,10 +2029,10 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(dbgHiddenBtn);
 
-  // ✂ Occlude ray-traced shadow map cull
+  // ✂ Occlude ray-traced shadow map + filtered projection-edge cull
   const dbgOccludeBtn = document.createElement("button");
   dbgOccludeBtn.textContent = "✂ Occlude";
-  dbgOccludeBtn.title = "Cull projection onto occluded geometry using the primary depth map";
+  dbgOccludeBtn.title = "Filter occluded, grazing and matte-edge projection texels using the primary depth map";
   dbgOccludeBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
   dbgOccludeBtn.onclick = () => {
     occludePrimaryOn = !occludePrimaryOn;
@@ -3579,8 +3740,13 @@ function buildNodeUI(node, containerEl) {
       
       if (data.primary_depth_b64) {
         new THREE.TextureLoader().load(data.primary_depth_b64, (dTex) => {
+          // Packed metric depth is DATA, not colour. It shares the projection
+          // shader's top-left UV convention and must never be sRGB/OCIO decoded.
+          dTex.flipY = false;
+          dTex.colorSpace = THREE.NoColorSpace;
           dTex.magFilter = THREE.NearestFilter;
           dTex.minFilter = THREE.NearestFilter;
+          dTex.needsUpdate = true;
           buildPrimaryMat(dTex);
         });
       } else {

@@ -47,6 +47,8 @@ const FRAGMENT_SHADER = `
     vec2 uv = vImagePx / uImageSize;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
     vec4 col = texture2D(uTexture, uv);
+    // Texture colour management decodes/encodes RGB only. Alpha remains
+    // unassociated linear data and is not passed through a colour transform.
     gl_FragColor = vec4(col.rgb, col.a * uOpacity);
   }
 `;
@@ -142,6 +144,10 @@ function createProjectionMaterial(
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
     transparent: true,
+    // NormalBlending expects straight RGB here. If an associated plate is ever
+    // accepted, unpremultiply before its RGB transform and re-premultiply only
+    // at the blend boundary; never colour-transform alpha.
+    premultipliedAlpha: false,
     side: THREE.DoubleSide,
     depthWrite: false,
     depthTest: true
@@ -241,6 +247,8 @@ export function addDepthOverlay(
     vertexShader: DEPTH_VERTEX_SHADER,
     fragmentShader: DEPTH_FRAGMENT_SHADER,
     transparent: true,
+    // Procedural heatmap RGB + independent linear opacity (straight alpha).
+    premultipliedAlpha: false,
     side: THREE.DoubleSide,
     depthWrite: false,
     depthTest: true
