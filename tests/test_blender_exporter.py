@@ -1,5 +1,6 @@
 import ast
 
+from atlas_camera.core.schema import AtlasProxyPrimitive
 from atlas_camera.exporters.blender_exporter import write_blender_scene_script
 
 
@@ -64,3 +65,23 @@ def test_blender_exporter_applies_world_matrix_z_up(tmp_path, make_atlas_solve):
     assert "1.0" in script
     assert "-3.0" in script
     assert "2.0" in script
+
+
+def test_blender_exporter_embeds_retopologized_relief_mesh(tmp_path, make_atlas_solve):
+    solve = make_atlas_solve()
+    solve.projection_scene.proxy_geometry.append(AtlasProxyPrimitive(
+        name="projection_relief_mesh",
+        primitive_type="mesh",
+        metadata={
+            "vertices": [0, 0, 1, 1, 0, 1, 0, 1, 1],
+            "faces": [0, 1, 2],
+            "uvs": [0, 0, 1, 0, 0, 1],
+        },
+    ))
+    script = write_blender_scene_script(solve, tmp_path / "blender.py").read_text(encoding="utf-8")
+    ast.parse(script)
+    assert 'relief_data.from_pydata' in script
+    assert 'atlas_retopologized_relief' in script
+    # Atlas (x, y, z) -> Blender (x, -z, y).
+    assert '(0.0, -1.0, 0.0)' in script
+    assert 'AtlasProjectionUV' in script

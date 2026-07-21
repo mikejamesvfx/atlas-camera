@@ -16,11 +16,14 @@ pin the round-trip. The smooth path needs only ``trimesh`` (already a dep).
 
 import numpy as np
 import pytest
+import sys
+from types import SimpleNamespace
 
 from atlas_camera.core.mesh_retopo import (
     _triangulate_quads,
     apply_retopo,
     regenerate_projective_uvs,
+    retopo_quad,
 )
 
 
@@ -237,6 +240,73 @@ def test_triangulate_quads_mixed():
 def test_triangulate_quads_bad_shape():
     with pytest.raises(ValueError):
         _triangulate_quads(np.zeros((3, 5), dtype=np.int64))
+
+
+def test_retopo_quad_owns_contiguous_buffers_and_retries_transient(monkeypatch):
+    """The Windows binding's transient invalid-buffer error gets one retry,
+    and native code never receives a view into ComfyUI's cached mesh."""
+    vertices = np.arange(18, dtype=np.float32).reshape(6, 3)
+    faces = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int32)
+    vertices_before = vertices.copy()
+    faces_before = faces.copy()
+    calls = []
+
+    def fake_remesh(v, f, **kwargs):
+        calls.append((v, f, kwargs))
+        assert v.flags.c_contiguous and v.flags.owndata
+        assert f.flags.c_contiguous and f.flags.owndata
+        assert not np.shares_memory(v, vertices)
+        assert not np.shares_memory(f, faces)
+        # Simulate native scratch writes; caller-owned inputs must survive.
+        v[0, 0] = -999.0
+        f[0, 0] = 5
+        if len(calls) == 1:
+            raise RuntimeError('Invalid vertex data: ""')
+        return vertices_before, faces_before
+
+    monkeypatch.setitem(sys.modules, "pyinstantmeshes", SimpleNamespace(remesh=fake_remesh))
+    out_v, out_f = retopo_quad(vertices, faces, target_vertex_count=4)
+
+    assert len(calls) == 2
+    np.testing.assert_array_equal(vertices, vertices_before)
+    np.testing.assert_array_equal(faces, faces_before)
+    np.testing.assert_array_equal(out_v, vertices_before)
+    np.testing.assert_array_equal(out_f, faces_before)
+
+
+def test_retopo_quad_does_not_retry_other_runtime_errors(monkeypatch):
+    calls = 0
+
+    def fake_remesh(v, f, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("backend topology failure")
+
+    monkeypatch.setitem(sys.modules, "pyinstantmeshes", SimpleNamespace(remesh=fake_remesh))
+    with pytest.raises(RuntimeError, match="backend topology failure"):
+        retopo_quad(
+            np.zeros((3, 3), dtype=np.float32),
+            np.array([[0, 1, 2]], dtype=np.int32),
+        )
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    ("vertices", "faces", "message"),
+    [
+        (np.array([[0.0, np.nan, 0.0], [0, 0, 0], [0, 0, 0]]),
+         np.array([[0, 1, 2]]), "NaN or infinite"),
+        (np.zeros((3, 3)), np.array([[0, 1, 3]]), "face indices"),
+    ],
+)
+def test_retopo_quad_rejects_invalid_native_inputs(monkeypatch, vertices, faces, message):
+    monkeypatch.setitem(
+        sys.modules,
+        "pyinstantmeshes",
+        SimpleNamespace(remesh=lambda *args, **kwargs: pytest.fail("binding should not run")),
+    )
+    with pytest.raises(ValueError, match=message):
+        retopo_quad(vertices, faces)
 
 
 # ---------------------------------------------------------------------------

@@ -123,13 +123,20 @@ tier) covering the whole pipeline as a graph:
   Nuke/Maya, USD (+ camera path), Blender, and relief mesh (OBJ/GLB with the
   projection baked into UVs).
 
-Three ready-to-load workflows ship in [`examples/`](examples/), and every one
-runs on ComfyUI's bundled `example.png` with **nothing to download**: start with
-`atlas_input_quickstart_workflow.json` (4 nodes — image in, projected relief
-out), then `atlas_camera_staged_master_workflow.json` (the same logic with
-stages, gates and per-layer debug), and `atlas_occlusion_cull_quickstart_workflow.json`
-(the ✂ Occlude / depth-shadow demo). Point the LoadImage node at any photo of
-your own. The colour-managed **OCIO / ACEScg** and **camera-RAW** demos need a
+Six ready-to-load workflows ship in [`examples/`](examples/): three interactive
+bases and three matching `*_agentic_assessment_workflow.json` variants with an
+enabled terminal VLM/solve report for headless automation. The interactive
+bases run on ComfyUI's bundled `example.png`; the agentic twins deliberately use
+the regular Atlas sample plates (`ghosttown.jpg` and `moge_hangar_proj.jpg`) so
+their output QA is meaningful. The terminal retains its exact assessed PNG,
+coverage matte, source reference, hashes, and structured JSON. Start with
+`atlas_input_quickstart_workflow.json`, use
+`atlas_camera_staged_master_workflow.json` for the five-layer SDXL pipeline,
+or compare `atlas_occlusion_cull_quickstart_workflow.json` for the ✂ Occlude
+depth-shadow path. Point the LoadImage node at any photo of your own. Run
+`python tools/smoke_agentic_assessment_workflows.py` to live-smoke the three
+agentic variants and their structured reports. The colour-managed
+**OCIO / ACEScg** and **camera-RAW** demos need a
 float plate / RAW that isn't shipped in the repo — download those workflow +
 image bundles from the project website to see the float VFX path end to end. See
 the [technical brief](docs/TECH_AND_DIFFERENTIATION.md) for how Atlas differs

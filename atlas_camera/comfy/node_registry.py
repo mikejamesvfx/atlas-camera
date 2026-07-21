@@ -17,6 +17,7 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasLayerPreview,
     AtlasInput,
 )
+from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
     AtlasRegisterPlate,
@@ -117,6 +118,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasReferenceScaleSolve":   AtlasReferenceScaleSolve,
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
     "AtlasAssessImage":           AtlasAssessImage,
+    "AtlasAssessOutput":          AtlasAssessOutput,
     "AtlasSolveGate":             AtlasSolveGate,
     "AtlasSceneHealthGate":       AtlasSceneHealthGate,
     "AtlasGravityOverride":       AtlasGravityOverride,
@@ -197,6 +199,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasRollTrim":              "Atlas Roll Trim 🎚",
     "AtlasReferenceScaleSolve":   "Atlas Reference-Object Scale 📏",
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
+    "AtlasAssessOutput":          "Atlas Assess Output 🧪",
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
     "AtlasSceneHealthGate":       "Atlas Scene Health Gate 🩺",
     "AtlasGravityOverride":       "Atlas Gravity Override 🎚",

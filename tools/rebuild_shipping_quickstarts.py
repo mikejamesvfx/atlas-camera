@@ -1,4 +1,4 @@
-"""Rebuild the two lightweight shipping quickstarts from live node schemas.
+"""Rebuild the lightweight artist and agentic quickstarts from live schemas.
 
 The standard workflow intentionally leaves ``primary_depth`` disconnected;
 the occlusion workflow is its controlled A/B twin and adds exactly that one
@@ -23,9 +23,15 @@ from rebuild_staged_master_workflow import Graph, _fetch_object_info, _load_layo
 ROOT = Path(__file__).resolve().parents[1]
 STANDARD_OUTPUT = ROOT / "examples" / "atlas_input_quickstart_workflow.json"
 OCCLUSION_OUTPUT = ROOT / "examples" / "atlas_occlusion_cull_quickstart_workflow.json"
+STANDARD_AGENTIC_OUTPUT = (
+    ROOT / "examples" / "atlas_input_quickstart_agentic_assessment_workflow.json")
+OCCLUSION_AGENTIC_OUTPUT = (
+    ROOT / "examples" / "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json")
 WORKFLOW_IDS = {
-    False: "53b0cf46-4d8e-5467-8ad6-2ad768f43d4e",
-    True: "5a2cc223-e3f2-5322-969d-9262fd4c9805",
+    (False, False): "53b0cf46-4d8e-5467-8ad6-2ad768f43d4e",
+    (True, False): "5a2cc223-e3f2-5322-969d-9262fd4c9805",
+    (False, True): "06890c21-d10f-506c-a558-df61d28415ca",
+    (True, True): "59e7a212-07ae-53fd-b5a9-2e79979f1777",
 }
 
 
@@ -105,13 +111,20 @@ def _group(nodes: list[dict], title: str, color: str) -> dict:
     }
 
 
-def build(object_info: dict, layout, *, occlusion: bool) -> dict:
+def build(object_info: dict, layout, *, occlusion: bool,
+          agentic_assessment: bool = False) -> dict:
     graph = Graph(object_info)
     slug = "atlas_occlusion_quickstart" if occlusion else "atlas_input_quickstart"
     title = "✂ OCCLUSION A/B · matched primary depth" if occlusion else "ATLAS INPUT · instant relief"
 
-    load = graph.node("LoadImage", title="1 · SOURCE PLATE", values={
-        "image": "example.png", "image_upload": "image",
+    sample_image = ("moge_hangar_proj.jpg" if occlusion
+                    else "ghosttown.jpg") if agentic_assessment else "example.png"
+    sample_label = ("SPACE HANGAR" if occlusion else "GHOST TOWN")
+    load = graph.node(
+        "LoadImage",
+        title=(f"1 · SOURCE PLATE · {sample_label} QA SAMPLE"
+               if agentic_assessment else "1 · SOURCE PLATE"), values={
+        "image": sample_image, "image_upload": "image",
     }, size=(360, 310))
     atlas_input = graph.node("AtlasInput", title="2 · SOLVE + RELIEF · expand options here", values={
         "layers": 0,
@@ -150,7 +163,13 @@ def build(object_info: dict, layout, *, occlusion: bool) -> dict:
         "client_data": "",
         "preview_expand": 1.0,
     }, size=(900, 680))
-    note = _note(graph, OCCLUSION_NOTE if occlusion else STANDARD_NOTE)
+    note_text = OCCLUSION_NOTE if occlusion else STANDARD_NOTE
+    if agentic_assessment:
+        note_text += """
+
+AGENTIC TERMINAL QA
+This variant starts on a real Atlas Ghost Town or Space Hangar plate, appends AtlasAssessOutput plus an exact-evidence preview, and enables its VLM by default. If the browser/WebGL shaded pass is blank in a headless run, Atlas reconstructs the recovered-camera image from the actual projection plates, mattes, and relief UV coverage. Framing, canonical projection edges, inpaint seams, and colour continuity are assessable; orbit/grazing occlusion remains explicitly inconclusive visually and is reported by deterministic geometry coverage. The exact assessed PNG, coverage matte, SHA-256, and stable JSON are retained beside one another and returned inline by atlas_run_workflow. A browser Render Proxy Passes capture or DCC render remains the final orbit/lighting oracle."""
+    note = _note(graph, note_text)
 
     solve_json = graph.node("AtlasExportSolveJSON", title="Solve JSON · portable camera", values={
         "output_path": f"atlas_exports/{slug}/atlas_solve.json",
@@ -203,6 +222,25 @@ def build(object_info: dict, layout, *, occlusion: bool) -> dict:
     maya_relief = graph.node("AtlasExportMayaReviewScene", title="Maya · relief review · works at layers 0", values={
         "output_dir": f"atlas_exports/{slug}/maya_relief",
     }, size=(430, 180))
+    assess_output = None
+    evidence_preview = None
+    if agentic_assessment:
+        assess_output = graph.node(
+            "AtlasAssessOutput", title="TERMINAL QA · agent/headless report", values={
+                "enabled": True,
+                "provider": "lmstudio",
+                "model": "",
+                "base_url": "",
+                "extra_instructions": (
+                    "Review the recovered camera view and release readiness."),
+                "file_path": f"atlas_debug/{slug}_agentic_output_assessment.json",
+                "api_key": "",
+                "offload_model": True,
+                "fallback_to_source": True,
+            }, size=(520, 430))
+        evidence_preview = graph.node(
+            "PreviewImage", title="ASSESSED EVIDENCE · exact VLM image",
+            size=(520, 420))
 
     graph.connect(load, "IMAGE", atlas_input, "image")
     graph.connect(atlas_input, "solve", viewport, "solve")
@@ -211,6 +249,12 @@ def build(object_info: dict, layout, *, occlusion: bool) -> dict:
         graph.connect(atlas_input, "depth", viewport, "primary_depth")
     graph.connect(controls, "controls", viewport, "controls")
     graph.connect(controls, "output_profile", viewport, "output_profile")
+    if assess_output is not None:
+        graph.connect(viewport, "shaded", assess_output, "camera_view")
+        graph.connect(atlas_input, "solve", assess_output, "solve")
+        graph.connect(atlas_input, "image", assess_output, "source_image")
+        graph.connect(atlas_input, "depth", assess_output, "depth")
+        graph.connect(assess_output, "assessed_image", evidence_preview, "images")
 
     for exporter in (solve_json, nuke_layers, maya_layers, blender, usd,
                      relief, nuke_relief, maya_relief):
@@ -237,6 +281,9 @@ def build(object_info: dict, layout, *, occlusion: bool) -> dict:
     usd["pos"] = [2740, 1280]
     nuke_layers["pos"] = [3280, 400]
     maya_layers["pos"] = [3280, 950]
+    if assess_output is not None:
+        assess_output["pos"] = [3840, 400]
+        evidence_preview["pos"] = [4440, 400]
 
     workflow_graph = {"nodes": graph.nodes, "links": graph.links}
     check = layout.inspect(workflow_graph)
@@ -246,8 +293,10 @@ def build(object_info: dict, layout, *, occlusion: bool) -> dict:
     core_nodes = [load, atlas_input, controls, viewport, note]
     export_nodes = [solve_json, relief, nuke_relief, maya_relief, blender,
                     usd, nuke_layers, maya_layers]
+    if assess_output is not None:
+        export_nodes.extend((assess_output, evidence_preview))
     return {
-        "id": WORKFLOW_IDS[occlusion],
+        "id": WORKFLOW_IDS[(occlusion, agentic_assessment)],
         "revision": 1,
         "last_node_id": graph._node_id,
         "last_link_id": graph._link_id,
@@ -262,8 +311,9 @@ def build(object_info: dict, layout, *, occlusion: bool) -> dict:
             "ds": {"scale": 0.58, "offset": [35, 85]},
             "frontendVersion": "1.25.11",
             "workflowRendererVersion": "LG",
-            "atlas_quickstart_version": 2,
+            "atlas_quickstart_version": 4,
             "atlas_occlusion_primary_depth": occlusion,
+            "atlas_agentic_assessment": agentic_assessment,
             "atlas_notes": (
                 "Matched primary depth is wired for Project + Occlude A/B."
                 if occlusion else
@@ -279,12 +329,22 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1:8188")
     parser.add_argument("--standard-output", type=Path, default=STANDARD_OUTPUT)
     parser.add_argument("--occlusion-output", type=Path, default=OCCLUSION_OUTPUT)
+    parser.add_argument("--standard-agentic-output", type=Path,
+                        default=STANDARD_AGENTIC_OUTPUT)
+    parser.add_argument("--occlusion-agentic-output", type=Path,
+                        default=OCCLUSION_AGENTIC_OUTPUT)
     args = parser.parse_args()
     object_info = _fetch_object_info(args.host)
     layout = _load_layout_module()
-    for output, occlusion in ((args.standard_output, False),
-                              (args.occlusion_output, True)):
-        workflow = build(object_info, layout, occlusion=occlusion)
+    jobs = (
+        (args.standard_output, False, False),
+        (args.occlusion_output, True, False),
+        (args.standard_agentic_output, False, True),
+        (args.occlusion_agentic_output, True, True),
+    )
+    for output, occlusion, agentic_assessment in jobs:
+        workflow = build(object_info, layout, occlusion=occlusion,
+                         agentic_assessment=agentic_assessment)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(workflow, indent=2) + "\n", encoding="utf-8")
         print(f"wrote {output}")

@@ -401,13 +401,60 @@ def apply_overrides(api: dict, overrides: dict) -> list[str]:
     return applied
 
 
+def output_assessment_overrides(api: dict) -> dict:
+    """Enable every terminal Atlas output assessor in an API graph."""
+    return {f"{node_id}.enabled": True
+            for node_id, node in api.items()
+            if node.get("class_type") == "AtlasAssessOutput"}
+
+
+def collect_output_reports(outputs: dict) -> dict:
+    """Extract bounded terminal-QA text/JSON without returning image blobs."""
+    reports = {}
+    for node_id, payload in (outputs or {}).items():
+        if not isinstance(payload, dict) or "atlas_output_assessment" not in payload:
+            continue
+        raw = payload.get("atlas_output_assessment")
+        raw = raw[0] if isinstance(raw, list) and raw else raw
+        assessment = raw
+        if isinstance(raw, str):
+            try:
+                assessment = json.loads(raw)
+            except json.JSONDecodeError:
+                assessment = raw[:16000]
+        text_value = payload.get("text")
+        if isinstance(text_value, list):
+            text_value = "\n".join(str(item) for item in text_value)
+        path_value = payload.get("json_path")
+        if isinstance(path_value, list):
+            path_value = path_value[0] if path_value else ""
+        evidence_value = payload.get("evidence_path")
+        if isinstance(evidence_value, list):
+            evidence_value = evidence_value[0] if evidence_value else ""
+        coverage_value = payload.get("coverage_path")
+        if isinstance(coverage_value, list):
+            coverage_value = coverage_value[0] if coverage_value else ""
+        source_value = payload.get("source_reference_path")
+        if isinstance(source_value, list):
+            source_value = source_value[0] if source_value else ""
+        reports[str(node_id)] = {
+            "text": str(text_value or "")[:16000],
+            "json_path": str(path_value or ""),
+            "evidence_path": str(evidence_value or ""),
+            "coverage_path": str(coverage_value or ""),
+            "source_reference_path": str(source_value or ""),
+            "assessment": assessment,
+        }
+    return reports
+
+
 def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                    timeout: int = 1800, poll_s: float = 5.0) -> dict:
     """POST the API graph and poll ``/history`` until it finishes.
 
-    Returns ``{completed, prompt_id, errors: [...], output_nodes: [...]}`` —
-    node errors carry the verbatim exception message (the single most useful
-    diagnostic when driving Atlas headlessly).
+    Returns ``{completed, prompt_id, errors, output_nodes, reports}`` — node
+    errors carry the verbatim exception message, while ``reports`` contains
+    bounded AtlasAssessOutput text/JSON only (never image/base64 payloads).
     """
     client_id = str(uuid.uuid4())
     resp = http_json(f"http://{host}/prompt",
@@ -415,9 +462,10 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
     if resp.get("error"):
         return {"completed": False, "prompt_id": None,
                 "errors": [json.dumps(resp, default=str)[:4000]],
-                "output_nodes": []}
+                "output_nodes": [], "reports": {}}
     pid = resp["prompt_id"]
     t0 = time.time()
+    missing_not_live_polls = 0
     while time.time() - t0 < timeout:
         time.sleep(poll_s)
         hist = http_json(f"http://{host}/history/{pid}", timeout=30)
@@ -426,10 +474,19 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
             live = any(item[1] == pid
                        for item in q.get("queue_running", []) + q.get("queue_pending", []))
             if not live:
-                return {"completed": False, "prompt_id": pid,
-                        "errors": ["prompt vanished from queue with no history entry"],
-                        "output_nodes": []}
+                # ComfyUI 0.27 can remove a completed prompt from /queue a
+                # fraction before its /history transaction becomes visible.
+                # Require three consecutive absent polls before declaring a
+                # real disappearance; otherwise fast jobs fail nondeterministically.
+                missing_not_live_polls += 1
+                if missing_not_live_polls >= 3:
+                    return {"completed": False, "prompt_id": pid,
+                            "errors": ["prompt vanished from queue with no history entry"],
+                            "output_nodes": [], "reports": {}}
+            else:
+                missing_not_live_polls = 0
             continue
+        missing_not_live_polls = 0
         rec = hist[pid]
         status = rec.get("status", {})
         errors = []
@@ -438,12 +495,15 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                 d = ev[1]
                 errors.append(f"{d.get('node_type')} (node {d.get('node_id')}): "
                               f"{d.get('exception_type')}: {d.get('exception_message')}")
+        outputs = rec.get("outputs", {})
         return {"completed": bool(status.get("completed")), "prompt_id": pid,
                 "errors": errors,
-                "output_nodes": sorted(rec.get("outputs", {}).keys(),
-                                       key=lambda x: int(x) if x.isdigit() else 0)}
+                "output_nodes": sorted(outputs.keys(),
+                                       key=lambda x: int(x) if x.isdigit() else 0),
+                "reports": collect_output_reports(outputs)}
     return {"completed": False, "prompt_id": pid,
-            "errors": [f"timeout after {timeout}s"], "output_nodes": []}
+            "errors": [f"timeout after {timeout}s"], "output_nodes": [],
+            "reports": {}}
 
 
 def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:

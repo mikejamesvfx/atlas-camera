@@ -210,20 +210,57 @@ def retopo_quad(
             "Install it with:  pip install pyinstantmeshes"
         ) from exc
 
-    v = np.asarray(vertices, dtype=np.float32)
-    f = np.asarray(faces, dtype=np.int32)
-    out_v, out_f = pyinstantmeshes.remesh(
-        v,
-        f,
-        target_vertex_count=int(target_vertex_count),
-        posy=int(posy),
-        rosy=int(rosy),
-        pure_quad=bool(pure_quad),
-        crease_angle=float(crease_angle),
-        smooth_iterations=int(smooth_iterations),
-        deterministic=bool(deterministic),
-        align_to_boundaries=bool(align_to_boundaries),
-    )
+    # The Windows wheel is a compiled binding and expects tightly-packed,
+    # owned buffers.  Never hand it a view of the cached ComfyUI mesh: native
+    # code is free to use the buffer for scratch space, and a mutated cache
+    # makes a later queue run fail non-deterministically.
+    v_source = np.asarray(vertices)
+    f_source = np.asarray(faces)
+    if v_source.ndim != 2 or v_source.shape[1] != 3 or len(v_source) == 0:
+        raise ValueError(f"vertices must be a non-empty (N,3) array; got {v_source.shape}")
+    if f_source.ndim != 2 or f_source.shape[1] != 3 or len(f_source) == 0:
+        raise ValueError(f"faces must be a non-empty (M,3) array; got {f_source.shape}")
+    if not np.isfinite(v_source).all():
+        raise ValueError("vertices contain NaN or infinite values")
+    if not np.issubdtype(f_source.dtype, np.integer):
+        if not np.isfinite(f_source).all() or not np.equal(f_source, np.floor(f_source)).all():
+            raise ValueError("faces must contain integer vertex indices")
+    f_min = int(np.min(f_source))
+    f_max = int(np.max(f_source))
+    if f_min < 0 or f_max >= len(v_source):
+        raise ValueError(
+            f"face indices must be in [0, {len(v_source) - 1}]; "
+            f"got range [{f_min}, {f_max}]"
+        )
+
+    kwargs = {
+        "target_vertex_count": int(target_vertex_count),
+        "posy": int(posy),
+        "rosy": int(rosy),
+        "pure_quad": bool(pure_quad),
+        "crease_angle": float(crease_angle),
+        "smooth_iterations": int(smooth_iterations),
+        "deterministic": bool(deterministic),
+        "align_to_boundaries": bool(align_to_boundaries),
+    }
+
+    def _owned_buffers() -> tuple[np.ndarray, np.ndarray]:
+        return (
+            np.array(v_source, dtype=np.float32, order="C", copy=True),
+            np.array(f_source, dtype=np.int32, order="C", copy=True),
+        )
+
+    v, f = _owned_buffers()
+    try:
+        out_v, out_f = pyinstantmeshes.remesh(v, f, **kwargs)
+    except RuntimeError as exc:
+        # pyinstantmeshes 0.1.0 on Windows can very occasionally reject a
+        # valid native buffer with this exact message.  One fresh-buffer retry
+        # fixes the transient without masking real topology/backend failures.
+        if "invalid vertex data" not in str(exc).lower():
+            raise
+        v, f = _owned_buffers()
+        out_v, out_f = pyinstantmeshes.remesh(v, f, **kwargs)
     out_v = np.asarray(out_v, dtype=np.float64)
     out_faces = _triangulate_quads(np.asarray(out_f))
     return out_v, out_faces

@@ -171,7 +171,12 @@ def read_plate(path: str, *, input_colorspace: str = "auto",
 
     resolved_out = "" if raw_data else (output_colorspace or "")
     if resolved_out and resolved_out != resolved_in:
-        converted = ImageBufAlgo.colorconvert(buf, resolved_in, resolved_out)
+        # OCIO transforms RGB, never alpha. Files with alpha are treated as
+        # associated/premultiplied: OIIO must divide RGB by alpha, transform
+        # the straight colour, then re-premultiply while leaving alpha itself
+        # unchanged. Keep this explicit instead of depending on binding defaults.
+        converted = ImageBufAlgo.colorconvert(
+            buf, resolved_in, resolved_out, unpremult=True)
         if converted.has_error:
             raise RuntimeError(
                 f"Colour conversion {resolved_in!r} -> {resolved_out!r} failed: "
@@ -233,7 +238,10 @@ def write_exr(path: str, pixels: Any, *, bit_depth: str = "half",
 
     tagged = source_colorspace
     if source_colorspace and output_colorspace and source_colorspace != output_colorspace:
-        conv = ImageBufAlgo.colorconvert(buf, source_colorspace, output_colorspace)
+        # Same associated-alpha contract as read_plate: transform straight RGB
+        # between an unpremultiply/re-premultiply pair; alpha remains data.
+        conv = ImageBufAlgo.colorconvert(
+            buf, source_colorspace, output_colorspace, unpremult=True)
         if conv.has_error:
             raise RuntimeError(
                 f"Colour conversion {source_colorspace!r} -> {output_colorspace!r} "

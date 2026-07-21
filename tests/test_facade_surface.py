@@ -29,7 +29,7 @@ import atlas_camera.comfy.nodes as nodes
 #: Public surface — node classes, registry mappings, shared constants.
 FACADE_PUBLIC = {
     "ATLAS_EXPERIMENTAL_DEFAULT", "AtlasAddPatchView", "AtlasApplyScaleReferences",
-    "AtlasAssessImage", "AtlasAttachSourcePlate", "AtlasBlockoutViewport",
+    "AtlasAssessImage", "AtlasAssessOutput", "AtlasAttachSourcePlate", "AtlasBlockoutViewport",
     "AtlasBoundedBand", "AtlasCleanPlateLayer", "AtlasCleanPlateStack",
     "AtlasConstrainedSolve", "AtlasDebugReport", "AtlasDecomposeCamera",
     "AtlasDecomposeSolve", "AtlasDefineShotCam", "AtlasDepthAnything",

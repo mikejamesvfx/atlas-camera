@@ -105,12 +105,31 @@ Everything returns compact JSON. Paths passed **to** tools are paths on
 |---|---|---|
 | `atlas_health` | Is ComfyUI up? Version, free VRAM, how many Atlas nodes registered, whether the experimental nodes loaded, which third-party packs are missing. | *Always call this first.* No arguments. |
 | `atlas_solve_image` | Upload a photo, recover its camera, return the solve summary (focal, FOV, height, confidence, `scale_source`). | `image_path` (local file); `method` `"learned"` (GeoCalib, default) or `"vp"` (classical vanishing points); `camera_height_m > 0` adds a scale override for elevated vantages. |
-| `atlas_run_workflow` | Flatten a UI-format workflow JSON (official v1 subgraphs expanded, proxy widgets applied, KJ Set/Get rails resolved, muted/bypassed nodes handled) and run it to completion. | `workflow_path`; `open_gates=True` (default) opens shipped-closed `AtlasSolveGate`s; `overrides={"12.image": "my.png"}` retargets any widget by node id. |
+| `atlas_run_workflow` | Flatten a UI-format workflow JSON (official v1 subgraphs expanded, proxy widgets applied, KJ Set/Get rails resolved, muted/bypassed nodes handled) and run it to completion. Returns bounded terminal AtlasAssessOutput report text/JSON inline, never image blobs. | `workflow_path`; `open_gates=True` opens solve gates; `assess_output=True` enables shipped terminal VLM nodes; `overrides={"12.image": "my.png"}` retargets any widget by node id. |
 | `atlas_validate_workflow` | Lint a workflow—including nodes inside official subgraphs—against the *live* server definitions: positional-widget drift, broken links, out-of-range widgets, dangling rails. | `workflow_path`. Run before `atlas_run_workflow` on hand-edited JSON. |
 | `atlas_read_debug_report` | Read the 🔍 `AtlasDebugReport` JSON — per-layer vertex counts, band ranges, matte coverage, red flags. The one-file autopsy for "why is this layer empty". | `json_path` (default `atlas_debug/master_debug.json`, server-relative). |
+| `atlas_read_output_assessment` | Read the 🧪 terminal output-assessment JSON — image provenance, retained evidence/matte/source paths and hashes, combined verdict, deterministic solve health, source/output structural comparison, and VLM checks/issues. | `json_path`; use the distinct path returned under `atlas_run_workflow.reports.<node>.json_path`. |
 | `atlas_inspect_viewport` | Layer census of a viewport's last execution: projection sources, priorities, band ranges, geometry type, vertex counts, synthesized fill cells, tear/stretch QA, and camera meta. | `node_id` of the `AtlasBlockoutViewport` in the workflow you just ran. |
 | `atlas_export_scene` | Fan a saved solve into DCC exporters. | `solve_json_path` (server-relative, from `AtlasExportSolveJSON`); `formats` ⊆ `nuke · nuke_layers · maya_layers · maya_review · blender · usd · review_package`. Layer formats need a solve carrying projection sources. |
 | `atlas_node_catalog` | Machine-readable list of every Atlas node on the server with inputs (widget vs link) and outputs. | Optional `name_filter` substring. |
+
+The shipping catalog includes a dedicated `*_agentic_assessment_workflow.json`
+twin for each interactive workflow. Those files already contain one enabled
+`AtlasAssessOutput`, an exact-evidence preview, and separate stable report paths,
+so they are the
+preferred inputs for unattended agents. Run
+`python tools/smoke_agentic_assessment_workflows.py --validate-only` for a live
+schema check, or omit the flag to queue all three and require their structured
+reports. `assess_output=True` remains useful when running any custom workflow
+whose terminal assessor was saved disabled.
+
+For a headless queue, a blank WebGL-owned viewport pass is not silently treated
+as the source plate. Atlas reconstructs the recovered-camera output from the
+solve's projected plates, mattes, and relief topology, then sends the retained
+output, union-coverage matte, and source reference to the VLM. Measured holes
+and severe source drift constrain the final verdict even when the VLM prose is
+optimistic. A canonical view cannot observe an orbit, so grazing/occlusion
+tearing remains visually inconclusive until a browser or DCC render is supplied.
 
 **Deliberately absent:** camera-move *baking* (`⏺ Bake Path`) is
 browser-side WebGL and can't run over HTTP — author and bake moves in the
@@ -139,8 +158,8 @@ doctrine travels with the tools:
 
 ```
 1. atlas_health
-     → {"ok": true, "atlas_nodes": 71, "experimental_registered": true, ...}
-        (67 standard + 4 experimental when ATLAS_EXPERIMENTAL=1; 67 without)
+     → {"ok": true, "atlas_nodes": 72, "experimental_registered": true, ...}
+        (68 standard + 4 experimental when ATLAS_EXPERIMENTAL=1; 68 without)
 
 2. read atlas://calibration        (agent now knows the doctrine)
 
@@ -151,10 +170,11 @@ doctrine travels with the tools:
    building in the plate → re-solves or runs a workflow with
    AtlasReferenceScaleSolve / camera_height_m
 
-5. atlas_run_workflow  workflow_path="examples/atlas_camera_staged_master_workflow.json"
-     → completed, node errors verbatim if any
+5. atlas_run_workflow  workflow_path="examples/atlas_camera_staged_master_agentic_assessment_workflow.json"
+     → completed, node errors verbatim, plus the bounded terminal QA report
 
 6. atlas_read_debug_report         (layer census, red flags)
+   atlas_read_output_assessment    (combined solve + visual verdict)
 
 7. atlas_export_scene  solve_json_path="atlas_exports/.../solve.json"
                        formats=["nuke_layers", "usd"]

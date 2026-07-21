@@ -376,6 +376,7 @@ sanity-checking a solve and, since 2026-07-09, for tuning the layer stack:
 | `AtlasSemanticMask` 🧩 | Named-class masks via SegFormer/ADE20K — promptless sky/floor/building masks, and the 🎯 geometry-prior fallback |
 | `AtlasInpaintCrop` / `AtlasInpaintStitch` ✂ | The LaMa quality lever — spend the inpainter's fixed internal resolution on the hole, not the whole frame |
 | `AtlasDebugReport` 🔍 | Full-stack diagnostic of a layered scene, rendered on-node + written to stable JSON |
+| `AtlasAssessOutput` 🧪 | Terminal camera-view VLM review plus deterministic solve health; retains the exact assessed PNG, coverage matte, source reference and hashes; reconstructs a blank headless WebGL pass from real projection layers and prevents measured holes/source drift from being promoted by optimistic model prose |
 | `AtlasLayerPreview` 🎨 | Cut-out layer preview in the layer's viewport legend color |
 | `AtlasBlockoutViewport` (⛶ + arrow/A/D keys) | Fullscreen viewport + UE-style tracking keys (Shift = 4×) |
 
@@ -499,6 +500,26 @@ twin. It adds exactly `AtlasInput.depth → viewport.primary_depth`; queue it,
 enable Project, then toggle ✂ Occlude while orbiting. Do not replace that map
 with depth from a different model, crop, retopo pass, or camera. Keep
 `preview_expand=1.0` while projecting.
+
+For agentic/headless runs, load the matching
+`*_agentic_assessment_workflow.json` instead. Each is the same production graph
+plus one enabled `AtlasAssessOutput` terminal, an exact-evidence preview, and its
+own stable JSON path. The agentic twins use the regular Ghost Town and Space
+Hangar samples rather than the cartoon placeholder. The terminal combines
+deterministic solve health with a three-image VLM review: retained output,
+union-coverage matte, and source reference. A pure HTTP queue cannot bake the
+browser/WebGL proxy pass, so Atlas reconstructs a canonical recovered-camera
+output from the solve's real plates, mattes, and relief topology. Projection
+holes and source drift remain assessable and deterministically constrain the
+verdict; orbit/grazing occlusion remains inconclusive. Feed a DCC render or bake
+Render Proxy Passes for those visual checks. Validate all three against
+the running ComfyUI schema with:
+
+```powershell
+python tools\smoke_agentic_assessment_workflows.py --validate-only
+```
+
+Remove `--validate-only` to queue all three and require a structured report.
 
 ## What's new (2026-07-21) — five native layer subgraphs + SDXL
 

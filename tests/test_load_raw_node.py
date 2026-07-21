@@ -1,5 +1,8 @@
 """AtlasLoadRAW node + raw_meta hint precedence (mocked import_raw — no rawpy)."""
 
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 np = pytest.importorskip("numpy")
@@ -97,6 +100,22 @@ def test_missing_file_raises():
         AtlasLoadRAW().load("Z:/nowhere/missing.arw")
 
 
+def test_relative_raw_path_resolves_from_comfy_input(tmp_path, monkeypatch):
+    input_dir = tmp_path / "input"
+    raw_path = input_dir / "atlas_Input_Examples" / "DSC_2328.NEF"
+    raw_path.parent.mkdir(parents=True)
+    raw_path.write_bytes(b"raw")
+    monkeypatch.setitem(sys.modules, "folder_paths", SimpleNamespace(
+        get_input_directory=lambda: str(input_dir)))
+
+    resolved = AtlasLoadRAW._resolve_input_path(
+        r"atlas_Input_Examples\DSC_2328.NEF")
+
+    assert resolved == raw_path
+    assert AtlasLoadRAW.IS_CHANGED(
+        r"atlas_Input_Examples\DSC_2328.NEF").startswith(str(raw_path))
+
+
 def test_hint_precedence_widget_beats_raw_meta():
     meta = _fake_result()
     focal, sensor_w, sensor_h = _resolve_raw_hints(24.0, 36.0, meta)
@@ -125,10 +144,14 @@ def test_no_raw_meta_no_hints():
 
 def test_widget_order_pins():
     """Positional widget serialization: these orders are frozen forever."""
-    load_raw_optional = list(AtlasLoadRAW.INPUT_TYPES()["optional"].keys())
+    input_types = AtlasLoadRAW.INPUT_TYPES()
+    load_raw_optional = list(input_types["optional"].keys())
     assert load_raw_optional == ["undistort", "half_size", "white_balance",
                                  "exposure_ev", "write_exr", "output_dir",
                                  "colorspace"]
+    exr_tooltip = input_types["optional"]["write_exr"][1]["tooltip"]
+    assert "OpenImageIO" in exr_tooltip
+    assert "OpenCV is not used" in exr_tooltip
     from atlas_camera.comfy.nodes import AtlasLearnedSolveFromImage
     learned_optional = list(AtlasLearnedSolveFromImage.INPUT_TYPES()["optional"].keys())
     # focal_length_mm was APPENDED 2026-07-18; raw_meta is a link input (last).

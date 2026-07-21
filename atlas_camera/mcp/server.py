@@ -104,18 +104,25 @@ def atlas_validate_workflow(workflow_path: str) -> str:
 
 @mcp.tool()
 def atlas_run_workflow(workflow_path: str, overrides: dict | None = None,
-                       open_gates: bool = True, timeout: int = 1800) -> str:
+                       open_gates: bool = True, timeout: int = 1800,
+                       assess_output: bool = False) -> str:
     """Flatten a UI-format workflow (KJ rails resolved, muted/bypassed nodes
     handled) and run it to completion on the server. `open_gates` (default
     True) sets proceed=True on every AtlasSolveGate — shipped workflows close
-    them. `overrides` is {"<nodeId>.<input>": value}. Returns completion
-    status, verbatim node errors, and which nodes produced outputs."""
+    them. Set `assess_output=True` to enable every AtlasAssessOutput terminal
+    node (shipping workflows leave VLM calls off for interactive queues).
+    `overrides` is {"<nodeId>.<input>": value}. Returns completion status,
+    verbatim node errors, output nodes, and bounded terminal assessment
+    text/JSON suitable for an agent to act on."""
     ui = _load_ui(workflow_path)
     oi = C.fetch_object_info(HOST)
     api = C.ui_to_api(ui, oi)
     ov = dict(overrides or {})
     if open_gates:
         for k, v in C.gate_overrides(ui, oi).items():
+            ov.setdefault(k, v)
+    if assess_output:
+        for k, v in C.output_assessment_overrides(api).items():
             ov.setdefault(k, v)
     applied = C.apply_overrides(api, ov)
     result = C.queue_and_wait(api, HOST, timeout=timeout)
@@ -181,6 +188,23 @@ def atlas_read_debug_report(json_path: str = "atlas_debug/master_debug.json") ->
     """Read a 🔍 AtlasDebugReport JSON (the stable-path full-stack diagnostic:
     camera, per-layer geometry/bands/mattes, red flags). Relative paths
     resolve against COMFY_DIR."""
+    comfy_dir = os.environ.get("COMFY_DIR", "")
+    p = pathlib.Path(json_path)
+    if not p.is_file() and comfy_dir:
+        p = pathlib.Path(comfy_dir) / json_path
+    if not p.is_file():
+        return json.dumps({"ok": False, "error": f"not found: {json_path} "
+                           "(set COMFY_DIR, or pass an absolute path)"})
+    return p.read_text(encoding="utf-8")
+
+
+@mcp.tool()
+def atlas_read_output_assessment(
+        json_path: str = "atlas_debug/output_assessment.json") -> str:
+    """Read a terminal AtlasAssessOutput JSON: image provenance, combined
+    verdict, deterministic solve health, and the VLM's visual checks/issues.
+    Relative paths resolve against COMFY_DIR. Shipping workflows use distinct
+    filenames, which atlas_run_workflow returns in reports.<node>.json_path."""
     comfy_dir = os.environ.get("COMFY_DIR", "")
     p = pathlib.Path(json_path)
     if not p.is_file() and comfy_dir:
