@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from atlas_camera.core.relief_mesh import (
+    _binomial_average_5x5,
     build_relief_mesh,
     build_sky_dome_mesh,
     estimate_ground_scale,
@@ -103,6 +104,28 @@ def test_hole_mask_nonempty_when_mesh_is_torn():
     assert mesh.stats["torn_fraction"] > 0.0
     assert mesh.hole_mask.any()
     assert 0.0 < float(mesh.hole_mask.mean()) < 1.0  # some holes, not everything
+
+
+def test_torn_mesh_carries_soft_inward_edge_risk_without_changing_topology():
+    mesh = _build(_scene_depth(wall_z=-10.0, wall_h=3.0), grid_long_edge=64)
+    assert mesh.edge_risk.shape == (len(mesh.vertices),)
+    assert float(mesh.edge_risk.min()) == 0.0
+    assert float(mesh.edge_risk.max()) == 1.0
+    # The two raw topology rings are spatially averaged before the shader sees
+    # them, producing a richer sub-grid coverage ramp than four hard levels.
+    assert len(np.unique(np.round(mesh.edge_risk, 4))) > 8
+    assert np.any((mesh.edge_risk > 0.15) & (mesh.edge_risk < 0.45))
+
+
+def test_binomial_edge_average_is_normalized_symmetric_and_subpixel_smooth():
+    impulse = np.zeros((9, 9), dtype=np.float32)
+    impulse[4, 4] = 1.0
+    averaged = _binomial_average_5x5(impulse)
+    assert averaged.shape == impulse.shape
+    assert float(averaged.sum()) == pytest.approx(1.0)
+    assert float(averaged[4, 4]) == pytest.approx(36.0 / 256.0)
+    np.testing.assert_allclose(averaged, averaged[::-1, :])
+    np.testing.assert_allclose(averaged, averaged[:, ::-1])
 
 
 def test_hole_mask_shape_is_full_resolution_regardless_of_grid():
@@ -344,6 +367,8 @@ def test_relief_mesh_rides_the_proxy_payload():
     assert len(entry["vertices"]) == 3 * len(mesh.vertices)
     assert len(entry["faces"]) == 3 * len(mesh.faces)
     assert len(entry["uvs"]) == 2 * len(mesh.uvs)
+    assert len(entry["edge_risk"]) == len(mesh.vertices)
+    assert max(entry["edge_risk"]) == 1.0
     assert max(entry["faces"]) < len(mesh.vertices)
     json.dumps(payload)  # JSON-safe
 

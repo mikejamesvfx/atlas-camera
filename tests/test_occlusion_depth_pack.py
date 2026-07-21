@@ -28,7 +28,10 @@ pytest.importorskip("PIL")
 
 from test_inpaint_layers_nodes import _depth_result, _occluder_depth, _solve  # noqa: E402
 
-from atlas_camera.comfy.viewport_payload import _extract_blockout_camera  # noqa: E402
+from atlas_camera.comfy.viewport_payload import (  # noqa: E402
+    _decimate_metric_depth_for_viewport,
+    _extract_blockout_camera,
+)
 
 
 def _payload_with_depth():
@@ -67,6 +70,8 @@ def test_no_depth_input_yields_empty_string():
     image = np.zeros((1, 64, 64, 3), dtype=np.float32)
     payload = _extract_blockout_camera(_solve(), image, 64, 64)
     assert payload["primary_depth_b64"] == ""
+    assert payload["primary_depth_width"] == 0
+    assert payload["primary_depth_height"] == 0
 
 
 def test_packed_depth_round_trips_through_the_shader_formula():
@@ -79,6 +84,22 @@ def test_packed_depth_round_trips_through_the_shader_formula():
     # The occluder fixture spans a near wall at ~3m out to a far backdrop.
     assert 1.0 < metres.max() < 1000.0, f"implausible depth range: max {metres.max()}"
     assert metres.min() >= 0.0
+
+
+def test_transport_depth_reports_its_actual_texture_size():
+    payload = _payload_with_depth()
+    rgb = _decode(payload["primary_depth_b64"])
+    assert rgb.shape[:2] == (
+        payload["primary_depth_height"],
+        payload["primary_depth_width"],
+    )
+
+
+def test_large_transport_depth_is_nearest_decimated_without_invented_values():
+    src = np.arange(3000 * 1000, dtype=np.float64).reshape(1000, 3000)
+    out = _decimate_metric_depth_for_viewport(src, max_edge=2048)
+    assert max(out.shape) == 2048
+    assert np.isin(out, src).all()
 
 
 def test_packing_is_millimetre_accurate():
