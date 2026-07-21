@@ -43,10 +43,10 @@ FACADE_PUBLIC = {
     "AtlasGravityOverride", "AtlasGroundDepthMap", "AtlasGroundMask",
     "AtlasHorizonMask", "AtlasImportAnglePatch", "AtlasInpaintCrop",
     "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
-    "AtlasLayerPreview", "AtlasLearnedSolveFromImage", "AtlasLoadImageSolveCamera",
-    "AtlasLoadPlate", "AtlasLoadRAW", "AtlasLoadSolveJSON", "AtlasMegaPipeline",
+    "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
+    "AtlasLoadPlate", "AtlasLoadRAW", "AtlasLoadSolveJSON",
     "AtlasMergeGeometry", "AtlasMogeNormals", "AtlasOcclusionMask",
-    "AtlasPitchTrim", "AtlasPredictHiddenGeometry", "AtlasReferenceScaleSolve",
+    "AtlasPredictHiddenGeometry", "AtlasReferenceScaleSolve",
     "AtlasRegisterPlate", "AtlasRenderFix", "AtlasRollTrim",
     "AtlasSAM3Mask", "AtlasSDXLInpaint", "AtlasScaleOverride",
     "AtlasSceneHealthGate", "AtlasScopeMask", "AtlasSegmentedSDXLInpaint",
@@ -114,5 +114,5 @@ def test_every_pinned_name_actually_resolves():
 
 def test_registry_mappings_are_reachable_through_the_facade():
     """Saved workflows and comfy/__init__ resolve nodes through these."""
-    assert len(nodes.NODE_CLASS_MAPPINGS) >= 68
+    assert len(nodes.NODE_CLASS_MAPPINGS) >= 60
     assert set(nodes.NODE_DISPLAY_NAME_MAPPINGS) == set(nodes.NODE_CLASS_MAPPINGS)

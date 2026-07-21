@@ -191,19 +191,9 @@ def build_solve_lab():
     w.link(cons, 0, dec2, "solve")
     show_j = w.node("Display Any (rgthree)", [2740, 1190], [180, 90], "guided confidence")
     w.link(dec2, 1, show_j, "source")
-    legacy = w.node("AtlasLoadImageSolveCamera", [2320, 1180], [380, 190],
-                    "LEGACY path-based solve (deprecation candidate)",
-                    {"image_path": "input/coastal_alley_for_vlm.png",
-                     "image_width": 1408, "image_height": 768})
-    expj2 = w.node("AtlasExportSolveJSON", [2320, 1420], [380, 100], "Legacy solve JSON",
-                   {"output_path": "atlas_exports/showcase_alley/legacy_solve.json"})
-    w.link(legacy, 0, expj2, "solve")
-    w.note([2740, 1300], [340, 220],
-           "AtlasLoadImageSolveCamera predates the tensor-based\n"
-           "solve nodes: it takes a FILE PATH, so it can't sit in a\n"
-           "normal image chain. Kept for API parity; prefer\n"
-           "AtlasSolveFromImage / AtlasLearnedSolveFromImage.\n"
-           "Flagged as a deprecation candidate in the showcase README.")
+    # (The legacy AtlasLoadImageSolveCamera station was removed in 0.8.1 — the
+    # deprecated file-path solve node is gone; AtlasSolveFromImage /
+    # AtlasLearnedSolveFromImage are the tensor-based replacements shown above.)
     return b.dump()
 
 

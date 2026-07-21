@@ -105,7 +105,6 @@ actually wire them in.
 | `AtlasLearnedSolveFromImage` | **Recommended default.** GeoCalib neural prior predicts focal length + gravity direction directly from image content. Robust on AI-generated images (27/33 usable on a test set, vs. 18/33 for VP solving) and reports genuine, meaningful confidence. |
 | `AtlasSolveFromImage` | Classical vanishing-point solve — detects and triangulates converging line families. Best on real photographs with clean architectural lines; fragile on AI imagery (locally-plausible-but-globally-inconsistent perspective breaks the RANSAC fit) and reports a constant, uninformative 0.75 confidence regardless of fit quality. |
 | `AtlasConstrainedSolve` | Artist-guided solve from explicit line/scale constraints JSON. |
-| `AtlasLoadImageSolveCamera` | **DEPRECATED** legacy file-path-based solve (`DEPRECATED = True`, hidden from node search). Kept registered so saved workflows load; use `AtlasSolveFromImage` / `AtlasLearnedSolveFromImage` instead. Removal in a later release. |
 | `AtlasLoadSolveJSON` | Reload a previously exported solve. |
 
 ### Scale (tiered — see USER_GUIDE.md Part 1 for the full mental model)

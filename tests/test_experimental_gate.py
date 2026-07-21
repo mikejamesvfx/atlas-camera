@@ -13,8 +13,7 @@ import atlas_camera.comfy.nodes as nodes
 def test_experimental_dicts_cover_exactly_the_experimental_nodes():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == {
         "AtlasPredictHiddenGeometry", "AtlasRenderFix",
-        "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
-        "AtlasMegaPipeline"}
+        "AtlasExtractAnglePatch", "AtlasImportAnglePatch"}
     assert set(nodes.EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS) == set(
         nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
     for name in nodes.EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS.values():

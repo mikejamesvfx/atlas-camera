@@ -3,6 +3,33 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## Unreleased
+
+### Node menu cleanup
+
+- **Every node now lives in an `Atlas Camera/<folder>` submenu** — the flat
+  top-level list (35 loose nodes) is gone. New folders: **Solve**, **Scale &
+  Trim**, **Masks & Depth**, **Gates & QA**; the stragglers folded into the
+  existing **Derive Geometry** / **Inpaint Layers** / **Patches** / **Export**.
+  Menu placement only — no node key changed, so saved workflows are unaffected.
+
+### Removed
+
+Three nodes were deleted. Their keys are gone, so a saved workflow that uses one
+will fail to load (recover any from git history):
+
+- **`AtlasMegaPipeline` 🔬** — the experimental monolith. Unused, and it crashed
+  on the first real queue (called `AtlasDeriveProjectionGeometry.derive()` with a
+  `depth` kwarg that node doesn't accept). Removed rather than fixed.
+- **`AtlasLoadImageSolveCamera`** — the long-deprecated file-path solve; it
+  couldn't sit in a normal image chain. Use `AtlasSolveFromImage` /
+  `AtlasLearnedSolveFromImage`. Its "legacy corner" in the solve-lab showcase is
+  gone.
+- **`AtlasPitchTrim`** — the pitch/gravity-mirror dial (the D810 gravity-flip
+  repair). Absent from every shipped workflow. `AtlasRollTrim` and
+  `AtlasGravityOverride` remain; recover this from git if the flip-repair is
+  wanted back.
+
 ## 0.8.0 — 2026-07-20
 
 ### Apple Silicon / arm64

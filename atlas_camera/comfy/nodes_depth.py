@@ -43,7 +43,7 @@ class AtlasDepthAnything:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("depth_image",)
     FUNCTION = "estimate"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Masks & Depth"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -258,7 +258,7 @@ class AtlasGroundDepthMap:
     RETURN_TYPES = ("IMAGE", "MASK")
     RETURN_NAMES = ("depth_image", "ground_mask")
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Masks & Depth"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -291,7 +291,7 @@ class AtlasGroundMask:
     """Binary MASK: 1 = ground visible (ray hits Y=0 plane), 0 = sky/above horizon."""
     RETURN_TYPES = ("MASK",)
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Masks & Depth"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -321,7 +321,7 @@ class AtlasHorizonMask:
     """
     RETURN_TYPES = ("MASK",)
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Masks & Depth"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -370,7 +370,7 @@ class AtlasVPVisualization:
     """Draw vanishing-point convergence lines and horizon onto an image using PIL."""
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "visualize"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Gates & QA"
 
     @classmethod
     def INPUT_TYPES(cls):

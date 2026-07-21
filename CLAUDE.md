@@ -77,7 +77,7 @@ atlas_camera.raw        ← Camera RAW decode/metadata/undistort (rawpy, lensfun
                           EXIF→intrinsics). Needs [raw]
 atlas_camera.exporters  ← Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  ← Atlas JSON and USD camera loaders
-atlas_camera.comfy      ← ComfyUI node library (69 nodes + 5 experimental, no hard Comfy dep;
+atlas_camera.comfy      ← ComfyUI node library (67 nodes + 4 experimental, no hard Comfy dep;
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
                           responsibility modules — see "Module layout" below)
 atlas_camera.inference  ← Optional local multimodal provider helpers, depth/normal
@@ -104,8 +104,8 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ### Module layout (nodes.py modularization, 2026-07-19)
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 72
-node classes (69 standard + 5 experimental) now live in the group modules, and
+The former 9,110-line `nodes.py` was split into responsibility modules; the 71
+node classes (67 standard + 4 experimental) now live in the group modules, and
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
 class, shared helper, and the registry mappings so `from atlas_camera.comfy.nodes
 import X`, `comfy/__init__` (`NODE_CLASS_MAPPINGS` / `_ATLAS_BLOCKOUT_CACHE`), and
@@ -210,13 +210,23 @@ way ComfyUI would.
 
 Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/{node_id}` to be registered twice, which raises `RuntimeError: method HEAD is already registered`. The fix in `__init__.py` checks `if not any(r.path == ... for r in _routes)` before registering.
 
-### Node catalog (69 nodes + 5 experimental)
+### Node catalog (67 nodes + 4 experimental)
+
+**Menu structure (2026-07-21):** every node lives in an `Atlas Camera/<folder>`
+subcategory — the flat top-level "Atlas Camera" list is empty. Folders: `Solve`,
+`Scale & Trim`, `Masks & Depth`, `Gates & QA`, `Derive Geometry`, `Inpaint
+Layers`, `Patches`, `Export`, `Color`, `Blockout`, `Project`, `Experimental`.
+CATEGORY is menu-placement only — changing it never affects a node key or a saved
+workflow, unlike a rename. **Three nodes were removed in this same pass** (their
+keys are gone, so a saved workflow referencing one will fail to load): the
+`AtlasMegaPipeline` 🔬 monolith (unused, crashed), `AtlasLoadImageSolveCamera`
+(long-deprecated file-path solve), and `AtlasPitchTrim` (the gravity-mirror
+pitch dial — recoverable from git if the flip-repair is wanted back).
 
 **Category: Atlas Camera**
 
 | Node class | Inputs | Outputs | Notes |
 |---|---|---|---|
-| `AtlasLoadImageSolveCamera` | image_path, image_width, image_height | ATLAS_SOLVE | **DEPRECATED** (2026-07-18: `DEPRECATED = True`, "(Deprecated)" display name, log warning). Legacy file-path solve kept registered for saved workflows; prefer `AtlasSolveFromImage`/`AtlasLearnedSolveFromImage` |
 | `AtlasSolveFromImage` | image (IMAGE), ±focal_mm, ±sensor_mm, ±detect_vanishing_points, ±raw_meta (ATLAS_RAW_META) | ATLAS_SOLVE | Geometric VP solve; accepts ComfyUI tensor. VP detection defaults ON. `raw_meta` (from `AtlasLoadRAW` 📷) supplies EXIF focal + measured sensor when the widgets are at defaults — finally implements the "0 = auto-detect or EXIF" tooltip |
 | `AtlasLearnedSolveFromImage` | image (IMAGE), ±height_mode, ±camera_height_m, ±depth_model, ±sensor_mm, ±weights, ±device, ±focal_length_mm, ±raw_meta (ATLAS_RAW_META) | ATLAS_SOLVE | Learned GeoCalib prior (focal+gravity). `height_mode=measure_from_depth` fits the ground plane to measure camera height (no assumed eye height) and fills the depth slot. `focal_length_mm` (APPENDED 2026-07-18) / a wired `raw_meta`: trusted EXIF focal REPLACES GeoCalib's estimate (gravity retained) — see the RAW design rule. Needs `[neural]` |
 | `AtlasDepthAnything` | image (IMAGE), ±depth_model, ±device | depth_image (IMAGE) | Monocular depth (Depth Anything V2), metric or relative. Needs `[neural]` |

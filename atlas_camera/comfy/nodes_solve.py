@@ -35,61 +35,14 @@ from atlas_camera.comfy.node_helpers import (
 from atlas_camera.comfy.nodes_viewport import AtlasDebugReport
 
 
-
 # ---------------------------------------------------------------------------
 # Existing nodes (unchanged)
 # ---------------------------------------------------------------------------
 
-class AtlasLoadImageSolveCamera:
-    """DEPRECATED — file-path-based solve kept only so saved workflows load.
-
-    Prefer AtlasSolveFromImage (geometric VP solve) or AtlasLearnedSolveFromImage
-    (GeoCalib prior) — both take an IMAGE tensor and sit in a normal image chain.
-    """
-
-    RETURN_TYPES = ("ATLAS_SOLVE",)
-    FUNCTION = "solve"
-    CATEGORY = "Atlas Camera"
-    DEPRECATED = True
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image_path": ("STRING", {"default": ""}),
-                "image_width": ("INT", {"default": 0, "min": 0,
-                                        "tooltip": "0 = auto (read from the image file)"}),
-                "image_height": ("INT", {"default": 0, "min": 0,
-                                         "tooltip": "0 = auto (read from the image file)"}),
-            },
-            "optional": {
-                "focal_length_mm": ("FLOAT", {"default": 35.0, "min": 0.0}),
-                "sensor_width_mm": ("FLOAT", {"default": 36.0, "min": 0.01}),
-            },
-        }
-
-    def solve(self, image_path, image_width, image_height,
-              focal_length_mm=None, sensor_width_mm=36.0):
-        import logging
-        logging.warning(
-            "AtlasLoadImageSolveCamera is deprecated — use AtlasSolveFromImage "
-            "or AtlasLearnedSolveFromImage (IMAGE-tensor inputs) instead.")
-        hints = {}
-        if focal_length_mm:
-            hints["focal_length_mm"] = focal_length_mm
-            hints["sensor_width_mm"] = sensor_width_mm
-        # 0×0 → let the solver read the image's true dimensions from the file.
-        image_size = (image_width, image_height) if (image_width and image_height) else None
-        return (solve_still_image(image_path,
-                                  image_size=image_size,
-                                  intrinsics_hint=hints,
-                                  detect_vanishing_points=True),)
-
-
 class AtlasUSDCameraLoader:
     RETURN_TYPES = ("ATLAS_CAMERA",)
     FUNCTION = "load"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Solve"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -482,7 +435,7 @@ class AtlasSolveFromImage:
     """Solve camera from a ComfyUI IMAGE tensor (no file path needed)."""
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "solve"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Solve"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -528,7 +481,7 @@ class AtlasConstrainedSolve:
     """Guided solve using line constraints JSON (from Atlas UI or hand-crafted)."""
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "solve"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Solve"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -566,7 +519,7 @@ class AtlasLearnedSolveFromImage:
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "solve"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Solve"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -653,7 +606,7 @@ class AtlasScaleOverride:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "override"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Scale & Trim"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -740,7 +693,7 @@ class AtlasRollTrim:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "trim"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Scale & Trim"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -835,10 +788,11 @@ class AtlasRollTrim:
 class AtlasGravityOverride:
     """🎚 ABSOLUTE gravity override — set the solve's pitch and roll directly.
 
-    The trims (`AtlasRollTrim`/`AtlasPitchTrim`) are RELATIVE dials; this is
-    the absolute version, born from the D810 haze incident's second act: the
-    gravity MIRROR repaired the flip's sign, but the flipped estimate itself
-    was ~7° off in pitch and ~9° in roll, so the mirrored scene still leaned.
+    `AtlasRollTrim` is a RELATIVE dial; this is the absolute version, born from
+    the D810 haze incident's second act: gravity was flipped, and the flipped
+    estimate itself was ~7° off in pitch and ~9° in roll, so simply un-flipping
+    it still left the scene leaning. (It also subsumes the removed
+    `AtlasPitchTrim` — set pitch here directly instead of trimming relative.)
     When you know the true angles (crop-probe, level references, or by eye),
     set them here: ``pitch_deg`` (positive = looking DOWN) and ``roll_deg``
     re-pose the camera about its own position, preserving the horizontal
@@ -850,7 +804,7 @@ class AtlasGravityOverride:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "override"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Scale & Trim"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -925,124 +879,6 @@ class AtlasGravityOverride:
         return (out, report)
 
 
-class AtlasPitchTrim:
-    """🎚 Manual pitch trim / gravity-mirror for a solve — RollTrim's sibling.
-
-    Motivated by the live-found GeoCalib gravity FLIP (a D810 window shot:
-    bright reflection haze at the frame bottom read as sky and the solve came
-    out looking UP 39° on an obvious bird's-eye — the `camera_looks_up`
-    health flag's exact failure mode). `mirror_gravity` reflects the camera's
-    pitch about the horizon (new forward.y = −forward.y, heading and roll
-    preserved) — the one-click repair for a flipped solve; `pitch_deg` then
-    fine-tunes (positive tilts the view DOWN). Rotation happens about the
-    camera's own RIGHT axis, so position is invariant and roll never changes.
-
-    Wire it between the solve and the depth/derive nodes (the RollTrim /
-    ScaleOverride slot); the report warns if the solve already carries
-    derived geometry. Pure Python, zero deps; stamps
-    `debug_metadata["pitch_trim_deg"]` (+ `gravity_mirrored`).
-    """
-    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
-    RETURN_NAMES = ("solve", "report")
-    FUNCTION = "trim"
-    CATEGORY = "Atlas Camera"
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {"solve": ("ATLAS_SOLVE",)},
-            "optional": {
-                "mirror_gravity": ("BOOLEAN", {"default": False,
-                    "tooltip": "Reflect the camera's pitch about the horizon (forward.y "
-                               "flips sign; heading + roll preserved). THE repair for a "
-                               "flipped GeoCalib gravity — e.g. bottom-of-frame haze read "
-                               "as sky turning a bird's-eye into an up-shot."}),
-                "pitch_deg": ("FLOAT", {"default": 0.0, "min": -90.0, "max": 90.0, "step": 0.05,
-                    "tooltip": "Extra pitch (degrees) about the camera's RIGHT axis, applied "
-                               "after any mirror. Positive tilts the view DOWN. 0 = no-op."}),
-            },
-        }
-
-    def trim(self, solve, mirror_gravity=False, pitch_deg=0.0):
-        import copy
-        import math
-        out = copy.deepcopy(solve)
-        extr = out.camera.extrinsics
-
-        wm = extr.camera_world_matrix
-        fwd_y = -float(wm[1][2])
-        old_pitch = math.degrees(math.asin(max(-1.0, min(1.0, fwd_y))))
-        # Mirror = rotate view DOWN by 2×(current up-pitch): new forward.y
-        # becomes exactly −forward.y while the horizontal heading (and roll,
-        # since we rotate about the camera's own right axis) is untouched.
-        d = (2.0 * old_pitch if mirror_gravity else 0.0) + float(pitch_deg)
-        if abs(d) < 1e-9:
-            return (out, "AtlasPitchTrim: 0.00° — no-op (mirror_gravity repairs a "
-                         "flipped solve; pitch_deg fine-tunes)")
-        c, s = math.cos(math.radians(d)), math.sin(math.radians(d))
-
-        # V' = Rx(d) @ V — extra rotation about the CAMERA's x (right) axis,
-        # left-multiplied onto the world→cam view matrix. Rx preserves the
-        # camera x axis (roll untouched) and has zero translation, so the
-        # rigid inverse below shows the position is invariant too. With the
-        # camera frame y-up/z-back, positive d pitches the view DOWN.
-        vm = [list(r) for r in extr.camera_view_matrix]
-        rx = ((1.0, 0.0, 0.0, 0.0), (0.0, c, -s, 0.0), (0.0, s, c, 0.0), (0.0, 0.0, 0.0, 1.0))
-        vm2 = [[sum(rx[r][k] * vm[k][col] for k in range(4)) for col in range(4)] for r in range(4)]
-        extr.camera_view_matrix = tuple(tuple(row) for row in vm2)
-
-        r_wc = [[vm2[r][k] for k in range(3)] for r in range(3)]
-        t_wc = [vm2[r][3] for r in range(3)]
-        r_cw = [[r_wc[k][r] for k in range(3)] for r in range(3)]
-        pos = [-sum(r_cw[r][k] * t_wc[k] for k in range(3)) for r in range(3)]
-        extr.camera_world_matrix = tuple(
-            tuple([*r_cw[r], pos[r]]) for r in range(3)
-        ) + ((0.0, 0.0, 0.0, 1.0),)
-        extr.camera_rotation_matrix = tuple(tuple(row) for row in r_cw)
-        extr.camera_position = tuple(pos)
-
-        new_fwd_y = -float(extr.camera_world_matrix[1][2])
-        new_pitch = math.degrees(math.asin(max(-1.0, min(1.0, new_fwd_y))))
-
-        # Recompute the stored horizon line (same vanishing-line math as
-        # AtlasRollTrim — world-Y ray component zero, linear in (u, v)).
-        horizon_note = ""
-        intr = out.camera.intrinsics
-        if out.horizon_line is not None and intr.fx_px and intr.image_width:
-            fx = float(intr.fx_px)
-            fy = float(intr.fy_px or intr.fx_px)
-            cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
-            cy = float(intr.cy_px if intr.cy_px is not None else (intr.image_height or 0) / 2.0)
-            w = float(intr.image_width)
-            a = r_cw[1][0] / fx
-            b = -r_cw[1][1] / fy
-            cc = -r_cw[1][0] * cx / fx + r_cw[1][1] * cy / fy - r_cw[1][2]
-            if abs(b) > 1e-12:
-                y_at = lambda u: (-cc - a * u) / b  # noqa: E731
-                y0, y1 = y_at(0.0), y_at(w)
-                out.horizon_line.endpoints_px = ((0.0, y0), (w, y1))
-                out.horizon_line.line_coefficients = (a, b, cc)
-
-        meta = dict(out.debug_metadata or {})
-        meta["pitch_trim_deg"] = float(meta.get("pitch_trim_deg", 0.0)) + d
-        if mirror_gravity:
-            meta["gravity_mirrored"] = True
-        out.debug_metadata = meta
-
-        geom_warn = ""
-        scene = getattr(out, "projection_scene", None)
-        if scene is not None and getattr(scene, "proxy_geometry", None):
-            geom_warn = ("\n  ⚠ this solve already carries derived geometry, built in the "
-                         "UN-trimmed frame — wire AtlasPitchTrim BEFORE the depth/derive nodes.")
-        mirror_note = "gravity MIRRORED, " if mirror_gravity else ""
-        report = (
-            f"AtlasPitchTrim: {mirror_note}pitch {old_pitch:+.1f}° → {new_pitch:+.1f}° "
-            f"(rotated {d:+.2f}° about the camera's right axis)\n"
-            "  Position, heading and roll unchanged — every downstream derive/export "
-            "follows. Composable after any solve." + geom_warn)
-        return (out, report)
-
-
 class AtlasReferenceScaleSolve:
     """Fix a solve's metric scale from a known-size reference object.
 
@@ -1054,7 +890,7 @@ class AtlasReferenceScaleSolve:
     RETURN_TYPES = ("ATLAS_SOLVE", "FLOAT")
     RETURN_NAMES = ("solve", "camera_height_m")
     FUNCTION = "apply"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Scale & Trim"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1142,7 +978,7 @@ class AtlasAssessImage:
                     "geom_far", "geom_bg", "geom_mid", "geom_fg",
                     "band_far", "band_bg", "band_mid", "band_fg")
     FUNCTION = "assess"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Gates & QA"
     # OUTPUT_NODE so the assessment ALWAYS runs and shows its report on the
     # node itself (ui.text, rendered by atlas_assess.js) — without this, a
     # graph where nothing consumed `report` gave zero visible output (found
@@ -1324,7 +1160,7 @@ class AtlasSolveGate:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "gate"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Gates & QA"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1419,7 +1255,7 @@ class AtlasSceneHealthGate:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "gate"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Gates & QA"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1513,7 +1349,7 @@ class AtlasVLMScaleCues:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("scale_references", "summary")
     FUNCTION = "analyze"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Scale & Trim"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1573,7 +1409,7 @@ class AtlasApplyScaleReferences:
     RETURN_TYPES = ("ATLAS_SOLVE", "FLOAT", "STRING")
     RETURN_NAMES = ("solve", "camera_height_m", "report")
     FUNCTION = "apply"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Scale & Trim"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1618,7 +1454,7 @@ class AtlasLoadSolveJSON:
     """Load a previously saved AtlasSolve from a JSON file."""
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "load"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Solve"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1637,7 +1473,7 @@ class AtlasDecomposeSolve:
     RETURN_TYPES = ("ATLAS_CAMERA", "FLOAT", "STRING", "INT", "INT", "STRING", "FLOAT")
     RETURN_NAMES = ("camera", "confidence", "source_method", "image_width", "image_height", "solve_json", "horizon_angle_deg")
     FUNCTION = "decompose"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Gates & QA"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1669,7 +1505,7 @@ class AtlasDecomposeCamera:
                     "cam_x", "cam_y", "cam_z",
                     "focal_mm", "fov_h_deg")
     FUNCTION = "decompose"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Gates & QA"
 
     @classmethod
     def INPUT_TYPES(cls):

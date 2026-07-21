@@ -22,7 +22,7 @@ def test_audit_covers_every_registered_node():
     kinds, names = audit.registered_nodes()
     data = audit.audit()
     assert set(data) == names            # exactly the registered set, nothing invented
-    assert len(names) == 74   # 69 standard (incl. AtlasLoadPlate) + 5 experimental
+    assert len(names) == 71   # 67 standard (incl. AtlasLoadPlate) + 4 experimental
     for name, rec in data.items():
         assert rec["kind"] in ("standard", "experimental")
         assert rec["status"] in ("referenced", "registered_only")
@@ -30,15 +30,17 @@ def test_audit_covers_every_registered_node():
             assert isinstance(rec[bucket], list)
 
 
-def test_pitch_trim_is_tested_not_unused():
-    # The motivating case: AtlasPitchTrim is absent from workflows but exercised
-    # by its own tests, so it must never be classified as registered-only/unused.
+def test_no_standard_node_is_orphaned():
+    # The motivating case (originally AtlasPitchTrim): a node absent from every
+    # shipped workflow is NOT unused if a test/doc exercises it, and must not be
+    # classified as registered-only. Generalized after AtlasPitchTrim's removal
+    # left no workflow-absent standard node: every standard node must be
+    # referenced somewhere (workflow, test, doc, or mcp tool) — none orphaned.
     audit = _load_audit()
-    rec = audit.audit()["AtlasPitchTrim"]
-    assert rec["kind"] == "standard"
-    assert rec["in_workflows"] is False
-    assert any("test_pitch_trim" in t for t in rec["tests"])
-    assert rec["status"] == "referenced"
+    data = audit.audit()
+    orphaned = sorted(n for n, r in data.items()
+                      if r["kind"] == "standard" and r["status"] == "registered_only")
+    assert orphaned == [], f"standard nodes referenced nowhere: {orphaned}"
 
 
 def test_experimental_nodes_flagged():
@@ -46,8 +48,7 @@ def test_experimental_nodes_flagged():
     data = audit.audit()
     experimental = {n for n, r in data.items() if r["kind"] == "experimental"}
     assert experimental == {"AtlasPredictHiddenGeometry", "AtlasRenderFix",
-                            "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
-                            "AtlasMegaPipeline"}
+                            "AtlasExtractAnglePatch", "AtlasImportAnglePatch"}
 
 
 def test_audit_is_read_only(tmp_path):
