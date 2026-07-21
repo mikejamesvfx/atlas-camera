@@ -108,6 +108,12 @@ def _staged():
     return match[0]
 
 
+def _workflow(name):
+    match = [wf for workflow_name, wf in _WORKFLOWS if workflow_name == name]
+    assert match, f"{name} missing from examples/"
+    return match[0]
+
+
 def _all_nodes(wf):
     nodes = list(wf.get("nodes") or [])
     for definition in (wf.get("definitions") or {}).get("subgraphs") or []:
@@ -172,6 +178,66 @@ def test_staged_master_scope_rows_are_always_active():
     scopes = [n for n in _all_nodes(wf) if n["type"] == "AtlasScopeMask"]
     assert len(scopes) == 4
     assert all(n.get("mode", 0) == 0 for n in scopes)
+
+
+def _typed_edges(wf):
+    nodes = {node["id"]: node for node in wf["nodes"]}
+    edges = set()
+    for _, origin_id, origin_slot, target_id, target_slot, *_ in wf["links"]:
+        origin = nodes[origin_id]
+        target = nodes[target_id]
+        edges.add((origin["type"], origin["outputs"][origin_slot]["name"],
+                   target["type"], target["inputs"][target_slot]["name"]))
+    return edges
+
+
+def test_shipping_quickstarts_use_current_outputs_and_guidance():
+    """The lightweight workflows must not regress to the old Nuke/Maya/USD-
+    only handoff or teach third-party SAM as AtlasInput's primary path."""
+    required = {
+        "LoadImage", "AtlasInput", "AtlasViewportControls",
+        "AtlasBlockoutViewport", "Note", "AtlasExportSolveJSON",
+        "AtlasExportNukeLayers", "AtlasExportMayaLayers",
+        "AtlasExportNuke", "AtlasExportMayaReviewScene",
+        "AtlasExportBlender", "AtlasExportUSD", "AtlasExportReliefMesh",
+    }
+    for name in ("atlas_input_quickstart_workflow.json",
+                 "atlas_occlusion_cull_quickstart_workflow.json"):
+        wf = _workflow(name)
+        assert {node["type"] for node in wf["nodes"]} == required
+        note = next(node for node in wf["nodes"] if node["type"] == "Note")
+        text = note["widgets_values"][0]
+        assert "native" in text.casefold() and "AtlasSAM3Mask" in text
+        assert "cropped" in text and "SDXL" in text
+        atlas_input = next(node for node in wf["nodes"]
+                           if node["type"] == "AtlasInput")
+        # Positional index 13 is the append-stable sky_heuristic widget.
+        assert atlas_input["widgets_values"][13] is False
+        edges = _typed_edges(wf)
+        for exporter in ("AtlasExportNukeLayers", "AtlasExportMayaLayers",
+                         "AtlasExportNuke", "AtlasExportMayaReviewScene",
+                         "AtlasExportBlender"):
+            assert ("AtlasViewportControls", "output_profile", exporter,
+                    "output_profile") in edges
+        for exporter in ("AtlasExportNuke", "AtlasExportMayaReviewScene"):
+            assert ("AtlasExportReliefMesh", "obj_path", exporter,
+                    "relief_mesh_obj_path") in edges
+        assert ("AtlasViewportControls", "output_profile",
+                "AtlasBlockoutViewport", "output_profile") in edges
+        assert ("AtlasViewportControls", "controls",
+                "AtlasBlockoutViewport", "controls") in edges
+
+
+def test_occlusion_quickstart_is_a_one_wire_matched_depth_ab_test():
+    standard = _workflow("atlas_input_quickstart_workflow.json")
+    occlusion = _workflow("atlas_occlusion_cull_quickstart_workflow.json")
+    standard_edges = _typed_edges(standard)
+    occlusion_edges = _typed_edges(occlusion)
+    assert standard_edges < occlusion_edges
+    assert occlusion_edges - standard_edges == {
+        ("AtlasInput", "depth", "AtlasBlockoutViewport", "primary_depth")}
+    assert not standard["extra"]["atlas_occlusion_primary_depth"]
+    assert occlusion["extra"]["atlas_occlusion_primary_depth"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])

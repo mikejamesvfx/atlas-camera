@@ -175,7 +175,7 @@ using far-band diffusion instead of continuous support geometry.
 | `atlas_health` → `ComfyUI not reachable` | ComfyUI isn't running, or `COMFY_HOST` points at the wrong port. |
 | `experimental_registered: false` | ComfyUI was launched without `ATLAS_EXPERIMENTAL=1`. Restart it with the env var **set before python starts**; workflows using 🩻 X-ray / 🔬 RenderFix will otherwise fail with `missing_node_type`. |
 | A run "succeeds" in ~2 s with almost no outputs | A gate is closed. `atlas_run_workflow(open_gates=True)` handles `AtlasSolveGate`; a VLM image gate needs `auto_continue` or a `{"<id>.proceed": true}` override. See `atlas://gates`. |
-| `missing_third_party` lists packs | Workflows referencing those nodes (SAM3, LaMa, KJ rails, …) will fail validation — install the pack, or pick a workflow that doesn't need it. |
+| `missing_third_party` lists packs | A workflow explicitly references those external nodes. The three shipping workflows do not require KJ/rgthree/ComfyUI-RMBG; AtlasInput's optional legacy LaMa mode self-skips when its pack is absent, while the staged master uses native SDXL nodes. |
 | Solve JSON / debug report "not found" | Those files are written server-side, relative to ComfyUI's cwd. Set `COMFY_DIR` so the MCP server can resolve and read them. |
 | Metric numbers look ~10× small | `scale_source: "assumed_default"` — the elevated-vantage trap. Count storeys (see `atlas://calibration`) or pass `camera_height_m`. |
 

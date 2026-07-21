@@ -572,9 +572,11 @@ class AtlasInput:
       scope rows; `inpaint` adds the ✂crop→LaMa(+upscale)→✂stitch clean-
       plate chain per occluded band.
 
-    When you outgrow it, the staged master IS this graph with stages,
-    gates, rails, and per-layer debug previews — see
-    examples/atlas_camera_staged_master_workflow.json.
+    When you outgrow the fast wrapper, the staged master is the production
+    evolution of this idea: five native ComfyUI subgraphs, explicit solve
+    gates and masks, four cropped SDXL clean plates, per-layer previews, and
+    DCC outputs.  It deliberately has no Set/Get rails or shared LaMa chain —
+    see examples/atlas_camera_staged_master_workflow.json.
     """
     RETURN_TYPES = ("ATLAS_SOLVE", "IMAGE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
     RETURN_NAMES = ("solve", "image", "depth", "sky_mask", "report")

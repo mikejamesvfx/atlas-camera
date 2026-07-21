@@ -478,16 +478,27 @@ speed; W/S and Q/E work as Unreal-style aliases). Keys only respond while the vi
 shortcuts are untouched. Display sharpness in fullscreen follows the
 `resolution` widget, same as resizing the node.
 
-`examples/atlas_input_quickstart_workflow.json` is now the fastest way in:
-LoadImage → **🎬 Atlas Input** → viewport. By default the first queue costs a
+`examples/atlas_input_quickstart_workflow.json` is the fastest way in:
+LoadImage → **🎬 Atlas Input** → viewport + Output Desk + shipping exporters.
+By default the first queue costs a
 solve, a shared depth pass, and one high-resolution relief mesh — image to
 projected 3D in seconds. The same node then grows into the master workflow's
 behaviors by widgets alone: `layers` (2–4 watertight depth bands), `use_vlm`
 (the 🧭 assessment configures prompts/geometry/bands per image), `sky` +
-`scope_prompts` (SAM segmentation), and `inpaint` (per-band LaMa clean plates
-with the ✂ crop quality chain). Missing node packs never error — the feature
-skips and the `report` output says so. Under the hood it expands into the
-real Atlas nodes at execution, so every step caches individually.
+`scope_prompts` (native SAM3 with semantic fallback), and the optional legacy
+fast `inpaint` mode (per-band LaMa clean plates with the ✂ crop quality chain).
+Missing optional packs never error — the feature skips and the `report` output
+says so. Under the hood it expands into real Atlas nodes at execution, so every
+step caches individually. At `layers=0` the graph writes Solve JSON, USD,
+Blender, textured Relief OBJ/GLB, and relief-based Nuke/Maya scenes. Separate
+Nuke/Maya layer packages activate at `layers>=1`. Color-aware handoffs inherit
+Output Desk metadata.
+
+`examples/atlas_occlusion_cull_quickstart_workflow.json` is the matched A/B
+twin. It adds exactly `AtlasInput.depth → viewport.primary_depth`; queue it,
+enable Project, then toggle ✂ Occlude while orbiting. Do not replace that map
+with depth from a different model, crop, retopo pass, or camera. Keep
+`preview_expand=1.0` while projecting.
 
 ## What's new (2026-07-21) — five native layer subgraphs + SDXL
 
