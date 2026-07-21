@@ -89,7 +89,7 @@ class AtlasDeriveProjectionGeometry:
     RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
     RETURN_NAMES = ("solve", "hole_mask")
     FUNCTION = "derive"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Derive Geometry"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1472,7 +1472,7 @@ class AtlasAddPatchView:
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "add_patch"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Patches"
 
     # Aliases onto the shared module-level dicts (see above) — kept as class
     # attributes since tests/test_add_patch_view.py references
@@ -2005,7 +2005,7 @@ class AtlasOcclusionMask:
     RETURN_TYPES = ("MASK", "MASK")
     RETURN_NAMES = ("occlusion_mask", "coverage_mask")
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Patches"
 
     @classmethod
     def INPUT_TYPES(cls):

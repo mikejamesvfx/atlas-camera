@@ -3,6 +3,55 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## Unreleased
+
+### Shipping catalog trimmed to three workflows
+
+The repo now ships exactly **three** example workflows, each of which runs on
+ComfyUI's bundled `example.png` with **nothing to download**:
+`atlas_input_quickstart`, `atlas_occlusion_cull_quickstart`, and the
+`atlas_camera_staged_master`.
+
+- **Removed from the repo:** the OCIO/ACEScg quickstart and all of
+  `examples/showcase/`, `examples/experimental/`, and `examples/retopo/` (~35
+  workflows). Those demonstrate the colour-managed float and camera-RAW paths,
+  which need a float plate / RAW that is **not** shipped — they are distributed
+  as workflow + image bundles from the project website instead. The workflow
+  generators that built them were removed from `tools/` as well, along with
+  `examples/api_format/` and `examples/solves/` — `examples/` now holds exactly
+  the three UI workflows. Recover anything removed from git history (before the
+  trim commit).
+- **New guards:** `tests/test_shipping_workflow_paths.py` forbids absolute
+  machine paths in any shipped workflow, and every workflow (not a
+  hand-maintained subset) is now checked for positional-widget drift. Two
+  reusable repair tools: `tools/fix_workflow_widget_drift.py` and
+  `tools/normalize_workflow_paths.py`.
+
+### Node menu cleanup
+
+- **Every node now lives in an `Atlas Camera/<folder>` submenu** — the flat
+  top-level list (35 loose nodes) is gone. New folders: **Solve**, **Scale &
+  Trim**, **Masks & Depth**, **Gates & QA**; the stragglers folded into the
+  existing **Derive Geometry** / **Inpaint Layers** / **Patches** / **Export**.
+  Menu placement only — no node key changed, so saved workflows are unaffected.
+
+### Removed
+
+Three nodes were deleted. Their keys are gone, so a saved workflow that uses one
+will fail to load (recover any from git history):
+
+- **`AtlasMegaPipeline` 🔬** — the experimental monolith. Unused, and it crashed
+  on the first real queue (called `AtlasDeriveProjectionGeometry.derive()` with a
+  `depth` kwarg that node doesn't accept). Removed rather than fixed.
+- **`AtlasLoadImageSolveCamera`** — the long-deprecated file-path solve; it
+  couldn't sit in a normal image chain. Use `AtlasSolveFromImage` /
+  `AtlasLearnedSolveFromImage`. Its "legacy corner" in the solve-lab showcase is
+  gone.
+- **`AtlasPitchTrim`** — the pitch/gravity-mirror dial (the D810 gravity-flip
+  repair). Absent from every shipped workflow. `AtlasRollTrim` and
+  `AtlasGravityOverride` remain; recover this from git if the flip-repair is
+  wanted back.
+
 ## 0.8.0 — 2026-07-20
 
 ### Apple Silicon / arm64

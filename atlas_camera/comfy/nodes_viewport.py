@@ -377,7 +377,7 @@ class AtlasDebugReport:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("report", "json_path")
     FUNCTION = "report"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Gates & QA"
     OUTPUT_NODE = True
 
     @classmethod
@@ -577,7 +577,7 @@ class AtlasInput:
     RETURN_TYPES = ("ATLAS_SOLVE", "IMAGE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
     RETURN_NAMES = ("solve", "image", "depth", "sky_mask", "report")
     FUNCTION = "build"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Solve"
 
     @classmethod
     def INPUT_TYPES(cls):

@@ -18,7 +18,6 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasInput,
 )
 from atlas_camera.comfy.nodes_solve import (
-    AtlasLoadImageSolveCamera,
     AtlasLoadPlate,
     AtlasRegisterPlate,
     AtlasAttachSourcePlate,
@@ -29,7 +28,6 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasScaleOverride,
     AtlasRollTrim,
     AtlasGravityOverride,
-    AtlasPitchTrim,
     AtlasReferenceScaleSolve,
     AtlasAssessImage,
     AtlasSolveGate,
@@ -95,9 +93,6 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportMayaLayers,
     AtlasExportCameraPathUSD,
 )
-from atlas_camera.comfy.nodes_experimental import (
-    AtlasMegaPipeline,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +101,6 @@ from atlas_camera.comfy.nodes_experimental import (
 
 NODE_CLASS_MAPPINGS = {
     # Existing
-    "AtlasLoadImageSolveCamera":  AtlasLoadImageSolveCamera,
     "AtlasExportReviewPackage":   AtlasExportReviewPackage,
     "AtlasExportSolveJSON":       AtlasExportSolveJSON,
     "AtlasExportMayaReviewScene": AtlasExportMayaReviewScene,
@@ -125,7 +119,6 @@ NODE_CLASS_MAPPINGS = {
     "AtlasAssessImage":           AtlasAssessImage,
     "AtlasSolveGate":             AtlasSolveGate,
     "AtlasSceneHealthGate":       AtlasSceneHealthGate,
-    "AtlasPitchTrim":             AtlasPitchTrim,
     "AtlasGravityOverride":       AtlasGravityOverride,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
@@ -189,7 +182,6 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     # Existing
-    "AtlasLoadImageSolveCamera":  "Atlas Load Image / Solve Camera (Deprecated)",
     "AtlasExportReviewPackage":   "Atlas Export Review Package",
     "AtlasExportSolveJSON":       "Atlas Export Solve JSON",
     "AtlasExportMayaReviewScene": "Atlas Export Maya Review Scene",
@@ -207,7 +199,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
     "AtlasSceneHealthGate":       "Atlas Scene Health Gate 🩺",
-    "AtlasPitchTrim":             "Atlas Pitch Trim 🎚",
     "AtlasGravityOverride":       "Atlas Gravity Override 🎚",
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
@@ -284,7 +275,6 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasRenderFix": AtlasRenderFix,
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
-    "AtlasMegaPipeline": AtlasMegaPipeline,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -292,7 +282,6 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasRenderFix": "Atlas Render Fix 🔬 (experimental)",
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
-    "AtlasMegaPipeline": "Atlas Mega Pipeline 🔬 (monolith)",
 }
 
 

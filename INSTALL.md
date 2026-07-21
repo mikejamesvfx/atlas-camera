@@ -435,8 +435,8 @@ surface must remain continuous during an orbit, run a second `AtlasDepthMap`
 on the **approved full-frame cleanplate** and feed that depth to a full-range
 background `AtlasCleanPlateLayer` (`band_side=manual`, `near_pct=0`,
 `far_pct=0`, `fill_occluded=false`). Keep the original image depth only for a
-SAM/artist-matted foreground layer. This is the pattern used by the canonical
-OCIO/DCC workflows in `examples/showcase/`.
+SAM/artist-matted foreground layer. This is the pattern used by the
+website-distributed OCIO/DCC demo workflows.
 
 Do not use a far `AtlasBoundedBand` plus `fill_occluded` as the support surface
 for a large removal. That mode interpolates depth from the surrounding band's

@@ -191,7 +191,7 @@ class AtlasSemanticMask:
     RETURN_TYPES = ("MASK", "STRING")
     RETURN_NAMES = ("mask", "report")
     FUNCTION = "segment"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Masks & Depth"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -258,7 +258,7 @@ class AtlasSAM3Mask:
     RETURN_TYPES = ("MASK", "STRING")
     RETURN_NAMES = ("mask", "report")
     FUNCTION = "segment"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Masks & Depth"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1310,7 +1310,7 @@ class AtlasCleanPlateStack:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "stack"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Inpaint Layers"
 
     _PRIORITIES = (15.0, 10.0, 5.0, 0.0)   # slot 1..4, farthest-highest
 

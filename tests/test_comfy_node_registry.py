@@ -33,9 +33,9 @@ NORMAL_KEYS = {
     "AtlasExportSolveJSON", "AtlasExportUSD", "AtlasGravityOverride",
     "AtlasGroundDepthMap", "AtlasGroundMask", "AtlasHorizonMask",
     "AtlasInpaintCrop", "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
-    "AtlasLayerPreview", "AtlasLearnedSolveFromImage", "AtlasLoadImageSolveCamera",
+    "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
     "AtlasLoadRAW", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasMogeNormals",
-    "AtlasOcclusionMask", "AtlasPitchTrim", "AtlasReferenceScaleSolve",
+    "AtlasOcclusionMask", "AtlasReferenceScaleSolve",
     "AtlasLoadPlate",
     "AtlasRegisterPlate", "AtlasRollTrim", "AtlasSAM3Mask", "AtlasSDXLInpaint",
     "AtlasScaleOverride",
@@ -48,7 +48,6 @@ NORMAL_KEYS = {
 EXPERIMENTAL_KEYS = {
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
     "AtlasPredictHiddenGeometry", "AtlasRenderFix",
-    "AtlasMegaPipeline",
 }
 
 # Public helper/constant names some tests import directly from the module; the
@@ -64,12 +63,12 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 69
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 67
 
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 5
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 4
 
 
 def test_display_name_mapping_covers_registry():
@@ -113,13 +112,12 @@ def test_representative_public_class_imports():
     from atlas_camera.comfy.nodes import (  # noqa: F401
         AtlasDepthMap, AtlasLearnedSolveFromImage, AtlasBlockoutViewport,
         AtlasExportNukeLayers, AtlasCleanPlateLayer, AtlasMergeGeometry,
-        AtlasPitchTrim, AtlasInput,
+        AtlasRollTrim, AtlasInput,
     )
     # Experimental classes are importable as symbols even when gated out.
     from atlas_camera.comfy.nodes import (  # noqa: F401
         AtlasPredictHiddenGeometry, AtlasRenderFix,
         AtlasExtractAnglePatch, AtlasImportAnglePatch,
-        AtlasMegaPipeline,
     )
 
 

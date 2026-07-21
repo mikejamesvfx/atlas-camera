@@ -30,7 +30,7 @@ from atlas_camera.comfy.node_helpers import (
 class AtlasExportReviewPackage:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Export"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -50,7 +50,7 @@ class AtlasExportReviewPackage:
 class AtlasExportSolveJSON:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Export"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -72,7 +72,7 @@ class AtlasExportSolveJSON:
 class AtlasExportMayaReviewScene:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera"
+    CATEGORY = "Atlas Camera/Export"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod

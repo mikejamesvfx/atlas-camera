@@ -123,16 +123,18 @@ tier) covering the whole pipeline as a graph:
   Nuke/Maya, USD (+ camera path), Blender, and relief mesh (OBJ/GLB with the
   projection baked into UVs).
 
-Three ready-to-load workflows ship in [`examples/`](examples/): start with
+Three ready-to-load workflows ship in [`examples/`](examples/), and every one
+runs on ComfyUI's bundled `example.png` with **nothing to download**: start with
 `atlas_input_quickstart_workflow.json` (4 nodes — image in, projected relief
 out), then `atlas_camera_staged_master_workflow.json` (the same logic with
-stages, gates and per-layer debug). Point the LoadImage node at any photo of
-your own. Beyond those, [`examples/showcase/`](examples/showcase/) holds
-**eleven run-verified showcase builds** — one per scene type, together
-exercising every node in the pack — with a findings report; the plates they
-reference are distributed separately (any photo of your own works too). See the [technical brief](docs/TECH_AND_DIFFERENTIATION.md) for how
-Atlas differs from other ComfyUI 3D systems, and the
-[ecosystem guide](docs/ECOSYSTEM_GUIDE.md) for the full node catalog.
+stages, gates and per-layer debug), and `atlas_occlusion_cull_quickstart_workflow.json`
+(the ✂ Occlude / depth-shadow demo). Point the LoadImage node at any photo of
+your own. The colour-managed **OCIO / ACEScg** and **camera-RAW** demos need a
+float plate / RAW that isn't shipped in the repo — download those workflow +
+image bundles from the project website to see the float VFX path end to end. See
+the [technical brief](docs/TECH_AND_DIFFERENTIATION.md) for how Atlas differs
+from other ComfyUI 3D systems, and the [ecosystem guide](docs/ECOSYSTEM_GUIDE.md)
+for the full node catalog.
 
 ## Documentation
 

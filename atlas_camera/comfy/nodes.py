@@ -96,7 +96,6 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasInput,
 )
 from atlas_camera.comfy.nodes_solve import (
-    AtlasLoadImageSolveCamera,
     AtlasLoadPlate,
     AtlasRegisterPlate,
     AtlasAttachSourcePlate,
@@ -107,7 +106,6 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasScaleOverride,
     AtlasRollTrim,
     AtlasGravityOverride,
-    AtlasPitchTrim,
     AtlasReferenceScaleSolve,
     AtlasAssessImage,
     AtlasSolveGate,
@@ -172,9 +170,6 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportNukeLayers,
     AtlasExportMayaLayers,
     AtlasExportCameraPathUSD,
-)
-from atlas_camera.comfy.nodes_experimental import (
-    AtlasMegaPipeline,
 )
 
 from atlas_camera.comfy.node_registry import (
