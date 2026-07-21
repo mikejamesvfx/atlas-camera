@@ -1,8 +1,8 @@
 {
-  "id": "5a2cc223-e3f2-5322-969d-9262fd4c9805",
+  "id": "59e7a212-07ae-53fd-b5a9-2e79979f1777",
   "revision": 1,
-  "last_node_id": 13,
-  "last_link_id": 22,
+  "last_node_id": 15,
+  "last_link_id": 27,
   "nodes": [
     {
       "id": 1,
@@ -50,10 +50,10 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.png",
+        "moge_hangar_proj.jpg",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE"
+      "title": "1 \u00b7 SOURCE PLATE \u00b7 SPACE HANGAR QA SAMPLE"
     },
     {
       "id": 2,
@@ -254,14 +254,15 @@
           "type": "ATLAS_SOLVE",
           "links": [
             2,
-            7,
             8,
-            9,
-            10,
-            11,
             12,
             13,
-            14
+            14,
+            15,
+            16,
+            17,
+            18,
+            19
           ]
         },
         {
@@ -270,7 +271,8 @@
           "type": "IMAGE",
           "links": [
             3,
-            15
+            9,
+            20
           ]
         },
         {
@@ -278,7 +280,8 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            4
+            4,
+            10
           ]
         },
         {
@@ -419,11 +422,11 @@
           "type": "ATLAS_OUTPUT_PROFILE",
           "links": [
             6,
-            18,
-            19,
-            20,
-            21,
-            22
+            23,
+            24,
+            25,
+            26,
+            27
           ]
         }
       ],
@@ -532,7 +535,9 @@
           "localized_name": "shaded",
           "name": "shaded",
           "type": "IMAGE",
-          "links": []
+          "links": [
+            7
+          ]
         },
         {
           "localized_name": "depth",
@@ -625,7 +630,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "OCCLUSION-CULL QUICKSTART \u2014 matched depth, controlled A/B.\n\n1. Choose a plate and queue once.\n2. Click Project, then toggle \u2702 Occlude while orbiting.\n3. Return to Camera View to judge the source boundary. The shader compares each projected fragment with the same metric primary depth that built the relief mesh, rejects hidden/grazing fragments, averages the depth edge, feathers inward, and extends nearby straight RGB outward under that feather.\n\nThis graph differs from atlas_input_quickstart_workflow.json by ONE functional wire: AtlasInput.depth \u2192 viewport.primary_depth. Do not substitute depth from another model, retopology pass, resolution, crop, or camera \u2014 mismatched depth causes the large false cutouts that this A/B workflow is designed to avoid. Keep preview_expand at 1.0 while Project is active.\n\nAtlasInput defaults to one relief mesh. sky_heuristic is off so bundled example.png remains exportable; turn it on for real outdoor plates after checking the horizon mask. Native sky/scope segmentation uses AtlasSAM3Mask with semantic fallback and does not require ComfyUI-RMBG/triton. For production clean plates and larger moves, use atlas_camera_staged_master_workflow.json with its four cropped native SDXL inpaint subgraphs.\n\nOUTPUT DESK / COLOR\nThe profile is metadata for DCC handoff; the browser shader is a display preview. Occlusion changes coverage only. It does not color-transform alpha: mattes remain linear data, while any RGB filtering happens on straight color before coverage is applied downstream (unpremultiply \u2192 filter/dilate RGB \u2192 premultiply).\n\nDCC EXPORTS\nAt layers=0 the graph writes Solve JSON, USD camera, Blender build script, textured Relief OBJ/GLB, a Nuke relief-projection scene, and a Maya relief review scene. The separate Nuke Layers / Maya Layers packages activate when layers >= 1. Retopology remains export-only and never changes the viewport mesh or its matched primary depth."
+        "OCCLUSION-CULL QUICKSTART \u2014 matched depth, controlled A/B.\n\n1. Choose a plate and queue once.\n2. Click Project, then toggle \u2702 Occlude while orbiting.\n3. Return to Camera View to judge the source boundary. The shader compares each projected fragment with the same metric primary depth that built the relief mesh, rejects hidden/grazing fragments, averages the depth edge, feathers inward, and extends nearby straight RGB outward under that feather.\n\nThis graph differs from atlas_input_quickstart_workflow.json by ONE functional wire: AtlasInput.depth \u2192 viewport.primary_depth. Do not substitute depth from another model, retopology pass, resolution, crop, or camera \u2014 mismatched depth causes the large false cutouts that this A/B workflow is designed to avoid. Keep preview_expand at 1.0 while Project is active.\n\nAtlasInput defaults to one relief mesh. sky_heuristic is off so bundled example.png remains exportable; turn it on for real outdoor plates after checking the horizon mask. Native sky/scope segmentation uses AtlasSAM3Mask with semantic fallback and does not require ComfyUI-RMBG/triton. For production clean plates and larger moves, use atlas_camera_staged_master_workflow.json with its four cropped native SDXL inpaint subgraphs.\n\nOUTPUT DESK / COLOR\nThe profile is metadata for DCC handoff; the browser shader is a display preview. Occlusion changes coverage only. It does not color-transform alpha: mattes remain linear data, while any RGB filtering happens on straight color before coverage is applied downstream (unpremultiply \u2192 filter/dilate RGB \u2192 premultiply).\n\nDCC EXPORTS\nAt layers=0 the graph writes Solve JSON, USD camera, Blender build script, textured Relief OBJ/GLB, a Nuke relief-projection scene, and a Maya relief review scene. The separate Nuke Layers / Maya Layers packages activate when layers >= 1. Retopology remains export-only and never changes the viewport mesh or its matched primary depth.\n\nAGENTIC TERMINAL QA\nThis variant starts on a real Atlas Ghost Town or Space Hangar plate, appends AtlasAssessOutput plus an exact-evidence preview, and enables its VLM by default. If the browser/WebGL shaded pass is blank in a headless run, Atlas reconstructs the recovered-camera image from the actual projection plates, mattes, and relief UV coverage. Framing, canonical projection edges, inpaint seams, and colour continuity are assessable; orbit/grazing occlusion remains explicitly inconclusive visually and is reported by deterministic geometry coverage. The exact assessed PNG, coverage matte, SHA-256, and stable JSON are retained beside one another and returned inline by atlas_run_workflow. A browser Render Proxy Passes capture or DCC render remains the final orbit/lighting oracle."
       ],
       "title": "READ ME \u00b7 workflow contract and production handoff"
     },
@@ -648,7 +653,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 7
+          "link": 12
         },
         {
           "localized_name": "output_path",
@@ -696,7 +701,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 8
+          "link": 13
         },
         {
           "localized_name": "output_dir",
@@ -712,7 +717,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 18,
+          "link": 23,
           "shape": 7
         },
         {
@@ -812,7 +817,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 9
+          "link": 14
         },
         {
           "localized_name": "output_dir",
@@ -828,7 +833,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 19,
+          "link": 24,
           "shape": 7
         },
         {
@@ -928,7 +933,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 10
+          "link": 15
         },
         {
           "localized_name": "output_dir",
@@ -944,7 +949,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 20,
+          "link": 25,
           "shape": 7
         }
       ],
@@ -983,7 +988,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 11
+          "link": 16
         },
         {
           "localized_name": "output_dir",
@@ -1031,13 +1036,13 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 12
+          "link": 17
         },
         {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 15
+          "link": 20
         },
         {
           "localized_name": "output_dir",
@@ -1226,8 +1231,8 @@
           "name": "obj_path",
           "type": "STRING",
           "links": [
-            16,
-            17
+            21,
+            22
           ]
         },
         {
@@ -1293,7 +1298,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 13
+          "link": 18
         },
         {
           "localized_name": "output_dir",
@@ -1309,7 +1314,7 @@
           "localized_name": "relief_mesh_obj_path",
           "name": "relief_mesh_obj_path",
           "type": "STRING",
-          "link": 16,
+          "link": 21,
           "shape": 7,
           "widget": {
             "name": "relief_mesh_obj_path"
@@ -1319,7 +1324,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 21,
+          "link": 26,
           "shape": 7
         }
       ],
@@ -1365,7 +1370,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 14
+          "link": 19
         },
         {
           "localized_name": "output_dir",
@@ -1381,7 +1386,7 @@
           "localized_name": "relief_mesh_obj_path",
           "name": "relief_mesh_obj_path",
           "type": "STRING",
-          "link": 17,
+          "link": 22,
           "shape": 7,
           "widget": {
             "name": "relief_mesh_obj_path"
@@ -1391,7 +1396,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 22,
+          "link": 27,
           "shape": 7
         }
       ],
@@ -1411,6 +1416,243 @@
         ""
       ],
       "title": "Maya \u00b7 relief review \u00b7 works at layers 0"
+    },
+    {
+      "id": 14,
+      "type": "AtlasAssessOutput",
+      "pos": [
+        3840,
+        400
+      ],
+      "size": [
+        520,
+        430
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "camera_view",
+          "name": "camera_view",
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "localized_name": "source_image",
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 9,
+          "shape": 7
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 10,
+          "shape": 7
+        },
+        {
+          "localized_name": "solve_summary",
+          "name": "solve_summary",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "enabled",
+          "name": "enabled",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "enabled"
+          }
+        },
+        {
+          "localized_name": "provider",
+          "name": "provider",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "provider"
+          }
+        },
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "model"
+          }
+        },
+        {
+          "localized_name": "base_url",
+          "name": "base_url",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "base_url"
+          }
+        },
+        {
+          "localized_name": "extra_instructions",
+          "name": "extra_instructions",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "extra_instructions"
+          }
+        },
+        {
+          "localized_name": "file_path",
+          "name": "file_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "file_path"
+          }
+        },
+        {
+          "localized_name": "api_key",
+          "name": "api_key",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "api_key"
+          }
+        },
+        {
+          "localized_name": "offload_model",
+          "name": "offload_model",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "offload_model"
+          }
+        },
+        {
+          "localized_name": "fallback_to_source",
+          "name": "fallback_to_source",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "fallback_to_source"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "assessment_json",
+          "name": "assessment_json",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "json_path",
+          "name": "json_path",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "verdict",
+          "name": "verdict",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "image_provenance",
+          "name": "image_provenance",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "assessed_image",
+          "name": "assessed_image",
+          "type": "IMAGE",
+          "links": [
+            11
+          ]
+        },
+        {
+          "localized_name": "evidence_path",
+          "name": "evidence_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasAssessOutput"
+      },
+      "widgets_values": [
+        true,
+        "lmstudio",
+        "",
+        "",
+        "Review the recovered camera view and release readiness.",
+        "atlas_debug/atlas_occlusion_quickstart_agentic_output_assessment.json",
+        "",
+        true,
+        true
+      ],
+      "title": "TERMINAL QA \u00b7 agent/headless report"
+    },
+    {
+      "id": 15,
+      "type": "PreviewImage",
+      "pos": [
+        4440,
+        400
+      ],
+      "size": [
+        520,
+        420
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "ASSESSED EVIDENCE \u00b7 exact VLM image"
     }
   ],
   "links": [
@@ -1464,6 +1706,46 @@
     ],
     [
       7,
+      4,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      2,
+      0,
+      14,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      2,
+      1,
+      14,
+      2,
+      "IMAGE"
+    ],
+    [
+      10,
+      2,
+      2,
+      14,
+      3,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      11,
+      14,
+      5,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      12,
       2,
       0,
       6,
@@ -1471,50 +1753,10 @@
       "ATLAS_SOLVE"
     ],
     [
-      8,
-      2,
-      0,
-      7,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      9,
-      2,
-      0,
-      8,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      10,
-      2,
-      0,
-      9,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      11,
-      2,
-      0,
-      10,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      12,
-      2,
-      0,
-      11,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       13,
       2,
       0,
-      12,
+      7,
       0,
       "ATLAS_SOLVE"
     ],
@@ -1522,12 +1764,52 @@
       14,
       2,
       0,
-      13,
+      8,
       0,
       "ATLAS_SOLVE"
     ],
     [
       15,
+      2,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      16,
+      2,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      17,
+      2,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      18,
+      2,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      19,
+      2,
+      0,
+      13,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      20,
       2,
       1,
       11,
@@ -1535,7 +1817,7 @@
       "IMAGE"
     ],
     [
-      16,
+      21,
       11,
       0,
       12,
@@ -1543,7 +1825,7 @@
       "STRING"
     ],
     [
-      17,
+      22,
       11,
       0,
       13,
@@ -1551,7 +1833,7 @@
       "STRING"
     ],
     [
-      18,
+      23,
       3,
       1,
       7,
@@ -1559,7 +1841,7 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      19,
+      24,
       3,
       1,
       8,
@@ -1567,7 +1849,7 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      20,
+      25,
       3,
       1,
       9,
@@ -1575,7 +1857,7 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      21,
+      26,
       3,
       1,
       12,
@@ -1583,7 +1865,7 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      22,
+      27,
       3,
       1,
       13,
@@ -1609,7 +1891,7 @@
       "bounding": [
         2135,
         52,
-        1600,
+        2870,
         1413
       ],
       "color": "#375c4a",
@@ -1630,7 +1912,7 @@
     "workflowRendererVersion": "LG",
     "atlas_quickstart_version": 4,
     "atlas_occlusion_primary_depth": true,
-    "atlas_agentic_assessment": false,
+    "atlas_agentic_assessment": true,
     "atlas_notes": "Matched primary depth is wired for Project + Occlude A/B."
   },
   "version": 0.4

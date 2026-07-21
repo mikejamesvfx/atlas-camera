@@ -144,5 +144,9 @@ def test_associated_alpha_is_handled_correctly(tmp_path):
         px[..., 3] = alpha
         p = write_exr(str(tmp_path / f"a{alpha}.exr"), px, bit_depth="float",
                       source_colorspace="ACEScg")
-        got = float(read_plate(p, output_colorspace="sRGB - Display").pixels[1, 1, 0])
+        plate = read_plate(p, output_colorspace="sRGB - Display")
+        got = float(plate.pixels[1, 1, 0])
         assert abs(got - srgb(0.18 / alpha) * alpha) < 0.01, (alpha, got)
+        assert plate.alpha is not None
+        assert np.allclose(plate.alpha, alpha, atol=1e-6), (
+            "OCIO must not transform or otherwise alter alpha", alpha)

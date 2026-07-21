@@ -21,7 +21,10 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "examples" / "atlas_camera_staged_master_workflow.json"
+AGENTIC_OUTPUT = (
+    ROOT / "examples" / "atlas_camera_staged_master_agentic_assessment_workflow.json")
 WORKFLOW_ID = "3a115c93-dd03-417c-b6c0-b47bf6f3e710"
+AGENTIC_WORKFLOW_ID = "bd63d232-688b-5378-ae08-8962cfadc52a"
 UUID_NAMESPACE = uuid.UUID("6ac2634a-648f-4db6-93ef-a9cd95741a52")
 PRIMITIVES = {"INT", "FLOAT", "STRING", "BOOLEAN"}
 
@@ -490,14 +493,18 @@ def _group(layout, nodes: list[dict], title: str, color: str) -> dict:
             "color": color, "font_size": 24, "flags": {}}
 
 
-def build(object_info: dict, layout) -> dict:
+def build(object_info: dict, layout, *, agentic_assessment: bool = False) -> dict:
     sky_def = _build_sky(object_info)
     layer_defs = [_build_depth_layer(object_info, spec) for spec in LAYER_SPECS]
     definitions = [sky_def, *layer_defs]
 
     top = Graph(object_info)
-    load = top.node("LoadImage", title="SOURCE PLATE", values={
-        "image": "example.png", "image_upload": "image",
+    load = top.node(
+        "LoadImage",
+        title=("SOURCE PLATE · GHOST TOWN QA SAMPLE"
+               if agentic_assessment else "SOURCE PLATE"), values={
+        "image": "ghosttown.jpg" if agentic_assessment else "example.png",
+        "image_upload": "image",
     })
     assess = top.node("AtlasAssessImage", title="0 · VLM 5-layer assessment", values={
         "provider": "lmstudio", "model": "google/gemma-4-12b-qat",
@@ -565,6 +572,25 @@ def build(object_info: dict, layout) -> dict:
     debug = top.node("AtlasDebugReport", title="MASTER DEBUG · stable JSON", values={
         "file_path": "atlas_debug/master_debug.json",
     })
+    assess_output = None
+    evidence_preview = None
+    if agentic_assessment:
+        assess_output = top.node(
+            "AtlasAssessOutput", title="TERMINAL QA · agent/headless report", values={
+                "enabled": True,
+                "provider": "lmstudio",
+                "model": "google/gemma-4-12b-qat",
+                "base_url": "",
+                "extra_instructions": (
+                    "Assess the final five-layer camera view and release readiness."),
+                "file_path": (
+                    "atlas_debug/staged_master_agentic_output_assessment.json"),
+                "api_key": "",
+                "offload_model": True,
+                "fallback_to_source": True,
+            })
+        evidence_preview = top.node(
+            "PreviewImage", title="ASSESSED EVIDENCE · exact VLM image")
     preview_pairs = []
     for index, label in enumerate(("sky", "band_far", "band_bg", "band_mid", "band_fg")):
         layer_preview = top.node("AtlasLayerPreview", title=f"Layer cutout · {label}", values={
@@ -624,6 +650,13 @@ def build(object_info: dict, layout) -> dict:
     top.connect(assess, "report", debug, "vlm_report")
     for index, layer in enumerate(layers, start=1):
         top.connect(layer, "scope_status", debug, f"status_{index}")
+    if assess_output is not None:
+        top.connect(master, "shaded", assess_output, "camera_view")
+        top.connect(final_solve, "solve", assess_output, "solve")
+        top.connect(register, "image", assess_output, "source_image")
+        top.connect(depth, "depth", assess_output, "depth")
+        top.connect(debug, "report", assess_output, "solve_summary")
+        top.connect(assess_output, "assessed_image", evidence_preview, "images")
 
     top.connect(register, "image", preview_pairs[0][0], "image")
     top.connect(sky, "sky_mask", preview_pairs[0][0], "mask")
@@ -642,6 +675,8 @@ def build(object_info: dict, layout) -> dict:
     output_nodes = [controls, master, export_json, export_nuke, export_maya,
                     export_blender, export_usd, debug,
                     *(node for pair in preview_pairs for node in pair)]
+    if assess_output is not None:
+        output_nodes.extend((assess_output, evidence_preview))
     groups = [
         _group(layout, input_nodes, "0 · ASSESS + CAMERA SOLVE", "#35536b"),
         _group(layout, layer_nodes, "1–5 · LAYER SUBGRAPHS · open a layer to tune masks and geometry", "#4d436b"),
@@ -650,7 +685,7 @@ def build(object_info: dict, layout) -> dict:
 
     finished_defs = [definition.finish(layout) for definition in definitions]
     return {
-        "id": WORKFLOW_ID,
+        "id": AGENTIC_WORKFLOW_ID if agentic_assessment else WORKFLOW_ID,
         "revision": 1,
         "last_node_id": top._node_id,
         "last_link_id": top._link_id,
@@ -662,8 +697,14 @@ def build(object_info: dict, layout) -> dict:
             "ds": {"scale": 0.62, "offset": [40, 80]},
             "frontendVersion": "1.25.11",
             "workflowRendererVersion": "LG",
-            "atlas_staged_master_version": 11,
-            "atlas_notes": "Five native subgraphs; LaMa/KJ/rgthree removed; SDXL crop-inpaint-stitch per depth layer.",
+            "atlas_staged_master_version": 13,
+            "atlas_agentic_assessment": agentic_assessment,
+            "atlas_notes": (
+                "Five native subgraphs; SDXL crop-inpaint-stitch per layer; "
+                "terminal VLM + deterministic headless QA report."
+                if agentic_assessment else
+                "Five native subgraphs; SDXL crop-inpaint-stitch per layer; "
+                "artist-facing workflow without automatic terminal VLM."),
         },
         "version": 0.4,
         "definitions": {"subgraphs": finished_defs},
@@ -674,16 +715,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1:8188")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--agentic-output", type=Path, default=AGENTIC_OUTPUT)
     args = parser.parse_args()
     object_info = _fetch_object_info(args.host)
     layout = _load_layout_module()
-    workflow = build(object_info, layout)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(workflow, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {args.output}")
-    print(layout.inspect(workflow)["summary"])
-    for definition in workflow["definitions"]["subgraphs"]:
-        print(f"  {definition['name']}: {layout.inspect(definition)['summary']}")
+    for output, agentic_assessment in ((args.output, False),
+                                       (args.agentic_output, True)):
+        workflow = build(object_info, layout,
+                         agentic_assessment=agentic_assessment)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(workflow, indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {output}")
+        print(layout.inspect(workflow)["summary"])
+        for definition in workflow["definitions"]["subgraphs"]:
+            print(f"  {definition['name']}: {layout.inspect(definition)['summary']}")
 
 
 if __name__ == "__main__":

@@ -26,8 +26,8 @@ EXPERIMENTAL = set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
 # documented as needing ATLAS_EXPERIMENTAL=1. Keep in sync when a workflow is
 # added/removed — that is the point of pinning it.
 #
-# EMPTY since the 0.8.1 trim: the repo now ships only the three example.png
-# quickstarts, none of which touch an experimental node. All the X-ray /
+# EMPTY since the 0.8.1 trim: the repo's three base/agentic example.png pairs
+# do not touch an experimental node. All the X-ray /
 # hidden-geometry / angle-patch showcases that did were removed (they need
 # downloaded plates and live as website-distributed demos now). The guard
 # stays so that re-introducing an experimental node into a SHIPPED workflow is

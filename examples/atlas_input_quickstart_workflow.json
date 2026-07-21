@@ -1618,8 +1618,9 @@
     },
     "frontendVersion": "1.25.11",
     "workflowRendererVersion": "LG",
-    "atlas_quickstart_version": 2,
+    "atlas_quickstart_version": 4,
     "atlas_occlusion_primary_depth": false,
+    "atlas_agentic_assessment": false,
     "atlas_notes": "Fast relief path; use the occlusion twin for matched-depth culling."
   },
   "version": 0.4

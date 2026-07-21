@@ -550,7 +550,7 @@ needs a *linear* `IMAGE` tensor for further ComfyUI-side compositing, rather
 than only writing to disk.
 
 The asset-dependent OCIO/RAW workflow bundles are distributed separately from
-the three repository examples. Their current recipe is `AtlasLoadPlate` or
+the six repository workflows. Their current recipe is `AtlasLoadPlate` or
 `AtlasLoadRAW` → solve/attach → Output Desk → DCC exporters; Atlas's loaders
 use OpenImageIO/rawpy rather than an OpenCV EXR dependency.
 
@@ -566,9 +566,10 @@ ComfyUI's browser canvas for interactive, click-around testing:
 | `atlas_input_quickstart_workflow.json` | Fast relief path: LoadImage → 🎬 AtlasInput → Atlas Viewport, with Output Desk and working `layers=0` SolveJSON/Nuke-relief/Maya-relief/Blender/USD/OBJ/GLB outputs plus optional Nuke/Maya layer packages. Native-SAM segmentation guidance; distinct relative export folders. Start here. |
 | `atlas_camera_staged_master_workflow.json` | 🏗 The five-layer master — five native ComfyUI subgraphs, VLM + solve gates, native SAM3 sky/scope, four cropped SDXL clean plates, per-layer previews, 🔍 debug JSON, and Nuke/Maya/Blender/USD exports. No LaMa, KJ rails, or rgthree dependency. |
 | `atlas_occlusion_cull_quickstart_workflow.json` | Controlled Project/✂ Occlude A/B: identical to the fast quickstart plus exactly `AtlasInput.depth → viewport.primary_depth`, so culling uses the metric map that produced the relief mesh. |
+| `*_agentic_assessment_workflow.json` | One twin of each workflow above, preserving its graph and appending an enabled `AtlasAssessOutput` plus an exact-evidence preview. The Ghost Town and Space Hangar sample plates make the smoke meaningful. Each run retains the assessed PNG, coverage matte, source reference, hashes, and a distinct stable JSON report. Use these for MCP/headless runs. |
 
-**The shipping catalog is deliberately pinned to these three** (release
-focus). Every workflow this guide's earlier sections mention by name
+**The shipping catalog is deliberately pinned to these three base/agentic
+pairs** (release focus). Every workflow this guide's earlier sections mention by name
 (core projection, learned pipeline, VP-only, merge scenarios, hidden-geometry
 heroes, master DMP variants, OCIO/plate proofs, calibration tests) still
 exists in git history — recover any of them with
@@ -583,6 +584,16 @@ current UI workflow through the canonical live-schema converter:
 
 Use `--convert-only <path>` when an API JSON is needed for inspection or a
 separate `/prompt` client.
+
+For the release smoke test, run
+`python tools/smoke_agentic_assessment_workflows.py`: it validates against the
+live schema, queues all three agentic variants, and fails unless each returns
+one structured, provenance-safe terminal report with hashed evidence. A blank
+browser-owned viewport is reconstructed in the recovered camera from the real
+projection layers; the VLM sees that output, its union-coverage matte, and the
+source plate. Deterministic coverage and source-drift checks can fail an
+optimistic model response. Orbit/grazing occlusion remains visually
+inconclusive until a browser or DCC render is supplied.
 
 ---
 

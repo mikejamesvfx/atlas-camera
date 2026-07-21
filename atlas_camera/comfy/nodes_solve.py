@@ -286,7 +286,8 @@ class AtlasLoadRAW:
         return {
             "required": {
                 "file_path": ("STRING", {"default": "",
-                    "tooltip": "Path to a camera RAW file (.nef .cr2 .cr3 .raf .arw .dng)."}),
+                    "tooltip": "Path to a camera RAW file (.nef .cr2 .cr3 .raf .arw .dng). "
+                               "Relative paths are resolved from ComfyUI's input folder."}),
             },
             "optional": {
                 # Widget order below is FROZEN (positional serialization) —
@@ -302,9 +303,8 @@ class AtlasLoadRAW:
                                           "step": 0.1}),
                 "write_exr": ("BOOLEAN", {"default": True,
                     "tooltip": "Write a scene-linear EXR sidecar and reference it in "
-                               "plate_ref (needs opencv 4.x + OPENCV_IO_ENABLE_OPENEXR=1 "
-                               "set before ComfyUI starts — same constraint as the OCIO "
-                               "path). On failure the plate_ref degrades to proxy."}),
+                               "plate_ref (needs the OpenImageIO [oiio] extra; OpenCV is "
+                               "not used). On failure the plate_ref degrades to proxy."}),
                 "output_dir": ("STRING", {"default": "atlas_exports/raw_plates"}),
                 "colorspace": ("STRING", {"default": "Linear Rec.709 (sRGB)",
                     "tooltip": "Colorspace TAG for the sidecar. rawpy's linear output has "
@@ -313,13 +313,27 @@ class AtlasLoadRAW:
             },
         }
 
+    @staticmethod
+    def _resolve_input_path(file_path):
+        """Resolve portable workflow paths against ComfyUI's input folder."""
+        raw_path = str(file_path or "").strip()
+        path = Path(raw_path).expanduser()
+        if not raw_path or path.is_absolute() or path.is_file():
+            return path
+        try:
+            import folder_paths  # ComfyUI runtime module; intentionally optional in tests.
+            return Path(folder_paths.get_input_directory()) / path
+        except (ImportError, AttributeError, TypeError):
+            return path
+
     @classmethod
     def IS_CHANGED(cls, file_path, **kwargs):
+        path = cls._resolve_input_path(file_path)
         try:
-            stat = os.stat(str(file_path))
-            return f"{file_path}:{stat.st_mtime_ns}:{stat.st_size}:{sorted(kwargs.items())}"
+            stat = os.stat(path)
+            return f"{path}:{stat.st_mtime_ns}:{stat.st_size}:{sorted(kwargs.items())}"
         except OSError:
-            return f"{file_path}:missing:{sorted(kwargs.items())}"
+            return f"{path}:missing:{sorted(kwargs.items())}"
 
     def load(self, file_path, undistort=True, half_size=False, white_balance="camera",
              exposure_ev=0.0, write_exr=True, output_dir="atlas_exports/raw_plates",
@@ -334,11 +348,11 @@ class AtlasLoadRAW:
                 "AtlasLoadRAW requires the [raw] extra. "
                 "Install with: pip install -e .[raw]") from exc
 
-        path = str(file_path or "").strip()
-        if not path or not Path(path).is_file():
-            raise RuntimeError(f"AtlasLoadRAW: RAW file not found: {path!r}")
+        path = self._resolve_input_path(file_path)
+        if not str(file_path or "").strip() or not path.is_file():
+            raise RuntimeError(f"AtlasLoadRAW: RAW file not found: {str(path)!r}")
 
-        result = import_raw(path, undistort=bool(undistort),
+        result = import_raw(str(path), undistort=bool(undistort),
                             half_size=bool(half_size),
                             white_balance=white_balance,
                             exposure_ev=float(exposure_ev))
@@ -349,7 +363,7 @@ class AtlasLoadRAW:
         exr_path, exr_warning = (None, None)
         if write_exr:
             exr_path, exr_warning = self._write_exr_sidecar(
-                result.linear_rgb, path, output_dir)
+                result.linear_rgb, str(path), output_dir)
 
         # 'auto' is a WIDGET value, not a colourspace — recording it on the ref
         # hands Nuke/Maya a string they cannot resolve. The sidecar is written

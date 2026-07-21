@@ -1,8 +1,8 @@
 {
-  "id": "5a2cc223-e3f2-5322-969d-9262fd4c9805",
+  "id": "06890c21-d10f-506c-a558-df61d28415ca",
   "revision": 1,
-  "last_node_id": 13,
-  "last_link_id": 22,
+  "last_node_id": 15,
+  "last_link_id": 26,
   "nodes": [
     {
       "id": 1,
@@ -50,10 +50,10 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.png",
+        "ghosttown.jpg",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE"
+      "title": "1 \u00b7 SOURCE PLATE \u00b7 GHOST TOWN QA SAMPLE"
     },
     {
       "id": 2,
@@ -255,13 +255,14 @@
           "links": [
             2,
             7,
-            8,
-            9,
-            10,
             11,
             12,
             13,
-            14
+            14,
+            15,
+            16,
+            17,
+            18
           ]
         },
         {
@@ -270,7 +271,8 @@
           "type": "IMAGE",
           "links": [
             3,
-            15
+            8,
+            19
           ]
         },
         {
@@ -278,7 +280,7 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            4
+            9
           ]
         },
         {
@@ -410,7 +412,7 @@
           "name": "controls",
           "type": "ATLAS_VIEWPORT_LINK",
           "links": [
-            5
+            4
           ]
         },
         {
@@ -418,12 +420,12 @@
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
           "links": [
-            6,
-            18,
-            19,
-            20,
-            21,
-            22
+            5,
+            22,
+            23,
+            24,
+            25,
+            26
           ]
         }
       ],
@@ -492,7 +494,7 @@
           "localized_name": "primary_depth",
           "name": "primary_depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 4,
+          "link": null,
           "shape": 7
         },
         {
@@ -509,7 +511,7 @@
           "localized_name": "controls",
           "name": "controls",
           "type": "ATLAS_VIEWPORT_LINK",
-          "link": 5,
+          "link": 4,
           "shape": 7
         },
         {
@@ -523,7 +525,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 6,
+          "link": 5,
           "shape": 7
         }
       ],
@@ -532,7 +534,9 @@
           "localized_name": "shaded",
           "name": "shaded",
           "type": "IMAGE",
-          "links": []
+          "links": [
+            6
+          ]
         },
         {
           "localized_name": "depth",
@@ -599,11 +603,11 @@
         "Node name for S&R": "AtlasBlockoutViewport"
       },
       "widgets_values": [
-        1280,
+        1024,
         "",
         1.0
       ],
-      "title": "\u2702 OCCLUSION A/B \u00b7 matched primary depth"
+      "title": "ATLAS INPUT \u00b7 instant relief"
     },
     {
       "id": 5,
@@ -625,7 +629,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "OCCLUSION-CULL QUICKSTART \u2014 matched depth, controlled A/B.\n\n1. Choose a plate and queue once.\n2. Click Project, then toggle \u2702 Occlude while orbiting.\n3. Return to Camera View to judge the source boundary. The shader compares each projected fragment with the same metric primary depth that built the relief mesh, rejects hidden/grazing fragments, averages the depth edge, feathers inward, and extends nearby straight RGB outward under that feather.\n\nThis graph differs from atlas_input_quickstart_workflow.json by ONE functional wire: AtlasInput.depth \u2192 viewport.primary_depth. Do not substitute depth from another model, retopology pass, resolution, crop, or camera \u2014 mismatched depth causes the large false cutouts that this A/B workflow is designed to avoid. Keep preview_expand at 1.0 while Project is active.\n\nAtlasInput defaults to one relief mesh. sky_heuristic is off so bundled example.png remains exportable; turn it on for real outdoor plates after checking the horizon mask. Native sky/scope segmentation uses AtlasSAM3Mask with semantic fallback and does not require ComfyUI-RMBG/triton. For production clean plates and larger moves, use atlas_camera_staged_master_workflow.json with its four cropped native SDXL inpaint subgraphs.\n\nOUTPUT DESK / COLOR\nThe profile is metadata for DCC handoff; the browser shader is a display preview. Occlusion changes coverage only. It does not color-transform alpha: mattes remain linear data, while any RGB filtering happens on straight color before coverage is applied downstream (unpremultiply \u2192 filter/dilate RGB \u2192 premultiply).\n\nDCC EXPORTS\nAt layers=0 the graph writes Solve JSON, USD camera, Blender build script, textured Relief OBJ/GLB, a Nuke relief-projection scene, and a Maya relief review scene. The separate Nuke Layers / Maya Layers packages activate when layers >= 1. Retopology remains export-only and never changes the viewport mesh or its matched primary depth."
+        "ATLAS INPUT QUICKSTART \u2014 the fastest image-to-3D path.\n\n1. Choose a plate in Load Image and queue once.\n2. Click Camera View for the recovered view; click Project to inspect the photo projection.\n3. Orbit gently. This standard workflow deliberately leaves primary_depth disconnected, so \u2702 Occlude is unavailable. Use the occlusion-cull quickstart for the matched A/B test.\n\nAtlasInput defaults to one high-resolution relief mesh (layers=0). Optional upgrades:\n\u2022 sky_heuristic is off so bundled example.png always produces exportable geometry; turn it on for real outdoor plates after checking the horizon mask\n\u2022 layers 2\u20134: watertight depth-band projection layers\n\u2022 use_vlm: image-specific prompts, geometry choices, and four-band boundaries\n\u2022 sky / scope_prompts: native AtlasSAM3Mask when [sam3] is installed, with native semantic fallback \u2014 no ComfyUI-RMBG or triton dependency\n\u2022 inpaint: the optional legacy fast LaMa path, if comfyui-inpaint-nodes + big-lama.pt are installed\n\nFor release-quality clean plates use atlas_camera_staged_master_workflow.json: four native cropped SDXL inpaint subgraphs, explicit masks, gates, previews, and per-layer controls.\n\nOUTPUT DESK / COLOR\nThe profile link carries OCIO-style metadata to the viewport and DCC handoffs. Browser display is a preview only. Exported RGB stays associated with its color metadata; alpha/mattes are data and are never display-transformed.\n\nDCC EXPORTS\n\u2022 At layers=0 the graph writes Solve JSON, USD camera, Blender build script, textured Relief OBJ/GLB, a Nuke relief-projection scene, and a Maya relief review scene.\n\u2022 The separate Nuke Layers / Maya Layers nodes activate when AtlasInput layers >= 1 and add per-band cameras, geometry, plates, and mattes.\n\u2022 Retopology is export-only. Leave it off for projection fidelity; select quad only when pyinstantmeshes is installed and a topology-changing DCC handoff is intended.\n\nAGENTIC TERMINAL QA\nThis variant starts on a real Atlas Ghost Town or Space Hangar plate, appends AtlasAssessOutput plus an exact-evidence preview, and enables its VLM by default. If the browser/WebGL shaded pass is blank in a headless run, Atlas reconstructs the recovered-camera image from the actual projection plates, mattes, and relief UV coverage. Framing, canonical projection edges, inpaint seams, and colour continuity are assessable; orbit/grazing occlusion remains explicitly inconclusive visually and is reported by deterministic geometry coverage. The exact assessed PNG, coverage matte, SHA-256, and stable JSON are retained beside one another and returned inline by atlas_run_workflow. A browser Render Proxy Passes capture or DCC render remains the final orbit/lighting oracle."
       ],
       "title": "READ ME \u00b7 workflow contract and production handoff"
     },
@@ -648,7 +652,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 7
+          "link": 11
         },
         {
           "localized_name": "output_path",
@@ -673,7 +677,7 @@
         "Node name for S&R": "AtlasExportSolveJSON"
       },
       "widgets_values": [
-        "atlas_exports/atlas_occlusion_quickstart/atlas_solve.json"
+        "atlas_exports/atlas_input_quickstart/atlas_solve.json"
       ],
       "title": "Solve JSON \u00b7 portable camera"
     },
@@ -696,7 +700,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 8
+          "link": 12
         },
         {
           "localized_name": "output_dir",
@@ -712,7 +716,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 18,
+          "link": 22,
           "shape": 7
         },
         {
@@ -784,7 +788,7 @@
         "Node name for S&R": "AtlasExportNukeLayers"
       },
       "widgets_values": [
-        "atlas_exports/atlas_occlusion_quickstart/nuke_layers",
+        "atlas_exports/atlas_input_quickstart/nuke_layers",
         "off",
         2000,
         0,
@@ -812,7 +816,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 9
+          "link": 13
         },
         {
           "localized_name": "output_dir",
@@ -828,7 +832,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 19,
+          "link": 23,
           "shape": 7
         },
         {
@@ -900,7 +904,7 @@
         "Node name for S&R": "AtlasExportMayaLayers"
       },
       "widgets_values": [
-        "atlas_exports/atlas_occlusion_quickstart/maya_layers",
+        "atlas_exports/atlas_input_quickstart/maya_layers",
         "off",
         2000,
         0,
@@ -928,7 +932,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 10
+          "link": 14
         },
         {
           "localized_name": "output_dir",
@@ -944,7 +948,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 20,
+          "link": 24,
           "shape": 7
         }
       ],
@@ -960,7 +964,7 @@
         "Node name for S&R": "AtlasExportBlender"
       },
       "widgets_values": [
-        "atlas_exports/atlas_occlusion_quickstart/blender"
+        "atlas_exports/atlas_input_quickstart/blender"
       ],
       "title": "Blender \u00b7 projection handoff"
     },
@@ -983,7 +987,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 11
+          "link": 15
         },
         {
           "localized_name": "output_dir",
@@ -1008,7 +1012,7 @@
         "Node name for S&R": "AtlasExportUSD"
       },
       "widgets_values": [
-        "atlas_exports/atlas_occlusion_quickstart/usd"
+        "atlas_exports/atlas_input_quickstart/usd"
       ],
       "title": "USD \u00b7 recovered camera"
     },
@@ -1031,13 +1035,13 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 12
+          "link": 16
         },
         {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 15
+          "link": 19
         },
         {
           "localized_name": "output_dir",
@@ -1226,8 +1230,8 @@
           "name": "obj_path",
           "type": "STRING",
           "links": [
-            16,
-            17
+            20,
+            21
           ]
         },
         {
@@ -1253,7 +1257,7 @@
         "Node name for S&R": "AtlasExportReliefMesh"
       },
       "widgets_values": [
-        "atlas_exports/atlas_occlusion_quickstart/relief",
+        "atlas_exports/atlas_input_quickstart/relief",
         128,
         0.5,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
@@ -1293,7 +1297,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 13
+          "link": 17
         },
         {
           "localized_name": "output_dir",
@@ -1309,7 +1313,7 @@
           "localized_name": "relief_mesh_obj_path",
           "name": "relief_mesh_obj_path",
           "type": "STRING",
-          "link": 16,
+          "link": 20,
           "shape": 7,
           "widget": {
             "name": "relief_mesh_obj_path"
@@ -1319,7 +1323,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 21,
+          "link": 25,
           "shape": 7
         }
       ],
@@ -1341,7 +1345,7 @@
         "Node name for S&R": "AtlasExportNuke"
       },
       "widgets_values": [
-        "atlas_exports/atlas_occlusion_quickstart/nuke_relief",
+        "atlas_exports/atlas_input_quickstart/nuke_relief",
         ""
       ],
       "title": "Nuke \u00b7 relief projection \u00b7 works at layers 0"
@@ -1365,7 +1369,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 14
+          "link": 18
         },
         {
           "localized_name": "output_dir",
@@ -1381,7 +1385,7 @@
           "localized_name": "relief_mesh_obj_path",
           "name": "relief_mesh_obj_path",
           "type": "STRING",
-          "link": 17,
+          "link": 21,
           "shape": 7,
           "widget": {
             "name": "relief_mesh_obj_path"
@@ -1391,7 +1395,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 22,
+          "link": 26,
           "shape": 7
         }
       ],
@@ -1407,10 +1411,247 @@
         "Node name for S&R": "AtlasExportMayaReviewScene"
       },
       "widgets_values": [
-        "atlas_exports/atlas_occlusion_quickstart/maya_relief",
+        "atlas_exports/atlas_input_quickstart/maya_relief",
         ""
       ],
       "title": "Maya \u00b7 relief review \u00b7 works at layers 0"
+    },
+    {
+      "id": 14,
+      "type": "AtlasAssessOutput",
+      "pos": [
+        3840,
+        400
+      ],
+      "size": [
+        520,
+        430
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "camera_view",
+          "name": "camera_view",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 7
+        },
+        {
+          "localized_name": "source_image",
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 8,
+          "shape": 7
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 9,
+          "shape": 7
+        },
+        {
+          "localized_name": "solve_summary",
+          "name": "solve_summary",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "enabled",
+          "name": "enabled",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "enabled"
+          }
+        },
+        {
+          "localized_name": "provider",
+          "name": "provider",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "provider"
+          }
+        },
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "model"
+          }
+        },
+        {
+          "localized_name": "base_url",
+          "name": "base_url",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "base_url"
+          }
+        },
+        {
+          "localized_name": "extra_instructions",
+          "name": "extra_instructions",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "extra_instructions"
+          }
+        },
+        {
+          "localized_name": "file_path",
+          "name": "file_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "file_path"
+          }
+        },
+        {
+          "localized_name": "api_key",
+          "name": "api_key",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "api_key"
+          }
+        },
+        {
+          "localized_name": "offload_model",
+          "name": "offload_model",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "offload_model"
+          }
+        },
+        {
+          "localized_name": "fallback_to_source",
+          "name": "fallback_to_source",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "fallback_to_source"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "assessment_json",
+          "name": "assessment_json",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "json_path",
+          "name": "json_path",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "verdict",
+          "name": "verdict",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "image_provenance",
+          "name": "image_provenance",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "assessed_image",
+          "name": "assessed_image",
+          "type": "IMAGE",
+          "links": [
+            10
+          ]
+        },
+        {
+          "localized_name": "evidence_path",
+          "name": "evidence_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasAssessOutput"
+      },
+      "widgets_values": [
+        true,
+        "lmstudio",
+        "",
+        "",
+        "Review the recovered camera view and release readiness.",
+        "atlas_debug/atlas_input_quickstart_agentic_output_assessment.json",
+        "",
+        true,
+        true
+      ],
+      "title": "TERMINAL QA \u00b7 agent/headless report"
+    },
+    {
+      "id": 15,
+      "type": "PreviewImage",
+      "pos": [
+        4440,
+        400
+      ],
+      "size": [
+        520,
+        420
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "ASSESSED EVIDENCE \u00b7 exact VLM image"
     }
   ],
   "links": [
@@ -1440,14 +1681,6 @@
     ],
     [
       4,
-      2,
-      2,
-      4,
-      4,
-      "ATLAS_DEPTH_MAP"
-    ],
-    [
-      5,
       3,
       0,
       4,
@@ -1455,7 +1688,7 @@
       "ATLAS_VIEWPORT_LINK"
     ],
     [
-      6,
+      5,
       3,
       1,
       4,
@@ -1463,7 +1696,47 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
+      6,
+      4,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
       7,
+      2,
+      0,
+      14,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      8,
+      2,
+      1,
+      14,
+      2,
+      "IMAGE"
+    ],
+    [
+      9,
+      2,
+      2,
+      14,
+      3,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      10,
+      14,
+      5,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
       2,
       0,
       6,
@@ -1471,7 +1744,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      8,
+      12,
       2,
       0,
       7,
@@ -1479,42 +1752,10 @@
       "ATLAS_SOLVE"
     ],
     [
-      9,
-      2,
-      0,
-      8,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      10,
-      2,
-      0,
-      9,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      11,
-      2,
-      0,
-      10,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      12,
-      2,
-      0,
-      11,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       13,
       2,
       0,
-      12,
+      8,
       0,
       "ATLAS_SOLVE"
     ],
@@ -1522,12 +1763,44 @@
       14,
       2,
       0,
-      13,
+      9,
       0,
       "ATLAS_SOLVE"
     ],
     [
       15,
+      2,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      16,
+      2,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      17,
+      2,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      18,
+      2,
+      0,
+      13,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      19,
       2,
       1,
       11,
@@ -1535,7 +1808,7 @@
       "IMAGE"
     ],
     [
-      16,
+      20,
       11,
       0,
       12,
@@ -1543,7 +1816,7 @@
       "STRING"
     ],
     [
-      17,
+      21,
       11,
       0,
       13,
@@ -1551,7 +1824,7 @@
       "STRING"
     ],
     [
-      18,
+      22,
       3,
       1,
       7,
@@ -1559,7 +1832,7 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      19,
+      23,
       3,
       1,
       8,
@@ -1567,7 +1840,7 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      20,
+      24,
       3,
       1,
       9,
@@ -1575,7 +1848,7 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      21,
+      25,
       3,
       1,
       12,
@@ -1583,7 +1856,7 @@
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      22,
+      26,
       3,
       1,
       13,
@@ -1609,7 +1882,7 @@
       "bounding": [
         2135,
         52,
-        1600,
+        2870,
         1413
       ],
       "color": "#375c4a",
@@ -1629,9 +1902,9 @@
     "frontendVersion": "1.25.11",
     "workflowRendererVersion": "LG",
     "atlas_quickstart_version": 4,
-    "atlas_occlusion_primary_depth": true,
-    "atlas_agentic_assessment": false,
-    "atlas_notes": "Matched primary depth is wired for Project + Occlude A/B."
+    "atlas_occlusion_primary_depth": false,
+    "atlas_agentic_assessment": true,
+    "atlas_notes": "Fast relief path; use the occlusion twin for matched-depth culling."
   },
   "version": 0.4
 }

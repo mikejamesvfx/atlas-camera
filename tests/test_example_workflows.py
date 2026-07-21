@@ -20,6 +20,13 @@ import pytest
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "examples")
 
 STAGED_MASTER = "atlas_camera_staged_master_workflow.json"
+STAGED_AGENTIC = "atlas_camera_staged_master_agentic_assessment_workflow.json"
+QUICKSTART_PAIRS = (
+    ("atlas_input_quickstart_workflow.json",
+     "atlas_input_quickstart_agentic_assessment_workflow.json"),
+    ("atlas_occlusion_cull_quickstart_workflow.json",
+     "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json"),
+)
 
 # ComfyUI frontend zod schema: workflow id is z.string().uuid().optional()
 UUID_RE = re.compile(
@@ -44,17 +51,15 @@ _WORKFLOWS = _ui_workflows()
 
 
 def test_examples_directory_has_ui_workflows():
-    # Shipping catalog: exactly THREE workflows (trimmed 2026-07-21), each of
-    # which runs on ComfyUI's bundled example.png with NO downloaded assets —
-    # the input quickstart, the occlusion-cull quickstart, and the staged
-    # master. Pins exactly these, so an accidental deletion OR an unreviewed
-    # addition both fail loudly. The OCIO/ACEScg + RAW demos need a float
-    # plate / camera RAW that is NOT shipped in the repo (distributed from the
-    # project website instead), and all showcase/experimental/retopo workflows
-    # were removed — recover any from git history (< the 0.8.1 trim commit).
+    # Shipping catalog: three artist-facing workflows plus three dedicated
+    # agentic/headless variants. Each variant preserves its source graph and
+    # appends one enabled AtlasAssessOutput terminal plus its exact-evidence preview.
     names = sorted(n for n, _ in _WORKFLOWS)
-    assert names == ["atlas_camera_staged_master_workflow.json",
+    assert names == ["atlas_camera_staged_master_agentic_assessment_workflow.json",
+                     "atlas_camera_staged_master_workflow.json",
+                     "atlas_input_quickstart_agentic_assessment_workflow.json",
                      "atlas_input_quickstart_workflow.json",
+                     "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
                      "atlas_occlusion_cull_quickstart_workflow.json"]
 
 
@@ -108,6 +113,10 @@ def _staged():
     return match[0]
 
 
+def _staged_agentic():
+    return _workflow(STAGED_AGENTIC)
+
+
 def _workflow(name):
     match = [wf for workflow_name, wf in _WORKFLOWS if workflow_name == name]
     assert match, f"{name} missing from examples/"
@@ -122,7 +131,7 @@ def _all_nodes(wf):
 
 
 def test_staged_master_uses_five_native_subgraphs_without_legacy_rails():
-    """v11 replaces the LaMa/KJ/rgthree graph with five real subgraphs."""
+    """The staged master uses five real subgraphs, with no legacy rails."""
     wf = _staged()
     definitions = (wf.get("definitions") or {}).get("subgraphs") or []
     assert [item["name"] for item in definitions] == [
@@ -201,43 +210,138 @@ def test_shipping_quickstarts_use_current_outputs_and_guidance():
         "AtlasExportNuke", "AtlasExportMayaReviewScene",
         "AtlasExportBlender", "AtlasExportUSD", "AtlasExportReliefMesh",
     }
-    for name in ("atlas_input_quickstart_workflow.json",
-                 "atlas_occlusion_cull_quickstart_workflow.json"):
-        wf = _workflow(name)
-        assert {node["type"] for node in wf["nodes"]} == required
-        note = next(node for node in wf["nodes"] if node["type"] == "Note")
-        text = note["widgets_values"][0]
-        assert "native" in text.casefold() and "AtlasSAM3Mask" in text
-        assert "cropped" in text and "SDXL" in text
-        atlas_input = next(node for node in wf["nodes"]
-                           if node["type"] == "AtlasInput")
-        # Positional index 13 is the append-stable sky_heuristic widget.
-        assert atlas_input["widgets_values"][13] is False
-        edges = _typed_edges(wf)
-        for exporter in ("AtlasExportNukeLayers", "AtlasExportMayaLayers",
-                         "AtlasExportNuke", "AtlasExportMayaReviewScene",
-                         "AtlasExportBlender"):
-            assert ("AtlasViewportControls", "output_profile", exporter,
-                    "output_profile") in edges
-        for exporter in ("AtlasExportNuke", "AtlasExportMayaReviewScene"):
-            assert ("AtlasExportReliefMesh", "obj_path", exporter,
-                    "relief_mesh_obj_path") in edges
-        assert ("AtlasViewportControls", "output_profile",
-                "AtlasBlockoutViewport", "output_profile") in edges
-        assert ("AtlasViewportControls", "controls",
-                "AtlasBlockoutViewport", "controls") in edges
+    for base_name, agentic_name in QUICKSTART_PAIRS:
+        base = _workflow(base_name)
+        agentic = _workflow(agentic_name)
+        assert {node["type"] for node in base["nodes"]} == required
+        assert {node["type"] for node in agentic["nodes"]} == (
+            required | {"AtlasAssessOutput", "PreviewImage"})
+        assert not any(node["type"] == "AtlasAssessOutput"
+                       for node in base["nodes"])
+        assessor = next(node for node in agentic["nodes"]
+                        if node["type"] == "AtlasAssessOutput")
+        assert assessor["widgets_values"][0] is True
+        assert agentic["extra"]["atlas_agentic_assessment"] is True
+        agentic_load = next(node for node in agentic["nodes"]
+                            if node["type"] == "LoadImage")
+        assert agentic_load["widgets_values"][0] == (
+            "moge_hangar_proj.jpg" if "occlusion" in agentic_name
+            else "ghosttown.jpg")
+
+        for wf in (base, agentic):
+            note = next(node for node in wf["nodes"] if node["type"] == "Note")
+            text = note["widgets_values"][0]
+            assert "native" in text.casefold() and "AtlasSAM3Mask" in text
+            assert "cropped" in text and "SDXL" in text
+            atlas_input = next(node for node in wf["nodes"]
+                               if node["type"] == "AtlasInput")
+            # Positional index 13 is the append-stable sky_heuristic widget.
+            assert atlas_input["widgets_values"][13] is False
+            edges = _typed_edges(wf)
+            for exporter in ("AtlasExportNukeLayers", "AtlasExportMayaLayers",
+                             "AtlasExportNuke", "AtlasExportMayaReviewScene",
+                             "AtlasExportBlender"):
+                assert ("AtlasViewportControls", "output_profile", exporter,
+                        "output_profile") in edges
+            for exporter in ("AtlasExportNuke", "AtlasExportMayaReviewScene"):
+                assert ("AtlasExportReliefMesh", "obj_path", exporter,
+                        "relief_mesh_obj_path") in edges
+            assert ("AtlasViewportControls", "output_profile",
+                    "AtlasBlockoutViewport", "output_profile") in edges
+            assert ("AtlasViewportControls", "controls",
+                    "AtlasBlockoutViewport", "controls") in edges
+
+        agentic_edges = _typed_edges(agentic)
+        assert ("AtlasBlockoutViewport", "shaded",
+                "AtlasAssessOutput", "camera_view") in agentic_edges
+        assert ("AtlasInput", "solve", "AtlasAssessOutput", "solve") in agentic_edges
+        assert ("AtlasInput", "image", "AtlasAssessOutput",
+                "source_image") in agentic_edges
+        assert ("AtlasInput", "depth", "AtlasAssessOutput", "depth") in agentic_edges
+        assert ("AtlasAssessOutput", "assessed_image",
+                "PreviewImage", "images") in agentic_edges
+
+
+def test_quickstart_agentic_variants_only_append_terminal_assessment():
+    expected_paths = {
+        "atlas_input_quickstart_agentic_assessment_workflow.json":
+            "atlas_debug/atlas_input_quickstart_agentic_output_assessment.json",
+        "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json":
+            "atlas_debug/atlas_occlusion_quickstart_agentic_output_assessment.json",
+    }
+    assessment_edges = {
+        ("AtlasBlockoutViewport", "shaded", "AtlasAssessOutput", "camera_view"),
+        ("AtlasInput", "solve", "AtlasAssessOutput", "solve"),
+        ("AtlasInput", "image", "AtlasAssessOutput", "source_image"),
+        ("AtlasInput", "depth", "AtlasAssessOutput", "depth"),
+        ("AtlasAssessOutput", "assessed_image", "PreviewImage", "images"),
+    }
+    for base_name, agentic_name in QUICKSTART_PAIRS:
+        base = _workflow(base_name)
+        agentic = _workflow(agentic_name)
+        assert len(agentic["nodes"]) == len(base["nodes"]) + 2
+        assert _typed_edges(agentic) - _typed_edges(base) == assessment_edges
+        assert _typed_edges(base) < _typed_edges(agentic)
+        assessor = next(node for node in agentic["nodes"]
+                        if node["type"] == "AtlasAssessOutput")
+        assert assessor["widgets_values"][5] == expected_paths[agentic_name]
+        note = next(node for node in agentic["nodes"] if node["type"] == "Note")
+        assert "AGENTIC TERMINAL QA" in note["widgets_values"][0]
+        assert "retained" in note["widgets_values"][0].casefold()
+        assert any(node["type"] == "PreviewImage" and
+                   "ASSESSED EVIDENCE" in node.get("title", "")
+                   for node in agentic["nodes"])
+
+
+def test_staged_master_terminal_assessment_consumes_view_and_debug_summary():
+    base = _staged()
+    agentic = _staged_agentic()
+    assert not any(node["type"] == "AtlasAssessOutput" for node in base["nodes"])
+    assert len(agentic["nodes"]) == len(base["nodes"]) + 2
+    assessor = next(node for node in agentic["nodes"]
+                    if node["type"] == "AtlasAssessOutput")
+    assert assessor["widgets_values"][0] is True
+    assert assessor["widgets_values"][5] == (
+        "atlas_debug/staged_master_agentic_output_assessment.json")
+    assert next(node for node in agentic["nodes"]
+                if node["type"] == "LoadImage")["widgets_values"][0] == (
+                    "ghosttown.jpg")
+    edges = _typed_edges(agentic)
+    assert ("AtlasBlockoutViewport", "shaded",
+            "AtlasAssessOutput", "camera_view") in edges
+    assert ("AtlasDebugReport", "report",
+            "AtlasAssessOutput", "solve_summary") in edges
+    assert _typed_edges(agentic) - _typed_edges(base) == {
+        ("AtlasBlockoutViewport", "shaded", "AtlasAssessOutput", "camera_view"),
+        ("AtlasDebugReport", "report", "AtlasAssessOutput", "solve_summary"),
+        ("dd9ef001-2246-5d12-88fa-4b305feb60d4", "solve",
+         "AtlasAssessOutput", "solve"),
+        ("AtlasRegisterPlate", "image", "AtlasAssessOutput", "source_image"),
+        ("AtlasDepthMap", "depth", "AtlasAssessOutput", "depth"),
+        ("AtlasAssessOutput", "assessed_image", "PreviewImage", "images"),
+    }
+    assert any(node["type"] == "PreviewImage" and
+               "ASSESSED EVIDENCE" in node.get("title", "")
+               for node in agentic["nodes"])
 
 
 def test_occlusion_quickstart_is_a_one_wire_matched_depth_ab_test():
-    standard = _workflow("atlas_input_quickstart_workflow.json")
-    occlusion = _workflow("atlas_occlusion_cull_quickstart_workflow.json")
-    standard_edges = _typed_edges(standard)
-    occlusion_edges = _typed_edges(occlusion)
-    assert standard_edges < occlusion_edges
-    assert occlusion_edges - standard_edges == {
-        ("AtlasInput", "depth", "AtlasBlockoutViewport", "primary_depth")}
-    assert not standard["extra"]["atlas_occlusion_primary_depth"]
-    assert occlusion["extra"]["atlas_occlusion_primary_depth"]
+    pairs = (
+        ("atlas_input_quickstart_workflow.json",
+         "atlas_occlusion_cull_quickstart_workflow.json"),
+        ("atlas_input_quickstart_agentic_assessment_workflow.json",
+         "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json"),
+    )
+    for standard_name, occlusion_name in pairs:
+        standard = _workflow(standard_name)
+        occlusion = _workflow(occlusion_name)
+        standard_edges = _typed_edges(standard)
+        occlusion_edges = _typed_edges(occlusion)
+        assert standard_edges < occlusion_edges
+        assert occlusion_edges - standard_edges == {
+            ("AtlasInput", "depth", "AtlasBlockoutViewport", "primary_depth")}
+        assert not standard["extra"]["atlas_occlusion_primary_depth"]
+        assert occlusion["extra"]["atlas_occlusion_primary_depth"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])

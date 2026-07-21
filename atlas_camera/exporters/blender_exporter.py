@@ -13,6 +13,40 @@ from atlas_camera.core.camera_math import derive_sensor_height_mm
 from atlas_camera.core.schema import AtlasSolve
 
 
+def _embedded_relief_mesh(solve: AtlasSolve) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int]], list[tuple[float, float]]] | None:
+    """Return the solve's relief mesh converted from Atlas Y-up to Blender Z-up.
+
+    AtlasExportReliefMesh places the *post-retopology* mesh on the preview
+    solve.  Embedding that payload here keeps the Blender handoff identical to
+    the viewport/Maya/Nuke result instead of silently exporting only a camera.
+    """
+    scene = getattr(solve, "projection_scene", None)
+    primitives = getattr(scene, "proxy_geometry", None) or []
+    meshes = [p for p in primitives if getattr(p, "primitive_type", "") == "mesh"]
+    if not meshes:
+        return None
+    primitive = next((p for p in meshes if p.name == "projection_relief_mesh"), meshes[0])
+    metadata = primitive.metadata or {}
+    vertices_raw = metadata.get("vertices") or []
+    faces_raw = metadata.get("faces") or []
+    uvs_raw = metadata.get("uvs") or []
+    if len(vertices_raw) < 9 or len(faces_raw) < 3:
+        return None
+    vertices = [
+        (float(vertices_raw[i]), -float(vertices_raw[i + 2]), float(vertices_raw[i + 1]))
+        for i in range(0, len(vertices_raw) - 2, 3)
+    ]
+    faces = [
+        (int(faces_raw[i]), int(faces_raw[i + 1]), int(faces_raw[i + 2]))
+        for i in range(0, len(faces_raw) - 2, 3)
+    ]
+    uvs = [
+        (float(uvs_raw[i]), float(uvs_raw[i + 1]))
+        for i in range(0, len(uvs_raw) - 1, 2)
+    ]
+    return vertices, faces, uvs
+
+
 def write_blender_scene_script(solve: AtlasSolve, output_path: str | Path) -> Path:
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -44,7 +78,30 @@ def write_blender_scene_script(solve: AtlasSolve, output_path: str | Path) -> Pa
     offset_u = (intrinsics.cx_px / image_w) if intrinsics.cx_px is not None else 0.5
     offset_v = (intrinsics.cy_px / image_h) if intrinsics.cy_px is not None else 0.5
 
-    source_image_name = "source_image.png"
+    source_plate = getattr(solve, "source_plate", None)
+    source_image_path = str(getattr(source_plate, "image_path", "") or "")
+    relief_mesh = _embedded_relief_mesh(solve)
+    relief_block = ""
+    if relief_mesh is not None:
+        vertices, faces, uvs = relief_mesh
+        relief_block = f'''
+    # Retopologized relief carried by the solve (already Atlas Y-up -> Blender Z-up).
+    relief_vertices = {vertices!r}
+    relief_faces = {faces!r}
+    relief_uvs = {uvs!r}
+    relief_data = bpy.data.meshes.new("atlas_retopologized_relief")
+    relief_data.from_pydata(relief_vertices, [], relief_faces)
+    relief_data.update()
+    relief = bpy.data.objects.new("atlas_retopologized_relief", relief_data)
+    bpy.context.collection.objects.link(relief)
+    if relief_uvs and len(relief_uvs) == len(relief_vertices):
+        uv_layer = relief_data.uv_layers.new(name="AtlasProjectionUV")
+        for polygon in relief_data.polygons:
+            for loop_index in polygon.loop_indices:
+                vertex_index = relief_data.loops[loop_index].vertex_index
+                uv_layer.data[loop_index].uv = relief_uvs[vertex_index]
+    projection_targets.append(relief)
+'''
 
     script = f'''"""Atlas Camera Blender review scene.
 
@@ -80,6 +137,8 @@ def build_scene(package_dir=None):
     bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 0, 0))
     ground = bpy.context.active_object
     ground.name = "atlas_ground_plane_z_up"
+    projection_targets = [ground]
+{relief_block}
 
     # --- Camera-projection material ---
     # u = {offset_u!r} + {scale_u!r} * cam_x / depth   (depth = -cam_z)
@@ -139,7 +198,11 @@ def build_scene(package_dir=None):
 
     img_tex = nodes.new("ShaderNodeTexImage")
     img_tex.extension = "CLIP"
-    img_path = os.path.join(package_dir, "{source_image_name}")
+    img_path = {source_image_path!r}
+    if not img_path:
+        img_path = os.path.join(package_dir, "source_image.png")
+    elif not os.path.isabs(img_path):
+        img_path = os.path.join(package_dir, img_path)
     if os.path.exists(img_path):
         img_tex.image = bpy.data.images.load(img_path, check_existing=True)
     links.new(combine.outputs["Vector"], img_tex.inputs["Vector"])
@@ -150,7 +213,8 @@ def build_scene(package_dir=None):
     out = nodes.new("ShaderNodeOutputMaterial")
     links.new(diffuse.outputs["BSDF"], out.inputs["Surface"])
 
-    ground.data.materials.append(mat)
+    for target in projection_targets:
+        target.data.materials.append(mat)
 
     bpy.context.scene.render.resolution_x = {image_w}
     bpy.context.scene.render.resolution_y = {image_h}

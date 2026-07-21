@@ -32,6 +32,18 @@ govern every exporter:
 | `AtlasExportBlender` | Python scene-builder (`build_scene.py`) with the Y-up→Z-up conversion at the boundary | Script inspection |
 | `AtlasExportReviewPackage` | Full review bundle (JSON + overlays + docs) | — |
 
+## Bridge Plugins (Auto-Import)
+
+To avoid manually hunting for files every time you generate an export, Atlas Camera includes **Bridge Plugins** for Maya, Nuke, and Blender in the `tools/dcc_bridges/` directory.
+
+These plugins add a native UI button to your DCC (e.g., a Maya shelf button, a Nuke menu item, or a Blender sidebar panel) that automatically scans your configured `atlas_exports` directory and imports the **most recently modified** file.
+
+- **Maya (`maya_atlas_bridge.py`)**: Imports the latest `.ma` or `.usd` file via a floating PyMEL UI.
+- **Nuke (`nuke_atlas_bridge.py`)**: Adds an "Atlas Camera" menu to the top bar. Automatically runs a `nodePaste()` on the latest `.nk` script.
+- **Blender (`blender_atlas_bridge.py`)**: A standard add-on that adds an "Atlas" tab to the 3D Viewport N-panel to import the latest `.usd` or `.usda`.
+
+**Installation:** Drop the respective Python script into your DCC's script/plugins folder, or run it directly from your script editor. You will be prompted to set your Atlas output directory on the first run.
+
 ## Relief mesh — closing interior tear holes for the DCC
 
 Atlas relief meshes are **deliberately torn** at depth discontinuities, so the

@@ -130,6 +130,62 @@ def test_gate_overrides_and_apply():
         C.apply_overrides(api, {"99.x": 1})
 
 
+def test_output_assessment_overrides_and_bounded_report_extraction():
+    api = {
+        "4": {"class_type": "AtlasAssessOutput", "inputs": {"enabled": False}},
+        "5": {"class_type": "PreviewImage", "inputs": {}},
+    }
+    assert C.output_assessment_overrides(api) == {"4.enabled": True}
+
+    assessment = {"schema": 1, "verdict": "warn", "status": "complete"}
+    outputs = {
+        "4": {
+            "text": ["terminal report"],
+            "json_path": ["atlas_debug/output.json"],
+            "atlas_output_assessment": [json.dumps(assessment)],
+            "images": [{"filename": "must-not-leak.png"}],
+        },
+        "5": {"images": [{"filename": "preview.png"}]},
+    }
+    reports = C.collect_output_reports(outputs)
+    assert reports == {"4": {
+        "text": "terminal report",
+        "json_path": "atlas_debug/output.json",
+        "evidence_path": "",
+        "coverage_path": "",
+        "source_reference_path": "",
+        "assessment": assessment,
+    }}
+    assert "images" not in json.dumps(reports)
+
+
+def test_queue_wait_tolerates_history_commit_race(monkeypatch):
+    history_calls = 0
+
+    def fake_http(url, *_args, **_kwargs):
+        nonlocal history_calls
+        if url.endswith("/prompt"):
+            return {"prompt_id": "prompt-race"}
+        if url.endswith("/history/prompt-race"):
+            history_calls += 1
+            if history_calls == 1:
+                return {}
+            return {"prompt-race": {
+                "status": {"completed": True, "messages": []},
+                "outputs": {},
+            }}
+        if url.endswith("/queue"):
+            return {"queue_running": [], "queue_pending": []}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(C, "http_json", fake_http)
+    monkeypatch.setattr(C.time, "sleep", lambda _seconds: None)
+    result = C.queue_and_wait({}, timeout=10, poll_s=0)
+    assert result["completed"] is True
+    assert result["errors"] == []
+    assert history_calls == 2
+
+
 def test_bypassed_node_forwards_same_type_input():
     ui = _ui()
     ui["nodes"][4]["mode"] = 4  # bypass the gate
@@ -245,12 +301,12 @@ def test_official_subgraph_expands_and_applies_proxy_widgets():
 
 
 def test_shipping_workflows_flatten_against_recorded_shapes():
-    """The three shipped UI workflows must parse and resolve their KJ rails
+    """The six shipped UI workflows must parse and resolve their KJ rails
     structurally (no oi lookups — VIRTUAL/link walk only). Full validation
     runs against a live server; here we pin the JSONs are structurally sound
     (bidirectional links, resolvable rails). Was over examples/showcase +
-    examples/experimental; those trees were removed in the 0.8.1 trim to three
-    example.png-only workflows, so this now walks the top-level catalog."""
+    examples/experimental; those trees were removed in the 0.8.1 trim. This
+    now walks the three base workflows and their three agentic QA variants."""
     import pathlib
     root = pathlib.Path("examples")
     checked = 0
@@ -266,4 +322,4 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
             assert lid in (nodes[sid]["outputs"][sslot].get("links") or []), f"{p.name}: link {lid}"
             assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
         checked += 1
-    assert checked == 3
+    assert checked == 6
