@@ -16,8 +16,11 @@ ComfyUI's bundled `example.png` with **nothing to download**:
   `examples/showcase/`, `examples/experimental/`, and `examples/retopo/` (~35
   workflows). Those demonstrate the colour-managed float and camera-RAW paths,
   which need a float plate / RAW that is **not** shipped — they are distributed
-  as workflow + image bundles from the project website instead. Recover any
-  from git history (before the trim commit).
+  as workflow + image bundles from the project website instead. The workflow
+  generators that built them were removed from `tools/` as well, along with
+  `examples/api_format/` and `examples/solves/` — `examples/` now holds exactly
+  the three UI workflows. Recover anything removed from git history (before the
+  trim commit).
 - **New guards:** `tests/test_shipping_workflow_paths.py` forbids absolute
   machine paths in any shipped workflow, and every workflow (not a
   hand-maintained subset) is now checked for positional-widget drift. Two

@@ -26,8 +26,8 @@ def _shipping_workflows() -> list[Path]:
     The old three-file tuple left examples/showcase/ (22 files) unchecked, so
     append-only drift accumulated there unnoticed — a Mac reviewer's strict
     validator flagged AtlasExportMayaLayers 1≠6 in the hangar showcase. Repair
-    with `python tools/fix_workflow_widget_drift.py <files>`. api_format/ and
-    any non-graph JSON are skipped (no top-level "nodes" list)."""
+    with `python tools/fix_workflow_widget_drift.py <files>`. Any non-graph
+    JSON is skipped (no top-level "nodes" list)."""
     out = []
     for p in sorted((ROOT / "examples").rglob("*.json")):
         try:
