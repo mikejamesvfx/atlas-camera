@@ -139,7 +139,8 @@ doctrine travels with the tools:
 
 ```
 1. atlas_health
-     → {"ok": true, "atlas_nodes": 60, "experimental_registered": true, ...}
+     → {"ok": true, "atlas_nodes": 71, "experimental_registered": true, ...}
+        (67 standard + 4 experimental when ATLAS_EXPERIMENTAL=1; 67 without)
 
 2. read atlas://calibration        (agent now knows the doctrine)
 
@@ -150,7 +151,7 @@ doctrine travels with the tools:
    building in the plate → re-solves or runs a workflow with
    AtlasReferenceScaleSolve / camera_height_m
 
-5. atlas_run_workflow  workflow_path="examples/showcase/atlas_city_blocks_newyork_workflow.json"
+5. atlas_run_workflow  workflow_path="examples/atlas_camera_staged_master_workflow.json"
      → completed, node errors verbatim if any
 
 6. atlas_read_debug_report         (layer census, red flags)

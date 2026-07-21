@@ -33,7 +33,10 @@ from . import comfy_http as C
 HOST = os.environ.get("COMFY_HOST", C.DEFAULT_HOST)
 REPO = os.environ.get("ATLAS_REPO", "")
 
-# Third-party packs the showcase workflows lean on (probed by atlas_health).
+# Third-party packs Atlas workflows commonly use (probed by atlas_health).
+# The staged master + the website-distributed OCIO/RAW/X-ray bundles lean on
+# these; native AtlasSAM3Mask now supersedes SAM3Segment in the shipped set,
+# but the probe still flags it since older graphs and the website bundles use it.
 _KNOWN_DEPS = {
     "SAM3Segment": "ComfyUI-RMBG (SAM3 segmentation)",
     "INPAINT_InpaintWithModel": "comfyui-inpaint-nodes (+ big-lama.pt)",
