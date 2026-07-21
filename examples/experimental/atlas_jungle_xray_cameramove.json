@@ -190,7 +190,8 @@
     "Ruicheng/moge-2-vitl-normal",
     36.0,
     "pinhole",
-    "auto"
+    "auto",
+    0.0
    ],
    "title": "Learned solve"
   },
@@ -1421,7 +1422,8 @@
     1.0,
     40.0,
     true,
-    0.0
+    0.0,
+    true
    ],
    "title": "Base relief (original photo)"
   },
@@ -2009,7 +2011,8 @@
     "",
     "",
     12.0,
-    0.0
+    0.0,
+    true
    ],
    "title": "🩻 X-ray layer"
   },
@@ -2454,7 +2457,12 @@
     "Node name for S&R": "AtlasExportNukeLayers"
    },
    "widgets_values": [
-    "atlas_exports/jungle_xray"
+    "atlas_exports/jungle_xray",
+    "off",
+    2000,
+    0,
+    30.0,
+    false
    ],
    "title": "🎞 Nuke layers (.nk)"
   },

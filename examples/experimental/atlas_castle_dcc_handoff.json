@@ -331,7 +331,8 @@
     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
     36.0,
     "pinhole",
-    "auto"
+    "auto",
+    0.0
    ],
    "title": "Learned solve"
   },
@@ -807,7 +808,9 @@
    "widgets_values": [
     "sky",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ],
    "title": "SAM3 · sky"
   },
@@ -1345,7 +1348,8 @@
     "",
     "",
     12.0,
-    0.0
+    0.0,
+    true
    ],
    "title": "🏰 Castle body layer"
   },
@@ -1474,7 +1478,12 @@
     "Node name for S&R": "AtlasExportNukeLayers"
    },
    "widgets_values": [
-    "atlas_exports/castle_dcc"
+    "atlas_exports/castle_dcc",
+    "off",
+    2000,
+    0,
+    30.0,
+    false
    ],
    "title": "🎞 Nuke layers (.nk)"
   },
@@ -1563,7 +1572,12 @@
     "Node name for S&R": "AtlasExportMayaLayers"
    },
    "widgets_values": [
-    "atlas_exports/castle_dcc"
+    "atlas_exports/castle_dcc",
+    "off",
+    2000,
+    0,
+    30.0,
+    false
    ],
    "title": "🧊 Maya layers (.ma)"
   },
@@ -1828,7 +1842,8 @@
     1.5,
     12.0,
     true,
-    0.0
+    0.0,
+    true
    ],
    "title": "Relief mesh"
   },
@@ -2003,7 +2018,12 @@
     true,
     128,
     0.0,
-    0.0
+    0.0,
+    "off",
+    2000,
+    0,
+    30.0,
+    false
    ],
    "title": "🔧 Export + hole fill"
   },

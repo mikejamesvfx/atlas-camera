@@ -481,7 +481,8 @@
     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
     36.0,
     "pinhole",
-    "auto"
+    "auto",
+    0.0
    ],
    "title": "Learned solve (GeoCalib)"
   },
@@ -1132,7 +1133,9 @@
    "widgets_values": [
     "sky",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ],
    "title": "SAM3 · sky"
   },
@@ -1267,7 +1270,9 @@
    "widgets_values": [
     "castle and cliff and rocks and grass",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ],
    "title": "SAM3 · castle + rocks (LITERAL)"
   },
@@ -1479,7 +1484,9 @@
    "widgets_values": [
     "ocean and sea and water",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ],
    "title": "SAM3 · ocean/water"
   },
@@ -2929,7 +2936,8 @@
     "",
     "",
     12.0,
-    0.0
+    0.0,
+    true
    ],
    "title": "🌊 Water (ground plane)"
   },
@@ -3354,7 +3362,8 @@
     "",
     "",
     12.0,
-    0.0
+    0.0,
+    true
    ],
    "title": "🏰 Castle + rocks (relief)"
   },
@@ -3823,7 +3832,8 @@
     1.5,
     12.0,
     true,
-    0.0
+    0.0,
+    true
    ],
    "title": "Castle relief (ocean/sky CUT)"
   },
@@ -3998,7 +4008,12 @@
     true,
     128,
     0.0,
-    0.0
+    0.0,
+    "off",
+    2000,
+    0,
+    30.0,
+    false
    ],
    "title": "🔧 Export + interior hole fill"
   },

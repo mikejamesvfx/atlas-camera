@@ -21,11 +21,23 @@ from atlas_camera.mcp.comfy_http import is_widget
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SHIPPING = (
-    "atlas_input_quickstart_workflow.json",
-    "atlas_input_ocio_quickstart_workflow.json",
-    "atlas_camera_staged_master_workflow.json",
-)
+def _shipping_workflows() -> list[Path]:
+    """EVERY LiteGraph workflow under examples/, not a hand-maintained subset.
+    The old three-file tuple left examples/showcase/ (22 files) unchecked, so
+    append-only drift accumulated there unnoticed — a Mac reviewer's strict
+    validator flagged AtlasExportMayaLayers 1≠6 in the hangar showcase. Repair
+    with `python tools/fix_workflow_widget_drift.py <files>`. api_format/ and
+    any non-graph JSON are skipped (no top-level "nodes" list)."""
+    out = []
+    for p in sorted((ROOT / "examples").rglob("*.json")):
+        try:
+            g = json.loads(p.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(g, dict) and isinstance(g.get("nodes"), list):
+            out.append(p)
+    return out
+
 
 ATLAS = {**reg.NODE_CLASS_MAPPINGS, **reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS}
 
@@ -47,9 +59,12 @@ def _expected_widget_count(cls) -> int:
 
 
 def test_shipping_workflows_have_no_atlas_widget_drift():
+    workflows = _shipping_workflows()
+    assert workflows, "no shipped workflows discovered under examples/"
     problems = []
-    for rel in SHIPPING:
-        wf = json.loads((ROOT / "examples" / rel).read_text(encoding="utf-8"))
+    for path in workflows:
+        rel = path.relative_to(ROOT / "examples").as_posix()
+        wf = json.loads(path.read_text(encoding="utf-8"))
         for node in wf["nodes"]:
             cls = ATLAS.get(node.get("type"))
             if cls is None:
@@ -59,6 +74,6 @@ def test_shipping_workflows_have_no_atlas_widget_drift():
             if want != got:
                 problems.append(
                     f"{rel}: {node['type']} id{node['id']} "
-                    f"widgets_values {got} != {want} (append the new widget's "
-                    f"default, or regenerate the workflow)")
+                    f"widgets_values {got} != {want} (run "
+                    f"tools/fix_workflow_widget_drift.py)")
     assert not problems, "Atlas widget drift:\n" + "\n".join(problems)

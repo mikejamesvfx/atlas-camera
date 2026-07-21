@@ -28,7 +28,7 @@ spec.loader.exec_module(cg)
 sys.argv = _argv
 _tmp.unlink(missing_ok=True)
 
-NEF = r"C:\Users\miike\ComfyUI_V91\ComfyUI\input\CameraRaw\DSC_2327.NEF"
+NEF = "input/CameraRaw/DSC_2327.NEF"
 EXPORT_ROOT = "atlas_exports/canonical_trust"
 
 w = cg.WF()

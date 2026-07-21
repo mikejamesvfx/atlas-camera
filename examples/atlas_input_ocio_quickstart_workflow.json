@@ -70,7 +70,7 @@
         "Node name for S&R": "AtlasLoadPlate"
       },
       "widgets_values": [
-        "C:\\Users\\miike\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\input\\atlas_ACEScg_Examples\\spacehangar_32bit_acescg.exr",
+        "examples/images/spacehangar_32bit_acescg.exr",
         "ACEScg",
         "sRGB - Display",
         false

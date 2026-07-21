@@ -107,7 +107,7 @@
     "Node name for S&R": "OCIORead"
    },
    "widgets_values": [
-    "C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\ghosttown_32bit_acescg.exr",
+    "examples/images/ghosttown_32bit_acescg.exr",
     "auto",
     "ACEScg",
     "sRGB - Display",
@@ -189,7 +189,7 @@
     "Node name for S&R": "AtlasRegisterPlate"
    },
    "widgets_values": [
-    "C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\ghosttown_32bit_acescg.exr",
+    "examples/images/ghosttown_32bit_acescg.exr",
     "ACEScg",
     "auto",
     "source",

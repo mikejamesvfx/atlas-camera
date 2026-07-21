@@ -403,7 +403,9 @@
    "widgets_values": [
     "spaceship",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ],
    "title": "Foreground mask — spaceship"
   },

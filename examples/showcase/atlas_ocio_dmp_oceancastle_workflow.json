@@ -107,7 +107,7 @@
     "Node name for S&R": "OCIORead"
    },
    "widgets_values": [
-    "C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\oceancastle_32bit_acescg.exr",
+    "examples/images/oceancastle_32bit_acescg.exr",
     "auto",
     "ACEScg",
     "sRGB - Display",
@@ -190,7 +190,7 @@
     "Node name for S&R": "AtlasRegisterPlate"
    },
    "widgets_values": [
-    "C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\oceancastle_32bit_acescg.exr",
+    "examples/images/oceancastle_32bit_acescg.exr",
     "ACEScg",
     "auto",
     "source",
@@ -452,7 +452,8 @@
     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
     36.0,
     "pinhole",
-    "auto"
+    "auto",
+    0.0
    ],
    "title": "Learned solve"
   },
@@ -769,7 +770,9 @@
    "widgets_values": [
     "sky",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ],
    "title": "SAM3 sky"
   },
@@ -1515,7 +1518,8 @@
     "",
     "",
     12.0,
-    0.0
+    0.0,
+    true
    ],
    "title": "🏰 Castle (foreground of the split)"
   },
@@ -1723,7 +1727,8 @@
     1.5,
     false,
     "manual",
-    ""
+    "",
+    true
    ],
    "title": "Occluder mask for the bg plate"
   },
@@ -2316,7 +2321,8 @@
     "",
     "",
     12.0,
-    0.0
+    0.0,
+    true
    ],
    "title": "🌊 Sea + far cliffs (background)"
   },
@@ -2539,7 +2545,12 @@
     "Node name for S&R": "AtlasExportNukeLayers"
    },
    "widgets_values": [
-    "atlas_exports/showcase_oceancastle"
+    "atlas_exports/showcase_oceancastle",
+    "off",
+    2000,
+    0,
+    30.0,
+    false
    ],
    "title": "🎞 Per-layer .nk (float Read paths)"
   },

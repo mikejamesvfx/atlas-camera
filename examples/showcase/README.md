@@ -55,8 +55,18 @@ For screenshots and demos, `marketing/workflows/atlas_marketing_ocio_*_dcc_workf
   (Display Any), Comfyui_VideoCombine_Plus, SaveImageExtended.
 - **[moge] / [usd] extras** where MoGe depth / USD exports appear;
   `pyinstantmeshes` for the jungle quad retopo.
-- **X-ray:** `ATLAS_EXPERIMENTAL=1` + `ATLAS_LARI_PATH` → your LaRI clone
-  (no upstream license — research only).
+- **Experimental (`ATLAS_EXPERIMENTAL=1` required):** these workflows use a
+  gate-hidden 🔬 node (`AtlasPredictHiddenGeometry`, `AtlasRenderFix`, or the
+  angle-patch pair) and load with a **red/missing node on a default install**
+  unless the flag is set before ComfyUI starts. The LaRI ones also need
+  `ATLAS_LARI_PATH` → your LaRI clone (no upstream license — research only).
+  - `atlas_xray_wreck` · `atlas_segmented_sdxl_hidden_d810raw`
+    · `atlas_segmented_sdxl_manual_debug` · `atlas_canonical_research_newyork_lari`
+    · `atlas_dmp_angle_xray_newyork` · `atlas_canonical_cleanplate_ghosttown`
+    (+ `experimental/atlas_jungle_xray_cameramove`).
+  - The pinned list is enforced by `tests/test_shipping_workflow_experimental.py`
+    — adding an experimental node to any other workflow fails CI until it is
+    documented here.
 - **RAW quickstart:** `[raw]` extra (rawpy/exifread/opencv<5) + `[raw-lens]`
   (lensfunpy) for the undistort toggle; the EXR sidecar needs
   `OPENCV_IO_ENABLE_OPENEXR=1` before launch (same as the OCIO workflows).

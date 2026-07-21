@@ -113,7 +113,7 @@
         "Node name for S&R": "AtlasLoadRAW"
       },
       "widgets_values": [
-        "C:\\Users\\miike\\ComfyUI_V91\\ComfyUI\\input\\CameraRaw\\DSC_2327.NEF",
+        "input/CameraRaw/DSC_2327.NEF",
         true,
         true,
         "camera",

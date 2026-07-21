@@ -34,9 +34,13 @@ _tmp.unlink(missing_ok=True)
 
 WF, RAIL = cg.WF, ("#2a363b", "#3f5159")
 
-# Absolute EXR locations on the authoring machine — each OCIO note tells the
-# user to repoint `source`/`plate_path` at their own copy of the float plate.
-EXR_DIR = r"C:\Users\miike\Desktop\AtlasCamera_Claude\examples\images"
+# Repo-relative EXR location — matches generate_canonical_ocio_dcc_workflows.py
+# (`_REL_EXR_DIR = examples/images`) so a fresh clone / any machine resolves it.
+# Was an absolute authoring-machine path (C:\Users\miike\…) which baked into
+# every generated showcase and broke on every other box — a Mac reviewer had to
+# repoint it by hand. Forward slashes: portable, and ComfyUI accepts them on
+# Windows. Users drop the separately-distributed float plates into examples/images/.
+EXR_DIR = "examples/images"
 VLM = {"provider": "lmstudio", "model": "google/gemma-4-12b-qat",
        "offload_model": True, "auto_continue": True}
 V2_OUT = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
@@ -368,7 +372,7 @@ def build_composable():
 def build_ocio_dmp():
     b = Builder("atlas-showcase-ocio-dmp")
     w = b.w
-    exr = EXR_DIR + r"\oceancastle_32bit_acescg.exr"
+    exr = EXR_DIR + "/oceancastle_32bit_acescg.exr"
     w.group("0 · ACEScg EXR IN + 🧭 VLM + ✅ GATE — the float plate is the source of truth", [-40, -40, 1240, 760], "#355")
     ocio = w.node("OCIORead", [0, 40], [380, 330], "OCIORead — ACEScg float EXR",
                   {"source": exr, "input_colorspace": "ACEScg"})
@@ -485,7 +489,7 @@ def build_ocio_dmp():
 def build_interior_hangar():
     b = Builder("atlas-showcase-interior-hangar")
     w = b.w
-    exr = EXR_DIR + r"\spacehangar_32bit_acescg.exr"
+    exr = EXR_DIR + "/spacehangar_32bit_acescg.exr"
     w.group("0 · ACEScg EXR + 🧭 VLM + ✅ GATE (interior: MoGe is the depth specialist)", [-40, -40, 1240, 760], "#355")
     ocio = w.node("OCIORead", [0, 40], [380, 330], "OCIORead — hangar EXR",
                   {"source": exr, "input_colorspace": "ACEScg"})
@@ -597,7 +601,7 @@ def build_interior_hangar():
 def build_ghosttown():
     b = Builder("atlas-showcase-ghosttown-move")
     w = b.w
-    exr = EXR_DIR + r"\ghosttown_32bit_acescg.exr"
+    exr = EXR_DIR + "/ghosttown_32bit_acescg.exr"
     w.group("0 · ACEScg EXR → 🎬 ONE NODE — AtlasInput expands to the whole layered build", [-40, -40, 1260, 700], "#355")
     ocio = w.node("OCIORead", [0, 40], [380, 330], "OCIORead — ghost town EXR",
                   {"source": exr, "input_colorspace": "ACEScg"})
@@ -673,7 +677,7 @@ def build_ghosttown():
 def build_jungleruins():
     b = Builder("atlas-showcase-jungleruins")
     w = b.w
-    exr = EXR_DIR + r"\jungleruins_32bit_acescg.exr"
+    exr = EXR_DIR + "/jungleruins_32bit_acescg.exr"
     w.group("0 · ACEScg EXR IN + SOLVE", [-40, -40, 1240, 620], "#355")
     ocio = w.node("OCIORead", [0, 40], [380, 330], "OCIORead — jungle ruins EXR",
                   {"source": exr, "input_colorspace": "ACEScg"})

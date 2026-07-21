@@ -107,7 +107,7 @@
     "Node name for S&R": "OCIORead"
    },
    "widgets_values": [
-    "C:\\Users\\miike\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\atlas-camera\\examples\\images\\ghosttown_32bit_acescg.exr",
+    "examples/images/ghosttown_32bit_acescg.exr",
     "auto",
     "ACEScg",
     "sRGB - Display",
@@ -190,7 +190,7 @@
     "Node name for S&R": "AtlasRegisterPlate"
    },
    "widgets_values": [
-    "C:\\Users\\miike\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\atlas-camera\\examples\\images\\ghosttown_32bit_acescg.exr",
+    "examples/images/ghosttown_32bit_acescg.exr",
     "ACEScg",
     "auto",
     "source",
@@ -2480,7 +2480,8 @@
     "",
     "",
     12.0,
-    0.0
+    0.0,
+    true
    ]
   },
   {
@@ -2709,7 +2710,9 @@
    "widgets_values": [
     "rusty car and fallen sign",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ]
   },
   {

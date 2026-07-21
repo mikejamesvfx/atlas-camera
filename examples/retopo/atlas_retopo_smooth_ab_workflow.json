@@ -85,7 +85,8 @@
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         36.0,
         "pinhole",
-        "auto"
+        "auto",
+        0.0
       ],
       "title": "Atlas Learned Solve (GeoCalib prior + depth-measured height)"
     },

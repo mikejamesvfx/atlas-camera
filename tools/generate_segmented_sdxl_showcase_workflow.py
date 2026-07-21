@@ -33,7 +33,7 @@ spec.loader.exec_module(cg)
 sys.argv = _argv
 _tmp.unlink(missing_ok=True)
 
-NEF = r"C:\Users\miike\ComfyUI_V91\ComfyUI\input\CameraRaw\DSC_2327.NEF"
+NEF = "input/CameraRaw/DSC_2327.NEF"
 EXPORT_ROOT = "atlas_exports/segmented_sdxl"
 
 
@@ -101,7 +101,7 @@ band = w.node("AtlasDepthLayerMask", [1460, 40], [420, 240], "FG band restrict [
 w.link(pitch, 0, band, "solve")
 w.link(dm, 0, band, "depth")
 lari = w.node(LARI, [1460, 330], [420, 300], "🩻 LaRI — predict occluded surfaces",
-              {"lari_path": r"C:\Users\miike\lari", "model": "lari-scene",
+              {"lari_path": "", "model": "lari-scene",
                "clear_rel": 0.02, "min_clear_m": 2.0, "smooth_px": 31,
                "fill_gaps": True, "seed": 845740604})
 w.link(dm, 0, lari, "depth")

@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 src = ROOT / "examples" / "2026-07-18_atlas_raw_quickstart_workflow_hidden.json"
 dst = ROOT / "examples" / "2026-07-18_atlas_raw_quickstart_workflow_hidden_diagnostic.json"
 wf = json.loads(src.read_text(encoding="utf-8"))
-wf["1"]["inputs"]["file_path"] = r"C:\Users\miike\Desktop\ComfyUI_windows_portable\ComfyUI\input\CameraRaw\DSC_2330.NEF"
+wf["1"]["inputs"]["file_path"] = "input/CameraRaw/DSC_2330.NEF"
 
 # The source graph used an optional Mask Preview+ pack. PreviewAny is already
 # present in the Atlas test environment and is sufficient for this diagnostic.

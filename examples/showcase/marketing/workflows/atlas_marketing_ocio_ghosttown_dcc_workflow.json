@@ -407,7 +407,9 @@
    "widgets_values": [
     "rusty car and fallen sign",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ],
    "title": "Foreground mask — rusty car and fallen sign"
   },
@@ -841,7 +843,9 @@
    "widgets_values": [
     "sky",
     0.5,
-    "auto"
+    "auto",
+    "merged",
+    0
    ],
    "title": "Sky mask"
   },
