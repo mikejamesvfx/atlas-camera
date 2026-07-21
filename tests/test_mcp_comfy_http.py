@@ -178,6 +178,72 @@ def test_validate_star_inputs_accepted():
     assert not any("TYPE" in e for e in errs)
 
 
+def _subgraph_ui():
+    """LoadImage -> official v1 subgraph(FakeSolve) -> FakeSink."""
+    subgraph_id = "11111111-2222-4333-8444-555555555555"
+    load = {
+        "id": 1, "type": "LoadImage", "mode": 0, "inputs": [],
+        "outputs": [_out("IMAGE", "IMAGE", [1]), _out("MASK", "MASK", [])],
+        "widgets_values": ["a.png", "image"],
+    }
+    instance = {
+        "id": 2, "type": subgraph_id, "mode": 0,
+        "inputs": [{"name": "image", "type": "IMAGE", "link": 1}],
+        "outputs": [_out("solve", "ATLAS_SOLVE", [2])],
+        "properties": {"proxyWidgets": [
+            ["1", "seed"], ["1", "control_after_generate"], ["1", "strength"],
+        ]},
+        "widgets_values": [999, "increment", 1.75],
+    }
+    sink = {
+        "id": 3, "type": "FakeSink", "mode": 0,
+        "inputs": [{"name": "solve", "type": "ATLAS_SOLVE", "link": 2}],
+        "outputs": [], "widgets_values": [],
+    }
+    definition = {
+        "id": subgraph_id, "version": 1, "name": "Synthetic solve",
+        "inputs": [{"id": "in", "name": "image", "type": "IMAGE",
+                    "linkIds": [10]}],
+        "outputs": [{"id": "out", "name": "solve", "type": "ATLAS_SOLVE",
+                     "linkIds": [11]}],
+        "nodes": [{
+            "id": 1, "type": "FakeSolve", "mode": 0,
+            "inputs": [{"name": "image", "type": "IMAGE", "link": 10}],
+            "outputs": [_out("solve", "ATLAS_SOLVE", [11])],
+            "widgets_values": [123, "fixed", 1.5],
+        }],
+        "links": [
+            {"id": 10, "origin_id": -10, "origin_slot": 0,
+             "target_id": 1, "target_slot": 0, "type": "IMAGE"},
+            {"id": 11, "origin_id": 1, "origin_slot": 0,
+             "target_id": -20, "target_slot": 0, "type": "ATLAS_SOLVE"},
+        ],
+    }
+    return {
+        "nodes": [load, instance, sink],
+        "links": [[1, 1, 0, 2, 0, "IMAGE"],
+                  [2, 2, 0, 3, 0, "ATLAS_SOLVE"]],
+        "groups": [], "definitions": {"subgraphs": [definition]},
+    }
+
+
+def test_official_subgraph_expands_and_applies_proxy_widgets():
+    expanded = C.expand_subgraphs(_subgraph_ui(), OI)
+    assert [node["type"] for node in expanded["nodes"]] == [
+        "LoadImage", "FakeSink", "FakeSolve"]
+    fake = next(node for node in expanded["nodes"] if node["type"] == "FakeSolve")
+    assert fake["widgets_values"] == [999, "increment", 1.75]
+    assert len(expanded["links"]) == 2
+
+    api = C.ui_to_api(_subgraph_ui(), OI)
+    fake_id = str(fake["id"])
+    assert api[fake_id]["inputs"]["image"] == ["1", 0]
+    assert api[fake_id]["inputs"]["seed"] == 999
+    assert api[fake_id]["inputs"]["strength"] == 1.75
+    assert api["3"]["inputs"]["solve"] == [fake_id, 0]
+    assert C.validate_ui(_subgraph_ui(), OI) == ([], [])
+
+
 def test_shipping_workflows_flatten_against_recorded_shapes():
     """The three shipped UI workflows must parse and resolve their KJ rails
     structurally (no oi lookups — VIRTUAL/link walk only). Full validation

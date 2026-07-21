@@ -65,7 +65,10 @@ def test_shipping_workflows_have_no_atlas_widget_drift():
     for path in workflows:
         rel = path.relative_to(ROOT / "examples").as_posix()
         wf = json.loads(path.read_text(encoding="utf-8"))
-        for node in wf["nodes"]:
+        nodes = list(wf["nodes"])
+        for definition in (wf.get("definitions") or {}).get("subgraphs") or []:
+            nodes.extend(definition.get("nodes") or [])
+        for node in nodes:
             cls = ATLAS.get(node.get("type"))
             if cls is None:
                 continue  # third-party / core / virtual — checked live, not here

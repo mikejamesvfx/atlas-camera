@@ -564,7 +564,7 @@ ComfyUI's browser canvas for interactive, click-around testing:
 | File | Demonstrates |
 |---|---|
 | `atlas_input_quickstart_workflow.json` | The 4-node fastest path: LoadImage → 🎬 AtlasInput → Atlas Viewport. Instant relief by default; layers/VLM/sky/scope/inpaint all reachable by widgets on the one node. Start here. |
-| `atlas_camera_staged_master_workflow.json` | 🏗 The 5-stage layered master — the same logic with stages, gates (VLM + solve), KJ rails, SAM sky + per-band scope, per-band LaMa clean plates, per-layer debug previews, 🔍 debug JSON, and both DCC layer exports. |
+| `atlas_camera_staged_master_workflow.json` | 🏗 The five-layer master — five native ComfyUI subgraphs, VLM + solve gates, native SAM3 sky/scope, four cropped SDXL clean plates, per-layer previews, 🔍 debug JSON, and Nuke/Maya/Blender/USD exports. No LaMa, KJ rails, or rgthree dependency. |
 | `atlas_input_ocio_quickstart_workflow.json` | 🎨 The float VFX color-managed handoff (added 2026-07-13): `OCIORead` (ACEScg `.exr`) → `AtlasRegisterPlate` → `AtlasInput` → `AtlasAttachSourcePlate` → Nuke/Maya/USD exporters that read the original EXR at `ACEScg`. Needs ComfyUI-OCIO + opencv-python 4.x + `[usd]`. |
 
 **The shipping catalog was deliberately trimmed to these three on 2026-07-12

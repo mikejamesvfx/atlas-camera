@@ -108,44 +108,48 @@ def _staged():
     return match[0]
 
 
-def test_staged_master_rails_have_setters():
-    """Every KJ GetNode's rail name must have exactly one SetNode — a renamed
-    or deleted Set silently starves every Get on that rail."""
+def _all_nodes(wf):
+    nodes = list(wf.get("nodes") or [])
+    for definition in (wf.get("definitions") or {}).get("subgraphs") or []:
+        nodes.extend(definition.get("nodes") or [])
+    return nodes
+
+
+def test_staged_master_uses_five_native_subgraphs_without_legacy_rails():
+    """v11 replaces the LaMa/KJ/rgthree graph with five real subgraphs."""
     wf = _staged()
-    sets = {}
-    for n in wf["nodes"]:
-        if n["type"] == "SetNode":
-            rail = n["widgets_values"][0]
-            sets.setdefault(rail, 0)
-            sets[rail] += 1
-    dupes = [r for r, c in sets.items() if c > 1]
-    assert not dupes, f"duplicate SetNodes for rails: {dupes}"
-    orphans = [n["widgets_values"][0] for n in wf["nodes"]
-               if n["type"] == "GetNode" and n["widgets_values"][0] not in sets]
-    assert not orphans, f"GetNodes with no SetNode: {orphans}"
+    definitions = (wf.get("definitions") or {}).get("subgraphs") or []
+    assert [item["name"] for item in definitions] == [
+        "1 · SKY LAYER", "2 · FAR LAYER", "3 · BACKGROUND LAYER",
+        "4 · MIDGROUND LAYER", "5 · FOREGROUND LAYER"]
+    forbidden = {"SetNode", "GetNode", "Fast Groups Bypasser (rgthree)",
+                 "INPAINT_LoadInpaintModel", "INPAINT_InpaintWithModel",
+                 "INPAINT_ExpandMask", "UpscaleModelLoader"}
+    assert not forbidden.intersection(node["type"] for node in _all_nodes(wf))
+    assert sum(node["type"] == "AtlasSDXLInpaint" for node in _all_nodes(wf)) == 4
 
 
-def test_staged_master_debug_strip_is_group_free():
-    """The per-layer previews + the 🔍 debug node live OUTSIDE every group
-    bounding on purpose: a node fully inside a stage group's bounds gets
-    claimed by the rgthree bypasser and dies with that group — the exact
-    trap the first preview placement fell into (inside the ASSEMBLE group)."""
+def test_staged_master_subgraph_links_are_consistent():
     wf = _staged()
-
-    def inside(n, g):
-        x, y = n["pos"]
-        w, h = n.get("size") or [210, 246]
-        gx, gy, gw, gh = g["bounding"]
-        return gx <= x and gy <= y and x + w <= gx + gw and y + h <= gy + gh
-
-    strip_types = {"AtlasLayerPreview", "AtlasDebugReport"}
-    claimed = []
-    for n in wf["nodes"]:
-        if n["type"] in strip_types and n["pos"][0] < 2010:  # the x1760 strip
-            for g in wf["groups"]:
-                if inside(n, g):
-                    claimed.append((n["id"], n["type"], g["title"][:30]))
-    assert not claimed, f"strip nodes claimed by groups: {claimed}"
+    for definition in wf["definitions"]["subgraphs"]:
+        nodes = {node["id"]: node for node in definition["nodes"]}
+        inputs = definition["inputs"]
+        outputs = definition["outputs"]
+        link_ids = {link["id"] for link in definition["links"]}
+        for link in definition["links"]:
+            lid = link["id"]
+            if link["origin_id"] == -10:
+                assert lid in inputs[link["origin_slot"]]["linkIds"]
+            else:
+                assert lid in (nodes[link["origin_id"]]["outputs"]
+                               [link["origin_slot"]].get("links") or [])
+            if link["target_id"] == -20:
+                assert lid in outputs[link["target_slot"]]["linkIds"]
+            else:
+                assert (nodes[link["target_id"]]["inputs"]
+                        [link["target_slot"]].get("link") == lid)
+        assert all(lid in link_ids for item in inputs + outputs
+                   for lid in item.get("linkIds") or [])
 
 
 def test_staged_master_band_priorities_are_farthest_highest():
@@ -157,7 +161,7 @@ def test_staged_master_band_priorities_are_farthest_highest():
     AtlasInput on the same convention."""
     wf = _staged()
     prios = {n["widgets_values"][4]: n["widgets_values"][5]
-             for n in wf["nodes"] if n["type"] == "AtlasCleanPlateLayer"}
+             for n in _all_nodes(wf) if n["type"] == "AtlasCleanPlateLayer"}
     assert prios == {"band_far": 15, "band_bg": 10, "band_mid": 5, "band_fg": 0}
 
 
@@ -165,7 +169,7 @@ def test_staged_master_scope_rows_are_always_active():
     """v7 doctrine: 🎯 AtlasScopeMask rows self-disarm — none may ship
     bypassed (mode 4) or muted (mode 2), and there must be one per band."""
     wf = _staged()
-    scopes = [n for n in wf["nodes"] if n["type"] == "AtlasScopeMask"]
+    scopes = [n for n in _all_nodes(wf) if n["type"] == "AtlasScopeMask"]
     assert len(scopes) == 4
     assert all(n.get("mode", 0) == 0 for n in scopes)
 

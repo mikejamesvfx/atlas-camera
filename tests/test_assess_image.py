@@ -112,7 +112,8 @@ def test_report_formatting_from_payload():
     assert "STAGED 5-LAYER PLAN" in report
     assert 'SAM "rock formations"  · geometry: card' in report
     assert "geometry: ground" in report
-    assert "absent — leave this stage bypassed" in report
+    assert "absent — bypass this layer when using the staged master" in report
+    assert "keep + layer subgraphs active" in report
     assert "front-right quarter view" in report
     assert "! thin rock spires may tear" in report
     assert "Continue Workflow" in report

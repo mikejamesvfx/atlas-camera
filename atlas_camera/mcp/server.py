@@ -115,7 +115,7 @@ def atlas_run_workflow(workflow_path: str, overrides: dict | None = None,
     api = C.ui_to_api(ui, oi)
     ov = dict(overrides or {})
     if open_gates:
-        for k, v in C.gate_overrides(ui).items():
+        for k, v in C.gate_overrides(ui, oi).items():
             ov.setdefault(k, v)
     applied = C.apply_overrides(api, ov)
     result = C.queue_and_wait(api, HOST, timeout=timeout)
