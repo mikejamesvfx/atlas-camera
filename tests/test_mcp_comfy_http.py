@@ -179,24 +179,25 @@ def test_validate_star_inputs_accepted():
 
 
 def test_shipping_workflows_flatten_against_recorded_shapes():
-    """Every committed showcase/experimental workflow must at least parse and
-    resolve its rails structurally (no oi lookups — VIRTUAL/link walk only).
-    Full validation runs against a live server; here we pin the JSONs are
-    structurally sound (bidirectional links, resolvable rails)."""
+    """The three shipped UI workflows must parse and resolve their KJ rails
+    structurally (no oi lookups — VIRTUAL/link walk only). Full validation
+    runs against a live server; here we pin the JSONs are structurally sound
+    (bidirectional links, resolvable rails). Was over examples/showcase +
+    examples/experimental; those trees were removed in the 0.8.1 trim to three
+    example.png-only workflows, so this now walks the top-level catalog."""
     import pathlib
-    roots = [pathlib.Path("examples/showcase"), pathlib.Path("examples/experimental")]
+    root = pathlib.Path("examples")
     checked = 0
-    for root in roots:
-        for p in sorted(root.glob("*_workflow.json")) + sorted(root.glob("atlas_*.json")):
-            d = json.loads(p.read_text(encoding="utf-8"))
-            nodes = {n["id"]: n for n in d["nodes"]}
-            sets = {n["widgets_values"][0] for n in d["nodes"] if n["type"] == "SetNode"}
-            for n in d["nodes"]:
-                if n["type"] == "GetNode":
-                    assert n["widgets_values"][0] in sets, f"{p.name}: dangling rail"
-            for l in d["links"]:
-                lid, sid, sslot, tid, tslot = l[:5]
-                assert lid in (nodes[sid]["outputs"][sslot].get("links") or []), f"{p.name}: link {lid}"
-                assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
-            checked += 1
-    assert checked >= 12  # 11 showcase + experimental set
+    for p in sorted(root.glob("*_workflow.json")):
+        d = json.loads(p.read_text(encoding="utf-8"))
+        nodes = {n["id"]: n for n in d["nodes"]}
+        sets = {n["widgets_values"][0] for n in d["nodes"] if n["type"] == "SetNode"}
+        for n in d["nodes"]:
+            if n["type"] == "GetNode":
+                assert n["widgets_values"][0] in sets, f"{p.name}: dangling rail"
+        for l in d["links"]:
+            lid, sid, sslot, tid, tslot = l[:5]
+            assert lid in (nodes[sid]["outputs"][sslot].get("links") or []), f"{p.name}: link {lid}"
+            assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
+        checked += 1
+    assert checked == 3

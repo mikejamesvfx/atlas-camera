@@ -5,6 +5,25 @@ full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
 ## Unreleased
 
+### Shipping catalog trimmed to three workflows
+
+The repo now ships exactly **three** example workflows, each of which runs on
+ComfyUI's bundled `example.png` with **nothing to download**:
+`atlas_input_quickstart`, `atlas_occlusion_cull_quickstart`, and the
+`atlas_camera_staged_master`.
+
+- **Removed from the repo:** the OCIO/ACEScg quickstart and all of
+  `examples/showcase/`, `examples/experimental/`, and `examples/retopo/` (~35
+  workflows). Those demonstrate the colour-managed float and camera-RAW paths,
+  which need a float plate / RAW that is **not** shipped — they are distributed
+  as workflow + image bundles from the project website instead. Recover any
+  from git history (before the trim commit).
+- **New guards:** `tests/test_shipping_workflow_paths.py` forbids absolute
+  machine paths in any shipped workflow, and every workflow (not a
+  hand-maintained subset) is now checked for positional-widget drift. Two
+  reusable repair tools: `tools/fix_workflow_widget_drift.py` and
+  `tools/normalize_workflow_paths.py`.
+
 ### Node menu cleanup
 
 - **Every node now lives in an `Atlas Camera/<folder>` submenu** — the flat

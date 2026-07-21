@@ -5,12 +5,12 @@ pair) are hidden unless ``ATLAS_EXPERIMENTAL=1``. A workflow that uses one loads
 with a red/missing node on a DEFAULT install — a Mac reviewer hit exactly this on
 the SAM3-port debug graph and could not tell whether the port was broken.
 
-That is sometimes intended (the X-ray / hidden-geometry showcases genuinely
-demonstrate those nodes), so the rule is not "never ship one" — it is "every
-such workflow is on this pinned list, and each MUST document that it needs
-``ATLAS_EXPERIMENTAL=1`` (see examples/showcase/README.md's requirements
-matrix)." Adding an experimental node to any other workflow fails this test,
-forcing the question: is it intended, and is the flag documented?
+That is sometimes intended (an X-ray / hidden-geometry demo genuinely uses
+those nodes), so the rule is not "never ship one" — it is "every such workflow
+is on this pinned list, and each MUST document that it needs
+``ATLAS_EXPERIMENTAL=1`` (in INSTALL.md / the workflow's own README)." Adding
+an experimental node to any shipped workflow fails this test, forcing the
+question: is it intended, and is the flag documented?
 """
 from __future__ import annotations
 
@@ -23,17 +23,17 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENTAL = set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
 
 # Every shipped workflow that intentionally uses an experimental node. Each is
-# documented as needing ATLAS_EXPERIMENTAL=1. Keep in sync when a showcase is
+# documented as needing ATLAS_EXPERIMENTAL=1. Keep in sync when a workflow is
 # added/removed — that is the point of pinning it.
-WORKFLOWS_USING_EXPERIMENTAL = {
-    "experimental/atlas_jungle_xray_cameramove.json",
-    "showcase/atlas_canonical_cleanplate_ghosttown_workflow.json",
-    "showcase/atlas_canonical_research_newyork_lari_workflow.json",
-    "showcase/atlas_dmp_angle_xray_newyork_workflow.json",
-    "showcase/atlas_segmented_sdxl_hidden_d810raw_workflow.json",
-    "showcase/atlas_segmented_sdxl_manual_debug_workflow.json",
-    "showcase/atlas_xray_wreck_workflow.json",
-}
+#
+# EMPTY since the 0.8.1 trim: the repo now ships only the three example.png
+# quickstarts, none of which touch an experimental node. All the X-ray /
+# hidden-geometry / angle-patch showcases that did were removed (they need
+# downloaded plates and live as website-distributed demos now). The guard
+# stays so that re-introducing an experimental node into a SHIPPED workflow is
+# a conscious, reviewed choice rather than an accidental red node on a default
+# install.
+WORKFLOWS_USING_EXPERIMENTAL: set[str] = set()
 
 
 def _actual() -> set[str]:
@@ -56,8 +56,8 @@ def test_experimental_node_usage_is_pinned():
     removed = WORKFLOWS_USING_EXPERIMENTAL - actual
     assert not added, (
         "workflow(s) now use a gate-hidden experimental node — intended? then "
-        "document ATLAS_EXPERIMENTAL=1 in examples/showcase/README.md and add "
-        f"them to this test's pinned set:\n  {sorted(added)}")
+        "document ATLAS_EXPERIMENTAL=1 (INSTALL.md / the workflow's README) and "
+        f"add them to this test's pinned set:\n  {sorted(added)}")
     assert not removed, (
         "pinned experimental-using workflow(s) no longer use one (or were "
         f"removed); update the pinned set:\n  {sorted(removed)}")
