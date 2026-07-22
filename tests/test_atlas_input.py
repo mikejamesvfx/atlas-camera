@@ -293,3 +293,49 @@ def test_sky_keeps_non_moge_depth_model(monkeypatch):
     depth_node = next(n for n in graph.values() if n["class_type"] == "AtlasDepthMap")
     assert depth_node["inputs"]["depth_model"] ==         "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"
     assert "auto-switched" not in result[4]
+
+
+def test_build_signature_matches_input_types_widget_order():
+    """ComfyUI passes ``widgets_values`` positionally to the node function,
+    so ``build()``'s parameter order must exactly match ``INPUT_TYPES``
+    widget order (excluding the required ``image`` socket).  A drift makes
+    widgets control the wrong parameter silently — e.g. ``sky`` being read
+    from the ``sky_prompt`` slot produced a black mask even though the
+    artist turned ``sky`` on."""
+    import inspect
+    from atlas_camera.mcp.comfy_http import is_widget
+    sig = inspect.signature(AtlasInput.build)
+    params = [n for n in list(sig.parameters.keys())[1:]
+              if not n.startswith("_") and n != "image"]
+    it = AtlasInput.INPUT_TYPES()
+    widgets = []
+    for sec in ("required", "optional"):
+        for name, spec in it.get(sec, {}).items():
+            if is_widget(spec):
+                widgets.append(name)
+    assert params == widgets, f"build params {params} vs widgets {widgets}"
+
+
+def test_positional_sky_widget_turns_on_sky_card(monkeypatch):
+    """When the artist enables the ``sky`` widget in a saved workflow,
+    ComfyUI serializes it positionally.  Call ``build()`` with the exact
+    positional sequence the frontend would send and confirm the graph
+    actually builds a sky dome with the right prompt."""
+    monkeypatch.setattr(nodes_mod, "_comfy_registry", lambda: {})
+    monkeypatch.setattr(nodes_mod, "_native_sam3_available", lambda: True)
+    # Positional args after ``image`` in INPUT_TYPES widget order.
+    args = (0, "relief", 512, False, "lmstudio", "", True, "sky", "", False,
+            "", 24, 12.0, True, 0.0,
+            "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+            True, "lama", 32,
+            "SDXL/sd_xl_base_1.0.safetensors",
+            "clear seamless sky, high detail, no buildings, no trees, no roofs",
+            "building, tree, roof, person, vehicle, text, watermark, blurry", 0)
+    out = AtlasInput().build(IMG, *args)
+    graph = out["expand"]
+    assert any(n["class_type"] == "AtlasSkyDomeLayer" for n in graph.values())
+    sam = next(n for n in graph.values()
+               if n["class_type"] == "AtlasSAM3Mask"
+               and n["inputs"].get("concepts") == "sky")
+    assert sam["inputs"]["concepts"] == "sky"
+    assert "sky card ON" in out["result"][4]

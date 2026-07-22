@@ -695,11 +695,12 @@ class AtlasInput:
 
     # --- assembly ---------------------------------------------------------
     def build(self, image, layers=0, mesh="relief", mesh_resolution=512,
-              use_vlm=False, vlm_scope=True, vlm_provider="lmstudio", vlm_model="",
+              use_vlm=False, vlm_provider="lmstudio", vlm_model="",
               sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
               upscale_model="", edge_extend_px=24, max_edge_factor=12.0,
               sky_heuristic=True, normal_edge_deg=0.0,
               depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+              vlm_scope=True,
               sky_inpaint_mode="lama", sky_lama_grow_px=32,
               sky_sdxl_checkpoint="SDXL/sd_xl_base_1.0.safetensors",
               sky_sdxl_positive="clear seamless sky, high detail, no buildings, no trees, no roofs",
