@@ -739,7 +739,34 @@ def test_relief_mesh_from_solve_prefers_the_derived_mesh():
         camera_world_matrix=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))))
     solve = AtlasSolve(camera=cam, image_width=40, image_height=40)
 
+
     assert _relief_mesh_from_solve(solve) is None            # bare solve
     solve.projection_scene = AtlasProjectionScene(proxy_geometry=[relief_mesh_primitive(mesh)])
     got = _relief_mesh_from_solve(solve)                      # now present
     assert got is not None and len(got.faces) == len(mesh.faces)
+
+
+
+def test_build_relief_mesh_with_camera_spec():
+    """Verify build_relief_mesh accepts ReliefMeshCameraSpec."""
+    from atlas_camera.core.relief_mesh import ReliefMeshCameraSpec
+    depth = np.full((40, 40), 10.0)
+    spec = ReliefMeshCameraSpec(
+        view_matrix=_view_matrix(0.0),
+        fx=200.0,
+        fy=200.0,
+        cx=20.0,
+        cy=20.0,
+        scale=1.0,
+        horizon_y=18.0,
+    )
+    mesh_spec = build_relief_mesh(
+        depth, camera_spec=spec, grid_long_edge=24, apply_sky_heuristic=False, far_clip_percentile=100.0
+    )
+    mesh_kw = build_relief_mesh(
+        depth, view_matrix=_view_matrix(0.0), fx=200.0, fy=200.0, cx=20.0, cy=20.0,
+        scale=1.0, horizon_y=18.0, grid_long_edge=24, apply_sky_heuristic=False, far_clip_percentile=100.0
+    )
+    assert mesh_spec.stats["n_vertices"] == mesh_kw.stats["n_vertices"]
+    assert mesh_spec.stats["n_faces"] == mesh_kw.stats["n_faces"]
+

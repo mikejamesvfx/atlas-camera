@@ -537,78 +537,93 @@ def derive_projection_proxies(
     stats: dict[str, Any] = {"walls": 0, "boxes": 0, "cylinders": 0}
     prims: list[AtlasProxyPrimitive] = []
 
-    # -- Step 1: back-project to world (camera pose from the view matrix) ------
-    vm = np.asarray(view_matrix, dtype=np.float64)
-    cam_to_world = np.linalg.inv(vm)
-    R_cw = cam_to_world[:3, :3]
-    cam_pos = cam_to_world[:3, 3]
+def _build_ground_primitive(np: Any, cfg: ProxyDerivationConfig, pts_world: Any, ground_inlier: Any, scale: float) -> AtlasProxyPrimitive | None:
+    """Helper to build projection_ground primitive from ground inliers."""
+    if int(ground_inlier.sum()) < 300:
+        return None
+    gx = pts_world[..., 0][ground_inlier]
+    gz = pts_world[..., 2][ground_inlier]
+    p_lo, p_hi = cfg.extent_percentiles
+    x0, x1 = np.percentile(gx, [p_lo, p_hi])
+    z0, z1 = np.percentile(gz, [p_lo, p_hi])
+    cx_w, cz_w = 0.5 * (x0 + x1), 0.5 * (z0 + z1)
+    ex = max((x1 - x0) * cfg.ground_padding, cfg.ground_min_extent_m)
+    ez = max((z1 - z0) * cfg.ground_padding, cfg.ground_min_extent_m)
+    u_g = np.array([1.0, 0.0, 0.0])
+    n_g = np.array([0.0, 1.0, 0.0])
+    v_g = np.array([0.0, 0.0, -1.0])  # u × v = n (right-handed)
+    return AtlasProxyPrimitive(
+        name="projection_ground",
+        primitive_type="plane",
+        transform_matrix=_plane_transform(u_g, v_g, n_g, (cx_w, 0.0, cz_w)),
+        dimensions=(float(ex), float(ez), 0.0),
+        material="atlas_projection_proxy",
+        metadata={"role": PROXY_ROLE, "source": "depth_derivation",
+                  "inliers": int(ground_inlier.sum()),
+                  "depth_scale_applied": scale},
+    )
 
-    uu, vv = np.meshgrid(np.arange(width, dtype=np.float64),
-                         np.arange(height, dtype=np.float64))
-    x = (uu - cx) / fx * depth
-    y = -(vv - cy) / fy * depth
-    z = -depth
-    pts_cam = np.stack([x, y, z], axis=-1)
-    pts_world = pts_cam @ R_cw.T + cam_pos
 
-    valid_depth = np.isfinite(depth) & (depth > 1e-4)
+def derive_projection_proxies(
+    depth: Any,
+    *,
+    view_matrix: Any,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    max_walls: int = 4,
+    horizon_y: float | None = None,
+    config: ProxyDerivationConfig | None = None,
+    exclude_mask: Any | None = None,
+) -> tuple[list[AtlasProxyPrimitive], dict[str, Any]]:
+    """Derive proxy geometry from a forward-z depth map and the recovered camera.
 
-    # -- Step 2: normals + validity --------------------------------------------
-    du = pts_world[:, 2:, :] - pts_world[:, :-2, :]
-    dv = pts_world[2:, :, :] - pts_world[:-2, :, :]
-    du = du[1:-1, :, :]
-    dv = dv[:, 1:-1, :]
-    normals_inner = np.cross(du, dv)
-    nrm = np.linalg.norm(normals_inner, axis=-1, keepdims=True)
-    normals_inner = normals_inner / np.maximum(nrm, 1e-12)
+    ``exclude_mask`` ((H,W) bool, aligned to ``depth``) removes pixels from the
+    WALL and OBJECT stages only — the ground fit / metric scale / backdrop
+    always use the full depth map, so several mask-scoped derive branches (one
+    SAM segment per building, merged afterwards) land in the SAME metric world
+    instead of each branch fitting a different ground scale.
 
-    normals = np.zeros((height, width, 3), dtype=np.float64)
-    normals[1:-1, 1:-1] = normals_inner
+    Returns ``(primitives, debug_stats)``. Always emits the backdrop; ground,
+    walls, boxes and cylinders drop out gracefully when their fits are poor.
+    """
+    np = _require_numpy()
+    cfg = config or ProxyDerivationConfig()
+    depth = np.asarray(depth, dtype=np.float64)
+    height, width = depth.shape
+    if horizon_y is None:
+        horizon_y = height * 0.45
 
-    # Depth-discontinuity mask: silhouette edges produce garbage normals.
-    ddx = np.abs(depth[:, 2:] - depth[:, :-2])
-    ddy = np.abs(depth[2:, :] - depth[:-2, :])
-    edge = np.zeros((height, width), dtype=bool)
-    edge[:, 1:-1] |= ddx > cfg.depth_edge_rel * 2.0 * np.maximum(depth[:, 1:-1], 1e-6)
-    edge[1:-1, :] |= ddy > cfg.depth_edge_rel * 2.0 * np.maximum(depth[1:-1, :], 1e-6)
+    stats: dict[str, Any] = {"walls": 0, "boxes": 0, "cylinders": 0}
+    prims: list[AtlasProxyPrimitive] = []
 
-    inner = np.zeros((height, width), dtype=bool)
-    inner[1:-1, 1:-1] = True
-    valid_normal = inner & valid_depth & ~edge
+    from atlas_camera.core.depth_geometry import (
+        back_project_normals,
+        fit_ground_and_scale,
+        build_backdrop_primitive,
+    )
 
-    n_y = normals[..., 1]
-    world_y = pts_world[..., 1]
+    # -- Steps 1 & 2: back-project to world & compute normals (via depth_geometry)
+    bp = back_project_normals(
+        depth, view_matrix=view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+        depth_edge_rel=cfg.depth_edge_rel,
+    )
+    pts_world = bp.pts_world
+    normals = bp.normals
+    valid_normal = bp.valid_normal
+    valid_depth = bp.valid_depth
+    cam_pos = bp.cam_pos
 
-    # -- Step 3: ground fit + metric-scale reconciliation ----------------------
-    below = vv > horizon_y
-    ground_cand = valid_normal & below & (np.abs(n_y) > cfg.ground_normal_min)
-    scale = 1.0
-    ground_inlier = np.zeros((height, width), dtype=bool)
-    y0 = None
-    if int(ground_cand.sum()) >= 300:
-        ys = world_y[ground_cand]
-        lo, hi = np.percentile(ys, [1, 99])
-        span = float(hi - lo)
-        if span < 1e-3:
-            y0 = float(np.median(ys))
-        else:
-            hist, edges = np.histogram(ys, bins=48, range=(lo, hi))
-            peak = int(np.argmax(hist))
-            y0 = 0.5 * (edges[peak] + edges[peak + 1])
-        tol = max(0.15, 0.03 * max(span, 1e-3))
-        refine = np.abs(ys - y0) < tol
-        if int(refine.sum()) >= 50:
-            y0 = float(np.median(ys[refine]))
-        # Rescale the world about the camera so the fitted ground lands on Y=0,
-        # pinning the depth map to the solve's adopted metric camera height.
-        denom = cam_pos[1] - y0
-        if cam_pos[1] > 1e-6 and denom > 1e-6:
-            scale = float(cam_pos[1] / denom)
-        pts_world = cam_pos + scale * (pts_world - cam_pos)
-        world_y = pts_world[..., 1]
-        ground_inlier = ground_cand & (np.abs(world_y) < tol * scale)
+    # -- Step 3: ground fit + metric-scale reconciliation (via depth_geometry)
+    gf = fit_ground_and_scale(
+        bp, horizon_y=horizon_y, ground_normal_min=cfg.ground_normal_min,
+    )
+    scale = gf.scale
+    pts_world = gf.pts_world_scaled
+    ground_inlier = gf.ground_inlier
     stats["ground_scale"] = scale
-    stats["ground_inliers"] = int(ground_inlier.sum())
+    stats["ground_inliers"] = gf.inliers
 
     scaled_depth = depth * scale
     backdrop_d_raw = float(np.percentile(
@@ -616,28 +631,9 @@ def derive_projection_proxies(
     )) if valid_depth.any() else 60.0
 
     # -- Step 4: ground primitive ----------------------------------------------
-    if int(ground_inlier.sum()) >= 300:
-        gx = pts_world[..., 0][ground_inlier]
-        gz = pts_world[..., 2][ground_inlier]
-        p_lo, p_hi = cfg.extent_percentiles
-        x0, x1 = np.percentile(gx, [p_lo, p_hi])
-        z0, z1 = np.percentile(gz, [p_lo, p_hi])
-        cx_w, cz_w = 0.5 * (x0 + x1), 0.5 * (z0 + z1)
-        ex = max((x1 - x0) * cfg.ground_padding, cfg.ground_min_extent_m)
-        ez = max((z1 - z0) * cfg.ground_padding, cfg.ground_min_extent_m)
-        u_g = np.array([1.0, 0.0, 0.0])
-        n_g = np.array([0.0, 1.0, 0.0])
-        v_g = np.array([0.0, 0.0, -1.0])  # u × v = n (right-handed)
-        prims.append(AtlasProxyPrimitive(
-            name="projection_ground",
-            primitive_type="plane",
-            transform_matrix=_plane_transform(u_g, v_g, n_g, (cx_w, 0.0, cz_w)),
-            dimensions=(float(ex), float(ez), 0.0),
-            material="atlas_projection_proxy",
-            metadata={"role": PROXY_ROLE, "source": "depth_derivation",
-                      "inliers": int(ground_inlier.sum()),
-                      "depth_scale_applied": scale},
-        ))
+    ground_prim = _build_ground_primitive(np, cfg, pts_world, ground_inlier, scale)
+    if ground_prim is not None:
+        prims.append(ground_prim)
 
     # -- Step 5: wall primitives ------------------------------------------------
     wall_valid = valid_normal
@@ -675,6 +671,9 @@ def derive_projection_proxies(
 
     # -- Steps 6+7: foreground objects (boxes / cylinders) ----------------------
     if cfg.max_objects > 0:
+        world_y = pts_world[..., 1]
+        inner = np.zeros((height, width), dtype=bool)
+        inner[1:-1, 1:-1] = True
         obj_cand = (valid_depth & inner & ~ground_inlier & ~wall_inlier_total
                     & (scaled_depth < backdrop_d_raw * 0.9)
                     & (world_y > 0.05))
@@ -684,60 +683,17 @@ def derive_projection_proxies(
             np, cfg, stats, pts_world, normals, obj_cand, valid_normal, scale))
 
     # -- Step 8: backdrop (always) ----------------------------------------------
-    D = 1.02 * backdrop_d_raw
-    fwd = R_cw @ np.array([0.0, 0.0, -1.0])
-    fwd_h = np.array([fwd[0], 0.0, fwd[2]])
-    fl = np.linalg.norm(fwd_h)
-    fwd_h = fwd_h / fl if fl > 1e-6 else np.array([0.0, 0.0, -1.0])
-    n_b = -fwd_h
-    u_b, v_b, _ = _wall_axes(np, n_b)
-    c0 = cam_pos + fwd_h * D  # point on the backdrop plane
-
-    # Exact frame coverage: intersect the four frustum-corner rays with the
-    # backdrop plane and enclose the hits (plus margin). A flat margin around the
-    # horizontal frustum leaves corner gaps under pitch/roll — this doesn't.
-    us: list[float] = []
-    ys_: list[float] = []
-    for (u_px, v_px) in ((0.0, 0.0), (float(width), 0.0),
-                         (0.0, float(height)), (float(width), float(height))):
-        d_cam = np.array([(u_px - cx) / fx, -(v_px - cy) / fy, -1.0])
-        d_w = R_cw @ d_cam
-        denom = float(np.dot(n_b, d_w))
-        if abs(denom) < 1e-6:
-            continue
-        t = float(np.dot(n_b, c0 - cam_pos)) / denom
-        if t <= 0:
-            continue
-        p = cam_pos + min(t, 4.0 * D) * d_w
-        us.append(float(np.dot(p - c0, u_b)))
-        ys_.append(float(p[1]))
-    if not us:  # degenerate (camera looking straight up/down)
-        us, ys_ = [-D, D], [0.0, D]
-    mfrac = cfg.backdrop_margin - 1.0
-    u_lo, u_hi = min(us), max(us)
-    y_lo, y_hi = min(ys_), max(ys_)
-    u_pad = 0.5 * (u_hi - u_lo) * mfrac + 1.0
-    y_pad = 0.5 * (y_hi - y_lo) * mfrac + 1.0
-    u_lo -= u_pad
-    u_hi += u_pad
-    y_lo = min(y_lo - y_pad, -1.0)  # always reach below the ground plane
-    y_hi += y_pad
-    bw = u_hi - u_lo
-    bh = y_hi - y_lo
-    c_b = c0 + u_b * (0.5 * (u_lo + u_hi))
-    c_b[1] = 0.5 * (y_lo + y_hi)
-    prims.append(AtlasProxyPrimitive(
-        name="projection_backdrop",
-        primitive_type="plane",
-        transform_matrix=_plane_transform(u_b, v_b, n_b, c_b),
-        dimensions=(float(bw), float(bh), 0.0),
-        material="atlas_projection_proxy",
-        metadata={"role": PROXY_ROLE, "source": "depth_derivation",
-                  "distance_m": float(D), "depth_scale_applied": scale},
-    ))
+    backdrop = build_backdrop_primitive(
+        bp=bp, scaled_depth=scaled_depth, valid_depth=valid_depth,
+        fx=fx, fy=fy, cx=cx, cy=cy, width=width, height=height,
+        scale=scale, backdrop_depth_percentile=cfg.backdrop_depth_percentile,
+        backdrop_margin=cfg.backdrop_margin,
+    )
+    prims.append(backdrop)
 
     stats["primitives"] = len(prims)
     return prims, stats
+
 
 
 # ---------------------------------------------------------------------------
@@ -820,28 +776,11 @@ def derive_vertical_extrusion_proxies(
     sky_mask = detect_sky_mask(depth, horizon_y=horizon_y)
     not_sky = ~sky_mask
 
-    # -- ground primitive (identical to derive_projection_proxies) ------------
-    if int(ground_inlier.sum()) >= 300:
-        gx = pts_world[..., 0][ground_inlier]
-        gz = pts_world[..., 2][ground_inlier]
-        p_lo, p_hi = cfg.extent_percentiles
-        x0, x1 = np.percentile(gx, [p_lo, p_hi])
-        z0, z1 = np.percentile(gz, [p_lo, p_hi])
-        cx_w, cz_w = 0.5 * (x0 + x1), 0.5 * (z0 + z1)
-        ex = max((x1 - x0) * cfg.ground_padding, cfg.ground_min_extent_m)
-        ez = max((z1 - z0) * cfg.ground_padding, cfg.ground_min_extent_m)
-        u_g = np.array([1.0, 0.0, 0.0])
-        n_g = np.array([0.0, 1.0, 0.0])
-        v_g = np.array([0.0, 0.0, -1.0])
-        prims.append(AtlasProxyPrimitive(
-            name="projection_ground",
-            primitive_type="plane",
-            transform_matrix=_plane_transform(u_g, v_g, n_g, (cx_w, 0.0, cz_w)),
-            dimensions=(float(ex), float(ez), 0.0),
-            material="atlas_projection_proxy",
-            metadata={"role": PROXY_ROLE, "source": "depth_derivation",
-                      "inliers": int(ground_inlier.sum()), "depth_scale_applied": scale},
-        ))
+    # -- ground primitive (via helper) ----------------------------------------
+    ground_prim = _build_ground_primitive(np, cfg, pts_world, ground_inlier, scale)
+    if ground_prim is not None:
+        prims.append(ground_prim)
+
 
     # -- walls: shared orientation/distance clustering, silhouette height ----
     wall_valid = bp.valid_normal

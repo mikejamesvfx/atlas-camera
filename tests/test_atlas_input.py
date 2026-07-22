@@ -377,14 +377,18 @@ def test_live_hole_fill_wired_to_single_relief_mesh(monkeypatch):
             "SDXL/sd_xl_base_1.0.safetensors",
             "clear seamless sky, high detail, no buildings, no trees, no roofs",
             "building, tree, roof, person, vehicle, text, watermark, blurry", 0,
-            True, 12.5, 128)
+            True, 12.5, 128, True)
     out = AtlasInput().build(IMG, *args)
     graph = out["expand"]
     relief = next(n for n in graph.values() if n["class_type"] == "AtlasDeriveReliefMesh")
     assert relief["inputs"]["live_fill_holes"] is True
     assert relief["inputs"]["live_fill_distance_m"] == 12.5
     assert relief["inputs"]["live_fill_max_hole_edges"] == 128
-    assert "live hole-fill ON (distance_m=12.5, max_edges=128)" in out["result"][4]
+    assert relief["inputs"]["live_fill_edge_sawteeth"] is True
+    note = out["result"][4]
+    assert "distance_m=12.5" in note
+    assert "max_edges=128" in note
+    assert "sawtooth-boundary-fill" in note
 
 
 def test_live_hole_fill_not_wired_to_card_or_ground(monkeypatch):
@@ -398,7 +402,8 @@ def test_live_hole_fill_not_wired_to_card_or_ground(monkeypatch):
             live_fill_holes=True, live_fill_distance_m=10.0, live_fill_max_hole_edges=64)
         graph = out["expand"]
         layer = next(n for n in graph.values() if n["class_type"] == "AtlasCleanPlateLayer")
-        for key in ("live_fill_holes", "live_fill_distance_m", "live_fill_max_hole_edges"):
+        for key in ("live_fill_holes", "live_fill_distance_m", "live_fill_max_hole_edges",
+                    "live_fill_edge_sawteeth"):
             assert key not in layer["inputs"], f"{geom} should not receive {key}"
         # No DeriveReliefMesh in this branch
         assert not any(n["class_type"] == "AtlasDeriveReliefMesh" for n in graph.values())
@@ -415,7 +420,24 @@ def test_live_hole_fill_not_wired_to_banded_layers(monkeypatch):
     graph = out["expand"]
     for n in graph.values():
         if n["class_type"] == "AtlasCleanPlateLayer":
-            for key in ("live_fill_holes", "live_fill_distance_m", "live_fill_max_hole_edges"):
+            for key in ("live_fill_holes", "live_fill_distance_m", "live_fill_max_hole_edges",
+                        "live_fill_edge_sawteeth"):
                 assert key not in n["inputs"], f"band layer should not receive {key}"
     # No DeriveReliefMesh in banded path
     assert not any(n["class_type"] == "AtlasDeriveReliefMesh" for n in graph.values())
+
+def test_live_boundary_sawtooth_fill_wired_to_single_relief_mesh(monkeypatch):
+    """The live_fill_edge_sawteeth widget is forwarded to AtlasDeriveReliefMesh
+    on the single relief path even when live_fill_holes is off."""
+    monkeypatch.setattr(nodes_mod, "_comfy_registry", lambda: {})
+    monkeypatch.setattr(nodes_mod, "_native_sam3_available", lambda: True)
+    out = AtlasInput().build(
+        IMG, layers=0, mesh="relief", mesh_resolution=256,
+        live_fill_holes=False, live_fill_distance_m=5.0,
+        live_fill_max_hole_edges=64, live_fill_edge_sawteeth=True)
+    graph = out["expand"]
+    relief = next(n for n in graph.values() if n["class_type"] == "AtlasDeriveReliefMesh")
+    assert relief["inputs"]["live_fill_edge_sawteeth"] is True
+    assert relief["inputs"]["live_fill_distance_m"] == 5.0
+    assert "sawtooth-boundary-fill" in out["result"][4]
+

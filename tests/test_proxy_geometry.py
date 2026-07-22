@@ -321,3 +321,31 @@ def test_vertical_extrusion_payload_is_json_safe():
     payload = serialize_proxy_geometry(scene)
     assert payload
     assert json.dumps(payload)
+
+
+def test_derive_projection_proxies_parity_with_depth_geometry():
+    """Parity test verifying derive_projection_proxies matches core/depth_geometry.py shared functions."""
+    from atlas_camera.core.depth_geometry import back_project_normals, fit_ground_and_scale, build_backdrop_primitive
+    depth = _scene_depth(h=1.6, wall_z=-10.0, wall_h=3.0, box=(2.0, -8.0, 1.0, 2.0))
+    vm = _view_matrix(1.6)
+
+    prims, stats = derive_projection_proxies(
+        depth, view_matrix=vm, fx=FX, fy=FY, cx=CX, cy=CY, horizon_y=H * 0.45,
+    )
+
+    bp = back_project_normals(depth, view_matrix=vm, fx=FX, fy=FY, cx=CX, cy=CY, depth_edge_rel=0.5)
+    gf = fit_ground_and_scale(bp, horizon_y=H * 0.45)
+    scaled_depth = depth * gf.scale
+    backdrop = build_backdrop_primitive(
+        bp=bp, scaled_depth=scaled_depth, valid_depth=bp.valid_depth,
+        fx=FX, fy=FY, cx=CX, cy=cy_val if (cy_val := CY) else CY, width=W, height=H, scale=gf.scale,
+    )
+
+    assert stats["ground_scale"] == pytest.approx(gf.scale, abs=1e-12)
+    assert stats["ground_inliers"] == gf.inliers
+
+    backdrop_prim = next(p for p in prims if p.name == "projection_backdrop")
+    assert backdrop_prim.dimensions == pytest.approx(backdrop.dimensions, abs=1e-9)
+    assert np.array(backdrop_prim.transform_matrix) == pytest.approx(np.array(backdrop.transform_matrix), abs=1e-9)
+
+

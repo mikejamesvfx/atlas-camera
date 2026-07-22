@@ -381,7 +381,8 @@
         0,
         false,
         0.0,
-        64
+        64,
+        false
       ],
       "title": "2 \u00b7 ATLAS INPUT \u00b7 SWITCHBOARD",
       "color": "#3f7895"

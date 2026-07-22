@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 from atlas_camera.comfy.node_helpers import (
+    LIVE_FILL_WIDGETS,
     _AZIMUTH_VIEWS,
     _DEPTH_MODEL_CHOICES,
     _DISTANCE_VIEWS,
@@ -35,7 +36,9 @@ from atlas_camera.comfy.node_helpers import (
     _resolve_exclude_mask,
     _save_image_tensor_to_tmp,
     _solve_camera_params,
+    apply_live_mesh_repair,
 )
+
 
 
 
@@ -194,23 +197,7 @@ class AtlasDeriveProjectionGeometry:
                                "affects the relief_mesh branch (geometry_mode both/relief_mesh); "
                                "the primitives/wall-fitting branch is unaffected. Any resolution - "
                                "resized to match depth."}),
-                "live_fill_holes": ("BOOLEAN", {"default": False,
-                    "tooltip": "Live interior hole-fill on the relief mesh before it is stored "
-                               "in the solve. Fills small boundary loops whose vertices are within "
-                               "live_fill_distance_m of the camera — like ZBrush Close Holes, but "
-                               "scoped by depth so distant voids (sky / far backdrop) stay open."}),
-                "live_fill_distance_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000.0,
-                    "step": 0.5,
-                    "tooltip": "Maximum forward depth (metres from camera) for live hole-fill. "
-                               "Boundary loops entirely beyond this distance are left open. 0 = "
-                               "fill all qualifying holes regardless of depth (still capped by "
-                               "live_fill_max_hole_edges)."}),
-                "live_fill_max_hole_edges": ("INT", {"default": 64, "min": 3, "max": 512,
-                    "tooltip": "Largest boundary loop (in edge count) that live hole-fill will "
-                               "close. Larger loops are more likely to be the outer frame or a "
-                               "major disocclusion that should be filled by a clean plate or patch "
-                               "view instead."}),
-
+                **LIVE_FILL_WIDGETS,
             },
         }
 
@@ -220,12 +207,6 @@ class AtlasDeriveProjectionGeometry:
         "forests": {"geometry_mode": "relief_mesh", "relief_quality": "high", "depth_edge_rel": 1.0},
         "aerial": {"geometry_mode": "both", "primitive_method": "azimuth_walls",
                    "relief_quality": "medium", "max_objects": 6},
-        # Presets use the zero-extra-install V2 metric models (Apache, transformers
-        # only) so a fresh install never errors on a missing DA3/MoGe extra. A 4-scene
-        # A/B (2026-07-13) reverted the 2026-07-09 DA3 default: V2-Metric-Outdoor was
-        # best-or-tied on every outdoor/sky scene; MoGe masks sky (poor outdoors, great
-        # indoors); DA3 is the experimental branch's default. Artists opt into DA3/MoGe
-        # per shot via the depth_model widget.
         "indoor": {"geometry_mode": "primitives", "primitive_method": "room_cuboid",
                    "depth_model": "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"},
         "outdoor": {"geometry_mode": "primitives", "primitive_method": "ransac_planes",
@@ -243,7 +224,8 @@ class AtlasDeriveProjectionGeometry:
                relief_quality="custom", depth_edge_rel=0.5,
                exclude_mask=None,
                live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=64):
+               live_fill_max_hole_edges=64,
+               live_fill_edge_sawteeth=False):
         torch = _require_torch()
         np = _require_numpy()
         preset = self._SCENE_TYPE_PRESETS.get(scene_type)
@@ -280,14 +262,11 @@ class AtlasDeriveProjectionGeometry:
         try:
             result = estimate_depth(tmp, model_id=depth_model,
                                     device=None if device == "auto" else device,
-                                    # fx is in solve-image pixels; the tmp file is the
-                                    # wired tensor's resolution (usually identical).
                                     focal_px=(fx * (image.shape[2] / width)) if fx > 0 else None)
         finally:
             os.unlink(tmp)
 
         if fx <= 0:
-            # No focal — cannot back-project; return the solve untouched.
             zero = torch.zeros(1, int(image.shape[1]), int(image.shape[2]), dtype=torch.float32)
             return (solve, zero)
         cx = intr.cx_px if intr.cx_px is not None else width / 2.0
@@ -298,10 +277,7 @@ class AtlasDeriveProjectionGeometry:
         if depth_map.shape != (height, width):
             depth_map = _resize_depth(depth_map, width, height)
 
-        horizon_y = None
-        if solve.horizon_line and solve.horizon_line.endpoints_px:
-            p1, p2 = solve.horizon_line.endpoints_px
-            horizon_y = 0.5 * (float(p1[1]) + float(p2[1]))
+        horizon_y = _horizon_y_from_solve(solve)
 
         if primitive_method == "ransac_planes":
             prims, stats = extract_planes_ransac(
@@ -347,17 +323,8 @@ class AtlasDeriveProjectionGeometry:
         if geometry_mode in ("both", "primitives"):
             keep.extend(prims)
         else:
-            # relief_mesh-only mode still keeps the backdrop: every extractor
-            # always emits it as a far "catch-all" anchor (a plane sized to the
-            # full recovered frustum, well beyond the mesh's own coverage), and
-            # the relief mesh alone has real gaps — torn at every depth
-            # discontinuity so foreground silhouettes don't rubber-sheet. Orbit
-            # even slightly and those tears open onto empty void without this;
-            # dropping the backdrop here was a bug, not intended behavior.
             keep.extend(p for p in prims if p.name == "projection_backdrop")
         if geometry_mode in ("both", "relief_mesh"):
-            # Reuse the derivation's ground scale so the mesh matches the
-            # primitives' world (ground on Y=0).
             mesh = build_relief_mesh(
                 depth_map, view_matrix=extr.camera_view_matrix,
                 fx=fx, fy=fy, cx=cx, cy=cy,
@@ -373,44 +340,35 @@ class AtlasDeriveProjectionGeometry:
                 "n_vertices": mesh.stats["n_vertices"],
                 "n_faces": mesh.stats["n_faces"],
             }
-            # Live interior hole-fill (ZBrush-style close-holes) scoped by
-            # forward depth. Distant voids (sky, far backdrop) stay open.
-            if live_fill_holes and live_fill_max_hole_edges > 0:
-                from atlas_camera.core.mesh_repair import apply_interior_hole_fill
-                depth_far = float(live_fill_distance_m) if float(live_fill_distance_m) > 0 else 0.0
-                n_faces_before = len(mesh.faces)
-                n_filled, filled_counts = apply_interior_hole_fill(
-                    mesh,
-                    max_hole_edges=int(live_fill_max_hole_edges),
-                    view_matrix=extr.camera_view_matrix,
-                    depth_near_m=0.0,
-                    depth_far_m=depth_far,
-                )
-                if n_filled:
-                    mesh.hole_mask = _hole_mask_after_fill(mesh, n_faces_before)
-                stats["relief_mesh"]["live_hole_fill"] = {
-                    "n_loops_filled": n_filled,
-                    "filled_edge_counts": filled_counts,
-                    "distance_m": float(live_fill_distance_m),
-                }
+            apply_live_mesh_repair(
+                mesh,
+                extr.camera_view_matrix,
+                live_fill_holes=live_fill_holes,
+                live_fill_distance_m=live_fill_distance_m,
+                live_fill_max_hole_edges=live_fill_max_hole_edges,
+                live_fill_edge_sawteeth=live_fill_edge_sawteeth,
+                stats=stats,
+            )
             hole_mask_arr = mesh.hole_mask.astype(np.float32)
 
-        # Deep-copy (not to_dict()/from_dict() — see _clone_solve_with_metadata's
-        # comment): never mutate the upstream node's cached ATLAS_SOLVE.
-        out = copy.deepcopy(solve)
-        out.projection_scene.proxy_geometry = [
-            p for p in out.projection_scene.proxy_geometry
-            if (p.metadata or {}).get("role") != PROXY_ROLE
-        ]
-        out.projection_scene.proxy_geometry.extend(keep)
-        out.projection_scene.debug_metadata["proxy_derivation"] = {
-            **stats, "depth_model": depth_model, "geometry_mode": geometry_mode,
-            "scene_type": scene_type, "depth_edge_rel": float(depth_edge_rel),
-            "relief_grid": int(relief_grid), "relief_quality": relief_quality,
+        out = _replace_proxy_role_geometry(solve, keep, stats, {
+            "depth_model": depth_model,
+            "geometry_mode": geometry_mode,
+            "scene_type": scene_type,
+            "primitive_method": primitive_method,
+            "depth_edge_rel": float(depth_edge_rel),
+            "relief_grid": int(relief_grid),
+            "relief_quality": relief_quality,
             "max_objects": int(max_objects),
-        }
+            "live_fill_holes": bool(live_fill_holes),
+            "live_fill_distance_m": float(live_fill_distance_m),
+            "live_fill_max_hole_edges": int(live_fill_max_hole_edges),
+            "live_fill_edge_sawteeth": bool(live_fill_edge_sawteeth),
+            "derive_node": "AtlasDeriveProjectionGeometry",
+        })
         hole_t = torch.from_numpy(hole_mask_arr).unsqueeze(0)
         return (out, hole_t)
+
 
 
 class AtlasPredictHiddenGeometry:
@@ -843,22 +801,7 @@ class AtlasDeriveReliefMesh:
                 "quad_coherence": ("BOOLEAN", {"default": True,
                     "tooltip": "Reject both triangles when either half of a grid quad fails. "
                                "Prevents one surviving diagonal from becoming a stretched UV wedge."}),
-                "live_fill_holes": ("BOOLEAN", {"default": False,
-                    "tooltip": "Live interior hole-fill on the relief mesh before it is stored "
-                               "in the solve. Fills small boundary loops whose vertices are within "
-                               "live_fill_distance_m of the camera — like ZBrush Close Holes, but "
-                               "scoped by depth so distant voids (sky / far backdrop) stay open."}),
-                "live_fill_distance_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000.0,
-                    "step": 0.5,
-                    "tooltip": "Maximum forward depth (metres from camera) for live hole-fill. "
-                               "Boundary loops entirely beyond this distance are left open. 0 = "
-                               "fill all qualifying holes regardless of depth (still capped by "
-                               "live_fill_max_hole_edges)."}),
-                "live_fill_max_hole_edges": ("INT", {"default": 64, "min": 3, "max": 512,
-                    "tooltip": "Largest boundary loop (in edge count) that live hole-fill will "
-                               "close. Larger loops are more likely to be the outer frame or a "
-                               "major disocclusion that should be filled by a clean plate or patch "
-                               "view instead."}),
+                **LIVE_FILL_WIDGETS,
             },
         }
 
@@ -870,7 +813,8 @@ class AtlasDeriveReliefMesh:
                max_edge_factor=12.0,
                sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
                live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=64):
+               live_fill_max_hole_edges=64,
+               live_fill_edge_sawteeth=False):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -920,26 +864,15 @@ class AtlasDeriveReliefMesh:
                 "quad_coherence": mesh.stats.get("quad_coherence", bool(quad_coherence)),
             },
         }
-        # Live interior hole-fill (ZBrush-style close-holes) scoped by
-        # forward depth. Distant voids (sky, far backdrop) stay open.
-        if live_fill_holes and live_fill_max_hole_edges > 0:
-            from atlas_camera.core.mesh_repair import apply_interior_hole_fill
-            depth_far = float(live_fill_distance_m) if float(live_fill_distance_m) > 0 else 0.0
-            n_faces_before = len(mesh.faces)
-            n_filled, filled_counts = apply_interior_hole_fill(
-                mesh,
-                max_hole_edges=int(live_fill_max_hole_edges),
-                view_matrix=extr.camera_view_matrix,
-                depth_near_m=0.0,
-                depth_far_m=depth_far,
-            )
-            if n_filled:
-                mesh.hole_mask = _hole_mask_after_fill(mesh, n_faces_before)
-            stats["relief_mesh"]["live_hole_fill"] = {
-                "n_loops_filled": n_filled,
-                "filled_edge_counts": filled_counts,
-                "distance_m": float(live_fill_distance_m),
-            }
+        apply_live_mesh_repair(
+            mesh,
+            extr.camera_view_matrix,
+            live_fill_holes=live_fill_holes,
+            live_fill_distance_m=live_fill_distance_m,
+            live_fill_max_hole_edges=live_fill_max_hole_edges,
+            live_fill_edge_sawteeth=live_fill_edge_sawteeth,
+            stats=stats,
+        )
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "relief_grid": int(relief_grid), "relief_quality": relief_quality,
             "depth_edge_rel": float(depth_edge_rel), "max_edge_factor": float(max_edge_factor),
@@ -948,10 +881,12 @@ class AtlasDeriveReliefMesh:
             "live_fill_holes": bool(live_fill_holes),
             "live_fill_distance_m": float(live_fill_distance_m),
             "live_fill_max_hole_edges": int(live_fill_max_hole_edges),
+            "live_fill_edge_sawteeth": bool(live_fill_edge_sawteeth),
             "derive_node": "AtlasDeriveReliefMesh",
         })
         hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
         return (out, hole_t)
+
 
 
 class AtlasDeriveWalls:

@@ -433,6 +433,83 @@ def _hole_mask_after_fill(mesh, n_faces_before):
     return hole_mask
 
 
+def apply_live_mesh_repair(
+    mesh,
+    view_matrix,
+    live_fill_holes: bool = False,
+    live_fill_distance_m: float = 0.0,
+    live_fill_max_hole_edges: int = 64,
+    live_fill_edge_sawteeth: bool = False,
+    stats: dict | None = None,
+):
+    """Perform live interior hole-fill and/or boundary sawtooth bridging on a relief mesh,
+    recomputing hole_mask and writing telemetry into stats['relief_mesh'] if stats is given."""
+    do_hole_fill = live_fill_holes and live_fill_max_hole_edges > 0
+    if not (do_hole_fill or live_fill_edge_sawteeth):
+        return
+    from atlas_camera.core.mesh_repair import (
+        apply_boundary_sawtooth_fill,
+        apply_interior_hole_fill,
+    )
+    depth_far = max(float(live_fill_distance_m), 0.0)
+    n_faces_before = len(mesh.faces)
+    rm_stats = stats.setdefault("relief_mesh", {}) if stats is not None else {}
+    if do_hole_fill:
+        n_filled, filled_counts = apply_interior_hole_fill(
+            mesh,
+            max_hole_edges=int(live_fill_max_hole_edges),
+            view_matrix=view_matrix,
+            depth_near_m=0.0,
+            depth_far_m=depth_far,
+        )
+        if stats is not None:
+            rm_stats["live_hole_fill"] = {
+                "n_loops_filled": n_filled,
+                "filled_edge_counts": filled_counts,
+                "distance_m": float(live_fill_distance_m),
+            }
+    if live_fill_edge_sawteeth:
+        n_added, valley_depths = apply_boundary_sawtooth_fill(
+            mesh,
+            view_matrix=view_matrix,
+            depth_far_m=depth_far,
+        )
+        if stats is not None:
+            rm_stats["live_boundary_sawtooth_fill"] = {
+                "n_triangles_added": n_added,
+                "valley_depth_min_m": (min(valley_depths) if valley_depths else 0.0),
+                "valley_depth_max_m": (max(valley_depths) if valley_depths else 0.0),
+                "distance_m": float(live_fill_distance_m),
+            }
+    if len(mesh.faces) != n_faces_before:
+        mesh.hole_mask = _hole_mask_after_fill(mesh, n_faces_before)
+
+
+LIVE_FILL_WIDGETS = {
+    "live_fill_holes": ("BOOLEAN", {
+        "default": False,
+        "tooltip": "Live interior hole-fill on the relief mesh before it is stored in the solve. "
+                   "Fills small boundary loops whose vertices are within live_fill_distance_m of the camera — "
+                   "like ZBrush Close Holes, but scoped by depth so distant voids (sky / far backdrop) stay open.",
+    }),
+    "live_fill_distance_m": ("FLOAT", {
+        "default": 0.0, "min": 0.0, "max": 1000.0, "step": 0.5,
+        "tooltip": "Maximum forward depth (metres from camera) for live hole-fill and sawtooth bridging. "
+                   "Boundary loops entirely beyond this distance are left open. 0 = fill all qualifying holes regardless of depth.",
+    }),
+    "live_fill_max_hole_edges": ("INT", {
+        "default": 64, "min": 3, "max": 512,
+        "tooltip": "Largest boundary loop (in edge count) that live hole-fill will close. Larger loops are more likely to be the outer frame.",
+    }),
+    "live_fill_edge_sawteeth": ("BOOLEAN", {
+        "default": False,
+        "tooltip": "After interior hole-fill, also bridge sawtooth notches on boundary loops (peak-base-peak), "
+                   "scoped by live_fill_distance_m. Useful for smoothing torn silhouette edges.",
+    }),
+}
+
+
+
 def _replace_proxy_role_geometry(solve, new_prims, stats, extra_metadata):
     """Deep-copy `solve`, strip any prior PROXY_ROLE-tagged geometry, and
     replace it with `new_prims` — the exact pattern AtlasDeriveProjectionGeometry
@@ -678,6 +755,30 @@ _BOUNDED_BAND_NOOP_M = 1.0e6
 _LAYER_DEBUG_PRIMARY_HEX = "2fd6c3"
 _LAYER_DEBUG_PALETTE_HEX = ("ff6a3d", "3d8bff", "ffd23d", "c95aff", "6aff5a", "ff5aa8")
 
+# Named output slot indices for AtlasAssessImage's 16 output ports
+_ASSESS_OUTPUT_SLOTS = {
+    "image": 0,
+    "report": 1,
+    "settings_json": 2,
+    "sam_prompt_sky": 3,
+    "sam_prompt_far": 4,
+    "sam_prompt_bg": 5,
+    "sam_prompt_mid": 6,
+    "sam_prompt_fg": 7,
+    "geom_far": 8,
+    "geom_bg": 9,
+    "geom_mid": 10,
+    "geom_fg": 11,
+    "band_far": 12,
+    "band_bg": 13,
+    "band_mid": 14,
+    "band_fg": 15,
+    "sam_prompt_band": [4, 5, 6, 7],
+    "geom_band": [8, 9, 10, 11],
+    "band_override": [12, 13, 14, 15],
+}
+
+
 
 def _comfy_registry():
     """ComfyUI's global node registry, or {} outside ComfyUI — used by
@@ -704,6 +805,71 @@ def _native_sam3_available() -> bool:
         return native_sam3_available()
     except Exception:
         return False
+
+
+def build_segmentation_cascade(
+    g,
+    image_ref,
+    prompt_value,
+    policy: str = "semantic",
+    max_instances: int = 1,
+    confidence_threshold: float = 0.5,
+    have_native_sam3: bool | None = None,
+    registry: dict | None = None,
+) -> tuple[Any | None, str]:
+    """Unified segmentation cascade helper for adapter layer call sites.
+
+    policy="semantic" (AtlasInput):
+      Native SAM3 (AtlasSAM3Mask) -> SegFormer (AtlasSemanticMask) -> None (heuristic).
+      Returns (mask_ref, path_fired: str)
+
+    policy="separate" (AtlasSegmentedSDXLInpaint):
+      Native SAM3 (AtlasSAM3Mask, out(0)) -> SAM3Segment (third-party Triton/CUDA, out(1)).
+      Returns (instances_ref, path_fired: str)
+    """
+    if have_native_sam3 is None:
+        have_native_sam3 = _native_sam3_available()
+    if registry is None:
+        registry = _comfy_registry()
+
+    if policy == "separate":
+        if have_native_sam3:
+            sam = g.node(
+                "AtlasSAM3Mask",
+                image=image_ref,
+                concepts=prompt_value or "building",
+                confidence_threshold=float(confidence_threshold),
+                device="auto",
+                output_mode="separate",
+                max_instances=int(max_instances),
+            )
+            return sam.out(0), "AtlasSAM3Mask (native)"
+        else:
+            sam = g.node(
+                "SAM3Segment",
+                image=image_ref,
+                prompt=prompt_value or "building",
+                output_mode="Separate",
+                confidence_threshold=float(confidence_threshold),
+                max_segments=int(max_instances),
+                segment_pick=0,
+                mask_blur=0,
+                mask_offset=0,
+                device="Auto",
+                invert_output=False,
+                unload_model=False,
+                background="Alpha",
+                background_color="#222222",
+            )
+            return sam.out(1), "SAM3Segment (triton)"
+    else:
+        if have_native_sam3:
+            return g.node("AtlasSAM3Mask", image=image_ref, concepts=prompt_value).out(0), "AtlasSAM3Mask (native)"
+        if "AtlasSemanticMask" in registry:
+            return g.node("AtlasSemanticMask", image=image_ref, classes=prompt_value).out(0), "AtlasSemanticMask (SegFormer)"
+        return None, "none"
+
+
 
 
 def _moge_available() -> bool:

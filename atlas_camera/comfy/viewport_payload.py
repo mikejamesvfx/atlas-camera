@@ -93,7 +93,88 @@ def _output_profile_to_dict(output_profile) -> dict[str, Any] | None:
     if isinstance(output_profile, dict):
         return dict(output_profile)
     return None
-def _extract_blockout_camera(solve, source_image, target_width: int, target_height: int,
+
+
+def _serialize_projection_sources(solve) -> list[dict[str, Any]]:
+    """Serialize multi-angle patch sources attached to a solve for viewport projection materials."""
+    from atlas_camera.core.proxy_geometry import serialize_proxy_geometry
+    from atlas_camera.core.schema import AtlasProjectionScene
+
+    sources = getattr(solve, "projection_sources", None) or []
+    projection_sources = []
+    for src in sources:
+        s_intr = src.camera.intrinsics
+        s_extr = src.camera.extrinsics
+        s_fx = s_intr.fx_px or 0.0
+        s_fy = s_intr.fy_px or s_fx
+        s_cx = s_intr.cx_px if s_intr.cx_px is not None else (s_intr.image_width or 1) / 2.0
+        s_cy = s_intr.cy_px if s_intr.cy_px is not None else (s_intr.image_height or 1) / 2.0
+        projection_sources.append({
+            "name": src.name,
+            "view_matrix": [list(row) for row in s_extr.camera_view_matrix],
+            "camera_position": list(s_extr.camera_position),
+            "fx": s_fx, "fy": s_fy, "cx": s_cx, "cy": s_cy,
+            "image_width": s_intr.image_width,
+            "image_height": s_intr.image_height,
+            "image_b64": src.image_b64 or "",
+            "mask_b64": getattr(src, "mask_b64", None) or "",
+            "normal_map_b64": getattr(src, "normal_map_b64", None) or "",
+            "plate_ref": _plate_ref_to_dict(getattr(src, "plate_ref", None)),
+            "priority": float(src.priority),
+            "azimuth_deg": float(src.azimuth_deg),
+            "elevation_deg": float(src.elevation_deg),
+            "projection_mode": (src.metadata or {}).get("projection_mode"),
+            "near_m": (src.metadata or {}).get("near_m"),
+            "far_m": (src.metadata or {}).get("far_m"),
+            "band_geometry": (src.metadata or {}).get("band_geometry"),
+            "hidden_mask_b64": (src.metadata or {}).get("hidden_mask_b64") or "",
+            "hidden_backend": (src.metadata or {}).get("hidden_backend") or "",
+            "proxy_geometry": serialize_proxy_geometry(
+                AtlasProjectionScene(proxy_geometry=list(src.proxy_geometry)),
+            ),
+        })
+    return projection_sources
+
+
+def _pack_primary_depth(solve, primary_depth, intr, extr, fx: float, fy: float, cx: float, cy: float) -> tuple[str, int, int]:
+    """Pack 24-bit metric depth PNG in millimetres for viewport occlusion culling."""
+    if primary_depth is None:
+        return "", 0, 0
+
+    from atlas_camera.core.relief_mesh import estimate_ground_scale
+
+    np = _require_numpy()
+    PILImage = _require_pil()
+    try:
+        p_map = _depth_map_for_solve(primary_depth, intr.image_width, intr.image_height)
+        p_scale, _ = estimate_ground_scale(
+            p_map, view_matrix=extr.camera_view_matrix,
+            fx=fx, fy=fy, cx=cx, cy=cy,
+            horizon_y=_horizon_y_from_solve(solve))
+        primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
+        primary_metric_map = _decimate_metric_depth_for_viewport(primary_metric_map)
+        h, w = primary_metric_map.shape
+
+        depth_mm = np.clip(primary_metric_map * 1000.0, 0, 0xFFFFFF).astype(np.uint32)
+        rgb_depth = np.zeros(depth_mm.shape + (3,), dtype=np.uint8)
+        rgb_depth[..., 0] = (depth_mm >> 16) & 0xFF
+        rgb_depth[..., 1] = (depth_mm >> 8) & 0xFF
+        rgb_depth[..., 2] = depth_mm & 0xFF
+
+        buf = io.BytesIO()
+        PILImage.fromarray(rgb_depth, mode="RGB").save(buf, format="PNG", optimize=True)
+        depth_b64 = ("data:image/png;base64,"
+                     + base64.b64encode(buf.getvalue()).decode("ascii"))
+        return depth_b64, w, h
+    except (ValueError, TypeError, AttributeError, IndexError, ArithmeticError) as exc:
+        import logging
+        logging.warning("primary_depth could not be packed for the occlusion "
+                        "cull; it will stay disabled: %s", exc)
+        return "", 0, 0
+
+
+def _extract_blockout_camera(
+solve, source_image, target_width: int, target_height: int,
                               preview_expand: float = 1.0, shot_intrinsics=None,
                               output_profile=None, solve_fingerprint: str = "", primary_depth=None) -> dict[str, Any]:
     """Serialize the recovered camera into a dict the browser extension can consume.
@@ -151,50 +232,8 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
         preview_pivot=extr.camera_position,
     )
 
-    # Multi-angle patch sources (AtlasAddPatchView): each is its own camera +
-    # novel-view image + geometry, layered over the primary to fill areas the
-    # primary camera couldn't see. Serialized like the primary so the viewport
-    # can bind a projection material per source. Empty for single-camera solves.
-    from atlas_camera.core.schema import AtlasProjectionScene
-    projection_sources = []
-    for src in (getattr(solve, "projection_sources", None) or []):
-        s_intr = src.camera.intrinsics
-        s_extr = src.camera.extrinsics
-        s_fx = s_intr.fx_px or 0.0
-        s_fy = s_intr.fy_px or s_fx
-        s_cx = s_intr.cx_px if s_intr.cx_px is not None else (s_intr.image_width or 1) / 2.0
-        s_cy = s_intr.cy_px if s_intr.cy_px is not None else (s_intr.image_height or 1) / 2.0
-        projection_sources.append({
-            "name": src.name,
-            "view_matrix": [list(row) for row in s_extr.camera_view_matrix],
-            "camera_position": list(s_extr.camera_position),
-            "fx": s_fx, "fy": s_fy, "cx": s_cx, "cy": s_cy,
-            "image_width": s_intr.image_width,
-            "image_height": s_intr.image_height,
-            "image_b64": src.image_b64 or "",
-            "mask_b64": getattr(src, "mask_b64", None) or "",
-            # Predicted world-normal relight map (MoGe *-normal), aligned to the
-            # recovered frame — the projection shader samples it for the lights.
-            "normal_map_b64": getattr(src, "normal_map_b64", None) or "",
-            "plate_ref": _plate_ref_to_dict(getattr(src, "plate_ref", None)),
-            "priority": float(src.priority),
-            "azimuth_deg": float(src.azimuth_deg),
-            "elevation_deg": float(src.elevation_deg),
-            "projection_mode": (src.metadata or {}).get("projection_mode"),
-            # Band metrics (metres) — a finite far_m is the AtlasBoundedBand
-            # cutoff on a foreground clean-plate layer; drives the 📏 Band Box
-            # overlay (near_m None = 0 = the near plane).
-            "near_m": (src.metadata or {}).get("near_m"),
-            "far_m": (src.metadata or {}).get("far_m"),
-            "band_geometry": (src.metadata or {}).get("band_geometry"),
-            # 🩻 hidden-geometry provenance (AtlasPredictHiddenGeometry via a
-            # band layer) — drives the viewport's debug tint overlay.
-            "hidden_mask_b64": (src.metadata or {}).get("hidden_mask_b64") or "",
-            "hidden_backend": (src.metadata or {}).get("hidden_backend") or "",
-            "proxy_geometry": serialize_proxy_geometry(
-                AtlasProjectionScene(proxy_geometry=list(src.proxy_geometry)),
-            ),
-        })
+    # Multi-angle patch sources (AtlasAddPatchView)
+    projection_sources = _serialize_projection_sources(solve)
 
     # Vanishing points + horizon (2D image-space diagnostics — meaningful only
     # against the flat source photo, not the 3D scene) for the viewport's
@@ -241,55 +280,10 @@ def _extract_blockout_camera(solve, source_image, target_width: int, target_heig
                          "detail": sh.detail},
     }
 
-    primary_depth_b64 = ""
-    primary_depth_width = 0
-    primary_depth_height = 0
-    if primary_depth is not None:
-        # Metric depth for the viewport's ✂ Occlude cull, packed into a 24-bit
-        # RGB PNG in MILLIMETRES: R = high byte, G = mid, B = low, clipped to
-        # 0xFFFFFF mm (~16.7 km) at 1 mm resolution. atlas_blockout.js unpacks
-        # it as `z_mm = R*65536 + G*256 + B` — the byte order here and that
-        # shader line are a contract; change neither alone.
-        #
-        # Resolution note: `_depth_map_for_solve` / `_horizon_y_from_solve` are
-        # module-local (defined below — resolved at call time, so the forward
-        # reference is fine), and `estimate_ground_scale` lives in
-        # core.relief_mesh. Both this import and the numpy/PIL requires sit
-        # OUTSIDE the try deliberately: a wrong module path must fail loudly
-        # rather than be swallowed into a silent no-op that leaves the cull
-        # permanently dark.
-        from atlas_camera.core.relief_mesh import estimate_ground_scale
+    primary_depth_b64, primary_depth_width, primary_depth_height = _pack_primary_depth(
+        solve, primary_depth, intr, extr, fx, fy, cx, cy
+    )
 
-        np = _require_numpy()
-        PILImage = _require_pil()
-        try:
-            # Metric depth exactly the way AtlasOcclusionMask derives it, so the
-            # cull compares against the same metric space the mask node uses.
-            p_map = _depth_map_for_solve(primary_depth, intr.image_width, intr.image_height)
-            p_scale, _ = estimate_ground_scale(
-                p_map, view_matrix=extr.camera_view_matrix,
-                fx=fx, fy=fy, cx=cx, cy=cy,
-                horizon_y=_horizon_y_from_solve(solve))
-            primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
-            primary_metric_map = _decimate_metric_depth_for_viewport(primary_metric_map)
-            primary_depth_height, primary_depth_width = primary_metric_map.shape
-
-            depth_mm = np.clip(primary_metric_map * 1000.0, 0, 0xFFFFFF).astype(np.uint32)
-            rgb_depth = np.zeros(depth_mm.shape + (3,), dtype=np.uint8)
-            rgb_depth[..., 0] = (depth_mm >> 16) & 0xFF   # R = high byte
-            rgb_depth[..., 1] = (depth_mm >> 8) & 0xFF    # G = mid byte
-            rgb_depth[..., 2] = depth_mm & 0xFF           # B = low byte
-
-            buf = io.BytesIO()
-            PILImage.fromarray(rgb_depth, mode="RGB").save(buf, format="PNG", optimize=True)
-            primary_depth_b64 = ("data:image/png;base64,"
-                                 + base64.b64encode(buf.getvalue()).decode("ascii"))
-        except (ValueError, TypeError, AttributeError, IndexError, ArithmeticError) as exc:
-            # Bad/degenerate depth data degrades to "no cull" (the viewport
-            # simply keeps drawing the full projection); it must never take the
-            # whole viewport execution down. Import errors are NOT caught here.
-            logging.warning("primary_depth could not be packed for the occlusion "
-                            "cull; it will stay disabled: %s", exc)
 
     return {
         "view_matrix": vm,

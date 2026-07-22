@@ -10,8 +10,10 @@ import numpy as np
 import pytest
 
 from atlas_camera.core.mesh_repair import (
+    apply_boundary_sawtooth_fill,
     apply_interior_hole_fill,
     boundary_edges,
+    fill_boundary_sawteeth,
     fill_interior_holes,
     walk_loops,
 )
@@ -399,3 +401,85 @@ def test_fill_never_degrades_a_real_relief_mesh():
     assert (areas > 1e-12).all(), "fill added a degenerate face"
     # no vertices invented → the OBJ/GLB 1:1 vertex-UV mapping still holds
     assert int(np.asarray(new_faces).max()) < len(v)
+
+def _sawtooth_strip(n_teeth=4):
+    """A flat quad strip whose top boundary alternates between near
+    "peaks" (z=-5) and far "bases" (z=-15).  Bases are local depth maxima
+    on the boundary loop and should be bridged by fill_boundary_sawteeth."""
+    verts = []
+    # bottom row y=0, top row follows sawtooth
+    for i in range(n_teeth * 2 + 1):
+        verts.append([float(i), 0.0, -10.0])  # bottom vertex
+    for i in range(n_teeth * 2 + 1):
+        is_base = (i % 2) == 1
+        z = -15.0 if is_base else -5.0
+        verts.append([float(i), 1.0, z])  # top vertex
+    vertices = np.asarray(verts, dtype=np.float64)
+    faces = []
+    n = n_teeth * 2 + 1
+    for i in range(n - 1):
+        a, b = i, i + 1
+        d, e = n + i, n + i + 1
+        faces.append([a, b, e])
+        faces.append([a, e, d])
+    return vertices, np.asarray(faces, dtype=np.int64)
+
+
+def _assert_manifold_and_wound(faces):
+    """Undirected edges in ≤2 faces AND no duplicated directed edge — the
+    pivot walk's own invariant. A geometric winding pick can pass the
+    undirected check while breaking this one."""
+    f = np.asarray(faces)
+    de = np.vstack([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    _, dc = np.unique(de, axis=0, return_counts=True)
+    assert (dc == 1).all(), "duplicated directed edge → inconsistent winding"
+    _, c = np.unique(np.sort(de, axis=1), axis=0, return_counts=True)
+    assert (c <= 2).all(), "non-manifold edge"
+
+
+def test_fill_boundary_sawteeth_bridges_depth_valleys():
+    """Sawtooth bases (farther than both neighbours) get peak-base-peak
+    triangles; peaks stay untouched."""
+    v, f = _sawtooth_strip(n_teeth=4)
+    view = _identity_view()
+    new_f, depths = fill_boundary_sawteeth(f, vertices=v, view_matrix=view, depth_far_m=0.0)
+    # 4 bases should be bridged
+    assert len(new_f) == len(f) + 4
+    assert len(depths) == 4
+    # every added depth should be the far base depth
+    assert all(abs(d - 15.0) < 1e-6 for d in depths)
+    _assert_manifold_and_wound(new_f)
+    # depth filter: forward depth is -view-z (camera faces -Z), so bases at
+    # z=-15 sit at depth 15 — beyond a far bound of 8.0, so nothing fills
+    new_f2, depths2 = fill_boundary_sawteeth(f, vertices=v, view_matrix=view, depth_far_m=8.0)
+    assert len(new_f2) == len(f)
+    assert len(depths2) == 0
+
+
+def test_fill_boundary_sawteeth_non_planar_notches_stay_wound():
+    """Non-planar teeth (bases displaced laterally + vertically) must still
+    come out manifold and consistently wound — the flat fixture alone passes
+    a geometric winding pick by luck (see the module's own winding lesson)."""
+    v, f = _sawtooth_strip(n_teeth=4)
+    n = 4 * 2 + 1
+    for i in range(n):
+        if (i % 2) == 1:  # base vertices: push off the strip plane
+            v[n + i, 0] += 0.37
+            v[n + i, 1] += 0.61
+    new_f, depths = fill_boundary_sawteeth(f, vertices=v, view_matrix=_identity_view(), depth_far_m=0.0)
+    assert len(new_f) == len(f) + 4
+    assert len(depths) == 4
+    _assert_manifold_and_wound(new_f)
+
+
+def test_apply_boundary_sawtooth_fill_updates_mesh():
+    """apply_boundary_sawtooth_fill mutates the mesh faces in place."""
+    v, f = _sawtooth_strip(n_teeth=3)
+    class M:
+        pass
+    m = M()
+    m.vertices = v
+    m.faces = f.copy()
+    n_added, _ = apply_boundary_sawtooth_fill(m, view_matrix=_identity_view(), depth_far_m=0.0)
+    assert n_added == 3
+    assert len(m.faces) == len(f) + 3

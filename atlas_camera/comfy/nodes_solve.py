@@ -16,7 +16,9 @@ from atlas_camera.core.solver import solve_from_constraints, solve_still_image
 from atlas_camera.importers.usd_camera_loader import USDCameraLoader
 
 from atlas_camera.comfy.node_helpers import (
+    _ASSESS_OUTPUT_SLOTS,
     _ATLAS_ASSESS_CACHE,
+
     _DEPTH_MODEL_CHOICES,
     _clone_solve_with_metadata,
     _execution_blocker,
@@ -993,7 +995,10 @@ class AtlasAssessImage:
                     "band_far", "band_bg", "band_mid", "band_fg")
     FUNCTION = "assess"
     CATEGORY = "Atlas Camera/Gates & QA"
+    ASSESS_OUTPUT_SLOTS = _ASSESS_OUTPUT_SLOTS
     # OUTPUT_NODE so the assessment ALWAYS runs and shows its report on the
+
+
     # node itself (ui.text, rendered by atlas_assess.js) — without this, a
     # graph where nothing consumed `report` gave zero visible output (found
     # live: "the VLM did nothing").

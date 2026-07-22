@@ -456,3 +456,103 @@ def apply_interior_hole_fill(
     if filled:
         mesh.faces = np.asarray(new_faces, dtype=faces.dtype)
     return len(filled), filled
+
+def fill_boundary_sawteeth(
+    faces: np.ndarray,
+    *,
+    vertices: np.ndarray | None = None,
+    view_matrix: np.ndarray | None = None,
+    depth_far_m: float = 0.0,
+) -> tuple[np.ndarray, list[float]]:
+    """Bridge sawtooth notches along boundary loops.
+
+    A "valley" vertex is a STRICT local depth maximum on a boundary loop (both
+    neighbours are closer to the camera). Connecting the two neighbours across
+    the valley caps the notch with a single triangle from existing vertices,
+    preserving UVs. Passes repeat until none qualifies, so consecutive teeth
+    smooth progressively. Strictness means two adjacent vertices can never both
+    be valleys, so bridges within a pass cannot conflict.
+
+    ``depth_far_m`` scopes the pass: only valleys whose forward depth is
+    ``<=`` the bound are bridged. ``0.0`` disables the distance filter.
+
+    Winding is the same exact per-edge rule as :func:`_triangulate_loop`, not a
+    geometric test: the pivot walk emits loops in face-winding order, so the
+    mesh already traverses ``prev→v`` and ``v→nxt`` — the cap must traverse
+    both shared edges the OPPOSITE way, which forces ``(nxt, v, prev)``.
+    (An orientation heuristic that can emit ``(prev, v, nxt)`` would duplicate
+    those directed edges and break the pivot walk's own invariant.)
+
+    Returns ``(new_faces, valley_depths)`` where ``new_faces`` is the face
+    array plus any added triangles and ``valley_depths`` lists each bridged
+    valley's forward depth.
+    """
+    f = np.asarray(faces)
+    if vertices is None or len(f) == 0 or view_matrix is None:
+        return f, []
+    verts = np.asarray(vertices, dtype=np.float64)
+
+    existing = {
+        tuple(sorted(map(int, e)))
+        for e in np.vstack([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    }
+
+    valley_depths: list[float] = []
+    faces_work = f
+    max_passes = 64  # backstop only; the loop exits on the first dry pass
+    for _ in range(max_passes):
+        be = boundary_edges(faces_work)
+        if len(be) == 0:
+            break
+        added: list[tuple[int, int, int]] = []
+        for loop in walk_loops(be, faces=faces_work):
+            n = len(loop)
+            if n < 4:
+                continue
+            d = _loop_forward_depths(loop, verts, view_matrix)
+            for i in range(n):
+                prev, v, nxt = loop[i - 1], loop[i], loop[(i + 1) % n]
+                d_v = d[i]
+                if not (d_v > d[i - 1] and d_v > d[(i + 1) % n]):
+                    continue  # not a valley (strict local depth maximum)
+                if depth_far_m > 0.0 and d_v > depth_far_m:
+                    continue
+                edge = tuple(sorted((int(prev), int(nxt))))
+                if edge in existing:
+                    continue  # bridging would put that edge in three faces
+                a, b, c = verts[prev], verts[v], verts[nxt]
+                if np.linalg.norm(np.cross(b - a, c - a)) < _EPS:
+                    continue  # collinear → zero-area sliver
+                added.append((int(nxt), int(v), int(prev)))
+                valley_depths.append(float(d_v))
+                existing.add(edge)
+        if not added:
+            break
+        faces_work = np.vstack([faces_work, np.asarray(added, dtype=f.dtype)])
+    return faces_work, valley_depths
+
+
+def apply_boundary_sawtooth_fill(
+    mesh: Any,
+    *,
+    view_matrix: np.ndarray | None = None,
+    depth_far_m: float = 0.0,
+) -> tuple[int, list[float]]:
+    """Apply :func:`fill_boundary_sawteeth` to a ``ReliefMesh`` in place.
+
+    Returns ``(n_triangles_added, valley_depths)`` for the node's report.
+    """
+    faces = getattr(mesh, "faces", None)
+    vertices = getattr(mesh, "vertices", None)
+    if faces is None or len(faces) == 0 or vertices is None:
+        return 0, []
+    new_faces, depths = fill_boundary_sawteeth(
+        faces,
+        vertices=vertices,
+        view_matrix=view_matrix,
+        depth_far_m=float(depth_far_m),
+    )
+    n_added = len(new_faces) - len(faces)
+    if n_added:
+        mesh.faces = np.asarray(new_faces, dtype=faces.dtype)
+    return n_added, depths

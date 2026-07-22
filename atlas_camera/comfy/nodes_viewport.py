@@ -15,6 +15,8 @@ from atlas_camera.comfy.viewport_payload import (
     _fit_long_edge,
 )
 from atlas_camera.comfy.node_helpers import (
+    _ASSESS_OUTPUT_SLOTS,
+
     _ATLAS_INPUT_BAND_NAMES,
     _ATLAS_INPUT_BOUNDARIES,
     _DEPTH_MODEL_CHOICES,
@@ -33,7 +35,13 @@ from atlas_camera.comfy.node_helpers import (
     _require_pil,
     _require_torch,
     _solve_fingerprint,
+    build_segmentation_cascade,
 )
+from atlas_camera.inference.depth_estimator import is_moge_model
+
+
+
+
 
 
 
@@ -708,6 +716,11 @@ class AtlasInput:
                     "tooltip": "Largest boundary loop (edge count) that live hole-fill will "
                                "close. Larger loops are more likely to be the outer frame or a "
                                "major disocclusion that should be filled by a clean plate instead."}),
+                "live_fill_edge_sawteeth": ("BOOLEAN", {"default": False,
+                    "tooltip": "Bridge sawtooth notches on the single relief mesh boundary "
+                               "(layers=0, mesh=relief only). A valley vertex that is farther than "
+                               "both neighbours gets a peak-base-peak triangle, scoped by "
+                               "live_fill_distance_m."}),
             },
         }
 
@@ -725,7 +738,8 @@ class AtlasInput:
               sky_sdxl_negative="building, tree, roof, person, vehicle, text, watermark, blurry",
               sky_sdxl_seed=0,
               live_fill_holes=False, live_fill_distance_m=0.0,
-              live_fill_max_hole_edges=64, **_extra):
+              live_fill_max_hole_edges=64,
+              live_fill_edge_sawteeth=False, **_extra):
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
         # supersedes the third-party SAM3Segment (comfyui-rmbg) in Atlas's own
@@ -740,27 +754,20 @@ class AtlasInput:
                         and "INPAINT_ExpandMask" in registry)
         notes: list = []
 
-        if "moge" in str(depth_model).lower() and not _moge_available():
+        if is_moge_model(str(depth_model)) and not _moge_available():
             notes.append("MoGe package not installed — AtlasDepthMap will fail; "
                          "install the [moge] extra (see INSTALL.md)")
         g = _graph_builder()
 
         def segment(image_ref, prompt_value):
-            """Text-prompt segmentation with an automatic fallback cascade.
-            Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) is
-            preferred; on a box without it (or [sam3] not installed) we fall
-            back to AtlasSemanticMask (SegFormer, CPU/MPS) so sky and scope
-            still get a learned mask with no rewiring. Returns a MASK ref, or
-            None when neither segmenter is available (caller then drops to
-            the heuristic). Both AtlasSAM3Mask's and AtlasSemanticMask's mask
-            are out(0)."""
-            if have_native_sam3:
-                return g.node("AtlasSAM3Mask", image=image_ref,
-                              concepts=prompt_value).out(0)
-            if have_semantic:
-                return g.node("AtlasSemanticMask", image=image_ref,
-                              classes=prompt_value).out(0)
-            return None
+            """Text-prompt segmentation via centralized build_segmentation_cascade."""
+            mask_ref, _ = build_segmentation_cascade(
+                g, image_ref, prompt_value, policy="semantic",
+                have_native_sam3=have_native_sam3, registry=registry,
+            )
+            return mask_ref
+
+
 
         if not have_native_sam3 and have_semantic:
             notes.append("native SAM3 absent -> AtlasSemanticMask (SegFormer, CPU/MPS) "
@@ -785,7 +792,7 @@ class AtlasInput:
         # we auto-switch to DA2-Metric-Outdoor so the sky gets real depth and
         # the skyline is preserved for the matte.
         effective_depth_model = depth_model
-        if sky and "moge" in str(depth_model).lower():
+        if sky and is_moge_model(str(depth_model)):
             effective_depth_model = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
             notes.append("MoGe + sky requested → depth auto-switched to DA2-Outdoor")
 
@@ -799,7 +806,9 @@ class AtlasInput:
         sky_mask_ref = zero_mask.out(0)
         sky_on = bool(sky)
         if sky_on:
-            sky_prompt_ref = vlm.out(3) if vlm is not None else sky_prompt
+            sky_prompt_ref = vlm.out(_ASSESS_OUTPUT_SLOTS["sam_prompt_sky"]) if vlm is not None else sky_prompt
+
+
             sky_mask = segment(image_ref, sky_prompt_ref)
             if sky_mask is None:
                 notes.append("sky SKIPPED — no segmenter (native SAM3 / AtlasSemanticMask absent)")
@@ -876,12 +885,17 @@ class AtlasInput:
                                 live_fill_holes=bool(live_fill_holes),
                                 live_fill_distance_m=float(live_fill_distance_m),
                                 live_fill_max_hole_edges=int(live_fill_max_hole_edges),
+                                live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth),
                                 **exclude_kw)
                 solve_chain = relief.out(0)
                 notes.append(f"single relief mesh, grid {int(mesh_resolution)}")
-                if live_fill_holes:
-                    notes.append(f"live hole-fill ON (distance_m={float(live_fill_distance_m):.1f}, "
-                                 f"max_edges={int(live_fill_max_hole_edges)})")
+                if live_fill_holes or live_fill_edge_sawteeth:
+                    parts = [f"distance_m={float(live_fill_distance_m):.1f}"]
+                    if live_fill_holes:
+                        parts.append(f"max_edges={int(live_fill_max_hole_edges)}")
+                    if live_fill_edge_sawteeth:
+                        parts.append("sawtooth-boundary-fill")
+                    notes.append("live hole-fill ON (" + ", ".join(parts) + ")")
             else:
                 flat = g.node("AtlasCleanPlateLayer", solve=solve_chain,
                               depth=depth.out(0), plate_image=image_ref,
@@ -916,7 +930,7 @@ class AtlasInput:
                 near, far = edges[n_bands - 1 - i], edges[n_bands - i]
                 override = f"near_pct={near:.3f} far_pct={far:.3f}"
                 if vlm is not None:
-                    override = vlm.out(12 + i)  # band_far..band_fg
+                    override = vlm.out(_ASSESS_OUTPUT_SLOTS["band_override"][i])
                 name = (_ATLAS_INPUT_BAND_NAMES[i] if n_bands == 4
                         else f"band_{n_bands - i}")
 
@@ -927,7 +941,7 @@ class AtlasInput:
                     prompt_val = None  # replaced by the VLM output below
                 wants_scope = (vlm is not None and vlm_scope) or bool(prompt_val)
                 if wants_scope:
-                    p_ref = vlm.out(4 + i) if vlm is not None else prompt_val
+                    p_ref = vlm.out(_ASSESS_OUTPUT_SLOTS["sam_prompt_band"][i]) if vlm is not None else prompt_val
                     seg_ref = segment(image_ref, p_ref)
                     if seg_ref is None:
                         if prompt_val:
@@ -960,7 +974,8 @@ class AtlasInput:
 
                 layer_kw = {}
                 if vlm is not None:
-                    layer_kw["geometry_override"] = vlm.out(8 + i)  # geom_far..fg
+                    layer_kw["geometry_override"] = vlm.out(_ASSESS_OUTPUT_SLOTS["geom_band"][i])
+
                 # DMP seam doctrine (artist-corrected 2026-07-12): the
                 # extension/outpaint belongs on the layer BEHIND — the front
                 # layer keeps a clean cut matte. So the frontmost band gets

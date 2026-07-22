@@ -71,6 +71,11 @@ def _is_moge_model(model_id: str) -> bool:
     return "moge" in model_id.lower()
 
 
+is_da3_model = _is_da3_model
+is_moge_model = _is_moge_model
+
+
+
 def _require_depth_backend() -> tuple[Any, Any, Any]:
     """Import torch + transformers depth-estimation classes lazily."""
     try:
@@ -605,9 +610,10 @@ def estimate_depth(
     # (DA3METRIC's canonical->metric conversion, and MoGe's fov_x injection).
     focal_key = (
         round(float(focal_px), 3)
-        if (focal_px and ("da3metric" in model_id.lower() or _is_moge_model(model_id)))
+        if (focal_px and (_is_da3_model(model_id) or _is_moge_model(model_id)))
         else None
     )
+
     cache_key = (content_hash, model_id, device, focal_key)
     cached_result = _DEPTH_RESULT_CACHE.get(cache_key)
     if cached_result is not None:

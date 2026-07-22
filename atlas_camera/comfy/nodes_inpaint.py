@@ -30,7 +30,9 @@ from atlas_camera.comfy.node_helpers import (
     _resolve_band_geometry,
     _resolve_exclude_mask,
     _seg_coverage,
+    build_segmentation_cascade,
 )
+
 
 
 
@@ -676,19 +678,10 @@ class AtlasSegmentedSDXLInpaint:
             if name not in registry:
                 raise RuntimeError(f"Segmented SDXL inpaint requires node '{name}'")
         g = _graph_builder()
-        if use_native:
-            sam = g.node("AtlasSAM3Mask", image=image, concepts="building",
-                         confidence_threshold=0.5, device="auto",
-                         output_mode="separate", max_instances=int(max_instances))
-            instances = sam.out(0)          # AtlasSAM3Mask: mask is slot 0
-        else:
-            sam = g.node("SAM3Segment", image=image, prompt="building",
-                         output_mode="Separate", confidence_threshold=0.5,
-                         max_segments=int(max_instances), segment_pick=0,
-                         mask_blur=0, mask_offset=0, device="Auto",
-                         invert_output=False, unload_model=False,
-                         background="Alpha", background_color="#222222")
-            instances = sam.out(1)          # SAM3Segment: IMAGE(0), MASK(1)
+        instances, path_fired = build_segmentation_cascade(
+            g, image, prompt or "building", policy="separate",
+            max_instances=int(max_instances), confidence_threshold=0.5
+        )
         plate = image
         for i in range(int(max_instances)):
             selected = g.node("AtlasInstanceMask", mask=instances, restrict_mask=restrict_mask,
@@ -705,9 +698,9 @@ class AtlasSegmentedSDXLInpaint:
             plate = g.node("AtlasInpaintStitch", original_image=plate,
                            inpainted_crop=fill.out(0), crop_region=crop.out(2),
                            mask=grown.out(0), feather_px=24).out(0)
-        report = (f"SAM3 Separate building stack via "
-                  f"{'AtlasSAM3Mask (native)' if use_native else 'SAM3Segment (triton)'} — "
+        report = (f"SAM3 Separate building stack via {path_fired} — "
                   f"{int(max_instances)} instance slot(s), SDXL denoise {float(denoise):g}")
+
         return {"result": (plate, report), "expand": g.finalize()}
 
 

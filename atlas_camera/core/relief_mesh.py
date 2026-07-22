@@ -171,14 +171,53 @@ def estimate_ground_scale(
     return scale, {"plane_y": y0, "inliers": int(cand.sum())}
 
 
+@dataclass(frozen=True)
+class ReliefMeshCameraSpec:
+    """Camera intrinsic/extrinsic and scale bundle for relief mesh construction."""
+
+    view_matrix: Any
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    scale: float = 1.0
+    horizon_y: float | None = None
+
+    @classmethod
+    def from_solve(cls, solve: Any, scale: float = 1.0) -> ReliefMeshCameraSpec:
+        """Construct camera spec bundle from an ATLAS_SOLVE object."""
+        intr = solve.camera.intrinsics
+        extr = solve.camera.extrinsics
+        fx = float(intr.fx_px or 0.0)
+        fy = float(intr.fy_px or fx)
+        width = int(intr.image_width or 1024)
+        height = int(intr.image_height or 1024)
+        cx = float(intr.cx_px if intr.cx_px is not None else width / 2.0)
+        cy = float(intr.cy_px if intr.cy_px is not None else height / 2.0)
+        horizon_y = None
+        if solve.horizon_line and solve.horizon_line.endpoints_px:
+            p1, p2 = solve.horizon_line.endpoints_px
+            horizon_y = 0.5 * (float(p1[1]) + float(p2[1]))
+        return cls(
+            view_matrix=extr.camera_view_matrix,
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
+            scale=float(scale),
+            horizon_y=horizon_y,
+        )
+
+
 def build_relief_mesh(
     depth: Any,
     *,
-    view_matrix: Any,
-    fx: float,
-    fy: float,
-    cx: float,
-    cy: float,
+    view_matrix: Any = None,
+    fx: float = 0.0,
+    fy: float = 0.0,
+    cx: float = 0.0,
+    cy: float = 0.0,
+    camera_spec: ReliefMeshCameraSpec | None = None,
     grid_long_edge: int = 96,
     depth_edge_rel: float = 0.5,
     far_clip_percentile: float = 97.0,
@@ -304,6 +343,16 @@ def build_relief_mesh(
     final/viewport output; the low-level default remains off for backwards
     compatibility with callers that intentionally keep partial quads.
     """
+    if camera_spec is not None:
+        view_matrix = camera_spec.view_matrix
+        fx = camera_spec.fx
+        fy = camera_spec.fy
+        cx = camera_spec.cx
+        cy = camera_spec.cy
+        scale = camera_spec.scale
+        if horizon_y is None:
+            horizon_y = camera_spec.horizon_y
+
     from atlas_camera.core.depth_geometry import detect_sky_mask
 
     np = _require_numpy()
