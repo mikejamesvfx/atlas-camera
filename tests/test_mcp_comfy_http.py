@@ -322,4 +322,4 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
             assert lid in (nodes[sid]["outputs"][sslot].get("links") or []), f"{p.name}: link {lid}"
             assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
         checked += 1
-    assert checked == 6
+    assert checked == 7

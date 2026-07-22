@@ -59,6 +59,7 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_camera_staged_master_workflow.json",
                      "atlas_input_quickstart_agentic_assessment_workflow.json",
                      "atlas_input_quickstart_workflow.json",
+                     "atlas_input_walkthrough_switches_workflow.json",
                      "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
                      "atlas_occlusion_cull_quickstart_workflow.json"]
 
