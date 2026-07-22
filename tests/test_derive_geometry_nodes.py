@@ -14,6 +14,7 @@ import pytest
 from atlas_camera.comfy.nodes import (
     NODE_CLASS_MAPPINGS,
     AtlasDeriveInteriorRoom,
+    AtlasDeriveProjectionGeometry,
     AtlasDeriveReliefMesh,
     AtlasDeriveRoofsFacades,
     AtlasDeriveTowersSpires,
@@ -232,3 +233,41 @@ def test_live_hole_fill_disabled_by_default():
     out, _ = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
     meta = out.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]
     assert "live_hole_fill" not in meta
+
+
+def test_atlas_derive_projection_geometry_signature_matches_input_types():
+    """ComfyUI passes widget values positionally.  A drift between the
+    function signature and the declared ``INPUT_TYPES`` order makes widgets
+    control the wrong parameters, exactly the bug fixed for ``AtlasInput`` in
+    the same commit series.  This pins the contract.
+
+    ``exclude_mask`` is a MASK socket (``forceInput``-like), not a widget, so
+    it is omitted from the positional widget list."""
+    import inspect
+    from atlas_camera.mcp.comfy_http import is_widget
+    sig = inspect.signature(AtlasDeriveProjectionGeometry.derive)
+    all_params = [n for n in list(sig.parameters.keys())[1:]
+                 if not n.startswith("_") and n not in ("solve", "image")]
+    it = AtlasDeriveProjectionGeometry.INPUT_TYPES()
+    widgets = []
+    for sec in ("required", "optional"):
+        for name, spec in it.get(sec, {}).items():
+            if is_widget(spec):
+                widgets.append(name)
+    assert all_params == widgets + ["exclude_mask"], f"params {all_params} widgets {widgets}"
+
+
+def test_atlas_derive_relief_mesh_signature_matches_input_types():
+    """``exclude_mask`` and ``outlier_mask`` are MASK sockets, not widgets."""
+    import inspect
+    from atlas_camera.mcp.comfy_http import is_widget
+    sig = inspect.signature(AtlasDeriveReliefMesh.derive)
+    all_params = [n for n in list(sig.parameters.keys())[1:]
+                 if not n.startswith("_") and n not in ("solve", "depth")]
+    it = AtlasDeriveReliefMesh.INPUT_TYPES()
+    widgets = []
+    for sec in ("required", "optional"):
+        for name, spec in it.get(sec, {}).items():
+            if is_widget(spec):
+                widgets.append(name)
+    assert all_params == widgets + ["exclude_mask", "outlier_mask"], f"params {all_params} widgets {widgets}"

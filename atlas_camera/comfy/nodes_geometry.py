@@ -238,11 +238,12 @@ class AtlasDeriveProjectionGeometry:
     def derive(self, solve, image,
                depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                max_walls=4, max_objects=3, device="auto",
-               geometry_mode="relief_mesh", relief_grid=128, relief_quality="custom",
-               depth_edge_rel=0.5,
-               primitive_method="azimuth_walls", scene_type="manual", exclude_mask=None,
+               geometry_mode="relief_mesh", relief_grid=128,
+               primitive_method="azimuth_walls", scene_type="manual",
+               relief_quality="custom", depth_edge_rel=0.5,
                live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=64):
+               live_fill_max_hole_edges=64,
+               exclude_mask=None):
         torch = _require_torch()
         np = _require_numpy()
         preset = self._SCENE_TYPE_PRESETS.get(scene_type)
@@ -863,11 +864,12 @@ class AtlasDeriveReliefMesh:
 
     _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
-    def derive(self, solve, depth, relief_grid=128, relief_quality="custom", depth_edge_rel=0.5,
-               exclude_mask=None, outlier_mask=None, max_edge_factor=12.0,
+    def derive(self, solve, depth, relief_grid=128, relief_quality="custom",
+               depth_edge_rel=0.5, max_edge_factor=12.0,
                sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
                live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=64):
+               live_fill_max_hole_edges=64,
+               exclude_mask=None, outlier_mask=None):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
