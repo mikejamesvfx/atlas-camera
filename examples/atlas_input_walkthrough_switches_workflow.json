@@ -1,7 +1,7 @@
 {
   "id": "065b2070-85ef-452b-a788-3988deb37206",
   "revision": 1,
-  "last_node_id": 13,
+  "last_node_id": 14,
   "last_link_id": 8,
   "nodes": [
     {
@@ -378,7 +378,10 @@
         "SDXL/sd_xl_base_1.0.safetensors",
         "clear seamless sky, high detail, no buildings, no trees, no roofs",
         "building, tree, roof, person, vehicle, text, watermark, blurry",
-        0
+        0,
+        false,
+        0.0,
+        64
       ],
       "title": "2 \u00b7 ATLAS INPUT \u00b7 SWITCHBOARD",
       "color": "#3f7895"
@@ -902,6 +905,30 @@
         "scope_prompts = per-line SAM segmentation for each band.\ninpaint = LaMa crop/stitch clean plates for occluded bands.\n\nsky_inpaint_mode = lama (fast deterministic) or sdxl\n(generative). The sky card always gets its own inpaint.\n\nFor real foreground-geometry override, move past AtlasInput and\nuse AtlasDeriveProjectionGeometry / AtlasDeriveReliefMesh /\nAtlasCleanPlateStack / AtlasMergeGeometry, or the blockout viewport."
       ],
       "title": "SWITCH 4 \u00b7 INPAINT / SCOPE"
+    },
+    {
+      "id": 14,
+      "type": "Note",
+      "pos": [
+        2240,
+        940
+      ],
+      "size": [
+        520,
+        280
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "SWITCH 5 \u00b7 LIVE HOLE FILL\n\nOnly applies to layers=0, mesh=relief (single full-range mesh).\n\n\u2022 live_fill_holes = ON runs a ZBrush-style Close Holes pass on the\n  relief mesh before it is stored in the solve.\n\u2022 live_fill_distance_m caps the forward depth of the fill so\n  distant voids (sky, far backdrop) stay open.\n\u2022 live_fill_max_hole_edges skips large boundary loops that are\n  probably real disocclusions better handled by clean plates.\n\nFor full manual control use AtlasDeriveReliefMesh or\nAtlasDeriveProjectionGeometry directly."
+      ],
+      "title": "SWITCH 5 \u00b7 LIVE HOLE FILL"
     }
   ],
   "links": [
@@ -1000,7 +1027,7 @@
       "bounding": [
         80,
         1280,
-        2160,
+        2760,
         360
       ],
       "color": "#5a4a2e",

@@ -322,7 +322,10 @@
         "SDXL/sd_xl_base_1.0.safetensors",
         "clear seamless sky, high detail, no buildings, no trees, no roofs",
         "building, tree, roof, person, vehicle, text, watermark, blurry",
-        0
+        0,
+        false,
+        0.0,
+        64
       ],
       "title": "2 \u00b7 SOLVE + RELIEF \u00b7 expand options here"
     },

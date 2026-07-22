@@ -696,6 +696,18 @@ class AtlasInput:
                     "multiline": True, "tooltip": "Negative prompt for SDXL sky inpaint."}),
                 "sky_sdxl_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
                     "tooltip": "Seed for SDXL sky inpaint. 0 = deterministic default behavior of the sampler node."}),
+                "live_fill_holes": ("BOOLEAN", {"default": False,
+                    "tooltip": "ZBrush-style interior hole-fill on the single relief mesh "
+                               "(layers=0, mesh=relief only). Fills small boundary loops whose "
+                               "vertices are within live_fill_distance_m of the camera."}),
+                "live_fill_distance_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000.0,
+                    "step": 0.5,
+                    "tooltip": "Maximum forward depth (metres from camera) for live hole-fill. "
+                               "0 = fill all qualifying holes up to live_fill_max_hole_edges."}),
+                "live_fill_max_hole_edges": ("INT", {"default": 64, "min": 3, "max": 512,
+                    "tooltip": "Largest boundary loop (edge count) that live hole-fill will "
+                               "close. Larger loops are more likely to be the outer frame or a "
+                               "major disocclusion that should be filled by a clean plate instead."}),
             },
         }
 
@@ -711,7 +723,9 @@ class AtlasInput:
               sky_sdxl_checkpoint="SDXL/sd_xl_base_1.0.safetensors",
               sky_sdxl_positive="clear seamless sky, high detail, no buildings, no trees, no roofs",
               sky_sdxl_negative="building, tree, roof, person, vehicle, text, watermark, blurry",
-              sky_sdxl_seed=0, **_extra):
+              sky_sdxl_seed=0,
+              live_fill_holes=False, live_fill_distance_m=0.0,
+              live_fill_max_hole_edges=64, **_extra):
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
         # supersedes the third-party SAM3Segment (comfyui-rmbg) in Atlas's own
@@ -858,9 +872,16 @@ class AtlasInput:
                                 depth_edge_rel=0.5,
                                 max_edge_factor=float(max_edge_factor),
                                 sky_heuristic=bool(sky_heuristic),
-                                normal_edge_deg=float(normal_edge_deg), **exclude_kw)
+                                normal_edge_deg=float(normal_edge_deg),
+                                live_fill_holes=bool(live_fill_holes),
+                                live_fill_distance_m=float(live_fill_distance_m),
+                                live_fill_max_hole_edges=int(live_fill_max_hole_edges),
+                                **exclude_kw)
                 solve_chain = relief.out(0)
                 notes.append(f"single relief mesh, grid {int(mesh_resolution)}")
+                if live_fill_holes:
+                    notes.append(f"live hole-fill ON (distance_m={float(live_fill_distance_m):.1f}, "
+                                 f"max_edges={int(live_fill_max_hole_edges)})")
             else:
                 flat = g.node("AtlasCleanPlateLayer", solve=solve_chain,
                               depth=depth.out(0), plate_image=image_ref,

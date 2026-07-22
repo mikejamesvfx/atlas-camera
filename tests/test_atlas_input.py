@@ -361,3 +361,61 @@ def test_positional_sky_widget_turns_on_sky_card(monkeypatch):
                and n["inputs"].get("concepts") == "sky")
     assert sam["inputs"]["concepts"] == "sky"
     assert "sky card ON" in out["result"][4]
+
+
+def test_live_hole_fill_wired_to_single_relief_mesh(monkeypatch):
+    """The live_fill_* widgets must reach AtlasDeriveReliefMesh only on the
+    layers=0, mesh=relief single-mesh path."""
+    monkeypatch.setattr(nodes_mod, "_comfy_registry", lambda: {})
+    monkeypatch.setattr(nodes_mod, "_native_sam3_available", lambda: True)
+    # Positional args after ``image`` in INPUT_TYPES widget order, including the
+    # three new live_fill_* widgets appended at the end.
+    args = (0, "relief", 512, False, "lmstudio", "", False, "sky", "", False,
+            "", 24, 12.0, True, 0.0,
+            "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+            True, "lama", 32,
+            "SDXL/sd_xl_base_1.0.safetensors",
+            "clear seamless sky, high detail, no buildings, no trees, no roofs",
+            "building, tree, roof, person, vehicle, text, watermark, blurry", 0,
+            True, 12.5, 128)
+    out = AtlasInput().build(IMG, *args)
+    graph = out["expand"]
+    relief = next(n for n in graph.values() if n["class_type"] == "AtlasDeriveReliefMesh")
+    assert relief["inputs"]["live_fill_holes"] is True
+    assert relief["inputs"]["live_fill_distance_m"] == 12.5
+    assert relief["inputs"]["live_fill_max_hole_edges"] == 128
+    assert "live hole-fill ON (distance_m=12.5, max_edges=128)" in out["result"][4]
+
+
+def test_live_hole_fill_not_wired_to_card_or_ground(monkeypatch):
+    """Card/ground single-layer path uses AtlasCleanPlateLayer, which does not
+    accept live_fill_* kwargs."""
+    monkeypatch.setattr(nodes_mod, "_comfy_registry", lambda: {})
+    monkeypatch.setattr(nodes_mod, "_native_sam3_available", lambda: True)
+    for geom in ("card", "ground"):
+        out = AtlasInput().build(
+            IMG, layers=0, mesh=geom, mesh_resolution=256,
+            live_fill_holes=True, live_fill_distance_m=10.0, live_fill_max_hole_edges=64)
+        graph = out["expand"]
+        layer = next(n for n in graph.values() if n["class_type"] == "AtlasCleanPlateLayer")
+        for key in ("live_fill_holes", "live_fill_distance_m", "live_fill_max_hole_edges"):
+            assert key not in layer["inputs"], f"{geom} should not receive {key}"
+        # No DeriveReliefMesh in this branch
+        assert not any(n["class_type"] == "AtlasDeriveReliefMesh" for n in graph.values())
+
+
+def test_live_hole_fill_not_wired_to_banded_layers(monkeypatch):
+    """Depth-band layers also use AtlasCleanPlateLayer and must not receive
+    live_fill_* kwargs in this pass (band boundaries are intentional holes)."""
+    monkeypatch.setattr(nodes_mod, "_comfy_registry", lambda: {})
+    monkeypatch.setattr(nodes_mod, "_native_sam3_available", lambda: True)
+    out = AtlasInput().build(
+        IMG, layers=2, mesh="relief", mesh_resolution=256,
+        live_fill_holes=True, live_fill_distance_m=10.0, live_fill_max_hole_edges=64)
+    graph = out["expand"]
+    for n in graph.values():
+        if n["class_type"] == "AtlasCleanPlateLayer":
+            for key in ("live_fill_holes", "live_fill_distance_m", "live_fill_max_hole_edges"):
+                assert key not in n["inputs"], f"band layer should not receive {key}"
+    # No DeriveReliefMesh in banded path
+    assert not any(n["class_type"] == "AtlasDeriveReliefMesh" for n in graph.values())
