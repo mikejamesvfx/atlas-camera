@@ -368,7 +368,7 @@ def fill_interior_holes(
 
     A loop is filled iff (a) it is not the single largest loop when no depth
     window is active, (b) its edge count < ``max_hole_edges``, and (c) when a
-    depth window is given (both bounds > 0) every one of its boundary vertices'
+    depth window is given (far bound > 0) every one of its boundary vertices'
     forward depth lies within ``[depth_near_m, depth_far_m]``. Triangulation
     uses only the loop's existing vertices — no new vertices, so 1:1 vertex-UV
     is preserved (UVs for the existing indices already exist).
@@ -386,7 +386,6 @@ def fill_interior_holes(
 
     depth_filter = (
         view_matrix is not None
-        and depth_near_m > 0.0
         and depth_far_m > 0.0
     )
     depths: dict[int, np.ndarray] = {}

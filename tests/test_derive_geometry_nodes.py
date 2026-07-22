@@ -192,3 +192,43 @@ def test_layer_nodes_expose_shared_quad_coherence_guard():
 
     assert "quad_coherence" in AtlasCleanPlateLayer.INPUT_TYPES()["optional"]
     assert "quad_coherence" in AtlasDepthLayerMask.INPUT_TYPES()["optional"]
+
+
+def test_live_hole_fill_closes_near_holes():
+    pytest.importorskip("torch")
+    solve = _solve()
+    depth = _depth_result(_room_depth())
+    out_off, hole_off = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, live_fill_holes=False)
+    out_on, hole_on = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, live_fill_holes=True,
+        live_fill_distance_m=100.0, live_fill_max_hole_edges=128)
+    # Hole mask should have fewer holes when fill is on
+    assert hole_on.sum() <= hole_off.sum()
+    meta = out_on.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]
+    assert meta["live_hole_fill"]["n_loops_filled"] > 0
+
+
+def test_live_hole_fill_distance_scopes_distant_holes():
+    pytest.importorskip("torch")
+    solve = _solve()
+    depth = _depth_result(_room_depth())
+    out_near, _ = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, live_fill_holes=True,
+        live_fill_distance_m=5.0, live_fill_max_hole_edges=128)
+    out_far, _ = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, live_fill_holes=True,
+        live_fill_distance_m=100.0, live_fill_max_hole_edges=128)
+    near_meta = out_near.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]["live_hole_fill"]
+    far_meta = out_far.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]["live_hole_fill"]
+    # Tighter distance should fill fewer loops than generous distance
+    assert near_meta["n_loops_filled"] <= far_meta["n_loops_filled"]
+
+
+def test_live_hole_fill_disabled_by_default():
+    pytest.importorskip("torch")
+    solve = _solve()
+    depth = _depth_result(_room_depth())
+    out, _ = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
+    meta = out.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]
+    assert "live_hole_fill" not in meta

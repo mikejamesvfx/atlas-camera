@@ -382,6 +382,57 @@ _ATLAS_ASSESS_CACHE: dict = {}
 
 
 
+
+
+def _hole_mask_after_fill(mesh, n_faces_before):
+    """Recompute ``ReliefMesh.hole_mask`` after interior hole-fill faces are added.
+
+    Only the new faces (indices >= ``n_faces_before``) are rasterized in UV
+    space, so previously-covered pixels are left untouched.  This keeps the
+    MASK output of ``AtlasDeriveReliefMesh`` honest about which pixels still
+    have no geometry after live hole-fill.
+    """
+    np = _require_numpy()
+    faces = np.asarray(mesh.faces)
+    n_after = len(faces)
+    if n_faces_before >= n_after:
+        return mesh.hole_mask
+    added = faces[n_faces_before:]
+    uvs = np.asarray(mesh.uvs)
+    hole_mask = np.asarray(mesh.hole_mask).copy()
+    h, w = hole_mask.shape
+    if h == 0 or w == 0 or len(added) == 0:
+        return hole_mask
+    eps = 1e-8
+    pts = uvs[added]
+    xs = pts[..., 0] * (w - 1)
+    ys = (1.0 - pts[..., 1]) * (h - 1)
+    covered = np.zeros((h, w), dtype=bool)
+    for i in range(len(added)):
+        x = xs[i]
+        y = ys[i]
+        x0 = max(int(np.floor(x.min() - 1)), 0)
+        x1 = min(int(np.ceil(x.max() + 1)), w - 1)
+        y0 = max(int(np.floor(y.min() - 1)), 0)
+        y1 = min(int(np.ceil(y.max() + 1)), h - 1)
+        if x0 > x1 or y0 > y1:
+            continue
+        det = (x[1] - x[0]) * (y[2] - y[0]) - (y[1] - y[0]) * (x[2] - x[0])
+        if abs(det) < eps:
+            continue
+        yy, xx = np.mgrid[y0:y1 + 1, x0:x1 + 1]
+        wx = xx - x[0]
+        wy = yy - y[0]
+        inv = 1.0 / det
+        v = (wx * (y[2] - y[0]) - wy * (x[2] - x[0])) * inv
+        w_ = (-wx * (y[1] - y[0]) + wy * (x[1] - x[0])) * inv
+        u = 1.0 - v - w_
+        inside = (u >= -eps) & (v >= -eps) & (w_ >= -eps)
+        covered[y0:y1 + 1, x0:x1 + 1] |= inside
+    hole_mask &= ~covered
+    return hole_mask
+
+
 def _replace_proxy_role_geometry(solve, new_prims, stats, extra_metadata):
     """Deep-copy `solve`, strip any prior PROXY_ROLE-tagged geometry, and
     replace it with `new_prims` — the exact pattern AtlasDeriveProjectionGeometry
@@ -763,6 +814,7 @@ __all__ = [
     '_horizon_y_from_solve',
     '_depth_map_for_solve',
     '_replace_proxy_role_geometry',
+    '_hole_mask_after_fill',
     '_MetricDepthSetup',
     '_BORDER_FLOOD_PX',
     '_flood_mask_to_frame_borders',
