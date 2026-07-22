@@ -678,6 +678,18 @@ class AtlasInput:
                                "rest of the band exposing the behind-band's fill smear. OFF = "
                                "VLM still drives bands/geometry, layers stay band-only "
                                "(robust full coverage — best for camera moves)."}),
+                "sky_inpaint_mode": (["lama", "sdxl"], {"default": "lama",
+                    "tooltip": "How to build the sky card's clean plate: lama = fast deterministic edge-fill (needs comfyui-inpaint-nodes), sdxl = generative SDXL inpaint (needs a checkpoint)."}),
+                "sky_lama_grow_px": ("INT", {"default": 32, "min": 0, "max": 128,
+                    "tooltip": "Mask dilation before LaMa sky inpaint. Larger = more aggressive removal of foreground silhouettes from the sky plate."}),
+                "sky_sdxl_checkpoint": ("STRING", {"default": "SDXL/sd_xl_base_1.0.safetensors",
+                    "tooltip": "SDXL checkpoint filename in models/checkpoints when sky_inpaint_mode=sdxl."}),
+                "sky_sdxl_positive": ("STRING", {"default": "clear seamless sky, high detail, no buildings, no trees, no roofs",
+                    "multiline": True, "tooltip": "Positive prompt for SDXL sky inpaint."}),
+                "sky_sdxl_negative": ("STRING", {"default": "building, tree, roof, person, vehicle, text, watermark, blurry",
+                    "multiline": True, "tooltip": "Negative prompt for SDXL sky inpaint."}),
+                "sky_sdxl_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
+                    "tooltip": "Seed for SDXL sky inpaint. 0 = deterministic default behavior of the sampler node."}),
             },
         }
 
@@ -687,7 +699,12 @@ class AtlasInput:
               sky=False, sky_prompt="sky", scope_prompts="", inpaint=False,
               upscale_model="", edge_extend_px=24, max_edge_factor=12.0,
               sky_heuristic=True, normal_edge_deg=0.0,
-              depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", **_extra):
+              depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+              sky_inpaint_mode="lama", sky_lama_grow_px=32,
+              sky_sdxl_checkpoint="SDXL/sd_xl_base_1.0.safetensors",
+              sky_sdxl_positive="clear seamless sky, high detail, no buildings, no trees, no roofs",
+              sky_sdxl_negative="building, tree, roof, person, vehicle, text, watermark, blurry",
+              sky_sdxl_seed=0, **_extra):
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
         # supersedes the third-party SAM3Segment (comfyui-rmbg) in Atlas's own
@@ -739,9 +756,17 @@ class AtlasInput:
 
         # 1. solve + shared depth (always). depth_model is fed the solve so
         # DA3METRIC / MoGe get the recovered focal (metric scale / fov_x).
+        # MoGe masks sky poorly; when the user explicitly asks for a sky card
+        # we auto-switch to DA2-Metric-Outdoor so the sky gets real depth and
+        # the skyline is preserved for the matte.
+        effective_depth_model = depth_model
+        if sky and "moge" in str(depth_model).lower():
+            effective_depth_model = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
+            notes.append("MoGe + sky requested → depth auto-switched to DA2-Outdoor")
+
         solve = g.node("AtlasLearnedSolveFromImage", image=image_ref)
         depth = g.node("AtlasDepthMap", image=image_ref, solve=solve.out(0),
-                       depth_model=depth_model)
+                       depth_model=effective_depth_model)
 
         # 2. sky mask (SolidMask zero when off/unavailable — every consumer
         # nearest-resizes masks, so the 64px placeholder is fine).
@@ -758,6 +783,47 @@ class AtlasInput:
                 sky_mask_ref = sky_mask
                 notes.append("sky card ON")
 
+        # 2b. clean-plate sky (inpaint foreground occluders from the inverted
+        # sky mask) so the sky card projects a real sky, not buildings/trees.
+        sky_plate_ref = image_ref
+        if sky_on:
+            inverted_sky = g.node("InvertMask", mask=sky_mask_ref).out(0)
+            mode = str(sky_inpaint_mode or "lama").lower()
+            if mode == "sdxl":
+                grown = g.node("INPAINT_ExpandMask", mask=inverted_sky,
+                               grow=8, blur=8, blur_type="gaussian")
+                crop = g.node("AtlasInpaintCrop", image=image_ref,
+                              mask=grown.out(0), context_pad_px=128)
+                sdxl = g.node("AtlasSDXLInpaint",
+                              image=crop.out(0), mask=crop.out(1),
+                              checkpoint=sky_sdxl_checkpoint,
+                              positive_prompt=sky_sdxl_positive,
+                              negative_prompt=sky_sdxl_negative,
+                              seed=int(sky_sdxl_seed),
+                              steps=30, cfg=5.5, denoise=0.85,
+                              grow_mask_by=8)
+                stitch = g.node("AtlasInpaintStitch", original_image=image_ref,
+                                inpainted_crop=sdxl.out(0),
+                                crop_region=crop.out(2))
+                sky_plate_ref = stitch.out(0)
+                notes.append("sky plate SDXL inpaint")
+            elif mode == "lama" and have_inpaint:
+                lama_loader = g.node("INPAINT_LoadInpaintModel", model_name="big-lama.pt")
+                grown = g.node("INPAINT_ExpandMask", mask=inverted_sky,
+                               grow=int(sky_lama_grow_px), blur=8, blur_type="gaussian")
+                crop = g.node("AtlasInpaintCrop", image=image_ref,
+                              mask=grown.out(0), context_pad_px=128)
+                lama = g.node("INPAINT_InpaintWithModel",
+                              inpaint_model=lama_loader.out(0),
+                              image=crop.out(0), mask=crop.out(1), seed=0)
+                stitch = g.node("AtlasInpaintStitch", original_image=image_ref,
+                                inpainted_crop=lama.out(0),
+                                crop_region=crop.out(2))
+                sky_plate_ref = stitch.out(0)
+                notes.append("sky plate LaMa inpaint")
+            else:
+                notes.append("sky plate LaMa SKIPPED — comfyui-inpaint-nodes not installed, using raw image")
+
         # 3. geometry.
         solve_chain = solve.out(0)
         if sky_on:
@@ -766,7 +832,7 @@ class AtlasInput:
             # reveals show smeared sky, never black.
             sky_layer = g.node("AtlasSkyDomeLayer", solve=solve_chain,
                                depth=depth.out(0), sky_mask=sky_mask_ref,
-                               plate_image=image_ref,
+                               plate_image=sky_plate_ref,
                                edge_extend_px=96, frame_outpaint_px=128)
             solve_chain = sky_layer.out(0)
 

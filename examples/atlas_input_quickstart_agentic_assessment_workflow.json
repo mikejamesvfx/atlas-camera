@@ -316,7 +316,13 @@
         false,
         0.0,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        true
+        true,
+        "lama",
+        32,
+        "SDXL/sd_xl_base_1.0.safetensors",
+        "clear seamless sky, high detail, no buildings, no trees, no roofs",
+        "building, tree, roof, person, vehicle, text, watermark, blurry",
+        0
       ],
       "title": "2 \u00b7 SOLVE + RELIEF \u00b7 expand options here"
     },

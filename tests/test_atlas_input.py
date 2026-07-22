@@ -235,3 +235,61 @@ def test_vlm_wires_plan_and_forces_four_bands(monkeypatch):
                    and isinstance(n["inputs"]["concepts"], list)
                    and n["inputs"]["concepts"][1] == 3)
     assert sky_sam["inputs"]["concepts"][0] == assess_id
+
+
+def test_sky_lama_inpaint_chain_expands(monkeypatch):
+    graph, result = _expand(monkeypatch, registry=FULL_REGISTRY, native_sam3=True,
+                            sky=True, sky_inpaint_mode="lama", sky_lama_grow_px=48)
+    assert "sky plate LaMa inpaint" in result[4]
+    sky_layer = next(n for n in graph.values() if n["class_type"] == "AtlasSkyDomeLayer")
+    # plate_image should be the stitch output, not the raw IMAGE sentinel
+    assert sky_layer["inputs"]["plate_image"] != IMG
+    # inverted sky mask feeds the LaMa chain
+    invert_id = next(i for i, n in graph.items() if n["class_type"] == "InvertMask")
+    assert graph[invert_id]["inputs"]["mask"][0] == next(
+        i for i, n in graph.items() if n["class_type"] == "AtlasSAM3Mask"
+        and n["inputs"].get("concepts") == "sky")
+    expand = next(n for n in graph.values() if n["class_type"] == "INPAINT_ExpandMask")
+    assert expand["inputs"]["grow"] == 48
+    assert any(n["class_type"] == "AtlasInpaintStitch" for n in graph.values())
+
+
+def test_sky_sdxl_inpaint_chain_expands(monkeypatch):
+    graph, result = _expand(monkeypatch, registry=FULL_REGISTRY, native_sam3=True,
+                            sky=True, sky_inpaint_mode="sdxl",
+                            sky_sdxl_checkpoint="custom.safetensors",
+                            sky_sdxl_positive="clean blue sky",
+                            sky_sdxl_negative="buildings",
+                            sky_sdxl_seed=123)
+    assert "sky plate SDXL inpaint" in result[4]
+    sky_layer = next(n for n in graph.values() if n["class_type"] == "AtlasSkyDomeLayer")
+    assert sky_layer["inputs"]["plate_image"] != IMG
+    sdxl = next(n for n in graph.values() if n["class_type"] == "AtlasSDXLInpaint")
+    assert sdxl["inputs"]["checkpoint"] == "custom.safetensors"
+    assert sdxl["inputs"]["positive_prompt"] == "clean blue sky"
+    assert sdxl["inputs"]["negative_prompt"] == "buildings"
+    assert sdxl["inputs"]["seed"] == 123
+
+
+def test_sky_lama_skips_gracefully_without_inpaint_pack(monkeypatch):
+    graph, result = _expand(monkeypatch, native_sam3=True, sky=True,
+                            sky_inpaint_mode="lama")
+    assert "sky plate LaMa SKIPPED" in result[4]
+    sky_layer = next(n for n in graph.values() if n["class_type"] == "AtlasSkyDomeLayer")
+    assert sky_layer["inputs"]["plate_image"] == IMG
+
+
+def test_sky_auto_switches_moge_to_da2_outdoor(monkeypatch):
+    graph, result = _expand(monkeypatch, native_sam3=True, sky=True,
+                            depth_model="Ruicheng/moge-vitl")
+    depth_node = next(n for n in graph.values() if n["class_type"] == "AtlasDepthMap")
+    assert depth_node["inputs"]["depth_model"] ==         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
+    assert "depth auto-switched to DA2-Outdoor" in result[4]
+
+
+def test_sky_keeps_non_moge_depth_model(monkeypatch):
+    graph, result = _expand(monkeypatch, native_sam3=True, sky=True,
+                            depth_model="depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf")
+    depth_node = next(n for n in graph.values() if n["class_type"] == "AtlasDepthMap")
+    assert depth_node["inputs"]["depth_model"] ==         "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"
+    assert "auto-switched" not in result[4]
