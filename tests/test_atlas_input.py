@@ -295,6 +295,28 @@ def test_sky_keeps_non_moge_depth_model(monkeypatch):
     assert "auto-switched" not in result[4]
 
 
+def test_moge_preserved_when_sky_is_off(monkeypatch):
+    """When the artist explicitly picks MoGe and does NOT ask for a sky card,
+    AtlasInput must pass that model through to AtlasDepthMap — the auto-switch
+    is a sky-specific workaround, not an unconditional override."""
+    graph, result = _expand(monkeypatch, native_sam3=True, sky=False,
+                            depth_model="Ruicheng/moge-2-vitl-normal")
+    depth_node = next(n for n in graph.values() if n["class_type"] == "AtlasDepthMap")
+    assert depth_node["inputs"]["depth_model"] == "Ruicheng/moge-2-vitl-normal"
+    assert "auto-switched" not in result[4]
+
+
+def test_moge_unavailable_note_when_selected(monkeypatch):
+    """If MoGe is selected but the package is not installed, the report should
+    warn early so the artist knows why AtlasDepthMap will fail instead of
+    getting a silent fallback to a different model."""
+    monkeypatch.setattr(nodes_mod, "_moge_available", lambda: False)
+    graph, result = _expand(monkeypatch, native_sam3=True, sky=False,
+                            depth_model="Ruicheng/moge-2-vitl-normal")
+    assert "MoGe package not installed" in result[4]
+
+
+
 def test_build_signature_matches_input_types_widget_order():
     """ComfyUI passes ``widgets_values`` positionally to the node function,
     so ``build()``'s parameter order must exactly match ``INPUT_TYPES``

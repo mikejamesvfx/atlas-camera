@@ -241,9 +241,9 @@ class AtlasDeriveProjectionGeometry:
                geometry_mode="relief_mesh", relief_grid=128,
                primitive_method="azimuth_walls", scene_type="manual",
                relief_quality="custom", depth_edge_rel=0.5,
+               exclude_mask=None,
                live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=64,
-               exclude_mask=None):
+               live_fill_max_hole_edges=64):
         torch = _require_torch()
         np = _require_numpy()
         preset = self._SCENE_TYPE_PRESETS.get(scene_type)
@@ -865,11 +865,12 @@ class AtlasDeriveReliefMesh:
     _RELIEF_QUALITY_PRESETS = {"low": 64, "medium": 256, "high": 512, "ultra": 1024}
 
     def derive(self, solve, depth, relief_grid=128, relief_quality="custom",
-               depth_edge_rel=0.5, max_edge_factor=12.0,
+               depth_edge_rel=0.5,
+               exclude_mask=None, outlier_mask=None,
+               max_edge_factor=12.0,
                sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
                live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=64,
-               exclude_mask=None, outlier_mask=None):
+               live_fill_max_hole_edges=64):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -1674,9 +1675,9 @@ class AtlasAddPatchView:
                   flip_azimuth=False, name="patch",
                   depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                   relief_grid=96, priority=1.0, plate_ref=None, device="auto",
-                  patch_view_override="", mask_unseen_only=True, unseen_dilate_px=16,
-                  primary_depth=None, exclude_mask=None, geometry_source="reuse_scene",
-                  exact_view_override=""):
+                  patch_view_override="", exact_view_override="",
+                  mask_unseen_only=True, unseen_dilate_px=16,
+                  primary_depth=None, exclude_mask=None, geometry_source="reuse_scene"):
         exact_delta = None
         if exact_view_override and exact_view_override.strip():
             exact_delta = _parse_exact_view(exact_view_override)

@@ -24,6 +24,7 @@ from atlas_camera.comfy.node_helpers import (
     _clone_solve_with_metadata,
     _comfy_registry,
     _native_sam3_available,
+    _moge_available,
     _decode_b64_to_tensor,
     _execution_blocker,
     _graph_builder,
@@ -81,9 +82,14 @@ class AtlasViewportControls:
 
     def profile(self, config_label="ACES 2.0 / Studio", config_path="",
                 working_colorspace="ACEScg", output_colorspace="ACES - ACEScg",
-                display="sRGB - Display", view="ACES 2.0 SDR-video", look="None",
-                lut_path="", exposure=0.0, gamma=1.0, display_trim=1.0):
+                display="sRGB - Display", view="ACES 2.0 SDR-video", display_trim=1.0,
+                **legacy):
         from atlas_camera.core.schema import AtlasOutputProfile
+
+        look = legacy.get("look", "None")
+        lut_path = legacy.get("lut_path", "")
+        exposure = legacy.get("exposure", 0.0)
+        gamma = legacy.get("gamma", 1.0)
 
         return ("", AtlasOutputProfile(
             config_label=config_label or "ACES 2.0 / Studio",
@@ -719,6 +725,10 @@ class AtlasInput:
                         and "INPAINT_LoadInpaintModel" in registry
                         and "INPAINT_ExpandMask" in registry)
         notes: list = []
+
+        if "moge" in str(depth_model).lower() and not _moge_available():
+            notes.append("MoGe package not installed — AtlasDepthMap will fail; "
+                         "install the [moge] extra (see INSTALL.md)")
         g = _graph_builder()
 
         def segment(image_ref, prompt_value):

@@ -706,6 +706,21 @@ def _native_sam3_available() -> bool:
         return False
 
 
+def _moge_available() -> bool:
+    """Cheap, network-free capability probe for the MoGe-2 package.
+
+    AtlasInput uses this to emit an early report note when the artist picks a
+    MoGe depth model but the [moge] extra is not installed, so the subsequent
+    AtlasDepthMap failure is predictable rather than mysterious.
+    """
+    try:
+        import moge  # noqa: F401
+        import utils3d  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 class _MiniGraphBuilder:
     """Test-shim mirror of comfy_execution.graph_utils.GraphBuilder (same
     node()/out()/finalize() surface) so AtlasInput's expansion assembly is
@@ -842,6 +857,7 @@ __all__ = [
     '_LAYER_DEBUG_PALETTE_HEX',
     '_comfy_registry',
     '_native_sam3_available',
+    '_moge_available',
     '_MiniGraphBuilder',
     '_graph_builder',
     '_ATLAS_INPUT_BOUNDARIES',

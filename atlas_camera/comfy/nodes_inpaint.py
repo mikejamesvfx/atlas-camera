@@ -1336,11 +1336,28 @@ class AtlasCleanPlateStack:
                                           "tooltip": "ON when mattes come straight from LoadImage's MASK output (which marks TRANSPARENT pixels) — inverts them"})
         return {"required": {"solve": ("ATLAS_SOLVE",), "depth": ("ATLAS_DEPTH_MAP",)},
                 "optional": opt}
-
-    def stack(self, solve, depth, grow_px=12, edge_extend_px=24, relief_grid=384,
-              depth_edge_rel=1.5, mattes_are_transparency=False, **slots):
+    def stack(self, solve, depth,
+              plate_1=None, matte_1=None, plate_2=None, matte_2=None,
+              plate_3=None, matte_3=None, plate_4=None, matte_4=None,
+              name_1="far_sky", geometry_1="card",
+              name_2="background", geometry_2="relief",
+              name_3="midground", geometry_3="relief",
+              name_4="foreground", geometry_4="relief",
+              grow_px=12, edge_extend_px=24, relief_grid=384,
+              depth_edge_rel=1.5, mattes_are_transparency=False):
         torch = _require_torch()
         import torch.nn.functional as F
+
+        slots = {
+            "plate_1": plate_1, "matte_1": matte_1,
+            "plate_2": plate_2, "matte_2": matte_2,
+            "plate_3": plate_3, "matte_3": matte_3,
+            "plate_4": plate_4, "matte_4": matte_4,
+            "name_1": name_1, "geometry_1": geometry_1,
+            "name_2": name_2, "geometry_2": geometry_2,
+            "name_3": name_3, "geometry_3": geometry_3,
+            "name_4": name_4, "geometry_4": geometry_4,
+        }
 
         def grown(matte):
             if grow_px <= 0:
