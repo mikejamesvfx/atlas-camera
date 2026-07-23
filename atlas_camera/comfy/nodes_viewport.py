@@ -794,7 +794,9 @@ class AtlasInput:
             effective_depth_model = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
             notes.append("MoGe + sky requested → depth auto-switched to DA2-Outdoor")
 
-        solve = g.node("AtlasLearnedSolveFromImage", image=image_ref)
+        solve = g.node("AtlasLearnedSolveFromImage", image=image_ref,
+                       depth_model=effective_depth_model)
+
         depth = g.node("AtlasDepthMap", image=image_ref, solve=solve.out(0),
                        depth_model=effective_depth_model)
 

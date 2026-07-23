@@ -499,13 +499,16 @@ def fill_boundary_sawteeth(
 
     valley_depths: list[float] = []
     faces_work = f
-    max_passes = 64  # backstop only; the loop exits on the first dry pass
+    max_passes = 2  # 2 passes is sufficient to bridge primary and secondary staircase corners without expensive graph re-traversals
+
     for _ in range(max_passes):
         be = boundary_edges(faces_work)
         if len(be) == 0:
             break
         added: list[tuple[int, int, int]] = []
         for loop in walk_loops(be, faces=faces_work):
+
+
             n = len(loop)
             if n < 4:
                 continue
@@ -526,9 +529,13 @@ def fill_boundary_sawteeth(
                 is_valley = (d_v > d[i - 1] and d_v > d[(i + 1) % n])
                 v1, v2 = a - b, c - b
                 n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
-                is_corner = (n1 > _EPS and n2 > _EPS and abs(float(np.dot(v1, v2) / (n1 * n2))) < 0.707)
-                if not (is_valley or is_corner):
+                is_equal_depth_step = (
+                    abs(d_v - d[i - 1]) < 1e-3 and abs(d_v - d[(i + 1) % n]) < 1e-3
+                    and n1 > _EPS and n2 > _EPS and abs(float(np.dot(v1, v2) / (n1 * n2))) < 0.707
+                )
+                if not (is_valley or is_equal_depth_step):
                     continue
+
 
                 added.append((int(nxt), int(v), int(prev)))
                 valley_depths.append(float(d_v))
