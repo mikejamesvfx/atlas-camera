@@ -447,6 +447,27 @@ def apply_live_mesh_repair(
     do_hole_fill = live_fill_holes and live_fill_max_hole_edges > 0
     if not (do_hole_fill or live_fill_edge_sawteeth):
         return
+
+    # Check if sub-millisecond CUDA 2D grid repair already ran during build_relief_mesh
+    grid_repair = getattr(mesh, "stats", {}).get("live_grid_repair")
+    if grid_repair is not None:
+        if stats is not None:
+            rm_stats = stats.setdefault("relief_mesh", {})
+            if do_hole_fill:
+                rm_stats["live_hole_fill"] = {
+                    "n_loops_filled": grid_repair.get("n_holes", 0),
+                    "filled_edge_counts": [],
+                    "distance_m": float(live_fill_distance_m),
+                }
+            if live_fill_edge_sawteeth:
+                rm_stats["live_boundary_sawtooth_fill"] = {
+                    "n_triangles_added": grid_repair.get("n_sawteeth", 0),
+                    "valley_depth_min_m": 0.0,
+                    "valley_depth_max_m": 0.0,
+                    "distance_m": float(live_fill_distance_m),
+                }
+        return  # Fast CUDA 2D grid repair completed — skip slow CPU 3D graph loops!
+
     from atlas_camera.core.mesh_repair import (
         apply_boundary_sawtooth_fill,
         apply_interior_hole_fill,

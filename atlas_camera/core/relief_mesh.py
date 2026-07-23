@@ -604,10 +604,13 @@ def build_relief_mesh(
         has = cnt > 0
         d = np.where(has, 0.5 * d + 0.5 * acc / np.maximum(cnt, 1), d)
 
+    live_grid_repair_info = None
     if live_fill_edge_sawteeth or live_fill_holes:
-        d, vgrid, _, _ = repair_relief_grid_cuda(
+        d, vgrid, n_s, n_h = repair_relief_grid_cuda(
             d, vgrid, fill_sawteeth=bool(live_fill_edge_sawteeth), fill_holes=bool(live_fill_holes)
         )
+        live_grid_repair_info = {"n_sawteeth": n_s, "n_holes": n_h}
+
 
 
     # Back-project the grid into the world (camera pose from the view matrix),
@@ -831,6 +834,9 @@ def build_relief_mesh(
         "stretch_fraction_gt12": stretch_fraction_gt12,
         "n_filled_cells": int(filled_grid.sum()) if filled_grid is not None else 0,
     }
+    if live_grid_repair_info is not None:
+        stats["live_grid_repair"] = live_grid_repair_info
+
     return ReliefMesh(vertices=verts, faces=faces, uvs=uvs_flat, stats=stats,
                       hole_mask=hole_mask, filled_mask=filled_mask_full,
                       edge_risk=edge_risk)
