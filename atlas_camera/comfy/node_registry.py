@@ -56,7 +56,9 @@ from atlas_camera.comfy.nodes_depth import (
 from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveProjectionGeometry,
     AtlasDeriveReliefMesh,
+    AtlasLiveMeshRepair,
     AtlasDeriveWalls,
+
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
     AtlasDeriveInteriorRoom,
@@ -154,7 +156,9 @@ NODE_CLASS_MAPPINGS = {
     "AtlasMogeNormals":           AtlasMogeNormals,
     # Experimental (research-only)
     "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
+    "AtlasLiveMeshRepair":        AtlasLiveMeshRepair,
     "AtlasDeriveWalls":           AtlasDeriveWalls,
+
     "AtlasDeriveTowersSpires":    AtlasDeriveTowersSpires,
     "AtlasDeriveRoofsFacades":    AtlasDeriveRoofsFacades,
     "AtlasDeriveInteriorRoom":    AtlasDeriveInteriorRoom,
@@ -235,7 +239,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDepthMap":              "Atlas Depth Map 🌊",
     "AtlasMogeNormals":           "Atlas MoGe Normals 🧭",
     "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
+    "AtlasLiveMeshRepair":        "Atlas Live Mesh Repair 🔧",
     "AtlasDeriveWalls":           "Atlas Derive Walls 🧱",
+
     "AtlasDeriveTowersSpires":    "Atlas Derive Towers & Spires 🗼",
     "AtlasDeriveRoofsFacades":    "Atlas Derive Roofs & Facades 🏛",
     "AtlasDeriveInteriorRoom":    "Atlas Derive Interior Room 🛋",

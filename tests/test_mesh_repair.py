@@ -552,3 +552,38 @@ def test_derive_relief_mesh_node_stores_repaired_faces_in_solve():
     assert mesh_unrepaired is not None
     assert len(mesh_repaired.faces) > len(mesh_unrepaired.faces), "Repaired mesh in solve primitive must contain added faces"
 
+
+def test_atlas_live_mesh_repair_node_repairs_solve_primitives():
+    """Verify that AtlasLiveMeshRepair repairs relief mesh primitives on a solve downstream."""
+    from atlas_camera.comfy.nodes_geometry import AtlasDeriveReliefMesh, AtlasLiveMeshRepair
+    from atlas_camera.comfy.nodes import _relief_mesh_from_solve
+    from atlas_camera.core.schema import AtlasCamera, AtlasExtrinsics, AtlasSolve
+    from atlas_camera.core.intrinsics import build_intrinsics
+    from atlas_camera.inference.depth_estimator import DepthResult
+
+    depth_arr = np.full((32, 32), 10.0, dtype=np.float32)
+    depth_arr[10:20, 10:20] = 2.0
+    depth = DepthResult(depth=depth_arr, is_metric=True, model_id="test", image_width=32, image_height=32)
+
+    intr = build_intrinsics(image_width=32, image_height=32, focal_length_mm=35.0, sensor_width_mm=36.0)
+    cam = AtlasCamera(intrinsics=intr, extrinsics=AtlasExtrinsics(
+        camera_position=(0.0, 0.0, 0.0),
+        camera_world_matrix=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))))
+    solve = AtlasSolve(camera=cam, image_width=32, image_height=32)
+
+    out_unrepaired = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, depth_edge_rel=0.5,
+        live_fill_holes=False, live_fill_edge_sawteeth=False
+    )
+    mesh_before = _relief_mesh_from_solve(out_unrepaired[0])
+
+    out_repaired = AtlasLiveMeshRepair().repair(
+        out_unrepaired[0], live_fill_holes=True, live_fill_max_hole_edges=64, live_fill_edge_sawteeth=True
+    )
+    mesh_after = _relief_mesh_from_solve(out_repaired[0])
+
+    assert mesh_after is not None
+    assert mesh_before is not None
+    assert len(mesh_after.faces) >= len(mesh_before.faces), "AtlasLiveMeshRepair must successfully repair the solve's relief mesh"
+
+

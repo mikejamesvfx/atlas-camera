@@ -896,8 +896,72 @@ class AtlasDeriveReliefMesh:
         return (out, hole_t)
 
 
+class AtlasLiveMeshRepair:
+    """🔧 Live Mesh Repair node — apply PyTorch/CUDA 2D grid repair & 3D hole-fill/sawtooth repair to any solve or layer mesh.
+
+    Can be placed anywhere downstream (e.g. after `AtlasBoundedBand`, `AtlasCleanPlateLayer`, `AtlasDepthLayerMask`, or `AtlasDeriveReliefMesh`)
+    to repair boundary sawteeth and interior holes on specific layers or custom mesh pipelines.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE",)
+    FUNCTION = "repair"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+            },
+            "optional": {
+                **LIVE_FILL_WIDGETS,
+            },
+        }
+
+    def repair(self, solve, live_fill_holes=True, live_fill_distance_m=0.0,
+               live_fill_max_hole_edges=256, live_fill_edge_sawteeth=True):
+        import copy
+        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+        solve_out = copy.deepcopy(solve)
+        extr = solve.camera.extrinsics
+
+        def _repair_primitive_list(prims):
+            repaired = []
+            for prim in prims:
+                if prim.primitive_type == "relief_mesh" and hasattr(prim, "mesh"):
+                    mesh_copy = copy.deepcopy(prim.mesh)
+                    stats = {}
+                    apply_live_mesh_repair(
+                        mesh_copy,
+                        extr.camera_view_matrix,
+                        live_fill_holes=bool(live_fill_holes),
+                        live_fill_distance_m=float(live_fill_distance_m),
+                        live_fill_max_hole_edges=int(live_fill_max_hole_edges),
+                        live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth),
+                        stats=stats,
+                    )
+                    repaired_prim = relief_mesh_primitive(mesh_copy, name=prim.name, priority=prim.priority)
+                    repaired.append(repaired_prim)
+                else:
+                    repaired.append(prim)
+            return repaired
+
+        if hasattr(solve_out, "proxy_primitives"):
+            solve_out.proxy_primitives = _repair_primitive_list(solve_out.proxy_primitives)
+
+        if hasattr(solve_out, "projection_scene") and solve_out.projection_scene is not None:
+            if hasattr(solve_out.projection_scene, "proxy_geometry"):
+                solve_out.projection_scene.proxy_geometry = _repair_primitive_list(solve_out.projection_scene.proxy_geometry)
+
+        if hasattr(solve_out, "projection_sources"):
+            for src in solve_out.projection_sources:
+                if hasattr(src, "proxy_geometry"):
+                    src.proxy_geometry = _repair_primitive_list(src.proxy_geometry)
+
+        return (solve_out,)
+
 
 class AtlasDeriveWalls:
+
     """Vertical wall planes + foreground boxes/cylinders (azimuth_walls) — one
     job, general-purpose exterior blockout. Height is clipped to whatever 3D
     points individually pass a near-vertical-normal filter, so it truncates
