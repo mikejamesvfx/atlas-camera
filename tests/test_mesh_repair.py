@@ -690,3 +690,49 @@ def test_repair_relief_mesh_grid_cuda_no_silhouette_bridge():
         assert el.max() < 15.0, f"fill bridged a silhouette (max edge {el.max():.1f} m)"
 
 
+def test_repair_relief_mesh_grid_cuda_cap_enclosed():
+    """cap_enclosed closes an ENCLOSED hole even across a real depth jump — the
+    machine case the plain conv fill correctly refuses — placing fills at the
+    FARTHEST neighbour depth (the back surface, away from camera), while the
+    open silhouette tear around the block itself stays open."""
+    pytest.importorskip("torch")
+    from atlas_camera.core.mesh_repair import boundary_edges, repair_relief_mesh_grid_cuda
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    view = np.array([[1, 0, 0, 0], [0, 1, 0, 4.0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+    fx = fy = 70.0
+    W = H = 96
+    cx = cy = 47.5
+    depth = np.full((H, W), 12.0, dtype=np.float64)
+    depth[24:64, 24:64] = 3.0  # near block against far bg = open silhouette tear
+    excl = np.zeros((H, W), dtype=bool)
+    excl[40:52, 56:72] = True  # enclosed hole STRADDLING the block edge (3m|12m boundary)
+
+    def build():
+        return build_relief_mesh(depth, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                                 grid_long_edge=96, depth_edge_rel=0.5, smooth_iterations=0,
+                                 exclude_mask=excl, apply_sky_heuristic=False)
+
+    results = {}
+    for cap in (False, True):
+        m = build()
+        n_v0, n_f0 = len(m.vertices), len(m.faces)
+        n_hole, _ = repair_relief_mesh_grid_cuda(
+            m, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+            image_width=W, image_height=H, fill_holes=True, fill_sawteeth=True,
+            max_hole_edges=256, cap_enclosed=cap)
+        c2w = np.linalg.inv(view)
+        fwd_new = -((np.asarray(m.vertices[n_v0:], dtype=np.float64) - c2w[:3, 3]) @ c2w[:3, :3][:, 2])
+        results[cap] = dict(added=len(m.faces) - n_f0, n_hole=n_hole,
+                            bedges=len(boundary_edges(np.asarray(m.faces))),
+                            fwd_new=fwd_new, verts=np.asarray(m.vertices))
+    r0, r1 = results[False], results[True]
+    assert r1["n_hole"] > r0["n_hole"], "cap mode must fill the enclosed depth-jump hole"
+    assert r1["added"] > r0["added"]
+    assert r1["bedges"] < r0["bedges"], "capping must reduce open boundary edges"
+    assert np.isfinite(r1["verts"]).all()
+    if len(r1["fwd_new"]):
+        # Fills continue the BACK surface: farthest-neighbour depth, never past it.
+        assert r1["fwd_new"].max() <= 12.0 + 1e-6
+
+

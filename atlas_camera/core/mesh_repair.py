@@ -589,6 +589,7 @@ def repair_relief_mesh_grid_cuda(
     depth_edge_rel: float = 0.5,
     max_edge_factor: float = 12.0,
     max_hole_edges: int = 64,
+    cap_enclosed: bool = False,
 ) -> tuple[int, int]:
     """GPU grid hole-fill / boundary-sawtooth on an already-built relief mesh.
 
@@ -659,6 +660,66 @@ def repair_relief_mesh_grid_cuda(
     dgrid[row_of, col_of] = fwd
     cell2vidx[row_of, col_of] = np.arange(len(verts))
 
+    def _shift(m, dr, dc, fill=False):
+        out = np.full_like(m, fill)
+        rs_dst = slice(max(dr, 0), nr + min(dr, 0))
+        cs_dst = slice(max(dc, 0), nc + min(dc, 0))
+        rs_src = slice(max(-dr, 0), nr + min(-dr, 0))
+        cs_src = slice(max(-dc, 0), nc + min(-dc, 0))
+        out[rs_dst, cs_dst] = m[rs_src, cs_src]
+        return out
+
+    # ZBrush-style "Close Holes" for ENCLOSED interior loops (cap_enclosed):
+    # a hole fully surrounded by mesh is exactly what Close Holes should cap,
+    # yet it routinely spans a real depth jump (front barrel vs machinery
+    # behind), which the ratio tear gate below would veto. So: flood-fill the
+    # invalid cells from the grid border — whatever the flood can't reach is an
+    # ENCLOSED hole — and fill those cells at the MAX (farthest) valid-neighbour
+    # depth, i.e. the fill continues the BACK surface away from the camera
+    # rather than hanging mid-air at the mean (the artist's "offset away from
+    # camera along the surface" rule). The open silhouette/frame boundary is by
+    # construction border-connected, so it can never be capped.
+    capfill = np.zeros((nr, nc), dtype=bool)
+    if cap_enclosed and fill_holes:
+        invalid = ~vgrid
+        outside = invalid.copy()
+        interior = np.zeros((nr, nc), dtype=bool)
+        interior[1:-1, 1:-1] = True
+        outside &= ~interior  # seed: border-row/col invalid cells
+        for _ in range(nr * nc):
+            grown = outside
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                grown = grown | _shift(outside, dr, dc)
+            grown &= invalid
+            if (grown == outside).all():
+                break
+            outside = grown
+        remaining = invalid & ~outside
+        # Ring-by-ring max-depth fill: each pass fills enclosed cells that have
+        # at least one valid 4-neighbour, at the farthest such depth. Bounded by
+        # the hole radius, hard-capped at the grid diameter.
+        for _ in range(nr + nc):
+            if not remaining.any():
+                break
+            nb_max = np.full((nr, nc), -np.inf)
+            nb_any = np.zeros((nr, nc), dtype=bool)
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                sv = _shift(vgrid | capfill, dr, dc)
+                sd = _shift(dgrid, dr, dc)
+                nb_max = np.where(sv, np.maximum(nb_max, sd), nb_max)
+                nb_any |= sv
+            ring = remaining & nb_any
+            if not ring.any():
+                break
+            dgrid = np.where(ring, nb_max, dgrid)
+            capfill |= ring
+            remaining &= ~ring
+        vgrid_conv = vgrid | capfill
+        dgrid_conv = dgrid
+    else:
+        vgrid_conv = vgrid
+        dgrid_conv = dgrid
+
     # Iterate the conv fill: one pass closes only the innermost ring of any
     # concavity (a cell needs >=3 valid orthogonal neighbours), so a wider notch
     # needs more passes. max_hole_edges ~= a loop perimeter, and a hole of E
@@ -667,8 +728,9 @@ def repair_relief_mesh_grid_cuda(
     # (the boundary is now convex — straight/convex edges never satisfy the >=3
     # rule, so this cannot balloon the mesh outward and always terminates).
     n_iter = max(1, min(int(max_hole_edges) // 2, 512))
-    d_out, v_out = dgrid, vgrid
-    n_saw = n_hole = 0
+    d_out, v_out = dgrid_conv, vgrid_conv
+    n_saw = 0
+    n_hole = int(capfill.sum())
     for _ in range(n_iter):
         d_out, v_out, ns, nh = repair_relief_grid_cuda(
             d_out, v_out, fill_sawteeth=bool(fill_sawteeth), fill_holes=bool(fill_holes))
@@ -726,6 +788,11 @@ def repair_relief_mesh_grid_cuda(
     dmax = dq.max(axis=-1)
     dmin = np.maximum(dq.min(axis=-1), 1e-6)
     ratio_ok = (dmax / dmin - 1.0) <= float(depth_edge_rel)
+    # cap_enclosed exemption: a quad touching a cap-filled cell IS the deliberate
+    # front-to-back wall that closes an enclosed hole — the gates exist to keep
+    # OPEN silhouettes open, and an enclosed loop is by definition not one.
+    quad_cap = (capfill[:-1, :-1] | capfill[:-1, 1:]
+                | capfill[1:, :-1] | capfill[1:, 1:])
     if max_edge_factor and nc > 1:
         step_px = float(np.median(np.diff(px_axis))) if nc > 1 else 1.0
         budget = float(max_edge_factor) * np.median(dq, axis=-1) * abs(step_px) / max(min(fx, fy), 1e-6)
@@ -738,9 +805,9 @@ def repair_relief_mesh_grid_cuda(
         edge_ok = ((_elen(p00, p01) <= budget) & (_elen(p00, p10) <= budget)
                    & (_elen(p01, p11) <= budget) & (_elen(p10, p11) <= budget)
                    & (_elen(p10, p01) <= budget))  # shared diagonal
-        quad = quad & ratio_ok & edge_ok
+        quad = quad & ((ratio_ok & edge_ok) | quad_cap)
     else:
-        quad = quad & ratio_ok
+        quad = quad & (ratio_ok | quad_cap)
 
     tri_a = np.stack([i00[quad], i10[quad], i01[quad]], axis=1)
     tri_b = np.stack([i10[quad], i11[quad], i01[quad]], axis=1)

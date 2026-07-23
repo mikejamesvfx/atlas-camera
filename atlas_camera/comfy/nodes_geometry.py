@@ -924,11 +924,21 @@ class AtlasLiveMeshRepair:
                                "torch is importable, else cpu.",
                 }),
                 **LIVE_FILL_WIDGETS,
+                "cap_enclosed_holes": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "ZBrush-style Close Holes for ENCLOSED interior loops (cuda backend "
+                               "only): a hole fully surrounded by mesh is capped even when it spans "
+                               "a real depth jump — the fill continues the BACK surface away from "
+                               "the camera (farthest-neighbour depth), so the cap sits behind the "
+                               "front geometry instead of hanging mid-air. Open silhouette/frame "
+                               "boundaries are border-connected and can never be capped.",
+                }),
             },
         }
 
     def repair(self, solve, backend="auto", live_fill_holes=True, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=256, live_fill_edge_sawteeth=True):
+               live_fill_max_hole_edges=256, live_fill_edge_sawteeth=True,
+               cap_enclosed_holes=True):
         import copy
 
         import numpy as np
@@ -985,6 +995,7 @@ class AtlasLiveMeshRepair:
                     fill_sawteeth=bool(live_fill_edge_sawteeth),
                     depth_far_m=float(live_fill_distance_m),
                     max_hole_edges=int(live_fill_max_hole_edges),
+                    cap_enclosed=bool(cap_enclosed_holes),
                 )
             else:
                 # The CPU topology fill ear-clips whole boundary loops (O(n^2)
