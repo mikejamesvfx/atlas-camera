@@ -335,7 +335,6 @@ class AtlasDeriveProjectionGeometry:
                 exclude_mask=resolved_exclude,
                 apply_sky_heuristic=resolved_exclude is None,
             )
-            keep.append(relief_mesh_primitive(mesh))
             stats["relief_mesh"] = {
                 "n_vertices": mesh.stats["n_vertices"],
                 "n_faces": mesh.stats["n_faces"],
@@ -349,7 +348,9 @@ class AtlasDeriveProjectionGeometry:
                 live_fill_edge_sawteeth=live_fill_edge_sawteeth,
                 stats=stats,
             )
+            keep.append(relief_mesh_primitive(mesh))
             hole_mask_arr = mesh.hole_mask.astype(np.float32)
+
 
         out = _replace_proxy_role_geometry(solve, keep, stats, {
             "depth_model": depth_model,
@@ -854,7 +855,6 @@ class AtlasDeriveReliefMesh:
             normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
             quad_coherence=bool(quad_coherence),
             apply_sky_heuristic=(resolved_exclude is None) and bool(sky_heuristic))
-        prims = [backdrop, relief_mesh_primitive(mesh)]
         stats = {
             "ground_scale": scale, "ground_fit": ground_info,
             "relief_mesh": {
@@ -873,6 +873,8 @@ class AtlasDeriveReliefMesh:
             live_fill_edge_sawteeth=live_fill_edge_sawteeth,
             stats=stats,
         )
+        prims = [backdrop, relief_mesh_primitive(mesh)]
+
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "relief_grid": int(relief_grid), "relief_quality": relief_quality,
             "depth_edge_rel": float(depth_edge_rel), "max_edge_factor": float(max_edge_factor),

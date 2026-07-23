@@ -483,3 +483,49 @@ def test_apply_boundary_sawtooth_fill_updates_mesh():
     n_added, _ = apply_boundary_sawtooth_fill(m, view_matrix=_identity_view(), depth_far_m=0.0)
     assert n_added == 3
     assert len(m.faces) == len(f) + 3
+
+
+def test_derive_relief_mesh_node_stores_repaired_faces_in_solve():
+    """Verify that AtlasDeriveReliefMesh serializes the repaired mesh (not the raw unrepaired mesh) into solve.projection_scene."""
+    from atlas_camera.comfy.nodes_geometry import AtlasDeriveReliefMesh
+    from atlas_camera.comfy.nodes import _relief_mesh_from_solve
+    from atlas_camera.core.schema import (
+        AtlasCamera, AtlasExtrinsics, AtlasSolve,
+    )
+
+    from atlas_camera.core.intrinsics import build_intrinsics
+
+    from atlas_camera.inference.depth_estimator import DepthResult
+
+    depth_arr = np.full((32, 32), 10.0, dtype=np.float32)
+    depth_arr[10:20, 10:20] = 2.0
+    depth = DepthResult(depth=depth_arr, is_metric=True, model_id="test", image_width=32, image_height=32)
+
+
+
+
+    intr = build_intrinsics(image_width=32, image_height=32, focal_length_mm=35.0, sensor_width_mm=36.0)
+    cam = AtlasCamera(intrinsics=intr, extrinsics=AtlasExtrinsics(
+        camera_position=(0.0, 0.0, 0.0),
+        camera_world_matrix=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))))
+    solve = AtlasSolve(camera=cam, image_width=32, image_height=32)
+
+    # 1. Without live repair
+    out_unrepaired = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, depth_edge_rel=0.5,
+        live_fill_holes=False, live_fill_edge_sawteeth=False
+    )
+    mesh_unrepaired = _relief_mesh_from_solve(out_unrepaired[0])
+
+    # 2. With live repair
+    out_repaired = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, depth_edge_rel=0.5,
+        live_fill_holes=True, live_fill_max_hole_edges=64, live_fill_distance_m=0.0,
+        live_fill_edge_sawteeth=True
+    )
+    mesh_repaired = _relief_mesh_from_solve(out_repaired[0])
+
+    assert mesh_repaired is not None
+    assert mesh_unrepaired is not None
+    assert len(mesh_repaired.faces) > len(mesh_unrepaired.faces), "Repaired mesh in solve primitive must contain added faces"
+
