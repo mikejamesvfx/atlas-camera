@@ -3762,89 +3762,21 @@ function buildNodeUI(node, containerEl) {
       placeDefaultLights(); // relight lights follow the (now-built) geometry + scale
     },
     setBackground(imgBase64) {
-      if (!imgBase64 || !THREE) return;
-      const loader = new THREE.TextureLoader();
-      loader.load(imgBase64, (tex) => {
-        // Swap the OLD bgMesh out here, at callback time — reading the live
-        // `bgMesh` closure variable right before reassigning it — rather than
-        // at call time (before this async load even started). refreshFromSolve
-        // deliberately fires twice per execution (node.onExecuted + the
-        // api "executed" listener, for cross-version robustness), so two
-        // overlapping setBackground calls are the normal case, not an edge
-        // case. Checking/disposing at call time meant neither of two
-        // in-flight loads ever saw the other's finished mesh, so each left
-        // its predecessor orphaned in the scene — permanently, since nothing
-        // still referenced it — frozen at that execution's old camera pose.
-        // Reading the current value inside this (synchronous, non-interleaved)
-        // callback body instead means each completed load always tears down
-        // whatever is currently in the scene, regardless of firing order.
-        if (bgMesh) { scene.remove(bgMesh); bgMesh.geometry.dispose(); bgMesh.material.map?.dispose(); bgMesh.material.dispose(); }
-        tex.colorSpace = THREE.SRGBColorSpace;
-        // Size a plane to exactly fill the recovered camera's frustum at distance D
-        // and place it along the view axis, so the photo aligns with the 3D scene
-        // from the recovered ("Camera View") perspective. depthTest:false keeps it a
-        // backdrop behind any placed geometry.
-        const D = 12;
-        const fovRad = (camera.fov * Math.PI) / 180;
-        const ph = 2 * D * Math.tan(fovRad / 2);
-        const pw = ph * (camera.aspect || 1);
-        // As a see-through backdrop the plane must cover well PAST the recovered
-        // frustum so orbiting off-axis doesn't run the view off its edge into
-        // black. Enlarge the plane by K but keep the photo itself frustum-sized
-        // (UVs scaled about centre by 1/K) and clamp the border, so the photo
-        // stays aligned with the geometry at Camera View while the outer ring is
-        // the edge pixels stretched outward — a soft fill, never black.
-        const K = 3.0;
-        const geo = new THREE.PlaneGeometry(pw * K, ph * K);
-        const uvA = geo.attributes.uv;
-        for (let i = 0; i < uvA.count; i++) {
-          uvA.setXY(i, 0.5 + (uvA.getX(i) - 0.5) * K, 0.5 + (uvA.getY(i) - 0.5) * K);
-        }
-        uvA.needsUpdate = true;
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-        tex.needsUpdate = true;
-        // In the outer ring (UV outside [0,1]) don't STREAK the clamped edge
-        // pixels — softly fade toward the photo's own average colour, so the
-        // backdrop dissolves into a soft ambient instead of stretched streaks
-        // (still never black). Average = a 1x1 downscale of the photo.
-        let ambient = new THREE.Color(0.02, 0.02, 0.03);
-        try {
-          const cnv = document.createElement("canvas"); cnv.width = cnv.height = 1;
-          const cx = cnv.getContext("2d"); cx.drawImage(tex.image, 0, 0, 1, 1);
-          const px = cx.getImageData(0, 0, 1, 1).data;
-          ambient = new THREE.Color(px[0] / 255, px[1] / 255, px[2] / 255).convertSRGBToLinear();
-        } catch (e) { /* tainted canvas -> keep the dark default */ }
-        const mat = new THREE.ShaderMaterial({
-          uniforms: { map: { value: tex }, uAmbient: { value: ambient } },
-          depthWrite: false, depthTest: false,
-          vertexShader:
-            "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-          fragmentShader:
-            "uniform sampler2D map; uniform vec3 uAmbient; varying vec2 vUv;" +
-            "vec3 l2s(vec3 c){ return mix(pow(c,vec3(0.41666))*1.055-0.055, c*12.92, vec3(lessThanEqual(c,vec3(0.0031308)))); }" +
-            "void main(){ vec3 p = texture2D(map, clamp(vUv,0.0,1.0)).rgb;" +
-            " vec2 d = max(vec2(0.0), max(-vUv, vUv-1.0)); float f = smoothstep(0.0, 0.45, length(d));" +
-            " gl_FragColor = vec4(l2s(mix(p, uAmbient, f)), 1.0); }",
-        });
-        bgMesh = new THREE.Mesh(geo, mat);
-        // Deepest renderOrder so it draws FIRST as a pure background canvas: every
-        // projected layer (renderOrder >= 1 via priorityToRenderOrder, primary
-        // 100000) draws on top and overwrites it where it paints, while any pixel
-        // the projection DISCARDS (matte-cut silhouette, torn quad, out-of-frame)
-        // reveals this backdrop photo instead of the black clear colour. depthTest
-        // false means it can never occlude geometry regardless of its D distance.
-        bgMesh.renderOrder = -100000;
-        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        bgMesh.position.copy(camera.position).addScaledVector(fwd, D);
-        bgMesh.quaternion.copy(camera.quaternion);
-        // Grey (Project OFF) photo backdrop only; HIDDEN under 📽 Project so
-        // discarded pixels read as the black clear colour (the 🕳 See-through
-        // hole-fill was removed — too buggy).
-        bgMesh.visible = !projectionOn;
-        scene.add(bgMesh);
-        node._atlasBgMesh = bgMesh;
-      });
+      // Background source-photo backplate REMOVED (user request 2026-07-23):
+      // the enlarged edge-smeared photo plane only ever showed in grey
+      // (Project OFF) mode and was redundant against the layer meshes + grid
+      // (and not what the 🎬 Backdrop button toggles — that is the
+      // projection_backdrop geometry plane). Tear down any existing plane and
+      // never build one; bgMesh stays null so every `if (bgMesh)` guard elsewhere
+      // no-ops. Project mode is unaffected (the plane was already hidden there).
+      if (bgMesh) {
+        scene.remove(bgMesh);
+        bgMesh.geometry.dispose();
+        bgMesh.material.map?.dispose();
+        bgMesh.material.dispose();
+        bgMesh = null;
+      }
+      node._atlasBgMesh = null;
     },
   };
 }
