@@ -215,7 +215,7 @@ def repair_relief_grid_cuda(
     fill_sawteeth: bool = True,
     fill_holes: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, int, int]:
-    """Perform sub-millisecond 2D grid hole-fill and sawtooth corner bridging on GPU via PyTorch CUDA tensors."""
+    np = _require_numpy()
     try:
         import torch
     except ImportError:
@@ -223,6 +223,7 @@ def repair_relief_grid_cuda(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     d_t = torch.from_numpy(np.ascontiguousarray(d, dtype=np.float32)).to(device).unsqueeze(0).unsqueeze(0)
+
     v_t = torch.from_numpy(np.ascontiguousarray(vgrid, dtype=bool)).to(device).unsqueeze(0).unsqueeze(0).float()
 
     n_sawteeth_filled = 0
