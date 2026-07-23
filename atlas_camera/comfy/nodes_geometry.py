@@ -928,17 +928,26 @@ class AtlasLiveMeshRepair:
                     "default": True,
                     "tooltip": "ZBrush-style Close Holes for ENCLOSED interior loops (cuda backend "
                                "only): a hole fully surrounded by mesh is capped even when it spans "
-                               "a real depth jump — the fill continues the BACK surface away from "
-                               "the camera (farthest-neighbour depth), so the cap sits behind the "
-                               "front geometry instead of hanging mid-air. Open silhouette/frame "
-                               "boundaries are border-connected and can never be capped.",
+                               "a real depth jump — filled as a smooth HARMONIC MEMBRANE blending "
+                               "the hole's own boundary depths (never a wall at the farthest depth). "
+                               "Enclosure is channel-tolerant: dash-tear clusters reaching the "
+                               "outside only through a <=2-cell corridor still count as enclosed. "
+                               "Open silhouette/frame boundaries can never be capped.",
+                }),
+                "smooth_boundary": ("INT", {
+                    "default": 8, "min": 0, "max": 50,
+                    "tooltip": "Taubin-relax every open boundary loop this many iterations — rounds "
+                               "the lattice-staircase jaggies on the mesh's outer silhouette without "
+                               "shrinking it or touching interior detail. Moved vertices get their "
+                               "projection UVs regenerated so 📽 Project stays aligned. 0 = off. "
+                               "Works on both backends.",
                 }),
             },
         }
 
     def repair(self, solve, backend="auto", live_fill_holes=True, live_fill_distance_m=0.0,
                live_fill_max_hole_edges=256, live_fill_edge_sawteeth=True,
-               cap_enclosed_holes=True):
+               cap_enclosed_holes=True, smooth_boundary=8):
         import copy
 
         import numpy as np
@@ -1011,11 +1020,27 @@ class AtlasLiveMeshRepair:
                     live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth),
                 )
 
-            if len(mesh.faces) == n_faces_before and len(mesh.vertices) == n_verts_before:
+            # Boundary smoothing runs on BOTH backends (topology-level, not
+            # grid-level): rounds the lattice-staircase silhouette jaggies and
+            # regenerates the moved vertices' projection UVs when intrinsics
+            # are usable (fx/fy > 0), so 📽 Project stays aligned.
+            n_moved = 0
+            if int(smooth_boundary) > 0:
+                from atlas_camera.core.mesh_repair import smooth_boundary_loops
+                n_moved = smooth_boundary_loops(
+                    mesh, iterations=int(smooth_boundary),
+                    view_matrix=view_matrix,
+                    fx=float(fx), fy=float(fy), cx=float(cx), cy=float(cy),
+                    image_width=int(intr.image_width),
+                    image_height=int(intr.image_height),
+                )
+
+            if (len(mesh.faces) == n_faces_before
+                    and len(mesh.vertices) == n_verts_before and n_moved == 0):
                 return  # nothing changed
             meta["faces"] = np.asarray(mesh.faces).reshape(-1).astype(np.int64).tolist()
             meta["n_faces"] = int(len(mesh.faces))
-            if len(mesh.vertices) != n_verts_before:  # cuda path added vertices
+            if len(mesh.vertices) != n_verts_before or n_moved > 0:
                 meta["vertices"] = np.round(
                     np.asarray(mesh.vertices, dtype=np.float64).reshape(-1), 3).tolist()
                 meta["uvs"] = np.round(
@@ -1025,6 +1050,13 @@ class AtlasLiveMeshRepair:
                 if er is not None:
                     meta["edge_risk"] = np.round(
                         np.asarray(er, dtype=np.float64).reshape(-1), 3).tolist()
+                elif meta.get("edge_risk") and len(meta["edge_risk"]) < len(mesh.vertices):
+                    # mesh_from_primitive doesn't rebuild edge_risk, so a grown
+                    # vertex list would leave the serialized field short — pad
+                    # added (fill/cap) verts at full boundary risk 1.0 so the
+                    # viewport's per-vertex coverage field never misindexes.
+                    meta["edge_risk"] = (list(meta["edge_risk"])
+                                         + [1.0] * (len(mesh.vertices) - len(meta["edge_risk"])))
             prim.metadata = meta
 
         scene = getattr(solve_out, "projection_scene", None)

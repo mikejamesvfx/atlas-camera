@@ -672,48 +672,86 @@ def repair_relief_mesh_grid_cuda(
     # ZBrush-style "Close Holes" for ENCLOSED interior loops (cap_enclosed):
     # a hole fully surrounded by mesh is exactly what Close Holes should cap,
     # yet it routinely spans a real depth jump (front barrel vs machinery
-    # behind), which the ratio tear gate below would veto. So: flood-fill the
-    # invalid cells from the grid border — whatever the flood can't reach is an
-    # ENCLOSED hole — and fill those cells at the MAX (farthest) valid-neighbour
-    # depth, i.e. the fill continues the BACK surface away from the camera
-    # rather than hanging mid-air at the mean (the artist's "offset away from
-    # camera along the surface" rule). The open silhouette/frame boundary is by
-    # construction border-connected, so it can never be capped.
+    # behind), which the ratio tear gate below would veto. Two refinements over
+    # the first cut, both from live artist feedback on an isolated machine mesh:
+    #
+    # 1. CHANNEL-TOLERANT ENCLOSURE — dash-tear clusters often touch the outside
+    #    only through a 1-cell invalid corridor, so a plain border flood-fill
+    #    "reached" them and skipped the cap. The valid mask is morphologically
+    #    CLOSED by one cell (8-neighbour dilate, then erode) before flooding, so
+    #    corridors <= 2 cells wide are sealed. Open silhouettes and the frame
+    #    are many cells wide and stay border-connected — still never capped.
+    # 2. HARMONIC MEMBRANE FILL — the farthest-neighbour depth rule extruded
+    #    caps as downward walls on layered geometry (the farthest neighbour is
+    #    often a surface far below). Enclosed cells are instead relaxed by
+    #    Jacobi iteration (mean of 4-neighbours, valid cells clamped as the
+    #    Dirichlet boundary) — the same diffusion pattern build_relief_mesh's
+    #    fill_mask and hidden_geometry.fill_hidden_gaps use — so the cap is a
+    #    smooth membrane blending the hole's own boundary depths.
     capfill = np.zeros((nr, nc), dtype=bool)
     if cap_enclosed and fill_holes:
         invalid = ~vgrid
-        outside = invalid.copy()
+        diag8 = ((1, 0), (-1, 0), (0, 1), (0, -1),
+                 (1, 1), (1, -1), (-1, 1), (-1, -1))
+        dil = vgrid.copy()
+        for dr, dc in diag8:
+            dil |= _shift(vgrid, dr, dc)
+        closed_valid = dil.copy()
+        for dr, dc in diag8:
+            # Out-of-bounds counts as "filled" so the erosion never eats the
+            # grid border ring itself.
+            closed_valid &= _shift(dil, dr, dc, fill=True)
+        flood_space = ~closed_valid
+        outside = flood_space.copy()
         interior = np.zeros((nr, nc), dtype=bool)
         interior[1:-1, 1:-1] = True
-        outside &= ~interior  # seed: border-row/col invalid cells
+        outside &= ~interior  # seed: border-row/col floodable cells
         for _ in range(nr * nc):
             grown = outside
             for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 grown = grown | _shift(outside, dr, dc)
-            grown &= invalid
+            grown &= flood_space
             if (grown == outside).all():
                 break
             outside = grown
-        remaining = invalid & ~outside
-        # Ring-by-ring max-depth fill: each pass fills enclosed cells that have
-        # at least one valid 4-neighbour, at the farthest such depth. Bounded by
-        # the hole radius, hard-capped at the grid diameter.
-        for _ in range(nr + nc):
-            if not remaining.any():
-                break
-            nb_max = np.full((nr, nc), -np.inf)
-            nb_any = np.zeros((nr, nc), dtype=bool)
+        capfill = invalid & ~outside
+        if capfill.any():
+            # Init each enclosed cell at the mean of its valid 4-neighbours
+            # (hole-boundary ring), everything else at the global mean of those
+            # boundary samples; Jacobi then relaxes toward the harmonic membrane.
+            nb_sum = np.zeros((nr, nc))
+            nb_cnt = np.zeros((nr, nc))
             for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                sv = _shift(vgrid | capfill, dr, dc)
+                sv = _shift(vgrid, dr, dc)
                 sd = _shift(dgrid, dr, dc)
-                nb_max = np.where(sv, np.maximum(nb_max, sd), nb_max)
-                nb_any |= sv
-            ring = remaining & nb_any
-            if not ring.any():
-                break
-            dgrid = np.where(ring, nb_max, dgrid)
-            capfill |= ring
-            remaining &= ~ring
+                nb_sum += np.where(sv, sd, 0.0)
+                nb_cnt += sv
+            ring_cells = capfill & (nb_cnt > 0)
+            if ring_cells.any():
+                global_init = float(nb_sum[ring_cells].sum() / nb_cnt[ring_cells].sum())
+            else:
+                global_init = float(dgrid[vgrid].mean()) if vgrid.any() else 0.0
+            dwork = dgrid.copy()
+            init_vals = np.where(nb_cnt > 0, nb_sum / np.maximum(nb_cnt, 1), global_init)
+            dwork[capfill] = init_vals[capfill]
+            usable_d = vgrid | capfill
+            d_span = float(dgrid[vgrid].max() - dgrid[vgrid].min()) if vgrid.any() else 1.0
+            tol = 1e-4 * max(d_span, 1e-6)
+            for _ in range(2 * (nr + nc)):
+                acc = np.zeros((nr, nc))
+                cnt = np.zeros((nr, nc))
+                for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    su = _shift(usable_d, dr, dc)
+                    sd = _shift(dwork, dr, dc)
+                    acc += np.where(su, sd, 0.0)
+                    cnt += su
+                relax = capfill & (cnt > 0)
+                new = np.where(relax, acc / np.maximum(cnt, 1), dwork)
+                delta = float(np.abs(new - dwork)[capfill].max())
+                dwork = new
+                if delta < tol:
+                    break
+            dgrid = dwork
         vgrid_conv = vgrid | capfill
         dgrid_conv = dgrid
     else:
@@ -830,3 +868,77 @@ def repair_relief_mesh_grid_cuda(
             [np.asarray(er, dtype=np.float32),
              np.ones(len(new_rows), dtype=np.float32)], axis=0)
     return int(n_hole), int(n_saw)
+
+
+def smooth_boundary_loops(
+    mesh: Any,
+    *,
+    iterations: int = 8,
+    lam: float = 0.5,
+    mu: float = -0.53,
+    min_loop: int = 8,
+    view_matrix: np.ndarray | None = None,
+    fx: float = 0.0,
+    fy: float = 0.0,
+    cx: float = 0.0,
+    cy: float = 0.0,
+    image_width: int = 0,
+    image_height: int = 0,
+) -> int:
+    """Taubin-relax every open boundary loop's vertex positions in place.
+
+    Relief-mesh silhouettes are lattice staircases (grid-resolution jaggies) —
+    the "smooth the outer edges" half of the live-repair request. Each loop
+    with at least ``min_loop`` vertices gets ``iterations`` rounds of Taubin
+    curve smoothing (a shrink step ``lam`` followed by an inflate step ``mu``,
+    so the silhouette rounds without contracting — plain Laplacian smoothing
+    visibly shrinks a closed loop). Interior vertices never move, so surface
+    detail is untouched; straight frame edges are a fixed point by construction.
+
+    When the recovered-camera intrinsics are supplied, the moved vertices' UVs
+    are regenerated via :func:`atlas_camera.core.mesh_retopo.regenerate_projective_uvs`
+    (the exactness-pinned inverse of the projection bake), so the 📽 projection
+    stays aligned after the move. Without intrinsics the vertices still move
+    but UVs are left as-is (grey-preview / export-geometry use).
+
+    Returns the number of vertices moved (0 = nothing qualified / disabled).
+    """
+    if iterations <= 0:
+        return 0
+    faces = getattr(mesh, "faces", None)
+    vertices = getattr(mesh, "vertices", None)
+    if faces is None or vertices is None or len(faces) == 0:
+        return 0
+    f = np.asarray(faces)
+    be = boundary_edges(f)
+    if len(be) == 0:
+        return 0
+    verts = np.asarray(vertices, dtype=np.float64).copy()
+    moved: list[np.ndarray] = []
+    for loop in walk_loops(be, faces=f):
+        if len(loop) < int(min_loop):
+            continue
+        idx = np.asarray(loop, dtype=np.int64)
+        P = verts[idx]
+        for _ in range(int(iterations)):
+            for step in (float(lam), float(mu)):
+                mid = 0.5 * (np.roll(P, 1, axis=0) + np.roll(P, -1, axis=0))
+                P = P + step * (mid - P)
+        verts[idx] = P
+        moved.append(idx)
+    if not moved:
+        return 0
+    moved_idx = np.unique(np.concatenate(moved))
+    mesh.vertices = verts.astype(np.float32)
+    uvs = getattr(mesh, "uvs", None)
+    if (view_matrix is not None and fx > 0 and fy > 0
+            and image_width > 1 and image_height > 1
+            and uvs is not None and len(np.asarray(uvs)) == len(verts)):
+        from atlas_camera.core.mesh_retopo import regenerate_projective_uvs
+        uv_arr = np.asarray(uvs, dtype=np.float32).copy()
+        uv_arr[moved_idx] = regenerate_projective_uvs(
+            verts[moved_idx], view_matrix=view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            image_width=int(image_width), image_height=int(image_height),
+        ).astype(np.float32)
+        mesh.uvs = uv_arr
+    return int(len(moved_idx))
