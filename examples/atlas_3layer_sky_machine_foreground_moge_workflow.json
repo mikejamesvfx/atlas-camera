@@ -579,7 +579,7 @@
         0.0,
         "machine",
         10.0,
-        512,
+        320,
         0.5,
         false,
         true,
@@ -591,8 +591,8 @@
         "relief",
         "",
         "",
-        8.0,
-        25.0,
+        12.0,
+        0.0,
         true
       ],
       "properties": {
@@ -685,7 +685,7 @@
         0.0,
         "foreground",
         5.0,
-        512,
+        320,
         0.5,
         false,
         true,
@@ -697,8 +697,8 @@
         "relief",
         "",
         "",
-        8.0,
-        25.0,
+        12.0,
+        0.0,
         true
       ],
       "properties": {
@@ -738,10 +738,10 @@
         }
       ],
       "widgets_values": [
-        "auto",
+        "cuda",
         true,
         0.0,
-        256,
+        64,
         true
       ],
       "properties": {
