@@ -209,7 +209,60 @@ class ReliefMeshCameraSpec:
         )
 
 
+def repair_relief_grid_cuda(
+    d: np.ndarray,
+    vgrid: np.ndarray,
+    fill_sawteeth: bool = True,
+    fill_holes: bool = True,
+) -> tuple[np.ndarray, np.ndarray, int, int]:
+    """Perform sub-millisecond 2D grid hole-fill and sawtooth corner bridging on GPU via PyTorch CUDA tensors."""
+    try:
+        import torch
+    except ImportError:
+        return d, vgrid, 0, 0
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    d_t = torch.from_numpy(np.ascontiguousarray(d, dtype=np.float32)).to(device).unsqueeze(0).unsqueeze(0)
+    v_t = torch.from_numpy(np.ascontiguousarray(vgrid, dtype=bool)).to(device).unsqueeze(0).unsqueeze(0).float()
+
+    n_sawteeth_filled = 0
+    if fill_sawteeth:
+        kernel_corner = torch.tensor([
+            [[[0, 1, 0], [1, 0, 0], [0, 0, 0]]],
+            [[[0, 1, 0], [0, 0, 1], [0, 0, 0]]],
+            [[[0, 0, 0], [1, 0, 0], [0, 1, 0]]],
+            [[[0, 0, 0], [0, 0, 1], [0, 1, 0]]]
+        ], dtype=torch.float32, device=device)
+        conv_out = torch.nn.functional.conv2d(v_t, kernel_corner, padding=1)
+        is_notch = (v_t == 0) & (conv_out == 2.0).any(dim=1, keepdim=True)
+        n_sawteeth_filled = int(is_notch.sum().item())
+        if n_sawteeth_filled > 0:
+            kernel_sum = torch.tensor([[[[0, 1, 0], [1, 0, 1], [0, 1, 0]]]], dtype=torch.float32, device=device)
+            neighbor_depth_sum = torch.nn.functional.conv2d(d_t * v_t, kernel_sum, padding=1)
+            neighbor_count = torch.nn.functional.conv2d(v_t, kernel_sum, padding=1)
+            fill_depth = neighbor_depth_sum / torch.clamp(neighbor_count, min=1.0)
+            d_t = torch.where(is_notch, fill_depth, d_t)
+            v_t = torch.clamp(v_t + is_notch.float(), 0.0, 1.0)
+
+    n_holes_filled = 0
+    if fill_holes:
+        kernel_hole = torch.tensor([[[[0, 1, 0], [1, 0, 1], [0, 1, 0]]]], dtype=torch.float32, device=device)
+        conv_h = torch.nn.functional.conv2d(v_t, kernel_hole, padding=1)
+        is_hole = (v_t == 0) & (conv_h >= 3.0)
+        n_holes_filled = int(is_hole.sum().item())
+        if n_holes_filled > 0:
+            neighbor_depth_sum = torch.nn.functional.conv2d(d_t * v_t, kernel_hole, padding=1)
+            fill_depth = neighbor_depth_sum / torch.clamp(conv_h, min=1.0)
+            d_t = torch.where(is_hole, fill_depth, d_t)
+            v_t = torch.clamp(v_t + is_hole.float(), 0.0, 1.0)
+
+    d_out = d_t.squeeze(0).squeeze(0).cpu().numpy().astype(d.dtype)
+    v_out = (v_t.squeeze(0).squeeze(0) > 0.5).cpu().numpy()
+    return d_out, v_out, n_sawteeth_filled, n_holes_filled
+
+
 def build_relief_mesh(
+
     depth: Any,
     *,
     view_matrix: Any = None,
@@ -236,7 +289,10 @@ def build_relief_mesh(
     overhang_bevel_rel: float = 0.0,
     exclude_choke_cells: int = 0,
     quad_coherence: bool = False,
+    live_fill_holes: bool = False,
+    live_fill_edge_sawteeth: bool = False,
 ) -> ReliefMesh:
+
     """Triangulate a forward-z depth map into a world-space relief mesh.
 
     ``grid_long_edge`` sets sampling density (grid columns along the longest
@@ -546,6 +602,12 @@ def build_relief_mesh(
             cnt += ok
         has = cnt > 0
         d = np.where(has, 0.5 * d + 0.5 * acc / np.maximum(cnt, 1), d)
+
+    if live_fill_edge_sawteeth or live_fill_holes:
+        d, vgrid, _, _ = repair_relief_grid_cuda(
+            d, vgrid, fill_sawteeth=bool(live_fill_edge_sawteeth), fill_holes=bool(live_fill_holes)
+        )
+
 
     # Back-project the grid into the world (camera pose from the view matrix),
     # then rescale about the camera (ground reconciliation).
