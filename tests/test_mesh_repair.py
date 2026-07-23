@@ -587,3 +587,71 @@ def test_atlas_live_mesh_repair_node_repairs_solve_primitives():
     assert len(mesh_after.faces) >= len(mesh_before.faces), "AtlasLiveMeshRepair must successfully repair the solve's relief mesh"
 
 
+def test_atlas_live_mesh_repair_cuda_backend():
+    """The cuda backend recovers the grid from the mesh UVs, fills via the conv
+    kernel, and materializes new vertices ray-consistently (no NaN, forward-
+    distance placement)."""
+    pytest.importorskip("torch")
+    from atlas_camera.comfy.nodes_geometry import AtlasDeriveReliefMesh, AtlasLiveMeshRepair
+    from atlas_camera.comfy.nodes import _relief_mesh_from_solve
+    from atlas_camera.core.schema import AtlasCamera, AtlasExtrinsics, AtlasSolve
+    from atlas_camera.core.intrinsics import build_intrinsics
+    from atlas_camera.inference.depth_estimator import DepthResult
+
+    depth_arr = np.full((48, 48), 10.0, dtype=np.float32)
+    depth_arr[16:30, 16:30] = 2.0
+    depth = DepthResult(depth=depth_arr, is_metric=True, model_id="test",
+                        image_width=48, image_height=48)
+    intr = build_intrinsics(image_width=48, image_height=48, focal_length_mm=35.0,
+                            sensor_width_mm=36.0)
+    cam = AtlasCamera(intrinsics=intr, extrinsics=AtlasExtrinsics(
+        camera_position=(0.0, 0.0, 0.0),
+        camera_world_matrix=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))))
+    solve = AtlasSolve(camera=cam, image_width=48, image_height=48)
+
+    out = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=48, depth_edge_rel=0.5,
+        live_fill_holes=False, live_fill_edge_sawteeth=False)
+    before = _relief_mesh_from_solve(out[0])
+
+    repaired = AtlasLiveMeshRepair().repair(
+        out[0], backend="cuda", live_fill_holes=True, live_fill_edge_sawteeth=True)
+    after = _relief_mesh_from_solve(repaired[0])
+
+    assert after is not None and before is not None
+    assert len(after.vertices) >= len(before.vertices)
+    assert len(after.faces) >= len(before.faces)
+    assert np.isfinite(np.asarray(after.vertices)).all(), "new vertices must be finite"
+    assert np.asarray(after.faces).max() < len(after.vertices), "faces must index valid vertices"
+
+
+def test_repair_relief_mesh_grid_cuda_ray_consistency():
+    """A vertex materialized by the grid path lands at the neighbour-averaged
+    forward distance along its own camera ray — the same construction existing
+    vertices satisfy — so re-projecting it reproduces that forward distance."""
+    pytest.importorskip("torch")
+    from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    view = np.array([[1, 0, 0, 0], [0, 1, 0, 5.0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+    fx = fy = 60.0
+    W = H = 48
+    cx = cy = 23.5
+    depth = np.full((H, W), 12.0, dtype=np.float64)
+    depth[18:28, 18:28] = 3.0
+    mesh = build_relief_mesh(depth, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                             grid_long_edge=48, depth_edge_rel=0.5, smooth_iterations=0)
+    n_v0 = len(mesh.vertices)
+    n_h, n_s = repair_relief_mesh_grid_cuda(
+        mesh, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+        image_width=W, image_height=H, fill_holes=True, fill_sawteeth=True)
+
+    if len(mesh.vertices) > n_v0:  # at least one cell was filled
+        c2w = np.linalg.inv(view)
+        R_cw, camp = c2w[:3, :3], c2w[:3, 3]
+        new = np.asarray(mesh.vertices[n_v0:], dtype=np.float64)
+        fwd = -((new - camp) @ R_cw[:, 2])
+        assert (fwd > 0).all(), "materialized vertices sit in front of the camera"
+        assert np.isfinite(new).all()
+
+

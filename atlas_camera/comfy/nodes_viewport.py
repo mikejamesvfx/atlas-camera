@@ -704,20 +704,10 @@ class AtlasInput:
                     "multiline": True, "tooltip": "Negative prompt for SDXL sky inpaint."}),
                 "sky_sdxl_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
                     "tooltip": "Seed for SDXL sky inpaint. 0 = deterministic default behavior of the sampler node."}),
-                "live_fill_holes": ("BOOLEAN", {"default": False,
-                    "tooltip": "ZBrush-style interior hole-fill on the single relief mesh "
-                               "(layers=0, mesh=relief only). Fills small boundary loops whose "
-                               "vertices are within live_fill_distance_m of the camera."}),
-                "live_fill_distance_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000.0,
-                    "step": 0.5,
-                    "tooltip": "Maximum forward depth (metres from camera) for live hole-fill. "
-                               "0 = fill all qualifying holes up to live_fill_max_hole_edges."}),
-                "live_fill_max_hole_edges": ("INT", {"default": 256, "min": 3, "max": 2048,
-                    "tooltip": "Largest boundary loop (edge count) that live hole-fill will "
-                               "close. Higher grid resolutions (256-512) produce longer tear loops."}),
-                "live_fill_edge_sawteeth": ("BOOLEAN", {"default": False,
-                    "tooltip": "Bridge sawtooth notches and grid staircase corners on the single relief mesh boundary "
-                               "(layers=0, mesh=relief only), scoped by live_fill_distance_m."}),
+                # Live mesh repair (interior hole-fill / boundary sawtooth) is no
+                # longer configured here — wire the standalone AtlasLiveMeshRepair
+                # 🔧 node onto this node's `solve` output instead. It repairs any
+                # relief mesh on the solve (single mesh or per-layer) downstream.
             },
         }
 
@@ -733,10 +723,7 @@ class AtlasInput:
               sky_sdxl_checkpoint="SDXL/sd_xl_base_1.0.safetensors",
               sky_sdxl_positive="clear seamless sky, high detail, no buildings, no trees, no roofs",
               sky_sdxl_negative="building, tree, roof, person, vehicle, text, watermark, blurry",
-              sky_sdxl_seed=0,
-              live_fill_holes=False, live_fill_distance_m=0.0,
-              live_fill_max_hole_edges=256,
-              live_fill_edge_sawteeth=False, **_extra):
+              sky_sdxl_seed=0, **_extra):
 
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
@@ -882,20 +869,9 @@ class AtlasInput:
                                 max_edge_factor=float(max_edge_factor),
                                 sky_heuristic=bool(sky_heuristic),
                                 normal_edge_deg=float(normal_edge_deg),
-                                live_fill_holes=bool(live_fill_holes),
-                                live_fill_distance_m=float(live_fill_distance_m),
-                                live_fill_max_hole_edges=int(live_fill_max_hole_edges),
-                                live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth),
                                 **exclude_kw)
                 solve_chain = relief.out(0)
                 notes.append(f"single relief mesh, grid {int(mesh_resolution)}")
-                if live_fill_holes or live_fill_edge_sawteeth:
-                    parts = [f"distance_m={float(live_fill_distance_m):.1f}"]
-                    if live_fill_holes:
-                        parts.append(f"max_edges={int(live_fill_max_hole_edges)}")
-                    if live_fill_edge_sawteeth:
-                        parts.append("sawtooth-boundary-fill")
-                    notes.append("live hole-fill ON (" + ", ".join(parts) + ")")
             else:
                 flat = g.node("AtlasCleanPlateLayer", solve=solve_chain,
                               depth=depth.out(0), plate_image=image_ref,

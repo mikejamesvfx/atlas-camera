@@ -913,55 +913,113 @@ class AtlasLiveMeshRepair:
                 "solve": ("ATLAS_SOLVE",),
             },
             "optional": {
+                "backend": (["auto", "cuda", "cpu"], {
+                    "default": "auto",
+                    "tooltip": "Repair backend. cuda = the same sub-millisecond PyTorch/CUDA 2D "
+                               "grid conv build_relief_mesh runs (recovered from the mesh's UV "
+                               "lattice; runs on GPU when available, else torch-CPU). cpu = the "
+                               "numpy face-soup ear-clip / sawtooth-bridge. auto = cuda when torch "
+                               "is importable, else cpu. live_fill_max_hole_edges applies to cpu only.",
+                }),
                 **LIVE_FILL_WIDGETS,
             },
         }
 
-    def repair(self, solve, live_fill_holes=True, live_fill_distance_m=0.0,
+    def repair(self, solve, backend="auto", live_fill_holes=True, live_fill_distance_m=0.0,
                live_fill_max_hole_edges=256, live_fill_edge_sawteeth=True):
         import copy
-        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+
+        import numpy as np
+
+        from atlas_camera.exporters._layers import mesh_from_primitive
+
         solve_out = copy.deepcopy(solve)
-        extr = solve.camera.extrinsics
+        view_matrix = solve.camera.extrinsics.camera_view_matrix
 
-        def _repair_primitive_list(prims):
-            repaired = []
-            for prim in prims:
-                if prim.primitive_type == "relief_mesh" and hasattr(prim, "mesh"):
-                    mesh_copy = copy.deepcopy(prim.mesh)
-                    stats = {}
-                    apply_live_mesh_repair(
-                        mesh_copy,
-                        extr.camera_view_matrix,
-                        live_fill_holes=bool(live_fill_holes),
-                        live_fill_distance_m=float(live_fill_distance_m),
-                        live_fill_max_hole_edges=int(live_fill_max_hole_edges),
-                        live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth),
-                        stats=stats,
-                    )
-                    repaired_prim = relief_mesh_primitive(mesh_copy, name=prim.name, priority=prim.priority)
-                    repaired.append(repaired_prim)
+        # Resolve the pinhole intrinsics the CUDA grid path needs to back-project
+        # newly-filled lattice cells. None → the grid path can't run, fall to cpu.
+        intr = solve.camera.intrinsics
+        fx = intr.fx_px or 0.0
+        fy = intr.fy_px or 0.0
+        pp = intr.principal_point_px
+        cx = intr.cx_px if intr.cx_px is not None else (pp[0] if pp else intr.image_width / 2.0)
+        cy = intr.cy_px if intr.cy_px is not None else (pp[1] if pp else intr.image_height / 2.0)
+
+        use_cuda = backend in ("auto", "cuda")
+        if use_cuda:
+            try:
+                import torch  # noqa: F401
+            except ImportError:
+                if backend == "cuda":
+                    use_cuda = False  # requested but unavailable → cpu fallback
                 else:
-                    repaired.append(prim)
-            return repaired
+                    use_cuda = False
+        if fx <= 0 or fy <= 0:
+            use_cuda = False  # no usable intrinsics for ray back-projection
 
-        if hasattr(solve_out, "proxy_primitives"):
-            solve_out.proxy_primitives = _repair_primitive_list(solve_out.proxy_primitives)
+        def _repair_prim_in_place(prim):
+            """Reconstruct the ReliefMesh from the primitive's flattened metadata
+            (relief_mesh_primitive's inverse), run the chosen repair, then write
+            the changed arrays back into the SAME metadata dict."""
+            meta = prim.metadata or {}
+            if prim.primitive_type != "mesh" or meta.get("source") != "depth_relief_mesh":
+                return
+            mesh = mesh_from_primitive(prim)
+            if mesh is None:
+                return
+            # mesh_from_primitive omits hole_mask; give the cpu path a 0-sized one
+            # so _hole_mask_after_fill early-returns instead of dereferencing None.
+            mesh.hole_mask = np.zeros((0, 0), dtype=bool)
+            n_verts_before = len(mesh.vertices)
+            n_faces_before = len(mesh.faces)
 
-        if hasattr(solve_out, "projection_scene") and solve_out.projection_scene is not None:
-            if hasattr(solve_out.projection_scene, "proxy_geometry"):
-                solve_out.projection_scene.proxy_geometry = _repair_primitive_list(solve_out.projection_scene.proxy_geometry)
+            if use_cuda:
+                from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+                repair_relief_mesh_grid_cuda(
+                    mesh, view_matrix=view_matrix,
+                    fx=float(fx), fy=float(fy), cx=float(cx), cy=float(cy),
+                    image_width=int(intr.image_width), image_height=int(intr.image_height),
+                    fill_holes=bool(live_fill_holes),
+                    fill_sawteeth=bool(live_fill_edge_sawteeth),
+                    depth_far_m=float(live_fill_distance_m),
+                )
+            else:
+                apply_live_mesh_repair(
+                    mesh, view_matrix,
+                    live_fill_holes=bool(live_fill_holes),
+                    live_fill_distance_m=float(live_fill_distance_m),
+                    live_fill_max_hole_edges=int(live_fill_max_hole_edges),
+                    live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth),
+                )
 
-        if hasattr(solve_out, "projection_sources"):
-            for src in solve_out.projection_sources:
-                if hasattr(src, "proxy_geometry"):
-                    src.proxy_geometry = _repair_primitive_list(src.proxy_geometry)
+            if len(mesh.faces) == n_faces_before and len(mesh.vertices) == n_verts_before:
+                return  # nothing changed
+            meta["faces"] = np.asarray(mesh.faces).reshape(-1).astype(np.int64).tolist()
+            meta["n_faces"] = int(len(mesh.faces))
+            if len(mesh.vertices) != n_verts_before:  # cuda path added vertices
+                meta["vertices"] = np.round(
+                    np.asarray(mesh.vertices, dtype=np.float64).reshape(-1), 3).tolist()
+                meta["uvs"] = np.round(
+                    np.asarray(mesh.uvs, dtype=np.float64).reshape(-1), 4).tolist()
+                meta["n_vertices"] = int(len(mesh.vertices))
+                er = getattr(mesh, "edge_risk", None)
+                if er is not None:
+                    meta["edge_risk"] = np.round(
+                        np.asarray(er, dtype=np.float64).reshape(-1), 3).tolist()
+            prim.metadata = meta
+
+        scene = getattr(solve_out, "projection_scene", None)
+        for prim in (getattr(scene, "proxy_geometry", None) or []):
+            _repair_prim_in_place(prim)
+
+        for src in (getattr(solve_out, "projection_sources", None) or []):
+            for prim in (getattr(src, "proxy_geometry", None) or []):
+                _repair_prim_in_place(prim)
 
         return (solve_out,)
 
 
 class AtlasDeriveWalls:
-
     """Vertical wall planes + foreground boxes/cylinders (azimuth_walls) — one
     job, general-purpose exterior blockout. Height is clipped to whatever 3D
     points individually pass a near-vertical-normal filter, so it truncates

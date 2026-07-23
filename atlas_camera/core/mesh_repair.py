@@ -571,3 +571,145 @@ def apply_boundary_sawtooth_fill(
     if n_added:
         mesh.faces = np.asarray(new_faces, dtype=faces.dtype)
     return n_added, depths
+
+
+def repair_relief_mesh_grid_cuda(
+    mesh: Any,
+    *,
+    view_matrix: np.ndarray,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    image_width: int,
+    image_height: int,
+    fill_holes: bool = True,
+    fill_sawteeth: bool = True,
+    depth_far_m: float = 0.0,
+) -> tuple[int, int]:
+    """GPU grid hole-fill / boundary-sawtooth on an already-built relief mesh.
+
+    ``build_relief_mesh`` runs its sub-millisecond PyTorch/CUDA 2D grid repair
+    (:func:`atlas_camera.core.relief_mesh.repair_relief_grid_cuda`) on the depth
+    GRID it is triangulating from. A relief mesh stored on a solve has been
+    compacted to referenced vertices only, so that grid is gone — which is why
+    the standalone ``AtlasLiveMeshRepair`` node's CPU path uses the numpy
+    face-soup :func:`apply_interior_hole_fill` / :func:`apply_boundary_sawtooth_fill`
+    instead.
+
+    This recovers the regular sampling lattice from the mesh's own UVs (they are
+    a ``meshgrid`` of the sampled rows/cols, so ``np.unique`` on each axis
+    reconstructs the grid exactly), rebuilds the ``(nr, nc)`` occupancy +
+    forward-depth grids, runs the SAME convolutional kernel on the GPU, then
+    materializes every newly-valid cell as a new vertex — back-projected along
+    that cell's own camera ray at the neighbour-averaged forward distance, the
+    identical ray-preserving construction ``build_relief_mesh`` uses, so a new
+    vertex lands consistently with the existing ones — and adds the two
+    triangles per closed quad, matching ``build_relief_mesh``'s winding. Existing
+    vertices and faces are never moved.
+
+    Mutates ``mesh.vertices`` / ``mesh.uvs`` / ``mesh.faces`` (and
+    ``mesh.edge_risk`` when present) in place. Returns
+    ``(n_holes_filled, n_sawteeth_filled)``; ``(0, 0)`` when the mesh has no
+    faces, the UV lattice can't be recovered, or nothing qualified.
+    """
+    from atlas_camera.core.relief_mesh import repair_relief_grid_cuda
+
+    if not (fill_holes or fill_sawteeth):
+        return 0, 0
+    verts = getattr(mesh, "vertices", None)
+    faces = getattr(mesh, "faces", None)
+    uvs = getattr(mesh, "uvs", None)
+    if verts is None or faces is None or uvs is None:
+        return 0, 0
+    verts = np.asarray(verts, dtype=np.float64)
+    uvs = np.asarray(uvs, dtype=np.float64)
+    if len(verts) == 0 or len(faces) == 0 or len(uvs) != len(verts):
+        return 0, 0
+
+    # Recover the sampling lattice from the UVs (rounded to serialization
+    # precision so float noise never splits one lattice line into two).
+    uq = np.round(uvs[:, 0], 5)
+    vq = np.round(uvs[:, 1], 5)
+    uu = np.unique(uq)   # ascending column positions
+    vv = np.unique(vq)   # ascending row positions (v grows as row index shrinks)
+    nc, nr = int(len(uu)), int(len(vv))
+    if nr < 2 or nc < 2 or nr * nc > 16_000_000:
+        return 0, 0
+
+    col_of = np.searchsorted(uu, uq)
+    # v = 1 - row/(H-1): larger v is a SMALLER row index, so flip the axis.
+    row_of = (nr - 1) - np.searchsorted(vv, vq)
+
+    # Camera pose (row-major, column-vector points) — the exact convention
+    # build_relief_mesh uses for back-projection and its band/near clips.
+    vm = np.asarray(view_matrix, dtype=np.float64)
+    c2w = np.linalg.inv(vm)
+    R_cw = c2w[:3, :3]
+    cam = c2w[:3, 3]
+    fwd = -((verts - cam) @ R_cw[:, 2])  # forward distance (metres), per vertex
+
+    vgrid = np.zeros((nr, nc), dtype=bool)
+    dgrid = np.zeros((nr, nc), dtype=np.float64)
+    cell2vidx = np.full((nr, nc), -1, dtype=np.int64)
+    vgrid[row_of, col_of] = True
+    dgrid[row_of, col_of] = fwd
+    cell2vidx[row_of, col_of] = np.arange(len(verts))
+
+    d_out, v_out, n_saw, n_hole = repair_relief_grid_cuda(
+        dgrid, vgrid, fill_sawteeth=bool(fill_sawteeth), fill_holes=bool(fill_holes))
+    newfill = v_out & ~vgrid
+    if depth_far_m > 0.0:
+        newfill &= (d_out <= float(depth_far_m))
+    if not newfill.any():
+        return 0, 0
+
+    # New vertices: back-project each filled cell along its own camera ray at the
+    # averaged forward distance. Pixel per lattice axis (UV -> source pixel).
+    px_axis = uu * max(image_width - 1, 1)
+    py_axis = (1.0 - vv) * max(image_height - 1, 1)
+    dir_x = (px_axis[None, :] - cx) / fx                       # (1, nc)
+    dir_y = -(py_axis[:, None] - cy) / fy                      # (nr, 1)
+    dir_cam = np.stack([
+        np.broadcast_to(dir_x, (nr, nc)),
+        np.broadcast_to(dir_y, (nr, nc)),
+        np.full((nr, nc), -1.0),
+    ], axis=-1)
+    world_dir = dir_cam @ R_cw.T
+    new_rows, new_cols = np.where(newfill)
+    new_pos = cam + d_out[new_rows, new_cols, None] * world_dir[new_rows, new_cols]
+    new_uv = np.stack([uu[new_cols], vv[new_rows]], axis=1)
+
+    n_verts0 = len(verts)
+    cell2vidx[new_rows, new_cols] = n_verts0 + np.arange(len(new_rows))
+
+    # Closed quads that touch a newly-filled cell (all four corners now usable).
+    usable = vgrid | newfill
+    i00, i01 = cell2vidx[:-1, :-1], cell2vidx[:-1, 1:]
+    i10, i11 = cell2vidx[1:, :-1], cell2vidx[1:, 1:]
+    u00, u01 = usable[:-1, :-1], usable[:-1, 1:]
+    u10, u11 = usable[1:, :-1], usable[1:, 1:]
+    f00, f01 = newfill[:-1, :-1], newfill[:-1, 1:]
+    f10, f11 = newfill[1:, :-1], newfill[1:, 1:]
+    quad = (u00 & u01 & u10 & u11) & (f00 | f01 | f10 | f11)
+    tri_a = np.stack([i00[quad], i10[quad], i01[quad]], axis=1)
+    tri_b = np.stack([i10[quad], i11[quad], i01[quad]], axis=1)
+    add_faces = np.concatenate([tri_a, tri_b], axis=0)
+    if len(add_faces) == 0:
+        return 0, 0
+
+    faces_arr = np.asarray(mesh.faces)
+    mesh.vertices = np.concatenate(
+        [np.asarray(mesh.vertices, dtype=np.float32),
+         new_pos.astype(np.float32)], axis=0)
+    mesh.uvs = np.concatenate(
+        [np.asarray(mesh.uvs, dtype=np.float32),
+         new_uv.astype(np.float32)], axis=0)
+    mesh.faces = np.concatenate(
+        [faces_arr, add_faces.astype(faces_arr.dtype)], axis=0)
+    er = getattr(mesh, "edge_risk", None)
+    if er is not None and len(np.asarray(er)) == n_verts0:
+        mesh.edge_risk = np.concatenate(
+            [np.asarray(er, dtype=np.float32),
+             np.ones(len(new_rows), dtype=np.float32)], axis=0)
+    return int(n_hole), int(n_saw)
