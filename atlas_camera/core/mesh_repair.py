@@ -586,6 +586,8 @@ def repair_relief_mesh_grid_cuda(
     fill_holes: bool = True,
     fill_sawteeth: bool = True,
     depth_far_m: float = 0.0,
+    depth_edge_rel: float = 0.5,
+    max_edge_factor: float = 12.0,
 ) -> tuple[int, int]:
     """GPU grid hole-fill / boundary-sawtooth on an already-built relief mesh.
 
@@ -683,6 +685,12 @@ def repair_relief_mesh_grid_cuda(
     n_verts0 = len(verts)
     cell2vidx[new_rows, new_cols] = n_verts0 + np.arange(len(new_rows))
 
+    # World position per cell: back-projected for filled cells, the vertex's
+    # ACTUAL stored position for existing cells (respects build's floor/band
+    # clamps). Needed for the same edge-length tear test build_relief_mesh runs.
+    pos_grid = cam + d_out[..., None] * world_dir
+    pos_grid[row_of, col_of] = verts  # exact existing positions
+
     # Closed quads that touch a newly-filled cell (all four corners now usable).
     usable = vgrid | newfill
     i00, i01 = cell2vidx[:-1, :-1], cell2vidx[:-1, 1:]
@@ -692,6 +700,32 @@ def repair_relief_mesh_grid_cuda(
     f00, f01 = newfill[:-1, :-1], newfill[:-1, 1:]
     f10, f11 = newfill[1:, :-1], newfill[1:, 1:]
     quad = (u00 & u01 & u10 & u11) & (f00 | f01 | f10 | f11)
+
+    # Tear gate — a filled cell adjacent to a silhouette has valid neighbours on
+    # both sides of a near→far depth jump; without this the fill bridges that
+    # jump into a stretched vertical shard. Reject a quad whose corner forward
+    # depths disagree by more than depth_edge_rel, or whose world edges exceed
+    # max_edge_factor × the local sample spacing (the exact tests _tri_ok uses).
+    dq = np.stack([d_out[:-1, :-1], d_out[:-1, 1:], d_out[1:, :-1], d_out[1:, 1:]], axis=-1)
+    dmax = dq.max(axis=-1)
+    dmin = np.maximum(dq.min(axis=-1), 1e-6)
+    ratio_ok = (dmax / dmin - 1.0) <= float(depth_edge_rel)
+    if max_edge_factor and nc > 1:
+        step_px = float(np.median(np.diff(px_axis))) if nc > 1 else 1.0
+        budget = float(max_edge_factor) * np.median(dq, axis=-1) * abs(step_px) / max(min(fx, fy), 1e-6)
+        budget = np.maximum(budget, 0.05)
+        P = pos_grid
+        p00, p01 = P[:-1, :-1], P[:-1, 1:]
+        p10, p11 = P[1:, :-1], P[1:, 1:]
+        def _elen(a, b):
+            return np.linalg.norm(a - b, axis=-1)
+        edge_ok = ((_elen(p00, p01) <= budget) & (_elen(p00, p10) <= budget)
+                   & (_elen(p01, p11) <= budget) & (_elen(p10, p11) <= budget)
+                   & (_elen(p10, p01) <= budget))  # shared diagonal
+        quad = quad & ratio_ok & edge_ok
+    else:
+        quad = quad & ratio_ok
+
     tri_a = np.stack([i00[quad], i10[quad], i01[quad]], axis=1)
     tri_b = np.stack([i10[quad], i11[quad], i01[quad]], axis=1)
     add_faces = np.concatenate([tri_a, tri_b], axis=0)

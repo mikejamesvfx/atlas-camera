@@ -655,3 +655,37 @@ def test_repair_relief_mesh_grid_cuda_ray_consistency():
         assert np.isfinite(new).all()
 
 
+def test_repair_relief_mesh_grid_cuda_no_silhouette_bridge():
+    """The fill must never bridge a near->far silhouette into a stretched shard:
+    every ADDED triangle's world edges stay bounded, like build_relief_mesh's own
+    tear test. Without the gate, the grid fill re-connects the torn silhouette."""
+    pytest.importorskip("torch")
+    from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    view = np.array([[1, 0, 0, 0], [0, 1, 0, 4.0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+    fx = fy = 70.0
+    W = H = 64
+    cx = cy = 31.5
+    # A near foreground block (2 m) against a far background (40 m): a hard
+    # silhouette. Tearing leaves a boundary the fill would love to bridge.
+    depth = np.full((H, W), 40.0, dtype=np.float64)
+    depth[24:40, 24:40] = 2.0
+    mesh = build_relief_mesh(depth, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                             grid_long_edge=64, depth_edge_rel=0.5, smooth_iterations=0)
+    n_f0 = len(mesh.faces)
+    repair_relief_mesh_grid_cuda(
+        mesh, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+        image_width=W, image_height=H, fill_holes=True, fill_sawteeth=True)
+
+    added = np.asarray(mesh.faces[n_f0:])
+    if len(added):
+        v = np.asarray(mesh.vertices, dtype=np.float64)
+        a, b, c = v[added[:, 0]], v[added[:, 1]], v[added[:, 2]]
+        el = np.concatenate([np.linalg.norm(a - b, axis=1),
+                             np.linalg.norm(b - c, axis=1),
+                             np.linalg.norm(c - a, axis=1)])
+        # A bridged 2m->40m shard would be ~38 m long; a legit local fill is ~cm.
+        assert el.max() < 5.0, f"fill bridged a silhouette (max edge {el.max():.1f} m)"
+
+
