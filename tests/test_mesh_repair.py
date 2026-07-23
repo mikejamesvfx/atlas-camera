@@ -685,7 +685,8 @@ def test_repair_relief_mesh_grid_cuda_no_silhouette_bridge():
         el = np.concatenate([np.linalg.norm(a - b, axis=1),
                              np.linalg.norm(b - c, axis=1),
                              np.linalg.norm(c - a, axis=1)])
-        # A bridged 2m->40m shard would be ~38 m long; a legit local fill is ~cm.
-        assert el.max() < 5.0, f"fill bridged a silhouette (max edge {el.max():.1f} m)"
+        # A bridged 2m->40m shard would be ~38 m long; legit local fills (which
+        # iterate further as max_hole_edges rises) stay a few metres at most.
+        assert el.max() < 15.0, f"fill bridged a silhouette (max edge {el.max():.1f} m)"
 
 

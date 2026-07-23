@@ -915,11 +915,13 @@ class AtlasLiveMeshRepair:
             "optional": {
                 "backend": (["auto", "cuda", "cpu"], {
                     "default": "auto",
-                    "tooltip": "Repair backend. cuda = the same sub-millisecond PyTorch/CUDA 2D "
-                               "grid conv build_relief_mesh runs (recovered from the mesh's UV "
-                               "lattice; runs on GPU when available, else torch-CPU). cpu = the "
-                               "numpy face-soup ear-clip / sawtooth-bridge. auto = cuda when torch "
-                               "is importable, else cpu. live_fill_max_hole_edges applies to cpu only.",
+                    "tooltip": "Repair backend. cuda = the PyTorch/CUDA 2D grid conv (recovered "
+                               "from the mesh's UV lattice; GPU when available, else torch-CPU) — "
+                               "live_fill_max_hole_edges sets how many fill rings it iterates, so "
+                               "bigger = wider holes closed. cpu = the numpy face-soup ear-clip / "
+                               "sawtooth-bridge (max_hole_edges capped at 256 to avoid freezing on "
+                               "heavily-torn meshes; use cuda for large fills). auto = cuda when "
+                               "torch is importable, else cpu.",
                 }),
                 **LIVE_FILL_WIDGETS,
             },
@@ -982,13 +984,19 @@ class AtlasLiveMeshRepair:
                     fill_holes=bool(live_fill_holes),
                     fill_sawteeth=bool(live_fill_edge_sawteeth),
                     depth_far_m=float(live_fill_distance_m),
+                    max_hole_edges=int(live_fill_max_hole_edges),
                 )
             else:
+                # The CPU topology fill ear-clips whole boundary loops (O(n^2)
+                # per loop). On a heavily-torn mesh a large max_hole_edges makes
+                # it attempt many huge non-convex loops and freeze, so cap it —
+                # for large fills use backend=cuda (bounded, iterative, fast).
+                cpu_max_edges = min(int(live_fill_max_hole_edges), 256)
                 apply_live_mesh_repair(
                     mesh, view_matrix,
                     live_fill_holes=bool(live_fill_holes),
                     live_fill_distance_m=float(live_fill_distance_m),
-                    live_fill_max_hole_edges=int(live_fill_max_hole_edges),
+                    live_fill_max_hole_edges=cpu_max_edges,
                     live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth),
                 )
 

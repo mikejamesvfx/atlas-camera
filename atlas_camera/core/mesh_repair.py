@@ -588,6 +588,7 @@ def repair_relief_mesh_grid_cuda(
     depth_far_m: float = 0.0,
     depth_edge_rel: float = 0.5,
     max_edge_factor: float = 12.0,
+    max_hole_edges: int = 64,
 ) -> tuple[int, int]:
     """GPU grid hole-fill / boundary-sawtooth on an already-built relief mesh.
 
@@ -658,8 +659,23 @@ def repair_relief_mesh_grid_cuda(
     dgrid[row_of, col_of] = fwd
     cell2vidx[row_of, col_of] = np.arange(len(verts))
 
-    d_out, v_out, n_saw, n_hole = repair_relief_grid_cuda(
-        dgrid, vgrid, fill_sawteeth=bool(fill_sawteeth), fill_holes=bool(fill_holes))
+    # Iterate the conv fill: one pass closes only the innermost ring of any
+    # concavity (a cell needs >=3 valid orthogonal neighbours), so a wider notch
+    # needs more passes. max_hole_edges ~= a loop perimeter, and a hole of E
+    # boundary edges is ~E/4 cells across / ~E/8 rings to close from both sides,
+    # so scale the pass budget off it. Early-out the instant a pass fills nothing
+    # (the boundary is now convex — straight/convex edges never satisfy the >=3
+    # rule, so this cannot balloon the mesh outward and always terminates).
+    n_iter = max(1, min(int(max_hole_edges) // 2, 512))
+    d_out, v_out = dgrid, vgrid
+    n_saw = n_hole = 0
+    for _ in range(n_iter):
+        d_out, v_out, ns, nh = repair_relief_grid_cuda(
+            d_out, v_out, fill_sawteeth=bool(fill_sawteeth), fill_holes=bool(fill_holes))
+        n_saw += ns
+        n_hole += nh
+        if ns == 0 and nh == 0:
+            break
     newfill = v_out & ~vgrid
     if depth_far_m > 0.0:
         newfill &= (d_out <= float(depth_far_m))
