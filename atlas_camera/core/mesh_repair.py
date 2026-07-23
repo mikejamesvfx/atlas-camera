@@ -513,19 +513,27 @@ def fill_boundary_sawteeth(
             for i in range(n):
                 prev, v, nxt = loop[i - 1], loop[i], loop[(i + 1) % n]
                 d_v = d[i]
-                if not (d_v > d[i - 1] and d_v > d[(i + 1) % n]):
-                    continue  # not a valley (strict local depth maximum)
                 if depth_far_m > 0.0 and d_v > depth_far_m:
                     continue
                 edge = tuple(sorted((int(prev), int(nxt))))
                 if edge in existing:
                     continue  # bridging would put that edge in three faces
                 a, b, c = verts[prev], verts[v], verts[nxt]
-                if np.linalg.norm(np.cross(b - a, c - a)) < _EPS:
+                cross_vec = np.cross(b - a, c - a)
+                if np.linalg.norm(cross_vec) < _EPS:
                     continue  # collinear → zero-area sliver
+
+                is_valley = (d_v > d[i - 1] and d_v > d[(i + 1) % n])
+                v1, v2 = a - b, c - b
+                n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
+                is_corner = (n1 > _EPS and n2 > _EPS and abs(float(np.dot(v1, v2) / (n1 * n2))) < 0.707)
+                if not (is_valley or is_corner):
+                    continue
+
                 added.append((int(nxt), int(v), int(prev)))
                 valley_depths.append(float(d_v))
                 existing.add(edge)
+
         if not added:
             break
         faces_work = np.vstack([faces_work, np.asarray(added, dtype=f.dtype)])

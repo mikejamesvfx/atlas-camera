@@ -485,6 +485,29 @@ def test_apply_boundary_sawtooth_fill_updates_mesh():
     assert len(m.faces) == len(f) + 3
 
 
+def test_fill_boundary_sawteeth_bridges_grid_staircase_corners():
+    """Verify that fill_boundary_sawteeth bridges 90-degree grid staircase corners even when depth is uniform along the boundary."""
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+    h, w = 64, 64
+    depth_arr = np.full((h, w), 10.0, dtype=np.float32)
+    # create a flat circular rock at 3m
+    cy, cx = 32, 32
+    yy, xx = np.ogrid[:h, :w]
+    mask = (yy - cy)**2 + (xx - cx)**2 < 12**2
+    depth_arr[mask] = 3.0
+
+    view_matrix = np.eye(4)
+    mesh = build_relief_mesh(
+        depth_arr, view_matrix=view_matrix, fx=100.0, fy=100.0, cx=32.0, cy=32.0,
+        grid_long_edge=32, depth_edge_rel=0.5, scale=1.0, apply_sky_heuristic=False
+    )
+    faces_before = len(mesh.faces)
+    n_added, _ = apply_boundary_sawtooth_fill(mesh, view_matrix=view_matrix, depth_far_m=0.0)
+    assert n_added > 0, "Grid staircase corners on equal-depth silhouette boundary must be bridged by sawtooth fill"
+    assert len(mesh.faces) == faces_before + n_added
+
+
+
 def test_derive_relief_mesh_node_stores_repaired_faces_in_solve():
     """Verify that AtlasDeriveReliefMesh serializes the repaired mesh (not the raw unrepaired mesh) into solve.projection_scene."""
     from atlas_camera.comfy.nodes_geometry import AtlasDeriveReliefMesh

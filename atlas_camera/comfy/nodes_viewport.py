@@ -712,15 +712,12 @@ class AtlasInput:
                     "step": 0.5,
                     "tooltip": "Maximum forward depth (metres from camera) for live hole-fill. "
                                "0 = fill all qualifying holes up to live_fill_max_hole_edges."}),
-                "live_fill_max_hole_edges": ("INT", {"default": 64, "min": 3, "max": 512,
+                "live_fill_max_hole_edges": ("INT", {"default": 256, "min": 3, "max": 2048,
                     "tooltip": "Largest boundary loop (edge count) that live hole-fill will "
-                               "close. Larger loops are more likely to be the outer frame or a "
-                               "major disocclusion that should be filled by a clean plate instead."}),
+                               "close. Higher grid resolutions (256-512) produce longer tear loops."}),
                 "live_fill_edge_sawteeth": ("BOOLEAN", {"default": False,
-                    "tooltip": "Bridge sawtooth notches on the single relief mesh boundary "
-                               "(layers=0, mesh=relief only). A valley vertex that is farther than "
-                               "both neighbours gets a peak-base-peak triangle, scoped by "
-                               "live_fill_distance_m."}),
+                    "tooltip": "Bridge sawtooth notches and grid staircase corners on the single relief mesh boundary "
+                               "(layers=0, mesh=relief only), scoped by live_fill_distance_m."}),
             },
         }
 
@@ -738,8 +735,9 @@ class AtlasInput:
               sky_sdxl_negative="building, tree, roof, person, vehicle, text, watermark, blurry",
               sky_sdxl_seed=0,
               live_fill_holes=False, live_fill_distance_m=0.0,
-              live_fill_max_hole_edges=64,
+              live_fill_max_hole_edges=256,
               live_fill_edge_sawteeth=False, **_extra):
+
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
         # supersedes the third-party SAM3Segment (comfyui-rmbg) in Atlas's own

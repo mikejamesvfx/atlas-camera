@@ -498,9 +498,10 @@ LIVE_FILL_WIDGETS = {
                    "Boundary loops entirely beyond this distance are left open. 0 = fill all qualifying holes regardless of depth.",
     }),
     "live_fill_max_hole_edges": ("INT", {
-        "default": 64, "min": 3, "max": 512,
-        "tooltip": "Largest boundary loop (in edge count) that live hole-fill will close. Larger loops are more likely to be the outer frame.",
+        "default": 256, "min": 3, "max": 2048,
+        "tooltip": "Largest boundary loop (in edge count) that live hole-fill will close. Higher grid resolutions (256-512) produce longer tear loops.",
     }),
+
     "live_fill_edge_sawteeth": ("BOOLEAN", {
         "default": False,
         "tooltip": "After interior hole-fill, also bridge sawtooth notches on boundary loops (peak-base-peak), "
