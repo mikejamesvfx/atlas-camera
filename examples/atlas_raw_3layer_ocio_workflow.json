@@ -1,5 +1,5 @@
 {
- "id": "atlas-raw-3layer-ocio",
+ "id": "5b5389f1-c6d6-4db5-a8f7-9a72624c5fc4",
  "revision": 0,
  "last_node_id": 27,
  "last_link_id": 55,
@@ -70,7 +70,7 @@
     }
    ],
    "widgets_values": [
-    "C:/Users/miike/Pictures/atlas_raws/atlas_raws/DSC_2190.NEF",
+    "input/CameraRaw/DSC_2190.NEF",
     true,
     false,
     "camera",

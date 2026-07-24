@@ -51,17 +51,28 @@ _WORKFLOWS = _ui_workflows()
 
 
 def test_examples_directory_has_ui_workflows():
-    # Shipping catalog: three artist-facing workflows plus three dedicated
-    # agentic/headless variants. Each variant preserves its source graph and
-    # appends one enabled AtlasAssessOutput terminal plus its exact-evidence preview.
+    # Shipping catalog: the three artist-facing workflows + three dedicated
+    # agentic/headless variants (each preserves its source graph and appends one
+    # enabled AtlasAssessOutput terminal + evidence preview), the AtlasInput
+    # walkthrough, plus the 2026-07-23/24 additions: the live-mesh-repair test
+    # pair (3-layer MoGe machine/foreground split; 4-layer bounded-band +
+    # background-card gap fill), the KJ-rail staged master (portal plate,
+    # Juggernaut SDXL), the RAW->ACEScg 3-layer OCIO workflow, and the
+    # AtlasLiveMeshRepair band-box test graph. Deletion or an unreviewed
+    # addition still fails loudly — review = add the name here.
     names = sorted(n for n, _ in _WORKFLOWS)
-    assert names == ["atlas_camera_staged_master_agentic_assessment_workflow.json",
+    assert names == ["atlas_3layer_sky_machine_foreground_moge_workflow.json",
+                     "atlas_4layer_boundedband_bgcard_moge_workflow.json",
+                     "atlas_camera_staged_master_agentic_assessment_workflow.json",
                      "atlas_camera_staged_master_workflow.json",
                      "atlas_input_quickstart_agentic_assessment_workflow.json",
                      "atlas_input_quickstart_workflow.json",
                      "atlas_input_walkthrough_switches_workflow.json",
+                     "atlas_live_repair_and_bands_test_workflow.json",
                      "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-                     "atlas_occlusion_cull_quickstart_workflow.json"]
+                     "atlas_occlusion_cull_quickstart_workflow.json",
+                     "atlas_raw_3layer_ocio_workflow.json",
+                     "atlas_staged_master_portal_neat_workflow.json"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])
