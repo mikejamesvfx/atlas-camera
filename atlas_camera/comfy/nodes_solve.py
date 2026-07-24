@@ -381,7 +381,7 @@ class AtlasLoadRAW:
             report_lines.append(exr_warning)
 
         plate_ref = AtlasPlateRef(
-            image_path=exr_path,
+            image_path=(str(exr_path) if exr_path else None),
             preview_b64=_image_tensor_to_preview_b64(image, quality=85),
             colorspace=resolved_colorspace,
             bit_depth="16f" if exr_path else "8-bit/proxy",
@@ -389,7 +389,7 @@ class AtlasLoadRAW:
             is_proxy=exr_path is None,
             metadata={
                 "registered_from": "AtlasLoadRAW",
-                "raw_source": path,
+                "raw_source": str(path),
                 "camera_model": result.camera_model,
                 "undistort_status": result.undistort_status,
             },

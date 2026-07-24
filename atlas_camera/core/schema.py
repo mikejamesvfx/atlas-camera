@@ -12,6 +12,7 @@ import copy
 
 from dataclasses import asdict, dataclass, field, is_dataclass
 import json
+import os
 from typing import Any, ClassVar
 
 from atlas_camera.core.confidence import ConfidenceModel
@@ -49,6 +50,11 @@ def _json_ready(value: Any) -> Any:
         return [_json_ready(item) for item in value]
     if isinstance(value, dict):
         return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, os.PathLike):
+        # Path objects sneak into plate_ref/debug metadata from filesystem
+        # code (found live: AtlasLoadRAW's sidecar path broke every
+        # save_solve_json downstream) — serialize as their string form.
+        return os.fspath(value)
     return value
 
 

@@ -70,3 +70,18 @@ def test_export_plate_exr_proxy_soft_fail(tmp_path):
     assert exr_path == ""
     assert out_ref is ref, "input ref passes through untouched"
     assert "SKIPPED" in report
+
+
+def test_json_ready_serializes_path_objects():
+    """Path objects in plate_ref/debug metadata must serialize as strings —
+    found live: AtlasLoadRAW's sidecar Path broke save_solve_json inside
+    AtlasExportReviewPackage ('WindowsPath is not JSON serializable')."""
+    import json
+    from pathlib import Path
+
+    ref = AtlasPlateRef(image_path="x.exr",
+                        metadata={"raw_source": Path("C:/some/raw.NEF")})
+    d = ref.to_dict()
+    json.dumps(d)  # must not raise
+    assert d["metadata"]["raw_source"].endswith("raw.NEF")
+    assert isinstance(d["metadata"]["raw_source"], str)
