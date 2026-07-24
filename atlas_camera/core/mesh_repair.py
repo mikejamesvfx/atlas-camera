@@ -827,25 +827,38 @@ def repair_relief_mesh_grid_cuda(
     dmin = np.maximum(dq.min(axis=-1), 1e-6)
     ratio_ok = (dmax / dmin - 1.0) <= float(depth_edge_rel)
     # cap_enclosed exemption: a quad touching a cap-filled cell IS the deliberate
-    # front-to-back wall that closes an enclosed hole — the gates exist to keep
-    # OPEN silhouettes open, and an enclosed loop is by definition not one.
+    # front-to-back wall that closes an enclosed hole, so it skips the depth-
+    # RATIO gate (the whole point of the cap). It does NOT skip edge bounds:
+    # build_relief_mesh keeps every vertex it computes — including ray-pushed /
+    # grazing outliers whose faces it tore away — and an unbounded cap wall
+    # RECONNECTS those orphaned wild vertices into needles (found live on the
+    # isolated machine mesh). A legit cap wall's longest edge ≈ the local depth
+    # jump it closes, so bound cap edges by max(4×local budget, 1.5×the quad's
+    # own depth span); a needle is many times that.
     quad_cap = (capfill[:-1, :-1] | capfill[:-1, 1:]
                 | capfill[1:, :-1] | capfill[1:, 1:])
+    step_px = float(np.median(np.diff(px_axis))) if nc > 1 else 1.0
+    base_budget = np.median(dq, axis=-1) * abs(step_px) / max(min(fx, fy), 1e-6)
+    base_budget = np.maximum(base_budget, 0.05)
+    cap_edge_limit = np.maximum(4.0 * base_budget, 1.5 * (dmax - dmin))
+    P = pos_grid
+    p00, p01 = P[:-1, :-1], P[:-1, 1:]
+    p10, p11 = P[1:, :-1], P[1:, 1:]
+
+    def _elen(a, b):
+        return np.linalg.norm(a - b, axis=-1)
+
+    edge_max = np.maximum.reduce([
+        _elen(p00, p01), _elen(p00, p10), _elen(p01, p11),
+        _elen(p10, p11), _elen(p10, p01),  # incl. the shared diagonal
+    ])
+    edge_ok_cap = edge_max <= cap_edge_limit
     if max_edge_factor and nc > 1:
-        step_px = float(np.median(np.diff(px_axis))) if nc > 1 else 1.0
-        budget = float(max_edge_factor) * np.median(dq, axis=-1) * abs(step_px) / max(min(fx, fy), 1e-6)
-        budget = np.maximum(budget, 0.05)
-        P = pos_grid
-        p00, p01 = P[:-1, :-1], P[:-1, 1:]
-        p10, p11 = P[1:, :-1], P[1:, 1:]
-        def _elen(a, b):
-            return np.linalg.norm(a - b, axis=-1)
-        edge_ok = ((_elen(p00, p01) <= budget) & (_elen(p00, p10) <= budget)
-                   & (_elen(p01, p11) <= budget) & (_elen(p10, p11) <= budget)
-                   & (_elen(p10, p01) <= budget))  # shared diagonal
-        quad = quad & ((ratio_ok & edge_ok) | quad_cap)
+        budget = float(max_edge_factor) * base_budget
+        edge_ok = edge_max <= budget
+        quad = quad & ((ratio_ok & edge_ok) | (quad_cap & edge_ok_cap))
     else:
-        quad = quad & (ratio_ok | quad_cap)
+        quad = quad & (ratio_ok | (quad_cap & edge_ok_cap))
 
     tri_a = np.stack([i00[quad], i10[quad], i01[quad]], axis=1)
     tri_b = np.stack([i10[quad], i11[quad], i01[quad]], axis=1)
@@ -942,3 +955,65 @@ def smooth_boundary_loops(
         ).astype(np.float32)
         mesh.uvs = uv_arr
     return int(len(moved_idx))
+
+
+def remove_stretched_faces(
+    mesh: Any,
+    *,
+    view_matrix: np.ndarray,
+    max_edge_factor: float = 12.0,
+) -> int:
+    """Cull faces whose longest world edge exceeds the local sample-spacing
+    budget — the post-hoc twin of ``build_relief_mesh``'s ``max_edge_factor``
+    tear test, for meshes already serialized onto a solve.
+
+    Lets an artist build a LAYER leniently (high ``max_edge_factor`` on the
+    CleanPlateLayer, fewer spurious comb tears on grazing surfaces) and prune
+    the residual stretched shards live in ``AtlasLiveMeshRepair`` instead.
+    Build-time mesh parameters stay on the layer nodes (they need the depth
+    map); this is the one such test that is purely geometric post-hoc.
+
+    Budget per face: ``max_edge_factor × k × median(corner forward depth)``,
+    where ``k`` is the mesh's OWN empirical spacing constant — the population
+    median of ``longest edge / median corner depth`` over all faces. A relief
+    lattice's expected edge length is proportional to depth (``step/f`` in the
+    builder's formula), so the median ratio of a shard-dominated-by-good-faces
+    mesh IS that constant, recovered without needing the image width. This is
+    self-calibrating across relief_grid resolutions and solve scales. Faces are
+    removed; vertices are left in place (orphans are harmless — compaction is
+    a build-time concern, and the 1:1 vertex-UV mapping must survive).
+
+    Returns the number of faces removed.
+    """
+    if max_edge_factor <= 0:
+        return 0
+    faces = getattr(mesh, "faces", None)
+    vertices = getattr(mesh, "vertices", None)
+    if faces is None or vertices is None or len(faces) == 0:
+        return 0
+    f = np.asarray(faces)
+    verts = np.asarray(vertices, dtype=np.float64)
+
+    vm = np.asarray(view_matrix, dtype=np.float64)
+    c2w = np.linalg.inv(vm)
+    R_cw = c2w[:3, :3]
+    cam = c2w[:3, 3]
+    fwd = -((verts - cam) @ R_cw[:, 2])
+
+    a, b, c = verts[f[:, 0]], verts[f[:, 1]], verts[f[:, 2]]
+    edge_max = np.maximum.reduce([
+        np.linalg.norm(a - b, axis=1),
+        np.linalg.norm(b - c, axis=1),
+        np.linalg.norm(c - a, axis=1),
+    ])
+    d_med = np.median(np.stack([fwd[f[:, 0]], fwd[f[:, 1]], fwd[f[:, 2]]], axis=0), axis=0)
+    ratio = edge_max / np.maximum(d_med, 1e-6)
+    k = float(np.median(ratio))
+    if not np.isfinite(k) or k <= 0:
+        return 0
+    limit = np.maximum(float(max_edge_factor) * k * d_med, 0.05)
+    keep = edge_max <= limit
+    n_removed = int((~keep).sum())
+    if n_removed:
+        mesh.faces = f[keep]
+    return n_removed

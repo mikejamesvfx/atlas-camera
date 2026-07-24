@@ -942,12 +942,22 @@ class AtlasLiveMeshRepair:
                                "projection UVs regenerated so 📽 Project stays aligned. 0 = off. "
                                "Works on both backends.",
                 }),
+                "remove_stretch_factor": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 64.0, "step": 0.5,
+                    "tooltip": "Post-hoc stretched-shard cull — the live twin of the layer nodes' "
+                               "max_edge_factor: removes faces whose longest world edge exceeds this "
+                               "many times the mesh's own local sample spacing (self-calibrated). "
+                               "Lets you build the layer leniently (high max_edge_factor there) and "
+                               "prune residual shards here instead. Runs BEFORE hole-fill/cap so "
+                               "fresh cap walls are never culled. Lower = more aggressive. 0 = off. "
+                               "Both backends.",
+                }),
             },
         }
 
     def repair(self, solve, backend="auto", live_fill_holes=True, live_fill_distance_m=0.0,
                live_fill_max_hole_edges=256, live_fill_edge_sawteeth=True,
-               cap_enclosed_holes=True, smooth_boundary=8):
+               cap_enclosed_holes=True, smooth_boundary=8, remove_stretch_factor=0.0):
         import copy
 
         import numpy as np
@@ -993,6 +1003,14 @@ class AtlasLiveMeshRepair:
             mesh.hole_mask = np.zeros((0, 0), dtype=bool)
             n_verts_before = len(mesh.vertices)
             n_faces_before = len(mesh.faces)
+
+            # Shard cull FIRST: exposes clean boundaries for the fill, and by
+            # ordering alone guarantees fresh cap walls are never culled.
+            if float(remove_stretch_factor) > 0:
+                from atlas_camera.core.mesh_repair import remove_stretched_faces
+                remove_stretched_faces(
+                    mesh, view_matrix=view_matrix,
+                    max_edge_factor=float(remove_stretch_factor))
 
             if use_cuda:
                 from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda

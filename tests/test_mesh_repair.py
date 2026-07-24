@@ -769,6 +769,96 @@ def test_repair_relief_mesh_grid_cuda_channel_tolerant_enclosure():
     assert np.isfinite(np.asarray(mesh.vertices)).all()
 
 
+def test_repair_relief_mesh_grid_cuda_cap_never_reconnects_wild_vertex():
+    """The needle regression: build_relief_mesh keeps ray-pushed outlier
+    vertices (their faces are torn, so they're invisible) — a cap wall with an
+    unbounded edge exemption reconnected them into needles (found live on the
+    isolated machine). Cap quads must respect the bounded edge limit, so a
+    wild vertex adjacent to an enclosed hole is never wired back in, while the
+    hole itself still fills."""
+    pytest.importorskip("torch")
+    from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    view = np.array([[1, 0, 0, 0], [0, 1, 0, 4.0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+    fx = fy = 70.0
+    W = H = 96
+    cx = cy = 47.5
+    depth = np.full((H, W), 12.0, dtype=np.float64)
+    depth[24:64, 24:64] = 3.0
+    excl = np.zeros((H, W), dtype=bool)
+    excl[40:52, 56:72] = True  # enclosed straddling hole, as in the membrane test
+    mesh = build_relief_mesh(depth, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                             grid_long_edge=96, depth_edge_rel=0.5, smooth_iterations=0,
+                             exclude_mask=excl, apply_sky_heuristic=False)
+
+    # Manufacture the wild vertex: push a hole-boundary-adjacent vertex 20x out
+    # along its own view ray (ray-preserving, exactly how floor_clamp/grazing
+    # outliers arise) — its UVs stay lattice-valid, so it re-enters the grid.
+    c2w = np.linalg.inv(view)
+    cam = c2w[:3, 3]
+    verts = np.asarray(mesh.vertices, dtype=np.float64)
+    fwd = -((verts - cam) @ c2w[:3, :3][:, 2])
+    mid = np.array([0.0, 4.0, -6.0])  # roughly the hole's world neighbourhood
+    cand = np.argsort(np.linalg.norm(verts - mid, axis=1))[0]
+    verts[cand] = cam + 20.0 * (verts[cand] - cam)
+    mesh.vertices = verts.astype(np.float32)
+
+    n_f0 = len(mesh.faces)
+    n_hole, _ = repair_relief_mesh_grid_cuda(
+        mesh, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+        image_width=W, image_height=H, fill_holes=True, fill_sawteeth=False,
+        max_hole_edges=256, cap_enclosed=True)
+    assert n_hole > 0, "the enclosed hole must still fill"
+    added = np.asarray(mesh.faces[n_f0:])
+    if len(added):
+        v = np.asarray(mesh.vertices, dtype=np.float64)
+        a, b, c = v[added[:, 0]], v[added[:, 1]], v[added[:, 2]]
+        el = np.concatenate([np.linalg.norm(a - b, axis=1),
+                             np.linalg.norm(b - c, axis=1),
+                             np.linalg.norm(c - a, axis=1)])
+        # The wild vertex sits ~60-240m out; a legit cap wall edge here is <=
+        # the 9m depth jump * 1.5. Nothing added may reach toward the needle.
+        assert el.max() < 20.0, f"cap reconnected a wild vertex (edge {el.max():.1f} m)"
+        assert cand not in set(added.reshape(-1).tolist()), "wild vertex must stay orphaned"
+
+
+def test_remove_stretched_faces_culls_shards():
+    """remove_stretched_faces culls faces whose longest world edge exceeds the
+    self-calibrated local-spacing budget, and leaves a clean mesh untouched."""
+    from atlas_camera.core.mesh_repair import remove_stretched_faces
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    view = np.array([[1, 0, 0, 0], [0, 1, 0, 4.0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+    fx = fy = 70.0
+    W = H = 64
+    cx = cy = 31.5
+    depth = np.full((H, W), 10.0, dtype=np.float64)
+    mesh = build_relief_mesh(depth, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                             grid_long_edge=64, depth_edge_rel=0.5, smooth_iterations=0,
+                             apply_sky_heuristic=False)
+
+    # Clean flat mesh: nothing should be culled at the default factor.
+    assert remove_stretched_faces(mesh, view_matrix=view, max_edge_factor=12.0) == 0
+
+    # Displace one interior vertex 5x out along its ray -> its incident faces
+    # become shards many times the local spacing.
+    c2w = np.linalg.inv(view)
+    cam = c2w[:3, 3]
+    verts = np.asarray(mesh.vertices, dtype=np.float64)
+    vi = len(verts) // 2
+    verts[vi] = cam + 5.0 * (verts[vi] - cam)
+    mesh.vertices = verts.astype(np.float32)
+    n_f0 = len(mesh.faces)
+    n_removed = remove_stretched_faces(mesh, view_matrix=view, max_edge_factor=12.0)
+    assert n_removed > 0, "shard faces must be culled"
+    assert len(mesh.faces) == n_f0 - n_removed
+    # The wild vertex is now fully orphaned.
+    assert vi not in set(np.asarray(mesh.faces).reshape(-1).tolist())
+    # factor 0 = off
+    assert remove_stretched_faces(mesh, view_matrix=view, max_edge_factor=0.0) == 0
+
+
 def test_smooth_boundary_loops_rounds_staircase():
     """Boundary Taubin relaxation shortens a staircase silhouette without
     changing vertex/face counts, and regenerates the moved vertices' UVs to
