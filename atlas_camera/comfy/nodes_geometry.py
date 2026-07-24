@@ -1091,6 +1091,133 @@ class AtlasLiveMeshRepair:
         return (solve_out,)
 
 
+class AtlasRetopologizeLayer:
+    """🔷 Live retopology for ONE solve layer (or all) — before the viewport.
+
+    Applies the export nodes' retopo passes (quad remesh / quadric decimate /
+    Taubin smooth, `core.mesh_retopo`) to the LIVE relief mesh serialized on a
+    solve, so the simplified topology shows in 📽 Project and rides every
+    export — not just the written OBJ. This is a deliberate revision of the
+    old "export-only" doctrine: `regenerate_projective_uvs` (run inside
+    `apply_retopo` for vertex-count-changing methods, with the layer's OWN
+    camera) restores the 1:1 vertex-UV projection contract exactly, and
+    smoothing deliberate tears is the point of reaching for this node.
+
+    `layer` selects the target: "" = the PRIMARY scene relief mesh, a
+    ProjectionSource name ("bg", "machine", ...) = that layer only,
+    "*" = every relief mesh. Missing optional deps (pyinstantmeshes /
+    trimesh + scipy / fast-simplification) degrade soft — the report carries
+    the pip hint and the solve passes through untouched.
+
+    edge_risk note: a remesh that changes the vertex count consumes the
+    serialized per-vertex coverage field (it indexes the OLD ordering) — it is
+    cleared for that layer, which the viewport tolerates (slightly harder edge
+    feather there). Taubin smooth keeps counts, so it keeps edge_risk.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "retopo"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+            },
+            "optional": {
+                "layer": ("STRING", {"default": "",
+                    "tooltip": "Which mesh to retopologize: blank = the primary scene relief "
+                               "mesh; a layer name (AtlasCleanPlateLayer `name`, e.g. 'bg') = "
+                               "that projection source only; '*' = every relief mesh."}),
+                "method": (["off", "quad", "decimate", "smooth"], {"default": "decimate",
+                    "tooltip": "quad = Instant Meshes quad remesh (pyinstantmeshes); decimate = "
+                               "quadric decimation (trimesh + fast-simplification); smooth = "
+                               "trimesh Taubin relax (topology unchanged, UVs preserved). Same "
+                               "passes as the Maya/Nuke layer exporters, applied LIVE with the "
+                               "layer's own camera regenerating projection UVs."}),
+                "target_vertex_count": ("INT", {"default": 2000, "min": 100, "max": 200000,
+                    "tooltip": "Vertex budget for quad/decimate (ignored by smooth)."}),
+                "smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 50,
+                    "tooltip": "Taubin iterations (smooth method, and post-smooth for quad)."}),
+                "crease_angle": ("FLOAT", {"default": 30.0, "min": 0.0, "max": 90.0,
+                    "tooltip": "Quad remesh crease preservation angle (degrees)."}),
+                "pure_quad": ("BOOLEAN", {"default": False,
+                    "tooltip": "Quad remesh: force pure quads (else quad-dominant)."}),
+            },
+        }
+
+    def retopo(self, solve, layer="", method="decimate", target_vertex_count=2000,
+               smooth_iterations=0, crease_angle=30.0, pure_quad=False, **_extra):
+        import copy
+
+        import numpy as np
+
+        from atlas_camera.exporters._layers import (
+            _retopologize_layer_mesh,
+            mesh_from_primitive,
+        )
+
+        solve_out = copy.deepcopy(solve)
+        sel = str(layer or "").strip()
+        lines = []
+
+        def _do(prim, camera, name):
+            meta = prim.metadata or {}
+            if prim.primitive_type != "mesh" or meta.get("source") != "depth_relief_mesh":
+                return
+            mesh = mesh_from_primitive(prim)
+            if mesh is None:
+                lines.append(f"{name}: empty mesh — skipped")
+                return
+            n_v0 = len(mesh.vertices)
+            try:
+                report = _retopologize_layer_mesh(
+                    mesh, camera, method=str(method),
+                    target_vertex_count=int(target_vertex_count),
+                    smooth_iterations=int(smooth_iterations),
+                    crease_angle=float(crease_angle), pure_quad=bool(pure_quad))
+            except (ImportError, ValueError, RuntimeError) as exc:
+                # A retopo node must never kill the graph — report the pip
+                # hint / config problem and pass the solve through untouched.
+                lines.append(f"{name}: SKIPPED — {exc}")
+                return
+            if not report.get("changed"):
+                lines.append(f"{name}: unchanged — {report.get('note', '')}")
+                return
+            meta["vertices"] = np.round(
+                np.asarray(mesh.vertices, dtype=np.float64).reshape(-1), 3).tolist()
+            meta["faces"] = np.asarray(mesh.faces).reshape(-1).astype(np.int64).tolist()
+            meta["uvs"] = np.round(
+                np.asarray(mesh.uvs, dtype=np.float64).reshape(-1), 4).tolist()
+            meta["n_vertices"] = int(len(mesh.vertices))
+            meta["n_faces"] = int(len(mesh.faces))
+            if len(mesh.vertices) != n_v0 and meta.get("edge_risk"):
+                meta["edge_risk"] = []  # indexes the OLD vertex order — consumed by the remesh
+            prim.metadata = meta
+            lines.append(
+                f"{name}: {report.get('method')} "
+                f"{report.get('in_verts')}->{report.get('out_verts')} verts, "
+                f"{report.get('in_faces')}->{report.get('out_faces')} faces — "
+                f"{report.get('note', '')}")
+
+        if sel in ("", "*"):
+            scene = getattr(solve_out, "projection_scene", None)
+            for prim in (getattr(scene, "proxy_geometry", None) or []):
+                _do(prim, solve_out.camera, "primary")
+        for src in (getattr(solve_out, "projection_sources", None) or []):
+            if sel == "*" or (sel and getattr(src, "name", "") == sel):
+                for prim in (getattr(src, "proxy_geometry", None) or []):
+                    _do(prim, src.camera, getattr(src, "name", "") or "layer")
+        if sel and sel != "*" and not lines:
+            names = [getattr(s, "name", "?")
+                     for s in (getattr(solve_out, "projection_sources", None) or [])]
+            lines.append(f"layer '{sel}' not found — available: "
+                         f"{', '.join(names) if names else '(none)'}; solve passed through")
+        return (solve_out, "\n".join(lines) or "nothing to retopologize")
+
+
 class AtlasDeriveWalls:
     """Vertical wall planes + foreground boxes/cylinders (azimuth_walls) — one
     job, general-purpose exterior blockout. Height is clipped to whatever 3D

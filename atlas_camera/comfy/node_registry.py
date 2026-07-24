@@ -57,6 +57,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveProjectionGeometry,
     AtlasDeriveReliefMesh,
     AtlasLiveMeshRepair,
+    AtlasRetopologizeLayer,
     AtlasDeriveWalls,
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
@@ -158,6 +159,7 @@ NODE_CLASS_MAPPINGS = {
     # Experimental (research-only)
     "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
     "AtlasLiveMeshRepair":        AtlasLiveMeshRepair,
+    "AtlasRetopologizeLayer":     AtlasRetopologizeLayer,
     "AtlasDeriveWalls":           AtlasDeriveWalls,
     "AtlasDeriveTowersSpires":    AtlasDeriveTowersSpires,
     "AtlasDeriveRoofsFacades":    AtlasDeriveRoofsFacades,
@@ -241,6 +243,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasMogeNormals":           "Atlas MoGe Normals 🧭",
     "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
     "AtlasLiveMeshRepair":        "Atlas Live Mesh Repair 🔧",
+    "AtlasRetopologizeLayer":     "Atlas Retopologize Layer 🔷",
     "AtlasDeriveWalls":           "Atlas Derive Walls 🧱",
     "AtlasDeriveTowersSpires":    "Atlas Derive Towers & Spires 🗼",
     "AtlasDeriveRoofsFacades":    "Atlas Derive Roofs & Facades 🏛",

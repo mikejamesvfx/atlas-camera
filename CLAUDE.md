@@ -326,8 +326,9 @@ Geometry & projection
   band nodes the plain sky mask on `band_ref_mask` (drift rule).
 - Seam doctrine: edge-extend smear lives on the layers BEHIND; the frontmost
   band keeps a clean cut; band priorities are FARTHEST-highest.
-- Export-only transforms (interior hole fill, retopo) never touch the live
-  projection mesh or `solve.proxy_geometry`.
+- Export-node transforms (interior hole fill, retopo widgets) never touch the
+  live projection mesh — live retopo happens ONLY via `AtlasRetopologizeLayer`,
+  which regenerates projective UVs (DESIGN_RULES 2026-07-24 revision).
 - Depth model doctrine: exterior -> V2-Metric-Outdoor, interior -> MoGe (or
   V2-Indoor); DA3 installs with `pip --no-deps`. Depth is SHARED via
   `ATLAS_DEPTH_MAP` so branches agree on metric scale.
