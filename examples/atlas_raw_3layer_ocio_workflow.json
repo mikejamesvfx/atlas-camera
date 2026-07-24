@@ -1367,7 +1367,7 @@
     }
    ],
    "widgets_values": [
-    "atlas_solve.json"
+    "output/atlas_raw_3layer/solve.json"
    ],
    "title": "Solve JSON",
    "id": 21,
