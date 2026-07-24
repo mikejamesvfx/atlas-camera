@@ -715,6 +715,60 @@ def repair_relief_mesh_grid_cuda(
                 break
             outside = grown
         capfill = invalid & ~outside
+        if capfill.any() and max_hole_edges > 0:
+            # SIZE CUTOFF (user-reported: a huge region that merely happens to
+            # be enclosed — floor-to-wall spans on interiors — was membraned
+            # into giant sheets). max_hole_edges already means "largest
+            # boundary loop the fill will close"; make the cap honour it too:
+            # label each enclosed hole (min-label propagation, 4-connectivity)
+            # and drop components whose boundary ring (cells adjacent to valid
+            # mesh, ~ the loop perimeter) exceeds max_hole_edges.
+            BIG = float(nr * nc + 1)
+            lbl_init = np.where(capfill, np.arange(nr * nc, dtype=np.float64).reshape(nr, nc), BIG)
+            lbl = None
+            try:
+                # Min-label propagation as GPU min-pooling (min = -maxpool(-x)),
+                # one pass per component-diameter step — trivial per pass, so a
+                # frame-spanning enclosed region converges fast. 8-connectivity
+                # (the pool kernel) only ever MERGES diagonal-touching holes,
+                # i.e. errs toward rejecting, which is the safe direction.
+                import torch
+                import torch.nn.functional as F
+                dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                lbl_t = torch.from_numpy(lbl_init).to(dev)[None, None]
+                cap_t = torch.from_numpy(capfill).to(dev)[None, None]
+                big_t = torch.full_like(lbl_t, BIG)
+                for i in range(nr + nc):
+                    m = torch.minimum(-F.max_pool2d(-lbl_t, 3, stride=1, padding=1), lbl_t)
+                    m = torch.where(cap_t, m, big_t)
+                    if (i & 15) == 15 and torch.equal(m, lbl_t):
+                        lbl_t = m
+                        break
+                    lbl_t = m
+                lbl = lbl_t[0, 0].cpu().numpy()
+            except ImportError:
+                lbl = lbl_init
+                for _ in range(min(nr + nc, 1024)):
+                    m = lbl.copy()
+                    for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        s = np.full_like(lbl, BIG)
+                        rs_dst = slice(max(dr, 0), nr + min(dr, 0))
+                        cs_dst = slice(max(dc, 0), nc + min(dc, 0))
+                        rs_src = slice(max(-dr, 0), nr + min(-dr, 0))
+                        cs_src = slice(max(-dc, 0), nc + min(-dc, 0))
+                        s[rs_dst, cs_dst] = lbl[rs_src, cs_src]
+                        m = np.minimum(m, s)
+                    m = np.where(capfill, m, BIG)
+                    if (m == lbl).all():
+                        break
+                    lbl = m
+            adj_valid = np.zeros((nr, nc), dtype=bool)
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                adj_valid |= _shift(vgrid, dr, dc)
+            ring = capfill & adj_valid
+            ring_labels, ring_counts = np.unique(lbl[ring], return_counts=True)
+            small = ring_labels[ring_counts <= int(max_hole_edges)]
+            capfill = capfill & np.isin(lbl, small)
         if capfill.any():
             # Init each enclosed cell at the mean of its valid 4-neighbours
             # (hole-boundary ring), everything else at the global mean of those

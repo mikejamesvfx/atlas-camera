@@ -823,6 +823,40 @@ def test_repair_relief_mesh_grid_cuda_cap_never_reconnects_wild_vertex():
         assert cand not in set(added.reshape(-1).tolist()), "wild vertex must stay orphaned"
 
 
+def test_repair_relief_mesh_grid_cuda_cap_size_cutoff():
+    """max_hole_edges bounds the cap too: a huge region that merely happens to
+    be enclosed (interior floor-to-wall spans) must stay open at a normal
+    threshold — capping it produced giant membrane sheets (found live on the
+    hangar plate) — while small holes still fill."""
+    pytest.importorskip("torch")
+    from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    view = np.array([[1, 0, 0, 0], [0, 1, 0, 4.0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+    fx = fy = 70.0
+    W = H = 96
+    cx = cy = 47.5
+    depth = np.full((H, W), 12.0, dtype=np.float64)
+    excl = np.zeros((H, W), dtype=bool)
+    excl[10:18, 10:18] = True   # small enclosed hole
+    excl[30:80, 30:88] = True   # huge enclosed region (perimeter >> 64)
+
+    def run(mhe):
+        m = build_relief_mesh(depth, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                              grid_long_edge=96, depth_edge_rel=0.5, smooth_iterations=0,
+                              exclude_mask=excl, apply_sky_heuristic=False)
+        n_hole, _ = repair_relief_mesh_grid_cuda(
+            m, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+            image_width=W, image_height=H, fill_holes=True, fill_sawteeth=False,
+            max_hole_edges=mhe, cap_enclosed=True)
+        return n_hole
+
+    small_only = run(64)
+    both = run(4096)
+    assert 0 < small_only < 200, "small hole fills; huge region must be rejected at 64"
+    assert both > 1000, "raising the threshold admits the huge region"
+
+
 def test_remove_stretched_faces_culls_shards():
     """remove_stretched_faces culls faces whose longest world edge exceeds the
     self-calibrated local-spacing budget, and leaves a clean mesh untouched."""

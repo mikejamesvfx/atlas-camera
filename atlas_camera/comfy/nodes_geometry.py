@@ -932,7 +932,10 @@ class AtlasLiveMeshRepair:
                                "the hole's own boundary depths (never a wall at the farthest depth). "
                                "Enclosure is channel-tolerant: dash-tear clusters reaching the "
                                "outside only through a <=2-cell corridor still count as enclosed. "
-                               "Open silhouette/frame boundaries can never be capped.",
+                               "SIZE cutoff: only holes whose boundary is within "
+                               "live_fill_max_hole_edges are capped — a huge region that merely "
+                               "happens to be enclosed stays open. live_fill_distance_m scopes it "
+                               "by depth. Open silhouette/frame boundaries can never be capped.",
                 }),
                 "smooth_boundary": ("INT", {
                     "default": 8, "min": 0, "max": 50,
