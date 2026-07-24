@@ -682,3 +682,117 @@ class AtlasExportCameraPathUSD:
         _write_export_manifest(solve, out, [("usd_camera_path", str(dest))],
                                "AtlasExportCameraPathUSD")
         return (str(dest),)
+
+
+class AtlasExportPlateEXR:
+    """📤 File-to-file OCIO plate conversion — the ACEScg EXR handoff.
+
+    ComfyUI's IMAGE tensors are display-referred and effectively 8-bit, so
+    "saving an EXR from Comfy" through the tensor path can never produce a real
+    scene-linear ACEScg plate. This node never touches the tensor: it takes the
+    ``plate_ref`` of an on-disk plate (typically ``AtlasLoadRAW``'s scene-linear
+    ``Linear Rec.709 (sRGB)`` sidecar — deliberately NEVER tagged ACEScg at the
+    demosaic, per the colourspace-honesty doctrine) and converts the FILE
+    float-to-float through OCIO into a new EXR tagged ``oiio:ColorSpace`` with
+    the target space. The conversion itself is ``plate.write_exr``'s existing
+    OCIO path (unpremultiply → convert → re-premultiply); this node is pure
+    orchestration.
+
+    The returned ``plate_ref`` points at the converted EXR, so wiring it into
+    ``AtlasAttachSourcePlate`` makes every DCC export reference the ACEScg
+    plate. A proxy/missing-file ref degrades soft (report + input ref passed
+    through) — an export chain must never die on a preview-only plate.
+
+    Needs ``[oiio]``.
+    """
+
+    RETURN_TYPES = ("STRING", "ATLAS_PLATE_REF", "STRING")
+    RETURN_NAMES = ("exr_path", "plate_ref", "report")
+    FUNCTION = "export"
+    CATEGORY = "Atlas Camera/Color"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "plate_ref": ("ATLAS_PLATE_REF",),
+            },
+            "optional": {
+                "output_colorspace": ("STRING", {"default": "ACEScg",
+                    "tooltip": "OCIO colourspace for the written EXR (built-in ACES config: "
+                               "ACEScg, ACEScct, ACES2065-1, ...). The file is tagged "
+                               "oiio:ColorSpace with this value so a DCC reads it back "
+                               "correctly with no out-of-band knowledge."}),
+                "output_dir": ("STRING", {"default": "atlas_exports/acescg_plates",
+                    "tooltip": "Directory for the converted EXR (created if missing)."}),
+                "bit_depth": (["half", "float"], {"default": "half",
+                    "tooltip": "half = 16-bit float (the VFX plate default), float = 32-bit."}),
+                "file_name": ("STRING", {"default": "",
+                    "tooltip": "Output file name. Blank = source stem + '_acescg.exr' "
+                               "(or the lowercased target space when it isn't ACEScg)."}),
+            },
+        }
+
+    def export(self, plate_ref, output_colorspace="ACEScg",
+               output_dir="atlas_exports/acescg_plates", bit_depth="half",
+               file_name="", **_extra):
+        from atlas_camera.core.schema import AtlasPlateRef
+        from atlas_camera.plate import read_plate, write_exr
+
+        src = getattr(plate_ref, "image_path", None)
+        if not src or not Path(str(src)).is_file():
+            report = ("PLATE EXR: SKIPPED — plate_ref carries no on-disk file "
+                      f"(image_path={src!r}, is_proxy={getattr(plate_ref, 'is_proxy', True)}). "
+                      "Wire a ref from AtlasLoadRAW (write_exr on) or AtlasLoadPlate; a "
+                      "browser-preview-only ref cannot become a float plate.")
+            return ("", plate_ref, report)
+
+        np = None
+        try:
+            import numpy as np  # noqa: F401
+        except ImportError as exc:  # pragma: no cover - numpy rides [oiio]
+            raise ImportError("AtlasExportPlateEXR needs numpy: pip install -e .[oiio]") from exc
+
+        # Untouched float pixels; write_exr performs the OCIO conversion itself.
+        result = read_plate(str(src), raw_data=True)
+        pixels = result.pixels
+        if result.alpha is not None:
+            pixels = np.concatenate([pixels, result.alpha[..., None]], axis=-1)
+
+        src_cs = (getattr(plate_ref, "colorspace", "") or result.input_colorspace
+                  or "Linear Rec.709 (sRGB)")
+        target = str(output_colorspace or "ACEScg").strip() or "ACEScg"
+
+        out_dir = Path(str(output_dir or "atlas_exports/acescg_plates"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if str(file_name or "").strip():
+            name = str(file_name).strip()
+            if not name.lower().endswith(".exr"):
+                name += ".exr"
+        else:
+            suffix = "acescg" if target.lower() == "acescg" else (
+                "".join(c for c in target.lower() if c.isalnum()) or "converted")
+            name = f"{Path(str(src)).stem}_{suffix}.exr"
+        out_path = out_dir / name
+
+        write_exr(str(out_path), pixels, bit_depth=str(bit_depth),
+                  source_colorspace=src_cs, output_colorspace=target,
+                  extra_attribs={"atlas:source_plate": str(src),
+                                 "atlas:source_colorspace": src_cs})
+
+        new_ref = AtlasPlateRef(
+            image_path=str(out_path),
+            preview_b64=getattr(plate_ref, "preview_b64", None),
+            colorspace=target,
+            bit_depth=("16f" if str(bit_depth) == "half" else "32f"),
+            role=getattr(plate_ref, "role", "source"),
+            is_proxy=False,
+            lut_path=getattr(plate_ref, "lut_path", None),
+            metadata={**(getattr(plate_ref, "metadata", None) or {}),
+                      "converted_from": str(src),
+                      "source_colorspace": src_cs},
+        )
+        report = (f"PLATE EXR: {out_path}\n"
+                  f"  {src_cs} -> {target}  ({bit_depth}, oiio:ColorSpace tagged)\n"
+                  f"  source: {src}")
+        return (str(out_path), new_ref, report)

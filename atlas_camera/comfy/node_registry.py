@@ -94,6 +94,7 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportNukeLayers,
     AtlasExportMayaLayers,
     AtlasExportCameraPathUSD,
+    AtlasExportPlateEXR,
 )
 
 
@@ -150,6 +151,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasBlockoutViewport":      AtlasBlockoutViewport,
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   AtlasExportCameraPathUSD,
+    "AtlasExportPlateEXR":        AtlasExportPlateEXR,
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              AtlasDepthMap,
     "AtlasMogeNormals":           AtlasMogeNormals,
@@ -233,6 +235,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasBlockoutViewport":      "Atlas Viewport 🧊",
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
+    "AtlasExportPlateEXR":        "Atlas Export ACEScg Plate 📤",
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              "Atlas Depth Map 🌊",
     "AtlasMogeNormals":           "Atlas MoGe Normals 🧭",
