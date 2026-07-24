@@ -619,7 +619,7 @@ def repair_relief_mesh_grid_cuda(
     """
     from atlas_camera.core.relief_mesh import repair_relief_grid_cuda
 
-    if not (fill_holes or fill_sawteeth):
+    if not (fill_holes or fill_sawteeth or cap_enclosed):
         return 0, 0
     verts = getattr(mesh, "vertices", None)
     faces = getattr(mesh, "faces", None)
@@ -689,7 +689,10 @@ def repair_relief_mesh_grid_cuda(
     #    fill_mask and hidden_geometry.fill_hidden_gaps use — so the cap is a
     #    smooth membrane blending the hole's own boundary depths.
     capfill = np.zeros((nr, nc), dtype=bool)
-    if cap_enclosed and fill_holes:
+    # cap_enclosed is its own toggle, deliberately NOT gated on fill_holes —
+    # an artist disabling the conv concavity fill still expects the Close
+    # Holes cap to run (found live: cap=true + fill_holes=false did nothing).
+    if cap_enclosed:
         invalid = ~vgrid
         diag8 = ((1, 0), (-1, 0), (0, 1), (0, -1),
                  (1, 1), (1, -1), (-1, 1), (-1, -1))
@@ -986,11 +989,29 @@ def smooth_boundary_loops(
         if len(loop) < int(min_loop):
             continue
         idx = np.asarray(loop, dtype=np.int64)
-        P = verts[idx]
+        P0 = verts[idx]
+        P = P0
         for _ in range(int(iterations)):
             for step in (float(lam), float(mu)):
                 mid = 0.5 * (np.roll(P, 1, axis=0) + np.roll(P, -1, axis=0))
                 P = P + step * (mid - P)
+        # DISPLACEMENT CLAMP (found live: a boundary loop that zigzags across a
+        # depth jump — near-far-near along a floor/wall tear — gets averaged in
+        # 3D and its vertices migrate METRES into the void between the two
+        # surfaces, ballooning attached faces into giant smooth tents). Jaggies
+        # are lattice-scale, so legitimate rounding never needs more than a few
+        # short-edge lengths of motion: clamp each vertex's total displacement
+        # to 2x the loop's 25th-percentile edge length (the short lattice edges;
+        # the long near-far jump edges are exactly what must NOT set the scale).
+        el = np.linalg.norm(P0 - np.roll(P0, -1, axis=0), axis=1)
+        max_disp = 2.0 * float(np.percentile(el, 25)) if len(el) else 0.0
+        if max_disp > 0:
+            disp = P - P0
+            dn = np.linalg.norm(disp, axis=1)
+            over = dn > max_disp
+            if over.any():
+                disp[over] *= (max_disp / dn[over])[:, None]
+            P = P0 + disp
         verts[idx] = P
         moved.append(idx)
     if not moved:

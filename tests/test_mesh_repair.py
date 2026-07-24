@@ -823,6 +823,30 @@ def test_repair_relief_mesh_grid_cuda_cap_never_reconnects_wild_vertex():
         assert cand not in set(added.reshape(-1).tolist()), "wild vertex must stay orphaned"
 
 
+def test_repair_relief_mesh_grid_cuda_cap_independent_of_fill_holes():
+    """cap_enclosed is its own toggle: it must run even with fill_holes=False
+    (found live: cap=true + fill_holes=false silently did nothing)."""
+    pytest.importorskip("torch")
+    from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    view = np.array([[1, 0, 0, 0], [0, 1, 0, 4.0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+    fx = fy = 70.0
+    W = H = 64
+    cx = cy = 31.5
+    depth = np.full((H, W), 10.0, dtype=np.float64)
+    excl = np.zeros((H, W), dtype=bool)
+    excl[20:28, 20:28] = True  # small enclosed hole
+    mesh = build_relief_mesh(depth, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                             grid_long_edge=64, depth_edge_rel=0.5, smooth_iterations=0,
+                             exclude_mask=excl, apply_sky_heuristic=False)
+    n_hole, _ = repair_relief_mesh_grid_cuda(
+        mesh, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+        image_width=W, image_height=H, fill_holes=False, fill_sawteeth=False,
+        max_hole_edges=64, cap_enclosed=True)
+    assert n_hole > 0, "cap must run without the conv fill"
+
+
 def test_repair_relief_mesh_grid_cuda_cap_size_cutoff():
     """max_hole_edges bounds the cap too: a huge region that merely happens to
     be enclosed (interior floor-to-wall spans) must stay open at a normal
@@ -891,6 +915,36 @@ def test_remove_stretched_faces_culls_shards():
     assert vi not in set(np.asarray(mesh.faces).reshape(-1).tolist())
     # factor 0 = off
     assert remove_stretched_faces(mesh, view_matrix=view, max_edge_factor=0.0) == 0
+
+
+def test_smooth_boundary_loops_clamps_depth_jump_zigzag():
+    """The tent/pyramid regression: a boundary loop zigzagging across a depth
+    jump (near-far-near along a floor/wall tear) must NOT have its vertices
+    dragged metres into the void by 3D averaging — displacement is clamped to
+    lattice scale (2x the loop's 25th-percentile edge length)."""
+    from types import SimpleNamespace
+
+    from atlas_camera.core.mesh_repair import smooth_boundary_loops
+
+    # Fan mesh: hub + a 32-vertex ring whose depth alternates in pairs between
+    # -3 and -12, so half the ring edges are short (lattice-like) and half jump
+    # the depth gap — the live failure's loop shape.
+    n = 32
+    ang = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    ring = np.stack([np.cos(ang), np.sin(ang), np.where((np.arange(n) // 2) % 2 == 0, -3.0, -12.0)], axis=1)
+    hub = np.array([[0.0, 0.0, -7.5]])
+    verts = np.concatenate([hub, ring]).astype(np.float64)
+    faces = np.array([[0, 1 + i, 1 + (i + 1) % n] for i in range(n)], dtype=np.int32)
+    mesh = SimpleNamespace(vertices=verts.copy(), faces=faces,
+                           uvs=np.zeros((len(verts), 2), dtype=np.float32))
+
+    n_moved = smooth_boundary_loops(mesh, iterations=8)
+    assert n_moved > 0
+    disp = np.linalg.norm(np.asarray(mesh.vertices, dtype=np.float64) - verts, axis=1)
+    el = np.linalg.norm(ring - np.roll(ring, -1, axis=0), axis=1)
+    limit = 2.0 * float(np.percentile(el, 25)) + 1e-6
+    assert disp.max() <= limit, (
+        f"zigzag loop vertex dragged {disp.max():.2f} m (limit {limit:.2f} m)")
 
 
 def test_smooth_boundary_loops_rounds_staircase():
