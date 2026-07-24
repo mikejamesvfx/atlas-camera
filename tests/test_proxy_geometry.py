@@ -245,7 +245,7 @@ def test_payload_is_json_safe():
 
 # ---------------------------------------------------------------------------
 # vertical_extrusion — Photo-Pop-up-style silhouette height (see the
-# "Sky-Aware Depth + Vertical-Silhouette Extrusion" design notes in CLAUDE.md)
+# "Sky-Aware Depth + Vertical-Silhouette Extrusion" design notes in docs/DESIGN_RULES.md)
 # ---------------------------------------------------------------------------
 
 def _scene_depth_with_noisy_sky_and_gable(h=1.6, wall_z=-10.0, wall_h=3.0, seed=7):
