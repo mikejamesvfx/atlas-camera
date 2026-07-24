@@ -128,3 +128,30 @@ def test_import_errors_are_not_swallowed(monkeypatch):
     monkeypatch.setattr(rm, "estimate_ground_scale", _boom)
     with pytest.raises(ImportError):
         _payload_with_depth()
+
+
+def test_debug_matte_b64_rides_the_payload():
+    """🎭 debug-matte isolate: the encoded matte must reach the payload verbatim
+    (and default to '' when absent) — the frontend samples it under Project."""
+    image = np.zeros((1, 64, 64, 3), dtype=np.float32)
+    p0 = _extract_blockout_camera(_solve(), image, 64, 64)
+    assert p0["debug_matte_b64"] == ""
+    p1 = _extract_blockout_camera(_solve(), image, 64, 64,
+                                  debug_matte_b64="data:image/png;base64,AAAA")
+    assert p1["debug_matte_b64"].startswith("data:image/png;base64,")
+
+
+def test_viewport_node_encodes_debug_matte():
+    """AtlasBlockoutViewport.render accepts a MASK debug_matte and encodes it
+    losslessly into the cached payload."""
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy.node_helpers import _ATLAS_BLOCKOUT_CACHE
+    from atlas_camera.comfy.nodes_viewport import AtlasBlockoutViewport
+
+    image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+    matte = torch.zeros((1, 64, 64), dtype=torch.float32)
+    matte[0, 16:48, 16:48] = 1.0
+    AtlasBlockoutViewport().render(_solve(), image, 64, "", debug_matte=matte,
+                                   unique_id="dbgmatte-test")
+    payload = _ATLAS_BLOCKOUT_CACHE["dbgmatte-test"]
+    assert payload["debug_matte_b64"].startswith("data:image/png;base64,")

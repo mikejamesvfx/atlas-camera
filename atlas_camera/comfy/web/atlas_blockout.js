@@ -605,6 +605,21 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform float uOccludeFeather;
   uniform float uStretchStart;
   uniform float uStretchEnd;
+  // 🎭 debug-matte isolate: a GLOBAL mask sampled at the fragment's PRIMARY-
+  // camera projected uv (uDbg* = the recovered camera, NOT this source's own
+  // projector — patches/outpainted skies project through different cameras, so
+  // the isolate must be evaluated in one shared image space). Outside the
+  // matte the display-space color is dimmed by uDebugMatteDim (0 = hard cull).
+  uniform sampler2D uDebugMatte;
+  uniform float uHasDebugMatte;
+  uniform float uDebugMatteOn;
+  uniform float uDebugMatteDim;
+  uniform mat4 uDbgViewMatrix;
+  uniform float uDbgFx;
+  uniform float uDbgFy;
+  uniform float uDbgCx;
+  uniform float uDbgCy;
+  uniform vec2 uDbgImageSize;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
@@ -836,6 +851,28 @@ const PROJECTION_FRAGMENT_SHADER = `
     if (uLayerDebug > 0.5) {
       outColor = mix(outColor, uLayerTint, 0.65);
     }
+    // 🎭 debug-matte isolate (display-space, like the overlays above): project
+    // this fragment through the PRIMARY/recovered camera (same math as the
+    // vertex shader's vImagePx, evaluated per-fragment against uDbg*) and dim
+    // or cull everything outside the wired matte. Out-of-frame / behind-camera
+    // fragments count as outside — they can't be inside a source-image matte.
+    if (uDebugMatteOn > 0.5 && uHasDebugMatte > 0.5) {
+      float dbgIn = 0.0;
+      vec4 dcam = uDbgViewMatrix * vec4(vWorldPos, 1.0);
+      float ddepth = -dcam.z;
+      if (ddepth > 1e-5) {
+        vec2 dpx = vec2(uDbgCx + uDbgFx * dcam.x / ddepth,
+                        uDbgCy - uDbgFy * dcam.y / ddepth);
+        vec2 duv = dpx / uDbgImageSize;
+        if (duv.x >= 0.0 && duv.x <= 1.0 && duv.y >= 0.0 && duv.y <= 1.0) {
+          dbgIn = texture2D(uDebugMatte, duv).r;
+        }
+      }
+      if (dbgIn < 0.5) {
+        if (uDebugMatteDim <= 0.001) discard;
+        outColor *= uDebugMatteDim;
+      }
+    }
     // WebGL's sRGB texture decode and atlasLinearToSRGB affect RGB only. Combine
     // source alpha with the independently filtered linear coverage, then hand
     // straight RGB + straight alpha to the fixed-function blend stage. A tiny
@@ -942,6 +979,19 @@ function makeProjectionMaterial(data, texture, opts) {
       uOccludeFeather: { value: 0.02 },
       uStretchStart: { value: 4.0 },
       uStretchEnd: { value: 16.0 },
+      // 🎭 debug-matte isolate — all values pushed per-frame by
+      // syncProjectionLightUniforms (materials are rebuilt every execution,
+      // so build-time defaults here are just inert placeholders).
+      uDebugMatte: { value: null },
+      uHasDebugMatte: { value: 0 },
+      uDebugMatteOn: { value: 0 },
+      uDebugMatteDim: { value: 0.15 },
+      uDbgViewMatrix: { value: new THREE.Matrix4() },
+      uDbgFx: { value: 1 },
+      uDbgFy: { value: 1 },
+      uDbgCx: { value: 0.5 },
+      uDbgCy: { value: 0.5 },
+      uDbgImageSize: { value: new THREE.Vector2(1, 1) },
       // 🎨 layer-debug identity color (fixed per source at build; toggle is
       // uLayerDebug, live-synced like uDebugHidden/the light uniforms).
       uLayerDebug: { value: 0 },
@@ -1642,13 +1692,21 @@ function buildNodeUI(node, containerEl) {
   // are rebuilt on every execution, so a set-once approach would go stale).
   let debugHiddenOn = false;
   let occludePrimaryOn = false;
+  // 🎭 debug-matte isolate (node `debug_matte` input): ON by default — wiring
+  // a matte means you want the isolate; the toolbar 🎭 button toggles it and
+  // its slider sets the outside-matte dim (0 = hard cull). Session-only.
+  let debugMatteOn = true;
+  let debugMatteDim = 0.15;
+  let debugMatteTex = null;   // loaded per execution from data.debug_matte_b64
+  let debugMatteCam = null;   // {vm, fx, fy, cx, cy, w, h} — the PRIMARY camera
   let occludeBias = 0.015;
   let layerDebugOn = false; // 🎨 per-layer identity tint toggle
   let bumpStrength = 0;     // 💡 Lights panel "Detail" — photo-luminance relight bump
   let bumpScale = 8;        // 💡 Lights panel "Scale" — bump sampling offset (texels)
   function syncProjectionLightUniforms() {
     const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn
-      || layerDebugOn || bumpStrength > 0 || occludePrimaryOn;
+      || layerDebugOn || bumpStrength > 0 || occludePrimaryOn
+      || (debugMatteOn && !!debugMatteTex);
     // Skip the traverse entirely while both lights have always been off (the
     // default), but still run once on the on->off transition so any material
     // that previously picked up a nonzero uLightNIntensity gets zeroed out.
@@ -1681,6 +1739,24 @@ function buildNodeUI(node, containerEl) {
       }
       if (mat.uniforms.uBumpScale) {
         mat.uniforms.uBumpScale.value = bumpScale;
+      }
+      // 🎭 debug-matte isolate: texture + toggle + dim + the PRIMARY camera
+      // (materials are rebuilt every execution, so everything is pushed here
+      // rather than at build — the same reason the light uniforms sync live).
+      if (mat.uniforms.uDebugMatte) {
+        const on = debugMatteOn && !!debugMatteTex && !!debugMatteCam;
+        mat.uniforms.uDebugMatte.value = debugMatteTex;
+        mat.uniforms.uHasDebugMatte.value = debugMatteTex ? 1 : 0;
+        mat.uniforms.uDebugMatteOn.value = on ? 1 : 0;
+        mat.uniforms.uDebugMatteDim.value = debugMatteDim;
+        if (on) {
+          mat.uniforms.uDbgViewMatrix.value.copy(debugMatteCam.vm);
+          mat.uniforms.uDbgFx.value = debugMatteCam.fx;
+          mat.uniforms.uDbgFy.value = debugMatteCam.fy;
+          mat.uniforms.uDbgCx.value = debugMatteCam.cx;
+          mat.uniforms.uDbgCy.value = debugMatteCam.cy;
+          mat.uniforms.uDbgImageSize.value.set(debugMatteCam.w, debugMatteCam.h);
+        }
       }
     });
   }
@@ -2079,6 +2155,38 @@ function buildNodeUI(node, containerEl) {
     layerLegend.style.display = layerDebugOn ? "block" : "none";
   };
   toolbar.appendChild(layerBtn);
+
+  // 🎭 Matte — debug-matte isolate (node `debug_matte` input, e.g. a layer's
+  // SAM3 mask): under 📽 Project, everything whose PRIMARY-camera projection
+  // falls outside the wired matte is dimmed to the slider level (0 = hard
+  // cull), so one layer's region can be inspected/orbited in isolation.
+  // Projection-mode only, live-synced like 🩻/🎨. ON by default when a matte
+  // is wired; inert (and visually dimmed) when none is.
+  const matteBtn = document.createElement("button");
+  matteBtn.textContent = "🎭 Matte";
+  matteBtn.title = "Isolate the region inside the wired debug_matte (dim/cull outside)";
+  matteBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  const matteDimSlider = document.createElement("input");
+  matteDimSlider.type = "range";
+  matteDimSlider.min = "0"; matteDimSlider.max = "0.6"; matteDimSlider.step = "0.05";
+  matteDimSlider.value = String(debugMatteDim);
+  matteDimSlider.title = "Outside-matte brightness (0 = hard cull)";
+  matteDimSlider.style.cssText = "width:70px;vertical-align:middle;display:none;";
+  matteDimSlider.oninput = () => { debugMatteDim = parseFloat(matteDimSlider.value); };
+  function refreshMatteBtn() {
+    const has = !!debugMatteTex || !!(recoveredData && recoveredData.debug_matte_b64);
+    matteBtn.style.opacity = has ? "1" : "0.45";
+    matteBtn.style.background = (debugMatteOn && has) ? "#1a2a3a" : "#2a2a2a";
+    matteBtn.style.color = (debugMatteOn && has) ? "#8cf" : "#ddd";
+    matteDimSlider.style.display = (debugMatteOn && has) ? "inline-block" : "none";
+  }
+  matteBtn.onclick = () => {
+    debugMatteOn = !debugMatteOn;
+    refreshMatteBtn();
+  };
+  node._atlasRefreshMatteBtn = refreshMatteBtn;
+  toolbar.appendChild(matteBtn);
+  toolbar.appendChild(matteDimSlider);
 
   // ---------------------------------------------------------------------------
   // 📐 Extract Angle — orbit to the view you want a patch generated at
@@ -3476,6 +3584,38 @@ function buildNodeUI(node, containerEl) {
       controls.syncFromCamera();                     // init orbit state from recovered pose
     }
     recoveredData = data;
+    // 🎭 debug-matte isolate: (re)load the matte texture + capture the PRIMARY
+    // camera for the shader's per-fragment projection. NoColorSpace (a matte is
+    // data, not color) + flipY:false (top-left uv origin, like uMatte). The old
+    // texture is disposed; absent matte clears the isolate entirely.
+    try {
+      if (debugMatteTex) { debugMatteTex.dispose(); debugMatteTex = null; }
+      debugMatteCam = null;
+      if (data.debug_matte_b64) {
+        const flat = data.view_matrix.flat();
+        const dvm = new THREE.Matrix4();
+        dvm.set(flat[0], flat[1], flat[2], flat[3],
+                flat[4], flat[5], flat[6], flat[7],
+                flat[8], flat[9], flat[10], flat[11],
+                flat[12], flat[13], flat[14], flat[15]);
+        debugMatteCam = {
+          vm: dvm,
+          fx: data.fx || 1, fy: data.fy || data.fx || 1,
+          cx: data.cx ?? (data.image_width || 1) / 2,
+          cy: data.cy ?? (data.image_height || 1) / 2,
+          w: data.image_width || 1, h: data.image_height || 1,
+        };
+        new THREE.TextureLoader().load(data.debug_matte_b64, (tex) => {
+          tex.colorSpace = THREE.NoColorSpace;
+          tex.flipY = false;
+          tex.needsUpdate = true;
+          if (debugMatteTex) debugMatteTex.dispose();
+          debugMatteTex = tex;
+          node._atlasRefreshMatteBtn?.();
+        });
+      }
+      node._atlasRefreshMatteBtn?.();
+    } catch (e) { /* a bad matte must never break the viewport refresh */ }
     // Stale-extraction cleanup + pause visibility: if the persisted
     // patch_angle was extracted from a DIFFERENT solve/image than the one
     // that just executed, clear it from the widget (the backend already

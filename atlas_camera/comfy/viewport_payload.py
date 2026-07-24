@@ -176,7 +176,8 @@ def _pack_primary_depth(solve, primary_depth, intr, extr, fx: float, fy: float, 
 def _extract_blockout_camera(
 solve, source_image, target_width: int, target_height: int,
                               preview_expand: float = 1.0, shot_intrinsics=None,
-                              output_profile=None, solve_fingerprint: str = "", primary_depth=None) -> dict[str, Any]:
+                              output_profile=None, solve_fingerprint: str = "",
+                              primary_depth=None, debug_matte_b64: str = "") -> dict[str, Any]:
     """Serialize the recovered camera into a dict the browser extension can consume.
 
     `shot_intrinsics` (optional, from AtlasShotCam via intrinsics_from_shot_cam)
@@ -323,6 +324,11 @@ solve, source_image, target_width: int, target_height: int,
         "primary_depth_b64": primary_depth_b64,
         "primary_depth_width": primary_depth_width,
         "primary_depth_height": primary_depth_height,
+        # 🎭 Debug matte (lossless PNG data URI, MASK resolution = source-image
+        # space): the frontend samples it at each fragment's PRIMARY-camera
+        # projected uv under 📽 Project and dims/culls outside — a per-layer
+        # debugging isolate (wire a SAM3 mask), display-only, never exported.
+        "debug_matte_b64": debug_matte_b64 or "",
     }
 
 __all__ = [

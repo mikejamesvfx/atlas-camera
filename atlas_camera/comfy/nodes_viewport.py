@@ -23,6 +23,7 @@ from atlas_camera.comfy.node_helpers import (
     _LAYER_DEBUG_PALETTE_HEX,
     _LAYER_DEBUG_PRIMARY_HEX,
     _blockout_cache_set,
+    _mask_to_b64_png,
     _clone_solve_with_metadata,
     _comfy_registry,
     _native_sam3_available,
@@ -217,12 +218,18 @@ class AtlasBlockoutViewport:
                     "tooltip": "Optional OCIO-style output/profile metadata from AtlasViewportControls. "
                                "Browser preview remains display-inferred/proxy; final fidelity belongs "
                                "to OCIO Write, Nuke, Maya, or Resolve."}),
+                "debug_matte": ("MASK", {
+                    "tooltip": "🎭 Optional debug isolate (e.g. a layer's SAM3 mask, source-image "
+                               "space): under 📽 Project the viewport dims everything whose "
+                               "primary-camera projection falls OUTSIDE this matte (🎭 toolbar "
+                               "toggle + dim slider; dim 0 = hard cull). Display-only — never "
+                               "affects exports, geometry, or the projection itself."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     def render(self, solve, source_image, resolution, client_data, primary_depth=None, preview_expand=1.0, controls=None,
-               shot_cam=None, output_profile=None, unique_id=None):
+               shot_cam=None, output_profile=None, debug_matte=None, unique_id=None):
         torch = _require_torch()
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
@@ -244,10 +251,20 @@ class AtlasBlockoutViewport:
         # Store camera data for the browser extension to fetch
         node_id = str(unique_id) if unique_id is not None else "0"
         solve_fingerprint = _solve_fingerprint(solve, source_image)
+        debug_matte_b64 = ""
+        if debug_matte is not None:
+            try:
+                m = debug_matte
+                if hasattr(m, "dim") and m.dim() == 3:  # ComfyUI MASK (B,H,W)
+                    m = m[0]
+                debug_matte_b64 = _mask_to_b64_png(m.cpu().numpy() if hasattr(m, "cpu") else m)
+            except Exception:
+                debug_matte_b64 = ""  # a bad matte must never kill the viewport
         _blockout_cache_set(node_id, _extract_blockout_camera(
             solve, source_image, width, height, preview_expand=float(preview_expand),
             shot_intrinsics=shot_intrinsics, output_profile=output_profile,
-            solve_fingerprint=solve_fingerprint, primary_depth=primary_depth))
+            solve_fingerprint=solve_fingerprint, primary_depth=primary_depth,
+            debug_matte_b64=debug_matte_b64))
 
         # IMPORTANT: return a "ui" payload. ComfyUI only emits the "executed"
         # websocket message (which triggers node.onExecuted / the frontend's
