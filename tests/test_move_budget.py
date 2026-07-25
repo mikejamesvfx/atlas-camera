@@ -515,3 +515,39 @@ def test_describe_is_human_readable_and_names_the_path_verdict():
     text = budget.describe()
     assert "Safe camera envelope" in text
     assert "EXCEEDS budget" in text
+
+
+def test_scene_triangles_include_projection_source_layer_meshes():
+    """Clean-plate layers live on ProjectionSource, not in proxy_geometry.
+
+    Without collecting them, a coverage measurement is blind to exactly the
+    geometry the layered workflow adds — found live when a clean-plate layer
+    visibly filling a tear changed nothing in the move budget. The budget's
+    covered set must count layer meshes, and the report must name them.
+    """
+    from atlas_camera.core.primitive_mesh import collect_scene_triangles
+    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+    from atlas_camera.core.schema import ProjectionSource
+
+    solve, mesh = _slab_solve_and_mesh()
+    solve.projection_scene.proxy_geometry = [relief_mesh_primitive(mesh)]
+
+    layer_mesh = ReliefMesh(
+        vertices=np.array([[0.0, 0.0, -30.0], [1.0, 0.0, -30.0], [0.0, 1.0, -30.0]]),
+        faces=np.array([[0, 1, 2]], dtype=np.int32),
+        uvs=np.zeros((3, 2)))
+    solve.projection_sources.append(ProjectionSource(
+        camera=solve.camera, name="cleanplate_background",
+        proxy_geometry=[relief_mesh_primitive(
+            layer_mesh, name="cleanplate_background_relief_mesh")]))
+
+    verts, faces, sources = collect_scene_triangles(solve)
+    assert any(s.startswith("layer:cleanplate_background/") for s in sources)
+    n_base = len(mesh.faces)
+    assert len(faces) == n_base + 1
+
+    # And the opt-out still exists for callers that want the scene alone.
+    _, faces_scene_only, src2 = collect_scene_triangles(
+        solve, include_projection_sources=False)
+    assert len(faces_scene_only) == n_base
+    assert not any(s.startswith("layer:") for s in src2)

@@ -148,6 +148,7 @@ def collect_scene_triangles(
     include_primitives: bool = True,
     exclude_roles: tuple[str, ...] = (),
     exclude_names: tuple[str, ...] = (),
+    include_projection_sources: bool = True,
 ) -> tuple[Any, Any, list[str]]:
     """Every triangle in a solve's projection scene, merged.
 
@@ -158,6 +159,14 @@ def collect_scene_triangles(
     ``exclude_names`` drops primitives by name. The move budget uses it to leave
     out the backdrop cyclorama, which spans the whole frustum and would
     otherwise make every measurement report full coverage.
+
+    ``include_projection_sources`` (default True) also collects each
+    ``ProjectionSource``'s own mesh — clean-plate layers, patch views. Layers
+    live on the source, NOT in ``projection_scene.proxy_geometry``, so without
+    this a coverage measurement is blind to exactly the geometry the layered
+    workflow adds: a clean-plate layer visibly filling a tear in the viewport
+    changed nothing in the move budget (found live, 2026-07-25). Sources are
+    reported as ``layer:<name>`` so the report shows what was counted.
     """
     np = _require_numpy()
     scene = getattr(solve, "projection_scene", None)
@@ -165,22 +174,34 @@ def collect_scene_triangles(
 
     chunks: list[tuple[Any, Any]] = []
     sources: list[str] = []
-    for prim in prims:
+
+    def _consume(prim: Any, label_prefix: str = "") -> None:
         kind = getattr(prim, "primitive_type", None)
         if kind == "mesh" and not include_mesh:
-            continue
+            return
         if kind != "mesh" and not include_primitives:
-            continue
+            return
         role = (getattr(prim, "metadata", None) or {}).get("role")
         if role and role in exclude_roles:
-            continue
+            return
         if (getattr(prim, "name", None) or "") in exclude_names:
-            continue
+            return
         built = tessellate_primitive(prim)
         if built is None:
-            continue
+            return
         chunks.append(built)
-        sources.append(getattr(prim, "name", None) or str(kind))
+        sources.append(label_prefix + (getattr(prim, "name", None) or str(kind)))
+
+    for prim in prims:
+        _consume(prim)
+
+    if include_projection_sources:
+        for src in getattr(solve, "projection_sources", None) or []:
+            src_name = getattr(src, "name", None) or "source"
+            for prim in getattr(src, "proxy_geometry", None) or []:
+                # Only the layer's mesh: a source's helper primitives (its own
+                # backdrop, cards) follow the same exclude rules as the scene's.
+                _consume(prim, label_prefix=f"layer:{src_name}/")
 
     if not chunks:
         return (np.zeros((0, 3), dtype=np.float64),
