@@ -339,6 +339,35 @@ class AtlasSAM3Mask:
         return (mask, report)
 
 
+def _align_span(lo: int, hi: int, limit: int, mult: int) -> tuple[int, int]:
+    """Grow ``[lo, hi)`` so its length is a multiple of ``mult``, inside
+    ``[0, limit)``. Growth is symmetric where possible, shifted inward at the
+    borders; when the whole axis is shorter than one multiple, fall back to
+    the largest multiple of 8 that fits (an even VAE latent grid)."""
+    span = hi - lo
+    target = ((span + mult - 1) // mult) * mult
+    if target > limit:
+        target = (limit // mult) * mult
+        if target == 0:
+            target = (limit // 8) * 8
+        if target <= 0:
+            return lo, hi                     # degenerate axis: leave it be
+    grow = target - span
+    if grow < 0:                              # shrink case (fallback target)
+        lo = max(0, min(lo, limit - target))
+        return lo, lo + target
+    lo = lo - grow // 2
+    hi = hi + (grow - grow // 2)
+    if lo < 0:
+        hi -= lo
+        lo = 0
+    if hi > limit:
+        lo -= hi - limit
+        hi = limit
+        lo = max(0, lo)
+    return lo, hi
+
+
 class AtlasInpaintCrop:
     """✂ Crop a padded box around the inpaint mask BEFORE the inpaint model.
 
@@ -404,6 +433,17 @@ class AtlasInpaintCrop:
         y1 = min(h, int(ys.max()) + 1 + pad)
         x0 = max(0, int(xs.min()) - pad)
         x1 = min(w, int(xs.max()) + 1 + pad)
+        # Snap the crop to multiples of 64. Two reasons, both found live:
+        # SD-family models want it anyway, and an unaligned crop (538x1446 on
+        # the overpass plate) reaches the VAE as an odd latent grid whose
+        # attention strides trip torch/cu130's cuDNN SDPA —
+        # "RuntimeError: query is not correctly aligned (strideM)" — killing
+        # the queue inside InpaintModelConditioning's vae.encode. Growth is
+        # outward (more context, never less), shifted inward at frame borders;
+        # an image smaller than the aligned span falls back to its largest
+        # 8-multiple, which keeps the latent grid even.
+        y0, y1 = _align_span(y0, y1, h, 64)
+        x0, x1 = _align_span(x0, x1, w, 64)
         region = {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "width": w, "height": h}
         return (image[:, y0:y1, x0:x1, :], m[:, y0:y1, x0:x1], region)
 
