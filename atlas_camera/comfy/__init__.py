@@ -21,6 +21,29 @@ __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
 WEB_DIRECTORY = "./web"
 
 # ---------------------------------------------------------------------------
+# Opt-in workaround: ATLAS_DISABLE_CUDNN_SDPA=1 disables torch's cuDNN SDPA
+# backend for the whole process. On torch 2.12+cu130 / RTX 5090 that backend
+# intermittently fails VAE-encode attention with "RuntimeError: query is not
+# correctly aligned (strideM)" (seen live killing AtlasSDXLInpaint's
+# InpaintModelConditioning; NOT reproducible with isolated same-shape tensors,
+# so it is allocator-state dependent, and ComfyUI exposes no switch of its
+# own). Flash/mem-efficient backends take over; VAE cost is negligible.
+# OPT-IN by env var precisely because flipping a global torch backend from a
+# node pack silently would be bad citizenship. Harmless if run twice (this
+# module loads twice at ComfyUI startup — see the route guard below).
+if os.environ.get("ATLAS_DISABLE_CUDNN_SDPA", "").strip().lower() not in ("", "0", "false", "off", "no"):
+    try:
+        import torch as _torch
+        if _torch.cuda.is_available():
+            _torch.backends.cuda.enable_cudnn_sdp(False)
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                "[AtlasCamera] cuDNN SDPA disabled (ATLAS_DISABLE_CUDNN_SDPA) — "
+                "strideM workaround; flash/mem-efficient backends remain active.")
+    except Exception:
+        pass  # torch absent or too old — nothing to disable
+
+# ---------------------------------------------------------------------------
 # Optional: register API routes if PromptServer is available (ComfyUI context).
 # This is a no-op when the package is imported outside ComfyUI.
 # ---------------------------------------------------------------------------
