@@ -1,8 +1,8 @@
 {
-  "id": "6fd352f8-8d0a-44c7-b081-d83385fdbc5f",
+  "id": "0b068500-ea2c-4374-8fb2-827b37d2edfc",
   "revision": 0,
-  "last_node_id": 18,
-  "last_link_id": 31,
+  "last_node_id": 19,
+  "last_link_id": 33,
   "nodes": [
     {
       "id": 1,
@@ -25,7 +25,7 @@
           "type": "IMAGE",
           "links": [
             1,
-            31
+            33
           ]
         }
       ],
@@ -94,7 +94,7 @@
           "name": "sam_prompt_bg",
           "type": "STRING",
           "links": [
-            24
+            25
           ]
         },
         {
@@ -109,7 +109,7 @@
           "type": "STRING",
           "links": [
             4,
-            23
+            24
           ]
         }
       ],
@@ -156,9 +156,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            15,
-            16,
-            19
+            16
           ]
         },
         {
@@ -170,8 +168,15 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            17,
-            21
+            18,
+            22
+          ]
+        },
+        {
+          "name": "sky_mask",
+          "type": "MASK",
+          "links": [
+            29
           ]
         }
       ],
@@ -207,6 +212,47 @@
     },
     {
       "id": 4,
+      "type": "AtlasScaleOverride",
+      "pos": [
+        840,
+        720
+      ],
+      "size": [
+        340,
+        130
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            15,
+            17,
+            20
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasScaleOverride"
+      },
+      "widgets_values": [
+        1.0,
+        0.0
+      ],
+      "title": "3b \u00b7 \ud83d\udccf SCALE DIAL (AI vistas: set camera height!)"
+    },
+    {
+      "id": 5,
       "type": "AtlasSAM3Mask",
       "pos": [
         430,
@@ -217,7 +263,7 @@
         150
       ],
       "flags": {},
-      "order": 3,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -261,7 +307,7 @@
       "title": "4 \u00b7 \ud83e\ude84 SAM3 OCCLUDER MASK"
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "AtlasInpaintCrop",
       "pos": [
         800,
@@ -272,7 +318,7 @@
         150
       ],
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -318,7 +364,7 @@
       "title": "5 \u00b7 \u2702 CROP THE OCCLUSION EVENT"
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "AtlasSDXLInpaint",
       "pos": [
         1140,
@@ -329,7 +375,7 @@
         420
       ],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -371,7 +417,7 @@
       "title": "6 \u00b7 \u2728 PAINT THE OCCLUDERS OUT"
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "AtlasInpaintStitch",
       "pos": [
         1560,
@@ -382,7 +428,7 @@
         150
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -408,7 +454,7 @@
           "links": [
             13,
             14,
-            27
+            28
           ]
         }
       ],
@@ -421,7 +467,7 @@
       "title": "7 \u00b7 STITCH \u2192 CLEAN PLATE"
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "PreviewImage",
       "pos": [
         1560,
@@ -432,7 +478,7 @@
         280
       ],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -449,7 +495,7 @@
       "title": "CLEAN PLATE (in-graph)"
     },
     {
-      "id": 9,
+      "id": 10,
       "type": "AtlasDepthMap",
       "pos": [
         1900,
@@ -460,7 +506,7 @@
         200
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -479,7 +525,7 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            26
+            27
           ]
         }
       ],
@@ -493,7 +539,7 @@
       "title": "8 \u00b7 CLEAN PLATE'S OWN DEPTH (doctrine)"
     },
     {
-      "id": 10,
+      "id": 11,
       "type": "AtlasDeriveWalls",
       "pos": [
         1250,
@@ -504,18 +550,18 @@
         150
       ],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 16
+          "link": 17
         },
         {
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 17
+          "link": 18
         }
       ],
       "outputs": [
@@ -523,7 +569,7 @@
           "name": "ATLAS_SOLVE",
           "type": "ATLAS_SOLVE",
           "links": [
-            18
+            19
           ]
         }
       ],
@@ -539,7 +585,7 @@
       "title": "9 \u00b7 FIT PLANES"
     },
     {
-      "id": 11,
+      "id": 12,
       "type": "AtlasMergeGeometry",
       "pos": [
         1250,
@@ -550,18 +596,18 @@
         150
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
           "name": "solve_a",
           "type": "ATLAS_SOLVE",
-          "link": 18
+          "link": 19
         },
         {
           "name": "solve_b",
           "type": "ATLAS_SOLVE",
-          "link": 19
+          "link": 20
         }
       ],
       "outputs": [
@@ -569,7 +615,7 @@
           "name": "ATLAS_SOLVE",
           "type": "ATLAS_SOLVE",
           "links": [
-            20
+            21
           ]
         }
       ],
@@ -580,52 +626,11 @@
       "title": "10 \u00b7 MERGE + RELIEF"
     },
     {
-      "id": 12,
+      "id": 13,
       "type": "AtlasOcclusionGraph",
       "pos": [
         1250,
         450
-      ],
-      "size": [
-        340,
-        150
-      ],
-      "flags": {},
-      "order": 11,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 20
-        },
-        {
-          "name": "depth",
-          "type": "ATLAS_DEPTH_MAP",
-          "link": 21
-        }
-      ],
-      "outputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "links": [
-            22
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasOcclusionGraph"
-      },
-      "widgets_values": [],
-      "title": "11 \u00b7 \ud83d\udd78 GRAPH"
-    },
-    {
-      "id": 13,
-      "type": "AtlasLayerPlan",
-      "pos": [
-        1620,
-        160
       ],
       "size": [
         340,
@@ -638,17 +643,12 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
+          "link": 21
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
           "link": 22
-        },
-        {
-          "name": "foreground_concepts_override",
-          "type": "STRING",
-          "link": 23
-        },
-        {
-          "name": "background_concepts_override",
-          "type": "STRING",
-          "link": 24
         }
       ],
       "outputs": [
@@ -656,8 +656,54 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            25,
-            28
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasOcclusionGraph"
+      },
+      "widgets_values": [],
+      "title": "11 \u00b7 \ud83d\udd78 GRAPH"
+    },
+    {
+      "id": 14,
+      "type": "AtlasLayerPlan",
+      "pos": [
+        1620,
+        160
+      ],
+      "size": [
+        340,
+        150
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 23
+        },
+        {
+          "name": "foreground_concepts_override",
+          "type": "STRING",
+          "link": 24
+        },
+        {
+          "name": "background_concepts_override",
+          "type": "STRING",
+          "link": 25
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            26,
+            30
           ]
         }
       ],
@@ -670,7 +716,7 @@
       "title": "12 \u00b7 \ud83e\udd5e LAYER PLAN"
     },
     {
-      "id": 14,
+      "id": 15,
       "type": "AtlasCleanPlateLayer",
       "pos": [
         2280,
@@ -681,23 +727,33 @@
         560
       ],
       "flags": {},
-      "order": 13,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 25
+          "link": 26
         },
         {
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 26
+          "link": 27
         },
         {
           "name": "plate_image",
           "type": "IMAGE",
-          "link": 27
+          "link": 28
+        },
+        {
+          "name": "plate_ref",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": 29
         }
       ],
       "outputs": [
@@ -705,8 +761,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            29,
-            30
+            31,
+            32
           ]
         }
       ],
@@ -721,7 +777,7 @@
         "cleanplate_background",
         0.0,
         384,
-        1.5,
+        0.15,
         false,
         false,
         0,
@@ -739,7 +795,7 @@
       "title": "13 \u00b7 \ud83e\udd6e BACKGROUND LAYER (full range)"
     },
     {
-      "id": 15,
+      "id": 16,
       "type": "AtlasMoveBudget",
       "pos": [
         2280,
@@ -750,13 +806,13 @@
         150
       ],
       "flags": {},
-      "order": 14,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 28
+          "link": 30
         }
       ],
       "outputs": [],
@@ -773,7 +829,7 @@
       "title": "14a \u00b7 \ud83d\udcd0 BUDGET before"
     },
     {
-      "id": 16,
+      "id": 17,
       "type": "AtlasMoveBudget",
       "pos": [
         2700,
@@ -784,13 +840,13 @@
         150
       ],
       "flags": {},
-      "order": 15,
+      "order": 16,
       "mode": 0,
       "inputs": [
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 29
+          "link": 31
         }
       ],
       "outputs": [],
@@ -807,7 +863,7 @@
       "title": "14b \u00b7 \ud83d\udcd0 BUDGET after \u2014 must GROW"
     },
     {
-      "id": 17,
+      "id": 18,
       "type": "AtlasBlockoutViewport",
       "pos": [
         2700,
@@ -818,18 +874,18 @@
         640
       ],
       "flags": {},
-      "order": 16,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 30
+          "link": 32
         },
         {
           "name": "source_image",
           "type": "IMAGE",
-          "link": 31
+          "link": 33
         }
       ],
       "outputs": [],
@@ -844,7 +900,7 @@
       "title": "15 \u00b7 VIEWPORT"
     },
     {
-      "id": 18,
+      "id": 19,
       "type": "Note",
       "pos": [
         60,
@@ -855,7 +911,7 @@
         620
       ],
       "flags": {},
-      "order": 17,
+      "order": 18,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -889,7 +945,7 @@
       3,
       2,
       0,
-      4,
+      5,
       0,
       "IMAGE"
     ],
@@ -897,7 +953,7 @@
       4,
       2,
       7,
-      4,
+      5,
       1,
       "STRING"
     ],
@@ -905,7 +961,7 @@
       5,
       2,
       6,
-      4,
+      5,
       2,
       "STRING"
     ],
@@ -913,31 +969,31 @@
       6,
       2,
       0,
-      5,
+      6,
       0,
       "IMAGE"
     ],
     [
       7,
-      4,
-      0,
       5,
+      0,
+      6,
       1,
       "MASK"
     ],
     [
       8,
-      5,
-      0,
       6,
+      0,
+      7,
       0,
       "IMAGE"
     ],
     [
       9,
-      5,
-      1,
       6,
+      1,
+      7,
       1,
       "MASK"
     ],
@@ -945,47 +1001,47 @@
       10,
       2,
       0,
-      7,
+      8,
       0,
       "IMAGE"
     ],
     [
       11,
-      6,
-      0,
       7,
+      0,
+      8,
       1,
       "IMAGE"
     ],
     [
       12,
-      5,
+      6,
       2,
-      7,
+      8,
       2,
       "ATLAS_CROP_REGION"
     ],
     [
       13,
-      7,
-      0,
       8,
+      0,
+      9,
       0,
       "IMAGE"
     ],
     [
       14,
-      7,
+      8,
       0,
-      9,
+      10,
       0,
       "IMAGE"
     ],
     [
       15,
-      3,
+      4,
       0,
-      9,
+      10,
       1,
       "ATLAS_SOLVE"
     ],
@@ -993,52 +1049,44 @@
       16,
       3,
       0,
-      10,
+      4,
       0,
       "ATLAS_SOLVE"
     ],
     [
       17,
-      3,
-      2,
-      10,
-      1,
-      "ATLAS_DEPTH_MAP"
-    ],
-    [
-      18,
-      10,
+      4,
       0,
       11,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      19,
+      18,
       3,
-      0,
+      2,
       11,
       1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      19,
+      11,
+      0,
+      12,
+      0,
       "ATLAS_SOLVE"
     ],
     [
       20,
-      11,
+      4,
       0,
       12,
-      0,
+      1,
       "ATLAS_SOLVE"
     ],
     [
       21,
-      3,
-      2,
-      12,
-      1,
-      "ATLAS_DEPTH_MAP"
-    ],
-    [
-      22,
       12,
       0,
       13,
@@ -1046,74 +1094,98 @@
       "ATLAS_SOLVE"
     ],
     [
-      23,
+      22,
+      3,
       2,
-      7,
       13,
       1,
-      "STRING"
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      23,
+      13,
+      0,
+      14,
+      0,
+      "ATLAS_SOLVE"
     ],
     [
       24,
       2,
-      5,
-      13,
-      2,
+      7,
+      14,
+      1,
       "STRING"
     ],
     [
       25,
-      13,
-      0,
+      2,
+      5,
       14,
-      0,
-      "ATLAS_SOLVE"
+      2,
+      "STRING"
     ],
     [
       26,
-      9,
-      0,
       14,
-      1,
-      "ATLAS_DEPTH_MAP"
-    ],
-    [
-      27,
-      7,
-      0,
-      14,
-      2,
-      "IMAGE"
-    ],
-    [
-      28,
-      13,
       0,
       15,
       0,
       "ATLAS_SOLVE"
     ],
     [
+      27,
+      10,
+      0,
+      15,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      28,
+      8,
+      0,
+      15,
+      2,
+      "IMAGE"
+    ],
+    [
       29,
-      14,
-      0,
-      16,
-      0,
-      "ATLAS_SOLVE"
+      3,
+      3,
+      15,
+      4,
+      "MASK"
     ],
     [
       30,
       14,
       0,
-      17,
+      16,
       0,
       "ATLAS_SOLVE"
     ],
     [
       31,
-      1,
+      15,
       0,
       17,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      32,
+      15,
+      0,
+      18,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      33,
+      1,
+      0,
+      18,
       1,
       "IMAGE"
     ]

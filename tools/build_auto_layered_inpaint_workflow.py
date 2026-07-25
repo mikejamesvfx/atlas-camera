@@ -63,6 +63,27 @@ def widget_defaults(node_type: str, overrides: dict | None = None) -> list:
     return out
 
 
+
+def socket_names(node_type: str) -> list:
+    """Declared names of link-capable (non-widget) inputs, in order — used to
+    name padded input slots. A padded slot with name "" renders as a nameless
+    stray socket in the frontend (reported live)."""
+    cls = R.NODE_CLASS_MAPPINGS.get(node_type)
+    if cls is None:
+        return []
+    out = []
+    for section in ("required", "optional"):
+        for name, decl in (cls.INPUT_TYPES().get(section) or {}).items():
+            if not isinstance(decl, (tuple, list)) or not decl:
+                continue
+            kind = decl[0]
+            opts = decl[1] if len(decl) > 1 and isinstance(decl[1], dict) else {}
+            is_widget = (isinstance(kind, (list, tuple)) or
+                         kind in ("INT", "FLOAT", "STRING", "BOOLEAN"))                 and not opts.get("forceInput")
+            if not is_widget:
+                out.append(name)
+    return out
+
 class Builder:
     def __init__(self):
         self.nodes, self.links = [], []
@@ -104,8 +125,11 @@ class Builder:
             {"name": src_name or type_name, "type": type_name})
         s["outputs"][src_slot].setdefault("links", []).append(self.lid)
         d = self._node(dst)
+        names = socket_names(d["type"])
         while len(d["inputs"]) <= dst_slot:
-            d["inputs"].append({"name": "", "type": type_name, "link": None})
+            idx = len(d["inputs"])
+            pad_name = names[idx] if idx < len(names) else ""
+            d["inputs"].append({"name": pad_name, "type": type_name, "link": None})
         entry = {"name": dst_name or type_name.lower(), "type": type_name,
                  "link": self.lid}
         if widget_name:
@@ -161,6 +185,14 @@ def main() -> None:
                 overrides={"depth_model": "Ruicheng/moge-2-vitl-normal"},
                 size=(360, 500))
 
+    # The AI-vista scale trap: plates with no measurable ground contact solve
+    # to the assumed 1.6 m eye height and the whole world builds ~10x too
+    # small — the shoebox viewport. camera_height_m is the artist dial;
+    # defaults are pass-through, so real photographs are untouched.
+    scale = b.add("AtlasScaleOverride", (840, 720),
+                  "3b · \U0001f4cf SCALE DIAL (AI vistas: set camera height!)",
+                  size=(340, 130))
+
     sam = b.add("AtlasSAM3Mask", (430, 660), "4 · \U0001fa84 SAM3 OCCLUDER MASK")
 
     crop = b.add("AtlasInpaintCrop", (800, 700),
@@ -199,7 +231,14 @@ def main() -> None:
                   "13 · \U0001f96e BACKGROUND LAYER (full range)",
                   overrides={"near_pct": 0.0, "far_pct": 0.0,
                              "fill_occluded": False,
-                             "name": "cleanplate_background"},
+                             "name": "cleanplate_background",
+                             # The node's 1.5 default DISABLES tearing — right
+                             # for band-clipped layers (the band split does the
+                             # separating), wrong for a FULL-RANGE layer: sky,
+                             # cliffs and subject rubber-sheet into a closed
+                             # box (found live). 0.15 = the derive-node
+                             # standard silhouette tear.
+                             "depth_edge_rel": 0.15},
                   size=(380, 560))
 
     bud_a = b.add("AtlasMoveBudget", (2280, 130), "14a · \U0001f4d0 BUDGET before")
@@ -228,13 +267,14 @@ def main() -> None:
     b.link(stitch, 0, cpprev, 0, "IMAGE", src_name="image", dst_name="images")
 
     b.link(stitch, 0, cdepth, 0, "IMAGE", src_name="image", dst_name="image")
-    b.link(inp, 0, cdepth, 1, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
+    b.link(scale, 0, cdepth, 1, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
 
-    b.link(inp, 0, walls, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
+    b.link(inp, 0, scale, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
+    b.link(scale, 0, walls, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
     b.link(inp, 2, walls, 1, "ATLAS_DEPTH_MAP", src_name="depth", dst_name="depth")
     b.link(walls, 0, merge, 0, "ATLAS_SOLVE", src_name="ATLAS_SOLVE",
            dst_name="solve_a")
-    b.link(inp, 0, merge, 1, "ATLAS_SOLVE", src_name="solve", dst_name="solve_b")
+    b.link(scale, 0, merge, 1, "ATLAS_SOLVE", src_name="solve", dst_name="solve_b")
     b.link(merge, 0, graph, 0, "ATLAS_SOLVE", src_name="ATLAS_SOLVE",
            dst_name="solve")
     b.link(inp, 2, graph, 1, "ATLAS_DEPTH_MAP", src_name="depth", dst_name="depth")
@@ -249,6 +289,11 @@ def main() -> None:
            dst_name="depth")
     b.link(stitch, 0, layer, 2, "IMAGE", src_name="image",
            dst_name="plate_image")
+    # Sky must NOT become layer geometry — without this the full-range layer
+    # meshes the sky at the depth model's far guess and builds a box lid over
+    # the scene. The primary's sky mask is close enough for the clean plate.
+    b.link(inp, 3, layer, 4, "MASK", src_name="sky_mask",
+           dst_name="exclude_mask")
 
     b.link(plan, 0, bud_a, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
     b.link(layer, 0, bud_b, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")

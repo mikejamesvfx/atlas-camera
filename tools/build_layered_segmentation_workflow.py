@@ -64,6 +64,27 @@ def widget_defaults(node_type: str, overrides: dict | None = None) -> list:
     return out
 
 
+
+def socket_names(node_type: str) -> list:
+    """Declared names of link-capable (non-widget) inputs, in order — used to
+    name padded input slots. A padded slot with name "" renders as a nameless
+    stray socket in the frontend (reported live)."""
+    cls = R.NODE_CLASS_MAPPINGS.get(node_type)
+    if cls is None:
+        return []
+    out = []
+    for section in ("required", "optional"):
+        for name, decl in (cls.INPUT_TYPES().get(section) or {}).items():
+            if not isinstance(decl, (tuple, list)) or not decl:
+                continue
+            kind = decl[0]
+            opts = decl[1] if len(decl) > 1 and isinstance(decl[1], dict) else {}
+            is_widget = (isinstance(kind, (list, tuple)) or
+                         kind in ("INT", "FLOAT", "STRING", "BOOLEAN"))                 and not opts.get("forceInput")
+            if not is_widget:
+                out.append(name)
+    return out
+
 class Builder:
     def __init__(self):
         self.nodes, self.links = [], []
@@ -105,8 +126,11 @@ class Builder:
             {"name": src_name or type_name, "type": type_name})
         s["outputs"][src_slot].setdefault("links", []).append(self.lid)
         d = self._node(dst)
+        names = socket_names(d["type"])
         while len(d["inputs"]) <= dst_slot:
-            d["inputs"].append({"name": "", "type": type_name, "link": None})
+            idx = len(d["inputs"])
+            pad_name = names[idx] if idx < len(names) else ""
+            d["inputs"].append({"name": pad_name, "type": type_name, "link": None})
         entry = {"name": dst_name or type_name.lower(), "type": type_name,
                  "link": self.lid}
         if widget_name:
@@ -193,7 +217,8 @@ def main() -> None:
                   "10 · \U0001f96e BACKGROUND LAYER (full range)",
                   overrides={"near_pct": 0.0, "far_pct": 0.0,
                              "fill_occluded": False,
-                             "name": "cleanplate_background"},
+                             "name": "cleanplate_background",
+                             "depth_edge_rel": 0.15},
                   size=(380, 560))
 
     # --- verdicts ------------------------------------------------------------
@@ -239,6 +264,8 @@ def main() -> None:
            dst_name="depth")
     b.link(clean, 0, layer, 2, "IMAGE", src_name="IMAGE",
            dst_name="plate_image")
+    b.link(inp, 3, layer, 4, "MASK", src_name="sky_mask",
+           dst_name="exclude_mask")
 
     b.link(plan, 0, bud_a, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
     b.link(layer, 0, bud_b, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
