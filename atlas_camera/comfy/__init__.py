@@ -43,6 +43,49 @@ if os.environ.get("ATLAS_DISABLE_CUDNN_SDPA", "").strip().lower() not in ("", "0
     except Exception:
         pass  # torch absent or too old — nothing to disable
 
+# Reactive rescue for the same bug, ALWAYS on (unlike the proactive opt-in
+# above) because it is a no-op until the failure actually happens: wrap
+# comfy.ops.scaled_dot_product_attention and, only when the cuDNN/cutlass
+# alignment error fires, retry with freshly-allocated clones (a fresh
+# allocation is pointer-aligned; the live failures are allocator-state
+# dependent) and finally with the math backend. Without this the queue dies
+# mid-graph, so a retry cannot make anything worse. Guarded against the
+# double import.
+try:
+    import comfy.ops as _comfy_ops  # only resolvable inside ComfyUI
+
+    if not getattr(_comfy_ops, "_atlas_sdpa_rescue", False):
+        _orig_sdpa = _comfy_ops.scaled_dot_product_attention
+
+        def _atlas_sdpa(q, k, v, *args, **kwargs):
+            try:
+                return _orig_sdpa(q, k, v, *args, **kwargs)
+            except RuntimeError as exc:
+                if "aligned" not in str(exc):
+                    raise
+                import logging
+                import torch as _t
+                log = logging.getLogger("atlas_camera")
+                try:
+                    out = _orig_sdpa(q.contiguous().clone(), k.contiguous().clone(),
+                                     v.contiguous().clone(), *args, **kwargs)
+                    log.warning("[AtlasCamera] SDPA alignment error rescued via "
+                                "fresh-allocation retry (%s)", str(exc)[:60])
+                    return out
+                except RuntimeError:
+                    from torch.nn.attention import SDPBackend, sdpa_kernel
+                    with sdpa_kernel([SDPBackend.MATH]):
+                        out = _t.nn.functional.scaled_dot_product_attention(
+                            q, k, v, *args, **kwargs)
+                    log.warning("[AtlasCamera] SDPA alignment error rescued via "
+                                "math backend (%s)", str(exc)[:60])
+                    return out
+
+        _comfy_ops.scaled_dot_product_attention = _atlas_sdpa
+        _comfy_ops._atlas_sdpa_rescue = True
+except Exception:
+    pass  # outside ComfyUI, or comfy internals moved — never block import
+
 # ---------------------------------------------------------------------------
 # Optional: register API routes if PromptServer is available (ComfyUI context).
 # This is a no-op when the package is imported outside ComfyUI.
