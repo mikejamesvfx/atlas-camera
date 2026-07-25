@@ -587,6 +587,9 @@ class AtlasMoveBudget:
     samples: list[MoveBudgetSample] = field(default_factory=list)
     saturated: list[str] = field(default_factory=list)
     geometry_sources: list[str] = field(default_factory=list)
+    # Disocclusion already visible from the recovered camera. Not a
+    # move-budget problem, but a real projection-coverage signal.
+    baseline_fraction: float = 0.0
     path_frames: list[PathFrameSample] = field(default_factory=list)
     path_worst_fraction: float | None = None
     path_worst_frame: int | None = None
@@ -606,6 +609,7 @@ class AtlasMoveBudget:
             "samples": [s.to_dict() for s in self.samples],
             "saturated": list(self.saturated),
             "geometry_sources": list(self.geometry_sources),
+            "baseline_fraction": round(float(self.baseline_fraction), 6),
             "notes": list(self.notes),
         }
         if self.path_frames:
@@ -634,6 +638,7 @@ class AtlasMoveBudget:
             samples=[MoveBudgetSample(**s) for s in data.get("samples", [])],
             saturated=list(data.get("saturated", [])),
             geometry_sources=list(data.get("geometry_sources", [])),
+            baseline_fraction=float(data.get("baseline_fraction", 0.0)),
             path_frames=[PathFrameSample(**f) for f in path.get("frames", [])],
             path_worst_fraction=path.get("worst_fraction"),
             path_worst_frame=path.get("worst_frame"),
@@ -650,6 +655,10 @@ class AtlasMoveBudget:
         ]
         if self.geometry_sources:
             lines.append(f"  measured against: {', '.join(self.geometry_sources)}")
+        if self.baseline_fraction > 1e-4:
+            lines.append(
+                f"  {self.baseline_fraction:.1%} of frame already tears at the recovered "
+                "camera (projection coverage, not a move limit) — excluded from the budget.")
         if self.saturated:
             lines.append(f"  (unbounded within search cap: {', '.join(self.saturated)})")
         if self.path_within_budget is not None:
@@ -861,19 +870,38 @@ def estimate_move_budget(
 
     samples: list[MoveBudgetSample] = []
 
-    def probe(axis: str, offset: float) -> float:
-        view = offset_view_matrix(base_view, **_axis_kwargs(axis, offset))
+    def raw(view: Any) -> tuple[float, int]:
         fraction, _, clipped = tear_disocclusion_fraction(
             covered, sealed, view_matrix=view, fx=spec.fx, fy=spec.fy,
             cx=spec.cx, cy=spec.cy, width=width, height=height,
             ignore_mask=ignore_mask, backend=resolved,
         )
-        samples.append(MoveBudgetSample(axis=axis, offset=offset, fraction=fraction,
+        return fraction, clipped
+
+    # The sealed envelope always covers more than the torn mesh — that is what
+    # makes it a sealed envelope. So a naive reading reports disocclusion even
+    # at the RECOVERED camera, where by definition there is none: you are
+    # looking at the photograph. On a real 4K plate that baseline measured 6%
+    # against a 2% threshold, which collapsed every axis of the budget to zero.
+    #
+    # The budget's question is what the MOVE opens, so the source view is the
+    # zero point and every probe is reported relative to it. Tearing already
+    # visible from the recovered camera is a projection-coverage problem, not a
+    # camera-move problem, and it is reported separately as `baseline_fraction`
+    # rather than silently folded in.
+    baseline, _ = raw(base_view)
+
+    def probe(axis: str, offset: float) -> float:
+        view = offset_view_matrix(base_view, **_axis_kwargs(axis, offset))
+        fraction, clipped = raw(view)
+        opened = max(0.0, fraction - baseline)
+        samples.append(MoveBudgetSample(axis=axis, offset=offset, fraction=opened,
                                         clipped_faces=clipped))
-        return fraction
+        return opened
 
     budget = AtlasMoveBudget(threshold=float(threshold), backend=resolved,
-                             geometry_sources=geometry_sources)
+                             geometry_sources=geometry_sources,
+                             baseline_fraction=baseline)
     for axis in axes:
         angular = axis in _ANGULAR_AXES
         cap = float(max_angle_deg if angular else max_dolly_m)
