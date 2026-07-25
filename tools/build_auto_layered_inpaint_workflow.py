@@ -176,6 +176,10 @@ def main() -> None:
                       "negative_prompt": "person, people, car, vehicle, "
                                          "object, text, watermark",
                       "grow_mask_by": 24,
+                      # SDXL native long edge — the 0 default means OFF, and a
+                      # full-res ~2600px crop at denoise 0.85 decodes to rainbow
+                      # latent soup (found live on the ghost-town plate).
+                      "max_side": 1024,
                   }, size=(380, 420))
     stitch = b.add("AtlasInpaintStitch", (1560, 700), "7 · STITCH → CLEAN PLATE")
     cpprev = b.add("PreviewImage", (1560, 900), "CLEAN PLATE (in-graph)",
@@ -208,6 +212,8 @@ def main() -> None:
     b.link(assess, 0, sam, 0, "IMAGE", src_name="image", dst_name="image")
     b.link(assess, 7, sam, 1, "STRING", src_name="sam_prompt_fg",
            dst_name="concepts", widget_name="concepts")
+    b.link(assess, 6, sam, 2, "STRING", src_name="sam_prompt_mid",
+           dst_name="concepts_extra")
 
     b.link(assess, 0, crop, 0, "IMAGE", src_name="image", dst_name="image")
     b.link(sam, 0, crop, 1, "MASK", src_name="mask", dst_name="mask")

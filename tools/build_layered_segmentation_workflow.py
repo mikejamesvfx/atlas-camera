@@ -208,6 +208,8 @@ def main() -> None:
     b.link(assess, 0, inp, 0, "IMAGE", src_name="image", dst_name="image")
     b.link(assess, 7, sam, 1, "STRING", src_name="sam_prompt_fg",
            dst_name="concepts", widget_name="concepts")
+    b.link(assess, 6, sam, 2, "STRING", src_name="sam_prompt_mid",
+           dst_name="concepts_extra")
     b.link(assess, 0, sam, 0, "IMAGE", src_name="image", dst_name="image")
     b.link(sam, 0, m2i, 0, "MASK", src_name="mask", dst_name="mask")
     b.link(m2i, 0, mprev, 0, "IMAGE", src_name="IMAGE", dst_name="images")

@@ -291,11 +291,24 @@ class AtlasSAM3Mask:
                 "max_instances": ("INT", {"default": 0, "min": 0, "max": 128,
                     "tooltip": "separate mode only: keep at most N instances (largest "
                                "first). 0 = unlimited. Ignored when merged."}),
+                # APPENDED 2026-07-25 (positional rule): joined onto `concepts`
+                # with a comma. Exists so two upstream STRING outputs (e.g.
+                # AtlasAssessImage's sam_prompt_fg AND sam_prompt_mid) can feed
+                # one mask without a string-concat node — found live when a
+                # ghost-town plate's VLM put the road in fg and the car (the
+                # actual occluder) in mid, and an fg-only mask painted out the
+                # road while leaving the car standing.
+                "concepts_extra": ("STRING", {"forceInput": True,
+                    "tooltip": "Additional comma-separated concepts, unioned with "
+                               "`concepts`. Wire a second sam_prompt output here."}),
             },
         }
 
     def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto",
-                output_mode="merged", max_instances=0, **_extra):
+                output_mode="merged", max_instances=0, concepts_extra="", **_extra):
+        extra = (concepts_extra or "").strip()
+        if extra:
+            concepts = f"{concepts}, {extra}" if (concepts or "").strip() else extra
         from atlas_camera.inference.sam3_segmenter import (
             DEFAULT_SAM3_MODEL, Sam3GatedRepoError, sam3_concept_mask,
             sam3_instance_masks)

@@ -1,8 +1,8 @@
 {
-  "id": "bd172961-e2ff-4d82-8319-f64d24d5b915",
+  "id": "178221d4-8516-4335-9c54-ca1398af229a",
   "revision": 0,
   "last_node_id": 17,
-  "last_link_id": 24,
+  "last_link_id": 25,
   "nodes": [
     {
       "id": 1,
@@ -25,7 +25,7 @@
           "type": "IMAGE",
           "links": [
             1,
-            24
+            25
           ]
         }
       ],
@@ -58,8 +58,8 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            16,
-            20
+            17,
+            21
           ]
         }
       ],
@@ -99,7 +99,7 @@
           "type": "IMAGE",
           "links": [
             2,
-            4
+            5
           ]
         },
         {
@@ -126,20 +126,22 @@
           "name": "sam_prompt_bg",
           "type": "STRING",
           "links": [
-            15
+            16
           ]
         },
         {
-          "name": "",
+          "name": "sam_prompt_mid",
           "type": "STRING",
-          "links": []
+          "links": [
+            4
+          ]
         },
         {
           "name": "sam_prompt_fg",
           "type": "STRING",
           "links": [
             3,
-            14
+            15
           ]
         }
       ],
@@ -186,9 +188,9 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            7,
-            10,
-            17
+            8,
+            11,
+            18
           ]
         },
         {
@@ -200,8 +202,8 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            8,
-            12
+            9,
+            13
           ]
         }
       ],
@@ -253,7 +255,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 4
+          "link": 5
         },
         {
           "name": "concepts",
@@ -262,6 +264,11 @@
           "widget": {
             "name": "concepts"
           }
+        },
+        {
+          "name": "concepts_extra",
+          "type": "STRING",
+          "link": 4
         }
       ],
       "outputs": [
@@ -269,7 +276,7 @@
           "name": "mask",
           "type": "MASK",
           "links": [
-            5
+            6
           ]
         }
       ],
@@ -303,7 +310,7 @@
         {
           "name": "mask",
           "type": "MASK",
-          "link": 5
+          "link": 6
         }
       ],
       "outputs": [
@@ -311,7 +318,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            6
+            7
           ]
         }
       ],
@@ -339,7 +346,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 6
+          "link": 7
         }
       ],
       "outputs": [],
@@ -367,12 +374,12 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 7
+          "link": 8
         },
         {
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 8
+          "link": 9
         }
       ],
       "outputs": [
@@ -380,7 +387,7 @@
           "name": "ATLAS_SOLVE",
           "type": "ATLAS_SOLVE",
           "links": [
-            9
+            10
           ]
         }
       ],
@@ -413,12 +420,12 @@
         {
           "name": "solve_a",
           "type": "ATLAS_SOLVE",
-          "link": 9
+          "link": 10
         },
         {
           "name": "solve_b",
           "type": "ATLAS_SOLVE",
-          "link": 10
+          "link": 11
         }
       ],
       "outputs": [
@@ -426,7 +433,7 @@
           "name": "ATLAS_SOLVE",
           "type": "ATLAS_SOLVE",
           "links": [
-            11
+            12
           ]
         }
       ],
@@ -454,12 +461,12 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 11
+          "link": 12
         },
         {
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 12
+          "link": 13
         }
       ],
       "outputs": [
@@ -467,7 +474,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            13
+            14
           ]
         }
       ],
@@ -495,17 +502,17 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 13
+          "link": 14
         },
         {
           "name": "foreground_concepts_override",
           "type": "STRING",
-          "link": 14
+          "link": 15
         },
         {
           "name": "background_concepts_override",
           "type": "STRING",
-          "link": 15
+          "link": 16
         }
       ],
       "outputs": [
@@ -513,8 +520,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            18,
-            21
+            19,
+            22
           ]
         }
       ],
@@ -544,12 +551,12 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 16
+          "link": 17
         },
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 17
+          "link": 18
         }
       ],
       "outputs": [
@@ -557,7 +564,7 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            19
+            20
           ]
         }
       ],
@@ -588,17 +595,17 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 18
+          "link": 19
         },
         {
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 19
+          "link": 20
         },
         {
           "name": "plate_image",
           "type": "IMAGE",
-          "link": 20
+          "link": 21
         }
       ],
       "outputs": [
@@ -606,8 +613,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            22,
-            23
+            23,
+            24
           ]
         }
       ],
@@ -657,7 +664,7 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 21
+          "link": 22
         }
       ],
       "outputs": [],
@@ -691,7 +698,7 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 22
+          "link": 23
         }
       ],
       "outputs": [],
@@ -725,12 +732,12 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 23
+          "link": 24
         },
         {
           "name": "source_image",
           "type": "IMAGE",
-          "link": 24
+          "link": 25
         }
       ],
       "outputs": [],
@@ -797,13 +804,21 @@
     [
       4,
       3,
+      6,
+      5,
+      2,
+      "STRING"
+    ],
+    [
+      5,
+      3,
       0,
       5,
       0,
       "IMAGE"
     ],
     [
-      5,
+      6,
       5,
       0,
       6,
@@ -811,7 +826,7 @@
       "MASK"
     ],
     [
-      6,
+      7,
       6,
       0,
       7,
@@ -819,7 +834,7 @@
       "IMAGE"
     ],
     [
-      7,
+      8,
       4,
       0,
       8,
@@ -827,7 +842,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      8,
+      9,
       4,
       2,
       8,
@@ -835,7 +850,7 @@
       "ATLAS_DEPTH_MAP"
     ],
     [
-      9,
+      10,
       8,
       0,
       9,
@@ -843,23 +858,23 @@
       "ATLAS_SOLVE"
     ],
     [
-      10,
+      11,
       4,
       0,
       9,
       1,
-      "ATLAS_SOLVE"
-    ],
-    [
-      11,
-      9,
-      0,
-      10,
-      0,
       "ATLAS_SOLVE"
     ],
     [
       12,
+      9,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
       4,
       2,
       10,
@@ -867,7 +882,7 @@
       "ATLAS_DEPTH_MAP"
     ],
     [
-      13,
+      14,
       10,
       0,
       11,
@@ -875,7 +890,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      14,
+      15,
       3,
       7,
       11,
@@ -883,7 +898,7 @@
       "STRING"
     ],
     [
-      15,
+      16,
       3,
       5,
       11,
@@ -891,7 +906,7 @@
       "STRING"
     ],
     [
-      16,
+      17,
       2,
       0,
       12,
@@ -899,7 +914,7 @@
       "IMAGE"
     ],
     [
-      17,
+      18,
       4,
       0,
       12,
@@ -907,7 +922,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      18,
+      19,
       11,
       0,
       13,
@@ -915,7 +930,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      19,
+      20,
       12,
       0,
       13,
@@ -923,7 +938,7 @@
       "ATLAS_DEPTH_MAP"
     ],
     [
-      20,
+      21,
       2,
       0,
       13,
@@ -931,7 +946,7 @@
       "IMAGE"
     ],
     [
-      21,
+      22,
       11,
       0,
       14,
@@ -939,7 +954,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      22,
+      23,
       13,
       0,
       15,
@@ -947,7 +962,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      23,
+      24,
       13,
       0,
       16,
@@ -955,7 +970,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      24,
+      25,
       1,
       0,
       16,

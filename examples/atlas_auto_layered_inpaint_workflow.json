@@ -1,8 +1,8 @@
 {
-  "id": "c6a28fd7-92ba-45a3-a2d7-ab83a004919c",
+  "id": "6fd352f8-8d0a-44c7-b081-d83385fdbc5f",
   "revision": 0,
   "last_node_id": 18,
-  "last_link_id": 30,
+  "last_link_id": 31,
   "nodes": [
     {
       "id": 1,
@@ -25,7 +25,7 @@
           "type": "IMAGE",
           "links": [
             1,
-            30
+            31
           ]
         }
       ],
@@ -66,8 +66,8 @@
           "links": [
             2,
             3,
-            5,
-            9
+            6,
+            10
           ]
         },
         {
@@ -94,20 +94,22 @@
           "name": "sam_prompt_bg",
           "type": "STRING",
           "links": [
-            23
+            24
           ]
         },
         {
-          "name": "",
+          "name": "sam_prompt_mid",
           "type": "STRING",
-          "links": []
+          "links": [
+            5
+          ]
         },
         {
           "name": "sam_prompt_fg",
           "type": "STRING",
           "links": [
             4,
-            22
+            23
           ]
         }
       ],
@@ -154,9 +156,9 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            14,
             15,
-            18
+            16,
+            19
           ]
         },
         {
@@ -168,8 +170,8 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            16,
-            20
+            17,
+            21
           ]
         }
       ],
@@ -230,6 +232,11 @@
           "widget": {
             "name": "concepts"
           }
+        },
+        {
+          "name": "concepts_extra",
+          "type": "STRING",
+          "link": 5
         }
       ],
       "outputs": [
@@ -237,7 +244,7 @@
           "name": "mask",
           "type": "MASK",
           "links": [
-            6
+            7
           ]
         }
       ],
@@ -271,12 +278,12 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 5
+          "link": 6
         },
         {
           "name": "mask",
           "type": "MASK",
-          "link": 6
+          "link": 7
         }
       ],
       "outputs": [
@@ -284,21 +291,21 @@
           "name": "cropped_image",
           "type": "IMAGE",
           "links": [
-            7
+            8
           ]
         },
         {
           "name": "cropped_mask",
           "type": "MASK",
           "links": [
-            8
+            9
           ]
         },
         {
           "name": "crop_region",
           "type": "ATLAS_CROP_REGION",
           "links": [
-            11
+            12
           ]
         }
       ],
@@ -328,12 +335,12 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 7
+          "link": 8
         },
         {
           "name": "mask",
           "type": "MASK",
-          "link": 8
+          "link": 9
         }
       ],
       "outputs": [
@@ -341,7 +348,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            10
+            11
           ]
         }
       ],
@@ -358,7 +365,7 @@
         5.5,
         0.85,
         24,
-        0,
+        1024,
         true
       ],
       "title": "6 \u00b7 \u2728 PAINT THE OCCLUDERS OUT"
@@ -381,17 +388,17 @@
         {
           "name": "original_image",
           "type": "IMAGE",
-          "link": 9
+          "link": 10
         },
         {
           "name": "inpainted_crop",
           "type": "IMAGE",
-          "link": 10
+          "link": 11
         },
         {
           "name": "crop_region",
           "type": "ATLAS_CROP_REGION",
-          "link": 11
+          "link": 12
         }
       ],
       "outputs": [
@@ -399,9 +406,9 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            12,
             13,
-            26
+            14,
+            27
           ]
         }
       ],
@@ -431,7 +438,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 12
+          "link": 13
         }
       ],
       "outputs": [],
@@ -459,12 +466,12 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 13
+          "link": 14
         },
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 14
+          "link": 15
         }
       ],
       "outputs": [
@@ -472,7 +479,7 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            25
+            26
           ]
         }
       ],
@@ -503,12 +510,12 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 15
+          "link": 16
         },
         {
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 16
+          "link": 17
         }
       ],
       "outputs": [
@@ -516,7 +523,7 @@
           "name": "ATLAS_SOLVE",
           "type": "ATLAS_SOLVE",
           "links": [
-            17
+            18
           ]
         }
       ],
@@ -549,12 +556,12 @@
         {
           "name": "solve_a",
           "type": "ATLAS_SOLVE",
-          "link": 17
+          "link": 18
         },
         {
           "name": "solve_b",
           "type": "ATLAS_SOLVE",
-          "link": 18
+          "link": 19
         }
       ],
       "outputs": [
@@ -562,7 +569,7 @@
           "name": "ATLAS_SOLVE",
           "type": "ATLAS_SOLVE",
           "links": [
-            19
+            20
           ]
         }
       ],
@@ -590,12 +597,12 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 19
+          "link": 20
         },
         {
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 20
+          "link": 21
         }
       ],
       "outputs": [
@@ -603,7 +610,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            21
+            22
           ]
         }
       ],
@@ -631,17 +638,17 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 21
+          "link": 22
         },
         {
           "name": "foreground_concepts_override",
           "type": "STRING",
-          "link": 22
+          "link": 23
         },
         {
           "name": "background_concepts_override",
           "type": "STRING",
-          "link": 23
+          "link": 24
         }
       ],
       "outputs": [
@@ -649,8 +656,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            24,
-            27
+            25,
+            28
           ]
         }
       ],
@@ -680,17 +687,17 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 24
+          "link": 25
         },
         {
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 25
+          "link": 26
         },
         {
           "name": "plate_image",
           "type": "IMAGE",
-          "link": 26
+          "link": 27
         }
       ],
       "outputs": [
@@ -698,8 +705,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            28,
-            29
+            29,
+            30
           ]
         }
       ],
@@ -749,7 +756,7 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 27
+          "link": 28
         }
       ],
       "outputs": [],
@@ -783,7 +790,7 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 28
+          "link": 29
         }
       ],
       "outputs": [],
@@ -817,12 +824,12 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 29
+          "link": 30
         },
         {
           "name": "source_image",
           "type": "IMAGE",
-          "link": 30
+          "link": 31
         }
       ],
       "outputs": [],
@@ -897,13 +904,21 @@
     [
       5,
       2,
+      6,
+      4,
+      2,
+      "STRING"
+    ],
+    [
+      6,
+      2,
       0,
       5,
       0,
       "IMAGE"
     ],
     [
-      6,
+      7,
       4,
       0,
       5,
@@ -911,7 +926,7 @@
       "MASK"
     ],
     [
-      7,
+      8,
       5,
       0,
       6,
@@ -919,7 +934,7 @@
       "IMAGE"
     ],
     [
-      8,
+      9,
       5,
       1,
       6,
@@ -927,7 +942,7 @@
       "MASK"
     ],
     [
-      9,
+      10,
       2,
       0,
       7,
@@ -935,7 +950,7 @@
       "IMAGE"
     ],
     [
-      10,
+      11,
       6,
       0,
       7,
@@ -943,7 +958,7 @@
       "IMAGE"
     ],
     [
-      11,
+      12,
       5,
       2,
       7,
@@ -951,7 +966,7 @@
       "ATLAS_CROP_REGION"
     ],
     [
-      12,
+      13,
       7,
       0,
       8,
@@ -959,7 +974,7 @@
       "IMAGE"
     ],
     [
-      13,
+      14,
       7,
       0,
       9,
@@ -967,7 +982,7 @@
       "IMAGE"
     ],
     [
-      14,
+      15,
       3,
       0,
       9,
@@ -975,7 +990,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      15,
+      16,
       3,
       0,
       10,
@@ -983,7 +998,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      16,
+      17,
       3,
       2,
       10,
@@ -991,23 +1006,23 @@
       "ATLAS_DEPTH_MAP"
     ],
     [
-      17,
+      18,
       10,
       0,
       11,
       0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      18,
-      3,
-      0,
-      11,
-      1,
       "ATLAS_SOLVE"
     ],
     [
       19,
+      3,
+      0,
+      11,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      20,
       11,
       0,
       12,
@@ -1015,7 +1030,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      20,
+      21,
       3,
       2,
       12,
@@ -1023,7 +1038,7 @@
       "ATLAS_DEPTH_MAP"
     ],
     [
-      21,
+      22,
       12,
       0,
       13,
@@ -1031,7 +1046,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      22,
+      23,
       2,
       7,
       13,
@@ -1039,7 +1054,7 @@
       "STRING"
     ],
     [
-      23,
+      24,
       2,
       5,
       13,
@@ -1047,7 +1062,7 @@
       "STRING"
     ],
     [
-      24,
+      25,
       13,
       0,
       14,
@@ -1055,7 +1070,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      25,
+      26,
       9,
       0,
       14,
@@ -1063,7 +1078,7 @@
       "ATLAS_DEPTH_MAP"
     ],
     [
-      26,
+      27,
       7,
       0,
       14,
@@ -1071,7 +1086,7 @@
       "IMAGE"
     ],
     [
-      27,
+      28,
       13,
       0,
       15,
@@ -1079,7 +1094,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      28,
+      29,
       14,
       0,
       16,
@@ -1087,7 +1102,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      29,
+      30,
       14,
       0,
       17,
@@ -1095,7 +1110,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      30,
+      31,
       1,
       0,
       17,
