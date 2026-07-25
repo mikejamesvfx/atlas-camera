@@ -282,3 +282,87 @@ def test_describe_names_every_node_that_will_build_nothing():
     graph.node(graph.edges[0].occludee).completion_policy = POLICY_NONE
     text = graph.describe()
     assert "nothing will be built" in text
+
+
+# --- layer plan ---
+
+def _plan_graph(policy=POLICY_EXTEND_PLANE):
+    from atlas_camera.core.occlusion_graph import OcclusionEdge, OcclusionNode
+    return AtlasOcclusionGraph(
+        nodes=[
+            OcclusionNode(id="projection_box_01", kind="object",
+                          completion_policy=policy, depth_range_m=(3.0, 4.0)),
+            OcclusionNode(id="projection_wall_01", kind="surface",
+                          completion_policy=policy, depth_range_m=(8.0, 9.0)),
+            OcclusionNode(id="projection_wall_02", kind="surface",
+                          completion_policy=policy, depth_range_m=(20.0, 22.0)),
+            OcclusionNode(id="projection_backdrop", kind="backdrop"),
+        ],
+        edges=[OcclusionEdge(occluder="projection_box_01",
+                             occludee="projection_wall_01")],
+    )
+
+
+def test_layer_plan_splits_occluder_from_what_it_hides():
+    from atlas_camera.core.occlusion_graph import layer_plan
+
+    plan = layer_plan(_plan_graph())
+    assert [l.node_id for l in plan] == ["projection_box_01", "projection_wall_01"]
+
+    fg, bg = plan
+    assert fg.role == "foreground" and not fg.needs_clean_plate
+    assert bg.role == "background" and bg.needs_clean_plate
+    # The clean plate is a DIFFERENT image, so its depth must be solved on it —
+    # inheriting the original's depth is the far-band cliff failure.
+    assert bg.needs_own_depth_solve
+
+
+def test_layer_plan_orders_occluders_in_front():
+    from atlas_camera.core.occlusion_graph import layer_plan
+
+    plan = layer_plan(_plan_graph())
+    assert plan[0].order < plan[1].order
+    assert plan[0].exposes == ["projection_wall_01"]
+    assert plan[1].hidden_by == ["projection_box_01"]
+
+
+def test_layer_plan_excludes_the_backdrop():
+    """The cyclorama is not a layer — it is what layers sit in front of."""
+    from atlas_camera.core.occlusion_graph import layer_plan
+
+    assert all(l.node_id != "projection_backdrop" for l in layer_plan(_plan_graph()))
+
+
+def test_unoccluded_surfaces_are_omitted_unless_asked_for():
+    from atlas_camera.core.occlusion_graph import layer_plan
+
+    assert all(l.node_id != "projection_wall_02" for l in layer_plan(_plan_graph()))
+    wide = layer_plan(_plan_graph(), include_unoccluded=True)
+    assert any(l.node_id == "projection_wall_02" for l in wide)
+    # Nothing hides it, so it needs no plate even when included.
+    assert not next(l for l in wide if l.node_id == "projection_wall_02").needs_clean_plate
+
+
+def test_a_refused_tear_does_not_quietly_acquire_a_clean_plate():
+    """The graph's refusal has to survive into the layer manifest.
+
+    POLICY_NONE means Atlas could not classify what is behind the occluder.
+    Generating a plate there would invent content for a region it just said it
+    could not reason about.
+    """
+    from atlas_camera.core.occlusion_graph import layer_plan
+
+    plan = layer_plan(_plan_graph(policy=POLICY_NONE))
+    bg = next(l for l in plan if l.role == "background")
+    assert not bg.needs_clean_plate
+    assert not bg.needs_own_depth_solve
+
+
+def test_concepts_are_derived_for_sam3_but_are_only_placeholders():
+    """SAM3 segments concepts; a fitter id is not one.
+
+    The VLM pass exists to replace these with what the thing actually is.
+    """
+    from atlas_camera.core.occlusion_graph import layer_plan
+
+    assert [l.concepts for l in layer_plan(_plan_graph())] == ["box", "wall"]

@@ -578,3 +578,128 @@ def attach_occlusion_graph(solve: Any, graph: AtlasOcclusionGraph,
     component.confidence = min((n.confidence for n in graph.nodes), default=0.0)
     component.exportable = True
     return solve
+
+
+# --------------------------------------------------------------------------
+# Layer plan — the graph as a clean-plate layer manifest
+# --------------------------------------------------------------------------
+
+@dataclass(slots=True)
+class LayerSpec:
+    """One projection layer derived from the graph.
+
+    ``role`` is the whole point of the split, and it follows the standing
+    cleanplate doctrine (DESIGN_RULES 2026-07-19):
+
+    ``foreground``
+        An occluder. Matted from the ORIGINAL plate and projected on the
+        ORIGINAL depth — it was photographed, so nothing about it is invented.
+    ``background``
+        Something an occluder hides part of. Needs a clean plate (the occluder
+        painted out) and, critically, its own depth solve on that clean plate
+        rather than a far-band extension of the original — extending the band
+        put the support footprint at the cutoff and produced a vertical cliff
+        with floating foreground during orbit.
+
+    ``concepts`` is the SAM3 prompt for this layer, which is why the VLM's job
+    is naming rather than masking: it supplies the words, SAM3 supplies pixels.
+    """
+
+    node_id: str
+    role: str                      # foreground | background
+    order: int                     # 0 = nearest; projection priority is FARTHEST-first
+    concepts: str = ""
+    exposes: list[str] = field(default_factory=list)
+    hidden_by: list[str] = field(default_factory=list)
+    depth_range_m: tuple[float, float] | None = None
+    needs_clean_plate: bool = False
+    needs_own_depth_solve: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "node_id": self.node_id, "role": self.role, "order": int(self.order),
+            "concepts": self.concepts,
+            "needs_clean_plate": bool(self.needs_clean_plate),
+            "needs_own_depth_solve": bool(self.needs_own_depth_solve),
+        }
+        if self.exposes:
+            out["exposes"] = list(self.exposes)
+        if self.hidden_by:
+            out["hidden_by"] = list(self.hidden_by)
+        if self.depth_range_m:
+            out["depth_range_m"] = [round(float(v), 4) for v in self.depth_range_m]
+        return out
+
+
+def layer_plan(graph: AtlasOcclusionGraph, *,
+               include_unoccluded: bool = False) -> list[LayerSpec]:
+    """Turn the graph into an ordered clean-plate layer manifest.
+
+    This is what makes per-segment layering possible instead of whole-scene
+    hole filling. Patching a hole in one surface makes the patch abut measured
+    depth and tear along the seam; splitting into layers builds a background
+    surface that CONTINUES underneath the occluder, so the two overlap and
+    there is no seam to blend.
+
+    Ordering is near-to-far by the occlusion relation itself — an occluder is
+    always in front of what it occludes — with depth as the tie-break. Note
+    that band priorities elsewhere in Atlas are FARTHEST-highest, so a consumer
+    assigning priorities reverses this list rather than using it directly.
+
+    Nodes the graph declined to license (``completion_policy == none``) still
+    appear, with ``needs_clean_plate`` False: an unclassifiable tear must not
+    quietly acquire a generated plate. ``include_unoccluded`` adds surfaces
+    nothing hides, which need no plate but may still be wanted as layers.
+    """
+    occludes: dict[str, list[str]] = {}
+    hidden_by: dict[str, list[str]] = {}
+    for edge in graph.edges:
+        occludes.setdefault(edge.occluder, []).append(edge.occludee)
+        hidden_by.setdefault(edge.occludee, []).append(edge.occluder)
+
+    def _depth_key(node: OcclusionNode) -> float:
+        rng = node.depth_range_m
+        return float(rng[0]) if rng else float("inf")
+
+    involved = set(occludes) | set(hidden_by)
+    nodes = [n for n in graph.nodes
+             if n.kind != "backdrop"
+             and (include_unoccluded or n.id in involved)]
+
+    # Occluders first, then by distance. `occludes` membership is the primary
+    # key because the relation is direct evidence of ordering, whereas a fitted
+    # node's depth range is a summary that can straddle another node's.
+    nodes.sort(key=lambda n: (0 if n.id in occludes else 1, _depth_key(n)))
+
+    plan: list[LayerSpec] = []
+    for order, node in enumerate(nodes):
+        is_occluder = node.id in occludes
+        licensed = node.completion_policy != POLICY_NONE
+        needs_plate = (not is_occluder) and node.id in hidden_by and licensed
+        plan.append(LayerSpec(
+            node_id=node.id,
+            role="foreground" if is_occluder else "background",
+            order=order,
+            concepts=_concepts_for(node),
+            exposes=list(occludes.get(node.id, [])),
+            hidden_by=list(hidden_by.get(node.id, [])),
+            depth_range_m=node.depth_range_m,
+            needs_clean_plate=needs_plate,
+            # The clean plate is a different image, so its depth must be solved
+            # on that image — never inherited from the original.
+            needs_own_depth_solve=needs_plate,
+        ))
+    return plan
+
+
+def _concepts_for(node: OcclusionNode) -> str:
+    """SAM3 prompt text for a layer.
+
+    Derived from the node id, which is the fitter's own name — a placeholder
+    the VLM pass is meant to replace with what the thing actually is. SAM3
+    segments concepts, and "projection_box_01" is not a concept, so a layer
+    left with this default will segment poorly and should be treated as
+    unnamed rather than as a working prompt.
+    """
+    stem = node.id.replace("projection_", "").rsplit("_", 1)[0]
+    return stem.replace("_", " ").strip()
