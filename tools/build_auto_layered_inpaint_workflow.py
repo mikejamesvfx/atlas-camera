@@ -52,6 +52,14 @@ def widget_defaults(node_type: str, overrides: dict | None = None) -> list:
                                                         kind[0] if kind else "")))
             elif kind in ("INT", "FLOAT", "STRING", "BOOLEAN"):
                 out.append(overrides.get(name, opts.get("default", 0)))
+                if kind == "INT" and (name in ("seed", "noise_seed")
+                                      or opts.get("control_after_generate")):
+                    # The frontend inserts a control_after_generate widget
+                    # after seed-type INTs. widgets_values is positional, so
+                    # omitting its slot shifts every later widget by one —
+                    # found live: grow_mask_by=24 landed in denoise (max 1.0)
+                    # and the workflow refused to queue.
+                    out.append("fixed")
     return out
 
 

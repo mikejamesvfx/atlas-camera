@@ -1,5 +1,5 @@
 {
-  "id": "7fb019d9-d7da-4abd-b7f1-d331deeaeeb5",
+  "id": "c6a28fd7-92ba-45a3-a2d7-ab83a004919c",
   "revision": 0,
   "last_node_id": 18,
   "last_link_id": 30,
@@ -353,6 +353,7 @@
         "empty scene, clean background, seamless continuation of the surrounding environment",
         "person, people, car, vehicle, object, text, watermark",
         0,
+        "fixed",
         30,
         5.5,
         0.85,
