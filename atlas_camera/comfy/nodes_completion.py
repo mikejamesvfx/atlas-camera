@@ -458,10 +458,27 @@ class AtlasLayerPlan:
                     "default": False,
                     "tooltip": "Also list surfaces nothing hides. They need no clean "
                                "plate, but you may still want them as their own layers."}),
+                # The `*_override` STRING-link pattern (ComfyUI rejects
+                # STRING->combo links; STRING->STRING sockets are fine). Wire
+                # AtlasAssessImage's sam_prompt_fg / sam_prompt_bg here — the
+                # VLM supplies words, SAM3 supplies pixels. Without them the
+                # concept outputs are fitter-id placeholders ("box"), which
+                # collapse distinct objects into one useless prompt.
+                "foreground_concepts_override": ("STRING", {
+                    "forceInput": True,
+                    "tooltip": "VLM-named foreground concepts (e.g. AtlasAssessImage's "
+                               "sam_prompt_fg). Replaces the placeholder foreground "
+                               "concepts derived from fitter ids."}),
+                "background_concepts_override": ("STRING", {
+                    "forceInput": True,
+                    "tooltip": "VLM-named background concepts (e.g. AtlasAssessImage's "
+                               "sam_prompt_bg). Replaces the placeholder background "
+                               "concepts derived from fitter ids."}),
             },
         }
 
-    def plan(self, solve, include_unoccluded=False):
+    def plan(self, solve, include_unoccluded=False,
+             foreground_concepts_override="", background_concepts_override=""):
         import copy
 
         from atlas_camera.core.occlusion_graph import (
@@ -476,10 +493,22 @@ class AtlasLayerPlan:
                          "first; there is nothing to split into layers.", "", "")
 
         specs = layer_plan(graph, include_unoccluded=bool(include_unoccluded))
+
+        fg_override = (foreground_concepts_override or "").strip()
+        bg_override = (background_concepts_override or "").strip()
         component = getattr(out, "semantics", None)
         if component is not None:
             payload = dict(component.value or {})
             payload["layer_plan"] = [s.to_dict() for s in specs]
+            # Record where the prompts came from — a placeholder that segments
+            # poorly and a VLM name that segments well must be tellable apart
+            # after the fact.
+            payload["layer_plan_concepts"] = {
+                "foreground": fg_override or None,
+                "background": bg_override or None,
+                "source": ("vlm_override" if (fg_override or bg_override)
+                           else "fitter_id_placeholder"),
+            }
             component.value = payload
             component.exportable = True
 
@@ -500,6 +529,14 @@ class AtlasLayerPlan:
         if not any(s.needs_clean_plate for s in bg):
             lines.append("  note: nothing needs a clean plate — either no tear was "
                          "classified, or no occluder hides a fitted surface.")
-        return (out, "\n".join(lines),
-                ", ".join(dict.fromkeys(s.concepts for s in fg if s.concepts)),
-                ", ".join(dict.fromkeys(s.concepts for s in bg if s.concepts)))
+        fg_out = fg_override or ", ".join(
+            dict.fromkeys(s.concepts for s in fg if s.concepts))
+        bg_out = bg_override or ", ".join(
+            dict.fromkeys(s.concepts for s in bg if s.concepts))
+        if fg_override or bg_override:
+            lines.append("  concepts: VLM-named (override connected)")
+        elif fg_out or bg_out:
+            lines.append("  concepts: fitter-id placeholders — connect "
+                         "AtlasAssessImage's sam_prompt outputs for names SAM3 "
+                         "can actually segment")
+        return (out, "\n".join(lines), fg_out, bg_out)
