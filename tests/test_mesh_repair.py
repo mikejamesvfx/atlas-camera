@@ -181,15 +181,34 @@ def test_depth_window_includes_hole_excludes_frame():
 
 def test_depth_window_can_admit_frame_when_set_to_it():
     """Same fixture, window [25,35] admits the frame but excludes the hole.
-    Window mode has no largest-loop guard, so the frame fills here — this is
-    the artist's explicit choice and the reason the window IS the scope."""
+
+    Capping the perimeter is a legitimate artist request (it closes the mesh
+    for export), so the capability is kept — but it is now OPT-IN via
+    ``allow_perimeter_fill``. It used to be implied by any depth window, which
+    made a scoped fill silently triangulate the plate silhouette: work that
+    reported a filled loop while changing nothing visible, because the region
+    it closed was already covered. Same behaviour, asked for explicitly.
+    """
     vertices, _, faces = _grid_mesh(z=-10.0, z_outer=-30.0)
     new_faces, filled = fill_interior_holes(
         faces, max_hole_edges=4096,
         vertices=vertices, view_matrix=_identity_view(),
         depth_near_m=25.0, depth_far_m=35.0,
+        allow_perimeter_fill=True,
     )
     assert filled == [12]  # only the frame (12-edge); hole at depth 10 excluded
+
+
+def test_depth_window_alone_no_longer_caps_the_perimeter():
+    """The default half of the same decision: a depth window is a SCOPE, not
+    permission to close the plate silhouette."""
+    vertices, _, faces = _grid_mesh(z=-10.0, z_outer=-30.0)
+    _, filled = fill_interior_holes(
+        faces, max_hole_edges=4096,
+        vertices=vertices, view_matrix=_identity_view(),
+        depth_near_m=25.0, depth_far_m=35.0,
+    )
+    assert filled == []
 
 
 def test_depth_window_excludes_both_fills_nothing():
@@ -257,11 +276,13 @@ def test_trimesh_validates_fill():
     m = trimesh.Trimesh(vertices=vertices, faces=new_faces, process=False)
     assert abs(m.euler_number - 1) < 1e-6  # disk
     # and filling both loops would close it to a sphere (χ=2). The flat grid
-    # sits every vertex at depth 10, so a [5,15] window admits BOTH loops
-    # (window mode has no largest-loop guard → the frame fills too).
+    # sits every vertex at depth 10, so a [5,15] window admits BOTH loops once
+    # allow_perimeter_fill lets the frame be capped — which is exactly the
+    # export case that opt-in exists for.
     closed, _ = fill_interior_holes(faces, max_hole_edges=4096,
                                     vertices=vertices, view_matrix=_identity_view(),
-                                    depth_near_m=5.0, depth_far_m=15.0)
+                                    depth_near_m=5.0, depth_far_m=15.0,
+                                    allow_perimeter_fill=True)
     m2 = trimesh.Trimesh(vertices=vertices, faces=closed, process=False)
     assert abs(m2.euler_number - 2) < 1e-6
 

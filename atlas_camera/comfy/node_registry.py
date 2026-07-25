@@ -17,6 +17,11 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasLayerPreview,
     AtlasInput,
 )
+from atlas_camera.comfy.nodes_completion import (
+    AtlasCompleteDepth,
+    AtlasMoveBudget,
+    AtlasOcclusionGraph,
+)
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
@@ -280,6 +285,14 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # The `experimental` branch ships ATLAS_EXPERIMENTAL_DEFAULT = "1" (that one
 # line is the entire branch delta); on any branch, setting
 # ATLAS_EXPERIMENTAL=1 (or 0) before launching ComfyUI overrides the default.
+NODE_CLASS_MAPPINGS["AtlasOcclusionGraph"] = AtlasOcclusionGraph
+NODE_CLASS_MAPPINGS["AtlasMoveBudget"] = AtlasMoveBudget
+NODE_CLASS_MAPPINGS["AtlasCompleteDepth"] = AtlasCompleteDepth
+NODE_DISPLAY_NAME_MAPPINGS["AtlasOcclusionGraph"] = "Atlas Occlusion Graph 🕸"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasMoveBudget"] = "Atlas Move Budget 📐"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasCompleteDepth"] = "Atlas Complete Depth 🩹"
+
+
 ATLAS_EXPERIMENTAL_DEFAULT = "0"
 
 EXPERIMENTAL_NODE_CLASS_MAPPINGS = {

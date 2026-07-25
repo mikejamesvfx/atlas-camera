@@ -72,7 +72,8 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
                      "atlas_occlusion_cull_quickstart_workflow.json",
                      "atlas_raw_3layer_ocio_workflow.json",
-                     "atlas_staged_master_portal_neat_workflow.json"]
+                     "atlas_staged_master_portal_neat_workflow.json",
+                     "atlas_unseen_geometry_test_workflow.json"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])

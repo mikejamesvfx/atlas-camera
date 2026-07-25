@@ -441,6 +441,8 @@ def apply_live_mesh_repair(
     live_fill_max_hole_edges: int = 64,
     live_fill_edge_sawteeth: bool = False,
     stats: dict | None = None,
+    image_width: int | None = None,
+    image_height: int | None = None,
 ):
     """Perform live interior hole-fill and/or boundary sawtooth bridging on a relief mesh,
     recomputing hole_mask and writing telemetry into stats['relief_mesh'] if stats is given."""
@@ -448,25 +450,18 @@ def apply_live_mesh_repair(
     if not (do_hole_fill or live_fill_edge_sawteeth):
         return
 
-    # Check if sub-millisecond CUDA 2D grid repair already ran during build_relief_mesh
-    grid_repair = getattr(mesh, "stats", {}).get("live_grid_repair")
-    if grid_repair is not None:
-        if stats is not None:
-            rm_stats = stats.setdefault("relief_mesh", {})
-            if do_hole_fill:
-                rm_stats["live_hole_fill"] = {
-                    "n_loops_filled": grid_repair.get("n_holes", 0),
-                    "filled_edge_counts": [],
-                    "distance_m": float(live_fill_distance_m),
-                }
-            if live_fill_edge_sawteeth:
-                rm_stats["live_boundary_sawtooth_fill"] = {
-                    "n_triangles_added": grid_repair.get("n_sawteeth", 0),
-                    "valley_depth_min_m": 0.0,
-                    "valley_depth_max_m": 0.0,
-                    "distance_m": float(live_fill_distance_m),
-                }
-        return  # Fast CUDA 2D grid repair completed — skip slow CPU 3D graph loops!
+    # The CUDA 2D grid repair (run inside build_relief_mesh) and the CPU 3D
+    # boundary-loop fill are COMPLEMENTARY, not alternatives, so both run.
+    #
+    # The grid pass materializes new grid cells whose neighbours carry valid
+    # depth; the loop pass triangulates boundary loops out of vertices that
+    # already exist. Neither can do the other's job. This used to early-return
+    # as soon as the grid pass had run, which meant that whenever torch was
+    # importable — i.e. always, inside ComfyUI — the loop pass never ran and
+    # `live_fill_distance_m` / `live_fill_max_hole_edges` were dead widgets
+    # whose values were still reported in telemetry as though applied. The grid
+    # pass takes neither of those parameters, so it cannot honour them.
+    grid_repair = getattr(mesh, "stats", {}).get("live_grid_repair") or {}
 
     from atlas_camera.core.mesh_repair import (
         apply_boundary_sawtooth_fill,
@@ -482,12 +477,21 @@ def apply_live_mesh_repair(
             view_matrix=view_matrix,
             depth_near_m=0.0,
             depth_far_m=depth_far,
+            image_width=image_width,
+            image_height=image_height,
         )
         if stats is not None:
+            n_grid = int(grid_repair.get("n_holes", 0))
             rm_stats["live_hole_fill"] = {
-                "n_loops_filled": n_filled,
+                # Total the artist sees; the split says which pass did the work.
+                "n_loops_filled": n_filled + n_grid,
+                "n_grid_cells_filled": n_grid,
+                "n_loops_triangulated": n_filled,
                 "filled_edge_counts": filled_counts,
                 "distance_m": float(live_fill_distance_m),
+                # Only the loop pass is depth-scoped; say so rather than let the
+                # reported distance imply the grid pass honoured it too.
+                "distance_applies_to": "loop_fill_only",
             }
     if live_fill_edge_sawteeth:
         n_added, valley_depths = apply_boundary_sawtooth_fill(
@@ -496,11 +500,15 @@ def apply_live_mesh_repair(
             depth_far_m=depth_far,
         )
         if stats is not None:
+            n_grid_saw = int(grid_repair.get("n_sawteeth", 0))
             rm_stats["live_boundary_sawtooth_fill"] = {
-                "n_triangles_added": n_added,
+                "n_triangles_added": n_added + n_grid_saw,
+                "n_grid_sawteeth_filled": n_grid_saw,
+                "n_triangles_bridged": n_added,
                 "valley_depth_min_m": (min(valley_depths) if valley_depths else 0.0),
                 "valley_depth_max_m": (max(valley_depths) if valley_depths else 0.0),
                 "distance_m": float(live_fill_distance_m),
+                "distance_applies_to": "bridge_fill_only",
             }
     if len(mesh.faces) != n_faces_before:
         mesh.hole_mask = _hole_mask_after_fill(mesh, n_faces_before)
