@@ -406,3 +406,100 @@ class AtlasCompleteDepth:
         mask = torch.from_numpy(
             result.synthesized_mask.astype(np.float32)).unsqueeze(0)
         return (out, mask, result.describe())
+
+
+class AtlasLayerPlan:
+    """Turn the occlusion graph into a clean-plate layer manifest 🥞.
+
+    Says which segments are occluders, which surfaces they hide, and therefore
+    what needs a clean plate — the split that lets a scene be rebuilt as
+    overlapping layers instead of one surface with holes patched into it.
+    That distinction is the whole point: a patch abuts measured depth and tears
+    along its seam, whereas a background layer continues UNDERNEATH the
+    occluder, so the two overlap and there is no seam.
+
+    Two roles, following the standing cleanplate doctrine:
+
+    * ``foreground`` — an occluder. Matte it from the ORIGINAL plate and
+      project it on the ORIGINAL depth. It was photographed; nothing is
+      invented.
+    * ``background`` — something an occluder hides. Needs a clean plate with
+      the occluder painted out, and **its own depth solve on that plate**.
+      Never extend the original's far band to cover it: that puts the support
+      footprint at the cutoff and produces a vertical cliff with floating
+      foreground under orbit.
+
+    The two ``concepts`` outputs are SAM3 prompts, ready to wire into
+    ``AtlasSAM3Mask``. They are derived from fitter ids as placeholders, so
+    they segment poorly until a VLM pass replaces them with what the things
+    actually are — the division of labour being that the model supplies words
+    and SAM3 supplies pixels.
+
+    Needs ``AtlasOcclusionGraph`` upstream. A tear the graph declined to
+    classify produces NO clean plate, because generating content for a region
+    Atlas just said it could not reason about is exactly the failure the graph
+    exists to prevent.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("solve", "report", "foreground_concepts",
+                    "background_concepts")
+    FUNCTION = "plan"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+            },
+            "optional": {
+                "include_unoccluded": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Also list surfaces nothing hides. They need no clean "
+                               "plate, but you may still want them as their own layers."}),
+            },
+        }
+
+    def plan(self, solve, include_unoccluded=False):
+        import copy
+
+        from atlas_camera.core.occlusion_graph import (
+            AtlasOcclusionGraph, layer_plan,
+        )
+
+        out = copy.deepcopy(solve)
+        semantics = getattr(getattr(out, "semantics", None), "value", None) or {}
+        graph = AtlasOcclusionGraph.from_dict(semantics.get("occlusion_graph"))
+        if not graph.nodes:
+            return (out, "No occlusion graph on this solve — run AtlasOcclusionGraph "
+                         "first; there is nothing to split into layers.", "", "")
+
+        specs = layer_plan(graph, include_unoccluded=bool(include_unoccluded))
+        component = getattr(out, "semantics", None)
+        if component is not None:
+            payload = dict(component.value or {})
+            payload["layer_plan"] = [s.to_dict() for s in specs]
+            component.value = payload
+            component.exportable = True
+
+        fg = [s for s in specs if s.role == "foreground"]
+        bg = [s for s in specs if s.role == "background"]
+        lines = [f"Layer plan: {len(fg)} foreground, {len(bg)} background "
+                 f"(near to far; projection priority is FARTHEST-first, so "
+                 f"reverse this when assigning it)"]
+        for s in specs:
+            bits = [f"  {s.order}. {s.node_id:<28} {s.role:<10}"]
+            if s.needs_clean_plate:
+                bits.append("clean plate + OWN depth solve")
+            elif s.role == "background":
+                bits.append("no plate — graph licensed nothing here")
+            if s.exposes:
+                bits.append(f"hides {', '.join(s.exposes)}")
+            lines.append("  ".join(bits))
+        if not any(s.needs_clean_plate for s in bg):
+            lines.append("  note: nothing needs a clean plate — either no tear was "
+                         "classified, or no occluder hides a fitted surface.")
+        return (out, "\n".join(lines),
+                ", ".join(dict.fromkeys(s.concepts for s in fg if s.concepts)),
+                ", ".join(dict.fromkeys(s.concepts for s in bg if s.concepts)))

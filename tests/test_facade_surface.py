@@ -30,7 +30,7 @@ import atlas_camera.comfy.nodes as nodes
 FACADE_PUBLIC = {
     "ATLAS_EXPERIMENTAL_DEFAULT", "AtlasAddPatchView", "AtlasApplyScaleReferences",
     "AtlasAssessImage", "AtlasAssessOutput", "AtlasAttachSourcePlate", "AtlasBlockoutViewport",
-    "AtlasCompleteDepth", "AtlasMoveBudget", "AtlasOcclusionGraph",
+    "AtlasCompleteDepth", "AtlasLayerPlan", "AtlasMoveBudget", "AtlasOcclusionGraph",
     "AtlasBoundedBand", "AtlasCleanPlateLayer", "AtlasCleanPlateStack",
     "AtlasConstrainedSolve", "AtlasDebugReport", "AtlasDecomposeCamera",
     "AtlasDecomposeSolve", "AtlasDefineShotCam", "AtlasDepthAnything",

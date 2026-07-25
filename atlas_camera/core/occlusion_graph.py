@@ -646,6 +646,14 @@ def layer_plan(graph: AtlasOcclusionGraph, *,
     that band priorities elsewhere in Atlas are FARTHEST-highest, so a consumer
     assigning priorities reverses this list rather than using it directly.
 
+    KNOWN LIMITATION (found live on a real plate, 2026-07-25): the role is
+    binary, but a node can be BOTH. In an A-hides-B-hides-C chain, B is
+    reported ``foreground`` because it occludes C, and so gets no clean plate —
+    yet A conceals part of B, which a plate would have to supply. Mid-chain
+    occluders therefore under-report their plate need. Fixing it means a layer
+    can carry both a matte and a plate, which is a change to the layer model
+    rather than to this ordering.
+
     Nodes the graph declined to license (``completion_policy == none``) still
     appear, with ``needs_clean_plate`` False: an unclassifiable tear must not
     quietly acquire a generated plate. ``include_unoccluded`` adds surfaces

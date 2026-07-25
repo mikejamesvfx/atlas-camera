@@ -19,6 +19,7 @@ from atlas_camera.comfy.nodes_viewport import (
 )
 from atlas_camera.comfy.nodes_completion import (
     AtlasCompleteDepth,
+    AtlasLayerPlan,
     AtlasMoveBudget,
     AtlasOcclusionGraph,
 )
@@ -287,8 +288,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # ATLAS_EXPERIMENTAL=1 (or 0) before launching ComfyUI overrides the default.
 NODE_CLASS_MAPPINGS["AtlasOcclusionGraph"] = AtlasOcclusionGraph
 NODE_CLASS_MAPPINGS["AtlasMoveBudget"] = AtlasMoveBudget
+NODE_CLASS_MAPPINGS["AtlasLayerPlan"] = AtlasLayerPlan
 NODE_DISPLAY_NAME_MAPPINGS["AtlasOcclusionGraph"] = "Atlas Occlusion Graph 🕸"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasMoveBudget"] = "Atlas Move Budget 📐"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasLayerPlan"] = "Atlas Layer Plan 🥞"
 
 
 ATLAS_EXPERIMENTAL_DEFAULT = "0"

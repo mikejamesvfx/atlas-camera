@@ -97,6 +97,7 @@ from atlas_camera.comfy.nodes_viewport import (
 )
 from atlas_camera.comfy.nodes_completion import (
     AtlasCompleteDepth,
+    AtlasLayerPlan,
     AtlasMoveBudget,
     AtlasOcclusionGraph,
 )
