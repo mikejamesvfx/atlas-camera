@@ -287,15 +287,14 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # ATLAS_EXPERIMENTAL=1 (or 0) before launching ComfyUI overrides the default.
 NODE_CLASS_MAPPINGS["AtlasOcclusionGraph"] = AtlasOcclusionGraph
 NODE_CLASS_MAPPINGS["AtlasMoveBudget"] = AtlasMoveBudget
-NODE_CLASS_MAPPINGS["AtlasCompleteDepth"] = AtlasCompleteDepth
 NODE_DISPLAY_NAME_MAPPINGS["AtlasOcclusionGraph"] = "Atlas Occlusion Graph 🕸"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasMoveBudget"] = "Atlas Move Budget 📐"
-NODE_DISPLAY_NAME_MAPPINGS["AtlasCompleteDepth"] = "Atlas Complete Depth 🩹"
 
 
 ATLAS_EXPERIMENTAL_DEFAULT = "0"
 
 EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
+    "AtlasCompleteDepth": AtlasCompleteDepth,
     "AtlasPredictHiddenGeometry": AtlasPredictHiddenGeometry,
     "AtlasRenderFix": AtlasRenderFix,
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
@@ -303,6 +302,7 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
+    "AtlasCompleteDepth": "Atlas Complete Depth 🩹 🔬 (experimental)",
     "AtlasPredictHiddenGeometry": "Atlas Predict Hidden Geometry 🔬 (research)",
     "AtlasRenderFix": "Atlas Render Fix 🔬 (experimental)",
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",

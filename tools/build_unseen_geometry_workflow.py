@@ -146,17 +146,10 @@ def main() -> None:
                   "5 · \U0001f578 WHAT OCCLUDES WHAT")
     budget = b.add("AtlasMoveBudget", (1160, 430),
                    "6 · \U0001f4d0 HOW FAR CAN THE CAMERA GO")
-    fill = b.add("AtlasCompleteDepth", (1160, 720),
-                 "7 · \U0001fa79 FILL THE HOLES (pre-mesh)")
-
-    view = b.add("AtlasBlockoutViewport", (1560, 260), "8 · VIEWPORT",
+    # AtlasCompleteDepth is deliberately absent — see the READ ME note. It is
+    # experimental, so a stock install would fail to load a graph containing it.
+    view = b.add("AtlasBlockoutViewport", (1560, 260), "7 · VIEWPORT",
                  size=(480, 640))
-    # PreviewImage takes IMAGE; hidden_mask is a MASK. ComfyUI does not coerce
-    # between them, so the conversion is explicit.
-    to_img = b.add("MaskToImage", (1560, 940), "mask → image",
-                   widgets=[], size=(260, 30))
-    prev = b.add("PreviewImage", (1560, 1010), "SYNTHESIZED PIXELS",
-                 widgets=[], size=(320, 300))
 
     b.link(load, 0, inp, 0, "IMAGE", src_name="IMAGE", dst_name="image")
     # AtlasInput: 0 solve, 1 image, 2 depth, 3 sky_mask, 4 report
@@ -173,41 +166,36 @@ def main() -> None:
     b.link(inp, 2, graph, 1, "ATLAS_DEPTH_MAP", src_name="depth", dst_name="depth")
 
     b.link(graph, 0, budget, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
-    b.link(budget, 0, fill, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
-    b.link(inp, 2, fill, 1, "ATLAS_DEPTH_MAP", src_name="depth", dst_name="depth")
-
     b.link(budget, 0, view, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
     b.link(load, 0, view, 1, "IMAGE", src_name="IMAGE", dst_name="source_image")
-    b.link(fill, 1, to_img, 0, "MASK", src_name="hidden_mask", dst_name="mask")
-    b.link(to_img, 0, prev, 0, "IMAGE", src_name="IMAGE", dst_name="images")
 
     b.note((60, 640), "READ ME · what this workflow is testing", "\n".join([
-        "UNSEEN GEOMETRY TEST — seacliff castle plate (chosen for its holes).",
+        "UNSEEN GEOMETRY TEST — seacliff castle plate.",
         "",
-        "The three new nodes, in the order they matter:",
-        "",
-        "5 \U0001f578 OCCLUSION GRAPH  what occludes what, and what may be built.",
+        "5 🕸 OCCLUSION GRAPH  what occludes what, and what may be built.",
         "   Read its report FIRST. A tear it cannot classify licenses NOTHING",
         "   (policy=none) and says so — that refusal is the design, not a bug.",
+        "   Needs fitted primitives upstream: node 3 supplies them, and node 4",
+        "   merges the relief mesh back, because derive nodes CLOBBER prior",
+        "   PROXY_ROLE geometry.",
         "",
-        "6 \U0001f4d0 MOVE BUDGET  how far the camera can go before a tear opens.",
-        "   Measured as sealed-minus-covered, so the backdrop cannot mask it.",
-        "   pan/tilt unbounded is CORRECT: rotating about the optical centre",
+        "6 📐 MOVE BUDGET  how far the camera can go before a tear opens.",
+        "   Sealed-minus-covered, relative to the source view, so neither the",
+        "   backdrop nor pre-existing tearing can mask it.",
+        "   pan/tilt unbounded is CORRECT: rotation about the optical centre",
         "   produces no parallax, so it cannot open a tear.",
+        "   Author a camera path, wire it in, push past the reported limit —",
+        "   tearing should return where the number said it would.",
         "",
-        "7 \U0001fa79 COMPLETE DEPTH  fills holes BEFORE the mesh is built, so no",
-        "   tear exists to repair. Ray-plane fills are EXACT where the graph",
-        "   fitted a plane; tangent and diffusion are weaker and are labelled",
-        "   per pixel. Check the report's method histogram — if it is mostly",
-        "   'diffusion', the graph found no planes and the fill is guesswork.",
-        "",
-        "The PreviewImage shows every synthesized pixel. Nothing invented is",
-        "silent: measured depth is never overwritten.",
-        "",
-        "To feel the budget: author a camera path in the viewport, wire it to",
-        "6, and push past the reported limit — tearing should return exactly",
-        "where the number said it would. That is the check that matters.",
-    ]), size=(520, 560))
+        "NOT INCLUDED: 🩹 AtlasCompleteDepth is EXPERIMENTAL and is left",
+        "out on purpose. It fills tears exactly from graph-fitted planes, but",
+        "the fill butts against measured depth at the hole rim, so re-meshing",
+        "tears along every seam. Measured on a real 4K plate: 302k px closed,",
+        "222k px of NEW rim tears, and the move budget got WORSE.",
+        "Set ATLAS_EXPERIMENTAL=1 to try it, and measure with node 6 first.",
+        "The clean-plate layer path (per-segment plates, shared solve) avoids",
+        "the seam entirely and is the intended fix.",
+    ]), size=(520, 620))
 
     doc = b.dump(OUT, {
         "ds": {"scale": 0.75, "offset": [0, 0]},

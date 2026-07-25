@@ -21,7 +21,6 @@ import atlas_camera.comfy.nodes as nodes
 NORMAL_KEYS = {
     "AtlasAddPatchView", "AtlasApplyScaleReferences", "AtlasAssessImage",
     "AtlasAssessOutput",
-    "AtlasCompleteDepth",
     "AtlasMoveBudget",
     "AtlasOcclusionGraph",
     "AtlasAttachSourcePlate", "AtlasBlockoutViewport", "AtlasBoundedBand",
@@ -51,6 +50,7 @@ NORMAL_KEYS = {
 }
 
 EXPERIMENTAL_KEYS = {
+    "AtlasCompleteDepth",
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
     "AtlasPredictHiddenGeometry", "AtlasRenderFix",
 }
@@ -68,12 +68,12 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 74
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 73
 
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 4
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 5
 
 
 def test_display_name_mapping_covers_registry():
