@@ -1059,12 +1059,19 @@ class AtlasAssessImage:
                                "patch gate) become the workflow's checkpoints. Turn OFF to "
                                "restore the hard per-image gate: the image output blocks until "
                                "▶ Continue Workflow approves THIS image."}),
+                "offload_ttl_s": ("INT", {"default": 2, "min": 1, "max": 3600,
+                    "tooltip": "LM Studio only, with offload_model ON: idle seconds before "
+                               "the VLM auto-evicts. 2 = free RAM immediately after each "
+                               "assessment. 120-300 = linger so a BATCH of plates skips the "
+                               "~10-20s reload per image, then free. Reload is automatic "
+                               "(JIT) either way — the next assessment brings it back."}),
             },
         }
 
     def assess(self, image, provider="ollama", model="", base_url="",
                extra_instructions="", proceed=False, approved_for="",
-               api_key="", offload_model=False, auto_continue=True, **_extra):
+               api_key="", offload_model=False, auto_continue=True,
+               offload_ttl_s=2, **_extra):
         # **_extra: API-format exports can serialize the ▶ Continue Workflow
         # BUTTON widget as a bogus input key — tolerate unknown kwargs.
         import hashlib
@@ -1089,7 +1096,8 @@ class AtlasAssessImage:
                     base_url=base_url.strip() or None,
                     api_key=api_key.strip() or None,
                     extra_instructions=extra_instructions,
-                    offload_model=bool(offload_model))
+                    offload_model=bool(offload_model),
+                    offload_ttl_s=int(offload_ttl_s))
             finally:
                 os.unlink(tmp)
             # Never cache FAILED assessments: the user typically starts the
