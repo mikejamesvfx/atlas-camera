@@ -55,6 +55,76 @@ def _normals_array(depth: Any) -> Any:
     return nrm if nrm.ndim == 3 and nrm.shape[-1] == 3 else None
 
 
+def _mask_array(mask, shape):
+    """A ComfyUI MASK as a plain (H, W) bool array, or None if unusable."""
+    if mask is None:
+        return None
+    import numpy as np
+    arr = np.asarray(mask, dtype=np.float64)
+    arr = arr[0] if arr.ndim == 3 else arr
+    return (arr > 0.5) if arr.shape == shape else None
+
+
+def _relief_tear_mask(solve, shape):
+    """Where the relief mesh has no triangle, from the recovered camera.
+
+    This is the tear region — literally "where 📽 Project shows black" — and it
+    is the only reliable source of it. A monocular depth model returns valid
+    depth almost everywhere, so a tear never appears as invalid depth; it is
+    created downstream by the mesh's silhouette edge test.
+
+    Computed by rasterizing rather than read off ``ReliefMesh.hole_mask``,
+    because that field does NOT survive the solve round-trip:
+    ``_layers.mesh_from_primitive`` rebuilds a mesh from vertices/faces/uvs
+    only. That is the right call for the serialized form — the mask is one bool
+    per source pixel, 8.3M of them at 4K — but it means reading the attribute
+    back yields None, which quietly evaluates to "no tears anywhere" and makes
+    this node do nothing. One raster from the source camera reconstructs it
+    exactly, at whatever resolution the caller actually needs.
+    """
+    import numpy as np
+
+    from atlas_camera.core.move_budget import rasterize_coverage
+    from atlas_camera.core.primitive_mesh import collect_scene_triangles
+
+    verts, faces, _ = collect_scene_triangles(
+        solve, include_primitives=False)          # the relief mesh alone
+    if len(faces) == 0:
+        return None
+    intr = solve.camera.intrinsics
+    height, width = shape
+    coverage, _ = rasterize_coverage(
+        verts, faces,
+        view_matrix=np.asarray(solve.camera.extrinsics.camera_view_matrix,
+                               dtype=np.float64),
+        fx=float(intr.fx_px or width), fy=float(intr.fy_px or width),
+        cx=float(intr.cx_px if intr.cx_px is not None else width / 2.0),
+        cy=float(intr.cy_px if intr.cy_px is not None else height / 2.0),
+        width=width, height=height,
+    )
+    return ~coverage
+
+
+def _sky_from_depth(solve, depth):
+    """Sky heuristic fallback, so an unconnected sky_mask does not mean
+    'fill the sky with wall geometry'."""
+    try:
+        from atlas_camera.core.depth_geometry import detect_sky_mask
+    except Exception:
+        return None
+    horizon = None
+    line = getattr(solve, "horizon_line", None)
+    if line is not None and getattr(line, "endpoints_px", None):
+        p1, p2 = line.endpoints_px
+        horizon = 0.5 * (float(p1[1]) + float(p2[1]))
+    if horizon is None:
+        horizon = depth.shape[0] * 0.5
+    try:
+        return detect_sky_mask(depth, horizon_y=horizon)
+    except Exception:
+        return None
+
+
 class AtlasOcclusionGraph:
     """Decompose the scene into what occludes what, and what may be built there.
 
@@ -238,6 +308,19 @@ class AtlasCompleteDepth:
                     "tooltip": "Extra regions to treat as holes, on top of wherever "
                                "depth is already invalid. Use to remove an occluder "
                                "deliberately."}),
+                "use_relief_tears": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Treat the relief mesh's own tears as holes to fill. "
+                               "This is what makes the node do anything on real data: "
+                               "a monocular depth model returns VALID depth everywhere "
+                               "(sky included), so nothing reads as a hole — the tears "
+                               "live in the mesh, created by the silhouette edge test, "
+                               "not in the depth map."}),
+                "sky_mask": ("MASK", {
+                    "tooltip": "Region to leave torn. Sky is part of the relief mesh's "
+                               "hole mask but must NOT be filled with surface geometry "
+                               "— the backdrop covers it. Falls back to the depth-based "
+                               "sky heuristic when not connected."}),
                 "use_diffusion": ("BOOLEAN", {
                     "default": True,
                     "tooltip": "Allow the last-resort smooth fill. Turn OFF to leave "
@@ -255,8 +338,9 @@ class AtlasCompleteDepth:
             },
         }
 
-    def complete(self, solve, depth, holes=None, use_diffusion=True,
-                 use_normals=True, diffusion_iterations=64):
+    def complete(self, solve, depth, holes=None, use_relief_tears=True,
+                 sky_mask=None, use_diffusion=True, use_normals=True,
+                 diffusion_iterations=64):
         import copy
 
         import numpy as np
@@ -265,12 +349,30 @@ class AtlasCompleteDepth:
         from atlas_camera.core.occlusion_graph import AtlasOcclusionGraph
 
         raw = _depth_array(depth)
-        hole_mask = None
-        if holes is not None:
-            hm = np.asarray(holes, dtype=np.float64)
-            hm = hm[0] if hm.ndim == 3 else hm
-            if hm.shape == raw.shape:
-                hole_mask = hm > 0.5
+        notes: list[str] = []
+        hole_mask = _mask_array(holes, raw.shape)
+
+        if use_relief_tears:
+            tears = _relief_tear_mask(solve, raw.shape)
+            if tears is None:
+                notes.append(
+                    "use_relief_tears is on but this solve carries no relief mesh — "
+                    "run AtlasDeriveReliefMesh first, or the only holes filled are "
+                    "wherever depth is already invalid."
+                )
+            else:
+                sky = _mask_array(sky_mask, raw.shape)
+                if sky is None:
+                    sky = _sky_from_depth(solve, raw)
+                if sky is not None:
+                    kept = tears & ~sky
+                    notes.append(
+                        f"relief tears {int(tears.sum())} px, of which "
+                        f"{int((tears & sky).sum())} px are sky and left torn "
+                        "(the backdrop covers those, geometry must not)."
+                    )
+                    tears = kept
+                hole_mask = tears if hole_mask is None else (hole_mask | tears)
 
         semantics = getattr(getattr(solve, "semantics", None), "value", None) or {}
         graph = AtlasOcclusionGraph.from_dict(semantics.get("occlusion_graph"))
@@ -282,6 +384,7 @@ class AtlasCompleteDepth:
             use_diffusion=bool(use_diffusion),
             diffusion_iterations=int(diffusion_iterations),
         )
+        result.notes.extend(notes)
         if not graph.nodes:
             result.notes.append(
                 "no occlusion graph on this solve — run AtlasOcclusionGraph first "
