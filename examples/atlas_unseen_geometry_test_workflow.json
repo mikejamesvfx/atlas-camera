@@ -1,8 +1,8 @@
 {
-  "id": "32d3c03c-e41f-4a1f-95e4-158e4e23b005",
+  "id": "424835a7-172f-434a-bacf-b83e9fd67e34",
   "revision": 0,
-  "last_node_id": 10,
-  "last_link_id": 13,
+  "last_node_id": 11,
+  "last_link_id": 14,
   "nodes": [
     {
       "id": 1,
@@ -373,23 +373,59 @@
     },
     {
       "id": 9,
-      "type": "PreviewImage",
+      "type": "MaskToImage",
       "pos": [
         1560,
         940
       ],
       "size": [
-        320,
-        300
+        260,
+        30
       ],
       "flags": {},
       "order": 8,
       "mode": 0,
       "inputs": [
         {
-          "name": "images",
+          "name": "mask",
           "type": "MASK",
           "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": [],
+      "title": "mask \u2192 image"
+    },
+    {
+      "id": 10,
+      "type": "PreviewImage",
+      "pos": [
+        1560,
+        1010
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 14
         }
       ],
       "outputs": [],
@@ -400,7 +436,7 @@
       "title": "SYNTHESIZED PIXELS"
     },
     {
-      "id": 10,
+      "id": 11,
       "type": "Note",
       "pos": [
         60,
@@ -411,7 +447,7 @@
         560
       ],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -528,6 +564,14 @@
       9,
       0,
       "MASK"
+    ],
+    [
+      14,
+      9,
+      0,
+      10,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [],

@@ -100,7 +100,27 @@ class Builder:
     def _node(self, nid):
         return next(n for n in self.nodes if n["id"] == nid)
 
+    def validate(self):
+        """Every link's output type must equal its input type.
+
+        ComfyUI does not coerce between socket types — it refuses the
+        connection at load time with "Invalid connection", which is how a
+        MASK wired straight into PreviewImage's IMAGE input shipped once.
+        A generator that emits links is exactly where that belongs.
+        """
+        by_id = {n["id"]: n for n in self.nodes}
+        bad = []
+        for lid, src, ss, dst, ds, _t in self.links:
+            out_t = by_id[src]["outputs"][ss]["type"]
+            in_t = by_id[dst]["inputs"][ds]["type"]
+            if out_t != in_t:
+                bad.append(f"link {lid}: {by_id[src]['type']}.{out_t} -> "
+                           f"{by_id[dst]['type']}.{in_t}")
+        if bad:
+            raise SystemExit("incompatible links:\n  " + "\n  ".join(bad))
+
     def dump(self, path, extra):
+        self.validate()
         doc = {
             "id": str(uuid.uuid4()), "revision": 0,
             "last_node_id": self.nid, "last_link_id": self.lid,
@@ -131,7 +151,11 @@ def main() -> None:
 
     view = b.add("AtlasBlockoutViewport", (1560, 260), "8 · VIEWPORT",
                  size=(480, 640))
-    prev = b.add("PreviewImage", (1560, 940), "SYNTHESIZED PIXELS",
+    # PreviewImage takes IMAGE; hidden_mask is a MASK. ComfyUI does not coerce
+    # between them, so the conversion is explicit.
+    to_img = b.add("MaskToImage", (1560, 940), "mask → image",
+                   widgets=[], size=(260, 30))
+    prev = b.add("PreviewImage", (1560, 1010), "SYNTHESIZED PIXELS",
                  widgets=[], size=(320, 300))
 
     b.link(load, 0, inp, 0, "IMAGE", src_name="IMAGE", dst_name="image")
@@ -154,7 +178,8 @@ def main() -> None:
 
     b.link(budget, 0, view, 0, "ATLAS_SOLVE", src_name="solve", dst_name="solve")
     b.link(load, 0, view, 1, "IMAGE", src_name="IMAGE", dst_name="source_image")
-    b.link(fill, 1, prev, 0, "MASK", src_name="hidden_mask", dst_name="images")
+    b.link(fill, 1, to_img, 0, "MASK", src_name="hidden_mask", dst_name="mask")
+    b.link(to_img, 0, prev, 0, "IMAGE", src_name="IMAGE", dst_name="images")
 
     b.note((60, 640), "READ ME · what this workflow is testing", "\n".join([
         "UNSEEN GEOMETRY TEST — seacliff castle plate (chosen for its holes).",
