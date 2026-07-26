@@ -1,7 +1,7 @@
 {
   "id": "47315974-eb27-417a-9653-dfe816807a9e",
-  "last_node_id": 13,
-  "last_link_id": 18,
+  "last_node_id": 16,
+  "last_link_id": 21,
   "nodes": [
     {
       "id": 1,
@@ -110,11 +110,11 @@
       ],
       "outputs": [
         {"name": "solve", "type": "ATLAS_SOLVE", "links": [8], "slot_index": 0},
-        {"name": "remaining_holes", "type": "MASK", "links": [18], "slot_index": 1},
-        {"name": "report", "type": "STRING", "links": [], "slot_index": 2}
+        {"name": "remaining_holes", "type": "MASK", "links": [18, 20], "slot_index": 1},
+        {"name": "report", "type": "STRING", "links": [19], "slot_index": 2}
       ],
       "properties": {"Node name for S&R": "AtlasPlanarHolePatch"},
-      "widgets_values": ["", 3, 128, 22.0, 0.2, 0.04, true, 0.3]
+      "widgets_values": ["", 2, 512, 22.0, 0.3, 0.04, true, 0.2]
     },
     {
       "id": 6,
@@ -241,7 +241,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "PLANAR HOLE PATCH QUICKSTART\n\n1. The bundled example.png is selected so the workflow validates on a clean install. Choose your plate in Load Image.\n2. Queue once. Atlas Derive Relief Mesh outputs its literal topology-hole mask.\n3. Atlas Planar Hole Patch rejects frame/oversize regions first, then attempts eligible islands smallest-first so sky gaps cannot consume the fit budget.\n4. Accepted vertices are camera-ray/plane intersections with exact projective UVs and shared perimeter indices.\n5. In Atlas Viewport enable Project and orbit gently. The remaining_holes output is wired to debug_matte; enable Matte to inspect what still needs a clean plate or a tighter artist mask.\n\nThe direct hole-mask wire is automatic mode. For deliberate silhouette repair, intersect it with a painted MASK before Atlas Planar Hole Patch."
+        "PLANAR HOLE PATCH QUICKSTART\n\n1. The bundled example.png is selected so the workflow validates on a clean install. Choose your plate in Load Image.\n2. Queue once. Atlas Derive Relief Mesh outputs its literal topology-hole mask.\n3. Atlas Planar Hole Patch rejects frame/oversize regions first, then attempts eligible islands smallest-first so sky gaps cannot consume the fit budget.\n4. Accepted vertices are camera-ray/plane intersections with exact projective UVs and shared perimeter indices.\n5. Read PATCH REPORT for the exact accepted/rejected counts. REMAINING HOLES previews the literal output mask.\n6. In Atlas Viewport enable Project and orbit gently. Enable Matte to overlay the same remaining-hole mask.\n\nThe direct hole-mask wire is automatic mode. For deliberate silhouette repair, intersect it with a painted MASK before Atlas Planar Hole Patch."
       ],
       "color": "#25405c",
       "bgcolor": "#16283b"
@@ -258,7 +258,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "WHY THESE PATCH DEFAULTS\n\n• ring_cells = 3: enough surrounding relief to stabilize the angle.\n• max_components = 128: attempt every eligible island in an ordinary relief mesh; unsafe frame/oversize regions do not consume this budget.\n• normal_tolerance = 22°: defines which surrounding normals agree for each island.\n• min_normal_support = 0.30: the agreeing cluster must represent at least 30% of valid surrounding normals, allowing one-sided facade evidence.\n• The agreeing normals are averaged directly into the patch angle. max_plane_error = 0.20 m chooses/checks the densest local plane position when that angle appears at multiple depths.\n• max_hole_fraction = 4% and enclosed_only = true retain the sky/frame safety gates.\n\nThe report names the failed gate and measured agreement/residual. Geometry cannot invent hidden pixels; true disocclusion also needs a clean plate."
+        "WHY THESE PATCH DEFAULTS\n\n• ring_cells = 2: uses the closest surrounding relief while retaining enough samples to stabilize small islands.\n• max_components = 512: covers dense 128-grid plates while unsafe frame/oversize regions remain outside the fit budget.\n• normal_tolerance = 22°: defines which surrounding normals agree for each island.\n• min_normal_support = 0.20: the agreeing cluster must represent at least 20% of valid surrounding normals, allowing one-sided facade evidence without accepting arbitrary directions.\n• The agreeing normals are averaged directly into the patch angle. max_plane_error = 0.30 m chooses/checks the densest local plane position when that angle appears at multiple depths.\n• max_hole_fraction = 4% and enclosed_only = true retain the sky/frame safety gates.\n\nThese settings live-tested at 295/296 eligible enclosed islands on flux_00645_.jpg; the final 324-cell region remained rejected as non-planar. Geometry cannot invent hidden pixels, and frame-connected disocclusions still need a clean plate or scoped artist mask."
       ],
       "color": "#3b3156",
       "bgcolor": "#251d39"
@@ -279,6 +279,60 @@
       ],
       "color": "#4b3a24",
       "bgcolor": "#2e2215"
+    },
+    {
+      "id": 14,
+      "type": "ShowText|pysssss",
+      "pos": [3780, 50],
+      "size": [420, 280],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {"name": "text", "type": "STRING", "link": 19}
+      ],
+      "outputs": [
+        {"name": "STRING", "type": "STRING", "links": [], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "ShowText|pysssss"},
+      "widgets_values": [],
+      "title": "PATCH REPORT · accepted + rejected islands"
+    },
+    {
+      "id": 15,
+      "type": "MaskToImage",
+      "pos": [3780, 370],
+      "size": [300, 90],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {"name": "mask", "type": "MASK", "link": 20}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [21], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "MaskToImage"},
+      "widgets_values": [],
+      "title": "REMAINING HOLES · convert mask"
+    },
+    {
+      "id": 16,
+      "type": "PreviewImage",
+      "pos": [3780, 500],
+      "size": [420, 440],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 21}
+      ],
+      "outputs": [
+        {"name": "images", "type": "IMAGE", "links": [], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "PreviewImage"},
+      "widgets_values": [],
+      "title": "REMAINING HOLES · white pixels still open"
     }
   ],
   "links": [
@@ -299,7 +353,10 @@
     [15, 3, 0, 10, 2, "ATLAS_DEPTH_MAP"],
     [16, 9, 0, 10, 3, "ATLAS_VIEWPORT_LINK"],
     [17, 9, 1, 10, 5, "ATLAS_OUTPUT_PROFILE"],
-    [18, 5, 1, 10, 6, "MASK"]
+    [18, 5, 1, 10, 6, "MASK"],
+    [19, 5, 2, 14, 0, "STRING"],
+    [20, 5, 1, 15, 0, "MASK"],
+    [21, 15, 0, 16, 0, "IMAGE"]
   ],
   "groups": [
     {
@@ -325,7 +382,7 @@
     },
     {
       "title": "4 — PROJECT + ORBIT CHECK",
-      "bounding": [3060, 20, 710, 1020],
+      "bounding": [3060, 20, 1160, 1020],
       "color": "#4f8d61",
       "font_size": 24,
       "flags": {}

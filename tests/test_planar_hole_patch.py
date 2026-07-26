@@ -347,6 +347,7 @@ def test_comfy_node_stitches_patch_into_one_retopologizable_relief_mesh():
     assert NODE_CLASS_MAPPINGS["AtlasPlanarHolePatch"] is AtlasPlanarHolePatch
     patch_inputs = AtlasPlanarHolePatch.INPUT_TYPES()["optional"]
     assert patch_inputs["max_components"][1]["default"] == 64
+    assert patch_inputs["max_components"][1]["max"] == 1024
     assert patch_inputs["min_normal_support_fraction"][1]["default"] == 0.30
     assert len(relief) == 1
     assert relief[0].metadata["planar_hole_patch"]["components_filled"] == 1

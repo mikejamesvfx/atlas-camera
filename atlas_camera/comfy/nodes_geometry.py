@@ -1262,7 +1262,7 @@ class AtlasPlanarHolePatch:
                                "normal and plane-fit support.",
                 }),
                 "max_components": ("INT", {
-                    "default": 64, "min": 1, "max": 128,
+                    "default": 64, "min": 1, "max": 1024,
                     "tooltip": "Maximum eligible hole islands to fit, smallest first. "
                                "Frame/oversize rejections do not consume this budget.",
                 }),
