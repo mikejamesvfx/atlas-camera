@@ -1218,6 +1218,234 @@ class AtlasRetopologizeLayer:
         return (solve_out, "\n".join(lines) or "nothing to retopologize")
 
 
+class AtlasPlanarHolePatch:
+    """Fit conservative local planes into selected relief-mesh holes.
+
+    The node recovers the relief mesh's image-space lattice, groups selected
+    missing quads into enclosed components, finds an agreeable surrounding
+    normal cluster per island, and averages its normals into one patch plane.
+    Accepted patches reuse perimeter indices and generate their interior on
+    exact camera rays, so they are part of the relief mesh with projective UVs
+    rather than separate wall/box primitives.
+
+    Run this before AtlasRetopologizeLayer.  Retopology will then see the
+    relief plus accepted patches as one mesh.  Open frame/sky gaps and
+    ambiguous multi-surface boundaries pass through unchanged for a clean
+    plate or hidden-geometry layer to handle.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "STRING")
+    RETURN_NAMES = ("solve", "remaining_holes", "report")
+    FUNCTION = "patch"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "hole_mask": ("MASK", {
+                    "tooltip": "Selected relief holes to patch. Usually wire the "
+                               "hole_mask output from AtlasDeriveReliefMesh through "
+                               "a mask editor/scope mask first.",
+                }),
+            },
+            "optional": {
+                "layer": ("STRING", {
+                    "default": "",
+                    "tooltip": "Blank = primary relief mesh; a ProjectionSource name "
+                               "= that layer's relief mesh.",
+                }),
+                "ring_cells": ("INT", {
+                    "default": 2, "min": 1, "max": 12,
+                    "tooltip": "How many valid grid rings around each hole supply "
+                               "normal and plane-fit support.",
+                }),
+                "max_components": ("INT", {
+                    "default": 64, "min": 1, "max": 128,
+                    "tooltip": "Maximum eligible hole islands to fit, smallest first. "
+                               "Frame/oversize rejections do not consume this budget.",
+                }),
+                "normal_tolerance_deg": ("FLOAT", {
+                    "default": 25.0, "min": 1.0, "max": 89.0, "step": 1.0,
+                    "tooltip": "Maximum boundary-normal spread. Lower is safer at "
+                               "corners; higher accepts rougher/curved surfaces.",
+                }),
+                "max_plane_error_m": ("FLOAT", {
+                    "default": 0.15, "min": 0.001, "max": 10.0, "step": 0.01,
+                    "tooltip": "Maximum 95th-percentile residual in metres for the "
+                               "densest plane-position band among agreeing normals.",
+                }),
+                "max_hole_fraction": ("FLOAT", {
+                    "default": 0.05, "min": 0.0001, "max": 1.0, "step": 0.005,
+                    "tooltip": "Largest accepted component as a fraction of relief "
+                               "grid cells. Keeps large sky/background gaps out.",
+                }),
+                "enclosed_only": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Reject components touching the image frame. Recommended: "
+                               "frame/sky openings are not occlusion holes.",
+                }),
+                "min_normal_support_fraction": ("FLOAT", {
+                    "default": 0.30, "min": 0.10, "max": 1.0, "step": 0.05,
+                    "tooltip": "Minimum share of surrounding valid normals that must "
+                               "agree on one plane angle. Lower values allow one-sided "
+                               "facade/occlusion repairs. Agreeing normals are averaged; "
+                               "max_plane_error_m then checks their positional fit.",
+                }),
+            },
+        }
+
+    def patch(self, solve, hole_mask, layer="", ring_cells=2, max_components=64,
+              normal_tolerance_deg=25.0, max_plane_error_m=0.15,
+              max_hole_fraction=0.05, enclosed_only=True,
+              min_normal_support_fraction=0.30):
+        torch = _require_torch()
+        np = _require_numpy()
+        from atlas_camera.core.planar_hole_patch import (
+            PlanarHolePatchConfig,
+            patch_planar_holes,
+        )
+        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+        from atlas_camera.exporters._layers import mesh_from_primitive
+
+        out = copy.deepcopy(solve)
+        intr = out.camera.intrinsics
+        width = int(intr.image_width or 0)
+        height = int(intr.image_height or 0)
+        fx = float(intr.fx_px or 0.0)
+        fy = float(intr.fy_px or fx)
+        cx = float(intr.cx_px if intr.cx_px is not None else width / 2.0)
+        cy = float(intr.cy_px if intr.cy_px is not None else height / 2.0)
+        resolved = _resolve_exclude_mask(hole_mask, height, width)
+        if resolved is None:
+            resolved = np.zeros((height, width), dtype=bool)
+        remaining_t = torch.from_numpy(resolved.astype(np.float32)).unsqueeze(0)
+        if min(width, height) <= 1 or min(fx, fy) <= 0.0:
+            return (out, remaining_t, "invalid camera/image dimensions — solve passed through")
+
+        target_name = str(layer or "").strip()
+        camera = out.camera
+        if target_name:
+            source = next(
+                (src for src in (getattr(out, "projection_sources", None) or [])
+                 if getattr(src, "name", "") == target_name),
+                None,
+            )
+            if source is None:
+                names = [getattr(src, "name", "?")
+                         for src in (getattr(out, "projection_sources", None) or [])]
+                return (
+                    out, remaining_t,
+                    f"layer '{target_name}' not found — available: "
+                    f"{', '.join(names) if names else '(none)'}",
+                )
+            primitives = source.proxy_geometry
+            camera = source.camera
+        else:
+            scene = getattr(out, "projection_scene", None)
+            primitives = getattr(scene, "proxy_geometry", None) if scene is not None else None
+
+        target_intr = camera.intrinsics
+        width = int(target_intr.image_width or width)
+        height = int(target_intr.image_height or height)
+        fx = float(target_intr.fx_px or fx)
+        fy = float(target_intr.fy_px or fx)
+        cx = float(target_intr.cx_px if target_intr.cx_px is not None else width / 2.0)
+        cy = float(target_intr.cy_px if target_intr.cy_px is not None else height / 2.0)
+        resolved = _resolve_exclude_mask(hole_mask, height, width)
+        if resolved is None:
+            resolved = np.zeros((height, width), dtype=bool)
+        remaining_t = torch.from_numpy(resolved.astype(np.float32)).unsqueeze(0)
+        if min(width, height) <= 1 or min(fx, fy) <= 0.0:
+            return (out, remaining_t, "invalid target camera/image dimensions — solve passed through")
+
+        primitive_index = next(
+            (i for i, prim in enumerate(primitives or [])
+             if prim.primitive_type == "mesh"
+             and (prim.metadata or {}).get("source") == "depth_relief_mesh"),
+            None,
+        )
+        if primitive_index is None:
+            return (out, remaining_t, "target has no relief mesh — solve passed through")
+        primitive = primitives[primitive_index]
+        mesh = mesh_from_primitive(primitive)
+        if mesh is None:
+            return (out, remaining_t, "target relief mesh is empty — solve passed through")
+        edge_risk = (primitive.metadata or {}).get("edge_risk") or []
+        if len(edge_risk) == len(mesh.vertices):
+            mesh.edge_risk = np.asarray(edge_risk, dtype=np.float32)
+
+        cfg = PlanarHolePatchConfig(
+            ring_cells=int(ring_cells),
+            max_components=int(max_components),
+            normal_tolerance_deg=float(normal_tolerance_deg),
+            max_plane_error_m=float(max_plane_error_m),
+            max_hole_fraction=float(max_hole_fraction),
+            enclosed_only=bool(enclosed_only),
+            min_normal_support_fraction=float(min_normal_support_fraction),
+        )
+        try:
+            patched, remaining, report = patch_planar_holes(
+                mesh,
+                resolved,
+                view_matrix=camera.extrinsics.camera_view_matrix,
+                fx=float(camera.intrinsics.fx_px or fx),
+                fy=float(camera.intrinsics.fy_px or fy),
+                cx=float(camera.intrinsics.cx_px
+                         if camera.intrinsics.cx_px is not None else cx),
+                cy=float(camera.intrinsics.cy_px
+                         if camera.intrinsics.cy_px is not None else cy),
+                image_width=width,
+                image_height=height,
+                config=cfg,
+            )
+        except ValueError as exc:
+            return (out, remaining_t, f"SKIPPED — {exc}")
+
+        replacement = relief_mesh_primitive(patched, name=primitive.name)
+        replacement.metadata["planar_hole_patch"] = report
+        primitives[primitive_index] = replacement
+        remaining_t = torch.from_numpy(remaining.astype(np.float32)).unsqueeze(0)
+        lines = [
+            f"filled {report['components_filled']}/"
+            f"{report['components_attempted']} attempted "
+            f"({report['components_found']} found"
+            + (f", {report['components_budget_skipped']} budget-skipped"
+               if report["components_budget_skipped"] else "")
+            + ")",
+            f"+{report['vertices_added']} verts, +{report['faces_added']} faces, "
+            f"-{report['faces_removed']} old faces",
+        ]
+        reason_counts: dict[str, int] = {}
+        for item in report["rejected"]:
+            reason = str(item["reason"])
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        for reason, count in reason_counts.items():
+            lines.append(f"rejected {count}: {reason}")
+        diagnostic_items = [
+            item for item in report["rejected"]
+            if item["reason"] in {
+                "normal consensus below threshold",
+                "plane residual exceeds tolerance",
+            }
+        ]
+        for item in diagnostic_items[:3]:
+            detail = ""
+            if "normal_support_fraction" in item:
+                detail += (
+                    f" normal={item['normal_support_fraction']:.2f}/"
+                    f"{item['required_normal_support_fraction']:.2f}")
+            if "plane_error_p95_m" in item:
+                detail += (
+                    f" p95={item['plane_error_p95_m']:.3f}/"
+                    f"{item['max_plane_error_m']:.3f}m")
+            lines.append(
+                f"example {item['cells']} cells:{detail} "
+                f"({item['reason']})")
+        return (out, remaining_t, "\n".join(lines))
+
+
 class AtlasDeriveWalls:
     """Vertical wall planes + foreground boxes/cylinders (azimuth_walls) — one
     job, general-purpose exterior blockout. Height is clipped to whatever 3D
@@ -1237,7 +1465,7 @@ class AtlasDeriveWalls:
             },
             "optional": {
                 "max_walls": ("INT", {"default": 4, "min": 0, "max": 64}),
-                "max_objects": ("INT", {"default": 3, "min": 0, "max": 32,
+                "max_objects": ("INT", {"default": 0, "min": 0, "max": 32,
                     "tooltip": "Max foreground boxes/cylinders (e.g. buildings, in an "
                                "aerial/top-down shot). 0 = walls/ground/backdrop only."}),
                 "distance_modes": ("INT", {"default": 1, "min": 1, "max": 16,
@@ -1265,7 +1493,7 @@ class AtlasDeriveWalls:
             },
         }
 
-    def derive(self, solve, depth, max_walls=4, max_objects=3, distance_modes=1,
+    def derive(self, solve, depth, max_walls=4, max_objects=0, distance_modes=1,
                exclude_mask=None, ground_anchor=False):
         from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_projection_proxies
         params = _solve_camera_params(solve, depth)
@@ -1308,7 +1536,7 @@ class AtlasDeriveTowersSpires:
             },
             "optional": {
                 "max_walls": ("INT", {"default": 4, "min": 0, "max": 64}),
-                "max_objects": ("INT", {"default": 3, "min": 0, "max": 32,
+                "max_objects": ("INT", {"default": 0, "min": 0, "max": 32,
                                         "tooltip": "Max foreground boxes/cylinders. Street-level scenes: try 0 — the 2D occupancy clustering merges cars/fences/trees into oversized near-camera boxes that dominate any orbit."}),
                 "distance_modes": ("INT", {"default": 1, "min": 1, "max": 16,
                     "tooltip": "Walls per azimuth DIRECTION. 1 = classic: one plane at "
@@ -1341,7 +1569,7 @@ class AtlasDeriveTowersSpires:
             },
         }
 
-    def derive(self, solve, depth, max_walls=4, max_objects=3, distance_modes=1,
+    def derive(self, solve, depth, max_walls=4, max_objects=0, distance_modes=1,
                exclude_mask=None, ground_anchor=False, roofline_split=False):
         from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_vertical_extrusion_proxies
         params = _solve_camera_params(solve, depth)

@@ -151,7 +151,7 @@ atlas_camera.exporters  � Maya, Blender, Nuke, USD, review package writers
 
 atlas_camera.importers  � Atlas JSON and USD camera loaders
 
-atlas_camera.comfy      � ComfyUI node library (77 nodes + 4 experimental, no hard Comfy dep;
+atlas_camera.comfy      � ComfyUI node library (78 nodes + 4 experimental, no hard Comfy dep;
 
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
 
@@ -199,7 +199,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ## ComfyUI integration — see docs/NODE_CATALOG.md
 
-The full node catalog (77 nodes + 4 experimental), `comfy/` module layout,
+The full node catalog (78 nodes + 4 experimental), `comfy/` module layout,
 setup/symlink instructions, double-import guard, `atlas_blockout.js` frontend
 reference, `/atlas/camera_data` endpoint, and the example-workflow catalog all
 live in [docs/NODE_CATALOG.md](docs/NODE_CATALOG.md). Read the relevant part

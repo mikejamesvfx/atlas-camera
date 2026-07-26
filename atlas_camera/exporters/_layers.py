@@ -149,7 +149,23 @@ def mesh_from_primitive(prim):
     uvs = np.asarray(meta.get("uvs") or [], dtype=np.float32).reshape(-1, 2)
     if not len(verts) or not len(faces):
         return None
-    return ReliefMesh(vertices=verts, faces=faces, uvs=uvs)
+    edge_risk_raw = meta.get("edge_risk") or []
+    edge_risk = (
+        np.asarray(edge_risk_raw, dtype=np.float32).reshape(-1)
+        if len(edge_risk_raw) == len(verts) else None
+    )
+    stats = {
+        key: meta[key]
+        for key in (
+            "n_vertices", "n_faces", "torn_fraction", "quad_coherence",
+            "stretch_ratio_p95", "stretch_fraction_gt12",
+        )
+        if key in meta
+    }
+    return ReliefMesh(
+        vertices=verts, faces=faces, uvs=uvs,
+        stats=stats, edge_risk=edge_risk,
+    )
 
 
 def collect_projection_layers(

@@ -368,6 +368,7 @@ sanity-checking a solve and, since 2026-07-09, for tuning the layer stack:
 | `AtlasBlockoutViewport` (☀ / 📊 / ℹ / 🎨 / 🩻) | Diagnostics — exposure, VP/horizon diagram, camera HUD, layer identity, invented-geometry provenance |
 | `AtlasDepthMap` | One shared metric depth estimate, fanned out to every layer node |
 | `AtlasDeriveReliefMesh` | The base mesh + backdrop under every layered workflow |
+| `AtlasPlanarHolePatch` ◩ | Normal-guided planes stitched into selected relief holes; unsafe regions are pre-rejected, eligible islands run smallest-first, and `min_normal_support_fraction` allows controlled one-sided facade repair; place before live retopology |
 | `AtlasCleanPlateLayer` / `AtlasDepthLayerMask` / `AtlasSkyDomeLayer` | The layer stack (see the 2026-07-09 section below) |
 | `AtlasPredictHiddenGeometry` 🔬 | Experimental X-ray depth — predicted geometry behind occluders |
 | `AtlasInput` 🎬 | The one-node fast path (see the 2026-07-12 section below) |

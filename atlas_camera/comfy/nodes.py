@@ -142,6 +142,9 @@ from atlas_camera.comfy.nodes_depth import (
 from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveProjectionGeometry,
     AtlasDeriveReliefMesh,
+    AtlasLiveMeshRepair,
+    AtlasRetopologizeLayer,
+    AtlasPlanarHolePatch,
     AtlasDeriveWalls,
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,

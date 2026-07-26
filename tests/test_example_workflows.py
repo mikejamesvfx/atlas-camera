@@ -71,6 +71,7 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_live_repair_and_bands_test_workflow.json",
                      "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
                      "atlas_occlusion_cull_quickstart_workflow.json",
+                     "atlas_planar_hole_patch_workflow.json",
                      "atlas_raw_3layer_ocio_workflow.json",
                      "atlas_staged_master_portal_neat_workflow.json"]
 
