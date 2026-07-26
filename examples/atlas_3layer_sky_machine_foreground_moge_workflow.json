@@ -742,7 +742,10 @@
         true,
         0.0,
         64,
-        true
+        true,
+        true,
+        8,
+        0.0
       ],
       "properties": {
         "Node name for S&R": "AtlasLiveMeshRepair"

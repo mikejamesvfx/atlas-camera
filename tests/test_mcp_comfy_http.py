@@ -306,7 +306,8 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
     runs against a live server; here we pin the JSONs are structurally sound
     (bidirectional links, resolvable rails). Was over examples/showcase +
     examples/experimental; those trees were removed in the 0.8.1 trim. This
-    now walks the three base workflows and their three agentic QA variants."""
+    walks every examples/*_workflow.json; the count pin below guards against
+    shipped workflows silently disappearing — bump it when one is added."""
     import pathlib
     root = pathlib.Path("examples")
     checked = 0
@@ -322,4 +323,4 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
             assert lid in (nodes[sid]["outputs"][sslot].get("links") or []), f"{p.name}: link {lid}"
             assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
         checked += 1
-    assert checked == 7
+    assert checked == 12
