@@ -13,6 +13,7 @@ import os
 from atlas_camera.comfy.nodes_viewport import (
     AtlasViewportControls,
     AtlasBlockoutViewport,
+    AtlasStereoRender,
     AtlasDebugReport,
     AtlasLayerPreview,
     AtlasInput,
@@ -21,6 +22,7 @@ from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
     AtlasRegisterPlate,
+    AtlasDeband,
     AtlasAttachSourcePlate,
     AtlasLoadRAW,
     AtlasSolveFromImage,
@@ -45,6 +47,8 @@ from atlas_camera.comfy.nodes_depth import (
     AtlasDepthMap,
     AtlasDepthOutlierMask,
     AtlasMogeNormals,
+    AtlasDepthDetailEnhance,
+    AtlasDepthCombine,
     AtlasDepthBandSplit,
     AtlasBoundedBand,
     AtlasDepthLayerMask,
@@ -70,6 +74,10 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasImportAnglePatch,
     AtlasAddPatchView,
     AtlasOcclusionMask,
+)
+from atlas_camera.comfy.nodes_planar import (
+    AtlasPlanarUnwarp,
+    AtlasPlanarRewarp,
 )
 from atlas_camera.comfy.nodes_inpaint import (
     AtlasScopeMask,
@@ -110,6 +118,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasExportMayaReviewScene": AtlasExportMayaReviewScene,
     "AtlasUSDCameraLoader":       AtlasUSDCameraLoader,
     "AtlasRegisterPlate":         AtlasRegisterPlate,
+    "AtlasDeband":                AtlasDeband,
     "AtlasLoadPlate":             AtlasLoadPlate,
     "AtlasAttachSourcePlate":     AtlasAttachSourcePlate,
     "AtlasLoadRAW":               AtlasLoadRAW,
@@ -150,12 +159,17 @@ NODE_CLASS_MAPPINGS = {
     # Track 2 — blockout viewport
     "AtlasViewportControls":      AtlasViewportControls,
     "AtlasBlockoutViewport":      AtlasBlockoutViewport,
+    "AtlasStereoRender":          AtlasStereoRender,
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   AtlasExportCameraPathUSD,
     "AtlasExportPlateEXR":        AtlasExportPlateEXR,
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              AtlasDepthMap,
     "AtlasMogeNormals":           AtlasMogeNormals,
+    "AtlasDepthDetailEnhance":    AtlasDepthDetailEnhance,
+    "AtlasDepthCombine":          AtlasDepthCombine,
+    "AtlasPlanarUnwarp":          AtlasPlanarUnwarp,
+    "AtlasPlanarRewarp":          AtlasPlanarRewarp,
     # Experimental (research-only)
     "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
     "AtlasLiveMeshRepair":        AtlasLiveMeshRepair,
@@ -196,6 +210,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasUSDCameraLoader":       "Atlas USD Camera Loader",
     "AtlasLoadPlate":             "Atlas Load Plate 🎞",
     "AtlasRegisterPlate":         "Atlas Register Plate (Float-Safe) 🎞",
+    "AtlasDeband":                "Atlas Deband 🎚",
     "AtlasAttachSourcePlate":     "Atlas Attach Source Plate 🎞",
     "AtlasLoadRAW":               "Atlas Load RAW (NEF/CR2/CR3/RAF/ARW) 📷",
     # Track 1 — solve
@@ -235,12 +250,17 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # Track 2 — blockout viewport
     "AtlasViewportControls":      "Atlas Output Desk 🎛",
     "AtlasBlockoutViewport":      "Atlas Viewport 🧊",
+    "AtlasStereoRender":          "Atlas Stereo Render 👓",
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
     "AtlasExportPlateEXR":        "Atlas Export ACEScg Plate 📤",
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              "Atlas Depth Map 🌊",
     "AtlasMogeNormals":           "Atlas MoGe Normals 🧭",
+    "AtlasDepthDetailEnhance":    "Atlas Depth Detail Enhance 🔬",
+    "AtlasDepthCombine":          "Atlas Depth Combine ➕",
+    "AtlasPlanarUnwarp":          "Atlas Planar Unwarp ▱",
+    "AtlasPlanarRewarp":          "Atlas Planar Rewarp ▱",
     "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
     "AtlasLiveMeshRepair":        "Atlas Live Mesh Repair 🔧",
     "AtlasRetopologizeLayer":     "Atlas Retopologize Layer 🔷",

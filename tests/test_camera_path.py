@@ -106,3 +106,44 @@ def test_camera_path_round_trip_to_dict():
     assert len(restored.keyframes) == 1
     assert restored.keyframes[0].position == pytest.approx((1.0, 2.0, 3.0))
     assert restored.keyframes[0].easing == "ease_out"
+
+def test_arc_preset_shape_orbits_while_dollying():
+    """The ⤴ Arc move's 3-keyframe grammar (0/60/99: orbit halfway + dolly
+    halfway at the midpoint) samples to a path whose azimuth advances AND
+    whose radius to the pivot shrinks — i.e. the spline genuinely curves
+    through the combined move instead of cutting a straight chord."""
+    import math
+
+    target = (0.0, 1.0, 0.0)
+
+    def arc_kf(frame, angle_deg, dolly_frac, easing):
+        a = math.radians(angle_deg)
+        base = (0.0, 1.6, 8.0)
+        off = (base[0] - target[0], base[1] - target[1], base[2] - target[2])
+        rot = (off[0] * math.cos(a) + off[2] * math.sin(a), off[1],
+               -off[0] * math.sin(a) + off[2] * math.cos(a))
+        k = 1.0 - dolly_frac
+        pos = (target[0] + rot[0] * k, target[1] + rot[1] * k, target[2] + rot[2] * k)
+        return _kf(frame, pos, target, easing=easing)
+
+    path = AtlasCameraPath(keyframes=[
+        arc_kf(0, 0.0, 0.0, "ease_in_out"),
+        arc_kf(60, 7.5, 0.075, "linear"),
+        arc_kf(99, 15.0, 0.15, "linear"),
+    ], fps=24.0, frame_count=100)
+    frames = sample_camera_path(path)
+    assert len(frames) == 100
+
+    def polar(extr):
+        x = extr.camera_position[0] - target[0]
+        z = extr.camera_position[2] - target[2]
+        return math.atan2(x, z), math.hypot(x, z)
+
+    az0, r0 = polar(frames[0])
+    az_mid, r_mid = polar(frames[60])
+    az_end, r_end = polar(frames[99])
+    assert az0 == pytest.approx(0.0, abs=1e-9) and r0 == pytest.approx(8.0)
+    assert 0 < az_mid < az_end          # azimuth advances through the move
+    assert r_end < r_mid < r0           # while the camera pushes in
+    assert az_end == pytest.approx(math.radians(15.0), abs=1e-6)
+    assert r_end == pytest.approx(8.0 * 0.85, rel=1e-6)

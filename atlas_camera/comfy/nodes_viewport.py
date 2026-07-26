@@ -1008,3 +1008,128 @@ class AtlasInput:
             "result": (solve_chain, image_ref, depth.out(0), sky_mask_ref, report),
             "expand": g.finalize(),
         }
+
+
+class AtlasStereoRender:
+    """👓 Geometry-true stereo pair rendered from the layered projection scene.
+
+    Unlike depth-warp stereo nodes (disparity shift + hole-filling
+    heuristics), this renders each eye from the ACTUAL projection meshes:
+    occlusion comes from real geometry via a z-buffer, and every layer samples
+    its own projector camera's texture through its baked UVs, so the
+    matte-painting property survives the eye offset. Eyes translate ±io/2
+    along camera-right; convergence is SHIFTED-SENSOR (cx offset at the given
+    distance), never toe-in — verticals stay vertical. Disocclusions beyond
+    what the layered geometry covers render as holes: that is the honest
+    geometry-true answer (add clean-plate bands to fill them), not a bug.
+    """
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "STRING")
+    RETURN_NAMES = ("stereo", "left", "right", "report")
+    FUNCTION = "render"
+    CATEGORY = "Atlas Camera/Blockout"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "source_image": ("IMAGE",),
+            },
+            "optional": {
+                "interocular_m": ("FLOAT", {"default": 0.065, "min": 0.001, "max": 1.0,
+                    "step": 0.005, "tooltip": "Eye separation in metres (human ~0.065). "
+                    "Only meaningful when the solve's metric scale is trusted — check "
+                    "the 🩺 scene-health scale verdict."}),
+                "convergence_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000.0,
+                    "step": 0.5, "tooltip": "0 = parallel eyes. >0 = shifted-sensor "
+                    "convergence: that distance sits at the screen plane."}),
+                "output_mode": (["sbs", "sbs_half", "anaglyph", "separate"],
+                                {"default": "sbs"}),
+                "resolution": ("INT", {"default": 1024, "min": 256, "max": 4096,
+                    "tooltip": "Long edge per eye. The pure-numpy rasterizer is "
+                    "O(faces x pixels) — keep moderate for dense relief meshes."}),
+            },
+        }
+
+    def render(self, solve, source_image, interocular_m=0.065, convergence_m=0.0,
+               output_mode="sbs", resolution=1024):
+        from atlas_camera.comfy.headless_evidence import (
+            _decode_mask, _decode_rgba, _fit_long_edge, _tensor_rgba,
+        )
+        from atlas_camera.core.projection_render import (
+            converged_cx, gather_scene_meshes, render_scene,
+            stereo_eye_view_matrices,
+        )
+        np = _require_numpy()
+        torch = _require_torch()
+
+        meshes = gather_scene_meshes(solve, with_uvs=True)
+        if not meshes:
+            report = ("AtlasStereoRender: no serialized projection meshes on this "
+                      "solve — run AtlasDeriveProjectionGeometry (or clean-plate "
+                      "layers) upstream first.")
+            return (source_image, source_image, source_image, report)
+
+        src = source_image
+        sh, sw = int(src.shape[1]), int(src.shape[2])
+        width, height = _fit_long_edge(sw, sh, int(resolution))
+        intr = solve.camera.intrinsics
+        sx = float(width) / float(intr.image_width or width)
+        sy = float(height) / float(intr.image_height or height)
+        fx, fy = float(intr.fx_px) * sx, float(intr.fy_px) * sy
+        cx, cy = float(intr.cx_px) * sx, float(intr.cy_px) * sy
+
+        textures = {"primary": _tensor_rgba(src, width, height)}
+        for source in getattr(solve, "projection_sources", None) or []:
+            name = str(getattr(source, "name", "") or "layer")
+            rgba = _decode_rgba(getattr(source, "image_b64", None) or "",
+                                width, height)
+            if rgba is None:
+                continue
+            mask = _decode_mask(getattr(source, "mask_b64", None), width, height)
+            rgba = np.array(rgba, dtype=np.float64, copy=True)
+            rgba[..., 3] = rgba[..., 3] * mask
+            textures[name] = rgba
+
+        view = solve.camera.extrinsics.camera_view_matrix
+        left_view, right_view = stereo_eye_view_matrices(view, float(interocular_m))
+        cxl, cxr = converged_cx(fx, cx, float(interocular_m), float(convergence_m))
+        left_rgb, left_a, left_stats = render_scene(
+            meshes, textures, left_view, fx, fy, cxl, cy, width, height)
+        right_rgb, right_a, right_stats = render_scene(
+            meshes, textures, right_view, fx, fy, cxr, cy, width, height)
+
+        left = torch.from_numpy(np.clip(left_rgb, 0.0, 1.0)).unsqueeze(0).float()
+        right = torch.from_numpy(np.clip(right_rgb, 0.0, 1.0)).unsqueeze(0).float()
+
+        if output_mode == "anaglyph":
+            ana = np.stack([left_rgb[..., 0], right_rgb[..., 1], right_rgb[..., 2]],
+                           axis=-1)
+            stereo = torch.from_numpy(np.clip(ana, 0.0, 1.0)).unsqueeze(0).float()
+        elif output_mode == "sbs_half":
+            half = torch.nn.functional.interpolate(
+                torch.cat([left, right], dim=2).permute(0, 3, 1, 2),
+                size=(height, width), mode="bilinear", align_corners=False,
+            ).permute(0, 2, 3, 1)
+            stereo = half
+        elif output_mode == "separate":
+            stereo = left
+        else:  # sbs
+            stereo = torch.cat([left, right], dim=2)
+
+        cov_l = float((left_a > 0).mean())
+        cov_r = float((right_a > 0).mean())
+        skipped = sorted(set(left_stats["meshes_skipped"]))
+        report = (f"AtlasStereoRender: {output_mode} {width}x{height}/eye, interocular "
+                  f"{float(interocular_m) * 1000:.0f} mm, "
+                  + (f"converged at {float(convergence_m):g} m (shifted-sensor)"
+                     if float(convergence_m) > 0 else "parallel eyes")
+                  + f"; coverage L {cov_l:.1%} / R {cov_r:.1%}; "
+                  f"{left_stats['meshes_rendered']} mesh(es), "
+                  f"{left_stats['faces_rasterized']} faces rasterized (L). "
+                  "Uncovered pixels are true disocclusions — geometry the layers "
+                  "never photographed; fill with clean-plate bands, not warping.")
+        if skipped:
+            report += f"\nSkipped (no texture/uvs): {skipped}"
+        return (stereo, left, right, report)

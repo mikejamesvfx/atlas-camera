@@ -115,6 +115,10 @@ from atlas_camera.raw.metadata import (  # noqa: F401
 # MoGe-2 (Ruicheng/moge-*) is the MIT-licensed, light-dependency alternative:
 # metric depth + predicted normals, fed the solve's focal as fov_x. Needs the
 # [moge] extra (`pip install git+https://github.com/microsoft/MoGe.git`).
+# apple/DepthPro-hf (transformers >= 4.48, plain [neural] extra) emits metric
+# depth AND its own predicted focal/FOV — scene_health cross-checks that focal
+# against the solve's intrinsics (focal_mismatch flag). Apple ML research
+# license (non-commercial) — verify terms before commercial use.
 _DEPTH_MODEL_CHOICES = [
     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
     "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
@@ -124,6 +128,7 @@ _DEPTH_MODEL_CHOICES = [
     "Ruicheng/moge-2-vitl-normal",
     "Ruicheng/moge-2-vitb-normal",
     "Ruicheng/moge-2-vits-normal",
+    "apple/DepthPro-hf",
 ]
 
 # MoGe `*-normal` checkpoints, largest→smallest — the models that predict surface
@@ -448,25 +453,21 @@ def apply_live_mesh_repair(
     if not (do_hole_fill or live_fill_edge_sawteeth):
         return
 
-    # Check if sub-millisecond CUDA 2D grid repair already ran during build_relief_mesh
+    # The CUDA 2D grid repair (build_relief_mesh) only fixes 1-cell PINHOLES
+    # (invalid cell with >=3 valid orthogonal neighbours) and grid sawteeth —
+    # it cannot close contiguous multi-cell holes, which is exactly what the
+    # 3D boundary-loop fill exists for. The 2026-07-23 fast path returned here
+    # and reported the pinhole count AS n_loops_filled, silently skipping real
+    # holes and ignoring live_fill_distance_m entirely (regression found
+    # 2026-07-26 via the live-fill test). Grid stats are now reported under
+    # their OWN key and the CPU loop fill still runs — cheaper than before,
+    # since the grid pass already removed the pinhole population.
     grid_repair = getattr(mesh, "stats", {}).get("live_grid_repair")
-    if grid_repair is not None:
-        if stats is not None:
-            rm_stats = stats.setdefault("relief_mesh", {})
-            if do_hole_fill:
-                rm_stats["live_hole_fill"] = {
-                    "n_loops_filled": grid_repair.get("n_holes", 0),
-                    "filled_edge_counts": [],
-                    "distance_m": float(live_fill_distance_m),
-                }
-            if live_fill_edge_sawteeth:
-                rm_stats["live_boundary_sawtooth_fill"] = {
-                    "n_triangles_added": grid_repair.get("n_sawteeth", 0),
-                    "valley_depth_min_m": 0.0,
-                    "valley_depth_max_m": 0.0,
-                    "distance_m": float(live_fill_distance_m),
-                }
-        return  # Fast CUDA 2D grid repair completed — skip slow CPU 3D graph loops!
+    if grid_repair is not None and stats is not None:
+        stats.setdefault("relief_mesh", {})["live_grid_repair"] = {
+            "n_pinholes": grid_repair.get("n_holes", 0),
+            "n_sawteeth": grid_repair.get("n_sawteeth", 0),
+        }
 
     from atlas_camera.core.mesh_repair import (
         apply_boundary_sawtooth_fill,

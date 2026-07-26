@@ -2840,53 +2840,103 @@ function buildNodeUI(node, containerEl) {
   // never from moving the camera.
   const MOVE_ANGLE_DEG = 15;
   const MOVE_DOLLY_FRAC = 0.2;  // dolly-in travel as a fraction of cam→pivot
+  const PUSH_IN_FRAC = 0.35;    // ⭆ Push In — a stronger, ease-shaped dolly
+  const ARC_DOLLY_FRAC = 0.15;  // ⤴/⤵ Arc — dolly component of the combined move
+  // Easing applied to a move's FIRST keyframe (the whole 2-keyframe move, or
+  // the opening segment of a 3-keyframe arc). Values must be exactly the four
+  // curves camera_path.py understands — this selector adds no new easing
+  // functions, so the JS/Python mirror pin is untouched.
+  let moveEasing = "ease_in_out";
   function applyMovePreset(kind) {
     const basis = recoveredMoveBasis();
     if (!basis) return; // no solve yet — nothing to move around
     const { position: E, quaternion, pivot: P } = basis;
     const v3o = (v) => ({ x: v.x, y: v.y, z: v.z });
-    let startPose, endPose;
-    if (kind === "dolly_in") {
+    const kfAt = (frame, pose, easing) => ({
+      frame_index: frame, position: pose.position, target: pose.target,
+      up: { x: 0, y: 1, z: 0 }, easing,
+    });
+    let newKeyframes;
+    if (kind === "dolly_in" || kind === "push_in") {
       const d = E.distanceTo(P) || 1;
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion);
       const T = E.clone().addScaledVector(fwd, d); // target ON the view axis
-      startPose = { position: v3o(E), target: v3o(T) };
-      endPose = computePresetEndPose(startPose, "dolly_in", 0, MOVE_DOLLY_FRAC);
+      const startPose = { position: v3o(E), target: v3o(T) };
+      const frac = kind === "push_in" ? PUSH_IN_FRAC : MOVE_DOLLY_FRAC;
+      const endPose = computePresetEndPose(startPose, "dolly_in", 0, frac);
+      newKeyframes = [kfAt(0, startPose, moveEasing),
+                      kfAt(PATH_FRAME_COUNT - 1, endPose, "linear")];
+    } else if (kind === "arc_left" || kind === "arc_right") {
+      // Combined orbit + dolly-in. THREE keyframes (0 / 60 / 99) so the
+      // Catmull-Rom actually curves through the combined move instead of
+      // cutting the chord straight to the end pose.
+      const startPose = { position: v3o(E), target: v3o(P) };
+      const orbitKind = kind === "arc_left" ? "orbit_left" : "orbit_right";
+      const arcPose = (angleDeg, frac) => {
+        const o = computePresetEndPose(startPose, orbitKind, angleDeg, 0);
+        const T = o.target, Ep = o.position, k = 1 - frac; // dolly toward the fixed target
+        return {
+          position: { x: T.x + (Ep.x - T.x) * k, y: T.y + (Ep.y - T.y) * k, z: T.z + (Ep.z - T.z) * k },
+          target: { ...T },
+        };
+      };
+      newKeyframes = [
+        kfAt(0, startPose, moveEasing),
+        kfAt(60, arcPose(MOVE_ANGLE_DEG / 2, ARC_DOLLY_FRAC / 2), "linear"),
+        kfAt(PATH_FRAME_COUNT - 1, arcPose(MOVE_ANGLE_DEG, ARC_DOLLY_FRAC), "linear"),
+      ];
     } else {
-      startPose = { position: v3o(E), target: v3o(P) }; // locked at the recovered eye
-      endPose = computePresetEndPose(startPose, kind, MOVE_ANGLE_DEG, 0);
+      const startPose = { position: v3o(E), target: v3o(P) }; // locked at the recovered eye
+      const endPose = computePresetEndPose(startPose, kind, MOVE_ANGLE_DEG, 0);
+      newKeyframes = [kfAt(0, startPose, moveEasing),
+                      kfAt(PATH_FRAME_COUNT - 1, endPose, "linear")];
     }
     updateLensWideLimit(E, P); // widen the slider's left end to fit this scene
     // A move click always restores the fixed film timing (an earlier FBX
     // import may have overridden it) and replaces any existing keyframes.
     pathFps = PATH_FPS;
     pathFrameCount = PATH_FRAME_COUNT;
-    pathKeyframes = [
-      { frame_index: 0, position: startPose.position, target: startPose.target, up: { x: 0, y: 1, z: 0 }, easing: "ease_in_out" },
-      { frame_index: PATH_FRAME_COUNT - 1, position: endPose.position, target: endPose.target, up: { x: 0, y: 1, z: 0 }, easing: "linear" },
-    ];
+    pathKeyframes = newKeyframes;
     rebuildPathVisualization();
     persistPathToClientData();
     playBtn.onclick(); // auto-preview once; snaps back to the recovered view on done
   }
 
+  // APPEND-ONLY: the kind strings serialize into muscle memory and docs —
+  // never rename the existing five.
   const MOVES = [
     ["orbit_left", "⟲ Orbit L", "Arc 15° left around the mesh centre from the exact recovered eye"],
     ["orbit_right", "⟳ Orbit R", "Arc 15° right around the mesh centre from the exact recovered eye"],
     ["pan_left", "⇠ Pan L", "Swivel 15° left in place at the exact recovered eye"],
     ["pan_right", "⇢ Pan R", "Swivel 15° right in place at the exact recovered eye"],
     ["dolly_in", "⭢ Dolly In", "Push in 20% of the distance to the mesh centre from the full recovered framing"],
+    ["arc_left", "⤴ Arc L", "Combined move: orbit 15° left WHILE pushing in 15% — 3 keyframes so the path genuinely curves"],
+    ["arc_right", "⤵ Arc R", "Combined move: orbit 15° right WHILE pushing in 15% — 3 keyframes so the path genuinely curves"],
+    ["push_in", "⭆ Push In", "Stronger 35% push toward the mesh centre, shaped by the easing selector"],
   ];
   const moveWrap = document.createElement("span");
   moveWrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
   MOVES.forEach(([kind, label, tip]) => {
     const b = document.createElement("button");
     b.textContent = label;
-    b.title = tip + " — 100 frames @ 24 fps, ease in/out; computed from the recovered camera, not the current view";
+    b.title = tip + " — 100 frames @ 24 fps; computed from the recovered camera, not the current view";
     b.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
     b.onclick = () => applyMovePreset(kind);
     moveWrap.appendChild(b);
   });
+  // Easing selector for the moves above — the four curves camera_path.py
+  // already implements; picking one changes the NEXT move click.
+  const easeSel = document.createElement("select");
+  easeSel.title = "Easing for the one-click moves (applies on the next move click)";
+  easeSel.style.cssText = "padding:1px 2px;font-size:11px;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
+  ["ease_in_out", "ease_in", "ease_out", "linear"].forEach((v) => {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v.replace(/_/g, " ");
+    easeSel.appendChild(o);
+  });
+  easeSel.value = moveEasing;
+  easeSel.onchange = () => { moveEasing = easeSel.value; };
+  moveWrap.appendChild(easeSel);
 
   // 🔭 Lens slider — see the playback-lens comment block above.
   const lensWrap = document.createElement("span");

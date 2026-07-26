@@ -91,6 +91,7 @@ from atlas_camera.comfy.node_helpers import (
 from atlas_camera.comfy.nodes_viewport import (
     AtlasViewportControls,
     AtlasBlockoutViewport,
+    AtlasStereoRender,
     AtlasDebugReport,
     AtlasLayerPreview,
     AtlasInput,
@@ -99,6 +100,7 @@ from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
     AtlasRegisterPlate,
+    AtlasDeband,
     AtlasAttachSourcePlate,
     AtlasLoadRAW,
     AtlasSolveFromImage,
@@ -118,11 +120,17 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasDecomposeCamera,
     AtlasUSDCameraLoader,
 )
+from atlas_camera.comfy.nodes_planar import (
+    AtlasPlanarUnwarp,
+    AtlasPlanarRewarp,
+)
 from atlas_camera.comfy.nodes_depth import (
     AtlasDepthAnything,
     AtlasDepthMap,
     AtlasDepthOutlierMask,
     AtlasMogeNormals,
+    AtlasDepthDetailEnhance,
+    AtlasDepthCombine,
     AtlasDepthBandSplit,
     AtlasBoundedBand,
     AtlasDepthLayerMask,

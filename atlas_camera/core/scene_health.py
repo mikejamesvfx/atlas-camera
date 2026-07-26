@@ -172,7 +172,13 @@ _FLAG_SEVERITY = {
     "torn_excessive": "warn",
     "stretch_excessive": "warn",
     "camera_looks_up": "warn",
+    # Independent-intrinsics cross-check: a depth backend that predicts its own
+    # focal (Depth Pro) disagrees with the solve's fx beyond the ratio band.
+    "focal_mismatch": "warn",
 }
+
+# Acceptable ratio band for depth-model focal vs solve fx (~±0.4 stop of FOV).
+_FOCAL_RATIO_BAND = (0.75, 1.33)
 
 # Solved camera looking up by more than ~9 deg (sin) — on ground-based plates
 # this almost always means the learned gravity flipped, not a real up-shot.
@@ -388,6 +394,29 @@ def evaluate_scene_health(
                     f"depth: {neg:.1%} of raw depth is NEGATIVE (DA3 watch-item) — "
                     "ground-pinning renormalizes it, but suspect this first if a "
                     "band's geometry misbehaves on this shot"))
+        except Exception:  # noqa: BLE001
+            pass
+        # Independent-intrinsics cross-check (Depth Pro's FOV head). The
+        # backend only records its predicted focal as provenance; the
+        # agree/disagree verdict is made HERE and nowhere else.
+        try:
+            pred = (depth.metadata or {}).get("predicted_focal_px")
+            if pred and intr.fx_px and depth.image_width:
+                # Rescale the prediction from the depth image's pixel scale to
+                # the solve's, then compare like-for-like.
+                pred_at_solve = float(pred) * (
+                    float(intr.image_width) / float(depth.image_width))
+                depth_info["predicted_focal_px"] = round(pred_at_solve, 1)
+                camera["depth_focal_px"] = round(pred_at_solve, 1)
+                ratio = pred_at_solve / float(intr.fx_px)
+                lo, hi = _FOCAL_RATIO_BAND
+                if not (lo <= ratio <= hi):
+                    flags.append(_flag(
+                        "focal_mismatch",
+                        f"solve fx {float(intr.fx_px):.0f} px vs depth-model "
+                        f"focal {pred_at_solve:.0f} px ({depth.model_id}) — "
+                        "one intrinsics estimate is off; verify focal/FOV "
+                        "before trusting metric scale"))
         except Exception:  # noqa: BLE001
             pass
 

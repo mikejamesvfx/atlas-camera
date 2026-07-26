@@ -23,8 +23,10 @@ NORMAL_KEYS = {
     "AtlasAssessOutput",
     "AtlasAttachSourcePlate", "AtlasBlockoutViewport", "AtlasBoundedBand",
     "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasConstrainedSolve",
+    "AtlasDeband",
     "AtlasDebugReport", "AtlasDecomposeCamera", "AtlasDecomposeSolve",
     "AtlasDefineShotCam", "AtlasDepthAnything", "AtlasDepthBandSplit",
+    "AtlasDepthCombine", "AtlasDepthDetailEnhance",
     "AtlasDepthLayerMask", "AtlasDepthMap", "AtlasDepthOutlierMask",
     "AtlasDeriveInteriorRoom", "AtlasDeriveProjectionGeometry",
     "AtlasDeriveReliefMesh", "AtlasDeriveRoofsFacades", "AtlasDeriveTowersSpires",
@@ -38,11 +40,11 @@ NORMAL_KEYS = {
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage", "AtlasLiveMeshRepair",
     "AtlasLoadRAW", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasMogeNormals",
     "AtlasOcclusionMask", "AtlasReferenceScaleSolve",
-    "AtlasLoadPlate",
+    "AtlasLoadPlate", "AtlasPlanarUnwarp", "AtlasPlanarRewarp",
     "AtlasRegisterPlate", "AtlasRetopologizeLayer", "AtlasRollTrim", "AtlasSAM3Mask", "AtlasSDXLInpaint",
     "AtlasScaleOverride",
     "AtlasSceneHealthGate", "AtlasScopeMask", "AtlasSegmentedSDXLInpaint",
-    "AtlasSemanticMask", "AtlasSkyDomeLayer", "AtlasSolveFromImage",
+    "AtlasSemanticMask", "AtlasSkyDomeLayer", "AtlasSolveFromImage", "AtlasStereoRender",
     "AtlasSolveGate", "AtlasUSDCameraLoader", "AtlasVLMScaleCues",
     "AtlasVPVisualization", "AtlasViewportControls",
 }
@@ -65,7 +67,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 71
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 77
 
 
 def test_experimental_registry_keys_exact():

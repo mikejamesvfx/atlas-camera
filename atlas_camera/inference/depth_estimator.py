@@ -25,6 +25,15 @@ Depth Anything 3 (opt-in second backend, ``pip install -e .[neural-da3]``):
     CC BY-NC 4.0 — non-commercial license)
 DA3 model ids dispatch to the ``depth_anything_3`` package (GitHub-only) instead of
 transformers; everything else (DepthResult contract, caching) is shared.
+
+Depth Pro (``apple/DepthPro-hf``, transformers >= 4.48): metric depth AND a
+predicted focal length / horizontal FOV from the model's own FOV head. The focal
+estimate rides in ``metadata["predicted_focal_px"]`` (source-image pixel scale)
+purely as PROVENANCE — the verdict on whether it agrees with the solve's
+intrinsics belongs to ``core.scene_health`` (the single red-flag evaluator),
+never here. Depth Pro ignores ``focal_px`` input (it predicts its own), so it
+does not fragment the result cache on focal. Weights ship under the Apple ML
+research license (non-commercial) — see the combo annotation in node_helpers.
 """
 
 from __future__ import annotations
@@ -52,6 +61,9 @@ DA3_NESTED_MODEL = "depth-anything/DA3NESTED-GIANT-LARGE-1.1"
 # DA3METRIC emits canonical depth normalised by this constant: metres = focal_px * out / 300.
 _DA3_CANONICAL_FOCAL_NORM = 300.0
 
+# Apple Depth Pro (transformers backend): metric depth + predicted focal/FOV.
+DEPTH_PRO_MODEL = "apple/DepthPro-hf"
+
 # Relative (disparity) models: normalised disparity is floored here before the
 # reciprocal depth conversion — a 25:1 depth-ratio cap that keeps the sky /
 # horizon tail from blowing the dynamic range. Everything at or below the
@@ -71,8 +83,14 @@ def _is_moge_model(model_id: str) -> bool:
     return "moge" in model_id.lower()
 
 
+def _is_depth_pro_model(model_id: str) -> bool:
+    """True for Apple Depth Pro ids (``apple/DepthPro*``)."""
+    return model_id.lower().startswith("apple/depthpro")
+
+
 is_da3_model = _is_da3_model
 is_moge_model = _is_moge_model
+is_depth_pro_model = _is_depth_pro_model
 
 
 
@@ -599,7 +617,9 @@ def estimate_depth(
     metres using the *solved* focal) and by MoGe (fed as ``fov_x`` so its
     geometry lands in the recovered camera's frame); every other model ignores
     it. Backend is chosen by ``model_id``: ``depth-anything/DA3*`` -> DA3,
-    anything with ``moge`` -> MoGe-2, else transformers Depth Anything V2.
+    anything with ``moge`` -> MoGe-2, ``apple/DepthPro*`` -> Depth Pro (metric
+    depth + its own predicted focal in metadata), else transformers Depth
+    Anything V2.
     """
     torch = _require_torch()
 
@@ -627,10 +647,88 @@ def estimate_depth(
         result = _estimate_depth_moge(
             image_path, model_id=model_id, device=device, focal_px=focal_px
         )
+    elif _is_depth_pro_model(model_id):
+        result = _estimate_depth_depth_pro(image_path, model_id=model_id, device=device)
     else:
         result = _estimate_depth_v2(image_path, model_id=model_id, device=device)
     bounded_cache_set(_DEPTH_RESULT_CACHE, cache_key, result, _DEPTH_RESULT_CACHE_MAX)
     return result
+
+
+def _estimate_depth_depth_pro(
+    image_path: str | Path,
+    *,
+    model_id: str,
+    device: str,
+) -> DepthResult:
+    """Apple Depth Pro inference path (transformers >= 4.48).
+
+    The model's FOV head predicts its own focal length, which the processor's
+    ``post_process_depth_estimation`` uses to convert canonical inverse depth
+    into metric metres at the target resolution. That predicted focal (rescaled
+    to SOURCE-image pixels) and the horizontal FOV are recorded as
+    ``metadata["predicted_focal_px"]`` / ``metadata["predicted_fov_h_deg"]`` —
+    an independent intrinsics estimate that ``core.scene_health`` cross-checks
+    against the solve's fx. This function only REPORTS the estimate; it never
+    judges agreement (verdicts live in scene_health alone).
+    """
+    import math
+
+    import numpy as np
+    from PIL import Image
+
+    torch, _, _ = _require_depth_backend()
+    processor, model = _get_model(model_id, device)
+    image = Image.open(image_path).convert("RGB")
+    width, height = image.size
+
+    inputs = processor(images=image, return_tensors="pt").to(device)
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    metadata: dict[str, Any] = {"device": device, "backend": "depth_pro"}
+    post_fn = getattr(processor, "post_process_depth_estimation", None)
+    if post_fn is not None:
+        post = post_fn(outputs, target_sizes=[(height, width)])[0]
+        depth = np.asarray(
+            post["predicted_depth"].detach().float().cpu().numpy(), dtype=np.float32
+        )
+        focal = post.get("focal_length")
+        fov = post.get("field_of_view")
+        if focal is not None:
+            # post_process returns the focal at target (== source) resolution.
+            metadata["predicted_focal_px"] = float(
+                focal.item() if hasattr(focal, "item") else focal
+            )
+        if fov is not None:
+            metadata["predicted_fov_h_deg"] = float(
+                fov.item() if hasattr(fov, "item") else fov
+            )
+        elif focal is not None and metadata.get("predicted_focal_px", 0) > 0:
+            metadata["predicted_fov_h_deg"] = math.degrees(
+                2.0 * math.atan(width / (2.0 * metadata["predicted_focal_px"]))
+            )
+    else:  # pragma: no cover - transformers without the DepthPro post-processor
+        predicted = outputs.predicted_depth
+        if predicted.dim() == 3:
+            predicted = predicted.unsqueeze(1)
+        predicted = torch.nn.functional.interpolate(
+            # Bilinear, not bicubic — see the DA3 path's comment on ringing.
+            predicted, size=(height, width), mode="bilinear", align_corners=False
+        )[0, 0]
+        depth = predicted.detach().float().cpu().numpy().astype(np.float32)
+
+    depth, metadata = _record_and_clamp_negative(depth, metadata)
+    return DepthResult(
+        depth=depth,
+        is_metric=True,
+        model_id=model_id,
+        image_width=width,
+        image_height=height,
+        near=float(depth.min()),
+        far=float(depth.max()),
+        metadata=metadata,
+    )
 
 
 def _estimate_depth_v2(

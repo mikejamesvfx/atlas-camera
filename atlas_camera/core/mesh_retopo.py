@@ -362,7 +362,8 @@ def smooth_relax(
 # Node-facing wrapper (mirrors apply_interior_hole_fill's discipline)
 # ---------------------------------------------------------------------------
 
-_RETOPO_METHODS = ("off", "quad", "decimate", "smooth")
+# APPEND-ONLY: these serialize into workflows as combo values.
+_RETOPO_METHODS = ("off", "quad", "decimate", "smooth", "voxel_remesh")
 
 
 def apply_retopo(
@@ -460,6 +461,24 @@ def apply_retopo(
             }
         out_v, out_f = decimate_quadric(vertices, faces, target_face_count=target_faces)
         lib = "fast-simplification"
+    elif method == "voxel_remesh":
+        # WATERTIGHT solidify (pure numpy, no extra deps): frustum-space
+        # voxelization + surface nets + Taubin — see core.mesh_voxel. The
+        # torn open surface becomes a closed shell a DCC can boolean / a
+        # printer can slice. Grid resolution derived from the vertex target
+        # (surface-net vertex count grows ~grid^2 on a full-frame relief).
+        from atlas_camera.core.mesh_voxel import voxel_remesh as _voxel_remesh
+        grid = int(np.clip(round(max(int(target_vertex_count), 64) ** 0.5 * 0.9),
+                           24, 256))
+        out_v, out_f = _voxel_remesh(
+            vertices, faces,
+            view_matrix=view_matrix,
+            fx=float(fx), fy=float(fy), cx=cxv, cy=cyv,
+            image_width=int(image_width), image_height=int(image_height),
+            grid=grid,
+            smooth_iterations=max(int(smooth_iterations), 8),
+        )
+        lib = f"surface-nets voxel remesh (grid {grid}, watertight)"
 
     mesh.vertices = out_v
     mesh.faces = out_f

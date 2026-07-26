@@ -195,10 +195,29 @@ def test_layer_nodes_expose_shared_quad_coherence_guard():
     assert "quad_coherence" in AtlasDepthLayerMask.INPUT_TYPES()["optional"]
 
 
+def _room_depth_with_holes():
+    """The analytic room with two INVALID (depth 0) patches punched in:
+
+    * a NEAR hole on the ground (rows 216-243 -> boundary depths ~3.4-4.6 m)
+    * a FAR hole on the 8 m wall (rows 100-123 -> boundary depth exactly 8 m)
+
+    Multi-cell blobs (24+ px = 3+ grid cells at relief_grid=32), so the
+    build-time CUDA pinhole conv (which only closes 1-cell holes with >=3
+    valid orthogonal neighbours) cannot touch them — they must reach the 3D
+    boundary-loop fill. The original fixture had NO interior holes at all
+    (sky=60 m is a VALID far backdrop): the old pass was the depth-window
+    frame-loop fluke that the unconditional outer-frame guard now prevents.
+    """
+    d = _room_depth().copy()
+    d[216:244, 116:140] = 0.0   # near ground hole (~3.4-4.6 m boundary)
+    d[100:124, 116:140] = 0.0   # far wall hole (8 m boundary)
+    return d
+
+
 def test_live_hole_fill_closes_near_holes():
     pytest.importorskip("torch")
     solve = _solve()
-    depth = _depth_result(_room_depth())
+    depth = _depth_result(_room_depth_with_holes())
     out_off, hole_off = AtlasDeriveReliefMesh().derive(
         solve, depth, relief_grid=32, live_fill_holes=False)
     out_on, hole_on = AtlasDeriveReliefMesh().derive(
@@ -207,13 +226,15 @@ def test_live_hole_fill_closes_near_holes():
     # Hole mask should have fewer holes when fill is on
     assert hole_on.sum() <= hole_off.sum()
     meta = out_on.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]
+    # n_loops_filled counts REAL 3D boundary loops closed by the ear-clip fill
+    # (the 2026-07-23 fast path had redefined it as the grid pinhole count).
     assert meta["live_hole_fill"]["n_loops_filled"] > 0
 
 
 def test_live_hole_fill_distance_scopes_distant_holes():
     pytest.importorskip("torch")
     solve = _solve()
-    depth = _depth_result(_room_depth())
+    depth = _depth_result(_room_depth_with_holes())
     out_near, _ = AtlasDeriveReliefMesh().derive(
         solve, depth, relief_grid=32, live_fill_holes=True,
         live_fill_distance_m=5.0, live_fill_max_hole_edges=128)
@@ -222,8 +243,10 @@ def test_live_hole_fill_distance_scopes_distant_holes():
         live_fill_distance_m=100.0, live_fill_max_hole_edges=128)
     near_meta = out_near.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]["live_hole_fill"]
     far_meta = out_far.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]["live_hole_fill"]
-    # Tighter distance should fill fewer loops than generous distance
-    assert near_meta["n_loops_filled"] <= far_meta["n_loops_filled"]
+    # 5 m window reaches only the ground hole; 100 m reaches the 8 m wall hole
+    # too — the scoping must do real, strictly-ordered work (not 0 <= 0).
+    assert near_meta["n_loops_filled"] >= 1
+    assert near_meta["n_loops_filled"] < far_meta["n_loops_filled"]
 
 
 def test_live_hole_fill_disabled_by_default():

@@ -309,46 +309,18 @@ def compare_source_structure(output_image: Any, source_image: Any,
     }
 
 
+# Mesh gather + projection were promoted VERBATIM to core.projection_render
+# (2026-07-26, stereo-render track) so geometry-true novel views share one
+# implementation; these thin wrappers keep this module's call sites and any
+# external importers unchanged.
 def _mesh_arrays(solve: Any):
-    np = _numpy()
-    out = []
-
-    def add(primitives, prefix):
-        for primitive in primitives or []:
-            if getattr(primitive, "primitive_type", None) != "mesh":
-                continue
-            meta = getattr(primitive, "metadata", None) or {}
-            vertices = meta.get("vertices") or []
-            faces = meta.get("faces") or []
-            if len(vertices) < 9 or len(faces) < 3:
-                continue
-            out.append((
-                f"{prefix}{getattr(primitive, 'name', 'mesh')}",
-                np.asarray(vertices, dtype=np.float64).reshape(-1, 3),
-                np.asarray(faces, dtype=np.int64).reshape(-1, 3),
-                meta,
-            ))
-
-    scene = getattr(solve, "projection_scene", None)
-    add(getattr(scene, "proxy_geometry", None) or [], "")
-    for source in getattr(solve, "projection_sources", None) or []:
-        add(getattr(source, "proxy_geometry", None) or [],
-            f"{getattr(source, 'name', 'layer')}/")
-    return out
+    from atlas_camera.core.projection_render import gather_scene_meshes
+    return gather_scene_meshes(solve)
 
 
 def _project(vertices, view, fx, fy, cx, cy):
-    np = _numpy()
-    hom = np.concatenate(
-        [vertices, np.ones((len(vertices), 1), dtype=np.float64)], axis=1)
-    camera = hom @ np.asarray(view, dtype=np.float64).T
-    forward = -camera[:, 2]
-    safe = np.where(np.abs(forward) < 1e-9, 1e-9, forward)
-    pixels = np.stack([
-        cx + fx * camera[:, 0] / safe,
-        cy - fy * camera[:, 1] / safe,
-    ], axis=1)
-    return pixels, forward
+    from atlas_camera.core.projection_render import project_points
+    return project_points(vertices, view, fx, fy, cx, cy)
 
 
 def orbit_coverage_summary(solve: Any, *, res: int = 256,

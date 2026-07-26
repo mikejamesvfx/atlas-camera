@@ -249,6 +249,171 @@ class AtlasMogeNormals:
         return (out, report)
 
 
+class AtlasDepthDetailEnhance:
+    """🔬 Emboss the normal map's high-frequency shape onto the shared depth.
+
+    Monocular depth is metrically sound but low-frequency — brick courses,
+    window reveals, rock striations flatten out. The predicted normals (MoGe
+    ``*-normal`` depth, or attached via AtlasMogeNormals) carry exactly that
+    detail. This node integrates them into a height field (Frankot-Chellappa),
+    strips everything below ``detail_cutoff_px`` (so the metric base can never
+    tilt or re-scale), and blends only the surviving fine detail onto a COPY of
+    the ATLAS_DEPTH_MAP — log-domain, median-renormalized, scale-preserving by
+    construction. Passes through unchanged (with the reason in the report) when
+    the input carries no normals. Wire an ``exclude_mask`` (e.g. sky) to keep
+    the emboss off regions whose normals are meaningless.
+    """
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "STRING")
+    RETURN_NAMES = ("depth", "report")
+    FUNCTION = "enhance"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"depth": ("ATLAS_DEPTH_MAP",)},
+            "optional": {
+                "strength": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "detail_cutoff_px": ("INT", {"default": 64, "min": 4, "max": 1024,
+                                             "tooltip": "Wavelengths longer than this (px) are "
+                                             "discarded from the integrated surface — only finer "
+                                             "detail is embossed, which is what keeps the metric "
+                                             "scale untouchable."}),
+                "exclude_mask": ("MASK", {"tooltip": "1 = leave this pixel's depth untouched "
+                                          "(sky, glass — anywhere normals are meaningless)."}),
+            },
+        }
+
+    def enhance(self, depth, strength=0.35, detail_cutoff_px=64, exclude_mask=None):
+        np = _require_numpy()
+        base = getattr(depth, "depth", None)
+        if base is None:
+            return (depth, "AtlasDepthDetailEnhance: input depth carries no array — passed through.")
+        raw_normal = getattr(depth, "normal", None)
+        if raw_normal is None:
+            return (depth, "AtlasDepthDetailEnhance: no normals on this depth map — use a MoGe "
+                           "'*-normal' depth model or wire AtlasMogeNormals upstream. "
+                           "Depth passed through unchanged.")
+        if float(strength) <= 0.0:
+            return (depth, "AtlasDepthDetailEnhance: strength 0 — passed through unchanged.")
+
+        from atlas_camera.core.depth_detail import (
+            blend_depth_detail,
+            highpass_detail,
+            integrate_normals_frankot_chellappa,
+        )
+        d = np.asarray(base, dtype=np.float64)
+        normal = _resize_normal_field(raw_normal, d.shape[:2])
+        excl = _resolve_exclude_mask(exclude_mask, d.shape[0], d.shape[1])
+        height_field = integrate_normals_frankot_chellappa(normal)
+        detail = highpass_detail(height_field, float(detail_cutoff_px))
+        blended = blend_depth_detail(d, detail, float(strength), exclude_mask=excl)
+
+        out = copy.copy(depth)            # never mutate the SHARED depth object
+        out.depth = blended
+        valid = np.isfinite(blended) & (blended > 0)
+        if valid.any():
+            out.near = float(blended[valid].min())
+            out.far = float(blended[valid].max())
+        out.metadata = {**(depth.metadata or {}),
+                        "detail_enhanced": True,
+                        "detail_strength": float(strength),
+                        "detail_cutoff_px": int(detail_cutoff_px)}
+        med = float(np.nanmedian(d[np.isfinite(d) & (d > 0)])) if valid.any() else 0.0
+        return (out, "AtlasDepthDetailEnhance: embossed normal-integrated detail "
+                     f"(strength {float(strength):.2f}, cutoff {int(detail_cutoff_px)} px, "
+                     f"median depth preserved at {med:.2f}). Metric scale unchanged.")
+
+
+class AtlasDepthCombine:
+    """➕ Combine two shared depth maps into one.
+
+    Modes:
+      * ``high_freq_detail`` — graft the SOURCE's fine structure onto the
+        base's metric far-field (the "MoGe detail on V2 exterior" combo);
+        log-domain and median-renormalized, so base scale is preserved.
+      * ``min`` / ``max`` — per-pixel envelope (NaNs lose).
+      * ``masked`` — lerp base -> source under ``blend_mask`` * ``strength``.
+
+    Always returns a COPY carrying the base's is_metric flag and provenance;
+    mixing metric with relative inputs is reported as a warning, not hidden.
+    """
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "STRING")
+    RETURN_NAMES = ("depth", "report")
+    FUNCTION = "combine"
+    CATEGORY = "Atlas Camera/Derive Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "depth_base": ("ATLAS_DEPTH_MAP",),
+                "depth_detail_src": ("ATLAS_DEPTH_MAP",),
+            },
+            "optional": {
+                "mode": (["high_freq_detail", "min", "max", "masked"],
+                         {"default": "high_freq_detail"}),
+                "strength": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "detail_cutoff_px": ("INT", {"default": 64, "min": 4, "max": 1024,
+                                             "tooltip": "high_freq_detail mode only."}),
+                "blend_mask": ("MASK", {"tooltip": "masked mode only: 1 = take the source."}),
+            },
+        }
+
+    def combine(self, depth_base, depth_detail_src, mode="high_freq_detail",
+                strength=0.5, detail_cutoff_px=64, blend_mask=None):
+        np = _require_numpy()
+        base = np.asarray(depth_base.depth, dtype=np.float64)
+        h, w = base.shape[:2]
+        src = np.asarray(_depth_map_for_solve(depth_detail_src, w, h), dtype=np.float64)
+
+        warnings = []
+        if bool(depth_base.is_metric) != bool(depth_detail_src.is_metric):
+            warnings.append(
+                f"WARNING: mixing metric={depth_base.is_metric} base with "
+                f"metric={depth_detail_src.is_metric} source — min/max/masked "
+                "values are not unit-compatible; result keeps the base's flag.")
+
+        if mode == "high_freq_detail":
+            from atlas_camera.core.depth_detail import combine_depth_high_freq
+            result = combine_depth_high_freq(base, src, float(strength),
+                                             cutoff_px=float(detail_cutoff_px))
+        elif mode == "min":
+            result = np.fmin(base, src).astype(np.float32)
+        elif mode == "max":
+            result = np.fmax(base, src).astype(np.float32)
+        elif mode == "masked":
+            if blend_mask is None:
+                m = np.zeros((h, w), dtype=np.float64)
+                warnings.append("WARNING: masked mode with no blend_mask — base returned unchanged.")
+            else:
+                from atlas_camera.core.solver import _resize_depth
+                m = blend_mask[0].detach().cpu().numpy().astype(np.float64)
+                if m.shape != (h, w):
+                    m = _resize_depth(m, w, h)
+            m = np.clip(m, 0.0, 1.0) * float(strength)
+            src_ok = np.isfinite(src)
+            m = np.where(src_ok, m, 0.0)
+            result = (base * (1.0 - m) + np.where(src_ok, src, 0.0) * m).astype(np.float32)
+        else:  # pragma: no cover - combo constrains the values
+            raise ValueError(f"unknown combine mode: {mode}")
+
+        out = copy.copy(depth_base)       # never mutate the SHARED depth object
+        out.depth = result
+        valid = np.isfinite(result) & (result > 0)
+        if valid.any():
+            out.near = float(result[valid].min())
+            out.far = float(result[valid].max())
+        out.metadata = {**(depth_base.metadata or {}),
+                        "combined_mode": mode,
+                        "combined_src_model": depth_detail_src.model_id}
+        report = (f"AtlasDepthCombine: {mode} (strength {float(strength):.2f}) — base "
+                  f"{depth_base.model_id} + source {depth_detail_src.model_id}.")
+        if warnings:
+            report += "\n" + "\n".join(warnings)
+        return (out, report)
+
+
 class AtlasGroundDepthMap:
     """
     Generate a ground-plane depth heatmap as an IMAGE tensor.

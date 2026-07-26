@@ -116,6 +116,69 @@ class AtlasRegisterPlate:
         return (image, plate_ref)
 
 
+class AtlasDeband:
+    """🎚 Model-free debanding for 8-bit-born plates (AI images, JPEGs).
+
+    Gradient-gated smoothing: only quantization PLATEAUS (local luma gradient
+    below ``band_threshold`` 8-bit steps) are touched; real edges gate to zero
+    and pass through bit-exact. The correction is range-clamped to a few
+    banding steps so nothing can bleed across an edge, and the whole pipeline
+    is float-safe (never quantizes, never clamps HDR >1 values).
+
+    Place BEFORE AtlasRegisterPlate / projection / the sky dome. Deliberately
+    takes and returns IMAGE only — it cannot touch an ATLAS_PLATE_REF, so a
+    debanded tensor can never masquerade as the registered final plate (P0
+    trust tier). If you deband, register the debanded file you save yourself,
+    or accept that the registered path refers to the un-debanded original.
+    """
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "report")
+    FUNCTION = "deband"
+    CATEGORY = "Atlas Camera/Color"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"image": ("IMAGE",)},
+            "optional": {
+                "strength": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "band_threshold": ("FLOAT", {"default": 2.0, "min": 0.5, "max": 8.0, "step": 0.5,
+                                             "tooltip": "Largest luma step (8-bit LSB units) still "
+                                             "treated as banding. Raise for heavily compressed "
+                                             "sources, lower to protect subtle texture."}),
+                "radius_px": ("INT", {"default": 24, "min": 2, "max": 128}),
+                "preserve_detail": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05,
+                                              "tooltip": "Sharpens the edge gate: 1.0 = most "
+                                              "conservative (touches only clear plateaus)."}),
+                "add_grain": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 0.15, "step": 0.005,
+                                        "tooltip": "Triangular dither on gated pixels to break "
+                                        "residual contours."}),
+            },
+        }
+
+    def deband(self, image, strength=0.5, band_threshold=2.0, radius_px=24,
+               preserve_detail=0.5, add_grain=0.0):
+        from atlas_camera.plate.deband import deband_plate
+        torch = _require_torch()
+        np = _require_numpy()
+        frames = []
+        for i in range(image.shape[0]):
+            arr = image[i].detach().cpu().numpy().astype(np.float32)
+            frames.append(deband_plate(
+                arr, strength=float(strength), band_threshold_lsb=float(band_threshold),
+                radius_px=int(radius_px), preserve_detail=float(preserve_detail),
+                grain=float(add_grain), seed=i))
+        out = torch.from_numpy(np.stack(frames, axis=0))
+        report = (f"AtlasDeband: strength {float(strength):.2f}, threshold "
+                  f"{float(band_threshold):g} LSB, radius {int(radius_px)} px, "
+                  f"detail gate {float(preserve_detail):.2f}, grain {float(add_grain):g}. "
+                  "Float-safe (no quantize/clamp); edges pass through bit-exact. "
+                  "Note: IMAGE-only — the registered plate path (if any) still refers "
+                  "to the un-debanded file.")
+        return (out, report)
+
+
 def _plate_colorspace_choices(include_auto: bool = True) -> list:
     """Colourspace combo contents, safe to call at NODE REGISTRATION time.
 

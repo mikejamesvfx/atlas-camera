@@ -369,7 +369,10 @@ def fill_interior_holes(
     A loop is filled iff (a) it is not the single largest loop when no depth
     window is active, (b) its edge count < ``max_hole_edges``, and (c) when a
     depth window is given (far bound > 0) every one of its boundary vertices'
-    forward depth lies within ``[depth_near_m, depth_far_m]``. Triangulation
+    forward depth lies within ``[depth_near_m, depth_far_m]``. Window mode
+    DELIBERATELY has no largest-loop guard: a window set to the frame's depth
+    is the artist explicitly asking to close it (the window IS the scope —
+    pinned by test_depth_window_can_admit_frame_when_set_to_it). Triangulation
     uses only the loop's existing vertices — no new vertices, so 1:1 vertex-UV
     is preserved (UVs for the existing indices already exist).
 

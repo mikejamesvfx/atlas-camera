@@ -170,7 +170,7 @@ class AtlasExportReliefMesh:
                                "(edge-count-only mode; the single largest loop is always left open)."}),
                 "fill_depth_far_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 0.1,
                     "tooltip": "Band-box far bound (the cutoff). 0 = off (see fill_depth_near_m)."}),
-                "retopo_method": (["off", "quad", "decimate", "smooth"],
+                "retopo_method": (["off", "quad", "decimate", "smooth", "voxel_remesh"],
                     {"default": "off",
                      "tooltip": "EXPORT-ONLY retopology pass on the OBJ/GLB (the live viewport "
                                 "projection mesh is never touched). off = no change (default, so "
@@ -518,7 +518,7 @@ class AtlasExportNukeLayers:
             "optional": {
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata for annotations."}),
-                "retopo_method": (["off", "quad", "decimate", "smooth"], {
+                "retopo_method": (["off", "quad", "decimate", "smooth", "voxel_remesh"], {
                     "default": "off", "tooltip": "Export-only retopology applied to EVERY layer mesh before Nuke writes its OBJs."}),
                 "retopo_target_vertex_count": ("INT", {"default": 2000, "min": 100, "max": 100000, "step": 100}),
                 "retopo_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 20}),
@@ -597,7 +597,7 @@ class AtlasExportMayaLayers:
             "optional": {
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata for annotations."}),
-                "retopo_method": (["off", "quad", "decimate", "smooth"], {
+                "retopo_method": (["off", "quad", "decimate", "smooth", "voxel_remesh"], {
                     "default": "off", "tooltip": "Export-only retopology applied to EVERY layer mesh before Maya writes its OBJs."}),
                 "retopo_target_vertex_count": ("INT", {"default": 2000, "min": 100, "max": 100000, "step": 100}),
                 "retopo_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 20}),
