@@ -166,10 +166,10 @@ class AtlasBlockoutViewport:
        back to the zero-orbit named-view defaults.
     """
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "ATLAS_CAMERA_PATH",
-                    "STRING", "STRING", "STRING", "STRING", "STRING")
+                    "STRING", "STRING", "STRING", "STRING", "STRING", "MASK")
     RETURN_NAMES = ("shaded", "depth", "normal", "mask", "path_frames", "camera_path",
                     "patch_azimuth_view", "patch_elevation_view", "patch_distance", "patch_prompt",
-                    "patch_exact")
+                    "patch_exact", "patch_render_mask")
     FUNCTION = "render"
     CATEGORY = "Atlas Camera/Blockout"
     OUTPUT_NODE = True  # kept alive even without downstream connections
@@ -224,12 +224,20 @@ class AtlasBlockoutViewport:
                                "primary-camera projection falls OUTSIDE this matte (🎭 toolbar "
                                "toggle + dim slider; dim 0 = hard cull). Display-only — never "
                                "affects exports, geometry, or the projection itself."}),
+                "patch_mask": ("MASK", {
+                    "tooltip": "Source-image-space created_islands mask from "
+                               "AtlasPlanarHolePatch. Under 🎨 Layers the generated patches "
+                               "receive their own magenta identity color. Render Proxy Passes "
+                               "reprojects the same pixels from the current moved camera and "
+                               "returns patch_render_mask for inpainting.",
+                }),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     def render(self, solve, source_image, resolution, client_data, primary_depth=None, preview_expand=1.0, controls=None,
-               shot_cam=None, output_profile=None, debug_matte=None, unique_id=None):
+               shot_cam=None, output_profile=None, debug_matte=None, patch_mask=None,
+               unique_id=None):
         torch = _require_torch()
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
@@ -260,11 +268,22 @@ class AtlasBlockoutViewport:
                 debug_matte_b64 = _mask_to_b64_png(m.cpu().numpy() if hasattr(m, "cpu") else m)
             except Exception:
                 debug_matte_b64 = ""  # a bad matte must never kill the viewport
+        patch_mask_b64 = ""
+        if patch_mask is not None:
+            try:
+                m = patch_mask
+                if hasattr(m, "dim") and m.dim() == 3:  # ComfyUI MASK (B,H,W)
+                    m = m[0]
+                patch_mask_b64 = _mask_to_b64_png(
+                    m.cpu().numpy() if hasattr(m, "cpu") else m)
+            except Exception:
+                patch_mask_b64 = ""  # a bad patch mask must never kill the viewport
         _blockout_cache_set(node_id, _extract_blockout_camera(
             solve, source_image, width, height, preview_expand=float(preview_expand),
             shot_intrinsics=shot_intrinsics, output_profile=output_profile,
             solve_fingerprint=solve_fingerprint, primary_depth=primary_depth,
-            debug_matte_b64=debug_matte_b64))
+            debug_matte_b64=debug_matte_b64,
+            patch_mask_b64=patch_mask_b64))
 
         # IMPORTANT: return a "ui" payload. ComfyUI only emits the "executed"
         # websocket message (which triggers node.onExecuted / the frontend's
@@ -342,24 +361,31 @@ class AtlasBlockoutViewport:
 
         if not client_data.strip():
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
+            blank_mask = torch.zeros(1, height, width, dtype=torch.float32)
             pa_strings = _patch_angle_strings(None)
             ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
             return {"ui": ui_payload,
-                    "result": (blank, blank, blank, blank, blank, None) + pa_strings}
+                    "result": (blank, blank, blank, blank, blank, None)
+                    + pa_strings + (blank_mask,)}
 
         try:
             data = json.loads(client_data)
         except json.JSONDecodeError:
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
+            blank_mask = torch.zeros(1, height, width, dtype=torch.float32)
             pa_strings = _patch_angle_strings(None)
             ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
             return {"ui": ui_payload,
-                    "result": (blank, blank, blank, blank, blank, None) + pa_strings}
+                    "result": (blank, blank, blank, blank, blank, None)
+                    + pa_strings + (blank_mask,)}
 
         shaded = _decode_b64_to_tensor(data.get("shaded", ""), width, height)
         depth  = _decode_b64_to_tensor(data.get("depth",  ""), width, height)
         normal = _decode_b64_to_tensor(data.get("normal", ""), width, height)
         mask   = _decode_b64_to_tensor(data.get("mask",   ""), width, height)
+        patch_render_image = _decode_b64_to_tensor(
+            data.get("patch_render_mask", ""), width, height)
+        patch_render_mask = patch_render_image[..., 0]
 
         path_frames_b64 = data.get("path_frames") or []
         if path_frames_b64:
@@ -379,7 +405,7 @@ class AtlasBlockoutViewport:
         ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
         return {"ui": ui_payload,
                 "result": (shaded, depth, normal, mask, path_frames, camera_path)
-                + pa_strings}
+                + pa_strings + (patch_render_mask,)}
 
     @classmethod
     def IS_CHANGED(cls, client_data="", **_):

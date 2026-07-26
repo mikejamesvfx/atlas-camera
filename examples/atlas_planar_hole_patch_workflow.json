@@ -1,7 +1,7 @@
 {
   "id": "47315974-eb27-417a-9653-dfe816807a9e",
-  "last_node_id": 16,
-  "last_link_id": 21,
+  "last_node_id": 20,
+  "last_link_id": 26,
   "nodes": [
     {
       "id": 1,
@@ -111,10 +111,11 @@
       "outputs": [
         {"name": "solve", "type": "ATLAS_SOLVE", "links": [8], "slot_index": 0},
         {"name": "remaining_holes", "type": "MASK", "links": [18, 20], "slot_index": 1},
-        {"name": "report", "type": "STRING", "links": [19], "slot_index": 2}
+        {"name": "report", "type": "STRING", "links": [19], "slot_index": 2},
+        {"name": "created_islands", "type": "MASK", "links": [22, 23], "slot_index": 3}
       ],
       "properties": {"Node name for S&R": "AtlasPlanarHolePatch"},
-      "widgets_values": ["", 2, 512, 22.0, 0.3, 0.04, true, 0.2]
+      "widgets_values": ["", 2, 512, 22.0, 0.3, 0.04, true, 0.2, 20.0]
     },
     {
       "id": 6,
@@ -211,7 +212,8 @@
         {"name": "controls", "type": "ATLAS_VIEWPORT_LINK", "link": 16},
         {"name": "shot_cam", "type": "ATLAS_SHOT_CAM", "link": null},
         {"name": "output_profile", "type": "ATLAS_OUTPUT_PROFILE", "link": 17},
-        {"name": "debug_matte", "type": "MASK", "link": 18}
+        {"name": "debug_matte", "type": "MASK", "link": 18},
+        {"name": "patch_mask", "type": "MASK", "link": 22}
       ],
       "outputs": [
         {"name": "shaded", "type": "IMAGE", "links": [], "slot_index": 0},
@@ -224,7 +226,8 @@
         {"name": "patch_elevation_view", "type": "STRING", "links": [], "slot_index": 7},
         {"name": "patch_distance", "type": "STRING", "links": [], "slot_index": 8},
         {"name": "patch_prompt", "type": "STRING", "links": [], "slot_index": 9},
-        {"name": "patch_exact", "type": "STRING", "links": [], "slot_index": 10}
+        {"name": "patch_exact", "type": "STRING", "links": [], "slot_index": 10},
+        {"name": "patch_render_mask", "type": "MASK", "links": [25], "slot_index": 11}
       ],
       "properties": {"Node name for S&R": "AtlasBlockoutViewport"},
       "widgets_values": [1024, "", 1.0]
@@ -258,7 +261,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "WHY THESE PATCH DEFAULTS\n\n• ring_cells = 2: uses the closest surrounding relief while retaining enough samples to stabilize small islands.\n• max_components = 512: covers dense 128-grid plates while unsafe frame/oversize regions remain outside the fit budget.\n• normal_tolerance = 22°: defines which surrounding normals agree for each island.\n• min_normal_support = 0.20: the agreeing cluster must represent at least 20% of valid surrounding normals, allowing one-sided facade evidence without accepting arbitrary directions.\n• The agreeing normals are averaged directly into the patch angle. max_plane_error = 0.30 m chooses/checks the densest local plane position when that angle appears at multiple depths.\n• max_hole_fraction = 4% and enclosed_only = true retain the sky/frame safety gates.\n\nThese settings live-tested at 295/296 eligible enclosed islands on flux_00645_.jpg; the final 324-cell region remained rejected as non-planar. Geometry cannot invent hidden pixels, and frame-connected disocclusions still need a clean plate or scoped artist mask."
+        "WHY THESE PATCH DEFAULTS\n\n• ring_cells = 2: uses the closest surrounding relief while retaining enough samples to stabilize small islands.\n• max_components = 512: covers dense 128-grid plates while unsafe frame/oversize regions remain outside the fit budget.\n• normal_tolerance = 22°: defines which surrounding normals agree for each island.\n• min_normal_support = 0.20: the agreeing cluster must represent at least 20% of valid surrounding normals, allowing one-sided facade evidence without accepting arbitrary directions.\n• The agreeing normals are averaged directly into the patch angle. max_plane_error = 0.30 m chooses/checks the densest local plane position when that angle appears at multiple depths.\n• max_patch_edge_factor = 20 rejects post-intersection spikes using each edge's source-pixel span × the island boundary's local metres-per-pixel. It is stable across image resolution and camera/world scale.\n• max_hole_fraction = 4% and enclosed_only = true retain the sky/frame safety gates.\n\nGeometry cannot invent hidden pixels, and frame-connected disocclusions still need a clean plate or scoped artist mask."
       ],
       "color": "#3b3156",
       "bgcolor": "#251d39"
@@ -333,6 +336,78 @@
       "properties": {"Node name for S&R": "PreviewImage"},
       "widgets_values": [],
       "title": "REMAINING HOLES · white pixels still open"
+    },
+    {
+      "id": 17,
+      "type": "MaskToImage",
+      "pos": [4260, 50],
+      "size": [300, 90],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {"name": "mask", "type": "MASK", "link": 23}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [24], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "MaskToImage"},
+      "widgets_values": [],
+      "title": "CREATED ISLANDS · exact source-space mask"
+    },
+    {
+      "id": 18,
+      "type": "PreviewImage",
+      "pos": [4260, 180],
+      "size": [420, 360],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 24}
+      ],
+      "outputs": [
+        {"name": "images", "type": "IMAGE", "links": [], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "PreviewImage"},
+      "widgets_values": [],
+      "title": "CREATED ISLANDS · white pixels were filled"
+    },
+    {
+      "id": 19,
+      "type": "MaskToImage",
+      "pos": [4260, 580],
+      "size": [300, 90],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {"name": "mask", "type": "MASK", "link": 25}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [26], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "MaskToImage"},
+      "widgets_values": [],
+      "title": "MOVED-CAMERA PATCH MASK · convert for preview"
+    },
+    {
+      "id": 20,
+      "type": "PreviewImage",
+      "pos": [4260, 710],
+      "size": [420, 360],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 26}
+      ],
+      "outputs": [
+        {"name": "images", "type": "IMAGE", "links": [], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "PreviewImage"},
+      "widgets_values": [],
+      "title": "MOVED-CAMERA PATCH MASK · click Render Proxy Passes"
     }
   ],
   "links": [
@@ -356,7 +431,12 @@
     [18, 5, 1, 10, 6, "MASK"],
     [19, 5, 2, 14, 0, "STRING"],
     [20, 5, 1, 15, 0, "MASK"],
-    [21, 15, 0, 16, 0, "IMAGE"]
+    [21, 15, 0, 16, 0, "IMAGE"],
+    [22, 5, 3, 10, 7, "MASK"],
+    [23, 5, 3, 17, 0, "MASK"],
+    [24, 17, 0, 18, 0, "IMAGE"],
+    [25, 10, 11, 19, 0, "MASK"],
+    [26, 19, 0, 20, 0, "IMAGE"]
   ],
   "groups": [
     {
@@ -382,7 +462,7 @@
     },
     {
       "title": "4 — PROJECT + ORBIT CHECK",
-      "bounding": [3060, 20, 1160, 1020],
+      "bounding": [3060, 20, 1660, 1090],
       "color": "#4f8d61",
       "font_size": 24,
       "flags": {}
@@ -392,7 +472,7 @@
   "extra": {
     "ds": {"scale": 0.74, "offset": [64, 74]},
     "atlas_example": "normal_guided_planar_hole_patch",
-    "notes": "Relief holes are patched before retopology; walls remain explicit separate primitives."
+    "notes": "Relief holes are patched before retopology; created_islands drives the viewport layer tint and the current-camera patch_render_mask for inpainting."
   },
   "version": 0.4
 }

@@ -1234,8 +1234,8 @@ class AtlasPlanarHolePatch:
     plate or hidden-geometry layer to handle.
     """
 
-    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "STRING")
-    RETURN_NAMES = ("solve", "remaining_holes", "report")
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "STRING", "MASK")
+    RETURN_NAMES = ("solve", "remaining_holes", "report", "created_islands")
     FUNCTION = "patch"
     CATEGORY = "Atlas Camera/Geometry"
 
@@ -1293,13 +1293,21 @@ class AtlasPlanarHolePatch:
                                "facade/occlusion repairs. Agreeing normals are averaged; "
                                "max_plane_error_m then checks their positional fit.",
                 }),
+                "max_patch_edge_factor": ("FLOAT", {
+                    "default": 20.0, "min": 1.0, "max": 100.0, "step": 1.0,
+                    "tooltip": "Reject a generated island when its longest triangle "
+                               "edge exceeds this multiple of its source-pixel span "
+                               "times the boundary's median metres-per-pixel. Prevents "
+                               "grazing camera-ray spikes at any image/camera scale.",
+                }),
             },
         }
 
     def patch(self, solve, hole_mask, layer="", ring_cells=2, max_components=64,
               normal_tolerance_deg=25.0, max_plane_error_m=0.15,
               max_hole_fraction=0.05, enclosed_only=True,
-              min_normal_support_fraction=0.30):
+              min_normal_support_fraction=0.30,
+              max_patch_edge_factor=20.0):
         torch = _require_torch()
         np = _require_numpy()
         from atlas_camera.core.planar_hole_patch import (
@@ -1321,8 +1329,13 @@ class AtlasPlanarHolePatch:
         if resolved is None:
             resolved = np.zeros((height, width), dtype=bool)
         remaining_t = torch.from_numpy(resolved.astype(np.float32)).unsqueeze(0)
+        created_t = torch.zeros_like(remaining_t)
         if min(width, height) <= 1 or min(fx, fy) <= 0.0:
-            return (out, remaining_t, "invalid camera/image dimensions — solve passed through")
+            return (
+                out, remaining_t,
+                "invalid camera/image dimensions — solve passed through",
+                created_t,
+            )
 
         target_name = str(layer or "").strip()
         camera = out.camera
@@ -1339,6 +1352,7 @@ class AtlasPlanarHolePatch:
                     out, remaining_t,
                     f"layer '{target_name}' not found — available: "
                     f"{', '.join(names) if names else '(none)'}",
+                    created_t,
                 )
             primitives = source.proxy_geometry
             camera = source.camera
@@ -1357,8 +1371,13 @@ class AtlasPlanarHolePatch:
         if resolved is None:
             resolved = np.zeros((height, width), dtype=bool)
         remaining_t = torch.from_numpy(resolved.astype(np.float32)).unsqueeze(0)
+        created_t = torch.zeros_like(remaining_t)
         if min(width, height) <= 1 or min(fx, fy) <= 0.0:
-            return (out, remaining_t, "invalid target camera/image dimensions — solve passed through")
+            return (
+                out, remaining_t,
+                "invalid target camera/image dimensions — solve passed through",
+                created_t,
+            )
 
         primitive_index = next(
             (i for i, prim in enumerate(primitives or [])
@@ -1367,11 +1386,19 @@ class AtlasPlanarHolePatch:
             None,
         )
         if primitive_index is None:
-            return (out, remaining_t, "target has no relief mesh — solve passed through")
+            return (
+                out, remaining_t,
+                "target has no relief mesh — solve passed through",
+                created_t,
+            )
         primitive = primitives[primitive_index]
         mesh = mesh_from_primitive(primitive)
         if mesh is None:
-            return (out, remaining_t, "target relief mesh is empty — solve passed through")
+            return (
+                out, remaining_t,
+                "target relief mesh is empty — solve passed through",
+                created_t,
+            )
         edge_risk = (primitive.metadata or {}).get("edge_risk") or []
         if len(edge_risk) == len(mesh.vertices):
             mesh.edge_risk = np.asarray(edge_risk, dtype=np.float32)
@@ -1384,6 +1411,7 @@ class AtlasPlanarHolePatch:
             max_hole_fraction=float(max_hole_fraction),
             enclosed_only=bool(enclosed_only),
             min_normal_support_fraction=float(min_normal_support_fraction),
+            max_patch_edge_factor=float(max_patch_edge_factor),
         )
         try:
             patched, remaining, report = patch_planar_holes(
@@ -1401,12 +1429,14 @@ class AtlasPlanarHolePatch:
                 config=cfg,
             )
         except ValueError as exc:
-            return (out, remaining_t, f"SKIPPED — {exc}")
+            return (out, remaining_t, f"SKIPPED — {exc}", created_t)
 
         replacement = relief_mesh_primitive(patched, name=primitive.name)
         replacement.metadata["planar_hole_patch"] = report
         primitives[primitive_index] = replacement
         remaining_t = torch.from_numpy(remaining.astype(np.float32)).unsqueeze(0)
+        created = np.logical_and(resolved, np.logical_not(remaining))
+        created_t = torch.from_numpy(created.astype(np.float32)).unsqueeze(0)
         lines = [
             f"filled {report['components_filled']}/"
             f"{report['components_attempted']} attempted "
@@ -1417,19 +1447,33 @@ class AtlasPlanarHolePatch:
             f"+{report['vertices_added']} verts, +{report['faces_added']} faces, "
             f"-{report['faces_removed']} old faces",
         ]
+        accepted_edge_factors = [
+            float(item["patch_edge_factor"])
+            for item in report["filled"]
+            if "patch_edge_factor" in item
+        ]
+        if accepted_edge_factors:
+            lines.append(
+                f"accepted edge stretch max {max(accepted_edge_factors):.1f}x/"
+                f"{float(max_patch_edge_factor):.1f}x "
+                "(source pixels × local m/px)")
         reason_counts: dict[str, int] = {}
         for item in report["rejected"]:
             reason = str(item["reason"])
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
         for reason, count in reason_counts.items():
             lines.append(f"rejected {count}: {reason}")
-        diagnostic_items = [
+        diagnostic_items = sorted([
             item for item in report["rejected"]
             if item["reason"] in {
                 "normal consensus below threshold",
                 "plane residual exceeds tolerance",
+                "generated patch edge exceeds local scale",
             }
-        ]
+        ], key=lambda item: (
+            item["reason"] != "generated patch edge exceeds local scale",
+            -float(item.get("patch_edge_factor", 0.0)),
+        ))
         for item in diagnostic_items[:3]:
             detail = ""
             if "normal_support_fraction" in item:
@@ -1440,10 +1484,16 @@ class AtlasPlanarHolePatch:
                 detail += (
                     f" p95={item['plane_error_p95_m']:.3f}/"
                     f"{item['max_plane_error_m']:.3f}m")
+            if "patch_edge_factor" in item:
+                detail += (
+                    f" edge={item['patch_edge_factor']:.1f}x/"
+                    f"{item['max_patch_edge_factor']:.1f}x"
+                    f" px={item['worst_edge_pixel_span']:.1f}"
+                    f" local={item['local_support_world_per_pixel']:.6f}m/px")
             lines.append(
                 f"example {item['cells']} cells:{detail} "
                 f"({item['reason']})")
-        return (out, remaining_t, "\n".join(lines))
+        return (out, remaining_t, "\n".join(lines), created_t)
 
 
 class AtlasDeriveWalls:

@@ -43,6 +43,7 @@ class PlanarHolePatchConfig:
     enclosed_only: bool = True
     min_support_vertices: int = 8
     min_normal_support_fraction: float = 0.30
+    max_patch_edge_factor: float = 20.0
 
 
 def _mode_step(values: Any) -> int:
@@ -133,6 +134,7 @@ def _recover_lattice(mesh: Any, width: int, height: int) -> dict[str, Any]:
         "rows": rows,
         "cols": cols,
         "index_grid": index_grid,
+        "grid_coords": grid_coords,
         "face_cells": face_cells,
         "coverage": coverage,
     }
@@ -214,6 +216,115 @@ def _support_indices(
             if index >= 0:
                 indices.add(index)
     return np.asarray(sorted(indices), dtype=np.int64)
+
+
+def _local_support_scale(
+    support: Any,
+    vertices: Any,
+    index_grid: Any,
+    grid_coords: Any,
+    rows: Any,
+    cols: Any,
+    topology_edge_keys: Any,
+) -> tuple[float, float]:
+    """Median boundary edge metres and metres-per-source-pixel."""
+    np = _require_numpy()
+    edges: set[tuple[int, int]] = set()
+    for raw_index in support:
+        index = int(raw_index)
+        r, c = (int(v) for v in grid_coords[index])
+        if r < 0 or c < 0:
+            continue
+        for rr, cc in ((r - 1, c), (r + 1, c),
+                       (r, c - 1), (r, c + 1)):
+            if not (0 <= rr < index_grid.shape[0]
+                    and 0 <= cc < index_grid.shape[1]):
+                continue
+            neighbor = int(index_grid[rr, cc])
+            if neighbor >= 0 and neighbor != index:
+                edges.add((min(index, neighbor), max(index, neighbor)))
+    if not edges:
+        return 0.0, 0.0
+    edge_array = np.asarray(sorted(edges), dtype=np.int64)
+    edge_keys = (
+        edge_array[:, 0] * np.int64(len(vertices)) + edge_array[:, 1])
+    positions = np.searchsorted(topology_edge_keys, edge_keys)
+    present = positions < len(topology_edge_keys)
+    present[present] &= (
+        topology_edge_keys[positions[present]] == edge_keys[present])
+    edge_array = edge_array[present]
+    if not len(edge_array):
+        return 0.0, 0.0
+    lengths = np.linalg.norm(
+        vertices[edge_array[:, 0]] - vertices[edge_array[:, 1]], axis=1)
+    pixel_lengths = []
+    for first, second in edge_array:
+        r0, c0 = (int(v) for v in grid_coords[int(first)])
+        r1, c1 = (int(v) for v in grid_coords[int(second)])
+        dx = float(cols[c1] - cols[c0])
+        dy = float(rows[r1] - rows[r0])
+        pixel_lengths.append(math.hypot(dx, dy))
+    pixel_lengths = np.asarray(pixel_lengths, dtype=np.float64)
+    valid = (
+        np.isfinite(lengths) & (lengths > 1e-9)
+        & np.isfinite(pixel_lengths) & (pixel_lengths > 1e-9)
+    )
+    if not valid.any():
+        return 0.0, 0.0
+    return (
+        float(np.median(lengths[valid])),
+        float(np.median(lengths[valid] / pixel_lengths[valid])),
+    )
+
+
+def _component_edge_diagnostic(
+    component_faces: list[list[int]],
+    vertices: list[list[float]],
+    uvs: list[list[float]],
+    image_width: int,
+    image_height: int,
+    local_edge_scale: float,
+    local_world_per_pixel: float,
+) -> dict[str, float]:
+    """Measure generated edge stretch against local metric pixel scale."""
+    np = _require_numpy()
+    triangles = np.asarray(component_faces, dtype=np.int64).reshape(-1, 3)
+    edges = np.concatenate(
+        (triangles[:, (0, 1)], triangles[:, (1, 2)],
+         triangles[:, (2, 0)]),
+        axis=0,
+    )
+    edges = np.unique(np.sort(edges, axis=1), axis=0)
+    points = np.asarray(vertices, dtype=np.float64)
+    lengths = np.linalg.norm(
+        points[edges[:, 0]] - points[edges[:, 1]], axis=1)
+    uv_points = np.asarray(uvs, dtype=np.float64)
+    pixel_points = np.stack(
+        (
+            uv_points[:, 0] * max(image_width - 1, 1),
+            (1.0 - uv_points[:, 1]) * max(image_height - 1, 1),
+        ),
+        axis=1,
+    )
+    pixel_lengths = np.linalg.norm(
+        pixel_points[edges[:, 0]] - pixel_points[edges[:, 1]], axis=1)
+    maximum = float(np.max(lengths)) if len(lengths) else 0.0
+    expected = pixel_lengths * float(local_world_per_pixel)
+    valid = expected > 1e-9
+    factors = np.full(len(lengths), float("inf"), dtype=np.float64)
+    factors[valid] = lengths[valid] / expected[valid]
+    worst = int(np.argmax(factors)) if len(factors) else 0
+    factor = float(factors[worst]) if len(factors) else 0.0
+    return {
+        "patch_edge_max_m": maximum,
+        "local_support_edge_m": float(local_edge_scale),
+        "local_support_world_per_pixel": float(local_world_per_pixel),
+        "patch_edge_factor": factor,
+        "worst_edge_pixel_span": (
+            float(pixel_lengths[worst]) if len(pixel_lengths) else 0.0),
+        "worst_edge_expected_m": (
+            float(expected[worst]) if len(expected) else 0.0),
+    }
 
 
 def _fit_plane(
@@ -391,6 +502,7 @@ def patch_planar_holes(
     rows = lattice["rows"]
     cols = lattice["cols"]
     index_grid = lattice["index_grid"]
+    grid_coords = lattice["grid_coords"]
     coverage = lattice["coverage"]
     face_cells = lattice["face_cells"]
     row_centers = ((rows[:-1] + rows[1:]) // 2).astype(np.int64)
@@ -399,6 +511,16 @@ def patch_planar_holes(
     candidates = selected_cells & (coverage < 2)
     components = _components(candidates)
     vertex_normals = _vertex_normals(vertices, faces)
+    topology_edges = np.sort(
+        np.concatenate(
+            (faces[:, (0, 1)], faces[:, (1, 2)], faces[:, (2, 0)]),
+            axis=0,
+        ),
+        axis=1,
+    )
+    topology_edge_keys = np.unique(
+        topology_edges[:, 0] * np.int64(len(vertices))
+        + topology_edges[:, 1])
 
     vm = np.asarray(view_matrix, dtype=np.float64).reshape(4, 4)
     c2w = np.linalg.inv(vm)
@@ -482,6 +604,15 @@ def patch_planar_holes(
             })
             continue
         normal, plane_offset, fit_info = fit
+        local_edge_scale, local_world_per_pixel = _local_support_scale(
+            support,
+            vertices,
+            index_grid,
+            grid_coords,
+            rows,
+            cols,
+            topology_edge_keys,
+        )
 
         corners = {
             corner
@@ -533,14 +664,42 @@ def patch_planar_holes(
             })
             continue
 
-        component_face_start = len(new_faces)
+        component_faces: list[list[int]] = []
         for r, c in sorted(component):
             i00 = corner_indices[(r, c)]
             i10 = corner_indices[(r + 1, c)]
             i01 = corner_indices[(r, c + 1)]
             i11 = corner_indices[(r + 1, c + 1)]
-            new_faces.append([i00, i10, i01])
-            new_faces.append([i10, i11, i01])
+            component_faces.append([i00, i10, i01])
+            component_faces.append([i10, i11, i01])
+
+        edge_diagnostic = _component_edge_diagnostic(
+            component_faces,
+            new_vertices,
+            new_uvs,
+            width,
+            height,
+            local_edge_scale,
+            local_world_per_pixel,
+        )
+        if (not np.isfinite(edge_diagnostic["patch_edge_factor"])
+                or edge_diagnostic["patch_edge_factor"]
+                > float(cfg.max_patch_edge_factor)):
+            del new_vertices[vertex_checkpoint:]
+            del new_uvs[uv_checkpoint:]
+            if edge_risk is not None:
+                del edge_risk[risk_checkpoint:]
+            rejected.append({
+                "cells": len(component),
+                "reason": "generated patch edge exceeds local scale",
+                **edge_diagnostic,
+                "max_patch_edge_factor": float(cfg.max_patch_edge_factor),
+            })
+            continue
+
+        component_face_start = len(new_faces)
+        new_faces.extend(component_faces)
+        for r, c in sorted(component):
             y0, y1 = int(rows[r]), int(rows[r + 1])
             x0, x1 = int(cols[c]), int(cols[c + 1])
             remaining_mask[y0:y1 + 1, x0:x1 + 1] = False
@@ -556,6 +715,7 @@ def patch_planar_holes(
         filled.append({
             "cells": len(component),
             "faces_added": 2 * len(component),
+            **edge_diagnostic,
             **fit_info,
         })
 

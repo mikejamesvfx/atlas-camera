@@ -579,6 +579,15 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform vec3 uHiddenTint;
   uniform float uLayerDebug;
   uniform vec3 uLayerTint;
+  uniform sampler2D uPatchMask;
+  uniform float uHasPatchMask;
+  uniform vec3 uPatchTint;
+  uniform mat4 uPatchViewMatrix;
+  uniform float uPatchFx;
+  uniform float uPatchFy;
+  uniform float uPatchCx;
+  uniform float uPatchCy;
+  uniform vec2 uPatchImageSize;
   uniform vec2 uImageSize;
   uniform float uOpacity;
   uniform vec3 uCamPos;
@@ -850,6 +859,22 @@ const PROJECTION_FRAGMENT_SHADER = `
     // Strong mix so layer coverage reads at a glance; display-space like 🩻.
     if (uLayerDebug > 0.5) {
       outColor = mix(outColor, uLayerTint, 0.65);
+      // created_islands is source-image-space, so reproject this fragment
+      // through the original solved camera. The identity therefore survives
+      // merging and retopology instead of depending on transient face IDs.
+      if (uHasPatchMask > 0.5) {
+        vec4 pcam = uPatchViewMatrix * vec4(vWorldPos, 1.0);
+        float pdepth = -pcam.z;
+        if (pdepth > 1e-5) {
+          vec2 ppx = vec2(uPatchCx + uPatchFx * pcam.x / pdepth,
+                          uPatchCy - uPatchFy * pcam.y / pdepth);
+          vec2 puv = ppx / uPatchImageSize;
+          if (puv.x >= 0.0 && puv.x <= 1.0 && puv.y >= 0.0 && puv.y <= 1.0
+              && texture2D(uPatchMask, puv).r > 0.5) {
+            outColor = mix(outColor, uPatchTint, 0.90);
+          }
+        }
+      }
     }
     // 🎭 debug-matte isolate (display-space, like the overlays above): project
     // this fragment through the PRIMARY/recovered camera (same math as the
@@ -907,6 +932,7 @@ const PROJECTION_FRAGMENT_SHADER = `
 // each ProjectionSource takes palette[index % length]. Chosen for mutual
 // distinguishability at the shader's 0.65 mix over arbitrary photos.
 const LAYER_DEBUG_PRIMARY = 0x2fd6c3;               // teal — base mesh + backdrop
+const PLANAR_PATCH_DEBUG = 0xff2fd6;                 // magenta — generated hole islands
 const LAYER_DEBUG_PALETTE = [
   0xff6a3d, // orange — typically the fg layer
   0x3d8bff, // blue   — typically the X-ray/bg layer
@@ -996,6 +1022,18 @@ function makeProjectionMaterial(data, texture, opts) {
       // uLayerDebug, live-synced like uDebugHidden/the light uniforms).
       uLayerDebug: { value: 0 },
       uLayerTint: { value: options.layerTint || new THREE.Color(LAYER_DEBUG_PRIMARY) },
+      // ◩ Planar-hole-patch identity, live-populated from the viewport's
+      // source-space patch_mask input. Projector coordinates make this safe
+      // across a downstream AtlasRetopologizeLayer.
+      uPatchMask: { value: null },
+      uHasPatchMask: { value: 0 },
+      uPatchTint: { value: new THREE.Color(PLANAR_PATCH_DEBUG) },
+      uPatchViewMatrix: { value: new THREE.Matrix4() },
+      uPatchFx: { value: 1 },
+      uPatchFy: { value: 1 },
+      uPatchCx: { value: 0.5 },
+      uPatchCy: { value: 0.5 },
+      uPatchImageSize: { value: new THREE.Vector2(1, 1) },
       // Primary: -1 (never facing-discards). Patches: positive (fill head-on only).
       uFacingThreshold: { value: options.facingThreshold ?? -1.0 },
       // Movable point lights (💡) — kept at intensity 0 here; synced live each
@@ -1412,7 +1450,9 @@ function atlasRenderSceneToBase64(renderer, scene, camera, width, height, option
 // ---------------------------------------------------------------------------
 // Render all passes to base64-encoded PNG strings
 // ---------------------------------------------------------------------------
-async function renderAllPasses(renderer, scene, camera, width, height, exclude = []) {
+async function renderAllPasses(
+  renderer, scene, camera, width, height, exclude = [], patchSelection = null
+) {
   if (!THREE) return null;
 
   // The passes must contain geometry only: hide the background photo plane and
@@ -1487,7 +1527,67 @@ async function renderAllPasses(renderer, scene, camera, width, height, exclude =
     scene.background = bg;
     maskMat.dispose();
 
-    return { shaded: shadedB64, depth: depthB64, normal: normalB64, mask: maskB64 };
+    // Select generated geometry in original-camera image space, but rasterise
+    // it from the CURRENT orbit camera. This is the reprojected inpaint mask.
+    const patch = patchSelection || {};
+    const patchCam = patch.camera || {};
+    const patchMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uPatchMask: { value: patch.texture || null },
+        uHasPatchMask: { value: patch.texture ? 1 : 0 },
+        uPatchViewMatrix: { value: patchCam.vm || new THREE.Matrix4() },
+        uPatchFx: { value: patchCam.fx || 1 },
+        uPatchFy: { value: patchCam.fy || patchCam.fx || 1 },
+        uPatchCx: { value: patchCam.cx ?? 0.5 },
+        uPatchCy: { value: patchCam.cy ?? 0.5 },
+        uPatchImageSize: {
+          value: new THREE.Vector2(patchCam.w || 1, patchCam.h || 1),
+        },
+      },
+      vertexShader: `
+        varying vec3 vPatchWorldPos;
+        void main() {
+          vec4 world = modelMatrix * vec4(position, 1.0);
+          vPatchWorldPos = world.xyz;
+          gl_Position = projectionMatrix * viewMatrix * world;
+        }`,
+      fragmentShader: `
+        uniform sampler2D uPatchMask;
+        uniform float uHasPatchMask;
+        uniform mat4 uPatchViewMatrix;
+        uniform float uPatchFx;
+        uniform float uPatchFy;
+        uniform float uPatchCx;
+        uniform float uPatchCy;
+        uniform vec2 uPatchImageSize;
+        varying vec3 vPatchWorldPos;
+        void main() {
+          if (uHasPatchMask < 0.5) discard;
+          vec4 pcam = uPatchViewMatrix * vec4(vPatchWorldPos, 1.0);
+          float depth = -pcam.z;
+          if (depth <= 1e-5) discard;
+          vec2 px = vec2(uPatchCx + uPatchFx * pcam.x / depth,
+                         uPatchCy - uPatchFy * pcam.y / depth);
+          vec2 uv = px / uPatchImageSize;
+          if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+          if (texture2D(uPatchMask, uv).r < 0.5) discard;
+          gl_FragColor = vec4(1.0);
+        }`,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    scene.background = new THREE.Color(0x000000);
+    const patchMaskB64 = renderToBase64(patchMat);
+    scene.background = bg;
+    patchMat.dispose();
+
+    return {
+      shaded: shadedB64,
+      depth: depthB64,
+      normal: normalB64,
+      mask: maskB64,
+      patch_render_mask: patchMaskB64,
+    };
   } finally {
     hidden.forEach((o) => { o.visible = true; });
     rt.dispose();
@@ -1699,6 +1799,8 @@ function buildNodeUI(node, containerEl) {
   let debugMatteDim = 0.15;
   let debugMatteTex = null;   // loaded per execution from data.debug_matte_b64
   let debugMatteCam = null;   // {vm, fx, fy, cx, cy, w, h} — the PRIMARY camera
+  let patchMaskTex = null;     // AtlasPlanarHolePatch created_islands
+  let patchMaskCam = null;     // original solved camera for reprojection
   let occludeBias = 0.015;
   let layerDebugOn = false; // 🎨 per-layer identity tint toggle
   let bumpStrength = 0;     // 💡 Lights panel "Detail" — photo-luminance relight bump
@@ -1706,7 +1808,7 @@ function buildNodeUI(node, containerEl) {
   function syncProjectionLightUniforms() {
     const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn
       || layerDebugOn || bumpStrength > 0 || occludePrimaryOn
-      || (debugMatteOn && !!debugMatteTex);
+      || (debugMatteOn && !!debugMatteTex) || (layerDebugOn && !!patchMaskTex);
     // Skip the traverse entirely while both lights have always been off (the
     // default), but still run once on the on->off transition so any material
     // that previously picked up a nonzero uLightNIntensity gets zeroed out.
@@ -1733,6 +1835,19 @@ function buildNodeUI(node, containerEl) {
       }
       if (mat.uniforms.uLayerDebug) {
         mat.uniforms.uLayerDebug.value = layerDebugOn ? 1 : 0;
+      }
+      if (mat.uniforms.uPatchMask) {
+        const hasPatch = !!patchMaskTex && !!patchMaskCam;
+        mat.uniforms.uPatchMask.value = patchMaskTex;
+        mat.uniforms.uHasPatchMask.value = hasPatch ? 1 : 0;
+        if (hasPatch) {
+          mat.uniforms.uPatchViewMatrix.value.copy(patchMaskCam.vm);
+          mat.uniforms.uPatchFx.value = patchMaskCam.fx;
+          mat.uniforms.uPatchFy.value = patchMaskCam.fy;
+          mat.uniforms.uPatchCx.value = patchMaskCam.cx;
+          mat.uniforms.uPatchCy.value = patchMaskCam.cy;
+          mat.uniforms.uPatchImageSize.value.set(patchMaskCam.w, patchMaskCam.h);
+        }
       }
       if (mat.uniforms.uBumpStrength) {
         mat.uniforms.uBumpStrength.value = bumpStrength;
@@ -2130,6 +2245,9 @@ function buildNodeUI(node, containerEl) {
   function refreshLayerLegend() {
     const hex = (c) => "#" + c.toString(16).padStart(6, "0");
     const rows = [[hex(LAYER_DEBUG_PRIMARY), "base mesh + backdrop (primary)"]];
+    if (recoveredData?.patch_mask_b64) {
+      rows.push([hex(PLANAR_PATCH_DEBUG), "generated planar hole islands"]);
+    }
     (recoveredData?.projection_sources || []).forEach((s, i) => {
       rows.push([hex(LAYER_DEBUG_PALETTE[i % LAYER_DEBUG_PALETTE.length]),
                  s.name || `layer ${i}`]);
@@ -3441,11 +3559,16 @@ function buildNodeUI(node, containerEl) {
   renderBtn.onclick = async () => {
     renderBtn.disabled = true;
     renderBtn.textContent = "Rendering Proxy...";
+    node._atlasLastRenderError = null;
     const savedAspect = camera.aspect;
     try {
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
-      const passes = await renderAllPasses(renderer, scene, camera, W, H, [bgMesh, pivotGizmo].filter(Boolean));
+      const passes = await renderAllPasses(
+        renderer, scene, camera, W, H,
+        [bgMesh, pivotGizmo].filter(Boolean),
+        { texture: patchMaskTex, camera: patchMaskCam },
+      );
       if (!passes) return;
       // Merge into client_data rather than overwrite — preserves a previously
       // baked camera_path/path_frames (same widget, see ⏺ Bake Proxy Path) instead
@@ -3461,13 +3584,18 @@ function buildNodeUI(node, containerEl) {
             transport: "png_base64_proxy_ldr",
             width: W,
             height: H,
-            passes: ["shaded", "depth", "normal", "mask"],
+            passes: ["shaded", "depth", "normal", "mask", "patch_render_mask"],
           },
         });
         widget.callback?.(widget.value);
       }
       // Re-queue the prompt so Python receives the frames
       app.queuePrompt(0, 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      node._atlasLastRenderError = message;
+      renderBtn.title = `Proxy render failed: ${message}`;
+      console.error("[Atlas] Render Proxy Passes failed:", error);
     } finally {
       camera.aspect = savedAspect;
       camera.updateProjectionMatrix();
@@ -3666,6 +3794,39 @@ function buildNodeUI(node, containerEl) {
       }
       node._atlasRefreshMatteBtn?.();
     } catch (e) { /* a bad matte must never break the viewport refresh */ }
+    // ◩ Planar patch identity: source-space data sampled through the original
+    // recovered camera. It drives both the 🎨 Layers magenta overlay and the
+    // current-camera patch_render_mask proxy pass.
+    try {
+      if (patchMaskTex) { patchMaskTex.dispose(); patchMaskTex = null; }
+      patchMaskCam = null;
+      if (data.patch_mask_b64) {
+        const flat = data.view_matrix.flat();
+        const pvm = new THREE.Matrix4();
+        pvm.set(flat[0], flat[1], flat[2], flat[3],
+                flat[4], flat[5], flat[6], flat[7],
+                flat[8], flat[9], flat[10], flat[11],
+                flat[12], flat[13], flat[14], flat[15]);
+        patchMaskCam = {
+          vm: pvm,
+          fx: data.fx || 1, fy: data.fy || data.fx || 1,
+          cx: data.cx ?? (data.image_width || 1) / 2,
+          cy: data.cy ?? (data.image_height || 1) / 2,
+          w: data.image_width || 1, h: data.image_height || 1,
+        };
+        new THREE.TextureLoader().load(data.patch_mask_b64, (tex) => {
+          tex.colorSpace = THREE.NoColorSpace;
+          tex.flipY = false;
+          tex.magFilter = THREE.NearestFilter;
+          tex.minFilter = THREE.NearestFilter;
+          tex.needsUpdate = true;
+          if (patchMaskTex) patchMaskTex.dispose();
+          patchMaskTex = tex;
+          if (layerDebugOn) refreshLayerLegend();
+        });
+      }
+      if (layerDebugOn) refreshLayerLegend();
+    } catch (e) { /* a bad patch mask must never break the viewport refresh */ }
     // Stale-extraction cleanup + pause visibility: if the persisted
     // patch_angle was extracted from a DIFFERENT solve/image than the one
     // that just executed, clear it from the widget (the backend already

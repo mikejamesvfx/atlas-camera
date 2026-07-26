@@ -81,3 +81,12 @@ def test_projection_shader_body_cannot_terminate_its_javascript_template():
     body_start = SOURCE.index("\n", start) + 1
     body_end = SOURCE.index("\n`;", body_start)
     assert "`" not in SOURCE[body_start:body_end]
+
+
+def test_planar_patch_mask_is_reprojected_for_layer_color_and_proxy_pass():
+    assert "const PLANAR_PATCH_DEBUG = 0xff2fd6" in SOURCE
+    assert "uniform sampler2D uPatchMask" in SOURCE
+    assert "uPatchViewMatrix * vec4(vWorldPos, 1.0)" in SOURCE
+    assert "generated planar hole islands" in SOURCE
+    assert "patch_render_mask: patchMaskB64" in SOURCE
+    assert 'passes: ["shaded", "depth", "normal", "mask", "patch_render_mask"]' in SOURCE

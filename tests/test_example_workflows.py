@@ -213,6 +213,20 @@ def _typed_edges(wf):
     return edges
 
 
+def test_planar_patch_workflow_exposes_source_and_moved_camera_masks():
+    wf = _workflow("atlas_planar_hole_patch_workflow.json")
+    edges = _typed_edges(wf)
+    assert ("AtlasPlanarHolePatch", "created_islands",
+            "AtlasBlockoutViewport", "patch_mask") in edges
+    assert ("AtlasPlanarHolePatch", "created_islands",
+            "MaskToImage", "mask") in edges
+    assert ("AtlasBlockoutViewport", "patch_render_mask",
+            "MaskToImage", "mask") in edges
+    titles = {node.get("title", "") for node in wf["nodes"]}
+    assert any("CREATED ISLANDS" in title for title in titles)
+    assert any("MOVED-CAMERA PATCH MASK" in title for title in titles)
+
+
 def test_shipping_quickstarts_use_current_outputs_and_guidance():
     """The lightweight workflows must not regress to the old Nuke/Maya/USD-
     only handoff or teach third-party SAM as AtlasInput's primary path."""

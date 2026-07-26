@@ -155,3 +155,38 @@ def test_viewport_node_encodes_debug_matte():
                                    unique_id="dbgmatte-test")
     payload = _ATLAS_BLOCKOUT_CACHE["dbgmatte-test"]
     assert payload["debug_matte_b64"].startswith("data:image/png;base64,")
+
+
+def test_patch_mask_rides_payload_and_viewport_encodes_it():
+    """The exact created-island MASK must reach the browser losslessly enough
+    for layer coloring and current-camera mask rendering."""
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy.node_helpers import _ATLAS_BLOCKOUT_CACHE
+    from atlas_camera.comfy.nodes_viewport import AtlasBlockoutViewport
+
+    image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+    patch = torch.zeros((1, 64, 64), dtype=torch.float32)
+    patch[0, 20:44, 24:40] = 1.0
+    p0 = _extract_blockout_camera(_solve(), image.numpy(), 64, 64)
+    assert p0["patch_mask_b64"] == ""
+    AtlasBlockoutViewport().render(
+        _solve(), image, 64, "", patch_mask=patch, unique_id="patchmask-test")
+    payload = _ATLAS_BLOCKOUT_CACHE["patchmask-test"]
+    assert payload["patch_mask_b64"].startswith("data:image/png;base64,")
+    assert AtlasBlockoutViewport.RETURN_NAMES[-1] == "patch_render_mask"
+
+
+def test_viewport_decodes_patch_render_mask_as_comfy_mask():
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy.node_helpers import _mask_to_b64_png
+    from atlas_camera.comfy.nodes_viewport import AtlasBlockoutViewport
+
+    patch = np.zeros((64, 64), dtype=np.float32)
+    patch[8:24, 12:36] = 1.0
+    client_data = '{"patch_render_mask": "' + _mask_to_b64_png(patch) + '"}'
+    result = AtlasBlockoutViewport().render(
+        _solve(), torch.zeros((1, 64, 64, 3)), 64, client_data)["result"]
+    rendered = result[-1]
+    assert rendered.shape == (1, 64, 64)
+    assert float(rendered.max()) == pytest.approx(1.0)
+    assert int(torch.count_nonzero(rendered)) == int(patch.sum())

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 import pytest
 
@@ -118,6 +120,90 @@ def test_patch_fills_enclosed_hole_on_boundary_plane_with_exact_uvs():
     assert np.any(new_faces >= n_vertices_before)
     assert len(patched.edge_risk) == len(patched.vertices)
     assert np.all(patched.edge_risk[np.unique(new_faces)] == 0.0)
+    assert report["filled"][0]["patch_edge_factor"] < 20.0
+    assert report["filled"][0]["local_support_world_per_pixel"] > 0.0
+    assert report["filled"][0]["worst_edge_pixel_span"] > 0.0
+
+
+def test_patch_edge_factor_rejects_unsafe_generated_geometry_atomically():
+    mesh = _mesh_with_hole()
+
+    patched, remaining, report = _patch(
+        mesh, mesh.hole_mask, max_patch_edge_factor=1.0)
+
+    assert report["components_filled"] == 0
+    assert report["vertices_added"] == 0
+    assert report["faces_added"] == 0
+    assert np.array_equal(patched.vertices, mesh.vertices)
+    assert np.array_equal(patched.faces, mesh.faces)
+    assert np.array_equal(remaining, mesh.hole_mask)
+    rejection = next(
+        item for item in report["rejected"]
+        if item["reason"] == "generated patch edge exceeds local scale"
+    )
+    assert rejection["patch_edge_factor"] > 1.0
+    assert rejection["patch_edge_max_m"] > 0.0
+    assert rejection["local_support_edge_m"] > 0.0
+
+
+def test_patch_edge_factor_groups_source_pixels_with_world_camera_scale():
+    mesh = _mesh_with_hole()
+    _base, _base_remaining, base_report = _patch(mesh, mesh.hole_mask)
+
+    scale_px = 8
+    hi_width = (W - 1) * scale_px + 1
+    hi_height = (H - 1) * scale_px + 1
+    source_x = np.rint(
+        np.arange(hi_width, dtype=np.float64) / scale_px).astype(np.int64)
+    source_y = np.rint(
+        np.arange(hi_height, dtype=np.float64) / scale_px).astype(np.int64)
+    hi_mask = mesh.hole_mask[np.ix_(source_y, source_x)]
+    _hi, _hi_remaining, hi_report = patch_planar_holes(
+        mesh,
+        hi_mask,
+        view_matrix=VIEW,
+        fx=FX * scale_px,
+        fy=FY * scale_px,
+        cx=CX * scale_px,
+        cy=CY * scale_px,
+        image_width=hi_width,
+        image_height=hi_height,
+        config=PlanarHolePatchConfig(
+            ring_cells=2,
+            max_components=8,
+            normal_tolerance_deg=15.0,
+            max_plane_error_m=0.02,
+            max_hole_fraction=0.20,
+            enclosed_only=True,
+        ),
+    )
+
+    world_scale = 10.0
+    scaled_mesh = copy.deepcopy(mesh)
+    scaled_mesh.vertices = np.asarray(
+        scaled_mesh.vertices, dtype=np.float32) * world_scale
+    _scaled, _scaled_remaining, scaled_report = _patch(
+        scaled_mesh,
+        scaled_mesh.hole_mask,
+        max_plane_error_m=0.02 * world_scale,
+    )
+
+    base_factor = base_report["filled"][0]["patch_edge_factor"]
+    assert hi_report["components_filled"] == 1
+    assert scaled_report["components_filled"] == 1
+    assert hi_report["filled"][0]["patch_edge_factor"] == pytest.approx(
+        base_factor, rel=1e-5)
+    assert scaled_report["filled"][0]["patch_edge_factor"] == pytest.approx(
+        base_factor, rel=1e-5)
+    assert hi_report["filled"][0]["worst_edge_pixel_span"] == pytest.approx(
+        base_report["filled"][0]["worst_edge_pixel_span"] * scale_px)
+    assert scaled_report["filled"][0]["local_support_world_per_pixel"] == (
+        pytest.approx(
+            base_report["filled"][0]["local_support_world_per_pixel"]
+            * world_scale,
+            rel=1e-5,
+        )
+    )
 
 
 def test_patch_rejects_open_frame_gap_by_default():
@@ -158,7 +244,11 @@ def test_parallel_surfaces_choose_the_densest_plane_position_band():
     )
 
     patched, remaining, report = _patch(
-        mesh, mesh.hole_mask, max_plane_error_m=0.05)
+        mesh,
+        mesh.hole_mask,
+        max_plane_error_m=0.05,
+        max_patch_edge_factor=32.0,
+    )
 
     assert report["components_filled"] == 1
     assert report["components_rejected"] == 0
@@ -333,7 +423,7 @@ def test_comfy_node_stitches_patch_into_one_retopologizable_relief_mesh():
     solve.projection_scene.proxy_geometry = [relief_mesh_primitive(mesh)]
     mask = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
 
-    out, remaining, report = AtlasPlanarHolePatch().patch(
+    out, remaining, report, created = AtlasPlanarHolePatch().patch(
         solve,
         mask,
         normal_tolerance_deg=15.0,
@@ -349,10 +439,15 @@ def test_comfy_node_stitches_patch_into_one_retopologizable_relief_mesh():
     assert patch_inputs["max_components"][1]["default"] == 64
     assert patch_inputs["max_components"][1]["max"] == 1024
     assert patch_inputs["min_normal_support_fraction"][1]["default"] == 0.30
+    assert patch_inputs["max_patch_edge_factor"][1]["default"] == 20.0
     assert len(relief) == 1
     assert relief[0].metadata["planar_hole_patch"]["components_filled"] == 1
     assert int(remaining.sum()) < int(mask.sum())
+    assert int(created.sum()) == int(mask.sum()) - int(remaining.sum())
+    assert torch.count_nonzero(created * remaining) == 0
+    assert AtlasPlanarHolePatch.RETURN_NAMES[-1] == "created_islands"
     assert "filled 1/1" in report
+    assert "source pixels × local m/px" in report
 
     _retopo_out, retopo_report = AtlasRetopologizeLayer().retopo(
         out, method="off")
