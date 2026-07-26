@@ -283,6 +283,35 @@ def test_fit_budget_selects_the_smallest_eligible_island_first():
     assert report["filled"][0]["cells"] < budget_rejections[0]["cells"]
 
 
+def test_filled_islands_are_reported_smallest_to_largest():
+    exclusion = np.zeros((H, W), dtype=bool)
+    exclusion[7:12, 7:12] = True
+    exclusion[24:32, 24:32] = True
+    exclusion[43:55, 43:55] = True
+    mesh = build_relief_mesh(
+        _tilted_depth(),
+        view_matrix=VIEW,
+        fx=FX, fy=FY, cx=CX, cy=CY,
+        grid_long_edge=W,
+        depth_edge_rel=5.0,
+        max_edge_factor=0.0,
+        floor_clamp=None,
+        exclude_mask=exclusion,
+        apply_sky_heuristic=False,
+        quad_coherence=True,
+    )
+
+    _patched, _remaining, report = _patch(
+        mesh, mesh.hole_mask, max_components=3, max_plane_error_m=0.03)
+
+    filled_sizes = [item["cells"] for item in report["filled"]]
+    assert report["components_eligible"] == 3
+    assert report["components_attempted"] == 3
+    assert report["components_filled"] == 3
+    assert filled_sizes == sorted(filled_sizes)
+    assert len(set(filled_sizes)) == 3
+
+
 def test_comfy_node_stitches_patch_into_one_retopologizable_relief_mesh():
     torch = pytest.importorskip("torch")
     from atlas_camera.comfy.nodes import (
