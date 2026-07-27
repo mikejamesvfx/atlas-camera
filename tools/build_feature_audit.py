@@ -32,7 +32,13 @@ def _load(name: str):
 
 
 def _module_of(node_key: str) -> str:
-    """Best-effort 'module.py:line' for a registered node class."""
+    """Owning module path for a registered node class.
+
+    Deliberately NOT 'path:line'. A line number makes the committed report
+    stale on ANY edit to a file that happens to contain nodes — an unrelated
+    change 500 lines away shifts every entry below it and turns the freshness
+    test permanently red, which trains people to ignore it.
+    """
     import inspect
 
     from atlas_camera.comfy import node_registry as reg
@@ -43,7 +49,7 @@ def _module_of(node_key: str) -> str:
         return ""
     try:
         path = Path(inspect.getsourcefile(cls)).resolve().relative_to(REPO)
-        return f"{str(path).replace(chr(92), '/')}:{inspect.getsourcelines(cls)[1]}"
+        return str(path).replace(chr(92), "/")
     except Exception:  # noqa: BLE001
         return ""
 

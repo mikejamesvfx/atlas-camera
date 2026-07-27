@@ -25,7 +25,7 @@
  },
  "nodes": {
   "AtlasAddPatchView": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2618",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -68,7 +68,7 @@
    "notes": null
   },
   "AtlasApplyLUT": {
-   "module": "atlas_camera/comfy/nodes_solve.py:291",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_plate_color_grade_defocus_lut_workflow.json"
@@ -104,7 +104,7 @@
    "notes": null
   },
   "AtlasApplyScaleReferences": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1643",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -138,7 +138,7 @@
    "notes": null
   },
   "AtlasAssessImage": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1166",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -192,7 +192,7 @@
    "notes": null
   },
   "AtlasAssessOutput": {
-   "module": "atlas_camera/comfy/nodes_qa.py:348",
+   "module": "atlas_camera/comfy/nodes_qa.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -247,7 +247,7 @@
    "notes": null
   },
   "AtlasAttachSourcePlate": {
-   "module": "atlas_camera/comfy/nodes_solve.py:471",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -294,7 +294,7 @@
    "notes": null
   },
   "AtlasBlockoutViewport": {
-   "module": "atlas_camera/comfy/nodes_viewport.py:120",
+   "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -372,7 +372,7 @@
    "notes": null
   },
   "AtlasBoundedBand": {
-   "module": "atlas_camera/comfy/nodes_depth.py:658",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json"
@@ -415,7 +415,7 @@
    "notes": null
   },
   "AtlasCleanPlateLayer": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:707",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -483,7 +483,7 @@
    "notes": null
   },
   "AtlasCleanPlateStack": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:1279",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -517,7 +517,7 @@
    "notes": null
   },
   "AtlasConstrainedSolve": {
-   "module": "atlas_camera/comfy/nodes_solve.py:719",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -550,7 +550,7 @@
    "notes": null
   },
   "AtlasDeband": {
-   "module": "atlas_camera/comfy/nodes_solve.py:120",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -583,7 +583,7 @@
    "notes": null
   },
   "AtlasDebugReport": {
-   "module": "atlas_camera/comfy/nodes_viewport.py:416",
+   "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -637,7 +637,7 @@
    "notes": null
   },
   "AtlasDecomposeCamera": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1741",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -671,7 +671,7 @@
    "notes": null
   },
   "AtlasDecomposeSolve": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1713",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -705,7 +705,7 @@
    "notes": null
   },
   "AtlasDefineShotCam": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2354",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -740,7 +740,7 @@
    "notes": null
   },
   "AtlasDefocus": {
-   "module": "atlas_camera/comfy/nodes_solve.py:227",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_plate_color_grade_defocus_lut_workflow.json"
@@ -776,7 +776,7 @@
    "notes": null
   },
   "AtlasDepthAnything": {
-   "module": "atlas_camera/comfy/nodes_depth.py:37",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -809,7 +809,7 @@
    "notes": "Deliberately NOT a duplicate of AtlasDepthMap: it emits a min-max normalized IMAGE preview and destroys the metric payload, which is why it cannot feed geometry. Distinct contract, no consumer."
   },
   "AtlasDepthBandSplit": {
-   "module": "atlas_camera/comfy/nodes_depth.py:614",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -846,7 +846,7 @@
    "notes": null
   },
   "AtlasDepthCombine": {
-   "module": "atlas_camera/comfy/nodes_depth.py:328",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -879,7 +879,7 @@
    "notes": null
   },
   "AtlasDepthDetailEnhance": {
-   "module": "atlas_camera/comfy/nodes_depth.py:252",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -912,7 +912,7 @@
    "notes": null
   },
   "AtlasDepthLayerMask": {
-   "module": "atlas_camera/comfy/nodes_depth.py:750",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_raw_3layer_ocio_workflow.json",
@@ -962,7 +962,7 @@
    "notes": null
   },
   "AtlasDepthMap": {
-   "module": "atlas_camera/comfy/nodes_depth.py:87",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -1022,7 +1022,7 @@
    "notes": null
   },
   "AtlasDepthOutlierMask": {
-   "module": "atlas_camera/comfy/nodes_depth.py:137",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1056,7 +1056,7 @@
    "notes": null
   },
   "AtlasDeriveInteriorRoom": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2226",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1090,7 +1090,7 @@
    "notes": null
   },
   "AtlasDeriveProjectionGeometry": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:49",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1130,7 +1130,7 @@
    "notes": null
   },
   "AtlasDeriveReliefMesh": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:734",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_path_guided_hole_repair_workflow.json",
@@ -1184,7 +1184,7 @@
    "notes": null
   },
   "AtlasDeriveRoofsFacades": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2182",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1218,7 +1218,7 @@
    "notes": null
   },
   "AtlasDeriveTowersSpires": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2099",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1258,7 +1258,7 @@
    "notes": null
   },
   "AtlasDeriveWalls": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2022",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_planar_hole_patch_workflow.json"
@@ -1304,7 +1304,7 @@
    "notes": null
   },
   "AtlasExportBlender": {
-   "module": "atlas_camera/comfy/nodes_export.py:386",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -1357,7 +1357,7 @@
    "notes": null
   },
   "AtlasExportCameraPathUSD": {
-   "module": "atlas_camera/comfy/nodes_export.py:647",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1396,7 +1396,7 @@
    "notes": null
   },
   "AtlasExportMayaLayers": {
-   "module": "atlas_camera/comfy/nodes_export.py:566",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -1451,7 +1451,7 @@
    "notes": null
   },
   "AtlasExportMayaReviewScene": {
-   "module": "atlas_camera/comfy/nodes_export.py:72",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
@@ -1500,7 +1500,7 @@
    "notes": null
   },
   "AtlasExportNuke": {
-   "module": "atlas_camera/comfy/nodes_export.py:419",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
@@ -1550,7 +1550,7 @@
    "notes": null
   },
   "AtlasExportNukeLayers": {
-   "module": "atlas_camera/comfy/nodes_export.py:482",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -1605,7 +1605,7 @@
    "notes": null
   },
   "AtlasExportPlateEXR": {
-   "module": "atlas_camera/comfy/nodes_export.py:687",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_raw_3layer_ocio_workflow.json"
@@ -1637,7 +1637,7 @@
    "notes": null
   },
   "AtlasExportReliefMesh": {
-   "module": "atlas_camera/comfy/nodes_export.py:106",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
@@ -1692,7 +1692,7 @@
    "notes": null
   },
   "AtlasExportReviewPackage": {
-   "module": "atlas_camera/comfy/nodes_export.py:30",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_raw_3layer_ocio_workflow.json"
@@ -1734,7 +1734,7 @@
    "notes": null
   },
   "AtlasExportSolveJSON": {
-   "module": "atlas_camera/comfy/nodes_export.py:50",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -1789,7 +1789,7 @@
    "notes": null
   },
   "AtlasExportUSD": {
-   "module": "atlas_camera/comfy/nodes_export.py:358",
+   "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -1844,7 +1844,7 @@
    "notes": null
   },
   "AtlasExtractAnglePatch": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2400",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "experimental",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1877,7 +1877,7 @@
    "notes": null
   },
   "AtlasGrade": {
-   "module": "atlas_camera/comfy/nodes_solve.py:183",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_plate_color_grade_defocus_lut_workflow.json"
@@ -1913,7 +1913,7 @@
    "notes": null
   },
   "AtlasGravityOverride": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1027",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -1940,7 +1940,7 @@
    "notes": "The only registered node documented NOWHERE \u2014 no workflow, no dedicated test, no MCP consumer, and zero hits in docs/. Executes correctly."
   },
   "AtlasGroundDepthMap": {
-   "module": "atlas_camera/comfy/nodes_depth.py:417",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -1974,7 +1974,7 @@
    "notes": "Keeps its HOLD despite being AtlasGroundMask's replacement: it is the superset of the two, so gating it as well would leave no way to get a ground mask at all."
   },
   "AtlasGroundMask": {
-   "module": "atlas_camera/comfy/nodes_depth.py:455",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "legacy",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2012,7 +2012,7 @@
    "notes": null
   },
   "AtlasHorizonMask": {
-   "module": "atlas_camera/comfy/nodes_depth.py:482",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -2045,7 +2045,7 @@
    "notes": null
   },
   "AtlasImportAnglePatch": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2522",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "experimental",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2078,7 +2078,7 @@
    "notes": null
   },
   "AtlasInpaintCrop": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:342",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_raw_3layer_ocio_workflow.json",
@@ -2124,7 +2124,7 @@
    "notes": null
   },
   "AtlasInpaintStitch": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:411",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_raw_3layer_ocio_workflow.json",
@@ -2170,7 +2170,7 @@
    "notes": null
   },
   "AtlasInput": {
-   "module": "atlas_camera/comfy/nodes_viewport.py:608",
+   "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_boundary_smooth_retopo_test_workflow.json",
@@ -2226,7 +2226,7 @@
    "notes": null
   },
   "AtlasInstanceMask": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:600",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2263,7 +2263,7 @@
    "notes": null
   },
   "AtlasLayerPreview": {
-   "module": "atlas_camera/comfy/nodes_viewport.py:550",
+   "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -2306,7 +2306,7 @@
    "notes": null
   },
   "AtlasLearnedSolveFromImage": {
-   "module": "atlas_camera/comfy/nodes_solve.py:751",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -2364,7 +2364,7 @@
    "notes": null
   },
   "AtlasLiveMeshRepair": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:902",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "legacy",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2408,7 +2408,7 @@
    "notes": "Gating removes the only caller of repair_relief_mesh_grid_cuda and remove_stretched_faces. What is genuinely lost is the CUDA grid repair, the harmonic enclosed-hole cap and the post-hoc stretch cull applied downstream on an already-built solve. What survives: CPU hole-fill + sawtooth via apply_live_mesh_repair (still called by AtlasDeriveReliefMesh and AtlasDeriveProjectionGeometry) and apply_interior_hole_fill in the relief-mesh exporter."
   },
   "AtlasLoadPlate": {
-   "module": "atlas_camera/comfy/nodes_solve.py:366",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -2440,7 +2440,7 @@
    "notes": "Near-superset of AtlasRegisterPlate for file-backed plates, but AtlasRegisterPlate covers the case it cannot: tagging an in-graph IMAGE tensor with no file (is_proxy=True). Not a merge candidate."
   },
   "AtlasLoadRAW": {
-   "module": "atlas_camera/comfy/nodes_solve.py:491",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_raw_3layer_ocio_workflow.json"
@@ -2480,7 +2480,7 @@
    "notes": null
   },
   "AtlasLoadSolveJSON": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1695",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -2513,7 +2513,7 @@
    "notes": null
   },
   "AtlasMergeGeometry": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2267",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_planar_hole_patch_workflow.json"
@@ -2555,7 +2555,7 @@
    "notes": null
   },
   "AtlasMogeNormals": {
-   "module": "atlas_camera/comfy/nodes_depth.py:181",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2588,7 +2588,7 @@
    "notes": null
   },
   "AtlasOcclusionMask": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:3143",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2628,7 +2628,7 @@
    "notes": null
   },
   "AtlasPathGuidedHoleRepair": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:1685",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_path_guided_hole_repair_workflow.json"
@@ -2676,7 +2676,7 @@
    "notes": null
   },
   "AtlasPlanarHolePatch": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:1305",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -2727,7 +2727,7 @@
    "notes": null
   },
   "AtlasPlanarRewarp": {
-   "module": "atlas_camera/comfy/nodes_planar.py:147",
+   "module": "atlas_camera/comfy/nodes_planar.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -2758,7 +2758,7 @@
    "notes": null
   },
   "AtlasPlanarUnwarp": {
-   "module": "atlas_camera/comfy/nodes_planar.py:44",
+   "module": "atlas_camera/comfy/nodes_planar.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2791,7 +2791,7 @@
    "notes": null
   },
   "AtlasPredictHiddenGeometry": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:381",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "experimental",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2839,7 +2839,7 @@
    "notes": null
   },
   "AtlasReferenceScaleSolve": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1121",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -2877,7 +2877,7 @@
    "notes": null
   },
   "AtlasRegisterPlate": {
-   "module": "atlas_camera/comfy/nodes_solve.py:64",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -2926,7 +2926,7 @@
    "notes": null
   },
   "AtlasRenderFix": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:620",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "experimental",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2971,7 +2971,7 @@
    "notes": null
   },
   "AtlasRetopologizeLayer": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:1128",
+   "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -3014,7 +3014,7 @@
    "notes": null
   },
   "AtlasRollTrim": {
-   "module": "atlas_camera/comfy/nodes_solve.py:912",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -3051,7 +3051,7 @@
    "notes": null
   },
   "AtlasSAM3Mask": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:237",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -3108,7 +3108,7 @@
    "notes": null
   },
   "AtlasSDXLInpaint": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:477",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_raw_3layer_ocio_workflow.json",
@@ -3155,7 +3155,7 @@
    "notes": null
   },
   "AtlasScaleOverride": {
-   "module": "atlas_camera/comfy/nodes_solve.py:826",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_raw_3layer_ocio_workflow.json"
@@ -3200,7 +3200,7 @@
    "notes": null
   },
   "AtlasSceneHealthGate": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1479",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -3235,7 +3235,7 @@
    "notes": null
   },
   "AtlasScopeMask": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:40",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -3284,7 +3284,7 @@
    "notes": null
   },
   "AtlasSegmentedSDXLInpaint": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:638",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -3319,7 +3319,7 @@
    "notes": null
   },
   "AtlasSemanticMask": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:182",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -3362,7 +3362,7 @@
    "notes": null
   },
   "AtlasSkyDomeLayer": {
-   "module": "atlas_camera/comfy/nodes_inpaint.py:1407",
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
@@ -3414,7 +3414,7 @@
    "notes": null
   },
   "AtlasSolveFromImage": {
-   "module": "atlas_camera/comfy/nodes_solve.py:673",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -3449,7 +3449,7 @@
    "notes": null
   },
   "AtlasSolveGate": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1382",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
@@ -3502,7 +3502,7 @@
    "notes": null
   },
   "AtlasStereoRender": {
-   "module": "atlas_camera/comfy/nodes_viewport.py:1039",
+   "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -3533,7 +3533,7 @@
    "notes": null
   },
   "AtlasUSDCameraLoader": {
-   "module": "atlas_camera/comfy/nodes_solve.py:45",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -3566,7 +3566,7 @@
    "notes": null
   },
   "AtlasVLMScaleCues": {
-   "module": "atlas_camera/comfy/nodes_solve.py:1580",
+   "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -3602,7 +3602,7 @@
    "notes": null
   },
   "AtlasVPVisualization": {
-   "module": "atlas_camera/comfy/nodes_depth.py:534",
+   "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [],
@@ -3635,7 +3635,7 @@
    "notes": null
   },
   "AtlasViewportControls": {
-   "module": "atlas_camera/comfy/nodes_viewport.py:54",
+   "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
