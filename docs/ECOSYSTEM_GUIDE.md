@@ -164,7 +164,7 @@ combine explicitly.
 | `AtlasDecomposeSolve` | Unpacks a solve into `camera`, `confidence`, `source_method`, image dims, raw JSON, `horizon_angle_deg`. |
 | `AtlasDecomposeCamera` | Unpacks a camera into `fx/fy/cx/cy`, world position, focal_mm, FOV. |
 | `AtlasGroundDepthMap` | Metric ground-plane depth visualization + ground mask. |
-| `AtlasGroundMask` | Binary ground/sky mask. |
+| `AtlasGroundMask` | 🕰 LEGACY (needs `ATLAS_LEGACY_NODES=1`) — binary ground/sky mask, bit-identical to `AtlasGroundDepthMap` output 1. Use that instead. |
 | `AtlasHorizonMask` | Binary above/below-horizon mask, with feathering. |
 | `AtlasVPVisualization` | Overlays detected vanishing points + horizon on the source image. **Empty on the learned/GeoCalib solve path** — it doesn't compute VPs at all, by design. |
 

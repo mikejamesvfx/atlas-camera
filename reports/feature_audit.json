@@ -319,6 +319,7 @@
     "tests/test_example_workflows.py",
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py",
+    "tests/test_migrate_legacy_nodes.py",
     "tests/test_node_pack_entrypoint.py",
     "tests/test_occlusion_depth_pack.py",
     "tests/test_shot_cam.py",
@@ -333,6 +334,7 @@
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py",
     "tests/test_facade_surface.py",
+    "tests/test_migrate_legacy_nodes.py",
     "tests/test_node_pack_entrypoint.py",
     "tests/test_occlusion_depth_pack.py",
     "tests/test_shot_cam.py",
@@ -1949,7 +1951,9 @@
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/migrate_legacy_nodes.py"
+   ],
    "docs": [
     "docs/COMFY_WORKFLOW.md",
     "docs/DESIGN_RULES.md",
@@ -1958,6 +1962,7 @@
    ],
    "product_evidence": false,
    "evidence_kinds": [
+    "repo_tool",
     "docs"
    ],
    "live_execution": "ok",
@@ -1985,15 +1990,17 @@
     "tests/test_legacy_node_gate.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/migrate_legacy_nodes.py"
+   ],
    "docs": [
-    "docs/COMFY_WORKFLOW.md",
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "ok",
@@ -2183,14 +2190,16 @@
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_derive_geometry_nodes.py",
-    "tests/test_example_workflows.py"
+    "tests/test_example_workflows.py",
+    "tests/test_migrate_legacy_nodes.py"
    ],
    "tests": [
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_derive_geometry_nodes.py",
     "tests/test_example_workflows.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_migrate_legacy_nodes.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
@@ -2371,6 +2380,7 @@
     "tests/test_example_workflows.py",
     "tests/test_legacy_node_gate.py",
     "tests/test_mesh_repair.py",
+    "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py",
     "tests/test_retopologize_layer.py"
    ],
@@ -2379,17 +2389,21 @@
     "tests/test_facade_surface.py",
     "tests/test_legacy_node_gate.py",
     "tests/test_mesh_repair.py",
+    "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py",
     "tests/test_retopologize_layer.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/migrate_legacy_nodes.py"
+   ],
    "docs": [
     "docs/NODE_CATALOG.md"
    ],
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2688,6 +2702,7 @@
     "tests/test_compact_path_repair_bake.py",
     "tests/test_example_workflows.py",
     "tests/test_legacy_node_gate.py",
+    "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py"
    ],
    "tests": [
@@ -2696,12 +2711,14 @@
     "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_legacy_node_gate.py",
+    "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
     "tools/build_path_guided_hole_repair_workflow.py",
-    "tools/compact_path_repair_bake.py"
+    "tools/compact_path_repair_bake.py",
+    "tools/migrate_legacy_nodes.py"
    ],
    "docs": [
     "docs/DESIGN_RULES.md",
@@ -2981,17 +2998,21 @@
     "examples/atlas_planar_hole_patch_workflow.json"
    ],
    "dedicated_tests": [
+    "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py",
     "tests/test_retopologize_layer.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_facade_surface.py",
+    "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py",
     "tests/test_retopologize_layer.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/migrate_legacy_nodes.py"
+   ],
    "docs": [
     "docs/DESIGN_RULES.md",
     "docs/NODE_CATALOG.md"
@@ -3000,6 +3021,7 @@
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
