@@ -1,120 +1,244 @@
 {
-  "schema_version": 1,
-  "phase": "C-1 baseline probe (read-only, pre-implementation)",
-  "generated_utc": "2026-07-27",
-  "repo_head": "fe130a5",
-  "server": {
-    "host": "127.0.0.1:8188",
-    "build": "V91 (custom_nodes/AtlasCamera symlink + editable install -> dev checkout)",
-    "comfyui": "0.27.0",
-    "vram_free_gb": 2.5,
-    "atlas_nodes_registered": 83,
-    "experimental_registered": true,
-    "note": "ATLAS_EXPERIMENTAL is OPEN on this server, so /object_info shows 79 standard + 4 experimental. The plan's 'expect 79' assumed the default-closed gate; 83 here is correct and not a discrepancy."
+ "schema_version": 1,
+ "phase": "C-1 baseline probe (read-only, pre-implementation)",
+ "generated_utc": "2026-07-27",
+ "repo_head": "fe130a5",
+ "server": {
+  "host": "127.0.0.1:8188",
+  "build": "V91 (custom_nodes/AtlasCamera symlink + editable install -> dev checkout)",
+  "comfyui": "0.27.0",
+  "vram_free_gb": 2.5,
+  "atlas_nodes_registered": 83,
+  "experimental_registered": true,
+  "note": "ATLAS_EXPERIMENTAL is OPEN on this server, so /object_info shows 79 standard + 4 experimental. The plan's 'expect 79' assumed the default-closed gate; 83 here is correct and not a discrepancy."
+ },
+ "findings": [
+  {
+   "id": "F1",
+   "claim": "All 18 zero-product-evidence standard nodes execute and produce meaningful output.",
+   "method": "In-process execution of each node's FUNCTION with a synthetic solve/IMAGE and real fixtures, signatures read from INPUT_TYPES rather than assumed.",
+   "result": "18/18 ok. No node is broken. Every initial failure in the first pass was a bad probe argument, corrected and re-run.",
+   "corrections_made": [
+    "AtlasVPVisualization takes (image, solve) in that order, not (solve, image).",
+    "AtlasGravityOverride FUNCTION is 'override', not 'apply'.",
+    "AtlasSolveFromImage / AtlasConstrainedSolve take an IMAGE tensor, not a path.",
+    "AtlasConstrainedSolve needs left+right+vertical groups (aliases x/z/y); two groups is not enough. Solved fx=721.6 once given three.",
+    "AtlasUSDCameraLoader needs a real .usda; round-trips correctly against AtlasExportUSD output.",
+    "AtlasReferenceScaleSolve takes reference_id + 4 bbox floats."
+   ],
+   "consequence": "No DELETE is defensible this cycle. The 15 non-duplicate zero-evidence nodes are HOLD_NEEDS_EVIDENCE: working code with no product consumer, not dead code."
   },
-
-  "findings": [
-    {
-      "id": "F1",
-      "claim": "All 18 zero-product-evidence standard nodes execute and produce meaningful output.",
-      "method": "In-process execution of each node's FUNCTION with a synthetic solve/IMAGE and real fixtures, signatures read from INPUT_TYPES rather than assumed.",
-      "result": "18/18 ok. No node is broken. Every initial failure in the first pass was a bad probe argument, corrected and re-run.",
-      "corrections_made": [
-        "AtlasVPVisualization takes (image, solve) in that order, not (solve, image).",
-        "AtlasGravityOverride FUNCTION is 'override', not 'apply'.",
-        "AtlasSolveFromImage / AtlasConstrainedSolve take an IMAGE tensor, not a path.",
-        "AtlasConstrainedSolve needs left+right+vertical groups (aliases x/z/y); two groups is not enough. Solved fx=721.6 once given three.",
-        "AtlasUSDCameraLoader needs a real .usda; round-trips correctly against AtlasExportUSD output.",
-        "AtlasReferenceScaleSolve takes reference_id + 4 bbox floats."
-      ],
-      "consequence": "No DELETE is defensible this cycle. The 15 non-duplicate zero-evidence nodes are HOLD_NEEDS_EVIDENCE: working code with no product consumer, not dead code."
+  {
+   "id": "F2",
+   "claim": "AtlasGroundMask output is bit-identical to AtlasGroundDepthMap output 1 (ground_mask).",
+   "method": "Both nodes run on the same solve across 5 configurations (default, fx=150, elevated eye 12m, raised target, 640x480); plus near/far varied 1/50 vs 5/500 on GroundDepthMap.",
+   "result": "bit_identical = True in all 5 cases (np.array_equal). Changing near/far does NOT alter the mask, confirming near/far only drive the colour ramp.",
+   "consequence": "AtlasGroundMask -> LEGACY_GATE is evidence-backed, not inferred from reading. Replacement: AtlasGroundDepthMap output slot 1."
+  },
+  {
+   "id": "F3",
+   "claim": "The staircase sawtooth hang is real, and the proposed Guard A fixes it.",
+   "method": "Bounded subprocess repro of the exact test fixture (64x64 depth, circular rock at 3m, grid_long_edge=32); then a standalone prototype of pass 1 with and without the same-pass shared-edge guard.",
+   "result": {
+    "hang_reproduced": "apply_boundary_sawtooth_fill did not return within 45s (exit 124).",
+    "mesh": {
+     "faces": 1930,
+     "verts": 1089,
+     "loops": [
+      109,
+      36,
+      97
+     ]
     },
-    {
-      "id": "F2",
-      "claim": "AtlasGroundMask output is bit-identical to AtlasGroundDepthMap output 1 (ground_mask).",
-      "method": "Both nodes run on the same solve across 5 configurations (default, fx=150, elevated eye 12m, raised target, 640x480); plus near/far varied 1/50 vs 5/500 on GroundDepthMap.",
-      "result": "bit_identical = True in all 5 cases (np.array_equal). Changing near/far does NOT alter the mask, confirming near/far only drive the colour ramp.",
-      "consequence": "AtlasGroundMask -> LEGACY_GATE is evidence-backed, not inferred from reading. Replacement: AtlasGroundDepthMap output slot 1."
+    "qualifying_vertices": 19,
+    "adjacent_qualifying_pairs": 10,
+    "without_guard": {
+     "bridged": 16,
+     "duplicated_directed_edges": 10,
+     "max_undirected_edge_multiplicity": 3
     },
-    {
-      "id": "F3",
-      "claim": "The staircase sawtooth hang is real, and the proposed Guard A fixes it.",
-      "method": "Bounded subprocess repro of the exact test fixture (64x64 depth, circular rock at 3m, grid_long_edge=32); then a standalone prototype of pass 1 with and without the same-pass shared-edge guard.",
-      "result": {
-        "hang_reproduced": "apply_boundary_sawtooth_fill did not return within 45s (exit 124).",
-        "mesh": {"faces": 1930, "verts": 1089, "loops": [109, 36, 97]},
-        "qualifying_vertices": 19,
-        "adjacent_qualifying_pairs": 10,
-        "without_guard": {"bridged": 16, "duplicated_directed_edges": 10, "max_undirected_edge_multiplicity": 3},
-        "with_guard": {"bridged": 11, "duplicated_directed_edges": 0, "max_undirected_edge_multiplicity": 2, "pass2_walk_loops": "completes in 0.00s, loops [103, 31, 97]"}
-      },
-      "consequence": "Guard A validated BEFORE implementation. n_added=11 > 0, so the test's existing assertion still holds after the fix; no xfail needed."
-    },
-    {
-      "id": "F4",
-      "claim": "defocus_plate's gather is a genuine memory problem (defect D1).",
-      "method": "tracemalloc peak on the worktree implementation.",
-      "result": {
-        "960x540_levels6_peak_mb": 228,
-        "1920x1080_levels12_peak_mb": 1510,
-        "4k_stack_alone_gb": 2.39
-      },
-      "consequence": "Band-by-band hat-weight accumulation is required before landing AtlasDefocus, justified by measurement rather than assumption."
-    },
-    {
-      "id": "F5",
-      "claim": "PLAN AMENDMENT — the LiveMeshRepair migration is not a 1:1 node swap.",
-      "method": "Read the widgets and link graph of all three workflows; confirmed node shapes against the live /object_info catalog.",
-      "result": {
-        "AtlasLiveMeshRepair": "sweeps the WHOLE solve (every relief mesh, all layers)",
-        "AtlasPlanarHolePatch": "link_inputs [solve, hole_mask]; widget 'layer' targets ONE named source or '' (primary). No '*' option.",
-        "AtlasCleanPlateLayer": "outputs [solve, hole_mask, extend_mask] — hole_mask exists per layer but is currently UNWIRED in both moge workflows",
-        "atlas_3layer_sky_machine_foreground_moge": "named layers: sky (SkyDomeLayer), machine (node 10), foreground (node 11)",
-        "atlas_4layer_boundedband_bgcard_moge": "named layers: sky (node 10), background (node 11), machine (node 12), foreground (node 13)"
-      },
-      "consequence": "A faithful migration needs ONE AtlasPlanarHolePatch per named layer, each fed that layer's own hole_mask — 2 patches for the 3-layer graph, 3 for the 4-layer graph — then one AtlasRetopologizeLayer(layer='*'). The plan's single-patch chain would have silently repaired only one layer. Alternative worth costing in C4: teach AtlasPlanarHolePatch's existing STRING 'layer' widget to accept '*' (legal — it is a STRING, not a combo), which needs a per-layer mask story."
-    },
-    {
-      "id": "F6",
-      "claim": "atlas_live_repair_and_bands_test_workflow.json is already unrunnable on this machine.",
-      "method": "atlas_validate_workflow against the live server.",
-      "result": "valid=false, errors=['type PreviewTextNode unknown'] — a third-party node that is not installed.",
-      "consequence": "Retiring this workflow (plan C4) costs nothing that currently works. Replacing it with atlas_boundary_smooth_retopo_test_workflow.json is a strict improvement."
+    "with_guard": {
+     "bridged": 11,
+     "duplicated_directed_edges": 0,
+     "max_undirected_edge_multiplicity": 2,
+     "pass2_walk_loops": "completes in 0.00s, loops [103, 31, 97]"
     }
+   },
+   "consequence": "Guard A validated BEFORE implementation. n_added=11 > 0, so the test's existing assertion still holds after the fix; no xfail needed."
+  },
+  {
+   "id": "F4",
+   "claim": "defocus_plate's gather is a genuine memory problem (defect D1).",
+   "method": "tracemalloc peak on the worktree implementation.",
+   "result": {
+    "960x540_levels6_peak_mb": 228,
+    "1920x1080_levels12_peak_mb": 1510,
+    "4k_stack_alone_gb": 2.39
+   },
+   "consequence": "Band-by-band hat-weight accumulation is required before landing AtlasDefocus, justified by measurement rather than assumption."
+  },
+  {
+   "id": "F5",
+   "claim": "PLAN AMENDMENT \u2014 the LiveMeshRepair migration is not a 1:1 node swap.",
+   "method": "Read the widgets and link graph of all three workflows; confirmed node shapes against the live /object_info catalog.",
+   "result": {
+    "AtlasLiveMeshRepair": "sweeps the WHOLE solve (every relief mesh, all layers)",
+    "AtlasPlanarHolePatch": "link_inputs [solve, hole_mask]; widget 'layer' targets ONE named source or '' (primary). No '*' option.",
+    "AtlasCleanPlateLayer": "outputs [solve, hole_mask, extend_mask] \u2014 hole_mask exists per layer but is currently UNWIRED in both moge workflows",
+    "atlas_3layer_sky_machine_foreground_moge": "named layers: sky (SkyDomeLayer), machine (node 10), foreground (node 11)",
+    "atlas_4layer_boundedband_bgcard_moge": "named layers: sky (node 10), background (node 11), machine (node 12), foreground (node 13)"
+   },
+   "consequence": "A faithful migration needs ONE AtlasPlanarHolePatch per named layer, each fed that layer's own hole_mask \u2014 2 patches for the 3-layer graph, 3 for the 4-layer graph \u2014 then one AtlasRetopologizeLayer(layer='*'). The plan's single-patch chain would have silently repaired only one layer. Alternative worth costing in C4: teach AtlasPlanarHolePatch's existing STRING 'layer' widget to accept '*' (legal \u2014 it is a STRING, not a combo), which needs a per-layer mask story."
+  },
+  {
+   "id": "F6",
+   "claim": "atlas_live_repair_and_bands_test_workflow.json is already unrunnable on this machine.",
+   "method": "atlas_validate_workflow against the live server.",
+   "result": "valid=false, errors=['type PreviewTextNode unknown'] \u2014 a third-party node that is not installed.",
+   "consequence": "Retiring this workflow (plan C4) costs nothing that currently works. Replacing it with atlas_boundary_smooth_retopo_test_workflow.json is a strict improvement."
+  }
+ ],
+ "workflow_validation": {
+  "atlas_3layer_sky_machine_foreground_moge_workflow.json": {
+   "valid": true,
+   "errors": [],
+   "warnings": []
+  },
+  "atlas_4layer_boundedband_bgcard_moge_workflow.json": {
+   "valid": true,
+   "errors": [],
+   "warnings": []
+  },
+  "atlas_planar_hole_patch_workflow.json": {
+   "valid": true,
+   "errors": [],
+   "warnings": []
+  },
+  "atlas_live_repair_and_bands_test_workflow.json": {
+   "valid": false,
+   "errors": [
+    "type PreviewTextNode unknown"
+   ],
+   "warnings": []
+  }
+ },
+ "node_execution": {
+  "method": "in-process, correct signatures, real fixtures; 'ok' means it returned and outputs were non-empty/non-degenerate",
+  "results": {
+   "AtlasGroundMask": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasGroundDepthMap": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasHorizonMask": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasDecomposeSolve": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasDecomposeCamera": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasVPVisualization": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasGravityOverride": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasStereoRender": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasPlanarRewarp": {
+    "execution": "ok",
+    "output": "ok",
+    "note": "returns the original image unchanged when warp_spec is None \u2014 correct fail-soft; ok with a real spec from AtlasPlanarUnwarp"
+   },
+   "AtlasDepthAnything": {
+    "execution": "ok",
+    "output": "ok",
+    "note": "downloads/uses the V2 model already cached on this machine"
+   },
+   "AtlasSolveFromImage": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasConstrainedSolve": {
+    "execution": "ok",
+    "output": "ok",
+    "note": "requires all three line groups; fx=721.6 on the synthetic fixture"
+   },
+   "AtlasLoadPlate": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasUSDCameraLoader": {
+    "execution": "ok",
+    "output": "ok",
+    "note": "round-trips against AtlasExportUSD"
+   },
+   "AtlasReferenceScaleSolve": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasApplyScaleReferences": {
+    "execution": "ok",
+    "output": "ok"
+   },
+   "AtlasSegmentedSDXLInpaint": {
+    "execution": "ok",
+    "output": "ok",
+    "note": "class construction only; full run needs SDXL weights"
+   },
+   "AtlasLoadSolveJSON": {
+    "execution": "ok",
+    "output": "ok"
+   }
+  }
+ },
+ "open_items": [
+  "Pre-migration geometry metrics (vertex/face counts, hole components, boundary edges, stretch ratios, runtime) on the two runnable moge workflows \u2014 deferred: 2.5 GB free VRAM and each graph runs MoGe + SDXL-class work. Capture immediately before the C4 rewire so the A/B is against the same machine state."
+ ],
+ "post_implementation_verification": {
+  "date": "2026-07-27",
+  "note": "Closes the two gaps left open after the cull: hole filling on a REAL plate (the shipped quickstart loads a placeholder that yields an empty relief mesh, so earlier runs completed without patching anything), and proof that layer='*' is behaviour-preserving.",
+  "plate": "atlas_00022_templecity.png",
+  "workflow": "examples/atlas_planar_hole_patch_workflow.json",
+  "runs": [
+   {
+    "config": "shipped defaults (layer='')",
+    "prompt_id": "b508f6ee-c317-4d5c-bd86-c0349a2d0c03",
+    "filled": "280/309 attempted (333 found)",
+    "geometry_delta": "+864 verts, +5142 faces, -0 old faces",
+    "accepted_edge_stretch_max": "18.8x of 20.0x",
+    "accepted_depth_excursion_max": "1.12x of 2.00x",
+    "rejections": {
+     "touches image frame": 24,
+     "normal consensus below threshold": 7,
+     "plane residual exceeds tolerance": 19,
+     "generated patch edge exceeds local scale": 3
+    }
+   },
+   {
+    "config": "migrated (layer='*', boundary_smooth_iterations=8)",
+    "prompt_id": "71ef4313-9009-4026-9fa0-73ccbe76973d",
+    "report_head": "swept 1 layer(s): primary",
+    "filled": "280/309 attempted (333 found)",
+    "geometry_delta": "+864 verts, +5142 faces, -0 old faces",
+    "conclusion": "byte-for-byte the same fill as the plain path on a single-layer solve \u2014 layer='*' is behaviour-preserving, and every per-component gate still does visible work."
+   }
   ],
-
-  "workflow_validation": {
-    "atlas_3layer_sky_machine_foreground_moge_workflow.json": {"valid": true, "errors": [], "warnings": []},
-    "atlas_4layer_boundedband_bgcard_moge_workflow.json": {"valid": true, "errors": [], "warnings": []},
-    "atlas_planar_hole_patch_workflow.json": {"valid": true, "errors": [], "warnings": []},
-    "atlas_live_repair_and_bands_test_workflow.json": {"valid": false, "errors": ["type PreviewTextNode unknown"], "warnings": []}
-  },
-
-  "node_execution": {
-    "method": "in-process, correct signatures, real fixtures; 'ok' means it returned and outputs were non-empty/non-degenerate",
-    "results": {
-      "AtlasGroundMask": {"execution": "ok", "output": "ok"},
-      "AtlasGroundDepthMap": {"execution": "ok", "output": "ok"},
-      "AtlasHorizonMask": {"execution": "ok", "output": "ok"},
-      "AtlasDecomposeSolve": {"execution": "ok", "output": "ok"},
-      "AtlasDecomposeCamera": {"execution": "ok", "output": "ok"},
-      "AtlasVPVisualization": {"execution": "ok", "output": "ok"},
-      "AtlasGravityOverride": {"execution": "ok", "output": "ok"},
-      "AtlasStereoRender": {"execution": "ok", "output": "ok"},
-      "AtlasPlanarRewarp": {"execution": "ok", "output": "ok", "note": "returns the original image unchanged when warp_spec is None — correct fail-soft; ok with a real spec from AtlasPlanarUnwarp"},
-      "AtlasDepthAnything": {"execution": "ok", "output": "ok", "note": "downloads/uses the V2 model already cached on this machine"},
-      "AtlasSolveFromImage": {"execution": "ok", "output": "ok"},
-      "AtlasConstrainedSolve": {"execution": "ok", "output": "ok", "note": "requires all three line groups; fx=721.6 on the synthetic fixture"},
-      "AtlasLoadPlate": {"execution": "ok", "output": "ok"},
-      "AtlasUSDCameraLoader": {"execution": "ok", "output": "ok", "note": "round-trips against AtlasExportUSD"},
-      "AtlasReferenceScaleSolve": {"execution": "ok", "output": "ok"},
-      "AtlasApplyScaleReferences": {"execution": "ok", "output": "ok"},
-      "AtlasSegmentedSDXLInpaint": {"execution": "ok", "output": "ok", "note": "class construction only; full run needs SDXL weights"},
-      "AtlasLoadSolveJSON": {"execution": "ok", "output": "ok"}
-    }
-  },
-
-  "open_items": [
-    "Pre-migration geometry metrics (vertex/face counts, hole components, boundary edges, stretch ratios, runtime) on the two runnable moge workflows — deferred: 2.5 GB free VRAM and each graph runs MoGe + SDXL-class work. Capture immediately before the C4 rewire so the A/B is against the same machine state."
+  "also_verified": [
+   "transformers 5.9.0 on BOTH installs; SAM3 concept mask returns 48.8% coverage on a half-sky test image (V91 upgraded from 4.57.6 where the SAM3 classes do not exist)",
+   "apple/DepthPro-hf ran in 10.4s, predicted focal 484.0 px / fov 55.7 deg; scene_health focal_mismatch stays silent on an agreeing fx and fires on 2x"
   ]
+ }
 }

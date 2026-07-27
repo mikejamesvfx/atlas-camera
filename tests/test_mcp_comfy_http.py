@@ -10,6 +10,8 @@ import pytest
 
 from atlas_camera.mcp import comfy_http as C
 
+from conftest import is_local_workflow
+
 OI = {
     "LoadImage": {
         "input": {"required": {"image": [["a.png", "b.png"], {"image_upload": True}]}},
@@ -333,6 +335,8 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
     root = pathlib.Path("examples")
     checked = 0
     for p in sorted(root.glob("*_workflow.json")):
+        if is_local_workflow(p):
+            continue  # artist working copy — see conftest.is_local_workflow
         d = json.loads(p.read_text(encoding="utf-8"))
         nodes = {n["id"]: n for n in d["nodes"]}
         sets = {n["widgets_values"][0] for n in d["nodes"] if n["type"] == "SetNode"}

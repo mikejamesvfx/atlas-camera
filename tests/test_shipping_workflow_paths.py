@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from conftest import is_local_workflow
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -27,6 +29,8 @@ def _is_absolute_machine_path(v: object) -> bool:
 def _shipping_workflows() -> list[Path]:
     out = []
     for p in sorted((ROOT / "examples").rglob("*.json")):
+        if is_local_workflow(p):
+            continue  # artist working copy — see conftest.is_local_workflow
         try:
             g = json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError:

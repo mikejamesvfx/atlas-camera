@@ -91,8 +91,13 @@ def audit(repo: Path = REPO) -> dict:
     result = {n: {"kind": kinds[n], "example_workflows": [], "tests": [],
                   "mcp_tools": [], "repo_tools": [], "docs": []} for n in names}
 
-    # 1) workflow files (presence only)
+    # 1) workflow files (presence only). Artists keep personal working copies
+    # next to the shipped graphs ("-edit", examples/local/); those are not
+    # product evidence and must not inflate a node's workflow bucket. Same
+    # rule as tests/conftest.py::is_local_workflow and the migrator.
     for wf in _iter_files(repo / "examples", {".json"}):
+        if "-edit" in wf.stem or "local" in {q.lower() for q in wf.parts}:
+            continue
         types = _workflow_node_types(wf)
         rel = str(wf.relative_to(repo)).replace("\\", "/")
         for n in types & names:

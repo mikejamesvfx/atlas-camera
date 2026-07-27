@@ -72,3 +72,28 @@ def synthetic_perspective_image(tmp_path):
     path = tmp_path / "synthetic_perspective.png"
     assert cv2.imwrite(str(path), image)
     return path, image
+
+
+# ---------------------------------------------------------------------------
+# Personal working copies in examples/
+# ---------------------------------------------------------------------------
+# Artists keep hand-tuned variants of a shipped graph next to it — the working
+# copy of atlas_path_guided_hole_repair_workflow.json, a "_02" retry, a
+# "_Neat" cleanup. They are untracked and must NEVER be graded as shipping
+# workflows: they are authored against whatever branch was checked out, so
+# they carry widget counts and node sets that do not match this one, and they
+# would fail the pinned-name, unique-id and widget-drift sweeps for reasons
+# that say nothing about the repo.
+#
+# Convention: a stem containing "-edit" (or living under examples/local/) is a
+# personal file. tools/audit_node_usage.py and tools/migrate_legacy_nodes.py
+# apply the same rule, so evidence-gathering and migration skip them too.
+LOCAL_WORKFLOW_MARKERS = ("-edit",)
+
+
+def is_local_workflow(path) -> bool:
+    """True for an artist's personal working copy, not a shipping workflow."""
+    p = Path(path)
+    if any(m in p.stem for m in LOCAL_WORKFLOW_MARKERS):
+        return True
+    return "local" in {part.lower() for part in p.parts}

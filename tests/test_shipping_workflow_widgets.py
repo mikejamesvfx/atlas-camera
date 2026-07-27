@@ -19,6 +19,8 @@ from pathlib import Path
 from atlas_camera.comfy import node_registry as reg
 from atlas_camera.mcp.comfy_http import is_widget
 
+from conftest import is_local_workflow
+
 ROOT = Path(__file__).resolve().parents[1]
 
 def _shipping_workflows() -> list[Path]:
@@ -30,6 +32,8 @@ def _shipping_workflows() -> list[Path]:
     JSON is skipped (no top-level "nodes" list)."""
     out = []
     for p in sorted((ROOT / "examples").rglob("*.json")):
+        if is_local_workflow(p):
+            continue  # artist working copy — see conftest.is_local_workflow
         try:
             g = json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError:

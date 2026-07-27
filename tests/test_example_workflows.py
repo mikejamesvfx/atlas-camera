@@ -17,6 +17,8 @@ import re
 
 import pytest
 
+from conftest import is_local_workflow
+
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "examples")
 
 STAGED_MASTER = "atlas_camera_staged_master_workflow.json"
@@ -37,6 +39,8 @@ UUID_RE = re.compile(
 def _ui_workflows():
     out = []
     for path in sorted(glob.glob(os.path.join(EXAMPLES_DIR, "*.json"))):
+        if is_local_workflow(path):
+            continue  # artist working copy — see conftest.is_local_workflow
         try:
             wf = json.load(open(path, encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
