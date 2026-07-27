@@ -1,0 +1,20 @@
+# Branches deleted 2026-07-27 — each verified identical to main at deletion time
+# (zero 'git diff main...<branch>' files AND zero unpicked 'git cherry' commits).
+# main was at 303be0124de96fb23e258b2cf201a40525d43de1 (test: close the audit's 14 unevidenced nodes, and fix the inverted sky mask)
+# Restore any of them with:  git branch <name> <sha>
+
+experimental-da3-default                             51d6403fd7c2050ebc1878a0ec794ae2567b4e1f  2026-07-13
+release/beta-0.6                                     1e98e1cbef32ffae515b6d245fa27b1505329375  2026-07-16
+claude/atlascamera-example-workflows-75e739          f4bf5d7e075b4a7634f54ffe5fc670987ab987ec  2026-07-17
+codex/angle-patch-mvp                                0c9a5776542e4566959357fc0fdf88075f8ec8c3  2026-07-17
+claude/atlas-camera-stale-cleanup-6429bf             362d4df112ae9a23178df0aad6539cce58452a36  2026-07-18
+claude/atlas-outlier-stretch                         1d3ae489b7c97f4c0a250d3c81bc1e0139dea0aa  2026-07-18
+claude/atlas-raw-support                             f634206e565310d09194e9e6ed0ddbf460327bb3  2026-07-18
+claude/atlas-trust-tier                              5d207bcfbe4356814c598083297ba3fa32e26699  2026-07-18
+claude/atlascamera-cleanup-commits-7a4db7            1d3ae489b7c97f4c0a250d3c81bc1e0139dea0aa  2026-07-18
+portable-wip                                         672bcfa1e8d39112053f11edf5cdd4396b235d03  2026-07-18
+release/prep-0.7.0                                   7d448740602a0095d3a804772fb31d4b2bb41f4d  2026-07-19
+claude/atlas-testing-pr-verification-a8a69d          421e12af430f9a97095e1f057fe020dc0bdd5c51  2026-07-20
+feat/oiio-plate-io                                   55c3d80e2362ae2b0608e8228086a8c6f28ff8fa  2026-07-20
+feat/phase3-occlusion-cull                           f81dd22119ffa59e0c4ed0b657d1f67e12d1444b  2026-07-20
+claude/atlas-live-mesh-repair-dd846e                 d0458377609993bcbaa1f6802f12286a5a8ceba2  2026-07-24
