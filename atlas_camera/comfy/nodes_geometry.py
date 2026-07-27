@@ -1426,6 +1426,23 @@ class AtlasPlanarHolePatch:
                      (getattr(solve, "projection_sources", None) or []))
                     if name]
 
+        # Reference frame for the combined masks: the SOLVE's own camera.
+        # Layers do NOT share a resolution — a frame-outpainted clean plate is
+        # padded (measured live: 4640x7808 beside the primary's 4512x7680) and
+        # each _patch_one call returns its mask at ITS layer's plate size, so
+        # combining them raw is a broadcast error.
+        ref_intr = getattr(solve.camera, "intrinsics", None)
+        ref_h = int(getattr(ref_intr, "image_height", 0) or 0)
+        ref_w = int(getattr(ref_intr, "image_width", 0) or 0)
+
+        def _to_ref(arr):
+            a = np.asarray(arr)
+            plane = a[0] if a.ndim == 3 else a
+            if ref_h > 1 and ref_w > 1 and plane.shape != (ref_h, ref_w):
+                from atlas_camera.core.solver import _resize_depth
+                plane = _resize_depth(plane.astype(np.float64), ref_w, ref_h)
+            return plane[None, ...].astype(np.float32)
+
         current = solve
         remaining_acc = None
         created_acc = None
@@ -1437,8 +1454,8 @@ class AtlasPlanarHolePatch:
             if "no relief mesh" in report:
                 continue                      # not every layer carries geometry
             lines.append(f"[{label}] " + report.replace("\n", "\n    "))
-            rem = remaining_t.detach().cpu().numpy()
-            cre = created_t.detach().cpu().numpy()
+            rem = _to_ref(remaining_t.detach().cpu().numpy())
+            cre = _to_ref(created_t.detach().cpu().numpy())
             remaining_acc = rem if remaining_acc is None else np.minimum(remaining_acc, rem)
             created_acc = cre if created_acc is None else np.maximum(created_acc, cre)
 

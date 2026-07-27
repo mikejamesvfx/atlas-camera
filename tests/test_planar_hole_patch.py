@@ -594,3 +594,46 @@ def test_hole_mask_is_optional_in_input_types():
     it = AtlasPlanarHolePatch.INPUT_TYPES()
     assert list(it["required"]) == ["solve"]
     assert "hole_mask" in it["optional"]
+
+
+def test_layer_star_combines_masks_across_mismatched_layer_resolutions():
+    """Layers do NOT share a plate size.
+
+    A frame-outpainted clean plate is padded, so its camera is larger than the
+    primary's — measured live at 4640x7808 beside a 4512x7680 primary. Each
+    per-layer pass returns its mask at ITS OWN resolution, so combining them
+    raw raised "operands could not be broadcast together". The original
+    fixture gave every layer an identical camera and never caught it.
+    """
+    pytest.importorskip("torch")
+    from atlas_camera.comfy.nodes import AtlasPlanarHolePatch
+    from atlas_camera.core.schema import ProjectionSource
+
+    intr = AtlasIntrinsics(image_width=W, image_height=H, fx_px=FX, fy_px=FY,
+                           cx_px=CX, cy_px=CY, focal_length_mm=35.0,
+                           sensor_width_mm=36.0)
+    cam = LatentCamera(intrinsics=intr,
+                       extrinsics=AtlasExtrinsics(camera_view_matrix=VIEW))
+    solve = AtlasSolve(camera=cam)
+    solve.projection_scene.proxy_geometry = [relief_mesh_primitive(_mesh_with_hole())]
+
+    # A padded layer: bigger plate, shifted principal point — exactly what
+    # frame_outpaint_px produces on a clean-plate layer.
+    pad = 16
+    big = AtlasIntrinsics(image_width=W + 2 * pad, image_height=H + 2 * pad,
+                          fx_px=FX, fy_px=FY, cx_px=CX + pad, cy_px=CY + pad,
+                          focal_length_mm=35.0, sensor_width_mm=36.0)
+    solve.projection_sources.append(ProjectionSource(
+        camera=LatentCamera(intrinsics=big,
+                            extrinsics=AtlasExtrinsics(camera_view_matrix=VIEW)),
+        name="outpainted",
+        proxy_geometry=[relief_mesh_primitive(_mesh_with_hole())]))
+
+    out, remaining, report, created = AtlasPlanarHolePatch().patch(
+        solve, None, layer="*",
+        normal_tolerance_deg=15.0, max_plane_error_m=0.02, max_hole_fraction=0.20)
+
+    # Combined masks come back in the SOLVE's frame, not a layer's.
+    assert tuple(remaining.shape) == (1, H, W)
+    assert tuple(created.shape) == (1, H, W)
+    assert "swept 2 layer(s)" in report
