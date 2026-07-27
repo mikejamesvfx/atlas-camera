@@ -9,6 +9,7 @@ import pytest
 
 from atlas_camera.core.planar_hole_patch import (
     PlanarHolePatchConfig,
+    _component_depth_diagnostic,
     patch_planar_holes,
 )
 from atlas_camera.core.proxy_geometry import relief_mesh_primitive
@@ -144,6 +145,29 @@ def test_patch_edge_factor_rejects_unsafe_generated_geometry_atomically():
     assert rejection["patch_edge_factor"] > 1.0
     assert rejection["patch_edge_max_m"] > 0.0
     assert rejection["local_support_edge_m"] > 0.0
+
+
+def test_patch_depth_factor_catches_forward_and_backward_z_needles():
+    support = np.asarray([
+        (-1.0, -1.0, -5.0),
+        (1.0, -1.0, -5.2),
+        (-1.0, 1.0, -4.8),
+        (1.0, 1.0, -5.0),
+    ])
+    generated = np.asarray([
+        (0.0, 0.0, -0.25),
+        (0.5, 0.0, -20.0),
+    ])
+
+    diagnostic = _component_depth_diagnostic(generated, support, VIEW)
+    scaled = _component_depth_diagnostic(
+        generated * 10.0, support * 10.0, VIEW)
+
+    assert diagnostic["patch_depth_factor"] > 10.0
+    assert scaled["patch_depth_factor"] == pytest.approx(
+        diagnostic["patch_depth_factor"])
+    assert diagnostic["generated_depth_min_m"] == pytest.approx(0.25)
+    assert diagnostic["generated_depth_max_m"] == pytest.approx(20.0)
 
 
 def test_patch_edge_factor_groups_source_pixels_with_world_camera_scale():
@@ -440,6 +464,7 @@ def test_comfy_node_stitches_patch_into_one_retopologizable_relief_mesh():
     assert patch_inputs["max_components"][1]["max"] == 1024
     assert patch_inputs["min_normal_support_fraction"][1]["default"] == 0.30
     assert patch_inputs["max_patch_edge_factor"][1]["default"] == 20.0
+    assert patch_inputs["max_patch_depth_factor"][1]["default"] == 2.0
     assert len(relief) == 1
     assert relief[0].metadata["planar_hole_patch"]["components_filled"] == 1
     assert int(remaining.sum()) < int(mask.sum())
@@ -448,6 +473,7 @@ def test_comfy_node_stitches_patch_into_one_retopologizable_relief_mesh():
     assert AtlasPlanarHolePatch.RETURN_NAMES[-1] == "created_islands"
     assert "filled 1/1" in report
     assert "source pixels × local m/px" in report
+    assert "local support depth band" in report
 
     _retopo_out, retopo_report = AtlasRetopologizeLayer().retopo(
         out, method="off")

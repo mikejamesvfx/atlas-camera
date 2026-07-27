@@ -16,6 +16,7 @@ from atlas_camera.core.schema import (
     AtlasIntrinsics,
     LatentCamera,
 )
+from atlas_camera.comfy.nodes_geometry import AtlasPathGuidedHoleRepair
 
 
 W = H = 65
@@ -156,6 +157,27 @@ def test_path_repair_exclusion_removes_background_connected_holes():
     assert not result["repair_mask"].any()
     assert not result["visible_ids"]
     assert "exclude mask removed" in result["report"]
+
+
+def test_path_repair_preview_resolves_compact_baked_frame_indices():
+    path = AtlasCameraPath(
+        frame_count=100,
+        baked_frame_indices=[99],
+    )
+
+    assert AtlasPathGuidedHoleRepair._preview_batch_index(
+        path, 1, 99) == 0
+    assert AtlasPathGuidedHoleRepair._preview_batch_index(
+        path, 1, 98) is None
+
+
+def test_path_repair_preview_keeps_legacy_dense_batch_compatibility():
+    path = AtlasCameraPath(frame_count=100)
+
+    assert AtlasPathGuidedHoleRepair._preview_batch_index(
+        path, 100, 99) == 99
+    assert AtlasPathGuidedHoleRepair._preview_batch_index(
+        path, 100, 97) == 97
 
 
 def test_path_repair_empty_path_returns_observable_noop():

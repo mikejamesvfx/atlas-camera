@@ -44,6 +44,7 @@ class PlanarHolePatchConfig:
     min_support_vertices: int = 8
     min_normal_support_fraction: float = 0.30
     max_patch_edge_factor: float = 20.0
+    max_patch_depth_factor: float = 2.0
 
 
 def _mode_step(values: Any) -> int:
@@ -324,6 +325,59 @@ def _component_edge_diagnostic(
             float(pixel_lengths[worst]) if len(pixel_lengths) else 0.0),
         "worst_edge_expected_m": (
             float(expected[worst]) if len(expected) else 0.0),
+    }
+
+
+def _component_depth_diagnostic(
+    generated_points: Any,
+    support_points: Any,
+    view_matrix: Any,
+) -> dict[str, float]:
+    """Measure camera-depth excursion beyond the fitted local support band."""
+    np = _require_numpy()
+
+    generated = np.asarray(generated_points, dtype=np.float64).reshape(-1, 3)
+    support = np.asarray(support_points, dtype=np.float64).reshape(-1, 3)
+    vm = np.asarray(view_matrix, dtype=np.float64).reshape(4, 4)
+
+    def _forward_depth(points: Any) -> Any:
+        if not len(points):
+            return np.asarray([], dtype=np.float64)
+        homogeneous = np.concatenate(
+            [points, np.ones((len(points), 1), dtype=np.float64)], axis=1)
+        camera_points = homogeneous @ vm.T
+        depth = -camera_points[:, 2]
+        return depth[np.isfinite(depth) & (depth > 1e-9)]
+
+    generated_depth = _forward_depth(generated)
+    support_depth = _forward_depth(support)
+    if not len(generated_depth) or not len(support_depth):
+        return {
+            "patch_depth_factor": float("inf"),
+            "generated_depth_min_m": 0.0,
+            "generated_depth_max_m": 0.0,
+            "support_depth_p05_m": 0.0,
+            "support_depth_p95_m": 0.0,
+        }
+
+    support_low = float(np.percentile(support_depth, 5))
+    support_high = float(np.percentile(support_depth, 95))
+    generated_low = float(np.min(generated_depth))
+    generated_high = float(np.max(generated_depth))
+    near_factor = (
+        support_low / max(generated_low, 1e-9)
+        if generated_low < support_low else 1.0
+    )
+    far_factor = (
+        generated_high / max(support_high, 1e-9)
+        if generated_high > support_high else 1.0
+    )
+    return {
+        "patch_depth_factor": float(max(near_factor, far_factor)),
+        "generated_depth_min_m": generated_low,
+        "generated_depth_max_m": generated_high,
+        "support_depth_p05_m": support_low,
+        "support_depth_p95_m": support_high,
     }
 
 
@@ -664,6 +718,35 @@ def patch_planar_holes(
             })
             continue
 
+        fit_residual = np.abs(vertices[support] @ normal - plane_offset)
+        fitted_support = vertices[support][
+            fit_residual <= max(float(cfg.max_plane_error_m), 1e-6)]
+        if not len(fitted_support):
+            fitted_support = vertices[support]
+        patch_corner_points = np.asarray(
+            [new_vertices[index] for index in set(corner_indices.values())],
+            dtype=np.float64,
+        )
+        depth_diagnostic = _component_depth_diagnostic(
+            patch_corner_points,
+            fitted_support,
+            vm,
+        )
+        if (not np.isfinite(depth_diagnostic["patch_depth_factor"])
+                or depth_diagnostic["patch_depth_factor"]
+                > float(cfg.max_patch_depth_factor)):
+            del new_vertices[vertex_checkpoint:]
+            del new_uvs[uv_checkpoint:]
+            if edge_risk is not None:
+                del edge_risk[risk_checkpoint:]
+            rejected.append({
+                "cells": len(component),
+                "reason": "generated patch depth exceeds local support",
+                **depth_diagnostic,
+                "max_patch_depth_factor": float(cfg.max_patch_depth_factor),
+            })
+            continue
+
         component_faces: list[list[int]] = []
         for r, c in sorted(component):
             i00 = corner_indices[(r, c)]
@@ -716,6 +799,7 @@ def patch_planar_holes(
             "cells": len(component),
             "faces_added": 2 * len(component),
             **edge_diagnostic,
+            **depth_diagnostic,
             **fit_info,
         })
 

@@ -98,13 +98,15 @@ def test_frames_outside_keyframe_range_clamp_to_ends():
 def test_camera_path_round_trip_to_dict():
     kf = _kf(0, (1.0, 2.0, 3.0), (0.0, 0.0, 0.0), easing="ease_out")
     path = AtlasCameraPath(
-        keyframes=[kf], fps=30.0, frame_count=7, lens_scale=0.72)
+        keyframes=[kf], fps=30.0, frame_count=7, lens_scale=0.72,
+        baked_frame_indices=[6])
     data = path.to_dict()
     restored = AtlasCameraPath.from_dict(data)
 
     assert restored.fps == 30.0
     assert restored.frame_count == 7
     assert restored.lens_scale == pytest.approx(0.72)
+    assert restored.baked_frame_indices == [6]
     assert len(restored.keyframes) == 1
     assert restored.keyframes[0].position == pytest.approx((1.0, 2.0, 3.0))
     assert restored.keyframes[0].easing == "ease_out"

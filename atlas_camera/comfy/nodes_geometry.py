@@ -1301,6 +1301,13 @@ class AtlasPlanarHolePatch:
                                "times the boundary's median metres-per-pixel. Prevents "
                                "grazing camera-ray spikes at any image/camera scale.",
                 }),
+                "max_patch_depth_factor": ("FLOAT", {
+                    "default": 2.0, "min": 1.0, "max": 20.0, "step": 0.1,
+                    "tooltip": "Reject a patch whose nearest/farthest camera depth "
+                               "extends beyond this multiple of the fitted local "
+                               "support depth band. Catches forward and backward Z "
+                               "needles independently of the edge-length gate.",
+                }),
             },
         }
 
@@ -1308,7 +1315,8 @@ class AtlasPlanarHolePatch:
               normal_tolerance_deg=25.0, max_plane_error_m=0.15,
               max_hole_fraction=0.05, enclosed_only=True,
               min_normal_support_fraction=0.30,
-              max_patch_edge_factor=20.0):
+              max_patch_edge_factor=20.0,
+              max_patch_depth_factor=2.0):
         torch = _require_torch()
         np = _require_numpy()
         from atlas_camera.core.planar_hole_patch import (
@@ -1413,6 +1421,7 @@ class AtlasPlanarHolePatch:
             enclosed_only=bool(enclosed_only),
             min_normal_support_fraction=float(min_normal_support_fraction),
             max_patch_edge_factor=float(max_patch_edge_factor),
+            max_patch_depth_factor=float(max_patch_depth_factor),
         )
         try:
             patched, remaining, report = patch_planar_holes(
@@ -1458,6 +1467,17 @@ class AtlasPlanarHolePatch:
                 f"accepted edge stretch max {max(accepted_edge_factors):.1f}x/"
                 f"{float(max_patch_edge_factor):.1f}x "
                 "(source pixels × local m/px)")
+        accepted_depth_factors = [
+            float(item["patch_depth_factor"])
+            for item in report["filled"]
+            if "patch_depth_factor" in item
+        ]
+        if accepted_depth_factors:
+            lines.append(
+                f"accepted depth excursion max "
+                f"{max(accepted_depth_factors):.2f}x/"
+                f"{float(max_patch_depth_factor):.2f}x "
+                "(local support depth band)")
         reason_counts: dict[str, int] = {}
         for item in report["rejected"]:
             reason = str(item["reason"])
@@ -1470,10 +1490,17 @@ class AtlasPlanarHolePatch:
                 "normal consensus below threshold",
                 "plane residual exceeds tolerance",
                 "generated patch edge exceeds local scale",
+                "generated patch depth exceeds local support",
             }
         ], key=lambda item: (
-            item["reason"] != "generated patch edge exceeds local scale",
-            -float(item.get("patch_edge_factor", 0.0)),
+            item["reason"] not in {
+                "generated patch edge exceeds local scale",
+                "generated patch depth exceeds local support",
+            },
+            -max(
+                float(item.get("patch_edge_factor", 0.0)),
+                float(item.get("patch_depth_factor", 0.0)),
+            ),
         ))
         for item in diagnostic_items[:3]:
             detail = ""
@@ -1491,6 +1518,14 @@ class AtlasPlanarHolePatch:
                     f"{item['max_patch_edge_factor']:.1f}x"
                     f" px={item['worst_edge_pixel_span']:.1f}"
                     f" local={item['local_support_world_per_pixel']:.6f}m/px")
+            if "patch_depth_factor" in item:
+                detail += (
+                    f" depth={item['patch_depth_factor']:.2f}x/"
+                    f"{item['max_patch_depth_factor']:.2f}x"
+                    f" generated={item['generated_depth_min_m']:.3f}"
+                    f"..{item['generated_depth_max_m']:.3f}m"
+                    f" support={item['support_depth_p05_m']:.3f}"
+                    f"..{item['support_depth_p95_m']:.3f}m")
             lines.append(
                 f"example {item['cells']} cells:{detail} "
                 f"({item['reason']})")
@@ -1529,8 +1564,9 @@ class AtlasPathGuidedHoleRepair:
             },
             "optional": {
                 "path_frames": ("IMAGE", {
-                    "tooltip": "Optional baked viewport frames used as the preview "
-                               "background. Candidate IDs remain exact without it.",
+                    "tooltip": "Optional indexed viewport frame(s) used only as the "
+                               "preview background. Bake Repair Frame stores the final "
+                               "frame; candidate IDs remain exact without imagery.",
                 }),
                 "paint_mask": ("MASK", {
                     "tooltip": "Optional mask painted over angle_preview. Used only "
@@ -1607,6 +1643,26 @@ class AtlasPathGuidedHoleRepair:
                 }),
             },
         }
+
+    @staticmethod
+    def _preview_batch_index(camera_path, batch_size, selected_frame_index):
+        """Map a path frame number to its compact baked IMAGE batch slot."""
+        count = max(0, int(batch_size))
+        if count <= 0:
+            return None
+        baked_indices = [
+            int(value)
+            for value in (getattr(camera_path, "baked_frame_indices", None) or [])
+        ]
+        if baked_indices:
+            if len(baked_indices) != count:
+                return None
+            try:
+                return baked_indices.index(int(selected_frame_index))
+            except ValueError:
+                return None
+        # Legacy full-path bakes predate explicit frame-index metadata.
+        return max(0, min(count - 1, int(selected_frame_index)))
 
     @staticmethod
     def _warp_frame_for_lens(frame, output_height, output_width,
@@ -1726,7 +1782,7 @@ class AtlasPathGuidedHoleRepair:
             empty = torch.zeros(1, height, width, dtype=torch.float32)
             preview = torch.zeros(1, 1, 1, 3, dtype=torch.float32)
             return (empty, preview, preview[..., 0],
-                    "camera path is empty — choose Orbit/Arc and Bake Proxy Path")
+                    "camera path is empty — choose Orbit/Arc, then queue or bake")
 
         cfg = PathHoleRepairConfig(
             frame_offset_from_end=int(frame_offset_from_end),
@@ -1756,22 +1812,30 @@ class AtlasPathGuidedHoleRepair:
 
         id_map = np.asarray(result["view_id_map"], dtype=np.int32)
         out_height, out_width = id_map.shape
+        preview_note = ""
         if path_frames is not None and getattr(path_frames, "shape", (0,))[0]:
-            batch_index = max(
-                0, min(int(path_frames.shape[0]) - 1,
-                       int(path_frames.shape[0]) - 1
-                       - max(0, int(frame_offset_from_end))))
-            base = path_frames[batch_index:batch_index + 1].to(dtype=torch.float32)
-            if (int(base.shape[1]), int(base.shape[2])) != (out_height, out_width):
-                import torch.nn.functional as functional
-                base = functional.interpolate(
-                    base.permute(0, 3, 1, 2),
-                    size=(out_height, out_width),
-                    mode="bilinear", align_corners=False,
-                ).permute(0, 2, 3, 1)
-            base = self._warp_frame_for_lens(
-                base, out_height, out_width,
-                result["lens_scale"], result["path_lens_scale"])
+            batch_index = self._preview_batch_index(
+                camera_path, int(path_frames.shape[0]), result["frame_index"])
+            if batch_index is not None:
+                base = path_frames[
+                    batch_index:batch_index + 1].to(dtype=torch.float32)
+                if ((int(base.shape[1]), int(base.shape[2]))
+                        != (out_height, out_width)):
+                    import torch.nn.functional as functional
+                    base = functional.interpolate(
+                        base.permute(0, 3, 1, 2),
+                        size=(out_height, out_width),
+                        mode="bilinear", align_corners=False,
+                    ).permute(0, 2, 3, 1)
+                base = self._warp_frame_for_lens(
+                    base, out_height, out_width,
+                    result["lens_scale"], result["path_lens_scale"])
+            else:
+                base = torch.zeros(
+                    1, out_height, out_width, 3, dtype=torch.float32)
+                preview_note = (
+                    f"\npreview background unavailable for path frame "
+                    f"{result['frame_index']}; geometry selection remains exact")
         else:
             base = torch.zeros(
                 1, out_height, out_width, 3, dtype=torch.float32)
@@ -1799,7 +1863,10 @@ class AtlasPathGuidedHoleRepair:
         repair_t = torch.from_numpy(
             np.asarray(result["repair_mask"], dtype=np.float32)).unsqueeze(0)
         visible_t = torch.from_numpy(visible.astype(np.float32)).unsqueeze(0)
-        return (repair_t, preview, visible_t, str(result["report"]))
+        return (
+            repair_t, preview, visible_t,
+            str(result["report"]) + preview_note,
+        )
 
 
 class AtlasDeriveWalls:

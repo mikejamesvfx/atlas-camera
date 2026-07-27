@@ -2759,9 +2759,15 @@ function buildNodeUI(node, containerEl) {
     if (!widget) return;
     let existing = {};
     try { existing = widget.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
+    // Any authored-pose or lens edit invalidates previously rendered frames.
+    // Keep the tiny parametric path, but never leave a stale image batch that
+    // could be mistaken for the new camera/lens in a repair preview.
+    delete existing.path_frames;
+    delete existing.atlas_proxy_path;
     existing.camera_path = {
       keyframes: pathKeyframes.map(kfToJSON), fps: pathFps,
       frame_count: pathFrameCount, lens_scale: pathLensScale,
+      baked_frame_indices: [],
     };
     widget.value = JSON.stringify(existing);
     widget.callback?.(widget.value);
@@ -3115,13 +3121,15 @@ function buildNodeUI(node, containerEl) {
     };
   };
 
-  const bakeBtn = document.createElement("button");
-  bakeBtn.textContent = "⏺ Bake Proxy Path";
-  bakeBtn.style.cssText = "padding:2px 8px;font-size:11px;cursor:pointer;background:#3a1a2a;color:#fac;border:1px solid #645;border-radius:3px";
-  bakeBtn.onclick = async () => {
+  let repairBakeBtn = null;
+  let bakeBtn = null;
+
+  async function bakeProxyPathFrames(frameIndices, triggerBtn, busyLabel) {
     if (pathKeyframes.length === 0) return;
+    repairBakeBtn.disabled = true;
     bakeBtn.disabled = true;
-    bakeBtn.textContent = "Baking Proxy...";
+    const idleLabel = triggerBtn.textContent;
+    triggerBtn.textContent = busyLabel;
     const savedPos = camera.position.clone();
     const savedQuat = camera.quaternion.clone();
     const savedAspect = camera.aspect;
@@ -3134,15 +3142,16 @@ function buildNodeUI(node, containerEl) {
     if (pivotGizmo) pivotGizmo.visible = false; // keep the 🎯 marker out of baked frames
     try {
       const frames = [];
+      const bakedFrameIndices = [];
       outputRt = new THREE.WebGLRenderTarget(W, H);
       camera.aspect = W / H;
       // Baked frames honor the 🔭 playback lens so the recording matches the
       // preview exactly (the USD camera still ships the solved intrinsics).
       if (recoveredData) camera.fov = playbackLensFovDeg();
       camera.updateProjectionMatrix();
-      for (let frame = 0; frame < pathFrameCount; frame++) {
+      for (const frame of frameIndices) {
         const pose = sampleKeyframePoseAtFrame(frame);
-        if (!pose) break;
+        if (!pose) continue;
         camera.position.set(pose.position.x, pose.position.y, pose.position.z);
         camera.up.set(0, 1, 0);
         camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
@@ -3152,6 +3161,7 @@ function buildNodeUI(node, containerEl) {
         // into one client_data blob (the reported bake OOM at 1280×100 frames).
         frames.push(atlasRenderSceneToBase64(renderer, scene, camera, W, H,
           { renderTarget: outputRt, mime: "image/jpeg", quality: 0.9 }));
+        bakedFrameIndices.push(frame);
       }
       const widget = node.widgets?.find((w) => w.name === "client_data");
       let existing = {};
@@ -3160,6 +3170,7 @@ function buildNodeUI(node, containerEl) {
       existing.camera_path = {
         keyframes: pathKeyframes.map(kfToJSON), fps: pathFps,
         frame_count: pathFrameCount, lens_scale: pathLensScale,
+        baked_frame_indices: bakedFrameIndices,
       };
       existing.atlas_proxy_path = {
         transport: "jpeg_base64_proxy_ldr",
@@ -3167,6 +3178,8 @@ function buildNodeUI(node, containerEl) {
         height: H,
         fps: pathFps,
         frame_count: pathFrameCount,
+        stored_frame_count: frames.length,
+        frame_indices: bakedFrameIndices,
         lens_scale: pathLensScale, // 🔭 display lens baked into the frames (provenance)
       };
       if (widget) {
@@ -3188,10 +3201,35 @@ function buildNodeUI(node, containerEl) {
       // preview, so its onDone restore never fires) and leave them off forever.
       grid.visible = true;
       if (pivotGizmo) pivotGizmo.visible = pivotOn;
+      repairBakeBtn.disabled = false;
       bakeBtn.disabled = false;
-      bakeBtn.textContent = "⏺ Bake Proxy Path";
+      triggerBtn.textContent = idleLabel;
       if (wasPlaying) playBtn.onclick();
     }
+  }
+
+  repairBakeBtn = document.createElement("button");
+  repairBakeBtn.textContent = "📷 Bake Repair Frame";
+  repairBakeBtn.title = "Store only the final path frame for path-guided repair (~99% smaller than a full 100-frame bake)";
+  repairBakeBtn.style.cssText = "padding:2px 8px;font-size:11px;cursor:pointer;background:#1a3a2a;color:#bfe;border:1px solid #465;border-radius:3px";
+  repairBakeBtn.onclick = () => bakeProxyPathFrames(
+    [Math.max(0, pathFrameCount - 1)],
+    repairBakeBtn,
+    "Baking Repair Frame...",
+  );
+
+  bakeBtn = document.createElement("button");
+  bakeBtn.textContent = "⏺ Bake Full Path";
+  bakeBtn.title = "Store every rendered frame for video/clip workflows";
+  bakeBtn.style.cssText = "padding:2px 8px;font-size:11px;cursor:pointer;background:#3a1a2a;color:#fac;border:1px solid #645;border-radius:3px";
+  bakeBtn.onclick = () => {
+    const frameIndices = Array.from(
+      { length: Math.max(0, pathFrameCount) }, (_, index) => index);
+    return bakeProxyPathFrames(
+      frameIndices,
+      bakeBtn,
+      "Baking Full Path...",
+    );
   };
 
 
@@ -3325,7 +3363,8 @@ function buildNodeUI(node, containerEl) {
   importWrap.style.cssText = "display:inline-flex;align-items:center;gap:2px;padding-left:6px;border-left:1px solid #333;";
   importWrap.append(importBtn, importFbxInput, importSamplesInput, importScaleInput, importStatusEl);
 
-  pathPanel.append(moveWrap, lensWrap, playBtn, bakeBtn, importWrap);
+  pathPanel.append(
+    moveWrap, lensWrap, playBtn, repairBakeBtn, bakeBtn, importWrap);
 
   // 📊 Diagram toggle — layered VP / horizon / ground SVG overlay, each layer
   // independently dimmable. Vanishing points are populated only by the

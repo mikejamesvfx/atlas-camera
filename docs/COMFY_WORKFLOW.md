@@ -140,7 +140,7 @@ Draws VP convergence lines (left VP = orange, right VP = blue, vertical VP = gre
 
 **First run:** All four outputs are black placeholder tensors (expected — `client_data` is empty until step 5).
 
-**Camera paths:** Use 🎥 Camera Path mode in the viewport, add keyframes, then click **Bake Proxy Path**. The `path_frames` output is an IMAGE batch for editorial/video-preview workflows; `camera_path` is the raw keyframe data for `AtlasExportCameraPathUSD`.
+**Camera paths:** Use 🎥 Camera Path mode and choose an Orbit/Arc/Pan/Dolly move. **Bake Repair Frame** stores only the final moved-angle preview plus its absolute frame index; this is the compact option for `AtlasPathGuidedHoleRepair`. **Bake Full Path** stores the complete `path_frames` IMAGE batch for editorial/video/Fixer workflows. Both operations preserve the small parametric `camera_path` used by geometry and `AtlasExportCameraPathUSD`.
 
 **Output Desk:** Add `AtlasViewportControls` and connect its first output to the viewport's `controls` input to move the toolbar/panels out of the viewport. The same node's second output, `output_profile`, carries OCIO-style metadata for labels, preview trims, and DCC/export handoff.
 

@@ -159,6 +159,27 @@ def test_output_assessment_overrides_and_bounded_report_extraction():
     assert "images" not in json.dumps(reports)
 
 
+def test_plain_text_diagnostics_are_returned_without_image_payloads():
+    outputs = {
+        "14": {
+            "text": [
+                "filled 18/19 attempted (19 found)",
+                "rejected 1: generated patch edge exceeds local scale",
+            ],
+            "images": [{"filename": "must-not-leak.png"}],
+        },
+        "15": {"images": [{"filename": "preview.png"}]},
+    }
+    reports = C.collect_output_reports(outputs)
+    assert reports == {"14": {
+        "text": (
+            "filled 18/19 attempted (19 found)\n"
+            "rejected 1: generated patch edge exceeds local scale"
+        ),
+    }}
+    assert "images" not in json.dumps(reports)
+
+
 def test_queue_wait_tolerates_history_commit_race(monkeypatch):
     history_calls = 0
 
@@ -323,4 +344,4 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
             assert lid in (nodes[sid]["outputs"][sslot].get("links") or []), f"{p.name}: link {lid}"
             assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
         checked += 1
-    assert checked == 13
+    assert checked == 14

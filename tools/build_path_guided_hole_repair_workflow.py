@@ -107,7 +107,7 @@ def build():
     nodes = {node["id"]: node for node in workflow["nodes"]}
     nodes[5]["title"] = "PASS 1 · conservative enclosed repairs"
     nodes[5]["widgets_values"] = [
-        "", 2, 1024, 30.0, 0.30, 0.04, True, 0.20, 28.0]
+        "", 2, 1024, 30.0, 0.30, 0.04, True, 0.20, 28.0, 2.0]
     nodes[6]["title"] = "RETOPO · after both repair passes"
     nodes[10]["title"] = "AUTHOR REPAIR ANGLE · choose Orbit/Arc then Bake"
     nodes[11]["widgets_values"] = [
@@ -115,8 +115,9 @@ def build():
         "1. Queue once to build the relief and conservative first pass.\n"
         "2. In AUTHOR REPAIR ANGLE enable Camera Path and choose Orbit L/R "
         "or Arc L/R.\n"
-        "3. Move the playback lens left for a wider view. Click Bake Proxy "
-        "Path; the lens multiplier is preserved in camera_path.\n"
+        "3. Move the playback lens left for a wider view. Click Bake Repair "
+        "Frame; it stores only the indexed final frame while the complete "
+        "parametric path remains in camera_path.\n"
         "4. Path-Guided Hole Repair uses frame 0 from the end (the final "
         "frame), renders relaxed candidate planes with stable island IDs, "
         "and returns their exact original-image cells.\n"
@@ -137,7 +138,7 @@ def build():
         "• all_visible is the unattended/agent mode. max_selected_islands=0 "
         "means every visible candidate, ordered smallest-first.\n"
         "• The selector bypasses only the preview edge gate. Pass 2 remains "
-        "the geometry gate (65× here), so view selection never forces unsafe "
+        "the geometry gate (40× here), so view selection never forces unsafe "
         "geometry into the mesh.\n"
         "• Background and sky must remain excluded upstream before enabling "
         "open-edge repair."
@@ -186,9 +187,9 @@ def build():
                 ("created_islands", "MASK"),
             ],
             widgets=[
-                "", 2, 1024, 30.0, 0.45, 0.04, False, 0.20, 65.0,
+                "", 2, 1024, 30.0, 0.45, 0.04, False, 0.20, 40.0, 2.0,
             ],
-            title="PASS 2 · scoped open-edge repair (65×)",
+            title="PASS 2 · scoped repair (40× edge, 2× depth)",
             size=(430, 430),
         ),
         _node(
@@ -270,7 +271,7 @@ def build():
             "AGENT LOOP\n\n"
             "An MCP/agent can iterate without brush input:\n"
             "• choose Orbit/Arc in the author viewport\n"
-            "• Bake Proxy Path\n"
+            "• Bake Repair Frame (use Bake Full Path only for video)\n"
             "• inspect PATH REPAIR REPORT\n"
             "• vary frame_offset_from_end and lens_scale_override\n"
             "• cap max_selected_islands for smaller-first batches\n"

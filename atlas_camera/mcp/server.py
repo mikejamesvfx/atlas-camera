@@ -53,8 +53,9 @@ mcp = FastMCP(
         "Tools for driving Atlas Camera (single-image camera recovery + "
         "matte-painting projection) on a local ComfyUI. Start with "
         "atlas_health; read the atlas://calibration resource before choosing "
-        "depth models or band settings. Shipped workflows close their solve "
-        "gates — atlas_run_workflow opens them by default."
+        "depth models or band settings. Read atlas://path-repair before "
+        "automating planar or path-guided tear repair. Shipped workflows "
+        "close their solve gates — atlas_run_workflow opens them by default."
     ),
 )
 
@@ -112,8 +113,8 @@ def atlas_run_workflow(workflow_path: str, overrides: dict | None = None,
     them. Set `assess_output=True` to enable every AtlasAssessOutput terminal
     node (shipping workflows leave VLM calls off for interactive queues).
     `overrides` is {"<nodeId>.<input>": value}. Returns completion status,
-    verbatim node errors, output nodes, and bounded terminal assessment
-    text/JSON suitable for an agent to act on."""
+    verbatim node errors, output nodes, and bounded STRING diagnostics plus
+    terminal assessment text/JSON suitable for an agent to act on."""
     ui = _load_ui(workflow_path)
     oi = C.fetch_object_info(HOST)
     api = C.ui_to_api(ui, oi)
@@ -350,6 +351,45 @@ X-RAY (experimental): always wire restrict_mask (a SAM3 segment of the
   covered 50%+ of frame. Architecture is LaRI's strong domain.
 """
 
+_PATH_REPAIR = """\
+Atlas path-guided relief repair (agent/headless playbook):
+
+WORKFLOW:
+  Use examples/atlas_path_guided_hole_repair_workflow.json. Pass 1 fills
+  conservative enclosed islands. AtlasPathGuidedHoleRepair samples the full
+  parametric camera_path at frame_offset_from_end, removes exclude_mask
+  (normally background + sky), and maps visible moved-angle islands back to
+  exact source-space components. Pass 2 performs the final plane/scale gates,
+  then retopology consumes only accepted geometry.
+
+PATH FRAMES:
+  Geometry does NOT need a dense image batch. path_frames is a preview
+  background only. In the browser, author an Orbit/Arc and use Bake Repair
+  Frame to store one indexed image; Bake Full Path is only for video/Fixer.
+  Headless execution remains geometrically valid without a preview image.
+  A requested frame absent from baked_frame_indices deliberately produces a
+  black preview plus a diagnostic instead of a misregistered composite.
+
+SAFE BASELINE:
+  Pass 2 max_patch_edge_factor=40 and max_patch_depth_factor=2.0. These gates
+  are independent and reject an island atomically. The measured 8K engine
+  graph retained 18 safe repairs (largest accepted edge factor 27.8x) while
+  rejecting the needle-producing 135-cell island at 45.3x. Do not raise the
+  edge cap merely to force that island through; choose a better path angle,
+  narrow the repair mask, or supply hidden support.
+
+AGENT LOOP:
+  1. atlas_validate_workflow, then atlas_run_workflow.
+  2. Read reports returned for the Pass 1, selector, and Pass 2 STRING
+     terminals. They include accepted counts and measured rejection gates.
+  3. If the target is absent, change the path frame/angle or exclusion mask.
+     If selected but rejected, tune only the named gate and remain below the
+     nearest observed unsafe measurement.
+  4. atlas_inspect_viewport and orbit-check before export. Geometry repair
+     cannot invent hidden texture; use created_islands/patch_render_mask for
+     inpaint or a clean-plate projection source.
+"""
+
 
 @mcp.resource("atlas://calibration")
 def calibration() -> str:
@@ -371,6 +411,12 @@ def gates() -> str:
             "ships closed; ✅ approve stamps a solve+image fingerprint. 📐 "
             "patch outputs return ExecutionBlocker until an extraction exists "
             "for the CURRENT solve fingerprint.")
+
+
+@mcp.resource("atlas://path-repair")
+def path_repair() -> str:
+    """Two-pass planar/path-guided repair settings and agent loop."""
+    return _PATH_REPAIR
 
 
 @mcp.resource("atlas://schemas/solve")

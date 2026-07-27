@@ -8,7 +8,7 @@
       "type": "LoadImage",
       "pos": [
         80,
-        698
+        697
       ],
       "size": [
         360,
@@ -50,7 +50,7 @@
       "type": "AtlasLearnedSolveFromImage",
       "pos": [
         1050,
-        861
+        859
       ],
       "size": [
         390,
@@ -100,7 +100,7 @@
       "type": "AtlasDepthMap",
       "pos": [
         1560,
-        923
+        920
       ],
       "size": [
         390,
@@ -146,7 +146,7 @@
       "type": "AtlasDeriveReliefMesh",
       "pos": [
         2070,
-        766
+        764
       ],
       "size": [
         430,
@@ -217,11 +217,11 @@
       "type": "AtlasPlanarHolePatch",
       "pos": [
         2620,
-        821
+        804
       ],
       "size": [
         410,
-        430
+        460
       ],
       "flags": {},
       "order": 4,
@@ -289,7 +289,8 @@
         0.04,
         true,
         0.2,
-        28.0
+        28.0,
+        2.0
       ],
       "title": "PASS 1 · conservative enclosed repairs"
     },
@@ -298,7 +299,7 @@
       "type": "AtlasRetopologizeLayer",
       "pos": [
         5110,
-        364
+        357
       ],
       "size": [
         390,
@@ -348,7 +349,7 @@
       "type": "AtlasViewportControls",
       "pos": [
         80,
-        1200
+        1199
       ],
       "size": [
         390,
@@ -394,7 +395,7 @@
       "type": "AtlasBlockoutViewport",
       "pos": [
         3150,
-        1055
+        1054
       ],
       "size": [
         620,
@@ -540,7 +541,7 @@
       "type": "Note",
       "pos": [
         80,
-        1592
+        1591
       ],
       "size": [
         850,
@@ -553,7 +554,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "PATH-GUIDED HOLE REPAIR\n\n1. Queue once to build the relief and conservative first pass.\n2. In AUTHOR REPAIR ANGLE enable Camera Path and choose Orbit L/R or Arc L/R.\n3. Move the playback lens left for a wider view. Click Bake Proxy Path; the lens multiplier is preserved in camera_path.\n4. Path-Guided Hole Repair uses frame 0 from the end (the final frame), renders relaxed candidate planes with stable island IDs, and returns their exact original-image cells.\n5. Pass 2 applies the higher edge budget only to that source mask. The final viewport receives the combined repaired mesh.\n\nFor an artist-painted choice, save/paint ANGLE PREVIEW and wire that mask into paint_mask, then set selection_mode=paint_overlap."
+        "PATH-GUIDED HOLE REPAIR\n\n1. Queue once to build the relief and conservative first pass.\n2. In AUTHOR REPAIR ANGLE enable Camera Path and choose Orbit L/R or Arc L/R.\n3. Move the playback lens left for a wider view. Click Bake Repair Frame; it stores only the indexed final frame while the complete parametric path remains in camera_path.\n4. Path-Guided Hole Repair uses frame 0 from the end (the final frame), renders relaxed candidate planes with stable island IDs, and returns their exact original-image cells.\n5. Pass 2 applies the higher edge budget only to that source mask. The final viewport receives the combined repaired mesh.\n\nFor an artist-painted choice, save/paint ANGLE PREVIEW and wire that mask into paint_mask, then set selection_mode=paint_overlap."
       ],
       "color": "#25405c",
       "bgcolor": "#16283b"
@@ -563,7 +564,7 @@
       "type": "Note",
       "pos": [
         80,
-        2072
+        2071
       ],
       "size": [
         520,
@@ -576,7 +577,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "AUTOMATION CONTRACT\n\n• frame_offset_from_end=0 always means the final Camera Path frame.\n• lens_scale_override=0 inherits the path playback lens; values below 1.0 widen the lens.\n• Candidate pixels are IDs, not ray-cast guesses. A selected pixel maps back to its complete connected source-space tear island.\n• Wire the same upstream background/sky mask into exclude_mask. This subtracts the exterior before open-edge components are found.\n• all_visible is the unattended/agent mode. max_selected_islands=0 means every visible candidate, ordered smallest-first.\n• The selector bypasses only the preview edge gate. Pass 2 remains the geometry gate (65× here), so view selection never forces unsafe geometry into the mesh.\n• Background and sky must remain excluded upstream before enabling open-edge repair."
+        "AUTOMATION CONTRACT\n\n• frame_offset_from_end=0 always means the final Camera Path frame.\n• lens_scale_override=0 inherits the path playback lens; values below 1.0 widen the lens.\n• Candidate pixels are IDs, not ray-cast guesses. A selected pixel maps back to its complete connected source-space tear island.\n• Wire the same upstream background/sky mask into exclude_mask. This subtracts the exterior before open-edge components are found.\n• all_visible is the unattended/agent mode. max_selected_islands=0 means every visible candidate, ordered smallest-first.\n• The selector bypasses only the preview edge gate. Pass 2 remains the geometry gate (40× here), so view selection never forces unsafe geometry into the mesh.\n• Background and sky must remain excluded upstream before enabling open-edge repair."
       ],
       "color": "#3b3156",
       "bgcolor": "#251d39"
@@ -586,7 +587,7 @@
       "type": "ShowText|pysssss",
       "pos": [
         3150,
-        545
+        544
       ],
       "size": [
         420,
@@ -621,7 +622,7 @@
       "type": "MaskToImage",
       "pos": [
         3150,
-        385
+        384
       ],
       "size": [
         300,
@@ -693,7 +694,7 @@
       "type": "MaskToImage",
       "pos": [
         3150,
-        895
+        894
       ],
       "size": [
         300,
@@ -802,7 +803,7 @@
       "type": "PreviewImage",
       "pos": [
         4470,
-        1924
+        1926
       ],
       "size": [
         420,
@@ -939,11 +940,11 @@
       "type": "AtlasPlanarHolePatch",
       "pos": [
         4470,
-        314
+        286
       ],
       "size": [
         430,
-        430
+        460
       ],
       "flags": {},
       "order": 21,
@@ -1006,16 +1007,17 @@
         0.04,
         false,
         0.2,
-        65.0
+        40.0,
+        2.0
       ],
-      "title": "PASS 2 · scoped open-edge repair (65×)"
+      "title": "PASS 2 · scoped repair (40× edge, 2× depth)"
     },
     {
       "id": 23,
       "type": "PreviewImage",
       "pos": [
         4470,
-        814
+        816
       ],
       "size": [
         520,
@@ -1050,7 +1052,7 @@
       "type": "MaskToImage",
       "pos": [
         4470,
-        1384
+        1386
       ],
       "size": [
         300,
@@ -1087,7 +1089,7 @@
       "type": "PreviewImage",
       "pos": [
         5110,
-        1104
+        1097
       ],
       "size": [
         420,
@@ -1122,7 +1124,7 @@
       "type": "ShowText|pysssss",
       "pos": [
         4470,
-        1554
+        1556
       ],
       "size": [
         480,
@@ -1157,7 +1159,7 @@
       "type": "ShowText|pysssss",
       "pos": [
         5110,
-        734
+        727
       ],
       "size": [
         480,
@@ -1192,7 +1194,7 @@
       "type": "AtlasBlockoutViewport",
       "pos": [
         5710,
-        346
+        339
       ],
       "size": [
         720,
@@ -1332,7 +1334,7 @@
       "type": "Note",
       "pos": [
         80,
-        2632
+        2631
       ],
       "size": [
         620,
@@ -1347,7 +1349,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "AGENT LOOP\n\nAn MCP/agent can iterate without brush input:\n• choose Orbit/Arc in the author viewport\n• Bake Proxy Path\n• inspect PATH REPAIR REPORT\n• vary frame_offset_from_end and lens_scale_override\n• cap max_selected_islands for smaller-first batches\n• inspect PASS 2 REPORT and final viewport\n• stop when no visible candidate IDs remain or the geometry gate rejects the remainder\n\nThis makes the chosen camera frame an explicit, reproducible geometry-repair input rather than hidden viewport state."
+        "AGENT LOOP\n\nAn MCP/agent can iterate without brush input:\n• choose Orbit/Arc in the author viewport\n• Bake Repair Frame (use Bake Full Path only for video)\n• inspect PATH REPAIR REPORT\n• vary frame_offset_from_end and lens_scale_override\n• cap max_selected_islands for smaller-first batches\n• inspect PASS 2 REPORT and final viewport\n• stop when no visible candidate IDs remain or the geometry gate rejects the remainder\n\nThis makes the chosen camera frame an explicit, reproducible geometry-repair input rather than hidden viewport state."
       ],
       "title": "MCP / AGENTIC REPAIR LOOP",
       "color": "#384f68",
@@ -1667,7 +1669,7 @@
         20,
         -20,
         6470,
-        3142
+        3141
       ],
       "color": "#31536b",
       "font_size": 24
@@ -1684,7 +1686,7 @@
     },
     "atlas_example": "path_guided_hole_repair",
     "atlas_agentic_geometry_repair": true,
-    "layout_inspection": "nodes=26 edges=38 overlaps=0 crossings=12 bounds=[80, 100, 6430, 3062]",
+    "layout_inspection": "nodes=26 edges=38 overlaps=0 crossings=12 bounds=[80, 100, 6430, 3061]",
     "notes": "Camera Path final-frame candidate-ID raster drives an exact source-space mask for a scoped second planar patch pass."
   },
   "version": 0.4

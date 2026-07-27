@@ -27,6 +27,19 @@ def _read(name):
     return open(os.path.join(WEB, name), encoding="utf-8").read()
 
 
+# --- Camera-path compact repair bake contract -------------------------------
+
+def test_camera_path_repair_bake_is_indexed_and_invalidates_stale_frames():
+    src = _read("atlas_blockout.js")
+
+    assert 'repairBakeBtn.textContent = "📷 Bake Repair Frame"' in src
+    assert 'bakeBtn.textContent = "⏺ Bake Full Path"' in src
+    assert "baked_frame_indices: bakedFrameIndices" in src
+    assert "frame_indices: bakedFrameIndices" in src
+    assert "delete existing.path_frames" in src
+    assert "delete existing.atlas_proxy_path" in src
+
+
 # --- 🎨 layer debug palette (atlas_blockout.js <-> nodes.py) -----------------
 
 def test_layer_debug_palette_mirrors_js():

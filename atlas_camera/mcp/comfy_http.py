@@ -409,10 +409,24 @@ def output_assessment_overrides(api: dict) -> dict:
 
 
 def collect_output_reports(outputs: dict) -> dict:
-    """Extract bounded terminal-QA text/JSON without returning image blobs."""
+    """Extract bounded text/terminal-QA output without returning image blobs.
+
+    Plain STRING output is intentionally included: repair nodes expose their
+    accepted/rejected-island diagnostics through ShowText-style terminals, and
+    an MCP agent needs those measurements to tune a second pass safely.
+    """
     reports = {}
     for node_id, payload in (outputs or {}).items():
-        if not isinstance(payload, dict) or "atlas_output_assessment" not in payload:
+        if not isinstance(payload, dict):
+            continue
+        has_assessment = "atlas_output_assessment" in payload
+        text_value = payload.get("text")
+        if isinstance(text_value, list):
+            text_value = "\n".join(str(item) for item in text_value)
+        if not has_assessment:
+            if text_value is None:
+                continue
+            reports[str(node_id)] = {"text": str(text_value)[:16000]}
             continue
         raw = payload.get("atlas_output_assessment")
         raw = raw[0] if isinstance(raw, list) and raw else raw
@@ -422,9 +436,6 @@ def collect_output_reports(outputs: dict) -> dict:
                 assessment = json.loads(raw)
             except json.JSONDecodeError:
                 assessment = raw[:16000]
-        text_value = payload.get("text")
-        if isinstance(text_value, list):
-            text_value = "\n".join(str(item) for item in text_value)
         path_value = payload.get("json_path")
         if isinstance(path_value, list):
             path_value = path_value[0] if path_value else ""
@@ -454,7 +465,8 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
 
     Returns ``{completed, prompt_id, errors, output_nodes, reports}`` — node
     errors carry the verbatim exception message, while ``reports`` contains
-    bounded AtlasAssessOutput text/JSON only (never image/base64 payloads).
+    bounded STRING diagnostics and AtlasAssessOutput text/JSON (never
+    image/base64 payloads).
     """
     client_id = str(uuid.uuid4())
     resp = http_json(f"http://{host}/prompt",

@@ -260,9 +260,11 @@ Atlas now separates the interactive viewer from final delivery data:
   These are the final source of truth for EXR/float workflows.
 
 The browser viewport is intentionally **not** the final render path. Its
-`Render Proxy Passes` and `Bake Proxy Path` actions still fill the usual
-`shaded`, `depth`, `normal`, `mask`, and `path_frames` IMAGE outputs, but
-those images travel through ComfyUI as 8-bit-ish browser/base64 preview data.
+`Render Proxy Passes`, `Bake Repair Frame`, and `Bake Full Path` actions fill
+the usual `shaded`, `depth`, `normal`, `mask`, and `path_frames` IMAGE outputs,
+but those images travel through ComfyUI as 8-bit-ish browser/base64 preview
+data. Repair Frame embeds one explicitly indexed image; Full Path embeds the
+whole batch only when a video/Fixer consumer needs it.
 They are useful for editorial previews, ControlNet references, quick review,
 and feeding a video-combine node. They are not a substitute for a final EXR
 projection render in Nuke, Maya, Resolve, or an OCIO-aware writer.
@@ -368,7 +370,8 @@ sanity-checking a solve and, since 2026-07-09, for tuning the layer stack:
 | `AtlasBlockoutViewport` (☀ / 📊 / ℹ / 🎨 / 🩻) | Diagnostics — exposure, VP/horizon diagram, camera HUD, layer identity, invented-geometry provenance |
 | `AtlasDepthMap` | One shared metric depth estimate, fanned out to every layer node |
 | `AtlasDeriveReliefMesh` | The base mesh + backdrop under every layered workflow |
-| `AtlasPlanarHolePatch` ◩ | Normal-guided planes stitched into selected relief holes; unsafe regions are pre-rejected, eligible islands run smallest-first, and `min_normal_support_fraction` allows controlled one-sided facade repair. `max_patch_edge_factor` rejects ray/plane spikes using source-pixel span × the island boundary's local metres-per-pixel, so the threshold travels with both image and camera/world scale. `created_islands` is the exact source-space fill mask; wire it to the viewport `patch_mask` for a magenta 🎨 layer and a moved-camera `patch_render_mask` after Render Proxy Passes. Place before live retopology |
+| `AtlasPlanarHolePatch` ◩ | Normal-guided planes stitched into selected relief holes; unsafe regions are pre-rejected, eligible islands run smallest-first, and `min_normal_support_fraction` allows controlled one-sided facade repair. `max_patch_edge_factor` rejects lateral/ray-plane spikes using source-pixel span × local metres-per-pixel; the independent `max_patch_depth_factor` rejects forward/backward camera-depth excursions against the support plane's robust local depth band. Both thresholds travel with image and scene scale and reject a whole island atomically. `created_islands` is the exact source-space fill mask; wire it to viewport `patch_mask` for a magenta 🎨 layer and moved-camera `patch_render_mask`. Place before live retopology |
+| `AtlasPathGuidedHoleRepair` 🎥 | Selects open-edge tears from a moved Camera Path angle, subtracts background/sky exclusion, and maps visible or painted island IDs back to exact source-space repair masks. Geometry samples the complete `camera_path`; one indexed **Bake Repair Frame** image is sufficient for preview. Feed the result to a second Planar Hole Patch and keep its edge/depth gates as final acceptance |
 | `AtlasCleanPlateLayer` / `AtlasDepthLayerMask` / `AtlasSkyDomeLayer` | The layer stack (see the 2026-07-09 section below) |
 | `AtlasPredictHiddenGeometry` 🔬 | Experimental X-ray depth — predicted geometry behind occluders |
 | `AtlasInput` 🎬 | The one-node fast path (see the 2026-07-12 section below) |

@@ -129,10 +129,10 @@ class AtlasBlockoutViewport:
     3. Place primitive geometry (box, plane, person card, etc.).
     4. Click "Render Proxy Passes" in the viewport — fills client_data and re-queues.
     5. Four proxy/LDR IMAGE outputs are now available for ControlNet or compositing.
-    6. Optional: use 🎥 Camera Path mode to author a keyframed camera move (fly
-       nav, unclamped — leaving the recovered cone is expected here), then
-       click "⏺ Bake Proxy Path" to fill client_data with a rendered frame sequence.
-       `path_frames` (a proxy/LDR IMAGE batch) feeds a core Video Combine node directly;
+    6. Optional: use 🎥 Camera Path mode to author a keyframed camera move.
+       "📷 Bake Repair Frame" stores only the indexed final preview frame for
+       path-guided repair; "⏺ Bake Full Path" stores the complete sequence.
+       `path_frames` (a proxy/LDR IMAGE batch) feeds repair preview or Video Combine;
        `camera_path` (the raw keyframes) feeds AtlasExportCameraPathUSD for a
        DCC-facing animated camera. Frames sampled outside the recovered
        camera's cone will show the same documented black/undefined regions as

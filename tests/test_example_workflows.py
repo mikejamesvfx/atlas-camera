@@ -244,7 +244,8 @@ def test_path_guided_repair_workflow_is_two_pass_and_camera_driven():
     assert len(patch_nodes) == 2
     scoped = next(
         node for node in patch_nodes if "PASS 2" in node.get("title", ""))
-    assert scoped["widgets_values"][-1] == 65.0
+    assert scoped["widgets_values"][-2] == 40.0
+    assert scoped["widgets_values"][-1] == 2.0
     selector = next(
         node for node in wf["nodes"]
         if node["type"] == "AtlasPathGuidedHoleRepair")
@@ -253,6 +254,13 @@ def test_path_guided_repair_workflow_is_two_pass_and_camera_driven():
     assert selector["widgets_values"][1] == 0  # final path frame
     assert selector["widgets_values"][2] == 0.0  # inherit baked path lens
     assert selector["widgets_values"][4] == "all_visible"
+    notes = "\n".join(
+        str(value)
+        for node in wf["nodes"]
+        for value in (node.get("widgets_values") or [])
+        if isinstance(value, str)
+    )
+    assert "Bake Repair Frame" in notes
 
 
 def test_shipping_quickstarts_use_current_outputs_and_guidance():

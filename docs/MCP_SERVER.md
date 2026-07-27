@@ -105,7 +105,7 @@ Everything returns compact JSON. Paths passed **to** tools are paths on
 |---|---|---|
 | `atlas_health` | Is ComfyUI up? Version, free VRAM, how many Atlas nodes registered, whether the experimental nodes loaded, which third-party packs are missing. | *Always call this first.* No arguments. |
 | `atlas_solve_image` | Upload a photo, recover its camera, return the solve summary (focal, FOV, height, confidence, `scale_source`). | `image_path` (local file); `method` `"learned"` (GeoCalib, default) or `"vp"` (classical vanishing points); `camera_height_m > 0` adds a scale override for elevated vantages. |
-| `atlas_run_workflow` | Flatten a UI-format workflow JSON (official v1 subgraphs expanded, proxy widgets applied, KJ Set/Get rails resolved, muted/bypassed nodes handled) and run it to completion. Returns bounded terminal AtlasAssessOutput report text/JSON inline, never image blobs. | `workflow_path`; `open_gates=True` opens solve gates; `assess_output=True` enables shipped terminal VLM nodes; `overrides={"12.image": "my.png"}` retargets any widget by node id. |
+| `atlas_run_workflow` | Flatten a UI-format workflow JSON (official v1 subgraphs expanded, proxy widgets applied, KJ Set/Get rails resolved, muted/bypassed nodes handled) and run it to completion. Returns bounded STRING diagnostics—including planar/path-repair acceptance reports—and terminal AtlasAssessOutput text/JSON inline, never image blobs. | `workflow_path`; `open_gates=True` opens solve gates; `assess_output=True` enables shipped terminal VLM nodes; `overrides={"12.image": "my.png"}` retargets any widget by node id. |
 | `atlas_validate_workflow` | Lint a workflow—including nodes inside official subgraphs—against the *live* server definitions: positional-widget drift, broken links, out-of-range widgets, dangling rails. | `workflow_path`. Run before `atlas_run_workflow` on hand-edited JSON. |
 | `atlas_read_debug_report` | Read the 🔍 `AtlasDebugReport` JSON — per-layer vertex counts, band ranges, matte coverage, red flags. The one-file autopsy for "why is this layer empty". | `json_path` (default `atlas_debug/master_debug.json`, server-relative). |
 | `atlas_read_output_assessment` | Read the 🧪 terminal output-assessment JSON — image provenance, retained evidence/matte/source paths and hashes, combined verdict, deterministic solve health, source/output structural comparison, and VLM checks/issues. | `json_path`; use the distinct path returned under `atlas_run_workflow.reports.<node>.json_path`. |
@@ -131,10 +131,11 @@ and severe source drift constrain the final verdict even when the VLM prose is
 optimistic. A canonical view cannot observe an orbit, so grazing/occlusion
 tearing remains visually inconclusive until a browser or DCC render is supplied.
 
-**Deliberately absent:** camera-move *baking* (`⏺ Bake Path`) is
-browser-side WebGL and can't run over HTTP — author and bake moves in the
-ComfyUI viewport, or drive a real browser. Everything else here is fully
-headless.
+**Deliberately absent:** camera-move image *baking* is browser-side WebGL and
+can't run over HTTP. Author and use **Bake Repair Frame** (one indexed image)
+or **Bake Full Path** (video batch) in the ComfyUI viewport, or drive a real
+browser. Repair geometry itself samples `camera_path` server-side and remains
+fully headless; `path_frames` is only its optional preview background.
 
 ## 5 · The resources (the knowledge layer)
 
@@ -151,6 +152,9 @@ doctrine travels with the tools:
 - **`atlas://gates`** — why a first Queue "finishes" in seconds: the
   ExecutionBlocker gate family, which widget opens each gate, and how
   fingerprinted approvals re-arm on new images.
+- **`atlas://path-repair`** — the two-pass planar/path-guided repair loop,
+  compact indexed-frame bake, safe 40× edge / 2× depth baseline, and how to
+  act on accepted/rejected-island STRING reports without forcing spikes.
 - **`atlas://schemas/solve`** — the shape of the solve JSON the tools
   return and consume.
 
@@ -180,6 +184,13 @@ doctrine travels with the tools:
                        formats=["nuke_layers", "usd"]
      → written file paths under output_dir
 ```
+
+For relief tears, read `atlas://path-repair`, validate and run
+`examples/atlas_path_guided_hole_repair_workflow.json`, then inspect the three
+bounded STRING reports returned by `atlas_run_workflow`. A missing selection
+calls for a different path angle/exclusion mask; a final rejection calls for
+the specifically named edge or depth gate to be evaluated—not a blanket
+threshold increase.
 
 For subject-removal workflows, inspect the layer census before export. A
 full-frame background cleanplate should normally report zero synthesized fill
