@@ -258,6 +258,24 @@
     "AtlasPlanarHolePatch_pass2": "filled 10/12 attempted (12 found), +511 verts, +1860 faces; 2 rejected on generated patch edge",
     "conclusion": "The path-guided selection stage works end to end on a real plate: it rasterises candidates from the path's final frame, selects the islands visible from that angle, and the second patch pass fills them under its own gates."
    }
+  },
+  "arc_orbit_on_machine_plate": {
+   "plate": "atlas_00025.png (7680x4512, the 8K machine plate both moge workflows load)",
+   "solve": "camera height 1.4505 m, scene depth 44.72 m, fov_h 57.75 deg, scale_source depth_ground_plane (MEASURED, safe_to_export)",
+   "camera_path": "Arc preset shape \u2014 3 keyframes at 0/60/99, orbit 15 deg about world-Y through the pivot WHILE dollying in 15% (6.091 -> 5.634 -> 5.178 m from pivot), so the Catmull-Rom actually curves. Pivot taken from the artist's own authored path for this same plate, whose eye height 1.450573 matches the solve exactly.",
+   "baseline_no_path": {
+    "prompt_id": "6e1ed523-1cfd-4c2c-8b4c-95a2a1df3680",
+    "pass1": "filled 206/218 attempted (235 found), +911 verts, +5020 faces",
+    "path_guided": "camera path is empty \u2014 fail-soft",
+    "pass2": "filled 0/0, +0 verts, +0 faces"
+   },
+   "arc_orbit_end_frame": {
+    "prompt_id": "9b21dc3c-5903-47e4-9b90-4b996b28f909",
+    "pass1": "filled 206/218 attempted (235 found), +911 verts, +5020 faces \u2014 identical, as it must be; the arc only affects the second pass",
+    "path_guided": "path frame 99/99 (offset 0 from end), lens 1.000x; 29 source islands, 25 candidate planes, 13 visible, 13 selected; source mask 511830 px; rejections 1 max_hole_fraction, 3 plane residual",
+    "pass2": "filled 10/13 attempted (13 found), +368 verts, +1372 faces; accepted edge stretch 36.8x/40.0x, depth excursion 1.13x/2.00x; 3 rejected on generated patch edge"
+   },
+   "conclusion": "The arc adds 368 vertices and 1372 faces of geometry the baseline never produced. The selected islands are a strict SUBSET of the pass-1 remaining holes (29 -> 13 visible -> 10 filled), which is the path-guided stage doing exactly what it claims: repairing only what the chosen camera move will actually reveal."
   }
  }
 }
