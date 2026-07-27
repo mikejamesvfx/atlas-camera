@@ -9,6 +9,7 @@ import base64
 import copy
 import io
 import json
+import math
 import os
 import re
 import tempfile
@@ -1494,6 +1495,301 @@ class AtlasPlanarHolePatch:
                 f"example {item['cells']} cells:{detail} "
                 f"({item['reason']})")
         return (out, remaining_t, "\n".join(lines), created_t)
+
+
+class AtlasPathGuidedHoleRepair:
+    """Select exact source-space tear islands from a Camera Path view.
+
+    Candidate planes are rendered with stable island IDs at ``last-offset``.
+    This makes both automatic selection and an artist-painted moved-view mask
+    deterministic: the brush chooses whole connected source islands rather
+    than attempting to unproject pixels through geometry that does not exist.
+    Wire ``repair_mask`` into a second AtlasPlanarHolePatch with deliberately
+    relaxed acceptance settings.
+    """
+
+    RETURN_TYPES = ("MASK", "IMAGE", "MASK", "STRING")
+    RETURN_NAMES = ("repair_mask", "angle_preview", "visible_islands", "report")
+    FUNCTION = "select"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "hole_mask": ("MASK", {
+                    "tooltip": "Remaining source-space holes from the first "
+                               "AtlasPlanarHolePatch pass.",
+                }),
+                "camera_path": ("ATLAS_CAMERA_PATH", {
+                    "tooltip": "Camera path authored/baked by Atlas Viewport. "
+                               "The selected pose is last frame minus offset.",
+                }),
+            },
+            "optional": {
+                "path_frames": ("IMAGE", {
+                    "tooltip": "Optional baked viewport frames used as the preview "
+                               "background. Candidate IDs remain exact without it.",
+                }),
+                "paint_mask": ("MASK", {
+                    "tooltip": "Optional mask painted over angle_preview. Used only "
+                               "when selection_mode=paint_overlap; touching a rendered "
+                               "candidate selects its complete source-space island.",
+                }),
+                "layer": ("STRING", {
+                    "default": "",
+                    "tooltip": "Blank = primary relief; otherwise a ProjectionSource name.",
+                }),
+                "frame_offset_from_end": ("INT", {
+                    "default": 0, "min": 0, "max": 100000,
+                    "tooltip": "0 = final frame, 1 = one frame before final, etc.",
+                }),
+                "lens_scale_override": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 4.0, "step": 0.05,
+                    "tooltip": "0 = use the Camera Path playback lens. Otherwise a "
+                               "focal multiplier: below 1.0 is wider; above 1.0 tighter.",
+                }),
+                "resolution": ("INT", {
+                    "default": 768, "min": 128, "max": 4096, "step": 8,
+                    "tooltip": "Long edge of the candidate ID render.",
+                }),
+                "selection_mode": ([
+                    "all_visible", "smallest_visible", "largest_visible",
+                    "paint_overlap",
+                ], {
+                    "tooltip": "Agent mode selects visible fitted islands automatically. "
+                               "paint_overlap converts a moved-view brush mask back into "
+                               "exact source-space connected islands.",
+                }),
+                "max_selected_islands": ("INT", {
+                    "default": 0, "min": 0, "max": 1024,
+                    "tooltip": "0 = all qualifying islands; otherwise cap selection in "
+                               "the chosen size order.",
+                }),
+                "min_visible_pixels": ("INT", {
+                    "default": 8, "min": 1, "max": 100000,
+                    "tooltip": "Ignore candidates with fewer rasterized pixels at the "
+                               "chosen repair angle.",
+                }),
+                "paint_overlap_fraction": ("FLOAT", {
+                    "default": 0.02, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "Minimum painted share of a visible island needed to "
+                               "select its full source-space component.",
+                }),
+                "ring_cells": ("INT", {
+                    "default": 2, "min": 1, "max": 12,
+                }),
+                "max_components": ("INT", {
+                    "default": 1024, "min": 1, "max": 4096,
+                }),
+                "normal_tolerance_deg": ("FLOAT", {
+                    "default": 30.0, "min": 1.0, "max": 89.0, "step": 1.0,
+                }),
+                "max_plane_error_m": ("FLOAT", {
+                    "default": 0.45, "min": 0.001, "max": 10.0, "step": 0.01,
+                }),
+                "max_hole_fraction": ("FLOAT", {
+                    "default": 0.04, "min": 0.0001, "max": 1.0, "step": 0.005,
+                }),
+                "enclosed_only": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "False allows silhouette/open-edge tears after the "
+                               "background/sky has already been excluded upstream.",
+                }),
+                "min_normal_support_fraction": ("FLOAT", {
+                    "default": 0.20, "min": 0.10, "max": 1.0, "step": 0.05,
+                }),
+            },
+        }
+
+    @staticmethod
+    def _warp_frame_for_lens(frame, output_height, output_width,
+                             used_lens_scale, baked_lens_scale):
+        """Reframe a baked path image when an explicit lens override is used."""
+        torch = _require_torch()
+        import torch.nn.functional as functional
+
+        image = frame.permute(0, 3, 1, 2)
+        ratio = float(used_lens_scale) / max(float(baked_lens_scale), 1e-6)
+        scaled_height = max(1, int(round(output_height * ratio)))
+        scaled_width = max(1, int(round(output_width * ratio)))
+        resized = functional.interpolate(
+            image, size=(scaled_height, scaled_width),
+            mode="bilinear", align_corners=False)
+        canvas = torch.zeros(
+            (1, 3, output_height, output_width),
+            dtype=resized.dtype, device=resized.device)
+        src_y0 = max(0, (scaled_height - output_height) // 2)
+        src_x0 = max(0, (scaled_width - output_width) // 2)
+        dst_y0 = max(0, (output_height - scaled_height) // 2)
+        dst_x0 = max(0, (output_width - scaled_width) // 2)
+        copy_height = min(output_height, scaled_height)
+        copy_width = min(output_width, scaled_width)
+        canvas[:, :, dst_y0:dst_y0 + copy_height,
+               dst_x0:dst_x0 + copy_width] = resized[
+                   :, :, src_y0:src_y0 + copy_height,
+                   src_x0:src_x0 + copy_width]
+        return canvas.permute(0, 2, 3, 1)
+
+    def select(
+        self,
+        solve,
+        hole_mask,
+        camera_path,
+        path_frames=None,
+        paint_mask=None,
+        layer="",
+        frame_offset_from_end=0,
+        lens_scale_override=0.0,
+        resolution=768,
+        selection_mode="all_visible",
+        max_selected_islands=0,
+        min_visible_pixels=8,
+        paint_overlap_fraction=0.02,
+        ring_cells=2,
+        max_components=1024,
+        normal_tolerance_deg=30.0,
+        max_plane_error_m=0.45,
+        max_hole_fraction=0.04,
+        enclosed_only=False,
+        min_normal_support_fraction=0.20,
+    ):
+        torch = _require_torch()
+        np = _require_numpy()
+        from atlas_camera.core.path_hole_repair import (
+            PathHoleRepairConfig,
+            build_path_hole_repair,
+        )
+        from atlas_camera.exporters._layers import mesh_from_primitive
+
+        camera = solve.camera
+        target_name = str(layer or "").strip()
+        if target_name:
+            source = next(
+                (item for item in (getattr(solve, "projection_sources", None) or [])
+                 if getattr(item, "name", "") == target_name),
+                None,
+            )
+            if source is None:
+                empty = torch.zeros_like(hole_mask)
+                preview = torch.zeros(1, 1, 1, 3, dtype=torch.float32)
+                return (empty, preview, preview[..., 0],
+                        f"layer '{target_name}' not found")
+            primitives = source.proxy_geometry
+            camera = source.camera
+        else:
+            scene = getattr(solve, "projection_scene", None)
+            primitives = (
+                getattr(scene, "proxy_geometry", None)
+                if scene is not None else None)
+        primitive = next(
+            (item for item in (primitives or [])
+             if item.primitive_type == "mesh"
+             and (item.metadata or {}).get("source") == "depth_relief_mesh"),
+            None,
+        )
+        if primitive is None:
+            empty = torch.zeros_like(hole_mask)
+            preview = torch.zeros(1, 1, 1, 3, dtype=torch.float32)
+            return (empty, preview, preview[..., 0],
+                    "target has no relief mesh")
+        mesh = mesh_from_primitive(primitive)
+        if mesh is None:
+            empty = torch.zeros_like(hole_mask)
+            preview = torch.zeros(1, 1, 1, 3, dtype=torch.float32)
+            return (empty, preview, preview[..., 0],
+                    "target relief mesh is empty")
+        height = int(camera.intrinsics.image_height or 0)
+        width = int(camera.intrinsics.image_width or 0)
+        resolved = _resolve_exclude_mask(hole_mask, height, width)
+        if resolved is None:
+            resolved = np.zeros((height, width), dtype=bool)
+        painted = None
+        if paint_mask is not None:
+            painted = paint_mask
+            if hasattr(painted, "dim") and painted.dim() == 3:
+                painted = painted[0]
+            painted = (
+                painted.detach().cpu().numpy()
+                if hasattr(painted, "detach") else painted)
+        if camera_path is None:
+            empty = torch.zeros(1, height, width, dtype=torch.float32)
+            preview = torch.zeros(1, 1, 1, 3, dtype=torch.float32)
+            return (empty, preview, preview[..., 0],
+                    "camera path is empty — choose Orbit/Arc and Bake Proxy Path")
+
+        cfg = PathHoleRepairConfig(
+            frame_offset_from_end=int(frame_offset_from_end),
+            lens_scale_override=float(lens_scale_override),
+            resolution=int(resolution),
+            selection_mode=str(selection_mode),
+            max_selected_islands=int(max_selected_islands),
+            min_visible_pixels=int(min_visible_pixels),
+            paint_overlap_fraction=float(paint_overlap_fraction),
+            ring_cells=int(ring_cells),
+            max_components=int(max_components),
+            normal_tolerance_deg=float(normal_tolerance_deg),
+            max_plane_error_m=float(max_plane_error_m),
+            max_hole_fraction=float(max_hole_fraction),
+            enclosed_only=bool(enclosed_only),
+            min_normal_support_fraction=float(min_normal_support_fraction),
+        )
+        try:
+            result = build_path_hole_repair(
+                mesh, resolved, source_camera=camera,
+                camera_path=camera_path, paint_mask=painted, config=cfg)
+        except ValueError as exc:
+            empty = torch.zeros(1, height, width, dtype=torch.float32)
+            preview = torch.zeros(1, 1, 1, 3, dtype=torch.float32)
+            return (empty, preview, preview[..., 0], f"SKIPPED — {exc}")
+
+        id_map = np.asarray(result["view_id_map"], dtype=np.int32)
+        out_height, out_width = id_map.shape
+        if path_frames is not None and getattr(path_frames, "shape", (0,))[0]:
+            batch_index = max(
+                0, min(int(path_frames.shape[0]) - 1,
+                       int(path_frames.shape[0]) - 1
+                       - max(0, int(frame_offset_from_end))))
+            base = path_frames[batch_index:batch_index + 1].to(dtype=torch.float32)
+            if (int(base.shape[1]), int(base.shape[2])) != (out_height, out_width):
+                import torch.nn.functional as functional
+                base = functional.interpolate(
+                    base.permute(0, 3, 1, 2),
+                    size=(out_height, out_width),
+                    mode="bilinear", align_corners=False,
+                ).permute(0, 2, 3, 1)
+            base = self._warp_frame_for_lens(
+                base, out_height, out_width,
+                result["lens_scale"], result["path_lens_scale"])
+        else:
+            base = torch.zeros(
+                1, out_height, out_width, 3, dtype=torch.float32)
+
+        selected_ids = set(int(value) for value in result["selected_ids"])
+        visible = id_map > 0
+        colors = np.zeros((out_height, out_width, 3), dtype=np.float32)
+        for island_id in result["visible_ids"]:
+            island = id_map == int(island_id)
+            if int(island_id) in selected_ids:
+                color = (1.0, 0.05, 0.72)  # selected: Atlas patch magenta
+            else:
+                phase = float(island_id) * 2.399963229728653
+                color = (
+                    0.25 + 0.25 * (math.sin(phase) + 1.0),
+                    0.55 + 0.20 * (math.sin(phase + 2.1) + 1.0),
+                    0.75 + 0.12 * math.sin(phase + 4.2),
+                )
+            colors[island] = color
+        color_t = torch.from_numpy(colors).unsqueeze(0).to(
+            dtype=base.dtype, device=base.device)
+        alpha = torch.from_numpy(visible.astype(np.float32)).unsqueeze(
+            0).unsqueeze(-1).to(dtype=base.dtype, device=base.device) * 0.78
+        preview = base * (1.0 - alpha) + color_t * alpha
+        repair_t = torch.from_numpy(
+            np.asarray(result["repair_mask"], dtype=np.float32)).unsqueeze(0)
+        visible_t = torch.from_numpy(visible.astype(np.float32)).unsqueeze(0)
+        return (repair_t, preview, visible_t, str(result["report"]))
 
 
 class AtlasDeriveWalls:

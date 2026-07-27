@@ -480,6 +480,7 @@ class AtlasCameraPath:
     keyframes: list[AtlasCameraKeyframe] = field(default_factory=list)
     fps: float = 24.0
     frame_count: int = 0
+    lens_scale: float = 1.0
 
     def to_dict(self) -> dict[str, Any]:
         return _json_ready(self)
@@ -493,6 +494,7 @@ class AtlasCameraPath:
             ],
             fps=float(data.get("fps", 24.0)),
             frame_count=int(data.get("frame_count", 0)),
+            lens_scale=float(data.get("lens_scale", 1.0)),
         )
 
 

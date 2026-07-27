@@ -71,6 +71,7 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_live_repair_and_bands_test_workflow.json",
                      "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
                      "atlas_occlusion_cull_quickstart_workflow.json",
+                     "atlas_path_guided_hole_repair_workflow.json",
                      "atlas_planar_hole_patch_workflow.json",
                      "atlas_raw_3layer_ocio_workflow.json",
                      "atlas_staged_master_portal_neat_workflow.json"]
@@ -225,6 +226,31 @@ def test_planar_patch_workflow_exposes_source_and_moved_camera_masks():
     titles = {node.get("title", "") for node in wf["nodes"]}
     assert any("CREATED ISLANDS" in title for title in titles)
     assert any("MOVED-CAMERA PATCH MASK" in title for title in titles)
+
+
+def test_path_guided_repair_workflow_is_two_pass_and_camera_driven():
+    wf = _workflow("atlas_path_guided_hole_repair_workflow.json")
+    edges = _typed_edges(wf)
+    assert ("AtlasBlockoutViewport", "camera_path",
+            "AtlasPathGuidedHoleRepair", "camera_path") in edges
+    assert ("AtlasBlockoutViewport", "path_frames",
+            "AtlasPathGuidedHoleRepair", "path_frames") in edges
+    assert ("AtlasPathGuidedHoleRepair", "repair_mask",
+            "AtlasPlanarHolePatch", "hole_mask") in edges
+    assert ("AtlasPathGuidedHoleRepair", "angle_preview",
+            "PreviewImage", "images") in edges
+    patch_nodes = [
+        node for node in wf["nodes"] if node["type"] == "AtlasPlanarHolePatch"]
+    assert len(patch_nodes) == 2
+    scoped = next(
+        node for node in patch_nodes if "PASS 2" in node.get("title", ""))
+    assert scoped["widgets_values"][-1] == 65.0
+    selector = next(
+        node for node in wf["nodes"]
+        if node["type"] == "AtlasPathGuidedHoleRepair")
+    assert selector["widgets_values"][1] == 0  # final path frame
+    assert selector["widgets_values"][2] == 0.0  # inherit baked path lens
+    assert selector["widgets_values"][4] == "all_visible"
 
 
 def test_shipping_quickstarts_use_current_outputs_and_guidance():

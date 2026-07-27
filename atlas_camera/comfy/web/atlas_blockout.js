@@ -2653,6 +2653,7 @@ function buildNodeUI(node, containerEl) {
   let pathKeyframes = []; // [{frame_index, position:{x,y,z}, target:{x,y,z}, up:{x,y,z}, easing}]
   let pathFrameCount = PATH_FRAME_COUNT;
   let pathFps = PATH_FPS;
+  let pathLensScale = 1.2;
   const pathGroup = new THREE.Group();
   pathGroup.userData.atlasHelper = true; // excluded from render passes like the grid
   pathGroup.visible = false;
@@ -2758,7 +2759,10 @@ function buildNodeUI(node, containerEl) {
     if (!widget) return;
     let existing = {};
     try { existing = widget.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
-    existing.camera_path = { keyframes: pathKeyframes.map(kfToJSON), fps: pathFps, frame_count: pathFrameCount };
+    existing.camera_path = {
+      keyframes: pathKeyframes.map(kfToJSON), fps: pathFps,
+      frame_count: pathFrameCount, lens_scale: pathLensScale,
+    };
     widget.value = JSON.stringify(existing);
     widget.callback?.(widget.value);
   }
@@ -2773,6 +2777,8 @@ function buildNodeUI(node, containerEl) {
         pathKeyframes = cp.keyframes.map(kfFromJSON);
         pathFps = cp.fps || PATH_FPS;
         pathFrameCount = cp.frame_count || PATH_FRAME_COUNT;
+        pathLensScale = Number(cp.lens_scale ?? existing.atlas_proxy_path?.lens_scale
+          ?? pathLensScale) || pathLensScale;
       }
     } catch (_) { /* no persisted path yet */ }
   }
@@ -2896,7 +2902,6 @@ function buildNodeUI(node, containerEl) {
   // by physically lerping toward the pivot (which raised the eye — see the
   // move comment below).
   // -------------------------------------------------------------------------
-  let pathLensScale = 1.2;
   const LENS_MAX = 2.5;
   function solvedFovDeg() {
     const imageH = recoveredData?.render_image_height ?? recoveredData?.image_height ?? 1080;
@@ -3077,6 +3082,7 @@ function buildNodeUI(node, containerEl) {
   lensSlider.oninput = () => {
     pathLensScale = parseFloat(lensSlider.value) || 1.0;
     lensReadout.textContent = `${pathLensScale.toFixed(2)}×`;
+    persistPathToClientData();
     // applyPathPoseAtT reads pathLensScale per frame — a mid-preview drag
     // applies live with no extra wiring.
   };
@@ -3151,7 +3157,10 @@ function buildNodeUI(node, containerEl) {
       let existing = {};
       try { existing = widget?.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
       existing.path_frames = frames;
-      existing.camera_path = { keyframes: pathKeyframes.map(kfToJSON), fps: pathFps, frame_count: pathFrameCount };
+      existing.camera_path = {
+        keyframes: pathKeyframes.map(kfToJSON), fps: pathFps,
+        frame_count: pathFrameCount, lens_scale: pathLensScale,
+      };
       existing.atlas_proxy_path = {
         transport: "jpeg_base64_proxy_ldr",
         width: W,

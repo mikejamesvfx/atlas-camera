@@ -145,6 +145,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasLiveMeshRepair,
     AtlasRetopologizeLayer,
     AtlasPlanarHolePatch,
+    AtlasPathGuidedHoleRepair,
     AtlasDeriveWalls,
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
