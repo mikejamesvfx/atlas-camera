@@ -35,6 +35,8 @@ from atlas_camera.comfy.node_helpers import (
     _require_pil,
     _require_torch,
     _resolve_exclude_mask,
+    _apply_backdrop_mode,
+    BACKDROP_WIDGET,
     _save_image_tensor_to_tmp,
     _solve_camera_params,
     apply_live_mesh_repair,
@@ -2023,7 +2025,8 @@ class AtlasDeriveWalls:
     points individually pass a near-vertical-normal filter, so it truncates
     sloped roofs/spires/towers — use AtlasDeriveTowersSpires for those.
     Set max_objects=0 for walls/ground/backdrop only (no foreground boxes)."""
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
     FUNCTION = "derive"
     CATEGORY = "Atlas Camera/Derive Geometry"
 
@@ -2061,15 +2064,18 @@ class AtlasDeriveWalls:
                                "before solving (most street/architectural photos show "
                                "enough contact as-is; occluded bases are detected and "
                                "fall back to the classic depth-median distance)."}),
+                **BACKDROP_WIDGET,
             },
         }
 
     def derive(self, solve, depth, max_walls=4, max_objects=0, distance_modes=1,
-               exclude_mask=None, ground_anchor=False):
+               exclude_mask=None, ground_anchor=False, backdrop="measured_only"):
         from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_projection_proxies
         params = _solve_camera_params(solve, depth)
         if params is None:
-            return (solve,)
+            # Silent no-op was the old behaviour; say why instead.
+            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
+                           "geometry unchanged")
         width, height, fx, fy, cx, cy = params
         depth_map = _depth_map_for_solve(depth, width, height)
         horizon_y = _horizon_y_from_solve(solve)
@@ -2086,7 +2092,8 @@ class AtlasDeriveWalls:
             "distance_modes": int(distance_modes),
             "ground_anchor": bool(ground_anchor),
         })
-        return (out,)
+        note = _apply_backdrop_mode(out, backdrop)
+        return (out, note or "geometry derived; backdrop as measured")
 
 
 class AtlasDeriveTowersSpires:
@@ -2094,7 +2101,8 @@ class AtlasDeriveTowersSpires:
     (vertical_extrusion) — one job, reaches towers/spires/sloped roofs that
     AtlasDeriveWalls' azimuth_walls truncates. Per Hoiem/Efros/Hebert's
     "Automatic Photo Pop-up" (SIGGRAPH 2005) billboard-cutout technique."""
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
     FUNCTION = "derive"
     CATEGORY = "Atlas Camera/Derive Geometry"
 
@@ -2137,15 +2145,18 @@ class AtlasDeriveTowersSpires:
                                "cut to its own top, and with ground_anchor each gets "
                                "its own footprint distance) instead of one rectangle "
                                "spanning sky above the shorter buildings."}),
+                **BACKDROP_WIDGET,
             },
         }
 
     def derive(self, solve, depth, max_walls=4, max_objects=0, distance_modes=1,
-               exclude_mask=None, ground_anchor=False, roofline_split=False):
+               exclude_mask=None, ground_anchor=False, roofline_split=False, backdrop="measured_only"):
         from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_vertical_extrusion_proxies
         params = _solve_camera_params(solve, depth)
         if params is None:
-            return (solve,)
+            # Silent no-op was the old behaviour; say why instead.
+            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
+                           "geometry unchanged")
         width, height, fx, fy, cx, cy = params
         depth_map = _depth_map_for_solve(depth, width, height)
         horizon_y = _horizon_y_from_solve(solve)
@@ -2164,14 +2175,16 @@ class AtlasDeriveTowersSpires:
             "ground_anchor": bool(ground_anchor),
             "roofline_split": bool(roofline_split),
         })
-        return (out,)
+        note = _apply_backdrop_mode(out, backdrop)
+        return (out, note or "geometry derived; backdrop as measured")
 
 
 class AtlasDeriveRoofsFacades:
     """Any-orientation planes via sequential RANSAC (ransac_planes) — one
     job, sloped roofs and stepped/angled facades. Best for exterior
     architecture where a single flat wall height is the wrong shape."""
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
     FUNCTION = "derive"
     CATEGORY = "Atlas Camera/Derive Geometry"
 
@@ -2185,14 +2198,17 @@ class AtlasDeriveRoofsFacades:
             "optional": {
                 "max_planes": ("INT", {"default": 8, "min": 1, "max": 16,
                     "tooltip": "Plane budget (roofs, facades, ramps)."}),
+                **BACKDROP_WIDGET,
             },
         }
 
-    def derive(self, solve, depth, max_planes=8):
+    def derive(self, solve, depth, max_planes=8, backdrop="measured_only"):
         from atlas_camera.core.plane_extraction import PlaneRansacConfig, extract_planes_ransac
         params = _solve_camera_params(solve, depth)
         if params is None:
-            return (solve,)
+            # Silent no-op was the old behaviour; say why instead.
+            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
+                           "geometry unchanged")
         width, height, fx, fy, cx, cy = params
         depth_map = _depth_map_for_solve(depth, width, height)
         horizon_y = _horizon_y_from_solve(solve)
@@ -2203,7 +2219,8 @@ class AtlasDeriveRoofsFacades:
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "primitive_method": "ransac_planes", "derive_node": "AtlasDeriveRoofsFacades",
         })
-        return (out,)
+        note = _apply_backdrop_mode(out, backdrop)
+        return (out, note or "geometry derived; backdrop as measured")
 
 
 class AtlasDeriveInteriorRoom:
@@ -2211,7 +2228,8 @@ class AtlasDeriveInteriorRoom:
     (room_cuboid) — one job, orthogonal interiors. Produces confidently
     wrong/skewed results on non-orthogonal rooms — pick a different node
     for those shots."""
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
     FUNCTION = "derive"
     CATEGORY = "Atlas Camera/Derive Geometry"
 
@@ -2222,13 +2240,16 @@ class AtlasDeriveInteriorRoom:
                 "solve": ("ATLAS_SOLVE",),
                 "depth": ("ATLAS_DEPTH_MAP",),
             },
+            "optional": {**BACKDROP_WIDGET},
         }
 
-    def derive(self, solve, depth):
+    def derive(self, solve, depth, backdrop="measured_only"):
         from atlas_camera.core.room_layout import RoomCuboidConfig, extract_room_cuboid
         params = _solve_camera_params(solve, depth)
         if params is None:
-            return (solve,)
+            # Silent no-op was the old behaviour; say why instead.
+            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
+                           "geometry unchanged")
         width, height, fx, fy, cx, cy = params
         depth_map = _depth_map_for_solve(depth, width, height)
         horizon_y = _horizon_y_from_solve(solve)
@@ -2239,7 +2260,8 @@ class AtlasDeriveInteriorRoom:
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "primitive_method": "room_cuboid", "derive_node": "AtlasDeriveInteriorRoom",
         })
-        return (out,)
+        note = _apply_backdrop_mode(out, backdrop)
+        return (out, note or "geometry derived; backdrop as measured")
 
 
 class AtlasMergeGeometry:

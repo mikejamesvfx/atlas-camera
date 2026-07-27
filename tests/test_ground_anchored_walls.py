@@ -97,9 +97,9 @@ def test_banana_bias_recovered_by_ground_anchor():
     # filter and no wall is found at all — itself a real banana failure
     # mode, but not the one under test here).
     depth = _scene(banana=0.15)
-    biased, = AtlasDeriveWalls().derive(
+    biased, _rep = AtlasDeriveWalls().derive(
         _solve(), _depth_result(depth), max_walls=4)
-    anchored, = AtlasDeriveWalls().derive(
+    anchored, _rep = AtlasDeriveWalls().derive(
         _solve(), _depth_result(depth), max_walls=4, ground_anchor=True)
     d_biased = abs(_walls(biased)[0].metadata["distance_m"])
     d_anchor = abs(_walls(anchored)[0].metadata["distance_m"])
@@ -111,7 +111,7 @@ def test_banana_bias_recovered_by_ground_anchor():
 
 def test_flag_off_is_previous_behavior():
     depth = _scene(banana=0.15)
-    off, = AtlasDeriveWalls().derive(_solve(), _depth_result(depth), max_walls=4)
+    off, _rep = AtlasDeriveWalls().derive(_solve(), _depth_result(depth), max_walls=4)
     w = _walls(off)[0]
     assert w.metadata["ground_anchored"] is False
     assert w.metadata["anchor_weight"] is None
@@ -122,7 +122,7 @@ def test_occluded_base_never_anchors():
     # lowest VISIBLE pixels land far behind the building. The poison-gate
     # must refuse the anchor and keep the depth-median distance.
     depth = _scene(banana=0.0, base_lift_m=1.2)
-    out, = AtlasDeriveWalls().derive(
+    out, _rep = AtlasDeriveWalls().derive(
         _solve(), _depth_result(depth), max_walls=4, ground_anchor=True)
     w = _walls(out)[0]
     assert w.metadata["ground_anchored"] is False
@@ -131,9 +131,9 @@ def test_occluded_base_never_anchors():
 
 def test_roofline_split_emits_one_wall_per_step():
     depth = _scene(two_rooflines=True, wall_h=3.0)
-    single, = AtlasDeriveTowersSpires().derive(
+    single, _rep = AtlasDeriveTowersSpires().derive(
         _solve(), _depth_result(depth), max_walls=8)
-    split, = AtlasDeriveTowersSpires().derive(
+    split, _rep = AtlasDeriveTowersSpires().derive(
         _solve(), _depth_result(depth), max_walls=8, roofline_split=True)
     assert len(_walls(single)) == 1
     seg_walls = _walls(split)
@@ -146,7 +146,7 @@ def test_roofline_split_emits_one_wall_per_step():
 
 def test_roofline_split_with_anchor_per_segment():
     depth = _scene(two_rooflines=True, wall_h=3.0, banana=0.10)
-    out, = AtlasDeriveTowersSpires().derive(
+    out, _rep = AtlasDeriveTowersSpires().derive(
         _solve(), _depth_result(depth), max_walls=8,
         roofline_split=True, ground_anchor=True)
     seg_walls = _walls(out)
@@ -180,7 +180,7 @@ def test_foreign_base_contamination_gated():
                         np.where(np.isfinite(t_wall), t_wall, SKY)])
     dm = stacked.min(axis=0).astype(np.float32)
 
-    out, = AtlasDeriveWalls().derive(
+    out, _rep = AtlasDeriveWalls().derive(
         _solve(), _depth_result(dm), max_walls=4, ground_anchor=True)
     for p in _walls(out):
         # every surviving wall must sit near the real 8m facade OR the real

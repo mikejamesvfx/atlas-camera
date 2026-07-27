@@ -89,13 +89,13 @@ def _walls(out_solve):
 def test_classic_single_mode_collapses_same_azimuth_depths():
     # The documented limitation distance_modes exists to fix: one plane per
     # facing direction, everything else discarded.
-    (out,) = AtlasDeriveWalls().derive(
+    out, _rep = AtlasDeriveWalls().derive(
         _solve(), _depth_result(_two_wall_depth()), max_walls=16)
     assert len(_walls(out)) == 1
 
 
 def test_distance_modes_split_same_azimuth_into_depth_rows():
-    (out,) = AtlasDeriveWalls().derive(
+    out, _rep = AtlasDeriveWalls().derive(
         _solve(), _depth_result(_two_wall_depth()), max_walls=16,
         distance_modes=4)
     walls = _walls(out)
@@ -110,14 +110,14 @@ def test_distance_modes_split_same_azimuth_into_depth_rows():
 
 
 def test_distance_modes_work_on_towers_spires_too():
-    (out,) = AtlasDeriveTowersSpires().derive(
+    out, _rep = AtlasDeriveTowersSpires().derive(
         _solve(), _depth_result(_two_wall_depth()), max_walls=16,
         distance_modes=4)
     assert len(_walls(out)) == 2
 
 
 def test_max_walls_budget_still_caps_modes():
-    (out,) = AtlasDeriveWalls().derive(
+    out, _rep = AtlasDeriveWalls().derive(
         _solve(), _depth_result(_two_wall_depth()), max_walls=1,
         distance_modes=4)
     assert len(_walls(out)) == 1
@@ -157,7 +157,7 @@ def test_exclude_mask_node_input_via_torch_tensor():
     torch = pytest.importorskip("torch")
     excl = torch.zeros(1, H, W)
     excl[:, :, : W // 2] = 1.0
-    (out,) = AtlasDeriveWalls().derive(
+    out, _rep = AtlasDeriveWalls().derive(
         _solve(), _depth_result(_two_wall_depth()), max_walls=16,
         distance_modes=4, exclude_mask=excl)
     walls = _walls(out)

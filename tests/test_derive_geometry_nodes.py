@@ -101,7 +101,10 @@ def test_all_five_nodes_registered():
     for name in ["AtlasDeriveWalls", "AtlasDeriveTowersSpires",
                  "AtlasDeriveRoofsFacades", "AtlasDeriveInteriorRoom"]:
         assert name in NODE_CLASS_MAPPINGS
-        assert NODE_CLASS_MAPPINGS[name].RETURN_TYPES == ("ATLAS_SOLVE",)
+        # `report` was APPENDED (slot 1) so these nodes can explain a dropped
+        # or invented backdrop; slot 0 is unchanged, so saved links survive.
+        assert NODE_CLASS_MAPPINGS[name].RETURN_TYPES == ("ATLAS_SOLVE", "STRING")
+        assert NODE_CLASS_MAPPINGS[name].RETURN_NAMES == ("solve", "report")
     assert "AtlasDeriveReliefMesh" in NODE_CLASS_MAPPINGS
     assert NODE_CLASS_MAPPINGS["AtlasDeriveReliefMesh"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK")
 
@@ -130,7 +133,7 @@ def test_relief_quality_overrides_relief_grid():
 def test_walls_node_finds_ground_and_wall():
     solve = _solve()
     depth = _depth_result(_room_depth())
-    (out,) = AtlasDeriveWalls().derive(solve, depth, max_walls=4, max_objects=0)
+    out, _rep = AtlasDeriveWalls().derive(solve, depth, max_walls=4, max_objects=0)
 
     names = _proxy_names(out)
     assert "projection_ground" in names
@@ -143,7 +146,7 @@ def test_walls_node_finds_ground_and_wall():
 def test_towers_spires_node_finds_ground_and_wall():
     solve = _solve()
     depth = _depth_result(_room_depth())
-    (out,) = AtlasDeriveTowersSpires().derive(solve, depth, max_walls=4, max_objects=0)
+    out, _rep = AtlasDeriveTowersSpires().derive(solve, depth, max_walls=4, max_objects=0)
 
     names = _proxy_names(out)
     assert "projection_ground" in names
@@ -156,14 +159,14 @@ def test_no_focal_length_returns_solve_unchanged():
     solve = AtlasSolve(camera=LatentCamera(intrinsics=intr, extrinsics=AtlasExtrinsics()))
     depth = _depth_result(_room_depth())
 
-    (out,) = AtlasDeriveWalls().derive(solve, depth)
+    out, _rep = AtlasDeriveWalls().derive(solve, depth)
     assert out is solve  # returned unchanged, per the fx<=0 guard
 
 
 def test_roofs_facades_node_runs_and_tags_output():
     solve = _solve()
     depth = _depth_result(_room_depth())
-    (out,) = AtlasDeriveRoofsFacades().derive(solve, depth, max_planes=8)
+    out, _rep = AtlasDeriveRoofsFacades().derive(solve, depth, max_planes=8)
 
     assert out.projection_scene.debug_metadata["proxy_derivation"]["primitive_method"] == "ransac_planes"
     assert _all_tagged(out)
@@ -172,7 +175,7 @@ def test_roofs_facades_node_runs_and_tags_output():
 def test_interior_room_node_runs_and_tags_output():
     solve = _solve()
     depth = _depth_result(_room_depth())
-    (out,) = AtlasDeriveInteriorRoom().derive(solve, depth)
+    out, _rep = AtlasDeriveInteriorRoom().derive(solve, depth)
 
     assert out.projection_scene.debug_metadata["proxy_derivation"]["primitive_method"] == "room_cuboid"
     assert _all_tagged(out)
@@ -286,3 +289,78 @@ def test_atlas_derive_relief_mesh_signature_matches_input_types():
     for sec in ("required", "optional"):
         input_names.extend(it.get(sec, {}).keys())
     assert all_params == input_names, f"params {all_params} inputs {input_names}"
+
+
+# ---------------------------------------------------------------------------
+# backdrop provenance — the "a plane appeared out of nowhere" fix
+# ---------------------------------------------------------------------------
+
+def _all_invalid_depth():
+    return _depth_result(np.zeros((H, W), dtype=np.float32))
+
+
+def _prim_names(out):
+    return [p.name for p in out.projection_scene.proxy_geometry]
+
+
+def test_assumed_backdrop_is_dropped_by_default():
+    """With no valid depth there is nothing to place a backdrop against, so
+    the old code emitted a plane at a hardcoded 60 m with invented extents.
+    That invented geometry is what shows up as an unexplained plane."""
+    pytest.importorskip("torch")
+    out, report = AtlasDeriveWalls().derive(_solve(), _all_invalid_depth())
+    assert "projection_backdrop" not in _prim_names(out)
+    assert "ASSUMED" in report and "60 m" in report
+
+
+def test_assumed_backdrop_can_be_restored_explicitly():
+    """backdrop='always' is the pre-2026-07-27 behaviour — still available,
+    but it must SAY the plane is invented rather than implying it was measured."""
+    pytest.importorskip("torch")
+    out, report = AtlasDeriveWalls().derive(
+        _solve(), _all_invalid_depth(), backdrop="always")
+    assert "projection_backdrop" in _prim_names(out)
+    assert "KEPT an ASSUMED backdrop" in report
+
+
+def test_measured_backdrop_survives_the_default():
+    """The gate must only drop INVENTED backdrops — a measured one is real
+    geometry and has to come through untouched."""
+    pytest.importorskip("torch")
+    out, report = AtlasDeriveWalls().derive(_solve(), _depth_result(_room_depth()))
+    assert "projection_backdrop" in _prim_names(out)
+    assert "ASSUMED" not in report
+
+
+def test_backdrop_never_drops_even_a_measured_one():
+    pytest.importorskip("torch")
+    out, report = AtlasDeriveWalls().derive(
+        _solve(), _depth_result(_room_depth()), backdrop="never")
+    assert "projection_backdrop" not in _prim_names(out)
+    assert "backdrop=never" in report
+
+
+def test_backdrop_primitive_records_its_provenance():
+    """The metadata is what makes the decision auditable downstream."""
+    pytest.importorskip("torch")
+    out, _ = AtlasDeriveWalls().derive(_solve(), _depth_result(_room_depth()))
+    backdrop = next(p for p in out.projection_scene.proxy_geometry
+                    if p.name == "projection_backdrop")
+    assert backdrop.metadata["backdrop_depth_source"] == "measured"
+    assert backdrop.metadata["backdrop_extents_source"] in ("frustum", "assumed")
+
+
+def test_backdrop_widget_is_appended_last():
+    for cls in (AtlasDeriveWalls, AtlasDeriveTowersSpires,
+                AtlasDeriveRoofsFacades, AtlasDeriveInteriorRoom):
+        assert list(cls.INPUT_TYPES()["optional"])[-1] == "backdrop"
+
+
+def test_no_usable_focal_reports_instead_of_silently_passing_through():
+    """The old guard was a silent no-op; gate doctrine wants the explanation."""
+    pytest.importorskip("torch")
+    solve = _solve()
+    solve.camera.intrinsics.fx_px = 0.0
+    out, report = AtlasDeriveWalls().derive(solve, _depth_result(_room_depth()))
+    assert out is solve
+    assert "SKIPPED" in report and "focal" in report

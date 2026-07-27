@@ -134,22 +134,20 @@ VERDICTS["AtlasLoadPlate"]["notes"] = (
 
 #: Known defects worth recording against nodes that are otherwise KEEP_CORE.
 DEFECTS: dict[str, str] = {
-    "AtlasRetopologizeLayer":
-        "method='smooth' Taubin-relaxes every vertex and then keeps the "
-        "existing UVs on the grounds that topology is unchanged — but moving a "
-        "vertex changes where it projects, so projective registration degrades "
-        "to 2.9e-2 against a 1.1e-3 build baseline (26x). Pinned by "
-        "tests/test_retopologize_layer.py::"
-        "test_method_smooth_deregisters_uvs_and_boundary_pass_reduces_it. "
-        "The boundary_smooth_iterations pass regenerates UVs for what it moves "
-        "and reduces the error; fixing 'smooth' itself needs its own change.",
+    # AtlasRetopologizeLayer's method='smooth' UV defect was FIXED 2026-07-27
+    # (it now regenerates projective UVs; 2.9e-2 -> 1.2e-3 against a 1.1e-3
+    # build baseline). Kept out of DEFECTS deliberately — the regression is
+    # pinned by tests/test_retopologize_layer.py::
+    # test_method_smooth_regenerates_projective_uvs.
     "AtlasDeriveWalls":
-        "Emits an unconditional projection_backdrop plane even when extraction "
-        "finds nothing, with a hardcoded 60 m fallback depth and invented "
-        "extents when no frustum corner hits the plane. Deliberate and "
-        "test-pinned (backdrop-only on a flat/all-sky scene), but the four "
-        "derive nodes have no report output, so the fallback cannot be "
-        "surfaced — and their only guard, a None camera, is a silent no-op.",
+        "FIXED 2026-07-27. Previously emitted a projection_backdrop plane even "
+        "with no valid depth — hardcoded 60 m, invented extents, no way to "
+        "explain it because the node had no report output. Now: the primitive "
+        "records backdrop_depth_source/backdrop_extents_source, an appended "
+        "`backdrop` widget defaults to measured_only (invented backdrops are "
+        "dropped and reported; 'always' restores the old behaviour and says the "
+        "plane is invented), and an appended `report` output carries the "
+        "explanation. The fx<=0 guard now reports instead of silently no-opping.",
 }
 for _n in ("AtlasDeriveTowersSpires", "AtlasDeriveRoofsFacades",
            "AtlasDeriveInteriorRoom", "AtlasDeriveProjectionGeometry"):

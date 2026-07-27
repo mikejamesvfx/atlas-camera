@@ -228,35 +228,51 @@ def test_boundary_smoothing_after_decimate_keeps_uvs_registered():
     assert _uv_registration_error(out) < 2e-3
 
 
-def test_method_smooth_deregisters_uvs_and_boundary_pass_reduces_it():
-    """KNOWN DEFECT, pinned so it stays visible and cannot silently worsen.
+def test_method_smooth_regenerates_projective_uvs():
+    """Regression for a real defect: `smooth` used to leave UVs stale.
 
-    ``apply_retopo(method="smooth")`` runs a trimesh Taubin relax over EVERY
-    vertex and then deliberately keeps the existing UVs, on the grounds that
-    topology (and so the 1:1 vertex-UV index mapping) is unchanged. But moving
-    a vertex changes where it projects, so the projective UVs go stale:
-    measured 2.9e-2 against a 1.1e-3 build baseline — 26x.
-
-    Boundary smoothing regenerates UVs for the vertices it moves, which is why
-    it *reduces* the error rather than adding to it. Recorded in the feature
-    audit; fixing `smooth` itself is a separate change with its own evidence.
+    A Taubin relax preserves topology, so the 1:1 vertex-UV INDEX mapping
+    survives — which is why the branch originally kept the existing UVs. But
+    every vertex moves, and a moved vertex projects somewhere else, so the
+    projective registration went stale: measured 2.9e-2 against a 1.1e-3 build
+    baseline (26x), i.e. the projection visibly slides off the geometry.
     """
     from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
 
     solve = _relief_solve()
     baseline = _uv_registration_error(solve)
 
-    smooth_only, _ = AtlasRetopologizeLayer().retopo(
+    smooth_only, report = AtlasRetopologizeLayer().retopo(
         copy.deepcopy(solve), layer="", method="smooth", smooth_iterations=2)
     err_smooth = _uv_registration_error(smooth_only)
+    assert err_smooth < baseline + 5e-4, "smooth must re-register its UVs"
+    assert "UVs regenerated" in report
 
     with_boundary, _ = AtlasRetopologizeLayer().retopo(
         copy.deepcopy(solve), layer="", method="smooth", smooth_iterations=2,
         boundary_smooth_iterations=8)
-    err_both = _uv_registration_error(with_boundary)
+    assert _uv_registration_error(with_boundary) < baseline + 5e-4
 
-    assert err_smooth > 10 * baseline        # the defect is real and large
-    assert err_both < err_smooth             # the migrated pass helps, never hurts
+
+def test_smooth_without_intrinsics_says_uvs_are_stale():
+    """Intrinsics stay OPTIONAL for smooth (unlike quad/decimate), because a
+    caller may smooth a mesh carrying no projection — but silence would imply
+    the UVs are still good."""
+    import numpy as np
+
+    from atlas_camera.core.mesh_retopo import apply_retopo
+
+    class M:
+        pass
+
+    m = M()
+    m.vertices = np.array([[0., 0., -5.], [1., 0., -5.], [0., 1., -5.],
+                           [1., 1., -5.2]], dtype=np.float64)
+    m.faces = np.array([[0, 1, 2], [1, 3, 2]], dtype=np.int64)
+    m.uvs = np.zeros((4, 2), dtype=np.float64)
+    report = apply_retopo(m, method="smooth", smooth_iterations=1)
+    assert report["changed"] is True
+    assert "NOT regenerated" in report["note"] and "stale" in report["note"]
 
 
 def test_boundary_smoothing_skipped_without_intrinsics():

@@ -213,6 +213,37 @@ def render_markdown(report: dict) -> str:
         note = r.get("notes") or (r["evidence"][0] if r["evidence"] else "")
         out.append(f"* **`{k}`** — {note}")
 
+    out += [
+        "", "## Appendix — capabilities REMOVED, not replaced", "",
+        "Retiring `AtlasLiveMeshRepair` to the legacy tier keeps one of its four",
+        "capabilities and drops three. They are listed here so the migration is",
+        "not mistaken for an equivalence:", "",
+        "| Capability | Status | Where it went |",
+        "|---|---|---|",
+        "| Boundary Taubin smoothing | **migrated** | `AtlasRetopologizeLayer("
+        "boundary_smooth_iterations)`, verbatim implementation, UVs regenerated |",
+        "| CUDA 2D grid hole fill | **removed** | `core/mesh_repair."
+        "repair_relief_mesh_grid_cuda` still exists but now has no node caller. "
+        "The replacement, `AtlasPlanarHolePatch`, is a different algorithm: "
+        "per-component plane fitting with reports and gates, not a grid convolution |",
+        "| Harmonic enclosed-hole cap | **removed** | same function; the "
+        "membrane fill for sealed pockets has no equivalent in the planar patch |",
+        "| Post-hoc stretch cull (`remove_stretch_factor`) | **removed** | "
+        "`core/mesh_repair.remove_stretched_faces` still exists, no node caller. "
+        "Deliberately NOT appended to `AtlasRetopologizeLayer`: every shipping "
+        "workflow set it to 0.0, it has no node-level test, and `max_edge_factor` "
+        "on the layer/derive nodes covers the same test at build time with the "
+        "depth map in hand |", "",
+        "All three removed capabilities operated *downstream, on an already-built",
+        "solve*. What survives on the build path is unaffected: CPU hole fill and",
+        "sawtooth bridging still run via `apply_live_mesh_repair` from",
+        "`AtlasDeriveReliefMesh` and `AtlasDeriveProjectionGeometry`, and",
+        "`apply_interior_hole_fill` still backs the relief-mesh exporter.",
+        "",
+        "Re-exposing any of the three is a one-widget append if evidence appears.",
+        "",
+    ]
+
     defects = [(k, r) for k, r in report["nodes"].items() if r["known_defect"]]
     if defects:
         out += ["", "## Appendix — known defects", ""]

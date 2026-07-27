@@ -1056,3 +1056,62 @@ __all__ = [
     '_resolve_band_geometry',
     '_analytic_ground_forward_depth',
 ]
+
+
+# Backdrop mode shared by every derive node. The backdrop is emitted
+# unconditionally by all four extraction backends (proxy_geometry step 8 and
+# its siblings), including when there is NO valid depth to place it against —
+# in which case its distance is a hardcoded 60 m and its extents are invented.
+# That is the "a plane appeared out of nowhere" case; the primitive now records
+# which it is (`backdrop_depth_source` / `backdrop_extents_source`), so the
+# node layer can drop the invented one and say so.
+BACKDROP_MODES = ["measured_only", "always", "never"]
+
+BACKDROP_WIDGET = {
+    "backdrop": (BACKDROP_MODES, {
+        "default": "measured_only",
+        "tooltip": "Far cyclorama plane behind the extracted geometry. "
+                   "measured_only (default) = emit it only when real depth "
+                   "placed it; if the frame had no valid depth the backdrop "
+                   "would sit at an invented 60 m, so it is dropped and the "
+                   "report says so. always = emit it regardless (the "
+                   "pre-2026-07-27 behaviour). never = never emit it.",
+    }),
+}
+
+
+def _apply_backdrop_mode(solve, mode="measured_only"):
+    """Drop invented backdrops per ``mode``; return a report line.
+
+    Returns "" when there was nothing to decide, so a caller can skip the
+    line entirely.
+    """
+    mode = str(mode or "measured_only")
+    scene = getattr(solve, "projection_scene", None)
+    prims = getattr(scene, "proxy_geometry", None)
+    if not prims:
+        return ""
+    found = [p for p in prims
+             if (p.metadata or {}).get("source") == "depth_derivation"
+             and p.name == "projection_backdrop"]
+    if not found:
+        return ""
+    assumed = [p for p in found
+               if (p.metadata or {}).get("backdrop_depth_source") == "assumed"]
+
+    if mode == "always":
+        if assumed:
+            return ("backdrop: KEPT an ASSUMED backdrop at 60 m — no valid "
+                    "depth placed it, so this plane is invented geometry "
+                    "(backdrop=measured_only drops it)")
+        return ""
+    if mode == "never":
+        scene.proxy_geometry = [p for p in prims if p not in found]
+        return f"backdrop: dropped {len(found)} backdrop plane(s) (backdrop=never)"
+    # measured_only
+    if not assumed:
+        return ""
+    scene.proxy_geometry = [p for p in prims if p not in assumed]
+    return ("backdrop: dropped an ASSUMED backdrop — the frame carried no "
+            "valid depth, so it would have been an invented plane at 60 m "
+            "(backdrop=always restores it)")

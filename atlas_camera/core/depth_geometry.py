@@ -467,9 +467,15 @@ def build_backdrop_primitive(
     from atlas_camera.core.schema import AtlasProxyPrimitive
 
     R_cw, cam_pos = bp.R_cw, bp.cam_pos
+    # PROVENANCE. With no valid depth anywhere there is nothing to place a
+    # backdrop against, and the 60 m below is pure invention — the source of
+    # the "unwanted plane appeared out of nowhere" reports. The primitive
+    # records which case it is so a caller can drop the invented one and a
+    # report can explain the choice; see `backdrop_depth_source` in metadata.
+    measured = bool(valid_depth.any())
     backdrop_d_raw = float(np.percentile(
         scaled_depth[valid_depth], backdrop_depth_percentile
-    )) if valid_depth.any() else 60.0
+    )) if measured else 60.0
 
     D = 1.02 * backdrop_d_raw
     fwd = R_cw @ np.array([0.0, 0.0, -1.0])
@@ -495,7 +501,10 @@ def build_backdrop_primitive(
         p = cam_pos + min(t, 4.0 * D) * d_w
         us.append(float(np.dot(p - c0, u_b)))
         ys_.append(float(p[1]))
+    frustum_hit = bool(us)
     if not us:
+        # No frustum-corner ray reached the plane: the extents below are
+        # invented too, not measured.
         us, ys_ = [-D, D], [0.0, D]
     mfrac = backdrop_margin - 1.0
     u_lo, u_hi = min(us), max(us)
@@ -520,7 +529,13 @@ def build_backdrop_primitive(
         dimensions=(float(bw), float(bh), 0.0),
         material="atlas_projection_proxy",
         metadata={"role": PROXY_ROLE, "source": "depth_derivation",
-                  "distance_m": float(D), "depth_scale_applied": scale},
+                  "distance_m": float(D), "depth_scale_applied": scale,
+                  # "measured" = placed against real depth; "assumed" = there
+                  # was no valid depth at all and the distance is the 60 m
+                  # default. "assumed" backdrops are invented geometry and a
+                  # caller may legitimately refuse to emit them.
+                  "backdrop_depth_source": "measured" if measured else "assumed",
+                  "backdrop_extents_source": "frustum" if frustum_hit else "assumed"},
     )
 
 

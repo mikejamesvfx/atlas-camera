@@ -417,12 +417,36 @@ def apply_retopo(
     if method == "smooth":
         out_v, out_f = smooth_relax(vertices, faces, iterations=int(smooth_iterations))
         mesh.vertices = out_v
-        # Topology unchanged → 1:1 vertex-UV preserved → keep existing UVs.
+        # Topology is unchanged, so the 1:1 vertex-UV INDEX mapping survives —
+        # but every vertex MOVED, and a moved vertex projects somewhere else,
+        # so the projective UVs are stale. Keeping them (as this branch used to)
+        # measured 2.9e-2 of registration error against a 1.1e-3 build
+        # baseline: 26x, i.e. the projection visibly slides off the geometry.
+        # Regenerate whenever the intrinsics are available. They are optional
+        # here, unlike quad/decimate, because a caller may legitimately smooth a
+        # mesh that carries no projection; in that case say the UVs are stale
+        # rather than implying they are fine.
+        note = f"trimesh Taubin smooth x{smooth_iterations}"
+        if (view_matrix is not None and fx > 0 and fy > 0
+                and image_width > 1 and image_height > 1
+                and getattr(mesh, "uvs", None) is not None
+                and len(mesh.uvs) == len(out_v)):
+            mesh.uvs = regenerate_projective_uvs(
+                out_v,
+                view_matrix=view_matrix, fx=float(fx), fy=float(fy),
+                cx=float(cx) if cx is not None else image_width / 2.0,
+                cy=float(cy) if cy is not None else image_height / 2.0,
+                image_width=int(image_width), image_height=int(image_height),
+            )
+            note += " (UVs regenerated)"
+        else:
+            note += (" (UVs NOT regenerated — no usable intrinsics; projective "
+                     "registration is now stale)")
         return {
             "method": "smooth", "changed": True,
             "in_verts": in_v, "out_verts": int(len(out_v)),
             "in_faces": in_f, "out_faces": int(len(out_f)),
-            "note": f"trimesh Taubin smooth ×{smooth_iterations} (UVs preserved)",
+            "note": note,
         }
 
     # quad / decimate change the vertex count → regenerate projective UVs.
