@@ -123,3 +123,168 @@ def test_unknown_layer_reports_available_names():
     solve = _relief_solve()
     out, report = AtlasRetopologizeLayer().retopo(solve, layer="nope", method="smooth")
     assert "not found" in report and "bg" in report
+
+
+# ---------------------------------------------------------------------------
+# boundary_smooth_iterations — capability migrated from AtlasLiveMeshRepair
+# ---------------------------------------------------------------------------
+
+def _primary_mesh(solve):
+    from atlas_camera.comfy.nodes import _relief_mesh_from_solve
+    return _relief_mesh_from_solve(solve)
+
+
+def _uv_registration_error(solve):
+    """max |uv - regenerate_projective_uvs(v)| over every vertex, in UV units.
+
+    This is THE assertion for the migration: boundary smoothing moves
+    vertices, so if their projective UVs are not regenerated with the layer's
+    own camera the projection silently slides off the geometry.
+    """
+    from atlas_camera.core.mesh_retopo import regenerate_projective_uvs
+
+    mesh = _primary_mesh(solve)
+    cam = solve.camera
+    intr, extr = cam.intrinsics, cam.extrinsics
+    expected = regenerate_projective_uvs(
+        np.asarray(mesh.vertices, dtype=np.float64),
+        view_matrix=extr.camera_view_matrix,
+        fx=float(intr.fx_px), fy=float(intr.fy_px or intr.fx_px),
+        cx=float(intr.cx_px), cy=float(intr.cy_px),
+        image_width=int(intr.image_width), image_height=int(intr.image_height))
+    return float(np.abs(np.asarray(mesh.uvs, dtype=np.float64) - expected).max())
+
+
+def test_boundary_smooth_widget_is_appended_last():
+    """Widgets are positional in saved workflows — appends only, never inserts."""
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+
+    assert list(AtlasRetopologizeLayer.INPUT_TYPES()["optional"]) == [
+        "layer", "method", "target_vertex_count", "smooth_iterations",
+        "crease_angle", "pure_quad", "boundary_smooth_iterations",
+    ]
+
+
+def test_boundary_smoothing_runs_with_method_off():
+    """The early-return regression: method='off' reports changed=False, but
+    'just round the silhouette' is exactly what that configuration means."""
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+
+    solve = _relief_solve()
+    before = _primary_verts(solve)
+    out, report = AtlasRetopologizeLayer().retopo(
+        solve, layer="", method="off", boundary_smooth_iterations=8)
+    after = _primary_verts(out)
+    assert after.shape == before.shape                    # topology untouched
+    assert not np.allclose(after, before)                 # but something moved
+    assert "boundary smooth" in report
+
+
+def test_boundary_smoothing_moves_only_boundary_verts():
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+    from atlas_camera.core.mesh_repair import boundary_edges
+
+    solve = _relief_solve()
+    mesh0 = _primary_mesh(solve)
+    before = np.asarray(mesh0.vertices).copy()
+    boundary = set(np.asarray(boundary_edges(np.asarray(mesh0.faces))).reshape(-1).tolist())
+
+    out, _ = AtlasRetopologizeLayer().retopo(
+        solve, layer="", method="off", boundary_smooth_iterations=8)
+    after = _primary_verts(out)
+
+    moved = {int(i) for i in np.nonzero(~np.isclose(after, before).all(axis=1))[0]}
+    assert moved, "expected at least one boundary vertex to move"
+    assert moved <= boundary, "an interior vertex moved — smoothing must be boundary-only"
+
+
+def test_boundary_smoothing_keeps_projective_uvs_registered():
+    """Boundary smoothing must not degrade projective registration.
+
+    The BUILD itself carries ~1.1e-3 of UV error, because serialized vertices
+    round to 3 dp (metres) and UVs to 4 dp — so the honest bar is "no worse
+    than the mesh we were handed", measured, not an absolute epsilon.
+    """
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+
+    solve = _relief_solve()
+    baseline = _uv_registration_error(solve)
+    out, _ = AtlasRetopologizeLayer().retopo(
+        solve, layer="", method="off", boundary_smooth_iterations=8)
+    after = _uv_registration_error(out)
+    assert after < baseline + 5e-4          # measured: 1.09e-3 -> 1.30e-3
+    assert after < 2e-3
+
+
+def test_boundary_smoothing_after_decimate_keeps_uvs_registered():
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+
+    solve = _relief_solve()
+    n0 = len(_primary_verts(solve))
+    out, _ = AtlasRetopologizeLayer().retopo(
+        solve, layer="", method="decimate", target_vertex_count=200,
+        boundary_smooth_iterations=8)
+    assert len(_primary_verts(out)) < n0     # it really decimated
+    assert _uv_registration_error(out) < 2e-3
+
+
+def test_method_smooth_deregisters_uvs_and_boundary_pass_reduces_it():
+    """KNOWN DEFECT, pinned so it stays visible and cannot silently worsen.
+
+    ``apply_retopo(method="smooth")`` runs a trimesh Taubin relax over EVERY
+    vertex and then deliberately keeps the existing UVs, on the grounds that
+    topology (and so the 1:1 vertex-UV index mapping) is unchanged. But moving
+    a vertex changes where it projects, so the projective UVs go stale:
+    measured 2.9e-2 against a 1.1e-3 build baseline — 26x.
+
+    Boundary smoothing regenerates UVs for the vertices it moves, which is why
+    it *reduces* the error rather than adding to it. Recorded in the feature
+    audit; fixing `smooth` itself is a separate change with its own evidence.
+    """
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+
+    solve = _relief_solve()
+    baseline = _uv_registration_error(solve)
+
+    smooth_only, _ = AtlasRetopologizeLayer().retopo(
+        copy.deepcopy(solve), layer="", method="smooth", smooth_iterations=2)
+    err_smooth = _uv_registration_error(smooth_only)
+
+    with_boundary, _ = AtlasRetopologizeLayer().retopo(
+        copy.deepcopy(solve), layer="", method="smooth", smooth_iterations=2,
+        boundary_smooth_iterations=8)
+    err_both = _uv_registration_error(with_boundary)
+
+    assert err_smooth > 10 * baseline        # the defect is real and large
+    assert err_both < err_smooth             # the migrated pass helps, never hurts
+
+
+def test_boundary_smoothing_skipped_without_intrinsics():
+    """No usable camera -> report it and leave the mesh alone, rather than
+    moving verts and silently stranding their UVs."""
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+
+    solve = _relief_solve()
+    src = solve.projection_sources[0]
+    src.camera.intrinsics.fx_px = 0.0
+    before = np.asarray(
+        (src.proxy_geometry[0].metadata or {}).get("vertices"), dtype=np.float64).copy()
+
+    out, report = AtlasRetopologizeLayer().retopo(
+        solve, layer="bg", method="off", boundary_smooth_iterations=8)
+    after = np.asarray(
+        (out.projection_sources[0].proxy_geometry[0].metadata or {}).get("vertices"),
+        dtype=np.float64)
+
+    assert np.array_equal(before, after)                  # untouched
+    assert "SKIPPED" in report and "intrinsics" in report  # and said so
+
+
+def test_boundary_smoothing_zero_is_a_no_op():
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+
+    solve = _relief_solve()
+    before = _primary_verts(solve)
+    out, _ = AtlasRetopologizeLayer().retopo(
+        solve, layer="", method="off", boundary_smooth_iterations=0)
+    assert np.array_equal(_primary_verts(out), before)

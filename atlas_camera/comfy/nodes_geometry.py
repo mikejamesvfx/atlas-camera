@@ -1146,11 +1146,21 @@ class AtlasRetopologizeLayer:
                     "tooltip": "Quad remesh crease preservation angle (degrees)."}),
                 "pure_quad": ("BOOLEAN", {"default": False,
                     "tooltip": "Quad remesh: force pure quads (else quad-dominant)."}),
+                "boundary_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 50,
+                    "tooltip": "Taubin-relax every open boundary loop this many iterations "
+                               "AFTER the retopo pass — rounds the lattice-staircase jaggies "
+                               "on the silhouette without shrinking it or touching interior "
+                               "detail. Moved vertices get their projection UVs regenerated "
+                               "with THIS layer's camera, so 📽 Project stays aligned; if the "
+                               "layer camera has no usable intrinsics the pass is SKIPPED "
+                               "(and said so in the report) rather than leaving UVs stale. "
+                               "0 = off. Migrated from AtlasLiveMeshRepair's smooth_boundary."}),
             },
         }
 
     def retopo(self, solve, layer="", method="decimate", target_vertex_count=2000,
-               smooth_iterations=0, crease_angle=30.0, pure_quad=False, **_extra):
+               smooth_iterations=0, crease_angle=30.0, pure_quad=False,
+               boundary_smooth_iterations=0, **_extra):
         import copy
 
         import numpy as np
@@ -1184,7 +1194,45 @@ class AtlasRetopologizeLayer:
                 # hint / config problem and pass the solve through untouched.
                 lines.append(f"{name}: SKIPPED — {exc}")
                 return
-            if not report.get("changed"):
+
+            # Boundary smoothing runs REGARDLESS of the retopo verdict:
+            # method="off" + boundary_smooth_iterations>0 is the "don't
+            # retopo, just round the silhouette" configuration, and
+            # apply_retopo reports changed=False for "off" by construction.
+            n_moved = 0
+            iters = int(boundary_smooth_iterations)
+            if iters > 0:
+                intr = getattr(camera, "intrinsics", None)
+                extr = getattr(camera, "extrinsics", None)
+                width = int(getattr(intr, "image_width", 0) or 0)
+                height = int(getattr(intr, "image_height", 0) or 0)
+                fx = float(getattr(intr, "fx_px", 0.0) or 0.0)
+                # Same fallbacks the layer exporter uses (_layers.py): a
+                # constructed patch camera often carries fx_px but no fy_px/cx/cy.
+                fy = float(getattr(intr, "fy_px", 0.0) or fx)
+                cx = getattr(intr, "cx_px", None)
+                cy = getattr(intr, "cy_px", None)
+                cx = float(cx) if cx is not None else width / 2.0
+                cy = float(cy) if cy is not None else height / 2.0
+                view = getattr(extr, "camera_view_matrix", None)
+                if view is not None and fx > 0 and fy > 0 and width > 1 and height > 1:
+                    from atlas_camera.core.mesh_repair import smooth_boundary_loops
+                    n_moved = smooth_boundary_loops(
+                        mesh, iterations=iters, view_matrix=view,
+                        fx=fx, fy=fy, cx=cx, cy=cy,
+                        image_width=width, image_height=height)
+                    if n_moved == 0:
+                        lines.append(f"{name}: boundary smoothing moved 0 verts "
+                                     "(no open loop >= 8 verts — watertight or tiny)")
+                else:
+                    # Never move vertices we cannot re-register: stale projective
+                    # UVs would silently break 📽 Project.
+                    lines.append(
+                        f"{name}: boundary smoothing SKIPPED — layer camera has no "
+                        f"usable intrinsics (fx={fx:g} fy={fy:g} {width}x{height}); "
+                        "moving verts would leave projective UVs stale")
+
+            if not report.get("changed") and n_moved == 0:
                 lines.append(f"{name}: unchanged — {report.get('note', '')}")
                 return
             meta["vertices"] = np.round(
@@ -1201,7 +1249,9 @@ class AtlasRetopologizeLayer:
                 f"{name}: {report.get('method')} "
                 f"{report.get('in_verts')}->{report.get('out_verts')} verts, "
                 f"{report.get('in_faces')}->{report.get('out_faces')} faces — "
-                f"{report.get('note', '')}")
+                f"{report.get('note', '')}"
+                + (f" +boundary smooth x{iters} ({n_moved} verts moved, UVs "
+                   "regenerated)" if n_moved else ""))
 
         if sel in ("", "*"):
             scene = getattr(solve_out, "projection_scene", None)

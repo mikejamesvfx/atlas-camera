@@ -340,7 +340,8 @@
         12000,
         0,
         30.0,
-        false
+        false,
+        0
       ],
       "title": "RETOPO · after both repair passes"
     },

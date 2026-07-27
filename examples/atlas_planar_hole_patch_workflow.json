@@ -1,478 +1,1220 @@
 {
-  "id": "47315974-eb27-417a-9653-dfe816807a9e",
-  "last_node_id": 20,
-  "last_link_id": 26,
-  "nodes": [
+ "id": "47315974-eb27-417a-9653-dfe816807a9e",
+ "last_node_id": 20,
+ "last_link_id": 26,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "LoadImage",
+   "pos": [
+    80,
+    220
+   ],
+   "size": [
+    360,
+    310
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
     {
-      "id": 1,
-      "type": "LoadImage",
-      "pos": [80, 220],
-      "size": [360, 310],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [1, 2, 14], "slot_index": 0},
-        {"name": "MASK", "type": "MASK", "links": [], "slot_index": 1}
-      ],
-      "properties": {"Node name for S&R": "LoadImage"},
-      "widgets_values": ["example.png", "image"]
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      1,
+      2,
+      14
+     ],
+     "slot_index": 0
     },
     {
-      "id": 2,
-      "type": "AtlasLearnedSolveFromImage",
-      "pos": [540, 80],
-      "size": [390, 300],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {"name": "image", "type": "IMAGE", "link": 1},
-        {"name": "raw_meta", "type": "ATLAS_RAW_META", "link": null}
-      ],
-      "outputs": [
-        {"name": "ATLAS_SOLVE", "type": "ATLAS_SOLVE", "links": [3, 4, 9], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "AtlasLearnedSolveFromImage"},
-      "widgets_values": [
-        "measure_from_depth",
-        1.6,
-        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
-        "pinhole",
-        "auto",
-        0.0
-      ]
-    },
-    {
-      "id": 3,
-      "type": "AtlasDepthMap",
-      "pos": [540, 440],
-      "size": [390, 160],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {"name": "image", "type": "IMAGE", "link": 2},
-        {"name": "solve", "type": "ATLAS_SOLVE", "link": 3}
-      ],
-      "outputs": [
-        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "links": [5, 10, 15], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "AtlasDepthMap"},
-      "widgets_values": ["depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", "auto"]
-    },
-    {
-      "id": 4,
-      "type": "AtlasDeriveReliefMesh",
-      "pos": [1080, 60],
-      "size": [430, 540],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {"name": "solve", "type": "ATLAS_SOLVE", "link": 4},
-        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "link": 5},
-        {"name": "exclude_mask", "type": "MASK", "link": null},
-        {"name": "outlier_mask", "type": "MASK", "link": null}
-      ],
-      "outputs": [
-        {"name": "solve", "type": "ATLAS_SOLVE", "links": [6], "slot_index": 0},
-        {"name": "hole_mask", "type": "MASK", "links": [7], "slot_index": 1}
-      ],
-      "properties": {"Node name for S&R": "AtlasDeriveReliefMesh"},
-      "widgets_values": [
-        128,
-        "high",
-        0.5,
-        12.0,
-        true,
-        0.0,
-        true,
-        false,
-        0.0,
-        256,
-        false
-      ]
-    },
-    {
-      "id": 5,
-      "type": "AtlasPlanarHolePatch",
-      "pos": [1640, 80],
-      "size": [410, 400],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [
-        {"name": "solve", "type": "ATLAS_SOLVE", "link": 6},
-        {"name": "hole_mask", "type": "MASK", "link": 7}
-      ],
-      "outputs": [
-        {"name": "solve", "type": "ATLAS_SOLVE", "links": [8], "slot_index": 0},
-        {"name": "remaining_holes", "type": "MASK", "links": [18, 20], "slot_index": 1},
-        {"name": "report", "type": "STRING", "links": [19], "slot_index": 2},
-        {"name": "created_islands", "type": "MASK", "links": [22, 23], "slot_index": 3}
-      ],
-      "properties": {"Node name for S&R": "AtlasPlanarHolePatch"},
-      "widgets_values": ["", 2, 512, 22.0, 0.3, 0.04, true, 0.2, 20.0, 2.0]
-    },
-    {
-      "id": 6,
-      "type": "AtlasRetopologizeLayer",
-      "pos": [2150, 90],
-      "size": [390, 300],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {"name": "solve", "type": "ATLAS_SOLVE", "link": 8}
-      ],
-      "outputs": [
-        {"name": "solve", "type": "ATLAS_SOLVE", "links": [11, 13], "slot_index": 0},
-        {"name": "report", "type": "STRING", "links": [], "slot_index": 1}
-      ],
-      "properties": {"Node name for S&R": "AtlasRetopologizeLayer"},
-      "widgets_values": ["", "decimate", 12000, 0, 30.0, false]
-    },
-    {
-      "id": 7,
-      "type": "AtlasDeriveWalls",
-      "pos": [1100, 720],
-      "size": [410, 260],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {"name": "solve", "type": "ATLAS_SOLVE", "link": 9},
-        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "link": 10},
-        {"name": "exclude_mask", "type": "MASK", "link": null}
-      ],
-      "outputs": [
-        {"name": "ATLAS_SOLVE", "type": "ATLAS_SOLVE", "links": [12], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "AtlasDeriveWalls"},
-      "widgets_values": [3, 0, 1, false]
-    },
-    {
-      "id": 8,
-      "type": "AtlasMergeGeometry",
-      "pos": [2650, 280],
-      "size": [350, 190],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {"name": "solve_a", "type": "ATLAS_SOLVE", "link": 11},
-        {"name": "solve_b", "type": "ATLAS_SOLVE", "link": 12},
-        {"name": "shot_cam", "type": "ATLAS_SHOT_CAM", "link": null}
-      ],
-      "outputs": [
-        {"name": "ATLAS_SOLVE", "type": "ATLAS_SOLVE", "links": [], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "AtlasMergeGeometry"},
-      "widgets_values": []
-    },
-    {
-      "id": 9,
-      "type": "AtlasViewportControls",
-      "pos": [3110, 40],
-      "size": [390, 270],
-      "flags": {},
-      "order": 8,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {"name": "controls", "type": "ATLAS_VIEWPORT_LINK", "links": [16], "slot_index": 0},
-        {"name": "output_profile", "type": "ATLAS_OUTPUT_PROFILE", "links": [17], "slot_index": 1}
-      ],
-      "properties": {"Node name for S&R": "AtlasViewportControls"},
-      "widgets_values": [
-        "ACES 2.0 / Studio",
-        "",
-        "ACEScg",
-        "ACES - ACEScg",
-        "sRGB - Display",
-        "ACES 2.0 SDR-video",
-        1.0
-      ]
-    },
-    {
-      "id": 10,
-      "type": "AtlasBlockoutViewport",
-      "pos": [3100, 390],
-      "size": [620, 560],
-      "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [
-        {"name": "solve", "type": "ATLAS_SOLVE", "link": 13},
-        {"name": "source_image", "type": "IMAGE", "link": 14},
-        {"name": "primary_depth", "type": "ATLAS_DEPTH_MAP", "link": 15},
-        {"name": "controls", "type": "ATLAS_VIEWPORT_LINK", "link": 16},
-        {"name": "shot_cam", "type": "ATLAS_SHOT_CAM", "link": null},
-        {"name": "output_profile", "type": "ATLAS_OUTPUT_PROFILE", "link": 17},
-        {"name": "debug_matte", "type": "MASK", "link": 18},
-        {"name": "patch_mask", "type": "MASK", "link": 22}
-      ],
-      "outputs": [
-        {"name": "shaded", "type": "IMAGE", "links": [], "slot_index": 0},
-        {"name": "depth", "type": "IMAGE", "links": [], "slot_index": 1},
-        {"name": "normal", "type": "IMAGE", "links": [], "slot_index": 2},
-        {"name": "mask", "type": "IMAGE", "links": [], "slot_index": 3},
-        {"name": "path_frames", "type": "IMAGE", "links": [], "slot_index": 4},
-        {"name": "camera_path", "type": "ATLAS_CAMERA_PATH", "links": [], "slot_index": 5},
-        {"name": "patch_azimuth_view", "type": "STRING", "links": [], "slot_index": 6},
-        {"name": "patch_elevation_view", "type": "STRING", "links": [], "slot_index": 7},
-        {"name": "patch_distance", "type": "STRING", "links": [], "slot_index": 8},
-        {"name": "patch_prompt", "type": "STRING", "links": [], "slot_index": 9},
-        {"name": "patch_exact", "type": "STRING", "links": [], "slot_index": 10},
-        {"name": "patch_render_mask", "type": "MASK", "links": [25], "slot_index": 11}
-      ],
-      "properties": {"Node name for S&R": "AtlasBlockoutViewport"},
-      "widgets_values": [1024, "", 1.0]
-    },
-    {
-      "id": 11,
-      "type": "Note",
-      "pos": [80, 580],
-      "size": [850, 410],
-      "flags": {},
-      "order": 10,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "properties": {},
-      "widgets_values": [
-        "PLANAR HOLE PATCH QUICKSTART\n\n1. The bundled example.png is selected so the workflow validates on a clean install. Choose your plate in Load Image.\n2. Queue once. Atlas Derive Relief Mesh outputs its literal topology-hole mask.\n3. Atlas Planar Hole Patch rejects frame/oversize regions first, then attempts eligible islands smallest-first so sky gaps cannot consume the fit budget.\n4. Accepted vertices are camera-ray/plane intersections with exact projective UVs and shared perimeter indices.\n5. Read PATCH REPORT for the exact accepted/rejected counts. REMAINING HOLES previews the literal output mask.\n6. In Atlas Viewport enable Project and orbit gently. Enable Matte to overlay the same remaining-hole mask.\n\nThe direct hole-mask wire is automatic mode. For deliberate silhouette repair, intersect it with a painted MASK before Atlas Planar Hole Patch."
-      ],
-      "color": "#25405c",
-      "bgcolor": "#16283b"
-    },
-    {
-      "id": 12,
-      "type": "Note",
-      "pos": [1590, 500],
-      "size": [520, 490],
-      "flags": {},
-      "order": 11,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "properties": {},
-      "widgets_values": [
-        "WHY THESE PATCH DEFAULTS\n\n• ring_cells = 2: uses the closest surrounding relief while retaining enough samples to stabilize small islands.\n• max_components = 512: covers dense 128-grid plates while unsafe frame/oversize regions remain outside the fit budget.\n• normal_tolerance = 22°: defines which surrounding normals agree for each island.\n• min_normal_support = 0.20: the agreeing cluster must represent at least 20% of valid surrounding normals, allowing one-sided facade evidence without accepting arbitrary directions.\n• The agreeing normals are averaged directly into the patch angle. max_plane_error = 0.30 m chooses/checks the densest local plane position when that angle appears at multiple depths.\n• max_patch_edge_factor = 20 rejects post-intersection spikes using each edge's source-pixel span × the island boundary's local metres-per-pixel. It is stable across image resolution and camera/world scale.\n• max_hole_fraction = 4% and enclosed_only = true retain the sky/frame safety gates.\n\nGeometry cannot invent hidden pixels, and frame-connected disocclusions still need a clean plate or scoped artist mask."
-      ],
-      "color": "#3b3156",
-      "bgcolor": "#251d39"
-    },
-    {
-      "id": 13,
-      "type": "Note",
-      "pos": [2140, 500],
-      "size": [850, 490],
-      "flags": {},
-      "order": 12,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "properties": {},
-      "widgets_values": [
-        "RETOPO + OPTIONAL WALL MERGE\n\nAtlas Retopologize Layer runs AFTER the planar patch, so the original relief and accepted planar patches are one mesh for decimation and UV regeneration. Decimate needs trimesh + fast-simplification; missing dependencies degrade softly and leave the patched solve unchanged.\n\nThe default viewport wire now comes DIRECTLY from Retopologize Layer so wall proxies cannot hide the patch result. The wall/merge branch remains as an optional disconnected experiment: max_objects = 0 prevents boxes/cubes, but Atlas Merge Geometry only appends wall primitives—it is not a boolean/weld and retopology does not fuse them."
-      ],
-      "color": "#4b3a24",
-      "bgcolor": "#2e2215"
-    },
-    {
-      "id": 14,
-      "type": "ShowText|pysssss",
-      "pos": [3780, 50],
-      "size": [420, 280],
-      "flags": {},
-      "order": 13,
-      "mode": 0,
-      "inputs": [
-        {"name": "text", "type": "STRING", "link": 19}
-      ],
-      "outputs": [
-        {"name": "STRING", "type": "STRING", "links": [], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "ShowText|pysssss"},
-      "widgets_values": [],
-      "title": "PATCH REPORT · accepted + rejected islands"
-    },
-    {
-      "id": 15,
-      "type": "MaskToImage",
-      "pos": [3780, 370],
-      "size": [300, 90],
-      "flags": {},
-      "order": 14,
-      "mode": 0,
-      "inputs": [
-        {"name": "mask", "type": "MASK", "link": 20}
-      ],
-      "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [21], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "MaskToImage"},
-      "widgets_values": [],
-      "title": "REMAINING HOLES · convert mask"
-    },
-    {
-      "id": 16,
-      "type": "PreviewImage",
-      "pos": [3780, 500],
-      "size": [420, 440],
-      "flags": {},
-      "order": 15,
-      "mode": 0,
-      "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 21}
-      ],
-      "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "PreviewImage"},
-      "widgets_values": [],
-      "title": "REMAINING HOLES · white pixels still open"
-    },
-    {
-      "id": 17,
-      "type": "MaskToImage",
-      "pos": [4260, 50],
-      "size": [300, 90],
-      "flags": {},
-      "order": 16,
-      "mode": 0,
-      "inputs": [
-        {"name": "mask", "type": "MASK", "link": 23}
-      ],
-      "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [24], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "MaskToImage"},
-      "widgets_values": [],
-      "title": "CREATED ISLANDS · exact source-space mask"
-    },
-    {
-      "id": 18,
-      "type": "PreviewImage",
-      "pos": [4260, 180],
-      "size": [420, 360],
-      "flags": {},
-      "order": 17,
-      "mode": 0,
-      "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 24}
-      ],
-      "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "PreviewImage"},
-      "widgets_values": [],
-      "title": "CREATED ISLANDS · white pixels were filled"
-    },
-    {
-      "id": 19,
-      "type": "MaskToImage",
-      "pos": [4260, 580],
-      "size": [300, 90],
-      "flags": {},
-      "order": 18,
-      "mode": 0,
-      "inputs": [
-        {"name": "mask", "type": "MASK", "link": 25}
-      ],
-      "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [26], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "MaskToImage"},
-      "widgets_values": [],
-      "title": "MOVED-CAMERA PATCH MASK · convert for preview"
-    },
-    {
-      "id": 20,
-      "type": "PreviewImage",
-      "pos": [4260, 710],
-      "size": [420, 360],
-      "flags": {},
-      "order": 19,
-      "mode": 0,
-      "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 26}
-      ],
-      "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "PreviewImage"},
-      "widgets_values": [],
-      "title": "MOVED-CAMERA PATCH MASK · click Render Proxy Passes"
+     "name": "MASK",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 1
     }
-  ],
-  "links": [
-    [1, 1, 0, 2, 0, "IMAGE"],
-    [2, 1, 0, 3, 0, "IMAGE"],
-    [3, 2, 0, 3, 1, "ATLAS_SOLVE"],
-    [4, 2, 0, 4, 0, "ATLAS_SOLVE"],
-    [5, 3, 0, 4, 1, "ATLAS_DEPTH_MAP"],
-    [6, 4, 0, 5, 0, "ATLAS_SOLVE"],
-    [7, 4, 1, 5, 1, "MASK"],
-    [8, 5, 0, 6, 0, "ATLAS_SOLVE"],
-    [9, 2, 0, 7, 0, "ATLAS_SOLVE"],
-    [10, 3, 0, 7, 1, "ATLAS_DEPTH_MAP"],
-    [11, 6, 0, 8, 0, "ATLAS_SOLVE"],
-    [12, 7, 0, 8, 1, "ATLAS_SOLVE"],
-    [13, 6, 0, 10, 0, "ATLAS_SOLVE"],
-    [14, 1, 0, 10, 1, "IMAGE"],
-    [15, 3, 0, 10, 2, "ATLAS_DEPTH_MAP"],
-    [16, 9, 0, 10, 3, "ATLAS_VIEWPORT_LINK"],
-    [17, 9, 1, 10, 5, "ATLAS_OUTPUT_PROFILE"],
-    [18, 5, 1, 10, 6, "MASK"],
-    [19, 5, 2, 14, 0, "STRING"],
-    [20, 5, 1, 15, 0, "MASK"],
-    [21, 15, 0, 16, 0, "IMAGE"],
-    [22, 5, 3, 10, 7, "MASK"],
-    [23, 5, 3, 17, 0, "MASK"],
-    [24, 17, 0, 18, 0, "IMAGE"],
-    [25, 10, 11, 19, 0, "MASK"],
-    [26, 19, 0, 20, 0, "IMAGE"]
-  ],
-  "groups": [
-    {
-      "title": "1 — CAMERA + SHARED DEPTH",
-      "bounding": [40, 20, 930, 1020],
-      "color": "#3f789e",
-      "font_size": 24,
-      "flags": {}
-    },
-    {
-      "title": "2 — RELIEF → NORMAL-GUIDED PLANAR PATCH",
-      "bounding": [1030, 20, 1100, 1020],
-      "color": "#6d5d9e",
-      "font_size": 24,
-      "flags": {}
-    },
-    {
-      "title": "3 — RETOPO + OPTIONAL WALL MERGE",
-      "bounding": [2120, 20, 920, 1020],
-      "color": "#9e7141",
-      "font_size": 24,
-      "flags": {}
-    },
-    {
-      "title": "4 — PROJECT + ORBIT CHECK",
-      "bounding": [3060, 20, 1660, 1090],
-      "color": "#4f8d61",
-      "font_size": 24,
-      "flags": {}
-    }
-  ],
-  "config": {},
-  "extra": {
-    "ds": {"scale": 0.74, "offset": [64, 74]},
-    "atlas_example": "normal_guided_planar_hole_patch",
-    "notes": "Relief holes are patched before retopology; created_islands drives the viewport layer tint and the current-camera patch_render_mask for inpainting."
+   ],
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "example.png",
+    "image"
+   ]
   },
-  "version": 0.4
+  {
+   "id": 2,
+   "type": "AtlasLearnedSolveFromImage",
+   "pos": [
+    540,
+    80
+   ],
+   "size": [
+    390,
+    300
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 1
+    },
+    {
+     "name": "raw_meta",
+     "type": "ATLAS_RAW_META",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      3,
+      4,
+      9
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasLearnedSolveFromImage"
+   },
+   "widgets_values": [
+    "measure_from_depth",
+    1.6,
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    36.0,
+    "pinhole",
+    "auto",
+    0.0
+   ]
+  },
+  {
+   "id": 3,
+   "type": "AtlasDepthMap",
+   "pos": [
+    540,
+    440
+   ],
+   "size": [
+    390,
+    160
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 2
+    },
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 3
+    }
+   ],
+   "outputs": [
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "links": [
+      5,
+      10,
+      15
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasDepthMap"
+   },
+   "widgets_values": [
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    "auto"
+   ]
+  },
+  {
+   "id": 4,
+   "type": "AtlasDeriveReliefMesh",
+   "pos": [
+    1080,
+    60
+   ],
+   "size": [
+    430,
+    540
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 4
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 5
+    },
+    {
+     "name": "exclude_mask",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "outlier_mask",
+     "type": "MASK",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      6
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "hole_mask",
+     "type": "MASK",
+     "links": [
+      7
+     ],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasDeriveReliefMesh"
+   },
+   "widgets_values": [
+    128,
+    "high",
+    0.5,
+    12.0,
+    true,
+    0.0,
+    true,
+    false,
+    0.0,
+    256,
+    false
+   ]
+  },
+  {
+   "id": 5,
+   "type": "AtlasPlanarHolePatch",
+   "pos": [
+    1640,
+    80
+   ],
+   "size": [
+    410,
+    400
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 6
+    },
+    {
+     "name": "hole_mask",
+     "type": "MASK",
+     "link": 7
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      8
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "remaining_holes",
+     "type": "MASK",
+     "links": [
+      18,
+      20
+     ],
+     "slot_index": 1
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": [
+      19
+     ],
+     "slot_index": 2
+    },
+    {
+     "name": "created_islands",
+     "type": "MASK",
+     "links": [
+      22,
+      23
+     ],
+     "slot_index": 3
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasPlanarHolePatch"
+   },
+   "widgets_values": [
+    "",
+    2,
+    512,
+    22.0,
+    0.3,
+    0.04,
+    true,
+    0.2,
+    20.0,
+    2.0
+   ]
+  },
+  {
+   "id": 6,
+   "type": "AtlasRetopologizeLayer",
+   "pos": [
+    2150,
+    90
+   ],
+   "size": [
+    390,
+    300
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 8
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      11,
+      13
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasRetopologizeLayer"
+   },
+   "widgets_values": [
+    "",
+    "decimate",
+    12000,
+    0,
+    30.0,
+    false,
+    0
+   ]
+  },
+  {
+   "id": 7,
+   "type": "AtlasDeriveWalls",
+   "pos": [
+    1100,
+    720
+   ],
+   "size": [
+    410,
+    260
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 9
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 10
+    },
+    {
+     "name": "exclude_mask",
+     "type": "MASK",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      12
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasDeriveWalls"
+   },
+   "widgets_values": [
+    3,
+    0,
+    1,
+    false
+   ]
+  },
+  {
+   "id": 8,
+   "type": "AtlasMergeGeometry",
+   "pos": [
+    2650,
+    280
+   ],
+   "size": [
+    350,
+    190
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve_a",
+     "type": "ATLAS_SOLVE",
+     "link": 11
+    },
+    {
+     "name": "solve_b",
+     "type": "ATLAS_SOLVE",
+     "link": 12
+    },
+    {
+     "name": "shot_cam",
+     "type": "ATLAS_SHOT_CAM",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasMergeGeometry"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 9,
+   "type": "AtlasViewportControls",
+   "pos": [
+    3110,
+    40
+   ],
+   "size": [
+    390,
+    270
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "controls",
+     "type": "ATLAS_VIEWPORT_LINK",
+     "links": [
+      16
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "output_profile",
+     "type": "ATLAS_OUTPUT_PROFILE",
+     "links": [
+      17
+     ],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasViewportControls"
+   },
+   "widgets_values": [
+    "ACES 2.0 / Studio",
+    "",
+    "ACEScg",
+    "ACES - ACEScg",
+    "sRGB - Display",
+    "ACES 2.0 SDR-video",
+    1.0
+   ]
+  },
+  {
+   "id": 10,
+   "type": "AtlasBlockoutViewport",
+   "pos": [
+    3100,
+    390
+   ],
+   "size": [
+    620,
+    560
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 13
+    },
+    {
+     "name": "source_image",
+     "type": "IMAGE",
+     "link": 14
+    },
+    {
+     "name": "primary_depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 15
+    },
+    {
+     "name": "controls",
+     "type": "ATLAS_VIEWPORT_LINK",
+     "link": 16
+    },
+    {
+     "name": "shot_cam",
+     "type": "ATLAS_SHOT_CAM",
+     "link": null
+    },
+    {
+     "name": "output_profile",
+     "type": "ATLAS_OUTPUT_PROFILE",
+     "link": 17
+    },
+    {
+     "name": "debug_matte",
+     "type": "MASK",
+     "link": 18
+    },
+    {
+     "name": "patch_mask",
+     "type": "MASK",
+     "link": 22
+    }
+   ],
+   "outputs": [
+    {
+     "name": "shaded",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "depth",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 1
+    },
+    {
+     "name": "normal",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 2
+    },
+    {
+     "name": "mask",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 3
+    },
+    {
+     "name": "path_frames",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 4
+    },
+    {
+     "name": "camera_path",
+     "type": "ATLAS_CAMERA_PATH",
+     "links": [],
+     "slot_index": 5
+    },
+    {
+     "name": "patch_azimuth_view",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 6
+    },
+    {
+     "name": "patch_elevation_view",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 7
+    },
+    {
+     "name": "patch_distance",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 8
+    },
+    {
+     "name": "patch_prompt",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 9
+    },
+    {
+     "name": "patch_exact",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 10
+    },
+    {
+     "name": "patch_render_mask",
+     "type": "MASK",
+     "links": [
+      25
+     ],
+     "slot_index": 11
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasBlockoutViewport"
+   },
+   "widgets_values": [
+    1024,
+    "",
+    1.0
+   ]
+  },
+  {
+   "id": 11,
+   "type": "Note",
+   "pos": [
+    80,
+    580
+   ],
+   "size": [
+    850,
+    410
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "PLANAR HOLE PATCH QUICKSTART\n\n1. The bundled example.png is selected so the workflow validates on a clean install. Choose your plate in Load Image.\n2. Queue once. Atlas Derive Relief Mesh outputs its literal topology-hole mask.\n3. Atlas Planar Hole Patch rejects frame/oversize regions first, then attempts eligible islands smallest-first so sky gaps cannot consume the fit budget.\n4. Accepted vertices are camera-ray/plane intersections with exact projective UVs and shared perimeter indices.\n5. Read PATCH REPORT for the exact accepted/rejected counts. REMAINING HOLES previews the literal output mask.\n6. In Atlas Viewport enable Project and orbit gently. Enable Matte to overlay the same remaining-hole mask.\n\nThe direct hole-mask wire is automatic mode. For deliberate silhouette repair, intersect it with a painted MASK before Atlas Planar Hole Patch."
+   ],
+   "color": "#25405c",
+   "bgcolor": "#16283b"
+  },
+  {
+   "id": 12,
+   "type": "Note",
+   "pos": [
+    1590,
+    500
+   ],
+   "size": [
+    520,
+    490
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "WHY THESE PATCH DEFAULTS\n\n• ring_cells = 2: uses the closest surrounding relief while retaining enough samples to stabilize small islands.\n• max_components = 512: covers dense 128-grid plates while unsafe frame/oversize regions remain outside the fit budget.\n• normal_tolerance = 22°: defines which surrounding normals agree for each island.\n• min_normal_support = 0.20: the agreeing cluster must represent at least 20% of valid surrounding normals, allowing one-sided facade evidence without accepting arbitrary directions.\n• The agreeing normals are averaged directly into the patch angle. max_plane_error = 0.30 m chooses/checks the densest local plane position when that angle appears at multiple depths.\n• max_patch_edge_factor = 20 rejects post-intersection spikes using each edge's source-pixel span × the island boundary's local metres-per-pixel. It is stable across image resolution and camera/world scale.\n• max_hole_fraction = 4% and enclosed_only = true retain the sky/frame safety gates.\n\nGeometry cannot invent hidden pixels, and frame-connected disocclusions still need a clean plate or scoped artist mask."
+   ],
+   "color": "#3b3156",
+   "bgcolor": "#251d39"
+  },
+  {
+   "id": 13,
+   "type": "Note",
+   "pos": [
+    2140,
+    500
+   ],
+   "size": [
+    850,
+    490
+   ],
+   "flags": {},
+   "order": 12,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "RETOPO + OPTIONAL WALL MERGE\n\nAtlas Retopologize Layer runs AFTER the planar patch, so the original relief and accepted planar patches are one mesh for decimation and UV regeneration. Decimate needs trimesh + fast-simplification; missing dependencies degrade softly and leave the patched solve unchanged.\n\nThe default viewport wire now comes DIRECTLY from Retopologize Layer so wall proxies cannot hide the patch result. The wall/merge branch remains as an optional disconnected experiment: max_objects = 0 prevents boxes/cubes, but Atlas Merge Geometry only appends wall primitives—it is not a boolean/weld and retopology does not fuse them."
+   ],
+   "color": "#4b3a24",
+   "bgcolor": "#2e2215"
+  },
+  {
+   "id": 14,
+   "type": "ShowText|pysssss",
+   "pos": [
+    3780,
+    50
+   ],
+   "size": [
+    420,
+    280
+   ],
+   "flags": {},
+   "order": 13,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "text",
+     "type": "STRING",
+     "link": 19
+    }
+   ],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ShowText|pysssss"
+   },
+   "widgets_values": [],
+   "title": "PATCH REPORT · accepted + rejected islands"
+  },
+  {
+   "id": 15,
+   "type": "MaskToImage",
+   "pos": [
+    3780,
+    370
+   ],
+   "size": [
+    300,
+    90
+   ],
+   "flags": {},
+   "order": 14,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "mask",
+     "type": "MASK",
+     "link": 20
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      21
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MaskToImage"
+   },
+   "widgets_values": [],
+   "title": "REMAINING HOLES · convert mask"
+  },
+  {
+   "id": 16,
+   "type": "PreviewImage",
+   "pos": [
+    3780,
+    500
+   ],
+   "size": [
+    420,
+    440
+   ],
+   "flags": {},
+   "order": 15,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 21
+    }
+   ],
+   "outputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "PreviewImage"
+   },
+   "widgets_values": [],
+   "title": "REMAINING HOLES · white pixels still open"
+  },
+  {
+   "id": 17,
+   "type": "MaskToImage",
+   "pos": [
+    4260,
+    50
+   ],
+   "size": [
+    300,
+    90
+   ],
+   "flags": {},
+   "order": 16,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "mask",
+     "type": "MASK",
+     "link": 23
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      24
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MaskToImage"
+   },
+   "widgets_values": [],
+   "title": "CREATED ISLANDS · exact source-space mask"
+  },
+  {
+   "id": 18,
+   "type": "PreviewImage",
+   "pos": [
+    4260,
+    180
+   ],
+   "size": [
+    420,
+    360
+   ],
+   "flags": {},
+   "order": 17,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 24
+    }
+   ],
+   "outputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "PreviewImage"
+   },
+   "widgets_values": [],
+   "title": "CREATED ISLANDS · white pixels were filled"
+  },
+  {
+   "id": 19,
+   "type": "MaskToImage",
+   "pos": [
+    4260,
+    580
+   ],
+   "size": [
+    300,
+    90
+   ],
+   "flags": {},
+   "order": 18,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "mask",
+     "type": "MASK",
+     "link": 25
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      26
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MaskToImage"
+   },
+   "widgets_values": [],
+   "title": "MOVED-CAMERA PATCH MASK · convert for preview"
+  },
+  {
+   "id": 20,
+   "type": "PreviewImage",
+   "pos": [
+    4260,
+    710
+   ],
+   "size": [
+    420,
+    360
+   ],
+   "flags": {},
+   "order": 19,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 26
+    }
+   ],
+   "outputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "PreviewImage"
+   },
+   "widgets_values": [],
+   "title": "MOVED-CAMERA PATCH MASK · click Render Proxy Passes"
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "IMAGE"
+  ],
+  [
+   2,
+   1,
+   0,
+   3,
+   0,
+   "IMAGE"
+  ],
+  [
+   3,
+   2,
+   0,
+   3,
+   1,
+   "ATLAS_SOLVE"
+  ],
+  [
+   4,
+   2,
+   0,
+   4,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   5,
+   3,
+   0,
+   4,
+   1,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   6,
+   4,
+   0,
+   5,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   7,
+   4,
+   1,
+   5,
+   1,
+   "MASK"
+  ],
+  [
+   8,
+   5,
+   0,
+   6,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   9,
+   2,
+   0,
+   7,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   10,
+   3,
+   0,
+   7,
+   1,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   11,
+   6,
+   0,
+   8,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   12,
+   7,
+   0,
+   8,
+   1,
+   "ATLAS_SOLVE"
+  ],
+  [
+   13,
+   6,
+   0,
+   10,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   14,
+   1,
+   0,
+   10,
+   1,
+   "IMAGE"
+  ],
+  [
+   15,
+   3,
+   0,
+   10,
+   2,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   16,
+   9,
+   0,
+   10,
+   3,
+   "ATLAS_VIEWPORT_LINK"
+  ],
+  [
+   17,
+   9,
+   1,
+   10,
+   5,
+   "ATLAS_OUTPUT_PROFILE"
+  ],
+  [
+   18,
+   5,
+   1,
+   10,
+   6,
+   "MASK"
+  ],
+  [
+   19,
+   5,
+   2,
+   14,
+   0,
+   "STRING"
+  ],
+  [
+   20,
+   5,
+   1,
+   15,
+   0,
+   "MASK"
+  ],
+  [
+   21,
+   15,
+   0,
+   16,
+   0,
+   "IMAGE"
+  ],
+  [
+   22,
+   5,
+   3,
+   10,
+   7,
+   "MASK"
+  ],
+  [
+   23,
+   5,
+   3,
+   17,
+   0,
+   "MASK"
+  ],
+  [
+   24,
+   17,
+   0,
+   18,
+   0,
+   "IMAGE"
+  ],
+  [
+   25,
+   10,
+   11,
+   19,
+   0,
+   "MASK"
+  ],
+  [
+   26,
+   19,
+   0,
+   20,
+   0,
+   "IMAGE"
+  ]
+ ],
+ "groups": [
+  {
+   "title": "1 — CAMERA + SHARED DEPTH",
+   "bounding": [
+    40,
+    20,
+    930,
+    1020
+   ],
+   "color": "#3f789e",
+   "font_size": 24,
+   "flags": {}
+  },
+  {
+   "title": "2 — RELIEF → NORMAL-GUIDED PLANAR PATCH",
+   "bounding": [
+    1030,
+    20,
+    1100,
+    1020
+   ],
+   "color": "#6d5d9e",
+   "font_size": 24,
+   "flags": {}
+  },
+  {
+   "title": "3 — RETOPO + OPTIONAL WALL MERGE",
+   "bounding": [
+    2120,
+    20,
+    920,
+    1020
+   ],
+   "color": "#9e7141",
+   "font_size": 24,
+   "flags": {}
+  },
+  {
+   "title": "4 — PROJECT + ORBIT CHECK",
+   "bounding": [
+    3060,
+    20,
+    1660,
+    1090
+   ],
+   "color": "#4f8d61",
+   "font_size": 24,
+   "flags": {}
+  }
+ ],
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.74,
+   "offset": [
+    64,
+    74
+   ]
+  },
+  "atlas_example": "normal_guided_planar_hole_patch",
+  "notes": "Relief holes are patched before retopology; created_islands drives the viewport layer tint and the current-camera patch_render_mask for inpainting."
+ },
+ "version": 0.4
 }
