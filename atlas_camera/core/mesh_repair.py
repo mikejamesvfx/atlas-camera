@@ -79,6 +79,18 @@ import numpy as np
 _EPS = 1e-12
 
 
+class NonManifoldWindingError(ValueError):
+    """A directed edge belongs to more than one face.
+
+    The boundary pivot walk (``_walk_loops_pivot``) relies on each directed
+    edge mapping to at most one face; when that bijection breaks, the face fan
+    around a vertex is closed and the rotation cannot terminate. Raised
+    instead of looping forever, and instead of silently returning a corrupt
+    loop. Subclasses ``ValueError`` so the existing soft-degrade handlers
+    (e.g. ``AtlasRetopologizeLayer``) already catch it.
+    """
+
+
 def boundary_edges(faces: np.ndarray) -> np.ndarray:
     """Edges that appear in exactly one triangle = the open boundary."""
     f = np.asarray(faces)
@@ -129,9 +141,22 @@ def _walk_loops_pivot(faces: np.ndarray) -> list[list[int]]:
     def _succ(a: int, b: int) -> tuple[int, int]:
         fi = fo[(a, b)]
         x = _after(fi, b)
+        # A well-formed fan visits each face at most once, so len(f) rotations
+        # is a hard upper bound. Without the cap a duplicated directed edge
+        # closes the fan and this loop never exits (the 2026-07-27 sawtooth
+        # hang). Raise rather than break: a bare break would emit a corrupt
+        # loop with no signal, which is a silent wrong answer.
+        steps, limit = 0, len(f) + 1
         while (x, b) in fo:  # b-x is interior → rotate to the adjacent face
             fi = fo[(x, b)]
             x = _after(fi, b)
+            steps += 1
+            if steps > limit:
+                raise NonManifoldWindingError(
+                    f"face fan around vertex {b} did not close after {steps} "
+                    "rotations — a directed edge is duplicated (inconsistent "
+                    "winding). Rebuild the mesh or reduce the repair settings."
+                )
         return b, x
 
     loops: list[list[int]] = []
@@ -448,14 +473,21 @@ def apply_interior_hole_fill(
     if faces is None or len(faces) == 0:
         return 0, []
     vertices = getattr(mesh, "vertices", None)
-    new_faces, filled = fill_interior_holes(
-        faces,
-        max_hole_edges=int(max_hole_edges),
-        vertices=vertices,
-        view_matrix=view_matrix,
-        depth_near_m=float(depth_near_m),
-        depth_far_m=float(depth_far_m),
-    )
+    try:
+        new_faces, filled = fill_interior_holes(
+            faces,
+            max_hole_edges=int(max_hole_edges),
+            vertices=vertices,
+            view_matrix=view_matrix,
+            depth_near_m=float(depth_near_m),
+            depth_far_m=float(depth_far_m),
+        )
+    except NonManifoldWindingError as exc:
+        # Reported no-op, never a graph kill — see apply_boundary_sawtooth_fill.
+        stats = getattr(mesh, "stats", None)
+        if isinstance(stats, dict):
+            stats["hole_fill_error"] = str(exc)
+        return 0, []
     if filled:
         mesh.faces = np.asarray(new_faces, dtype=faces.dtype)
     return len(filled), filled
@@ -509,6 +541,17 @@ def fill_boundary_sawteeth(
         if len(be) == 0:
             break
         added: list[tuple[int, int, int]] = []
+        # Undirected edges consumed by an accepted bridge THIS pass. Each shared
+        # edge (prev,v)/(v,nxt) already sits in one mesh face and a bridge puts
+        # it in a second; a neighbouring bridge would make three, which
+        # duplicates a DIRECTED edge, closes the face fan and hangs the pivot
+        # walk in _succ. `is_valley` gave this anti-adjacency for free (two
+        # adjacent vertices cannot both be strict local maxima) but
+        # `is_equal_depth_step` does not — on a lattice staircase the corners
+        # alternate every vertex. Measured on the 64x64 staircase fixture: 19
+        # qualifying vertices, 10 of them adjacent to another, producing 10
+        # duplicated directed edges and edge multiplicity 3 without this guard.
+        bridged: set[tuple[int, int]] = set()
         for loop in walk_loops(be, faces=faces_work):
 
 
@@ -524,6 +567,14 @@ def fill_boundary_sawteeth(
                 edge = tuple(sorted((int(prev), int(nxt))))
                 if edge in existing:
                     continue  # bridging would put that edge in three faces
+                shared_a = tuple(sorted((int(prev), int(v))))
+                shared_b = tuple(sorted((int(v), int(nxt))))
+                if shared_a in bridged or shared_b in bridged:
+                    # An adjacent bridge already claimed one of the two edges
+                    # this cap would share. Skip it; the next pass retries the
+                    # corner against the updated boundary, which is the
+                    # documented "consecutive teeth smooth progressively".
+                    continue
                 a, b, c = verts[prev], verts[v], verts[nxt]
                 cross_vec = np.cross(b - a, c - a)
                 if np.linalg.norm(cross_vec) < _EPS:
@@ -543,6 +594,8 @@ def fill_boundary_sawteeth(
                 added.append((int(nxt), int(v), int(prev)))
                 valley_depths.append(float(d_v))
                 existing.add(edge)
+                bridged.add(shared_a)
+                bridged.add(shared_b)
 
         if not added:
             break
@@ -558,18 +611,27 @@ def apply_boundary_sawtooth_fill(
 ) -> tuple[int, list[float]]:
     """Apply :func:`fill_boundary_sawteeth` to a ``ReliefMesh`` in place.
 
-    Returns ``(n_triangles_added, valley_depths)`` for the node's report.
+    Returns ``(n_triangles_added, valley_depths)`` for the node's report. An
+    inconsistently-wound input mesh degrades to a reported no-op rather than
+    killing the graph: ``stats["sawtooth_fill_error"]`` carries the reason so
+    the node report can show it (a silent skip would violate gate doctrine).
     """
     faces = getattr(mesh, "faces", None)
     vertices = getattr(mesh, "vertices", None)
     if faces is None or len(faces) == 0 or vertices is None:
         return 0, []
-    new_faces, depths = fill_boundary_sawteeth(
-        faces,
-        vertices=vertices,
-        view_matrix=view_matrix,
-        depth_far_m=float(depth_far_m),
-    )
+    try:
+        new_faces, depths = fill_boundary_sawteeth(
+            faces,
+            vertices=vertices,
+            view_matrix=view_matrix,
+            depth_far_m=float(depth_far_m),
+        )
+    except NonManifoldWindingError as exc:
+        stats = getattr(mesh, "stats", None)
+        if isinstance(stats, dict):
+            stats["sawtooth_fill_error"] = str(exc)
+        return 0, []
     n_added = len(new_faces) - len(faces)
     if n_added:
         mesh.faces = np.asarray(new_faces, dtype=faces.dtype)
@@ -986,9 +1048,18 @@ def smooth_boundary_loops(
     be = boundary_edges(f)
     if len(be) == 0:
         return 0
+    try:
+        loops = walk_loops(be, faces=f)
+    except NonManifoldWindingError as exc:
+        # Reported no-op — moving vertices on a mesh whose loops cannot be
+        # walked would be worse than leaving the silhouette jagged.
+        stats = getattr(mesh, "stats", None)
+        if isinstance(stats, dict):
+            stats["boundary_smooth_error"] = str(exc)
+        return 0
     verts = np.asarray(vertices, dtype=np.float64).copy()
     moved: list[np.ndarray] = []
-    for loop in walk_loops(be, faces=f):
+    for loop in loops:
         if len(loop) < int(min_loop):
             continue
         idx = np.asarray(loop, dtype=np.int64)

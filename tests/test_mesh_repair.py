@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from atlas_camera.core.mesh_repair import (
+    NonManifoldWindingError,
     apply_boundary_sawtooth_fill,
     apply_interior_hole_fill,
     boundary_edges,
@@ -505,6 +506,124 @@ def test_fill_boundary_sawteeth_bridges_grid_staircase_corners():
     n_added, _ = apply_boundary_sawtooth_fill(mesh, view_matrix=view_matrix, depth_far_m=0.0)
     assert n_added > 0, "Grid staircase corners on equal-depth silhouette boundary must be bridged by sawtooth fill"
     assert len(mesh.faces) == faces_before + n_added
+
+    # The check this test's two siblings have and it did not. Before the
+    # same-pass shared-edge guard, equal-depth corners on a lattice staircase
+    # alternate every vertex, so adjacent corners were both bridged: the shared
+    # edge landed in three faces, a directed edge was duplicated, and the pivot
+    # walk's fan never closed. This test HUNG rather than failed.
+    _assert_manifold_and_wound(mesh.faces)
+    loops = walk_loops(boundary_edges(mesh.faces), faces=mesh.faces)
+    assert loops, "boundary must still be walkable after bridging"
+
+    # A second pass must also terminate and keep the mesh manifold — that is
+    # the documented "consecutive teeth smooth progressively" behaviour.
+    n2, _ = apply_boundary_sawtooth_fill(mesh, view_matrix=view_matrix, depth_far_m=0.0)
+    assert n2 >= 0
+    _assert_manifold_and_wound(mesh.faces)
+
+
+def test_adjacent_equal_depth_corners_not_both_bridged_in_one_pass():
+    """The same-pass guard: no two bridges may claim a shared boundary edge.
+
+    Measured on this fixture before the guard: 19 qualifying vertices, 10 of
+    them adjacent to another qualifying vertex, producing 16 bridges with 10
+    duplicated directed edges and undirected edge multiplicity 3.
+    """
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    h, w = 64, 64
+    depth_arr = np.full((h, w), 10.0, dtype=np.float32)
+    yy, xx = np.ogrid[:h, :w]
+    depth_arr[(yy - 32) ** 2 + (xx - 32) ** 2 < 12 ** 2] = 3.0
+    view_matrix = np.eye(4)
+    mesh = build_relief_mesh(
+        depth_arr, view_matrix=view_matrix, fx=100.0, fy=100.0, cx=32.0, cy=32.0,
+        grid_long_edge=32, depth_edge_rel=0.5, scale=1.0, apply_sky_heuristic=False,
+    )
+    n_added, _ = apply_boundary_sawtooth_fill(mesh, view_matrix=view_matrix, depth_far_m=0.0)
+    assert n_added > 0
+    _assert_manifold_and_wound(mesh.faces)
+
+    f = np.asarray(mesh.faces)
+    de = np.vstack([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    _, counts = np.unique(np.sort(de, axis=1), axis=1 - 1, return_counts=True)
+    assert counts.max() <= 2
+
+
+def _staircase_mesh():
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    h, w = 64, 64
+    depth_arr = np.full((h, w), 10.0, dtype=np.float32)
+    yy, xx = np.ogrid[:h, :w]
+    depth_arr[(yy - 32) ** 2 + (xx - 32) ** 2 < 12 ** 2] = 3.0
+    return build_relief_mesh(
+        depth_arr, view_matrix=np.eye(4), fx=100.0, fy=100.0, cx=32.0, cy=32.0,
+        grid_long_edge=32, depth_edge_rel=0.5, scale=1.0, apply_sky_heuristic=False,
+    )
+
+
+def _bridge_without_the_guard(mesh):
+    """Reproduce the PRE-FIX bridging pass: accept every qualifying corner,
+    checking only the new diagonal, so adjacent corners both bridge and a
+    shared edge lands in three faces. Returns the corrupted face array."""
+    from atlas_camera.core.mesh_repair import _EPS
+
+    verts = np.asarray(mesh.vertices)
+    faces = np.asarray(mesh.faces)
+    hom = np.concatenate([verts, np.ones((len(verts), 1))], axis=1)
+    depth = -(hom @ np.eye(4).T)[:, 2]
+    existing = {
+        tuple(sorted(map(int, e)))
+        for e in np.unique(np.sort(np.vstack([faces[:, [0, 1]], faces[:, [1, 2]],
+                                              faces[:, [2, 0]]]), axis=1), axis=0)
+    }
+    added = []
+    for loop in walk_loops(boundary_edges(faces), faces=faces):
+        n = len(loop)
+        dl = depth[loop]
+        for i in range(n):
+            v, prev, nxt = int(loop[i]), int(loop[i - 1]), int(loop[(i + 1) % n])
+            a, b, c = verts[prev], verts[v], verts[nxt]
+            v1, v2 = a - b, c - b
+            n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
+            equal_step = (abs(dl[i] - dl[i - 1]) < 1e-3
+                          and abs(dl[i] - dl[(i + 1) % n]) < 1e-3
+                          and n1 > _EPS and n2 > _EPS
+                          and abs(float(np.dot(v1, v2) / (n1 * n2))) < 0.707)
+            valley = dl[i] > dl[i - 1] and dl[i] > dl[(i + 1) % n]
+            if not (equal_step or valley):
+                continue
+            edge = tuple(sorted((prev, nxt)))
+            if edge in existing:
+                continue
+            added.append((nxt, v, prev))
+            existing.add(edge)
+    return np.vstack([faces, np.asarray(added, dtype=faces.dtype)])
+
+
+def test_succ_raises_bounded_on_a_closed_fan():
+    """A duplicated directed edge must RAISE, not spin forever.
+
+    Built from the real regression: bridging the staircase without the
+    same-pass guard emits 16 caps, 10 of which duplicate a directed edge and
+    close a face fan. Before the cap in ``_succ`` this call never returned.
+    """
+    corrupt = _bridge_without_the_guard(_staircase_mesh())
+    with pytest.raises(NonManifoldWindingError):
+        walk_loops(boundary_edges(corrupt), faces=corrupt)
+
+
+def test_apply_boundary_sawtooth_fill_degrades_on_non_manifold():
+    """Core stays honest (raises); the node-facing wrapper degrades visibly."""
+    mesh = _staircase_mesh()
+    mesh.faces = _bridge_without_the_guard(mesh)
+    mesh.stats = {}
+    n_added, depths = apply_boundary_sawtooth_fill(mesh, view_matrix=np.eye(4),
+                                                   depth_far_m=0.0)
+    assert (n_added, depths) == (0, [])
+    assert "sawtooth_fill_error" in mesh.stats          # visible, not silent
 
 
 
