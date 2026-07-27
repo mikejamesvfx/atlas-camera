@@ -24,10 +24,43 @@ def test_audit_covers_every_registered_node():
     assert set(data) == names            # exactly the registered set, nothing invented
     assert len(names) == 86   # 82 standard (incl. the plate colour trio) + 4 experimental
     for name, rec in data.items():
-        assert rec["kind"] in ("standard", "experimental")
+        assert rec["kind"] in ("standard", "experimental", "legacy")
         assert rec["status"] in ("referenced", "registered_only")
-        for bucket in ("example_workflows", "tests", "mcp_tools", "docs"):
+        for bucket in ("example_workflows", "tests", "mcp_tools", "repo_tools",
+                       "docs", "dedicated_tests"):
             assert isinstance(rec[bucket], list)
+        assert isinstance(rec["product_evidence"], bool)
+
+
+def test_generic_pin_tests_are_not_product_evidence():
+    """The whole point of the audit rework.
+
+    Every node's name appears in the registry/façade pins by construction, so
+    counting those as evidence made all 86 nodes look "referenced" and hid the
+    nodes that nothing actually uses. `dedicated_tests` must exclude them, and
+    `product_evidence` must be false for a node whose only test hits are pins.
+    """
+    audit = _load_audit()
+    data = audit.audit()
+    for rec in data.values():
+        assert not (set(rec["dedicated_tests"]) & audit.GENERIC_TESTS)
+
+    # The signal must actually discriminate: some standard nodes have product
+    # evidence and some do not. A rule that classifies everything the same way
+    # would pass the check above while being useless.
+    flags = {r["product_evidence"] for r in data.values() if r["kind"] == "standard"}
+    assert flags == {True, False}
+
+
+def test_mcp_and_repo_tools_are_separate_buckets():
+    """An MCP handler depending on a node is product evidence; a CLI script
+    merely naming it is not. Folding both into one bucket made them
+    indistinguishable."""
+    audit = _load_audit()
+    data = audit.audit()
+    for rec in data.values():
+        assert all(p.startswith("atlas_camera/mcp/") for p in rec["mcp_tools"])
+        assert all(p.startswith("tools/") for p in rec["repo_tools"])
 
 
 def test_no_standard_node_is_orphaned():

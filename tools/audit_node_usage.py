@@ -33,13 +33,29 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
+# Tests that name EVERY registered node by construction — registry pins,
+# façade pins, this tool's own contract test, and the widget-drift sweep.
+# A hit in one of these proves the node is REGISTERED, which we already know
+# from the registry itself; it says nothing about whether the node is used.
+# They are the entire reason a naive scan reports every node as "referenced",
+# so they never count toward product evidence.
+GENERIC_TESTS = frozenset({
+    "tests/test_comfy_node_registry.py",
+    "tests/test_facade_surface.py",
+    "tests/test_node_usage_audit.py",
+    "tests/test_shipping_workflow_widgets.py",
+})
+
 
 def registered_nodes() -> tuple[dict, set]:
-    """Return ({name: 'standard'|'experimental'}, all_names)."""
+    """Return ({name: 'standard'|'experimental'|'legacy'}, all_names)."""
     from atlas_camera.comfy import node_registry as reg
     kinds = {k: "standard" for k in reg.NODE_CLASS_MAPPINGS}
     for k in reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS:
         kinds.setdefault(k, "experimental")
+    # getattr so the tool still runs against a checkout without the gate.
+    for k in getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}):
+        kinds.setdefault(k, "legacy")
     return kinds, set(kinds)
 
 
@@ -73,7 +89,7 @@ def _workflow_node_types(path: Path) -> set:
 def audit(repo: Path = REPO) -> dict:
     kinds, names = registered_nodes()
     result = {n: {"kind": kinds[n], "example_workflows": [], "tests": [],
-                  "mcp_tools": [], "docs": []} for n in names}
+                  "mcp_tools": [], "repo_tools": [], "docs": []} for n in names}
 
     # 1) workflow files (presence only)
     for wf in _iter_files(repo / "examples", {".json"}):
@@ -83,36 +99,58 @@ def audit(repo: Path = REPO) -> dict:
             result[n]["example_workflows"].append(rel)
 
     # 2) text reference scans (word-boundary match on the node name)
+    # `mcp_tools` and `repo_tools` are SEPARATE buckets. They used to be one,
+    # which made "a live MCP handler depends on this node" indistinguishable
+    # from "some CLI script mentions the name" — and only the former is
+    # evidence that a node is part of the product.
     scan = {
         "tests": (repo / "tests", {".py"}),
         "mcp_tools": (repo / "atlas_camera" / "mcp", {".py"}),
+        "repo_tools": (repo / "tools", {".py"}),
         "docs": (repo / "docs", {".md"}),
     }
-    # tools/ is scanned into mcp_tools too (audit tool itself excluded)
-    tool_files = [p for p in _iter_files(repo / "tools", {".py"})
-                  if p.name != "audit_node_usage.py"]
     patterns = {n: re.compile(rf"\b{re.escape(n)}\b") for n in names}
+    # Files that enumerate the whole registry and would otherwise inflate their
+    # own bucket: this tool, and the generated audit report (which names every
+    # node by construction, so counting it would make every node look
+    # documented the moment the report is written).
+    self_referential = {"audit_node_usage.py", "feature_audit_verdicts.py",
+                        "build_feature_audit.py", "FEATURE_AUDIT.md"}
     for bucket, (root, suf) in scan.items():
         for f in _iter_files(root, suf):
+            if f.name in self_referential:
+                continue
             text = f.read_text(encoding="utf-8", errors="ignore")
             rel = str(f.relative_to(repo)).replace("\\", "/")
             for n in names:
                 if patterns[n].search(text):
                     result[n][bucket].append(rel)
-    for f in tool_files:
-        text = f.read_text(encoding="utf-8", errors="ignore")
-        rel = str(f.relative_to(repo)).replace("\\", "/")
-        for n in names:
-            if patterns[n].search(text):
-                result[n]["mcp_tools"].append(rel)
 
+    buckets = ("example_workflows", "tests", "mcp_tools", "repo_tools", "docs")
     for n, rec in result.items():
-        for b in ("example_workflows", "tests", "mcp_tools", "docs"):
+        for b in buckets:
             rec[b] = sorted(set(rec[b]))
-        referenced = any(rec[b] for b in ("example_workflows", "tests",
-                                          "mcp_tools", "docs"))
-        rec["status"] = "referenced" if referenced else "registered_only"
+        # `status` stays exactly two-valued — it means "named anywhere at all",
+        # and tests/test_node_usage_audit.py pins that contract.
+        rec["status"] = "referenced" if any(rec[b] for b in buckets) else "registered_only"
         rec["in_workflows"] = bool(rec["example_workflows"])
+
+        # Product evidence is the useful signal: a node is part of the product
+        # if a shipping workflow uses it, a test exercises it specifically, or
+        # an MCP handler depends on it. Docs and repo tools are deliberately
+        # excluded — documenting a node proves intent, not use, and every node
+        # but one is documented, so counting docs would flatten the signal.
+        rec["dedicated_tests"] = [t for t in rec["tests"] if t not in GENERIC_TESTS]
+        rec["product_evidence"] = bool(rec["example_workflows"]
+                                       or rec["dedicated_tests"]
+                                       or rec["mcp_tools"])
+        rec["evidence_kinds"] = [k for k, v in (
+            ("workflow", rec["example_workflows"]),
+            ("dedicated_test", rec["dedicated_tests"]),
+            ("mcp", rec["mcp_tools"]),
+            ("repo_tool", rec["repo_tools"]),
+            ("docs", rec["docs"]),
+        ) if v]
     return result
 
 
@@ -135,11 +173,27 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true", help="Emit the full audit as JSON.")
+    ap.add_argument("--repo", default=None,
+                    help="repository to audit (default: this file's checkout).")
     ap.add_argument("--comfyui-host", default=None,
                     help="host:port of a running ComfyUI to read /history (transient!).")
     args = ap.parse_args()
 
-    data = audit()
+    repo = Path(args.repo).resolve() if args.repo else REPO
+    # Running from a git worktree silently audits the WRONG tree: sys.path[0]
+    # resolves `atlas_camera` through the editable install (the main checkout)
+    # while the file scans walk the worktree, so the registry and the files
+    # disagree and nodes are reported registered-only that are not.
+    try:
+        import atlas_camera
+        pkg = Path(atlas_camera.__file__).resolve().parent
+        if repo not in pkg.parents:
+            print(f"# WARNING: imported atlas_camera from {pkg}, but auditing "
+                  f"{repo} — run this from the main checkout, not a worktree")
+    except Exception:  # noqa: BLE001 — never let the warning break the tool
+        pass
+
+    data = audit(repo)
     if args.comfyui_host:
         try:
             counts = _history_counts(args.comfyui_host)
@@ -172,6 +226,22 @@ def main() -> None:
         if r["docs"]:
             where.append(f"docs={len(r['docs'])}")
         print(f"  {n} [{r['kind']}] {', '.join(where) or 'REGISTERED-ONLY'}")
+
+    # The signal this tool exists for. A node with no workflow, no test that
+    # exercises it specifically, and no MCP consumer has nothing proving it is
+    # part of the product — which is a prompt to find evidence or retire it,
+    # NOT proof that it is broken (most such nodes run perfectly).
+    no_ev = sorted(n for n, r in data.items()
+                   if r["kind"] == "standard" and not r["product_evidence"])
+    print(f"\nno product evidence (workflow / dedicated test / MCP): {len(no_ev)}")
+    for n in no_ev:
+        r = data[n]
+        extra = []
+        if r["docs"]:
+            extra.append(f"docs={len(r['docs'])}")
+        if r["repo_tools"]:
+            extra.append(f"repo_tools={len(r['repo_tools'])}")
+        print(f"  {n} ({', '.join(extra) or 'nothing at all'})")
 
 
 if __name__ == "__main__":
