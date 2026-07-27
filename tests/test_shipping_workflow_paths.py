@@ -58,3 +58,28 @@ def test_no_shipping_workflow_has_absolute_machine_paths():
     assert not problems, (
         "absolute machine paths in shipped workflows "
         "(run tools/normalize_workflow_paths.py):\n" + "\n".join(problems))
+
+
+def test_local_workflow_predicate_ignores_the_checkout_location():
+    r"""`is_local_workflow` must judge the path RELATIVE to the repo.
+
+    It used to scan the absolute path's parts for "local", which folded the
+    checkout's own location into the predicate. A worktree under
+    `AppData\Local\Temp` — or any clone beneath `~/.local/share` — made every
+    shipping workflow look like an artist's working copy, so the workflow
+    suites discovered NOTHING and passed vacuously. Found 2026-07-28 when a
+    temp worktree produced 18 unrelated "failures".
+    """
+    from conftest import is_local_workflow
+
+    shipped = ROOT / "examples" / "atlas_path_guided_hole_repair_workflow.json"
+    assert shipped.is_file(), "fixture moved"
+    assert not is_local_workflow(shipped)
+
+    # The real markers still work.
+    assert is_local_workflow(ROOT / "examples" / "something-edit.json")
+    assert is_local_workflow(ROOT / "examples" / "local" / "scratch.json")
+
+    # And the discovery itself must be non-empty — a predicate that hides
+    # everything is how this went unnoticed.
+    assert _shipping_workflows(), "no shipping workflows discovered"

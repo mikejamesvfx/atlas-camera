@@ -7,6 +7,8 @@ from atlas_camera.core.intrinsics import build_intrinsics
 from atlas_camera.core.schema import AtlasCamera, AtlasExtrinsics, AtlasSolve
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
 _PYTEST_TEMPROOT = Path(__file__).resolve().parents[1] / ".pytest_tmp"
 _PYTEST_TEMPROOT.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(_PYTEST_TEMPROOT))
@@ -92,8 +94,22 @@ LOCAL_WORKFLOW_MARKERS = ("-edit",)
 
 
 def is_local_workflow(path) -> bool:
-    """True for an artist's personal working copy, not a shipping workflow."""
+    """True for an artist's personal working copy, not a shipping workflow.
+
+    The "local" directory test is applied to the path RELATIVE TO THE REPO,
+    never to the absolute path. Matching absolute parts made the checkout's
+    own location part of the predicate: a worktree under
+    ``C:\\Users\\...\\AppData\\Local\\Temp`` — or any checkout beneath
+    ``~/.local/share`` — classified EVERY shipping workflow as an artist copy,
+    so the workflow suites silently discovered nothing and passed on an empty
+    set. Found 2026-07-28 running the suite from a temp worktree: 18 tests
+    "failed" for reasons that had nothing to do with the change under test.
+    """
     p = Path(path)
     if any(m in p.stem for m in LOCAL_WORKFLOW_MARKERS):
         return True
-    return "local" in {part.lower() for part in p.parts}
+    try:
+        parts = Path(p).resolve().relative_to(ROOT.resolve()).parts
+    except ValueError:      # outside the repo (a tmp_path fixture) — judge by
+        parts = p.parts     # the whole path, since there is no repo anchor
+    return "local" in {part.lower() for part in parts}
