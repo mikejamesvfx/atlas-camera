@@ -514,6 +514,21 @@ class AtlasHorizonMask:
 
         a, b, c = horizon.line_coefficients  # ax + by + c = 0
 
+        # Canonicalize the sign so positive really is ABOVE the horizon (2026-07-27).
+        # ax+by+c=0 describes the same line for (a,b,c) and (-a,-b,-c), and the
+        # two producers disagree: the learned path emits (0, 1, -horizon_y)
+        # (solver.py), for which `signed` grows DOWNWARD and this node returned
+        # the ground as sky; the VP path builds its line from two vanishing
+        # points (vanishing_points.line_from_points), whose sign flips with the
+        # ORDER of those points, so its polarity was not even deterministic.
+        # Image v runs downward, so forcing b <= 0 makes `signed` decrease with
+        # v — positive above, which is what the docstring and the node's own
+        # "Sky Mask" name promise. Nothing consumed this node (it was one of the
+        # audit's zero-evidence nodes), so no saved graph depended on the old
+        # inverted output.
+        if b > 0.0:
+            a, b, c = -a, -b, -c
+
         uu, vv = np.meshgrid(np.arange(image_width, dtype=np.float32),
                              np.arange(image_height, dtype=np.float32))
         signed = a * uu + b * vv + c  # positive = above horizon (sky)

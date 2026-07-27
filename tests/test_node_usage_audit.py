@@ -45,11 +45,20 @@ def test_generic_pin_tests_are_not_product_evidence():
     for rec in data.values():
         assert not (set(rec["dedicated_tests"]) & audit.GENERIC_TESTS)
 
-    # The signal must actually discriminate: some standard nodes have product
-    # evidence and some do not. A rule that classifies everything the same way
-    # would pass the check above while being useless.
-    flags = {r["product_evidence"] for r in data.values() if r["kind"] == "standard"}
-    assert flags == {True, False}
+    # The rule must actually DO something — one that classified everything the
+    # same way would pass the check above while being useless. This used to be
+    # asserted as "some standard node has no product evidence", which held only
+    # while the audit's 14 unevidenced nodes were still unevidenced; covering
+    # them (tests/test_node_layer_contracts.py) legitimately emptied that set,
+    # so the assertion was measuring the repo's state rather than the rule.
+    # Test the filter itself instead: it must strip pin hits from at least one
+    # node, and a node whose ONLY test hits are pins must come out unevidenced.
+    assert any(set(r["tests"]) - set(r["dedicated_tests"]) for r in data.values()), (
+        "GENERIC_TESTS filtered nothing — the pin tests should hit every node")
+    for rec in data.values():
+        only_pins = rec["tests"] and not rec["dedicated_tests"]
+        if only_pins and not rec["example_workflows"] and not rec["mcp_tools"]:
+            assert not rec["product_evidence"]
 
 
 def test_mcp_and_repo_tools_are_separate_buckets():

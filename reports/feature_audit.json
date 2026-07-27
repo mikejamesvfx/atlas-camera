@@ -6,11 +6,10 @@
   "experimental": 4,
   "legacy": 2,
   "total": 86,
-  "no_product_evidence": 14
+  "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 66,
-  "HOLD_NEEDS_EVIDENCE": 14,
+  "KEEP_CORE": 80,
   "KEEP_EXPERIMENTAL": 4,
   "LEGACY_GATE": 2
  },
@@ -107,10 +106,13 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -120,8 +122,9 @@
     "docs/NODE_CATALOG.md",
     "docs/USER_GUIDE.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -129,12 +132,13 @@
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasAssessImage": {
@@ -522,10 +526,13 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -534,8 +541,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -543,12 +551,13 @@
    "live_note": "requires all three line groups; fx=721.6 on the synthetic fixture",
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasDeband": {
@@ -642,10 +651,13 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -655,8 +667,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -664,22 +677,26 @@
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasDecomposeSolve": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -689,8 +706,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -698,12 +716,13 @@
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasDefineShotCam": {
@@ -781,10 +800,13 @@
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -793,8 +815,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -802,13 +825,14 @@
    "live_note": "downloads/uses the V2 model already cached on this machine",
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
-   "notes": "Deliberately NOT a duplicate of AtlasDepthMap: it emits a min-max normalized IMAGE preview and destroys the metric payload, which is why it cannot feed geometry. Distinct contract, no consumer."
+   "migration_action": "none; keep",
+   "notes": "Deliberately NOT a duplicate of AtlasDepthMap: it emits a min-max normalized IMAGE preview and destroys the metric payload, which is why it cannot feed geometry. Distinct contract. Weights are network- and multi-GB, so the unit test pins the bad-model-id error path and leaves the happy path to the live probe."
   },
   "AtlasDepthBandSplit": {
    "module": "atlas_camera/comfy/nodes_depth.py",
@@ -1098,6 +1122,7 @@
    "dedicated_tests": [
     "tests/test_derive_geometry_nodes.py",
     "tests/test_frontend_mirrors.py",
+    "tests/test_node_layer_contracts.py",
     "tests/test_scene_type_preset.py"
    ],
    "tests": [
@@ -1105,6 +1130,7 @@
     "tests/test_derive_geometry_nodes.py",
     "tests/test_facade_surface.py",
     "tests/test_frontend_mirrors.py",
+    "tests/test_node_layer_contracts.py",
     "tests/test_scene_type_preset.py"
    ],
    "mcp_tools": [],
@@ -1144,6 +1170,7 @@
     "tests/test_derive_geometry_nodes.py",
     "tests/test_merge_geometry.py",
     "tests/test_mesh_repair.py",
+    "tests/test_node_layer_contracts.py",
     "tests/test_retopologize_layer.py"
    ],
    "tests": [
@@ -1154,6 +1181,7 @@
     "tests/test_facade_surface.py",
     "tests/test_merge_geometry.py",
     "tests/test_mesh_repair.py",
+    "tests/test_node_layer_contracts.py",
     "tests/test_retopologize_layer.py"
    ],
    "mcp_tools": [],
@@ -1918,37 +1946,46 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
    "docs": [],
-   "product_evidence": false,
-   "evidence_kinds": [],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test"
+   ],
    "live_execution": "ok",
    "live_output": "ok",
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
-   "notes": "The only registered node documented NOWHERE \u2014 no workflow, no dedicated test, no MCP consumer, and zero hits in docs/. Executes correctly."
+   "migration_action": "none; keep",
+   "notes": "Was the only registered node with NO evidence of any kind \u2014 no workflow, no test, no MCP consumer, and zero hits in docs/. Now pinned on the one property its name claims: the override is ABSOLUTE, so applying it twice is idempotent (a relative nudge would drift on the second application)."
   },
   "AtlasGroundDepthMap": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
@@ -1960,8 +1997,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "repo_tool",
     "docs"
    ],
@@ -1970,24 +2008,27 @@
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
-   "notes": "Keeps its HOLD despite being AtlasGroundMask's replacement: it is the superset of the two, so gating it as well would leave no way to get a ground mask at all."
+   "migration_action": "none; keep",
+   "notes": "AtlasGroundMask's supported replacement, and the equivalence the legacy gate rests on is now a test rather than only a measurement: output 1 is asserted bit-identical to the gated node, and near/far are asserted not to move the mask."
   },
   "AtlasGroundMask": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "legacy",
    "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_legacy_node_gate.py"
+    "tests/test_legacy_node_gate.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "tests": [
     "tests/test_facade_surface.py",
-    "tests/test_legacy_node_gate.py"
+    "tests/test_legacy_node_gate.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
@@ -2022,10 +2063,13 @@
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -2034,21 +2078,23 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
    "live_output": "ok",
    "live_note": null,
    "overlapping_replacement": null,
-   "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "known_defect": "FIXED 2026-07-27, found by writing this cycle's coverage. The node returned the GROUND as sky \u2014 the exact inverse of its docstring and of its 'Sky Mask' display name. ax+by+c=0 names the same line for (a,b,c) and (-a,-b,-c), and the two producers disagreed: solver.py's learned path (the primary path for AI images) emits (0, 1, -horizon_y), for which the node's `signed` grows downward; the VP path builds the line via vanishing_points.line_from_points, whose sign flips with the ORDER of the two vanishing points, so that path's polarity was not even deterministic. The node now canonicalizes to b <= 0 before evaluating. Safe to change precisely because the audit had found the node has no consumers, so no saved graph depended on the inverted output. Pinned by tests/test_node_layer_contracts.py.",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasImportAnglePatch": {
@@ -2425,10 +2471,13 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -2436,8 +2485,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -2445,12 +2495,13 @@
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": "Near-superset of AtlasRegisterPlate for file-backed plates, but AtlasRegisterPlate covers the case it cannot: tagging an in-graph IMAGE tensor with no file (is_proxy=True). Not a merge candidate."
   },
   "AtlasLoadRAW": {
@@ -2747,18 +2798,22 @@
    "module": "atlas_camera/comfy/nodes_planar.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
    "docs": [
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -2766,12 +2821,13 @@
    "live_note": "returns the original image unchanged when warp_spec is None \u2014 correct fail-soft; ok with a real spec from AtlasPlanarUnwarp",
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasPlanarUnwarp": {
@@ -3310,10 +3366,13 @@
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -3324,8 +3383,9 @@
     "docs/superpowers/plans/2026-07-20-native-sam3-mask.md",
     "docs/superpowers/specs/2026-07-20-native-sam3-mask-design.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -3333,12 +3393,13 @@
    "live_note": "class construction only; full run needs SDXL weights",
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasSemanticMask": {
@@ -3528,18 +3589,22 @@
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
    "docs": [
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -3547,22 +3612,26 @@
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasUSDCameraLoader": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -3571,8 +3640,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -3580,12 +3650,13 @@
    "live_note": "round-trips against AtlasExportUSD",
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasVLMScaleCues": {
@@ -3628,10 +3699,13 @@
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_node_layer_contracts.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -3640,8 +3714,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -3649,12 +3724,13 @@
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": null,
-   "compatibility_risk": "low \u2014 nothing depends on it today",
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "compatibility_risk": "low \u2014 nothing depended on it before either",
+   "verdict": "KEEP_CORE",
    "evidence": [
-    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1) \u2014 working code without a product consumer, not dead code"
+    "executed in-process 2026-07-27 and returned meaningful output (reports/live_probe_baseline.json, F1)",
+    "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
-   "migration_action": "find a shipping workflow or a dedicated test, or schedule deprecation next cycle",
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasViewportControls": {

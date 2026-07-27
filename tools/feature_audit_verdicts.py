@@ -91,18 +91,28 @@ VERDICTS: dict[str, dict] = {
         ],
     },
 
-    # --- proven-working, no consumer: keep, find evidence or retire later ----
+    # --- the 2026-07-24 HOLD cohort, resolved 2026-07-27 --------------------
+    # All 14 now carry dedicated node-layer coverage
+    # (tests/test_node_layer_contracts.py), so the audit's own rule promotes
+    # them to KEEP_CORE. Recorded explicitly rather than left to the default,
+    # because the interesting part is WHY they were held and what closing the
+    # gap turned up: two of them (AtlasStereoRender, AtlasPlanarRewarp) looked
+    # covered but were not — tests/test_stereo_render.py and
+    # tests/test_planar_projection.py exercise the CORE math and never touch
+    # the node classes — and writing the tests exposed a real inverted-output
+    # bug in AtlasHorizonMask (see DEFECTS).
     **{
         name: {
-            "verdict": "HOLD_NEEDS_EVIDENCE",
-            "compatibility_risk": "low — nothing depends on it today",
-            "migration_action":
-                "find a shipping workflow or a dedicated test, or schedule "
-                "deprecation next cycle",
+            "verdict": "KEEP_CORE",
+            "compatibility_risk": "low — nothing depended on it before either",
+            "migration_action": "none; keep",
             "evidence": [
                 "executed in-process 2026-07-27 and returned meaningful output "
-                "(reports/live_probe_baseline.json, F1) — working code without "
-                "a product consumer, not dead code",
+                "(reports/live_probe_baseline.json, F1)",
+                "dedicated node-layer contract test added 2026-07-27 "
+                "(tests/test_node_layer_contracts.py): output arity/order "
+                "against RETURN_TYPES, routed values, and the documented "
+                "fail-soft or error path",
             ],
         }
         for name in (
@@ -115,18 +125,23 @@ VERDICTS: dict[str, dict] = {
     },
 }
 
-# Node-specific notes layered on top of the bulk HOLD entries above.
+# Node-specific notes layered on top of the bulk entries above.
 VERDICTS["AtlasGravityOverride"]["notes"] = (
-    "The only registered node documented NOWHERE — no workflow, no dedicated "
-    "test, no MCP consumer, and zero hits in docs/. Executes correctly.")
+    "Was the only registered node with NO evidence of any kind — no workflow, "
+    "no test, no MCP consumer, and zero hits in docs/. Now pinned on the one "
+    "property its name claims: the override is ABSOLUTE, so applying it twice "
+    "is idempotent (a relative nudge would drift on the second application).")
 VERDICTS["AtlasGroundDepthMap"]["notes"] = (
-    "Keeps its HOLD despite being AtlasGroundMask's replacement: it is the "
-    "superset of the two, so gating it as well would leave no way to get a "
-    "ground mask at all.")
+    "AtlasGroundMask's supported replacement, and the equivalence the legacy "
+    "gate rests on is now a test rather than only a measurement: output 1 is "
+    "asserted bit-identical to the gated node, and near/far are asserted not "
+    "to move the mask.")
 VERDICTS["AtlasDepthAnything"]["notes"] = (
     "Deliberately NOT a duplicate of AtlasDepthMap: it emits a min-max "
     "normalized IMAGE preview and destroys the metric payload, which is why "
-    "it cannot feed geometry. Distinct contract, no consumer.")
+    "it cannot feed geometry. Distinct contract. Weights are network- and "
+    "multi-GB, so the unit test pins the bad-model-id error path and leaves "
+    "the happy path to the live probe.")
 VERDICTS["AtlasLoadPlate"]["notes"] = (
     "Near-superset of AtlasRegisterPlate for file-backed plates, but "
     "AtlasRegisterPlate covers the case it cannot: tagging an in-graph IMAGE "
@@ -148,6 +163,19 @@ DEFECTS: dict[str, str] = {
         "dropped and reported; 'always' restores the old behaviour and says the "
         "plane is invented), and an appended `report` output carries the "
         "explanation. The fx<=0 guard now reports instead of silently no-opping.",
+    "AtlasHorizonMask":
+        "FIXED 2026-07-27, found by writing this cycle's coverage. The node "
+        "returned the GROUND as sky — the exact inverse of its docstring and of "
+        "its 'Sky Mask' display name. ax+by+c=0 names the same line for "
+        "(a,b,c) and (-a,-b,-c), and the two producers disagreed: solver.py's "
+        "learned path (the primary path for AI images) emits (0, 1, -horizon_y), "
+        "for which the node's `signed` grows downward; the VP path builds the "
+        "line via vanishing_points.line_from_points, whose sign flips with the "
+        "ORDER of the two vanishing points, so that path's polarity was not even "
+        "deterministic. The node now canonicalizes to b <= 0 before evaluating. "
+        "Safe to change precisely because the audit had found the node has no "
+        "consumers, so no saved graph depended on the inverted output. Pinned by "
+        "tests/test_node_layer_contracts.py.",
 }
 for _n in ("AtlasDeriveTowersSpires", "AtlasDeriveRoofsFacades",
            "AtlasDeriveInteriorRoom", "AtlasDeriveProjectionGeometry"):
