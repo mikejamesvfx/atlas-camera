@@ -68,3 +68,25 @@ fix/opencv5-exr-codec-pin                            7683bdaf962cb71c6726617f048
 # first — -d's ancestry test would have refused every superseded branch while
 # saying nothing about whether its content survived. Every -D branch had its
 # added lines checked against main and its SHA recorded above.
+
+## Third pass, 2026-07-28 — feat/occlude-erode (a recorded NEGATIVE result)
+
+feat/occlude-erode                                   18ccd8162f353cf94180c14b432ecff301bedcb0  2026-07-20
+
+Deleted, but the finding is worth keeping without the branch. It added
+`uOccludeErode` to the viewport cull: 3x3 taps at N texels' spacing, discarding
+only on a majority (>=5 of 9), exposed as an "Erode" slider beside the cut
+Occlude toggle, default 0 keeping the single-tap path bit-for-bit.
+
+It was built to remove the speckled pinholes seen with Occlude on, and it DOES
+NOT DO THAT. Live-tested on the portable ComfyUI (layers=0 templecity solve,
+primary relief mesh 147k verts with primary_depth bound, camera orbited off the
+recovered viewpoint): the GLSL compiles, the uniform/slider/per-frame sync all
+work, and erode 0 -> 4 -> 48 texels produced NO meaningful change in the culled
+image. 48 texels is 3.75% of the 1280px depth map width — a radius that would
+obliterate any isolated sampling noise.
+
+So the pinholes are not isolated sampling noise, and spatial filtering of the
+shadow-map tap is the wrong place to attack them. Anyone reaching for a
+morphological fix on the occlusion cull should read this first and look
+elsewhere. Restore the code with: git branch feat/occlude-erode 18ccd8162f353cf94180c14b432ecff301bedcb0
