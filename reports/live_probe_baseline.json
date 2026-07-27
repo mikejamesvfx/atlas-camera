@@ -239,6 +239,25 @@
   "also_verified": [
    "transformers 5.9.0 on BOTH installs; SAM3 concept mask returns 48.8% coverage on a half-sky test image (V91 upgraded from 4.57.6 where the SAM3 classes do not exist)",
    "apple/DepthPro-hf ran in 10.4s, predicted focal 484.0 px / fov 55.7 deg; scene_health focal_mismatch stays silent on an agreeing fx and fires on 2x"
-  ]
+  ],
+  "path_guided_chain": {
+   "plate": "atlas_00022_templecity.png",
+   "workflow": "examples/atlas_path_guided_hole_repair_workflow.json",
+   "design_note": "This workflow is TWO-PASS BY DESIGN and its own Note 11 says so: queue once to build the relief and the conservative first pass, then author an Orbit/Arc in the viewport, then queue again so the path-guided pass has a camera path. A single headless queue therefore exercises only pass 1 \u2014 that is correct behaviour, not a defect, and AtlasPathGuidedHoleRepair says exactly what to do ('camera path is empty \u2014 choose Orbit/Arc, then queue or bake').",
+   "pass_1_only": {
+    "prompt_id": "173b7a5d-1fef-4d73-a01d-669d1ad411d1",
+    "AtlasPlanarHolePatch_pass1": "filled 294/309 attempted (333 found), +887 verts, +5308 faces",
+    "AtlasPathGuidedHoleRepair": "camera path is empty \u2014 fail-soft, no selection",
+    "AtlasPlanarHolePatch_pass2": "filled 0/0 \u2014 nothing selected, as expected"
+   },
+   "with_camera_path": {
+    "prompt_id": "2f1530b0-a853-4392-951e-2150bd8f0848",
+    "method": "synthesised a 15-degree orbit around the solved scene pivot (camera 0,1.6,0; scene depth 30.83 m) and injected it through the viewport's client_data override \u2014 the shipped graph, not the -edit copy",
+    "AtlasPlanarHolePatch_pass1": "filled 294/309 attempted (333 found)",
+    "AtlasPathGuidedHoleRepair": "path frame 99/99 (offset 0 from end); lens 1.000x; 39 source islands, 31 candidate planes, 12 visible, 12 selected (selection=all_visible); source mask 450033 px; candidate-fit rejections: 2 max_hole_fraction, 6 plane residual",
+    "AtlasPlanarHolePatch_pass2": "filled 10/12 attempted (12 found), +511 verts, +1860 faces; 2 rejected on generated patch edge",
+    "conclusion": "The path-guided selection stage works end to end on a real plate: it rasterises candidates from the path's final frame, selects the islands visible from that angle, and the second patch pass fills them under its own gates."
+   }
+  }
  }
 }
