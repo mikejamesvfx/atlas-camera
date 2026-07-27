@@ -1,8 +1,7 @@
 {
- "id": "7b8f9e12-4c3a-4e2b-9876-123456789abc",
- "revision": 1,
- "last_node_id": 6,
- "last_link_id": 6,
+ "id": "3b0618b0-15ee-40da-a45b-14f87248e977",
+ "last_node_id": 4,
+ "last_link_id": 5,
  "nodes": [
   {
    "id": 1,
@@ -36,7 +35,8 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      1
+      1,
+      4
      ]
     },
     {
@@ -53,7 +53,7 @@
     "example.png",
     "image"
    ],
-   "title": "1 · SOURCE PLATE"
+   "title": "1 \u00b7 SOURCE PLATE"
   },
   {
    "id": 2,
@@ -94,16 +94,14 @@
      "localized_name": "image",
      "name": "image",
      "type": "IMAGE",
-     "links": [
-      3
-     ]
+     "links": []
     },
     {
      "localized_name": "depth",
      "name": "depth",
      "type": "ATLAS_DEPTH_MAP",
      "links": [
-      4
+      5
      ]
     },
     {
@@ -116,9 +114,7 @@
      "localized_name": "report",
      "name": "report",
      "type": "STRING",
-     "links": [
-      5
-     ]
+     "links": []
     }
    ],
    "properties": {
@@ -149,7 +145,7 @@
     "building, tree, roof, person, vehicle, text, watermark, blurry",
     0
    ],
-   "title": "2 · ATLAS INPUT · CUDA REPAIR & BAND BOX TEST",
+   "title": "2 \u00b7 ATLAS INPUT \u00b7 CUDA REPAIR & BAND BOX TEST",
    "color": "#3f7895"
   },
   {
@@ -171,19 +167,19 @@
      "localized_name": "solve",
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 6
+     "link": 3
     },
     {
      "localized_name": "source_image",
      "name": "source_image",
      "type": "IMAGE",
-     "link": 3
+     "link": 4
     },
     {
      "localized_name": "primary_depth",
      "name": "primary_depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 4
+     "link": 5
     }
    ],
    "outputs": [],
@@ -195,49 +191,18 @@
     "",
     1.0
    ],
-   "title": "3 · ATLAS VIEWPORT · LIVE REPAIRED RELIEF"
+   "title": "3 \u00b7 ATLAS VIEWPORT \u00b7 LIVE REPAIRED RELIEF"
   },
   {
    "id": 4,
-   "type": "PreviewTextNode",
+   "type": "AtlasRetopologizeLayer",
    "pos": [
-    540,
-    960
+    960,
+    140
    ],
    "size": [
-    460,
-    160
-   ],
-   "flags": {},
-   "order": 3,
-   "mode": 0,
-   "inputs": [
-    {
-     "localized_name": "text",
-     "name": "text",
-     "type": "STRING",
-     "link": 5
-    }
-   ],
-   "outputs": [],
-   "properties": {
-    "Node name for S&R": "PreviewTextNode"
-   },
-   "widgets_values": [
-    ""
-   ],
-   "title": "4 · ATLAS INPUT MACRO REPORT"
-  },
-  {
-   "id": 5,
-   "type": "AtlasLiveMeshRepair",
-   "pos": [
-    800.0,
-    400
-   ],
-   "size": [
-    300,
-    200
+    340,
+    170
    ],
    "flags": {},
    "order": 2,
@@ -251,28 +216,32 @@
    ],
    "outputs": [
     {
-     "name": "ATLAS_SOLVE",
+     "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      6
+      3
      ],
      "slot_index": 0
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 1
     }
    ],
    "properties": {
-    "Node name for S&R": "AtlasLiveMeshRepair"
+    "Node name for S&R": "AtlasRetopologizeLayer"
    },
    "widgets_values": [
-    "auto",
-    true,
-    0.0,
-    256,
-    true,
-    true,
-    8,
-    0.0
-   ],
-   "title": "5 · LIVE MESH REPAIR"
+    "*",
+    "off",
+    2000,
+    0,
+    30.0,
+    false,
+    8
+   ]
   }
  ],
  "links": [
@@ -288,56 +257,36 @@
    2,
    2,
    0,
-   5,
+   4,
    0,
    "ATLAS_SOLVE"
   ],
   [
    3,
-   2,
+   4,
+   0,
+   3,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   4,
    1,
+   0,
    3,
    1,
    "IMAGE"
   ],
   [
-   4,
+   5,
    2,
    2,
    3,
    2,
    "ATLAS_DEPTH_MAP"
-  ],
-  [
-   5,
-   2,
-   4,
-   4,
-   0,
-   "STRING"
-  ],
-  [
-   6,
-   5,
-   0,
-   3,
-   0,
-   "ATLAS_SOLVE"
   ]
  ],
- "groups": [
-  {
-   "title": "Live CUDA Grid Repair & Band Box Test Setup",
-   "bounding": [
-    80,
-    60,
-    1560,
-    1100
-   ],
-   "color": "#3f7895",
-   "font_size": 24
-  }
- ],
+ "groups": [],
  "config": {},
  "extra": {},
  "version": 0.4

@@ -154,7 +154,6 @@ NODE_CLASS_MAPPINGS = {
     # Track 1 — image generation
     "AtlasDepthAnything":         AtlasDepthAnything,
     "AtlasGroundDepthMap":        AtlasGroundDepthMap,
-    "AtlasGroundMask":            AtlasGroundMask,
     "AtlasHorizonMask":           AtlasHorizonMask,
     "AtlasVPVisualization":       AtlasVPVisualization,
     # Track 1 — export
@@ -180,7 +179,6 @@ NODE_CLASS_MAPPINGS = {
     "AtlasPlanarRewarp":          AtlasPlanarRewarp,
     # Experimental (research-only)
     "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
-    "AtlasLiveMeshRepair":        AtlasLiveMeshRepair,
     "AtlasRetopologizeLayer":     AtlasRetopologizeLayer,
     "AtlasPlanarHolePatch":       AtlasPlanarHolePatch,
     "AtlasPathGuidedHoleRepair":  AtlasPathGuidedHoleRepair,
@@ -250,7 +248,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # Track 1 — image generation
     "AtlasDepthAnything":         "Atlas Depth Anything V2 🧠",
     "AtlasGroundDepthMap":        "Atlas Ground Depth Map",
-    "AtlasGroundMask":            "Atlas Ground Mask",
     "AtlasHorizonMask":           "Atlas Horizon / Sky Mask",
     "AtlasVPVisualization":       "Atlas VP Visualization",
     # Track 1 — export
@@ -275,7 +272,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasPlanarUnwarp":          "Atlas Planar Unwarp ▱",
     "AtlasPlanarRewarp":          "Atlas Planar Rewarp ▱",
     "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
-    "AtlasLiveMeshRepair":        "Atlas Live Mesh Repair 🔧",
     "AtlasRetopologizeLayer":     "Atlas Retopologize Layer 🔷",
     "AtlasPlanarHolePatch":       "Atlas Planar Hole Patch ◩",
     "AtlasPathGuidedHoleRepair":  "Atlas Path-Guided Hole Repair 🎥",
@@ -340,3 +336,46 @@ def _experimental_enabled() -> bool:
 if _experimental_enabled():
     NODE_CLASS_MAPPINGS.update(EXPERIMENTAL_NODE_CLASS_MAPPINGS)
     NODE_DISPLAY_NAME_MAPPINGS.update(EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS)
+
+# ---------------------------------------------------------------------------
+# Legacy tier (superseded) — a supported replacement exists and the shipping
+# workflows have been migrated to it, but saved user graphs must keep
+# resolving for one migration cycle. Registered only when ATLAS_LEGACY_NODES
+# is truthy, so the default node menu offers ONE obvious way to do each job.
+# Same shape as the experimental gate above; the two are independent and a
+# node is never in both. Keys and display names stay byte-identical — the
+# append-only contract covers renames too, so the deprecation is carried by
+# the class docstring, the banner below, the node's own report, and
+# docs/FEATURE_AUDIT.md rather than by relabelling.
+ATLAS_LEGACY_DEFAULT = "0"
+
+LEGACY_NODE_CLASS_MAPPINGS = {
+    "AtlasLiveMeshRepair": AtlasLiveMeshRepair,
+    "AtlasGroundMask": AtlasGroundMask,
+}
+
+LEGACY_NODE_DISPLAY_NAME_MAPPINGS = {
+    "AtlasLiveMeshRepair": "Atlas Live Mesh Repair 🔧",
+    "AtlasGroundMask": "Atlas Ground Mask",
+}
+
+#: key -> the supported replacement, surfaced in the banner and the audit.
+LEGACY_REPLACEMENTS = {
+    "AtlasLiveMeshRepair":
+        "AtlasPlanarHolePatch (layer='*') -> AtlasRetopologizeLayer"
+        "(boundary_smooth_iterations)",
+    "AtlasGroundMask":
+        "AtlasGroundDepthMap, output 1 (ground_mask) — bit-identical",
+}
+
+
+def _legacy_enabled() -> bool:
+    v = os.environ.get("ATLAS_LEGACY_NODES", ATLAS_LEGACY_DEFAULT)
+    return v.strip().lower() not in ("", "0", "false", "off", "no")
+
+
+if _legacy_enabled():
+    NODE_CLASS_MAPPINGS.update(LEGACY_NODE_CLASS_MAPPINGS)
+    NODE_DISPLAY_NAME_MAPPINGS.update(LEGACY_NODE_DISPLAY_NAME_MAPPINGS)
+    print("[Atlas Camera] ATLAS_LEGACY_NODES=1 — registering superseded nodes: "
+          + "; ".join(f"{k} (use: {v})" for k, v in LEGACY_REPLACEMENTS.items()))

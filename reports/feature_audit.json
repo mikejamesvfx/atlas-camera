@@ -2,10 +2,11 @@
  "schema_version": 1,
  "generated_utc": "2026-07-27",
  "counts": {
-  "standard": 82,
+  "standard": 80,
   "experimental": 4,
+  "legacy": 2,
   "total": 86,
-  "no_product_evidence": 15
+  "no_product_evidence": 14
  },
  "verdict_counts": {
   "KEEP_CORE": 66,
@@ -24,7 +25,7 @@
  },
  "nodes": {
   "AtlasAddPatchView": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2498",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2596",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -298,12 +299,12 @@
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
     "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
+    "examples/atlas_boundary_smooth_retopo_test_workflow.json",
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
     "examples/atlas_camera_staged_master_workflow.json",
     "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
     "examples/atlas_input_quickstart_workflow.json",
     "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_live_repair_and_bands_test_workflow.json",
     "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
     "examples/atlas_occlusion_cull_quickstart_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
@@ -592,14 +593,16 @@
    "dedicated_tests": [
     "tests/test_debug_report.py",
     "tests/test_debug_report_parity.py",
-    "tests/test_example_workflows.py"
+    "tests/test_example_workflows.py",
+    "tests/test_legacy_node_gate.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_debug_report.py",
     "tests/test_debug_report_parity.py",
     "tests/test_example_workflows.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_legacy_node_gate.py"
    ],
    "mcp_tools": [
     "atlas_camera/mcp/server.py"
@@ -702,7 +705,7 @@
    "notes": null
   },
   "AtlasDefineShotCam": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2234",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2332",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1053,7 +1056,7 @@
    "notes": null
   },
   "AtlasDeriveInteriorRoom": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2111",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2209",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1181,7 +1184,7 @@
    "notes": null
   },
   "AtlasDeriveRoofsFacades": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2072",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2170",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1215,7 +1218,7 @@
    "notes": null
   },
   "AtlasDeriveTowersSpires": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:1994",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2092",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1255,7 +1258,7 @@
    "notes": null
   },
   "AtlasDeriveWalls": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:1922",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2020",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_planar_hole_patch_workflow.json"
@@ -1841,7 +1844,7 @@
    "notes": null
   },
   "AtlasExtractAnglePatch": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2280",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2378",
    "tier": "experimental",
    "example_workflows": [],
    "dedicated_tests": [
@@ -1972,12 +1975,14 @@
   },
   "AtlasGroundMask": {
    "module": "atlas_camera/comfy/nodes_depth.py:455",
-   "tier": "standard",
+   "tier": "legacy",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_legacy_node_gate.py"
+   ],
    "tests": [
-    "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_legacy_node_gate.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -1986,8 +1991,9 @@
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "ok",
@@ -2039,7 +2045,7 @@
    "notes": null
   },
   "AtlasImportAnglePatch": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2402",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2500",
    "tier": "experimental",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2167,10 +2173,10 @@
    "module": "atlas_camera/comfy/nodes_viewport.py:608",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_boundary_smooth_retopo_test_workflow.json",
     "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
     "examples/atlas_input_quickstart_workflow.json",
     "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_live_repair_and_bands_test_workflow.json",
     "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
     "examples/atlas_occlusion_cull_quickstart_workflow.json"
    ],
@@ -2359,22 +2365,21 @@
   },
   "AtlasLiveMeshRepair": {
    "module": "atlas_camera/comfy/nodes_geometry.py:900",
-   "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_live_repair_and_bands_test_workflow.json"
-   ],
+   "tier": "legacy",
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_example_workflows.py",
+    "tests/test_legacy_node_gate.py",
     "tests/test_mesh_repair.py",
+    "tests/test_planar_hole_patch.py",
     "tests/test_retopologize_layer.py"
    ],
    "tests": [
-    "tests/test_comfy_node_registry.py",
     "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
+    "tests/test_legacy_node_gate.py",
     "tests/test_mesh_repair.py",
+    "tests/test_planar_hole_patch.py",
     "tests/test_retopologize_layer.py"
    ],
    "mcp_tools": [],
@@ -2384,7 +2389,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -2509,7 +2513,7 @@
    "notes": null
   },
   "AtlasMergeGeometry": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:2147",
+   "module": "atlas_camera/comfy/nodes_geometry.py:2245",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_planar_hole_patch_workflow.json"
@@ -2584,7 +2588,7 @@
    "notes": null
   },
   "AtlasOcclusionMask": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:3023",
+   "module": "atlas_camera/comfy/nodes_geometry.py:3121",
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
@@ -2624,7 +2628,7 @@
    "notes": null
   },
   "AtlasPathGuidedHoleRepair": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:1585",
+   "module": "atlas_camera/comfy/nodes_geometry.py:1683",
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_path_guided_hole_repair_workflow.json"
@@ -2672,15 +2676,18 @@
    "notes": null
   },
   "AtlasPlanarHolePatch": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:1272",
+   "module": "atlas_camera/comfy/nodes_geometry.py:1303",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
+    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_planar_hole_patch_workflow.json"
    ],
    "dedicated_tests": [
     "tests/test_compact_path_repair_bake.py",
     "tests/test_example_workflows.py",
+    "tests/test_legacy_node_gate.py",
     "tests/test_planar_hole_patch.py"
    ],
    "tests": [
@@ -2688,6 +2695,7 @@
     "tests/test_compact_path_repair_bake.py",
     "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
+    "tests/test_legacy_node_gate.py",
     "tests/test_planar_hole_patch.py"
    ],
    "mcp_tools": [],
@@ -2963,9 +2971,12 @@
    "notes": null
   },
   "AtlasRetopologizeLayer": {
-   "module": "atlas_camera/comfy/nodes_geometry.py:1095",
+   "module": "atlas_camera/comfy/nodes_geometry.py:1126",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
+    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
+    "examples/atlas_boundary_smooth_retopo_test_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_planar_hole_patch_workflow.json"
    ],

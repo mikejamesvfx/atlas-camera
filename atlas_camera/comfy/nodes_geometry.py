@@ -898,10 +898,24 @@ class AtlasDeriveReliefMesh:
 
 
 class AtlasLiveMeshRepair:
-    """🔧 Live Mesh Repair node — apply PyTorch/CUDA 2D grid repair & 3D hole-fill/sawtooth repair to any solve or layer mesh.
+    """🔧 SUPERSEDED — use AtlasPlanarHolePatch + AtlasRetopologizeLayer.
 
-    Can be placed anywhere downstream (e.g. after `AtlasBoundedBand`, `AtlasCleanPlateLayer`, `AtlasDepthLayerMask`, or `AtlasDeriveReliefMesh`)
-    to repair boundary sawteeth and interior holes on specific layers or custom mesh pipelines.
+    Legacy tier: registered only when ATLAS_LEGACY_NODES is truthy, so saved
+    graphs keep resolving for one migration cycle. The replacement chain is
+
+        AtlasPlanarHolePatch(layer='*')  → scoped, reported hole filling
+        AtlasRetopologizeLayer(boundary_smooth_iterations=N)  → silhouette
+
+    which does what this node did with per-component gates, a report, and
+    created-island masks instead of a global switch. Boundary smoothing was
+    migrated verbatim; what does NOT carry over is the CUDA grid repair, the
+    harmonic enclosed-hole cap, and the post-hoc stretch cull — see
+    docs/FEATURE_AUDIT.md, which states that trade explicitly.
+
+    Original description: apply PyTorch/CUDA 2D grid repair & 3D
+    hole-fill/sawtooth repair to any solve or layer mesh; placeable anywhere
+    downstream (after `AtlasBoundedBand`, `AtlasCleanPlateLayer`,
+    `AtlasDepthLayerMask`, or `AtlasDeriveReliefMesh`).
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "repair"
@@ -969,6 +983,23 @@ class AtlasLiveMeshRepair:
         from atlas_camera.exporters._layers import mesh_from_primitive
 
         solve_out = copy.deepcopy(solve)
+
+        # Deprecation notice. This node has no STRING output and adding one
+        # would break the positional-output contract, so the notice goes to
+        # the console AND onto the solve, where AtlasDebugReport surfaces it.
+        # Plain list[str] so _json_ready serializes it (solve JSON is a
+        # contract).
+        _notice = ("AtlasLiveMeshRepair is SUPERSEDED — use "
+                   "AtlasPlanarHolePatch(layer='*') -> "
+                   "AtlasRetopologizeLayer(boundary_smooth_iterations). "
+                   "It is registered only because ATLAS_LEGACY_NODES is set.")
+        print(f"[Atlas Camera] {_notice}")
+        try:
+            solve_out.debug_metadata.setdefault(
+                "atlas_deprecations", []).append(_notice)
+        except Exception:  # noqa: BLE001 — a notice must never break a graph
+            pass
+
         view_matrix = solve.camera.extrinsics.camera_view_matrix
 
         # Resolve the pinhole intrinsics the CUDA grid path needs to back-project
@@ -1295,17 +1326,23 @@ class AtlasPlanarHolePatch:
         return {
             "required": {
                 "solve": ("ATLAS_SOLVE",),
-                "hole_mask": ("MASK", {
-                    "tooltip": "Selected relief holes to patch. Usually wire the "
-                               "hole_mask output from AtlasDeriveReliefMesh through "
-                               "a mask editor/scope mask first.",
-                }),
             },
             "optional": {
+                "hole_mask": ("MASK", {
+                    "tooltip": "Selected relief holes to patch — usually the hole_mask "
+                               "output of AtlasDeriveReliefMesh or AtlasCleanPlateLayer, "
+                               "optionally through a scope mask. LEAVE UNWIRED to treat "
+                               "EVERY hole in the target layer(s) as a candidate, which "
+                               "is what you want for a whole-solve sweep; the "
+                               "enclosed_only / max_hole_fraction / max_components gates "
+                               "still bound what actually gets filled.",
+                }),
                 "layer": ("STRING", {
                     "default": "",
                     "tooltip": "Blank = primary relief mesh; a ProjectionSource name "
-                               "= that layer's relief mesh.",
+                               "= that layer's relief mesh; '*' = every relief mesh "
+                               "(primary + all sources), chaining the solve through "
+                               "one pass per layer.",
                 }),
                 "ring_cells": ("INT", {
                     "default": 2, "min": 1, "max": 12,
@@ -1361,12 +1398,63 @@ class AtlasPlanarHolePatch:
             },
         }
 
-    def patch(self, solve, hole_mask, layer="", ring_cells=2, max_components=64,
-              normal_tolerance_deg=25.0, max_plane_error_m=0.15,
-              max_hole_fraction=0.05, enclosed_only=True,
-              min_normal_support_fraction=0.30,
-              max_patch_edge_factor=20.0,
-              max_patch_depth_factor=2.0):
+    def patch(self, solve, hole_mask=None, layer="", **kw):
+        """Dispatch: one named layer / the primary scene, or '*' for all.
+
+        ``layer="*"`` sweeps the primary scene mesh and every projection
+        source that carries one, chaining the solve through each pass — the
+        whole-solve behaviour AtlasLiveMeshRepair used to provide, without
+        needing one patch node per layer.
+
+        Mask algebra for the sweep: a hole filled by one layer is gone from
+        that layer's ``remaining`` but still present in the others', so the
+        global remaining is the INTERSECTION and created is the UNION. That
+        keeps ``created == input & ~remaining`` true across the sweep, exactly
+        as it is for a single target.
+        """
+        sel = str(layer or "").strip()
+        if sel != "*":
+            return self._patch_one(solve, hole_mask, sel, **kw)
+
+        torch = _require_torch()
+        np = _require_numpy()
+        targets = [""]
+        targets += [name for name in
+                    (getattr(src, "name", "") for src in
+                     (getattr(solve, "projection_sources", None) or []))
+                    if name]
+
+        current = solve
+        remaining_acc = None
+        created_acc = None
+        lines = []
+        for name in targets:
+            current, remaining_t, report, created_t = self._patch_one(
+                current, hole_mask, name, **kw)
+            label = name or "primary"
+            if "no relief mesh" in report:
+                continue                      # not every layer carries geometry
+            lines.append(f"[{label}] " + report.replace("\n", "\n    "))
+            rem = remaining_t.detach().cpu().numpy()
+            cre = created_t.detach().cpu().numpy()
+            remaining_acc = rem if remaining_acc is None else np.minimum(remaining_acc, rem)
+            created_acc = cre if created_acc is None else np.maximum(created_acc, cre)
+
+        if remaining_acc is None:
+            return (current, torch.zeros(1, 1, 1),
+                    "no layer carries a relief mesh — solve passed through",
+                    torch.zeros(1, 1, 1))
+        header = f"swept {len(lines)} layer(s): " + ", ".join(
+            ln.split("]")[0][1:] for ln in lines)
+        return (current, torch.from_numpy(remaining_acc), header + "\n" + "\n".join(lines),
+                torch.from_numpy(created_acc))
+
+    def _patch_one(self, solve, hole_mask, layer="", ring_cells=2, max_components=64,
+                   normal_tolerance_deg=25.0, max_plane_error_m=0.15,
+                   max_hole_fraction=0.05, enclosed_only=True,
+                   min_normal_support_fraction=0.30,
+                   max_patch_edge_factor=20.0,
+                   max_patch_depth_factor=2.0):
         torch = _require_torch()
         np = _require_numpy()
         from atlas_camera.core.planar_hole_patch import (
@@ -1386,7 +1474,12 @@ class AtlasPlanarHolePatch:
         cy = float(intr.cy_px if intr.cy_px is not None else height / 2.0)
         resolved = _resolve_exclude_mask(hole_mask, height, width)
         if resolved is None:
-            resolved = np.zeros((height, width), dtype=bool)
+            # No mask wired: every hole in this layer is a candidate. The
+            # per-component gates (enclosed_only, max_hole_fraction,
+            # max_components, edge/depth factors) still decide what is
+            # actually safe to fill, so this is "sweep the layer", not
+            # "fill everything".
+            resolved = np.ones((height, width), dtype=bool)
         remaining_t = torch.from_numpy(resolved.astype(np.float32)).unsqueeze(0)
         created_t = torch.zeros_like(remaining_t)
         if min(width, height) <= 1 or min(fx, fy) <= 0.0:
@@ -1428,7 +1521,12 @@ class AtlasPlanarHolePatch:
         cy = float(target_intr.cy_px if target_intr.cy_px is not None else height / 2.0)
         resolved = _resolve_exclude_mask(hole_mask, height, width)
         if resolved is None:
-            resolved = np.zeros((height, width), dtype=bool)
+            # No mask wired: every hole in this layer is a candidate. The
+            # per-component gates (enclosed_only, max_hole_fraction,
+            # max_components, edge/depth factors) still decide what is
+            # actually safe to fill, so this is "sweep the layer", not
+            # "fill everything".
+            resolved = np.ones((height, width), dtype=bool)
         remaining_t = torch.from_numpy(resolved.astype(np.float32)).unsqueeze(0)
         created_t = torch.zeros_like(remaining_t)
         if min(width, height) <= 1 or min(fx, fy) <= 0.0:

@@ -28,7 +28,9 @@ import atlas_camera.comfy.nodes as nodes
 
 #: Public surface — node classes, registry mappings, shared constants.
 FACADE_PUBLIC = {
-    "ATLAS_EXPERIMENTAL_DEFAULT", "AtlasAddPatchView", "AtlasApplyScaleReferences",
+    "ATLAS_EXPERIMENTAL_DEFAULT", "ATLAS_LEGACY_DEFAULT",
+    "LEGACY_NODE_CLASS_MAPPINGS", "LEGACY_NODE_DISPLAY_NAME_MAPPINGS",
+    "LEGACY_REPLACEMENTS", "AtlasAddPatchView", "AtlasApplyScaleReferences",
     "AtlasAssessImage", "AtlasAssessOutput", "AtlasAttachSourcePlate", "AtlasBlockoutViewport",
     "AtlasBoundedBand", "AtlasCleanPlateLayer", "AtlasCleanPlateStack",
     "AtlasApplyLUT", "AtlasDefocus", "AtlasGrade",
@@ -73,7 +75,7 @@ FACADE_PRIVATE = {
     "_MiniGraphBuilder", "_analytic_ground_forward_depth", "_apply_band_split",
     "_b64_png_to_mask", "_band_resolution_validity", "_blockout_cache_set",
     "_clone_solve_with_metadata", "_comfy_registry", "_decode_b64_to_tensor",
-    "_depth_map_for_solve", "_execution_blocker", "_experimental_enabled",
+    "_depth_map_for_solve", "_execution_blocker", "_experimental_enabled", "_legacy_enabled",
     "_extend_edge_colors", "_extract_blockout_camera", "_extrinsics_from_view",
     "_fit_long_edge", "_flood_mask_to_frame_borders", "_format_hole_fill_report",
     "_graph_builder", "_ground_depth_compute", "_ground_scale_cached",

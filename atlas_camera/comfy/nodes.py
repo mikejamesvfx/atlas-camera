@@ -195,4 +195,9 @@ from atlas_camera.comfy.node_registry import (
     EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS,
     ATLAS_EXPERIMENTAL_DEFAULT,
     _experimental_enabled,
+    LEGACY_NODE_CLASS_MAPPINGS,
+    LEGACY_NODE_DISPLAY_NAME_MAPPINGS,
+    LEGACY_REPLACEMENTS,
+    ATLAS_LEGACY_DEFAULT,
+    _legacy_enabled,
 )

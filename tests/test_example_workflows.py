@@ -63,17 +63,17 @@ def test_examples_directory_has_ui_workflows():
     names = sorted(n for n, _ in _WORKFLOWS)
     assert names == ["atlas_3layer_sky_machine_foreground_moge_workflow.json",
                      "atlas_4layer_boundedband_bgcard_moge_workflow.json",
+                     "atlas_boundary_smooth_retopo_test_workflow.json",
                      "atlas_camera_staged_master_agentic_assessment_workflow.json",
                      "atlas_camera_staged_master_workflow.json",
                      "atlas_input_quickstart_agentic_assessment_workflow.json",
                      "atlas_input_quickstart_workflow.json",
                      "atlas_input_walkthrough_switches_workflow.json",
-                     "atlas_live_repair_and_bands_test_workflow.json",
                      "atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
                      "atlas_occlusion_cull_quickstart_workflow.json",
                      "atlas_path_guided_hole_repair_workflow.json",
                      "atlas_planar_hole_patch_workflow.json",
-        "atlas_plate_color_grade_defocus_lut_workflow.json",
+                     "atlas_plate_color_grade_defocus_lut_workflow.json",
                      "atlas_raw_3layer_ocio_workflow.json",
                      "atlas_staged_master_portal_neat_workflow.json"]
 

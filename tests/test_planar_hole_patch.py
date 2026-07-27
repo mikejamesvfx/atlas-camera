@@ -485,3 +485,112 @@ def test_wall_and_tower_nodes_default_to_no_foreground_cubes():
 
     assert AtlasDeriveWalls.INPUT_TYPES()["optional"]["max_objects"][1]["default"] == 0
     assert AtlasDeriveTowersSpires.INPUT_TYPES()["optional"]["max_objects"][1]["default"] == 0
+
+
+# ---------------------------------------------------------------------------
+# whole-solve sweep — the AtlasLiveMeshRepair replacement
+# ---------------------------------------------------------------------------
+
+def _multi_layer_solve():
+    """Primary relief mesh + two named ProjectionSources, each with a hole."""
+    from atlas_camera.core.schema import ProjectionSource
+
+    intr = AtlasIntrinsics(
+        image_width=W, image_height=H, fx_px=FX, fy_px=FY, cx_px=CX, cy_px=CY,
+        focal_length_mm=35.0, sensor_width_mm=36.0)
+    cam = LatentCamera(intrinsics=intr,
+                       extrinsics=AtlasExtrinsics(camera_view_matrix=VIEW))
+    solve = AtlasSolve(camera=cam)
+    solve.projection_scene.proxy_geometry = [relief_mesh_primitive(_mesh_with_hole())]
+    for name in ("machine", "foreground"):
+        solve.projection_sources.append(ProjectionSource(
+            camera=copy.deepcopy(cam), name=name,
+            proxy_geometry=[relief_mesh_primitive(_mesh_with_hole())]))
+    return solve
+
+
+def _filled_counts(solve):
+    out = {}
+    for prim in solve.projection_scene.proxy_geometry:
+        rep = (prim.metadata or {}).get("planar_hole_patch")
+        if rep:
+            out["primary"] = rep["components_filled"]
+    for src in solve.projection_sources:
+        for prim in src.proxy_geometry:
+            rep = (prim.metadata or {}).get("planar_hole_patch")
+            if rep:
+                out[src.name] = rep["components_filled"]
+    return out
+
+
+def test_layer_star_sweeps_every_relief_mesh():
+    """One node replaces one-patch-per-layer: '*' walks primary + all sources.
+
+    AtlasLiveMeshRepair swept the whole solve; AtlasPlanarHolePatch targets one
+    layer. Without '*' a faithful migration of a 3-layer graph needs three
+    patch nodes.
+    """
+    pytest.importorskip("torch")
+    from atlas_camera.comfy.nodes import AtlasPlanarHolePatch
+
+    solve = _multi_layer_solve()
+    out, remaining, report, created = AtlasPlanarHolePatch().patch(
+        solve, None, layer="*",
+        normal_tolerance_deg=15.0, max_plane_error_m=0.02, max_hole_fraction=0.20)
+
+    filled = _filled_counts(out)
+    assert set(filled) == {"primary", "machine", "foreground"}
+    assert all(v == 1 for v in filled.values()), filled
+    assert "swept 3 layer(s)" in report
+    for label in ("primary", "machine", "foreground"):
+        assert f"[{label}]" in report
+    assert int(created.sum()) > 0
+
+
+def test_layer_star_mask_algebra_is_intersection_and_union():
+    """A hole filled by one layer is still open in another's `remaining`, so
+    the sweep's remaining is the INTERSECTION and created the UNION."""
+    pytest.importorskip("torch")
+    from atlas_camera.comfy.nodes import AtlasPlanarHolePatch
+
+    solve = _multi_layer_solve()
+    _out, remaining, _report, created = AtlasPlanarHolePatch().patch(
+        solve, None, layer="*",
+        normal_tolerance_deg=15.0, max_plane_error_m=0.02, max_hole_fraction=0.20)
+    import torch
+    assert torch.count_nonzero(created * remaining) == 0
+
+
+def test_unwired_mask_treats_every_hole_as_a_candidate():
+    """Omitting hole_mask must sweep, not no-op.
+
+    Before this, an absent mask resolved to all-zeros, so the node silently
+    filled nothing — the worst possible default for a whole-solve sweep.
+    """
+    pytest.importorskip("torch")
+    from atlas_camera.comfy.nodes import AtlasPlanarHolePatch
+
+    mesh = _mesh_with_hole()
+    intr = AtlasIntrinsics(image_width=W, image_height=H, fx_px=FX, fy_px=FY,
+                           cx_px=CX, cy_px=CY, focal_length_mm=35.0,
+                           sensor_width_mm=36.0)
+    solve = AtlasSolve(camera=LatentCamera(
+        intrinsics=intr, extrinsics=AtlasExtrinsics(camera_view_matrix=VIEW)))
+    solve.projection_scene.proxy_geometry = [relief_mesh_primitive(mesh)]
+
+    out, _remaining, report, created = AtlasPlanarHolePatch().patch(
+        solve, None,
+        normal_tolerance_deg=15.0, max_plane_error_m=0.02, max_hole_fraction=0.20)
+    relief = [p for p in out.projection_scene.proxy_geometry
+              if (p.metadata or {}).get("source") == "depth_relief_mesh"]
+    assert relief[0].metadata["planar_hole_patch"]["components_filled"] == 1
+    assert int(created.sum()) > 0
+    assert "filled 1/1" in report
+
+
+def test_hole_mask_is_optional_in_input_types():
+    from atlas_camera.comfy.nodes import AtlasPlanarHolePatch
+
+    it = AtlasPlanarHolePatch.INPUT_TYPES()
+    assert list(it["required"]) == ["solve"]
+    assert "hole_mask" in it["optional"]

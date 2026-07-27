@@ -39,7 +39,11 @@ def _shipping_workflows() -> list[Path]:
     return out
 
 
-ATLAS = {**reg.NODE_CLASS_MAPPINGS, **reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS}
+# Legacy nodes are merged in too: a gated-out node left in a saved workflow
+# must still be drift-checked, or it silently stops being validated at exactly
+# the moment it stops being registered.
+ATLAS = {**reg.NODE_CLASS_MAPPINGS, **reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS,
+         **getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {})}
 
 
 def _expected_widget_count(cls) -> int:
