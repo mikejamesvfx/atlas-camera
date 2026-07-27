@@ -21,6 +21,7 @@ from atlas_camera.comfy.node_helpers import (
 
     _DEPTH_MODEL_CHOICES,
     _clone_solve_with_metadata,
+    _depth_map_for_solve,
     _execution_blocker,
     _extrinsics_from_view,
     _image_fingerprint,
@@ -176,6 +177,165 @@ class AtlasDeband:
                   "Float-safe (no quantize/clamp); edges pass through bit-exact. "
                   "Note: IMAGE-only — the registered plate path (if any) still refers "
                   "to the un-debanded file.")
+        return (out, report)
+
+
+class AtlasGrade:
+    """🎨 Nuke-style grade: lift / gamma / gain + saturation + mix.
+
+    For matching an AI patch or clean plate to the source before projection —
+    the two-knob fix that shouldn't need a Nuke round trip. Scene-linear
+    float-safe (plate/grade.py): highlights never clamp, negative linear
+    values skip the gamma pow, alpha passes through UNGRADED, and identity
+    knobs are an exact no-op. IMAGE-only — cannot touch an ATLAS_PLATE_REF
+    (the registered plate path still refers to the ungraded file).
+    """
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "report")
+    FUNCTION = "grade"
+    CATEGORY = "Atlas Camera/Color"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"image": ("IMAGE",)},
+            "optional": {
+                "lift": ("FLOAT", {"default": 0.0, "min": -1.0, "max": 1.0, "step": 0.005}),
+                "gamma": ("FLOAT", {"default": 1.0, "min": 0.05, "max": 5.0, "step": 0.01}),
+                "gain": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 8.0, "step": 0.01}),
+                "saturation": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.01}),
+                "mix": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+            },
+        }
+
+    def grade(self, image, lift=0.0, gamma=1.0, gain=1.0, saturation=1.0, mix=1.0):
+        from atlas_camera.plate.grade import grade_plate
+        torch = _require_torch()
+        np = _require_numpy()
+        frames = [grade_plate(image[i].detach().cpu().numpy(),
+                              lift=float(lift), gamma=float(gamma), gain=float(gain),
+                              saturation=float(saturation), mix=float(mix))
+                  for i in range(image.shape[0])]
+        out = torch.from_numpy(np.stack(frames, axis=0))
+        report = (f"AtlasGrade: lift {float(lift):+.3f}, gamma {float(gamma):.2f}, "
+                  f"gain {float(gain):.2f}, saturation {float(saturation):.2f}, "
+                  f"mix {float(mix):.2f}. Float-safe (no clamp); alpha untouched.")
+        return (out, report)
+
+
+class AtlasDefocus:
+    """🌫 Depth-driven defocus from the SHARED metric depth map.
+
+    Thin-lens CoC — ``strength_px * |1 - focus/z|`` — so focus is a distance
+    in METRES against the same ATLAS_DEPTH_MAP the geometry uses, not a
+    painted mask. focus_distance_m=0 auto-focuses on the median depth.
+    Layered gather (plate/defocus.py): fast and float-safe; the classic
+    gather artifact (sharp foreground edges bleeding onto blurred background)
+    is accepted — this is a finishing/preview defocus, not a render-grade
+    scatter. NaN depth (sky/holes) inherits the far-limit blur.
+    """
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING")
+    RETURN_NAMES = ("image", "coc_preview", "report")
+    FUNCTION = "defocus"
+    CATEGORY = "Atlas Camera/Color"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+            },
+            "optional": {
+                "focus_distance_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10000.0,
+                    "step": 0.1, "tooltip": "0 = auto (median scene depth)."}),
+                "strength_px": ("FLOAT", {"default": 8.0, "min": 0.0, "max": 64.0, "step": 0.5,
+                    "tooltip": "CoC at the infinity limit, in pixels."}),
+                "levels": ("INT", {"default": 6, "min": 2, "max": 12}),
+            },
+        }
+
+    def defocus(self, image, depth, focus_distance_m=0.0, strength_px=8.0, levels=6):
+        from atlas_camera.plate.defocus import defocus_plate
+        torch = _require_torch()
+        np = _require_numpy()
+        h, w = int(image.shape[1]), int(image.shape[2])
+        z = np.asarray(_depth_map_for_solve(depth, w, h), dtype=np.float64)
+        focus = float(focus_distance_m)
+        if focus <= 0.0:
+            finite = z[np.isfinite(z) & (z > 1e-4)]
+            focus = float(np.median(finite)) if finite.size else 5.0
+        frames, cocs = [], []
+        for i in range(image.shape[0]):
+            f, coc = defocus_plate(image[i].detach().cpu().numpy(), z,
+                                   focus_distance_m=focus,
+                                   strength_px=float(strength_px),
+                                   levels=int(levels))
+            frames.append(f)
+            cocs.append(coc)
+        out = torch.from_numpy(np.stack(frames, axis=0))
+        coc = cocs[0]
+        cmax = float(coc.max()) or 1.0
+        coc_rgb = np.repeat((coc / cmax)[..., None], 3, axis=-1).astype(np.float32)
+        preview = torch.from_numpy(coc_rgb).unsqueeze(0)
+        metric = "metric" if getattr(depth, "is_metric", False) else "RELATIVE (unitless!)"
+        report = (f"AtlasDefocus: focus {focus:.2f} m ({metric} depth, "
+                  f"{getattr(depth, 'model_id', '?')}), strength {float(strength_px):g} px, "
+                  f"{int(levels)} levels, max CoC {float(coc.max()):.1f} px. "
+                  "Gather-style: expect slight foreground edge bleed at strong settings.")
+        return (out, preview, report)
+
+
+class AtlasApplyLUT:
+    """🌈 Apply a .cube LUT (1D/3D, native parser — no OCIO dependency).
+
+    Pairs with AtlasRegisterPlate's recorded ``lut_path``: the plate-ref
+    carries the path for the DCC handoff; this node actually applies it
+    in-graph for preview/bake. intensity follows the Nuke Vectorfield
+    convention (0 bypass, 1 full, up to 2 extrapolates). Trilinear for 3D
+    cubes; DOMAIN_MIN/MAX honored. Other LUT formats: convert to .cube.
+    """
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "report")
+    FUNCTION = "apply"
+    CATEGORY = "Atlas Camera/Color"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "lut_path": ("STRING", {"default": ""}),
+            },
+            "optional": {
+                "intensity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05}),
+            },
+        }
+
+    def apply(self, image, lut_path, intensity=1.0):
+        from atlas_camera.plate.lut import apply_lut, parse_cube
+        torch = _require_torch()
+        np = _require_numpy()
+        path = str(lut_path or "").strip()
+        if not path or not Path(path).is_file():
+            return (image, f"AtlasApplyLUT: LUT file not found: '{path}' — image passed "
+                           "through unchanged.")
+        try:
+            lut = parse_cube(path)
+        except ValueError as exc:
+            return (image, f"AtlasApplyLUT: {exc} — image passed through unchanged.")
+        frames = [apply_lut(image[i].detach().cpu().numpy(), lut,
+                            intensity=float(intensity))
+                  for i in range(image.shape[0])]
+        out = torch.from_numpy(np.stack(frames, axis=0))
+        kind = f"3D {lut.size}^3" if lut.is_3d else f"1D {lut.size}"
+        title = f" '{lut.title}'" if lut.title else ""
+        report = (f"AtlasApplyLUT: {kind} cube{title}, intensity {float(intensity):.2f} "
+                  f"({Path(path).name}). Trilinear; domain "
+                  f"[{lut.domain_min[0]:g}, {lut.domain_max[0]:g}].")
         return (out, report)
 
 

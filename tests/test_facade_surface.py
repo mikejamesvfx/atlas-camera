@@ -31,6 +31,7 @@ FACADE_PUBLIC = {
     "ATLAS_EXPERIMENTAL_DEFAULT", "AtlasAddPatchView", "AtlasApplyScaleReferences",
     "AtlasAssessImage", "AtlasAssessOutput", "AtlasAttachSourcePlate", "AtlasBlockoutViewport",
     "AtlasBoundedBand", "AtlasCleanPlateLayer", "AtlasCleanPlateStack",
+    "AtlasApplyLUT", "AtlasDefocus", "AtlasGrade",
     "AtlasConstrainedSolve", "AtlasDeband", "AtlasDebugReport", "AtlasDecomposeCamera",
     "AtlasDecomposeSolve", "AtlasDefineShotCam", "AtlasDepthAnything",
     "AtlasDepthBandSplit", "AtlasDepthLayerMask", "AtlasDepthMap",
