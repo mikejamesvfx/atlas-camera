@@ -144,6 +144,7 @@ def build_path_hole_repair(
     source_camera: Any,
     camera_path: Any,
     paint_mask: Any | None = None,
+    exclude_mask: Any | None = None,
     config: PathHoleRepairConfig | None = None,
 ) -> dict[str, Any]:
     """Return moved-view IDs plus an exact source-space repair mask.
@@ -160,12 +161,22 @@ def build_path_hole_repair(
     src_intr = source_camera.intrinsics
     src_width = int(src_intr.image_width or 0)
     src_height = int(src_intr.image_height or 0)
-    selected_mask = np.asarray(hole_mask, dtype=bool)
+    selected_mask = np.asarray(hole_mask, dtype=bool).copy()
     if selected_mask.shape != (src_height, src_width):
         raise ValueError(
             f"hole mask shape {selected_mask.shape} does not match "
             f"source camera image {(src_height, src_width)}"
         )
+    excluded_pixels = 0
+    if exclude_mask is not None:
+        excluded = np.asarray(exclude_mask, dtype=bool)
+        if excluded.shape != selected_mask.shape:
+            raise ValueError(
+                f"exclude mask shape {excluded.shape} does not match "
+                f"source camera image {selected_mask.shape}"
+            )
+        excluded_pixels = int((selected_mask & excluded).sum())
+        selected_mask &= ~excluded
     if not sampled:
         return {
             "repair_mask": np.zeros_like(selected_mask),
@@ -340,6 +351,9 @@ def build_path_hole_repair(
         f"{len(visible_ids)} visible, {len(selected_ids)} selected",
         f"selection={mode}; source mask contains {int(repair_mask.sum())} pixels",
     ]
+    if exclude_mask is not None:
+        report_lines.append(
+            f"exclude mask removed {excluded_pixels} background/sky hole pixels")
     rejected = fit_report.get("rejected") or []
     if rejected:
         reasons: dict[str, int] = {}

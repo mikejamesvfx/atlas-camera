@@ -132,6 +132,8 @@ def build():
         "1.0 widen the lens.\n"
         "• Candidate pixels are IDs, not ray-cast guesses. A selected pixel "
         "maps back to its complete connected source-space tear island.\n"
+        "• Wire the same upstream background/sky mask into exclude_mask. "
+        "This subtracts the exterior before open-edge components are found.\n"
         "• all_visible is the unattended/agent mode. max_selected_islands=0 "
         "means every visible candidate, ordered smallest-first.\n"
         "• The selector bypasses only the preview edge gate. Pass 2 remains "
@@ -158,6 +160,7 @@ def build():
                 ("camera_path", "ATLAS_CAMERA_PATH"),
                 ("path_frames", "IMAGE"),
                 ("paint_mask", "MASK"),
+                ("exclude_mask", "MASK"),
             ],
             outputs=[
                 ("repair_mask", "MASK"),

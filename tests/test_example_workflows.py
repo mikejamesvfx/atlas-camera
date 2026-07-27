@@ -248,6 +248,8 @@ def test_path_guided_repair_workflow_is_two_pass_and_camera_driven():
     selector = next(
         node for node in wf["nodes"]
         if node["type"] == "AtlasPathGuidedHoleRepair")
+    assert any(item["name"] == "exclude_mask"
+               for item in selector["inputs"])
     assert selector["widgets_values"][1] == 0  # final path frame
     assert selector["widgets_values"][2] == 0.0  # inherit baked path lens
     assert selector["widgets_values"][4] == "all_visible"

@@ -1537,6 +1537,11 @@ class AtlasPathGuidedHoleRepair:
                                "when selection_mode=paint_overlap; touching a rendered "
                                "candidate selects its complete source-space island.",
                 }),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Optional background/sky exclusion mask. It is "
+                               "subtracted before connected components are found, "
+                               "separating open foreground tears from the exterior.",
+                }),
                 "layer": ("STRING", {
                     "default": "",
                     "tooltip": "Blank = primary relief; otherwise a ProjectionSource name.",
@@ -1639,6 +1644,7 @@ class AtlasPathGuidedHoleRepair:
         camera_path,
         path_frames=None,
         paint_mask=None,
+        exclude_mask=None,
         layer="",
         frame_offset_from_end=0,
         lens_scale_override=0.0,
@@ -1713,6 +1719,9 @@ class AtlasPathGuidedHoleRepair:
             painted = (
                 painted.detach().cpu().numpy()
                 if hasattr(painted, "detach") else painted)
+        excluded = None
+        if exclude_mask is not None:
+            excluded = _resolve_exclude_mask(exclude_mask, height, width)
         if camera_path is None:
             empty = torch.zeros(1, height, width, dtype=torch.float32)
             preview = torch.zeros(1, 1, 1, 3, dtype=torch.float32)
@@ -1738,7 +1747,8 @@ class AtlasPathGuidedHoleRepair:
         try:
             result = build_path_hole_repair(
                 mesh, resolved, source_camera=camera,
-                camera_path=camera_path, paint_mask=painted, config=cfg)
+                camera_path=camera_path, paint_mask=painted,
+                exclude_mask=excluded, config=cfg)
         except ValueError as exc:
             empty = torch.zeros(1, height, width, dtype=torch.float32)
             preview = torch.zeros(1, 1, 1, 3, dtype=torch.float32)

@@ -137,6 +137,27 @@ def test_path_repair_paint_selects_stable_island_id():
     assert np.array_equal(painted["repair_mask"], automatic["repair_mask"])
 
 
+def test_path_repair_exclusion_removes_background_connected_holes():
+    mesh, camera, path = _fixture()
+    result = build_path_hole_repair(
+        mesh,
+        mesh.hole_mask,
+        source_camera=camera,
+        camera_path=path,
+        exclude_mask=mesh.hole_mask,
+        config=PathHoleRepairConfig(
+            resolution=128,
+            normal_tolerance_deg=15.0,
+            max_plane_error_m=0.02,
+            max_hole_fraction=0.20,
+        ),
+    )
+
+    assert not result["repair_mask"].any()
+    assert not result["visible_ids"]
+    assert "exclude mask removed" in result["report"]
+
+
 def test_path_repair_empty_path_returns_observable_noop():
     mesh, camera, _path = _fixture()
     result = build_path_hole_repair(
