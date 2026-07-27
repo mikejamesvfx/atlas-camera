@@ -276,6 +276,34 @@
     "pass2": "filled 10/13 attempted (13 found), +368 verts, +1372 faces; accepted edge stretch 36.8x/40.0x, depth excursion 1.13x/2.00x; 3 rejected on generated patch edge"
    },
    "conclusion": "The arc adds 368 vertices and 1372 faces of geometry the baseline never produced. The selected islands are a strict SUBSET of the pass-1 remaining holes (29 -> 13 visible -> 10 filled), which is the path-guided stage doing exactly what it claims: repairing only what the chosen camera move will actually reveal."
+  },
+  "exclude_mask_polarity_ab": {
+   "why": "The shipping path-guided workflow ships exclude_mask UNWIRED on both AtlasDeriveReliefMesh and AtlasPathGuidedHoleRepair. The artist's local -edit copy wires BiRefNet-HR-matting into both. Ran three arms on atlas_00025.png with one identical arc (15 deg orbit + 15% dolly-in, frames 0/60/99, end frame 99/99) to isolate the mask.",
+   "mask_polarity_measured": "BiRefNet-HR-matting raw MASK = 25.35% of frame = the machine plus the grass slope it stands on. invert_output=True gives the 74.65% complement (sea, sky, far cliffs, left foreground rocks).",
+   "A_no_exclude_mask": {
+    "prompt_id": "eff506ee-781f-4ef7-9ba1-c0a976111c24",
+    "pass1": "206/218 (235 found), +911 verts, +5020 faces",
+    "path": "29 source islands, 25 candidate planes, 13 visible, 13 selected",
+    "pass2": "10/13, +368 verts, +1372 faces"
+   },
+   "B_invert_true_artist_wiring": {
+    "prompt_id": "009cf609-6155-45e6-a936-894c30b18d5e",
+    "pass1": "90/94 (95 found), +266 verts, +1776 faces",
+    "path": "346 source islands, 296 candidate planes, 140 visible, 140 selected; exclude removed 25830731 background/sky hole pixels",
+    "pass2": "137/140, +1009 verts, +2500 faces"
+   },
+   "C_invert_false_machine_cut": {
+    "prompt_id": "4b912c3e-f679-4955-a05f-2061687cdf63",
+    "pass1": "118/129 (146 found), +642 verts, +3136 faces",
+    "path": "202 source islands, 178 candidate planes, 80 visible, 80 selected; exclude removed 8816145 background/sky hole pixels",
+    "pass2": "78/80, +1235 verts, +3418 faces; 2 rejected on generated patch edge, ZERO plane-fit rejections",
+    "note": "Excluding the SUBJECT leaves a machine-shaped hole in the landscape mesh, so the repair fills BEHIND the machine. Best geometry recovery and best hit rate of the three."
+   },
+   "findings": [
+    "exclude_mask unwired is not a neutral default: arm A recovers roughly a third of arm C's pass-2 geometry from the identical camera move.",
+    "Polarity is a silent footgun. Both wirings execute clean and report success; only the geometry delta distinguishes excluding the background from excluding the subject. Which polarity is correct depends on whether you are repairing the hero or repairing behind it.",
+    "A shipping example cannot depend on BiRefNetRMBG (third-party ComfyUI-RMBG). AtlasSAM3Mask is native and already the preferred segmenter in AtlasInput's sky/scope cascade, so it is the candidate for wiring this in-repo."
+   ]
   }
  }
 }
