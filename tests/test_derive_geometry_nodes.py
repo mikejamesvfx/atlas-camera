@@ -252,6 +252,46 @@ def test_live_hole_fill_distance_scopes_distant_holes():
     assert near_meta["n_loops_filled"] < far_meta["n_loops_filled"]
 
 
+def test_exclude_mask_records_coverage_and_sky_suppression(capsys):
+    """An explicit exclude_mask REPLACES the internal sky heuristic rather than
+    adding to it, and until now nothing said so.
+
+    A mask wired with the wrong polarity therefore meshes the sky and still
+    reports success — measured live on an 8K plate 2026-07-27, where a
+    subject-only exclude produced a fat pass-1 that was largely sky. Record the
+    mask's frame coverage (so the polarity is readable afterwards) and say on
+    the console when the heuristic is the thing being silenced.
+    """
+    torch = pytest.importorskip("torch")
+    solve = _solve()
+    depth = _depth_result(_room_depth())
+    h, w = _room_depth().shape
+
+    band = torch.zeros(1, h, w, dtype=torch.float32)
+    band[:, : h // 2, :] = 1.0
+    out, _ = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, exclude_mask=band, sky_heuristic=True)
+    debug = out.projection_scene.debug_metadata["proxy_derivation"]
+    stats = debug["exclude_mask"]
+    assert stats["frame_fraction"] == pytest.approx(0.5, abs=0.02)
+    assert stats["sky_heuristic_suppressed"] is True
+    assert "REPLACES the internal sky heuristic" in capsys.readouterr().out
+
+    # sky_heuristic already off: the mask replaces nothing, so no console noise.
+    out_off, _ = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=32, exclude_mask=band, sky_heuristic=False)
+    off = out_off.projection_scene.debug_metadata[
+        "proxy_derivation"]["exclude_mask"]
+    assert off["sky_heuristic_suppressed"] is False
+    assert "REPLACES" not in capsys.readouterr().out
+
+    # No mask wired: the block is absent entirely, so "unwired" stays
+    # distinguishable from "wired but empty".
+    plain, _ = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
+    assert "exclude_mask" not in plain.projection_scene.debug_metadata[
+        "proxy_derivation"]
+
+
 def test_live_hole_fill_disabled_by_default():
     pytest.importorskip("torch")
     solve = _solve()

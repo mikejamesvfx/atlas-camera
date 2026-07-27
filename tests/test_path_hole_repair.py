@@ -156,7 +156,40 @@ def test_path_repair_exclusion_removes_background_connected_holes():
 
     assert not result["repair_mask"].any()
     assert not result["visible_ids"]
-    assert "exclude mask removed" in result["report"]
+    assert "removed" in result["report"]
+
+
+def test_path_repair_report_states_exclude_mask_frame_coverage():
+    """The report must expose the mask's own frame COVERAGE, not only how many
+    candidates it ate.
+
+    Polarity is otherwise invisible: excluding the background and excluding the
+    subject both execute clean and both report success, and on a real 8K plate
+    the two differed by 137/140 vs 78/80 filled with nothing in the text to tell
+    them apart. Coverage is the tell — a background exclude reads high, a
+    subject cut-out reads low.
+    """
+    mesh, camera, path = _fixture()
+    h, w = mesh.hole_mask.shape
+    cfg = PathHoleRepairConfig(resolution=128, normal_tolerance_deg=15.0,
+                               max_plane_error_m=0.02, max_hole_fraction=0.20)
+
+    # A top band: coverage is a property of the MASK, so it must be reported at
+    # the band's true size regardless of how few hole candidates it hits.
+    band = np.zeros((h, w), dtype=bool)
+    band[: h // 4, :] = True
+    expected = 100.0 * band.mean()
+    report = build_path_hole_repair(
+        mesh, mesh.hole_mask, source_camera=camera, camera_path=path,
+        exclude_mask=band, config=cfg)["report"]
+    assert f"covers {expected:.1f}% of frame" in report
+
+    # No mask wired: the line must be absent entirely rather than reporting 0%,
+    # so "unwired" and "wired but empty" stay distinguishable in the report.
+    plain = build_path_hole_repair(
+        mesh, mesh.hole_mask, source_camera=camera, camera_path=path,
+        config=cfg)["report"]
+    assert "of frame" not in plain
 
 
 def test_path_repair_preview_resolves_compact_baked_frame_indices():

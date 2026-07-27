@@ -3078,6 +3078,7 @@
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
     "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
+    "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_raw_3layer_ocio_workflow.json",
     "examples/atlas_staged_master_portal_neat_workflow.json"
    ],

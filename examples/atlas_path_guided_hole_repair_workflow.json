@@ -1,7 +1,7 @@
 {
   "id": "e140dd66-1b4a-44bd-b6ea-59c6a8f62c3b",
-  "last_node_id": 29,
-  "last_link_id": 42,
+  "last_node_id": 30,
+  "last_link_id": 45,
   "nodes": [
     {
       "id": 1,
@@ -26,7 +26,8 @@
             1,
             2,
             14,
-            39
+            39,
+            43
           ],
           "slot_index": 0
         },
@@ -169,7 +170,7 @@
         {
           "name": "exclude_mask",
           "type": "MASK",
-          "link": null
+          "link": 44
         },
         {
           "name": "outlier_mask",
@@ -578,7 +579,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "AUTOMATION CONTRACT\n\n• frame_offset_from_end=0 always means the final Camera Path frame.\n• lens_scale_override=0 inherits the path playback lens; values below 1.0 widen the lens.\n• Candidate pixels are IDs, not ray-cast guesses. A selected pixel maps back to its complete connected source-space tear island.\n• Wire the same upstream background/sky mask into exclude_mask. This subtracts the exterior before open-edge components are found.\n• all_visible is the unattended/agent mode. max_selected_islands=0 means every visible candidate, ordered smallest-first.\n• The selector bypasses only the preview edge gate. Pass 2 remains the geometry gate (40× here), so view selection never forces unsafe geometry into the mesh.\n• Background and sky must remain excluded upstream before enabling open-edge repair."
+        "AUTOMATION CONTRACT\n\n- frame_offset_from_end=0 always means the final Camera Path frame.\n- lens_scale_override=0 inherits the path playback lens; values below 1.0 widen the lens.\n- Candidate pixels are IDs, not ray-cast guesses. A selected pixel maps back to its complete connected source-space tear island.\n- all_visible is the unattended/agent mode. max_selected_islands=0 means every visible candidate, ordered smallest-first.\n- The selector bypasses only the preview edge gate. Pass 2 remains the geometry gate (40x here), so view selection never forces unsafe geometry into the mesh.\n\nEXCLUDE MASK - POLARITY DECIDES WHAT GETS REPAIRED\n\nAtlasSAM3Mask (concepts=sky) feeds exclude_mask on BOTH the relief mesh and this node. Wire the same mask to both or the repair hunts for tears in geometry that was never built.\n\nThat input REPLACES the internal sky heuristic - it is not OR'd on top - so the mask must contain everything you want gone.\n\n- Mask the BACKGROUND (sky, or sky + sea + distance): only the hero is meshed, and repair closes the hero's own tears.\n- Mask the SUBJECT: the subject becomes a hole in the landscape and repair fills BEHIND it. To do this without meshing the sky, OR a subject mask with the sky mask through MaskComposite (add) and wire the result here.\n\nBoth polarities run clean and both report success. The PATH REPAIR REPORT states the mask's frame coverage so you can read back which way round it went - a background exclude reads high, a subject cut-out reads low.\n\nMeasured on the 8K coastal-machine plate under one identical arc: unwired 10/13 filled (+368 verts); background-masked 137/140 (+1009); subject-masked OR sky 92/94 (+1168). An unwired exclude_mask is not a neutral default."
       ],
       "color": "#3b3156",
       "bgcolor": "#251d39"
@@ -877,7 +878,7 @@
         {
           "name": "exclude_mask",
           "type": "MASK",
-          "link": null
+          "link": 45
         }
       ],
       "outputs": [
@@ -1355,6 +1356,55 @@
       "title": "MCP / AGENTIC REPAIR LOOP",
       "color": "#384f68",
       "bgcolor": "#1d2b3a"
+    },
+    {
+      "id": 30,
+      "type": "AtlasSAM3Mask",
+      "pos": [
+        1600,
+        1500
+      ],
+      "size": [
+        400,
+        150
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 43
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            44,
+            45
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSAM3Mask"
+      },
+      "widgets_values": [
+        "sky",
+        0.5,
+        "auto",
+        "merged",
+        0
+      ]
     }
   ],
   "links": [
@@ -1660,6 +1710,30 @@
       3,
       28,
       7,
+      "MASK"
+    ],
+    [
+      43,
+      1,
+      0,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      44,
+      30,
+      0,
+      4,
+      2,
+      "MASK"
+    ],
+    [
+      45,
+      30,
+      0,
+      21,
+      5,
       "MASK"
     ]
   ],

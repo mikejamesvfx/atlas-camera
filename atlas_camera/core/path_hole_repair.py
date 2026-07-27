@@ -168,6 +168,8 @@ def build_path_hole_repair(
             f"source camera image {(src_height, src_width)}"
         )
     excluded_pixels = 0
+    exclude_frame_fraction = 0.0
+    candidate_pixels_before = int(selected_mask.sum())
     if exclude_mask is not None:
         excluded = np.asarray(exclude_mask, dtype=bool)
         if excluded.shape != selected_mask.shape:
@@ -176,6 +178,7 @@ def build_path_hole_repair(
                 f"source camera image {selected_mask.shape}"
             )
         excluded_pixels = int((selected_mask & excluded).sum())
+        exclude_frame_fraction = float(excluded.mean())
         selected_mask &= ~excluded
     if not sampled:
         return {
@@ -352,8 +355,19 @@ def build_path_hole_repair(
         f"selection={mode}; source mask contains {int(repair_mask.sum())} pixels",
     ]
     if exclude_mask is not None:
+        # Report the mask's own frame COVERAGE, not just how many candidates it
+        # ate. Polarity is otherwise invisible: excluding the background and
+        # excluding the subject both execute clean and both report "success",
+        # and the only tell is the geometry delta downstream (measured 2026-07-27
+        # — the same plate gave 137/140 one way and 78/80 the other). Coverage
+        # says which way round the mask was: a background/sky exclude reads high,
+        # a subject cut-out reads low. The old wording asserted "background/sky",
+        # which quietly presumed the answer.
+        share = (100.0 * excluded_pixels / candidate_pixels_before
+                 if candidate_pixels_before else 0.0)
         report_lines.append(
-            f"exclude mask removed {excluded_pixels} background/sky hole pixels")
+            f"exclude mask covers {100.0 * exclude_frame_fraction:.1f}% of frame; "
+            f"removed {excluded_pixels} hole pixels ({share:.1f}% of candidates)")
     rejected = fit_report.get("rejected") or []
     if rejected:
         reasons: dict[str, int] = {}

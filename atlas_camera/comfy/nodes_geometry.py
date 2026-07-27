@@ -774,9 +774,14 @@ class AtlasDeriveReliefMesh:
                                "risks rubber-sheeting a real silhouette onto the background."}),
                 "exclude_mask": ("MASK", {
                     "tooltip": "Optional external exclusion (e.g. a real sky segmentation from "
-                               "SAM/RMBG) which REPLACES the internal sky heuristic before "
+                               "AtlasSAM3Mask) which REPLACES the internal sky heuristic before "
                                "triangulation - so it must cover EVERYTHING you want gone. Any "
-                               "resolution - resized to match depth."}),
+                               "resolution - resized to match depth. MIND THE POLARITY: masking "
+                               "the BACKGROUND meshes the hero alone and repairs its own tears; "
+                               "masking the SUBJECT leaves a subject-shaped hole and repairs "
+                               "BEHIND it. To do the second without meshing the sky, OR the "
+                               "subject mask with a sky mask (MaskComposite add) - this input "
+                               "replaces the heuristic, it does not add to it."}),
                 "outlier_mask": ("MASK", {
                     "tooltip": "Optional local depth outlier mask from AtlasDepthOutlierMask. "
                                "Those cells become explicit holes instead of stretched shards."}),
@@ -873,6 +878,22 @@ class AtlasDeriveReliefMesh:
                 "quad_coherence": mesh.stats.get("quad_coherence", bool(quad_coherence)),
             },
         }
+        # An explicit exclude_mask REPLACES the sky heuristic (line above), and
+        # nothing said so out loud: a mask wired with the wrong polarity meshes
+        # the sky and still reports success. Record coverage so the polarity is
+        # readable after the fact, and say it on the console when the heuristic
+        # is the thing being silenced (gate doctrine — no silent branch skip).
+        if resolved_exclude is not None:
+            suppressed = bool(sky_heuristic)
+            stats["exclude_mask"] = {
+                "frame_fraction": float(resolved_exclude.mean()),
+                "sky_heuristic_suppressed": suppressed,
+            }
+            if suppressed:
+                print(f"[Atlas] AtlasDeriveReliefMesh: exclude_mask covers "
+                      f"{100.0 * float(resolved_exclude.mean()):.1f}% of frame and "
+                      f"REPLACES the internal sky heuristic (it is not OR'd on top). "
+                      f"Sky stays meshed unless this mask already contains it.")
         apply_live_mesh_repair(
             mesh,
             extr.camera_view_matrix,
@@ -1741,9 +1762,12 @@ class AtlasPathGuidedHoleRepair:
                                "candidate selects its complete source-space island.",
                 }),
                 "exclude_mask": ("MASK", {
-                    "tooltip": "Optional background/sky exclusion mask. It is "
-                               "subtracted before connected components are found, "
-                               "separating open foreground tears from the exterior.",
+                    "tooltip": "Optional exclusion mask, subtracted before connected "
+                               "components are found, separating open foreground tears "
+                               "from the exterior. Wire the SAME mask you gave the mesh "
+                               "node - the two must agree or this one hunts for tears in "
+                               "geometry that was never built. The report states its "
+                               "frame coverage so you can read the polarity back.",
                 }),
                 "layer": ("STRING", {
                     "default": "",
