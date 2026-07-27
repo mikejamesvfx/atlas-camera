@@ -282,8 +282,13 @@ def evaluate_scene_health(
                 f"camera solved looking UP {math.degrees(math.asin(min(1.0, forward_y))):.0f}° — "
                 "on ground-based plates this usually means the learned "
                 "gravity flipped (bright haze/reflection near the frame "
-                "bottom reads as sky). Verify against the plate; re-render "
-                "or crop the haze, or acknowledge if genuinely an up-shot."))
+                "bottom reads as sky). Verify against the plate, then FIX IT "
+                "IN-GRAPH with AtlasGravityOverride (set pitch_deg positive "
+                "for looking down, plus roll_deg) wired between the solve and "
+                "the depth/derive nodes — un-flipping alone is usually not "
+                "enough, since the flipped estimate is itself several degrees "
+                "off. Alternatives: re-render or crop the haze and re-solve, "
+                "or acknowledge if genuinely an up-shot."))
     except Exception:  # noqa: BLE001 — hand-built extrinsics
         pass
 

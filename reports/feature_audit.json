@@ -1947,10 +1947,12 @@
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
+    "tests/test_debug_report_parity.py",
     "tests/test_node_layer_contracts.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
+    "tests/test_debug_report_parity.py",
     "tests/test_facade_surface.py",
     "tests/test_node_layer_contracts.py"
    ],
@@ -1973,7 +1975,7 @@
     "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
    "migration_action": "none; keep",
-   "notes": "Was the only registered node with NO evidence of any kind \u2014 no workflow, no test, no MCP consumer, and zero hits in docs/. Now pinned on the one property its name claims: the override is ABSOLUTE, so applying it twice is idempotent (a relative nudge would drift on the second application)."
+   "notes": "Was the only registered node with NO evidence of any kind \u2014 no workflow, no test, no MCP consumer, and zero hits in docs/. Now pinned on the one property its name claims: the override is ABSOLUTE, so applying it twice is idempotent (a relative nudge would drift on the second application). It is also the ONLY in-graph repair for the GeoCalib gravity flip since the one-click AtlasPitchTrim was removed as unused in 23a9179, and the camera_looks_up health warning now names it \u2014 so the node a usage-signal cull would most likely have deleted is the one that fixes the user's RAW plates. Worth remembering the next time zero evidence looks like zero value."
   },
   "AtlasGroundDepthMap": {
    "module": "atlas_camera/comfy/nodes_depth.py",
@@ -2075,6 +2077,7 @@
    "repo_tools": [],
    "docs": [
     "docs/COMFY_WORKFLOW.md",
+    "docs/DESIGN_RULES.md",
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],

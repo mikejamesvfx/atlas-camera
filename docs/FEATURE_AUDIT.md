@@ -100,10 +100,10 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasExportUSD` | atlas_camera/comfy/nodes_export.py | standard | 9 | 1 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExtractAnglePatch` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 0 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasGrade` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasGravityOverride` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 0 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasGravityOverride` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 0 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasGroundDepthMap` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasGroundMask` | atlas_camera/comfy/nodes_depth.py | legacy | 0 | 2 | ok | ok | 0 | 2 | AtlasGroundDepthMap, output 1 (ground_mask) | — | low — in no shipping workflow, no test, no MCP consumer | **LEGACY_GATE** | rewire consumers to AtlasGroundDepthMap slot 1; gate the node |
-| `AtlasHorizonMask` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | FIXED 2026-07-27, found by writing this cycle's coverage. The node returned the GROUND as sky — the exact inverse of its docstring and of its 'Sky Mask' disp… | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasHorizonMask` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 4 | — | FIXED 2026-07-27, found by writing this cycle's coverage. The node returned the GROUND as sky — the exact inverse of its docstring and of its 'Sky Mask' disp… | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasImportAnglePatch` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 0 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasInpaintCrop` | atlas_camera/comfy/nodes_inpaint.py | standard | 2 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasInpaintStitch` | atlas_camera/comfy/nodes_inpaint.py | standard | 2 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |

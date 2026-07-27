@@ -130,7 +130,13 @@ VERDICTS["AtlasGravityOverride"]["notes"] = (
     "Was the only registered node with NO evidence of any kind — no workflow, "
     "no test, no MCP consumer, and zero hits in docs/. Now pinned on the one "
     "property its name claims: the override is ABSOLUTE, so applying it twice "
-    "is idempotent (a relative nudge would drift on the second application).")
+    "is idempotent (a relative nudge would drift on the second application). "
+    "It is also the ONLY in-graph repair for the GeoCalib gravity flip since "
+    "the one-click AtlasPitchTrim was removed as unused in 23a9179, and the "
+    "camera_looks_up health warning now names it — so the node a usage-signal "
+    "cull would most likely have deleted is the one that fixes the user's RAW "
+    "plates. Worth remembering the next time zero evidence looks like zero "
+    "value.")
 VERDICTS["AtlasGroundDepthMap"]["notes"] = (
     "AtlasGroundMask's supported replacement, and the equivalence the legacy "
     "gate rests on is now a test rather than only a measurement: output 1 is "

@@ -218,6 +218,15 @@ def test_camera_looks_up_flag():
     assert "camera_looks_up" in codes
     assert any("gravity flipped" in f.message for f in health.flags)
 
+    # The warning must name the in-graph REMEDY, not just the diagnosis
+    # (2026-07-27). It previously offered only "re-render or crop the haze",
+    # sending the artist back to reshoot a plate that AtlasGravityOverride can
+    # repair in one node — a gap that widened when the old one-click
+    # AtlasPitchTrim was removed in 23a9179 and this became the only fix.
+    message = next(f.message for f in health.flags if f.code == "camera_looks_up")
+    assert "AtlasGravityOverride" in message
+    assert "pitch_deg" in message and "roll_deg" in message
+
     # A level camera does not flag.
     level = AtlasSolve(camera=_cam())
     level.debug_metadata["scale_source"] = "manual_override"
