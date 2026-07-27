@@ -18,3 +18,53 @@ claude/atlas-testing-pr-verification-a8a69d          421e12af430f9a97095e1f057fe
 feat/oiio-plate-io                                   55c3d80e2362ae2b0608e8228086a8c6f28ff8fa  2026-07-20
 feat/phase3-occlusion-cull                           f81dd22119ffa59e0c4ed0b657d1f67e12d1444b  2026-07-20
 claude/atlas-live-mesh-repair-dd846e                 d0458377609993bcbaa1f6802f12286a5a8ceba2  2026-07-24
+
+## Second pass, 2026-07-28 — the audited remainder (27 branches)
+# main at 13c9501b5c160d2d29a8f3e131d0c93a64e4ffd3 (fix(health): camera_looks_up now names the in-graph fix, not just the diagnosis)
+# Verdict basis: every line the branch ADDED since its fork point was checked
+# against main's CURRENT content of the same files. 10 were 100% absorbed; the
+# rest had residual lines that were read by hand and found to be stale catalog
+# text (old node counts, __version__ 0.8.0), files main deliberately deleted in
+# the 0.8.1 trim (docs/artifacts, examples/showcase, examples/api_format,
+# nodes_experimental.py), or refactor intermediate states. fix/version-drift
+# (0.7.0 vs main 0.8.1) and fix/opencv5-exr-codec-pin (main REVERSED the <5 cap)
+# are obsolete rather than absorbed.
+# KEPT deliberately: claude/atlas-camera-unseen-geometry-5fd7d9 (18 commits of
+# real unmerged work), feat/occlude-erode (shader erode taps), experimental
+# (the documented one-line ATLAS_EXPERIMENTAL_DEFAULT=1 branch).
+# Restore any of them with:  git branch <name> <sha>
+
+chore/actions-node24                                 fb259f4e76b00ceff5a0e6157aac6dde14fdf6f1  2026-07-21
+fix/ci-stale-node-counts                             386fb30d3e4b8cd6c47db11c37250a76671e28ce  2026-07-21
+fix/dangling-temp-plate-path                         b3be96c157ef5865ddb61361a63799b207cbec4b  2026-07-20
+fix/kornia-ltx-conflict                              223c2a7af26237cf4fb70e11689b89c30d2f9ca7  2026-07-20
+fix/nondeterministic-learned-solve                   42e423d34f3cb7a3ab0615332e2aa76e69d014d4  2026-07-20
+fix/opencv-pin-revisit                               800ab41db8b749c9bc01cdd7caa15f0390bf3e62  2026-07-20
+release/0.8.1                                        a38662defccfb030d7695b4babfa431a1dc59e05  2026-07-21
+codex/agentic-output-assessment                      e27694894fbb9e395eae8587995aa301023c6677  2026-07-21
+codex/viewport-occlusion-edge-dilation               9b933426c2bae07576a374604715d8ea8bdedf77  2026-07-21
+codex/staged-sdxl-subgraphs                          4b1a717eaa051c75caff4ce6f6b6a298eaad2e7a  2026-07-21
+refactor/plate-ops                                   7b1199262e738917887de01190f664b1986dcd6f  2026-07-20
+refactor/phase0-facade-pin                           7a477250b51b848637488d1220a4b8480e52cb5b  2026-07-20
+refactor/phase1-viewport-payload                     154f62d37212d97628f91d80a1f9c4f7c534db2b  2026-07-20
+refactor/phase2-core-math                            f147a51be88c25e32d0e050cd389e90f8b5eab60  2026-07-20
+refactor/phase3-comfy-domain                         f147a51be88c25e32d0e050cd389e90f8b5eab60  2026-07-20
+refactor/phase4-leaf-audit                           98e9ac2498da2c9e2d93338de854135f4c21a39f  2026-07-20
+refactor/phases345-rebased                           90cfded1a8bf57be7a223d9b03950b56439a0d99  2026-07-20
+chore/remove-dev-docs                                8faca8c44b86474fe0a843259f91b11b0cf2e77e  2026-07-20
+chore/node-menu-cleanup                              86eebb11409f12776a341b68c6e4fbae515f9766  2026-07-21
+chore/mcp-doc-refresh                                8fbf044f6e881c26cd85cb257ea42c100e5e701f  2026-07-21
+feat/native-sam3-instances                           144a732f25da2cba5b270ab2da608f79e37ba4ef  2026-07-21
+feat/port-sam3-workflows                             605f5fb7d3fa3555b99ee34b51b1a061913359c5  2026-07-20
+feat/port-sam3-workflows-v2                          0eac5bc4239423da09171ef1cbe53c5ae16437d3  2026-07-21
+feat/ship-occlusion-quickstart                       f6532fd7ac0cf5c203d918a3c151f8e7d787f237  2026-07-20
+audit/post-refactor                                  0283eb941bf7070a32d334b049f9cae7859918ee  2026-07-20
+fix/version-drift                                    6611ec6c8e9c93e53883db3b3acd8c21323d1cd4  2026-07-20
+fix/opencv5-exr-codec-pin                            7683bdaf962cb71c6726617f048911b23f42ed34  2026-07-20
+
+# Deletion mode: 5 of the 27 passed `git branch -d`; the other 22 needed -D
+# because their tips are not ancestors of main (squash-merged or rebased in).
+# That is expected here and is exactly why the content audit above was run
+# first — -d's ancestry test would have refused every superseded branch while
+# saying nothing about whether its content survived. Every -D branch had its
+# added lines checked against main and its SHA recorded above.
