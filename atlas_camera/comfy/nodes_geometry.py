@@ -781,9 +781,14 @@ class AtlasDeriveReliefMesh:
                                "resolution - resized to match depth. MIND THE POLARITY: masking "
                                "the BACKGROUND meshes the hero alone and repairs its own tears; "
                                "masking the SUBJECT leaves a subject-shaped hole and repairs "
-                               "BEHIND it. To do the second without meshing the sky, OR the "
-                               "subject mask with a sky mask (MaskComposite add) - this input "
-                               "replaces the heuristic, it does not add to it."}),
+                               "BEHIND it. For the second, just name BOTH in one "
+                               "AtlasSAM3Mask - `concepts` is already a union, so "
+                               "\"sky, machinery\" masks sky AND subject in one node (no "
+                               "MaskComposite needed); this input replaces the heuristic, "
+                               "it does not add to it. Check the segmenter's report: SAM3 "
+                               "is open-vocabulary and the WORD decides everything - on one "
+                               "real plate \"machine\" matched nothing while \"machinery\" "
+                               "took 26.8% of frame."}),
                 "outlier_mask": ("MASK", {
                     "tooltip": "Optional local depth outlier mask from AtlasDepthOutlierMask. "
                                "Those cells become explicit holes instead of stretched shards."}),

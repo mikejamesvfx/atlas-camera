@@ -127,6 +127,48 @@ def test_sam3_concept_mask_empty_concepts_returns_empty_mask(monkeypatch):
     assert not mask.any() and matched == [] and coverage == 0.0
 
 
+def test_sam3_mask_node_report_names_the_concepts_that_actually_matched(monkeypatch):
+    """A partial no-match must be visible in the node's report.
+
+    SAM3 is open-vocabulary, so the WORD decides everything and a miss is
+    silent — it returns an empty mask, not an error. Measured live 2026-07-28
+    on the coastal-machine plate: "machine" matched NOTHING while "machinery"
+    took 26.8% of frame, "metal structure" 26.7%, "rusted equipment" 26.4%.
+    Someone asking for `sky, machine` therefore gets a SKY-ONLY exclude, which
+    silently turns a repair-behind-the-subject graph back into a
+    repair-the-subject's-own-tears one. The report naming the matched subset is
+    the only signal that happened, so it is a contract, not a nicety.
+    """
+    pytest.importorskip("PIL")
+    from atlas_camera.comfy import node_registry as reg
+
+    h, w = 4, 4
+
+    def fake_detect(image, token, model_id, device, confidence_threshold):
+        m = np.zeros((h, w), dtype=bool)
+        if token == "sky":
+            m[0, :] = True
+            return [m], device
+        return [], device            # every other word misses, silently
+
+    monkeypatch.setattr(sam3_mod, "_require_sam3", lambda: (torch, None, None))
+    monkeypatch.setattr(sam3_mod, "_detect_one_concept", fake_detect)
+
+    cls = reg.NODE_CLASS_MAPPINGS["AtlasSAM3Mask"]
+    image = torch.zeros(1, h, w, 3, dtype=torch.float32)
+    mask, report = getattr(cls(), cls.FUNCTION)(image, concepts="sky, machine")
+
+    assert "sky" in report
+    assert "machine" not in report.replace("machine'", "").replace('"machine"', ""), (
+        "the report must not imply the missed concept contributed")
+    # The mask is the sky row alone — proof the miss silently narrowed it.
+    assert mask[0][0].all() and not mask[0][1:].any()
+
+    # And a total miss must say so loudly rather than returning a quiet empty.
+    _, none_report = getattr(cls(), cls.FUNCTION)(image, concepts="machine")
+    assert "NO MATCH" in none_report.upper()
+
+
 def test_detect_one_concept_retries_on_mps_op_error_then_sticks_to_cpu(monkeypatch):
     # A real-shaped MPS "not implemented" RuntimeError on the first call
     # (device="mps") should retry once on cpu and report device_used="cpu"

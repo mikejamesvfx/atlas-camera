@@ -304,6 +304,41 @@
     "Polarity is a silent footgun. Both wirings execute clean and report success; only the geometry delta distinguishes excluding the background from excluding the subject. Which polarity is correct depends on whether you are repairing the hero or repairing behind it.",
     "A shipping example cannot depend on BiRefNetRMBG (third-party ComfyUI-RMBG). AtlasSAM3Mask is native and already the preferred segmenter in AtlasInput's sky/scope cascade, so it is the candidate for wiring this in-repo."
    ]
+  },
+  "sam3_union_replaces_maskcomposite": {
+   "why": "The 2026-07-27 polarity work told artists to OR a subject mask with a sky mask via MaskComposite(add) for repair-behind-the-subject. That advice was unnecessary: AtlasSAM3Mask.concepts is ALREADY a union across every concept.",
+   "single_node_union": {
+    "prompt_id": "216f5658-04f2-4738-89dc-40c838e4a953",
+    "wiring": "one AtlasSAM3Mask, concepts='sky, machinery' -> exclude_mask on both AtlasDeriveReliefMesh and AtlasPathGuidedHoleRepair",
+    "exclude_report": "covers 54.2% of frame; removed 18786665 hole pixels (90.4% of candidates) \u2014 27.4% sky + 26.8% machinery, unioned",
+    "pass1": "60/63 (75 found), +171 verts, +1320 faces",
+    "path": "371 source islands, 278 candidate planes, 117 visible, 117 selected",
+    "pass2": "114/117, +923 verts, +2394 faces"
+   },
+   "two_mask_composite_it_replaces": {
+    "wiring": "AtlasSAM3Mask('sky') + BiRefNetRMBG(invert=False) -> MaskComposite(add)",
+    "pass2": "92/94, +1168 verts, +2820 faces",
+    "verdict": "equivalent outcome; the single node drops the third-party ComfyUI-RMBG dependency and one node from the graph"
+   },
+   "THE_REAL_TRAP_IS_VOCABULARY": {
+    "finding": "SAM3 is open-vocabulary and a miss is SILENT \u2014 an empty mask, no error. On this plate the obvious word failed and near-synonyms worked.",
+    "measured": {
+     "machine": "NO MATCH (empty)",
+     "vehicle": "NO MATCH",
+     "tractor": "NO MATCH",
+     "truck": "NO MATCH",
+     "scrap metal": "NO MATCH",
+     "machinery": "26.8% of frame",
+     "metal structure": "26.7%",
+     "rusty machine": "26.7%",
+     "rusted equipment": "26.4%",
+     "industrial machine": "24.3%",
+     "engine": "24.2%",
+     "sky": "27.4%"
+    },
+    "consequence": "concepts='sky, machine' silently yields a SKY-ONLY exclude, turning a repair-behind-the-subject graph back into a repair-the-subject's-own-tears one. The node report naming the matched subset is the only visible signal, so it is now pinned by tests/test_sam3_segmenter.py::test_sam3_mask_node_report_names_the_concepts_that_actually_matched."
+   },
+   "note": "This run was also the first live sighting of the exclude-coverage report line added 2026-07-27 ('exclude mask covers N% of frame'), previously only unit-pinned because the server was running pre-edit modules."
   }
  }
 }
