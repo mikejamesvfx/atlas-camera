@@ -1901,6 +1901,127 @@ class AtlasFaceScaleReference:
                 json.dumps(payload, indent=2), "\n".join(lines))
 
 
+_RECORD3D_CONFIDENCE_FLOOR = {"any": 0, "medium": 1, "high": 2}
+
+
+def _record3d_frame_outputs(frame, solve, *, rgb_size, depth_resolution,
+                            min_confidence, device_hint, warnings, header,
+                            source_label="Capture"):
+    """A Record3DFrame + its solve -> the shared node outputs.
+
+    Used by BOTH the `.r3d` loader and the live USB stream. The device hands
+    over the same payload either way, so the confidence gating, the NEAREST
+    resample and the metric-depth bookkeeping must be identical — duplicating
+    them per node is how a streamed depth map quietly ends up on a different
+    scale from a captured one.
+
+    Returns ``(image, depth_result, confidence_mask, report_lines)``. The solve's
+    ``debug_metadata`` is updated in place.
+    """
+    from atlas_camera.inference.depth_estimator import DepthResult
+    from atlas_camera.core.solver import _resize_depth
+
+    np = _require_numpy()
+    torch = _require_torch()
+    rgb_w, rgb_h = rgb_size
+
+    # ---- colour -------------------------------------------------------------
+    # A streamed frame arrives already decoded; a captured one is JPEG bytes.
+    # Preferring the array avoids a pointless re-encode AND the quality loss it
+    # would cost.
+    image = None
+    if getattr(frame, "rgb_array", None) is not None:
+        arr = np.asarray(frame.rgb_array)
+        if arr.dtype != np.float32:
+            arr = arr.astype(np.float32) / (255.0 if arr.dtype == np.uint8 else 1.0)
+        if arr.ndim == 3 and arr.shape[2] >= 3:
+            image = torch.from_numpy(np.ascontiguousarray(arr[:, :, :3]))[None]
+    elif frame.rgb_jpeg:
+        try:
+            from PIL import Image
+            pil = Image.open(io.BytesIO(frame.rgb_jpeg))
+            image = _pil_to_image_tensor(pil)
+            if (pil.width, pil.height) != (rgb_w, rgb_h):
+                warnings.append(
+                    f"Colour frame decoded at {pil.width}x{pil.height} but metadata "
+                    f"says {rgb_w}x{rgb_h}; intrinsics follow the metadata.")
+        except Exception as exc:  # noqa: BLE001 - a bad JPEG must not kill the solve
+            warnings.append(f"Colour frame could not be decoded ({exc}); emitting black.")
+    if image is None:
+        image = torch.zeros((1, rgb_h, rgb_w, 3), dtype=torch.float32)
+        warnings.append(f"No colour frame in this {source_label.lower()} — image output is black.")
+
+    # ---- depth + confidence -------------------------------------------------
+    depth_result = None
+    conf_mask = torch.zeros((1, rgb_h, rgb_w), dtype=torch.float32)
+    if frame.depth is not None:
+        depth = np.asarray(frame.depth, dtype=np.float32).copy()
+        floor = _RECORD3D_CONFIDENCE_FLOOR[min_confidence]
+        rejected = 0
+        if frame.confidence is not None and floor > 0:
+            keep = np.asarray(frame.confidence) >= floor
+            rejected = int((~keep).sum())
+            depth[~keep] = np.nan
+        elif floor > 0:
+            warnings.append(
+                f"{source_label} carries no .conf plane — min_confidence could not be applied.")
+
+        conf_src = (np.asarray(frame.confidence).astype(np.float32) / 2.0
+                    if frame.confidence is not None
+                    else np.ones_like(depth, dtype=np.float32))
+
+        if depth_resolution == "colour_frame":
+            depth = _resize_depth(depth, rgb_w, rgb_h)
+            conf_src = _resize_depth(conf_src, rgb_w, rgb_h)
+        conf_mask = torch.from_numpy(np.ascontiguousarray(conf_src)).unsqueeze(0)
+
+        valid = np.isfinite(depth) & (depth > 0)
+        depth_result = DepthResult(
+            depth=depth,
+            is_metric=True,  # ARKit sceneDepth is metres, measured
+            model_id="record3d/arkit_scene_depth",
+            image_width=int(depth.shape[1]),
+            image_height=int(depth.shape[0]),
+            near=float(depth[valid].min()) if valid.any() else 0.0,
+            far=float(depth[valid].max()) if valid.any() else 0.0,
+            metadata={
+                "source": "measured_lidar",
+                "native_width": frame.depth_size[0],
+                "native_height": frame.depth_size[1],
+                "resampled_to": depth_resolution,
+                "resample_filter": "nearest",
+                "min_confidence": min_confidence,
+                "rejected_px": rejected,
+                "device": device_hint,
+            },
+        )
+        solve.debug_metadata["record3d_depth"] = depth_result.summary()
+    else:
+        warnings.append(f"{source_label} has no depth frames — camera solve only.")
+
+    native = f"{frame.depth_size[0]}x{frame.depth_size[1]}" if frame.depth_size[0] else "none"
+    lines = [
+        header,
+        f"  colour {rgb_w}x{rgb_h} | depth {native}"
+        + (f" -> {depth_result.image_width}x{depth_result.image_height}"
+           if depth_result is not None and depth_resolution == "colour_frame" else ""),
+        f"  MEASURED intrinsics fx={solve.camera.intrinsics.fx_px:.1f} "
+        f"cx={solve.camera.intrinsics.cx_px:.1f} cy={solve.camera.intrinsics.cy_px:.1f}",
+        f"  MEASURED pose {tuple(round(v, 3) for v in solve.camera.extrinsics.camera_position)} m "
+        "(ARKit, gravity-aligned — no -Z canonicalization applied)",
+    ]
+    if depth_result is not None:
+        lines.append(
+            f"  metric depth {depth_result.near:.2f}–{depth_result.far:.2f} m, "
+            f"{depth_result.metadata['rejected_px']} px below '{min_confidence}' confidence")
+    if warnings:
+        lines.append("")
+        lines.extend(f"  NOTE: {w}" for w in warnings)
+
+    solve.debug_metadata["warnings"] = warnings
+    return image, depth_result, conf_mask, lines
+
+
 class AtlasLoadRecord3D:
     """📱 Load a Record3D `.r3d` iPhone/iPad capture — MEASURED camera + metric depth.
 
@@ -1978,91 +2099,119 @@ class AtlasLoadRecord3D:
                 f"frame_index {int(frame_index)} is past the end — clamped to {index} "
                 f"of {n_frames} frames.")
 
-        # ---- colour ---------------------------------------------------------
-        image = None
-        if frame.rgb_jpeg:
-            try:
-                from PIL import Image
-                pil = Image.open(io.BytesIO(frame.rgb_jpeg))
-                image = _pil_to_image_tensor(pil)
-                if (pil.width, pil.height) != (rgb_w, rgb_h):
-                    warnings.append(
-                        f"Colour frame decoded at {pil.width}x{pil.height} but metadata "
-                        f"says {rgb_w}x{rgb_h}; intrinsics follow the metadata.")
-            except Exception as exc:  # noqa: BLE001 - a bad JPEG must not kill the solve
-                warnings.append(f"Colour frame could not be decoded ({exc}); emitting black.")
-        if image is None:
-            image = torch.zeros((1, rgb_h, rgb_w, 3), dtype=torch.float32)
-            warnings.append("No colour frame in this capture — image output is black.")
+        image, depth_result, conf_mask, report_lines = _record3d_frame_outputs(
+            frame, solve,
+            rgb_size=(rgb_w, rgb_h),
+            depth_resolution=depth_resolution,
+            min_confidence=min_confidence,
+            device_hint=device_hint,
+            warnings=warnings,
+            header=f"AtlasLoadRecord3D: frame {index + 1}/{n_frames} @ {fps:g}fps — {device_hint}",
+        )
+        return (image, solve, depth_result, conf_mask, "\n".join(report_lines))
 
-        # ---- depth + confidence ---------------------------------------------
-        depth_result = None
-        conf_mask = torch.zeros((1, rgb_h, rgb_w), dtype=torch.float32)
-        if frame.depth is not None:
-            depth = np.asarray(frame.depth, dtype=np.float32).copy()
-            floor = self._CONFIDENCE_FLOOR[min_confidence]
-            rejected = 0
-            if frame.confidence is not None and floor > 0:
-                keep = np.asarray(frame.confidence) >= floor
-                rejected = int((~keep).sum())
-                depth[~keep] = np.nan
-            elif floor > 0:
-                warnings.append(
-                    "Capture carries no .conf plane — min_confidence could not be applied.")
 
-            conf_src = (frame.confidence.astype(np.float32) / 2.0
-                        if frame.confidence is not None
-                        else np.ones_like(depth, dtype=np.float32))
+class AtlasStreamRecord3D:
+    """📲 Grab a LIVE frame from a Record3D USB stream — measured camera + metric depth.
 
-            if depth_resolution == "colour_frame":
-                depth = _resize_depth(depth, rgb_w, rgb_h)
-                conf_src = _resize_depth(conf_src, rgb_w, rgb_h)
-            conf_mask = torch.from_numpy(np.ascontiguousarray(conf_src)).unsqueeze(0)
+    The streaming twin of ``AtlasLoadRecord3D``. Record3D publishes the same
+    payload over USB that it writes into a ``.r3d`` — RGB, LiDAR depth,
+    per-pixel confidence, Apple's calibrated intrinsics and a gravity-aligned
+    ARKit pose — so this is a second SOURCE into one pipeline rather than a
+    second pipeline. Both route through
+    ``importers.record3d.build_measured_solve``, which is what keeps a streamed
+    camera and a captured one from disagreeing about a scene the device measured
+    identically.
 
-            valid = np.isfinite(depth) & (depth > 0)
-            depth_result = DepthResult(
-                depth=depth,
-                is_metric=True,  # ARKit sceneDepth is metres, measured
-                model_id="record3d/arkit_scene_depth",
-                image_width=int(depth.shape[1]),
-                image_height=int(depth.shape[0]),
-                near=float(depth[valid].min()) if valid.any() else 0.0,
-                far=float(depth[valid].max()) if valid.any() else 0.0,
-                metadata={
-                    "source": "measured_lidar",
-                    "native_width": frame.depth_size[0],
-                    "native_height": frame.depth_size[1],
-                    "resampled_to": depth_resolution,
-                    "resample_filter": "nearest",
-                    "min_confidence": min_confidence,
-                    "rejected_px": rejected,
-                    "device": device_hint,
-                },
-            )
-            solve.debug_metadata["record3d_depth"] = depth_result.summary()
-        else:
-            warnings.append("Capture has no depth frames — camera solve only.")
+    Point the phone, run the graph, get a solve. No file, no transfer, no cloud —
+    which is the practical difference: iterating on framing costs one graph run
+    instead of a capture-export-copy round trip.
 
-        native = f"{frame.depth_size[0]}x{frame.depth_size[1]}" if frame.depth_size[0] else "none"
-        report_lines = [
-            f"AtlasLoadRecord3D: frame {index + 1}/{n_frames} @ {fps:g}fps — {device_hint}",
-            f"  colour {rgb_w}x{rgb_h} | depth {native}"
-            + (f" -> {depth_result.image_width}x{depth_result.image_height}"
-               if depth_result is not None and depth_resolution == "colour_frame" else ""),
-            f"  MEASURED intrinsics fx={solve.camera.intrinsics.fx_px:.1f} "
-            f"cx={solve.camera.intrinsics.cx_px:.1f} cy={solve.camera.intrinsics.cy_px:.1f}",
-            f"  MEASURED pose {tuple(round(v, 3) for v in solve.camera.extrinsics.camera_position)} m "
-            "(ARKit, gravity-aligned — no -Z canonicalization applied)",
-        ]
-        if depth_result is not None:
-            report_lines.append(
-                f"  metric depth {depth_result.near:.2f}–{depth_result.far:.2f} m, "
-                f"{depth_result.metadata['rejected_px']} px below '{min_confidence}' confidence")
-        if warnings:
-            report_lines.append("")
-            report_lines.extend(f"  NOTE: {w}" for w in warnings)
+    REQUIREMENTS, in the order they usually bite:
+      1. ``pip install record3d`` in the ComfyUI environment.
+      2. Record3D open on the phone in USB streaming mode, phone unlocked.
+      3. **Windows only:** Apple Mobile Device Support, which ships with iTunes
+         or the Apple Devices app. It provides the libusbmuxd transport. Without
+         it the device list comes back EMPTY rather than erroring, so a missing
+         driver is indistinguishable from an unplugged phone — the node's error
+         says so rather than leaving it to be guessed at.
 
-        solve.debug_metadata["warnings"] = warnings
+    ``settle_frames`` exists because ARKit's tracking is still converging in the
+    first moments of a stream: an early pose can correct itself a beat later, and
+    a solve built from one is measured but measured badly — while looking
+    entirely legitimate afterwards. Discarding a few frames costs a fraction of a
+    second and removes the failure mode.
+
+    Depth is ARKit's 256x192 ``sceneDepth``, exactly as in the file path: low
+    resolution but METRIC ground truth. The productive use is the same — feed it
+    to ``AtlasDepthCombine`` as ``depth_base`` with a MoGe estimate as
+    ``depth_detail_src``, so the monocular model supplies resolution while the
+    LiDAR pins scale.
+    """
+    RETURN_TYPES = ("IMAGE", "ATLAS_SOLVE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
+    RETURN_NAMES = ("image", "solve", "depth", "confidence_mask", "report")
+    FUNCTION = "grab"
+    CATEGORY = "Atlas Camera/Solve"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {},
+            "optional": {
+                "device_index": ("INT", {"default": 0, "min": 0, "max": 8,
+                    "tooltip": "Which connected device to stream from. 0 unless you have "
+                               "more than one phone attached."}),
+                "settle_frames": ("INT", {"default": 5, "min": 0, "max": 120,
+                    "tooltip": "Frames to discard before grabbing. ARKit tracking is still "
+                               "converging when a stream opens, and an early pose can correct "
+                               "itself afterwards — costing you a wrong solve that looks right."}),
+                "timeout_s": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 120.0, "step": 1.0,
+                    "tooltip": "How long to wait for frames before giving up."}),
+                "depth_resolution": (["colour_frame", "native"], {"default": "colour_frame",
+                    "tooltip": "colour_frame: nearest-upsample the 256x192 depth to the plate "
+                               "size so it lines up with the image. native: leave it at sensor "
+                               "resolution."}),
+                "min_confidence": (["any", "medium", "high"], {"default": "medium",
+                    "tooltip": "ARKit per-pixel confidence floor. Rejected pixels become NaN "
+                               "(a hole the relief mesh tears around)."}),
+            },
+        }
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # A live source must never serve ComfyUI's cache: the phone has moved
+        # since the last run, so an identical widget signature does NOT mean an
+        # identical result. NaN never compares equal, which forces re-execution.
+        return float("nan")
+
+    def grab(self, device_index=0, settle_frames=5, timeout_s=10.0,
+             depth_resolution="colour_frame", min_confidence="medium"):
+        from atlas_camera.importers.record3d import Record3DStreamSource
+
+        warnings: list[str] = []
+        with Record3DStreamSource.connect(int(device_index)) as src:
+            src.wait_for_frame(timeout=float(timeout_s),
+                               settle_frames=int(settle_frames))
+            frame = src.frame()
+            solve = src.solve(frame)
+            device_hint = src.device_hint
+            frames_seen = src._frames_seen
+
+        rgb_w = frame.intrinsics.image_width
+        rgb_h = frame.intrinsics.image_height
+
+        image, depth_result, conf_mask, report_lines = _record3d_frame_outputs(
+            frame, solve,
+            rgb_size=(rgb_w, rgb_h),
+            depth_resolution=depth_resolution,
+            min_confidence=min_confidence,
+            device_hint=device_hint,
+            warnings=warnings,
+            header=(f"AtlasStreamRecord3D: LIVE frame after {settle_frames} settle "
+                    f"frame(s) — {device_hint}"),
+            source_label="Stream",
+        )
+        report_lines.insert(1, f"  {frames_seen} frame(s) seen on this connection")
         return (image, solve, depth_result, conf_mask, "\n".join(report_lines))
 
 
@@ -2369,7 +2518,7 @@ class AtlasEquirectMultiView:
             },
         }
 
-    def build(self, equirect, n_views=12, fov_deg=90.0, size=1024,
+    def build(self, equirect, n_views=4, fov_deg=90.0, size=1024,
               depth_model="Ruicheng/moge-2-vitl-normal", height_samples=4,
               pitch_deg=0.0, yaw_offset_deg=0.0, relief_grid=256, device="auto",
               max_side=0):

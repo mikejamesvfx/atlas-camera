@@ -227,7 +227,7 @@ class AtlasDeriveProjectionGeometry:
                relief_quality="custom", depth_edge_rel=0.5,
                exclude_mask=None,
                live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=64,
+               live_fill_max_hole_edges=256,
                live_fill_edge_sawteeth=False):
         torch = _require_torch()
         np = _require_numpy()
@@ -832,7 +832,7 @@ class AtlasDeriveReliefMesh:
                max_edge_factor=12.0,
                sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
                live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=64,
+               live_fill_max_hole_edges=256,
                live_fill_edge_sawteeth=False):
         torch = _require_torch()
         np = _require_numpy()

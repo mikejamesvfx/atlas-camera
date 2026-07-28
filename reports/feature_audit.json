@@ -2,14 +2,14 @@
  "schema_version": 1,
  "generated_utc": "2026-07-28",
  "counts": {
-  "standard": 87,
+  "standard": 88,
   "experimental": 5,
   "legacy": 2,
-  "total": 94,
+  "total": 95,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 87,
+  "KEEP_CORE": 88,
   "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
@@ -2777,12 +2777,15 @@
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_record3d_node.py"
+    "tests/test_record3d_node.py",
+    "tests/test_record3d_stream.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_facade_surface.py",
-    "tests/test_record3d_node.py"
+    "tests/test_node_usage_audit.py",
+    "tests/test_record3d_node.py",
+    "tests/test_record3d_stream.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -4053,6 +4056,38 @@
     "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
    "migration_action": "none; keep",
+   "notes": null
+  },
+  "AtlasStreamRecord3D": {
+   "module": "atlas_camera/comfy/nodes_solve.py",
+   "tier": "standard",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_record3d_stream.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_record3d_stream.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
    "notes": null
   },
   "AtlasUSDCameraLoader": {

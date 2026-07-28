@@ -256,6 +256,31 @@ def test_wrong_sized_depth_buffer_names_the_mismatch(tmp_path):
         Record3DCapture.open(path).frame(0)
 
 
+def test_corrupt_depth_stays_a_record3d_error_when_the_decoder_is_installed(tmp_path):
+    """A malformed frame must surface as Record3DError even WITH pyliblzfse.
+
+    Regression: `liblzfse.decompress` was called unwrapped, so on a machine that
+    had the decoder a corrupt frame raised a bare `liblzfse.error` and escaped
+    the "explain both causes" handler entirely. The diagnostic therefore only
+    worked on machines that could not read a real device capture in the first
+    place. The suite never caught it because CI ran without the decoder — this
+    test is skipped there, and only meaningful where iPhone captures actually
+    decode.
+    """
+    liblzfse = pytest.importorskip("liblzfse")
+
+    path = tmp_path / "corrupt.r3d"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("metadata", json.dumps(_metadata()))
+        # Not valid LZFSE, and not a valid raw buffer size either.
+        zf.writestr("rgbd/0.depth", b"\xff\xfe\xfd" * 333)
+
+    with pytest.raises(Record3DError) as excinfo:
+        Record3DCapture.open(path).frame(0)
+    # The message must survive as something actionable, naming the size.
+    assert "999" in str(excinfo.value)
+
+
 def test_frame_index_out_of_range(tmp_path):
     capture = Record3DCapture.open(_write_capture(tmp_path))
     with pytest.raises(IndexError, match="out of range"):

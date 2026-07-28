@@ -22,7 +22,7 @@ def test_audit_covers_every_registered_node():
     kinds, names = audit.registered_nodes()
     data = audit.audit()
     assert set(data) == names            # exactly the registered set, nothing invented
-    assert len(names) == 94   # 87 standard + 5 experimental + 2 legacy
+    assert len(names) == 95   # 88 standard + 5 experimental + 2 legacy
     for name, rec in data.items():
         assert rec["kind"] in ("standard", "experimental", "legacy")
         assert rec["status"] in ("referenced", "registered_only")
@@ -103,3 +103,47 @@ def test_audit_is_read_only(tmp_path):
     after = {p: p.stat().st_mtime_ns
              for p in (ROOT / "examples").rglob("*.json")}
     assert before == after
+
+
+def test_untracked_files_are_not_product_evidence(tmp_path):
+    """A local scratch file must not count toward a node's evidence.
+
+    Regression: only the examples scan refused personal copies ("-edit",
+    examples/local/). The text scans had no equivalent guard, so an untracked
+    script dropped in tools/ silently became evidence and made the COMMITTED
+    audit look stale on the author's machine alone — a failure nobody else could
+    reproduce.
+    """
+    audit = _load_audit()
+    root = tmp_path / "tools"
+    root.mkdir()
+    (root / "shipped.py").write_text("AtlasLoadRecord3D\n", encoding="utf-8")
+    (root / "scratch.py").write_text("AtlasLoadRecord3D\n", encoding="utf-8")
+
+    tracked = frozenset({"tools/shipped.py"})
+    found = {p.name for p in audit._iter_files(
+        root, {".py"}, repo=tmp_path, tracked=tracked)}
+    assert found == {"shipped.py"}, "untracked scratch file must be skipped"
+
+
+def test_no_tracking_information_means_every_file_counts(tmp_path):
+    """Degrade to the old behaviour rather than reporting an empty repo.
+
+    A tarball install or a checkout without git has no `git ls-files`, and
+    silently finding zero evidence there would be far worse than counting
+    everything.
+    """
+    audit = _load_audit()
+    root = tmp_path / "tools"
+    root.mkdir()
+    (root / "a.py").write_text("x\n", encoding="utf-8")
+    (root / "b.py").write_text("x\n", encoding="utf-8")
+
+    found = {p.name for p in audit._iter_files(root, {".py"}, repo=tmp_path, tracked=None)}
+    assert found == {"a.py", "b.py"}
+
+    # An EMPTY git result must also mean "no opinion". This repo puts pytest's
+    # tmp_path INSIDE the checkout, so `git -C <tmp> ls-files` exits 0 with no
+    # output — and reading that literally would filter every file away and
+    # report a product with no tests at all.
+    assert audit._tracked_files(tmp_path) is None

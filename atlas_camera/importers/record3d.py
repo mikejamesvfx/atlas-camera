@@ -70,7 +70,10 @@ __all__ = [
     "Record3DCapture",
     "Record3DFrame",
     "Record3DError",
+    "Record3DStreamError",
+    "Record3DStreamSource",
     "SOURCE_METHOD",
+    "build_measured_solve",
     "quaternion_to_rotation_matrix",
 ]
 
@@ -176,7 +179,20 @@ def _decompress_lzfse(payload: bytes) -> bytes:
             "decoder with: pip install -e .[record3d]  (provides pyliblzfse). "
             "Alternatively export the capture already extracted."
         ) from exc
-    return liblzfse.decompress(payload)
+    try:
+        return liblzfse.decompress(payload)
+    except Exception as exc:  # liblzfse.error, and anything else it raises
+        # Deliberately converted rather than allowed to propagate. Without this
+        # the "explain both causes" diagnostic below only ever fires on machines
+        # WITHOUT the decoder -- exactly the machines that cannot read a real
+        # device capture anyway. Every machine doing actual iPhone work has
+        # pyliblzfse installed, and used to get a bare `liblzfse.error` with no
+        # indication of which frame or what was wrong.
+        raise Record3DError(
+            f"LZFSE decompression failed on a {len(payload)}-byte buffer "
+            f"({type(exc).__name__}: {exc}). The frame is most likely truncated "
+            "or corrupt -- a partially-transferred capture is the usual cause."
+        ) from exc
 
 
 def _decompress_lzfse_or_explain(payload: bytes, raw_failure: Record3DError) -> bytes:
@@ -214,6 +230,77 @@ def _depth_from_buffer(raw: bytes, width: int, height: int, np: Any) -> Any:
     return np.ascontiguousarray(arr.reshape(height, width))
 
 
+def build_measured_solve(
+    *,
+    intrinsics: AtlasIntrinsics,
+    camera_world_matrix: Matrix4,
+    rgb_size: tuple[int, int],
+    depth_size: tuple[int, int],
+    image_path: str,
+    debug_metadata: dict[str, Any] | None = None,
+) -> AtlasSolve:
+    """Assemble an :class:`AtlasSolve` from a MEASURED ARKit pose + intrinsics.
+
+    Shared by the ``.r3d`` file importer and the live USB stream, deliberately.
+    Both receive the same payload from the same device — RGB, depth, confidence,
+    K and a pose quaternion — so the only honest difference between them is where
+    the bytes came from. Everything that makes the result *correct* belongs here:
+
+    * ``canonical_negative_z_applied: False``. ARKit's basis is already Atlas's,
+      so the -Z canonicalization that every inferred solve gets must NOT run. A
+      stream path that quietly re-applied it would yaw every camera by 180
+      degrees against the file path, and the two would disagree about a scene
+      the device measured identically.
+    * The confidence vector. ``focal``/``sensor``/``extrinsics`` are high because
+      they are read off the device rather than estimated; ``horizon``/``vp*`` are
+      zero because nothing here estimated them. Duplicating that table per source
+      is how the two drift apart.
+    """
+    extrinsics = _extrinsics_from_world_matrix(camera_world_matrix)
+
+    confidence = ConfidenceModel.for_latent_camera(
+        global_score=0.9,
+        overrides={
+            "focal": 0.95,      # Apple factory per-lens calibration
+            "sensor": 0.95,
+            "extrinsics": 0.9,  # visual-inertial odometry, metres, gravity-aligned
+            "scale": 0.85,      # metric by construction; degrades with VIO drift
+            "depth": 0.7 if depth_size[0] else 0.0,
+            "horizon": 0.0,     # not estimated — measured pose supersedes it
+            "vp1": 0.0, "vp2": 0.0, "vp3": 0.0,
+        },
+    )
+
+    camera = AtlasCamera(
+        intrinsics=intrinsics,
+        extrinsics=extrinsics,
+        name="atlas_record3d_camera",
+        confidence=confidence,
+        focal_length_inferred=False,
+    )
+
+    rgb_w, rgb_h = rgb_size
+    meta = {
+        "depth_width": depth_size[0],
+        "depth_height": depth_size[1],
+        "measured_pose": True,
+        "canonical_negative_z_applied": False,
+    }
+    meta.update(debug_metadata or {})
+
+    return AtlasSolve(
+        camera=camera,
+        image_path=image_path,
+        image_width=rgb_w,
+        image_height=rgb_h,
+        confidence=0.9,
+        source_method=SOURCE_METHOD,
+        known_intrinsics_used=True,
+        projection_scene=create_default_projection_scene(),
+        debug_metadata=meta,
+    )
+
+
 @dataclass(slots=True)
 class Record3DFrame:
     """One frame: colour bytes, metric depth, confidence, and a measured pose."""
@@ -225,6 +312,11 @@ class Record3DFrame:
     camera_world_matrix: Matrix4
     intrinsics: AtlasIntrinsics
     depth_size: tuple[int, int]  # (width, height) of the NATIVE depth buffer
+    #: Appended for the live stream, which hands over decoded RGB rather than a
+    #: JPEG. Consumers prefer this when set and fall back to `rgb_jpeg`, so a
+    #: streamed frame never makes a needless encode/decode round trip (and never
+    #: loses quality to one). File captures leave it None.
+    rgb_array: Any = None
 
 
 @dataclass(slots=True)
@@ -497,49 +589,221 @@ class Record3DCapture:
         stay at 0 because nothing here estimated them.
         """
         frame = self.frame(index, load_depth=False)
-        extrinsics = _extrinsics_from_world_matrix(frame.camera_world_matrix)
-
-        confidence = ConfidenceModel.for_latent_camera(
-            global_score=0.9,
-            overrides={
-                "focal": 0.95,      # Apple factory per-lens calibration
-                "sensor": 0.95,
-                "extrinsics": 0.9,  # visual-inertial odometry, metres, gravity-aligned
-                "scale": 0.85,      # metric by construction; degrades with VIO drift
-                "depth": 0.7 if self.depth_size[0] else 0.0,
-                "horizon": 0.0,     # not estimated — measured pose supersedes it
-                "vp1": 0.0, "vp2": 0.0, "vp3": 0.0,
-            },
-        )
-
-        camera = AtlasCamera(
+        return build_measured_solve(
             intrinsics=frame.intrinsics,
-            extrinsics=extrinsics,
-            name="atlas_record3d_camera",
-            confidence=confidence,
-            focal_length_inferred=False,
-        )
-
-        rgb_w, rgb_h = self.rgb_size
-        return AtlasSolve(
-            camera=camera,
+            camera_world_matrix=frame.camera_world_matrix,
+            rgb_size=self.rgb_size,
+            depth_size=self.depth_size,
             image_path=image_path or str(self.path),
-            image_width=rgb_w,
-            image_height=rgb_h,
-            confidence=0.9,
-            source_method=SOURCE_METHOD,
-            known_intrinsics_used=True,
-            projection_scene=create_default_projection_scene(),
             debug_metadata={
                 "record3d_capture": str(self.path),
                 "record3d_frame_index": index,
                 "record3d_frame_count": self.n_frames,
                 "record3d_fps": self.fps,
                 "record3d_device": self.device_hint,
-                "depth_width": self.depth_size[0],
-                "depth_height": self.depth_size[1],
-                "measured_pose": True,
-                "canonical_negative_z_applied": False,
+                "record3d_source": "file",
                 "warnings": list(self.warnings),
             },
         )
+
+
+# ============================================================ live USB stream
+
+
+class Record3DStreamError(Record3DError):
+    """Raised for stream-specific failures (no device, no frame, no driver)."""
+
+
+def _require_record3d_stream() -> Any:
+    try:
+        from record3d import Record3DStream  # type: ignore
+    except ImportError as exc:
+        raise Record3DStreamError(
+            "Live streaming needs the `record3d` package: pip install record3d"
+        ) from exc
+    return Record3DStream
+
+
+def _pose_to_world_matrix(pose: Any) -> Matrix4:
+    """Stream ``CameraPose`` -> Atlas cam->world 4x4.
+
+    Read the component order off the NAMED attributes rather than reusing the
+    file path's positional ``[qx,qy,qz,qw,...]``. Both describe the same ARKit
+    pose, but the file serialises the scalar LAST while this object presents
+    ``qw`` first. Passing ``[p.qw, p.qx, p.qy, p.qz, ...]`` into a scalar-last
+    reader yields a perfectly well-formed rotation that is simply WRONG, and
+    nothing downstream can catch it — the camera just points somewhere else.
+    Naming each component makes the mapping checkable rather than positional.
+    """
+    return _world_matrix_from_pose([
+        float(pose.qx), float(pose.qy), float(pose.qz), float(pose.qw),
+        float(pose.tx), float(pose.ty), float(pose.tz),
+    ])
+
+
+@dataclass(slots=True)
+class Record3DStreamSource:
+    """A live Record3D USB stream, presented like a one-frame capture.
+
+    Deliberately mirrors :class:`Record3DCapture`'s ``frame()``/``solve()`` shape
+    and routes through the same :func:`build_measured_solve`, so a streamed
+    camera and a captured one cannot disagree about a scene the device measured
+    identically.
+
+    WINDOWS PREREQUISITE: the transport is USB via libusbmuxd, provided on
+    Windows by Apple Mobile Device Support (it ships with iTunes or the Apple
+    Devices app). Without it the device list comes back EMPTY rather than
+    raising, which is indistinguishable from an unplugged phone — so that case
+    is called out explicitly in the error below instead of left to guesswork.
+    """
+
+    stream: Any
+    device_info: Any
+    _frame_event: Any = None
+    _frames_seen: int = 0
+
+    @classmethod
+    def connect(cls, device_index: int = 0) -> "Record3DStreamSource":
+        import threading
+
+        Record3DStream = _require_record3d_stream()
+        devices = list(Record3DStream.get_connected_devices())
+        if not devices:
+            raise Record3DStreamError(
+                "No Record3D device found. Check in order: (1) the iPhone is "
+                "connected by USB and unlocked; (2) Record3D is open and in USB "
+                "streaming mode; (3) on Windows, Apple Mobile Device Support is "
+                "installed - it ships with iTunes or the Apple Devices app, and "
+                "WITHOUT it this device list is empty rather than erroring, so a "
+                "missing driver looks exactly like an unplugged phone.")
+        if not 0 <= device_index < len(devices):
+            raise Record3DStreamError(
+                f"device_index {device_index} out of range; "
+                f"{len(devices)} device(s) connected.")
+
+        info = devices[device_index]
+        stream = Record3DStream()
+        src = cls(stream=stream, device_info=info, _frame_event=threading.Event())
+
+        def _on_frame() -> None:
+            src._frames_seen += 1
+            src._frame_event.set()
+
+        stream.on_new_frame = _on_frame
+        stream.on_stream_stopped = lambda: src._frame_event.set()
+        try:
+            stream.connect(info)
+        except Exception as exc:  # noqa: BLE001
+            raise Record3DStreamError(f"Could not connect to device: {exc}") from exc
+        return src
+
+    def wait_for_frame(self, timeout: float = 10.0, settle_frames: int = 0) -> None:
+        """Block until a frame has arrived, optionally discarding the first N.
+
+        ARKit's world origin and tracking state are still converging in the
+        moments after a stream opens, so an early frame can carry a pose that
+        later corrects itself. A solve built from one of those is measured, but
+        measured badly - and it looks entirely legitimate afterwards.
+        """
+        import time
+
+        target = self._frames_seen + max(1, int(settle_frames) + 1)
+        t0 = time.time()
+        while self._frames_seen < target:
+            remaining = timeout - (time.time() - t0)
+            if remaining <= 0:
+                raise Record3DStreamError(
+                    f"No frame within {timeout:g}s (saw {self._frames_seen}). Is "
+                    "Record3D actually streaming, rather than merely open?")
+            self._frame_event.clear()
+            self._frame_event.wait(remaining)
+
+    @property
+    def device_hint(self) -> str:
+        kind = ""
+        try:
+            kind = f"type {self.stream.get_device_type()}, "
+        except Exception:  # noqa: BLE001
+            pass
+        return f"Record3D live stream ({kind}udid {getattr(self.device_info, 'udid', '?')})"
+
+    def frame(self, index: int = 0) -> Record3DFrame:
+        """Snapshot the most recent streamed frame."""
+        np = _require_numpy()
+
+        rgb = np.asarray(self.stream.get_rgb_frame())
+        depth = np.asarray(self.stream.get_depth_frame(), dtype=np.float32)
+        try:
+            conf = np.asarray(self.stream.get_confidence_frame())
+        except Exception:  # noqa: BLE001 - confidence is not always published
+            conf = None
+        if conf is not None and conf.size == 0:
+            conf = None
+
+        if rgb.size == 0 or depth.size == 0:
+            raise Record3DStreamError(
+                "Stream returned an empty frame - connected, but no data yet.")
+
+        rgb_h, rgb_w = int(rgb.shape[0]), int(rgb.shape[1])
+        depth_h, depth_w = int(depth.shape[0]), int(depth.shape[1])
+
+        k = self.stream.get_intrinsic_mat()
+        # `tx`/`ty` on IntrinsicMatrixCoeffs are the PRINCIPAL POINT, not a
+        # translation. The names collide with CameraPose.tx/ty, which really is
+        # one; keeping the two apart is why this is spelled out rather than
+        # unpacked positionally.
+        fx, fy, cx, cy = float(k.fx), float(k.fy), float(k.tx), float(k.ty)
+
+        # Same rescale rule as the file path: some devices publish K at the
+        # DEPTH buffer's scale rather than the colour frame's.
+        if depth_w and depth_w < rgb_w and cx < rgb_w * 0.25:
+            s = rgb_w / float(depth_w)
+            fx, fy, cx, cy = fx * s, fy * s, cx * s, cy * s
+
+        intrinsics = AtlasIntrinsics(
+            image_width=rgb_w,
+            image_height=rgb_h,
+            focal_length_mm=None,
+            sensor_width_mm=36.0,
+            sensor_height_mm=36.0 * (rgb_h / float(rgb_w)),
+            principal_point_px=(cx, cy),
+            fx_px=fx, fy_px=fy, cx_px=cx, cy_px=cy,
+            lens_model="pinhole",
+        )
+
+        return Record3DFrame(
+            index=index,
+            rgb_jpeg=None,
+            depth=np.ascontiguousarray(depth),
+            confidence=(np.ascontiguousarray(conf) if conf is not None else None),
+            camera_world_matrix=_pose_to_world_matrix(self.stream.get_camera_pose()),
+            intrinsics=intrinsics,
+            depth_size=(depth_w, depth_h),
+            rgb_array=np.ascontiguousarray(rgb),
+        )
+
+    def solve(self, frame: Record3DFrame) -> AtlasSolve:
+        return build_measured_solve(
+            intrinsics=frame.intrinsics,
+            camera_world_matrix=frame.camera_world_matrix,
+            rgb_size=(frame.intrinsics.image_width, frame.intrinsics.image_height),
+            depth_size=frame.depth_size,
+            image_path="<record3d live stream>",
+            debug_metadata={
+                "record3d_device": self.device_hint,
+                "record3d_source": "stream",
+                "record3d_frames_seen": self._frames_seen,
+            },
+        )
+
+    def close(self) -> None:
+        try:
+            self.stream.disconnect()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def __enter__(self) -> "Record3DStreamSource":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()

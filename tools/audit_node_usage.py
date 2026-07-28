@@ -59,12 +59,52 @@ def registered_nodes() -> tuple[dict, set]:
     return kinds, set(kinds)
 
 
-def _iter_files(root: Path, suffixes):
+def _tracked_files(repo: Path):
+    """Repo-relative paths git tracks, or None when that cannot be determined.
+
+    None means "no opinion" and every file counts, so a tarball install or a
+    checkout without git still audits exactly as before.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(["git", "-C", str(repo), "ls-files"],
+                             capture_output=True, text=True, timeout=60)
+    except Exception:  # noqa: BLE001 - git absent, or not a checkout
+        return None
+    if out.returncode != 0:
+        return None
+    tracked = frozenset(line.strip().replace("\\", "/")
+                        for line in out.stdout.splitlines() if line.strip())
+    # An EMPTY result means "no opinion", never "nothing is tracked". `git -C`
+    # succeeds and returns nothing when pointed at a directory inside a repo
+    # that happens to hold no tracked files, and taking that literally would
+    # filter away every piece of evidence and report a product with no tests —
+    # silently, and far more damaging than counting a stray file.
+    return tracked or None
+
+
+def _iter_files(root: Path, suffixes, *, repo: Path | None = None, tracked=None):
+    """Yield candidate evidence files, skipping anything git does not track.
+
+    UNTRACKED FILES ARE NOT PRODUCT EVIDENCE. The examples scan already refuses
+    artists' personal `-edit` copies for exactly this reason, but the text scans
+    below had no equivalent guard — so a local scratch script dropped in
+    `tools/` silently became evidence and made the COMMITTED audit look stale on
+    the author's machine only. Same rule, applied everywhere.
+    """
     if not root.exists():
         return
     for p in root.rglob("*"):
-        if p.is_file() and p.suffix.lower() in suffixes:
-            yield p
+        if not (p.is_file() and p.suffix.lower() in suffixes):
+            continue
+        if tracked is not None and repo is not None:
+            try:
+                rel = str(p.relative_to(repo)).replace("\\", "/")
+            except ValueError:
+                rel = None
+            if rel is not None and rel not in tracked:
+                continue
+        yield p
 
 
 def _workflow_node_types(path: Path) -> set:
@@ -95,7 +135,8 @@ def audit(repo: Path = REPO) -> dict:
     # next to the shipped graphs ("-edit", examples/local/); those are not
     # product evidence and must not inflate a node's workflow bucket. Same
     # rule as tests/conftest.py::is_local_workflow and the migrator.
-    for wf in _iter_files(repo / "examples", {".json"}):
+    tracked = _tracked_files(repo)
+    for wf in _iter_files(repo / "examples", {".json"}, repo=repo, tracked=tracked):
         if "-edit" in wf.stem or "local" in {q.lower() for q in wf.parts}:
             continue
         types = _workflow_node_types(wf)
@@ -122,7 +163,7 @@ def audit(repo: Path = REPO) -> dict:
     self_referential = {"audit_node_usage.py", "feature_audit_verdicts.py",
                         "build_feature_audit.py", "FEATURE_AUDIT.md"}
     for bucket, (root, suf) in scan.items():
-        for f in _iter_files(root, suf):
+        for f in _iter_files(root, suf, repo=repo, tracked=tracked):
             if f.name in self_referential:
                 continue
             text = f.read_text(encoding="utf-8", errors="ignore")

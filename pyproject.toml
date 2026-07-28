@@ -160,6 +160,17 @@ record3d = [
     "pillow>=10",
     "pyliblzfse>=0.4.1",
 ]
+# Live USB streaming (AtlasStreamRecord3D). Kept SEPARATE from `record3d`
+# because reading a capture file and streaming from an attached phone are
+# different capabilities — folding this in would push a USB transport onto
+# everyone who only ever opens a `.r3d`. On Windows the wheel alone is not
+# enough: libusbmuxd needs Apple Mobile Device Support, which ships with iTunes
+# or the Apple Devices app, and without it the device list is silently EMPTY
+# rather than erroring.
+record3d-stream = [
+    "numpy>=1.24",
+    "record3d>=1.4.1",
+]
 dev = [
     "numpy>=1.24",
     "opencv-python>=4.8",
