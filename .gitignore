@@ -88,3 +88,13 @@ graphify-out/
 # user-facing docs (README, INSTALL, CHANGELOG, docs/*.md).
 docs/dev/
 docs/artifacts/
+
+# Golden-frame gate: per-failure debug renders are generated on demand.
+# The BASELINES in tests/golden/*.png are committed deliberately.
+tests/golden/_failures/
+
+# Golden-frame BASELINES are committed on purpose — they are the test
+# fixtures, not build output. The repo-wide *.png rule above would swallow
+# them silently and leave the gate with nothing to compare against, which
+# only shows up on a fresh clone.
+!tests/golden/*.png
