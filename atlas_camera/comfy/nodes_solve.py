@@ -2129,3 +2129,105 @@ class AtlasDecomposeCamera:
             float(pos[0]), float(pos[1]), float(pos[2]),
             float(focal_mm), float(fov_h),
         )
+
+
+class AtlasSplitEquirect:
+    """🌐 Split a 360° equirectangular panorama into perspective Atlas views.
+
+    Atlas is pinhole end to end — `AtlasIntrinsics` is fx/fy/cx/cy and every
+    solver, relief mesh and projection path assumes it — so an equirect is NOT
+    modelled as an equirect camera. It is cut into N perspective crops, each of
+    which is already a valid Atlas camera, and fed to the existing multi-camera
+    machinery.
+
+    WHY: a single perspective plate has no data for what the camera never saw,
+    which is the whole reason AtlasOcclusionGraph / AtlasMoveBudget /
+    AtlasPathGuidedHoleRepair exist. A 360° capture supplies that coverage as
+    REAL measured geometry instead of inventing it.
+
+    Wire `view` -> AtlasAddPatchView.patch_image and `exact_view` ->
+    its `exact_view_override`. Unlike an AI novel view, these angles are
+    EXACTLY KNOWN rather than estimated, which is why they go in through the
+    exact path rather than the named-view combos.
+
+    Two advantages over ComfyUI core's `MoGePanoramaInference`, which merges 12
+    views into one equirect depth map: that merge disables per-view metric scale
+    and does not stitch MoGe-2 normals. Here each crop stays a separate
+    perspective solve, so metric scale survives per view and AtlasMogeNormals
+    still works — at the cost of running depth N times instead of once.
+    """
+    RETURN_TYPES = ("IMAGE", "STRING", "IMAGE", "STRING")
+    RETURN_NAMES = ("view", "exact_view", "all_views", "report")
+    FUNCTION = "split"
+    CATEGORY = "Atlas Camera/Solve"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "equirect": ("IMAGE", {"tooltip": "Equirectangular 360x180 panorama, "
+                             "normally 2:1 (e.g. 4096x2048). One image per run."}),
+            },
+            "optional": {
+                "n_views": ("INT", {"default": 12, "min": 1, "max": 64,
+                    "tooltip": "Crops around the ring. 12 at 90deg FOV is ComfyUI core's "
+                               "default and gives generous overlap — overlap is what lets "
+                               "neighbouring depths agree where they meet."}),
+                "fov_deg": ("FLOAT", {"default": 90.0, "min": 20.0, "max": 150.0, "step": 1.0,
+                    "tooltip": "Horizontal/vertical FOV of each square crop. Wider = fewer "
+                               "views to cover the circle, but more lens distortion for the "
+                               "solver to fit."}),
+                "size": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 64,
+                    "tooltip": "Crop side length in pixels."}),
+                "view_index": ("INT", {"default": 0, "min": 0, "max": 63,
+                    "tooltip": "Which view leaves the `view`/`exact_view` outputs. "
+                               "Clamped to n_views-1. `all_views` always carries the batch."}),
+                "pitch_deg": ("FLOAT", {"default": 0.0, "min": -80.0, "max": 80.0, "step": 1.0,
+                    "tooltip": "Tilt of the whole ring. 0 keeps the horizon level, which is "
+                               "what the ground-plane scale fit wants."}),
+                "yaw_offset_deg": ("FLOAT", {"default": 0.0, "min": -360.0, "max": 360.0,
+                    "step": 1.0,
+                    "tooltip": "Rotate the ring — use it to move a seam off your subject."}),
+            },
+        }
+
+    def split(self, equirect, n_views=12, fov_deg=90.0, size=1024, view_index=0,
+              pitch_deg=0.0, yaw_offset_deg=0.0):
+        from atlas_camera.core.equirect import split_equirect
+
+        np = _require_numpy()
+        torch = _require_torch()
+
+        arr = equirect[0].detach().cpu().numpy() if hasattr(equirect, "detach") \
+            else np.asarray(equirect)[0]
+        src_h, src_w = arr.shape[0], arr.shape[1]
+
+        crops, angles, intr = split_equirect(
+            arr, n_views=int(n_views), fov_deg=float(fov_deg), size=int(size),
+            pitch_deg=float(pitch_deg), yaw_offset_deg=float(yaw_offset_deg))
+
+        batch = torch.from_numpy(np.stack(crops).astype(np.float32))
+        idx = max(0, min(int(view_index), len(crops) - 1))
+        yaw, pitch = angles[idx]
+        # The camera does not translate for a panorama — every view shares one
+        # optical centre — so distance_scale is exactly 1.0, not an estimate.
+        exact = (f"azimuth_deg={yaw:.4f} elevation_deg={pitch:.4f} "
+                 f"distance_scale=1.0000")
+
+        aspect = src_w / float(src_h) if src_h else 0.0
+        lines = [
+            f"split {src_w}x{src_h} equirect into {len(crops)} view(s) at "
+            f"{fov_deg:.0f}deg FOV, {size}x{size} each",
+            f"emitting view {idx}/{len(crops) - 1}: {exact}",
+            f"intrinsics fx={intr[0]:.2f} cx={intr[2]:.2f} (shared by every view)",
+            f"ring coverage {len(crops) * fov_deg:.0f}deg over 360deg "
+            f"({len(crops) * fov_deg / 360.0:.1f}x overlap)",
+        ]
+        if abs(aspect - 2.0) > 0.05:
+            # Not fatal — a partial panorama still samples correctly, it simply
+            # has no data outside its coverage — but say so, because a non-2:1
+            # input is usually a cropped pano the artist thinks is full.
+            lines.append(f"WARNING: aspect {aspect:.2f}:1, expected 2:1 for a full "
+                         "360x180 panorama — views outside the covered band will "
+                         "sample clamped edge rows")
+        return (batch[idx:idx + 1], exact, batch, "\n".join(lines))

@@ -2,14 +2,14 @@
  "schema_version": 1,
  "generated_utc": "2026-07-28",
  "counts": {
-  "standard": 85,
+  "standard": 86,
   "experimental": 5,
   "legacy": 2,
-  "total": 92,
+  "total": 93,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 85,
+  "KEEP_CORE": 86,
   "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
@@ -30,6 +30,7 @@
    "dedicated_tests": [
     "tests/test_add_patch_view.py",
     "tests/test_angle_patch_nodes.py",
+    "tests/test_equirect.py",
     "tests/test_exact_patch_view.py",
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py"
@@ -38,6 +39,7 @@
     "tests/test_add_patch_view.py",
     "tests/test_angle_patch_nodes.py",
     "tests/test_comfy_node_registry.py",
+    "tests/test_equirect.py",
     "tests/test_exact_patch_view.py",
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py",
@@ -330,6 +332,7 @@
    "dedicated_tests": [
     "tests/test_camera_path.py",
     "tests/test_camera_path_export_node.py",
+    "tests/test_equirect.py",
     "tests/test_exact_patch_view.py",
     "tests/test_example_workflows.py",
     "tests/test_experimental_gate.py",
@@ -344,6 +347,7 @@
     "tests/test_camera_path.py",
     "tests/test_camera_path_export_node.py",
     "tests/test_comfy_node_registry.py",
+    "tests/test_equirect.py",
     "tests/test_exact_patch_view.py",
     "tests/test_example_workflows.py",
     "tests/test_experimental_gate.py",
@@ -3903,6 +3907,41 @@
    "evidence": [],
    "migration_action": null,
    "notes": null
+  },
+  "AtlasSplitEquirect": {
+   "module": "atlas_camera/comfy/nodes_solve.py",
+   "tier": "standard",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_equirect.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_equirect.py",
+    "tests/test_facade_surface.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "dedicated tests: tests/test_equirect.py \u2014 geometry (direction, latitude polarity, seam wrap) plus node-layer contract"
+   ],
+   "migration_action": "none; keep",
+   "notes": "Atlas's answer to ComfyUI core's MoGePanoramaInference. Core merges 12 views into one equirect depth map, which disables per-view metric scale and drops MoGe-2 normals; this keeps each crop a separate perspective solve, so both survive. It also feeds the existing AtlasAddPatchView rather than adding a parallel multi-camera path \u2014 and does so through exact_view_override, because equirect angles are measured rather than estimated."
   },
   "AtlasStereoRender": {
    "module": "atlas_camera/comfy/nodes_viewport.py",

@@ -142,6 +142,23 @@ VERDICTS: dict[str, dict] = {
         }
         for name in ("AtlasOcclusionGraph", "AtlasMoveBudget", "AtlasLayerPlan")
     },
+    "AtlasSplitEquirect": {
+        "verdict": "KEEP_CORE",
+        "compatibility_risk": "low — new this cycle, nothing to migrate",
+        "migration_action": "none; keep",
+        "evidence": [
+            "dedicated tests: tests/test_equirect.py — geometry (direction, "
+            "latitude polarity, seam wrap) plus node-layer contract",
+        ],
+        "notes":
+            "Atlas's answer to ComfyUI core's MoGePanoramaInference. Core merges "
+            "12 views into one equirect depth map, which disables per-view metric "
+            "scale and drops MoGe-2 normals; this keeps each crop a separate "
+            "perspective solve, so both survive. It also feeds the existing "
+            "AtlasAddPatchView rather than adding a parallel multi-camera path — "
+            "and does so through exact_view_override, because equirect angles are "
+            "measured rather than estimated.",
+    },
 }
 
 # Node-specific notes layered on top of the bulk entries above.

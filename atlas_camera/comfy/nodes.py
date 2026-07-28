@@ -126,6 +126,7 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasApplyScaleReferences,
     AtlasFaceScaleReference,
     AtlasLoadRecord3D,
+    AtlasSplitEquirect,
     AtlasLoadSolveJSON,
     AtlasDecomposeSolve,
     AtlasDecomposeCamera,

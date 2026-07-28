@@ -48,6 +48,7 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasApplyScaleReferences,
     AtlasFaceScaleReference,
     AtlasLoadRecord3D,
+    AtlasSplitEquirect,
     AtlasLoadSolveJSON,
     AtlasDecomposeSolve,
     AtlasDecomposeCamera,
@@ -157,6 +158,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasConstrainedSolve":      AtlasConstrainedSolve,
     "AtlasFaceScaleReference":    AtlasFaceScaleReference,
     "AtlasLoadRecord3D":          AtlasLoadRecord3D,
+    "AtlasSplitEquirect":         AtlasSplitEquirect,
     "AtlasLoadSolveJSON":         AtlasLoadSolveJSON,
     # Track 1 — decompose
     "AtlasDecomposeSolve":        AtlasDecomposeSolve,
@@ -253,6 +255,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasConstrainedSolve":      "Atlas Constrained Solve",
     "AtlasFaceScaleReference":    "Atlas Face Scale Reference 🙂",
     "AtlasLoadRecord3D":          "Atlas Load Record3D Capture 📱",
+    "AtlasSplitEquirect":         "Atlas Split Equirect 🌐",
     "AtlasLoadSolveJSON":         "Atlas Load Solve JSON",
     # Track 1 — decompose
     "AtlasDecomposeSolve":        "Atlas Decompose Solve",
