@@ -394,6 +394,48 @@
     "consequence": "pitch_deg=0 is load-bearing, not merely a sensible default"
    },
    "core_workflow_not_run": "3d_moge_panorama_to_mesh.json would not settle the height question: its own note says the merge 'disables per-view metric scale', so it yields a mesh rather than a trustworthy camera height. The MoGe-vs-V2 cross-check inside our own pipeline was the decisive test instead."
+  },
+  "equirect_move_budget_ab": {
+   "question": "Does equirect angular coverage buy anything measurable? The plan claimed it would widen the safe camera envelope.",
+   "plate": "urban_street_02_8k.exr, 12-view ring @ 90deg, MoGe depth, focal wired",
+   "method": "primary solve from view 0, then AtlasAddPatchView per extra view with geometry_source='own_depth', measured by AtlasMoveBudget",
+   "FIRST_ATTEMPT_WAS_INVALID": {
+    "what": "Ran with geometry_source='reuse_scene' (the DEFAULT). Its tooltip: 'the patch derives NO geometry of its own \u2014 it becomes a pure texture projector... No depth model runs.' So the patches added texture projectors, not geometry, and the budget was correctly identical across 0, 2 and 4 patch views (x\u00b10.467 y\u00b10.186 z\u00b10.149 every time). The layer count rising 0->6->30 while the numbers did not move was the tell.",
+    "lesson": "reuse_scene is right for DMP repaint from a second camera; own_depth is what equirect coverage needs."
+   },
+   "results_own_depth": {
+    "A_primary_only": {
+     "x": 0.467,
+     "y": 0.186,
+     "z": 0.149,
+     "tears_pct": 11.2,
+     "layers": 0
+    },
+    "B_plus_30deg": {
+     "x": 1.056,
+     "y": 0.146,
+     "z": 0.149,
+     "tears_pct": 5.7,
+     "layers": 2
+    },
+    "C_plus_30_and_60": {
+     "x": 0.67,
+     "y": 0.131,
+     "z": 0.135,
+     "tears_pct": 3.2,
+     "layers": 4
+    }
+   },
+   "VERDICT": {
+    "coverage_VALIDATED": "Already-torn frame falls 11.2% -> 5.7% -> 3.2%, monotonic with added views \u2014 a 3.5x reduction. This is the equirect premise working: angular coverage fills what the primary never saw.",
+    "move_budget_NOT_VALIDATED": "No monotonic gain. x went 0.467 -> 1.056 -> 0.670 (non-monotonic, unexplained) while y and z got slightly WORSE (0.186 -> 0.131, 0.149 -> 0.135). Added geometry introduces surfaces that can themselves disocclude.",
+    "why_they_decouple": "AtlasMoveBudget's own report states it: 'X% of frame already tears at the recovered camera (projection coverage, not a move limit) \u2014 excluded from the budget.' Tearing and disocclusion are deliberately separate measurements, so coverage improving one says nothing about the other.",
+    "consequence_for_the_plan": "The plan's stated payoff (wider safe envelope) is NOT supported. The real payoff is projection coverage. Build the automated multi-view pipeline for coverage, and do not sell it on move budget."
+   },
+   "operational": {
+    "caveat": "Single runs, not repeated \u2014 the x figure in particular looks noisy and should be re-measured before being quoted.",
+    "server_limit": "Chaining 11 AtlasAddPatchView nodes killed the ComfyUI server outright. 4 patches ran comfortably in ~30 s; a full 12-view ring needs batching or a dedicated node rather than a naive chain."
+   }
   }
  }
 }
