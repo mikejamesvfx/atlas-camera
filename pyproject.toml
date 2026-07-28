@@ -147,6 +147,19 @@ raw-lens = [
 mcp = [
     "mcp>=1.2",
 ]
+# Record3D `.r3d` iPhone/iPad capture import (AtlasLoadRecord3D 📱): measured
+# ARKit intrinsics + gravity-aligned metric pose + LiDAR sceneDepth.
+#
+# pyliblzfse binds Apple's LZFSE codec, which is what Record3D compresses its
+# per-frame `.depth` and `.conf` planes with. It is only needed to read depth
+# out of a packed `.r3d` — the camera solve, and any capture whose frames are
+# already extracted as raw/`.npy`, import with the core install alone. Pillow
+# decodes the colour frames.
+record3d = [
+    "numpy>=1.24",
+    "pillow>=10",
+    "pyliblzfse>=0.4.1",
+]
 dev = [
     "numpy>=1.24",
     "opencv-python>=4.8",

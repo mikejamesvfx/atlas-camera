@@ -6,6 +6,7 @@ change. Registered/exported via atlas_camera.comfy.node_registry.
 from __future__ import annotations
 
 import copy
+import io
 import json
 import math
 import os
@@ -26,6 +27,7 @@ from atlas_camera.comfy.node_helpers import (
     _extrinsics_from_view,
     _image_fingerprint,
     _image_tensor_to_preview_b64,
+    _pil_to_image_tensor,
     _recompute_horizon_line,
     _reference_id_choices,
     _require_numpy,
@@ -1698,6 +1700,171 @@ class AtlasApplyScaleReferences:
             "references_in": len(refs),
         }, indent=2)
         return (solve, float(solve.camera.extrinsics.camera_position[1]), report)
+
+
+class AtlasLoadRecord3D:
+    """📱 Load a Record3D `.r3d` iPhone/iPad capture — MEASURED camera + metric depth.
+
+    A third solve source alongside vanishing points and the learned prior, and
+    the only one whose numbers are measured rather than inferred: Apple's
+    factory per-lens intrinsics and a gravity-aligned ARKit pose in metres.
+
+    Read the depth honestly. ARKit's LiDAR ``sceneDepth`` is **256x192** no
+    matter how large the colour frame is — roughly 0.05 MP against a 12-48 MP
+    plate. It is not a high-resolution surface and upsampling it here invents
+    no detail (the resample is deliberately NEAREST, so every output sample is
+    a real measurement rather than an interpolation that would read as
+    structure downstream). What it IS is metric ground truth: wire it into
+    ``AtlasDepthCombine`` as ``depth_base`` with a MoGe/Depth-Anything estimate
+    as ``depth_detail_src`` in ``high_freq_detail`` mode, and the monocular
+    model supplies the resolution while the LiDAR pins the scale. That collapses
+    Atlas's tier-2 (estimated depth) and tier-3 (assumed camera height) scale
+    guessing into a tier-1 measurement.
+
+    ``min_confidence`` gates on ARKit's own per-pixel confidence: rejected
+    pixels become NaN, which the relief mesh already treats as a hole and tears
+    around — the same mechanism as any other invalid depth, not a new one.
+    """
+    RETURN_TYPES = ("IMAGE", "ATLAS_SOLVE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
+    RETURN_NAMES = ("image", "solve", "depth", "confidence_mask", "report")
+    FUNCTION = "load"
+    CATEGORY = "Atlas Camera/Solve"
+
+    _CONFIDENCE_FLOOR = {"any": 0, "medium": 1, "high": 2}
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "capture_path": ("STRING", {"default": "", "tooltip":
+                    "Path to a Record3D .r3d file, or to an already-extracted capture folder."}),
+            },
+            "optional": {
+                "frame_index": ("INT", {"default": 0, "min": 0, "max": 100000,
+                    "tooltip": "Which frame of the capture to solve. A capture is a "
+                               "camera MOVE — every frame shares one world origin."}),
+                "depth_resolution": (["colour_frame", "native"], {"default": "colour_frame",
+                    "tooltip": "colour_frame: nearest-upsample the 256x192 depth to the plate "
+                               "size so it lines up with the image. native: leave it at sensor "
+                               "resolution."}),
+                "min_confidence": (["any", "medium", "high"], {"default": "medium",
+                    "tooltip": "ARKit per-pixel confidence floor. Rejected pixels become NaN "
+                               "(a hole the relief mesh tears around)."}),
+            },
+        }
+
+    def load(self, capture_path, frame_index=0, depth_resolution="colour_frame",
+             min_confidence="medium"):
+        from atlas_camera.importers.record3d import Record3DCapture
+        from atlas_camera.inference.depth_estimator import DepthResult
+        from atlas_camera.core.solver import _resize_depth
+
+        np = _require_numpy()
+        torch = _require_torch()
+
+        path = str(capture_path or "").strip()
+        if not path:
+            raise ValueError("AtlasLoadRecord3D: capture_path is empty — point it at a .r3d file.")
+
+        with Record3DCapture.open(path) as capture:
+            index = max(0, min(int(frame_index), capture.n_frames - 1))
+            frame = capture.frame(index)
+            solve = capture.solve(index)
+            rgb_w, rgb_h = capture.rgb_size
+            warnings = list(capture.warnings)
+            device_hint, n_frames, fps = capture.device_hint, capture.n_frames, capture.fps
+
+        if index != int(frame_index):
+            warnings.append(
+                f"frame_index {int(frame_index)} is past the end — clamped to {index} "
+                f"of {n_frames} frames.")
+
+        # ---- colour ---------------------------------------------------------
+        image = None
+        if frame.rgb_jpeg:
+            try:
+                from PIL import Image
+                pil = Image.open(io.BytesIO(frame.rgb_jpeg))
+                image = _pil_to_image_tensor(pil)
+                if (pil.width, pil.height) != (rgb_w, rgb_h):
+                    warnings.append(
+                        f"Colour frame decoded at {pil.width}x{pil.height} but metadata "
+                        f"says {rgb_w}x{rgb_h}; intrinsics follow the metadata.")
+            except Exception as exc:  # noqa: BLE001 - a bad JPEG must not kill the solve
+                warnings.append(f"Colour frame could not be decoded ({exc}); emitting black.")
+        if image is None:
+            image = torch.zeros((1, rgb_h, rgb_w, 3), dtype=torch.float32)
+            warnings.append("No colour frame in this capture — image output is black.")
+
+        # ---- depth + confidence ---------------------------------------------
+        depth_result = None
+        conf_mask = torch.zeros((1, rgb_h, rgb_w), dtype=torch.float32)
+        if frame.depth is not None:
+            depth = np.asarray(frame.depth, dtype=np.float32).copy()
+            floor = self._CONFIDENCE_FLOOR[min_confidence]
+            rejected = 0
+            if frame.confidence is not None and floor > 0:
+                keep = np.asarray(frame.confidence) >= floor
+                rejected = int((~keep).sum())
+                depth[~keep] = np.nan
+            elif floor > 0:
+                warnings.append(
+                    "Capture carries no .conf plane — min_confidence could not be applied.")
+
+            conf_src = (frame.confidence.astype(np.float32) / 2.0
+                        if frame.confidence is not None
+                        else np.ones_like(depth, dtype=np.float32))
+
+            if depth_resolution == "colour_frame":
+                depth = _resize_depth(depth, rgb_w, rgb_h)
+                conf_src = _resize_depth(conf_src, rgb_w, rgb_h)
+            conf_mask = torch.from_numpy(np.ascontiguousarray(conf_src)).unsqueeze(0)
+
+            valid = np.isfinite(depth) & (depth > 0)
+            depth_result = DepthResult(
+                depth=depth,
+                is_metric=True,  # ARKit sceneDepth is metres, measured
+                model_id="record3d/arkit_scene_depth",
+                image_width=int(depth.shape[1]),
+                image_height=int(depth.shape[0]),
+                near=float(depth[valid].min()) if valid.any() else 0.0,
+                far=float(depth[valid].max()) if valid.any() else 0.0,
+                metadata={
+                    "source": "measured_lidar",
+                    "native_width": frame.depth_size[0],
+                    "native_height": frame.depth_size[1],
+                    "resampled_to": depth_resolution,
+                    "resample_filter": "nearest",
+                    "min_confidence": min_confidence,
+                    "rejected_px": rejected,
+                    "device": device_hint,
+                },
+            )
+            solve.debug_metadata["record3d_depth"] = depth_result.summary()
+        else:
+            warnings.append("Capture has no depth frames — camera solve only.")
+
+        native = f"{frame.depth_size[0]}x{frame.depth_size[1]}" if frame.depth_size[0] else "none"
+        report_lines = [
+            f"AtlasLoadRecord3D: frame {index + 1}/{n_frames} @ {fps:g}fps — {device_hint}",
+            f"  colour {rgb_w}x{rgb_h} | depth {native}"
+            + (f" -> {depth_result.image_width}x{depth_result.image_height}"
+               if depth_result is not None and depth_resolution == "colour_frame" else ""),
+            f"  MEASURED intrinsics fx={solve.camera.intrinsics.fx_px:.1f} "
+            f"cx={solve.camera.intrinsics.cx_px:.1f} cy={solve.camera.intrinsics.cy_px:.1f}",
+            f"  MEASURED pose {tuple(round(v, 3) for v in solve.camera.extrinsics.camera_position)} m "
+            "(ARKit, gravity-aligned — no -Z canonicalization applied)",
+        ]
+        if depth_result is not None:
+            report_lines.append(
+                f"  metric depth {depth_result.near:.2f}–{depth_result.far:.2f} m, "
+                f"{depth_result.metadata['rejected_px']} px below '{min_confidence}' confidence")
+        if warnings:
+            report_lines.append("")
+            report_lines.extend(f"  NOTE: {w}" for w in warnings)
+
+        solve.debug_metadata["warnings"] = warnings
+        return (image, solve, depth_result, conf_mask, "\n".join(report_lines))
 
 
 class AtlasLoadSolveJSON:

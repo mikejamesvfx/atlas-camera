@@ -2,14 +2,14 @@
  "schema_version": 1,
  "generated_utc": "2026-07-28",
  "counts": {
-  "standard": 83,
+  "standard": 84,
   "experimental": 5,
   "legacy": 2,
-  "total": 90,
+  "total": 91,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 83,
+  "KEEP_CORE": 84,
   "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
@@ -551,7 +551,9 @@
     "tests/test_facade_surface.py",
     "tests/test_node_usage_audit.py"
    ],
-   "mcp_tools": [],
+   "mcp_tools": [
+    "atlas_camera/mcp/server.py"
+   ],
    "repo_tools": [
     "tools/build_unseen_geometry_workflow.py"
    ],
@@ -561,6 +563,7 @@
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "mcp",
     "repo_tool",
     "docs"
    ],
@@ -929,12 +932,14 @@
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_depth_detail.py"
+    "tests/test_depth_detail.py",
+    "tests/test_record3d_node.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_depth_detail.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_record3d_node.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -2410,7 +2415,9 @@
     "tests/test_facade_surface.py",
     "tests/test_layer_plan_node.py"
    ],
-   "mcp_tools": [],
+   "mcp_tools": [
+    "atlas_camera/mcp/server.py"
+   ],
    "repo_tools": [
     "tools/build_auto_layered_inpaint_workflow.py",
     "tools/build_layered_segmentation_workflow.py"
@@ -2420,6 +2427,7 @@
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "mcp",
     "repo_tool"
    ],
    "live_execution": "not_attempted",
@@ -2663,6 +2671,39 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasLoadRecord3D": {
+   "module": "atlas_camera/comfy/nodes_solve.py",
+   "tier": "standard",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_record3d_node.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_facade_surface.py",
+    "tests/test_record3d_node.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasLoadSolveJSON": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
@@ -2795,7 +2836,9 @@
     "tests/test_facade_surface.py",
     "tests/test_move_budget.py"
    ],
-   "mcp_tools": [],
+   "mcp_tools": [
+    "atlas_camera/mcp/server.py"
+   ],
    "repo_tools": [
     "tools/build_auto_layered_inpaint_workflow.py",
     "tools/build_layered_segmentation_workflow.py",
@@ -2808,6 +2851,7 @@
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "mcp",
     "repo_tool",
     "docs"
    ],
@@ -2845,7 +2889,9 @@
     "tests/test_layer_plan_node.py",
     "tests/test_occlusion_graph.py"
    ],
-   "mcp_tools": [],
+   "mcp_tools": [
+    "atlas_camera/mcp/server.py"
+   ],
    "repo_tools": [
     "tools/build_auto_layered_inpaint_workflow.py",
     "tools/build_layered_segmentation_workflow.py",
@@ -2858,6 +2904,7 @@
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "mcp",
     "repo_tool",
     "docs"
    ],

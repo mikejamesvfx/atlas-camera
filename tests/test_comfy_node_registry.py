@@ -41,7 +41,7 @@ NORMAL_KEYS = {
     "AtlasExportSolveJSON", "AtlasExportUSD", "AtlasGravityOverride",
     "AtlasGroundDepthMap", "AtlasHorizonMask",
     "AtlasInpaintCrop", "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
-    "AtlasLayerPreview", "AtlasLearnedSolveFromImage",     "AtlasLoadRAW", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasMogeNormals",
+    "AtlasLayerPreview", "AtlasLearnedSolveFromImage",     "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasMogeNormals",
     "AtlasOcclusionMask", "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
     "AtlasReferenceScaleSolve",
     "AtlasLoadPlate", "AtlasPlanarUnwarp", "AtlasPlanarRewarp",
@@ -72,7 +72,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 83
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 84
 
 
 def test_experimental_registry_keys_exact():

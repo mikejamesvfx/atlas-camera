@@ -124,6 +124,7 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasSceneHealthGate,
     AtlasVLMScaleCues,
     AtlasApplyScaleReferences,
+    AtlasLoadRecord3D,
     AtlasLoadSolveJSON,
     AtlasDecomposeSolve,
     AtlasDecomposeCamera,

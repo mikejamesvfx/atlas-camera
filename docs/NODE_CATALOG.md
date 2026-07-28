@@ -16,7 +16,7 @@
 
 The former 9,110-line `nodes.py` was split into responsibility modules; the 71
 
-node classes (83 standard + 5 experimental + 2 legacy) now live in the
+node classes (84 standard + 5 experimental + 2 legacy) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -227,7 +227,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (83 nodes + 5 experimental + 2 legacy)
+### Node catalog (84 nodes + 5 experimental + 2 legacy)
 
 
 
@@ -284,6 +284,8 @@ pitch dial — recoverable from git if the flip-repair is wanted back).
 | `AtlasOcclusionMask` | ATLAS_SOLVE, target_image (IMAGE), ±patch_azimuth_view, ±patch_elevation_view, ±patch_distance, ±source_azimuth_view, ±source_elevation_view, ±flip_azimuth, ±depth_model, ±device, ±angle_threshold, ±dilate_px, ±soft_edge_px, ±power | occlusion_mask, coverage_mask (both MASK) | Phase 1 (frustum/frame/facing-angle) mask of where the PRIMARY camera's projection is invalid at a target/patch view's surface — white = primary can't cover it, so a patch should fill it there. Places its target camera identically to `AtlasAddPatchView` (same named-view widgets, same `_named_view_orbit_delta` helper — never independently recompute the orbit) so the mask lines up with that node's later patch geometry for the same image. Pure backend/numpy (`depth_geometry.primary_camera_validity_mask`), no browser round-trip, runs headlessly. Intended pipeline: `Solve → AtlasOcclusionMask → ImageCompositeMasked (primary projection + target_image) → AtlasAddPatchView`. Does not yet detect true depth-shadow occlusion (an object hidden behind nearer geometry from the primary's view but still inside its frame/angle limits) — see `docs/dev/atlas_occlusion_mask_implementation_plan.md` for that Phase 2 design. Needs `[neural]` |
 
 | `AtlasConstrainedSolve` | image, constraints_json | ATLAS_SOLVE | Artist-guided; pass scale_constraints for cam height |
+
+| `AtlasLoadRecord3D` | capture_path, ±frame_index, ±depth_resolution, ±min_confidence | image (IMAGE), solve (ATLAS_SOLVE), depth (ATLAS_DEPTH_MAP), confidence_mask (MASK), report | 📱 Record3D `.r3d` iPhone/iPad capture — the third solve source, and the only one whose numbers are MEASURED rather than inferred: Apple factory per-lens intrinsics + a gravity-aligned ARKit pose in metres + LiDAR `sceneDepth`. ARKit's camera basis (x-right/y-up/z-back, right-handed Y-up world, metres) is already Atlas's, so the importer applies NO axis flip, and `solver._face_camera_toward_negative_z` is deliberately NOT applied — yaw is measured here, and every frame of a capture shares one world origin. Depth is **256×192** (ARKit sceneDepth) against a 12–48 MP plate: a metric ANCHOR, not a high-resolution surface. The intended graph is `AtlasLoadRecord3D → AtlasDepthCombine(depth_base=lidar, depth_detail_src=MoGe/DA, mode=high_freq_detail)` — monocular supplies resolution, LiDAR pins scale, collapsing tier-2/tier-3 scale guessing into a tier-1 measurement. Upsample is NEAREST by design (no invented detail); `min_confidence` turns low-confidence ARKit pixels into NaN holes the relief mesh already tears around. Needs `[record3d]` for packed `.r3d` depth (camera solve alone needs nothing) |
 
 | `AtlasLoadSolveJSON` | json_path | ATLAS_SOLVE | Load previously saved solve |
 
