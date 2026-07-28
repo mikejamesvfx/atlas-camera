@@ -1424,7 +1424,10 @@
    ],
    "widgets_values": [
     "Ruicheng/moge-2-vitl-normal",
-    "auto"
+    "auto",
+    9,
+    0,
+    ""
    ],
    "title": "Shared MoGe Depth",
    "id": 30,

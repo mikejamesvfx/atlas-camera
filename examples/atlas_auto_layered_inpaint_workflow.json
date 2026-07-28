@@ -534,7 +534,10 @@
       },
       "widgets_values": [
         "Ruicheng/moge-2-vitl-normal",
-        "auto"
+        "auto",
+        9,
+        0,
+        ""
       ],
       "title": "8 \u00b7 CLEAN PLATE'S OWN DEPTH (doctrine)"
     },

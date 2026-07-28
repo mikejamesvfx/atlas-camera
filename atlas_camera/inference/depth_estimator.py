@@ -53,6 +53,11 @@ DEFAULT_RELATIVE_MODEL = "depth-anything/Depth-Anything-V2-Small-hf"
 DEFAULT_METRIC_INDOOR = "depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf"
 DEFAULT_METRIC_OUTDOOR = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
 
+#: MoGe's own default token budget (0-9). Ours too — a lower value trades
+#: detail for speed and MUST stay opt-in, or every existing graph silently
+#: changes quality.
+MOGE_RESOLUTION_LEVEL_DEFAULT = 9
+
 # Depth Anything 3 model ids (opt-in backend — see module docstring).
 DA3_METRIC_MODEL = "depth-anything/DA3METRIC-LARGE"
 DA3_MONO_MODEL = "depth-anything/DA3MONO-LARGE"
@@ -490,7 +495,7 @@ def _estimate_depth_da3(
     )
 
 
-_MOGE_MODEL_CACHE: dict[tuple[str, str], Any] = {}
+_MOGE_MODEL_CACHE: dict[tuple[str, str, str], Any] = {}
 _MOGE_MODEL_CACHE_MAX = 1
 
 
@@ -514,13 +519,35 @@ def _require_moge() -> Any:
     return MoGeModel
 
 
-def _get_moge_model(model_id: str, device: str):
-    cached = _MOGE_MODEL_CACHE.get((model_id, device))
+def _get_moge_model(model_id: str, device: str, checkpoint_path: str = ""):
+    """Load (and cache) a MoGe model, optionally from a LOCAL checkpoint.
+
+    ``MoGeModel.from_pretrained`` already branches on ``Path(x).exists()``, so a
+    local ``model.pt`` is passed straight through and no download happens. That
+    is the whole mechanism — air-gapped installs and shared model directories
+    point at a file instead of a HuggingFace id.
+
+    NOT compatible with ComfyUI core's ``models/geometry_estimation/*.safetensors``:
+    from_pretrained does ``torch.load(..., weights_only=True)`` and reads
+    ``checkpoint['model_config']``, neither of which a safetensors file provides.
+    """
+    key = (model_id, device, checkpoint_path or "")
+    cached = _MOGE_MODEL_CACHE.get(key)
     if cached is not None:
         return cached
     MoGeModel = _require_moge()
-    model = MoGeModel.from_pretrained(model_id).to(device).eval()
-    bounded_cache_set(_MOGE_MODEL_CACHE, (model_id, device), model, _MOGE_MODEL_CACHE_MAX,
+    source = model_id
+    if checkpoint_path:
+        p = Path(checkpoint_path)
+        if not p.is_file():
+            raise RuntimeError(
+                f"MoGe checkpoint_path does not exist: {checkpoint_path}\n"
+                "Expected a MoGe `model.pt` (the format from_pretrained reads). "
+                "ComfyUI core's geometry_estimation/*.safetensors will NOT work — "
+                "different container, and it carries no model_config.")
+        source = str(p)
+    model = MoGeModel.from_pretrained(source).to(device).eval()
+    bounded_cache_set(_MOGE_MODEL_CACHE, key, model, _MOGE_MODEL_CACHE_MAX,
                       release_cuda=True)
     return model
 
@@ -531,6 +558,9 @@ def _estimate_depth_moge(
     model_id: str,
     device: str,
     focal_px: float | None,
+    resolution_level: int = MOGE_RESOLUTION_LEVEL_DEFAULT,
+    max_side: int = 0,
+    checkpoint_path: str = "",
 ) -> DepthResult:
     """MoGe-2 inference path: metric forward-Z depth from the point map.
 
@@ -542,35 +572,86 @@ def _estimate_depth_moge(
     re-normalizes absolute scale regardless of the model's metric estimate.
     ``normal`` (from ``*-normal`` variants) rides in metadata for future use by
     the relief mesh's normal-bend tear test.
+
+    Two cost knobs, both INERT at their defaults so existing graphs are
+    bit-identical:
+
+    ``resolution_level`` (0-9) is MoGe's own token-budget dial; 9 is its default
+    and ours. Lower trades detail for speed.
+
+    ``max_side`` caps the longer edge BEFORE the GPU tensor is built. MoGe
+    resamples internally anyway, so this is a memory/time lever, not a quality
+    one — but the tensor itself is not free: a 7680x4512 plate is ~415 MB of
+    float32 on the device before MoGe touches it. 0 disables. Outputs are always
+    returned at SOURCE resolution regardless, so nothing downstream can tell.
     """
     import math
     import numpy as np
     from PIL import Image
 
     torch = _require_torch()
-    model = _get_moge_model(model_id, device)
+    model = _get_moge_model(model_id, device, checkpoint_path)
     image = Image.open(image_path).convert("RGB")
     width, height = image.size
-    arr = np.asarray(image, dtype=np.float32) / 255.0
+
+    # Downscale for inference only. Every output is resized back to (height,
+    # width) below, so `width`/`height` stay the SOURCE dims throughout and the
+    # DepthResult contract is unchanged.
+    infer_image = image
+    cap = int(max_side or 0)
+    if cap > 0 and max(width, height) > cap:
+        scale = cap / float(max(width, height))
+        infer_image = image.resize(
+            (max(1, round(width * scale)), max(1, round(height * scale))),
+            Image.LANCZOS)
+
+    arr = np.asarray(infer_image, dtype=np.float32) / 255.0
     tensor = torch.from_numpy(arr).permute(2, 0, 1).to(device)  # (3,H,W) in [0,1]
 
     fov_x = None
     focal_source = "predicted"
     if focal_px is not None and float(focal_px) > 0:
+        # fov_x is an ANGLE, so it is computed from the SOURCE width/focal and is
+        # invariant to the inference downscale — deliberately not infer_image.
         fov_x = math.degrees(2.0 * math.atan(width / (2.0 * float(focal_px))))
         focal_source = "solve"
 
+    level = int(resolution_level)
     with torch.inference_mode():
-        out = model.infer(tensor, fov_x=fov_x)
+        out = model.infer(tensor, fov_x=fov_x, resolution_level=level)
 
-    depth = out["depth"].float().cpu().numpy()  # forward-Z metres
+    def _to_source(t, mode):
+        """Resize a MoGe output back to the source frame. No-op at max_side=0."""
+        if tuple(t.shape[-2:]) == (height, width):
+            return t
+        squeeze = t.dim() == 2
+        x = t[None, None] if squeeze else t.permute(2, 0, 1)[None]
+        x = torch.nn.functional.interpolate(
+            x.float(), size=(height, width), mode=mode,
+            **({} if mode == "nearest" else {"align_corners": False}))
+        return x[0, 0] if squeeze else x[0].permute(1, 2, 0)
+
+    depth_t = _to_source(out["depth"].float(), "bilinear")
+    depth = depth_t.cpu().numpy()  # forward-Z metres
     metadata: dict[str, Any] = {
         "device": device, "backend": "moge", "focal_source": focal_source,
     }
     if fov_x is not None:
         metadata["fov_x_deg"] = float(fov_x)
+    metadata["resolution_level"] = level
+    if infer_image is not image:
+        # Say what actually ran, not what was asked for — same principle as the
+        # exclude-mask coverage line: a silent downscale is a silent quality
+        # change, and the debug report is where an artist would look for it.
+        metadata["inference_downscaled_to"] = list(infer_image.size)   # (w, h)
+        metadata["max_side"] = cap
+    if checkpoint_path:
+        metadata["checkpoint_path"] = str(checkpoint_path)
     if "mask" in out:
-        mask = out["mask"].detach().cpu().numpy().astype(bool)
+        # NEAREST, and applied AFTER the depth resize. Bilinear on a boolean
+        # would invent fractional validity, and masking before the resize would
+        # smear NaN holes outward across every interpolated neighbour.
+        mask = _to_source(out["mask"].detach().float(), "nearest").cpu().numpy() > 0.5
         depth = np.where(mask, depth, np.nan)
         metadata["valid_fraction"] = float(mask.mean())
     predicted_normal = None
@@ -578,11 +659,16 @@ def _estimate_depth_moge(
         # Predicted per-pixel surface normals in the MODEL's camera frame — kept
         # for the relight (aligned to world downstream) and the mesh's normal-bend
         # tear test (both cleaner than gradient-of-depth normals).
-        predicted_normal = np.asarray(out["normal"].detach().cpu().numpy(), dtype=np.float32)
-        if predicted_normal.ndim == 4:          # (B,H,W,3) or (B,3,H,W)
-            predicted_normal = predicted_normal[0]
-        if predicted_normal.ndim == 3 and predicted_normal.shape[0] == 3:  # (3,H,W) -> (H,W,3)
-            predicted_normal = np.moveaxis(predicted_normal, 0, -1)
+        normal_t = out["normal"].detach().float()
+        if normal_t.dim() == 4:                       # (B,H,W,3) or (B,3,H,W)
+            normal_t = normal_t[0]
+        if normal_t.dim() == 3 and normal_t.shape[0] == 3:   # (3,H,W) -> (H,W,3)
+            normal_t = normal_t.permute(1, 2, 0)
+        # Interpolating unit vectors shortens them; renormalise so downstream
+        # Procrustes alignment still sees unit normals.
+        normal_t = _to_source(normal_t, "bilinear")
+        normal_t = normal_t / normal_t.norm(dim=-1, keepdim=True).clamp_min(1e-12)
+        predicted_normal = np.asarray(normal_t.cpu().numpy(), dtype=np.float32)
         metadata["has_predicted_normals"] = True
 
     depth, metadata = _record_and_clamp_negative(depth, metadata)
@@ -608,6 +694,9 @@ def estimate_depth(
     model_id: str = DEFAULT_METRIC_OUTDOOR,
     device: str | None = None,
     focal_px: float | None = None,
+    resolution_level: int = MOGE_RESOLUTION_LEVEL_DEFAULT,
+    max_side: int = 0,
+    checkpoint_path: str = "",
 ) -> DepthResult:
     """Predict a depth map for a single image (Depth Anything V2 / V3, or MoGe-2).
 
@@ -634,7 +723,15 @@ def estimate_depth(
         else None
     )
 
-    cache_key = (content_hash, model_id, device, focal_key)
+    # MoGe-only knobs join the key. Without this a re-run at a different
+    # resolution_level or max_side would hit the cache and return the FIRST
+    # call's map — the knob would appear to do nothing, which is the worst
+    # possible failure for a quality/speed dial.
+    moge_key = (
+        (int(resolution_level), int(max_side or 0), str(checkpoint_path or ""))
+        if _is_moge_model(model_id) else None
+    )
+    cache_key = (content_hash, model_id, device, focal_key, moge_key)
     cached_result = _DEPTH_RESULT_CACHE.get(cache_key)
     if cached_result is not None:
         return cached_result
@@ -645,7 +742,9 @@ def estimate_depth(
         )
     elif _is_moge_model(model_id):
         result = _estimate_depth_moge(
-            image_path, model_id=model_id, device=device, focal_px=focal_px
+            image_path, model_id=model_id, device=device, focal_px=focal_px,
+            resolution_level=resolution_level, max_side=max_side,
+            checkpoint_path=checkpoint_path,
         )
     elif _is_depth_pro_model(model_id):
         result = _estimate_depth_depth_pro(image_path, model_id=model_id, device=device)

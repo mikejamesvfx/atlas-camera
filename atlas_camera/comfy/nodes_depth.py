@@ -118,17 +118,37 @@ class AtlasDepthMap:
                           "(GeoCalib/VP) for DA3METRIC's canonical→metric conversion "
                           "(focal_source='solve' instead of the assumed normal-lens fallback). "
                           "Ignored by V2 models."}),
+                # APPENDED 2026-07-28 (positional widgets_values rule): MoGe-only
+                # cost dials, both INERT at their defaults so every saved graph
+                # behaves exactly as before. Ignored by non-MoGe backends.
+                "moge_resolution_level": ("INT", {"default": 9, "min": 0, "max": 9,
+                    "tooltip": "MoGe ONLY. Its own token-budget dial; 9 is MoGe's default and "
+                               "full detail. Lower = faster and coarser. No effect on DA/V2/DepthPro."}),
+                "moge_max_side": ("INT", {"default": 0, "min": 0, "max": 16384, "step": 64,
+                    "tooltip": "MoGe ONLY. Cap the longer edge BEFORE inference (0 = off). MoGe "
+                               "resamples internally anyway, so this buys VRAM and time, not "
+                               "quality — an 8K plate is ~415 MB of float32 on the device before "
+                               "MoGe touches it. Depth/normals still come back at SOURCE size."}),
+                "moge_checkpoint_path": ("STRING", {"default": "",
+                    "tooltip": "MoGe ONLY. Local MoGe `model.pt` to load instead of downloading "
+                               "from HuggingFace (air-gapped / shared model dirs). NOT ComfyUI "
+                               "core's geometry_estimation/*.safetensors — different container, "
+                               "and it carries no model_config."}),
             },
         }
 
     def estimate(self, image, depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-                 device="auto", solve=None):
+                 device="auto", solve=None, moge_resolution_level=9, moge_max_side=0,
+                 moge_checkpoint_path=""):
         from atlas_camera.inference.depth_estimator import estimate_depth
         tmp = _save_image_tensor_to_tmp(image)
         try:
             result = estimate_depth(tmp, model_id=depth_model,
                                     device=None if device == "auto" else device,
-                                    focal_px=_solve_focal_px_for_image(solve, image))
+                                    focal_px=_solve_focal_px_for_image(solve, image),
+                                    resolution_level=int(moge_resolution_level),
+                                    max_side=int(moge_max_side),
+                                    checkpoint_path=str(moge_checkpoint_path or ""))
         finally:
             os.unlink(tmp)
         return (result,)
@@ -216,11 +236,26 @@ class AtlasMogeNormals:
                 "solve": ("ATLAS_SOLVE", {"tooltip": "Optional — feeds the SOLVED focal to MoGe "
                           "(fov_x) for better geometry; the normals are aligned to the recovered "
                           "world frame downstream regardless, so this is a minor quality knob."}),
+                # APPENDED 2026-07-28 (positional widgets_values rule). Inert at
+                # their defaults. This node is MoGe by definition, so unlike on
+                # AtlasDepthMap they always apply.
+                "resolution_level": ("INT", {"default": 9, "min": 0, "max": 9,
+                    "tooltip": "MoGe's token-budget dial; 9 is its default and full detail. "
+                               "Lower = faster, coarser normals."}),
+                "max_side": ("INT", {"default": 0, "min": 0, "max": 16384, "step": 64,
+                    "tooltip": "Cap the longer edge before inference (0 = off). Normals come back "
+                               "at SOURCE size either way — this only buys VRAM and time. Cheap "
+                               "here: normals are lower-frequency than depth, so a downscaled "
+                               "normal pass costs less quality than a downscaled depth pass."}),
+                "checkpoint_path": ("STRING", {"default": "",
+                    "tooltip": "Local MoGe `model.pt` instead of a HuggingFace download. NOT "
+                               "ComfyUI core's *.safetensors — different container."}),
             },
         }
 
     def attach(self, depth, image, normal_model="Ruicheng/moge-2-vitl-normal",
-               device="auto", solve=None):
+               device="auto", solve=None, resolution_level=9, max_side=0,
+               checkpoint_path=""):
         import copy
         base = getattr(depth, "depth", None)
         if base is None:
@@ -230,7 +265,10 @@ class AtlasMogeNormals:
         try:
             moge = estimate_depth(tmp, model_id=normal_model,
                                   device=None if device == "auto" else device,
-                                  focal_px=_solve_focal_px_for_image(solve, image))
+                                  focal_px=_solve_focal_px_for_image(solve, image),
+                                  resolution_level=int(resolution_level),
+                                  max_side=int(max_side),
+                                  checkpoint_path=str(checkpoint_path or ""))
         finally:
             os.unlink(tmp)
         raw = getattr(moge, "normal", None)

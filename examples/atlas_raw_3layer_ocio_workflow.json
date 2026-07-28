@@ -547,7 +547,10 @@
    ],
    "widgets_values": [
     "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-    "auto"
+    "auto",
+    9,
+    0,
+    ""
    ],
    "title": "Shared Depth (V2-Outdoor)",
    "id": 10,
