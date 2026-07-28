@@ -16,7 +16,8 @@
 
 The former 9,110-line `nodes.py` was split into responsibility modules; the 71
 
-node classes (67 standard + 4 experimental) now live in the group modules, and
+node classes (83 standard + 5 experimental + 2 legacy) now live in the
+group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
 

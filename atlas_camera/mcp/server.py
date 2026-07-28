@@ -346,6 +346,26 @@ GATES: AtlasSolveGate ships closed (proceed=False); AtlasAssessImage
 ROLL: GeoCalib gravity can drift a few degrees on AI plates with no horizon —
   AtlasRollTrim (positive = scene turns counter-clockwise on screen).
 
+EXCLUDE MASK — POLARITY IS SILENT AND DECIDES WHAT GETS REPAIRED:
+  exclude_mask REPLACES the internal sky heuristic, it is not OR'd on top, so
+  the mask must contain EVERYTHING you want gone. Masking the BACKGROUND meshes
+  the hero alone and repairs the hero's own tears; masking the SUBJECT leaves a
+  subject-shaped hole and repairs BEHIND it. Both run clean and both report
+  success — read the coverage line ("exclude mask covers N% of frame"): a
+  background exclude reads high, a subject cut-out low. Unwired is NOT neutral
+  (measured: 10/13 filled unwired vs 114/117 with a subject+sky exclude).
+  One AtlasSAM3Mask does both — `concepts` is a UNION, so "sky, machinery"
+  needs no MaskComposite. But SAM3 is open-vocabulary and a miss is SILENT:
+  on a real plate "machine" matched NOTHING while "machinery" took 26.8%.
+  ALWAYS read the segmenter's report to confirm which concepts matched.
+
+UNSEEN GEOMETRY (2026-07-28): AtlasOcclusionGraph decomposes the solve into
+  surface/object/ground/backdrop nodes; AtlasMoveBudget bisects a camera_path
+  against that graph to answer "how far can this move go before unseen
+  geometry shows?"; AtlasLayerPlan emits a clean-plate layer manifest from the
+  graph. AtlasCompleteDepth (experimental) fills depth BEFORE meshing —
+  distinct from hole repair, which fills after.
+
 X-RAY (experimental): always wire restrict_mask (a SAM3 segment of the
   occluder or the foreground band's layer_mask) — unrestricted substitution
   covered 50%+ of frame. Architecture is LaRI's strong domain.
