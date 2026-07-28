@@ -388,3 +388,5 @@ Rules:
 
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
 
+- `.graphifyignore` keeps the vendored `atlas-three.bundle.js` out of the graph (analysis only — the file still ships and the viewport still imports it; it was a 947-edge god node of minified internals). When an ignore rule newly excludes a file that still exists, `graphify update` fail-closes and keeps the old nodes — purge with `graphify update . --force`.
+

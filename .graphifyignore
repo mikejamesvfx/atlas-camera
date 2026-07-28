@@ -1,0 +1,24 @@
+# Paths graphify must not ingest into graphify-out/graph.json.
+#
+# This file affects ANALYSIS ONLY. graphify-out/ is gitignored and nothing at
+# runtime reads it, so excluding a path here cannot change what ships or how
+# anything behaves — the files stay on disk and stay tracked.
+#
+# atlas-three.bundle.js is the vendored, minified, esbuild-generated three.js
+# bundle (rebuild: `npm run build:comfy-three` in ui/). It is the frontend's
+# ONLY three.js source — atlas_blockout.js imports it directly and there is no
+# CDN fallback — so it must remain on disk and in git. But as GRAPH input it
+# was pure noise: 950 nodes (15.8% of the graph) and a 947-edge god node, 7.5x
+# the next highest, whose "community" was minified internals like a0()/Bc().
+#
+# Dropping it removed 950 nodes and 2582 edges while EVERY real Atlas node kept
+# its exact degree (AtlasIntrinsics 125, AtlasExtrinsics 121, LatentCamera 116,
+# unchanged) — proof it was a self-contained island contributing nothing to the
+# code graph.
+#
+# NOTE: `graphify update` fail-closes when an ignore rule newly excludes a file
+# that still exists on disk — it KEEPS the old nodes and warns rather than
+# silently dropping them. Purge with a full re-extraction:
+#     graphify update . --force
+atlas_camera/comfy/web/lib/
+*.bundle.js
