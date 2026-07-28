@@ -295,3 +295,201 @@ def test_load_plate_resolves_a_bare_filename_against_comfyui_input(tmp_path, mon
     # A name that is nowhere must still fail loudly rather than silently pass.
     with pytest.raises(RuntimeError, match="no such file"):
         getattr(cls(), cls.FUNCTION)("definitely_not_here.exr")
+
+
+# --------------------------------------------------------------------------
+# AtlasEquirectMultiView — the whole ring in one node.
+# --------------------------------------------------------------------------
+
+def _stub_multiview(monkeypatch, heights):
+    """Patch the solve + depth backends so the geometry path runs modelless.
+
+    `heights` is the per-sampled-view camera height the fake solver returns, so a
+    test can plant a deliberate outlier and check how it is consolidated.
+    """
+    import atlas_camera.comfy.nodes_solve as ns
+    from atlas_camera.core.intrinsics import build_intrinsics
+    from atlas_camera.core.schema import (AtlasCamera, AtlasExtrinsics, AtlasSolve)
+    from atlas_camera.inference.depth_estimator import DepthResult
+
+    calls = {"solves": [], "depths": 0}
+    seq = list(heights)
+
+    # NO **kw on purpose: a permissive stub is what let `focal_length_mm`
+    # through to a real function that wanted `focal_length_mm_hint`, so every
+    # unit test passed while the node could not run at all. The stub must be
+    # as strict as the thing it replaces.
+    def fake_solve(path, *, camera_height="auto", depth_model=None,
+                   focal_length_mm_hint=None, sensor_width_mm=36.0):
+        calls["solves"].append(camera_height)
+        h = (seq.pop(0) if (camera_height == "auto" and seq)
+             else (1.6 if camera_height == "auto" else float(camera_height)))
+        w = h_px = 64
+        return AtlasSolve(
+            camera=AtlasCamera(
+                intrinsics=build_intrinsics(image_width=w, image_height=h_px,
+                                            focal_length_mm=focal_length_mm_hint or 18.0,
+                                            sensor_width_mm=sensor_width_mm),
+                extrinsics=AtlasExtrinsics(camera_position=(0.0, h, 0.0))),
+            image_width=w, image_height=h_px)
+
+    def fake_depth(path, *, model_id=None, device=None, focal_px=None, max_side=0):
+        calls["depths"] += 1
+        d = np.full((64, 64), 10.0, dtype=np.float32)
+        d[32:, :] = 4.0                      # a ground-ish lower half
+        return DepthResult(depth=d, is_metric=True, model_id=model_id or "stub",
+                           image_width=64, image_height=64, near=4.0, far=10.0)
+
+    monkeypatch.setattr(ns, "solve_still_image_learned", fake_solve, raising=False)
+    import atlas_camera.core.solver as solver
+    monkeypatch.setattr(solver, "solve_still_image_learned", fake_solve)
+    import atlas_camera.inference.depth_estimator as de
+    monkeypatch.setattr(de, "estimate_depth", fake_depth)
+    return calls
+
+
+def _run_multiview(monkeypatch, heights, **kw):
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy import node_registry as reg
+    _stub_multiview(monkeypatch, heights)
+    cls = reg.NODE_CLASS_MAPPINGS["AtlasEquirectMultiView"]
+    pano = torch.from_numpy(_marker_equirect(64, 128).astype(np.float32))[None]
+    params = dict(n_views=4, size=64, height_samples=len(heights), relief_grid=32)
+    params.update(kw)
+    return getattr(cls(), cls.FUNCTION)(pano, **params)
+
+
+def test_multiview_every_camera_shares_one_optical_centre(monkeypatch):
+    """THE defining property, and the whole reason this node exists.
+
+    AtlasAddPatchView builds patch cameras with orbit_camera, which MOVES the
+    eye — it rotates the camera's offset from a ground pivot and re-aims,
+    displacing it by ~2*r*sin(delta/2), metres at a typical pivot distance.
+    Panorama views share ONE optical centre. If anyone ever routes this through
+    the orbit path, this is the test that catches it.
+    """
+    solve, _views, _report = _run_multiview(monkeypatch, [1.4, 1.4, 1.4, 1.4])
+    srcs = solve.projection_sources
+    assert len(srcs) == 4
+    eye = tuple(solve.camera.extrinsics.camera_position)
+    for s in srcs:
+        assert tuple(s.camera.extrinsics.camera_position) == pytest.approx(eye, abs=1e-9)
+        # A panorama camera never dollies, so this is exact, not approximate.
+        assert s.distance_scale == 1.0
+
+
+def test_multiview_azimuths_walk_the_ring_and_rotations_differ(monkeypatch):
+    solve, _v, _r = _run_multiview(monkeypatch, [1.4] * 4)
+    srcs = solve.projection_sources
+    assert [s.azimuth_deg for s in srcs] == [0.0, 90.0, 180.0, 270.0]
+    assert all(s.elevation_deg == 0.0 for s in srcs)
+    # Same eye, DIFFERENT rotation — otherwise every view would be the primary.
+    mats = {tuple(np.asarray(s.camera.extrinsics.camera_view_matrix).ravel().round(6))
+            for s in srcs}
+    assert len(mats) == 4
+
+
+def test_multiview_consolidates_height_by_MEDIAN_not_mean(monkeypatch):
+    """The specific choice made here, so it needs a test that fails if someone
+    'simplifies' it to an average.
+
+    Planted sample: 1.40 / 1.42 / 1.44 / 6.40. Median 1.43, mean 2.665 — a real
+    panorama produced exactly this shape (one view at 6.37 against a 5.91-6.08
+    cluster), and averaging would have baked the outlier into every view.
+    """
+    solve, _v, report = _run_multiview(monkeypatch, [1.40, 1.42, 1.44, 6.40])
+    assert solve.camera.extrinsics.camera_position[1] == pytest.approx(1.43, abs=1e-6)
+    assert solve.camera.extrinsics.camera_position[1] < 2.0, "the mean would be 2.665"
+    # And it is genuinely ONE height, not per-view estimates left to disagree.
+    assert {round(s.metadata["shared_height_m"], 9)
+            for s in solve.projection_sources} == {round(1.43, 9)}
+
+
+def test_multiview_report_exposes_the_spread_and_the_worst_sample(monkeypatch):
+    """Auditability is the CONDITION on automating the consolidation at all — a
+    median you cannot inspect is how a wrong scale gets baked in unnoticed."""
+    _s, _v, report = _run_multiview(monkeypatch, [1.40, 1.42, 1.44, 6.40])
+    assert "MEDIAN" in report
+    assert "spread 5.0000 m" in report, report
+    assert "furthest from the median: view 3" in report, report
+    assert "1.4000" in report and "6.4000" in report      # every sample listed
+    assert "EXACT" in report                              # the focal provenance
+    assert "ONE eye shared" in report
+
+
+def test_multiview_uses_one_shared_ground_scale(monkeypatch):
+    """All views share an eye and a focal, so a per-view ground fit would only
+    re-derive the same number with more noise. One scale is what makes the ring
+    a single consistent metric world."""
+    solve, _v, _r = _run_multiview(monkeypatch, [1.4] * 4)
+    scales = {round(s.metadata["shared_ground_scale"], 9)
+              for s in solve.projection_sources}
+    assert len(scales) == 1, f"expected one shared scale, got {scales}"
+
+
+def test_multiview_emits_geometry_and_imagery_per_view(monkeypatch):
+    solve, views, _r = _run_multiview(monkeypatch, [1.4] * 4)
+    assert tuple(views.shape)[0] == 4
+    for s in solve.projection_sources:
+        assert s.proxy_geometry, f"{s.name} carries no geometry"
+        assert s.image_b64 and s.image_b64.startswith("data:image")
+        assert s.metadata["equirect_view_index"] in (0, 1, 2, 3)
+
+
+def test_multiview_calls_the_real_backend_signatures(monkeypatch):
+    """Guard against a stub hiding an interface mismatch.
+
+    The first live run of this node failed with "solve_still_image_learned() got
+    an unexpected keyword argument 'focal_length_mm'" — the real parameter is
+    `focal_length_mm_hint`. Every unit test passed, because they all ran against
+    a hand-written stub that accepted the invented name. A stub can only prove
+    the node's logic; it cannot prove the node can talk to the thing it stubs.
+    So bind the node's actual keyword arguments against the REAL signatures.
+    """
+    import inspect
+    from atlas_camera.core.solver import solve_still_image_learned
+    from atlas_camera.inference.depth_estimator import estimate_depth
+
+    solve_sig = inspect.signature(solve_still_image_learned)
+    # exactly what the node passes
+    solve_sig.bind("path.png", camera_height="auto",
+                   depth_model="Ruicheng/moge-2-vitl-normal",
+                   focal_length_mm_hint=18.0, sensor_width_mm=36.0)
+    solve_sig.bind("path.png", camera_height=1.43,
+                   depth_model="Ruicheng/moge-2-vitl-normal",
+                   focal_length_mm_hint=18.0, sensor_width_mm=36.0)
+
+    depth_sig = inspect.signature(estimate_depth)
+    depth_sig.bind("path.png", model_id="Ruicheng/moge-2-vitl-normal",
+                   device=None, focal_px=512.0, max_side=0)
+
+    from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
+    bs = inspect.signature(build_relief_mesh)
+    bs.bind(np.zeros((4, 4)), view_matrix=np.eye(4), fx=1.0, fy=1.0, cx=1.0, cy=1.0,
+            grid_long_edge=32, scale=1.0)
+    inspect.signature(estimate_ground_scale).bind(
+        np.zeros((4, 4)), view_matrix=np.eye(4), fx=1.0, fy=1.0, cx=1.0, cy=1.0,
+        horizon_y=None)
+
+
+def test_multiview_returns_a_SELF_CONTAINED_solve(monkeypatch):
+    """The primary's geometry must reach the SCENE, not only its ProjectionSource.
+
+    Found live, not in a unit test: the first working run produced 12 sources
+    with correct cameras and geometry, and AtlasMoveBudget still refused it —
+    "this solve has proxy primitives but no relief mesh". The node was returning
+    something that looked complete and could not actually be measured. Anything
+    reading solve.projection_scene rather than projection_sources (move budget,
+    occlusion graph, the exporters) needs the primary geometry there.
+    """
+    solve, _views, _report = _run_multiview(monkeypatch, [1.4] * 4)
+    prims = solve.projection_scene.proxy_geometry
+    assert prims, "primary relief mesh missing from projection_scene"
+    meta = solve.projection_scene.debug_metadata["proxy_derivation"]
+    assert meta["derive_node"] == "AtlasEquirectMultiView"
+    mv = meta["equirect_multiview"]
+    assert mv["n_views"] == 4
+    # The consolidation inputs travel WITH the solve, so the audit trail
+    # survives past the report string into anything that reads the solve.
+    assert mv["shared_height_m"] == pytest.approx(1.4)
+    assert "height_samples" in mv and "height_spread_m" in mv

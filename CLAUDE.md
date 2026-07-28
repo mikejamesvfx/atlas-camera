@@ -153,7 +153,7 @@ atlas_camera.exporters  � Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  � Atlas JSON, USD camera, and Record3D (.r3d ARKit
                           capture) loaders
 
-atlas_camera.comfy      � ComfyUI node library (86 nodes + 5 experimental + 2 legacy, no hard Comfy dep;
+atlas_camera.comfy      � ComfyUI node library (87 nodes + 5 experimental + 2 legacy, no hard Comfy dep;
 
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
 
@@ -212,7 +212,7 @@ Quick facts that must never drift (details in the catalog):
   `nodes_*` responsibility modules; import from the specific module in new
   code. `tests/test_facade_surface.py` pins all facade names.
 - Registered node keys + display names are a saved-workflow contract
-  (`tests/test_comfy_node_registry.py` pins the surface; currently 86 + 5 + 2 legacy).
+  (`tests/test_comfy_node_registry.py` pins the surface; currently 87 + 5 + 2 legacy).
 - `comfy/__init__.py` loads twice at startup — route registration sits behind
   a double-import guard; keep it there.
 - Shipping example workflows are pinned by `tests/test_example_workflows.py`

@@ -142,6 +142,26 @@ VERDICTS: dict[str, dict] = {
         }
         for name in ("AtlasOcclusionGraph", "AtlasMoveBudget", "AtlasLayerPlan")
     },
+    "AtlasEquirectMultiView": {
+        "verdict": "KEEP_CORE",
+        "compatibility_risk": "low — new this cycle, nothing to migrate",
+        "migration_action": "none; keep",
+        "evidence": [
+            "dedicated tests: tests/test_equirect.py — shared optical centre, "
+            "ring azimuths, median-not-mean height consolidation, one shared "
+            "ground scale, per-view geometry",
+        ],
+        "notes":
+            "Exists because AtlasAddPatchView cannot express a panorama: it builds "
+            "patch cameras with camera_math.orbit_camera, which MOVES the eye "
+            "(rotates its offset from a ground pivot and re-aims), while panorama "
+            "views share one optical centre and differ only in rotation. Chaining "
+            "patch nodes therefore registers the geometry in the wrong place — and "
+            "eleven of them killed the ComfyUI server outright, since each link "
+            "deep-copies a solve and holds its own depth map. This walks the ring "
+            "sequentially with one shared eye, one shared ground scale and one "
+            "median-consolidated height.",
+    },
     "AtlasSplitEquirect": {
         "verdict": "KEEP_CORE",
         "compatibility_risk": "low — new this cycle, nothing to migrate",

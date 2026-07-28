@@ -227,7 +227,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (86 nodes + 5 experimental + 2 legacy)
+### Node catalog (87 nodes + 5 experimental + 2 legacy)
 
 
 

@@ -2288,3 +2288,232 @@ USE MoGe FOR THE DEPTH, NOT V2-Outdoor. The usual exterior doctrine does
                          "360x180 panorama — views outside the covered band will "
                          "sample clamped edge rows")
         return (batch[idx:idx + 1], exact, focal_mm, batch, "\n".join(lines))
+
+
+class AtlasEquirectMultiView:
+    """🌐 Panorama in, MULTI-CAMERA solve out — the whole ring in one node.
+
+    `AtlasSplitEquirect` emits one crop at a time; turning the rest into geometry
+    meant chaining an `AtlasAddPatchView` per view. That is wrong twice over, and
+    the first reason is why this node exists:
+
+    **`AtlasAddPatchView` MOVES the camera.** It builds patch cameras with
+    `camera_math.orbit_camera`, which rotates the camera's offset from a ground
+    pivot and re-aims — displacing the eye by roughly ``2*r*sin(delta/2)``,
+    metres at a typical pivot distance. Panorama views share ONE optical centre
+    and differ only in direction, so orbiting them registers their geometry in
+    the wrong place. Here every view is the SAME eye with a different rotation
+    (`core.equirect.view_camera_at`), and `distance_scale` is exactly 1.0 — not
+    an estimate, a fact about panoramas.
+
+    Second reason: chaining eleven patch nodes killed the ComfyUI server, since
+    each link deep-copies a whole solve and holds its own depth map. This
+    processes views sequentially and releases each depth before the next.
+
+    ONE SHARED SCALE, ONE SHARED HEIGHT. Because every view shares an eye and the
+    focal is exact, the ground scale is computed ONCE from the primary and reused
+    for all of them — no per-view ground fits, no overlap registration. The
+    height is the MEDIAN of `height_samples` independently solved views (median,
+    not mean: on a real panorama one view read 6.37 m against a 5.91-6.08
+    cluster and dragged the average). The report prints every sample and names
+    the furthest out, so a bad view is visible rather than averaged away.
+
+    Use MoGe: V2-Metric-Outdoor mis-scales 90deg panorama crops ~4.4x. Keep
+    `pitch_deg` at 0 — tilting removes the horizon and the ground fit stops
+    working entirely.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "IMAGE", "STRING")
+    RETURN_NAMES = ("solve", "all_views", "report")
+    FUNCTION = "build"
+    CATEGORY = "Atlas Camera/Solve"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "equirect": ("IMAGE", {"tooltip": "Equirectangular 360x180 panorama, normally 2:1."}),
+            },
+            "optional": {
+                "n_views": ("INT", {"default": 12, "min": 2, "max": 32,
+                    "tooltip": "Cameras around the ring. Each costs one depth pass."}),
+                "fov_deg": ("FLOAT", {"default": 90.0, "min": 20.0, "max": 150.0, "step": 1.0}),
+                "size": ("INT", {"default": 1024, "min": 128, "max": 4096, "step": 64}),
+                "depth_model": (["Ruicheng/moge-2-vitl-normal",
+                                 "Ruicheng/moge-2-vitb-normal",
+                                 "Ruicheng/moge-2-vits-normal"],
+                    {"default": "Ruicheng/moge-2-vitl-normal",
+                     "tooltip": "MoGe. V2-Metric-Outdoor mis-scales panorama crops ~4.4x "
+                                "(measured on two 8K plates), so it is deliberately not "
+                                "offered here."}),
+                "height_samples": ("INT", {"default": 4, "min": 1, "max": 32,
+                    "tooltip": "Views solved independently to establish the ONE shared camera "
+                               "height, taken as their MEDIAN. They share an optical centre, so "
+                               "any spread between them is estimation noise, not geometry."}),
+                "pitch_deg": ("FLOAT", {"default": 0.0, "min": -80.0, "max": 80.0, "step": 1.0,
+                    "tooltip": "Ring tilt. KEEP AT 0 — tilting removes the horizon and the "
+                               "ground-plane fit stops working (measured: 0/6 views reached a "
+                               "measured scale at -20/-40/-60)."}),
+                "yaw_offset_deg": ("FLOAT", {"default": 0.0, "min": -360.0, "max": 360.0, "step": 1.0,
+                    "tooltip": "Rotate the whole ring — moves a seam off your subject."}),
+                "relief_grid": ("INT", {"default": 256, "min": 32, "max": 1024, "step": 32}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+                "max_side": ("INT", {"default": 0, "min": 0, "max": 16384, "step": 64,
+                    "tooltip": "Cap the longer edge before depth inference (0 = off). With N "
+                               "views the cost multiplies, so this matters more here than on a "
+                               "single plate."}),
+            },
+        }
+
+    def build(self, equirect, n_views=12, fov_deg=90.0, size=1024,
+              depth_model="Ruicheng/moge-2-vitl-normal", height_samples=4,
+              pitch_deg=0.0, yaw_offset_deg=0.0, relief_grid=256, device="auto",
+              max_side=0):
+        import statistics
+        from atlas_camera.core.equirect import (
+            equirect_to_perspective, intrinsics_for_view, perspective_view_angles,
+            view_camera_at)
+        from atlas_camera.core.intrinsics import build_intrinsics
+        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+        from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
+        from atlas_camera.core.schema import LatentCamera, ProjectionSource
+        from atlas_camera.core.solver import solve_still_image_learned
+        from atlas_camera.inference.depth_estimator import estimate_depth
+        from atlas_camera.comfy.node_helpers import _replace_proxy_role_geometry
+
+        np = _require_numpy()
+        torch = _require_torch()
+
+        pano = (equirect[0].detach().cpu().numpy() if hasattr(equirect, "detach")
+                else np.asarray(equirect)[0])
+        n = int(n_views)
+        angles = perspective_view_angles(n, pitch_deg=float(pitch_deg),
+                                         yaw_offset_deg=float(yaw_offset_deg))
+        fx, fy, cx, cy = intrinsics_for_view(int(size), float(fov_deg))
+        focal_mm = fx * 36.0 / float(size)
+        dev = None if device == "auto" else device
+
+        def crop_of(i):
+            yaw, pitch = angles[i]
+            c, _ = equirect_to_perspective(pano, yaw_deg=yaw, pitch_deg=pitch,
+                                           fov_deg=float(fov_deg), size=int(size))
+            return np.asarray(c, dtype=np.float32)
+
+        def as_tmp(arr):
+            return _save_image_tensor_to_tmp(torch.from_numpy(arr[None]))
+
+        # --- 1. ONE shared height, from independently solved samples ----------
+        # Median, not mean: on a real panorama one view read 6.37 m against a
+        # 5.91-6.08 cluster and would have dragged an average.
+        step = max(1, n // max(1, int(height_samples)))
+        sample_idx = list(range(0, n, step))[:max(1, int(height_samples))]
+        samples = []
+        for i in sample_idx:
+            tmp = as_tmp(crop_of(i))
+            try:
+                s = solve_still_image_learned(
+                    tmp, camera_height="auto", depth_model=depth_model,
+                    focal_length_mm_hint=focal_mm, sensor_width_mm=36.0)
+                samples.append((i, float(s.camera.extrinsics.camera_position[1])))
+            finally:
+                os.unlink(tmp)
+        heights = [h for _, h in samples]
+        shared_h = float(statistics.median(heights)) if heights else 1.6
+        spread = (max(heights) - min(heights)) if len(heights) > 1 else 0.0
+        worst = (max(samples, key=lambda kv: abs(kv[1] - shared_h))[0]
+                 if samples else -1)
+
+        # --- 2. Primary solve, height PINNED to the consolidated value --------
+        tmp = as_tmp(crop_of(0))
+        try:
+            solve = solve_still_image_learned(
+                tmp, camera_height=shared_h, depth_model=depth_model,
+                focal_length_mm_hint=focal_mm, sensor_width_mm=36.0)
+        finally:
+            os.unlink(tmp)
+        eye = tuple(float(v) for v in solve.camera.extrinsics.camera_position)
+        intr = build_intrinsics(image_width=int(size), image_height=int(size),
+                                focal_length_mm=focal_mm, sensor_width_mm=36.0)
+
+        # --- 3. ONE shared ground scale, taken from the primary ---------------
+        # Every view shares this eye and this focal, so a per-view ground fit
+        # would only re-derive the same number with more noise. Computing it once
+        # gives one consistent metric world by construction.
+        tmp = as_tmp(crop_of(0))
+        try:
+            first_depth = estimate_depth(tmp, model_id=depth_model, device=dev,
+                                         focal_px=fx, max_side=int(max_side))
+        finally:
+            os.unlink(tmp)
+        prim_extr = view_camera_at(eye, *angles[0])
+        scale, _ = estimate_ground_scale(
+            np.asarray(first_depth.depth, dtype=np.float64),
+            view_matrix=prim_extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+            horizon_y=None)
+        del first_depth
+
+        # --- 4. One ProjectionSource per view, processed sequentially ---------
+        sources = []
+        primary_prims = []
+        for i in range(n):
+            yaw, pitch = angles[i]
+            crop = crop_of(i)
+            tmp = as_tmp(crop)
+            try:
+                d = estimate_depth(tmp, model_id=depth_model, device=dev,
+                                   focal_px=fx, max_side=int(max_side))
+            finally:
+                os.unlink(tmp)
+            extr = view_camera_at(eye, yaw, pitch)
+            mesh = build_relief_mesh(
+                np.asarray(d.depth, dtype=np.float64),
+                view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
+                grid_long_edge=int(relief_grid), scale=float(scale))
+            if i == 0:
+                # The primary's geometry must also land in the SCENE, not only in
+                # its ProjectionSource. Downstream consumers distinguish the two:
+                # AtlasMoveBudget refuses a solve that "has proxy primitives but
+                # no relief mesh", so without this the node returns something
+                # that looks complete and cannot actually be measured.
+                primary_prims = [relief_mesh_primitive(mesh)]
+            name = f"equirect_{int(round(yaw)):03d}"
+            sources.append(ProjectionSource(
+                camera=LatentCamera(intrinsics=intr, extrinsics=extr, name=name),
+                name=name,
+                image_b64=_image_tensor_to_preview_b64(torch.from_numpy(crop[None])),
+                proxy_geometry=[relief_mesh_primitive(mesh)],
+                azimuth_deg=float(yaw), elevation_deg=float(pitch),
+                distance_scale=1.0,      # a FACT about panoramas, not an estimate
+                priority=0.0 if i == 0 else 1.0,
+                metadata={"equirect_view_index": i, "shared_height_m": shared_h,
+                          "shared_ground_scale": float(scale)},
+            ))
+            # Release before the next view. This is the difference between 12
+            # views and a dead server: the node chain it replaces held every
+            # solve copy and every depth map at once.
+            del d, mesh
+
+        out = _replace_proxy_role_geometry(
+            solve, primary_prims,
+            {"equirect_multiview": {"n_views": n, "shared_height_m": shared_h,
+                                    "shared_ground_scale": float(scale),
+                                    "height_samples": dict(samples),
+                                    "height_spread_m": spread}},
+            {"derive_node": "AtlasEquirectMultiView"})
+        out.projection_sources.extend(sources)
+
+        lines = [
+            f"{n} views @ {fov_deg:.0f}deg from a {pano.shape[1]}x{pano.shape[0]} panorama",
+            f"focal {focal_mm:.4f} mm — EXACT, from the requested FOV, never guessed",
+            f"ONE eye shared by every view: ({eye[0]:.4f}, {eye[1]:.4f}, {eye[2]:.4f})",
+            f"ONE ground scale {scale:.6f} from the primary — no per-view refit",
+            "",
+            f"height {shared_h:.4f} m = MEDIAN of {len(samples)} sampled view(s)",
+            "  " + ", ".join(f"v{i}={h:.4f}" for i, h in samples),
+            f"  spread {spread:.4f} m across cameras that SHARE an optical centre — "
+            f"that spread is estimation noise, not geometry",
+        ]
+        if samples and spread > 0.0:
+            lines.append(f"  furthest from the median: view {worst} "
+                         f"({dict(samples)[worst]:.4f} m)")
+        batch = torch.from_numpy(np.stack([crop_of(i) for i in range(n)]))
+        return (out, batch, "\n".join(lines))

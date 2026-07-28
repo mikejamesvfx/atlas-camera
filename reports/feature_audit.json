@@ -2,14 +2,14 @@
  "schema_version": 1,
  "generated_utc": "2026-07-28",
  "counts": {
-  "standard": 86,
+  "standard": 87,
   "experimental": 5,
   "legacy": 2,
-  "total": 93,
+  "total": 94,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 86,
+  "KEEP_CORE": 87,
   "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
@@ -1417,6 +1417,38 @@
    "evidence": [],
    "migration_action": null,
    "notes": null
+  },
+  "AtlasEquirectMultiView": {
+   "module": "atlas_camera/comfy/nodes_solve.py",
+   "tier": "standard",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_equirect.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_equirect.py",
+    "tests/test_facade_surface.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "dedicated tests: tests/test_equirect.py \u2014 shared optical centre, ring azimuths, median-not-mean height consolidation, one shared ground scale, per-view geometry"
+   ],
+   "migration_action": "none; keep",
+   "notes": "Exists because AtlasAddPatchView cannot express a panorama: it builds patch cameras with camera_math.orbit_camera, which MOVES the eye (rotates its offset from a ground pivot and re-aims), while panorama views share one optical centre and differ only in rotation. Chaining patch nodes therefore registers the geometry in the wrong place \u2014 and eleven of them killed the ComfyUI server outright, since each link deep-copies a solve and holds its own depth map. This walks the ring sequentially with one shared eye, one shared ground scale and one median-consolidated height."
   },
   "AtlasExportBlender": {
    "module": "atlas_camera/comfy/nodes_export.py",
@@ -2887,10 +2919,12 @@
     "examples/atlas_unseen_geometry_test_workflow.json"
    ],
    "dedicated_tests": [
+    "tests/test_equirect.py",
     "tests/test_move_budget.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
+    "tests/test_equirect.py",
     "tests/test_facade_surface.py",
     "tests/test_move_budget.py"
    ],

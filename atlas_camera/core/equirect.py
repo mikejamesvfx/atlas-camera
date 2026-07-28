@@ -212,3 +212,37 @@ def direction_to_equirect_uv(x: float, y: float, z: float) -> tuple[float, float
     lon = math.atan2(x, -z)
     lat = math.asin(max(-1.0, min(1.0, y)))
     return (lon / (2.0 * math.pi) + 0.5, 0.5 - lat / math.pi)
+
+
+def view_camera_at(eye, yaw_deg: float, pitch_deg: float = 0.0):
+    """``AtlasExtrinsics`` for a panorama view: the SAME eye, a different rotation.
+
+    This is the whole difference between panorama views and
+    ``AtlasAddPatchView``'s patches. That node builds patch cameras with
+    ``camera_math.orbit_camera``, which MOVES the camera — it rotates the
+    camera's offset from a ground pivot and re-aims, displacing the eye by
+    roughly ``2*r*sin(delta/2)``, metres for a typical pivot distance. Panorama
+    views share ONE optical centre by construction and differ only in where they
+    point, so orbiting them registers their geometry in the wrong place.
+
+    Built via ``look_at_view_matrix`` from ``eye`` toward a target one unit away
+    in the (yaw, pitch) direction, so the handedness and -Z facing come from the
+    same proven helper as everything else rather than being re-derived here.
+    """
+    from atlas_camera.core.schema import AtlasExtrinsics
+
+    yaw = math.radians(float(yaw_deg))
+    pitch = math.radians(float(pitch_deg))
+    ex, ey, ez = (float(eye[0]), float(eye[1]), float(eye[2]))
+    target = (
+        ex + math.cos(pitch) * math.sin(yaw),
+        ey + math.sin(pitch),
+        ez - math.cos(pitch) * math.cos(yaw),
+    )
+    view, world, rot3 = look_at_view_matrix((ex, ey, ez), target)
+    return AtlasExtrinsics(
+        camera_position=(ex, ey, ez),
+        camera_rotation_matrix=rot3,
+        camera_world_matrix=world,
+        camera_view_matrix=view,
+    )

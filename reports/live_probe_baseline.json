@@ -436,6 +436,91 @@
     "caveat": "Single runs, not repeated \u2014 the x figure in particular looks noisy and should be re-measured before being quoted.",
     "server_limit": "Chaining 11 AtlasAddPatchView nodes killed the ComfyUI server outright. 4 patches ran comfortably in ~30 s; a full 12-view ring needs batching or a dedicated node rather than a naive chain."
    }
+  },
+  "equirect_multiview_node": {
+   "node": "AtlasEquirectMultiView \u2014 panorama in, multi-camera solve out",
+   "why_not_a_chain_of_AtlasAddPatchView": {
+    "correctness": "AtlasAddPatchView builds patch cameras with camera_math.orbit_camera, which MOVES the eye \u2014 it rotates the camera's offset from a ground pivot and re-aims, displacing it ~2*r*sin(delta/2). Panorama views share ONE optical centre, so the chain registers their geometry in the wrong place.",
+    "capacity": "11 chained patch nodes killed the ComfyUI server; this node does 12 views in 32 s by processing them sequentially and releasing each depth."
+   },
+   "live_12_view_run": {
+    "plate": "urban_street_02_8k.exr (8192x4096)",
+    "time_s": 37,
+    "shared_eye": [
+     0.0,
+     1.395177991,
+     0.0
+    ],
+    "distinct_camera_positions_across_12_sources": 1,
+    "distance_scale": [
+     1.0
+    ],
+    "azimuths": [
+     0,
+     30,
+     60,
+     90,
+     120,
+     150,
+     180,
+     210,
+     240,
+     270,
+     300,
+     330
+    ],
+    "height": {
+     "median_m": 1.3952,
+     "samples": {
+      "v0": 1.3848,
+      "v3": 1.3391,
+      "v6": 1.4856,
+      "v9": 1.4055
+     },
+     "spread_m": 0.1466,
+     "note": "independently reproduces the 1.3952 m MoGe figure measured earlier by a different route"
+    },
+    "shared_ground_scale": 1.020949
+   },
+   "coverage_ab_CORRECTED": {
+    "method": "AtlasEquirectMultiView at increasing n_views, measured by AtlasMoveBudget",
+    "results": {
+     "2_views": {
+      "x": 0.445,
+      "y": 0.449,
+      "z": 0.233,
+      "torn_pct": 11.7,
+      "time_s": 25
+     },
+     "4_views": {
+      "x": 0.983,
+      "y": 0.439,
+      "z": 0.983,
+      "torn_pct": 11.7,
+      "time_s": 20
+     },
+     "8_views": {
+      "x": 0.927,
+      "y": 0.43,
+      "z": 0.927,
+      "torn_pct": 7.4,
+      "time_s": 28
+     },
+     "12_views": {
+      "x": 0.906,
+      "y": 0.421,
+      "z": 0.906,
+      "torn_pct": 5.5,
+      "time_s": 32
+     }
+    },
+    "finding_the_earlier_test_MISSED": "There IS a structural move-budget gain, but only from 2 to 4 views: z jumps 4.2x (0.233 -> 0.983) and x 2.2x as the ring closes the +-90deg gap that makes a sideways dolly disocclude. Past 4 views it plateaus and drifts slightly DOWN. So four views buys the camera freedom; additional views buy projection coverage (torn 11.7 -> 5.5%).",
+    "the_invalid_method_FLATTERED_itself": "The orbit-based A/B reported BETTER coverage (3.2% torn at 4 patch views) than the correct one (11.7% at 4 views). Misplaced geometry scatters and covers holes it has no right to cover, so the wrong method scored better on the very metric used to justify it. Supersedes 'equirect_move_budget_ab' above, which must not be quoted."
+   },
+   "two_bugs_the_unit_tests_could_not_catch": {
+    "signature": "The node called solve_still_image_learned(focal_length_mm=...) when the real parameter is focal_length_mm_hint. Every unit test passed, because they ran against a hand-written stub with **kw that swallowed the wrong name. Fixed by making the stubs STRICT (no **kw) and adding a test that binds the node's actual kwargs against the REAL signatures.",
+    "self_containment": "The first working run produced 12 correct sources and AtlasMoveBudget still refused it: 'has proxy primitives but no relief mesh'. The primary's geometry reached its ProjectionSource but not projection_scene, so the solve looked complete and could not be measured. Only the live run surfaced it."
+   }
   }
  }
 }
