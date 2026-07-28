@@ -339,6 +339,34 @@
     "consequence": "concepts='sky, machine' silently yields a SKY-ONLY exclude, turning a repair-behind-the-subject graph back into a repair-the-subject's-own-tears one. The node report naming the matched subset is the only visible signal, so it is now pinned by tests/test_sam3_segmenter.py::test_sam3_mask_node_report_names_the_concepts_that_actually_matched."
    },
    "note": "This run was also the first live sighting of the exclude-coverage report line added 2026-07-27 ('exclude mask covers N% of frame'), previously only unit-pinned because the server was running pre-edit modules."
+  },
+  "equirect_intake_live": {
+   "plate": "cobblestone_parish_road_8k.exr \u2014 8192x4096, exactly 2:1, float32 ACEScg (OpenImageIO 3.1.15 auto-detected the colourspace and converted to sRGB Display)",
+   "split": "12 views @ 90deg FOV, 1024px, 3.0x ring overlap; 12 s end to end including the 100 MB EXR read. Ring verified visually: content carries across consecutive views and view 11 leads back into view 0.",
+   "THE_FINDING": {
+    "what": "Solving each crop as an ordinary photo makes the solver GUESS a focal that the node computes exactly (intrinsics_for_view derives fx from the requested FOV). Feeding it changes the result categorically.",
+    "fov_error_guessed": {
+     "view0": 1.599,
+     "view3": 10.211,
+     "view6": 9.11,
+     "view9": 3.782
+    },
+    "fov_error_known": "0.000 on ALL 12 views",
+    "scale_source_guessed": "view 0 fell back to assumed_default (height pinned at the 1.6 default) \u2014 a wrong focal poisons the ground-plane fit",
+    "scale_source_known": "depth_ground_plane on 12/12 views",
+    "fix": "AtlasSplitEquirect now emits focal_mm (FLOAT) for wiring into AtlasLearnedSolveFromImage.focal_length_mm. 18.0 mm for 1024px @ 90deg."
+   },
+   "shared_height_constraint": {
+    "why": "All 12 views share ONE optical centre by construction, so any disagreement is estimation noise rather than geometry (confirmed by the user).",
+    "measured_spread_m": 0.9022,
+    "min": 5.3141,
+    "max": 6.2163,
+    "median": 5.6599,
+    "mean": 5.6801,
+    "stdev": 0.2707,
+    "guidance": "Solve one view for height, then give the rest height_mode='assume' with that value (or the median). Both inputs already exist on AtlasLearnedSolveFromImage \u2014 no new node needed."
+   },
+   "plan_correction": "The plan asserted a full sphere would reach tier-2 measured scale. True, but ONLY with the known focal \u2014 guessing it dropped a view to assumed_default. The assertion was right about the destination and wrong about the route."
   }
  }
 }

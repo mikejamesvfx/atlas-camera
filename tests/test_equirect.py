@@ -180,7 +180,7 @@ def test_split_equirect_node_emits_a_wirable_exact_view():
     cls = reg.NODE_CLASS_MAPPINGS["AtlasSplitEquirect"]
     pano = torch.from_numpy(_marker_equirect(64, 128).astype(np.float32))[None]
 
-    view, exact, all_views, report = getattr(cls(), cls.FUNCTION)(
+    view, exact, focal_mm, all_views, report = getattr(cls(), cls.FUNCTION)(
         pano, n_views=12, fov_deg=90.0, size=32, view_index=3)
 
     assert tuple(view.shape) == (1, 32, 32, 3)
@@ -206,11 +206,11 @@ def test_split_equirect_node_warns_on_a_non_2to1_panorama():
 
     cls = reg.NODE_CLASS_MAPPINGS["AtlasSplitEquirect"]
     square = torch.zeros(1, 64, 64, 3, dtype=torch.float32)
-    _v, _e, _a, report = getattr(cls(), cls.FUNCTION)(square, n_views=4, size=16)
+    _v, _e, _f, _a, report = getattr(cls(), cls.FUNCTION)(square, n_views=4, size=16)
     assert "WARNING" in report and "2:1" in report
 
     wide = torch.zeros(1, 64, 128, 3, dtype=torch.float32)
-    _v, _e, _a, ok = getattr(cls(), cls.FUNCTION)(wide, n_views=4, size=16)
+    _v, _e, _f, _a, ok = getattr(cls(), cls.FUNCTION)(wide, n_views=4, size=16)
     assert "WARNING" not in ok
 
 
@@ -222,6 +222,39 @@ def test_split_equirect_node_clamps_the_view_index():
 
     cls = reg.NODE_CLASS_MAPPINGS["AtlasSplitEquirect"]
     pano = torch.from_numpy(_marker_equirect(32, 64).astype(np.float32))[None]
-    _v, exact, _a, _r = getattr(cls(), cls.FUNCTION)(
+    _v, exact, _f, _a, _r = getattr(cls(), cls.FUNCTION)(
         pano, n_views=4, size=16, view_index=99)
     assert "azimuth_deg=270.0000" in exact, "clamped to the last view, not view 0"
+
+
+def test_node_emits_the_exact_focal_rather_than_leaving_it_to_be_guessed():
+    """`focal_mm` must be CONSTRUCTED from the requested FOV, not estimated.
+
+    Measured live on an 8K parish-road panorama: four views recovered their FOV
+    to within 1.6, 10.2, 9.1 and 3.8 degrees when the solver guessed, and to
+    0.000 degrees on all four when told. One also fell back to
+    scale_source=assumed_default while guessing and reached depth_ground_plane
+    once the focal was known — a wrong focal poisons the ground-plane fit that
+    metric scale depends on. So this output is not a convenience, it is the
+    difference between a measured and an assumed solve.
+    """
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy import node_registry as reg
+
+    cls = reg.NODE_CLASS_MAPPINGS["AtlasSplitEquirect"]
+    assert cls.RETURN_NAMES == ("view", "exact_view", "focal_mm", "all_views", "report")
+    pano = torch.zeros(1, 64, 128, 3, dtype=torch.float32)
+
+    # 90 deg on a 36mm reference: fx == size/2, so focal == 18mm at any size.
+    for size in (256, 1024, 2048):
+        out = getattr(cls(), cls.FUNCTION)(pano, n_views=12, fov_deg=90.0, size=size)
+        assert out[2] == pytest.approx(18.0), f"size {size}"
+
+    # And it tracks FOV, not just the 90 deg case.
+    for fov in (60.0, 75.0, 120.0):
+        out = getattr(cls(), cls.FUNCTION)(pano, n_views=8, fov_deg=fov, size=512)
+        want = ((512 / 2.0) / math.tan(math.radians(fov) / 2.0)) * 36.0 / 512.0
+        assert out[2] == pytest.approx(want), f"fov {fov}"
+        # Round-trips: the emitted focal must reproduce the requested FOV.
+        fx = out[2] * 512.0 / 36.0
+        assert 2.0 * math.degrees(math.atan(256.0 / fx)) == pytest.approx(fov)

@@ -2150,14 +2150,33 @@ class AtlasSplitEquirect:
     EXACTLY KNOWN rather than estimated, which is why they go in through the
     exact path rather than the named-view combos.
 
+    WIRE `focal_mm` -> AtlasLearnedSolveFromImage.focal_length_mm. The crop's
+    intrinsics are not estimated, they are CONSTRUCTED — we chose the FOV, so
+    the focal is exact. Letting the solver guess it instead throws that away,
+    and measurably: on an 8K parish-road panorama, four views recovered their
+    FOV to within 1.6, 10.2, 9.1 and 3.8 degrees when guessed, and to 0.000
+    degrees on all four when told. One of them also fell back to
+    scale_source=assumed_default while guessing and reached depth_ground_plane
+    once the focal was known — a wrong focal poisons the ground-plane fit that
+    metric scale depends on.
+
+    EVERY VIEW SHARES ONE CAMERA HEIGHT — they share an optical centre by
+    construction, so any disagreement between them is estimation noise, not
+    geometry. Solving each crop independently does NOT know that: on the parish
+    -road panorama four views measured 5.31 / 6.22 / 5.69 / 5.46 m, a 0.9 m
+    spread across cameras that physically cannot differ. So solve ONE view to
+    get the height, then feed the rest `height_mode="assume"` with that value
+    (or the median of a few) rather than letting each re-estimate. Both inputs
+    already exist on AtlasLearnedSolveFromImage; no extra node is needed.
+
     Two advantages over ComfyUI core's `MoGePanoramaInference`, which merges 12
     views into one equirect depth map: that merge disables per-view metric scale
     and does not stitch MoGe-2 normals. Here each crop stays a separate
     perspective solve, so metric scale survives per view and AtlasMogeNormals
     still works — at the cost of running depth N times instead of once.
     """
-    RETURN_TYPES = ("IMAGE", "STRING", "IMAGE", "STRING")
-    RETURN_NAMES = ("view", "exact_view", "all_views", "report")
+    RETURN_TYPES = ("IMAGE", "STRING", "FLOAT", "IMAGE", "STRING")
+    RETURN_NAMES = ("view", "exact_view", "focal_mm", "all_views", "report")
     FUNCTION = "split"
     CATEGORY = "Atlas Camera/Solve"
 
@@ -2213,6 +2232,10 @@ class AtlasSplitEquirect:
         # optical centre — so distance_scale is exactly 1.0, not an estimate.
         exact = (f"azimuth_deg={yaw:.4f} elevation_deg={pitch:.4f} "
                  f"distance_scale=1.0000")
+        # The crop's focal is CONSTRUCTED, not estimated: fx came from the FOV we
+        # asked for. Convert to mm on the 36mm full-frame reference the solve
+        # nodes use, so it can be wired straight into focal_length_mm.
+        focal_mm = float(intr[0]) * 36.0 / float(size)
 
         aspect = src_w / float(src_h) if src_h else 0.0
         lines = [
@@ -2220,6 +2243,8 @@ class AtlasSplitEquirect:
             f"{fov_deg:.0f}deg FOV, {size}x{size} each",
             f"emitting view {idx}/{len(crops) - 1}: {exact}",
             f"intrinsics fx={intr[0]:.2f} cx={intr[2]:.2f} (shared by every view)",
+            f"focal {focal_mm:.4f} mm @ 36mm sensor — EXACT, not estimated; wire it "
+            f"into the solve's focal_length_mm",
             f"ring coverage {len(crops) * fov_deg:.0f}deg over 360deg "
             f"({len(crops) * fov_deg / 360.0:.1f}x overlap)",
         ]
@@ -2230,4 +2255,4 @@ class AtlasSplitEquirect:
             lines.append(f"WARNING: aspect {aspect:.2f}:1, expected 2:1 for a full "
                          "360x180 panorama — views outside the covered band will "
                          "sample clamped edge rows")
-        return (batch[idx:idx + 1], exact, batch, "\n".join(lines))
+        return (batch[idx:idx + 1], exact, focal_mm, batch, "\n".join(lines))
