@@ -46,7 +46,9 @@
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/build_equirect_360_workflow.py"
+   ],
    "docs": [
     "docs/DESIGN_RULES.md",
     "docs/ECOSYSTEM_GUIDE.md",
@@ -55,6 +57,7 @@
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -317,6 +320,7 @@
     "examples/atlas_boundary_smooth_retopo_test_workflow.json",
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
     "examples/atlas_camera_staged_master_workflow.json",
+    "examples/atlas_equirect_360_workflow.json",
     "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
     "examples/atlas_input_quickstart_workflow.json",
     "examples/atlas_input_walkthrough_switches_workflow.json",
@@ -362,6 +366,7 @@
    "mcp_tools": [],
    "repo_tools": [
     "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_equirect_360_workflow.py",
     "tools/build_layered_segmentation_workflow.py",
     "tools/build_path_guided_hole_repair_workflow.py",
     "tools/build_unseen_geometry_workflow.py",
@@ -1060,6 +1065,7 @@
     "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
     "examples/atlas_camera_staged_master_workflow.json",
+    "examples/atlas_equirect_360_workflow.json",
     "examples/atlas_layered_segmentation_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_planar_hole_patch_workflow.json",
@@ -1086,6 +1092,7 @@
    ],
    "repo_tools": [
     "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_equirect_360_workflow.py",
     "tools/build_layered_segmentation_workflow.py",
     "tools/rebuild_staged_master_workflow.py"
    ],
@@ -1229,6 +1236,7 @@
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_equirect_360_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_planar_hole_patch_workflow.json"
    ],
@@ -1254,6 +1262,7 @@
    ],
    "mcp_tools": [],
    "repo_tools": [
+    "tools/build_equirect_360_workflow.py",
     "tools/orbit_stress_test.py"
    ],
    "docs": [
@@ -2534,6 +2543,7 @@
     "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
     "examples/atlas_camera_staged_master_workflow.json",
+    "examples/atlas_equirect_360_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_planar_hole_patch_workflow.json",
     "examples/atlas_plate_color_grade_defocus_lut_workflow.json",
@@ -2556,6 +2566,7 @@
     "atlas_camera/mcp/server.py"
    ],
    "repo_tools": [
+    "tools/build_equirect_360_workflow.py",
     "tools/rebuild_staged_master_workflow.py"
    ],
    "docs": [
@@ -2636,24 +2647,32 @@
   "AtlasLoadPlate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_equirect_360_workflow.json"
+   ],
    "dedicated_tests": [
+    "tests/test_equirect.py",
     "tests/test_node_layer_contracts.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
+    "tests/test_equirect.py",
     "tests/test_facade_surface.py",
     "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/build_equirect_360_workflow.py"
+   ],
    "docs": [
     "docs/ECOSYSTEM_GUIDE.md",
     "docs/NODE_CATALOG.md"
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "ok",
@@ -2880,6 +2899,7 @@
    ],
    "repo_tools": [
     "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_equirect_360_workflow.py",
     "tools/build_layered_segmentation_workflow.py",
     "tools/build_unseen_geometry_workflow.py"
    ],
@@ -2933,6 +2953,7 @@
    ],
    "repo_tools": [
     "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_equirect_360_workflow.py",
     "tools/build_layered_segmentation_workflow.py",
     "tools/build_unseen_geometry_workflow.py"
    ],
@@ -3021,6 +3042,7 @@
     "atlas_camera/mcp/server.py"
    ],
    "repo_tools": [
+    "tools/build_equirect_360_workflow.py",
     "tools/build_path_guided_hole_repair_workflow.py",
     "tools/wire_path_repair_exclusion.py"
    ],
@@ -3911,7 +3933,9 @@
   "AtlasSplitEquirect": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_equirect_360_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_equirect.py"
    ],
@@ -3921,14 +3945,18 @@
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/build_equirect_360_workflow.py"
+   ],
    "docs": [
     "docs/DESIGN_RULES.md",
     "docs/NODE_CATALOG.md"
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",

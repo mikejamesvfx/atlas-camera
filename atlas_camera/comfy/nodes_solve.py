@@ -436,6 +436,21 @@ class AtlasLoadPlate:
         path = str(file_path or "").strip()
         if not path:
             raise RuntimeError("AtlasLoadPlate needs a file_path.")
+        if not Path(path).is_file() and not Path(path).is_absolute():
+            # Resolve a BARE filename against ComfyUI's input directory, the way
+            # LoadImage does. Without this a shipped workflow cannot reference a
+            # plate at all: an absolute path is banned outright
+            # (tests/test_shipping_workflow_paths.py — it broke a Mac reviewer's
+            # clone), so the only portable form is a bare name, and that used to
+            # fail. Import is local and guarded: `core` never learns about
+            # ComfyUI paths, and running outside ComfyUI just skips the lookup.
+            try:
+                import folder_paths  # ComfyUI-only
+                candidate = Path(folder_paths.get_input_directory()) / path
+                if candidate.is_file():
+                    path = str(candidate)
+            except Exception:  # noqa: BLE001 — outside ComfyUI, or no input dir
+                pass
         if not Path(path).is_file():
             raise RuntimeError(f"AtlasLoadPlate: no such file: {path}")
 

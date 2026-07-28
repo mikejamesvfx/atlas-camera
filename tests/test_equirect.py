@@ -258,3 +258,40 @@ def test_node_emits_the_exact_focal_rather_than_leaving_it_to_be_guessed():
         # Round-trips: the emitted focal must reproduce the requested FOV.
         fx = out[2] * 512.0 / 36.0
         assert 2.0 * math.degrees(math.atan(256.0 / fx)) == pytest.approx(fov)
+
+
+def test_load_plate_resolves_a_bare_filename_against_comfyui_input(tmp_path, monkeypatch):
+    """A shipped workflow can only reference a plate by BARE filename.
+
+    Absolute paths are banned outright (test_shipping_workflow_paths — baking an
+    authoring machine's path broke a reviewer's clone), so a bare name is the
+    only portable form. It used to raise "no such file", which meant the shipped
+    equirect workflow could not run until the artist repointed it by hand.
+    """
+    pytest.importorskip("OpenImageIO")
+    import sys, types as _types
+    from atlas_camera.comfy import node_registry as reg
+
+    inp = tmp_path / "input"
+    inp.mkdir()
+    plate = inp / "pano.exr"
+
+    import numpy as _np
+    import OpenImageIO as oiio
+    spec = oiio.ImageSpec(16, 8, 3, "float")
+    buf = oiio.ImageBuf(spec)
+    buf.set_pixels(oiio.ROI(0, 16, 0, 8, 0, 1, 0, 3),
+                   _np.zeros((8, 16, 3), dtype=_np.float32))
+    assert buf.write(str(plate)), buf.geterror()
+
+    monkeypatch.setitem(sys.modules, "folder_paths",
+                        _types.SimpleNamespace(get_input_directory=lambda: str(inp)))
+
+    cls = reg.NODE_CLASS_MAPPINGS["AtlasLoadPlate"]
+    image, _alpha, _ref, report = getattr(cls(), cls.FUNCTION)("pano.exr")
+    assert tuple(image.shape)[1:3] == (8, 16)
+    assert "pano.exr" in report
+
+    # A name that is nowhere must still fail loudly rather than silently pass.
+    with pytest.raises(RuntimeError, match="no such file"):
+        getattr(cls(), cls.FUNCTION)("definitely_not_here.exr")

@@ -1,0 +1,679 @@
+{
+  "id": "d2321215-5074-4a1e-81b6-c3e1622939fb",
+  "revision": 0,
+  "last_node_id": 21,
+  "last_link_id": 13,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AtlasLoadPlate",
+      "pos": [
+        40,
+        60
+      ],
+      "size": [
+        420,
+        190
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLoadPlate"
+      },
+      "widgets_values": [
+        "urban_street_02_8k.exr",
+        "auto",
+        "sRGB - Display",
+        false
+      ],
+      "title": "360 PANORAMA (equirect, 2:1)"
+    },
+    {
+      "id": 2,
+      "type": "AtlasSplitEquirect",
+      "pos": [
+        520,
+        60
+      ],
+      "size": [
+        430,
+        240
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "equirect",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "view",
+          "type": "IMAGE",
+          "links": [
+            2,
+            4,
+            9
+          ]
+        },
+        {
+          "name": "exact_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "focal_mm",
+          "type": "FLOAT",
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "all_views",
+          "type": "IMAGE",
+          "links": [
+            11
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSplitEquirect"
+      },
+      "widgets_values": [
+        12,
+        90.0,
+        1024,
+        0,
+        0.0,
+        0.0
+      ],
+      "title": "🌐 SPLIT — 12 views @ 90°"
+    },
+    {
+      "id": 3,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        1000,
+        60
+      ],
+      "size": [
+        430,
+        260
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "focal_length_mm",
+          "type": "FLOAT",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            5,
+            6
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "Ruicheng/moge-2-vitl-normal",
+        36.0,
+        "pinhole",
+        "auto",
+        0.0
+      ],
+      "title": "SOLVE — MoGe + EXACT focal"
+    },
+    {
+      "id": 4,
+      "type": "AtlasDepthMap",
+      "pos": [
+        1000,
+        360
+      ],
+      "size": [
+        430,
+        200
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            7,
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "Ruicheng/moge-2-vitl-normal",
+        "auto",
+        9,
+        0,
+        ""
+      ],
+      "title": "DEPTH — MoGe (matches solve)"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        1480,
+        60
+      ],
+      "size": [
+        430,
+        320
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 6
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 7
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "outlier_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "custom",
+        0.5,
+        12.0,
+        true,
+        0.0,
+        true,
+        false,
+        0.0,
+        256,
+        false
+      ]
+    },
+    {
+      "id": 6,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1960,
+        60
+      ],
+      "size": [
+        520,
+        560
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 9
+        },
+        {
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 10
+        },
+        {
+          "name": "preview_expand",
+          "type": "BOOLEAN",
+          "link": null
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "PreviewImage",
+      "pos": [
+        520,
+        360
+      ],
+      "size": [
+        430,
+        330
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "ALL 12 VIEWS"
+    },
+    {
+      "id": 8,
+      "type": "ShowText|pysssss",
+      "pos": [
+        520,
+        730
+      ],
+      "size": [
+        430,
+        180
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 12
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "SPLIT REPORT"
+    },
+    {
+      "id": 9,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1000,
+        610
+      ],
+      "size": [
+        430,
+        180
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 13
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "PLATE REPORT"
+    },
+    {
+      "id": 20,
+      "type": "Note",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        420,
+        620
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "## Equirect 360 intake\n\n**Load a 2:1 equirectangular panorama** (8192x4096 etc). `AtlasLoadPlate`\nbecause ComfyUI's `LoadImage` cannot read float EXR — OIIO also detects the\ncolourspace (these HDRIs are usually ACEScg).\n\nAtlas is pinhole end to end, so the panorama is NOT modelled as an equirect\ncamera. It is cut into 12 perspective crops, each already a valid Atlas camera.\n\n### Why this exists\nA single plate has no data for what the camera never saw — the whole reason\n`AtlasOcclusionGraph` / `AtlasMoveBudget` / `AtlasPathGuidedHoleRepair` exist.\nA 360 capture supplies that coverage as REAL geometry instead of inventing it.\n\n### Working the ring\n`view_index` picks which crop leaves `view` / `exact_view`. Step it 0..11 to\nwalk the ring; `all_views` always carries the whole batch for preview.\n\nTo build a multi-camera scene, wire `view` -> `AtlasAddPatchView.patch_image`\nand `exact_view` -> its `exact_view_override`. These angles are MEASURED, not\nestimated, which is why they bypass the named-view combos."
+      ],
+      "title": "360 PANORAMA -> ATLAS",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 21,
+      "type": "Note",
+      "pos": [
+        1480,
+        420
+      ],
+      "size": [
+        430,
+        500
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "## Every default here was measured\n\nTwo 8K panoramas, 12 views each. See reports/live_probe_baseline.json.\n\n### MoGe, not V2-Metric-Outdoor\nThe exterior doctrine does not survive panorama crops. A 90 deg square crop is\nframing V2 was not trained on and it mis-scales ~4.4x:\n\n| plate | V2-Outdoor | MoGe-2 |\n|---|---|---|\n| parish road | 5.57 m | **1.22 m** |\n| urban street 02 | 6.00 m | **1.40 m** |\n\nBoth backends were internally consistent (stdev 0.04-0.4), so this is\nsystematic, not noise. FOV is exact under both — a metric-scale failure only.\n\n### focal_length_mm is WIRED, not 0\nThe crop's focal is constructed from the FOV we chose, so it is exact. Letting\nthe solver guess cost 1.6 / 10.2 / 9.1 / 3.8 deg of FOV error across four views,\nand dropped one to `scale_source=assumed_default`. Wired: **0.000 deg on all 12**.\n\n### pitch_deg stays 0\nTilting down does not \"see more ground\". It removes the horizon and the ground\nfit stops working — at -20/-40/-60 every view fell back to `assumed_default`\n(stdev exactly 0.0000, 0/6 measured).\n\n### All views share ONE height\nThey share an optical centre, so disagreement is noise — independent fits spread\n0.90 m and 0.46 m. Solve ONE view, then give the rest `height_mode=assume` with\nthat value (the median, if you sample several)."
+      ],
+      "title": "MEASURED DEFAULTS — DO NOT GUESS",
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      2,
+      3,
+      1,
+      "FLOAT"
+    ],
+    [
+      4,
+      2,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      6,
+      3,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      4,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      8,
+      5,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      2,
+      0,
+      6,
+      1,
+      "IMAGE"
+    ],
+    [
+      10,
+      4,
+      0,
+      6,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      11,
+      2,
+      3,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      12,
+      2,
+      4,
+      8,
+      0,
+      "STRING"
+    ],
+    [
+      13,
+      1,
+      3,
+      9,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
