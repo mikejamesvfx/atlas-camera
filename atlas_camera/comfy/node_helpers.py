@@ -446,6 +446,8 @@ def apply_live_mesh_repair(
     live_fill_max_hole_edges: int = 64,
     live_fill_edge_sawteeth: bool = False,
     stats: dict | None = None,
+    image_width: int | None = None,
+    image_height: int | None = None,
 ):
     """Perform live interior hole-fill and/or boundary sawtooth bridging on a relief mesh,
     recomputing hole_mask and writing telemetry into stats['relief_mesh'] if stats is given."""
@@ -453,17 +455,23 @@ def apply_live_mesh_repair(
     if not (do_hole_fill or live_fill_edge_sawteeth):
         return
 
-    # The CUDA 2D grid repair (build_relief_mesh) only fixes 1-cell PINHOLES
-    # (invalid cell with >=3 valid orthogonal neighbours) and grid sawteeth —
-    # it cannot close contiguous multi-cell holes, which is exactly what the
-    # 3D boundary-loop fill exists for. The 2026-07-23 fast path returned here
-    # and reported the pinhole count AS n_loops_filled, silently skipping real
-    # holes and ignoring live_fill_distance_m entirely (regression found
-    # 2026-07-26 via the live-fill test). Grid stats are now reported under
-    # their OWN key and the CPU loop fill still runs — cheaper than before,
-    # since the grid pass already removed the pinhole population.
-    grid_repair = getattr(mesh, "stats", {}).get("live_grid_repair")
-    if grid_repair is not None and stats is not None:
+    # The CUDA 2D grid repair (run inside build_relief_mesh) and the CPU 3D
+    # boundary-loop fill are COMPLEMENTARY, not alternatives, so both run.
+    #
+    # The grid pass materializes new grid cells whose neighbours carry valid
+    # depth; the loop pass triangulates boundary loops out of vertices that
+    # already exist. Neither can do the other's job. This used to early-return
+    # as soon as the grid pass had run, which meant that whenever torch was
+    # importable — i.e. always, inside ComfyUI — the loop pass never ran, real
+    # multi-cell holes were silently skipped, and `live_fill_distance_m` /
+    # `live_fill_max_hole_edges` were dead widgets whose values were still
+    # reported in telemetry as though applied. The grid pass takes neither of
+    # those parameters, so it cannot honour them. (Both branches of the
+    # 2026-07-27 merge had independently found and fixed this.)
+    #
+    # `or {}` matters: the telemetry below reads this unconditionally.
+    grid_repair = getattr(mesh, "stats", {}).get("live_grid_repair") or {}
+    if grid_repair and stats is not None:
         stats.setdefault("relief_mesh", {})["live_grid_repair"] = {
             "n_pinholes": grid_repair.get("n_holes", 0),
             "n_sawteeth": grid_repair.get("n_sawteeth", 0),
@@ -483,12 +491,24 @@ def apply_live_mesh_repair(
             view_matrix=view_matrix,
             depth_near_m=0.0,
             depth_far_m=depth_far,
+            image_width=image_width,
+            image_height=image_height,
         )
         if stats is not None:
+            n_grid = int(grid_repair.get("n_holes", 0))
             rm_stats["live_hole_fill"] = {
+                # NEVER the sum: "N holes filled" must mean N boundary loops
+                # ear-clipped, not N grid cells convolved (DESIGN_RULES,
+                # 2026-07-26, from a live regression). The grid count rides
+                # alongside so nothing is hidden.
                 "n_loops_filled": n_filled,
+                "n_grid_cells_filled": n_grid,
+                "n_loops_triangulated": n_filled,
                 "filled_edge_counts": filled_counts,
                 "distance_m": float(live_fill_distance_m),
+                # Only the loop pass is depth-scoped; say so rather than let the
+                # reported distance imply the grid pass honoured it too.
+                "distance_applies_to": "loop_fill_only",
             }
     if live_fill_edge_sawteeth:
         n_added, valley_depths = apply_boundary_sawtooth_fill(
@@ -497,11 +517,16 @@ def apply_live_mesh_repair(
             depth_far_m=depth_far,
         )
         if stats is not None:
+            n_grid_saw = int(grid_repair.get("n_sawteeth", 0))
             rm_stats["live_boundary_sawtooth_fill"] = {
+                # Same non-conflation rule as the hole fill above.
                 "n_triangles_added": n_added,
+                "n_grid_sawteeth_filled": n_grid_saw,
+                "n_triangles_bridged": n_added,
                 "valley_depth_min_m": (min(valley_depths) if valley_depths else 0.0),
                 "valley_depth_max_m": (max(valley_depths) if valley_depths else 0.0),
                 "distance_m": float(live_fill_distance_m),
+                "distance_applies_to": "bridge_fill_only",
             }
     if len(mesh.faces) != n_faces_before:
         mesh.hole_mask = _hole_mask_after_fill(mesh, n_faces_before)

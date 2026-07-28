@@ -237,9 +237,11 @@ def test_api_key_widget_appended_last():
     # silently corrupts every saved workflow (the documented 2026-07-06 bug).
     from atlas_camera.comfy.nodes import AtlasVLMScaleCues
     assert list(AtlasVLMScaleCues.INPUT_TYPES()["optional"])[-1] == "api_key"
-    # AtlasAssessImage: api_key then offload_model, both appended in order.
-    assert list(AtlasAssessImage.INPUT_TYPES()["optional"])[-3:] == [
-        "api_key", "offload_model", "auto_continue"]
+    # AtlasAssessImage: each generation appended in order — api_key,
+    # offload_model, auto_continue, then offload_ttl_s (2026-07-25, the
+    # LM Studio linger window for batch runs).
+    assert list(AtlasAssessImage.INPUT_TYPES()["optional"])[-4:] == [
+        "api_key", "offload_model", "auto_continue", "offload_ttl_s"]
     for cls in (AtlasAssessImage, AtlasVLMScaleCues):
         assert "openai" in cls.INPUT_TYPES()["optional"]["provider"][0], cls.__name__
 
@@ -282,6 +284,23 @@ def test_offload_model_lmstudio_ttl_and_llamacpp_honesty(monkeypatch, tmp_path):
     r2 = assess_image(_tmp_image(tmp_path), provider="llamacpp", offload_model=True)
     assert "ttl" not in helper2.requests[0]
     assert "not supported" in r2.report
+
+
+def test_offload_ttl_linger_rides_request_and_skips_cli_unload(monkeypatch, tmp_path):
+    """offload_ttl_s > 5 is the batch window: the request-level ttl schedules
+    the evict, and an immediate CLI unload would defeat it — the model must
+    linger for fast reruns, then auto-evict. JIT reloads it next assessment."""
+    import json as _json
+
+    called = []
+    monkeypatch.setattr("shutil.which", lambda name: called.append(name) or None)
+    helper = _FakeVisionHelper([_json.dumps(_PAYLOAD)])
+    _fake_provider(monkeypatch, helper)
+    r = assess_image(_tmp_image(tmp_path), provider="lmstudio",
+                     offload_model=True, offload_ttl_s=300)
+    assert helper.requests[0].get("ttl") == 300
+    assert "lingers" in r.report
+    assert "lms" not in called          # CLI unload deliberately not attempted
 
 
 def test_offload_skipped_on_failed_assessment(monkeypatch, tmp_path):

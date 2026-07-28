@@ -32,6 +32,7 @@ FACADE_PUBLIC = {
     "LEGACY_NODE_CLASS_MAPPINGS", "LEGACY_NODE_DISPLAY_NAME_MAPPINGS",
     "LEGACY_REPLACEMENTS", "AtlasAddPatchView", "AtlasApplyScaleReferences",
     "AtlasAssessImage", "AtlasAssessOutput", "AtlasAttachSourcePlate", "AtlasBlockoutViewport",
+    "AtlasCompleteDepth", "AtlasLayerPlan", "AtlasMoveBudget", "AtlasOcclusionGraph",
     "AtlasBoundedBand", "AtlasCleanPlateLayer", "AtlasCleanPlateStack",
     "AtlasApplyLUT", "AtlasDefocus", "AtlasGrade",
     "AtlasConstrainedSolve", "AtlasDeband", "AtlasDebugReport", "AtlasDecomposeCamera",

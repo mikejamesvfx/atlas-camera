@@ -22,7 +22,7 @@ def test_audit_covers_every_registered_node():
     kinds, names = audit.registered_nodes()
     data = audit.audit()
     assert set(data) == names            # exactly the registered set, nothing invented
-    assert len(names) == 86   # 82 standard (incl. the plate colour trio) + 4 experimental
+    assert len(names) == 90   # 83 standard + 5 experimental + 2 legacy
     for name, rec in data.items():
         assert rec["kind"] in ("standard", "experimental", "legacy")
         assert rec["status"] in ("referenced", "registered_only")
@@ -90,7 +90,8 @@ def test_experimental_nodes_flagged():
     data = audit.audit()
     experimental = {n for n, r in data.items() if r["kind"] == "experimental"}
     assert experimental == {"AtlasPredictHiddenGeometry", "AtlasRenderFix",
-                            "AtlasExtractAnglePatch", "AtlasImportAnglePatch"}
+                            "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
+                            "AtlasCompleteDepth"}
 
 
 def test_audit_is_read_only(tmp_path):

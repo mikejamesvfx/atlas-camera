@@ -223,15 +223,54 @@ def test_live_hole_fill_closes_near_holes():
     depth = _depth_result(_room_depth_with_holes())
     out_off, hole_off = AtlasDeriveReliefMesh().derive(
         solve, depth, relief_grid=32, live_fill_holes=False)
+
+def _room_depth_with_interior_hole(hole=(90, 130, 90, 130)):
+    """The room scene with a patch of the WALL invalidated.
+
+    The plain room scene has no interior holes at all — its only boundary loop
+    is the mesh perimeter (silhouette against sky plus the frame edges). Asking
+    hole-fill to close something there was asking it to cap the plate. This
+    punches a genuine enclosed gap, surrounded on all sides by valid wall.
+    """
+    depth = _room_depth()
+    r0, r1, c0, c1 = hole
+    depth[r0:r1, c0:c1] = np.nan
+    return depth
+
+
+def test_live_hole_fill_closes_a_genuine_interior_hole():
+    pytest.importorskip("torch")
+    solve = _solve()
+    depth = _depth_result(_room_depth_with_interior_hole())
+    _, hole_off = AtlasDeriveReliefMesh().derive(
+        solve, depth, relief_grid=64, live_fill_holes=False)
     out_on, hole_on = AtlasDeriveReliefMesh().derive(
-        solve, depth, relief_grid=32, live_fill_holes=True,
+        _solve(), _depth_result(_room_depth_with_interior_hole()),
+        relief_grid=64, live_fill_holes=True,
         live_fill_distance_m=100.0, live_fill_max_hole_edges=128)
-    # Hole mask should have fewer holes when fill is on
+
     assert hole_on.sum() <= hole_off.sum()
     meta = out_on.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]
     # n_loops_filled counts REAL 3D boundary loops closed by the ear-clip fill
     # (the 2026-07-23 fast path had redefined it as the grid pinhole count).
     assert meta["live_hole_fill"]["n_loops_filled"] > 0
+
+
+def test_live_hole_fill_never_caps_the_mesh_perimeter():
+    """The perimeter is not a hole, however generous the depth window.
+
+    Before the UV frame-edge rule, a depth window disabled the outer-loop guard
+    entirely, so a scoped fill would triangulate the plate silhouette — work
+    that reported as a filled loop while changing nothing visible, because the
+    region it "closed" was already covered.
+    """
+    pytest.importorskip("torch")
+    out, _ = AtlasDeriveReliefMesh().derive(
+        _solve(), _depth_result(_room_depth()),
+        relief_grid=32, live_fill_holes=True,
+        live_fill_distance_m=1000.0, live_fill_max_hole_edges=4096)
+    meta = out.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]
+    assert meta["live_hole_fill"]["n_loops_triangulated"] == 0
 
 
 def test_live_hole_fill_distance_scopes_distant_holes():

@@ -291,11 +291,24 @@ class AtlasSAM3Mask:
                 "max_instances": ("INT", {"default": 0, "min": 0, "max": 128,
                     "tooltip": "separate mode only: keep at most N instances (largest "
                                "first). 0 = unlimited. Ignored when merged."}),
+                # APPENDED 2026-07-25 (positional rule): joined onto `concepts`
+                # with a comma. Exists so two upstream STRING outputs (e.g.
+                # AtlasAssessImage's sam_prompt_fg AND sam_prompt_mid) can feed
+                # one mask without a string-concat node — found live when a
+                # ghost-town plate's VLM put the road in fg and the car (the
+                # actual occluder) in mid, and an fg-only mask painted out the
+                # road while leaving the car standing.
+                "concepts_extra": ("STRING", {"forceInput": True,
+                    "tooltip": "Additional comma-separated concepts, unioned with "
+                               "`concepts`. Wire a second sam_prompt output here."}),
             },
         }
 
     def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto",
-                output_mode="merged", max_instances=0, **_extra):
+                output_mode="merged", max_instances=0, concepts_extra="", **_extra):
+        extra = (concepts_extra or "").strip()
+        if extra:
+            concepts = f"{concepts}, {extra}" if (concepts or "").strip() else extra
         from atlas_camera.inference.sam3_segmenter import (
             DEFAULT_SAM3_MODEL, Sam3GatedRepoError, sam3_concept_mask,
             sam3_instance_masks)
@@ -337,6 +350,35 @@ class AtlasSAM3Mask:
         else:
             report = f"NO MATCH for '{concepts}' — mask is empty ({DEFAULT_SAM3_MODEL})."
         return (mask, report)
+
+
+def _align_span(lo: int, hi: int, limit: int, mult: int) -> tuple[int, int]:
+    """Grow ``[lo, hi)`` so its length is a multiple of ``mult``, inside
+    ``[0, limit)``. Growth is symmetric where possible, shifted inward at the
+    borders; when the whole axis is shorter than one multiple, fall back to
+    the largest multiple of 8 that fits (an even VAE latent grid)."""
+    span = hi - lo
+    target = ((span + mult - 1) // mult) * mult
+    if target > limit:
+        target = (limit // mult) * mult
+        if target == 0:
+            target = (limit // 8) * 8
+        if target <= 0:
+            return lo, hi                     # degenerate axis: leave it be
+    grow = target - span
+    if grow < 0:                              # shrink case (fallback target)
+        lo = max(0, min(lo, limit - target))
+        return lo, lo + target
+    lo = lo - grow // 2
+    hi = hi + (grow - grow // 2)
+    if lo < 0:
+        hi -= lo
+        lo = 0
+    if hi > limit:
+        lo -= hi - limit
+        hi = limit
+        lo = max(0, lo)
+    return lo, hi
 
 
 class AtlasInpaintCrop:
@@ -404,6 +446,17 @@ class AtlasInpaintCrop:
         y1 = min(h, int(ys.max()) + 1 + pad)
         x0 = max(0, int(xs.min()) - pad)
         x1 = min(w, int(xs.max()) + 1 + pad)
+        # Snap the crop to multiples of 64. Two reasons, both found live:
+        # SD-family models want it anyway, and an unaligned crop (538x1446 on
+        # the overpass plate) reaches the VAE as an odd latent grid whose
+        # attention strides trip torch/cu130's cuDNN SDPA —
+        # "RuntimeError: query is not correctly aligned (strideM)" — killing
+        # the queue inside InpaintModelConditioning's vae.encode. Growth is
+        # outward (more context, never less), shifted inward at frame borders;
+        # an image smaller than the aligned span falls back to its largest
+        # 8-multiple, which keeps the latent grid even.
+        y0, y1 = _align_span(y0, y1, h, 64)
+        x0, x1 = _align_span(x0, x1, w, 64)
         region = {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "width": w, "height": h}
         return (image[:, y0:y1, x0:x1, :], m[:, y0:y1, x0:x1], region)
 

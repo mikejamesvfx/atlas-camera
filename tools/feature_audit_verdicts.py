@@ -123,9 +123,32 @@ VERDICTS: dict[str, dict] = {
             "AtlasStereoRender", "AtlasUSDCameraLoader", "AtlasVPVisualization",
         )
     },
+
+    # --- the unseen-geometry track, merged 2026-07-28 -----------------------
+    # Shipped WITH workflow evidence and dedicated tests on day one — the
+    # thing every node in the HOLD cohort lacked. Recorded explicitly so the
+    # contrast is legible next cycle.
+    **{
+        name: {
+            "verdict": "KEEP_CORE",
+            "compatibility_risk": "low — new this cycle, nothing to migrate",
+            "migration_action": "none; keep",
+            "evidence": [
+                "shipped with example workflows (atlas_unseen_geometry_test, "
+                "atlas_layered_segmentation, atlas_auto_layered_inpaint)",
+                "dedicated tests: test_occlusion_graph.py, test_move_budget.py, "
+                "test_layer_plan_node.py, test_depth_completion.py",
+            ],
+        }
+        for name in ("AtlasOcclusionGraph", "AtlasMoveBudget", "AtlasLayerPlan")
+    },
 }
 
 # Node-specific notes layered on top of the bulk entries above.
+VERDICTS["AtlasMoveBudget"]["notes"] = (
+    "Answers \"how far can this camera move before the unseen geometry "
+    "shows?\" by bisecting the move against the occlusion graph, rather than "
+    "leaving it to the artist's eye.")
 VERDICTS["AtlasGravityOverride"]["notes"] = (
     "Was the only registered node with NO evidence of any kind — no workflow, "
     "no test, no MCP consumer, and zero hits in docs/. Now pinned on the one "

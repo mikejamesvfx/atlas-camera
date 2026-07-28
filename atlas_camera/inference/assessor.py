@@ -284,6 +284,7 @@ def assess_image(
     api_key: str | None = None,
     extra_instructions: str = "",
     offload_model: bool = False,
+    offload_ttl_s: int = 2,
     timeout_seconds: float = 180.0,
 ) -> AssessmentResult:
     """Run the assessment prompt over one image via a local VLM provider.
@@ -338,7 +339,12 @@ def assess_image(
             if helper.provider in ("lmstudio", "openai"):
                 payload["response_format"] = _assessment_response_format()
             if offload_model and helper.provider == "lmstudio":
-                payload["ttl"] = 2  # LM Studio JIT auto-evict, seconds
+                # LM Studio JIT auto-evict after this many idle seconds. The
+                # model RELOADS automatically (JIT) on the next request naming
+                # it, so this is the whole load-when-needed / unload-when-idle
+                # cycle. Small ttl = free RAM now; larger ttl = linger for
+                # fast batch reruns, then free.
+                payload["ttl"] = max(1, int(offload_ttl_s))
             try:
                 response = helper._request_json("/chat/completions", payload)
             except RuntimeError as exc:
@@ -373,7 +379,8 @@ def assess_image(
             # unload is out-of-process and slightly async — sample, wait,
             # resample; skip silently when no CUDA is visible.
             before = _vram_free_gb()
-            status = _offload_after_assessment(helper, model_info.id)
+            status = _offload_after_assessment(
+                helper, model_info.id, ttl_s=int(offload_ttl_s))
             if before is not None and helper.provider != "openai":
                 import time as _time
                 _time.sleep(1.5)
@@ -412,7 +419,7 @@ def _vram_free_gb() -> float | None:
     return None
 
 
-def _offload_after_assessment(helper, model_id: str) -> str:
+def _offload_after_assessment(helper, model_id: str, *, ttl_s: int = 2) -> str:
     """Best-effort VRAM offload of the assessment VLM, per provider.
 
     Called only after a SUCCESSFUL assessment (a failed one keeps the model
@@ -442,6 +449,12 @@ def _offload_after_assessment(helper, model_id: str) -> str:
         except (RuntimeError, ValueError, OSError):
             return "keep_alive=0 was set on the request; explicit unload call failed (harmless)"
     # lmstudio
+    if ttl_s > 5:
+        # The artist asked for a linger window (batch runs): the request-level
+        # ttl already schedules the evict, and an immediate CLI unload would
+        # defeat it. VRAM frees itself ttl_s after the last request.
+        return (f"ttl={ttl_s}s — model lingers for fast reruns, then "
+                "auto-evicts (JIT reloads it on the next assessment)")
     import shutil
     import subprocess
     lms = shutil.which("lms")

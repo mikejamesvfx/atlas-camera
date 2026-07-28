@@ -1,16 +1,16 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-07-27",
+ "generated_utc": "2026-07-28",
  "counts": {
-  "standard": 80,
-  "experimental": 4,
+  "standard": 83,
+  "experimental": 5,
   "legacy": 2,
-  "total": 86,
+  "total": 90,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 80,
-  "KEEP_EXPERIMENTAL": 4,
+  "KEEP_CORE": 83,
+  "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
  "live_probe": {
@@ -145,13 +145,16 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
     "examples/atlas_camera_staged_master_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
     "examples/atlas_staged_master_portal_neat_workflow.json"
    ],
    "dedicated_tests": [
     "tests/test_assess_image.py",
     "tests/test_atlas_input.py",
+    "tests/test_layer_plan_node.py",
     "tests/test_node_pack_entrypoint.py",
     "tests/test_solve_gate.py"
    ],
@@ -160,6 +163,7 @@
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_facade_surface.py",
+    "tests/test_layer_plan_node.py",
     "tests/test_node_pack_entrypoint.py",
     "tests/test_solve_gate.py"
    ],
@@ -167,6 +171,8 @@
     "atlas_camera/mcp/server.py"
    ],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
     "tools/rebuild_staged_master_workflow.py",
     "tools/smoke_agentic_assessment_workflows.py"
    ],
@@ -303,18 +309,21 @@
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
     "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
+    "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_boundary_smooth_retopo_test_workflow.json",
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
     "examples/atlas_camera_staged_master_workflow.json",
     "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
     "examples/atlas_input_quickstart_workflow.json",
     "examples/atlas_input_walkthrough_switches_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
     "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
     "examples/atlas_occlusion_cull_quickstart_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_planar_hole_patch_workflow.json",
     "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
+    "examples/atlas_staged_master_portal_neat_workflow.json",
+    "examples/atlas_unseen_geometry_test_workflow.json"
    ],
    "dedicated_tests": [
     "tests/test_camera_path.py",
@@ -346,7 +355,10 @@
    ],
    "mcp_tools": [],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
     "tools/build_path_guided_hole_repair_workflow.py",
+    "tools/build_unseen_geometry_workflow.py",
     "tools/rebuild_shipping_quickstarts.py",
     "tools/rebuild_staged_master_workflow.py"
    ],
@@ -426,6 +438,8 @@
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
     "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
+    "examples/atlas_auto_layered_inpaint_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
     "examples/atlas_raw_3layer_ocio_workflow.json",
     "examples/atlas_staged_master_portal_neat_workflow.json"
    ],
@@ -459,6 +473,8 @@
     "atlas_camera/mcp/server.py"
    ],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
     "tools/rebuild_staged_master_workflow.py"
    ],
    "docs": [
@@ -518,6 +534,43 @@
    "known_defect": null,
    "compatibility_risk": null,
    "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasCompleteDepth": {
+   "module": "atlas_camera/comfy/nodes_completion.py",
+   "tier": "experimental",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_experimental_gate.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_experimental_gate.py",
+    "tests/test_facade_surface.py",
+    "tests/test_node_usage_audit.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [
+    "tools/build_unseen_geometry_workflow.py"
+   ],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "repo_tool",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
    "evidence": [],
    "migration_action": null,
    "notes": null
@@ -993,8 +1046,10 @@
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
     "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
+    "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
     "examples/atlas_camera_staged_master_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_planar_hole_patch_workflow.json",
     "examples/atlas_plate_color_grade_defocus_lut_workflow.json",
@@ -1019,6 +1074,8 @@
     "atlas_camera/mcp/server.py"
    ],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
     "tools/rebuild_staged_master_workflow.py"
    ],
    "docs": [
@@ -1291,7 +1348,10 @@
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
-    "examples/atlas_planar_hole_patch_workflow.json"
+    "examples/atlas_auto_layered_inpaint_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
+    "examples/atlas_planar_hole_patch_workflow.json",
+    "examples/atlas_unseen_geometry_test_workflow.json"
    ],
    "dedicated_tests": [
     "tests/test_derive_geometry_nodes.py",
@@ -1310,7 +1370,11 @@
     "tests/test_skyline_walls.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
+    "tools/build_unseen_geometry_workflow.py"
+   ],
    "docs": [
     "docs/DESIGN_RULES.md",
     "docs/ECOSYSTEM_GUIDE.md",
@@ -1320,6 +1384,7 @@
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2137,6 +2202,7 @@
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_raw_3layer_ocio_workflow.json",
     "examples/atlas_staged_master_portal_neat_workflow.json"
    ],
@@ -2152,6 +2218,7 @@
    ],
    "mcp_tools": [],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
     "tools/rebuild_staged_master_workflow.py"
    ],
    "docs": [
@@ -2183,6 +2250,7 @@
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_raw_3layer_ocio_workflow.json",
     "examples/atlas_staged_master_portal_neat_workflow.json"
    ],
@@ -2198,6 +2266,7 @@
    ],
    "mcp_tools": [],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
     "tools/rebuild_staged_master_workflow.py"
    ],
    "docs": [
@@ -2229,12 +2298,15 @@
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_boundary_smooth_retopo_test_workflow.json",
     "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
     "examples/atlas_input_quickstart_workflow.json",
     "examples/atlas_input_walkthrough_switches_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
     "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json"
+    "examples/atlas_occlusion_cull_quickstart_workflow.json",
+    "examples/atlas_unseen_geometry_test_workflow.json"
    ],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
@@ -2252,6 +2324,9 @@
    ],
    "mcp_tools": [],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
+    "tools/build_unseen_geometry_workflow.py",
     "tools/rebuild_shipping_quickstarts.py"
    ],
    "docs": [
@@ -2318,6 +2393,47 @@
    "verdict": "KEEP_CORE",
    "evidence": [],
    "migration_action": null,
+   "notes": null
+  },
+  "AtlasLayerPlan": {
+   "module": "atlas_camera/comfy/nodes_completion.py",
+   "tier": "standard",
+   "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json"
+   ],
+   "dedicated_tests": [
+    "tests/test_layer_plan_node.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_facade_surface.py",
+    "tests/test_layer_plan_node.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py"
+   ],
+   "docs": [],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "workflow",
+    "dedicated_test",
+    "repo_tool"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "shipped with example workflows (atlas_unseen_geometry_test, atlas_layered_segmentation, atlas_auto_layered_inpaint)",
+    "dedicated tests: test_occlusion_graph.py, test_move_budget.py, test_layer_plan_node.py, test_depth_completion.py"
+   ],
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasLayerPreview": {
@@ -2584,7 +2700,10 @@
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": [
-    "examples/atlas_planar_hole_patch_workflow.json"
+    "examples/atlas_auto_layered_inpaint_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
+    "examples/atlas_planar_hole_patch_workflow.json",
+    "examples/atlas_unseen_geometry_test_workflow.json"
    ],
    "dedicated_tests": [
     "tests/test_merge_geometry.py",
@@ -2599,7 +2718,11 @@
     "tests/test_skyline_walls.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
+    "tools/build_unseen_geometry_workflow.py"
+   ],
    "docs": [
     "docs/DESIGN_RULES.md",
     "docs/ECOSYSTEM_GUIDE.md",
@@ -2609,6 +2732,7 @@
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2653,6 +2777,102 @@
    "verdict": "KEEP_CORE",
    "evidence": [],
    "migration_action": null,
+   "notes": null
+  },
+  "AtlasMoveBudget": {
+   "module": "atlas_camera/comfy/nodes_completion.py",
+   "tier": "standard",
+   "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
+    "examples/atlas_unseen_geometry_test_workflow.json"
+   ],
+   "dedicated_tests": [
+    "tests/test_move_budget.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_facade_surface.py",
+    "tests/test_move_budget.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
+    "tools/build_unseen_geometry_workflow.py"
+   ],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "workflow",
+    "dedicated_test",
+    "repo_tool",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "shipped with example workflows (atlas_unseen_geometry_test, atlas_layered_segmentation, atlas_auto_layered_inpaint)",
+    "dedicated tests: test_occlusion_graph.py, test_move_budget.py, test_layer_plan_node.py, test_depth_completion.py"
+   ],
+   "migration_action": "none; keep",
+   "notes": "Answers \"how far can this camera move before the unseen geometry shows?\" by bisecting the move against the occlusion graph, rather than leaving it to the artist's eye."
+  },
+  "AtlasOcclusionGraph": {
+   "module": "atlas_camera/comfy/nodes_completion.py",
+   "tier": "standard",
+   "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
+    "examples/atlas_unseen_geometry_test_workflow.json"
+   ],
+   "dedicated_tests": [
+    "tests/test_depth_completion.py",
+    "tests/test_layer_plan_node.py",
+    "tests/test_occlusion_graph.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_depth_completion.py",
+    "tests/test_facade_surface.py",
+    "tests/test_layer_plan_node.py",
+    "tests/test_occlusion_graph.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
+    "tools/build_unseen_geometry_workflow.py"
+   ],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "workflow",
+    "dedicated_test",
+    "repo_tool",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "shipped with example workflows (atlas_unseen_geometry_test, atlas_layered_segmentation, atlas_auto_layered_inpaint)",
+    "dedicated tests: test_occlusion_graph.py, test_move_budget.py, test_layer_plan_node.py, test_depth_completion.py"
+   ],
+   "migration_action": "none; keep",
    "notes": null
   },
   "AtlasOcclusionMask": {
@@ -3137,6 +3357,8 @@
    "example_workflows": [
     "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
     "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
+    "examples/atlas_auto_layered_inpaint_workflow.json",
+    "examples/atlas_layered_segmentation_workflow.json",
     "examples/atlas_path_guided_hole_repair_workflow.json",
     "examples/atlas_raw_3layer_ocio_workflow.json",
     "examples/atlas_staged_master_portal_neat_workflow.json"
@@ -3159,6 +3381,8 @@
     "atlas_camera/mcp/server.py"
    ],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
+    "tools/build_layered_segmentation_workflow.py",
     "tools/port_sam3segment_to_atlas.py",
     "tools/rebuild_shipping_quickstarts.py",
     "tools/rebuild_staged_master_workflow.py"
@@ -3193,6 +3417,7 @@
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_raw_3layer_ocio_workflow.json",
     "examples/atlas_staged_master_portal_neat_workflow.json"
    ],
@@ -3210,6 +3435,7 @@
    ],
    "mcp_tools": [],
    "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py",
     "tools/rebuild_staged_master_workflow.py"
    ],
    "docs": [
@@ -3240,6 +3466,7 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_auto_layered_inpaint_workflow.json",
     "examples/atlas_raw_3layer_ocio_workflow.json"
    ],
    "dedicated_tests": [
@@ -3255,7 +3482,9 @@
    "mcp_tools": [
     "atlas_camera/mcp/server.py"
    ],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/build_auto_layered_inpaint_workflow.py"
+   ],
    "docs": [
     "docs/CAMERA_MOVES.md",
     "docs/ECOSYSTEM_GUIDE.md",
@@ -3268,6 +3497,7 @@
     "workflow",
     "dedicated_test",
     "mcp",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",

@@ -1,0 +1,1021 @@
+{
+  "id": "7caf1a2c-c531-4ceb-9b1b-ef8895815392",
+  "revision": 0,
+  "last_node_id": 17,
+  "last_link_id": 26,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        60,
+        200
+      ],
+      "size": [
+        320,
+        314
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            26
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "source_image.png",
+        "image"
+      ],
+      "title": "1 \u00b7 SOURCE PLATE"
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        60,
+        620
+      ],
+      "size": [
+        320,
+        314
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            17,
+            21
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "cleanplate.png",
+        "image"
+      ],
+      "title": "1b \u00b7 CLEAN PLATE (occluders painted out)"
+    },
+    {
+      "id": 3,
+      "type": "AtlasAssessImage",
+      "pos": [
+        430,
+        160
+      ],
+      "size": [
+        360,
+        420
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            2,
+            5
+          ]
+        },
+        {
+          "name": "",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "sam_prompt_bg",
+          "type": "STRING",
+          "links": [
+            16
+          ]
+        },
+        {
+          "name": "sam_prompt_mid",
+          "type": "STRING",
+          "links": [
+            4
+          ]
+        },
+        {
+          "name": "sam_prompt_fg",
+          "type": "STRING",
+          "links": [
+            3,
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasAssessImage"
+      },
+      "widgets_values": [
+        "lmstudio",
+        "google/gemma-4-12b-qat",
+        "",
+        "",
+        true,
+        "",
+        "",
+        true,
+        true,
+        2
+      ],
+      "title": "2 \u00b7 \ud83e\udde0 VLM NAMES THE SCENE"
+    },
+    {
+      "id": 4,
+      "type": "AtlasInput",
+      "pos": [
+        840,
+        160
+      ],
+      "size": [
+        360,
+        500
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            8,
+            11,
+            18
+          ]
+        },
+        {
+          "name": "",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            9,
+            13
+          ]
+        },
+        {
+          "name": "sky_mask",
+          "type": "MASK",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasInput"
+      },
+      "widgets_values": [
+        0,
+        "relief",
+        512,
+        false,
+        "lmstudio",
+        "",
+        false,
+        "sky",
+        "",
+        false,
+        "",
+        24,
+        12.0,
+        true,
+        0.0,
+        "Ruicheng/moge-2-vitl-normal",
+        true,
+        "lama",
+        32,
+        "SDXL/sd_xl_base_1.0.safetensors",
+        "clear seamless sky, high detail, no buildings, no trees, no roofs",
+        "building, tree, roof, person, vehicle, text, watermark, blurry",
+        0
+      ],
+      "title": "3 \u00b7 SOLVE + DEPTH + RELIEF"
+    },
+    {
+      "id": 5,
+      "type": "AtlasSAM3Mask",
+      "pos": [
+        430,
+        640
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "name": "concepts",
+          "type": "STRING",
+          "link": 3,
+          "widget": {
+            "name": "concepts"
+          }
+        },
+        {
+          "name": "concepts_extra",
+          "type": "STRING",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSAM3Mask"
+      },
+      "widgets_values": [
+        "sky",
+        0.5,
+        "auto",
+        "merged",
+        0
+      ],
+      "title": "4 \u00b7 \ud83e\ude84 SAM3 OCCLUDER MASK"
+    },
+    {
+      "id": 6,
+      "type": "MaskToImage",
+      "pos": [
+        430,
+        830
+      ],
+      "size": [
+        260,
+        30
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": [],
+      "title": "mask \u2192 image"
+    },
+    {
+      "id": 7,
+      "type": "PreviewImage",
+      "pos": [
+        430,
+        900
+      ],
+      "size": [
+        300,
+        280
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 7
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "OCCLUDER MASK"
+    },
+    {
+      "id": 8,
+      "type": "AtlasDeriveWalls",
+      "pos": [
+        1250,
+        120
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveWalls"
+      },
+      "widgets_values": [
+        4,
+        3,
+        1,
+        false,
+        "measured_only"
+      ],
+      "title": "5 \u00b7 FIT PLANES + OBJECTS"
+    },
+    {
+      "id": 9,
+      "type": "AtlasMergeGeometry",
+      "pos": [
+        1250,
+        300
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve_a",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
+          "name": "solve_b",
+          "type": "ATLAS_SOLVE",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMergeGeometry"
+      },
+      "widgets_values": [],
+      "title": "6 \u00b7 MERGE + RELIEF"
+    },
+    {
+      "id": 10,
+      "type": "AtlasOcclusionGraph",
+      "pos": [
+        1250,
+        470
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 12
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasOcclusionGraph"
+      },
+      "widgets_values": [],
+      "title": "7 \u00b7 \ud83d\udd78 OCCLUSION GRAPH"
+    },
+    {
+      "id": 11,
+      "type": "AtlasLayerPlan",
+      "pos": [
+        1250,
+        650
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 14
+        },
+        {
+          "name": "foreground_concepts_override",
+          "type": "STRING",
+          "link": 15
+        },
+        {
+          "name": "background_concepts_override",
+          "type": "STRING",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            19,
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLayerPlan"
+      },
+      "widgets_values": [
+        false
+      ],
+      "title": "8 \u00b7 \ud83e\udd5e LAYER PLAN"
+    },
+    {
+      "id": 12,
+      "type": "AtlasDepthMap",
+      "pos": [
+        840,
+        720
+      ],
+      "size": [
+        360,
+        200
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 17
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "Ruicheng/moge-2-vitl-normal",
+        "auto"
+      ],
+      "title": "9 \u00b7 CLEAN PLATE'S OWN DEPTH (doctrine: never a band extension)"
+    },
+    {
+      "id": 13,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1660,
+        470
+      ],
+      "size": [
+        380,
+        560
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 19
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 20
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 21
+        },
+        {
+          "name": "plate_ref",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            24,
+            25
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        "cleanplate_background",
+        0.0,
+        384,
+        0.15,
+        false,
+        false,
+        0,
+        0.0,
+        0,
+        2,
+        "manual",
+        "relief",
+        "",
+        "",
+        12.0,
+        0.0,
+        true
+      ],
+      "title": "10 \u00b7 \ud83e\udd6e BACKGROUND LAYER (full range)"
+    },
+    {
+      "id": 14,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        1660,
+        120
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 23
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "11a \u00b7 \ud83d\udcd0 BUDGET before"
+    },
+    {
+      "id": 15,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        2080,
+        120
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 24
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "11b \u00b7 \ud83d\udcd0 BUDGET after \u2014 must GROW"
+    },
+    {
+      "id": 16,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2080,
+        400
+      ],
+      "size": [
+        480,
+        640
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 25
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 26
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ],
+      "title": "12 \u00b7 VIEWPORT"
+    },
+    {
+      "id": 17,
+      "type": "Note",
+      "pos": [
+        60,
+        1000
+      ],
+      "size": [
+        540,
+        560
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "LAYERED SEGMENTATION \u2014 the anti-tear pipeline, measured.\n\nWhy layers: filling holes in ONE surface makes every fill butt\nagainst measured depth and tear along the seam (live measurement:\n302k px closed, 222k px of NEW rim tears, budget SHRANK). A\nclean-plate layer instead CONTINUES underneath the occluder \u2014 the\nsurfaces overlap, so there is no seam. Same plate, one layer:\ndolly z went +/-1.80 m -> +/-2.04 m. The budget GREW.\n\nTHE CLEAN PLATE (node 1b): paint the occluders out with your\ninpaint graph of choice (LaMa / SDXL / Photoshop). Atlas does not\ninpaint \u2014 that is delegated by design (GPL boundary). Use node 4's\nSAM3 mask as your inpaint mask; it is cut from the concepts the\nVLM named in node 2 (LM Studio + gemma-4-12b-qat preset).\n\nDOCTRINE (2026-07-19): the clean plate gets its OWN depth solve\n(node 9). Never extend the original's far band to cover the\nremoval \u2014 that puts the support at the cutoff and produces a\nvertical cliff with floating foreground under orbit.\n\nVERDICT: 11a vs 11b. The layered budget must GROW; if it does\nnot, the layer's depth solve or matte is wrong \u2014 fix that before\ntrusting the projection."
+      ],
+      "title": "READ ME \u00b7 layers, not patches",
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      3,
+      7,
+      5,
+      1,
+      "STRING"
+    ],
+    [
+      4,
+      3,
+      6,
+      5,
+      2,
+      "STRING"
+    ],
+    [
+      5,
+      3,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      5,
+      0,
+      6,
+      0,
+      "MASK"
+    ],
+    [
+      7,
+      6,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      4,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      4,
+      2,
+      8,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      10,
+      8,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      4,
+      0,
+      9,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      9,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      4,
+      2,
+      10,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      14,
+      10,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      15,
+      3,
+      7,
+      11,
+      1,
+      "STRING"
+    ],
+    [
+      16,
+      3,
+      5,
+      11,
+      2,
+      "STRING"
+    ],
+    [
+      17,
+      2,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      4,
+      0,
+      12,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      19,
+      11,
+      0,
+      13,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      20,
+      12,
+      0,
+      13,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      21,
+      2,
+      0,
+      13,
+      2,
+      "IMAGE"
+    ],
+    [
+      22,
+      4,
+      3,
+      13,
+      4,
+      "MASK"
+    ],
+    [
+      23,
+      11,
+      0,
+      14,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      24,
+      13,
+      0,
+      15,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      25,
+      13,
+      0,
+      16,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      26,
+      1,
+      0,
+      16,
+      1,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.65,
+      "offset": [
+        0,
+        0
+      ]
+    },
+    "atlas_layered_segmentation_version": 1,
+    "atlas_notes": "VLM->SAM3->cleanplate layered pipeline. Plates go in ComfyUI/input/; the clean plate is artist-made (external inpaint, GPL boundary)."
+  },
+  "version": 0.4
+}

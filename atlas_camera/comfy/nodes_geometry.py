@@ -353,6 +353,8 @@ class AtlasDeriveProjectionGeometry:
                 live_fill_max_hole_edges=live_fill_max_hole_edges,
                 live_fill_edge_sawteeth=live_fill_edge_sawteeth,
                 stats=stats,
+                image_width=intr.image_width,
+                image_height=intr.image_height,
             )
             keep.append(relief_mesh_primitive(mesh))
             hole_mask_arr = mesh.hole_mask.astype(np.float32)
@@ -902,6 +904,8 @@ class AtlasDeriveReliefMesh:
             live_fill_max_hole_edges=live_fill_max_hole_edges,
             live_fill_edge_sawteeth=live_fill_edge_sawteeth,
             stats=stats,
+            image_width=solve.camera.intrinsics.image_width,
+            image_height=solve.camera.intrinsics.image_height,
         )
         prims = [backdrop, relief_mesh_primitive(mesh)]
 

@@ -380,6 +380,38 @@ def _triangulate_loop(loop: list[int], vertices: np.ndarray,
     return tris
 
 
+def _perimeter_loops(loops: list[list[int]], uvs: np.ndarray | None,
+                     image_width: int | None, image_height: int | None) -> set[int]:
+    """Indices of boundary loops that are the mesh perimeter, not holes.
+
+    A relief mesh's UVs are its source-image pixel coordinates, so a loop that
+    reaches the image border encloses the OUTSIDE of the plate rather than a
+    gap within it. Returns an empty set when UVs or image dimensions are
+    unavailable, letting the caller keep its own fallback.
+    """
+    if uvs is None or image_width is None or image_height is None:
+        return set()
+    uv = np.asarray(uvs, dtype=np.float64)
+    if uv.ndim != 2 or uv.shape[1] != 2 or len(uv) == 0:
+        return set()
+
+    # UVs are normalized with the OBJ origin at bottom-left; one pixel of
+    # tolerance absorbs the half-pixel offsets of the sampling lattice.
+    tol_u = 1.0 / max(int(image_width), 1)
+    tol_v = 1.0 / max(int(image_height), 1)
+    out: set[int] = set()
+    for k, loop in enumerate(loops):
+        idx = np.asarray(loop, dtype=np.int64)
+        idx = idx[(idx >= 0) & (idx < len(uv))]
+        if idx.size == 0:
+            continue
+        u, v = uv[idx, 0], uv[idx, 1]
+        if (u.min() <= tol_u or u.max() >= 1.0 - tol_u
+                or v.min() <= tol_v or v.max() >= 1.0 - tol_v):
+            out.add(k)
+    return out
+
+
 def fill_interior_holes(
     faces: np.ndarray,
     *,
@@ -388,18 +420,36 @@ def fill_interior_holes(
     view_matrix: np.ndarray | None = None,
     depth_near_m: float = 0.0,
     depth_far_m: float = 0.0,
+    uvs: np.ndarray | None = None,
+    image_width: int | None = None,
+    image_height: int | None = None,
+    allow_perimeter_fill: bool = False,
 ) -> tuple[np.ndarray, list[int]]:
     """Triangulate qualifying interior boundary loops; return (new_faces, filled_edge_counts).
 
-    A loop is filled iff (a) it is not the single largest loop when no depth
-    window is active, (b) its edge count < ``max_hole_edges``, and (c) when a
-    depth window is given (far bound > 0) every one of its boundary vertices'
-    forward depth lies within ``[depth_near_m, depth_far_m]``. Window mode
-    DELIBERATELY has no largest-loop guard: a window set to the frame's depth
-    is the artist explicitly asking to close it (the window IS the scope —
-    pinned by test_depth_window_can_admit_frame_when_set_to_it). Triangulation
-    uses only the loop's existing vertices — no new vertices, so 1:1 vertex-UV
-    is preserved (UVs for the existing indices already exist).
+    A loop is filled iff (a) it is not part of the mesh PERIMETER, (b) its edge
+    count < ``max_hole_edges``, and (c) when a depth window is given (far bound
+    > 0) every one of its boundary vertices' forward depth lies within
+    ``[depth_near_m, depth_far_m]``. Triangulation uses only the loop's existing
+    vertices — no new vertices, so 1:1 vertex-UV is preserved (UVs for the
+    existing indices already exist).
+
+    Perimeter detection needs ``uvs`` + ``image_width``/``image_height``: a loop
+    reaching the plate border bounds the outside of the image, not a hole in it
+    (see :func:`_perimeter_loops`). Without them the historical largest-loop
+    guard applies instead, which is weaker but never caps the mesh — and that
+    fallback is what preserves the older ruling that window mode DELIBERATELY
+    has no largest-loop guard: a window set to the frame's depth is the artist
+    explicitly asking to close it, the window IS the scope (pinned by
+    ``test_depth_window_can_admit_frame_when_set_to_it``).
+
+    ``allow_perimeter_fill`` opts back IN to capping the perimeter. Before the
+    perimeter rule this happened implicitly whenever a depth window was active,
+    which meant a scoped fill silently triangulated the plate silhouette —
+    reporting a filled loop while changing nothing visible, because the region
+    it closed was already covered. It stays available because closing a mesh to
+    a topological sphere is a real export need; it is opt-in because as a
+    default it is a trap.
 
     ``vertices`` is required to fill: a correct triangulation (non-convex,
     correctly wound, sliver-free) is not decidable from connectivity alone.
@@ -425,20 +475,42 @@ def fill_interior_holes(
     existing = {(int(a), int(b)) for a, b in
                 np.unique(np.sort(np.vstack([f[:, [0, 1]], f[:, [1, 2]],
                                              f[:, [2, 0]]]), axis=1), axis=0)}
-    outer = max(range(len(loops)), key=lambda i: len(loops[i]))  # largest = frame
+    # Which loops are the mesh PERIMETER rather than interior holes. Perimeter
+    # loops are never filled, whether or not a depth window is active: capping
+    # the silhouette is not hole-filling, it is covering the frame.
+    #
+    # Identified geometrically, not by size. `uvs` are 1:1 with source-image
+    # pixels, so a loop reaching the image border is (part of) the perimeter,
+    # while a window-shaped gap surrounded by wall touches no border and is a
+    # genuine hole. Selecting the perimeter as "the largest loop" is wrong in
+    # both directions — a big interior hole outranks a small perimeter — and
+    # the old rule additionally STOPPED excluding it once a depth window was
+    # given, so any scoped fill would cap the whole mesh. That produced the
+    # symptom of a fill reporting work with no visible effect: the loop it
+    # closed was the perimeter, already covered.
+    if allow_perimeter_fill:
+        # Explicit opt-in: the caller wants the plate silhouette capped, which
+        # is a legitimate request (closing a mesh to a topological sphere for
+        # export) — just never the default, because as a default it produces a
+        # fill that reports work and changes nothing visible.
+        perimeter: set[int] = set()
+    else:
+        perimeter = _perimeter_loops(loops, uvs, image_width, image_height)
+        if not perimeter:
+            # No UVs to judge by — fall back to the historical largest-loop
+            # guard rather than risk capping the mesh.
+            perimeter = {max(range(len(loops)), key=lambda i: len(loops[i]))}
+
     new_faces: list[tuple[int, int, int]] = []
     filled: list[int] = []
     for k, loop in enumerate(loops):
         n = len(loop)
+        if k in perimeter:
+            continue
         if depth_filter:
             # All boundary verts must lie inside the band-box depth window.
             d = depths[k]
             if not (np.all(d >= depth_near_m) and np.all(d <= depth_far_m)):
-                continue
-        else:
-            # No spatial scope → always leave the single largest loop open as
-            # the outer-frame guard.
-            if k == outer:
                 continue
         if n >= max_hole_edges:
             continue
@@ -460,8 +532,15 @@ def apply_interior_hole_fill(
     view_matrix: np.ndarray | None = None,
     depth_near_m: float = 0.0,
     depth_far_m: float = 0.0,
+    image_width: int | None = None,
+    image_height: int | None = None,
+    allow_perimeter_fill: bool = False,
 ) -> tuple[int, list[int]]:
     """Apply :func:`fill_interior_holes` to a ``ReliefMesh`` in place.
+
+    Passes the mesh's own UVs through so perimeter loops are recognised and
+    left open; supply ``image_width``/``image_height`` to enable that (without
+    them the weaker largest-loop guard applies).
 
     Returns (n_loops_filled, filled_edge_counts) for the node's report. No-op
     (0, []) when ``max_hole_edges <= 0`` or the mesh carries no faces / no
@@ -481,6 +560,10 @@ def apply_interior_hole_fill(
             view_matrix=view_matrix,
             depth_near_m=float(depth_near_m),
             depth_far_m=float(depth_far_m),
+            uvs=getattr(mesh, "uvs", None),
+            image_width=image_width,
+            image_height=image_height,
+            allow_perimeter_fill=bool(allow_perimeter_fill),
         )
     except NonManifoldWindingError as exc:
         # Reported no-op, never a graph kill — see apply_boundary_sawtooth_fill.

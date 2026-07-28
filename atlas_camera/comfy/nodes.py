@@ -96,6 +96,12 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasLayerPreview,
     AtlasInput,
 )
+from atlas_camera.comfy.nodes_completion import (
+    AtlasCompleteDepth,
+    AtlasLayerPlan,
+    AtlasMoveBudget,
+    AtlasOcclusionGraph,
+)
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
