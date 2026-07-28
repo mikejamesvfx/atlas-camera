@@ -2318,6 +2318,11 @@ class AtlasEquirectMultiView:
     cluster and dragged the average). The report prints every sample and names
     the furthest out, so a bad view is visible rather than averaged away.
 
+    `n_views` DEFAULTS TO 4, not the full 12, because that is where the
+    measurement points: 2->4 closes the ring for movement (z dolly 0.233 ->
+    0.983 m) and then plateaus, so views 5-12 buy projection coverage (torn
+    11.7% -> 5.5%) rather than camera freedom. Cheap default, informed upgrade.
+
     Use MoGe: V2-Metric-Outdoor mis-scales 90deg panorama crops ~4.4x. Keep
     `pitch_deg` at 0 — tilting removes the horizon and the ground fit stops
     working entirely.
@@ -2334,8 +2339,8 @@ class AtlasEquirectMultiView:
                 "equirect": ("IMAGE", {"tooltip": "Equirectangular 360x180 panorama, normally 2:1."}),
             },
             "optional": {
-                "n_views": ("INT", {"default": 12, "min": 2, "max": 32,
-                    "tooltip": "Cameras around the ring. Each costs one depth pass."}),
+                "n_views": ("INT", {"default": 4, "min": 2, "max": 32,
+                    "tooltip": "Cameras around the ring; each costs one depth pass. 4 is the measured sweet spot — going 2->4 closes the +-90deg gap that makes a sideways dolly disocclude (safe z dolly jumps 4.2x, 0.233 -> 0.983 m) and the budget then PLATEAUS. Beyond 4 you are buying projection coverage, not camera freedom: torn frame keeps falling (11.7% at 4, 7.4% at 8, 5.5% at 12) while the move budget drifts slightly DOWN. Raise it when the projection quality matters more than the runtime."}),
                 "fov_deg": ("FLOAT", {"default": 90.0, "min": 20.0, "max": 150.0, "step": 1.0}),
                 "size": ("INT", {"default": 1024, "min": 128, "max": 4096, "step": 64}),
                 "depth_model": (["Ruicheng/moge-2-vitl-normal",

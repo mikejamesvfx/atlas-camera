@@ -493,3 +493,30 @@ def test_multiview_returns_a_SELF_CONTAINED_solve(monkeypatch):
     # survives past the report string into anything that reads the solve.
     assert mv["shared_height_m"] == pytest.approx(1.4)
     assert "height_samples" in mv and "height_spread_m" in mv
+
+
+def test_multiview_default_n_views_is_the_measured_sweet_spot():
+    """4, not 12 — and the number is measured, so pin it.
+
+    Going 2 -> 4 views closes the +-90 deg gap that makes a sideways dolly
+    disocclude: safe z dolly jumps 4.2x (0.233 -> 0.983 m). Past 4 the budget
+    PLATEAUS and drifts slightly down, while torn frame keeps falling (11.7% at
+    4, 7.4% at 8, 5.5% at 12). So views 5-12 buy projection coverage rather than
+    camera freedom, and each costs a full depth pass — an expensive default for
+    a benefit many shots do not need.
+
+    AtlasSplitEquirect stays at 12 deliberately: it only crops, so extra views
+    there are free.
+    """
+    from atlas_camera.comfy import node_registry as reg
+
+    mv = reg.NODE_CLASS_MAPPINGS["AtlasEquirectMultiView"].INPUT_TYPES()
+    assert mv["optional"]["n_views"][1]["default"] == 4
+    # The reasoning must travel with the widget, or the next person "tidies" it
+    # back to a round number.
+    tip = mv["optional"]["n_views"][1]["tooltip"]
+    assert "sweet spot" in tip and "0.983" in tip and "coverage" in tip
+
+    split = reg.NODE_CLASS_MAPPINGS["AtlasSplitEquirect"].INPUT_TYPES()
+    assert split["optional"]["n_views"][1]["default"] == 12, (
+        "the splitter has no per-view cost — do not shrink it in sympathy")
