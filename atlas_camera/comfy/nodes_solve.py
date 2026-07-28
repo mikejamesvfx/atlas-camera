@@ -2160,7 +2160,24 @@ class AtlasSplitEquirect:
     once the focal was known — a wrong focal poisons the ground-plane fit that
     metric scale depends on.
 
-    EVERY VIEW SHARES ONE CAMERA HEIGHT — they share an optical centre by
+USE MoGe FOR THE DEPTH, NOT V2-Outdoor. The usual exterior doctrine does
+    not hold for panorama crops: a 90deg square crop is framing V2-Metric-Outdoor
+    was not trained on, and it mis-scales badly. Measured on two 8K panoramas,
+    four views each, both backends internally consistent (stdev 0.04-0.4) so
+    this is systematic rather than noise:
+
+        parish road      V2-Outdoor 5.57 m   MoGe-2 1.22 m   (4.56x)
+        urban street 02  V2-Outdoor 6.00 m   MoGe-2 1.40 m   (4.30x)
+
+    MoGe's numbers are plausible tripod heights for street panoramas; V2's are
+    not. The FOV is exact either way — this is purely a metric-scale failure.
+
+    KEEP pitch_deg AT 0. Tilting the ring down does not "see more ground and fit
+    better"; it removes the horizon and the ground fit stops working entirely —
+    at -20/-40/-60 every view fell back to scale_source=assumed_default (height
+    pinned at the 1.6 default, stdev exactly 0.0000, 0/6 measured).
+
+        EVERY VIEW SHARES ONE CAMERA HEIGHT — they share an optical centre by
     construction, so any disagreement between them is estimation noise, not
     geometry. Solving each crop independently does NOT know that: on the parish
     -road panorama four views measured 5.31 / 6.22 / 5.69 / 5.46 m, a 0.9 m

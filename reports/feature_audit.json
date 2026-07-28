@@ -3923,6 +3923,7 @@
    "mcp_tools": [],
    "repo_tools": [],
    "docs": [
+    "docs/DESIGN_RULES.md",
     "docs/NODE_CATALOG.md"
    ],
    "product_evidence": true,

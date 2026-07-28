@@ -367,6 +367,33 @@
     "guidance": "Solve one view for height, then give the rest height_mode='assume' with that value (or the median). Both inputs already exist on AtlasLearnedSolveFromImage \u2014 no new node needed."
    },
    "plan_correction": "The plan asserted a full sphere would reach tier-2 measured scale. True, but ONLY with the known focal \u2014 guessing it dropped a view to assumed_default. The assertion was right about the destination and wrong about the route."
+  },
+  "equirect_depth_backend_and_pitch": {
+   "plates": [
+    "cobblestone_parish_road_8k.exr",
+    "urban_street_02_8k.exr"
+   ],
+   "method": "4 views each (0/3/6/9), 12-view ring @ 90deg, focal_mm wired from the node so the focal is exact; height_mode=measure_from_depth",
+   "backend_disagreement": {
+    "parish road": {
+     "V2_outdoor_m": 5.5736,
+     "moge2_m": 1.2226,
+     "ratio": 4.56
+    },
+    "urban street 02": {
+     "V2_outdoor_m": 6.0022,
+     "moge2_m": 1.3952,
+     "ratio": 4.3
+    },
+    "stdev": "V2 0.396/0.043, MoGe 0.238/0.061 \u2014 both internally consistent, so the disagreement is systematic, not noise",
+    "verdict": "MoGe's figures are plausible tripod heights for street panoramas; V2's are not. V2-Metric-Outdoor mis-scales 90deg panorama crops ~4.4x. Recovered FOV is 0.000 deg under BOTH, so this is a metric-scale failure only. Amends the exterior depth doctrine for this case."
+   },
+   "pitch_must_stay_zero": {
+    "hypothesis_tested": "a level 90deg crop sees mostly facade, so tilting down should give the ground fit more to work with",
+    "result": "WRONG \u2014 it breaks the fit instead. pitch 0: median 5.99, 6/6 measured. pitch -20/-40/-60: 1.6000 with stdev EXACTLY 0.0000 and 0/6 measured, i.e. the assumed_default fallback. estimate_ground_scale needs the horizon in frame.",
+    "consequence": "pitch_deg=0 is load-bearing, not merely a sensible default"
+   },
+   "core_workflow_not_run": "3d_moge_panorama_to_mesh.json would not settle the height question: its own note says the merge 'disables per-view metric scale', so it yields a mesh rather than a trustworthy camera height. The MoGe-vs-V2 cross-check inside our own pipeline was the decisive test instead."
   }
  }
 }
