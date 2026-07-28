@@ -335,7 +335,7 @@ To run the V2-vs-DA3 accuracy comparison yourself, see
 `tools/compare_depth_backends.py`.
 
 ## Experimental: Hidden-Geometry Prediction (research-only)
-> **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI (the `experimental` branch enables it by default; `main` hides it so the node menu stays universal).
+> **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI; the default hides it so the node menu stays universal.
 
 
 `AtlasPredictHiddenGeometry` 🔬 predicts the surfaces hidden behind foreground
@@ -360,7 +360,7 @@ requirements. Weights (~1.3GB) download from HuggingFace (`ruili3/LaRI`) on
 first use. Without a clone the node fails with these instructions.
 
 ## Experimental: Fixer Render Repair (Docker)
-> **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI (the `experimental` branch enables it by default; `main` hides it so the node menu stays universal).
+> **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI; the default hides it so the node menu stays universal.
 
 
 `AtlasRenderFix` 🔬 repairs projected-render artifacts (torn silhouettes,

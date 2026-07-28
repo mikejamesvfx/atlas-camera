@@ -1,8 +1,10 @@
 """Tests for the ATLAS_EXPERIMENTAL registration gate.
 
 Main ships ATLAS_EXPERIMENTAL_DEFAULT="0" (experimental nodes hidden — a
-stock ComfyUI's node menu stays universal); the `experimental` branch flips
-that single constant to "1". Either way the env var overrides at launch.
+stock ComfyUI's node menu stays universal); ATLAS_EXPERIMENTAL=1 in the
+environment overrides that at launch. (A branch carrying the flipped
+constant was retired 2026-07-28 — these tests are why it could never be
+green: they pin the default-closed contract it existed to invert.)
 The gate merges at import time, so these tests exercise the helper + dicts
 rather than re-importing the module under different environments.
 """

@@ -19,8 +19,10 @@ Repo-wide expectations, agent or human:
 - Coordinate conversions happen only at adapter boundaries — never in core.
 - ComfyUI widget lists are positional in saved workflows: **append new
   widgets, never insert** (see CLAUDE.md's example-workflow refresh note).
-- Experimental (🔬) nodes register behind the `ATLAS_EXPERIMENTAL` gate; the
-  `experimental` branch differs from `main` only by that default.
+- Experimental (🔬) nodes register behind the `ATLAS_EXPERIMENTAL` gate. Set
+  `ATLAS_EXPERIMENTAL=1` before launching ComfyUI to enable them; there is no
+  separate branch for this (the old `experimental` branch was retired
+  2026-07-28 as redundant with the env var).
 
 ## graphify
 

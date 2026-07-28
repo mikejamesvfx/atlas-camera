@@ -90,3 +90,25 @@ So the pinholes are not isolated sampling noise, and spatial filtering of the
 shadow-map tap is the wrong place to attack them. Anyone reaching for a
 morphological fix on the occlusion cull should read this first and look
 elsewhere. Restore the code with: git branch feat/occlude-erode 18ccd8162f353cf94180c14b432ecff301bedcb0
+
+## Fourth pass, 2026-07-28 — the `experimental` branch retired
+
+experimental                                         f9ec1fcee93ea7e306a169e9f22acef96ba01a6f  2026-07-28 (rebased onto main)
+
+Its entire delta was ONE line: ATLAS_EXPERIMENTAL_DEFAULT = "1" instead of "0"
+in atlas_camera/comfy/node_registry.py. Setting ATLAS_EXPERIMENTAL=1 in the
+environment before launching ComfyUI achieves exactly the same result on any
+branch, which is what made the branch redundant rather than merely stale.
+
+The cost of keeping it was real and recurring: it re-conflicted on every change
+near the gate constant, went stale the instant anything landed on main (it was
+rebased twice in one hour on 2026-07-28 for that reason), and it can never be
+green — 5 tests pin the opposite contract, including
+test_experimental_gate_off_by_default, which asserts the very default the branch
+exists to invert.
+
+Restore with: git branch experimental f9ec1fcee93ea7e306a169e9f22acef96ba01a6f
+Or simply: ATLAS_EXPERIMENTAL=1 before launching ComfyUI.
+
+NOTE: origin/experimental was NOT deleted by this pass — the remote copy still
+exists and would need `git push origin --delete experimental` separately.

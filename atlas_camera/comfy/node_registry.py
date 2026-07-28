@@ -314,9 +314,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # set (user-cloned upstream repos, Docker, CUDA-class GPUs). Registered only
 # when the ATLAS_EXPERIMENTAL env var is truthy, so the standard install's
 # node menu stays universal and nothing here can confuse a stock ComfyUI.
-# The `experimental` branch ships ATLAS_EXPERIMENTAL_DEFAULT = "1" (that one
-# line is the entire branch delta); on any branch, setting
-# ATLAS_EXPERIMENTAL=1 (or 0) before launching ComfyUI overrides the default.
+# Set ATLAS_EXPERIMENTAL=1 (or 0) before launching ComfyUI to override this
+# default. A long-lived `experimental` branch used to carry the flipped
+# constant instead; it was retired 2026-07-28 because the env var does the
+# same job on any branch, while the branch re-conflicted on every edit near
+# this line, went stale on every push to main, and could never be green (5
+# tests pin the default-closed contract it inverted). Do not recreate it.
 NODE_CLASS_MAPPINGS["AtlasOcclusionGraph"] = AtlasOcclusionGraph
 NODE_CLASS_MAPPINGS["AtlasMoveBudget"] = AtlasMoveBudget
 NODE_CLASS_MAPPINGS["AtlasLayerPlan"] = AtlasLayerPlan
