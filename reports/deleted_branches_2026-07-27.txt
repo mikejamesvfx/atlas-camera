@@ -112,3 +112,30 @@ Or simply: ATLAS_EXPERIMENTAL=1 before launching ComfyUI.
 
 NOTE: origin/experimental was NOT deleted by this pass — the remote copy still
 exists and would need `git push origin --delete experimental` separately.
+
+## Fifth pass, 2026-07-28 — REMOTE branches deleted from origin
+
+Every branch below was audited against main's CURRENT content (added lines
+checked against main's version of the same files), and seven of the eight remote
+tips were byte-identical to the local SHAs already hand-audited in the second
+pass, whose residuals were read line by line and found to be stale catalog text,
+files deleted in the 0.8.1 trim, or refactor intermediate states.
+
+origin/experimental was the one exception — its tip (faf60ca) differs from the
+rebased local tip recorded above, so it was audited separately: a single commit
+whose entire diff against main is one line, ATLAS_EXPERIMENTAL_DEFAULT "0"->"1".
+The skyline geometry work its older history carried is present in main
+(distance_modes/ground_anchor in nodes_geometry.py).
+
+origin/main was PROTECTED and never a candidate.
+
+Restore any of these with:  git push origin <sha>:refs/heads/<name>
+
+origin/chore/mcp-doc-refresh                         8fbf044f6e881c26cd85cb257ea42c100e5e701f  2026-07-21
+origin/chore/node-menu-cleanup                       86eebb11409f12776a341b68c6e4fbae515f9766  2026-07-21
+origin/codex/agentic-output-assessment               e27694894fbb9e395eae8587995aa301023c6677  2026-07-21
+origin/codex/staged-sdxl-subgraphs                   4b1a717eaa051c75caff4ce6f6b6a298eaad2e7a  2026-07-21
+origin/codex/viewport-occlusion-edge-dilation        9b933426c2bae07576a374604715d8ea8bdedf77  2026-07-21
+origin/experimental                                  faf60ca9a33a2bcc39388e0d5fd94ed91472fbec  2026-07-19
+origin/experimental-da3-default                      51d6403fd7c2050ebc1878a0ec794ae2567b4e1f  2026-07-13
+origin/release/beta-0.6                              1e98e1cbef32ffae515b6d245fa27b1505329375  2026-07-16
