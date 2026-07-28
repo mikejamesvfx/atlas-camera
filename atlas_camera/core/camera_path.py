@@ -42,6 +42,20 @@ def _catmull_rom(p0: _Vec3, p1: _Vec3, p2: _Vec3, p3: _Vec3, t: float) -> _Vec3:
     return (out[0], out[1], out[2])
 
 
+def _catmull_rom_1d(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
+    """Scalar Catmull-Rom with the same basis as ``_catmull_rom`` — used for the
+    fov channel so a keyframed lens ramp follows the exact same curve shape as
+    the position/target channels it plays against."""
+    t2 = t * t
+    t3 = t2 * t
+    return 0.5 * (
+        2.0 * p1
+        + (-p0 + p2) * t
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+    )
+
+
 def _apply_easing(t: float, easing: str) -> float:
     if easing == "ease_in":
         return t * t
@@ -135,3 +149,65 @@ def sample_camera_path(path: AtlasCameraPath) -> list[AtlasExtrinsics]:
             )
         )
     return extrinsics
+
+
+def sample_camera_path_fov_deg(path: AtlasCameraPath) -> list[float] | None:
+    """Sample the keyframed VERTICAL fov channel — one value per frame, or ``None``.
+
+    Returns ``None`` (not a list) when NO keyframe carries ``fov_deg`` — the
+    static-lens case every pre-Vertigo path is in, so callers keep their
+    existing fixed-intrinsics behaviour unchanged. When at least one keyframe
+    has ``fov_deg``, keyframes without one inherit the nearest PREVIOUS defined
+    value (leading gaps back-fill from the first defined) and the filled
+    channel interpolates through the exact same phantom-endpoint Catmull-Rom +
+    per-segment easing as the position/target channels, so sampling at a
+    keyframe's ``frame_index`` reproduces its fov exactly.
+
+    Mirrored by ``sampleFovChannel`` in ``atlas_blockout.js`` (same accepted
+    hand-sync duplication as ``sample_camera_path`` itself — pinned by
+    ``tests/test_frontend_mirrors.py``).
+    """
+    frame_count = max(0, int(path.frame_count))
+    keyframes = path.keyframes
+    if frame_count == 0 or not keyframes:
+        return None
+    if all(kf.fov_deg is None for kf in keyframes):
+        return None
+
+    first_defined = next(kf.fov_deg for kf in keyframes if kf.fov_deg is not None)
+    fovs: list[float] = []
+    prev = float(first_defined)
+    for kf in keyframes:
+        if kf.fov_deg is not None:
+            prev = float(kf.fov_deg)
+        fovs.append(prev)
+
+    if len(keyframes) == 1:
+        return [fovs[0]] * frame_count
+
+    padded = [fovs[0]] + fovs + [fovs[-1]]
+    frame_indices = [kf.frame_index for kf in keyframes]
+    easings = [kf.easing for kf in keyframes]
+
+    out: list[float] = []
+    for frame in range(frame_count):
+        if frame <= frame_indices[0]:
+            seg = 0
+            local_t = 0.0
+        elif frame >= frame_indices[-1]:
+            seg = len(frame_indices) - 2
+            local_t = 1.0
+        else:
+            seg = 0
+            for i in range(len(frame_indices) - 1):
+                if frame_indices[i] <= frame <= frame_indices[i + 1]:
+                    seg = i
+                    break
+            span = frame_indices[seg + 1] - frame_indices[seg]
+            local_t = (frame - frame_indices[seg]) / span if span else 0.0
+
+        eased_t = _apply_easing(local_t, easings[seg])
+        out.append(
+            _catmull_rom_1d(padded[seg], padded[seg + 1], padded[seg + 2], padded[seg + 3], eased_t)
+        )
+    return out

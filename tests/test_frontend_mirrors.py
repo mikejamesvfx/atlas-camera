@@ -119,3 +119,76 @@ def test_catmull_rom_and_easing_numerically_match_js():
     for easing, row in zip(easings, js["ez"]):
         for t, js_v in zip(ts, row):
             assert abs(_apply_easing(t, easing) - js_v) < 1e-12, (easing, t)
+
+
+# --- 🌀 fov channel (atlas_blockout.js <-> camera_path.py) -------------------
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_fov_channel_numerically_matches_js():
+    """sampleFovChannel (JS) vs sample_camera_path_fov_deg (Python) — the
+    keyframed lens ramp behind 🌀 Vertigo. Executes the extracted JS for real
+    across a path that exercises fill-forward (a middle keyframe without fov),
+    mixed easings, and out-of-range clamping."""
+    from atlas_camera.core.camera_path import sample_camera_path_fov_deg
+    from atlas_camera.core.schema import AtlasCameraKeyframe, AtlasCameraPath
+
+    src = _read("atlas_blockout.js")
+    ez = re.search(r"(function applyEasingJS\(.*?\n  \})", src, re.DOTALL)
+    cr1 = re.search(r"(function catmullRom1JS\(.*?\n  \})", src, re.DOTALL)
+    fc = re.search(r"(function sampleFovChannel\(.*?\n  \})", src, re.DOTALL)
+    assert ez and cr1 and fc, "fov-channel JS mirrors not found"
+
+    kfs = [
+        {"frame_index": 2, "position": [0, 1.6, 8], "target": [0, 1.6, 0],
+         "fov_deg": 40.0, "easing": "ease_in_out"},
+        {"frame_index": 6, "position": [0, 1.6, 7], "target": [0, 1.6, 0],
+         "fov_deg": None, "easing": "ease_in"},
+        {"frame_index": 12, "position": [0, 1.6, 6.4], "target": [0, 1.6, 0],
+         "fov_deg": 48.930242541023, "easing": "linear"},
+    ]
+    frame_count = 15
+    script = (ez.group(1) + "\n" + cr1.group(1) + "\n" + fc.group(1) + "\n" +
+              f"const kfs = {json.dumps(kfs)};\n" +
+              f"const out = Array.from({{length: {frame_count}}}, (_, f) => sampleFovChannel(kfs, f));\n" +
+              "console.log(JSON.stringify(out));")
+    result = subprocess.run(["node", "-e", script], capture_output=True,
+                            text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    js_fovs = json.loads(result.stdout)
+
+    path = AtlasCameraPath(
+        keyframes=[
+            AtlasCameraKeyframe(
+                frame_index=k["frame_index"],
+                position=tuple(k["position"]),
+                target=tuple(k["target"]),
+                fov_deg=k["fov_deg"],
+                easing=k["easing"],
+            )
+            for k in kfs
+        ],
+        fps=24.0,
+        frame_count=frame_count,
+    )
+    py_fovs = sample_camera_path_fov_deg(path)
+    assert py_fovs is not None and len(py_fovs) == len(js_fovs) == frame_count
+    for frame, (py_v, js_v) in enumerate(zip(py_fovs, js_fovs)):
+        assert abs(py_v - js_v) < 1e-9, frame
+
+    # The static-lens contract: no keyframed fov -> both sides yield "no channel".
+    no_fov_kfs = [dict(k, fov_deg=None) for k in kfs]
+    script2 = (ez.group(1) + "\n" + cr1.group(1) + "\n" + fc.group(1) + "\n" +
+               f"console.log(JSON.stringify(sampleFovChannel({json.dumps(no_fov_kfs)}, 5)));")
+    result2 = subprocess.run(["node", "-e", script2], capture_output=True,
+                             text=True, timeout=30)
+    assert result2.returncode == 0, result2.stderr
+    assert json.loads(result2.stdout) is None
+    no_fov_path = AtlasCameraPath(
+        keyframes=[
+            AtlasCameraKeyframe(
+                frame_index=k["frame_index"], position=tuple(k["position"]),
+                target=tuple(k["target"]), easing=k["easing"])
+            for k in kfs
+        ],
+        fps=24.0, frame_count=frame_count)
+    assert sample_camera_path_fov_deg(no_fov_path) is None

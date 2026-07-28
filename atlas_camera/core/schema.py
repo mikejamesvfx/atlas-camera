@@ -448,6 +448,12 @@ class AtlasCameraKeyframe:
     ``AtlasExtrinsics`` per output frame, reusing ``camera_math.look_at_view_matrix``
     so every sampled pose shares the same view/world matrix convention as the
     rest of Atlas.
+
+    ``fov_deg`` is the VERTICAL field of view in degrees (matching Three.js's
+    ``camera.fov`` and the solved fov derived from ``fy``/image height). When
+    any keyframe sets it, ``camera_path.sample_camera_path_fov_deg`` yields a
+    per-frame lens channel (the 🌀 Vertigo dolly-zoom preset keys it); when no
+    keyframe sets it, playback/export keep the solved static intrinsics.
     """
 
     frame_index: int

@@ -8,12 +8,14 @@ interpolated path away from the middle-t point compared to linear.
 
 import pytest
 
-from atlas_camera.core.camera_path import sample_camera_path
+from atlas_camera.core.camera_path import sample_camera_path, sample_camera_path_fov_deg
 from atlas_camera.core.schema import AtlasCameraKeyframe, AtlasCameraPath
 
 
-def _kf(frame_index, position, target, easing="linear"):
-    return AtlasCameraKeyframe(frame_index=frame_index, position=position, target=target, easing=easing)
+def _kf(frame_index, position, target, easing="linear", fov_deg=None):
+    return AtlasCameraKeyframe(
+        frame_index=frame_index, position=position, target=target, easing=easing, fov_deg=fov_deg
+    )
 
 
 def test_zero_keyframes_returns_empty():
@@ -95,6 +97,75 @@ def test_frames_outside_keyframe_range_clamp_to_ends():
     assert frames[10].camera_position == pytest.approx(kf1.position)
 
 
+# ---------------------------------------------------------------------------
+# sample_camera_path_fov_deg — the 🌀 Vertigo lens channel
+# ---------------------------------------------------------------------------
+
+def test_fov_channel_none_when_no_keyframe_has_fov():
+    kf0 = _kf(0, (0.0, 1.0, 5.0), (0.0, 1.0, 0.0))
+    kf1 = _kf(10, (5.0, 1.0, 0.0), (0.0, 1.0, 0.0))
+    path = AtlasCameraPath(keyframes=[kf0, kf1], fps=24.0, frame_count=11)
+    assert sample_camera_path_fov_deg(path) is None
+
+
+def test_fov_channel_none_for_empty_path():
+    assert sample_camera_path_fov_deg(AtlasCameraPath(keyframes=[], fps=24.0, frame_count=5)) is None
+    kf = _kf(0, (0.0, 1.0, 0.0), (0.0, 1.0, -1.0), fov_deg=50.0)
+    assert sample_camera_path_fov_deg(AtlasCameraPath(keyframes=[kf], fps=24.0, frame_count=0)) is None
+
+
+def test_fov_channel_single_keyframe_repeats():
+    kf = _kf(0, (0.0, 1.0, 0.0), (0.0, 1.0, -1.0), fov_deg=42.5)
+    path = AtlasCameraPath(keyframes=[kf], fps=24.0, frame_count=4)
+    assert sample_camera_path_fov_deg(path) == pytest.approx([42.5] * 4)
+
+
+def test_fov_channel_exact_pass_through_at_keyframes():
+    # The vertigo shape: two keyframes, fov widening while the camera pushes in.
+    for easing in ("linear", "ease_in", "ease_out", "ease_in_out"):
+        kf0 = _kf(0, (0.0, 1.6, 8.0), (0.0, 1.6, 0.0), easing=easing, fov_deg=40.0)
+        kf1 = _kf(10, (0.0, 1.6, 6.4), (0.0, 1.6, 0.0), fov_deg=48.0)
+        path = AtlasCameraPath(keyframes=[kf0, kf1], fps=24.0, frame_count=11)
+        fovs = sample_camera_path_fov_deg(path)
+        assert fovs is not None and len(fovs) == 11
+        assert fovs[0] == pytest.approx(40.0), easing
+        assert fovs[10] == pytest.approx(48.0), easing
+        # Monotone-ish ramp between: interior samples stay inside the range.
+        assert all(39.9 <= v <= 48.1 for v in fovs), easing
+
+
+def test_fov_channel_fills_missing_keyframes_forward():
+    # Middle keyframe has no fov -> inherits the previous defined one (40),
+    # so frame 5 sits exactly at 40 and the ramp to 55 happens in segment 2.
+    kf0 = _kf(0, (0.0, 1.0, 8.0), (0.0, 1.0, 0.0), fov_deg=40.0)
+    kf1 = _kf(5, (0.0, 1.0, 7.0), (0.0, 1.0, 0.0))
+    kf2 = _kf(10, (0.0, 1.0, 6.0), (0.0, 1.0, 0.0), fov_deg=55.0)
+    path = AtlasCameraPath(keyframes=[kf0, kf1, kf2], fps=24.0, frame_count=11)
+    fovs = sample_camera_path_fov_deg(path)
+    assert fovs[0] == pytest.approx(40.0)
+    assert fovs[5] == pytest.approx(40.0, abs=1e-9)
+    assert fovs[10] == pytest.approx(55.0)
+
+
+def test_fov_channel_backfills_leading_missing_keyframes():
+    kf0 = _kf(0, (0.0, 1.0, 8.0), (0.0, 1.0, 0.0))  # no fov -> takes 44 from kf1
+    kf1 = _kf(10, (0.0, 1.0, 6.0), (0.0, 1.0, 0.0), fov_deg=44.0)
+    path = AtlasCameraPath(keyframes=[kf0, kf1], fps=24.0, frame_count=11)
+    fovs = sample_camera_path_fov_deg(path)
+    assert fovs == pytest.approx([44.0] * 11)
+
+
+def test_fov_channel_clamps_outside_keyframe_range():
+    kf0 = _kf(2, (0.0, 1.0, 8.0), (0.0, 1.0, 0.0), fov_deg=40.0)
+    kf1 = _kf(8, (0.0, 1.0, 6.0), (0.0, 1.0, 0.0), fov_deg=50.0)
+    path = AtlasCameraPath(keyframes=[kf0, kf1], fps=24.0, frame_count=11)
+    fovs = sample_camera_path_fov_deg(path)
+    assert fovs[0] == pytest.approx(40.0)
+    assert fovs[1] == pytest.approx(40.0)
+    assert fovs[9] == pytest.approx(50.0)
+    assert fovs[10] == pytest.approx(50.0)
+
+
 def test_camera_path_round_trip_to_dict():
     kf = _kf(0, (1.0, 2.0, 3.0), (0.0, 0.0, 0.0), easing="ease_out")
     path = AtlasCameraPath(
@@ -151,3 +222,9 @@ def test_arc_preset_shape_orbits_while_dollying():
     assert r_end < r_mid < r0           # while the camera pushes in
     assert az_end == pytest.approx(math.radians(15.0), abs=1e-6)
     assert r_end == pytest.approx(8.0 * 0.85, rel=1e-6)
+
+def test_camera_path_fov_survives_dict_round_trip():
+    kf = _kf(0, (1.0, 2.0, 3.0), (0.0, 0.0, 0.0), fov_deg=47.25)
+    path = AtlasCameraPath(keyframes=[kf], fps=24.0, frame_count=3)
+    restored = AtlasCameraPath.from_dict(path.to_dict())
+    assert restored.keyframes[0].fov_deg == pytest.approx(47.25)

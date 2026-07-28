@@ -11,8 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import math
+
 from atlas_camera.core.camera_math import derive_sensor_height_mm
-from atlas_camera.core.camera_path import sample_camera_path
+from atlas_camera.core.camera_path import sample_camera_path, sample_camera_path_fov_deg
 from atlas_camera.core.schema import AtlasCameraPath, AtlasIntrinsics, AtlasSolve
 
 
@@ -186,12 +188,20 @@ class USDExporter:
         the path once via ``camera_path.sample_camera_path`` (the single
         source of truth also used by the blockout viewport's baked preview)
         and writing one time sample per frame onto the same transform op.
+
+        When any keyframe carries ``fov_deg`` (the 🌀 Vertigo dolly-zoom
+        preset), the focal length is time-sampled too: per-frame vertical fov
+        from ``sample_camera_path_fov_deg`` converts against the solve's
+        derived sensor height (``focal_mm = (sensor_h / 2) / tan(fov_v / 2)``),
+        so the DCC camera reproduces the dolly-zoom. Static-lens paths keep
+        the single solved focal exactly as before.
         """
         Gf, Sdf, Usd, UsdGeom, UsdShade, Vt = _import_pxr_full()
         destination = Path(output_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
 
         frames = sample_camera_path(camera_path)
+        fovs = sample_camera_path_fov_deg(camera_path)
 
         stage = Usd.Stage.CreateNew(str(destination))
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.y)
@@ -199,8 +209,13 @@ class USDExporter:
         camera = UsdGeom.Camera.Define(stage, "/AtlasCamera/Camera")
         _set_camera_intrinsics(camera, intrinsics, Gf)
         transform_op = camera.AddTransformOp()
+        sensor_h = derive_sensor_height_mm(intrinsics)
         for frame_index, extrinsics in enumerate(frames):
             transform_op.Set(_gf_mat4(extrinsics.camera_world_matrix, Gf), Usd.TimeCode(frame_index))
+            if fovs is not None:
+                fov = min(179.0, max(0.01, float(fovs[frame_index])))
+                focal_mm = (sensor_h / 2.0) / math.tan(math.radians(fov) / 2.0)
+                camera.GetFocalLengthAttr().Set(float(focal_mm), Usd.TimeCode(frame_index))
 
         stage.SetStartTimeCode(0)
         stage.SetEndTimeCode(max(0, len(frames) - 1))

@@ -2633,8 +2633,8 @@ function buildNodeUI(node, containerEl) {
   toolbar.appendChild(envBtn);
 
   // ---------------------------------------------------------------------------
-  // 🎥 Camera Path — five deterministic one-click moves (Orbit L/R, Pan L/R,
-  // Dolly In) to test how 📽 Project holds up while the camera moves, then
+  // 🎥 Camera Path — six deterministic one-click moves (Orbit L/R, Pan L/R,
+  // Dolly In, 🌀 Vertigo) to test how 📽 Project holds up while the camera moves, then
   // bake to an IMAGE batch (path_frames) for a core Video Combine node, or
   // hand the raw keyframes (camera_path) to AtlasExportCameraPathUSD for a
   // DCC-facing animated camera. Every move is computed from the RECOVERED
@@ -2670,10 +2670,41 @@ function buildNodeUI(node, containerEl) {
     if (easing === "ease_in_out") return 3 * t * t - 2 * t * t * t;
     return t;
   }
+  function catmullRom1JS(p0, p1, p2, p3, t) {
+    const t2 = t * t, t3 = t2 * t;
+    return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+  }
+  // Keyframed VERTICAL fov channel (🌀 Vertigo) — mirrors camera_path.py's
+  // sample_camera_path_fov_deg exactly (fill-forward missing fovs, phantom
+  // endpoints, same easing); returns null when no keyframe carries fov_deg
+  // so static-lens paths keep the solved intrinsics. Pure (takes kfs) so
+  // tests/test_frontend_mirrors.py can execute it against the Python twin.
+  function sampleFovChannel(kfs, frame) {
+    if (kfs.length === 0 || !kfs.some((k) => k.fov_deg != null)) return null;
+    let prev = kfs.find((k) => k.fov_deg != null).fov_deg;
+    const fovs = kfs.map((k) => (k.fov_deg != null ? (prev = k.fov_deg) : prev));
+    if (kfs.length === 1) return fovs[0];
+    const padded = [fovs[0], ...fovs, fovs[fovs.length - 1]];
+    const frameIdx = kfs.map((k) => k.frame_index);
+    const easings = kfs.map((k) => k.easing);
+    let seg, localT;
+    if (frame <= frameIdx[0]) { seg = 0; localT = 0; }
+    else if (frame >= frameIdx[frameIdx.length - 1]) { seg = frameIdx.length - 2; localT = 1; }
+    else {
+      seg = 0;
+      for (let i = 0; i < frameIdx.length - 1; i++) {
+        if (frameIdx[i] <= frame && frame <= frameIdx[i + 1]) { seg = i; break; }
+      }
+      const span = frameIdx[seg + 1] - frameIdx[seg];
+      localT = span ? (frame - frameIdx[seg]) / span : 0;
+    }
+    const easedT = applyEasingJS(localT, easings[seg]);
+    return catmullRom1JS(padded[seg], padded[seg + 1], padded[seg + 2], padded[seg + 3], easedT);
+  }
   function sampleKeyframePoseAtFrame(frame) {
     const kfs = pathKeyframes;
     if (kfs.length === 0) return null;
-    if (kfs.length === 1) return { position: kfs[0].position, target: kfs[0].target };
+    if (kfs.length === 1) return { position: kfs[0].position, target: kfs[0].target, fovDeg: sampleFovChannel(kfs, frame) };
     const positions = [kfs[0].position, ...kfs.map((k) => k.position), kfs[kfs.length - 1].position];
     const targets = [kfs[0].target, ...kfs.map((k) => k.target), kfs[kfs.length - 1].target];
     const frameIdx = kfs.map((k) => k.frame_index);
@@ -2693,6 +2724,7 @@ function buildNodeUI(node, containerEl) {
     return {
       position: catmullRom3JS(positions[seg], positions[seg + 1], positions[seg + 2], positions[seg + 3], easedT),
       target: catmullRom3JS(targets[seg], targets[seg + 1], targets[seg + 2], targets[seg + 3], easedT),
+      fovDeg: sampleFovChannel(kfs, frame),
     };
   }
   // Exposed to the shared animate() loop above via the outer `applyPathPoseAtT` name.
@@ -2704,11 +2736,15 @@ function buildNodeUI(node, containerEl) {
     camera.up.set(0, 1, 0);
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
     // 🔭 playback lens (display/bake-only FOV multiplier; slider below). Read
-    // per-frame so dragging the slider mid-preview applies live. Playback end
-    // restores the solved FOV via applyRecoveredView; cancel restores it in
-    // the 🎥 toggle.
-    if (recoveredData) {
-      camera.fov = playbackLensFovDeg();
+    // per-frame so dragging the slider mid-preview applies live. A keyframed
+    // fov (🌀 Vertigo) replaces the solved fov as the BASE the multiplier
+    // composes onto (tan-space divide in playbackLensFovDeg) — the two never
+    // fight: the keyframes carry the dolly-zoom ramp, the slider stays a
+    // uniform zoom on top. Playback end restores the solved FOV via
+    // applyRecoveredView; cancel restores it in the 🎥 toggle.
+    const baseFov = pose.fovDeg != null ? pose.fovDeg : (recoveredData ? solvedFovDeg() : null);
+    if (baseFov != null) {
+      camera.fov = playbackLensFovDeg(baseFov);
       camera.updateProjectionMatrix();
     }
   };
@@ -2747,11 +2783,11 @@ function buildNodeUI(node, containerEl) {
   // trying to convert the dict keys "x"/"y"/"z" themselves.
   function kfToJSON(kf) {
     const v3 = (v) => [v.x, v.y, v.z];
-    return { frame_index: kf.frame_index, position: v3(kf.position), target: v3(kf.target), up: v3(kf.up), easing: kf.easing };
+    return { frame_index: kf.frame_index, position: v3(kf.position), target: v3(kf.target), up: v3(kf.up), fov_deg: kf.fov_deg ?? null, easing: kf.easing };
   }
   function kfFromJSON(data) {
     const obj = (a) => ({ x: a[0], y: a[1], z: a[2] });
-    return { frame_index: data.frame_index, position: obj(data.position), target: obj(data.target), up: obj(data.up || [0, 1, 0]), easing: data.easing || "linear" };
+    return { frame_index: data.frame_index, position: obj(data.position), target: obj(data.target), up: obj(data.up || [0, 1, 0]), fov_deg: data.fov_deg ?? null, easing: data.easing || "linear" };
   }
 
   function persistPathToClientData() {
@@ -2914,8 +2950,11 @@ function buildNodeUI(node, containerEl) {
     const fy = recoveredData?.render_fy ?? recoveredData?.fy ?? 1;
     return 2 * Math.atan(imageH / (2 * fy)) * (180 / Math.PI);
   }
-  function playbackLensFovDeg() {
-    const fov0 = solvedFovDeg();
+  function playbackLensFovDeg(baseFovDeg) {
+    // Base defaults to the solved fov; 🌀 Vertigo playback/bake passes the
+    // keyframed per-frame fov instead so the slider composes with (never
+    // overrides) a keyframed lens ramp.
+    const fov0 = baseFovDeg != null ? baseFovDeg : solvedFovDeg();
     const m = Math.max(0.05, pathLensScale);
     return 2 * Math.atan(Math.tan((fov0 * Math.PI) / 360) / m) * (180 / Math.PI);
   }
@@ -2986,7 +3025,7 @@ function buildNodeUI(node, containerEl) {
       up: { x: 0, y: 1, z: 0 }, easing,
     });
     let newKeyframes;
-    if (kind === "dolly_in" || kind === "push_in") {
+    if (kind === "dolly_in" || kind === "push_in" || kind === "vertigo") {
       const d = E.distanceTo(P) || 1;
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion);
       const T = E.clone().addScaledVector(fwd, d); // target ON the view axis
@@ -3026,13 +3065,27 @@ function buildNodeUI(node, containerEl) {
     pathFps = PATH_FPS;
     pathFrameCount = PATH_FRAME_COUNT;
     pathKeyframes = newKeyframes;
+    if (kind === "vertigo") {
+      // 🌀 Dolly-zoom: same 20% push-in as Dolly In, but the lens counter-
+      // animates so the pivot-plane framing holds — the target sits at the
+      // camera→pivot distance d, the end distance is d·(1−frac), and the
+      // pivot plane's framed width ∝ d·tan(fov/2), so holding it needs
+      // tan(fov_end/2) = tan(fov_start/2) / (1−frac) (wider lens as the
+      // camera closes in; the background visibly recedes). fov keyframes are
+      // the SOLVED vertical fov pre-🔭-lens: the playback slider composes on
+      // top as a uniform zoom, exactly like every other move.
+      const fov0 = solvedFovDeg();
+      const fov1 = 2 * Math.atan(Math.tan((fov0 * Math.PI) / 360) / (1 - MOVE_DOLLY_FRAC)) * (180 / Math.PI);
+      pathKeyframes[0].fov_deg = fov0;
+      pathKeyframes[pathKeyframes.length - 1].fov_deg = fov1;
+    }
     rebuildPathVisualization();
     persistPathToClientData();
     playBtn.onclick(); // auto-preview once; snaps back to the recovered view on done
   }
 
-  // APPEND-ONLY: the kind strings serialize into muscle memory and docs —
-  // never rename the existing five.
+  // APPEND-ONLY: the kind strings serialize into client_data camera_path (and
+  // into muscle memory and docs) — never rename an existing one.
   const MOVES = [
     ["orbit_left", "⟲ Orbit L", "Arc 15° left around the mesh centre from the exact recovered eye"],
     ["orbit_right", "⟳ Orbit R", "Arc 15° right around the mesh centre from the exact recovered eye"],
@@ -3042,6 +3095,7 @@ function buildNodeUI(node, containerEl) {
     ["arc_left", "⤴ Arc L", "Combined move: orbit 15° left WHILE pushing in 15% — 3 keyframes so the path genuinely curves"],
     ["arc_right", "⤵ Arc R", "Combined move: orbit 15° right WHILE pushing in 15% — 3 keyframes so the path genuinely curves"],
     ["push_in", "⭆ Push In", "Stronger 35% push toward the mesh centre, shaped by the easing selector"],
+    ["vertigo", "🌀 Vertigo", "Dolly-zoom: push in 20% while the lens widens to hold the pivot-plane framing — background recedes"],
   ];
   const moveWrap = document.createElement("span");
   moveWrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
@@ -3146,7 +3200,8 @@ function buildNodeUI(node, containerEl) {
       outputRt = new THREE.WebGLRenderTarget(W, H);
       camera.aspect = W / H;
       // Baked frames honor the 🔭 playback lens so the recording matches the
-      // preview exactly (the USD camera still ships the solved intrinsics).
+      // preview exactly (the USD camera ships the solved intrinsics — plus
+      // the keyframed fov ramp when 🌀 Vertigo keyed one, never the lens).
       if (recoveredData) camera.fov = playbackLensFovDeg();
       camera.updateProjectionMatrix();
       for (const frame of frameIndices) {
@@ -3155,6 +3210,12 @@ function buildNodeUI(node, containerEl) {
         camera.position.set(pose.position.x, pose.position.y, pose.position.z);
         camera.up.set(0, 1, 0);
         camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
+        // Keyframed fov (🌀 Vertigo) — same base-composes-with-🔭-lens rule
+        // as applyPathPoseAtT, re-set per frame since the ramp animates.
+        if (pose.fovDeg != null) {
+          camera.fov = playbackLensFovDeg(pose.fovDeg);
+          camera.updateProjectionMatrix();
+        }
         // JPEG, not PNG: baked frames feed a video encoder (h264, lossy), so
         // lossless PNG is pure waste — JPEG is ~5–10× smaller and stops the
         // whole clip's base64 from OOM-ing the JS heap when it's all stringified

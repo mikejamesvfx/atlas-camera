@@ -258,3 +258,49 @@ def test_usd_export_camera_animation_has_time_sampled_transform(tmp_path, make_a
     last_matrix = ops[0].Get(Usd.TimeCode(frame_count - 1))
     assert first_matrix.ExtractTranslation() == pytest.approx((0.0, 5.0, 10.0))
     assert last_matrix.ExtractTranslation() == pytest.approx((10.0, 5.0, 0.0))
+
+
+def test_usd_export_camera_animation_static_lens_keeps_focal_untimed(tmp_path, make_atlas_solve):
+    # No keyframe carries fov_deg -> the focal length attr keeps only the
+    # single solved default, no time samples (the pre-Vertigo contract).
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+    solve = make_atlas_solve()
+    path = USDExporter().export_camera_animation(
+        _two_keyframe_path(), solve.camera.intrinsics, tmp_path / "camera_path.usda"
+    )
+    stage = Usd.Stage.Open(str(path))
+    camera = UsdGeom.Camera(stage.GetPrimAtPath("/AtlasCamera/Camera"))
+    assert camera.GetFocalLengthAttr().GetTimeSamples() == []
+
+
+def test_usd_export_camera_animation_vertigo_time_samples_focal(tmp_path, make_atlas_solve):
+    # 🌀 Vertigo: fov widens over the move -> focal shortens, one sample per
+    # frame, endpoints matching focal = (sensor_h/2)/tan(fov/2) exactly.
+    pytest.importorskip("pxr")
+    import math
+
+    from pxr import Usd, UsdGeom
+
+    from atlas_camera.core.camera_math import derive_sensor_height_mm
+
+    solve = make_atlas_solve()
+    frame_count = 11
+    keyframes = _two_keyframe_path(frame_count).keyframes
+    keyframes[0].fov_deg = 40.0
+    keyframes[1].fov_deg = 48.0
+    vertigo_path = AtlasCameraPath(keyframes=keyframes, fps=24.0, frame_count=frame_count)
+    path = USDExporter().export_camera_animation(
+        vertigo_path, solve.camera.intrinsics, tmp_path / "camera_path.usda"
+    )
+    stage = Usd.Stage.Open(str(path))
+    camera = UsdGeom.Camera(stage.GetPrimAtPath("/AtlasCamera/Camera"))
+    focal_attr = camera.GetFocalLengthAttr()
+    assert len(focal_attr.GetTimeSamples()) == frame_count
+
+    sensor_h = derive_sensor_height_mm(solve.camera.intrinsics)
+    expected_first = (sensor_h / 2.0) / math.tan(math.radians(40.0) / 2.0)
+    expected_last = (sensor_h / 2.0) / math.tan(math.radians(48.0) / 2.0)
+    assert focal_attr.Get(Usd.TimeCode(0)) == pytest.approx(expected_first, rel=1e-5)
+    assert focal_attr.Get(Usd.TimeCode(frame_count - 1)) == pytest.approx(expected_last, rel=1e-5)
+    assert focal_attr.Get(Usd.TimeCode(frame_count - 1)) < focal_attr.Get(Usd.TimeCode(0))
