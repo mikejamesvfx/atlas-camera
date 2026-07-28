@@ -520,3 +520,73 @@ def test_multiview_default_n_views_is_the_measured_sweet_spot():
     split = reg.NODE_CLASS_MAPPINGS["AtlasSplitEquirect"].INPUT_TYPES()
     assert split["optional"]["n_views"][1]["default"] == 12, (
         "the splitter has no per-view cost — do not shrink it in sympathy")
+
+
+# --------------------------------------------------------------------------
+# The shipped multiview workflow — pinning the couplings that are implicit in
+# the graph and would otherwise only surface as breakage.
+# --------------------------------------------------------------------------
+
+def _multiview_workflow():
+    import json
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    return json.loads(
+        (root / "examples" / "atlas_equirect_360_multiview_workflow.json")
+        .read_text(encoding="utf-8"))
+
+
+def test_multiview_workflow_feeds_the_viewport_from_all_views_slot():
+    """`all_views` is an N-frame BATCH wired into a single-image input.
+
+    That is correct, not sloppy: the viewport's `_image_tensor_to_pil` takes
+    frame [0], and index 0 is the primary view by construction —
+    `perspective_view_angles` puts yaw 0 first and the node solves that view as
+    the primary. But the correctness depends on view ORDER, which nothing else
+    forces, so pin both halves here: the wiring, and the ordering it relies on.
+    """
+    wf = _multiview_workflow()
+    by_id = {n["id"]: n for n in wf["nodes"]}
+    mv = next(n for n in wf["nodes"] if n["type"] == "AtlasEquirectMultiView")
+    vp = next(n for n in wf["nodes"] if n["type"] == "AtlasBlockoutViewport")
+
+    # slot 1 of the multiview node is `all_views`
+    assert mv["outputs"][1]["name"] == "all_views"
+    src_slot = {l[0]: (l[1], l[2]) for l in wf["links"]}
+    link = vp["inputs"][1]["link"]
+    assert vp["inputs"][1]["name"] == "source_image"
+    assert src_slot[link] == (mv["id"], 1), "viewport must be fed from all_views"
+
+    # ...and the ordering that makes frame 0 the primary.
+    assert perspective_view_angles(4)[0] == (0.0, 0.0)
+
+
+def test_multiview_workflow_keeps_move_budget_as_a_regression_guard():
+    """AtlasMoveBudget is in this graph on purpose.
+
+    It refused the solve during development — "has proxy primitives but no
+    relief mesh" — because the primary geometry reached its ProjectionSource but
+    not projection_scene. No unit test caught that; only a live run did. Keeping
+    it wired in a SHIPPED graph is what stops the regression returning quietly.
+    """
+    wf = _multiview_workflow()
+    mv = next(n for n in wf["nodes"] if n["type"] == "AtlasEquirectMultiView")
+    mb = next((n for n in wf["nodes"] if n["type"] == "AtlasMoveBudget"), None)
+    assert mb is not None, "the move-budget guard was removed from the shipped graph"
+    src_slot = {l[0]: (l[1], l[2]) for l in wf["links"]}
+    assert src_slot[mb["inputs"][0]["link"]] == (mv["id"], 0),         "move budget must measure the multiview solve, not something else"
+
+
+def test_multiview_workflow_does_not_drift_from_the_measured_default():
+    """The saved graph's n_views must equal the node's own default.
+
+    The builder reads defaults off the live class precisely so the example cannot
+    quietly disagree with the measurement the default encodes. If someone raises
+    the node default, regenerating the workflow is part of that change.
+    """
+    from atlas_camera.comfy import node_registry as reg
+
+    wf = _multiview_workflow()
+    mv = next(n for n in wf["nodes"] if n["type"] == "AtlasEquirectMultiView")
+    live = reg.NODE_CLASS_MAPPINGS["AtlasEquirectMultiView"].INPUT_TYPES()
+    assert mv["widgets_values"][0] == live["optional"]["n_views"][1]["default"] == 4
