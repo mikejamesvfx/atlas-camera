@@ -146,7 +146,9 @@
     "auto",
     9,
     0,
-    ""
+    "",
+    0,
+    0.25
    ],
    "properties": {
     "Node name for S&R": "AtlasDepthMap"

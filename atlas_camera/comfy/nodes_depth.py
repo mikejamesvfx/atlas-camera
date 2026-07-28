@@ -134,12 +134,26 @@ class AtlasDepthMap:
                                "from HuggingFace (air-gapped / shared model dirs). NOT ComfyUI "
                                "core's geometry_estimation/*.safetensors — different container, "
                                "and it carries no model_config."}),
+                "moge_tile_side": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 128,
+                    "tooltip": "MoGe ONLY. Run inference on overlapping TILES of this size at "
+                               "SOURCE resolution (0 = off). The opposite lever to moge_max_side: "
+                               "that one downscales to save VRAM, this one refuses to downscale so "
+                               "a 36MP plate keeps its fine structure — the model spends its whole "
+                               "token budget on each tile instead of on the shrunken whole. Costs "
+                               "one inference pass PER TILE plus one global pass, so a 4x4 tiling "
+                               "is ~17x the time. Every tile is affine-fitted onto that global "
+                               "pass first: monocular depth is scale-ambiguous per input, so raw "
+                               "tiles disagree and pasting them steps at every seam. Try 1024."}),
+                "moge_tile_overlap": ("FLOAT", {"default": 0.25, "min": 0.0, "max": 0.5, "step": 0.05,
+                    "tooltip": "MoGe ONLY. Tile overlap as a fraction of tile size. More overlap "
+                               "= wider blend and more tiles (slower). Only used when "
+                               "moge_tile_side > 0."}),
             },
         }
 
     def estimate(self, image, depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                  device="auto", solve=None, moge_resolution_level=9, moge_max_side=0,
-                 moge_checkpoint_path=""):
+                 moge_checkpoint_path="", moge_tile_side=0, moge_tile_overlap=0.25):
         from atlas_camera.inference.depth_estimator import estimate_depth
         tmp = _save_image_tensor_to_tmp(image)
         try:
@@ -148,7 +162,9 @@ class AtlasDepthMap:
                                     focal_px=_solve_focal_px_for_image(solve, image),
                                     resolution_level=int(moge_resolution_level),
                                     max_side=int(moge_max_side),
-                                    checkpoint_path=str(moge_checkpoint_path or ""))
+                                    checkpoint_path=str(moge_checkpoint_path or ""),
+                                    tile_side=int(moge_tile_side),
+                                    tile_overlap=float(moge_tile_overlap))
         finally:
             os.unlink(tmp)
         return (result,)
@@ -993,3 +1009,182 @@ class AtlasDepthLayerMask:
         occ_t = torch.from_numpy(occlusion_mask.astype(np.float32)).unsqueeze(0)
         hole_t = torch.from_numpy(hole_mask_arr).unsqueeze(0)
         return (layer_t, occ_t, hole_t)
+
+
+class AtlasOutpaintDepth:
+    """🪟 Extend a depth map to match an OUTPAINTED plate — geometry for the ring.
+
+    `AtlasCleanPlateLayer.frame_outpaint_px` can already widen a layer past the
+    frame edges, and its own tooltip calls the frame-edge reveal "the binding
+    constraint on wide scenes". But the ring it adds is edge-replicated smear,
+    and depth cannot follow it — `AtlasMogeNormals` refuses to run at all when
+    `frame_outpaint_px != 0` because the normal map falls out of registration.
+    The result is colour with no surface underneath: push the camera into that
+    ring and there is nothing to project onto.
+
+    This node closes that. Feed it the ORIGINAL depth and an ALREADY-WIDENED
+    plate — outpainted by `AtlasSDXLInpaint`, by any generative node, or by
+    hand — and it re-runs depth on the widened image and stitches the two.
+
+    THE PROMPT LIVES UPSTREAM, deliberately. Whatever text conditioned the RGB
+    outpaint is what shapes the new geometry, because the depth model reads the
+    invented pixels. That keeps one generative step in the graph instead of two
+    that could disagree about what is out there.
+
+    WHY IT IS NOT A PASTE. A monocular model run on the widened image returns a
+    DIFFERENT scale than the same model on the original — different framing,
+    different content, different implied camera. Pasting the ring on directly
+    puts a step at the frame boundary that reads as a wall of geometry. The
+    widened depth is affine-fitted onto the original across the region they
+    share first; the report prints the recovered scale, shift and residual so a
+    bad fit is visible rather than silently baked in.
+
+    The interior always keeps the ORIGINAL depth. It was estimated from real
+    pixels; the widened pass saw invented ones and has no claim on it.
+
+    `ring_mask` marks the invented region — the same contract as
+    `extend_mask` / `{layer}_extend_matte.png`, so downstream regrain and
+    matte work can treat it as suspect.
+    """
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "MASK", "STRING")
+    RETURN_NAMES = ("depth", "ring_mask", "report")
+    FUNCTION = "outpaint"
+    CATEGORY = "Atlas Camera/Masks & Depth"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "depth": ("ATLAS_DEPTH_MAP", {"tooltip":
+                    "Depth for the ORIGINAL, un-widened plate."}),
+                "widened_image": ("IMAGE", {"tooltip":
+                    "The plate AFTER outpainting — larger than the original. The "
+                    "padding is derived from the size difference."}),
+            },
+            "optional": {
+                "depth_model": (list(_DEPTH_MODEL_CHOICES),
+                    {"default": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                     "tooltip": "Use the SAME model that produced the input depth. A "
+                                "different one changes both scale and character, and the "
+                                "affine fit can only absorb the scale."}),
+                "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
+                "solve": ("ATLAS_SOLVE", {"tooltip":
+                    "Optional focal source. NOTE the widened plate has a WIDER field of "
+                    "view at the same focal length, which this node accounts for."}),
+                "feather_px": ("INT", {"default": 0, "min": 0, "max": 512, "step": 4,
+                    "tooltip": "Blend the new depth into the original across this many "
+                               "pixels INSIDE the frame edge. 0 keeps every measured pixel "
+                               "exactly and takes new depth only outside the frame. Raise it "
+                               "only if a residual step is visible at the boundary — it "
+                               "trades real measurement for a smoother join."}),
+                "pad_override": ("STRING", {"default": "",
+                    "tooltip": "Explicit 'left,top,right,bottom' padding in pixels. Leave "
+                               "empty to split the size difference evenly, which is what a "
+                               "symmetric outpaint produces."}),
+            },
+        }
+
+    def outpaint(self, depth, widened_image,
+                 depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+                 device="auto", solve=None, feather_px=0, pad_override=""):
+        import copy as _copy
+
+        from atlas_camera.core.depth_outpaint import outpaint_depth
+        from atlas_camera.inference.depth_estimator import estimate_depth
+
+        np = _require_numpy()
+        torch = _require_torch()
+
+        base = np.asarray(depth.depth, dtype=np.float64)
+        h, w = base.shape
+        wide_h, wide_w = int(widened_image.shape[1]), int(widened_image.shape[2])
+
+        if (wide_w, wide_h) == (w, h):
+            raise ValueError(
+                "AtlasOutpaintDepth: widened_image is the same size as the depth map "
+                f"({w}x{h}) — there is no ring to fill. Wire the OUTPAINTED plate here, "
+                "not the original.")
+        if wide_w < w or wide_h < h:
+            raise ValueError(
+                f"AtlasOutpaintDepth: widened_image ({wide_w}x{wide_h}) is smaller than "
+                f"the depth map ({w}x{h}). This node extends a plate, it does not crop one.")
+
+        if str(pad_override).strip():
+            try:
+                pad = tuple(int(v) for v in str(pad_override).split(","))
+                if len(pad) != 4:
+                    raise ValueError
+            except Exception:
+                raise ValueError(
+                    f"pad_override must be 'left,top,right,bottom', got {pad_override!r}")
+        else:
+            # Split the difference evenly; the remainder goes right/bottom so the
+            # totals always reconstruct the widened size exactly.
+            dx, dy = wide_w - w, wide_h - h
+            pad = (dx // 2, dy // 2, dx - dx // 2, dy - dy // 2)
+
+        tmp = _save_image_tensor_to_tmp(widened_image)
+        try:
+            # The focal is a property of the LENS, not the crop, so it carries
+            # over unchanged — the widened plate simply spans a wider angle at
+            # the same focal length, which is what makes the ring meaningful.
+            focal = _solve_focal_px_for_image(solve, None) if solve is not None else None
+            wide = estimate_depth(tmp, model_id=depth_model,
+                                  device=None if device == "auto" else device,
+                                  focal_px=focal)
+        finally:
+            os.unlink(tmp)
+
+        res = outpaint_depth(base, np.asarray(wide.depth, dtype=np.float64),
+                             pad=pad, feather_px=int(feather_px))
+
+        out = _copy.copy(depth)
+        out.depth = res.depth
+        out.image_width = int(res.depth.shape[1])
+        out.image_height = int(res.depth.shape[0])
+        valid = np.isfinite(res.depth) & (res.depth > 0)
+        out.near = float(res.depth[valid].min()) if valid.any() else 0.0
+        out.far = float(res.depth[valid].max()) if valid.any() else 0.0
+        meta = dict(getattr(depth, "metadata", {}) or {})
+        meta["outpainted"] = dict(res.metadata, scale=res.scale, shift=res.shift,
+                                  anchor_samples=res.anchor_samples,
+                                  anchor_residual=res.anchor_residual)
+        out.metadata = meta
+        # The normal field belongs to the ORIGINAL frame and is now the wrong
+        # size. Dropping it is deliberate: a silently mis-registered normal map
+        # is exactly the failure AtlasMogeNormals refuses frame_outpaint_px over.
+        dropped_normals = getattr(depth, "normal", None) is not None
+        if dropped_normals:
+            out.normal = None
+
+        ring = torch.from_numpy(res.ring_mask.astype(np.float32)).unsqueeze(0)
+
+        lines = [
+            f"AtlasOutpaintDepth: {w}x{h} -> {out.image_width}x{out.image_height} "
+            f"(pad l{pad[0]} t{pad[1]} r{pad[2]} b{pad[3]})",
+            f"  ring is {res.metadata['ring_fraction'] * 100:.1f}% of the new frame "
+            "— INVENTED geometry, from invented pixels",
+        ]
+        if res.metadata["anchored"]:
+            lines.append(
+                f"  anchored to the original: scale {res.scale:.4f}, shift {res.shift:+.4f} "
+                f"on {res.anchor_samples} samples, residual {res.anchor_residual:.4f} m")
+            if res.anchor_residual > 0.5:
+                lines.append(
+                    "  WARNING residual is large — the widened pass disagrees with the "
+                    "original about the part they SHARE, so the ring is unlikely to be "
+                    "trustworthy. Check that both used the same depth model.")
+        else:
+            lines.append(
+                "  NOT anchored (too little valid overlap) — the ring keeps the widened "
+                "pass's own scale and will probably step at the frame edge.")
+        if dropped_normals:
+            lines.append(
+                "  predicted normals DROPPED: they belong to the original frame and "
+                "would be mis-registered against the widened plate.")
+        if int(feather_px) > 0:
+            lines.append(
+                f"  feathered {int(feather_px)} px inside the frame — that band is now a "
+                "mixture, not pure measurement.")
+
+        return (out, ring, "\n".join(lines))

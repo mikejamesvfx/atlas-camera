@@ -87,8 +87,12 @@ def test_moge_cache_key_fragments_on_the_cost_knobs(monkeypatch, tmp_path):
     seen = []
 
     def fake_moge(image_path, *, model_id, device, focal_px,
-                  resolution_level=9, max_side=0, checkpoint_path=""):
-        seen.append((resolution_level, max_side, checkpoint_path))
+                  resolution_level=9, max_side=0, checkpoint_path="",
+                  tile_side=0, tile_overlap=0.25):
+        # Deliberately STRICT (no **kwargs): a stub that swallows unknown
+        # arguments hides a caller passing the wrong name, which is exactly how
+        # the focal_length_mm/focal_length_mm_hint mix-up got through earlier.
+        seen.append((resolution_level, max_side, checkpoint_path, tile_side))
         return DepthResult(depth=np.zeros((4, 4), np.float32), is_metric=True,
                            model_id=model_id, image_width=4, image_height=4)
 
@@ -101,13 +105,19 @@ def test_moge_cache_key_fragments_on_the_cost_knobs(monkeypatch, tmp_path):
 
     de.estimate_depth(str(img), model_id=mid)                       # defaults
     de.estimate_depth(str(img), model_id=mid)                       # cached — no call
-    assert seen == [(9, 0, "")], "identical args must hit the cache"
+    assert seen == [(9, 0, "", 0)], "identical args must hit the cache"
 
     de.estimate_depth(str(img), model_id=mid, resolution_level=4)
     de.estimate_depth(str(img), model_id=mid, max_side=2048)
     de.estimate_depth(str(img), model_id=mid, checkpoint_path="/tmp/model.pt")
-    assert seen == [(9, 0, ""), (4, 0, ""), (9, 2048, ""),
-                    (9, 0, "/tmp/model.pt")]
+    de.estimate_depth(str(img), model_id=mid, tile_side=1024)
+    assert seen == [(9, 0, "", 0), (4, 0, "", 0), (9, 2048, "", 0),
+                    (9, 0, "/tmp/model.pt", 0), (9, 0, "", 1024)]
+
+    # tile_overlap only matters when tiling is on, but it still has to split the
+    # cache: two overlaps at the same tile_side are different renders.
+    de.estimate_depth(str(img), model_id=mid, tile_side=1024, tile_overlap=0.4)
+    assert len(seen) == 6, "tile_overlap did not fragment the cache"
 
 
 def test_non_moge_models_are_not_fragmented_by_moge_knobs(monkeypatch, tmp_path):

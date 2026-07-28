@@ -59,6 +59,7 @@ from atlas_camera.comfy.nodes_solve import (
 from atlas_camera.comfy.nodes_depth import (
     AtlasDepthAnything,
     AtlasDepthMap,
+    AtlasOutpaintDepth,
     AtlasDepthOutlierMask,
     AtlasMogeNormals,
     AtlasDepthDetailEnhance,
@@ -188,6 +189,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasExportPlateEXR":        AtlasExportPlateEXR,
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              AtlasDepthMap,
+    "AtlasOutpaintDepth":          AtlasOutpaintDepth,
     "AtlasMogeNormals":           AtlasMogeNormals,
     "AtlasDepthDetailEnhance":    AtlasDepthDetailEnhance,
     "AtlasDepthCombine":          AtlasDepthCombine,
@@ -287,6 +289,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportPlateEXR":        "Atlas Export ACEScg Plate 📤",
     # Track 5 — composable geometry derivation
     "AtlasDepthMap":              "Atlas Depth Map 🌊",
+    "AtlasOutpaintDepth":  "Atlas Outpaint Depth 🪟",
     "AtlasMogeNormals":           "Atlas MoGe Normals 🧭",
     "AtlasDepthDetailEnhance":    "Atlas Depth Detail Enhance 🔬",
     "AtlasDepthCombine":          "Atlas Depth Combine ➕",

@@ -552,6 +552,108 @@ def _get_moge_model(model_id: str, device: str, checkpoint_path: str = ""):
     return model
 
 
+# --------------------------------------------------------------- tiled depth
+
+
+def tile_boxes(width: int, height: int, tile_side: int, overlap: float) -> list:
+    """Cover ``width x height`` in tiles of ~``tile_side``, overlapping by ``overlap``.
+
+    Returns ``[(x0, y0, x1, y1), ...]`` in source pixels. Tiles are distributed
+    EVENLY rather than laid left-to-right with a ragged remainder: a thin final
+    strip would get its own inferred scale from almost no context, which is the
+    worst possible input to a monocular model and shows up as a bright or dark
+    band down one edge.
+    """
+    step = max(1, int(round(tile_side * (1.0 - float(overlap)))))
+
+    def starts(total: int) -> list:
+        if total <= tile_side:
+            return [0]
+        n = int(-(-(total - tile_side) // step)) + 1        # ceil division
+        # Spread the n tiles evenly across the axis so every tile is full-size.
+        return [int(round(i * (total - tile_side) / (n - 1))) for i in range(n)]
+
+    return [(x, y, min(x + tile_side, width), min(y + tile_side, height))
+            for y in starts(height) for x in starts(width)]
+
+
+def _feather_weights(h: int, w: int, box, width: int, height: int, ramp: int, np):
+    """Cosine ramp toward tile edges, except where the tile meets the frame edge.
+
+    Feathering an edge that has no neighbour to blend with would fade the
+    outermost pixels toward zero and leave a dark rim around the whole plate.
+    """
+    x0, y0, x1, y1 = box
+    wx = np.ones(w, dtype=np.float64)
+    wy = np.ones(h, dtype=np.float64)
+    if ramp > 0:
+        t = 0.5 - 0.5 * np.cos(np.linspace(0.0, np.pi, min(ramp, w // 2 or 1)))
+        if x0 > 0:
+            wx[:len(t)] = np.minimum(wx[:len(t)], t)
+        if x1 < width:
+            wx[-len(t):] = np.minimum(wx[-len(t):], t[::-1])
+        t = 0.5 - 0.5 * np.cos(np.linspace(0.0, np.pi, min(ramp, h // 2 or 1)))
+        if y0 > 0:
+            wy[:len(t)] = np.minimum(wy[:len(t)], t)
+        if y1 < height:
+            wy[-len(t):] = np.minimum(wy[-len(t):], t[::-1])
+    return np.outer(wy, wx)
+
+
+def fit_affine_to_reference(tile_depth, reference, np, min_samples: int = 64):
+    """Least-squares ``(a, b)`` minimising ``|a*tile + b - reference|``.
+
+    THE reason tiling needs more than a paste. Monocular depth is scale- and
+    shift-ambiguous per input, so a tile of sky and a tile of pavement come back
+    on different scales even from a "metric" model. Stitching them directly puts
+    a visible step at every seam that no amount of feathering hides — the blend
+    just turns a hard step into a soft one.
+
+    Anchoring every tile to one global low-resolution pass puts them all in a
+    single frame of reference first; the feather then only has to hide model
+    noise, which it can.
+
+    Returns ``(1.0, 0.0)`` when there is too little overlap to fit — better a
+    tile that is merely unadjusted than one warped by a fit on ten pixels.
+    """
+    t = np.asarray(tile_depth, dtype=np.float64).ravel()
+    r = np.asarray(reference, dtype=np.float64).ravel()
+    ok = np.isfinite(t) & np.isfinite(r) & (t > 0) & (r > 0)
+    if int(ok.sum()) < min_samples:
+        return 1.0, 0.0
+    t, r = t[ok], r[ok]
+    # Guard a degenerate tile (flat depth): the normal equations are singular
+    # and would produce an enormous `a`.
+    if float(t.std()) < 1e-6:
+        return 1.0, float(np.median(r) - np.median(t))
+    a, b = np.polyfit(t, r, 1)
+    if not np.isfinite(a) or not np.isfinite(b) or a <= 0:
+        return 1.0, 0.0
+    return float(a), float(b)
+
+
+def assemble_tiles(tiles: list, width: int, height: int, ramp: int, np):
+    """Feather-blend ``[(box, depth_tile), ...]`` into one HxW map.
+
+    Weights accumulate per pixel and the sum divides at the end, so overlapping
+    regions are a true weighted mean rather than whichever tile happened to be
+    written last.
+    """
+    acc = np.zeros((height, width), dtype=np.float64)
+    wsum = np.zeros((height, width), dtype=np.float64)
+    for box, tile in tiles:
+        x0, y0, x1, y1 = box
+        th, tw = tile.shape[:2]
+        w = _feather_weights(th, tw, box, width, height, ramp, np)
+        finite = np.isfinite(tile)
+        acc[y0:y1, x0:x1] += np.where(finite, tile, 0.0) * w * finite
+        wsum[y0:y1, x0:x1] += w * finite
+    out = np.full((height, width), np.nan, dtype=np.float32)
+    hit = wsum > 1e-9
+    out[hit] = (acc[hit] / wsum[hit]).astype(np.float32)
+    return out
+
+
 def _estimate_depth_moge(
     image_path: str | Path,
     *,
@@ -561,6 +663,8 @@ def _estimate_depth_moge(
     resolution_level: int = MOGE_RESOLUTION_LEVEL_DEFAULT,
     max_side: int = 0,
     checkpoint_path: str = "",
+    tile_side: int = 0,
+    tile_overlap: float = 0.25,
 ) -> DepthResult:
     """MoGe-2 inference path: metric forward-Z depth from the point map.
 
@@ -671,6 +775,60 @@ def _estimate_depth_moge(
         predicted_normal = np.asarray(normal_t.cpu().numpy(), dtype=np.float32)
         metadata["has_predicted_normals"] = True
 
+    # ---- optional native-resolution tiling -------------------------------
+    # The pass above always runs, tiled or not: it is the GLOBAL REFERENCE every
+    # tile is anchored to. Without it the tiles have no shared frame and their
+    # individual scales cannot be reconciled.
+    side = int(tile_side or 0)
+    if side > 0 and max(width, height) > side:
+        boxes = tile_boxes(width, height, side, float(tile_overlap))
+        collected = []
+        for (x0, y0, x1, y1) in boxes:
+            crop = image.crop((x0, y0, x1, y1))
+            cw, ch = crop.size
+            c_arr = np.asarray(crop, dtype=np.float32) / 255.0
+            c_t = torch.from_numpy(c_arr).permute(2, 0, 1).to(device)
+
+            # A tile is a CROP, so its horizontal FOV is narrower than the full
+            # frame's — same focal, fewer pixels. Passing the frame's fov_x here
+            # would tell MoGe the tile spans a much wider angle than it does and
+            # skew the geometry of every tile independently.
+            c_fov = None
+            if focal_px is not None and float(focal_px) > 0:
+                c_fov = math.degrees(2.0 * math.atan(cw / (2.0 * float(focal_px))))
+
+            with torch.inference_mode():
+                c_out = model.infer(c_t, fov_x=c_fov, resolution_level=level)
+            c_depth = c_out["depth"].float()
+            if tuple(c_depth.shape[-2:]) != (ch, cw):
+                c_depth = torch.nn.functional.interpolate(
+                    c_depth[None, None], size=(ch, cw), mode="bilinear",
+                    align_corners=False)[0, 0]
+            c_np = c_depth.cpu().numpy().astype(np.float64)
+            if "mask" in c_out:
+                c_mask = c_out["mask"].detach().float()
+                if tuple(c_mask.shape[-2:]) != (ch, cw):
+                    c_mask = torch.nn.functional.interpolate(
+                        c_mask[None, None], size=(ch, cw), mode="nearest")[0, 0]
+                c_np = np.where(c_mask.cpu().numpy() > 0.5, c_np, np.nan)
+
+            a, b = fit_affine_to_reference(c_np, depth[y0:y1, x0:x1], np)
+            collected.append(((x0, y0, x1, y1), c_np * a + b))
+            del c_out, c_depth, c_t
+
+        ramp = max(1, int(round(side * float(tile_overlap) * 0.5)))
+        tiled = assemble_tiles(collected, width, height, ramp, np)
+        # Keep the global pass wherever tiling produced nothing (a fully invalid
+        # tile), so tiling can only add detail, never punch new holes.
+        depth = np.where(np.isfinite(tiled), tiled, depth).astype(np.float32)
+        metadata["tiled"] = {
+            "tile_side": side,
+            "overlap": float(tile_overlap),
+            "tiles": len(boxes),
+            "feather_px": ramp,
+            "anchored_to": "global_pass",
+        }
+
     depth, metadata = _record_and_clamp_negative(depth, metadata)
     valid = np.isfinite(depth)
     near = float(np.nanmin(depth[valid])) if valid.any() else 0.0
@@ -696,6 +854,8 @@ def estimate_depth(
     focal_px: float | None = None,
     resolution_level: int = MOGE_RESOLUTION_LEVEL_DEFAULT,
     max_side: int = 0,
+    tile_side: int = 0,
+    tile_overlap: float = 0.25,
     checkpoint_path: str = "",
 ) -> DepthResult:
     """Predict a depth map for a single image (Depth Anything V2 / V3, or MoGe-2).
@@ -728,7 +888,8 @@ def estimate_depth(
     # call's map — the knob would appear to do nothing, which is the worst
     # possible failure for a quality/speed dial.
     moge_key = (
-        (int(resolution_level), int(max_side or 0), str(checkpoint_path or ""))
+        (int(resolution_level), int(max_side or 0), str(checkpoint_path or ""),
+         int(tile_side or 0), round(float(tile_overlap), 4))
         if _is_moge_model(model_id) else None
     )
     cache_key = (content_hash, model_id, device, focal_key, moge_key)
@@ -744,6 +905,7 @@ def estimate_depth(
         result = _estimate_depth_moge(
             image_path, model_id=model_id, device=device, focal_px=focal_px,
             resolution_level=resolution_level, max_side=max_side,
+            tile_side=tile_side, tile_overlap=tile_overlap,
             checkpoint_path=checkpoint_path,
         )
     elif _is_depth_pro_model(model_id):

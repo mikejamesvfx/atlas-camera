@@ -2,14 +2,14 @@
  "schema_version": 1,
  "generated_utc": "2026-07-28",
  "counts": {
-  "standard": 88,
+  "standard": 89,
   "experimental": 5,
   "legacy": 2,
-  "total": 95,
+  "total": 96,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 88,
+  "KEEP_CORE": 89,
   "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
@@ -343,6 +343,7 @@
     "tests/test_example_workflows.py",
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py",
+    "tests/test_golden_frames.py",
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_node_pack_entrypoint.py",
     "tests/test_occlusion_depth_pack.py",
@@ -359,6 +360,7 @@
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py",
     "tests/test_facade_surface.py",
+    "tests/test_golden_frames.py",
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_node_pack_entrypoint.py",
     "tests/test_occlusion_depth_pack.py",
@@ -461,6 +463,7 @@
     "tests/test_assess_image.py",
     "tests/test_atlas_input.py",
     "tests/test_debug_report.py",
+    "tests/test_depth_outpaint.py",
     "tests/test_derive_geometry_nodes.py",
     "tests/test_example_workflows.py",
     "tests/test_experimental_gate.py",
@@ -474,6 +477,7 @@
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_debug_report.py",
+    "tests/test_depth_outpaint.py",
     "tests/test_derive_geometry_nodes.py",
     "tests/test_example_workflows.py",
     "tests/test_experimental_gate.py",
@@ -1244,6 +1248,7 @@
     "examples/atlas_planar_hole_patch_workflow.json"
    ],
    "dedicated_tests": [
+    "tests/golden_scenes.py",
     "tests/test_atlas_input.py",
     "tests/test_depth_map_node.py",
     "tests/test_derive_geometry_nodes.py",
@@ -1253,6 +1258,7 @@
     "tests/test_retopologize_layer.py"
    ],
    "tests": [
+    "tests/golden_scenes.py",
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_depth_map_node.py",
@@ -1428,12 +1434,14 @@
     "examples/atlas_equirect_360_multiview_workflow.json"
    ],
    "dedicated_tests": [
-    "tests/test_equirect.py"
+    "tests/test_equirect.py",
+    "tests/test_golden_frames.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_equirect.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_golden_frames.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
@@ -2896,10 +2904,12 @@
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
+    "tests/test_depth_outpaint.py",
     "tests/test_moge_normals_node.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
+    "tests/test_depth_outpaint.py",
     "tests/test_facade_surface.py",
     "tests/test_moge_normals_node.py"
    ],
@@ -3060,6 +3070,35 @@
    "evidence_kinds": [
     "dedicated_test",
     "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasOutpaintDepth": {
+   "module": "atlas_camera/comfy/nodes_depth.py",
+   "tier": "standard",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_depth_outpaint.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_depth_outpaint.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
