@@ -1702,6 +1702,190 @@ class AtlasApplyScaleReferences:
         return (solve, float(solve.camera.extrinsics.camera_position[1]), report)
 
 
+class AtlasFaceScaleReference:
+    """🙂 Metric camera height from a person's FACE — the reference that survives a crop.
+
+    `AtlasReferenceScaleSolve` is still the stronger anchor whenever the subject's
+    feet are visible: an object standing on the ground pins scale with no stature
+    assumption at all. Reach for this node when that is impossible — a half-body
+    portrait, a seated subject, a figure behind a car or a wall, a tight crop.
+    A face is visible in all of those, and a face has a known size.
+
+    Mark the feature one of two ways:
+      * wire a `face_mask` (`AtlasSAM3Mask` with concepts like "human face" or
+        "human head" is the intended source, but any segmenter's MASK works), or
+      * type a `bbox_override` of "x0,y0,x1,y1" to mark it by hand.
+
+    `metric` says WHAT the marked box spans, because a face mask (chin to
+    hairline) and a head mask (chin to crown) are different real dimensions —
+    0.185 m against 0.235 m. Getting it wrong scales the measured subject
+    DISTANCE by that same ~21%; camera height moves less, in proportion to how
+    far the anchor sits from camera level, so a face near lens height shifts it
+    only centimetres. The node supplies the constant for whichever you pick.
+
+    Accuracy, stated plainly. This is a **tier-1.5** anchor — better than the
+    assumed default, weaker than a ground reference — because two assumptions
+    compound: the anthropometric constant has population spread, and `stature_m`
+    is assumed on top of it. The report carries an uncertainty band from the
+    former; the latter is yours to judge. Interpupillary distance is NOT the
+    precision win it is often claimed to be (~5.6% CV against stature's ~4-6%);
+    its value is that it is measurable when nothing else is.
+
+    Like `AtlasApplyScaleReferences`, rescaling is gated behind `confirm` — an
+    automatically detected reference is never auto-promoted.
+
+    Measures a distance between two image points and nothing else: no face
+    embedding, descriptor or landmark set is computed or written to the solve,
+    so no biometric identifier can persist into an exported solve JSON.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "FLOAT", "STRING", "STRING")
+    RETURN_NAMES = ("solve", "camera_height_m", "measurement", "report")
+    FUNCTION = "measure"
+    CATEGORY = "Atlas Camera/Scale & Trim"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        from atlas_camera.core.face_scale import DEFAULT_STATURE_M, face_metric_choices
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "metric": (face_metric_choices(), {"default": "head_chin_to_crown",
+                    "tooltip": "What the marked box spans. A face mask (chin to "
+                               "hairline, 0.185 m) and a head mask (chin to crown, "
+                               "0.235 m) differ by ~21% — the mix-up scales the "
+                               "measured subject distance by that much."}),
+            },
+            "optional": {
+                "face_mask": ("MASK", {"tooltip": "Face/head mask — e.g. AtlasSAM3Mask "
+                              "with concepts='human face'. Its bounding box is measured."}),
+                "bbox_override": ("STRING", {"default": "", "tooltip":
+                    "Mark by hand as 'x0,y0,x1,y1' in pixels. Wins over face_mask."}),
+                "stature_m": ("FLOAT", {"default": DEFAULT_STATURE_M, "min": 0.5, "max": 2.5,
+                    "step": 0.01, "tooltip": "Assumed standing height of THIS subject. "
+                    "Enters the result directly — the dominant error term."}),
+                "size_override_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0,
+                    "step": 0.001, "tooltip": "0 = use the population constant for the "
+                    "chosen metric; else the subject's measured size in metres."}),
+                "confirm": ("BOOLEAN", {"default": False,
+                    "tooltip": "Confirm to actually rescale the solve. Off = measure "
+                               "and report only."}),
+            },
+        }
+
+    @staticmethod
+    def _bbox_from_override(text):
+        parts = [p.strip() for p in str(text or "").replace(";", ",").split(",") if p.strip()]
+        if len(parts) != 4:
+            raise ValueError(
+                f"bbox_override needs 4 numbers 'x0,y0,x1,y1', got {len(parts)}: {text!r}")
+        try:
+            x0, y0, x1, y1 = (float(p) for p in parts)
+        except ValueError as exc:
+            raise ValueError(f"bbox_override is not numeric: {text!r}") from exc
+        return (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+
+    @staticmethod
+    def _bbox_from_mask(mask):
+        np = _require_numpy()
+        m = mask[0] if getattr(mask, "ndim", 2) == 3 else mask
+        arr = m.detach().cpu().numpy() if hasattr(m, "detach") else np.asarray(m)
+        ys, xs = np.nonzero(np.asarray(arr) > 0.5)
+        if xs.size == 0:
+            raise ValueError(
+                "face_mask is empty — the segmenter matched nothing. SAM3 misses are "
+                "SILENT, so check its report and try a different concept word "
+                "('human face', 'human head', 'person's head').")
+        return (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
+
+    def measure(self, solve, metric="head_chin_to_crown", face_mask=None,
+                bbox_override="", stature_m=None, size_override_m=0.0, confirm=False):
+        from atlas_camera.core.face_scale import (
+            DEFAULT_STATURE_M, FACE_METRICS, camera_height_from_face,
+        )
+        from atlas_camera.core.solver import rescale_camera_height
+        np = _require_numpy()
+
+        if stature_m is None:
+            stature_m = DEFAULT_STATURE_M
+
+        if str(bbox_override or "").strip():
+            bbox = self._bbox_from_override(bbox_override)
+            source = "bbox_override"
+        elif face_mask is not None:
+            bbox = self._bbox_from_mask(face_mask)
+            source = "face_mask"
+        else:
+            raise ValueError(
+                "AtlasFaceScaleReference: nothing marked — wire a face_mask or type a "
+                "bbox_override 'x0,y0,x1,y1'.")
+
+        x0, y0, x1, y1 = bbox
+        # A mask bounding box is measured along the metric's own axis: the
+        # vertical metrics want the box's top/bottom at its horizontal centre,
+        # the horizontal ones its left/right at the vertical centre. Measuring
+        # the wrong axis is silently plausible, so it follows the table.
+        if FACE_METRICS[metric]["axis"] == "vertical":
+            mid_x = (x0 + x1) / 2.0
+            point_a, point_b = (mid_x, y0), (mid_x, y1)
+        else:
+            mid_y = (y0 + y1) / 2.0
+            point_a, point_b = (x0, mid_y), (x1, mid_y)
+
+        K = solve.camera.intrinsics
+        fx = float(K.fx_px or 0.0)
+        fy = float(K.fy_px or fx)
+        cx = float(K.cx_px if K.cx_px is not None else K.image_width / 2.0)
+        cy = float(K.cy_px if K.cy_px is not None else K.image_height / 2.0)
+        # View-matrix convention (CLAUDE.md): the world->cam rotation comes from
+        # the 4x4's rotation block, never the transpose-ambiguous bare 3x3.
+        world_to_cam = np.asarray(
+            solve.camera.extrinsics.camera_view_matrix, dtype=np.float64)[:3, :3]
+
+        result = camera_height_from_face(
+            point_a, point_b, metric=metric, rotation=world_to_cam,
+            fx=fx, fy=fy, cx=cx, cy=cy, stature_m=float(stature_m),
+            size_override_m=float(size_override_m) or None)
+
+        payload = result.to_dict()
+        payload.update({
+            "marked_from": source,
+            "bbox_px": [x0, y0, x1, y1],
+            "stature_m": float(stature_m),
+            "trust_tier": "1.5_face_reference",
+        })
+
+        adopted = bool(confirm and result.camera_height)
+        if adopted:
+            rescale_camera_height(solve, result.camera_height)
+            solve.source_method = f"{solve.source_method}+face_scale"
+            solve.debug_metadata["scale_source"] = "face_reference"
+            solve.camera.confidence = solve.camera.confidence.with_metric(
+                "scale", float(result.consistency))
+        solve.debug_metadata["face_scale"] = {**payload, "adopted": adopted}
+
+        spec = FACE_METRICS.get(metric, {})
+        lines = [
+            f"AtlasFaceScaleReference: {spec.get('label', metric)} from {source}",
+            f"  box {int(x1 - x0)}x{int(y1 - y0)} px | assumed size "
+            f"{result.real_size_m if result.real_size_m else '-'} m | stature {stature_m:.2f} m",
+        ]
+        if result.camera_height:
+            band = f" ±{result.camera_height_sd:.3f}" if result.camera_height_sd else ""
+            lines += [
+                f"  camera height {result.camera_height:.3f}{band} m "
+                f"(anthropometric spread only — the stature assumption is on top)",
+                f"  subject distance {result.distance_m:.2f} m | consistency "
+                f"{result.consistency:.2f}",
+                f"  {'RESCALED' if adopted else 'measured only — set confirm to rescale'}",
+                "  tier-1.5: prefer AtlasReferenceScaleSolve when the feet are visible.",
+            ]
+        else:
+            lines.append(f"  NO RESULT: {result.reason}")
+
+        return (solve, float(result.camera_height or 0.0),
+                json.dumps(payload, indent=2), "\n".join(lines))
+
+
 class AtlasLoadRecord3D:
     """📱 Load a Record3D `.r3d` iPhone/iPad capture — MEASURED camera + metric depth.
 

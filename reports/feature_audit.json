@@ -2,14 +2,14 @@
  "schema_version": 1,
  "generated_utc": "2026-07-28",
  "counts": {
-  "standard": 84,
+  "standard": 85,
   "experimental": 5,
   "legacy": 2,
-  "total": 91,
+  "total": 92,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 84,
+  "KEEP_CORE": 85,
   "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
@@ -107,11 +107,13 @@
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
+    "tests/test_face_scale_node.py",
     "tests/test_node_layer_contracts.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_facade_surface.py",
+    "tests/test_face_scale_node.py",
     "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],
@@ -1976,6 +1978,39 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasFaceScaleReference": {
+   "module": "atlas_camera/comfy/nodes_solve.py",
+   "tier": "standard",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_face_scale_node.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_facade_surface.py",
+    "tests/test_face_scale_node.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasGrade": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
@@ -3185,10 +3220,13 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [],
-   "dedicated_tests": [],
+   "dedicated_tests": [
+    "tests/test_face_scale_node.py"
+   ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_face_scale_node.py"
    ],
    "mcp_tools": [
     "atlas_camera/mcp/server.py"
@@ -3205,6 +3243,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "mcp",
     "docs"
    ],

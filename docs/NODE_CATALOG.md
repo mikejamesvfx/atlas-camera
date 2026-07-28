@@ -16,7 +16,7 @@
 
 The former 9,110-line `nodes.py` was split into responsibility modules; the 71
 
-node classes (84 standard + 5 experimental + 2 legacy) now live in the
+node classes (85 standard + 5 experimental + 2 legacy) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -227,7 +227,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (84 nodes + 5 experimental + 2 legacy)
+### Node catalog (85 nodes + 5 experimental + 2 legacy)
 
 
 
@@ -284,6 +284,8 @@ pitch dial — recoverable from git if the flip-repair is wanted back).
 | `AtlasOcclusionMask` | ATLAS_SOLVE, target_image (IMAGE), ±patch_azimuth_view, ±patch_elevation_view, ±patch_distance, ±source_azimuth_view, ±source_elevation_view, ±flip_azimuth, ±depth_model, ±device, ±angle_threshold, ±dilate_px, ±soft_edge_px, ±power | occlusion_mask, coverage_mask (both MASK) | Phase 1 (frustum/frame/facing-angle) mask of where the PRIMARY camera's projection is invalid at a target/patch view's surface — white = primary can't cover it, so a patch should fill it there. Places its target camera identically to `AtlasAddPatchView` (same named-view widgets, same `_named_view_orbit_delta` helper — never independently recompute the orbit) so the mask lines up with that node's later patch geometry for the same image. Pure backend/numpy (`depth_geometry.primary_camera_validity_mask`), no browser round-trip, runs headlessly. Intended pipeline: `Solve → AtlasOcclusionMask → ImageCompositeMasked (primary projection + target_image) → AtlasAddPatchView`. Does not yet detect true depth-shadow occlusion (an object hidden behind nearer geometry from the primary's view but still inside its frame/angle limits) — see `docs/dev/atlas_occlusion_mask_implementation_plan.md` for that Phase 2 design. Needs `[neural]` |
 
 | `AtlasConstrainedSolve` | image, constraints_json | ATLAS_SOLVE | Artist-guided; pass scale_constraints for cam height |
+
+| `AtlasFaceScaleReference` | ATLAS_SOLVE, metric, ±face_mask (MASK), ±bbox_override, ±stature_m, ±size_override_m, ±confirm | solve (ATLAS_SOLVE), camera_height_m, measurement (STRING JSON), report | 🙂 Metric camera height from a person's FACE — the scale reference that survives a crop. `AtlasReferenceScaleSolve` stays the stronger anchor whenever the feet are visible (a ground object needs no stature assumption); this covers the cases it cannot serve at all: half-body portrait, seated subject, figure behind a car, tight crop. Mark the feature with a `face_mask` (`AtlasSAM3Mask` concepts='human face' is the intended source) or a hand-typed `bbox_override`. `metric` declares WHAT the box spans — chin-to-crown 0.235 m, chin-to-hairline 0.185 m, head breadth 0.152 m, interpupillary 0.063 m — and the node measures that metric's own axis, not whichever extent is larger. Geometry: the known size fixes the feature's metric position, then `camera_height = anchor_height_above_ground - anchor_world_Y` under the standing-adult assumption. **Tier-1.5** — above the assumed default, below a ground reference — because the anthropometric constant and `stature_m` compound; the report carries a band for the former. Note IPD is NOT the precision win it is often claimed to be (~5.6% CV vs stature's ~4-6%); its value is applicability. Rescaling is `confirm`-gated like `AtlasApplyScaleReferences` — auto-detected references are never auto-promoted. Measures a distance between two points only: no embedding, descriptor or landmark set is computed or persisted, so no biometric identifier reaches an exported solve JSON |
 
 | `AtlasLoadRecord3D` | capture_path, ±frame_index, ±depth_resolution, ±min_confidence | image (IMAGE), solve (ATLAS_SOLVE), depth (ATLAS_DEPTH_MAP), confidence_mask (MASK), report | 📱 Record3D `.r3d` iPhone/iPad capture — the third solve source, and the only one whose numbers are MEASURED rather than inferred: Apple factory per-lens intrinsics + a gravity-aligned ARKit pose in metres + LiDAR `sceneDepth`. ARKit's camera basis (x-right/y-up/z-back, right-handed Y-up world, metres) is already Atlas's, so the importer applies NO axis flip, and `solver._face_camera_toward_negative_z` is deliberately NOT applied — yaw is measured here, and every frame of a capture shares one world origin. Depth is **256×192** (ARKit sceneDepth) against a 12–48 MP plate: a metric ANCHOR, not a high-resolution surface. The intended graph is `AtlasLoadRecord3D → AtlasDepthCombine(depth_base=lidar, depth_detail_src=MoGe/DA, mode=high_freq_detail)` — monocular supplies resolution, LiDAR pins scale, collapsing tier-2/tier-3 scale guessing into a tier-1 measurement. Upsample is NEAREST by design (no invented detail); `min_confidence` turns low-confidence ARKit pixels into NaN holes the relief mesh already tears around. Needs `[record3d]` for packed `.r3d` depth (camera solve alone needs nothing) |
 

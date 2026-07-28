@@ -46,6 +46,7 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasSceneHealthGate,
     AtlasVLMScaleCues,
     AtlasApplyScaleReferences,
+    AtlasFaceScaleReference,
     AtlasLoadRecord3D,
     AtlasLoadSolveJSON,
     AtlasDecomposeSolve,
@@ -154,6 +155,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasAddPatchView":          AtlasAddPatchView,
     "AtlasOcclusionMask":         AtlasOcclusionMask,
     "AtlasConstrainedSolve":      AtlasConstrainedSolve,
+    "AtlasFaceScaleReference":    AtlasFaceScaleReference,
     "AtlasLoadRecord3D":          AtlasLoadRecord3D,
     "AtlasLoadSolveJSON":         AtlasLoadSolveJSON,
     # Track 1 — decompose
@@ -249,6 +251,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasAddPatchView":          "Atlas Add Patch View (multi-angle) 🩹",
     "AtlasOcclusionMask":         "Atlas Occlusion Mask 🕳",
     "AtlasConstrainedSolve":      "Atlas Constrained Solve",
+    "AtlasFaceScaleReference":    "Atlas Face Scale Reference 🙂",
     "AtlasLoadRecord3D":          "Atlas Load Record3D Capture 📱",
     "AtlasLoadSolveJSON":         "Atlas Load Solve JSON",
     # Track 1 — decompose

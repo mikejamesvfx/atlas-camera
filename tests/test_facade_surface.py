@@ -48,7 +48,7 @@ FACADE_PUBLIC = {
     "AtlasHorizonMask", "AtlasImportAnglePatch", "AtlasInpaintCrop",
     "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
-    "AtlasLoadPlate", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasLoadSolveJSON",
+    "AtlasLoadPlate", "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasLoadSolveJSON",
     "AtlasDepthCombine", "AtlasDepthDetailEnhance",
     "AtlasMergeGeometry", "AtlasMogeNormals", "AtlasOcclusionMask",
     "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
