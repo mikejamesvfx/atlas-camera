@@ -49,8 +49,13 @@ an 11 MB binary committed by accident is painful to remove from history.
 Send it with the Tailscale share sheet, or:
 
 ```bash
-tailscale file cp atlas.bundle mikes-macbook-pro.tail068f49.ts.net:
+tailscale file cp atlas.bundle <mac-hostname>:
 ```
+
+`tailscale status` lists your machines. A bare MagicDNS short name works
+(`my-macbook:`); the full `<host>.<tailnet>.ts.net` form is only needed if the
+short name is ambiguous. Deliberately not hard-coded here — see the note at the
+end of this section.
 
 On the Mac:
 
@@ -70,10 +75,19 @@ editing Atlas from the Mac, either use a private GitHub remote, or install
 clone over the tailnet:
 
 ```bash
-git clone ssh://miike@mjomen-1.tail068f49.ts.net/C:/Users/miike/Desktop/AtlasCamera_Claude
+git clone ssh://<user>@<windows-hostname>/C:/path/to/AtlasCamera_Claude
 ```
 
 Only reachable from your own tailnet either way.
+
+**Why the placeholders.** This repo is public. Tailscale's `100.64.0.0/10`
+addresses are CGNAT and unreachable without tailnet membership, so those are
+harmless — but a tailnet ID, machine names, and a local user path are none of
+them secret and all of them useful to someone targeting you. The one that
+actually bites: enable `tailscale funnel` or `serve` on a machine and its
+`<host>.<tailnet>.ts.net` name becomes publicly resolvable and reachable from
+the internet. A hostname published in advance turns that config change into a
+URL an attacker already has. Fill these in locally; don't commit them.
 
 ---
 
@@ -131,7 +145,8 @@ works the app has a job, and the overlay becomes a well-justified phase 2.
 5. **Package** as a one-frame `.r3d` — see the format doc for the two
    conventions that silently produce wrong geometry (`K` column-major, pose
    quaternion scalar-last).
-6. **Send back** via the Tailscale share sheet to `mjomen-1`.
+6. **Send back** via the Tailscale share sheet to the Windows machine running
+   Atlas.
 7. **Confirm** Atlas ingests it through `AtlasAddPatchView`.
 
 A non-Pro device has no usable `AVDepthData`. Degrade to a plain photo and
