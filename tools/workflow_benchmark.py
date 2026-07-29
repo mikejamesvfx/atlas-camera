@@ -33,6 +33,7 @@ import argparse
 import json
 import re
 import time
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -51,7 +52,16 @@ NOISE_FRAC = 0.02
 #: than reported as failures — a missing plate is not a regression.
 KNOWN_MISSING_ASSETS = {
     "atlas_auto_layered_inpaint_workflow": "cleanplate.png",
+    # Same asset. Found because ComfyUI prunes the failing branch and still
+    # reports success, so this ran "green" while its viewport never executed.
+    "atlas_layered_segmentation_workflow": "cleanplate.png",
     "atlas_unseen_geometry_test_workflow": "moge_hangar_proj.jpg",
+    # Pinned to this asset by tests/test_example_workflows.py, but the file is
+    # not in the repo AND not on the author's machine either — so nobody can
+    # currently run it. Skipping is a stopgap that keeps the sweep honest; the
+    # workflow still needs a decision (ship a plate, or repoint to example.png).
+    "atlas_occlusion_cull_quickstart_agentic_assessment_workflow":
+        "moge_hangar_proj.jpg",
     # A camera RAW is the artist's own file, never shipped. The workflow is
     # correct; the asset simply cannot live in the repo.
     "atlas_raw_3layer_ocio_workflow": "input/CameraRaw/*.NEF",
@@ -68,7 +78,27 @@ def _post(path: str, payload: dict, host: str, timeout: int = 120):
     req = urllib.request.Request(
         f"http://{host}{path}", data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"})
-    return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+    try:
+        return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+    except urllib.error.HTTPError as exc:
+        # ComfyUI puts the REASON in the 400 body. Letting the bare HTTPError
+        # escape reported "HTTP Error 400: Bad Request" for a workflow whose
+        # actual problem was a one-line "Invalid image file: <name>".
+        #
+        # Note the two different shapes: when only SOME outputs fail validation
+        # ComfyUI prunes them and returns 200 + success (see
+        # summarise_node_errors); when ALL of them fail it returns this 400.
+        try:
+            body = json.loads(exc.read())
+        except Exception:  # noqa: BLE001
+            raise exc from None
+        why = [f"{e.get('class_type', '?')}(id{nid}): "
+               f"{d.get('details') or d.get('message')}"
+               for nid, e in (body.get("node_errors") or {}).items()
+               for d in e.get("errors", [])]
+        msg = (body.get("error") or {}).get("message", "prompt rejected")
+        raise RuntimeError(f"{msg}: {'; '.join(why[:3]) or 'no detail given'}") \
+            from None
 
 
 def _get(path: str, host: str, timeout: int = 120):
@@ -101,8 +131,55 @@ def parse_move_budget(text: str) -> dict:
     return out
 
 
-def score_images(filenames: list, output_dir: Path) -> dict:
-    """How much of the render carries geometry. The measure that caught it."""
+def summarise_node_errors(node_errors: dict | None) -> dict:
+    """Turn ComfyUI's ``node_errors`` into a failed measurement, or ``{}``.
+
+    ComfyUI does NOT reject a prompt whose node fails validation. It prunes
+    that node and every output downstream of it, executes the remainder, and
+    reports ``status_str: "success"``. A harness that reads only the status
+    therefore records a pass for a run whose real output never executed —
+    atlas_layered_segmentation_workflow sat green in the scoreboard with its
+    viewport pruned by a missing cleanplate.png, and the run was described as
+    merely "unscoreable".
+
+    A partially pruned graph is a FAILED measurement, not a pass.
+    """
+    if not node_errors:
+        return {}
+    pruned, why = set(), []
+    for nid, err in node_errors.items():
+        pruned.update(str(x) for x in (err.get("dependent_outputs") or []))
+        for e in err.get("errors", []):
+            why.append(f"{err.get('class_type', '?')}(id{nid}): "
+                       f"{e.get('details') or e.get('message')}")
+    return {"pruned_outputs": sorted(pruned, key=lambda s: (len(s), s)),
+            "error": "graph partially pruned by ComfyUI validation — "
+                     + "; ".join(why[:3])}
+
+
+def _resolve_image(rec: dict, output_dir: Path):
+    """Where ComfyUI actually put an image it reported.
+
+    ``type`` is one of output/temp/input and they are SIBLING directories.
+    ``PreviewImage`` — which most Atlas debug tails use, because it does not
+    litter the output folder — reports ``temp``.
+    """
+    name = rec.get("filename")
+    if not name:
+        return None
+    kind = rec.get("type") or "output"
+    root = output_dir if kind == "output" else output_dir.parent / kind
+    return root / (rec.get("subfolder") or "") / name
+
+
+def score_images(records: list, output_dir: Path) -> dict:
+    """How much of the render carries geometry. The measure that caught it.
+
+    Takes ComfyUI's full image records, not bare filenames. ``PreviewImage``
+    writes to the **temp** directory and reports ``type: "temp"``; resolving
+    every record against ``output/`` silently found nothing and scored the run
+    as unmeasurable. Three shipped workflows were mis-diagnosed that way.
+    """
     try:
         import numpy as np
         from PIL import Image
@@ -111,12 +188,13 @@ def score_images(filenames: list, output_dir: Path) -> dict:
     # Prefer the INJECTED render: every workflow gets the same instrument, so
     # scoring a graph's own arbitrary SaveImage would make the numbers
     # incomparable between workflows.
-    bench = [n for n in filenames if n.startswith("bench")]
-    filenames = bench or filenames
+    bench = [r for r in records if str(r.get("filename", "")).startswith("bench")]
+    records = bench or records
     best = {}
-    for name in filenames:
-        p = output_dir / name
-        if not p.exists():
+    for rec in records:
+        name = rec.get("filename", "")
+        p = _resolve_image(rec, output_dir)
+        if p is None or not p.exists():
             continue
         try:
             a = np.asarray(Image.open(p).convert("RGB"), dtype=np.float32) / 255.0
@@ -246,14 +324,41 @@ def run_one(path: Path, host: str, output_dir: Path, timeout: int = 1800,
     t0 = time.time()
     try:
         oi = _get("/object_info", host, timeout=180)
-        api = ch.ui_to_api(json.loads(path.read_text(encoding="utf-8")), oi)
+        ui = json.loads(path.read_text(encoding="utf-8"))
+        api = ch.ui_to_api(ui, oi)
+        # Shipped workflows ship with their solve gates CLOSED — that is the
+        # gate doctrine, and correct for a human opening the workflow. Headless
+        # it means AtlasSolveGate pauses everything downstream, so the graph
+        # runs, succeeds, and measures nothing. Both camera_staged_master
+        # workflows looked "unscoreable" for exactly this reason and are not
+        # broken at all. atlas_run_workflow opens gates by default; so do we.
+        # gate_overrides reads the UI graph, which still contains MUTED nodes;
+        # ui_to_api drops them. Overriding a dropped node raises KeyError and
+        # would turn a perfectly good workflow into a spurious harness error,
+        # so keep only gates that survived the flatten.
+        gates = {k: v for k, v in ch.gate_overrides(ui, oi).items()
+                 if k.partition(".")[0] in api}
+        if gates:
+            ch.apply_overrides(api, gates)
+            rec["gates_opened"] = len(gates)
         if variant:
             api, vnote = apply_variant(api, variant)
             rec["variant"] = vnote
         api, tail_note = attach_measurement_tail(api, oi)
         rec["tail"] = tail_note
-        pid = _post("/prompt", {"prompt": api, "client_id": str(uuid.uuid4())},
-                    host)["prompt_id"]
+        posted = _post("/prompt", {"prompt": api, "client_id": str(uuid.uuid4())},
+                       host)
+        # ComfyUI does NOT reject a graph whose node fails validation. It PRUNES
+        # that node and everything downstream, runs the remainder, and reports
+        # status_str "success". Ignoring this recorded ok=True for runs whose
+        # real output never executed — atlas_layered_segmentation_workflow sat
+        # green in the scoreboard with its viewport pruned by a missing
+        # cleanplate.png. A pruned graph is a failed measurement, not a pass.
+        pruned = summarise_node_errors(posted.get("node_errors"))
+        if pruned:
+            rec.update(pruned)
+            return rec
+        pid = posted["prompt_id"]
     except Exception as exc:  # noqa: BLE001
         rec["error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
         return rec
@@ -285,7 +390,7 @@ def run_one(path: Path, host: str, output_dir: Path, timeout: int = 1800,
 
     images, texts = [], []
     for o in (entry.get("outputs") or {}).values():
-        images += [im["filename"] for im in o.get("images", [])]
+        images += [im for im in o.get("images", []) if isinstance(im, dict)]
         texts += [str(t) for t in (o.get("text") or [])]
 
     rec["ok"] = True
@@ -293,9 +398,19 @@ def run_one(path: Path, host: str, output_dir: Path, timeout: int = 1800,
     scored = score_images(images, output_dir)
     rec.update(scored)
     if not scored:
-        rec["no_image_reason"] = (
-            "no scoreable image — the graph produced none and the injected "
-            "stereo render did not run (no IMAGE source found?)")
+        # Say WHICH of these it was. The previous message guessed ("no IMAGE
+        # source found?") and the guess was wrong every time it fired: the
+        # images existed, they were just in temp/ or the branch was gated.
+        if any(t.lstrip().startswith("⏸") for t in texts):
+            rec["no_image_reason"] = (
+                "halted at a closed AtlasSolveGate — nothing downstream ran")
+        elif images:
+            rec["no_image_reason"] = (
+                f"{len(images)} image(s) reported but none readable on disk: "
+                + ", ".join(f"{i.get('type', '?')}/{i.get('filename')}"
+                            for i in images[:3]))
+        else:
+            rec["no_image_reason"] = "the graph produced no image at all"
 
     # WHY a metric is absent is as informative as the metric. A silently missing
     # number reads as "not measured" when it often means "could not be measured",
@@ -307,11 +422,16 @@ def run_one(path: Path, host: str, output_dir: Path, timeout: int = 1800,
         if not parsed:
             rec["no_budget_reason"] = "budget text present but nothing parsed from it"
     else:
-        empty = next((t for t in texts if "relief mesh is empty" in t), None)
+        # AtlasMoveBudget already SAYS why it declined, in a line beginning
+        # "Move budget not computed:". Quote it rather than pattern-matching a
+        # guess at its wording — the previous guard looked for "relief mesh is
+        # empty" while the node says "needs a relief mesh to seal", so it never
+        # fired and three workflows reported the useless "produced no envelope
+        # report" instead of the real reason sitting in the output.
+        said = next((t for t in texts if "Move budget not computed" in t), None)
         rec["no_budget_reason"] = (
-            "terminal solve carries no relief mesh, so there is no geometry to "
-            "measure a camera envelope against" if empty else
-            "AtlasMoveBudget produced no envelope report")
+            said.strip().splitlines()[0] if said else
+            "AtlasMoveBudget emitted no report at all")
     return rec
 
 

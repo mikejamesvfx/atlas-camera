@@ -4079,7 +4079,8 @@
    ],
    "repo_tools": [
     "tools/rebuild_staged_master_workflow.py",
-    "tools/smoke_agentic_assessment_workflows.py"
+    "tools/smoke_agentic_assessment_workflows.py",
+    "tools/workflow_benchmark.py"
    ],
    "docs": [
     "docs/DESIGN_RULES.md",
