@@ -84,6 +84,21 @@ def test_nothing_is_deleted_without_execution_evidence(report):
                 f"{key}: marked DELETE but it executes — that is HOLD_NEEDS_EVIDENCE")
 
 
+def _without_generated_stamp(markdown: str) -> str:
+    """Drop the "Generated <date>" line before comparing.
+
+    That stamp is useful provenance but it must not gate freshness: comparing it
+    made the suite go red at every calendar rollover with nothing actually
+    stale. Worse, the advertised remedy (re-run the builder) WORKED, so the
+    false alarm looked exactly like a real one — which trains people to
+    regenerate without reading the diff, and that is how a genuinely stale
+    artifact gets waved through. Found live 2026-07-29, a day after the file
+    was last written.
+    """
+    return "\n".join(l for l in markdown.splitlines()
+                     if not l.startswith("Generated "))
+
+
 def test_artifacts_are_regenerated_from_current_evidence():
     """The committed report must match a fresh run, so it cannot go stale."""
     builder = _load("build_feature_audit")
@@ -93,5 +108,19 @@ def test_artifacts_are_regenerated_from_current_evidence():
     assert committed["nodes"] == fresh["nodes"], (
         "reports/feature_audit.json is stale — run tools/build_feature_audit.py")
     md = (REPO / "docs" / "FEATURE_AUDIT.md").read_text(encoding="utf-8")
-    assert md == builder.render_markdown(fresh), (
+    assert _without_generated_stamp(md) == \
+        _without_generated_stamp(builder.render_markdown(fresh)), (
         "docs/FEATURE_AUDIT.md is stale — run tools/build_feature_audit.py")
+
+
+def test_a_date_rollover_alone_does_not_fail_the_staleness_check():
+    """Regression for the above: only CONTENT should count as stale.
+
+    Simulated by editing the stamp rather than the clock, so the test is
+    deterministic on any day.
+    """
+    builder = _load("build_feature_audit")
+    fresh = builder.render_markdown(builder.build())
+    yesterday = fresh.replace("Generated 2026-", "Generated 2020-", 1)
+    assert yesterday != fresh, "the generated stamp is no longer where expected"
+    assert _without_generated_stamp(yesterday) == _without_generated_stamp(fresh)
