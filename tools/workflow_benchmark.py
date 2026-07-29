@@ -56,12 +56,6 @@ KNOWN_MISSING_ASSETS = {
     # reports success, so this ran "green" while its viewport never executed.
     "atlas_layered_segmentation_workflow": "cleanplate.png",
     "atlas_unseen_geometry_test_workflow": "moge_hangar_proj.jpg",
-    # Pinned to this asset by tests/test_example_workflows.py, but the file is
-    # not in the repo AND not on the author's machine either — so nobody can
-    # currently run it. Skipping is a stopgap that keeps the sweep honest; the
-    # workflow still needs a decision (ship a plate, or repoint to example.png).
-    "atlas_occlusion_cull_quickstart_agentic_assessment_workflow":
-        "moge_hangar_proj.jpg",
     # A camera RAW is the artist's own file, never shipped. The workflow is
     # correct; the asset simply cannot live in the repo.
     "atlas_raw_3layer_ocio_workflow": "input/CameraRaw/*.NEF",

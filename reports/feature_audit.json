@@ -2981,13 +2981,15 @@
    ],
    "dedicated_tests": [
     "tests/test_equirect.py",
-    "tests/test_move_budget.py"
+    "tests/test_move_budget.py",
+    "tests/test_workflow_benchmark.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_equirect.py",
     "tests/test_facade_surface.py",
-    "tests/test_move_budget.py"
+    "tests/test_move_budget.py",
+    "tests/test_workflow_benchmark.py"
    ],
    "mcp_tools": [
     "atlas_camera/mcp/server.py"

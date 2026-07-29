@@ -122,7 +122,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasLoadSolveJSON` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 0 | ok | ok | 1 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMergeGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 4 | 3 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMogeNormals` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasMoveBudget` | atlas_camera/comfy/nodes_completion.py | standard | 17 | 2 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
+| `AtlasMoveBudget` | atlas_camera/comfy/nodes_completion.py | standard | 17 | 3 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasOcclusionGraph` | atlas_camera/comfy/nodes_completion.py | standard | 3 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasOcclusionMask` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasOutpaintDepth` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 0 | — | — | — | **KEEP_CORE** | — |

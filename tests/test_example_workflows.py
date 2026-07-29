@@ -298,8 +298,16 @@ def test_shipping_quickstarts_use_current_outputs_and_guidance():
         assert agentic["extra"]["atlas_agentic_assessment"] is True
         agentic_load = next(node for node in agentic["nodes"]
                             if node["type"] == "LoadImage")
+        # The agentic variants deliberately load a REAL plate rather than
+        # ComfyUI's stock example.png: an output assessment run on the stock
+        # image assesses nothing, which is the whole point of these two.
+        #
+        # The occlusion one pointed at "moge_hangar_proj.jpg" — a derived MoGe
+        # projection that is in neither the repo nor any machine, so the
+        # workflow could not be run by anyone, including its author. Repointed
+        # to the plain source plate 2026-07-29.
         assert agentic_load["widgets_values"][0] == (
-            "moge_hangar_proj.jpg" if "occlusion" in agentic_name
+            "spacehangar.jpg" if "occlusion" in agentic_name
             else "ghosttown.jpg")
 
         for wf in (base, agentic):

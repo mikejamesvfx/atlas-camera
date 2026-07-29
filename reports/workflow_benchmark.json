@@ -178,8 +178,17 @@
       "workflow": "atlas_layered_segmentation_workflow"
     },
     "atlas_occlusion_cull_quickstart_agentic_assessment_workflow": {
-      "error": "HTTPError: HTTP Error 400: Bad Request",
-      "ok": false,
+      "already_tears_pct": 4.0,
+      "dolly_unbounded": true,
+      "n_images": 2,
+      "non_black_frac": 0.85509,
+      "ok": true,
+      "runtime_s": 5.9,
+      "scored_image": "bench_00035_.png",
+      "size": [
+        2048,
+        576
+      ],
       "tail": "tail: move budget + stereo render",
       "workflow": "atlas_occlusion_cull_quickstart_agentic_assessment_workflow"
     },
