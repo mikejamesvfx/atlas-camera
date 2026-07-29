@@ -83,6 +83,18 @@ Copy in, from the Atlas clone:
 
 - `docs/SHOOT_PROJECT_FORMAT.md` — the contract
 - `docs/shoot_project.example.json` — **the fixture the app develops against**
+- `docs/ios_app_CLAUDE.md` → save as **`CLAUDE.md` in the repo root**
+
+```bash
+cp ../atlas-camera/docs/SHOOT_PROJECT_FORMAT.md .
+cp ../atlas-camera/docs/shoot_project.example.json .
+cp ../atlas-camera/docs/ios_app_CLAUDE.md ./CLAUDE.md
+```
+
+That third file matters most for a session on the Mac: it carries the two
+silently-failing conventions, the `volumetric` branch, and the build order. A
+Claude session there has none of the context this was designed in, and without
+it will invent a plausible-looking format.
 
 The fixture matters more than it looks: with it, the app can be built and tested
 with no Windows box, no ComfyUI, and no network. Do not skip it.
