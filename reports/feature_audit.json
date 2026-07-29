@@ -349,6 +349,7 @@
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_node_pack_entrypoint.py",
     "tests/test_occlusion_depth_pack.py",
+    "tests/test_record3d_bridge.py",
     "tests/test_shot_cam.py",
     "tests/test_viewport_controls_node.py"
    ],
@@ -366,6 +367,7 @@
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_node_pack_entrypoint.py",
     "tests/test_occlusion_depth_pack.py",
+    "tests/test_record3d_bridge.py",
     "tests/test_shot_cam.py",
     "tests/test_viewport_controls_node.py"
    ],
@@ -381,6 +383,7 @@
     "tools/build_unseen_geometry_workflow.py",
     "tools/rebuild_shipping_quickstarts.py",
     "tools/rebuild_staged_master_workflow.py",
+    "tools/record3d_bridge.py",
     "tools/workflow_benchmark.py"
    ],
    "docs": [
@@ -1287,7 +1290,8 @@
    "repo_tools": [
     "tools/build_depth_desk_workflow.py",
     "tools/build_equirect_360_workflow.py",
-    "tools/orbit_stress_test.py"
+    "tools/orbit_stress_test.py",
+    "tools/record3d_bridge.py"
    ],
    "docs": [
     "docs/CAMERA_MOVES.md",
@@ -1450,17 +1454,20 @@
    ],
    "dedicated_tests": [
     "tests/test_equirect.py",
-    "tests/test_golden_frames.py"
+    "tests/test_golden_frames.py",
+    "tests/test_record3d_bridge.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_equirect.py",
     "tests/test_facade_surface.py",
-    "tests/test_golden_frames.py"
+    "tests/test_golden_frames.py",
+    "tests/test_record3d_bridge.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
-    "tools/build_equirect_360_multiview_workflow.py"
+    "tools/build_equirect_360_multiview_workflow.py",
+    "tools/record3d_bridge.py"
    ],
    "docs": [],
    "product_evidence": true,
@@ -2429,7 +2436,8 @@
     "tests/test_atlas_input.py",
     "tests/test_derive_geometry_nodes.py",
     "tests/test_example_workflows.py",
-    "tests/test_migrate_legacy_nodes.py"
+    "tests/test_migrate_legacy_nodes.py",
+    "tests/test_record3d_bridge.py"
    ],
    "tests": [
     "tests/test_atlas_input.py",
@@ -2437,14 +2445,16 @@
     "tests/test_derive_geometry_nodes.py",
     "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
-    "tests/test_migrate_legacy_nodes.py"
+    "tests/test_migrate_legacy_nodes.py",
+    "tests/test_record3d_bridge.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
     "tools/build_auto_layered_inpaint_workflow.py",
     "tools/build_layered_segmentation_workflow.py",
     "tools/build_unseen_geometry_workflow.py",
-    "tools/rebuild_shipping_quickstarts.py"
+    "tools/rebuild_shipping_quickstarts.py",
+    "tools/record3d_bridge.py"
    ],
    "docs": [
     "docs/DESIGN_RULES.md",
@@ -2730,7 +2740,8 @@
    "repo_tools": [
     "tools/build_depth_desk_workflow.py",
     "tools/build_equirect_360_multiview_workflow.py",
-    "tools/build_equirect_360_workflow.py"
+    "tools/build_equirect_360_workflow.py",
+    "tools/record3d_bridge.py"
    ],
    "docs": [
     "docs/ECOSYSTEM_GUIDE.md",
@@ -2813,13 +2824,16 @@
     "tests/test_record3d_stream.py"
    ],
    "mcp_tools": [],
-   "repo_tools": [],
+   "repo_tools": [
+    "tools/record3d_bridge.py"
+   ],
    "docs": [
     "docs/NODE_CATALOG.md"
    ],
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -4175,17 +4189,20 @@
     "examples/atlas_unseen_geometry_test_workflow.json"
    ],
    "dedicated_tests": [
-    "tests/test_node_layer_contracts.py"
+    "tests/test_node_layer_contracts.py",
+    "tests/test_record3d_bridge.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_facade_surface.py",
-    "tests/test_node_layer_contracts.py"
+    "tests/test_node_layer_contracts.py",
+    "tests/test_record3d_bridge.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
     "tools/add_debug_tail.py",
     "tools/build_depth_desk_workflow.py",
+    "tools/record3d_bridge.py",
     "tools/workflow_benchmark.py"
    ],
    "docs": [

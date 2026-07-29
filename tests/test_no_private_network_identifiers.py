@@ -33,6 +33,12 @@ _TAILNET_ID = re.compile(r"\btail[0-9a-f]{6,}\b")
 #: matches and can then be recognised as one, rather than slipping past.
 _TS_HOST = re.compile(r"([A-Za-z0-9<>._-]+)\.ts\.net")
 
+#: Addresses used as fixtures in this repo's own tests. An EXPLICIT list, not a
+#: pattern: a rule like "allow anything under tests/" would let a real address
+#: through in a test file, which is exactly the leak this exists to stop. Any
+#: CGNAT address not listed here still fails, including in tests.
+DOC_ADDRESSES = frozenset({"100.64.0.1", "100.64.0.2", "100.64.0.3"})
+
 
 def _tracked_text_files() -> list[Path]:
     out = subprocess.run(
@@ -50,8 +56,9 @@ def _findings(text: str) -> list[str]:
     hits = []
     for m in _CGNAT.finditer(text):
         # "100.64.0.0/10" is the range in prose, not anyone's address.
-        if text[m.end():m.end() + 1] != "/":
-            hits.append(m.group(0))
+        if text[m.end():m.end() + 1] == "/" or m.group(0) in DOC_ADDRESSES:
+            continue
+        hits.append(m.group(0))
     hits += _TAILNET_ID.findall(text)
     for host in _TS_HOST.findall(text):
         if "<" in host or ">" in host:
@@ -85,6 +92,11 @@ def test_the_guard_detects_what_it_is_written_for():
     assert "tail068f49" in caught
     assert "mikes-macbook-pro.tail068f49.ts.net" in caught
     assert "100.81.12.88" in caught
+
+    # The allowlist must not become a hole: a REAL address is still caught even
+    # though it sits two lines from an allowlisted fixture address.
+    assert _findings("peer 100.64.0.2 is a fixture\nbut 100.81.12.88 is not") == \
+        ["100.81.12.88"]
 
     assert _findings(
         "clone ssh://<user>@<windows-hostname>/C:/path\n"
