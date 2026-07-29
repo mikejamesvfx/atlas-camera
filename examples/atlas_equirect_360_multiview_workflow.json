@@ -1,8 +1,8 @@
 {
   "id": "0c8b8f39-10e0-4cfb-a029-1c9fbf72f623",
   "revision": 0,
-  "last_node_id": 21,
-  "last_link_id": 7,
+  "last_node_id": 25,
+  "last_link_id": 12,
   "nodes": [
     {
       "id": 1,
@@ -24,7 +24,8 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            1
+            1,
+            11
           ]
         },
         {
@@ -279,7 +280,10 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "links": []
+          "links": [
+            8,
+            10
+          ]
         },
         {
           "name": "report",
@@ -436,6 +440,183 @@
       "title": "WIRING + THE MEASURED DEFAULTS",
       "color": "#432",
       "bgcolor": "#653"
+    },
+    {
+      "id": 22,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        1940,
+        460
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 23,
+      "type": "ShowText|pysssss",
+      "pos": [
+        2380,
+        460
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 9
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 24,
+      "type": "AtlasStereoRender",
+      "pos": [
+        1940,
+        700
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            12
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 25,
+      "type": "PreviewImage",
+      "pos": [
+        2380,
+        700
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
     }
   ],
   "links": [
@@ -494,6 +675,46 @@
       7,
       0,
       "STRING"
+    ],
+    [
+      8,
+      4,
+      0,
+      22,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      22,
+      1,
+      23,
+      0,
+      "STRING"
+    ],
+    [
+      10,
+      4,
+      0,
+      24,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      1,
+      0,
+      24,
+      1,
+      "IMAGE"
+    ],
+    [
+      12,
+      24,
+      0,
+      25,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [],

@@ -1,8 +1,8 @@
 {
   "id": "0b068500-ea2c-4374-8fb2-827b37d2edfc",
   "revision": 0,
-  "last_node_id": 19,
-  "last_link_id": 33,
+  "last_node_id": 23,
+  "last_link_id": 38,
   "nodes": [
     {
       "id": 1,
@@ -25,7 +25,8 @@
           "type": "IMAGE",
           "links": [
             1,
-            33
+            33,
+            37
           ]
         }
       ],
@@ -36,7 +37,7 @@
         "source_image.png",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE"
+      "title": "1 · SOURCE PLATE"
     },
     {
       "id": 2,
@@ -128,7 +129,7 @@
         true,
         2
       ],
-      "title": "2 \u00b7 \ud83e\udde0 VLM NAMES OCCLUDERS (frees RAM for SDXL)"
+      "title": "2 · 🧠 VLM NAMES OCCLUDERS (frees RAM for SDXL)"
     },
     {
       "id": 3,
@@ -208,7 +209,7 @@
         "building, tree, roof, person, vehicle, text, watermark, blurry",
         0
       ],
-      "title": "3 \u00b7 SOLVE + DEPTH + RELIEF"
+      "title": "3 · SOLVE + DEPTH + RELIEF"
     },
     {
       "id": 4,
@@ -249,7 +250,7 @@
         1.0,
         0.0
       ],
-      "title": "3b \u00b7 \ud83d\udccf SCALE DIAL (AI vistas: set camera height!)"
+      "title": "3b · 📏 SCALE DIAL (AI vistas: set camera height!)"
     },
     {
       "id": 5,
@@ -304,7 +305,7 @@
         "merged",
         0
       ],
-      "title": "4 \u00b7 \ud83e\ude84 SAM3 OCCLUDER MASK"
+      "title": "4 · 🪄 SAM3 OCCLUDER MASK"
     },
     {
       "id": 6,
@@ -361,7 +362,7 @@
       "widgets_values": [
         96
       ],
-      "title": "5 \u00b7 \u2702 CROP THE OCCLUSION EVENT"
+      "title": "5 · ✂ CROP THE OCCLUSION EVENT"
     },
     {
       "id": 7,
@@ -414,7 +415,7 @@
         1024,
         true
       ],
-      "title": "6 \u00b7 \u2728 PAINT THE OCCLUDERS OUT"
+      "title": "6 · ✨ PAINT THE OCCLUDERS OUT"
     },
     {
       "id": 8,
@@ -464,7 +465,7 @@
       "widgets_values": [
         0
       ],
-      "title": "7 \u00b7 STITCH \u2192 CLEAN PLATE"
+      "title": "7 · STITCH → CLEAN PLATE"
     },
     {
       "id": 9,
@@ -541,7 +542,7 @@
         0,
         0.25
       ],
-      "title": "8 \u00b7 CLEAN PLATE'S OWN DEPTH (doctrine)"
+      "title": "8 · CLEAN PLATE'S OWN DEPTH (doctrine)"
     },
     {
       "id": 11,
@@ -588,7 +589,7 @@
         false,
         "measured_only"
       ],
-      "title": "9 \u00b7 FIT PLANES"
+      "title": "9 · FIT PLANES"
     },
     {
       "id": 12,
@@ -629,7 +630,7 @@
         "Node name for S&R": "AtlasMergeGeometry"
       },
       "widgets_values": [],
-      "title": "10 \u00b7 MERGE + RELIEF"
+      "title": "10 · MERGE + RELIEF"
     },
     {
       "id": 13,
@@ -670,7 +671,7 @@
         "Node name for S&R": "AtlasOcclusionGraph"
       },
       "widgets_values": [],
-      "title": "11 \u00b7 \ud83d\udd78 GRAPH"
+      "title": "11 · 🕸 GRAPH"
     },
     {
       "id": 14,
@@ -719,7 +720,7 @@
       "widgets_values": [
         false
       ],
-      "title": "12 \u00b7 \ud83e\udd5e LAYER PLAN"
+      "title": "12 · 🥞 LAYER PLAN"
     },
     {
       "id": 15,
@@ -768,7 +769,9 @@
           "type": "ATLAS_SOLVE",
           "links": [
             31,
-            32
+            32,
+            34,
+            36
           ]
         }
       ],
@@ -798,7 +801,7 @@
         0.0,
         true
       ],
-      "title": "13 \u00b7 \ud83e\udd6e BACKGROUND LAYER (full range)"
+      "title": "13 · 🥮 BACKGROUND LAYER (full range)"
     },
     {
       "id": 16,
@@ -832,7 +835,7 @@
         30.0,
         "auto"
       ],
-      "title": "14a \u00b7 \ud83d\udcd0 BUDGET before"
+      "title": "14a · 📐 BUDGET before"
     },
     {
       "id": 17,
@@ -866,7 +869,7 @@
         30.0,
         "auto"
       ],
-      "title": "14b \u00b7 \ud83d\udcd0 BUDGET after \u2014 must GROW"
+      "title": "14b · 📐 BUDGET after — must GROW"
     },
     {
       "id": 18,
@@ -903,7 +906,7 @@
         "",
         1.0
       ],
-      "title": "15 \u00b7 VIEWPORT"
+      "title": "15 · VIEWPORT"
     },
     {
       "id": 19,
@@ -923,11 +926,188 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "AUTO LAYERED INPAINT \u2014 the whole anti-tear pipeline, no external\npacks, no hand-made plate.\n\nThe clean plate is made IN-GRAPH: SAM3 masks what the VLM named,\nthe inpaint is CROPPED to the occlusion event (one giant crop\ninvents a connected mega-structure \u2014 crop discipline), SDXL paints\nthe occluders out, and the result stitches back losslessly.\n\nVRAM choreography is deliberate: the VLM offloads immediately\n(offload_ttl_s=2) because SDXL needs the memory next. On a batch,\nraise offload_ttl_s to ~300 so gemma lingers between plates.\n\nDOCTRINE: the clean plate gets ITS OWN depth solve (node 8). Never\nextend the original's far band \u2014 vertical cliff, floating\nforeground. The layer is full-range (near_pct=0, far_pct=0,\nfill_occluded OFF).\n\nCHECKPOINT: SDXL/juggernautXL_versionXInpaint.safetensors from the\ncentral H: model drive (extra_model_paths.yaml). Any SDXL inpaint\ncheckpoint works \u2014 set it in node 6.\n\nVERDICT: 14a vs 14b. The layered budget must GROW. If it does not,\nlook at the clean-plate preview first \u2014 a bad inpaint makes a bad\nlayer, and the budget will say so honestly."
+        "AUTO LAYERED INPAINT — the whole anti-tear pipeline, no external\npacks, no hand-made plate.\n\nThe clean plate is made IN-GRAPH: SAM3 masks what the VLM named,\nthe inpaint is CROPPED to the occlusion event (one giant crop\ninvents a connected mega-structure — crop discipline), SDXL paints\nthe occluders out, and the result stitches back losslessly.\n\nVRAM choreography is deliberate: the VLM offloads immediately\n(offload_ttl_s=2) because SDXL needs the memory next. On a batch,\nraise offload_ttl_s to ~300 so gemma lingers between plates.\n\nDOCTRINE: the clean plate gets ITS OWN depth solve (node 8). Never\nextend the original's far band — vertical cliff, floating\nforeground. The layer is full-range (near_pct=0, far_pct=0,\nfill_occluded OFF).\n\nCHECKPOINT: SDXL/juggernautXL_versionXInpaint.safetensors from the\ncentral H: model drive (extra_model_paths.yaml). Any SDXL inpaint\ncheckpoint works — set it in node 6.\n\nVERDICT: 14a vs 14b. The layered budget must GROW. If it does not,\nlook at the clean-plate preview first — a bad inpaint makes a bad\nlayer, and the budget will say so honestly."
       ],
-      "title": "READ ME \u00b7 fully automatic layers",
+      "title": "READ ME · fully automatic layers",
       "color": "#432",
       "bgcolor": "#653"
+    },
+    {
+      "id": 20,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        3160,
+        800
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 34
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 21,
+      "type": "ShowText|pysssss",
+      "pos": [
+        3600,
+        800
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 35
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 22,
+      "type": "AtlasStereoRender",
+      "pos": [
+        3160,
+        1040
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 36
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 37
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            38
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 23,
+      "type": "PreviewImage",
+      "pos": [
+        3600,
+        1040
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 38
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
     }
   ],
   "links": [
@@ -1193,6 +1373,46 @@
       0,
       18,
       1,
+      "IMAGE"
+    ],
+    [
+      34,
+      15,
+      0,
+      20,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      35,
+      20,
+      1,
+      21,
+      0,
+      "STRING"
+    ],
+    [
+      36,
+      15,
+      0,
+      22,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      37,
+      1,
+      0,
+      22,
+      1,
+      "IMAGE"
+    ],
+    [
+      38,
+      22,
+      0,
+      23,
+      0,
       "IMAGE"
     ]
   ],

@@ -1,7 +1,7 @@
 {
   "id": "e140dd66-1b4a-44bd-b6ea-59c6a8f62c3b",
-  "last_node_id": 30,
-  "last_link_id": 45,
+  "last_node_id": 34,
+  "last_link_id": 50,
   "nodes": [
     {
       "id": 1,
@@ -27,7 +27,8 @@
             2,
             14,
             39,
-            43
+            43,
+            49
           ],
           "slot_index": 0
         },
@@ -973,7 +974,9 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            8
+            8,
+            46,
+            48
           ],
           "slot_index": 0
         },
@@ -1410,6 +1413,183 @@
         "merged",
         0
       ]
+    },
+    {
+      "id": 31,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        6170,
+        2431
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 46
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            47
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 32,
+      "type": "ShowText|pysssss",
+      "pos": [
+        6610,
+        2431
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 47
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 33,
+      "type": "AtlasStereoRender",
+      "pos": [
+        6170,
+        2671
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 48
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 49
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            50
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 34,
+      "type": "PreviewImage",
+      "pos": [
+        6610,
+        2671
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 50
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
     }
   ],
   "links": [
@@ -1740,6 +1920,46 @@
       21,
       5,
       "MASK"
+    ],
+    [
+      46,
+      22,
+      0,
+      31,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      47,
+      31,
+      1,
+      32,
+      0,
+      "STRING"
+    ],
+    [
+      48,
+      22,
+      0,
+      33,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      49,
+      1,
+      0,
+      33,
+      1,
+      "IMAGE"
+    ],
+    [
+      50,
+      33,
+      0,
+      34,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [

@@ -348,4 +348,73 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
             assert lid in (nodes[sid]["outputs"][sslot].get("links") or []), f"{p.name}: link {lid}"
             assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
         checked += 1
-    assert checked == 20
+    assert checked == 21
+
+
+def test_frontend_only_rgthree_nodes_are_virtual():
+    """rgthree's group togglers have no server-side implementation.
+
+    They never appear in /object_info, so the flattener used to reject them as
+    "unknown node type (not registered on this server)" — which reads as a
+    broken install on a machine where rgthree is present and working. Found
+    2026-07-29: atlas_staged_master_portal_neat_workflow could not be flattened
+    at all despite the pack being installed.
+    """
+    from atlas_camera.mcp.comfy_http import VIRTUAL
+
+    for name in ("Fast Groups Bypasser (rgthree)", "Fast Groups Muter (rgthree)",
+                 "Fast Bypasser (rgthree)", "Fast Muter (rgthree)"):
+        assert name in VIRTUAL, f"{name} must be treated as frontend-only"
+
+
+def test_every_shipped_workflow_node_is_resolvable():
+    """Every node in a shipped graph must be something the flattener can place.
+
+    Three legitimate kinds: an Atlas node, a ComfyUI/third-party node with a
+    server-side implementation, or a FRONTEND-ONLY node the flattener drops.
+    Anything else fails conversion with "unknown node type" and the workflow
+    cannot be run headlessly by the MCP server, an agent, or the benchmark.
+
+    Found 2026-07-29: atlas_staged_master_portal_neat_workflow could not be
+    flattened at all because rgthree's group toggler was in none of those
+    buckets — and the error read as a broken install on a machine where rgthree
+    was installed and working.
+
+    Deliberately does NOT need a running ComfyUI, so it guards on every machine.
+    """
+    import json
+    import re
+    from pathlib import Path
+
+    from atlas_camera.comfy import node_registry as reg
+    from atlas_camera.mcp.comfy_http import VIRTUAL
+
+    _UUID_RE = re.compile(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+    # Server-side nodes Atlas graphs legitimately use that are not Atlas's own.
+    THIRD_PARTY = {
+        "LoadImage", "SaveImage", "PreviewImage", "ImagePadForOutpaint",
+        "ShowText|pysssss", "LoadImageMask", "ImageScale", "MaskToImage",
+        "InvertMask", "ImageInvert", "PrimitiveNode",
+    }
+    known = set(reg.NODE_CLASS_MAPPINGS) | set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
+    known |= VIRTUAL | THIRD_PARTY
+
+    examples = Path(__file__).resolve().parents[1] / "examples"
+    unknown = {}
+    for wf in sorted(examples.glob("*.json")):
+        if "-edit" in wf.stem:
+            continue
+        doc = json.loads(wf.read_text(encoding="utf-8"))
+        types = {n["type"] for n in doc["nodes"]}
+        # A ComfyUI v1 SUBGRAPH instance carries a UUID as its type; the
+        # flattener expands those through their -10/-20 boundaries, so they are
+        # resolvable even though no such "node class" exists.
+        types = {t for t in types if not _UUID_RE.fullmatch(str(t))}
+        missing = sorted(types - known)
+        if missing:
+            unknown[wf.stem] = missing
+    assert not unknown, (
+        "shipped workflows reference node types the flattener cannot place:\n  "
+        + "\n  ".join(f"{k}: {v}" for k, v in unknown.items()))

@@ -52,7 +52,8 @@ class OutpaintedDepth:
     scale: float = 1.0
     shift: float = 0.0
     anchor_samples: int = 0
-    anchor_residual: float = 0.0   # median |anchored - original| on the overlap
+    anchor_residual: float = 0.0      # median |anchored - original| on the overlap
+    anchor_residual_rel: float = 0.0  # the same, as a fraction of median depth
     metadata: dict = field(default_factory=dict)
 
 
@@ -62,6 +63,51 @@ def ring_mask_for(width: int, height: int, pad: tuple, np) -> Any:
     m = np.ones((height + top + bottom, width + left + right), dtype=bool)
     m[top:top + height, left:left + width] = False
     return m
+
+
+def widen_intrinsics(intrinsics, pad):
+    """The camera for a plate that grew by ``pad`` — the missing half of outpainting.
+
+    Widening the depth map alone is not enough, and getting this wrong is silent.
+    Every consumer downstream reads width/height/cx/cy from the SOLVE, not from
+    the depth map (`node_helpers._solve_camera_params`), so a widened depth fed
+    to the original camera back-projects the new ring against the old principal
+    point and puts it in the wrong place — while looking entirely plausible.
+
+    The frame grows, so:
+      * ``image_width``/``image_height`` grow by the padding
+      * the principal point SHIFTS by the near-side padding, because the same
+        optical centre now sits further from the new top-left corner
+      * ``fx``/``fy`` are UNCHANGED — focal length is a property of the lens, and
+        seeing more of the world does not alter it
+
+    This is the same widened-camera trick `AtlasCleanPlateLayer.frame_outpaint_px`
+    performs per source; here it is exposed so an outpainted depth can be
+    consumed by the ordinary geometry nodes.
+    """
+    import copy as _copy
+
+    left, top, right, bottom = (int(v) for v in pad)
+    out = _copy.deepcopy(intrinsics)
+    w = int(getattr(intrinsics, "image_width", 0) or 0)
+    h = int(getattr(intrinsics, "image_height", 0) or 0)
+    out.image_width = w + left + right
+    out.image_height = h + top + bottom
+
+    cx = getattr(intrinsics, "cx_px", None)
+    cy = getattr(intrinsics, "cy_px", None)
+    cx = (w / 2.0 if cx is None else float(cx)) + left
+    cy = (h / 2.0 if cy is None else float(cy)) + top
+    out.cx_px, out.cy_px = cx, cy
+    if getattr(out, "principal_point_px", None) is not None:
+        out.principal_point_px = (cx, cy)
+
+    # Sensor height is derived from the aspect ratio elsewhere, so keep it
+    # consistent with the new frame rather than leaving a stale value behind.
+    sw = getattr(out, "sensor_width_mm", None)
+    if sw and out.image_width:
+        out.sensor_height_mm = float(sw) * (out.image_height / float(out.image_width))
+    return out
 
 
 def outpaint_depth(original_depth, widened_depth, *, pad, feather_px: int = 0,
@@ -96,7 +142,7 @@ def outpaint_depth(original_depth, widened_depth, *, pad, feather_px: int = 0,
     inner = wd[top:top + h, left:left + w]
 
     # ---- anchor the widened pass onto the original -----------------------
-    scale, shift, n, resid = 1.0, 0.0, 0, 0.0
+    scale, shift, n, resid, resid_rel = 1.0, 0.0, 0, 0.0, 0.0
     if anchor:
         a_ok = (np.isfinite(inner) & np.isfinite(od) & (inner > 0) & (od > 0))
         n = int(a_ok.sum())
@@ -109,6 +155,13 @@ def outpaint_depth(original_depth, widened_depth, *, pad, feather_px: int = 0,
             else:
                 shift = float(np.median(y) - np.median(x))
             resid = float(np.median(np.abs((x * scale + shift) - y)))
+            # RELATIVE to the scene's own depth, not an absolute metre count.
+            # 0.8 m of disagreement is serious in a room and negligible on a
+            # cityscape, so an absolute threshold either cries wolf on distant
+            # scenes or stays silent on near ones. Measured live: the same
+            # 0.82 m was 7.7% of a 10.6 m median and 0.5% of a 156 m one.
+            median_depth = float(np.median(y)) if y.size else 0.0
+            resid_rel = (resid / median_depth) if median_depth > 1e-6 else 0.0
 
     adjusted = wd * scale + shift
     adjusted[np.isfinite(adjusted) & (adjusted <= 0)] = np.nan
@@ -147,6 +200,7 @@ def outpaint_depth(original_depth, widened_depth, *, pad, feather_px: int = 0,
         depth=out.astype(np.float32),
         ring_mask=ring,
         scale=scale, shift=shift, anchor_samples=n, anchor_residual=resid,
+        anchor_residual_rel=resid_rel,
         metadata={
             "pad": [left, top, right, bottom],
             "anchored": bool(anchor and n >= MIN_ANCHOR_SAMPLES),

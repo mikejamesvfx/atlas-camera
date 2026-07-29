@@ -1,8 +1,8 @@
 {
   "id": "7caf1a2c-c531-4ceb-9b1b-ef8895815392",
   "revision": 0,
-  "last_node_id": 17,
-  "last_link_id": 26,
+  "last_node_id": 21,
+  "last_link_id": 31,
   "nodes": [
     {
       "id": 1,
@@ -25,7 +25,8 @@
           "type": "IMAGE",
           "links": [
             1,
-            26
+            26,
+            30
           ]
         }
       ],
@@ -36,7 +37,7 @@
         "source_image.png",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE"
+      "title": "1 · SOURCE PLATE"
     },
     {
       "id": 2,
@@ -70,7 +71,7 @@
         "cleanplate.png",
         "image"
       ],
-      "title": "1b \u00b7 CLEAN PLATE (occluders painted out)"
+      "title": "1b · CLEAN PLATE (occluders painted out)"
     },
     {
       "id": 3,
@@ -160,7 +161,7 @@
         true,
         2
       ],
-      "title": "2 \u00b7 \ud83e\udde0 VLM NAMES THE SCENE"
+      "title": "2 · 🧠 VLM NAMES THE SCENE"
     },
     {
       "id": 4,
@@ -242,7 +243,7 @@
         "building, tree, roof, person, vehicle, text, watermark, blurry",
         0
       ],
-      "title": "3 \u00b7 SOLVE + DEPTH + RELIEF"
+      "title": "3 · SOLVE + DEPTH + RELIEF"
     },
     {
       "id": 5,
@@ -297,7 +298,7 @@
         "merged",
         0
       ],
-      "title": "4 \u00b7 \ud83e\ude84 SAM3 OCCLUDER MASK"
+      "title": "4 · 🪄 SAM3 OCCLUDER MASK"
     },
     {
       "id": 6,
@@ -333,7 +334,7 @@
         "Node name for S&R": "MaskToImage"
       },
       "widgets_values": [],
-      "title": "mask \u2192 image"
+      "title": "mask → image"
     },
     {
       "id": 7,
@@ -408,7 +409,7 @@
         false,
         "measured_only"
       ],
-      "title": "5 \u00b7 FIT PLANES + OBJECTS"
+      "title": "5 · FIT PLANES + OBJECTS"
     },
     {
       "id": 9,
@@ -449,7 +450,7 @@
         "Node name for S&R": "AtlasMergeGeometry"
       },
       "widgets_values": [],
-      "title": "6 \u00b7 MERGE + RELIEF"
+      "title": "6 · MERGE + RELIEF"
     },
     {
       "id": 10,
@@ -490,7 +491,7 @@
         "Node name for S&R": "AtlasOcclusionGraph"
       },
       "widgets_values": [],
-      "title": "7 \u00b7 \ud83d\udd78 OCCLUSION GRAPH"
+      "title": "7 · 🕸 OCCLUSION GRAPH"
     },
     {
       "id": 11,
@@ -539,7 +540,7 @@
       "widgets_values": [
         false
       ],
-      "title": "8 \u00b7 \ud83e\udd5e LAYER PLAN"
+      "title": "8 · 🥞 LAYER PLAN"
     },
     {
       "id": 12,
@@ -588,7 +589,7 @@
         0,
         0.25
       ],
-      "title": "9 \u00b7 CLEAN PLATE'S OWN DEPTH (doctrine: never a band extension)"
+      "title": "9 · CLEAN PLATE'S OWN DEPTH (doctrine: never a band extension)"
     },
     {
       "id": 13,
@@ -637,7 +638,9 @@
           "type": "ATLAS_SOLVE",
           "links": [
             24,
-            25
+            25,
+            27,
+            29
           ]
         }
       ],
@@ -667,7 +670,7 @@
         0.0,
         true
       ],
-      "title": "10 \u00b7 \ud83e\udd6e BACKGROUND LAYER (full range)"
+      "title": "10 · 🥮 BACKGROUND LAYER (full range)"
     },
     {
       "id": 14,
@@ -701,7 +704,7 @@
         30.0,
         "auto"
       ],
-      "title": "11a \u00b7 \ud83d\udcd0 BUDGET before"
+      "title": "11a · 📐 BUDGET before"
     },
     {
       "id": 15,
@@ -735,7 +738,7 @@
         30.0,
         "auto"
       ],
-      "title": "11b \u00b7 \ud83d\udcd0 BUDGET after \u2014 must GROW"
+      "title": "11b · 📐 BUDGET after — must GROW"
     },
     {
       "id": 16,
@@ -772,7 +775,7 @@
         "",
         1.0
       ],
-      "title": "12 \u00b7 VIEWPORT"
+      "title": "12 · VIEWPORT"
     },
     {
       "id": 17,
@@ -792,11 +795,188 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "LAYERED SEGMENTATION \u2014 the anti-tear pipeline, measured.\n\nWhy layers: filling holes in ONE surface makes every fill butt\nagainst measured depth and tear along the seam (live measurement:\n302k px closed, 222k px of NEW rim tears, budget SHRANK). A\nclean-plate layer instead CONTINUES underneath the occluder \u2014 the\nsurfaces overlap, so there is no seam. Same plate, one layer:\ndolly z went +/-1.80 m -> +/-2.04 m. The budget GREW.\n\nTHE CLEAN PLATE (node 1b): paint the occluders out with your\ninpaint graph of choice (LaMa / SDXL / Photoshop). Atlas does not\ninpaint \u2014 that is delegated by design (GPL boundary). Use node 4's\nSAM3 mask as your inpaint mask; it is cut from the concepts the\nVLM named in node 2 (LM Studio + gemma-4-12b-qat preset).\n\nDOCTRINE (2026-07-19): the clean plate gets its OWN depth solve\n(node 9). Never extend the original's far band to cover the\nremoval \u2014 that puts the support at the cutoff and produces a\nvertical cliff with floating foreground under orbit.\n\nVERDICT: 11a vs 11b. The layered budget must GROW; if it does\nnot, the layer's depth solve or matte is wrong \u2014 fix that before\ntrusting the projection."
+        "LAYERED SEGMENTATION — the anti-tear pipeline, measured.\n\nWhy layers: filling holes in ONE surface makes every fill butt\nagainst measured depth and tear along the seam (live measurement:\n302k px closed, 222k px of NEW rim tears, budget SHRANK). A\nclean-plate layer instead CONTINUES underneath the occluder — the\nsurfaces overlap, so there is no seam. Same plate, one layer:\ndolly z went +/-1.80 m -> +/-2.04 m. The budget GREW.\n\nTHE CLEAN PLATE (node 1b): paint the occluders out with your\ninpaint graph of choice (LaMa / SDXL / Photoshop). Atlas does not\ninpaint — that is delegated by design (GPL boundary). Use node 4's\nSAM3 mask as your inpaint mask; it is cut from the concepts the\nVLM named in node 2 (LM Studio + gemma-4-12b-qat preset).\n\nDOCTRINE (2026-07-19): the clean plate gets its OWN depth solve\n(node 9). Never extend the original's far band to cover the\nremoval — that puts the support at the cutoff and produces a\nvertical cliff with floating foreground under orbit.\n\nVERDICT: 11a vs 11b. The layered budget must GROW; if it does\nnot, the layer's depth solve or matte is wrong — fix that before\ntrusting the projection."
       ],
-      "title": "READ ME \u00b7 layers, not patches",
+      "title": "READ ME · layers, not patches",
       "color": "#432",
       "bgcolor": "#653"
+    },
+    {
+      "id": 18,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        2540,
+        800
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 27
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            28
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 19,
+      "type": "ShowText|pysssss",
+      "pos": [
+        2980,
+        800
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 28
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 20,
+      "type": "AtlasStereoRender",
+      "pos": [
+        2540,
+        1040
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 29
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 30
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            31
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 21,
+      "type": "PreviewImage",
+      "pos": [
+        2980,
+        1040
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 31
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
     }
   ],
   "links": [
@@ -1006,6 +1186,46 @@
       0,
       16,
       1,
+      "IMAGE"
+    ],
+    [
+      27,
+      13,
+      0,
+      18,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      28,
+      18,
+      1,
+      19,
+      0,
+      "STRING"
+    ],
+    [
+      29,
+      13,
+      0,
+      20,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      30,
+      1,
+      0,
+      20,
+      1,
+      "IMAGE"
+    ],
+    [
+      31,
+      20,
+      0,
+      21,
+      0,
       "IMAGE"
     ]
   ],

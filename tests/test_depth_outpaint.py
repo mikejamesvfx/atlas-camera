@@ -203,7 +203,7 @@ def test_node_derives_symmetric_padding_from_the_size_difference(monkeypatch):
     h, w, pad = 64, 96, 16
     node = _node(monkeypatch, h + 2 * pad, w + 2 * pad)
     wide_img = torch.zeros((1, h + 2 * pad, w + 2 * pad, 3))
-    out, ring, report = node.outpaint(_depth_result(h, w), wide_img)
+    out, ring, report, _ws = node.outpaint(_depth_result(h, w), wide_img)
 
     assert out.image_width == w + 2 * pad and out.image_height == h + 2 * pad
     assert tuple(ring.shape) == (1, h + 2 * pad, w + 2 * pad)
@@ -218,8 +218,8 @@ def test_node_puts_an_odd_remainder_on_right_and_bottom(monkeypatch):
     """
     h, w = 64, 96
     node = _node(monkeypatch, h + 7, w + 5)
-    out, _ring, report = node.outpaint(_depth_result(h, w),
-                                       torch.zeros((1, h + 7, w + 5, 3)))
+    out, _ring, report, _ws = node.outpaint(_depth_result(h, w),
+                                            torch.zeros((1, h + 7, w + 5, 3)))
     assert out.image_width == w + 5 and out.image_height == h + 7
     assert "pad l2 t3 r3 b4" in report
 
@@ -239,7 +239,7 @@ def test_node_rejects_a_smaller_plate(monkeypatch):
 def test_node_honours_an_explicit_pad_override(monkeypatch):
     h, w = 64, 96
     node = _node(monkeypatch, h + 20, w + 30)
-    _out, _ring, report = node.outpaint(
+    _out, _ring, report, _ws = node.outpaint(
         _depth_result(h, w), torch.zeros((1, h + 20, w + 30, 3)),
         pad_override="10,5,20,15")
     assert "pad l10 t5 r20 b15" in report
@@ -260,15 +260,15 @@ def test_node_drops_stale_normals_and_says_so(monkeypatch):
     src = _depth_result(h, w)
     src.normal = np.zeros((h, w, 3), dtype=np.float32)
     node = _node(monkeypatch, h + 16, w + 16)
-    out, _ring, report = node.outpaint(src, torch.zeros((1, h + 16, w + 16, 3)))
+    out, _ring, report, _ws = node.outpaint(src, torch.zeros((1, h + 16, w + 16, 3)))
     assert out.normal is None
     assert "normals DROPPED" in report
 
 
 def test_node_reports_the_ring_as_invented(monkeypatch):
     node = _node(monkeypatch, 96, 128)
-    _out, _ring, report = node.outpaint(_depth_result(64, 96),
-                                        torch.zeros((1, 96, 128, 3)))
+    _out, _ring, report, _ws = node.outpaint(_depth_result(64, 96),
+                                             torch.zeros((1, 96, 128, 3)))
     assert "INVENTED" in report
     assert "anchored" in report.lower()
 
@@ -276,5 +276,115 @@ def test_node_reports_the_ring_as_invented(monkeypatch):
 def test_node_output_contract():
     from atlas_camera.comfy import node_registry as reg
     cls = reg.NODE_CLASS_MAPPINGS["AtlasOutpaintDepth"]
-    assert cls.RETURN_TYPES == ("ATLAS_DEPTH_MAP", "MASK", "STRING")
-    assert cls.RETURN_NAMES == ("depth", "ring_mask", "report")
+    assert cls.RETURN_TYPES == ("ATLAS_DEPTH_MAP", "MASK", "STRING", "ATLAS_SOLVE")
+    assert cls.RETURN_NAMES == ("depth", "ring_mask", "report", "widened_solve")
+
+
+# ----------------------------------------------- the widened camera
+
+def _solve(w=1000, h=750, f=35.0):
+    import atlas_camera.core.schema as sch
+    from atlas_camera.core.camera_math import look_at_view_matrix
+    from atlas_camera.core.intrinsics import build_intrinsics
+    view, world, rot = look_at_view_matrix(eye=(0, 1.6, 0), target=(0, 1.6, -1),
+                                           up=(0, 1, 0))
+    intr = build_intrinsics(image_width=w, image_height=h,
+                            focal_length_mm=f, sensor_width_mm=36.0)
+    extr = sch.AtlasExtrinsics(camera_position=(0.0, 1.6, 0.0),
+                               camera_rotation_matrix=rot,
+                               camera_world_matrix=world, camera_view_matrix=view)
+    return sch.AtlasSolve(camera=sch.AtlasCamera(intrinsics=intr, extrinsics=extr),
+                          image_path="p.jpg", image_width=w, image_height=h)
+
+
+def test_widen_shifts_the_principal_point_and_leaves_focal_alone():
+    """Outpainting adds pixels at the SAME angular scale.
+
+    The frame grows so the optical centre sits further from the new corner, but
+    the lens did not change — rescaling focal here would be the "resized plate"
+    correction, which is a different situation entirely.
+    """
+    from atlas_camera.core.depth_outpaint import widen_intrinsics
+
+    intr = _solve().camera.intrinsics
+    wide = widen_intrinsics(intr, (100, 50, 100, 50))
+
+    assert (wide.image_width, wide.image_height) == (1200, 850)
+    assert wide.cx_px == pytest.approx(intr.cx_px + 100)
+    assert wide.cy_px == pytest.approx(intr.cy_px + 50)
+    assert wide.fx_px == pytest.approx(intr.fx_px)
+    assert wide.fy_px == pytest.approx(intr.fy_px)
+
+
+def test_widen_handles_asymmetric_padding():
+    from atlas_camera.core.depth_outpaint import widen_intrinsics
+    intr = _solve().camera.intrinsics
+    wide = widen_intrinsics(intr, (0, 30, 90, 0))
+    assert (wide.image_width, wide.image_height) == (1090, 780)
+    assert wide.cx_px == pytest.approx(intr.cx_px)      # nothing added on the left
+    assert wide.cy_px == pytest.approx(intr.cy_px + 30)
+
+
+def test_widen_does_not_mutate_the_original():
+    from atlas_camera.core.depth_outpaint import widen_intrinsics
+    intr = _solve().camera.intrinsics
+    before = (intr.image_width, intr.cx_px)
+    widen_intrinsics(intr, (100, 100, 100, 100))
+    assert (intr.image_width, intr.cx_px) == before
+
+
+def _node_with_solve(monkeypatch, w, h, pad):
+    from atlas_camera.comfy import node_registry as reg
+    from atlas_camera.inference import depth_estimator as de
+    monkeypatch.setattr(de, "estimate_depth",
+                        lambda *a, **k: _depth_result(h + 2 * pad, w + 2 * pad, 1.0, 40.0))
+    return reg.NODE_CLASS_MAPPINGS["AtlasOutpaintDepth"]()
+
+
+def test_node_emits_a_widened_solve(monkeypatch):
+    """Regression: the solve path CRASHED and was never exercised.
+
+    `_solve_focal_px_for_image(solve, None)` dereferences the image, so wiring a
+    solve in — the recommended usage — raised AttributeError. The node tests all
+    omitted `solve`, so nothing caught it.
+    """
+    w, h, pad = 1000, 750, 100
+    node = _node_with_solve(monkeypatch, w, h, pad)
+    solve = _solve(w, h)
+    _d, _ring, report, widened = node.outpaint(
+        _depth_result(h, w), torch.zeros((1, h + 2 * pad, w + 2 * pad, 3)), solve=solve)
+
+    assert widened is not None
+    wi = widened.camera.intrinsics
+    assert (wi.image_width, wi.image_height) == (w + 2 * pad, h + 2 * pad)
+    assert wi.cx_px == pytest.approx(solve.camera.intrinsics.cx_px + pad)
+    assert wi.fx_px == pytest.approx(solve.camera.intrinsics.fx_px)
+    assert "widened camera" in report
+
+
+def test_the_widened_solve_is_what_geometry_nodes_actually_read(monkeypatch):
+    """The whole point. Downstream reads dimensions from the SOLVE, not the depth.
+
+    Without this the ring back-projects against the original principal point and
+    lands in the wrong place while looking entirely plausible.
+    """
+    from atlas_camera.comfy.node_helpers import _solve_camera_params
+
+    w, h, pad = 1000, 750, 100
+    node = _node_with_solve(monkeypatch, w, h, pad)
+    depth, _ring, _report, widened = node.outpaint(
+        _depth_result(h, w), torch.zeros((1, h + 2 * pad, w + 2 * pad, 3)),
+        solve=_solve(w, h))
+
+    got_w, got_h, _fx, _fy, got_cx, _cy = _solve_camera_params(widened, depth)
+    assert (got_w, got_h) == (depth.image_width, depth.image_height)
+    assert got_cx == pytest.approx(depth.image_width / 2.0)
+
+
+def test_without_a_solve_the_node_says_so_rather_than_pretending(monkeypatch):
+    w, h, pad = 1000, 750, 100
+    node = _node_with_solve(monkeypatch, w, h, pad)
+    _d, _ring, report, widened = node.outpaint(
+        _depth_result(h, w), torch.zeros((1, h + 2 * pad, w + 2 * pad, 3)))
+    assert widened is None
+    assert "NO solve supplied" in report

@@ -71,6 +71,7 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_boundary_smooth_retopo_test_workflow.json",
                      "atlas_camera_staged_master_agentic_assessment_workflow.json",
                      "atlas_camera_staged_master_workflow.json",
+                     "atlas_depth_desk_workflow.json",
                      "atlas_equirect_360_multiview_workflow.json",
                      "atlas_equirect_360_workflow.json",
                      "atlas_input_quickstart_agentic_assessment_workflow.json",

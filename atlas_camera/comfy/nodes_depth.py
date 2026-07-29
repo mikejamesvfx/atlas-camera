@@ -1046,8 +1046,8 @@ class AtlasOutpaintDepth:
     `extend_mask` / `{layer}_extend_matte.png`, so downstream regrain and
     matte work can treat it as suspect.
     """
-    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "MASK", "STRING")
-    RETURN_NAMES = ("depth", "ring_mask", "report")
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "MASK", "STRING", "ATLAS_SOLVE")
+    RETURN_NAMES = ("depth", "ring_mask", "report", "widened_solve")
     FUNCTION = "outpaint"
     CATEGORY = "Atlas Camera/Masks & Depth"
 
@@ -1069,8 +1069,11 @@ class AtlasOutpaintDepth:
                                 "affine fit can only absorb the scale."}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
                 "solve": ("ATLAS_SOLVE", {"tooltip":
-                    "Optional focal source. NOTE the widened plate has a WIDER field of "
-                    "view at the same focal length, which this node accounts for."}),
+                    "The solve for the ORIGINAL plate. Strongly recommended — without it "
+                    "there is no `widened_solve` output, and every geometry node reads "
+                    "width/cx/cy from the SOLVE rather than the depth map, so widened "
+                    "depth on the original camera misregisters the new ring while looking "
+                    "entirely plausible."}),
                 "feather_px": ("INT", {"default": 0, "min": 0, "max": 512, "step": 4,
                     "tooltip": "Blend the new depth into the original across this many "
                                "pixels INSIDE the frame edge. 0 keeps every measured pixel "
@@ -1128,7 +1131,15 @@ class AtlasOutpaintDepth:
             # The focal is a property of the LENS, not the crop, so it carries
             # over unchanged — the widened plate simply spans a wider angle at
             # the same focal length, which is what makes the ring meaningful.
-            focal = _solve_focal_px_for_image(solve, None) if solve is not None else None
+            # fx UNSCALED, deliberately. `_solve_focal_px_for_image` rescales by
+            # the image-width ratio, which is right for a RESIZED plate and wrong
+            # for a widened one: outpainting adds pixels at the same angular
+            # scale, so focal-in-pixels is unchanged. (It also crashes on a None
+            # image, which is how this was caught.)
+            focal = None
+            if solve is not None:
+                fx = getattr(solve.camera.intrinsics, "fx_px", None)
+                focal = float(fx) if fx else None
             wide = estimate_depth(tmp, model_id=depth_model,
                                   device=None if device == "auto" else device,
                                   focal_px=focal)
@@ -1169,11 +1180,17 @@ class AtlasOutpaintDepth:
             lines.append(
                 f"  anchored to the original: scale {res.scale:.4f}, shift {res.shift:+.4f} "
                 f"on {res.anchor_samples} samples, residual {res.anchor_residual:.4f} m")
-            if res.anchor_residual > 0.5:
+            if res.anchor_residual_rel > 0.02:
                 lines.append(
-                    "  WARNING residual is large — the widened pass disagrees with the "
-                    "original about the part they SHARE, so the ring is unlikely to be "
-                    "trustworthy. Check that both used the same depth model.")
+                    f"  WARNING residual is {res.anchor_residual_rel * 100:.1f}% of scene "
+                    "depth — the widened pass disagrees with the original about the part "
+                    "they SHARE, so the ring is unlikely to be trustworthy.")
+                lines.append(
+                    "    Usual cause: the input depth was POST-PROCESSED after its model "
+                    "ran (AtlasDepthDetailEnhance, AtlasDepthCombine) while this node "
+                    "re-ran a raw pass. An affine fit cannot absorb that — branch the "
+                    "outpaint off the RAW depth instead. A different depth_model does it "
+                    "too.")
         else:
             lines.append(
                 "  NOT anchored (too little valid overlap) — the ring keeps the widened "
@@ -1187,4 +1204,30 @@ class AtlasOutpaintDepth:
                 f"  feathered {int(feather_px)} px inside the frame — that band is now a "
                 "mixture, not pure measurement.")
 
-        return (out, ring, "\n".join(lines))
+        # The widened camera — the missing half of outpainting. Every geometry
+        # node reads width/cx/cy from the SOLVE, not from the depth map, so a
+        # widened depth on the original camera misregisters the new ring while
+        # looking entirely plausible.
+        widened_solve = None
+        if solve is not None:
+            from atlas_camera.core.depth_outpaint import widen_intrinsics
+            widened_solve = _copy.deepcopy(solve)
+            widened_solve.camera.intrinsics = widen_intrinsics(
+                solve.camera.intrinsics, pad)
+            widened_solve.image_width = out.image_width
+            widened_solve.image_height = out.image_height
+            wi, oi = widened_solve.camera.intrinsics, solve.camera.intrinsics
+            lines.append(
+                f"  widened camera: {wi.image_width}x{wi.image_height}, "
+                f"cx {float(oi.cx_px or 0):.1f} -> {wi.cx_px:.1f}, "
+                f"cy {float(oi.cy_px or 0):.1f} -> {wi.cy_px:.1f} "
+                "(focal unchanged — the lens did not change, the frame did)")
+            lines.append(
+                "  USE `widened_solve` downstream, NOT the original: geometry nodes "
+                "read width/cx/cy from the solve rather than the depth map.")
+        else:
+            lines.append(
+                "  NO solve supplied, so no widened camera was produced. The depth is "
+                "widened but nothing downstream knows it — wire the solve in.")
+
+        return (out, ring, "\n".join(lines), widened_solve)

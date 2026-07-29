@@ -1,0 +1,193 @@
+{
+  "noise_threshold": 0.02,
+  "note": "Output-side metrics for shipped workflows. Process-side numbers (pixels synthesised, completion confidence) are deliberately absent \u2014 they moved opposite to quality on 2026-07-29.",
+  "workflows": {
+    "atlas_3layer_sky_machine_foreground_moge_workflow": {
+      "n_images": 1,
+      "no_budget_reason": "AtlasMoveBudget produced no envelope report",
+      "non_black_frac": 0.73308,
+      "ok": true,
+      "runtime_s": 161.1,
+      "scored_image": "bench_00010_.png",
+      "size": [
+        2048,
+        602
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_3layer_sky_machine_foreground_moge_workflow"
+    },
+    "atlas_4layer_boundedband_bgcard_moge_workflow": {
+      "n_images": 1,
+      "no_budget_reason": "AtlasMoveBudget produced no envelope report",
+      "non_black_frac": 0.96683,
+      "ok": true,
+      "runtime_s": 76.1,
+      "scored_image": "bench_00011_.png",
+      "size": [
+        2048,
+        602
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_4layer_boundedband_bgcard_moge_workflow"
+    },
+    "atlas_boundary_smooth_retopo_test_workflow": {
+      "already_tears_pct": 2.0,
+      "dolly_unbounded": true,
+      "n_images": 1,
+      "non_black_frac": 0.61401,
+      "ok": true,
+      "runtime_s": 55.9,
+      "scored_image": "bench_00012_.png",
+      "size": [
+        1536,
+        768
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_boundary_smooth_retopo_test_workflow"
+    },
+    "atlas_camera_staged_master_agentic_assessment_workflow": {
+      "n_images": 1,
+      "no_budget_reason": "AtlasMoveBudget produced no envelope report",
+      "no_image_reason": "no scoreable image \u2014 the graph produced none and the injected stereo render did not run (no IMAGE source found?)",
+      "ok": true,
+      "runtime_s": 20.8,
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_camera_staged_master_agentic_assessment_workflow"
+    },
+    "atlas_camera_staged_master_workflow": {
+      "n_images": 1,
+      "no_budget_reason": "AtlasMoveBudget produced no envelope report",
+      "no_image_reason": "no scoreable image \u2014 the graph produced none and the injected stereo render did not run (no IMAGE source found?)",
+      "ok": true,
+      "runtime_s": 20.8,
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_camera_staged_master_workflow"
+    },
+    "atlas_depth_desk_workflow": {
+      "already_tears_pct": 6.2,
+      "dolly_unbounded": true,
+      "dropped_faces": 1976,
+      "n_images": 3,
+      "non_black_frac": 0.72357,
+      "ok": true,
+      "runtime_s": 316.7,
+      "scored_image": "bench_00009_.png",
+      "size": [
+        2048,
+        683
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_depth_desk_workflow"
+    },
+    "atlas_equirect_360_multiview_workflow": {
+      "already_tears_pct": 11.7,
+      "dolly_unbounded": true,
+      "dropped_faces": 248726,
+      "n_images": 5,
+      "non_black_frac": 0.75651,
+      "ok": true,
+      "runtime_s": 50.9,
+      "scored_image": "bench_00013_.png",
+      "size": [
+        2048,
+        512
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_equirect_360_multiview_workflow"
+    },
+    "atlas_equirect_360_workflow": {
+      "already_tears_pct": 11.2,
+      "dolly_m": 0.467,
+      "n_images": 13,
+      "non_black_frac": 0.73421,
+      "ok": true,
+      "runtime_s": 25.9,
+      "scored_image": "bench_00005_.png",
+      "size": [
+        2048,
+        512
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_equirect_360_workflow"
+    },
+    "atlas_input_walkthrough_switches_workflow": {
+      "already_tears_pct": 0.1,
+      "dolly_unbounded": true,
+      "n_images": 1,
+      "non_black_frac": 0.98166,
+      "ok": true,
+      "runtime_s": 30.9,
+      "scored_image": "bench_00014_.png",
+      "size": [
+        1536,
+        768
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_input_walkthrough_switches_workflow"
+    },
+    "atlas_layered_segmentation_workflow": {
+      "n_images": 1,
+      "no_budget_reason": "AtlasMoveBudget produced no envelope report",
+      "no_image_reason": "no scoreable image \u2014 the graph produced none and the injected stereo render did not run (no IMAGE source found?)",
+      "ok": true,
+      "runtime_s": 5.8,
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_layered_segmentation_workflow"
+    },
+    "atlas_path_guided_hole_repair_workflow": {
+      "already_tears_pct": 17.7,
+      "dolly_unbounded": true,
+      "n_images": 6,
+      "non_black_frac": 0.60299,
+      "ok": true,
+      "runtime_s": 30.9,
+      "scored_image": "bench_00015_.png",
+      "size": [
+        1536,
+        768
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_path_guided_hole_repair_workflow"
+    },
+    "atlas_planar_hole_patch_workflow": {
+      "n_images": 4,
+      "no_budget_reason": "terminal solve carries no relief mesh, so there is no geometry to measure a camera envelope against",
+      "non_black_frac": 0.99939,
+      "ok": true,
+      "runtime_s": 5.8,
+      "scored_image": "bench_00006_.png",
+      "size": [
+        768,
+        768
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_planar_hole_patch_workflow"
+    },
+    "atlas_plate_color_grade_defocus_lut_workflow": {
+      "n_images": 3,
+      "no_budget_reason": "AtlasMoveBudget produced no envelope report",
+      "non_black_frac": 0.99939,
+      "ok": true,
+      "runtime_s": 5.8,
+      "scored_image": "bench_00016_.png",
+      "size": [
+        768,
+        768
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_plate_color_grade_defocus_lut_workflow"
+    },
+    "atlas_raw_3layer_ocio_workflow": {
+      "error": "AtlasLoadRAW: AtlasLoadRAW: RAW file not found: 'C:\\\\Users\\\\miike\\\\ComfyUI_V91\\\\ComfyUI\\\\input\\\\input\\\\CameraRaw\\\\DSC_2190.NEF'\n",
+      "ok": false,
+      "runtime_s": 5.8,
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_raw_3layer_ocio_workflow"
+    },
+    "atlas_staged_master_portal_neat_workflow": {
+      "error": "RuntimeError: unknown node type Fast Groups Bypasser (rgthree) (not registered on this server)",
+      "ok": false,
+      "workflow": "atlas_staged_master_portal_neat_workflow"
+    }
+  }
+}

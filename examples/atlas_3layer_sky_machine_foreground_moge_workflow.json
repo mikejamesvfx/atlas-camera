@@ -1,1214 +1,1434 @@
 {
- "id": "968e0376-0514-4ee1-8591-3658f0a5668e",
- "revision": 0,
- "last_node_id": 15,
- "last_link_id": 33,
- "nodes": [
-  {
-   "id": 1,
-   "type": "LoadImage",
-   "pos": [
-    40,
-    40
-   ],
-   "size": [
-    320,
-    314
-   ],
-   "flags": {},
-   "order": 1,
-   "mode": 0,
-   "inputs": [],
-   "outputs": [
+  "id": "968e0376-0514-4ee1-8591-3658f0a5668e",
+  "revision": 0,
+  "last_node_id": 19,
+  "last_link_id": 38,
+  "nodes": [
     {
-     "name": "IMAGE",
-     "type": "IMAGE",
-     "links": [
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        314
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            4,
+            5,
+            6,
+            14,
+            17,
+            23,
+            29,
+            37
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "widgets_values": [
+        "atlas_00025.png",
+        "image"
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      }
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "raw_meta",
+          "type": "ATLAS_RAW_META",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            3,
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "Ruicheng/moge-2-vitl-normal",
+        36.0,
+        "pinhole",
+        "auto",
+        0.0
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "title": "Solve (GeoCalib)"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        400,
+        320
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            12,
+            16,
+            22,
+            30
+          ],
+          "slot_index": 0
+        }
+      ],
+      "widgets_values": [
+        "Ruicheng/moge-2-vitl-normal",
+        "auto",
+        9,
+        0,
+        "",
+        0,
+        0.25
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "title": "MoGe Depth+Normals"
+    },
+    {
+      "id": 4,
+      "type": "AtlasSAM3Mask",
+      "pos": [
+        760,
+        40
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            7,
+            9,
+            13,
+            20,
+            26
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "widgets_values": [
+        "sky",
+        0.5,
+        "auto",
+        "merged",
+        0
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSAM3Mask"
+      },
+      "title": "SAM3 sky"
+    },
+    {
+      "id": 5,
+      "type": "AtlasSAM3Mask",
+      "pos": [
+        760,
+        300
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            8,
+            19
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "widgets_values": [
+        "machine, engine, vehicle, robot",
+        0.5,
+        "auto",
+        "merged",
+        0
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSAM3Mask"
+      },
+      "title": "SAM3 machine"
+    },
+    {
+      "id": 6,
+      "type": "AtlasSAM3Mask",
+      "pos": [
+        760,
+        560
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            10,
+            25
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "widgets_values": [
+        "ground, floor, rocks, terrain, foreground",
+        0.5,
+        "auto",
+        "merged",
+        0
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSAM3Mask"
+      },
+      "title": "SAM3 foreground"
+    },
+    {
+      "id": 7,
+      "type": "AtlasScopeMask",
+      "pos": [
+        1120,
+        300
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "sky_mask",
+          "type": "MASK",
+          "link": 7
+        },
+        {
+          "name": "segment_mask",
+          "type": "MASK",
+          "link": 8
+        },
+        {
+          "name": "fallback_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "links": [
+            18
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "widgets_values": [
+        "machine",
+        16,
+        0.2
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasScopeMask"
+      },
+      "title": "Scope machine"
+    },
+    {
+      "id": 8,
+      "type": "AtlasScopeMask",
+      "pos": [
+        1120,
+        560
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "sky_mask",
+          "type": "MASK",
+          "link": 9
+        },
+        {
+          "name": "segment_mask",
+          "type": "MASK",
+          "link": 10
+        },
+        {
+          "name": "fallback_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "links": [
+            24
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "widgets_values": [
+        "foreground",
+        16,
+        0.2
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasScopeMask"
+      },
+      "title": "Scope foreground"
+    },
+    {
+      "id": 9,
+      "type": "AtlasSkyDomeLayer",
+      "pos": [
+        1480,
+        40
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 12
+        },
+        {
+          "name": "sky_mask",
+          "type": "MASK",
+          "link": 13
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 14
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "widgets_values": [
+        300.0,
+        96,
+        "sky",
+        15.0,
+        48,
+        64,
+        0.0
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSkyDomeLayer"
+      },
+      "title": "Sky card"
+    },
+    {
+      "id": 10,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1480,
+        320
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 15
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 16
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 17
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": 18
+        },
+        {
+          "name": "layer_matte",
+          "type": "MASK",
+          "link": 19
+        },
+        {
+          "name": "band_split",
+          "type": "ATLAS_BAND_SPLIT",
+          "link": null
+        },
+        {
+          "name": "band_ref_mask",
+          "type": "MASK",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            21
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        "machine",
+        10.0,
+        320,
+        0.5,
+        false,
+        true,
+        0,
+        0.0,
+        0,
+        2,
+        "manual",
+        "relief",
+        "",
+        "",
+        12.0,
+        0.0,
+        true
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "title": "Machine MoGe mesh"
+    },
+    {
+      "id": 11,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1840,
+        320
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 21
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 22
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 23
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": 24
+        },
+        {
+          "name": "layer_matte",
+          "type": "MASK",
+          "link": 25
+        },
+        {
+          "name": "band_split",
+          "type": "ATLAS_BAND_SPLIT",
+          "link": null
+        },
+        {
+          "name": "band_ref_mask",
+          "type": "MASK",
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            31
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        "foreground",
+        5.0,
+        320,
+        0.5,
+        false,
+        true,
+        0,
+        0.0,
+        0,
+        2,
+        "manual",
+        "relief",
+        "",
+        "",
+        12.0,
+        0.0,
+        true
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "title": "Foreground MoGe mesh"
+    },
+    {
+      "id": 13,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2200,
+        40
+      ],
+      "size": [
+        300,
+        200
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 33
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 29
+        },
+        {
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 30
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [],
+          "slot_index": 5
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 6
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 7
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 8
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 9
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 10
+        }
+      ],
+      "widgets_values": [
+        1024,
+        "",
+        1.0
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "title": "Blockout Viewport"
+    },
+    {
+      "id": 14,
+      "type": "AtlasPlanarHolePatch",
+      "pos": [
+        2200,
+        320
+      ],
+      "size": [
+        330,
+        180
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 31
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            32
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "remaining_holes",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "created_islands",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasPlanarHolePatch"
+      },
+      "widgets_values": [
+        "*",
+        2,
+        64,
+        25.0,
+        0.15,
+        0.05,
+        true,
+        0.3,
+        20.0,
+        2.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "AtlasRetopologizeLayer",
+      "pos": [
+        2560,
+        320
+      ],
+      "size": [
+        330,
+        160
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 32
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            33,
+            34,
+            36
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "*",
+        "off",
+        2000,
+        0,
+        30.0,
+        false,
+        8
+      ]
+    },
+    {
+      "id": 16,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        3020,
+        360
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 34
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 17,
+      "type": "ShowText|pysssss",
+      "pos": [
+        3460,
+        360
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 35
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 18,
+      "type": "AtlasStereoRender",
+      "pos": [
+        3020,
+        600
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 36
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 37
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            38
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 19,
+      "type": "PreviewImage",
+      "pos": [
+        3460,
+        600
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 38
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
+    }
+  ],
+  "links": [
+    [
       1,
+      1,
+      0,
       2,
-      4,
-      5,
-      6,
-      14,
-      17,
-      23,
-      29
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "MASK",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "widgets_values": [
-    "atlas_00025.png",
-    "image"
-   ],
-   "properties": {
-    "Node name for S&R": "LoadImage"
-   }
-  },
-  {
-   "id": 2,
-   "type": "AtlasLearnedSolveFromImage",
-   "pos": [
-    400,
-    40
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 2,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 1
-    },
-    {
-     "name": "raw_meta",
-     "type": "ATLAS_RAW_META",
-     "link": null
-    }
-   ],
-   "outputs": [
-    {
-     "name": "ATLAS_SOLVE",
-     "type": "ATLAS_SOLVE",
-     "links": [
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
       3,
-      11
-     ],
-     "slot_index": 0
-    }
-   ],
-   "widgets_values": [
-    "measure_from_depth",
-    1.6,
-    "Ruicheng/moge-2-vitl-normal",
-    36.0,
-    "pinhole",
-    "auto",
-    0.0
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasLearnedSolveFromImage"
-   },
-   "title": "Solve (GeoCalib)"
-  },
-  {
-   "id": 3,
-   "type": "AtlasDepthMap",
-   "pos": [
-    400,
-    320
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 3,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 2
-    },
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 3
-    }
-   ],
-   "outputs": [
-    {
-     "name": "depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "links": [
-      12,
-      16,
-      22,
-      30
-     ],
-     "slot_index": 0
-    }
-   ],
-   "widgets_values": [
-    "Ruicheng/moge-2-vitl-normal",
-    "auto",
-    9,
-    0,
-    "",
-    0,
-    0.25
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasDepthMap"
-   },
-   "title": "MoGe Depth+Normals"
-  },
-  {
-   "id": 4,
-   "type": "AtlasSAM3Mask",
-   "pos": [
-    760,
-    40
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 4,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 4
-    }
-   ],
-   "outputs": [
-    {
-     "name": "mask",
-     "type": "MASK",
-     "links": [
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      1,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      1,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
       7,
-      9,
-      13,
-      20,
-      26
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "widgets_values": [
-    "sky",
-    0.5,
-    "auto",
-    "merged",
-    0
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasSAM3Mask"
-   },
-   "title": "SAM3 sky"
-  },
-  {
-   "id": 5,
-   "type": "AtlasSAM3Mask",
-   "pos": [
-    760,
-    300
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 5,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 5
-    }
-   ],
-   "outputs": [
-    {
-     "name": "mask",
-     "type": "MASK",
-     "links": [
+      4,
+      0,
+      7,
+      0,
+      "MASK"
+    ],
+    [
       8,
-      19
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "widgets_values": [
-    "machine, engine, vehicle, robot",
-    0.5,
-    "auto",
-    "merged",
-    0
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasSAM3Mask"
-   },
-   "title": "SAM3 machine"
-  },
-  {
-   "id": 6,
-   "type": "AtlasSAM3Mask",
-   "pos": [
-    760,
-    560
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 6,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 6
-    }
-   ],
-   "outputs": [
-    {
-     "name": "mask",
-     "type": "MASK",
-     "links": [
+      5,
+      0,
+      7,
+      1,
+      "MASK"
+    ],
+    [
+      9,
+      4,
+      0,
+      8,
+      0,
+      "MASK"
+    ],
+    [
       10,
-      25
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "widgets_values": [
-    "ground, floor, rocks, terrain, foreground",
-    0.5,
-    "auto",
-    "merged",
-    0
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasSAM3Mask"
-   },
-   "title": "SAM3 foreground"
-  },
-  {
-   "id": 7,
-   "type": "AtlasScopeMask",
-   "pos": [
-    1120,
-    300
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 7,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "sky_mask",
-     "type": "MASK",
-     "link": 7
-    },
-    {
-     "name": "segment_mask",
-     "type": "MASK",
-     "link": 8
-    },
-    {
-     "name": "fallback_mask",
-     "type": "MASK",
-     "link": null
-    }
-   ],
-   "outputs": [
-    {
-     "name": "exclude_mask",
-     "type": "MASK",
-     "links": [
-      18
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "status",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "widgets_values": [
-    "machine",
-    16,
-    0.2
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasScopeMask"
-   },
-   "title": "Scope machine"
-  },
-  {
-   "id": 8,
-   "type": "AtlasScopeMask",
-   "pos": [
-    1120,
-    560
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 8,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "sky_mask",
-     "type": "MASK",
-     "link": 9
-    },
-    {
-     "name": "segment_mask",
-     "type": "MASK",
-     "link": 10
-    },
-    {
-     "name": "fallback_mask",
-     "type": "MASK",
-     "link": null
-    }
-   ],
-   "outputs": [
-    {
-     "name": "exclude_mask",
-     "type": "MASK",
-     "links": [
-      24
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "status",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "widgets_values": [
-    "foreground",
-    16,
-    0.2
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasScopeMask"
-   },
-   "title": "Scope foreground"
-  },
-  {
-   "id": 9,
-   "type": "AtlasSkyDomeLayer",
-   "pos": [
-    1480,
-    40
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 9,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 11
-    },
-    {
-     "name": "depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "link": 12
-    },
-    {
-     "name": "sky_mask",
-     "type": "MASK",
-     "link": 13
-    },
-    {
-     "name": "plate_image",
-     "type": "IMAGE",
-     "link": 14
-    },
-    {
-     "name": "plate_ref",
-     "type": "ATLAS_PLATE_REF",
-     "link": null
-    }
-   ],
-   "outputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "links": [
-      15
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "hole_mask",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 1
-    },
-    {
-     "name": "extend_mask",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 2
-    }
-   ],
-   "widgets_values": [
-    300.0,
-    96,
-    "sky",
-    15.0,
-    48,
-    64,
-    0.0
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasSkyDomeLayer"
-   },
-   "title": "Sky card"
-  },
-  {
-   "id": 10,
-   "type": "AtlasCleanPlateLayer",
-   "pos": [
-    1480,
-    320
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 10,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 15
-    },
-    {
-     "name": "depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "link": 16
-    },
-    {
-     "name": "plate_image",
-     "type": "IMAGE",
-     "link": 17
-    },
-    {
-     "name": "plate_ref",
-     "type": "ATLAS_PLATE_REF",
-     "link": null
-    },
-    {
-     "name": "exclude_mask",
-     "type": "MASK",
-     "link": 18
-    },
-    {
-     "name": "layer_matte",
-     "type": "MASK",
-     "link": 19
-    },
-    {
-     "name": "band_split",
-     "type": "ATLAS_BAND_SPLIT",
-     "link": null
-    },
-    {
-     "name": "band_ref_mask",
-     "type": "MASK",
-     "link": 20
-    }
-   ],
-   "outputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "links": [
-      21
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "hole_mask",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 1
-    },
-    {
-     "name": "extend_mask",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 2
-    }
-   ],
-   "widgets_values": [
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    "machine",
-    10.0,
-    320,
-    0.5,
-    false,
-    true,
-    0,
-    0.0,
-    0,
-    2,
-    "manual",
-    "relief",
-    "",
-    "",
-    12.0,
-    0.0,
-    true
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasCleanPlateLayer"
-   },
-   "title": "Machine MoGe mesh"
-  },
-  {
-   "id": 11,
-   "type": "AtlasCleanPlateLayer",
-   "pos": [
-    1840,
-    320
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 11,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 21
-    },
-    {
-     "name": "depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "link": 22
-    },
-    {
-     "name": "plate_image",
-     "type": "IMAGE",
-     "link": 23
-    },
-    {
-     "name": "plate_ref",
-     "type": "ATLAS_PLATE_REF",
-     "link": null
-    },
-    {
-     "name": "exclude_mask",
-     "type": "MASK",
-     "link": 24
-    },
-    {
-     "name": "layer_matte",
-     "type": "MASK",
-     "link": 25
-    },
-    {
-     "name": "band_split",
-     "type": "ATLAS_BAND_SPLIT",
-     "link": null
-    },
-    {
-     "name": "band_ref_mask",
-     "type": "MASK",
-     "link": 26
-    }
-   ],
-   "outputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "links": [
-      31
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "hole_mask",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 1
-    },
-    {
-     "name": "extend_mask",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 2
-    }
-   ],
-   "widgets_values": [
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    "foreground",
-    5.0,
-    320,
-    0.5,
-    false,
-    true,
-    0,
-    0.0,
-    0,
-    2,
-    "manual",
-    "relief",
-    "",
-    "",
-    12.0,
-    0.0,
-    true
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasCleanPlateLayer"
-   },
-   "title": "Foreground MoGe mesh"
-  },
-  {
-   "id": 13,
-   "type": "AtlasBlockoutViewport",
-   "pos": [
-    2200,
-    40
-   ],
-   "size": [
-    300,
-    200
-   ],
-   "flags": {},
-   "order": 13,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 33
-    },
-    {
-     "name": "source_image",
-     "type": "IMAGE",
-     "link": 29
-    },
-    {
-     "name": "primary_depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "link": 30
-    },
-    {
-     "name": "controls",
-     "type": "ATLAS_VIEWPORT_LINK",
-     "link": null
-    },
-    {
-     "name": "shot_cam",
-     "type": "ATLAS_SHOT_CAM",
-     "link": null
-    },
-    {
-     "name": "output_profile",
-     "type": "ATLAS_OUTPUT_PROFILE",
-     "link": null
-    }
-   ],
-   "outputs": [
-    {
-     "name": "shaded",
-     "type": "IMAGE",
-     "links": [],
-     "slot_index": 0
-    },
-    {
-     "name": "depth",
-     "type": "IMAGE",
-     "links": [],
-     "slot_index": 1
-    },
-    {
-     "name": "normal",
-     "type": "IMAGE",
-     "links": [],
-     "slot_index": 2
-    },
-    {
-     "name": "mask",
-     "type": "IMAGE",
-     "links": [],
-     "slot_index": 3
-    },
-    {
-     "name": "path_frames",
-     "type": "IMAGE",
-     "links": [],
-     "slot_index": 4
-    },
-    {
-     "name": "camera_path",
-     "type": "ATLAS_CAMERA_PATH",
-     "links": [],
-     "slot_index": 5
-    },
-    {
-     "name": "patch_azimuth_view",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 6
-    },
-    {
-     "name": "patch_elevation_view",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 7
-    },
-    {
-     "name": "patch_distance",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 8
-    },
-    {
-     "name": "patch_prompt",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 9
-    },
-    {
-     "name": "patch_exact",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 10
-    }
-   ],
-   "widgets_values": [
-    1024,
-    "",
-    1.0
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasBlockoutViewport"
-   },
-   "title": "Blockout Viewport"
-  },
-  {
-   "id": 14,
-   "type": "AtlasPlanarHolePatch",
-   "pos": [
-    2200,
-    320
-   ],
-   "size": [
-    330,
-    180
-   ],
-   "flags": {},
-   "order": 12,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 31
-    },
-    {
-     "name": "hole_mask",
-     "type": "MASK",
-     "link": null,
-     "shape": 7
-    }
-   ],
-   "outputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "links": [
-      32
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "remaining_holes",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 1
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 2
-    },
-    {
-     "name": "created_islands",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 3
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasPlanarHolePatch"
-   },
-   "widgets_values": [
-    "*",
-    2,
-    64,
-    25.0,
-    0.15,
-    0.05,
-    true,
-    0.3,
-    20.0,
-    2.0
-   ]
-  },
-  {
-   "id": 15,
-   "type": "AtlasRetopologizeLayer",
-   "pos": [
-    2560,
-    320
-   ],
-   "size": [
-    330,
-    160
-   ],
-   "flags": {},
-   "order": 13,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 32
-    }
-   ],
-   "outputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "links": [
-      33
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasRetopologizeLayer"
-   },
-   "widgets_values": [
-    "*",
-    "off",
-    2000,
-    0,
-    30.0,
-    false,
-    8
-   ]
-  }
- ],
- "links": [
-  [
-   1,
-   1,
-   0,
-   2,
-   0,
-   "IMAGE"
+      6,
+      0,
+      8,
+      1,
+      "MASK"
+    ],
+    [
+      11,
+      2,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      3,
+      0,
+      9,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      13,
+      4,
+      0,
+      9,
+      2,
+      "MASK"
+    ],
+    [
+      14,
+      1,
+      0,
+      9,
+      3,
+      "IMAGE"
+    ],
+    [
+      15,
+      9,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      16,
+      3,
+      0,
+      10,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      17,
+      1,
+      0,
+      10,
+      2,
+      "IMAGE"
+    ],
+    [
+      18,
+      7,
+      0,
+      10,
+      4,
+      "MASK"
+    ],
+    [
+      19,
+      5,
+      0,
+      10,
+      5,
+      "MASK"
+    ],
+    [
+      20,
+      4,
+      0,
+      10,
+      7,
+      "MASK"
+    ],
+    [
+      21,
+      10,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      22,
+      3,
+      0,
+      11,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      23,
+      1,
+      0,
+      11,
+      2,
+      "IMAGE"
+    ],
+    [
+      24,
+      8,
+      0,
+      11,
+      4,
+      "MASK"
+    ],
+    [
+      25,
+      6,
+      0,
+      11,
+      5,
+      "MASK"
+    ],
+    [
+      26,
+      4,
+      0,
+      11,
+      7,
+      "MASK"
+    ],
+    [
+      29,
+      1,
+      0,
+      13,
+      1,
+      "IMAGE"
+    ],
+    [
+      30,
+      3,
+      0,
+      13,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      31,
+      11,
+      0,
+      14,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      32,
+      14,
+      0,
+      15,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      33,
+      15,
+      0,
+      13,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      34,
+      15,
+      0,
+      16,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      35,
+      16,
+      1,
+      17,
+      0,
+      "STRING"
+    ],
+    [
+      36,
+      15,
+      0,
+      18,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      37,
+      1,
+      0,
+      18,
+      1,
+      "IMAGE"
+    ],
+    [
+      38,
+      18,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ]
   ],
-  [
-   2,
-   1,
-   0,
-   3,
-   0,
-   "IMAGE"
-  ],
-  [
-   3,
-   2,
-   0,
-   3,
-   1,
-   "ATLAS_SOLVE"
-  ],
-  [
-   4,
-   1,
-   0,
-   4,
-   0,
-   "IMAGE"
-  ],
-  [
-   5,
-   1,
-   0,
-   5,
-   0,
-   "IMAGE"
-  ],
-  [
-   6,
-   1,
-   0,
-   6,
-   0,
-   "IMAGE"
-  ],
-  [
-   7,
-   4,
-   0,
-   7,
-   0,
-   "MASK"
-  ],
-  [
-   8,
-   5,
-   0,
-   7,
-   1,
-   "MASK"
-  ],
-  [
-   9,
-   4,
-   0,
-   8,
-   0,
-   "MASK"
-  ],
-  [
-   10,
-   6,
-   0,
-   8,
-   1,
-   "MASK"
-  ],
-  [
-   11,
-   2,
-   0,
-   9,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   12,
-   3,
-   0,
-   9,
-   1,
-   "ATLAS_DEPTH_MAP"
-  ],
-  [
-   13,
-   4,
-   0,
-   9,
-   2,
-   "MASK"
-  ],
-  [
-   14,
-   1,
-   0,
-   9,
-   3,
-   "IMAGE"
-  ],
-  [
-   15,
-   9,
-   0,
-   10,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   16,
-   3,
-   0,
-   10,
-   1,
-   "ATLAS_DEPTH_MAP"
-  ],
-  [
-   17,
-   1,
-   0,
-   10,
-   2,
-   "IMAGE"
-  ],
-  [
-   18,
-   7,
-   0,
-   10,
-   4,
-   "MASK"
-  ],
-  [
-   19,
-   5,
-   0,
-   10,
-   5,
-   "MASK"
-  ],
-  [
-   20,
-   4,
-   0,
-   10,
-   7,
-   "MASK"
-  ],
-  [
-   21,
-   10,
-   0,
-   11,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   22,
-   3,
-   0,
-   11,
-   1,
-   "ATLAS_DEPTH_MAP"
-  ],
-  [
-   23,
-   1,
-   0,
-   11,
-   2,
-   "IMAGE"
-  ],
-  [
-   24,
-   8,
-   0,
-   11,
-   4,
-   "MASK"
-  ],
-  [
-   25,
-   6,
-   0,
-   11,
-   5,
-   "MASK"
-  ],
-  [
-   26,
-   4,
-   0,
-   11,
-   7,
-   "MASK"
-  ],
-  [
-   29,
-   1,
-   0,
-   13,
-   1,
-   "IMAGE"
-  ],
-  [
-   30,
-   3,
-   0,
-   13,
-   2,
-   "ATLAS_DEPTH_MAP"
-  ],
-  [
-   31,
-   11,
-   0,
-   14,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   32,
-   14,
-   0,
-   15,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   33,
-   15,
-   0,
-   13,
-   0,
-   "ATLAS_SOLVE"
-  ]
- ],
- "groups": [],
- "config": {},
- "extra": {},
- "version": 0.4
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
 }

@@ -1,293 +1,513 @@
 {
- "id": "3b0618b0-15ee-40da-a45b-14f87248e977",
- "last_node_id": 4,
- "last_link_id": 5,
- "nodes": [
-  {
-   "id": 1,
-   "type": "LoadImage",
-   "pos": [
-    100,
-    180
-   ],
-   "size": [
-    360,
-    310
-   ],
-   "flags": {},
-   "order": 0,
-   "mode": 0,
-   "inputs": [
+  "id": "3b0618b0-15ee-40da-a45b-14f87248e977",
+  "last_node_id": 8,
+  "last_link_id": 10,
+  "nodes": [
     {
-     "localized_name": "image",
-     "name": "image",
-     "type": "COMBO",
-     "link": null,
-     "shape": 7,
-     "widget": {
-      "name": "image"
-     }
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        100,
+        180
+      ],
+      "size": [
+        360,
+        310
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "image"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            4,
+            9
+          ]
+        },
+        {
+          "localized_name": "MASK",
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "1 · SOURCE PLATE"
+    },
+    {
+      "id": 2,
+      "type": "AtlasInput",
+      "pos": [
+        540,
+        140
+      ],
+      "size": [
+        460,
+        780
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1,
+          "shape": 7,
+          "widget": {
+            "name": "image"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            5
+          ]
+        },
+        {
+          "localized_name": "sky_mask",
+          "name": "sky_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasInput"
+      },
+      "widgets_values": [
+        0,
+        "relief",
+        512,
+        false,
+        "lmstudio",
+        "google/gemma-4-12b-qat",
+        false,
+        "sky",
+        "",
+        false,
+        "",
+        24,
+        12.0,
+        false,
+        0.0,
+        "Ruicheng/moge-2-vitl-normal",
+        true,
+        "lama",
+        32,
+        "SDXL/sd_xl_base_1.0.safetensors",
+        "clear seamless sky, high detail, no buildings, no trees, no roofs",
+        "building, tree, roof, person, vehicle, text, watermark, blurry",
+        0
+      ],
+      "title": "2 · ATLAS INPUT · CUDA REPAIR & BAND BOX TEST",
+      "color": "#3f7895"
+    },
+    {
+      "id": 3,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1060,
+        140
+      ],
+      "size": [
+        540,
+        580
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 3
+        },
+        {
+          "localized_name": "source_image",
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "localized_name": "primary_depth",
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        1024,
+        "",
+        1.0
+      ],
+      "title": "3 · ATLAS VIEWPORT · LIVE REPAIRED RELIEF"
+    },
+    {
+      "id": 4,
+      "type": "AtlasRetopologizeLayer",
+      "pos": [
+        960,
+        140
+      ],
+      "size": [
+        340,
+        170
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            3,
+            6,
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "*",
+        "off",
+        2000,
+        0,
+        30.0,
+        false,
+        8
+      ]
+    },
+    {
+      "id": 5,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        1520,
+        -20
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 6
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 6,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1960,
+        -20
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 7
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 7,
+      "type": "AtlasStereoRender",
+      "pos": [
+        1520,
+        220
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            10
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 8,
+      "type": "PreviewImage",
+      "pos": [
+        1960,
+        220
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 10
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
     }
-   ],
-   "outputs": [
-    {
-     "localized_name": "IMAGE",
-     "name": "IMAGE",
-     "type": "IMAGE",
-     "links": [
+  ],
+  "links": [
+    [
       1,
-      4
-     ]
-    },
-    {
-     "localized_name": "MASK",
-     "name": "MASK",
-     "type": "MASK",
-     "links": []
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "LoadImage"
-   },
-   "widgets_values": [
-    "example.png",
-    "image"
-   ],
-   "title": "1 \u00b7 SOURCE PLATE"
-  },
-  {
-   "id": 2,
-   "type": "AtlasInput",
-   "pos": [
-    540,
-    140
-   ],
-   "size": [
-    460,
-    780
-   ],
-   "flags": {},
-   "order": 1,
-   "mode": 0,
-   "inputs": [
-    {
-     "localized_name": "image",
-     "name": "image",
-     "type": "IMAGE",
-     "link": 1,
-     "shape": 7,
-     "widget": {
-      "name": "image"
-     }
-    }
-   ],
-   "outputs": [
-    {
-     "localized_name": "solve",
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "links": [
-      2
-     ]
-    },
-    {
-     "localized_name": "image",
-     "name": "image",
-     "type": "IMAGE",
-     "links": []
-    },
-    {
-     "localized_name": "depth",
-     "name": "depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "links": [
-      5
-     ]
-    },
-    {
-     "localized_name": "sky_mask",
-     "name": "sky_mask",
-     "type": "MASK",
-     "links": []
-    },
-    {
-     "localized_name": "report",
-     "name": "report",
-     "type": "STRING",
-     "links": []
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasInput"
-   },
-   "widgets_values": [
-    0,
-    "relief",
-    512,
-    false,
-    "lmstudio",
-    "google/gemma-4-12b-qat",
-    false,
-    "sky",
-    "",
-    false,
-    "",
-    24,
-    12.0,
-    false,
-    0.0,
-    "Ruicheng/moge-2-vitl-normal",
-    true,
-    "lama",
-    32,
-    "SDXL/sd_xl_base_1.0.safetensors",
-    "clear seamless sky, high detail, no buildings, no trees, no roofs",
-    "building, tree, roof, person, vehicle, text, watermark, blurry",
-    0
-   ],
-   "title": "2 \u00b7 ATLAS INPUT \u00b7 CUDA REPAIR & BAND BOX TEST",
-   "color": "#3f7895"
-  },
-  {
-   "id": 3,
-   "type": "AtlasBlockoutViewport",
-   "pos": [
-    1060,
-    140
-   ],
-   "size": [
-    540,
-    580
-   ],
-   "flags": {},
-   "order": 3,
-   "mode": 0,
-   "inputs": [
-    {
-     "localized_name": "solve",
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 3
-    },
-    {
-     "localized_name": "source_image",
-     "name": "source_image",
-     "type": "IMAGE",
-     "link": 4
-    },
-    {
-     "localized_name": "primary_depth",
-     "name": "primary_depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "link": 5
-    }
-   ],
-   "outputs": [],
-   "properties": {
-    "Node name for S&R": "AtlasBlockoutViewport"
-   },
-   "widgets_values": [
-    1024,
-    "",
-    1.0
-   ],
-   "title": "3 \u00b7 ATLAS VIEWPORT \u00b7 LIVE REPAIRED RELIEF"
-  },
-  {
-   "id": 4,
-   "type": "AtlasRetopologizeLayer",
-   "pos": [
-    960,
-    140
-   ],
-   "size": [
-    340,
-    170
-   ],
-   "flags": {},
-   "order": 2,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 2
-    }
-   ],
-   "outputs": [
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "links": [
-      3
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasRetopologizeLayer"
-   },
-   "widgets_values": [
-    "*",
-    "off",
-    2000,
-    0,
-    30.0,
-    false,
-    8
-   ]
-  }
- ],
- "links": [
-  [
-   1,
-   1,
-   0,
-   2,
-   0,
-   "IMAGE"
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      3,
+      4,
+      0,
+      3,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      1,
+      0,
+      3,
+      1,
+      "IMAGE"
+    ],
+    [
+      5,
+      2,
+      2,
+      3,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      6,
+      4,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      5,
+      1,
+      6,
+      0,
+      "STRING"
+    ],
+    [
+      8,
+      4,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      1,
+      0,
+      7,
+      1,
+      "IMAGE"
+    ],
+    [
+      10,
+      7,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ]
   ],
-  [
-   2,
-   2,
-   0,
-   4,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   3,
-   4,
-   0,
-   3,
-   0,
-   "ATLAS_SOLVE"
-  ],
-  [
-   4,
-   1,
-   0,
-   3,
-   1,
-   "IMAGE"
-  ],
-  [
-   5,
-   2,
-   2,
-   3,
-   2,
-   "ATLAS_DEPTH_MAP"
-  ]
- ],
- "groups": [],
- "config": {},
- "extra": {},
- "version": 0.4
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
 }

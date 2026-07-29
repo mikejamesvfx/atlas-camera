@@ -1,425 +1,645 @@
 {
- "id": "2b3a0ab3-9011-4da8-9ce7-057912b94d83",
- "last_node_id": 8,
- "last_link_id": 9,
- "nodes": [
-  {
-   "id": 1,
-   "type": "LoadImage",
-   "pos": [
-    60,
-    240
-   ],
-   "size": [
-    340,
-    310
-   ],
-   "flags": {},
-   "order": 0,
-   "mode": 0,
-   "inputs": [],
-   "outputs": [
+  "id": "2b3a0ab3-9011-4da8-9ce7-057912b94d83",
+  "last_node_id": 12,
+  "last_link_id": 14,
+  "nodes": [
     {
-     "name": "IMAGE",
-     "type": "IMAGE",
-     "links": [
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        60,
+        240
+      ],
+      "size": [
+        340,
+        310
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            3,
+            13
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        450,
+        120
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            4,
+            10,
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto",
+        0.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        450,
+        380
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        9,
+        0,
+        "",
+        0,
+        0.25
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasGrade",
+      "pos": [
+        840,
+        200
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasGrade"
+      },
+      "widgets_values": [
+        0.005,
+        1.05,
+        1.1,
+        1.05,
+        1.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "AtlasDefocus",
+      "pos": [
+        1200,
+        200
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "coc_preview",
+          "type": "IMAGE",
+          "links": [
+            9
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDefocus"
+      },
+      "widgets_values": [
+        0.0,
+        8.0,
+        6
+      ]
+    },
+    {
+      "id": 6,
+      "type": "AtlasApplyLUT",
+      "pos": [
+        1560,
+        200
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasApplyLUT"
+      },
+      "widgets_values": [
+        "",
+        1.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "PreviewImage",
+      "pos": [
+        1920,
+        140
+      ],
+      "size": [
+        320,
+        260
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 8
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 8,
+      "type": "PreviewImage",
+      "pos": [
+        1920,
+        440
+      ],
+      "size": [
+        320,
+        260
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 9
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        2380,
+        240
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 10,
+      "type": "ShowText|pysssss",
+      "pos": [
+        2820,
+        240
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 11
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 11,
+      "type": "AtlasStereoRender",
+      "pos": [
+        2380,
+        480
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 12
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            14
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 12,
+      "type": "PreviewImage",
+      "pos": [
+        2820,
+        480
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
+    }
+  ],
+  "links": [
+    [
       1,
+      1,
+      0,
       2,
-      3
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "MASK",
-     "type": "MASK",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "LoadImage"
-   },
-   "widgets_values": [
-    "example.png",
-    "image"
-   ]
-  },
-  {
-   "id": 2,
-   "type": "AtlasLearnedSolveFromImage",
-   "pos": [
-    450,
-    120
-   ],
-   "size": [
-    340,
-    120
-   ],
-   "flags": {},
-   "order": 1,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 1
-    }
-   ],
-   "outputs": [
-    {
-     "name": "ATLAS_SOLVE",
-     "type": "ATLAS_SOLVE",
-     "links": [
-      4
-     ],
-     "slot_index": 0
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasLearnedSolveFromImage"
-   },
-   "widgets_values": [
-    "measure_from_depth",
-    1.6,
-    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-    36.0,
-    "pinhole",
-    "auto",
-    0.0
-   ]
-  },
-  {
-   "id": 3,
-   "type": "AtlasDepthMap",
-   "pos": [
-    450,
-    380
-   ],
-   "size": [
-    340,
-    120
-   ],
-   "flags": {},
-   "order": 2,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 2
-    },
-    {
-     "name": "solve",
-     "type": "ATLAS_SOLVE",
-     "link": 4
-    }
-   ],
-   "outputs": [
-    {
-     "name": "depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "links": [
-      5
-     ],
-     "slot_index": 0
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasDepthMap"
-   },
-   "widgets_values": [
-    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-    "auto",
-    9,
-    0,
-    "",
-    0,
-    0.25
-   ]
-  },
-  {
-   "id": 4,
-   "type": "AtlasGrade",
-   "pos": [
-    840,
-    200
-   ],
-   "size": [
-    340,
-    120
-   ],
-   "flags": {},
-   "order": 3,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 3
-    }
-   ],
-   "outputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "links": [
-      6
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasGrade"
-   },
-   "widgets_values": [
-    0.005,
-    1.05,
-    1.1,
-    1.05,
-    1.0
-   ]
-  },
-  {
-   "id": 5,
-   "type": "AtlasDefocus",
-   "pos": [
-    1200,
-    200
-   ],
-   "size": [
-    340,
-    120
-   ],
-   "flags": {},
-   "order": 4,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 6
-    },
-    {
-     "name": "depth",
-     "type": "ATLAS_DEPTH_MAP",
-     "link": 5
-    }
-   ],
-   "outputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "links": [
-      7
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "coc_preview",
-     "type": "IMAGE",
-     "links": [
-      9
-     ],
-     "slot_index": 1
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 2
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasDefocus"
-   },
-   "widgets_values": [
-    0.0,
-    8.0,
-    6
-   ]
-  },
-  {
-   "id": 6,
-   "type": "AtlasApplyLUT",
-   "pos": [
-    1560,
-    200
-   ],
-   "size": [
-    340,
-    120
-   ],
-   "flags": {},
-   "order": 5,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "link": 7
-    }
-   ],
-   "outputs": [
-    {
-     "name": "image",
-     "type": "IMAGE",
-     "links": [
-      8
-     ],
-     "slot_index": 0
-    },
-    {
-     "name": "report",
-     "type": "STRING",
-     "links": [],
-     "slot_index": 1
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AtlasApplyLUT"
-   },
-   "widgets_values": [
-    "",
-    1.0
-   ]
-  },
-  {
-   "id": 7,
-   "type": "PreviewImage",
-   "pos": [
-    1920,
-    140
-   ],
-   "size": [
-    320,
-    260
-   ],
-   "flags": {},
-   "order": 6,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "images",
-     "type": "IMAGE",
-     "link": 8
-    }
-   ],
-   "outputs": [],
-   "properties": {
-    "Node name for S&R": "PreviewImage"
-   },
-   "widgets_values": []
-  },
-  {
-   "id": 8,
-   "type": "PreviewImage",
-   "pos": [
-    1920,
-    440
-   ],
-   "size": [
-    320,
-    260
-   ],
-   "flags": {},
-   "order": 7,
-   "mode": 0,
-   "inputs": [
-    {
-     "name": "images",
-     "type": "IMAGE",
-     "link": 9
-    }
-   ],
-   "outputs": [],
-   "properties": {
-    "Node name for S&R": "PreviewImage"
-   },
-   "widgets_values": []
-  }
- ],
- "links": [
-  [
-   1,
-   1,
-   0,
-   2,
-   0,
-   "IMAGE"
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      2,
+      0,
+      3,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      6,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      5,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      6,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      5,
+      1,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      2,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      9,
+      1,
+      10,
+      0,
+      "STRING"
+    ],
+    [
+      12,
+      2,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      1,
+      0,
+      11,
+      1,
+      "IMAGE"
+    ],
+    [
+      14,
+      11,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ]
   ],
-  [
-   2,
-   1,
-   0,
-   3,
-   0,
-   "IMAGE"
-  ],
-  [
-   3,
-   1,
-   0,
-   4,
-   0,
-   "IMAGE"
-  ],
-  [
-   4,
-   2,
-   0,
-   3,
-   1,
-   "ATLAS_SOLVE"
-  ],
-  [
-   5,
-   3,
-   0,
-   5,
-   1,
-   "ATLAS_DEPTH_MAP"
-  ],
-  [
-   6,
-   4,
-   0,
-   5,
-   0,
-   "IMAGE"
-  ],
-  [
-   7,
-   5,
-   0,
-   6,
-   0,
-   "IMAGE"
-  ],
-  [
-   8,
-   6,
-   0,
-   7,
-   0,
-   "IMAGE"
-  ],
-  [
-   9,
-   5,
-   1,
-   8,
-   0,
-   "IMAGE"
-  ]
- ],
- "groups": [],
- "config": {},
- "extra": {},
- "version": 0.4
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
 }

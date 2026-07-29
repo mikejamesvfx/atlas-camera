@@ -1,0 +1,1245 @@
+{
+  "id": "c040bc1f-aaa1-42ea-af50-cf313f129070",
+  "revision": 0,
+  "last_node_id": 35,
+  "last_link_id": 29,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AtlasLoadPlate",
+      "pos": [
+        40,
+        80
+      ],
+      "size": [
+        400,
+        180
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2,
+            5,
+            11,
+            13,
+            28
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLoadPlate"
+      },
+      "widgets_values": [
+        "newyork_Birdseye.png",
+        "auto",
+        "sRGB - Display",
+        false
+      ],
+      "title": "PLATE"
+    },
+    {
+      "id": 2,
+      "type": "AtlasSolveFromImage",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            3,
+            6,
+            8,
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSolveFromImage"
+      },
+      "widgets_values": [
+        0.0,
+        36.0,
+        true
+      ],
+      "title": "SOLVE"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        480,
+        80
+      ],
+      "size": [
+        420,
+        300
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            4,
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        9,
+        0,
+        "",
+        0,
+        0.25
+      ],
+      "title": "DEPTH — moge_tile_side is the native-resolution lever"
+    },
+    {
+      "id": 4,
+      "type": "AtlasMogeNormals",
+      "pos": [
+        940,
+        80
+      ],
+      "size": [
+        400,
+        240
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 4
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            7
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMogeNormals"
+      },
+      "widgets_values": [
+        "Ruicheng/moge-2-vitl-normal",
+        "auto",
+        9,
+        0,
+        ""
+      ],
+      "title": "NORMALS — MoGe's normals, keeping V2's depth"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDepthDetailEnhance",
+      "pos": [
+        1380,
+        80
+      ],
+      "size": [
+        380,
+        200
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 7
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            9
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthDetailEnhance"
+      },
+      "widgets_values": [
+        0.35,
+        64
+      ],
+      "title": "DETAIL — emboss the normals into depth"
+    },
+    {
+      "id": 6,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        1800,
+        80
+      ],
+      "size": [
+        400,
+        320
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 9
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            10
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "custom",
+        0.5,
+        12.0,
+        true,
+        0.0,
+        true,
+        false,
+        0.0,
+        256,
+        false
+      ],
+      "title": "RELIEF"
+    },
+    {
+      "id": 7,
+      "type": "AtlasStereoRender",
+      "pos": [
+        2240,
+        80
+      ],
+      "size": [
+        380,
+        220
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            12
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "RENDER — server-side"
+    },
+    {
+      "id": 8,
+      "type": "SaveImage",
+      "pos": [
+        2660,
+        80
+      ],
+      "size": [
+        360,
+        300
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "atlas_depth_desk"
+      ],
+      "title": "MAIN CHAIN"
+    },
+    {
+      "id": 10,
+      "type": "ImagePadForOutpaint",
+      "pos": [
+        480,
+        460
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            15,
+            20
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImagePadForOutpaint"
+      },
+      "widgets_values": [
+        192,
+        192,
+        192,
+        192,
+        0
+      ],
+      "title": "PAD 192px — edge-replicated, NOT generated"
+    },
+    {
+      "id": 11,
+      "type": "AtlasOutpaintDepth",
+      "pos": [
+        940,
+        460
+      ],
+      "size": [
+        420,
+        300
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 14
+        },
+        {
+          "name": "widened_image",
+          "type": "IMAGE",
+          "link": 15
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            18
+          ]
+        },
+        {
+          "name": "ring_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            24
+          ]
+        },
+        {
+          "name": "widened_solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasOutpaintDepth"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        0,
+        ""
+      ],
+      "title": "🪟 OUTPAINT DEPTH — emits a WIDENED CAMERA"
+    },
+    {
+      "id": 12,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        1800,
+        460
+      ],
+      "size": [
+        400,
+        320
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 17
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 18
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            19,
+            25,
+            27
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "custom",
+        0.5,
+        12.0,
+        true,
+        0.0,
+        true,
+        false,
+        0.0,
+        256,
+        false
+      ],
+      "title": "RELIEF — fed the WIDENED solve"
+    },
+    {
+      "id": 13,
+      "type": "AtlasStereoRender",
+      "pos": [
+        2240,
+        460
+      ],
+      "size": [
+        380,
+        220
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 19
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            21
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "RENDER — widened"
+    },
+    {
+      "id": 14,
+      "type": "SaveImage",
+      "pos": [
+        2660,
+        460
+      ],
+      "size": [
+        360,
+        300
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "atlas_depth_desk_widened"
+      ],
+      "title": "OUTPAINTED CHAIN"
+    },
+    {
+      "id": 20,
+      "type": "ShowText|pysssss",
+      "pos": [
+        940,
+        800
+      ],
+      "size": [
+        400,
+        180
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 22
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "NORMALS REPORT"
+    },
+    {
+      "id": 21,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1380,
+        800
+      ],
+      "size": [
+        400,
+        180
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 23
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "DETAIL REPORT"
+    },
+    {
+      "id": 22,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1800,
+        800
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 24
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "OUTPAINT REPORT"
+    },
+    {
+      "id": 30,
+      "type": "Note",
+      "pos": [
+        40,
+        560
+      ],
+      "size": [
+        400,
+        420
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "## What each step buys\n\n**AtlasDepthMap** — `moge_tile_side` (0 = off) runs inference on overlapping\ntiles at SOURCE resolution instead of letting the model downscale a 36MP plate\nto its token budget. Every tile is affine-fitted onto one global pass first,\nbecause monocular depth is scale-ambiguous per input and raw tiles step at\nevery seam. Costs one pass per tile plus the global one.\n\n**AtlasMogeNormals** — runs a MoGe `*-normal` model purely for its normals and\nthrows away its depth, so you keep V2's far-field (which behaves on exteriors,\nwhere MoGe's runs away) AND get MoGe's cleaner normals.\n\n**AtlasDepthDetailEnhance** — embosses those normals' high frequencies onto the\ndepth. Monocular depth is metrically sound but low-frequency: brick courses,\nwindow reveals and rock striations flatten out, and this puts them back."
+      ],
+      "title": "THE DEPTH CHAIN",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 31,
+      "type": "Note",
+      "pos": [
+        2240,
+        800
+      ],
+      "size": [
+        420,
+        440
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "## The widened camera\n\n`frame_outpaint_px` on the clean-plate layer can already widen a plate past the\nframe edge — its own tooltip calls the frame-edge reveal *\"the binding\nconstraint on wide scenes\"*. But the ring is edge-replicated smear and depth\ncould not follow it.\n\n**AtlasOutpaintDepth** re-runs depth on the widened plate and stitches it to the\noriginal, affine-fitting the widened pass onto the region they share first: a\nmonocular model returns a DIFFERENT scale on a different framing, so pasting\nwould step at the frame boundary.\n\n### Note the wiring\nThe lower relief mesh is fed `widened_solve`, **not** the original solve. Every\ngeometry node reads width/cx/cy from the SOLVE rather than from the depth map,\nso the original camera would back-project the new ring against the old principal\npoint — misregistering it by exactly the padding, while looking entirely\nplausible.\n\n### Note the OTHER wiring\nThe outpaint branch takes depth from **AtlasDepthMap (raw)**, not from the\ndetail-enhanced output. This node re-runs a raw pass on the widened plate and\naffine-fits it onto whatever depth it is handed — so handing it POST-PROCESSED\ndepth means the two differ in high-frequency content, which an affine fit cannot\nabsorb. Measured on this plate: enhanced input produced a residual of 7.7% of\nscene depth and tripped the node's own warning. Raw in, raw out, enhance after.\n\n### The ring is invented\n`ImagePadForOutpaint` here is edge replication, not generation. For real content\nput a prompt-driven inpaint between the pad and the depth node; the geometry\nfollows whatever the pixels say."
+      ],
+      "title": "WHY THE LOWER BRANCH EXISTS",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 32,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        3120,
+        600
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 25
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            26
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 33,
+      "type": "ShowText|pysssss",
+      "pos": [
+        3560,
+        600
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 26
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 34,
+      "type": "AtlasStereoRender",
+      "pos": [
+        3120,
+        840
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 27
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 28
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            29
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 35,
+      "type": "PreviewImage",
+      "pos": [
+        3560,
+        840
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 29
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      5,
+      1,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      6,
+      2,
+      0,
+      4,
+      2,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      4,
+      0,
+      5,
+      0,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      8,
+      2,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      5,
+      0,
+      6,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      10,
+      6,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      1,
+      0,
+      7,
+      1,
+      "IMAGE"
+    ],
+    [
+      12,
+      7,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      13,
+      1,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ],
+    [
+      14,
+      3,
+      0,
+      11,
+      0,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      15,
+      10,
+      0,
+      11,
+      1,
+      "IMAGE"
+    ],
+    [
+      16,
+      2,
+      0,
+      11,
+      2,
+      "ATLAS_SOLVE"
+    ],
+    [
+      17,
+      11,
+      3,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      18,
+      11,
+      0,
+      12,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      19,
+      12,
+      0,
+      13,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      20,
+      10,
+      0,
+      13,
+      1,
+      "IMAGE"
+    ],
+    [
+      21,
+      13,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      4,
+      1,
+      20,
+      0,
+      "STRING"
+    ],
+    [
+      23,
+      5,
+      1,
+      21,
+      0,
+      "STRING"
+    ],
+    [
+      24,
+      11,
+      2,
+      22,
+      0,
+      "STRING"
+    ],
+    [
+      25,
+      12,
+      0,
+      32,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      26,
+      32,
+      1,
+      33,
+      0,
+      "STRING"
+    ],
+    [
+      27,
+      12,
+      0,
+      34,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      28,
+      1,
+      0,
+      34,
+      1,
+      "IMAGE"
+    ],
+    [
+      29,
+      34,
+      0,
+      35,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

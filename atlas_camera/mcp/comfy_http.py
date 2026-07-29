@@ -31,7 +31,22 @@ import urllib.request
 import uuid
 
 PRIMS = {"INT", "FLOAT", "STRING", "BOOLEAN"}
-VIRTUAL = {"SetNode", "GetNode", "Note", "MarkdownNote", "Reroute"}
+
+#: Frontend-only nodes: they exist in a saved graph but have NO server-side
+#: implementation, so they never appear in ``/object_info`` and must be dropped
+#: rather than treated as an unknown type.
+#:
+#: rgthree's group togglers are the trap. The pack IS installed, so "unknown
+#: node type" reads as a broken install when the workflow is fine — they are
+#: canvas conveniences that mute/bypass groups in the editor and have nothing to
+#: execute. Found 2026-07-29 when atlas_staged_master_portal_neat_workflow
+#: failed to flatten on a machine where rgthree was present and working.
+VIRTUAL = {
+    "SetNode", "GetNode", "Note", "MarkdownNote", "Reroute",
+    "Fast Groups Bypasser (rgthree)", "Fast Groups Muter (rgthree)",
+    "Fast Bypasser (rgthree)", "Fast Muter (rgthree)",
+    "Node Collector (rgthree)", "Label (rgthree)",
+}
 
 DEFAULT_HOST = "127.0.0.1:8188"
 

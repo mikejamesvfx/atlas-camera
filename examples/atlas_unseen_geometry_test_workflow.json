@@ -1,8 +1,8 @@
 {
   "id": "68bb8b91-9f24-4f42-ac78-3ad530171133",
   "revision": 0,
-  "last_node_id": 8,
-  "last_link_id": 10,
+  "last_node_id": 12,
+  "last_link_id": 15,
   "nodes": [
     {
       "id": 1,
@@ -25,7 +25,8 @@
           "type": "IMAGE",
           "links": [
             1,
-            10
+            10,
+            14
           ]
         }
       ],
@@ -36,7 +37,7 @@
         "atlas_seacliff_castle.png",
         "image"
       ],
-      "title": "1 \u00b7 SEACLIFF CASTLE PLATE"
+      "title": "1 · SEACLIFF CASTLE PLATE"
     },
     {
       "id": 2,
@@ -110,7 +111,7 @@
         "building, tree, roof, person, vehicle, text, watermark, blurry",
         0
       ],
-      "title": "2 \u00b7 SOLVE + DEPTH + RELIEF"
+      "title": "2 · SOLVE + DEPTH + RELIEF"
     },
     {
       "id": 3,
@@ -157,7 +158,7 @@
         false,
         "measured_only"
       ],
-      "title": "3 \u00b7 FIT PLANES + OBJECTS"
+      "title": "3 · FIT PLANES + OBJECTS"
     },
     {
       "id": 4,
@@ -198,7 +199,7 @@
         "Node name for S&R": "AtlasMergeGeometry"
       },
       "widgets_values": [],
-      "title": "4 \u00b7 MERGE fitted planes + relief mesh"
+      "title": "4 · MERGE fitted planes + relief mesh"
     },
     {
       "id": 5,
@@ -239,7 +240,7 @@
         "Node name for S&R": "AtlasOcclusionGraph"
       },
       "widgets_values": [],
-      "title": "5 \u00b7 \ud83d\udd78 WHAT OCCLUDES WHAT"
+      "title": "5 · 🕸 WHAT OCCLUDES WHAT"
     },
     {
       "id": 6,
@@ -267,7 +268,9 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            9
+            9,
+            11,
+            13
           ]
         }
       ],
@@ -281,7 +284,7 @@
         30.0,
         "auto"
       ],
-      "title": "6 \u00b7 \ud83d\udcd0 HOW FAR CAN THE CAMERA GO"
+      "title": "6 · 📐 HOW FAR CAN THE CAMERA GO"
     },
     {
       "id": 7,
@@ -318,7 +321,7 @@
         "",
         1.0
       ],
-      "title": "7 \u00b7 VIEWPORT"
+      "title": "7 · VIEWPORT"
     },
     {
       "id": 8,
@@ -338,11 +341,188 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "UNSEEN GEOMETRY TEST \u2014 seacliff castle plate.\n\n5 \ud83d\udd78 OCCLUSION GRAPH  what occludes what, and what may be built.\n   Read its report FIRST. A tear it cannot classify licenses NOTHING\n   (policy=none) and says so \u2014 that refusal is the design, not a bug.\n   Needs fitted primitives upstream: node 3 supplies them, and node 4\n   merges the relief mesh back, because derive nodes CLOBBER prior\n   PROXY_ROLE geometry.\n\n6 \ud83d\udcd0 MOVE BUDGET  how far the camera can go before a tear opens.\n   Sealed-minus-covered, relative to the source view, so neither the\n   backdrop nor pre-existing tearing can mask it.\n   pan/tilt unbounded is CORRECT: rotation about the optical centre\n   produces no parallax, so it cannot open a tear.\n   Author a camera path, wire it in, push past the reported limit \u2014\n   tearing should return where the number said it would.\n\nNOT INCLUDED: \ud83e\ude79 AtlasCompleteDepth is EXPERIMENTAL and is left\nout on purpose. It fills tears exactly from graph-fitted planes, but\nthe fill butts against measured depth at the hole rim, so re-meshing\ntears along every seam. Measured on a real 4K plate: 302k px closed,\n222k px of NEW rim tears, and the move budget got WORSE.\nSet ATLAS_EXPERIMENTAL=1 to try it, and measure with node 6 first.\nThe clean-plate layer path (per-segment plates, shared solve) avoids\nthe seam entirely and is the intended fix."
+        "UNSEEN GEOMETRY TEST — seacliff castle plate.\n\n5 🕸 OCCLUSION GRAPH  what occludes what, and what may be built.\n   Read its report FIRST. A tear it cannot classify licenses NOTHING\n   (policy=none) and says so — that refusal is the design, not a bug.\n   Needs fitted primitives upstream: node 3 supplies them, and node 4\n   merges the relief mesh back, because derive nodes CLOBBER prior\n   PROXY_ROLE geometry.\n\n6 📐 MOVE BUDGET  how far the camera can go before a tear opens.\n   Sealed-minus-covered, relative to the source view, so neither the\n   backdrop nor pre-existing tearing can mask it.\n   pan/tilt unbounded is CORRECT: rotation about the optical centre\n   produces no parallax, so it cannot open a tear.\n   Author a camera path, wire it in, push past the reported limit —\n   tearing should return where the number said it would.\n\nNOT INCLUDED: 🩹 AtlasCompleteDepth is EXPERIMENTAL and is left\nout on purpose. It fills tears exactly from graph-fitted planes, but\nthe fill butts against measured depth at the hole rim, so re-meshing\ntears along every seam. Measured on a real 4K plate: 302k px closed,\n222k px of NEW rim tears, and the move budget got WORSE.\nSet ATLAS_EXPERIMENTAL=1 to try it, and measure with node 6 first.\nThe clean-plate layer path (per-segment plates, shared solve) avoids\nthe seam entirely and is the intended fix."
       ],
-      "title": "READ ME \u00b7 what this workflow is testing",
+      "title": "READ ME · what this workflow is testing",
       "color": "#432",
       "bgcolor": "#653"
+    },
+    {
+      "id": 9,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        2020,
+        440
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 10,
+      "type": "ShowText|pysssss",
+      "pos": [
+        2460,
+        440
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 12
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 11,
+      "type": "AtlasStereoRender",
+      "pos": [
+        2020,
+        680
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 13
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            15
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 12,
+      "type": "PreviewImage",
+      "pos": [
+        2460,
+        680
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 15
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
     }
   ],
   "links": [
@@ -424,6 +604,46 @@
       0,
       7,
       1,
+      "IMAGE"
+    ],
+    [
+      11,
+      6,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      9,
+      1,
+      10,
+      0,
+      "STRING"
+    ],
+    [
+      13,
+      6,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      14,
+      1,
+      0,
+      11,
+      1,
+      "IMAGE"
+    ],
+    [
+      15,
+      11,
+      0,
+      12,
+      0,
       "IMAGE"
     ]
   ],

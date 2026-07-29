@@ -1,8 +1,8 @@
 {
   "id": "3a115c93-dd03-417c-b6c0-b47bf6f3e710",
   "revision": 1,
-  "last_node_id": 31,
-  "last_link_id": 78,
+  "last_node_id": 35,
+  "last_link_id": 83,
   "nodes": [
     {
       "id": 1,
@@ -36,7 +36,8 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            6
+            6,
+            82
           ]
         },
         {
@@ -310,7 +311,7 @@
         true,
         2
       ],
-      "title": "0 \u00b7 VLM 5-layer assessment"
+      "title": "0 · VLM 5-layer assessment"
     },
     {
       "id": 3,
@@ -545,7 +546,7 @@
         "auto",
         0.0
       ],
-      "title": "Learned camera solve \u00b7 GeoCalib"
+      "title": "Learned camera solve · GeoCalib"
     },
     {
       "id": 5,
@@ -907,7 +908,7 @@
         "",
         1.0
       ],
-      "title": "SOLVE PREVIEW \u00b7 approve before layers"
+      "title": "SOLVE PREVIEW · approve before layers"
     },
     {
       "id": 9,
@@ -1002,7 +1003,7 @@
       "widgets_values": [
         0.5
       ],
-      "title": "1 \u00b7 SKY \u2014 segmentation + dome"
+      "title": "1 · SKY — segmentation + dome"
     },
     {
       "id": 10,
@@ -1162,7 +1163,7 @@
         5.5,
         0.85
       ],
-      "title": "2 \u00b7 FAR LAYER"
+      "title": "2 · FAR LAYER"
     },
     {
       "id": 11,
@@ -1322,7 +1323,7 @@
         5.5,
         0.85
       ],
-      "title": "3 \u00b7 BACKGROUND LAYER"
+      "title": "3 · BACKGROUND LAYER"
     },
     {
       "id": 12,
@@ -1482,7 +1483,7 @@
         5.5,
         0.85
       ],
-      "title": "4 \u00b7 MIDGROUND LAYER"
+      "title": "4 · MIDGROUND LAYER"
     },
     {
       "id": 13,
@@ -1562,7 +1563,9 @@
             56,
             57,
             58,
-            62
+            62,
+            79,
+            81
           ]
         },
         {
@@ -1648,7 +1651,7 @@
         5.5,
         0.85
       ],
-      "title": "5 \u00b7 FOREGROUND LAYER"
+      "title": "5 · FOREGROUND LAYER"
     },
     {
       "id": 14,
@@ -1769,7 +1772,7 @@
         "ACES 2.0 SDR-video",
         1.0
       ],
-      "title": "OUTPUT DESK \u00b7 OCIO metadata"
+      "title": "OUTPUT DESK · OCIO metadata"
     },
     {
       "id": 15,
@@ -1933,7 +1936,7 @@
         "",
         1.0
       ],
-      "title": "MASTER VIEWPORT \u00b7 five-layer scene"
+      "title": "MASTER VIEWPORT · five-layer scene"
     },
     {
       "id": 16,
@@ -2412,7 +2415,7 @@
       "widgets_values": [
         "atlas_debug/master_debug.json"
       ],
-      "title": "MASTER DEBUG \u00b7 stable JSON"
+      "title": "MASTER DEBUG · stable JSON"
     },
     {
       "id": 22,
@@ -2479,7 +2482,7 @@
         0,
         ""
       ],
-      "title": "Layer cutout \u00b7 sky"
+      "title": "Layer cutout · sky"
     },
     {
       "id": 23,
@@ -2515,7 +2518,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "PREVIEW \u00b7 sky"
+      "title": "PREVIEW · sky"
     },
     {
       "id": 24,
@@ -2582,7 +2585,7 @@
         1,
         ""
       ],
-      "title": "Layer cutout \u00b7 band_far"
+      "title": "Layer cutout · band_far"
     },
     {
       "id": 25,
@@ -2618,7 +2621,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "PREVIEW \u00b7 band_far"
+      "title": "PREVIEW · band_far"
     },
     {
       "id": 26,
@@ -2685,7 +2688,7 @@
         2,
         ""
       ],
-      "title": "Layer cutout \u00b7 band_bg"
+      "title": "Layer cutout · band_bg"
     },
     {
       "id": 27,
@@ -2721,7 +2724,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "PREVIEW \u00b7 band_bg"
+      "title": "PREVIEW · band_bg"
     },
     {
       "id": 28,
@@ -2788,7 +2791,7 @@
         3,
         ""
       ],
-      "title": "Layer cutout \u00b7 band_mid"
+      "title": "Layer cutout · band_mid"
     },
     {
       "id": 29,
@@ -2824,7 +2827,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "PREVIEW \u00b7 band_mid"
+      "title": "PREVIEW · band_mid"
     },
     {
       "id": 30,
@@ -2891,7 +2894,7 @@
         4,
         ""
       ],
-      "title": "Layer cutout \u00b7 band_fg"
+      "title": "Layer cutout · band_fg"
     },
     {
       "id": 31,
@@ -2927,7 +2930,184 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "PREVIEW \u00b7 band_fg"
+      "title": "PREVIEW · band_fg"
+    },
+    {
+      "id": 32,
+      "type": "AtlasMoveBudget",
+      "pos": [
+        7590,
+        3210
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 79
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            80
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMoveBudget"
+      },
+      "widgets_values": [
+        0.02,
+        8,
+        0.0,
+        30.0,
+        "auto"
+      ],
+      "title": "🔬 DEBUG move budget",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 33,
+      "type": "ShowText|pysssss",
+      "pos": [
+        8030,
+        3210
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 80
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG budget report",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 34,
+      "type": "AtlasStereoRender",
+      "pos": [
+        7590,
+        3450
+      ],
+      "size": [
+        400,
+        220
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 81
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 82
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stereo",
+          "type": "IMAGE",
+          "links": [
+            83
+          ]
+        },
+        {
+          "name": "left",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "right",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasStereoRender"
+      },
+      "widgets_values": [
+        0.065,
+        0.0,
+        "sbs",
+        1024
+      ],
+      "title": "🔬 DEBUG server-side render",
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 35,
+      "type": "PreviewImage",
+      "pos": [
+        8030,
+        3450
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 83
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "🔬 DEBUG geometry preview",
+      "color": "#323",
+      "bgcolor": "#535"
     }
   ],
   "links": [
@@ -3554,12 +3734,52 @@
       30,
       1,
       "MASK"
+    ],
+    [
+      79,
+      13,
+      0,
+      32,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      80,
+      32,
+      1,
+      33,
+      0,
+      "STRING"
+    ],
+    [
+      81,
+      13,
+      0,
+      34,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      82,
+      1,
+      0,
+      34,
+      1,
+      "IMAGE"
+    ],
+    [
+      83,
+      34,
+      0,
+      35,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [
     {
       "id": "86deceb9-12cd-591e-bc25-b6e73fe7d5f0",
-      "title": "0 \u00b7 ASSESS + CAMERA SOLVE",
+      "title": "0 · ASSESS + CAMERA SOLVE",
       "bounding": [
         35,
         1082,
@@ -3572,7 +3792,7 @@
     },
     {
       "id": "f30d4d09-e545-538e-ac55-618512091ddf",
-      "title": "1\u20135 \u00b7 LAYER SUBGRAPHS \u00b7 open a layer to tune masks and geometry",
+      "title": "1–5 · LAYER SUBGRAPHS · open a layer to tune masks and geometry",
       "bounding": [
         3515,
         1054,
@@ -3585,7 +3805,7 @@
     },
     {
       "id": "081c1fbf-e03b-5ab6-959d-d54a047ca43e",
-      "title": "ASSEMBLE \u00b7 DEBUG \u00b7 DCC EXPORT",
+      "title": "ASSEMBLE · DEBUG · DCC EXPORT",
       "bounding": [
         35,
         52,
@@ -3626,7 +3846,7 @@
         },
         "revision": 0,
         "config": {},
-        "name": "1 \u00b7 SKY LAYER",
+        "name": "1 · SKY LAYER",
         "inputNode": {
           "id": -10,
           "bounding": [
@@ -4020,7 +4240,7 @@
               64,
               0.0
             ],
-            "title": "Sky dome \u00b7 priority -10"
+            "title": "Sky dome · priority -10"
           }
         ],
         "groups": [],
@@ -4123,7 +4343,7 @@
         },
         "revision": 0,
         "config": {},
-        "name": "2 \u00b7 FAR LAYER",
+        "name": "2 · FAR LAYER",
         "inputNode": {
           "id": -10,
           "bounding": [
@@ -4436,7 +4656,7 @@
               "merged",
               0
             ],
-            "title": "SAM scope \u00b7 band_far"
+            "title": "SAM scope · band_far"
           },
           {
             "id": 2,
@@ -4744,7 +4964,7 @@
               "",
               true
             ],
-            "title": "Depth band \u00b7 band_far"
+            "title": "Depth band · band_far"
           },
           {
             "id": 4,
@@ -5381,7 +5601,7 @@
               0.0,
               true
             ],
-            "title": "Projection \u00b7 band_far"
+            "title": "Projection · band_far"
           }
         ],
         "groups": [],
@@ -5652,7 +5872,7 @@
         },
         "revision": 0,
         "config": {},
-        "name": "3 \u00b7 BACKGROUND LAYER",
+        "name": "3 · BACKGROUND LAYER",
         "inputNode": {
           "id": -10,
           "bounding": [
@@ -5965,7 +6185,7 @@
               "merged",
               0
             ],
-            "title": "SAM scope \u00b7 band_bg"
+            "title": "SAM scope · band_bg"
           },
           {
             "id": 2,
@@ -6273,7 +6493,7 @@
               "",
               true
             ],
-            "title": "Depth band \u00b7 band_bg"
+            "title": "Depth band · band_bg"
           },
           {
             "id": 4,
@@ -6910,7 +7130,7 @@
               0.0,
               true
             ],
-            "title": "Projection \u00b7 band_bg"
+            "title": "Projection · band_bg"
           }
         ],
         "groups": [],
@@ -7181,7 +7401,7 @@
         },
         "revision": 0,
         "config": {},
-        "name": "4 \u00b7 MIDGROUND LAYER",
+        "name": "4 · MIDGROUND LAYER",
         "inputNode": {
           "id": -10,
           "bounding": [
@@ -7494,7 +7714,7 @@
               "merged",
               0
             ],
-            "title": "SAM scope \u00b7 band_mid"
+            "title": "SAM scope · band_mid"
           },
           {
             "id": 2,
@@ -7802,7 +8022,7 @@
               "",
               true
             ],
-            "title": "Depth band \u00b7 band_mid"
+            "title": "Depth band · band_mid"
           },
           {
             "id": 4,
@@ -8439,7 +8659,7 @@
               0.0,
               true
             ],
-            "title": "Projection \u00b7 band_mid"
+            "title": "Projection · band_mid"
           }
         ],
         "groups": [],
@@ -8710,7 +8930,7 @@
         },
         "revision": 0,
         "config": {},
-        "name": "5 \u00b7 FOREGROUND LAYER",
+        "name": "5 · FOREGROUND LAYER",
         "inputNode": {
           "id": -10,
           "bounding": [
@@ -9023,7 +9243,7 @@
               "merged",
               0
             ],
-            "title": "SAM scope \u00b7 band_fg"
+            "title": "SAM scope · band_fg"
           },
           {
             "id": 2,
@@ -9331,7 +9551,7 @@
               "",
               true
             ],
-            "title": "Depth band \u00b7 band_fg"
+            "title": "Depth band · band_fg"
           },
           {
             "id": 4,
@@ -9968,7 +10188,7 @@
               0.0,
               true
             ],
-            "title": "Projection \u00b7 band_fg"
+            "title": "Projection · band_fg"
           }
         ],
         "groups": [],
