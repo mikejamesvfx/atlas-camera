@@ -98,3 +98,8 @@ tests/golden/_failures/
 # them silently and leave the gate with nothing to compare against, which
 # only shows up on a fresh clone.
 !tests/golden/*.png
+
+# Git bundles used to hand the repo to another machine. Build artifacts,
+# not source — and an 11 MB binary committed by accident is painful to
+# remove from history afterwards.
+*.bundle

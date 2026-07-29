@@ -39,8 +39,12 @@ git status --porcelain     # must be clean for anything you need on the Mac
 On Windows:
 
 ```bash
-git bundle create atlas.bundle --all
+git bundle create ../atlas.bundle --all
 ```
+
+Written OUTSIDE the repo on purpose — a bundle is a build artifact, and
+an 11 MB binary committed by accident is painful to remove from history.
+`*.bundle` is gitignored as a second line of defence.
 
 Send it with the Tailscale share sheet, or:
 
