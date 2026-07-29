@@ -540,3 +540,152 @@ class AtlasLayerPlan:
                          "AtlasAssessImage's sam_prompt outputs for names SAM3 "
                          "can actually segment")
         return (out, "\n".join(lines), fg_out, bg_out)
+
+
+class AtlasShootList:
+    """📸 Turn the occlusion graph into a SHOOTING BRIEF — go photograph the holes.
+
+    Every hole Atlas fills today is invented: inpainting, LaRI's predicted hidden
+    geometry, edge-dilated smear. But a matte painter with a camera can often just
+    go and photograph the missing material — the paving, the brick, the render,
+    the tarmac. Not the specific occluded scene, which may be a continent away,
+    but the same KIND of surface at the same angle and the same light.
+
+    Atlas already knows exactly what is missing. `AtlasOcclusionGraph` enumerates
+    one node per fitted surface with its plane and depth range, one edge per
+    silhouette tear with its pixel count, and `AtlasLayerPlan` says which of those
+    need a clean plate. What has never existed is a way to state that in terms a
+    photographer can act on.
+
+    This writes a project file answering, per hole:
+
+        what to photograph   the semantic concept, from the layer plan
+        at what angle        incidence to the surface, 0 = square, 90 = edge-on
+        from what distance   the surface's own depth range
+        at what resolution   pixels per metre, so the capture is not too soft
+        how badly            torn pixel count, worst first
+
+    THE ANGLE IS THE LOAD-BEARING NUMBER, and it depends on RANGE: the same floor
+    is steep underfoot and almost edge-on at the horizon, so "the angle to the
+    ground" is meaningless without a distance. A slab shot square will not sit
+    into a plate that sees it at 85 degrees, however good the texture.
+
+    LIGHTING IS DELIBERATELY NOT NUMBERED. Sun direction and hardness are what
+    separate a patch that sits from one that reads as a sticker, and Atlas cannot
+    measure them from a single plate. Rather than emit a confident-looking azimuth
+    that is really a guess, the project ships the PLATE ITSELF as a reference to
+    match by eye — and says so in the payload, so a client cannot mistake missing
+    lighting fields for "lighting does not matter". Flat or overcast capture is
+    the safest, because Atlas can relight it from normals it already has.
+
+    Surfaces with no fitted plane — an alleyway, a doorway, a recess — are flagged
+    `volumetric`. They are not textures and no angle describes them; those need
+    alignment against ghosted geometry rather than a flat shot.
+
+    Run `AtlasOcclusionGraph` (and ideally `AtlasLayerPlan`) upstream, or there is
+    nothing to enumerate.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING", "STRING")
+    RETURN_NAMES = ("solve", "project_path", "report")
+    FUNCTION = "build"
+    CATEGORY = "Atlas Camera/Masks & Depth"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE", {"tooltip":
+                    "Must carry an occlusion graph — run AtlasOcclusionGraph first."}),
+            },
+            "optional": {
+                "reference_image": ("IMAGE", {"tooltip":
+                    "The plate. Written alongside the project as the lighting and "
+                    "material reference to match by eye."}),
+                "output_dir": ("STRING", {"default": "",
+                    "tooltip": "Where to write the project. Blank = ComfyUI's output "
+                               "directory under atlas_shoot/."}),
+                "project_name": ("STRING", {"default": "shoot"}),
+                "min_tear_px": ("INT", {"default": 400, "min": 0, "max": 1000000, "step": 100,
+                    "tooltip": "Holes smaller than this are not worth a trip with a "
+                               "camera and are left to the inpainter."}),
+            },
+        }
+
+    def build(self, solve, reference_image=None, output_dir="", project_name="shoot",
+              min_tear_px=400):
+        import json as _json
+        import os
+
+        from atlas_camera.core.occlusion_graph import AtlasOcclusionGraph
+        from atlas_camera.core.shoot_list import build_shoot_list, shoot_project
+
+        semantics = getattr(getattr(solve, "semantics", None), "value", None) or {}
+        raw_graph = semantics.get("occlusion_graph")
+        if not raw_graph:
+            raise ValueError(
+                "AtlasShootList: this solve carries no occlusion graph, so there is "
+                "nothing to enumerate. Run AtlasOcclusionGraph upstream (and "
+                "AtlasLayerPlan, which supplies the subject names).")
+        graph = AtlasOcclusionGraph.from_dict(raw_graph)
+
+        # The layer plan is optional but does real work: it names the surfaces
+        # ("pavement", "brick wall") and vetoes anything already handled another
+        # way. Without it every occluded node is offered under its bare kind.
+        plan_raw = semantics.get("layer_plan") or []
+        plans = []
+        for p in plan_raw:
+            if isinstance(p, dict):
+                plans.append(type("_P", (), {
+                    "node_id": p.get("node_id", ""),
+                    "concepts": p.get("concepts") or [],
+                    "needs_clean_plate": bool(p.get("needs_clean_plate", True)),
+                })())
+
+        specs = build_shoot_list(solve, graph, layer_plan=plans or None,
+                                 min_tear_px=int(min_tear_px))
+
+        out_root = str(output_dir or "").strip()
+        if not out_root:
+            try:
+                import folder_paths
+                out_root = os.path.join(folder_paths.get_output_directory(), "atlas_shoot")
+            except Exception:  # noqa: BLE001 - outside ComfyUI
+                out_root = os.path.join(os.getcwd(), "atlas_shoot")
+        target = os.path.join(out_root, str(project_name or "shoot"))
+        os.makedirs(target, exist_ok=True)
+
+        plate_size = None
+        if reference_image is not None:
+            plate_size = (int(reference_image.shape[2]), int(reference_image.shape[1]))
+            try:
+                pil = _image_tensor_to_pil(reference_image)
+                pil.save(os.path.join(target, "reference_plate.png"))
+            except Exception as exc:  # noqa: BLE001 - a missing reference must not
+                specs and specs[0].warnings.append(   # kill an otherwise valid brief
+                    f"reference plate could not be written ({exc})")
+
+        project = shoot_project(specs, plate_size=plate_size)
+        project_path = os.path.join(target, "atlas_shoot.json")
+        with open(project_path, "w", encoding="utf-8") as fh:
+            _json.dump(project, fh, indent=2)
+
+        lines = [f"AtlasShootList: {len(specs)} shot(s) -> {project_path}"]
+        if not specs:
+            lines.append(
+                "  nothing worth photographing — every occluded surface is below "
+                f"min_tear_px ({int(min_tear_px)}), or the layer plan says they are "
+                "handled elsewhere.")
+        for s in specs:
+            lines.append(f"  {s.priority}. {s.guidance}")
+            lines.append(f"     {s.tear_px} px hidden by "
+                         f"{', '.join(s.hidden_by) or 'unknown'}; "
+                         f"{s.distance_m:.1f} m away")
+            for w in s.warnings:
+                lines.append(f"     NOTE {w}")
+        if specs:
+            lines.append("")
+            lines.append("  Lighting is NOT specified: Atlas cannot measure sun "
+                         "direction or hardness from one plate. Match "
+                         "reference_plate.png by eye — flat or overcast light is "
+                         "safest, since Atlas can relight from its own normals.")
+        return (solve, project_path, "\n".join(lines))

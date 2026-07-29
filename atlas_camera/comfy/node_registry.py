@@ -23,6 +23,7 @@ from atlas_camera.comfy.nodes_completion import (
     AtlasLayerPlan,
     AtlasMoveBudget,
     AtlasOcclusionGraph,
+    AtlasShootList,
 )
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_solve import (
@@ -339,9 +340,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # this line, went stale on every push to main, and could never be green (5
 # tests pin the default-closed contract it inverted). Do not recreate it.
 NODE_CLASS_MAPPINGS["AtlasOcclusionGraph"] = AtlasOcclusionGraph
+NODE_CLASS_MAPPINGS["AtlasShootList"] = AtlasShootList
 NODE_CLASS_MAPPINGS["AtlasMoveBudget"] = AtlasMoveBudget
 NODE_CLASS_MAPPINGS["AtlasLayerPlan"] = AtlasLayerPlan
 NODE_DISPLAY_NAME_MAPPINGS["AtlasOcclusionGraph"] = "Atlas Occlusion Graph 🕸"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasShootList"] = "Atlas Shoot List 📸"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasMoveBudget"] = "Atlas Move Budget 📐"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasLayerPlan"] = "Atlas Layer Plan 🥞"
 
