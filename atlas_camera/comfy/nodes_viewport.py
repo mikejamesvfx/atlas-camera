@@ -1188,12 +1188,19 @@ class AtlasDisocclusionGuide:
     meshes, exactly as AtlasStereoRender's do — measured, not a heuristic.
 
     "UNCOVERED" IS NOT THE SAME AS "DISOCCLUDED", and the report separates them.
-    A pixel can be unmarked-by-geometry for two unrelated reasons: the move
+    A pixel can be unmarked-by-geometry for three unrelated reasons: the move
     revealed something the source camera could not see (true disocclusion — what
-    a filler should invent), or no geometry was ever derived there (a partial
-    relief mesh — an upstream gap that inventing pixels only papers over). A flat
-    depth map with zero occlusion still renders ~50% uncovered on a partial mesh,
-    so the node renders the solved camera as a baseline and reports the split.
+    a filler should invent), no geometry was ever derived there (a partial relief
+    mesh — an upstream gap that inventing pixels only papers over), or the region
+    is deliberately carried by something other than geometry (sky on a matte or a
+    SkyDome — pass `exclude_mask` and it leaves both the marking and the coverage
+    figure). A flat depth map with zero occlusion still renders ~50% uncovered on
+    a partial mesh, so the node renders the solved camera as a baseline and
+    reports the split. Excluding a permanently-uncovered sky on the test fixture
+    moves reported coverage 55.6% -> 92.8%, which is the difference between a
+    number an artist can act on and one that always looks catastrophic —
+    core.move_budget.disocclusion_fraction documented this same trap for its
+    own `ignore_mask` long before this node existed.
 
     Feeding this to a LoRA trained on crude point-splat warps is a domain shift
     and may score WORSE despite the better geometry; A/B it, do not assume.
@@ -1245,11 +1252,19 @@ class AtlasDisocclusionGuide:
                     "tooltip": "Long edge. The pure-numpy rasterizer is O(faces x "
                                "pixels) and this renders EVERY path frame — keep it "
                                "moderate for long moves on dense relief meshes."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Region already handled by something other than "
+                               "geometry — typically sky carried by a matte or a "
+                               "SkyDome. Excluded pixels are NOT marked and are left "
+                               "out of the coverage figure entirely. Without this, sky "
+                               "with no geometry behind it reads as a permanent hole, "
+                               "so the guide tells the model to invent a sky that is "
+                               "already being handled."}),
             },
         }
 
     def guide(self, solve, source_image, camera_path=None, sentinel="magenta",
-              hole_dilate_px=0, resolution=1024):
+              hole_dilate_px=0, resolution=1024, exclude_mask=None):
         from atlas_camera.comfy.headless_evidence import (
             _decode_mask, _decode_rgba, _fit_long_edge, _tensor_rgba,
         )
@@ -1308,7 +1323,22 @@ class AtlasDisocclusionGuide:
         base_rgb, base_alpha, _ = render_scene(
             meshes, textures, solve.camera.extrinsics.camera_view_matrix,
             fx, fy, cx, cy, width, height)
-        base_coverage = 1.0 - float((base_alpha <= 0.0).mean())
+
+        exclude = self._exclude(exclude_mask, width, height, np)
+        keep = ~exclude if exclude is not None else None
+        excluded_frac = float(exclude.mean()) if exclude is not None else 0.0
+
+        def coverage(alpha):
+            """Covered fraction, ignoring excluded pixels in BOTH numerator and
+            denominator — the same rule as core.move_budget.disocclusion_fraction,
+            so the two measurements stay comparable."""
+            covered = alpha > 0.0
+            if keep is None:
+                return float(covered.mean())
+            n = int(keep.sum())
+            return float(covered[keep].sum()) / n if n else 1.0
+
+        base_coverage = coverage(base_alpha)
 
         frames, masks, coverages, skipped = [], [], [], set()
         for view in views:
@@ -1319,8 +1349,12 @@ class AtlasDisocclusionGuide:
             # Coverage is measured BEFORE dilation: dilation is a hint for the
             # consumer, and letting it move the reported number would make the
             # metric a function of a cosmetic widget.
-            coverages.append(1.0 - float(hole.mean()))
+            coverages.append(coverage(alpha))
             hole = self._dilate(hole, int(hole_dilate_px), np)
+            if exclude is not None:
+                # AFTER dilation, so dilation cannot bleed the sentinel into an
+                # excluded region either.
+                hole &= ~exclude
             out = np.clip(rgb, 0.0, 1.0)
             out[hole] = colour
             frames.append(out)
@@ -1335,6 +1369,8 @@ class AtlasDisocclusionGuide:
             f"AtlasDisocclusionGuide: {len(views)} frame(s) at {width}x{height} "
             f"from {view_source}, sentinel={sentinel}"
             + (f", holes dilated {hole_dilate_px}px" if hole_dilate_px else "")
+            + (f", {excluded_frac:.1%} of frame excluded by mask (not marked, not "
+               "counted)" if excluded_frac else "")
             + f".\ncoverage: worst frame {worst:.1%}"
             + (f", mean {sum(coverages) / len(coverages):.1%}"
                if len(coverages) > 1 else "")
@@ -1356,6 +1392,36 @@ class AtlasDisocclusionGuide:
         if skipped:
             report += f"\nSkipped (no texture/uvs): {sorted(skipped)}"
         return (guide, hole_mask, report)
+
+    @staticmethod
+    def _exclude(exclude_mask, width, height, np):
+        """A (height, width) bool mask from a ComfyUI MASK, or None.
+
+        A batch is OR-ed down to one plane, and the result is reused for EVERY
+        rendered view. That matches what core.move_budget already does with its
+        ``ignore_mask`` — one static mask threaded unchanged through every
+        candidate view — and it is an APPROXIMATION: the mask is authored in the
+        plate's frame, while the guide is rendered from a moved camera, so the
+        two only coincide exactly at zero offset. It holds well for sky, which
+        is what this is for (large, high in frame, barely displaced by the small
+        offsets a single plate supports) and degrades for anything small or
+        near. Reprojecting the mask properly would need geometry behind it,
+        which is precisely what is missing in the region being excluded.
+        """
+        if exclude_mask is None:
+            return None
+        m = np.asarray(exclude_mask.detach().cpu().numpy()
+                       if hasattr(exclude_mask, "detach") else exclude_mask,
+                       dtype=np.float64)
+        while m.ndim > 2:
+            m = m.max(axis=0)       # any frame masked -> masked
+        if m.shape != (height, width):
+            # Nearest-neighbour by index remap: no scipy, and a mask must not be
+            # blurred into fractional values that then need a second threshold.
+            yi = (np.arange(height) * (m.shape[0] / height)).astype(int).clip(0, m.shape[0] - 1)
+            xi = (np.arange(width) * (m.shape[1] / width)).astype(int).clip(0, m.shape[1] - 1)
+            m = m[yi][:, xi]
+        return m > 0.5
 
     @staticmethod
     def _views(solve, camera_path):

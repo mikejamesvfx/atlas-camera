@@ -203,6 +203,76 @@ class TestNoGeometry:
         assert "do not read the empty hole_mask as 'fully covered'" in report
 
 
+class TestExcludeMask:
+    """Sky carried by a matte must not be reported as something to invent.
+
+    core.move_budget.disocclusion_fraction already documented this trap for its
+    own ``ignore_mask``: "without it, sky reads as a permanent hole and every
+    budget collapses to zero". This node shipped without an equivalent; these
+    pin the fix and the semantics it borrows.
+    """
+
+    @staticmethod
+    def _top_half(h=H, w=W):
+        m = torch.zeros(1, h, w, dtype=torch.float32)
+        m[:, : h // 2, :] = 1.0
+        return m
+
+    def test_nothing_inside_the_excluded_region_is_ever_marked(self):
+        _, mask, _ = GUIDE().guide(_solve(), _img(),
+                                   exclude_mask=self._top_half(), resolution=256)
+        assert mask[0].numpy()[: H // 2].sum() == 0
+
+    def test_dilation_cannot_bleed_the_sentinel_into_the_excluded_region(self):
+        """The exclusion is applied AFTER dilation for exactly this reason."""
+        _, mask, _ = GUIDE().guide(_solve(), _img(), exclude_mask=self._top_half(),
+                                   hole_dilate_px=6, resolution=256)
+        assert mask[0].numpy()[: H // 2].sum() == 0
+
+    def test_excluding_uncovered_frame_raises_reported_coverage(self):
+        """Excluded pixels leave BOTH numerator and denominator, matching
+        disocclusion_fraction — so masking off a permanently-uncovered sky must
+        RAISE coverage, not merely shrink the marked area."""
+        import re
+        cov = lambda **kw: float(re.search(  # noqa: E731
+            r"worst frame ([\d.]+)%",
+            GUIDE().guide(_solve(), _img(), resolution=256, **kw)[2]).group(1))
+        assert cov(exclude_mask=self._top_half()) > cov() + 10.0
+
+    def test_the_report_states_how_much_was_excluded(self):
+        _, _, report = GUIDE().guide(_solve(), _img(),
+                                     exclude_mask=self._top_half(), resolution=256)
+        assert "50.0% of frame excluded by mask" in report
+        assert "not marked, not counted" in report
+
+    def test_a_mask_at_another_resolution_is_resampled_not_rejected(self):
+        """Masks arrive at plate resolution; the render is at `resolution`."""
+        small = GUIDE().guide(_solve(), _img(), exclude_mask=self._top_half(24, 24),
+                              resolution=256)[1]
+        exact = GUIDE().guide(_solve(), _img(), exclude_mask=self._top_half(),
+                              resolution=256)[1]
+        assert small[0].numpy()[: H // 2].sum() == 0
+        assert abs(float(small.mean()) - float(exact.mean())) < 0.02
+
+    def test_a_mask_batch_is_or_ed_down_to_one_plane(self):
+        stacked = torch.zeros(3, H, W, dtype=torch.float32)
+        stacked[0, : H // 4, :] = 1.0
+        stacked[2, H // 4: H // 2, :] = 1.0      # union == the top half
+        _, mask, _ = GUIDE().guide(_solve(), _img(), exclude_mask=stacked,
+                                   resolution=256)
+        assert mask[0].numpy()[: H // 2].sum() == 0
+
+    def test_no_mask_is_unchanged_behaviour(self):
+        a = GUIDE().guide(_solve(), _img(), resolution=256)[1]
+        b = GUIDE().guide(_solve(), _img(), exclude_mask=None, resolution=256)[1]
+        assert torch.equal(a, b)
+
+    def test_exclude_mask_is_the_LAST_optional_input(self):
+        """Appended, never inserted — positional widget order is a saved-workflow
+        contract, and this node already shipped once without it."""
+        assert list(GUIDE.INPUT_TYPES()["optional"])[-1] == "exclude_mask"
+
+
 class TestAgreesWithTheEstablishedRenderer:
     def test_coverage_matches_atlas_stereo_render(self):
         """Both read alpha from the same z-buffered render_scene, so a drift
