@@ -2,14 +2,14 @@
  "schema_version": 1,
  "generated_utc": "2026-07-30",
  "counts": {
-  "standard": 91,
+  "standard": 92,
   "experimental": 5,
   "legacy": 2,
-  "total": 98,
+  "total": 99,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 91,
+  "KEEP_CORE": 92,
   "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
@@ -34,6 +34,7 @@
     "tests/test_exact_patch_view.py",
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py",
+    "tests/test_solve_patch_views.py",
     "tests/test_view_solver.py"
    ],
    "tests": [
@@ -45,6 +46,7 @@
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py",
     "tests/test_facade_surface.py",
+    "tests/test_solve_patch_views.py",
     "tests/test_view_solver.py"
    ],
    "mcp_tools": [],
@@ -1275,7 +1277,8 @@
     "tests/test_merge_geometry.py",
     "tests/test_mesh_repair.py",
     "tests/test_node_layer_contracts.py",
-    "tests/test_retopologize_layer.py"
+    "tests/test_retopologize_layer.py",
+    "tests/test_solve_patch_views.py"
    ],
    "tests": [
     "tests/golden_scenes.py",
@@ -1288,7 +1291,8 @@
     "tests/test_merge_geometry.py",
     "tests/test_mesh_repair.py",
     "tests/test_node_layer_contracts.py",
-    "tests/test_retopologize_layer.py"
+    "tests/test_retopologize_layer.py",
+    "tests/test_solve_patch_views.py"
    ],
    "mcp_tools": [],
    "repo_tools": [
@@ -3995,6 +3999,7 @@
     "tools/build_shoot_example.py"
    ],
    "docs": [
+    "docs/NODE_CATALOG.md",
     "docs/SHOOT_PROJECT_FORMAT.md"
    ],
    "product_evidence": true,
@@ -4148,6 +4153,38 @@
     "dedicated_test",
     "mcp",
     "repo_tool",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasSolvePatchViews": {
+   "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "standard",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_solve_patch_views.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_solve_patch_views.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "not_attempted",

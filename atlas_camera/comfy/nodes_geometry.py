@@ -3445,3 +3445,261 @@ class AtlasOcclusionMask:
         mask_t = torch.from_numpy(mask.astype(np.float32)).unsqueeze(0)
         coverage_t = torch.from_numpy((1.0 - mask).astype(np.float32)).unsqueeze(0)
         return (mask_t, coverage_t)
+
+
+class AtlasSolvePatchViews:
+    """⌖ Which Qwen angle actually SEES the hole — measured, not guessed.
+
+    `AtlasAddPatchView` has always asked the artist to pick a named view from
+    dropdowns and hope it revealed the occluded geometry. The mesh already knows:
+    rasterize the candidate fill planes from each angle and count what survives
+    the z-buffer. That is `core.view_solver`, and this is its Qwen consumer — it
+    walks the Multiple-Angles LoRA's own vocabulary and hands back the winning
+    view as a `patch_view_override` string, ready to wire straight into
+    `AtlasAddPatchView`.
+
+    NAMED VIEWS, NOT EXACT. `exact_view_override` is more precise and is the
+    wrong tool here: the LoRA only understands its 8x4x3 named grid, so an exact
+    orbit it never trained on is not a view it can render. Precision would buy a
+    misregistered patch.
+
+    READ THE `no_angle_sees_it` LINE. An island no candidate reveals is a useful
+    negative result, not a failure — Qwen cannot help, and the hole wants a real
+    capture (AtlasShootList) or a clean plate. Silently returning the least-bad
+    angle would send the artist to a view that invents the geometry instead.
+
+    A SOURCE-VISIBLE GAP NEEDS NO PATCH ANGLE AT ALL. Measured while building the
+    solver: a see-through gap scores HIGHEST from the source camera (900 px vs
+    502 off-axis) because the fill plane faces it squarely. When the report says
+    the source view won, the plate already has those pixels and a generated patch
+    would replace real data with invention.
+    """
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("patch_view_override", "patch_prompt", "view_plan", "report")
+    FUNCTION = "solve_views"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "hole_mask": ("MASK",),
+            },
+            "optional": {
+                "source_azimuth_view": (list(_AZIMUTH_VIEWS),
+                                        {"default": "front view"}),
+                "source_elevation_view": (list(_ELEVATION_VIEWS),
+                                          {"default": "eye-level shot"}),
+                "flip_azimuth": ("BOOLEAN", {"default": False}),
+                "search_distances": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Also try close-up/wide (96 candidates instead of "
+                               "32). Distance changes visibility far less than "
+                               "angle does, and every candidate is a rasterize."}),
+                "resolution": ("INT", {
+                    "default": 384, "min": 128, "max": 1536,
+                    "tooltip": "Rasterize size per candidate. Runs ONCE PER "
+                               "CANDIDATE VIEW and the rasterizer is pure-numpy "
+                               "O(faces x pixels) — this is the expensive knob."}),
+                "min_visible_pixels": ("INT", {
+                    "default": 32, "min": 1, "max": 100000,
+                    "tooltip": "Below this an island counts as unseen from that "
+                               "view. A few grazing pixels is not a patch."}),
+                "max_views": ("INT", {
+                    "default": 3, "min": 1, "max": 32,
+                    "tooltip": "How many ranked views go into view_plan. The "
+                               "override output always carries the single best; "
+                               "the plan is for multi-angle and agent use."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Hole pixels to ignore — typically sky already "
+                               "carried by a dome. Excluded pixels leave the "
+                               "ranking entirely."}),
+                "max_hole_fraction": ("FLOAT", {
+                    "default": 0.35, "min": 0.001, "max": 1.0, "step": 0.005,
+                    "tooltip": "Largest island, as a fraction of frame, that a "
+                               "fill plane may be fitted to. NOT the repair "
+                               "module's 0.04 default: that is tuned for small "
+                               "planar patches, and at 0.04 a normal tear (43% "
+                               "of frame, measured) fits NOTHING and every angle "
+                               "scores zero — which reads as 'Qwen cannot see it' "
+                               "when nothing was ever fitted to look at."}),
+                "normal_tolerance_deg": ("FLOAT", {
+                    "default": 30.0, "min": 1.0, "max": 89.0, "step": 1.0,
+                    "tooltip": "How much the hole's surrounding normals may "
+                               "disagree before it is judged non-planar."}),
+                "max_plane_error_m": ("FLOAT", {
+                    "default": 0.45, "min": 0.001, "max": 100.0, "step": 0.01,
+                    "tooltip": "Plane-fit residual cap, metres. Only meaningful "
+                               "when the solve's metric scale is trusted."}),
+            },
+        }
+
+    def solve_views(self, solve, hole_mask, source_azimuth_view="front view",
+                    source_elevation_view="eye-level shot", flip_azimuth=False,
+                    search_distances=False, resolution=384,
+                    min_visible_pixels=32, max_views=3, exclude_mask=None,
+                    max_hole_fraction=0.35, normal_tolerance_deg=30.0,
+                    max_plane_error_m=0.45):
+        import json
+
+        from atlas_camera.comfy.nodes import _relief_mesh_from_solve
+        from atlas_camera.core.path_hole_repair import (
+            PathHoleRepairConfig, build_island_candidates,
+        )
+        from atlas_camera.core.view_solver import (
+            CandidateView, best_view_per_island, rank_views,
+        )
+        np = _require_numpy()
+
+        mesh = _relief_mesh_from_solve(solve)
+        if mesh is None:
+            return ("", "", "{}",
+                    "AtlasSolvePatchViews: no relief mesh on this solve — run "
+                    "AtlasDeriveReliefMesh (or AtlasInput) upstream first.")
+
+        intr = solve.camera.intrinsics
+        width = int(intr.image_width or 0)
+        height = int(intr.image_height or 0)
+        holes = self._mask_to_bool(hole_mask, width, height, np)
+        if exclude_mask is not None:
+            holes &= ~self._mask_to_bool(exclude_mask, width, height, np)
+        if not holes.any():
+            return ("", "", "{}",
+                    "AtlasSolvePatchViews: hole mask is empty after exclusion — "
+                    "nothing to find an angle for.")
+
+        distances = list(_DISTANCE_VIEWS) if search_distances else ["medium shot"]
+        candidates = []
+        for az in _AZIMUTH_VIEWS:
+            for el in _ELEVATION_VIEWS:
+                for dist in distances:
+                    d_az, d_el, scale = _named_view_orbit_delta(
+                        az, el, dist, source_azimuth_view,
+                        source_elevation_view, flip_azimuth)
+                    candidates.append(CandidateView(
+                        d_azimuth_deg=d_az, d_elevation_deg=d_el,
+                        distance_scale=scale,
+                        # The label round-trips the NAMES back out. The solver
+                        # works in deltas and cannot reconstruct which named view
+                        # produced one — several combinations reach +45 degrees.
+                        label=az + "|" + el + "|" + dist))
+
+        cfg = PathHoleRepairConfig(
+            resolution=int(resolution),
+            max_hole_fraction=float(max_hole_fraction),
+            normal_tolerance_deg=float(normal_tolerance_deg),
+            max_plane_error_m=float(max_plane_error_m),
+        )
+        # Built HERE, not inside rank_views, so the two zero-score causes can be
+        # told apart. Fitting nothing and seeing nothing look identical in a
+        # ranking, and conflating them reports a config problem as a routing
+        # decision — measured live: at the repair module's 0.04 default a 43%
+        # tear fitted zero planes and the node confidently said "Qwen cannot
+        # see it".
+        built = build_island_candidates(
+            mesh, holes, source_camera=solve.camera, config=cfg)
+        if not len(built["candidate_faces"]):
+            islands = len(built["components"])
+            return ("", "", json.dumps({"views": [], "no_candidate_planes": True}),
+                    "AtlasSolvePatchViews: no fill plane could be FITTED to any "
+                    "of the " + str(islands) + " hole island(s), so there was "
+                    "nothing to look at from any angle.\n"
+                    "This is a fit-tolerance problem, NOT a verdict on the "
+                    "angles. Raise max_hole_fraction (currently "
+                    + str(round(float(max_hole_fraction), 3)) + ") for large "
+                    "tears, or normal_tolerance_deg / max_plane_error_m for "
+                    "non-planar ones. A hole that is genuinely not planar wants "
+                    "AtlasCompleteDepth or a real capture instead.")
+
+        scores = rank_views(
+            mesh, holes, source_camera=solve.camera, candidates=candidates,
+            resolution=int(resolution),
+            min_visible_pixels=int(min_visible_pixels),
+            config=cfg, prebuilt=built,
+        )
+        useful = [s for s in scores if s.visible_px > 0]
+        if not useful:
+            return ("", "", json.dumps({"views": [], "unseen": True}),
+                    "AtlasSolvePatchViews: planes were fitted, but NO candidate "
+                    "angle reveals them (" + str(len(candidates))
+                    + " views tried).\n"
+                    "That is a routing answer, not a failure — Qwen cannot see "
+                    "this geometry from any view it knows, so it would invent "
+                    "it. Send the hole to a real capture (AtlasShootList) or a "
+                    "clean plate.")
+
+        best = useful[0]
+        az, el, dist = best.view.label.split("|")
+        override = az + " " + el + " " + dist
+        prompt = "<sks> " + override
+
+        covered = best_view_per_island(scores)
+        all_ids = {i.island_id for s in scores for i in s.islands}
+        plan = {
+            "source_view": [source_azimuth_view, source_elevation_view],
+            "candidates_tried": len(candidates),
+            "views": [
+                {
+                    "azimuth_view": s.view.label.split("|")[0],
+                    "elevation_view": s.view.label.split("|")[1],
+                    "distance": s.view.label.split("|")[2],
+                    "patch_view_override": s.view.label.replace("|", " "),
+                    "visible_px": s.visible_px,
+                    "islands_seen": s.islands_seen,
+                    "islands": [{"id": i.island_id, "visible_px": i.visible_px,
+                                 "cells": i.island_cells} for i in s.islands],
+                }
+                for s in useful[:max(1, int(max_views))]
+            ],
+            "island_best_view": {
+                str(island_id): score.view.label.replace("|", " ")
+                for island_id, score in covered.items()
+            },
+        }
+
+        source_wins = best.view.label.startswith(
+            source_azimuth_view + "|" + source_elevation_view + "|")
+        lines = [
+            "AtlasSolvePatchViews: best = " + override
+            + "  (" + str(best.visible_px) + " px across "
+            + str(best.islands_seen) + " island(s); "
+            + str(len(candidates)) + " candidates tried)",
+            "islands covered by some view: "
+            + str(len(covered)) + "/" + str(len(all_ids)),
+        ]
+        unseen = sorted(all_ids - set(covered))
+        if unseen:
+            lines.append(
+                "no_angle_sees_it: island(s) " + str(unseen)
+                + " — Qwen cannot help here; route to AtlasShootList or a clean "
+                "plate rather than generating.")
+        if source_wins:
+            lines.append(
+                "NOTE the SOURCE view scored highest, so this is a see-through "
+                "gap the plate already photographs. A generated patch would "
+                "replace real pixels with invention — prefer "
+                "AtlasPlanarHolePatch or a clean plate.")
+        lines.append(
+            "top " + str(min(len(useful), int(max_views))) + ": "
+            + ", ".join(s.view.label.replace("|", " ")
+                        + " (" + str(s.visible_px) + "px)"
+                        for s in useful[:max(1, int(max_views))]))
+        return (override, prompt, json.dumps(plan, indent=2), "\n".join(lines))
+
+    @staticmethod
+    def _mask_to_bool(mask, width, height, np):
+        """ComfyUI MASK -> (height, width) bool at the SOURCE camera's size."""
+        arr = np.asarray(
+            mask.detach().cpu().numpy() if hasattr(mask, "detach") else mask,
+            dtype=np.float64)
+        while arr.ndim > 2:
+            arr = arr.max(axis=0)
+        if arr.shape != (height, width):
+            yi = np.minimum((np.arange(height) * arr.shape[0] / max(height, 1))
+                            .astype(int), arr.shape[0] - 1)
+            xi = np.minimum((np.arange(width) * arr.shape[1] / max(width, 1))
+                            .astype(int), arr.shape[1] - 1)
+            arr = arr[np.ix_(yi, xi)]
+        return arr > 0.5

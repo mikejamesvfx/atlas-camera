@@ -91,6 +91,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasRenderFix,
     AtlasExtractAnglePatch,
     AtlasImportAnglePatch,
+    AtlasSolvePatchViews,
     AtlasAddPatchView,
     AtlasOcclusionMask,
 )
@@ -158,6 +159,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasGravityOverride":       AtlasGravityOverride,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
+    "AtlasSolvePatchViews":       AtlasSolvePatchViews,
     "AtlasAddPatchView":          AtlasAddPatchView,
     "AtlasOcclusionMask":         AtlasOcclusionMask,
     "AtlasConstrainedSolve":      AtlasConstrainedSolve,
@@ -259,6 +261,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",
+    "AtlasSolvePatchViews":       "Atlas Solve Patch Views ⌖",
     "AtlasAddPatchView":          "Atlas Add Patch View (multi-angle) 🩹",
     "AtlasOcclusionMask":         "Atlas Occlusion Mask 🕳",
     "AtlasConstrainedSolve":      "Atlas Constrained Solve",

@@ -122,6 +122,7 @@ def rank_views(
     resolution: int = 512,
     min_visible_pixels: int = 8,
     config: PathHoleRepairConfig | None = None,
+    prebuilt: dict[str, Any] | None = None,
 ) -> list[ViewScore]:
     """Rank ``candidates`` by how much of the hole geometry each one reveals.
 
@@ -150,7 +151,12 @@ def rank_views(
     if not candidates:
         return []
 
-    built = build_island_candidates(
+    # `prebuilt` lets a caller run build_island_candidates itself and INSPECT the
+    # result before ranking. That matters because "no plane could be fitted at
+    # these tolerances" and "planes exist but no view sees them" are completely
+    # different answers — the first is a config problem, the second is a routing
+    # decision — and from an all-zero ranking alone they are indistinguishable.
+    built = prebuilt if prebuilt is not None else build_island_candidates(
         mesh, selected, source_camera=source_camera, config=cfg)
     candidate_mesh = built["candidate_mesh"]
     candidate_faces = built["candidate_faces"]
