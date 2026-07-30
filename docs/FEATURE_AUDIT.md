@@ -57,7 +57,7 @@ relative to itself, so a worktree silently audits a different tree.
 
 | Name | Module | Tier | Workflows | Dedicated tests | Live exec | Meaningful output | MCP | Docs | Overlapping replacement | Known defect | Compat risk | Verdict | Migration action |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `AtlasAddPatchView` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 6 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasAddPatchView` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 7 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasApplyLUT` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasApplyScaleReferences` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasAssessImage` | atlas_camera/comfy/nodes_solve.py | standard | 5 | 5 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |

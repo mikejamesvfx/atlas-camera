@@ -33,7 +33,8 @@
     "tests/test_equirect.py",
     "tests/test_exact_patch_view.py",
     "tests/test_experimental_gate.py",
-    "tests/test_extract_angle.py"
+    "tests/test_extract_angle.py",
+    "tests/test_view_solver.py"
    ],
    "tests": [
     "tests/test_add_patch_view.py",
@@ -43,7 +44,8 @@
     "tests/test_exact_patch_view.py",
     "tests/test_experimental_gate.py",
     "tests/test_extract_angle.py",
-    "tests/test_facade_surface.py"
+    "tests/test_facade_surface.py",
+    "tests/test_view_solver.py"
    ],
    "mcp_tools": [],
    "repo_tools": [

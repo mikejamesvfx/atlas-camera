@@ -137,6 +137,104 @@ def _rasterize_triangles(
             id_view[nearer] = int(island_id)
 
 
+def build_island_candidates(
+    mesh: Any,
+    selected_mask: Any,
+    *,
+    source_camera: Any,
+    config: PathHoleRepairConfig | None = None,
+) -> dict[str, Any]:
+    """Hole islands plus the candidate plane geometry that would fill them.
+
+    Extracted so `core.view_solver` ranks the SAME islands and the SAME candidate
+    planes this module repairs. Two implementations would drift, and the drift
+    would be invisible: the solver would recommend a camera angle for an island
+    the repair no longer has, and both would report success.
+
+    View-independent on purpose — everything here is computed once in the source
+    camera's frame, and only the rasterization step varies per candidate view.
+    """
+    np = _require_numpy()
+    cfg = config or PathHoleRepairConfig()
+    src_intr = source_camera.intrinsics
+    src_width = int(src_intr.image_width or 0)
+    src_height = int(src_intr.image_height or 0)
+
+    lattice = _recover_lattice(mesh, src_width, src_height)
+    rows = lattice["rows"]
+    cols = lattice["cols"]
+    coverage = lattice["coverage"]
+    row_centers = ((rows[:-1] + rows[1:]) // 2).astype(np.int64)
+    col_centers = ((cols[:-1] + cols[1:]) // 2).astype(np.int64)
+    selected_cells = selected_mask[np.ix_(row_centers, col_centers)]
+    candidate_cells = selected_cells & (coverage < 2)
+    components = _components(candidate_cells)
+    components.sort(key=lambda item: (len(item), min(item)))
+    cell_to_id = np.zeros(candidate_cells.shape, dtype=np.int32)
+    component_by_id: dict[int, set[tuple[int, int]]] = {}
+    for island_id, component in enumerate(components, start=1):
+        component_by_id[island_id] = component
+        for row, col in component:
+            cell_to_id[row, col] = island_id
+
+    fit_cfg = PlanarHolePatchConfig(
+        ring_cells=int(cfg.ring_cells),
+        max_components=int(cfg.max_components),
+        normal_tolerance_deg=float(cfg.normal_tolerance_deg),
+        max_plane_error_m=float(cfg.max_plane_error_m),
+        max_hole_fraction=float(cfg.max_hole_fraction),
+        enclosed_only=bool(cfg.enclosed_only),
+        min_normal_support_fraction=float(cfg.min_normal_support_fraction),
+        # Preview candidates that passed the plane fit even when the ordinary
+        # repair rejected their camera-ray stretch. The downstream patch node
+        # remains the geometry acceptance gate.
+        max_patch_edge_factor=1.0e9,
+    )
+    candidate_mesh, _remaining, fit_report = patch_planar_holes(
+        mesh,
+        selected_mask,
+        view_matrix=source_camera.extrinsics.camera_view_matrix,
+        fx=float(src_intr.fx_px or 1.0),
+        fy=float(src_intr.fy_px or src_intr.fx_px or 1.0),
+        cx=float(src_intr.cx_px if src_intr.cx_px is not None
+                 else src_width / 2.0),
+        cy=float(src_intr.cy_px if src_intr.cy_px is not None
+                 else src_height / 2.0),
+        image_width=src_width,
+        image_height=src_height,
+        config=fit_cfg,
+    )
+
+    faces_added = int(fit_report.get("faces_added", 0))
+    candidate_faces = (
+        np.asarray(candidate_mesh.faces, dtype=np.int64).reshape(-1, 3)[-faces_added:]
+        if faces_added else np.zeros((0, 3), dtype=np.int64)
+    )
+    face_ids = np.zeros(len(candidate_faces), dtype=np.int32)
+    if len(candidate_faces):
+        uvs = np.asarray(candidate_mesh.uvs, dtype=np.float64).reshape(-1, 2)
+        centroids = uvs[candidate_faces].mean(axis=1)
+        px = centroids[:, 0] * max(src_width - 1, 1)
+        py = (1.0 - centroids[:, 1]) * max(src_height - 1, 1)
+        rr = np.clip(np.searchsorted(rows, py, side="right") - 1,
+                     0, len(rows) - 2)
+        cc = np.clip(np.searchsorted(cols, px, side="right") - 1,
+                     0, len(cols) - 2)
+        face_ids = cell_to_id[rr, cc]
+
+    return {
+        "components": components,
+        "component_by_id": component_by_id,
+        "cell_to_id": cell_to_id,
+        "candidate_mesh": candidate_mesh,
+        "candidate_faces": candidate_faces,
+        "face_ids": face_ids,
+        "fit_report": fit_report,
+        "rows": rows,
+        "cols": cols,
+    }
+
+
 def build_path_hole_repair(
     mesh: Any,
     hole_mask: Any,
@@ -211,67 +309,16 @@ def build_path_hole_repair(
     cy = float(src_intr.cy_px if src_intr.cy_px is not None
                else src_height / 2.0) * sy
 
-    lattice = _recover_lattice(mesh, src_width, src_height)
-    rows = lattice["rows"]
-    cols = lattice["cols"]
-    coverage = lattice["coverage"]
-    row_centers = ((rows[:-1] + rows[1:]) // 2).astype(np.int64)
-    col_centers = ((cols[:-1] + cols[1:]) // 2).astype(np.int64)
-    selected_cells = selected_mask[np.ix_(row_centers, col_centers)]
-    candidate_cells = selected_cells & (coverage < 2)
-    components = _components(candidate_cells)
-    components.sort(key=lambda item: (len(item), min(item)))
-    cell_to_id = np.zeros(candidate_cells.shape, dtype=np.int32)
-    component_by_id: dict[int, set[tuple[int, int]]] = {}
-    for island_id, component in enumerate(components, start=1):
-        component_by_id[island_id] = component
-        for row, col in component:
-            cell_to_id[row, col] = island_id
-
-    fit_cfg = PlanarHolePatchConfig(
-        ring_cells=int(cfg.ring_cells),
-        max_components=int(cfg.max_components),
-        normal_tolerance_deg=float(cfg.normal_tolerance_deg),
-        max_plane_error_m=float(cfg.max_plane_error_m),
-        max_hole_fraction=float(cfg.max_hole_fraction),
-        enclosed_only=bool(cfg.enclosed_only),
-        min_normal_support_fraction=float(cfg.min_normal_support_fraction),
-        # Preview candidates that passed the plane fit even when the ordinary
-        # repair rejected their camera-ray stretch. The downstream patch node
-        # remains the geometry acceptance gate.
-        max_patch_edge_factor=1.0e9,
-    )
-    candidate_mesh, _remaining, fit_report = patch_planar_holes(
-        mesh,
-        selected_mask,
-        view_matrix=source_camera.extrinsics.camera_view_matrix,
-        fx=float(src_intr.fx_px or 1.0),
-        fy=float(src_intr.fy_px or src_intr.fx_px or 1.0),
-        cx=float(src_intr.cx_px if src_intr.cx_px is not None
-                 else src_width / 2.0),
-        cy=float(src_intr.cy_px if src_intr.cy_px is not None
-                 else src_height / 2.0),
-        image_width=src_width,
-        image_height=src_height,
-        config=fit_cfg,
-    )
-
-    faces_added = int(fit_report.get("faces_added", 0))
-    candidate_faces = (
-        np.asarray(candidate_mesh.faces, dtype=np.int64).reshape(-1, 3)[-faces_added:]
-        if faces_added else np.zeros((0, 3), dtype=np.int64)
-    )
-    face_ids = np.zeros(len(candidate_faces), dtype=np.int32)
-    if len(candidate_faces):
-        uvs = np.asarray(candidate_mesh.uvs, dtype=np.float64).reshape(-1, 2)
-        centroids = uvs[candidate_faces].mean(axis=1)
-        px = centroids[:, 0] * max(src_width - 1, 1)
-        py = (1.0 - centroids[:, 1]) * max(src_height - 1, 1)
-        rr = np.clip(np.searchsorted(rows, py, side="right") - 1,
-                     0, len(rows) - 2)
-        cc = np.clip(np.searchsorted(cols, px, side="right") - 1,
-                     0, len(cols) - 2)
-        face_ids = cell_to_id[rr, cc]
+    built = build_island_candidates(
+        mesh, selected_mask, source_camera=source_camera, config=cfg)
+    rows = built["rows"]
+    cols = built["cols"]
+    components = built["components"]
+    component_by_id = built["component_by_id"]
+    candidate_mesh = built["candidate_mesh"]
+    candidate_faces = built["candidate_faces"]
+    face_ids = built["face_ids"]
+    fit_report = built["fit_report"]
 
     z_buffer = np.full((out_height, out_width), np.inf, dtype=np.float64)
     id_map = np.zeros((out_height, out_width), dtype=np.int32)
