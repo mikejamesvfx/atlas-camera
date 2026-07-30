@@ -1223,6 +1223,7 @@
    "example_workflows": [],
    "dedicated_tests": [
     "tests/test_derive_geometry_nodes.py",
+    "tests/test_fill_policy.py",
     "tests/test_frontend_mirrors.py",
     "tests/test_node_layer_contracts.py",
     "tests/test_scene_type_preset.py"
@@ -1231,6 +1232,7 @@
     "tests/test_comfy_node_registry.py",
     "tests/test_derive_geometry_nodes.py",
     "tests/test_facade_surface.py",
+    "tests/test_fill_policy.py",
     "tests/test_frontend_mirrors.py",
     "tests/test_node_layer_contracts.py",
     "tests/test_scene_type_preset.py"
