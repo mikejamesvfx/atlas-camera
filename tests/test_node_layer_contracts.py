@@ -455,6 +455,7 @@ def test_load_plate_names_the_missing_file_in_the_error(tmp_path):
     into every downstream layer. Pin that it raises with the path in the
     message, so the artist can see which path was wrong."""
     pytest.importorskip("OpenImageIO")
+    pytest.importorskip("torch")     # AtlasLoadPlate returns a torch tensor
     missing = tmp_path / "nope.exr"
     with pytest.raises(RuntimeError, match="no such file"):
         _call("AtlasLoadPlate", str(missing))

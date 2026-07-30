@@ -269,6 +269,7 @@ def test_load_plate_resolves_a_bare_filename_against_comfyui_input(tmp_path, mon
     equirect workflow could not run until the artist repointed it by hand.
     """
     pytest.importorskip("OpenImageIO")
+    pytest.importorskip("torch")     # AtlasLoadPlate returns a torch tensor
     import sys, types as _types
     from atlas_camera.comfy import node_registry as reg
 

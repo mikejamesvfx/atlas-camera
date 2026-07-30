@@ -650,6 +650,11 @@ def test_apply_boundary_sawtooth_fill_degrades_on_non_manifold():
 
 def test_derive_relief_mesh_node_stores_repaired_faces_in_solve():
     """Verify that AtlasDeriveReliefMesh serializes the repaired mesh (not the raw unrepaired mesh) into solve.projection_scene."""
+    # AtlasDeriveReliefMesh.derive() requires torch on its FIRST line: its second
+    # output is a torch tensor, because ComfyUI IMAGE/MASK outputs must be. So
+    # this exercises a node that only runs inside ComfyUI, and without the skip
+    # it fails (not skips) on CI, which installs [dev,ui,image] and no torch.
+    pytest.importorskip("torch")
     from atlas_camera.comfy.nodes_geometry import AtlasDeriveReliefMesh
     from atlas_camera.comfy.nodes import _relief_mesh_from_solve
     from atlas_camera.core.schema import (
@@ -695,6 +700,7 @@ def test_derive_relief_mesh_node_stores_repaired_faces_in_solve():
 
 def test_atlas_live_mesh_repair_node_repairs_solve_primitives():
     """Verify that AtlasLiveMeshRepair repairs relief mesh primitives on a solve downstream."""
+    pytest.importorskip("torch")   # builds its fixture via AtlasDeriveReliefMesh
     from atlas_camera.comfy.nodes_geometry import AtlasDeriveReliefMesh, AtlasLiveMeshRepair
     from atlas_camera.comfy.nodes import _relief_mesh_from_solve
     from atlas_camera.core.schema import AtlasCamera, AtlasExtrinsics, AtlasSolve
