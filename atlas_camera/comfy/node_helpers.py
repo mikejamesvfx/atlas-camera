@@ -129,6 +129,14 @@ _DEPTH_MODEL_CHOICES = [
     "Ruicheng/moge-2-vitb-normal",
     "Ruicheng/moge-2-vits-normal",
     "apple/DepthPro-hf",
+    # Lotus-2 (arXiv 2512.01030) — a FLUX.1-dev backbone LoRA-finetuned for dense
+    # geometry; paper reports avg. depth rank 3.6 vs DA-V2 7.3 / Marigold 9.2 /
+    # MoGe-2 10.4. RELATIVE (not metric), runs at 1024. OPT-IN: needs a local
+    # clone of the Apache-2.0 EnVision-Research/Lotus-2 repo via ATLAS_LOTUS2_PATH
+    # AND its base black-forest-labs/FLUX.1-dev, which is gated and NON-COMMERCIAL
+    # (same licence caveat class as apple/DepthPro-hf above). Selecting it without
+    # the clone raises an instructive error rather than silently downloading 24 GB.
+    "jingheya/Lotus-2",
 ]
 
 # MoGe `*-normal` checkpoints, largest→smallest — the models that predict surface

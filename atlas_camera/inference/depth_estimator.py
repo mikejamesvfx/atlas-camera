@@ -39,6 +39,8 @@ research license (non-commercial) — see the combo annotation in node_helpers.
 from __future__ import annotations
 
 import hashlib
+import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -69,6 +71,27 @@ _DA3_CANONICAL_FOCAL_NORM = 300.0
 # Apple Depth Pro (transformers backend): metric depth + predicted focal/FOV.
 DEPTH_PRO_MODEL = "apple/DepthPro-hf"
 
+# Lotus-2 (arXiv 2512.01030): a FLUX.1-dev backbone LoRA-finetuned for dense
+# geometry — a core predictor doing single-step regression plus an optional
+# multi-step "detail sharpener" constrained to the predictor's manifold. Paper
+# reports avg. depth rank 3.6 against DA-V2's 7.3, MoGe-2's 10.4, Marigold's 9.2.
+#
+# RELATIVE, not metric, and it runs at 1024 (auto: >1024 -> 1024, <512 -> 512,
+# else native), so it sits between DA-V2's 518 and Depth Pro's native 1536.
+#
+# TWO LICENCES, and they differ: Lotus-2's own code/weights are Apache-2.0, but it
+# loads `black-forest-labs/FLUX.1-dev` as its base, which is NON-COMMERCIAL. That
+# is why this is opt-in behind a local clone rather than an auto-download like the
+# MIT-licensed MoGe entries — selecting it must be a deliberate act.
+LOTUS2_MODEL = "jingheya/Lotus-2"
+
+# Lotus-2 is a repo, not a pip package: `from pipeline import Lotus2Pipeline` is a
+# repo-LOCAL import, so the clone root goes on sys.path. Same shape as the Fixer
+# integration's ATLAS_FIXER_PATH.
+LOTUS2_PATH_ENV = "ATLAS_LOTUS2_PATH"
+LOTUS2_FLUX_BASE = "black-forest-labs/FLUX.1-dev"
+LOTUS2_DEFAULT_STEPS = 10
+
 # Relative (disparity) models: normalised disparity is floored here before the
 # reciprocal depth conversion — a 25:1 depth-ratio cap that keeps the sky /
 # horizon tail from blowing the dynamic range. Everything at or below the
@@ -86,6 +109,17 @@ def _is_moge_model(model_id: str) -> bool:
     """True for MoGe ids (e.g. ``Ruicheng/moge-2-vitl-normal``). MIT-licensed,
     light-dependency alternative to the DA3 backend (canonical depth + normals)."""
     return "moge" in model_id.lower()
+
+
+def _is_lotus2_model(model_id: str) -> bool:
+    """True for Lotus-2 only.
+
+    Deliberately matches the ``lotus-2`` token rather than just ``lotus``: the
+    earlier SD-based family (``jingheya/lotus-depth-g-v2-1-disparity`` and
+    friends) is a DIFFERENT architecture with a different loader, and a loose
+    ``"lotus" in id`` test would silently route those here.
+    """
+    return "lotus-2" in model_id.lower()
 
 
 def _is_depth_pro_model(model_id: str) -> bool:
@@ -499,6 +533,169 @@ _MOGE_MODEL_CACHE: dict[tuple[str, str, str], Any] = {}
 _MOGE_MODEL_CACHE_MAX = 1
 
 
+def _resolve_lotus2_root(lotus2_path: str = "") -> Path:
+    """Locate the Lotus-2 clone (argument wins over ``ATLAS_LOTUS2_PATH``).
+
+    Same shape as ``resolve_fixer_root``. The clone must contain ``pipeline.py``
+    and ``infer.py``, because those are repo-local modules the loader imports by
+    name — Lotus-2 is not distributed as a package.
+    """
+    raw = (lotus2_path or "").strip() or os.environ.get(LOTUS2_PATH_ENV, "").strip()
+    root = Path(raw).expanduser() if raw else None
+    if root is None or not root.is_dir():
+        raise RuntimeError(
+            "Lotus-2 depth needs a local clone (its code is Apache-2.0):\n"
+            "    git clone https://github.com/EnVision-Research/Lotus-2.git\n"
+            f"then set {LOTUS2_PATH_ENV} to it (or pass checkpoint_path).\n"
+            "NOTE its base model is "
+            f"{LOTUS2_FLUX_BASE}, which is GATED on HuggingFace and licensed "
+            "NON-COMMERCIALLY — accept the licence and `hf auth login` first. "
+            "Weights (~Apache-2.0 LoRAs) come from jingheya/Lotus-2."
+        )
+    missing = [n for n in ("pipeline.py", "infer.py") if not (root / n).exists()]
+    if missing:
+        raise RuntimeError(
+            f"Lotus-2 clone at {root} is incomplete — missing {', '.join(missing)}. "
+            "Expected the repository root of EnVision-Research/Lotus-2."
+        )
+    return root
+
+
+def _require_lotus2(root: Path) -> tuple[Any, Any, Any, Any]:
+    """Import Lotus-2's repo-local modules plus the diffusers pieces it needs."""
+    root_str = str(root)
+    if root_str not in sys.path:
+        # Appended, not prepended: prepending a third-party checkout ahead of the
+        # stdlib is how a repo with a `types.py` or `utils.py` shadows something
+        # important and produces a baffling failure elsewhere in the process.
+        sys.path.append(root_str)
+    try:
+        from diffusers import FlowMatchEulerDiscreteScheduler, FluxTransformer2DModel
+    except ImportError as exc:  # pragma: no cover - needs the extra
+        raise RuntimeError(
+            "Lotus-2 needs diffusers. Install with:  pip install diffusers"
+        ) from exc
+    try:
+        from infer import load_lora_and_lcm_weights, process_single_image
+        from pipeline import Lotus2Pipeline
+    except ImportError as exc:  # pragma: no cover - needs the clone
+        raise RuntimeError(
+            f"Lotus-2 clone at {root} did not import ({exc}). Its requirements.txt "
+            "must be installed into this interpreter."
+        ) from exc
+    return (Lotus2Pipeline, load_lora_and_lcm_weights, process_single_image,
+            (FlowMatchEulerDiscreteScheduler, FluxTransformer2DModel))
+
+
+def _get_lotus2_pipeline(root: Path, device: str, task: str = "depth"):
+    """Build (and cache) the Lotus-2 pipeline. Mirrors the upstream app.py exactly.
+
+    Cached because construction loads the full FLUX transformer — many GB and
+    tens of seconds. Keyed on (root, device, task) since the LoRA rank differs
+    between depth (128) and normal (256).
+    """
+    cache_key = (str(root), device, task)
+    cached = _MODEL_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    torch = _require_torch()
+    Lotus2Pipeline, load_weights, process_single_image, (Sched, Transformer) = \
+        _require_lotus2(root)
+
+    weight_dtype = torch.bfloat16
+    scheduler = Sched.from_pretrained(
+        LOTUS2_FLUX_BASE, subfolder="scheduler", num_train_timesteps=10)
+    transformer = Transformer.from_pretrained(
+        LOTUS2_FLUX_BASE, subfolder="transformer", revision=None, variant=None)
+    transformer.requires_grad_(False)
+    transformer.to(device=device, dtype=weight_dtype)
+    transformer, lcm = load_weights(transformer, None, None, None, task)
+    pipeline = Lotus2Pipeline.from_pretrained(
+        LOTUS2_FLUX_BASE, scheduler=scheduler, transformer=transformer,
+        revision=None, variant=None, torch_dtype=weight_dtype)
+    pipeline.local_continuity_module = lcm
+    pipeline = pipeline.to(device)
+    pipeline.set_progress_bar_config(disable=True)
+    bounded_cache_set(_MODEL_CACHE, cache_key, (pipeline, process_single_image),
+                      _MODEL_CACHE_MAX)
+    return pipeline, process_single_image
+
+
+def _estimate_depth_lotus2(
+    image_path: str | Path,
+    *,
+    model_id: str,
+    device: str,
+    num_inference_steps: int = LOTUS2_DEFAULT_STEPS,
+    checkpoint_path: str = "",
+) -> DepthResult:
+    """Lotus-2 relative depth, converted to Atlas's forward-distance convention.
+
+    Lotus-2 emits an affine-invariant map where LARGER = NEARER (the family's v1
+    checkpoints are named ``*-disparity``, and upstream colourises it with
+    ``reverse_color=True``). Atlas's DepthResult contract is the opposite —
+    forward distance, larger = farther — so the output goes through the SAME
+    `_disparity_to_depth` reciprocal used by the relative V2 path rather than a
+    bespoke flip. Reusing it matters: a linear `1 - d` inversion is
+    rank-preserving and looks fine while systematically warping near/far spacing,
+    which is precisely the bug that conversion was extracted to prevent.
+
+    Upstream takes the THIRD return of process_single_image (`output_npy`), not
+    the second — the second is a colourised visualisation, and feeding that in as
+    depth would look plausible and be meaningless.
+    """
+    import numpy as np
+    from PIL import Image
+
+    torch = _require_torch()
+    root = _resolve_lotus2_root(checkpoint_path)
+    pipeline, process_single_image = _get_lotus2_pipeline(root, device, "depth")
+
+    with Image.open(image_path) as im:
+        width, height = im.size
+
+    _, _, output_npy = process_single_image(
+        str(image_path), pipeline, task_name="depth", device=device,
+        num_inference_steps=int(num_inference_steps), process_res=None)
+
+    disparity = np.asarray(output_npy, dtype=np.float32)
+    if disparity.ndim == 3:                       # (H, W, C) -> mean, as upstream
+        disparity = disparity.mean(axis=-1)
+
+    metadata: dict[str, Any] = {
+        "backend": "lotus-2",
+        "flux_base": LOTUS2_FLUX_BASE,
+        "num_inference_steps": int(num_inference_steps),
+        "clone": str(root),
+        # The one thing that cannot be verified without running the weights, so
+        # it is recorded rather than assumed silently. If a Lotus-2 render comes
+        # back inside-out, THIS is the line to flip.
+        "polarity_assumption": "output treated as disparity (larger = nearer)",
+    }
+    depth, metadata = _disparity_to_depth(disparity, metadata)
+
+    if depth.shape != (height, width):
+        # BILINEAR for the same reason as the V2 path: bicubic rings at
+        # discontinuities and overshoots below the local minimum at silhouettes.
+        t = torch.from_numpy(np.ascontiguousarray(depth))[None, None]
+        depth = (
+            torch.nn.functional.interpolate(
+                t, size=(height, width), mode="bilinear", align_corners=False
+            )[0, 0].numpy().astype(np.float32)
+        )
+
+    return DepthResult(
+        depth=depth,
+        is_metric=False,
+        model_id=model_id,
+        image_width=width,
+        image_height=height,
+        near=float(depth.min()),
+        far=float(depth.max()),
+        metadata=metadata,
+    )
+
+
 def _require_moge() -> Any:
     """Import the MoGe-2 model class lazily with an informative error.
 
@@ -892,7 +1089,13 @@ def estimate_depth(
          int(tile_side or 0), round(float(tile_overlap), 4))
         if _is_moge_model(model_id) else None
     )
-    cache_key = (content_hash, model_id, device, focal_key, moge_key)
+    # Lotus-2 resolves its clone from checkpoint_path, so that must join the key
+    # or pointing at a second clone would silently return the first one's map —
+    # the same class of bug the moge_key comment above records.
+    lotus_key = (
+        str(checkpoint_path or "") if _is_lotus2_model(model_id) else None
+    )
+    cache_key = (content_hash, model_id, device, focal_key, moge_key, lotus_key)
     cached_result = _DEPTH_RESULT_CACHE.get(cache_key)
     if cached_result is not None:
         return cached_result
@@ -910,6 +1113,11 @@ def estimate_depth(
         )
     elif _is_depth_pro_model(model_id):
         result = _estimate_depth_depth_pro(image_path, model_id=model_id, device=device)
+    elif _is_lotus2_model(model_id):
+        result = _estimate_depth_lotus2(
+            image_path, model_id=model_id, device=device,
+            checkpoint_path=checkpoint_path,
+        )
     else:
         result = _estimate_depth_v2(image_path, model_id=model_id, device=device)
     bounded_cache_set(_DEPTH_RESULT_CACHE, cache_key, result, _DEPTH_RESULT_CACHE_MAX)
