@@ -56,6 +56,10 @@ METHOD_MEASURED = 1
 METHOD_RAY_PLANE = 2
 METHOD_TANGENT = 3
 METHOD_DIFFUSION = 4
+#: Appended, NOT inserted between TANGENT and DIFFUSION, even though that is
+#: where its TRUST sits — the numbering is serialized into `method_map`, so the
+#: codes are append-only while the trust table is free to order them properly.
+METHOD_GUIDED = 5
 
 METHOD_NAMES = {
     METHOD_NONE: "none",
@@ -63,6 +67,7 @@ METHOD_NAMES = {
     METHOD_RAY_PLANE: "ray_plane",
     METHOD_TANGENT: "tangent",
     METHOD_DIFFUSION: "diffusion",
+    METHOD_GUIDED: "guided",
 }
 
 # How much each tier is trusted, used to weight the reported confidence.
@@ -72,6 +77,10 @@ _METHOD_TRUST = {
     METHOD_MEASURED: 1.0,
     METHOD_RAY_PLANE: 0.9,
     METHOD_TANGENT: 0.5,
+    # Between tangent and diffusion. A generated prior supplies the SHAPE while
+    # measured rim values supply the placement, so it beats a smoothness guess
+    # and loses to a first-order continuation of a surface actually observed.
+    METHOD_GUIDED: 0.4,
     METHOD_DIFFUSION: 0.2,
 }
 
@@ -95,6 +104,12 @@ class DepthCompletion:
     method_map: Any                  # (H, W) uint8 — one of METHOD_*
     stats: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    #: (H, W) float64 — per-pixel disagreement between the eight integration
+    #: paths, non-zero only where METHOD_GUIDED wrote. A generated gradient field
+    #: is not curl-free, so path disagreement measures directly how much the
+    #: prior is confabulating rather than describing. Kept per-pixel, not
+    #: summarised: the useful question is WHICH part of a fill to distrust.
+    guided_spread: Any = None
 
     @property
     def synthesized_fraction(self) -> float:
@@ -208,6 +223,9 @@ def complete_depth(
     holes: Any = None,
     planes: list[dict[str, Any]] | None = None,
     normals: Any = None,
+    prior: Any = None,
+    prior_band_px: int = 3,
+    prior_max_residual_rel: float = 0.75,
     use_diffusion: bool = True,
     diffusion_iterations: int = 64,
     max_plane_depth_ratio: float = 50.0,
@@ -306,7 +324,58 @@ def complete_depth(
             n_tangent = int(took.sum())
     stats["n_tangent"] = n_tangent
 
-    # --- tier 3: isotropic diffusion ---------------------------------------
+    guided_spread = None
+
+    # --- tier 3: prior-guided gradient integration --------------------------
+    #
+    # Takes SHAPE from a generated relative-depth prior and PLACEMENT from the
+    # measured rim. The prior's own absolute values are never used: differencing
+    # removes its shift, and one least-squares scale over the ring band removes
+    # the rest. That is the whole reason a hallucinated depth map is usable here
+    # at all — its structure is a far stronger prior than smoothness, while its
+    # placement is worthless.
+    n_guided = 0
+    if prior is not None and remaining.any():
+        known = method_map > METHOD_NONE
+        band = known & _dilate(np, remaining, prior_band_px) & ~remaining
+        # NaN, not `out`. `out` carries 0.0 inside holes, and np.gradient's
+        # central difference then reads a cliff into those zeros at exactly the
+        # rim pixels being fitted — measured live, it returned s=-5.00 with
+        # residual 19.5 (true s=0.27, residual 0.0) and the tier declined itself
+        # out of every valid case. NaN propagates instead, and the fit's own
+        # isfinite filter drops the contaminated pixels.
+        grad_src = np.where(known, out, np.nan)
+        scale, n_samples, resid_rel = prior_gradient_scale(
+            np, prior, grad_src, band)
+        stats["prior_scale"] = float(scale)
+        stats["prior_scale_samples"] = int(n_samples)
+        stats["prior_residual_rel"] = float(resid_rel)
+        if n_samples < _MIN_SCALE_SAMPLES or not np.isfinite(resid_rel):
+            notes.append(
+                f"prior tier declined: only {n_samples} ring-band samples "
+                f"(need {_MIN_SCALE_SAMPLES}) — fitting one scale to that few "
+                "gradients invents a plausible wrong answer.")
+        elif resid_rel > prior_max_residual_rel:
+            notes.append(
+                f"prior tier declined: gradient residual {resid_rel:.2f} exceeds "
+                f"{prior_max_residual_rel:.2f} — the prior describes DIFFERENT "
+                "structure from the measured rim, so integrating it would bulge "
+                "the fill rather than shape it.")
+        else:
+            filled, wsum, spread = integrate_prior_gradients(
+                np, prior, out, known, remaining, scale=scale)
+            took = remaining & (wsum > 0) & np.isfinite(filled)
+            if took.any():
+                out[took] = filled[took]
+                method_map[took] = METHOD_GUIDED
+                remaining &= ~took
+                n_guided = int(took.sum())
+                guided_spread = np.where(took, spread, 0.0)
+                stats["prior_spread_median"] = float(np.median(spread[took]))
+                stats["prior_spread_max"] = float(spread[took].max())
+    stats["n_guided"] = n_guided
+
+    # --- tier 4: isotropic diffusion ---------------------------------------
     n_diffusion = 0
     if use_diffusion and remaining.any():
         filled, took = _diffuse(np, out, remaining, method_map > METHOD_NONE,
@@ -327,7 +396,148 @@ def complete_depth(
 
     synthesized = holes & ~remaining
     return DepthCompletion(depth=out, synthesized_mask=synthesized,
-                           method_map=method_map, stats=stats, notes=notes)
+                           method_map=method_map, stats=stats, notes=notes,
+                           guided_spread=guided_spread)
+
+
+#: Compass steps (dy, dx). Eight, because these land EXACTLY on grid pixels —
+#: 16 would need interpolation and smear the gradient field being integrated.
+_RAYS = ((-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1))
+
+#: Below this |grad| a prior pixel carries no usable direction, so it is left out
+#: of the scale fit rather than contributing a near-0/0 ratio.
+_PRIOR_GRAD_FLOOR = 1e-6
+
+#: Minimum ring-band samples before the scale fit is trusted. Fitting one scalar
+#: to a handful of noisy gradients is how a plausible-looking wrong answer gets
+#: made, so below this the tier declines instead.
+_MIN_SCALE_SAMPLES = 24
+
+
+def _dilate(np: Any, mask: Any, radius: int) -> Any:
+    """Grow a boolean mask by `radius`, without wrapping at the frame edge."""
+    if radius <= 0:
+        return mask
+    h, w = mask.shape
+    pad = np.zeros((h + 2 * radius, w + 2 * radius), dtype=bool)
+    pad[radius:radius + h, radius:radius + w] = mask
+    out = np.zeros_like(pad)
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            out |= np.roll(np.roll(pad, dy, axis=0), dx, axis=1)
+    return out[radius:radius + h, radius:radius + w]
+
+
+def prior_gradient_scale(np: Any, prior: Any, depth: Any, band: Any) -> tuple:
+    """Least-squares scale ``s`` taking the prior's gradients into metres.
+
+    ``s = sum(grad_m . grad_q) / sum(grad_q . grad_q)`` over the ring band — the
+    projection of the measured gradient field onto the prior's. A relative depth
+    map is defined only up to scale AND shift; differentiating kills the shift
+    outright, leaving exactly this one scalar, which is why the prior never needs
+    to be metric.
+
+    Returns ``(scale, n_samples, residual_rel)``. ``residual_rel`` is the median
+    |s*grad_q - grad_m| over the median |grad_m| — small means the prior really
+    is describing the same surface, large means it invented different structure
+    and the caller should distrust the fill.
+    """
+    gy_q, gx_q = np.gradient(np.asarray(prior, dtype=np.float64))
+    gy_m, gx_m = np.gradient(np.asarray(depth, dtype=np.float64))
+    mag_q = np.hypot(gx_q, gy_q)
+    use = band & np.isfinite(mag_q) & (mag_q > _PRIOR_GRAD_FLOOR) \
+        & np.isfinite(gx_m) & np.isfinite(gy_m)
+    n = int(use.sum())
+    if n < _MIN_SCALE_SAMPLES:
+        return 0.0, n, float("inf")
+    num = float((gx_m[use] * gx_q[use] + gy_m[use] * gy_q[use]).sum())
+    den = float((gx_q[use] ** 2 + gy_q[use] ** 2).sum())
+    if den <= 0.0:
+        return 0.0, n, float("inf")
+    scale = num / den
+    resid = np.hypot(scale * gx_q[use] - gx_m[use],
+                     scale * gy_q[use] - gy_m[use])
+    denom = float(np.median(np.hypot(gx_m[use], gy_m[use]))) or 1.0
+    return scale, n, float(np.median(resid) / denom)
+
+
+def integrate_prior_gradients(np: Any, prior: Any, depth: Any, known: Any,
+                              remaining: Any, *, scale: float) -> tuple:
+    """Fill ``remaining`` by integrating ``scale * grad(prior)`` from ``known``.
+
+    For each of the eight compass directions a running sum marches the image:
+    a pixel takes its predecessor's value plus the prior's directional
+    derivative over that step (``grad . u``, times the step length). Paths START
+    at measured pixels, so the rim is continuous by construction rather than by
+    blending.
+
+    Returns ``(filled, weight_sum, spread)``.
+
+    SPREAD IS THE POINT, not a diagnostic afterthought. A neural depth field is
+    not curl-free, so the eight paths reaching a pixel disagree, and by how much
+    is a free per-pixel measure of whether the prior is describing structure or
+    confabulating it. Averaging the paths is also the only honest response to a
+    non-integrable field — there is no single "correct" integral to find.
+
+    Degenerate case worth knowing: with ``grad(prior) == 0`` every ray returns
+    its nearest measured value, so the result is a distance-weighted average of
+    the eight nearest rim pixels. That is ordinary harmonic-ish inpainting, i.e.
+    this tier collapses into the diffusion tier rather than into nonsense.
+    """
+    gy_q, gx_q = np.gradient(np.asarray(prior, dtype=np.float64))
+    gy_q = np.nan_to_num(gy_q)
+    gx_q = np.nan_to_num(gx_q)
+    height, width = depth.shape
+
+    acc = np.zeros((height, width), dtype=np.float64)
+    wsum = np.zeros((height, width), dtype=np.float64)
+    per_ray: list[Any] = []
+    per_weight: list[Any] = []
+
+    for dy, dx in _RAYS:
+        step = float(np.hypot(dy, dx))
+        val = np.full((height, width), np.nan, dtype=np.float64)
+        length = np.full((height, width), np.inf, dtype=np.float64)
+        val[known] = depth[known]
+        length[known] = 0.0
+        # March so a pixel is always visited AFTER its predecessor p-(dy,dx).
+        # The predecessor is at y-dy, so for dy<0 it lies at a HIGHER row and the
+        # scan must run descending. Getting this backwards does not error — it
+        # silently fills only the pixels whose predecessor happened to be ready
+        # (76 of 400, measured), which reads as a weak prior rather than a bug.
+        rows = list(range(height) if dy >= 0 else range(height - 1, -1, -1))
+        cols = list(range(width) if dx >= 0 else range(width - 1, -1, -1))
+        for y in rows:
+            py = y - dy
+            if not (0 <= py < height):
+                continue
+            for x in cols:
+                px = x - dx
+                if not (0 <= px < width) or not remaining[y, x]:
+                    continue
+                prev = val[py, px]
+                if not np.isfinite(prev):
+                    continue
+                # Directional derivative at the midpoint of the step.
+                deriv = 0.5 * ((gx_q[y, x] + gx_q[py, px]) * dx
+                               + (gy_q[y, x] + gy_q[py, px]) * dy)
+                val[y, x] = prev + scale * deriv
+                length[y, x] = length[py, px] + step
+        w = np.where(np.isfinite(val) & np.isfinite(length),
+                     1.0 / (1.0 + length), 0.0)
+        contrib = np.where(np.isfinite(val), val, 0.0)
+        acc += w * contrib
+        wsum += w
+        per_ray.append(val)
+        per_weight.append(w)
+
+    filled = np.where(wsum > 0, acc / np.maximum(wsum, 1e-12), np.nan)
+    var = np.zeros_like(filled)
+    for val, w in zip(per_ray, per_weight):
+        d = np.where(np.isfinite(val), val - filled, 0.0)
+        var += w * d * d
+    spread = np.sqrt(np.where(wsum > 0, var / np.maximum(wsum, 1e-12), 0.0))
+    return filled, wsum, spread
 
 
 def _tangent_extend(np: Any, depth: Any, remaining: Any, measured: Any,
