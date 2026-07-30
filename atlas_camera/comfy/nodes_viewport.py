@@ -1159,3 +1159,233 @@ class AtlasStereoRender:
         if skipped:
             report += f"\nSkipped (no texture/uvs): {skipped}"
         return (stereo, left, right, report)
+
+
+class AtlasDisocclusionGuide:
+    """🟣 Render a move with UNSEEN pixels marked in a sentinel colour.
+
+    A conditioning image for generative fillers. Atlas's own answer to a tear is
+    a deliberate layer — clean plate, sky/ground card, inpaint, a go-shoot-it
+    trip — and every one of those is a STILL-frame answer. Run them per frame
+    over a camera move and they flicker. This node serves the other kind of
+    consumer: a video/image model handed the move, told exactly which pixels
+    were never photographed, and asked to invent only those.
+
+    WHY A SENTINEL COLOUR AND NOT EDGE-EXTEND
+    Atlas's seam doctrine smears edge-extend on the layers BEHIND so the
+    frontmost band keeps a clean cut. That is right for a human compositor and
+    actively WRONG here: a smear asserts plausible content exists where nothing
+    was observed, and a generative model will believe it and build on the lie.
+    An out-of-gamut marker cannot be mistaken for content. Black fails for the
+    mirror-image reason — real plates contain black. Magenta is the convention
+    the released LTX-2 CrossView-Warp IC-LoRA expects; see
+    docs/dev/crossviewwarp_analysis.md.
+
+    The mask is returned separately too, so a consumer wanting a real mask
+    channel never has to colour-key the sentinel back out.
+
+    NOT A WARPER. Uncovered pixels come from the real z-buffered projection
+    meshes, exactly as AtlasStereoRender's do — measured, not a heuristic.
+
+    "UNCOVERED" IS NOT THE SAME AS "DISOCCLUDED", and the report separates them.
+    A pixel can be unmarked-by-geometry for two unrelated reasons: the move
+    revealed something the source camera could not see (true disocclusion — what
+    a filler should invent), or no geometry was ever derived there (a partial
+    relief mesh — an upstream gap that inventing pixels only papers over). A flat
+    depth map with zero occlusion still renders ~50% uncovered on a partial mesh,
+    so the node renders the solved camera as a baseline and reports the split.
+
+    Feeding this to a LoRA trained on crude point-splat warps is a domain shift
+    and may score WORSE despite the better geometry; A/B it, do not assume.
+    """
+
+    #: RGB in [0,1]. Magenta and chroma green sit outside any natural-image
+    #: gamut, so they cannot collide with graded plate content. Combo values are
+    #: append-only (they serialize into saved workflows) — add, never reorder.
+    SENTINELS = {
+        "magenta": (1.0, 0.0, 1.0),
+        "chroma_green": (0.0, 1.0, 0.0),
+        "black": (0.0, 0.0, 0.0),
+    }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
+    RETURN_NAMES = ("guide", "hole_mask", "report")
+    FUNCTION = "guide"
+    CATEGORY = "Atlas Camera/Blockout"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "source_image": ("IMAGE",),
+            },
+            "optional": {
+                "camera_path": ("ATLAS_CAMERA_PATH", {
+                    "tooltip": "The move to render. Every sampled frame becomes one "
+                               "image in the output batch, so this feeds a video model "
+                               "directly. Without it you get one frame from the solved "
+                               "camera itself, which by definition has almost no holes "
+                               "— useful only as a sanity check."}),
+                "sentinel": (["magenta", "chroma_green", "black"], {
+                    "default": "magenta",
+                    "tooltip": "Colour for pixels the source camera never saw. Magenta "
+                               "is what the LTX-2 CrossView-Warp IC-LoRA expects. Avoid "
+                               "black unless a consumer demands it: real plates contain "
+                               "black, so it is indistinguishable from content."}),
+                "hole_dilate_px": ("INT", {
+                    "default": 0, "min": 0, "max": 64,
+                    "tooltip": "Grow the marked region. A z-buffered render leaves thin "
+                               "one-pixel seams along silhouettes; a few px turns that "
+                               "speckle into coherent blobs, which generative fillers "
+                               "handle far better. Dilation only ever marks MORE as "
+                               "unseen, so it can never invent coverage."}),
+                "resolution": ("INT", {
+                    "default": 1024, "min": 256, "max": 4096,
+                    "tooltip": "Long edge. The pure-numpy rasterizer is O(faces x "
+                               "pixels) and this renders EVERY path frame — keep it "
+                               "moderate for long moves on dense relief meshes."}),
+            },
+        }
+
+    def guide(self, solve, source_image, camera_path=None, sentinel="magenta",
+              hole_dilate_px=0, resolution=1024):
+        from atlas_camera.comfy.headless_evidence import (
+            _decode_mask, _decode_rgba, _fit_long_edge, _tensor_rgba,
+        )
+        from atlas_camera.core.projection_render import (
+            gather_scene_meshes, render_scene,
+        )
+        np = _require_numpy()
+        torch = _require_torch()
+
+        meshes = gather_scene_meshes(solve, with_uvs=True)
+        if not meshes:
+            # Return an EMPTY mask with an explicit warning rather than a
+            # fully-marked one: silently claiming the whole frame is unseen
+            # would send a downstream model off inventing an entire image.
+            report = ("AtlasDisocclusionGuide: no serialized projection meshes on "
+                      "this solve — run AtlasDeriveProjectionGeometry (or "
+                      "clean-plate layers) upstream first. Source returned "
+                      "unchanged and NOTHING is marked; do not read the empty "
+                      "hole_mask as 'fully covered'.")
+            empty = torch.zeros(1, int(source_image.shape[1]),
+                                int(source_image.shape[2]), dtype=torch.float32)
+            return (source_image, empty, report)
+
+        sh, sw = int(source_image.shape[1]), int(source_image.shape[2])
+        width, height = _fit_long_edge(sw, sh, int(resolution))
+        intr = solve.camera.intrinsics
+        sx = float(width) / float(intr.image_width or width)
+        sy = float(height) / float(intr.image_height or height)
+        fx, fy = float(intr.fx_px) * sx, float(intr.fy_px) * sy
+        cx, cy = float(intr.cx_px) * sx, float(intr.cy_px) * sy
+
+        textures = {"primary": _tensor_rgba(source_image, width, height)}
+        for source in getattr(solve, "projection_sources", None) or []:
+            name = str(getattr(source, "name", "") or "layer")
+            rgba = _decode_rgba(getattr(source, "image_b64", None) or "",
+                                width, height)
+            if rgba is None:
+                continue
+            mask = _decode_mask(getattr(source, "mask_b64", None), width, height)
+            rgba = np.array(rgba, dtype=np.float64, copy=True)
+            rgba[..., 3] = rgba[..., 3] * mask
+            textures[name] = rgba
+
+        views, view_source = self._views(solve, camera_path)
+        colour = np.asarray(self.SENTINELS.get(sentinel, (1.0, 0.0, 1.0)),
+                            dtype=np.float64)
+
+        # BASELINE: coverage from the solved camera itself. Without it "44% of
+        # the frame is unseen" is ambiguous, because an uncovered pixel has two
+        # very different causes — geometry the move revealed (real disocclusion,
+        # what a filler should invent) and geometry that was never derived at
+        # all (a partial relief mesh, which is an upstream problem no amount of
+        # inventing fixes). Measured live: a FLAT depth map with zero occlusion
+        # still renders ~50% uncovered on a partial mesh, so conflating the two
+        # would have reported pure disocclusion where there was none.
+        base_rgb, base_alpha, _ = render_scene(
+            meshes, textures, solve.camera.extrinsics.camera_view_matrix,
+            fx, fy, cx, cy, width, height)
+        base_coverage = 1.0 - float((base_alpha <= 0.0).mean())
+
+        frames, masks, coverages, skipped = [], [], [], set()
+        for view in views:
+            rgb, alpha, stats = render_scene(
+                meshes, textures, view, fx, fy, cx, cy, width, height)
+            skipped.update(stats["meshes_skipped"])
+            hole = alpha <= 0.0
+            # Coverage is measured BEFORE dilation: dilation is a hint for the
+            # consumer, and letting it move the reported number would make the
+            # metric a function of a cosmetic widget.
+            coverages.append(1.0 - float(hole.mean()))
+            hole = self._dilate(hole, int(hole_dilate_px), np)
+            out = np.clip(rgb, 0.0, 1.0)
+            out[hole] = colour
+            frames.append(out)
+            masks.append(hole.astype(np.float32))
+
+        guide = torch.from_numpy(np.stack(frames)).float()
+        hole_mask = torch.from_numpy(np.stack(masks)).float()
+
+        worst = min(coverages)
+        revealed = max(0.0, base_coverage - worst)
+        report = (
+            f"AtlasDisocclusionGuide: {len(views)} frame(s) at {width}x{height} "
+            f"from {view_source}, sentinel={sentinel}"
+            + (f", holes dilated {hole_dilate_px}px" if hole_dilate_px else "")
+            + f".\ncoverage: worst frame {worst:.1%}"
+            + (f", mean {sum(coverages) / len(coverages):.1%}"
+               if len(coverages) > 1 else "")
+            + f"; the solved camera itself covers {base_coverage:.1%}.\n"
+            + f"So of the {1.0 - worst:.1%} marked unseen in the worst frame, "
+              f"~{revealed:.1%} is disocclusion the MOVE revealed and "
+              f"~{1.0 - base_coverage:.1%} is frame the geometry never covered "
+              "at all.\n"
+            + ("Those are different problems: a generative filler is the right "
+               "answer to the first, but the second means the projection "
+               "geometry is incomplete — derive more of it upstream rather than "
+               "asking a model to invent it.\n"
+               if (1.0 - base_coverage) > 0.02 else "")
+            + "Sentinel pixels are measured from the z-buffered projection "
+              "meshes, not a warp heuristic. If the revealed fraction is more "
+              "than you want a model inventing, AtlasMoveBudget will tell you "
+              "how far the plate actually supports moving."
+        )
+        if skipped:
+            report += f"\nSkipped (no texture/uvs): {sorted(skipped)}"
+        return (guide, hole_mask, report)
+
+    @staticmethod
+    def _views(solve, camera_path):
+        """View matrices to render, plus a human name for where they came from."""
+        if camera_path is not None:
+            from atlas_camera.core.camera_path import sample_camera_path
+            sampled = sample_camera_path(camera_path)
+            if sampled:
+                return ([e.camera_view_matrix for e in sampled],
+                        f"camera path ({len(sampled)} frames)")
+        return ([solve.camera.extrinsics.camera_view_matrix],
+                "the solved camera (no path connected)")
+
+    @staticmethod
+    def _dilate(mask, radius, np):
+        """Grow a boolean mask by ``radius``, without wrapping at the edges.
+
+        Dependency-free on purpose: scipy is not an Atlas dependency and pulling
+        one in for a handful of pixels is a poor trade. The mask is zero-padded
+        first so the shifted ORs cannot leak holes from one edge to the opposite
+        one — rolling the unpadded array does exactly that, and the artifact
+        would appear as phantom disocclusion along the far border.
+        """
+        if radius <= 0:
+            return mask
+        h, w = mask.shape
+        padded = np.zeros((h + 2 * radius, w + 2 * radius), dtype=bool)
+        padded[radius:radius + h, radius:radius + w] = mask
+        out = np.zeros_like(padded)
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                out |= np.roll(np.roll(padded, dy, axis=0), dx, axis=1)
+        return out[radius:radius + h, radius:radius + w]

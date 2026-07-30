@@ -1,15 +1,15 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-07-29",
+ "generated_utc": "2026-07-30",
  "counts": {
-  "standard": 90,
+  "standard": 91,
   "experimental": 5,
   "legacy": 2,
-  "total": 97,
+  "total": 98,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 90,
+  "KEEP_CORE": 91,
   "KEEP_EXPERIMENTAL": 5,
   "LEGACY_GATE": 2
  },
@@ -1269,6 +1269,7 @@
     "tests/test_atlas_input.py",
     "tests/test_depth_map_node.py",
     "tests/test_derive_geometry_nodes.py",
+    "tests/test_disocclusion_guide.py",
     "tests/test_merge_geometry.py",
     "tests/test_mesh_repair.py",
     "tests/test_node_layer_contracts.py",
@@ -1280,6 +1281,7 @@
     "tests/test_comfy_node_registry.py",
     "tests/test_depth_map_node.py",
     "tests/test_derive_geometry_nodes.py",
+    "tests/test_disocclusion_guide.py",
     "tests/test_facade_surface.py",
     "tests/test_merge_geometry.py",
     "tests/test_mesh_repair.py",
@@ -1440,6 +1442,39 @@
    "live_note": null,
    "overlapping_replacement": null,
    "known_defect": "FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth \u2014 hardcoded 60 m, invented extents, no way to explain it because the node had no report output. Now: the primitive records backdrop_depth_source/backdrop_extents_source, an appended `backdrop` widget defaults to measured_only (invented backdrops are dropped and reported; 'always' restores the old behaviour and says the plane is invented), and an appended `report` output carries the explanation. The fx<=0 guard now reports instead of silently no-opping.",
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasDisocclusionGuide": {
+   "module": "atlas_camera/comfy/nodes_viewport.py",
+   "tier": "standard",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_disocclusion_guide.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_disocclusion_guide.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [
+    "docs/DESIGN_RULES.md",
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
    "compatibility_risk": null,
    "verdict": "KEEP_CORE",
    "evidence": [],
@@ -4189,11 +4224,13 @@
     "examples/atlas_unseen_geometry_test_workflow.json"
    ],
    "dedicated_tests": [
+    "tests/test_disocclusion_guide.py",
     "tests/test_node_layer_contracts.py",
     "tests/test_record3d_bridge.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
+    "tests/test_disocclusion_guide.py",
     "tests/test_facade_surface.py",
     "tests/test_node_layer_contracts.py",
     "tests/test_record3d_bridge.py"

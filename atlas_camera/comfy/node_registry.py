@@ -13,6 +13,7 @@ import os
 from atlas_camera.comfy.nodes_viewport import (
     AtlasViewportControls,
     AtlasBlockoutViewport,
+    AtlasDisocclusionGuide,
     AtlasStereoRender,
     AtlasDebugReport,
     AtlasLayerPreview,
@@ -184,6 +185,7 @@ NODE_CLASS_MAPPINGS = {
     # Track 2 — blockout viewport
     "AtlasViewportControls":      AtlasViewportControls,
     "AtlasBlockoutViewport":      AtlasBlockoutViewport,
+    "AtlasDisocclusionGuide":     AtlasDisocclusionGuide,
     "AtlasStereoRender":          AtlasStereoRender,
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   AtlasExportCameraPathUSD,
@@ -284,6 +286,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # Track 2 — blockout viewport
     "AtlasViewportControls":      "Atlas Output Desk 🎛",
     "AtlasBlockoutViewport":      "Atlas Viewport 🧊",
+    "AtlasDisocclusionGuide":     "Atlas Disocclusion Guide 🟣",
     "AtlasStereoRender":          "Atlas Stereo Render 👓",
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
