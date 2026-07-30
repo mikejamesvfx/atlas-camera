@@ -4,13 +4,15 @@ Lotus-2 (arXiv 2512.01030) is a FLUX.1-dev backbone LoRA-finetuned for dense
 geometry. See docs/dev/flux_depth_finetune_analysis.md for why it is here and why
 FLUX.1-Depth-dev (a depth-CONDITIONED generator) is not the same thing.
 
-WHAT IS AND IS NOT VERIFIED. Everything here runs without model weights:
-routing, the licence-aware error, cache keying, and the disparity conversion. The
-backend has NOT been run against real Lotus-2 weights — that needs
-black-forest-labs/FLUX.1-dev in diffusers layout (~24 GB, gated, non-commercial),
-which is not present on the dev machine. The one thing weights would settle is
-the POLARITY assumption, pinned below so a live run can confirm or flip it in one
-place.
+Everything here runs without model weights: routing, the licence-aware error,
+cache keying, and the disparity conversion.
+
+POLARITY IS NOW VERIFIED, not assumed. Run live 2026-07-30 on ghosttown.jpg with
+real weights: rank correlation +0.983 vs Depth Pro and +0.935 vs DA-V2, where
+those two trusted backends agree with each other at +0.949. Lotus-2 tracks Depth
+Pro MORE closely than the pair track each other, so the disparity reading and the
+reciprocal conversion are both right. The tests below still pin the CONVERSION
+behaviour, because that is what a future refactor can silently break.
 """
 from __future__ import annotations
 
@@ -100,14 +102,13 @@ class TestMissingCloneIsExplained:
 
 
 class TestPolarity:
-    """The one thing that cannot be settled without weights, so it is pinned.
+    """Settled live (+0.98 vs Depth Pro); these pin the conversion, not the guess.
 
     Lotus-2 emits an affine-invariant map where LARGER = NEARER: its v1 siblings
     are named `*-disparity`, and upstream colourises with `reverse_color=True`.
     Atlas's DepthResult contract is the opposite — forward distance, larger =
-    farther. If a live Lotus-2 render ever comes back inside-out, the assumption
-    recorded here and in metadata["polarity_assumption"] is the single place to
-    flip.
+    farther. Verified rather than assumed; metadata["polarity"] records the
+    measured correlation so a future checkpoint changing convention is caught.
     """
 
     def test_the_shared_reciprocal_conversion_is_reused_not_reimplemented(self):

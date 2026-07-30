@@ -92,6 +92,13 @@ LOTUS2_PATH_ENV = "ATLAS_LOTUS2_PATH"
 LOTUS2_FLUX_BASE = "black-forest-labs/FLUX.1-dev"
 LOTUS2_DEFAULT_STEPS = 10
 
+# Free-VRAM threshold below which the pipeline is CPU-offloaded instead of moved
+# wholesale to the GPU. The bf16 FLUX transformer is ~24 GB; 26 GB leaves room for
+# the VAE, text encoders and activations. Measured live: a 32 GB RTX 5090 with an
+# ordinary ComfyUI session running had 15.0 GB free, so the un-offloaded path
+# cannot be the default for a node that lives inside ComfyUI.
+LOTUS2_VRAM_BYTES = 26 * 1024**3
+
 # Relative (disparity) models: normalised disparity is floored here before the
 # reciprocal depth conversion — a 25:1 depth-ratio cap that keeps the sky /
 # horizon tail from blowing the dynamic range. Everything at or below the
@@ -603,19 +610,47 @@ def _get_lotus2_pipeline(root: Path, device: str, task: str = "depth"):
         _require_lotus2(root)
 
     weight_dtype = torch.bfloat16
+
+    # VRAM BUDGET. The FLUX transformer alone is ~24 GB in bf16, and Atlas runs
+    # INSIDE ComfyUI, which is always already holding models — measured live on a
+    # 32 GB RTX 5090 with a normal ComfyUI session: 17.2 GB used, 15.0 GB free, so
+    # a plain `.to(device)` OOMs during shard loading. Upstream's app.py can do
+    # `.to(device)` because it owns a dedicated Space; a ComfyUI node cannot.
+    # Below the threshold we hand the pipeline to diffusers' CPU offload, which
+    # streams modules on demand — far slower, but it runs instead of dying.
+    free_bytes = 0
+    if device.startswith("cuda") and torch.cuda.is_available():
+        try:
+            free_bytes = int(torch.cuda.mem_get_info()[0])
+        except Exception:  # noqa: BLE001
+            free_bytes = 0
+    offload = bool(device.startswith("cuda")) and free_bytes < LOTUS2_VRAM_BYTES
+
     scheduler = Sched.from_pretrained(
         LOTUS2_FLUX_BASE, subfolder="scheduler", num_train_timesteps=10)
     transformer = Transformer.from_pretrained(
-        LOTUS2_FLUX_BASE, subfolder="transformer", revision=None, variant=None)
+        LOTUS2_FLUX_BASE, subfolder="transformer", revision=None, variant=None,
+        torch_dtype=weight_dtype)
     transformer.requires_grad_(False)
-    transformer.to(device=device, dtype=weight_dtype)
+    if not offload:
+        transformer.to(device=device, dtype=weight_dtype)
+    # load_lora_and_lcm_weights reads transformer.device/.dtype, so under offload
+    # the LoRAs are merged on CPU before the pipeline takes over placement.
     transformer, lcm = load_weights(transformer, None, None, None, task)
     pipeline = Lotus2Pipeline.from_pretrained(
         LOTUS2_FLUX_BASE, scheduler=scheduler, transformer=transformer,
         revision=None, variant=None, torch_dtype=weight_dtype)
     pipeline.local_continuity_module = lcm
-    pipeline = pipeline.to(device)
+    if offload:
+        if hasattr(lcm, "to"):
+            # The continuity module is assigned as a bare attribute, so
+            # enable_model_cpu_offload() does not see it and will not place it.
+            lcm.to(device=device, dtype=weight_dtype)
+        pipeline.enable_model_cpu_offload(device=device)
+    else:
+        pipeline = pipeline.to(device)
     pipeline.set_progress_bar_config(disable=True)
+    pipeline._atlas_offloaded = offload
     bounded_cache_set(_MODEL_CACHE, cache_key, (pipeline, process_single_image),
                       _MODEL_CACHE_MAX)
     return pipeline, process_single_image
@@ -631,9 +666,10 @@ def _estimate_depth_lotus2(
 ) -> DepthResult:
     """Lotus-2 relative depth, converted to Atlas's forward-distance convention.
 
-    Lotus-2 emits an affine-invariant map where LARGER = NEARER (the family's v1
-    checkpoints are named ``*-disparity``, and upstream colourises it with
-    ``reverse_color=True``). Atlas's DepthResult contract is the opposite —
+    Lotus-2 emits an affine-invariant map where LARGER = NEARER — inferred from
+    the family's ``*-disparity`` v1 names and upstream's ``reverse_color=True``,
+    then CONFIRMED live (rho +0.98 vs Depth Pro, +0.94 vs DA-V2, where those two
+    agree at +0.95). Atlas's DepthResult contract is the opposite —
     forward distance, larger = farther — so the output goes through the SAME
     `_disparity_to_depth` reciprocal used by the relative V2 path rather than a
     bespoke flip. Reusing it matters: a linear `1 - d` inversion is
@@ -667,10 +703,15 @@ def _estimate_depth_lotus2(
         "flux_base": LOTUS2_FLUX_BASE,
         "num_inference_steps": int(num_inference_steps),
         "clone": str(root),
-        # The one thing that cannot be verified without running the weights, so
-        # it is recorded rather than assumed silently. If a Lotus-2 render comes
-        # back inside-out, THIS is the line to flip.
-        "polarity_assumption": "output treated as disparity (larger = nearer)",
+        # VERIFIED live 2026-07-30 on ghosttown.jpg, not assumed: rank
+        # correlation against two independently-trusted backends came out
+        # +0.983 (DepthPro) and +0.935 (DA-V2), where those two agree with each
+        # other at +0.949. Lotus-2 matches DepthPro MORE closely than the pair
+        # match each other, so the disparity reading is right. Kept in metadata
+        # because it is still the first thing to check if a future checkpoint
+        # changes convention.
+        "polarity": "disparity (larger = nearer), verified rho +0.98 vs DepthPro",
+        "cpu_offloaded": bool(getattr(pipeline, "_atlas_offloaded", False)),
     }
     depth, metadata = _disparity_to_depth(disparity, metadata)
 
