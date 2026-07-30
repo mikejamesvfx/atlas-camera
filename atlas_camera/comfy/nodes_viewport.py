@@ -1196,11 +1196,24 @@ class AtlasDisocclusionGuide:
     SkyDome — pass `exclude_mask` and it leaves both the marking and the coverage
     figure). A flat depth map with zero occlusion still renders ~50% uncovered on
     a partial mesh, so the node renders the solved camera as a baseline and
-    reports the split. Excluding a permanently-uncovered sky on the test fixture
-    moves reported coverage 55.6% -> 92.8%, which is the difference between a
-    number an artist can act on and one that always looks catastrophic —
-    core.move_budget.disocclusion_fraction documented this same trap for its
-    own `ignore_mask` long before this node existed.
+    reports the split. core.move_budget.disocclusion_fraction documented this
+    same trap for its own `ignore_mask` long before this node existed.
+
+    What `exclude_mask` is worth depends on whether the region was covered, and
+    both cases were measured live on ghosttown.jpg at 768x432:
+
+      sky=True (a SkyDome covers the sky)   96.3% -> 95.6% coverage, and ZERO
+        sentinel pixels removed — there was nothing marked up there to exclude.
+        The small drop is just the both-sides arithmetic taking a fully-covered
+        17% out of the denominator. Harmless, and the mask is redundant here.
+      sky=False (nothing handles the sky)   91.8% -> 93.7% coverage, 27112 ->
+        17324 sentinel pixels: 9788 of them sat in unhandled sky, which the
+        guide was otherwise telling a model to invent.
+
+    So this input earns its keep when the sky is NOT already carried by a layer.
+    Note the excluded region keeps whatever the render put there (black where no
+    geometry), so a consumer that colour-keys the sentinel instead of reading
+    `hole_mask` cannot tell "excluded" from "dark content" — read the mask.
 
     Feeding this to a LoRA trained on crude point-splat warps is a domain shift
     and may score WORSE despite the better geometry; A/B it, do not assume.
