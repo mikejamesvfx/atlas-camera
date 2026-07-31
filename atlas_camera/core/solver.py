@@ -554,6 +554,18 @@ def solve_from_learned_prior(
         fy_px=fy_px,
     )
 
+    # Carry the learned distortion onto the solve. AtlasIntrinsics already had
+    # `lens_model` and a `distortion` dict; nothing populated them from this
+    # path, so a solve run with GeoCalib's `distorted` weights reported itself
+    # as a pinhole camera and the k1 it had just estimated went nowhere.
+    #
+    # k1 is in NORMALISED coordinates (r in focal-length units), so unlike fx/fy
+    # it needs no rescale when image_size differs from the prior's own size.
+    k1 = getattr(prior, "k1", None)
+    if k1 is not None and float(k1) != 0.0:
+        intrinsics.lens_model = "simple_radial"
+        intrinsics.distortion = {"k1": float(k1)}
+
     rotation = _rotation_from_up_vector(prior.up_cam)
     camera_position = np.array([0.0, camera_height, 0.0], dtype=np.float64)
     translation = -rotation.T @ camera_position
@@ -1111,6 +1123,7 @@ def resolve_reference_scale(
     fy: float,
     cx: float,
     cy: float,
+    k1: float | None = None,
 ) -> dict[str, Any]:
     """Aggregate metric camera height from one or more reference objects.
 
@@ -1120,6 +1133,23 @@ def resolve_reference_scale(
     median camera height plus per-reference detail.
     """
     np = _require_numpy()
+
+    # Every estimator below back-projects a pixel as a PINHOLE ray. On a plate
+    # with real distortion that ray is aimed slightly wrong, and the resulting
+    # scale is confidently off with nothing to show for it. Undistort the marked
+    # points first; a k1 of None or 0 makes this an exact no-op.
+    _undistort = None
+    if k1:
+        from atlas_camera.core.intrinsics import undistort_pixel
+        from atlas_camera.core.schema import AtlasIntrinsics
+        _K = AtlasIntrinsics(
+            image_width=int(round(cx * 2)), image_height=int(round(cy * 2)),
+            fx_px=fx, fy_px=fy, cx_px=cx, cy_px=cy,
+            lens_model="simple_radial", distortion={"k1": float(k1)})
+
+        def _undistort(pt):                                    # noqa: F811
+            return undistort_pixel(pt[0], pt[1], _K)
+
     results: list[dict[str, Any]] = []
     for spec in references or []:
         height_m = spec.get("height_m") or spec.get("height") or spec.get("known_height")
@@ -1150,6 +1180,8 @@ def resolve_reference_scale(
                 results.append({"status": "skipped", "reason": "no pixel extent",
                                 "spec": spec})
                 continue
+            if _undistort is not None:
+                pair = (_undistort(pair[0]), _undistort(pair[1]))
             solved = metric_height_from_ground_span(
                 pair[0], pair[1], float(span_m), rotation=rotation,
                 fx=fx, fy=fy, cx=cx, cy=cy,
@@ -1166,6 +1198,8 @@ def resolve_reference_scale(
                                 "reason": "no real height or ground span",
                                 "spec": spec})
                 continue
+            if _undistort is not None:
+                seg = (_undistort(seg[0]), _undistort(seg[1]))
             solved = metric_height_from_reference(
                 seg[0], seg[1], float(height_m), rotation=rotation, fx=fx, fy=fy, cx=cx, cy=cy
             )
@@ -1401,7 +1435,11 @@ def apply_reference_scale(
     np = _require_numpy()
     world_to_cam = np.asarray(intr.camera_view_matrix, dtype=np.float64)[:3, :3]
     result = resolve_reference_scale(
-        references, rotation=world_to_cam, fx=fx, fy=fy, cx=cx, cy=cy
+        references, rotation=world_to_cam, fx=fx, fy=fy, cx=cx, cy=cy,
+        # The solve knows its own lens. Marked reference points live on the
+        # PLATE, so they carry its distortion; measuring scale off them as if
+        # they were pinhole rays is a silent error the solve cannot detect.
+        k1=(K.distortion or {}).get("k1"),
     )
     adopted = bool(
         adopt and result.get("camera_height")

@@ -5,6 +5,96 @@ from __future__ import annotations
 from atlas_camera.core.schema import AtlasIntrinsics, AtlasShotCam
 
 
+def undistort_pixel(
+    u: float,
+    v: float,
+    intrinsics: AtlasIntrinsics,
+    *,
+    iterations: int = 20,
+) -> tuple[float, float]:
+    """Map a DISTORTED pixel to where a pinhole camera would have put it.
+
+    Every back-projection in Atlas — ground planes, relief meshes, scale
+    references — assumes a pinhole ray through ``(u - cx) / fx``. When the plate
+    carries real lens distortion that assumption bends straight world lines, and
+    nothing downstream can tell: the solve still returns confident numbers, they
+    are just measured off curved evidence.
+
+    The forward model is ``simple_radial``, matching what GeoCalib's distorted
+    weights estimate::
+
+        x_distorted = x_undistorted * (1 + k1 * r_undistorted**2)
+
+    with ``x`` in focal-length units from the principal point. That has no
+    closed-form inverse, so it is inverted by fixed-point iteration, which
+    converges in a handful of steps for the small coefficients real lenses and
+    screen captures produce.
+
+    A pinhole intrinsics (no ``distortion``) returns the pixel unchanged, so
+    callers can apply this unconditionally rather than branching.
+
+    Measured on a screen-grabbed plate, ``k1 = -0.006633``: 0.20 px displacement
+    at radius 400, 1.63 px at 800, 6.11 px at the 1244 px corner. Sub-pixel over
+    the central half of the frame and only worth correcting near the edges —
+    but that is exactly where off-frame extension geometry gets anchored.
+    """
+    k1 = float((intrinsics.distortion or {}).get("k1", 0.0) or 0.0)
+    if k1 == 0.0:
+        return float(u), float(v)
+
+    fx = float(intrinsics.fx_px or 0.0)
+    fy = float(intrinsics.fy_px or fx)
+    if fx <= 0.0 or fy <= 0.0:
+        # Refuse quietly rather than dividing by zero: an intrinsics without a
+        # focal cannot express a normalised radius at all, so there is no
+        # correction to make.
+        return float(u), float(v)
+    cx = float(intrinsics.cx_px if intrinsics.cx_px is not None
+               else intrinsics.image_width / 2.0)
+    cy = float(intrinsics.cy_px if intrinsics.cy_px is not None
+               else intrinsics.image_height / 2.0)
+
+    xd = (float(u) - cx) / fx
+    yd = (float(v) - cy) / fy
+    xu, yu = xd, yd
+    for _ in range(max(1, int(iterations))):
+        scale = 1.0 + k1 * (xu * xu + yu * yu)
+        if abs(scale) < 1e-9:          # pathological k1; leave the pixel alone
+            return float(u), float(v)
+        xu, yu = xd / scale, yd / scale
+    return xu * fx + cx, yu * fy + cy
+
+
+def distort_pixel(
+    u: float,
+    v: float,
+    intrinsics: AtlasIntrinsics,
+) -> tuple[float, float]:
+    """Forward model — where a pinhole pixel actually lands on the plate.
+
+    The exact inverse of :func:`undistort_pixel`, and closed-form because this
+    is the direction the model is written in. Needed whenever Atlas projects
+    world geometry back onto the ORIGINAL plate (overlays, projective UVs): the
+    plate is distorted, so a pinhole projection lands in the wrong place there
+    by the same few pixels.
+    """
+    k1 = float((intrinsics.distortion or {}).get("k1", 0.0) or 0.0)
+    if k1 == 0.0:
+        return float(u), float(v)
+    fx = float(intrinsics.fx_px or 0.0)
+    fy = float(intrinsics.fy_px or fx)
+    if fx <= 0.0 or fy <= 0.0:
+        return float(u), float(v)
+    cx = float(intrinsics.cx_px if intrinsics.cx_px is not None
+               else intrinsics.image_width / 2.0)
+    cy = float(intrinsics.cy_px if intrinsics.cy_px is not None
+               else intrinsics.image_height / 2.0)
+    xu = (float(u) - cx) / fx
+    yu = (float(v) - cy) / fy
+    scale = 1.0 + k1 * (xu * xu + yu * yu)
+    return xu * scale * fx + cx, yu * scale * fy + cy
+
+
 def derive_sensor_height_mm(
     sensor_width_mm: float,
     image_width_px: int,

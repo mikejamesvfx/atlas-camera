@@ -114,7 +114,11 @@ def test_calibrate_is_seeded_and_leaves_the_callers_rng_untouched(monkeypatch):
         def load_image(self, _path):
             return torch.zeros(1)
 
-        def calibrate(self, _image):
+        def calibrate(self, _image, camera_model="pinhole", **_kw):
+            # `camera_model` mirrors GeoCalib's real signature. This fake omitted
+            # it, so it silently disagreed with the thing it stands in for and
+            # broke the moment Atlas started passing it (2026-07-31, when
+            # distortion weights turned out to need an explicit camera model).
             # Record what the RNG produces INSIDE the call: a seeded fork means
             # every invocation observes the same draw.
             seen.append(torch.randn(1).item())

@@ -63,6 +63,18 @@ class CameraPrior:
     roll_uncertainty_deg: float | None = None
     pitch_uncertainty_deg: float | None = None
     focal_uncertainty_px: float | None = None
+    #: First radial distortion coefficient, in the normalised-coordinate
+    #: convention ``x_distorted = x_undistorted * (1 + k1 * r_u**2)`` where
+    #: ``r_u`` is measured in focal-length units from the principal point.
+    #: ``None`` for the pinhole model, which does not estimate one.
+    #:
+    #: Found live 2026-07-31: GeoCalib's ``distorted`` weights DO return a k1
+    #: (a screen-grabbed plate measured -0.006633), and this class had nowhere
+    #: to put it — so asking for the distorted model got you a differently
+    #: solved camera with its distortion term silently discarded. For a plate
+    #: with no EXIF, lensfun cannot help and this estimate is the only one
+    #: available.
+    k1: float | None = None
     source_model: str = "geocalib"
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -105,6 +117,19 @@ def _get_model(weights: str, device: str) -> Any:
     return model
 
 
+#: GeoCalib weight set -> the camera model `calibrate()` should fit with it.
+#: Loading distortion-aware weights while fitting a pinhole camera throws the
+#: distortion away, so these two must be chosen together. Keys not listed fall
+#: back to "pinhole"; GeoCalib also ships `radial` and `simple_divisional`,
+#: which Atlas has no consumer for yet — `undistort_pixel` implements
+#: simple_radial only, so fitting one of the others would produce a coefficient
+#: nothing could apply.
+_CAMERA_MODEL_FOR_WEIGHTS: dict[str, str] = {
+    "pinhole": "pinhole",
+    "distorted": "simple_radial",
+}
+
+
 def _gravity_to_atlas_up(gravity_vec: Any) -> tuple[float, float, float]:
     """Convert GeoCalib gravity (native cam coords) to Atlas world-up in cam coords.
 
@@ -143,6 +168,17 @@ def estimate_camera_prior(
 
     model = _get_model(weights, device)
     image = model.load_image(str(image_path)).to(device)
+
+    # WEIGHTS AND CAMERA MODEL ARE TWO SEPARATE CHOICES, and only setting the
+    # first is a silent no-op. `GeoCalib(weights="distorted")` loads a network
+    # trained to see distortion, but `calibrate()` defaults to
+    # `camera_model="pinhole"` — which has no k1 to fit, so the fitted camera
+    # comes back distortion-free. Found live 2026-07-31: asking for the
+    # distorted model produced a differently-solved camera (focal 1458.7 vs
+    # 1442.7, pitch -32.70 vs -33.22) with NO distortion term, which reads
+    # exactly like "this lens has no distortion" rather than "you never asked
+    # for one".
+    camera_model = _CAMERA_MODEL_FOR_WEIGHTS.get(weights, "pinhole")
     # GeoCalib's calibrate() draws from torch's global RNG, so the SAME image
     # solved twice used to return a different camera: measured on one plate,
     # focal spread ~2.5% (1613-1653 px) and roll ~0.7 deg (-1.50 to -2.22) over
@@ -156,7 +192,7 @@ def estimate_camera_prior(
     # determinism is scoped strictly to this call.
     with torch.no_grad(), torch.random.fork_rng(devices=_fork_devices(torch, device)):
         torch.manual_seed(_CALIBRATE_SEED)
-        result = model.calibrate(image)
+        result = model.calibrate(image, camera_model=camera_model)
 
     cam = result["camera"]
     grav = result["gravity"]
@@ -181,6 +217,22 @@ def estimate_camera_prior(
             return None
         return float(t.detach().cpu().numpy().reshape(-1)[0])
 
+    # k1 lives on the camera object, not in `result`, and only the distortion
+    # models carry it — a pinhole camera has no such attribute at all.
+    #
+    # NOT rescaled to native resolution, unlike focal. k1 multiplies r**2 in
+    # FOCAL-LENGTH units, so it is already resolution-independent; scaling it
+    # alongside the focal would apply the correction twice.
+    k1_value: float | None = None
+    raw_k1 = getattr(cam, "k1", None)
+    if raw_k1 is not None:
+        try:
+            k1_value = float(raw_k1.detach().cpu().numpy().reshape(-1)[0])
+        except AttributeError:
+            k1_value = float(raw_k1)
+        if not math.isfinite(k1_value):
+            k1_value = None
+
     return CameraPrior(
         focal_px=focal_px,
         fov_h_deg=fov_h_deg,
@@ -194,6 +246,7 @@ def estimate_camera_prior(
         roll_uncertainty_deg=_scalar("roll_uncertainty"),
         pitch_uncertainty_deg=_scalar("pitch_uncertainty"),
         focal_uncertainty_px=_scalar("focal_uncertainty"),
+        k1=k1_value,
         source_model=f"geocalib:{weights}",
         raw={
             "vfov_deg": vfov_deg,
