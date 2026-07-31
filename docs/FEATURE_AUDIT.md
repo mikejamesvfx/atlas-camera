@@ -30,15 +30,15 @@ relative to itself, so a worktree silently audits a different tree.
 ## Counts
 
 * standard: **92**
-* experimental: **5**
+* experimental: **6**
 * legacy: **2**
-* total registered: **99**
+* total registered: **100**
 * standard nodes with no product evidence: **0**
 
 | Verdict | Nodes |
 |---|---:|
 | `KEEP_CORE` | 92 |
-| `KEEP_EXPERIMENTAL` | 5 |
+| `KEEP_EXPERIMENTAL` | 6 |
 | `LEGACY_GATE` | 2 |
 
 ## Verdict legend
@@ -63,6 +63,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasAssessImage` | atlas_camera/comfy/nodes_solve.py | standard | 5 | 5 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAssessOutput` | atlas_camera/comfy/nodes_qa.py | standard | 4 | 3 | not_attempted | not_attempted | 2 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAttachSourcePlate` | atlas_camera/comfy/nodes_solve.py | standard | 4 | 1 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasBlenderOrganicFill` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasBlockoutViewport` | atlas_camera/comfy/nodes_viewport.py | standard | 19 | 14 | not_attempted | not_attempted | 0 | 7 | — | — | — | **KEEP_CORE** | — |
 | `AtlasBoundedBand` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasCleanPlateLayer` | atlas_camera/comfy/nodes_inpaint.py | standard | 6 | 11 | not_attempted | not_attempted | 1 | 6 | — | — | — | **KEEP_CORE** | — |

@@ -3,14 +3,14 @@
  "generated_utc": "2026-07-31",
  "counts": {
   "standard": 92,
-  "experimental": 5,
+  "experimental": 6,
   "legacy": 2,
-  "total": 99,
+  "total": 100,
   "no_product_evidence": 0
  },
  "verdict_counts": {
   "KEEP_CORE": 92,
-  "KEEP_EXPERIMENTAL": 5,
+  "KEEP_EXPERIMENTAL": 6,
   "LEGACY_GATE": 2
  },
  "live_probe": {
@@ -313,6 +313,39 @@
    "known_defect": null,
    "compatibility_risk": null,
    "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasBlenderOrganicFill": {
+   "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "experimental",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_experimental_gate.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_experimental_gate.py",
+    "tests/test_node_usage_audit.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [
+    "docs/NODE_CATALOG.md"
+   ],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
    "evidence": [],
    "migration_action": null,
    "notes": null

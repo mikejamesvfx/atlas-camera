@@ -88,6 +88,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasMergeGeometry,
     AtlasDefineShotCam,
     AtlasPredictHiddenGeometry,
+    AtlasBlenderOrganicFill,
     AtlasRenderFix,
     AtlasExtractAnglePatch,
     AtlasImportAnglePatch,
@@ -360,6 +361,7 @@ ATLAS_EXPERIMENTAL_DEFAULT = "0"
 EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasCompleteDepth": AtlasCompleteDepth,
     "AtlasPredictHiddenGeometry": AtlasPredictHiddenGeometry,
+    "AtlasBlenderOrganicFill": AtlasBlenderOrganicFill,
     "AtlasRenderFix": AtlasRenderFix,
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
@@ -368,6 +370,7 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasCompleteDepth": "Atlas Complete Depth 🩹 🔬 (experimental)",
     "AtlasPredictHiddenGeometry": "Atlas Predict Hidden Geometry 🔬 (research)",
+    "AtlasBlenderOrganicFill": "Atlas Blender Organic Fill 🔬 (experimental)",
     "AtlasRenderFix": "Atlas Render Fix 🔬 (experimental)",
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",

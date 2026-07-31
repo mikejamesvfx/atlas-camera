@@ -1332,6 +1332,208 @@ class AtlasRetopologizeLayer:
         return (solve_out, "\n".join(lines) or "nothing to retopologize")
 
 
+class AtlasBlenderOrganicFill:
+    """🔬 Close organic tears in numpy, then place the fill with headless Blender.
+
+    EXPERIMENTAL: needs a Blender install, which Atlas does not bundle. Selecting
+    it without one raises with the download link and every path probed.
+
+    The division of labour, both halves measured on real organic plates:
+
+      numpy `core.mesh_voxel.voxel_remesh` closes every interior tear in ~2.5s
+      (22/58/51 tears -> 0 on three plates) and then sits off the measured
+      surface. Blender's BVH shrinkwrap puts it back EXACTLY on that surface
+      (p95 0.0000m against a calibrated 0.0 floor) in ~2.5s.
+
+    Neither half is optional and neither tool does the other's job. Blender
+    cannot close a lateral tear at all — solidify thickens PERPENDICULAR to the
+    surface and walls the hole's rim, so volumetric remesh preserves it as a
+    tube; measured, the hole only vanished when the voxel was as large as the
+    hole itself, collapsing the patch from 66 vertices to 16. numpy succeeds
+    only because it works in depth-image space, where a hole is a 2D region to
+    flood-fill.
+
+    THE GATE MEASURES MOVEMENT, NOT FINAL POSITION. Distance-to-measured-surface
+    is zero BY CONSTRUCTION here — NEAREST_SURFACEPOINT projects onto the
+    surface — so gating on it would pass everything. What that cannot see is a
+    vertex slid ALONG the surface to the wrong place, so the gate is how far
+    shrinkwrap had to DRAG the fill. Measured medians are 0.47-0.64x the median
+    edge, so the 3.0x default has real headroom rather than being fitted to pass.
+
+    REJECTION IS A THIRD OUTCOME. Over-limit movement leaves the layer untouched
+    and says so with its numbers — a raise would kill a long graph, a silent
+    accept would ship bad geometry.
+
+    Route this from `core.fill_policy`: it is the ORGANIC family's filler, and a
+    planar scene should get a fitted construction instead.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "fill"
+    CATEGORY = "Atlas Camera/Experimental"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+            },
+            "optional": {
+                "layer": ("STRING", {
+                    "default": "",
+                    "tooltip": "Layer name, '' for the primary, '*' for every "
+                               "layer. Same selector as AtlasRetopologizeLayer."}),
+                "blender_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Blender executable. Empty = ATLAS_BLENDER_PATH, "
+                               "then PATH, then the platform install dirs "
+                               "(newest version wins)."}),
+                "voxel_grid": ("INT", {
+                    "default": 192, "min": 32, "max": 512,
+                    "tooltip": "Raster long edge for the numpy closure pass. "
+                               "Higher keeps more detail and costs more."}),
+                "thickness_vox": ("INT", {
+                    "default": 3, "min": 1, "max": 16,
+                    "tooltip": "Shell thickness in depth slabs for the closure "
+                               "pass."}),
+                "smooth_iterations": ("INT", {
+                    "default": 8, "min": 0, "max": 64,
+                    "tooltip": "Taubin smoothing inside the closure pass."}),
+                "shrinkwrap_limit_scale": ("FLOAT", {
+                    "default": 4.0, "min": 0.5, "max": 50.0, "step": 0.5,
+                    "tooltip": "Search radius for the snap, in median edge "
+                               "lengths. Scale-free so a value tuned on a 10m "
+                               "interior still means something on a 2km vista."}),
+                "max_move_scale": ("FLOAT", {
+                    "default": 3.0, "min": 0.1, "max": 50.0, "step": 0.1,
+                    "tooltip": "REJECT if shrinkwrap had to move the fill more "
+                               "than this many median edges. Measured medians on "
+                               "real plates are 0.47-0.64x."}),
+                "timeout_s": ("INT", {
+                    "default": 600, "min": 30, "max": 7200,
+                    "tooltip": "Per-layer Blender budget."}),
+            },
+        }
+
+    def fill(self, solve, layer="", blender_path="", voxel_grid=192,
+             thickness_vox=3, smooth_iterations=8, shrinkwrap_limit_scale=4.0,
+             max_move_scale=3.0, timeout_s=600):
+        import copy
+
+        from atlas_camera.blender import (
+            gate_movement, median_edge_length, shrinkwrap_patch,
+        )
+        from atlas_camera.core.mesh_voxel import voxel_remesh
+        from atlas_camera.exporters._layers import mesh_from_primitive
+        np = _require_numpy()
+
+        solve_out = copy.deepcopy(solve)
+        sel = str(layer or "").strip()
+        lines: list[str] = []
+
+        def _do(prim, camera, name):
+            meta = prim.metadata or {}
+            if prim.primitive_type != "mesh" or meta.get("source") != "depth_relief_mesh":
+                return
+            mesh = mesh_from_primitive(prim)
+            if mesh is None:
+                lines.append(f"{name}: empty mesh — skipped")
+                return
+            verts = np.asarray(mesh.vertices, dtype=np.float64).reshape(-1, 3)
+            faces = np.asarray(mesh.faces, dtype=np.int64).reshape(-1, 3)
+            n_v0 = len(verts)
+
+            intr = getattr(camera, "intrinsics", None)
+            extr = getattr(camera, "extrinsics", None)
+            width = int(getattr(intr, "image_width", 0) or 0)
+            height = int(getattr(intr, "image_height", 0) or 0)
+            fx = float(getattr(intr, "fx_px", 0.0) or 0.0)
+            fy = float(getattr(intr, "fy_px", 0.0) or fx)
+            cx = getattr(intr, "cx_px", None)
+            cy = getattr(intr, "cy_px", None)
+            cx = float(cx) if cx is not None else width / 2.0
+            cy = float(cy) if cy is not None else height / 2.0
+            view = getattr(extr, "camera_view_matrix", None)
+            if view is None or fx <= 0 or fy <= 0 or width <= 1 or height <= 1:
+                # Refuse BEFORE launching Blender. Unlike a smoothing pass there
+                # is no "keep the old UVs" fallback here: the remesh replaces
+                # every vertex, so without intrinsics the new ones have no UVs
+                # at all and 📽 Project would render nothing.
+                lines.append(
+                    f"{name}: SKIPPED — layer camera has no usable intrinsics "
+                    f"(fx={fx:g} fy={fy:g} {width}x{height}); the remesh "
+                    "replaces every vertex and projective UVs could not be "
+                    "regenerated")
+                return
+
+            med = median_edge_length(verts, faces)
+            try:
+                v1, f1 = voxel_remesh(
+                    verts, faces, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                    image_width=width, image_height=height,
+                    grid=int(voxel_grid), thickness_vox=int(thickness_vox),
+                    smooth_iterations=int(smooth_iterations), close_holes=True)
+            except (ValueError, RuntimeError) as exc:
+                lines.append(f"{name}: SKIPPED — closure pass failed: {exc}")
+                return
+
+            try:
+                got = shrinkwrap_patch(
+                    v1, f1, verts, faces, blender_path=str(blender_path),
+                    limit_scale=float(shrinkwrap_limit_scale),
+                    timeout_s=int(timeout_s))
+            except RuntimeError as exc:
+                # Blender missing / too old / recipe failed. Never kill the
+                # graph — report and pass the layer through.
+                lines.append(f"{name}: SKIPPED — {exc}")
+                return
+
+            rep = got.get("report") or {}
+            ok, why = gate_movement(float(rep.get("moved_median_m", 0.0)),
+                                    float(rep.get("moved_max_m", 0.0)), med,
+                                    max_move_scale=float(max_move_scale))
+            if not ok:
+                lines.append(f"{name}: {why}")
+                return
+
+            new_v = np.asarray(got["vertices"], dtype=np.float64).reshape(-1, 3)
+            new_f = np.asarray(got["faces"], dtype=np.int64).reshape(-1, 3)
+            from atlas_camera.core.mesh_retopo import regenerate_projective_uvs
+            new_uv = regenerate_projective_uvs(
+                new_v, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                image_width=width, image_height=height)
+
+            meta["vertices"] = np.round(new_v.reshape(-1), 3).tolist()
+            meta["faces"] = new_f.reshape(-1).astype(np.int64).tolist()
+            meta["uvs"] = np.round(
+                np.asarray(new_uv, dtype=np.float64).reshape(-1), 4).tolist()
+            meta["n_vertices"] = int(len(new_v))
+            meta["n_faces"] = int(len(new_f))
+            if len(new_v) != n_v0 and meta.get("edge_risk"):
+                meta["edge_risk"] = []   # indexes the OLD vertex order
+            prim.metadata = meta
+            lines.append(
+                f"{name}: {n_v0}->{len(new_v)} verts, {len(faces)}->{len(new_f)} "
+                f"faces; {why}")
+
+        if sel in ("", "*"):
+            scene = getattr(solve_out, "projection_scene", None)
+            for prim in (getattr(scene, "proxy_geometry", None) or []):
+                _do(prim, solve_out.camera, "primary")
+        for src in (getattr(solve_out, "projection_sources", None) or []):
+            if sel == "*" or (sel and getattr(src, "name", "") == sel):
+                for prim in (getattr(src, "proxy_geometry", None) or []):
+                    _do(prim, src.camera, getattr(src, "name", "") or "layer")
+        if sel and sel != "*" and not lines:
+            names = [getattr(s, "name", "?")
+                     for s in (getattr(solve_out, "projection_sources", None) or [])]
+            lines.append(f"layer '{sel}' not found — available: "
+                         f"{', '.join(names) if names else '(none)'}; "
+                         "solve passed through")
+        return (solve_out, "\n".join(lines) or "nothing to fill")
+
+
 class AtlasPlanarHolePatch:
     """Fit conservative local planes into selected relief-mesh holes.
 
