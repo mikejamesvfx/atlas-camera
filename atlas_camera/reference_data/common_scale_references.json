@@ -10,7 +10,12 @@
     "confidence": "heuristic",
     "source_note": "Common artist scale reference.",
     "notes": "Use as a rough standing adult guide, not demographic truth.",
-    "tags": ["person", "human", "adult", "scale"]
+    "tags": [
+      "person",
+      "human",
+      "adult",
+      "scale"
+    ]
   },
   {
     "id": "door_210cm",
@@ -23,7 +28,12 @@
     "confidence": "heuristic",
     "source_note": "Common architectural drafting reference.",
     "notes": "Regional building codes and door types vary.",
-    "tags": ["door", "architecture", "interior", "building"]
+    "tags": [
+      "door",
+      "architecture",
+      "interior",
+      "building"
+    ]
   },
   {
     "id": "sedan_car",
@@ -36,7 +46,12 @@
     "confidence": "heuristic",
     "source_note": "Approximate DCC scale guide.",
     "notes": "Use for rough street-scale checking; actual models vary widely.",
-    "tags": ["car", "sedan", "vehicle", "street"]
+    "tags": [
+      "car",
+      "sedan",
+      "vehicle",
+      "street"
+    ]
   },
   {
     "id": "city_bus",
@@ -49,7 +64,12 @@
     "confidence": "heuristic",
     "source_note": "Approximate DCC scale guide.",
     "notes": "Transit bus lengths and heights vary by region and type.",
-    "tags": ["bus", "vehicle", "street", "urban"]
+    "tags": [
+      "bus",
+      "vehicle",
+      "street",
+      "urban"
+    ]
   },
   {
     "id": "shipping_container_20ft",
@@ -63,7 +83,12 @@
     "source_url": "https://en.wikipedia.org/wiki/ISO_668",
     "source_note": "ISO 668 standard container dimensions.",
     "notes": "External dimensions; exact container variants differ.",
-    "tags": ["container", "shipping", "iso", "freight"]
+    "tags": [
+      "container",
+      "shipping",
+      "iso",
+      "freight"
+    ]
   },
   {
     "id": "shipping_container_40ft",
@@ -77,7 +102,12 @@
     "source_url": "https://en.wikipedia.org/wiki/ISO_668",
     "source_note": "ISO 668 standard container dimensions.",
     "notes": "External dimensions; exact container variants differ.",
-    "tags": ["container", "shipping", "iso", "freight"]
+    "tags": [
+      "container",
+      "shipping",
+      "iso",
+      "freight"
+    ]
   },
   {
     "id": "basketball_hoop_rim",
@@ -91,7 +121,12 @@
     "source_url": "https://www.fiba.basketball/documents/official-basketball-rules/current.pdf",
     "source_note": "Basketball rim height is commonly standardized at 10 ft.",
     "notes": "Useful indoor scale reference when a hoop is visible.",
-    "tags": ["basketball", "sports", "rim", "court"]
+    "tags": [
+      "basketball",
+      "sports",
+      "rim",
+      "court"
+    ]
   },
   {
     "id": "building_story_3m",
@@ -104,7 +139,12 @@
     "confidence": "heuristic",
     "source_note": "Common rough facade/story-height estimate.",
     "notes": "Story heights vary substantially by building type and era.",
-    "tags": ["building", "story", "floor", "architecture"]
+    "tags": [
+      "building",
+      "story",
+      "floor",
+      "architecture"
+    ]
   },
   {
     "id": "building_3_story",
@@ -117,7 +157,12 @@
     "confidence": "heuristic",
     "source_note": "Three 3 m stories.",
     "notes": "Facade parapets, roof plant, and tall ground floors may add height.",
-    "tags": ["building", "3-story", "architecture", "urban"]
+    "tags": [
+      "building",
+      "3-story",
+      "architecture",
+      "urban"
+    ]
   },
   {
     "id": "building_25_story",
@@ -130,7 +175,12 @@
     "confidence": "heuristic",
     "source_note": "Twenty-five 3 m stories.",
     "notes": "Treat as a massing guide only.",
-    "tags": ["building", "25-story", "tower", "urban"]
+    "tags": [
+      "building",
+      "25-story",
+      "tower",
+      "urban"
+    ]
   },
   {
     "id": "eiffel_tower_tip_330m",
@@ -144,7 +194,12 @@
     "source_url": "https://en.wikipedia.org/wiki/Eiffel_Tower",
     "source_note": "Tip height including current antenna; architectural height differs.",
     "notes": "Use tip vs architectural height intentionally.",
-    "tags": ["eiffel", "tower", "paris", "landmark"]
+    "tags": [
+      "eiffel",
+      "tower",
+      "paris",
+      "landmark"
+    ]
   },
   {
     "id": "eiffel_tower_architectural_300m",
@@ -158,7 +213,107 @@
     "source_url": "https://en.wikipedia.org/wiki/Eiffel_Tower",
     "source_note": "Architectural height excluding antenna.",
     "notes": "Use when matching to structural top rather than antenna tip.",
-    "tags": ["eiffel", "tower", "paris", "landmark", "architectural"]
+    "tags": [
+      "eiffel",
+      "tower",
+      "paris",
+      "landmark",
+      "architectural"
+    ]
+  },
+  {
+    "id": "rail_gauge_standard",
+    "label": "Railway standard gauge, 1435 mm",
+    "category": "railway",
+    "ground_span_m": 1.435,
+    "units": "m",
+    "confidence": "standard",
+    "source_url": "https://en.wikipedia.org/wiki/Standard-gauge_railway",
+    "source_note": "Standard gauge is specified as 1435 mm (4 ft 8.5 in).",
+    "notes": "EXACT specification, not a typical value — the strongest metric anchor available in a railway scene. Measured between the INNER faces of the two railheads, NOT rail centre to rail centre (~1.5 m); marking the wrong edges is a ~4% error that looks entirely reasonable. Mark it near the camera: a wider pixel span measures better.",
+    "tags": [
+      "rail",
+      "railway",
+      "track",
+      "gauge",
+      "train",
+      "station",
+      "scale"
+    ]
+  },
+  {
+    "id": "rail_gauge_metre",
+    "label": "Railway metre gauge, 1000 mm",
+    "category": "railway",
+    "ground_span_m": 1.0,
+    "units": "m",
+    "confidence": "standard",
+    "source_url": "https://en.wikipedia.org/wiki/Metre-gauge_railway",
+    "source_note": "Metre gauge is specified as 1000 mm.",
+    "notes": "A SEPARATE id rather than a tolerance on standard gauge — 1.000 and 1.435 must never silently substitute for each other, since picking the wrong one is a silent 44% scale error. Confirm the network before using this.",
+    "tags": [
+      "rail",
+      "railway",
+      "track",
+      "gauge",
+      "narrow",
+      "metre"
+    ]
+  },
+  {
+    "id": "rail_gauge_cape",
+    "label": "Railway Cape gauge, 1067 mm",
+    "category": "railway",
+    "ground_span_m": 1.067,
+    "units": "m",
+    "confidence": "standard",
+    "source_url": "https://en.wikipedia.org/wiki/Narrow-gauge_railway",
+    "source_note": "Cape gauge is specified as 1067 mm (3 ft 6 in).",
+    "notes": "Common in southern Africa, Japan, Indonesia, Queensland and New Zealand. Separate id for the same reason as metre gauge — never substitute.",
+    "tags": [
+      "rail",
+      "railway",
+      "track",
+      "gauge",
+      "narrow",
+      "cape"
+    ]
+  },
+  {
+    "id": "rail_sleeper_pitch",
+    "label": "Railway sleeper spacing, ~0.6 m",
+    "category": "railway",
+    "ground_span_m": 0.6,
+    "units": "m",
+    "confidence": "heuristic",
+    "source_url": "https://en.wikipedia.org/wiki/Railroad_tie",
+    "source_note": "Typical mainline sleeper spacing, ~600 mm centre to centre.",
+    "notes": "TYPICAL, not specified — varies by network, line speed and sleeper type (roughly 0.60-0.75 m). Weaker than gauge on two counts: the number is approximate, and a single pitch is a short pixel span. Its value is that it repeats down the track, so several marked pitches aggregate. Prefer gauge whenever both are visible.",
+    "tags": [
+      "rail",
+      "railway",
+      "sleeper",
+      "tie",
+      "track",
+      "pitch"
+    ]
+  },
+  {
+    "id": "platform_height_uk",
+    "label": "UK station platform height, 915 mm",
+    "category": "railway",
+    "height": 0.915,
+    "units": "m",
+    "confidence": "standard",
+    "source_url": "https://en.wikipedia.org/wiki/Railway_platform_height",
+    "source_note": "UK standard platform height is 915 mm above rail level.",
+    "notes": "REGIONAL, unlike gauge — platform heights differ widely by country (roughly 0.55-1.25 m), so this is only usable when the location is known to be UK. Vertical: measured from rail level to platform surface, so its base is the RAILHEAD, not the ballast.",
+    "tags": [
+      "rail",
+      "railway",
+      "platform",
+      "station",
+      "uk"
+    ]
   }
 ]
-

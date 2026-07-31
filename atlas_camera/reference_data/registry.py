@@ -11,10 +11,26 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True)
 class ScaleReference:
+    """A known real-world size usable as a metric anchor.
+
+    Two mutually exclusive kinds, and which one an entry is changes the geometry
+    used to solve it:
+
+    * ``height`` — a VERTICAL object standing on the ground (person, door, car).
+    * ``ground_span_m`` — a HORIZONTAL distance lying ON the ground (rail gauge,
+      sleeper pitch, lane width).
+
+    A span is not a short height. Filing railway gauge as ``height: 1.435`` would
+    have it solved as an object standing 1.435 m tall and return a plausible,
+    wrong camera height with no error raised — which is why the two fields are
+    separate and why exactly one is required.
+    """
+
     id: str
     label: str
     category: str
-    height: float
+    height: float | None = None
+    ground_span_m: float | None = None
     units: str = "m"
     width: float | None = None
     depth: float | None = None
@@ -27,11 +43,25 @@ class ScaleReference:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ScaleReference":
+        reference_id = str(data["id"])
+        height = data.get("height")
+        span = data.get("ground_span_m")
+        if height is None and span is None:
+            # Loud at load, not silent at use. An entry with neither would parse
+            # fine and then resolve to nothing much later, inside a solve, as a
+            # "no real height" skip that names the spec rather than the registry
+            # entry that is actually malformed.
+            raise ValueError(
+                f"scale reference {reference_id!r} has neither 'height' nor "
+                "'ground_span_m'; one is required — 'height' for a vertical "
+                "object standing on the ground, 'ground_span_m' for a "
+                "horizontal distance lying on it")
         return cls(
-            id=str(data["id"]),
+            id=reference_id,
             label=str(data["label"]),
             category=str(data.get("category", "uncategorized")),
-            height=float(data["height"]),
+            height=float(height) if height is not None else None,
+            ground_span_m=float(span) if span is not None else None,
             units=str(data.get("units", "m")),
             width=float(data["width"]) if data.get("width") is not None else None,
             depth=float(data["depth"]) if data.get("depth") is not None else None,
@@ -49,6 +79,7 @@ class ScaleReference:
             "label": self.label,
             "category": self.category,
             "height": self.height,
+            "ground_span_m": self.ground_span_m,
             "units": self.units,
             "width": self.width,
             "depth": self.depth,

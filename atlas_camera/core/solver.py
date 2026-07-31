@@ -921,6 +921,133 @@ def metric_height_from_reference(
     }
 
 
+#: Below this the endpoints are too few pixels apart to trust. The error grows
+#: as the span shrinks (measured: 0.20% median at 960 px, 1.21% at 181 px), and
+#: nothing downstream can tell a short span from a long one after the fact.
+GROUND_SPAN_MIN_PX = 40.0
+
+#: How well a registry entry's real-world size is actually KNOWN, which is a
+#: different question from how well its pixels were marked.
+#:
+#: Found live 2026-07-31 while adding ground spans: `consistency` from
+#: metric_height_from_reference is self-consistency of the algebra, and it reads
+#: 1.0 for a *wrong* height — a door assumed at 4.2 m instead of 2.1 m fits its
+#: own two rays perfectly, residual 0.0. So a guessed reference could outvote an
+#: exact one in the weighted median, and did: gauge + a deliberately wrong door
+#: returned the door's answer, with only the confidence number hinting at it.
+#:
+#: Camera height scales LINEARLY with the reference's real size, so an 8%-
+#: uncertain size is an 8%-uncertain scale no matter how clean the pixels are.
+#: These weights encode that, using the registry's existing confidence vocabulary.
+_SIZE_PRIOR: dict[str, float] = {
+    "standard": 1.0,      # a specification (rail gauge, ISO container)
+    "reference": 0.6,     # a published figure for a specific thing
+    "heuristic": 0.35,    # a typical value (adult height, a car)
+}
+#: A bare ``height_m`` with no ``reference_id`` carries NO provenance — it is the
+#: artist asserting a number directly, so it is taken at face value rather than
+#: silently demoted. Only registry-backed references get ranked against each other.
+_SIZE_PRIOR_UNKNOWN = 1.0
+
+
+def metric_height_from_ground_span(
+    point_a_px: tuple[float, float],
+    point_b_px: tuple[float, float],
+    real_span_m: float,
+    *,
+    rotation: Any,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    image_width: float | None = None,
+    min_span_px: float = GROUND_SPAN_MIN_PX,
+) -> dict[str, Any]:
+    """Recover metric camera height from a known HORIZONTAL distance on the ground.
+
+    The counterpart to :func:`metric_height_from_reference`, which needs a vertical
+    object. Some of the best real-world constants are spans, not heights — railway
+    standard gauge is exactly 1435 mm, a specification rather than an average — and
+    a span cannot be expressed as a height. Filing one as a ``height`` would have
+    it solved as a vertical object standing 1.435 m tall and return a plausible,
+    wrong camera height with no error at all.
+
+    Both endpoints lie on the ground plane ``y = -h``, so with the orientation
+    fixing the rays, ``P_i = t_i * r_i`` with ``t_i = -h / r_i.y``. Then::
+
+        |P_a - P_b| = h * | r_a/(-r_a.y) - r_b/(-r_b.y) | = D
+        h = D / | r_a/(-r_a.y) - r_b/(-r_b.y) |
+
+    Closed form — no least squares, and exact rather than fitted.
+
+    WHAT THIS IS AND IS NOT BETTER AT. The geometry here is *not* better
+    conditioned than the vertical solver; measured on matched exactly-known sizes
+    the vertical one is about 2x better, because a taller object spans more pixels.
+    The advantage is entirely in the constant: ``h`` scales linearly with ``D``, so
+    a reference whose real size is only known to +/-8% (an adult's height) yields a
+    +/-8% scale however clean the pixels are. Gauge wins by being exact, and a
+    caller who reaches for this expecting inherently better geometry has the wrong
+    model of it.
+    """
+    np = _require_numpy()
+    rotation = np.asarray(rotation, dtype=np.float64)
+    cam_to_world = rotation.T
+    r_a = _ray_world(point_a_px[0], point_a_px[1], fx, fy, cx, cy, cam_to_world)
+    r_b = _ray_world(point_b_px[0], point_b_px[1], fx, fy, cx, cy, cam_to_world)
+
+    if real_span_m <= 0:
+        return {"camera_height": None, "reason": "span must be positive",
+                "residual": None, "consistency": 0.0}
+
+    # Both endpoints must look downward to meet the ground below the camera. A ray
+    # at or above the horizon meets it at infinity (or behind), so there is no
+    # finite answer to round off — refuse rather than return a huge number.
+    if r_a[1] >= -1e-6 or r_b[1] >= -1e-6:
+        return {"camera_height": None,
+                "reason": "a span endpoint is at or above the horizon; ground "
+                          "points must look downward",
+                "residual": None, "consistency": 0.0}
+
+    span_px = float(np.hypot(point_a_px[0] - point_b_px[0],
+                             point_a_px[1] - point_b_px[1]))
+    if span_px < float(min_span_px):
+        return {"camera_height": None,
+                "reason": (f"span is only {span_px:.1f}px across (minimum "
+                           f"{float(min_span_px):.0f}px) — too short to measure "
+                           "scale from; mark it nearer the camera"),
+                "residual": None, "consistency": 0.0, "span_px": span_px}
+
+    delta = r_a / (-r_a[1]) - r_b / (-r_b[1])
+    denom = float(np.linalg.norm(delta))
+    if denom <= 1e-9:
+        return {"camera_height": None,
+                "reason": "span endpoints project to the same ground point",
+                "residual": None, "consistency": 0.0, "span_px": span_px}
+
+    camera_height = float(real_span_m) / denom
+
+    # Conditioning, NOT residual. The algebra above is exact, so there is no
+    # misfit to report — a residual-style consistency would always read 1.0 and
+    # tell a caller nothing. What actually varies is how well the measurement is
+    # conditioned: how much of the frame the span covers, and how close its
+    # endpoints sit to the horizon where the ground solution degenerates.
+    width = float(image_width) if image_width else float(max(cx, 1.0) * 2.0)
+    coverage = float(np.clip(span_px / max(width * 0.25, 1e-6), 0.0, 1.0))
+    grazing = float(min(-r_a[1], -r_b[1]))         # 0 at the horizon, 1 straight down
+    consistency = float(np.clip(coverage * float(np.clip(grazing * 4.0, 0.0, 1.0)),
+                                0.0, 1.0))
+
+    return {
+        "camera_height": camera_height if camera_height > 0 else None,
+        "residual": 0.0,
+        "consistency": consistency,
+        "span_px": span_px,
+        "real_span_m": float(real_span_m),
+        "ground_a": [float(x) for x in (camera_height * r_a / (-r_a[1]))],
+        "ground_b": [float(x) for x in (camera_height * r_b / (-r_b[1]))],
+    }
+
+
 def _reference_segment(spec: dict[str, Any]) -> tuple[tuple[float, float], tuple[float, float]] | None:
     """Extract (base_px, top_px) from a reference spec (bbox, segment, or points)."""
     if "base_px" in spec and "top_px" in spec:
@@ -943,6 +1070,39 @@ def _reference_segment(spec: dict[str, Any]) -> tuple[tuple[float, float], tuple
     return None
 
 
+def _reference_pair(spec: dict[str, Any]) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Extract the two endpoints of a GROUND SPAN, in the order given.
+
+    Deliberately not :func:`_reference_segment`. That one sorts by y into
+    base/top, which is right for a vertical object and wrong here: a span's
+    endpoints are peers, and for a span running across the frame the sort is
+    decided by a pixel or two of noise. The distance is symmetric so the order
+    does not change the answer, but collapsing a bbox to its vertical centre
+    line — which ``_reference_segment`` does — would destroy a horizontal span
+    entirely.
+    """
+    for lo, hi in (("point_a_px", "point_b_px"), ("a_px", "b_px")):
+        if lo in spec and hi in spec:
+            a, b = spec[lo], spec[hi]
+            return (float(a[0]), float(a[1])), (float(b[0]), float(b[1]))
+    seg = spec.get("image_segment") or spec.get("image_points") or spec.get("segment")
+    if seg is not None:
+        (p0, p1) = normalize_line_segment(seg)
+        return (float(p0[0]), float(p0[1])), (float(p1[0]), float(p1[1]))
+    bbox = spec.get("bbox_px") or spec.get("bbox")
+    if bbox is not None and len(bbox) == 4:
+        x0, y0, x1, y1 = (float(v) for v in bbox)
+        if x1 < x0 or y1 < y0:
+            x1, y1 = x0 + abs(x1), y0 + abs(y1)
+        # A span's bbox is read along its WIDTH at the near edge — the bottom of
+        # the box, which is the part of the ground closest to camera and the
+        # best conditioned. Taking the centre line would measure a shorter span
+        # further away and quietly under-report the scale.
+        y_near = max(y0, y1)
+        return (min(x0, x1), y_near), (max(x0, x1), y_near)
+    return None
+
+
 def resolve_reference_scale(
     references: list[dict[str, Any]],
     *,
@@ -962,29 +1122,58 @@ def resolve_reference_scale(
     np = _require_numpy()
     results: list[dict[str, Any]] = []
     for spec in references or []:
-        seg = _reference_segment(spec)
-        if seg is None:
-            results.append({"status": "skipped", "reason": "no pixel extent", "spec": spec})
-            continue
         height_m = spec.get("height_m") or spec.get("height") or spec.get("known_height")
+        span_m = spec.get("ground_span_m") or spec.get("span_m")
         reference_id = spec.get("reference_id")
         label = spec.get("label")
-        if height_m is None and reference_id:
+        size_prior = _SIZE_PRIOR_UNKNOWN
+        if height_m is None and span_m is None and reference_id:
             ref = get_scale_reference(str(reference_id))
-            height_m = ref.height
+            size_prior = _SIZE_PRIOR.get(ref.confidence, _SIZE_PRIOR_UNKNOWN)
+            # A registry entry carries one or the other; ground_span_m wins when
+            # both are present, because an entry that has a span was authored as
+            # a span (rail gauge also has a railhead height that is NOT the
+            # measurement being asked for).
+            span_m = ref.ground_span_m
+            if span_m is None:
+                height_m = ref.height
             label = label or ref.label
-        if height_m is None:
-            results.append({"status": "skipped", "reason": "no real height", "spec": spec})
-            continue
-        solved = metric_height_from_reference(
-            seg[0], seg[1], float(height_m), rotation=rotation, fx=fx, fy=fy, cx=cx, cy=cy
-        )
+
+        # A span and a height are measured from different geometry, so the
+        # endpoint extraction differs and must be chosen BEFORE parsing pixels.
+        if span_m is not None:
+            pair = _reference_pair(spec)
+            if pair is None:
+                results.append({"status": "skipped", "reason": "no pixel extent",
+                                "spec": spec})
+                continue
+            solved = metric_height_from_ground_span(
+                pair[0], pair[1], float(span_m), rotation=rotation,
+                fx=fx, fy=fy, cx=cx, cy=cy,
+            )
+            solved.update({"real_span_m": float(span_m), "kind": "ground_span"})
+        else:
+            seg = _reference_segment(spec)
+            if seg is None:
+                results.append({"status": "skipped", "reason": "no pixel extent",
+                                "spec": spec})
+                continue
+            if height_m is None:
+                results.append({"status": "skipped",
+                                "reason": "no real height or ground span",
+                                "spec": spec})
+                continue
+            solved = metric_height_from_reference(
+                seg[0], seg[1], float(height_m), rotation=rotation, fx=fx, fy=fy, cx=cx, cy=cy
+            )
+            solved.update({"real_height_m": float(height_m), "kind": "vertical"})
+
         solved.update({
             "status": "solved" if solved.get("camera_height") else "rejected",
             "reference_id": reference_id,
             "label": label,
-            "real_height_m": float(height_m),
             "confidence": float(spec.get("confidence", 1.0)),
+            "size_prior": float(size_prior),
         })
         results.append(solved)
 
@@ -994,7 +1183,8 @@ def resolve_reference_scale(
 
     heights = np.array([r["camera_height"] for r in solved], dtype=np.float64)
     weights = np.array(
-        [max(0.0, r.get("consistency", 0.5)) * r.get("confidence", 1.0) for r in solved],
+        [max(0.0, r.get("consistency", 0.5)) * r.get("confidence", 1.0)
+         * r.get("size_prior", 1.0) for r in solved],
         dtype=np.float64,
     )
     if weights.sum() <= 0:
@@ -1565,6 +1755,17 @@ def _constraint_scale_measurements(constraints: dict[str, Any]) -> list[dict[str
         height = _scale_measurement_height(item)
         if height is None and reference is not None:
             height = reference.height
+            if height is None and reference.ground_span_m is not None:
+                # The artist gave a valid reference_id, so "requires reference_id"
+                # would be a baffling thing to tell them. This constraints path
+                # solves vertical objects only; a ground span goes through
+                # resolve_reference_scale instead.
+                raise ValueError(
+                    f"Scale reference {reference.id!r} is a ground span "
+                    f"({reference.ground_span_m} m), not a height. This "
+                    "constraints path measures vertical objects only — use a "
+                    "scale_references entry via AtlasApplyScaleReferences for a "
+                    "horizontal span.")
         if height is None:
             raise ValueError(
                 "Scale measurements require height, known_height, world_height, or reference_id."
