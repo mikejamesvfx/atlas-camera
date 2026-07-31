@@ -374,6 +374,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_moves_and_patches_workflow.json",
+    "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
    ],
@@ -713,6 +714,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_moves_and_patches_workflow.json",
+    "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_layered_projection_workflow.json"
    ],
    "dedicated_tests": [
@@ -1112,6 +1114,7 @@
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
+    "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -1284,6 +1287,7 @@
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
+    "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
@@ -1349,7 +1353,9 @@
   "AtlasDeriveRoofsFacades": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_derive_planar_geometry_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_derive_geometry_nodes.py"
    ],
@@ -1366,6 +1372,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -1423,7 +1430,9 @@
   "AtlasDeriveWalls": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_derive_planar_geometry_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_derive_geometry_nodes.py",
     "tests/test_ground_anchored_walls.py",
@@ -1453,6 +1462,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1907,6 +1917,7 @@
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
+    "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -2549,6 +2560,7 @@
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
+    "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -2804,7 +2816,9 @@
   "AtlasMergeGeometry": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_derive_planar_geometry_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_merge_geometry.py",
     "tests/test_shot_cam.py",
@@ -2830,6 +2844,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -2943,6 +2958,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_camera_moves_and_patches_workflow.json",
+    "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json"
    ],
@@ -3114,7 +3130,9 @@
   "AtlasPlanarHolePatch": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_derive_planar_geometry_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_compact_path_repair_bake.py",
     "tests/test_legacy_node_gate.py",
@@ -3142,6 +3160,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"

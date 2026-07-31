@@ -68,6 +68,7 @@ def test_examples_directory_has_ui_workflows():
     assert names == ["atlas_EXPERIMENTAL_blockout_massing_workflow.json",
                      "atlas_camera_moves_and_patches_workflow.json",
                      "atlas_derive_planar_geometry_workflow.json",
+                     "atlas_export_fanout_workflow.json",
                      "atlas_layered_projection_workflow.json",
                      "atlas_metric_scale_references_workflow.json",
                      "atlas_occlusion_analysis_workflow.json",
