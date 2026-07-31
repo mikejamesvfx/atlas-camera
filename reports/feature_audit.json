@@ -1115,6 +1115,7 @@
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
+    "examples/atlas_export_fanout_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -1288,6 +1289,7 @@
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
+    "examples/atlas_export_fanout_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
@@ -1560,7 +1562,9 @@
   "AtlasExportBlender": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_export_fanout_workflow.json"
+   ],
    "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
@@ -1581,6 +1585,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "mcp",
     "repo_tool",
     "docs"
@@ -1638,7 +1643,9 @@
   "AtlasExportMayaLayers": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_export_fanout_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_maya_layers_export.py"
    ],
@@ -1662,6 +1669,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -1681,7 +1689,9 @@
   "AtlasExportMayaReviewScene": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_export_fanout_workflow.json"
+   ],
    "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
@@ -1701,6 +1711,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "mcp",
     "repo_tool",
     "docs"
@@ -1719,7 +1730,9 @@
   "AtlasExportNuke": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_export_fanout_workflow.json"
+   ],
    "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
@@ -1740,6 +1753,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "mcp",
     "repo_tool",
     "docs"
@@ -1758,7 +1772,9 @@
   "AtlasExportNukeLayers": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_export_fanout_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_nuke_layers_export.py"
    ],
@@ -1782,6 +1798,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -1830,7 +1847,9 @@
   "AtlasExportReliefMesh": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_export_fanout_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_export_relief_mesh_fill.py",
     "tests/test_mesh_retopo.py",
@@ -1857,6 +1876,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1875,7 +1895,9 @@
   "AtlasExportReviewPackage": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_export_fanout_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_export_plate_exr.py"
    ],
@@ -1896,6 +1918,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "docs"
@@ -1918,6 +1941,7 @@
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
+    "examples/atlas_export_fanout_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -2561,6 +2585,7 @@
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
+    "examples/atlas_export_fanout_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -2959,6 +2984,7 @@
    "example_workflows": [
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
+    "examples/atlas_export_fanout_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json"
    ],
