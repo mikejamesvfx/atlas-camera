@@ -129,6 +129,19 @@ _CAMERA_MODEL_FOR_WEIGHTS: dict[str, str] = {
     "distorted": "simple_radial",
 }
 
+#: The node's `weights` combo ships the CAMERA MODEL names, not GeoCalib's
+#: weight-set names, and combo values serialise into saved workflows so they
+#: cannot be renamed. Alias instead.
+#:
+#: Found live 2026-07-31 by running the plate through ComfyUI: selecting the
+#: distortion option raised `ValueError: Invalid weights: simple_radial` from
+#: GeoCalib, because the value went straight through to the loader. The option
+#: had been unusable for as long as it has existed, which is also why nothing
+#: downstream had ever seen a k1.
+_WEIGHTS_ALIAS: dict[str, str] = {
+    "simple_radial": "distorted",
+}
+
 
 def _gravity_to_atlas_up(gravity_vec: Any) -> tuple[float, float, float]:
     """Convert GeoCalib gravity (native cam coords) to Atlas world-up in cam coords.
@@ -166,6 +179,7 @@ def estimate_camera_prior(
     torch, _ = _require_geocalib()
     device = resolve_device(device, torch)
 
+    weights = _WEIGHTS_ALIAS.get(weights, weights)
     model = _get_model(weights, device)
     image = model.load_image(str(image_path)).to(device)
 
