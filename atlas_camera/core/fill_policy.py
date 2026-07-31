@@ -143,25 +143,66 @@ def policy_from_assessment(payload: dict[str, Any], *,
     """Pick a fill route for one layer from an AtlasAssessImage payload.
 
     ``layer`` selects an entry from ``payload["layers"]`` by name; omitted, the
-    plan describes the scene as a whole.
+    plan describes the scene as a whole — which is also the PRIMARY, the solve's
+    own relief mesh rather than one of the VLM's named projection sources.
+
+    Two ways to veto, because the primary is not a named layer. Top-level
+    ``fill_occluded: false`` vetoes everything; an explicit ``{"name": ""}``
+    entry vetoes the primary alone. Before 2026-07-31 neither worked: the layer
+    lookup carried an ``and layer`` guard that made every entry unmatchable for
+    the primary, so a veto aimed at it did nothing AND said nothing.
 
     Precedence, strongest first — every step can only ever REDUCE what gets
     built, because each input is inferred rather than measured:
 
-    1. ``fill_occluded == false`` on the layer  -> ROUTE_NONE (absolute veto)
-    2. ``role == "sky"``                        -> POLICY_BACKDROP
-    3. ``scene_type``                           -> planar or organic family
-    4. unknown / missing scene_type             -> organic (the softer mistake)
+    1. ``fill_occluded == false`` on the payload -> ROUTE_NONE (whole scene)
+    2. ``fill_occluded == false`` on the layer   -> ROUTE_NONE (absolute veto)
+    3. ``role == "sky"``                         -> POLICY_BACKDROP
+    4. ``scene_type``                            -> planar or organic family
+    5. unknown / missing scene_type              -> organic (the softer mistake)
     """
     reasons: list[str] = []
     settings = (payload or {}).get("recommended_settings") or {}
     scene_type = str(settings.get("scene_type") or "").strip().lower()
 
+    # Layer lookup. The `and layer` guard this used to carry made an entry
+    # UNMATCHABLE for the primary (whose key is ""), so a fill_occluded veto
+    # could never protect it — and did nothing silently rather than erroring.
+    # Matching on the name alone lets an explicit `{"name": "", ...}` entry
+    # reach the primary, which is the only way to veto the solve's own geometry.
+    entries = [i for i in ((payload or {}).get("layers") or [])
+               if isinstance(i, dict)]
     entry: dict[str, Any] = {}
-    for item in (payload or {}).get("layers") or []:
-        if str(item.get("name") or "") == layer and layer:
+    matched = False
+    for item in entries:
+        # `"name" in item` matters only for the primary: it separates a
+        # DELIBERATE `{"name": "", ...}` primary entry from a malformed one that
+        # simply lost its name, which would otherwise silently become the entry
+        # governing the whole scene.
+        if "name" in item and str(item.get("name") or "") == layer:
             entry = item
+            matched = True
             break
+    if layer and not matched and entries:
+        # A name that was asked for and is not in the assessment is a wiring
+        # mistake, not a default. Silently falling through to the scene plan is
+        # how a layer ends up filled by a policy nobody chose for it.
+        reasons.append(
+            f"layer {layer!r} is not in the assessment "
+            f"(has: {', '.join(sorted(str(i.get('name') or '') for i in entries))}) "
+            "— using the scene-wide plan, which may not be right for it")
+
+    # A scene-wide veto, for the case a per-layer one cannot express: the
+    # primary is the solve's own geometry rather than one of the VLM's named
+    # layers, so `{"fill_occluded": false}` at the top level vetoes everything.
+    if (payload or {}).get("fill_occluded") is False:
+        return FillPlan(
+            route=ROUTE_NONE, policy=POLICY_NONE, scene_type=scene_type,
+            layer=layer,
+            reasons=(*reasons,
+                     "assessment set fill_occluded=false for the SCENE — "
+                     "vetoed for every layer including the primary; a veto can "
+                     "only ever leave a tear, never invent geometry"))
 
     # 1 — the veto. An inferred signal is allowed to switch construction OFF and
     # never on, so a wrong "do not fill" costs a tear while a wrong "fill" costs
