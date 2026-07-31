@@ -4130,7 +4130,11 @@ class AtlasBlockoutMassing:
             return cam_pos + ray * (-cam_pos[1] / ray[1])
 
         segments = []
-        for x0, y0, x1, y1 in found[:, 0]:
+        # reshape, never `found[:, 0]`: HoughLinesP returns (N, 1, 4) on some
+        # OpenCV builds and (N, 4) on others, and the indexed form silently
+        # yields scalars on the second — found live in ComfyUI, whose cv2 build
+        # differs from the dev env's.
+        for x0, y0, x1, y1 in np.asarray(found).reshape(-1, 4):
             a = to_ground(float(x0), float(y0))
             b = to_ground(float(x1), float(y1))
             if a is not None and b is not None:
