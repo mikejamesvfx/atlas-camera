@@ -230,6 +230,11 @@ include = ["atlas", "atlas.*", "atlas_camera", "atlas_camera.*"]
 [tool.setuptools.package-data]
 "atlas_camera.reference_data" = ["*.json"]
 "atlas_camera.inference" = ["fixer_shim/*.py"]
+# Headless-Blender recipes. DATA, not code: they `import bpy`, which exists only
+# inside Blender, so recipes/ deliberately has no __init__.py and must never be
+# importable by a module sweep or pytest collection. Same reasoning as
+# fixer_shim above.
+"atlas_camera.blender" = ["recipes/*.py"]
 # The ComfyUI frontend IS package data — without these a non-editable pip
 # install ships a dead viewport (found by the beta-0.3 wheel audit; invisible
 # on dev machines where the editable install + custom_nodes symlink serve

@@ -1,6 +1,6 @@
 # Atlas Camera — feature audit
 
-Generated 2026-07-30 by `tools/build_feature_audit.py`. 
+Generated 2026-07-31 by `tools/build_feature_audit.py`. 
 Machine-gathered evidence from `tools/audit_node_usage.py`; judgements from 
 `tools/feature_audit_verdicts.py`. Regenerate with 
 `python tools/build_feature_audit.py` (`--check` verifies freshness).
