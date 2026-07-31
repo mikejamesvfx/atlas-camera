@@ -1,0 +1,1010 @@
+{
+  "id": "ff547cce-9b2b-5ca6-915a-c582c1ab14b5",
+  "revision": 0,
+  "last_node_id": 12,
+  "last_link_id": 23,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            3,
+            11,
+            14,
+            15,
+            18
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "ghosttown.jpg"
+      ],
+      "title": "1. Plate"
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        400,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "raw_meta",
+          "type": "ATLAS_RAW_META",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            2,
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto",
+        0.0
+      ],
+      "title": "2. Solve"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        760,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            5,
+            7,
+            10,
+            13,
+            19,
+            21
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        9,
+        0,
+        "",
+        0,
+        0.25
+      ],
+      "title": "3. Depth"
+    },
+    {
+      "id": 4,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        1120,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 5
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "outlier_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "custom",
+        0.5,
+        12.0,
+        true,
+        0.0,
+        true,
+        false,
+        0.0,
+        256,
+        false
+      ],
+      "title": "4. Relief mesh - bands are carved off this"
+    },
+    {
+      "id": 5,
+      "type": "AtlasOcclusionGraph",
+      "pos": [
+        1480,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 6
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasOcclusionGraph"
+      },
+      "widgets_values": [],
+      "title": "5. Occlusion graph FIRST - without it there is nothing to split into layers"
+    },
+    {
+      "id": 6,
+      "type": "AtlasLayerPlan",
+      "pos": [
+        1840,
+        380
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "foreground_concepts_override",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "background_concepts_override",
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            9
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            22
+          ]
+        },
+        {
+          "name": "foreground_concepts",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "background_concepts",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLayerPlan"
+      },
+      "widgets_values": [
+        false
+      ],
+      "title": "5b. Layer plan: what to split, and why"
+    },
+    {
+      "id": 7,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1840,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 9
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 10
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 11
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "layer_matte",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "band_split",
+          "type": "ATLAS_BAND_SPLIT",
+          "link": null
+        },
+        {
+          "name": "band_ref_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            12
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.35,
+        "foreground",
+        10,
+        384,
+        1.5,
+        false,
+        false,
+        0,
+        0.0,
+        0,
+        2,
+        "manual",
+        "relief",
+        "",
+        "",
+        12.0,
+        0.0,
+        true
+      ],
+      "title": "6. Near band"
+    },
+    {
+      "id": 8,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        2200,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 12
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 13
+        },
+        {
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 14
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": null
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "layer_matte",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "band_split",
+          "type": "ATLAS_BAND_SPLIT",
+          "link": null
+        },
+        {
+          "name": "band_ref_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            17,
+            20,
+            23
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [
+            16
+          ]
+        },
+        {
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0.0,
+        0.0,
+        0.35,
+        1.0,
+        "background",
+        90,
+        384,
+        1.5,
+        false,
+        false,
+        0,
+        0.0,
+        0,
+        2,
+        "manual",
+        "relief",
+        "",
+        "",
+        12.0,
+        0.0,
+        true
+      ],
+      "title": "7. Far band  (priorities are FARTHEST-highest)"
+    },
+    {
+      "id": 9,
+      "type": "AtlasLayerPreview",
+      "pos": [
+        2560,
+        380
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 15
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLayerPreview"
+      },
+      "widgets_values": [
+        0,
+        ""
+      ],
+      "title": "8. Which pixels did the band claim?"
+    },
+    {
+      "id": 10,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2560,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 17
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 18
+        },
+        {
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 19
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ],
+      "title": "9. Projected, layered"
+    },
+    {
+      "id": 11,
+      "type": "AtlasDebugReport",
+      "pos": [
+        2920,
+        380
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 20
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 21
+        },
+        {
+          "name": "status_1",
+          "type": "STRING",
+          "link": 22
+        },
+        {
+          "name": "status_2",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_3",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/master_debug.json"
+      ],
+      "title": "10. Read the layer table back"
+    },
+    {
+      "id": 12,
+      "type": "AtlasExportSolveJSON",
+      "pos": [
+        2920,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportSolveJSON"
+      },
+      "widgets_values": [
+        "output/atlas_layered_solve.json"
+      ],
+      "title": "11. Export"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      3,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      6,
+      4,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      8,
+      5,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      6,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      10,
+      3,
+      0,
+      7,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      11,
+      1,
+      0,
+      7,
+      2,
+      "IMAGE"
+    ],
+    [
+      12,
+      7,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      3,
+      0,
+      8,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      14,
+      1,
+      0,
+      8,
+      2,
+      "IMAGE"
+    ],
+    [
+      15,
+      1,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      16,
+      8,
+      1,
+      9,
+      1,
+      "MASK"
+    ],
+    [
+      17,
+      8,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      18,
+      1,
+      0,
+      10,
+      1,
+      "IMAGE"
+    ],
+    [
+      19,
+      3,
+      0,
+      10,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      20,
+      8,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      21,
+      3,
+      0,
+      11,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      22,
+      6,
+      1,
+      11,
+      2,
+      "STRING"
+    ],
+    [
+      23,
+      8,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

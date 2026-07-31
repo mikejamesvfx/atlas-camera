@@ -670,7 +670,9 @@
   "AtlasDeband": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_plate_finishing_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_deband.py"
    ],
@@ -686,6 +688,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -866,7 +869,9 @@
   "AtlasDefocus": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_plate_finishing_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_plate_color_nodes.py"
    ],
@@ -882,6 +887,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -1095,6 +1101,7 @@
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
+    "examples/atlas_plate_finishing_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
    ],
    "dedicated_tests": [
@@ -2033,7 +2040,9 @@
   "AtlasGrade": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_plate_finishing_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_plate_color_nodes.py"
    ],
@@ -2049,6 +2058,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -2516,6 +2526,7 @@
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
+    "examples/atlas_plate_finishing_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
    ],
    "dedicated_tests": [
@@ -3280,7 +3291,9 @@
   "AtlasRegisterPlate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_plate_finishing_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_viewport_controls_node.py"
    ],
@@ -3304,6 +3317,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
