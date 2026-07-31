@@ -1413,12 +1413,26 @@ class AtlasBlenderOrganicFill:
                 "timeout_s": ("INT", {
                     "default": 600, "min": 30, "max": 7200,
                     "tooltip": "Per-layer Blender budget."}),
+                "assessment_json": ("STRING", {
+                    "default": "", "forceInput": True,
+                    "tooltip": "AtlasAssessImage's settings_json. Used for the "
+                               "ROUTE decision — this node is the ORGANIC "
+                               "family's filler, so a planar scene is skipped "
+                               "and fill_occluded=false is honoured as a veto. "
+                               "Ignored unless use_assessment is on."}),
+                "use_assessment": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Let the assessment decide WHETHER to fill each "
+                               "layer. Off by default: an inferred route "
+                               "silently skipping a layer is worse than an "
+                               "artist choosing to run it."}),
             },
         }
 
     def fill(self, solve, layer="", blender_path="", voxel_grid=192,
              thickness_vox=3, smooth_iterations=8, shrinkwrap_limit_scale=4.0,
-             max_move_scale=3.0, timeout_s=600):
+             max_move_scale=3.0, timeout_s=600, assessment_json="",
+             use_assessment=False):
         import copy
 
         from atlas_camera.blender import (
@@ -1432,10 +1446,52 @@ class AtlasBlenderOrganicFill:
         sel = str(layer or "").strip()
         lines: list[str] = []
 
+        # --- the assessment decides the ROUTE, never the geometry -----------
+        # What fill_policy contributes here is which family a layer belongs to,
+        # plus the fill_occluded veto. Its numeric organic settings
+        # (live_fill_max_hole_edges, retopo_method) were designed for the
+        # mesh-repair path and do NOT map onto this node's voxel/shrinkwrap
+        # knobs — inventing a correspondence would be worse than not wiring it,
+        # so only boundary_smooth_iterations, which genuinely corresponds, is
+        # taken.
+        payload = None
+        if use_assessment and str(assessment_json or "").strip():
+            import json
+            try:
+                payload = json.loads(assessment_json)
+            except (ValueError, TypeError) as exc:
+                lines.append(f"assessment_json unreadable ({exc}); "
+                             "falling back to the widgets for every layer")
+                payload = None
+
+        def _plan_for(name):
+            if payload is None:
+                return None
+            from atlas_camera.core.fill_policy import policy_from_assessment
+            return policy_from_assessment(payload, layer=("" if name == "primary"
+                                                          else name))
+
         def _do(prim, camera, name):
             meta = prim.metadata or {}
             if prim.primitive_type != "mesh" or meta.get("source") != "depth_relief_mesh":
                 return
+
+            smooth = int(smooth_iterations)
+            plan = _plan_for(name)
+            if plan is not None:
+                from atlas_camera.core.fill_policy import ROUTE_ORGANIC
+                if plan.route != ROUTE_ORGANIC:
+                    lines.append(
+                        f"{name}: SKIPPED by assessment — route={plan.route} "
+                        f"(scene_type={plan.scene_type!r}). This node is the "
+                        "ORGANIC family's filler; "
+                        + ("a planar scene wants a fitted construction "
+                           "instead. " if plan.route == "planar" else
+                           "the layer was vetoed. ")
+                        + (plan.reasons[0] if plan.reasons else ""))
+                    return
+                # The one setting that genuinely corresponds.
+                smooth = int(plan.boundary_smooth_iterations)
             mesh = mesh_from_primitive(prim)
             if mesh is None:
                 lines.append(f"{name}: empty mesh — skipped")
@@ -1473,7 +1529,7 @@ class AtlasBlenderOrganicFill:
                     verts, faces, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
                     image_width=width, image_height=height,
                     grid=int(voxel_grid), thickness_vox=int(thickness_vox),
-                    smooth_iterations=int(smooth_iterations), close_holes=True)
+                    smooth_iterations=smooth, close_holes=True)
             except (ValueError, RuntimeError) as exc:
                 lines.append(f"{name}: SKIPPED — closure pass failed: {exc}")
                 return
@@ -1515,7 +1571,9 @@ class AtlasBlenderOrganicFill:
             prim.metadata = meta
             lines.append(
                 f"{name}: {n_v0}->{len(new_v)} verts, {len(faces)}->{len(new_f)} "
-                f"faces; {why}")
+                f"faces; {why}"
+                + (f" [assessment: {plan.scene_type} -> organic, smooth x{smooth}]"
+                   if plan is not None else ""))
 
         if sel in ("", "*"):
             scene = getattr(solve_out, "projection_scene", None)
