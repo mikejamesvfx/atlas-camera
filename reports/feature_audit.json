@@ -160,7 +160,9 @@
   "AtlasAssessImage": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_agentic_assessment_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_assess_image.py",
     "tests/test_atlas_input.py",
@@ -194,6 +196,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -213,7 +216,9 @@
   "AtlasAssessOutput": {
    "module": "atlas_camera/comfy/nodes_qa.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_agentic_assessment_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_assess_output.py",
     "tests/test_mcp_comfy_http.py"
@@ -241,6 +246,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -373,6 +379,7 @@
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_agentic_assessment_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_input_quickstart_workflow.json",
@@ -1115,6 +1122,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+    "examples/atlas_agentic_assessment_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_export_fanout_workflow.json",
@@ -1289,6 +1297,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+    "examples/atlas_agentic_assessment_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_export_fanout_workflow.json",
@@ -1941,6 +1950,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+    "examples/atlas_agentic_assessment_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_export_fanout_workflow.json",
@@ -2590,6 +2600,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+    "examples/atlas_agentic_assessment_workflow.json",
     "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_derive_planar_geometry_workflow.json",
     "examples/atlas_export_fanout_workflow.json",
