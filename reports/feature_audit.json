@@ -114,7 +114,9 @@
   "AtlasApplyScaleReferences": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_metric_scale_references_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_face_scale_node.py",
     "tests/test_ground_span_scale.py",
@@ -137,6 +139,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -335,13 +338,15 @@
    "example_workflows": [],
    "dedicated_tests": [
     "tests/test_block_massing.py",
-    "tests/test_experimental_gate.py"
+    "tests/test_experimental_gate.py",
+    "tests/test_shipping_workflow_experimental.py"
    ],
    "tests": [
     "tests/test_block_massing.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_experimental_gate.py",
-    "tests/test_node_usage_audit.py"
+    "tests/test_node_usage_audit.py",
+    "tests/test_shipping_workflow_experimental.py"
    ],
    "mcp_tools": [],
    "repo_tools": [],
@@ -781,7 +786,9 @@
   "AtlasDecomposeSolve": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_metric_scale_references_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_node_layer_contracts.py"
    ],
@@ -800,6 +807,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -1081,6 +1089,7 @@
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
    ],
    "dedicated_tests": [
@@ -1862,6 +1871,7 @@
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
    ],
    "dedicated_tests": [],
@@ -2490,6 +2500,7 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
    ],
    "dedicated_tests": [
@@ -3551,7 +3562,9 @@
   "AtlasSceneHealthGate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_metric_scale_references_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_scene_health_gate.py"
    ],
@@ -3569,6 +3582,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],

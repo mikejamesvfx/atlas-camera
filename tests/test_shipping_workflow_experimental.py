@@ -33,7 +33,13 @@ EXPERIMENTAL = set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
 # stays so that re-introducing an experimental node into a SHIPPED workflow is
 # a conscious, reviewed choice rather than an accidental red node on a default
 # install.
-WORKFLOWS_USING_EXPERIMENTAL: set[str] = set()
+# Re-populated 2026-07-31. AtlasBlockoutMassing places placeholder city mass on
+# ground the plate never saw; it is gate-hidden, so this workflow is named
+# EXPERIMENTAL_ and documented as needing ATLAS_EXPERIMENTAL=1. A conscious,
+# reviewed choice - which is exactly what this pin is for.
+WORKFLOWS_USING_EXPERIMENTAL: set[str] = {
+    "atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+}
 
 
 def _actual() -> set[str]:

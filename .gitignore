@@ -68,6 +68,14 @@ examples/review_packages/*
 # grid work all need.
 !examples/images/spacehangar.jpg
 !examples/images/ghosttown.jpg
+# Urban exterior with a real street grid. Neither of the other two has one:
+# ghosttown is dirt roads (24% grid coherence, below the 35% floor) and
+# spacehangar is an interior, so AtlasBlockoutMassing correctly REFUSES on both.
+# Downscaled from the 7360x4912 original to 1280x854; the grid survives at 62%.
+# The mask is shipped with it because without one the fit eats the tower facades
+# and lands 5 degrees out - measured 3.66 vs 87.7.
+!examples/images/newyork_birdseye.jpg
+!examples/images/newyork_birdseye_ground_mask.png
 
 # Session/tooling artifacts
 .playwright-mcp/

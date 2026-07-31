@@ -32,6 +32,10 @@ from typing import Any
 
 DEFAULT_SERVER = "http://127.0.0.1:8188"
 
+#: Sentinel name for the phantom slot that follows a seed widget. Never a real
+#: input, so it must not be settable and must not be matched by the name check.
+_CONTROL_AFTER_GENERATE = "__control_after_generate__"
+
 
 def fetch_object_info(server: str = DEFAULT_SERVER) -> dict[str, Any]:
     with urllib.request.urlopen(server.rstrip("/") + "/object_info", timeout=30) as fh:
@@ -54,10 +58,30 @@ def _widget_names_and_defaults(spec: dict[str, Any]) -> list[tuple[str, Any]]:
             cfg = entry[1] if len(entry) > 1 and isinstance(entry[1], dict) else {}
             if cfg.get("forceInput"):
                 continue                      # a link, never a widget
-            if isinstance(kind, list):        # combo
+            if isinstance(kind, list):        # legacy combo: [[a, b, c]]
                 out.append((name, cfg.get("default", kind[0] if kind else None)))
+            elif kind == "COMBO":
+                # V3 form: ["COMBO", {"options": [...]}]. ComfyUI 0.27 emits BOTH
+                # shapes — Atlas nodes use the legacy one, several stock nodes use
+                # this. Handling only the legacy form dropped these from
+                # widgets_values entirely, which is the positional-drift failure
+                # this generator exists to prevent, committed in its own code.
+                opts = cfg.get("options") or []
+                out.append((name, cfg.get("default", opts[0] if opts else None)))
             elif kind in ("INT", "FLOAT", "STRING", "BOOLEAN"):
                 out.append((name, cfg.get("default")))
+            else:
+                continue
+            # A widget named seed/noise_seed carries a PHANTOM second slot:
+            # ComfyUI's frontend attaches a control_after_generate dropdown to
+            # it and serialises that value positionally, immediately after the
+            # seed. Omitting it leaves every widget AFTER the seed reading one
+            # slot across — silently, on load. tests/test_shipping_workflow_widgets
+            # derives the same rule from the live class; a generator that does
+            # not implement it emits drift on its very first seeded node, which
+            # is what happened here on 2026-07-31.
+            if name in ("seed", "noise_seed"):
+                out.append((_CONTROL_AFTER_GENERATE, "fixed"))
     return out
 
 
@@ -81,7 +105,8 @@ class Builder:
                 "nodes need ATLAS_EXPERIMENTAL=1; a typo looks identical here.")
         slots = _widget_names_and_defaults(spec)
         values = []
-        unknown = set(widgets or {}) - {n for n, _ in slots}
+        settable = {n for n, _ in slots if n != _CONTROL_AFTER_GENERATE}
+        unknown = set(widgets or {}) - settable
         if unknown:
             raise KeyError(
                 f"{class_type}: no widget named {sorted(unknown)}. Present: "
@@ -93,8 +118,12 @@ class Builder:
         combos = {}
         for section in ("required", "optional"):
             for nm, entry in (spec.get("input", {}).get(section) or {}).items():
-                if isinstance(entry, (list, tuple)) and entry and isinstance(entry[0], list):
+                if not (isinstance(entry, (list, tuple)) and entry):
+                    continue
+                if isinstance(entry[0], list):
                     combos[nm] = list(entry[0])
+                elif entry[0] == "COMBO" and len(entry) > 1 and isinstance(entry[1], dict):
+                    combos[nm] = list(entry[1].get("options") or [])
         for nm, val in (widgets or {}).items():
             if nm in combos and val not in combos[nm]:
                 raise ValueError(
@@ -110,7 +139,7 @@ class Builder:
                     continue
                 kind = entry[0]
                 cfg = entry[1] if len(entry) > 1 and isinstance(entry[1], dict) else {}
-                if isinstance(kind, list) or (
+                if isinstance(kind, list) or kind == "COMBO" or (
                         kind in ("INT", "FLOAT", "STRING", "BOOLEAN")
                         and not cfg.get("forceInput")):
                     continue

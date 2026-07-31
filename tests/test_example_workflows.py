@@ -65,7 +65,9 @@ def test_examples_directory_has_ui_workflows():
     tools/workflow_benchmark.py before landing — loading is not acceptance.
     """
     names = sorted(n for n, _ in _WORKFLOWS)
-    assert names == ["atlas_metric_scale_references_workflow.json",
+    assert names == ["atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+                     "atlas_metric_scale_references_workflow.json",
+                     "atlas_occlusion_analysis_workflow.json",
                      "atlas_quickstart_solve_project_export_workflow.json"]
 
 
