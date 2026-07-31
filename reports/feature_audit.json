@@ -81,9 +81,7 @@
   "AtlasApplyLUT": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_plate_color_grade_defocus_lut_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_plate_color_nodes.py"
    ],
@@ -99,7 +97,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -160,13 +157,7 @@
   "AtlasAssessImage": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_assess_image.py",
     "tests/test_atlas_input.py",
@@ -200,7 +191,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -220,21 +210,14 @@
   "AtlasAssessOutput": {
    "module": "atlas_camera/comfy/nodes_qa.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_assess_output.py",
-    "tests/test_example_workflows.py",
     "tests/test_mcp_comfy_http.py"
    ],
    "tests": [
     "tests/test_assess_output.py",
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_mcp_comfy_http.py"
    ],
@@ -255,7 +238,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -275,12 +257,7 @@
   "AtlasAttachSourcePlate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_viewport_controls_node.py"
    ],
@@ -303,7 +280,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -388,27 +364,7 @@
   "AtlasBlockoutViewport": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_boundary_smooth_retopo_test_workflow.json",
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_equirect_360_multiview_workflow.json",
-    "examples/atlas_equirect_360_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json",
-    "examples/atlas_unseen_geometry_test_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_camera_path.py",
     "tests/test_camera_path_export_node.py",
@@ -469,7 +425,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -488,9 +443,7 @@
   "AtlasBoundedBand": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_inpaint_layers_nodes.py"
    ],
@@ -512,7 +465,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "docs"
@@ -531,21 +483,13 @@
   "AtlasCleanPlateLayer": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_assess_image.py",
     "tests/test_atlas_input.py",
     "tests/test_debug_report.py",
     "tests/test_depth_outpaint.py",
     "tests/test_derive_geometry_nodes.py",
-    "tests/test_example_workflows.py",
     "tests/test_experimental_gate.py",
     "tests/test_export_relief_mesh_fill.py",
     "tests/test_inpaint_layers_nodes.py",
@@ -559,7 +503,6 @@
     "tests/test_debug_report.py",
     "tests/test_depth_outpaint.py",
     "tests/test_derive_geometry_nodes.py",
-    "tests/test_example_workflows.py",
     "tests/test_experimental_gate.py",
     "tests/test_export_relief_mesh_fill.py",
     "tests/test_facade_surface.py",
@@ -585,7 +528,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -750,22 +692,16 @@
   "AtlasDebugReport": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_debug_report.py",
     "tests/test_debug_report_parity.py",
-    "tests/test_example_workflows.py",
     "tests/test_legacy_node_gate.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_debug_report.py",
     "tests/test_debug_report_parity.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_legacy_node_gate.py"
    ],
@@ -784,7 +720,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -917,9 +852,7 @@
   "AtlasDefocus": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_plate_color_grade_defocus_lut_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_plate_color_nodes.py"
    ],
@@ -935,7 +868,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -1063,9 +995,7 @@
   "AtlasDepthDetailEnhance": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_depth_desk_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_depth_detail.py"
    ],
@@ -1083,7 +1013,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1102,10 +1031,7 @@
   "AtlasDepthLayerMask": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_derive_geometry_nodes.py",
@@ -1133,7 +1059,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1152,33 +1077,17 @@
   "AtlasDepthMap": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_depth_desk_workflow.json",
-    "examples/atlas_equirect_360_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json",
-    "examples/atlas_plate_color_grade_defocus_lut_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_depth_map_node.py",
-    "tests/test_derive_geometry_nodes.py",
-    "tests/test_example_workflows.py"
+    "tests/test_derive_geometry_nodes.py"
    ],
    "tests": [
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_depth_map_node.py",
     "tests/test_derive_geometry_nodes.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [
@@ -1200,7 +1109,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -1332,12 +1240,7 @@
   "AtlasDeriveReliefMesh": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_depth_desk_workflow.json",
-    "examples/atlas_equirect_360_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/golden_scenes.py",
     "tests/test_atlas_input.py",
@@ -1380,7 +1283,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1473,12 +1375,7 @@
   "AtlasDeriveWalls": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json",
-    "examples/atlas_unseen_geometry_test_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_derive_geometry_nodes.py",
     "tests/test_ground_anchored_walls.py",
@@ -1508,7 +1405,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1562,9 +1458,7 @@
   "AtlasEquirectMultiView": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_equirect_360_multiview_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_equirect.py",
     "tests/test_golden_frames.py",
@@ -1585,7 +1479,6 @@
    "docs": [],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool"
    ],
@@ -1605,22 +1498,10 @@
   "AtlasExportBlender": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
-   "dedicated_tests": [
-    "tests/test_example_workflows.py"
-   ],
+   "example_workflows": [],
+   "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [
@@ -1638,8 +1519,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
-    "dedicated_test",
     "mcp",
     "repo_tool",
     "docs"
@@ -1697,23 +1576,12 @@
   "AtlasExportMayaLayers": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_example_workflows.py",
     "tests/test_maya_layers_export.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_maya_layers_export.py",
     "tests/test_shipping_workflow_widgets.py"
@@ -1732,7 +1600,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -1752,19 +1619,10 @@
   "AtlasExportMayaReviewScene": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json"
-   ],
-   "dedicated_tests": [
-    "tests/test_example_workflows.py"
-   ],
+   "example_workflows": [],
+   "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [
@@ -1781,8 +1639,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
-    "dedicated_test",
     "mcp",
     "repo_tool",
     "docs"
@@ -1801,19 +1657,10 @@
   "AtlasExportNuke": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json"
-   ],
-   "dedicated_tests": [
-    "tests/test_example_workflows.py"
-   ],
+   "example_workflows": [],
+   "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [
@@ -1831,8 +1678,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
-    "dedicated_test",
     "mcp",
     "repo_tool",
     "docs"
@@ -1851,23 +1696,12 @@
   "AtlasExportNukeLayers": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_example_workflows.py",
     "tests/test_nuke_layers_export.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_nuke_layers_export.py"
    ],
@@ -1886,7 +1720,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -1906,9 +1739,7 @@
   "AtlasExportPlateEXR": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_raw_3layer_ocio_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_export_plate_exr.py"
    ],
@@ -1921,7 +1752,6 @@
    "docs": [],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test"
    ],
    "live_execution": "not_attempted",
@@ -1938,23 +1768,14 @@
   "AtlasExportReliefMesh": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_example_workflows.py",
     "tests/test_export_relief_mesh_fill.py",
     "tests/test_mesh_retopo.py",
     "tests/test_relief_mesh.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_export_relief_mesh_fill.py",
     "tests/test_facade_surface.py",
     "tests/test_mesh_retopo.py",
@@ -1974,7 +1795,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1993,9 +1813,7 @@
   "AtlasExportReviewPackage": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_raw_3layer_ocio_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_export_plate_exr.py"
    ],
@@ -2016,7 +1834,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "docs"
@@ -2035,23 +1852,10 @@
   "AtlasExportSolveJSON": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
-   "dedicated_tests": [
-    "tests/test_example_workflows.py"
-   ],
+   "example_workflows": [],
+   "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [
@@ -2070,8 +1874,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
-    "dedicated_test",
     "mcp",
     "repo_tool",
     "docs"
@@ -2090,23 +1892,10 @@
   "AtlasExportUSD": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
-   "dedicated_tests": [
-    "tests/test_example_workflows.py"
-   ],
+   "example_workflows": [],
+   "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py"
    ],
    "mcp_tools": [
@@ -2125,8 +1914,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
-    "dedicated_test",
     "mcp",
     "repo_tool",
     "docs"
@@ -2211,9 +1998,7 @@
   "AtlasGrade": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_plate_color_grade_defocus_lut_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_plate_color_nodes.py"
    ],
@@ -2229,7 +2014,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -2438,11 +2222,7 @@
   "AtlasInpaintCrop": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_inpaint_crop_stitch.py"
@@ -2467,7 +2247,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -2486,11 +2265,7 @@
   "AtlasInpaintStitch": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_inpaint_crop_stitch.py"
@@ -2515,7 +2290,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -2534,21 +2308,10 @@
   "AtlasInput": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_boundary_smooth_retopo_test_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_unseen_geometry_test_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_derive_geometry_nodes.py",
-    "tests/test_example_workflows.py",
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_record3d_bridge.py"
    ],
@@ -2556,7 +2319,6 @@
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_derive_geometry_nodes.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_record3d_bridge.py"
@@ -2582,7 +2344,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -2638,10 +2399,7 @@
   "AtlasLayerPlan": {
    "module": "atlas_camera/comfy/nodes_completion.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_layer_plan_node.py"
    ],
@@ -2660,7 +2418,6 @@
    "docs": [],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool"
@@ -2682,11 +2439,7 @@
   "AtlasLayerPreview": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_inpaint_layers_nodes.py"
    ],
@@ -2706,7 +2459,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -2725,18 +2477,7 @@
   "AtlasLearnedSolveFromImage": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_equirect_360_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json",
-    "examples/atlas_plate_color_grade_defocus_lut_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_experimental_gate.py",
@@ -2765,7 +2506,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -2787,7 +2527,6 @@
    "tier": "legacy",
    "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_example_workflows.py",
     "tests/test_legacy_node_gate.py",
     "tests/test_mesh_repair.py",
     "tests/test_migrate_legacy_nodes.py",
@@ -2795,7 +2534,6 @@
     "tests/test_retopologize_layer.py"
    ],
    "tests": [
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_legacy_node_gate.py",
     "tests/test_mesh_repair.py",
@@ -2834,11 +2572,7 @@
   "AtlasLoadPlate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_depth_desk_workflow.json",
-    "examples/atlas_equirect_360_multiview_workflow.json",
-    "examples/atlas_equirect_360_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_equirect.py",
     "tests/test_node_layer_contracts.py"
@@ -2862,7 +2596,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -2884,9 +2617,7 @@
   "AtlasLoadRAW": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_raw_3layer_ocio_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_export_plate_exr.py",
     "tests/test_load_raw_node.py"
@@ -2906,7 +2637,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -2996,12 +2726,7 @@
   "AtlasMergeGeometry": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json",
-    "examples/atlas_unseen_geometry_test_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_merge_geometry.py",
     "tests/test_shot_cam.py",
@@ -3027,7 +2752,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -3046,9 +2770,7 @@
   "AtlasMogeNormals": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_depth_desk_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_depth_outpaint.py",
     "tests/test_moge_normals_node.py"
@@ -3068,7 +2790,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -3087,25 +2808,7 @@
   "AtlasMoveBudget": {
    "module": "atlas_camera/comfy/nodes_completion.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_boundary_smooth_retopo_test_workflow.json",
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_depth_desk_workflow.json",
-    "examples/atlas_equirect_360_multiview_workflow.json",
-    "examples/atlas_equirect_360_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json",
-    "examples/atlas_plate_color_grade_defocus_lut_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json",
-    "examples/atlas_unseen_geometry_test_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_equirect.py",
     "tests/test_move_budget.py",
@@ -3135,7 +2838,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -3158,11 +2860,7 @@
   "AtlasOcclusionGraph": {
    "module": "atlas_camera/comfy/nodes_completion.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_unseen_geometry_test_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_depth_completion.py",
     "tests/test_layer_plan_node.py",
@@ -3192,7 +2890,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -3255,9 +2952,7 @@
   "AtlasOutpaintDepth": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_depth_desk_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_depth_outpaint.py"
    ],
@@ -3272,7 +2967,6 @@
    "docs": [],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool"
    ],
@@ -3290,16 +2984,12 @@
   "AtlasPathGuidedHoleRepair": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_path_guided_hole_repair_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_example_workflows.py",
     "tests/test_path_hole_repair.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_path_hole_repair.py"
    ],
@@ -3319,7 +3009,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -3339,15 +3028,9 @@
   "AtlasPlanarHolePatch": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_compact_path_repair_bake.py",
-    "tests/test_example_workflows.py",
     "tests/test_legacy_node_gate.py",
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py"
@@ -3355,7 +3038,6 @@
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_compact_path_repair_bake.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_legacy_node_gate.py",
     "tests/test_migrate_legacy_nodes.py",
@@ -3374,7 +3056,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -3552,18 +3233,12 @@
   "AtlasRegisterPlate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_example_workflows.py",
     "tests/test_viewport_controls_node.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_viewport_controls_node.py"
    ],
@@ -3582,7 +3257,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -3646,13 +3320,7 @@
   "AtlasRetopologizeLayer": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_boundary_smooth_retopo_test_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py",
@@ -3675,7 +3343,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -3731,25 +3398,15 @@
   "AtlasSAM3Mask": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
-    "tests/test_example_workflows.py",
     "tests/test_sam3_mask_node.py",
     "tests/test_sam3_segmenter.py"
    ],
    "tests": [
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_sam3_mask_node.py",
     "tests/test_sam3_segmenter.py"
@@ -3773,7 +3430,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -3793,20 +3449,14 @@
   "AtlasSDXLInpaint": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
-    "tests/test_example_workflows.py",
     "tests/test_sdxl_inpaint.py"
    ],
    "tests": [
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_sdxl_inpaint.py"
    ],
@@ -3823,7 +3473,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -3842,10 +3491,7 @@
   "AtlasScaleOverride": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_scale_override.py",
     "tests/test_scene_health.py"
@@ -3871,7 +3517,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -3926,20 +3571,14 @@
   "AtlasScopeMask": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
-    "tests/test_example_workflows.py",
     "tests/test_inpaint_layers_nodes.py"
    ],
    "tests": [
     "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_inpaint_layers_nodes.py"
    ],
@@ -3956,7 +3595,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -4094,12 +3732,7 @@
   "AtlasSkyDomeLayer": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_inpaint_layers_nodes.py",
@@ -4127,7 +3760,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -4146,9 +3778,7 @@
   "AtlasSolveFromImage": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_depth_desk_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
@@ -4168,7 +3798,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "mcp",
     "repo_tool",
     "docs"
@@ -4187,12 +3816,7 @@
   "AtlasSolveGate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_mcp_comfy_http.py",
     "tests/test_solve_gate.py"
@@ -4221,7 +3845,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -4273,9 +3896,7 @@
   "AtlasSplitEquirect": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_equirect_360_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_equirect.py"
    ],
@@ -4294,7 +3915,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -4315,25 +3935,7 @@
   "AtlasStereoRender": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_3layer_sky_machine_foreground_moge_workflow.json",
-    "examples/atlas_4layer_boundedband_bgcard_moge_workflow.json",
-    "examples/atlas_auto_layered_inpaint_workflow.json",
-    "examples/atlas_boundary_smooth_retopo_test_workflow.json",
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_depth_desk_workflow.json",
-    "examples/atlas_equirect_360_multiview_workflow.json",
-    "examples/atlas_equirect_360_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_layered_segmentation_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json",
-    "examples/atlas_plate_color_grade_defocus_lut_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json",
-    "examples/atlas_unseen_geometry_test_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
     "tests/test_disocclusion_guide.py",
     "tests/test_node_layer_contracts.py",
@@ -4358,7 +3960,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -4524,26 +4125,12 @@
   "AtlasViewportControls": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [
-    "examples/atlas_camera_staged_master_agentic_assessment_workflow.json",
-    "examples/atlas_camera_staged_master_workflow.json",
-    "examples/atlas_input_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_input_quickstart_workflow.json",
-    "examples/atlas_input_walkthrough_switches_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_agentic_assessment_workflow.json",
-    "examples/atlas_occlusion_cull_quickstart_workflow.json",
-    "examples/atlas_path_guided_hole_repair_workflow.json",
-    "examples/atlas_planar_hole_patch_workflow.json",
-    "examples/atlas_raw_3layer_ocio_workflow.json",
-    "examples/atlas_staged_master_portal_neat_workflow.json"
-   ],
+   "example_workflows": [],
    "dedicated_tests": [
-    "tests/test_example_workflows.py",
     "tests/test_viewport_controls_node.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
-    "tests/test_example_workflows.py",
     "tests/test_facade_surface.py",
     "tests/test_viewport_controls_node.py"
    ],
@@ -4561,7 +4148,6 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
-    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
