@@ -1,7 +1,7 @@
 {
-  "id": "07a2ce62-8289-56cd-86db-740e798798d9",
+  "id": "c45f61c6-e355-5e81-ba26-f931630f375b",
   "revision": 0,
-  "last_node_id": 6,
+  "last_node_id": 7,
   "last_link_id": 9,
   "nodes": [
     {
@@ -26,7 +26,7 @@
           "links": [
             1,
             3,
-            7
+            6
           ]
         },
         {
@@ -39,7 +39,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "spacehangar.jpg"
+        "ghosttown.jpg"
       ],
       "title": "1. Plate"
     },
@@ -47,7 +47,7 @@
       "id": 2,
       "type": "AtlasLearnedSolveFromImage",
       "pos": [
-        430,
+        420,
         80
       ],
       "size": [
@@ -87,17 +87,17 @@
         1.6,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         36.0,
-        "pinhole",
+        "simple_radial",
         "auto",
         0.0
       ],
-      "title": "2. Recover camera (GeoCalib)"
+      "title": "2. Solve  (simple_radial also estimates lens k1)"
     },
     {
       "id": 3,
       "type": "AtlasDepthMap",
       "pos": [
-        820,
+        800,
         80
       ],
       "size": [
@@ -124,8 +124,7 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            5,
-            8
+            7
           ]
         }
       ],
@@ -145,9 +144,9 @@
     },
     {
       "id": 4,
-      "type": "AtlasDeriveReliefMesh",
+      "type": "AtlasApplyScaleReferences",
       "pos": [
-        1210,
+        1180,
         80
       ],
       "size": [
@@ -162,21 +161,6 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "link": 4
-        },
-        {
-          "name": "depth",
-          "type": "ATLAS_DEPTH_MAP",
-          "link": 5
-        },
-        {
-          "name": "exclude_mask",
-          "type": "MASK",
-          "link": null
-        },
-        {
-          "name": "outlier_mask",
-          "type": "MASK",
-          "link": null
         }
       ],
       "outputs": [
@@ -184,39 +168,35 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            6,
-            9
+            5
           ]
         },
         {
-          "name": "hole_mask",
-          "type": "MASK",
+          "name": "camera_height_m",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
           "links": []
         }
       ],
       "properties": {
-        "Node name for S&R": "AtlasDeriveReliefMesh"
+        "Node name for S&R": "AtlasApplyScaleReferences"
       },
       "widgets_values": [
-        128,
-        "custom",
-        0.5,
-        12.0,
-        true,
-        0.0,
-        true,
+        "[\n {\n  \"label\": \"PLACEHOLDER - re-mark on your own plate: a car's length on the ground\",\n  \"reference_id\": \"sedan_car\",\n  \"ground_span_m\": 4.6,\n  \"point_a_px\": [\n   300,\n   600\n  ],\n  \"point_b_px\": [\n   470,\n   592\n  ]\n },\n {\n  \"label\": \"PLACEHOLDER - re-mark: a doorway, base ON the ground, top above it\",\n  \"height_m\": 2.1,\n  \"base_px\": [\n   880,\n   585\n  ],\n  \"top_px\": [\n   880,\n   470\n  ]\n }\n]",
         false,
-        0.0,
-        256,
-        false
+        0.0
       ],
-      "title": "4. Relief mesh"
+      "title": "4. Scale references - confirm is OFF. Re-mark the pixels, then turn it on"
     },
     {
       "id": 5,
-      "type": "AtlasBlockoutViewport",
+      "type": "AtlasSceneHealthGate",
       "pos": [
-        1600,
+        1560,
         80
       ],
       "size": [
@@ -230,122 +210,70 @@
         {
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 6
+          "link": 5
         },
         {
           "name": "source_image",
           "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
           "link": 7
         },
         {
-          "name": "primary_depth",
-          "type": "ATLAS_DEPTH_MAP",
-          "link": 8
-        },
-        {
-          "name": "controls",
-          "type": "ATLAS_VIEWPORT_LINK",
+          "name": "status_1",
+          "type": "STRING",
           "link": null
         },
         {
-          "name": "shot_cam",
-          "type": "ATLAS_SHOT_CAM",
+          "name": "status_2",
+          "type": "STRING",
           "link": null
         },
         {
-          "name": "output_profile",
-          "type": "ATLAS_OUTPUT_PROFILE",
+          "name": "status_3",
+          "type": "STRING",
           "link": null
         },
         {
-          "name": "debug_matte",
-          "type": "MASK",
-          "link": null
-        },
-        {
-          "name": "patch_mask",
-          "type": "MASK",
+          "name": "status_4",
+          "type": "STRING",
           "link": null
         }
       ],
       "outputs": [
         {
-          "name": "shaded",
-          "type": "IMAGE",
-          "links": []
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            8,
+            9
+          ]
         },
         {
-          "name": "depth",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "name": "normal",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "name": "mask",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "name": "path_frames",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "name": "camera_path",
-          "type": "ATLAS_CAMERA_PATH",
-          "links": []
-        },
-        {
-          "name": "patch_azimuth_view",
+          "name": "report",
           "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "patch_elevation_view",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "patch_distance",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "patch_prompt",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "patch_exact",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "patch_render_mask",
-          "type": "MASK",
           "links": []
         }
       ],
       "properties": {
-        "Node name for S&R": "AtlasBlockoutViewport"
+        "Node name for S&R": "AtlasSceneHealthGate"
       },
       "widgets_values": [
-        768,
-        "",
-        1.0
+        true,
+        false,
+        ""
       ],
-      "title": "5. Viewport"
+      "title": "5. Health: is this scale measured or assumed?"
     },
     {
       "id": 6,
-      "type": "AtlasExportSolveJSON",
+      "type": "AtlasDecomposeSolve",
       "pos": [
-        1600,
-        520
+        1940,
+        80
       ],
       "size": [
         340,
@@ -353,6 +281,70 @@
       ],
       "flags": {},
       "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "camera",
+          "type": "ATLAS_CAMERA",
+          "links": []
+        },
+        {
+          "name": "confidence",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "source_method",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "image_width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "image_height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "solve_json",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "horizon_angle_deg",
+          "type": "FLOAT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDecomposeSolve"
+      },
+      "widgets_values": [],
+      "title": "6. Read the numbers back"
+    },
+    {
+      "id": 7,
+      "type": "AtlasExportSolveJSON",
+      "pos": [
+        1940,
+        420
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -372,9 +364,9 @@
         "Node name for S&R": "AtlasExportSolveJSON"
       },
       "widgets_values": [
-        "output/atlas_quickstart_solve.json"
+        "output/atlas_metric_scale_solve.json"
       ],
-      "title": "6. Export solve JSON"
+      "title": "7. Export"
     }
   ],
   "links": [
@@ -412,14 +404,6 @@
     ],
     [
       5,
-      3,
-      0,
-      4,
-      1,
-      "ATLAS_DEPTH_MAP"
-    ],
-    [
-      6,
       4,
       0,
       5,
@@ -427,7 +411,7 @@
       "ATLAS_SOLVE"
     ],
     [
-      7,
+      6,
       1,
       0,
       5,
@@ -435,7 +419,7 @@
       "IMAGE"
     ],
     [
-      8,
+      7,
       3,
       0,
       5,
@@ -443,10 +427,18 @@
       "ATLAS_DEPTH_MAP"
     ],
     [
-      9,
-      4,
+      8,
+      5,
       0,
       6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      5,
+      0,
+      7,
       0,
       "ATLAS_SOLVE"
     ]

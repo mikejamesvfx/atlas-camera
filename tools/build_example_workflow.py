@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import urllib.request
+import uuid
 from typing import Any
 
 DEFAULT_SERVER = "http://127.0.0.1:8188"
@@ -149,9 +150,13 @@ class Builder:
         d["inputs"][di]["link"] = lid
         self.links.append([lid, s["id"], si, d["id"], di, s["outputs"][si]["type"]])
 
-    def build(self, *, revision: int = 0) -> dict[str, Any]:
+    def build(self, *, revision: int = 0, workflow_id: str | None = None) -> dict[str, Any]:
+        """`workflow_id` must be UNIQUE per file. A shared id makes ComfyUI treat
+        two workflows as the same document; tests/test_example_workflows pins it,
+        and caught a hardcoded constant here that collided the moment a second
+        workflow was generated."""
         return {
-            "id": "00000000-0000-4000-8000-000000000000",
+            "id": workflow_id or str(uuid.uuid4()),
             "revision": revision, "last_node_id": self._next_node - 1,
             "last_link_id": self._next_link - 1,
             "nodes": self.nodes, "links": self.links, "groups": [],

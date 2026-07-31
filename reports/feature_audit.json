@@ -364,7 +364,9 @@
   "AtlasBlockoutViewport": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_quickstart_solve_project_export_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_camera_path.py",
     "tests/test_camera_path_export_node.py",
@@ -425,6 +427,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1077,7 +1080,9 @@
   "AtlasDepthMap": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_quickstart_solve_project_export_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_depth_map_node.py",
@@ -1109,6 +1114,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -1240,7 +1246,9 @@
   "AtlasDeriveReliefMesh": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_quickstart_solve_project_export_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/golden_scenes.py",
     "tests/test_atlas_input.py",
@@ -1283,6 +1291,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1852,7 +1861,9 @@
   "AtlasExportSolveJSON": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_quickstart_solve_project_export_workflow.json"
+   ],
    "dedicated_tests": [],
    "tests": [
     "tests/test_comfy_node_registry.py",
@@ -1874,6 +1885,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "mcp",
     "repo_tool",
     "docs"
@@ -2477,7 +2489,9 @@
   "AtlasLearnedSolveFromImage": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_quickstart_solve_project_export_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_atlas_input.py",
     "tests/test_experimental_gate.py",
@@ -2506,6 +2520,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
