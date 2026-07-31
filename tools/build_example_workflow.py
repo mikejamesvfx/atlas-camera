@@ -129,6 +129,27 @@ class Builder:
                 raise ValueError(
                     f"{class_type}.{nm}: {val!r} is not a valid choice. "
                     f"Allowed: {combos[nm]}")
+        # Numeric RANGE validation, the third guard of the same family. Names,
+        # then combo values, now bounds: each was added because a generated
+        # graph reached the server and was rejected there. add_grain is a FLOAT
+        # capped at 0.15; passing True made it 1.0 and looked like a boolean
+        # until the server said otherwise.
+        for nm, val in (widgets or {}).items():
+            cfg = None
+            for section in ("required", "optional"):
+                e = (spec.get("input", {}).get(section) or {}).get(nm)
+                if isinstance(e, (list, tuple)) and len(e) > 1 and isinstance(e[1], dict):
+                    cfg = e[1] if e[0] in ("INT", "FLOAT") else None
+            if cfg is None or not isinstance(val, (int, float)) or isinstance(val, bool):
+                if cfg is not None and isinstance(val, bool):
+                    raise TypeError(
+                        f"{class_type}.{nm} is numeric (min {cfg.get('min')}, max "
+                        f"{cfg.get('max')}) but was given a bool")
+                continue
+            lo, hi = cfg.get("min"), cfg.get("max")
+            if lo is not None and val < lo or hi is not None and val > hi:
+                raise ValueError(
+                    f"{class_type}.{nm}={val} is outside [{lo}, {hi}]")
         for name, default in slots:
             values.append((widgets or {}).get(name, default))
 
