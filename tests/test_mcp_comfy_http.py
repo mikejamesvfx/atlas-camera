@@ -350,7 +350,7 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
         checked += 1
     # 0 between the 2026-07-31 cull and the replacement set; bump as each new
     # workflow lands so a silent disappearance still fails loudly.
-    assert checked == 10
+    assert checked == 11
 
 
 def test_frontend_only_rgthree_nodes_are_virtual():

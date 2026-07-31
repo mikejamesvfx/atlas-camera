@@ -66,6 +66,7 @@ def test_examples_directory_has_ui_workflows():
     """
     names = sorted(n for n, _ in _WORKFLOWS)
     assert names == ["atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+                     "atlas_agentic_assessment_workflow.json",
                      "atlas_camera_moves_and_patches_workflow.json",
                      "atlas_derive_planar_geometry_workflow.json",
                      "atlas_export_fanout_workflow.json",
