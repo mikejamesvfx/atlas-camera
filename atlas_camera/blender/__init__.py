@@ -13,6 +13,12 @@ absent.
 """
 from atlas_camera.blender.convert import atlas_to_blender, blender_to_atlas
 from atlas_camera.blender.exchange import read_result, write_exchange
+from atlas_camera.blender.organic_fill import (
+    gate_movement,
+    median_edge_length,
+    shrinkwrap_patch,
+    weld_to_anchor,
+)
 from atlas_camera.blender.region import compact, select_torn_collar
 from atlas_camera.blender.runner import (
     BLENDER_PATH_ENV,
@@ -31,11 +37,15 @@ __all__ = [
     "blender_to_atlas",
     "build_blender_command",
     "compact",
+    "gate_movement",
+    "median_edge_length",
     "read_result",
     "recipes_dir",
     "require_blender",
     "resolve_blender_exe",
     "run_recipe",
+    "shrinkwrap_patch",
     "select_torn_collar",
+    "weld_to_anchor",
     "write_exchange",
 ]
