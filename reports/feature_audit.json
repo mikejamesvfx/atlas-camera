@@ -373,6 +373,7 @@
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
    ],
@@ -711,6 +712,7 @@
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_layered_projection_workflow.json"
    ],
    "dedicated_tests": [
@@ -841,7 +843,9 @@
   "AtlasDefineShotCam": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_camera_moves_and_patches_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_shot_cam.py"
    ],
@@ -859,6 +863,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -1106,6 +1111,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+    "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -1277,6 +1283,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+    "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
     "examples/atlas_quickstart_solve_project_export_workflow.json"
@@ -1899,6 +1906,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+    "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -2540,6 +2548,7 @@
    "tier": "standard",
    "example_workflows": [
     "examples/atlas_EXPERIMENTAL_blockout_massing_workflow.json",
+    "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_metric_scale_references_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json",
@@ -2933,6 +2942,7 @@
    "module": "atlas_camera/comfy/nodes_completion.py",
    "tier": "standard",
    "example_workflows": [
+    "examples/atlas_camera_moves_and_patches_workflow.json",
     "examples/atlas_layered_projection_workflow.json",
     "examples/atlas_occlusion_analysis_workflow.json"
    ],
@@ -3778,7 +3788,9 @@
   "AtlasShootList": {
    "module": "atlas_camera/comfy/nodes_completion.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_camera_moves_and_patches_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_shoot_list.py"
    ],
@@ -3796,6 +3808,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -3946,7 +3959,9 @@
   "AtlasSolvePatchViews": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_camera_moves_and_patches_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_solve_patch_views.py"
    ],
@@ -3961,6 +3976,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],
@@ -4017,7 +4033,9 @@
   "AtlasStereoRender": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_camera_moves_and_patches_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_disocclusion_guide.py",
     "tests/test_node_layer_contracts.py",
@@ -4042,6 +4060,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -4207,7 +4226,9 @@
   "AtlasViewportControls": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": [],
+   "example_workflows": [
+    "examples/atlas_camera_moves_and_patches_workflow.json"
+   ],
    "dedicated_tests": [
     "tests/test_viewport_controls_node.py"
    ],
@@ -4230,6 +4251,7 @@
    ],
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"

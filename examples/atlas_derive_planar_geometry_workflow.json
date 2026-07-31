@@ -1,0 +1,928 @@
+{
+  "id": "08a8e046-a59e-5132-a150-bc6ff0d2dc32",
+  "revision": 0,
+  "last_node_id": 12,
+  "last_link_id": 24,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            3,
+            17
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "ghosttown.jpg"
+      ],
+      "title": "1. Plate"
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        400,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "raw_meta",
+          "type": "ATLAS_RAW_META",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            2,
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto",
+        0.0
+      ],
+      "title": "2. Solve"
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        760,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            5,
+            7,
+            9,
+            11,
+            18,
+            20
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        9,
+        0,
+        "",
+        0,
+        0.25
+      ],
+      "title": "3. Depth"
+    },
+    {
+      "id": 4,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        1120,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 5
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "outlier_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        128,
+        "custom",
+        0.5,
+        12.0,
+        true,
+        0.0,
+        true,
+        false,
+        0.0,
+        256,
+        false
+      ],
+      "title": "4. Relief mesh"
+    },
+    {
+      "id": 5,
+      "type": "AtlasOcclusionGraph",
+      "pos": [
+        1480,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 6
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            8,
+            10
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasOcclusionGraph"
+      },
+      "widgets_values": [],
+      "title": "5. Occlusion graph"
+    },
+    {
+      "id": 6,
+      "type": "AtlasDeriveWalls",
+      "pos": [
+        1840,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 9
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            12
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            21
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveWalls"
+      },
+      "widgets_values": [
+        4,
+        0,
+        1,
+        false,
+        "measured_only"
+      ],
+      "title": "6a. Walls  - each derive CLOBBERS prior proxy geometry, so it runs on its OWN branch"
+    },
+    {
+      "id": 7,
+      "type": "AtlasDeriveRoofsFacades",
+      "pos": [
+        1840,
+        380
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            13
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDeriveRoofsFacades"
+      },
+      "widgets_values": [
+        4,
+        "measured_only"
+      ],
+      "title": "6b. Roofs/facades - parallel branch off the SAME solve, not chained after 6a"
+    },
+    {
+      "id": 8,
+      "type": "AtlasMergeGeometry",
+      "pos": [
+        2200,
+        200
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve_a",
+          "type": "ATLAS_SOLVE",
+          "link": 12
+        },
+        {
+          "name": "solve_b",
+          "type": "ATLAS_SOLVE",
+          "link": 13
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasMergeGeometry"
+      },
+      "widgets_values": [],
+      "title": "7. MergeGeometry is the ONE explicit combiner - chaining 6a into 6b would delete 6a's work"
+    },
+    {
+      "id": 9,
+      "type": "AtlasPlanarHolePatch",
+      "pos": [
+        2560,
+        200
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 14
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            16,
+            19,
+            24
+          ]
+        },
+        {
+          "name": "remaining_holes",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            23
+          ]
+        },
+        {
+          "name": "created_islands",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasPlanarHolePatch"
+      },
+      "widgets_values": [
+        "",
+        2,
+        64,
+        25.0,
+        0.15,
+        0.05,
+        true,
+        0.3,
+        20.0,
+        2.0
+      ],
+      "title": "8. Patch holes with the fitted planes"
+    },
+    {
+      "id": 10,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2920,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 16
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 17
+        },
+        {
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 18
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1.0
+      ],
+      "title": "9. Look at it"
+    },
+    {
+      "id": 11,
+      "type": "AtlasDebugReport",
+      "pos": [
+        2920,
+        420
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 19
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 20
+        },
+        {
+          "name": "status_1",
+          "type": "STRING",
+          "link": 21
+        },
+        {
+          "name": "status_2",
+          "type": "STRING",
+          "link": 22
+        },
+        {
+          "name": "status_3",
+          "type": "STRING",
+          "link": 23
+        },
+        {
+          "name": "status_4",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/master_debug.json"
+      ],
+      "title": "10. Read the reports back"
+    },
+    {
+      "id": 12,
+      "type": "AtlasExportSolveJSON",
+      "pos": [
+        3280,
+        80
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportSolveJSON"
+      },
+      "widgets_values": [
+        "output/atlas_derive_planar_solve.json"
+      ],
+      "title": "11. Export"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      3,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      2,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      3,
+      0,
+      4,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      6,
+      4,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      8,
+      5,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      3,
+      0,
+      6,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      10,
+      5,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      3,
+      0,
+      7,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      12,
+      6,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      7,
+      0,
+      8,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      14,
+      8,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      15,
+      4,
+      1,
+      9,
+      1,
+      "MASK"
+    ],
+    [
+      16,
+      9,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      17,
+      1,
+      0,
+      10,
+      1,
+      "IMAGE"
+    ],
+    [
+      18,
+      3,
+      0,
+      10,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      19,
+      9,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      20,
+      3,
+      0,
+      11,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      21,
+      6,
+      1,
+      11,
+      2,
+      "STRING"
+    ],
+    [
+      22,
+      7,
+      1,
+      11,
+      3,
+      "STRING"
+    ],
+    [
+      23,
+      9,
+      2,
+      11,
+      4,
+      "STRING"
+    ],
+    [
+      24,
+      9,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
