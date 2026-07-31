@@ -65,7 +65,7 @@ def test_examples_directory_has_ui_workflows():
     tools/workflow_benchmark.py before landing — loading is not acceptance.
     """
     names = sorted(n for n, _ in _WORKFLOWS)
-    assert names == []
+    assert names == ["atlas_quickstart_solve_project_export_workflow.json"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])
