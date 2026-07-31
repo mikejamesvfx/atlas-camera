@@ -3,14 +3,14 @@
  "generated_utc": "2026-07-31",
  "counts": {
   "standard": 92,
-  "experimental": 6,
+  "experimental": 7,
   "legacy": 2,
-  "total": 100,
+  "total": 101,
   "no_product_evidence": 0
  },
  "verdict_counts": {
   "KEEP_CORE": 92,
-  "KEEP_EXPERIMENTAL": 6,
+  "KEEP_EXPERIMENTAL": 7,
   "LEGACY_GATE": 2
  },
  "live_probe": {
@@ -341,6 +341,36 @@
    "evidence_kinds": [
     "dedicated_test",
     "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasBlockoutMassing": {
+   "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "experimental",
+   "example_workflows": [],
+   "dedicated_tests": [
+    "tests/test_experimental_gate.py"
+   ],
+   "tests": [
+    "tests/test_comfy_node_registry.py",
+    "tests/test_experimental_gate.py",
+    "tests/test_node_usage_audit.py"
+   ],
+   "mcp_tools": [],
+   "repo_tools": [],
+   "docs": [],
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",

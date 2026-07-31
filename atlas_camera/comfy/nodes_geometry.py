@@ -3963,3 +3963,222 @@ class AtlasSolvePatchViews:
                             .astype(int), arr.shape[1] - 1)
             arr = arr[np.ix_(yi, xi)]
         return arr > 0.5
+
+
+class AtlasBlockoutMassing:
+    """Grid-aligned placeholder building mass for ground the plate never saw.
+
+    A still shows one side of one block. Behind the foreground, past the frame
+    edges and beyond the visible buildings there is nothing, and on a camera
+    move that nothing reads as a hole in the world rather than as distance.
+
+    This fills it with cuboids, and the discipline is that almost nothing is
+    invented. The ground plane and metric scale come from the solve; the street
+    azimuth is FITTED to ground lines back-projected off this plate; heights are
+    RESAMPLED from roofs actually observed in frame, so no mass can be taller or
+    shorter than something really there. The single invented claim is that a
+    building stands in that spot -- which is why these are boxes. Give them
+    windows and they start asserting detail nobody measured.
+
+    Placeholders are placed only OUTSIDE the ground the camera could see, so
+    they cannot contradict the plate; and never inside measured geometry, which
+    is the one failure that cannot be excused as "it is only a blockout".
+
+    Every primitive carries provenance="placeholder" and the lowest trust tier.
+    Nothing downstream may promote it.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "blockout"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "image": ("IMAGE", {"tooltip": "The plate. Street lines are "
+                                    "detected here and back-projected onto the "
+                                    "solved ground plane to fit the grid."}),
+                "observed_heights_m": ("STRING", {"default": "", "multiline": False,
+                    "tooltip": "Comma-separated roof heights measured from THIS "
+                               "plate. Placeholder heights are resampled from "
+                               "these, never invented. Empty = the node refuses."}),
+            },
+            "optional": {
+                "ground_mask": ("MASK", {"tooltip": "Where the ground actually is. "
+                    "Without it every line below the horizon is treated as a "
+                    "ground line, and facade edges pollute the grid fit."}),
+                "extend_m": ("FLOAT", {"default": 200.0, "min": 20.0, "max": 2000.0,
+                                       "step": 10.0}),
+                "street_width_m": ("FLOAT", {"default": 30.0, "min": 0.0,
+                                             "max": 120.0, "step": 1.0}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2 ** 31 - 1}),
+            },
+        }
+
+    def blockout(self, solve, image, observed_heights_m, ground_mask=None,
+                 extend_m=200.0, street_width_m=30.0, seed=0):
+        import copy
+
+        import numpy as np
+
+        from atlas_camera.core.block_massing import (
+            box_transform, estimate_grid_azimuth, grid_basis, massing_report,
+            place_massing)
+        from atlas_camera.core.proxy_geometry import PROXY_ROLE
+        from atlas_camera.core.schema import AtlasProxyPrimitive
+        from atlas_camera.core.solver import _ray_world
+
+        out = copy.deepcopy(solve)
+
+        heights = []
+        for chunk in str(observed_heights_m or "").replace(";", ",").split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            try:
+                value = float(chunk)
+            except ValueError:
+                continue
+            if value > 0:
+                heights.append(value)
+        if not heights:
+            # Refuse rather than default. A default height is the node inventing
+            # precisely the thing it exists to avoid inventing, and it would look
+            # like a measurement in every report downstream.
+            return (out, "SKIPPED - no observed_heights_m. Placeholder masses take "
+                    "their height from roofs measured on this plate; with none "
+                    "supplied there is nothing to resample, and a default would be "
+                    "an invented number wearing a measurement's authority.")
+
+        intr = out.camera.intrinsics
+        extr = out.camera.extrinsics
+        fx = float(intr.fx_px or 0.0)
+        fy = float(intr.fy_px or fx)
+        if fx <= 0:
+            return (out, "SKIPPED - the solve has no focal length, so no pixel "
+                    "can be back-projected onto the ground plane.")
+        cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
+        cy = float(intr.cy_px if intr.cy_px is not None else intr.image_height / 2.0)
+        k1 = float((intr.distortion or {}).get("k1", 0.0) or 0.0)
+        # World-math convention: the 4x4 view matrix's rotation block, never the
+        # bare 3x3 (transpose-ambiguous at call sites).
+        world_to_cam = np.asarray(extr.camera_view_matrix, dtype=np.float64)[:3, :3]
+        cam_to_world = world_to_cam.T
+        cam_pos = np.asarray(extr.camera_position, dtype=np.float64)
+        if cam_pos[1] <= 0:
+            return (out, "SKIPPED - the camera sits at or below the ground plane "
+                    "(y=%.2f); there is no ground in front of it to extend."
+                    % cam_pos[1])
+
+        pil = _image_tensor_to_pil(image)
+        if pil is None:
+            return (out, "SKIPPED - could not read the image.")
+        gray = np.asarray(pil.convert("L"), dtype=np.uint8)
+        height_px, width_px = gray.shape
+        try:
+            import cv2
+        except ImportError:
+            return (out, "SKIPPED - street-line detection needs OpenCV. Install "
+                    "with: pip install -e .[vision]")
+
+        mask = np.zeros_like(gray)
+        if ground_mask is not None:
+            mask[_resolve_exclude_mask(ground_mask, height_px, width_px)] = 255
+            mask_note = "ground_mask supplied"
+        else:
+            mask[height_px // 2:, :] = 255
+            mask_note = ("no ground_mask - using the lower half of the frame, so "
+                         "facade edges may pollute the grid fit")
+        edges = cv2.Canny(cv2.bitwise_and(gray, mask), 60, 180)
+        found = cv2.HoughLinesP(edges, 1, np.pi / 360, threshold=55,
+                                minLineLength=55, maxLineGap=6)
+        if found is None:
+            return (out, "SKIPPED - no straight lines found on the ground; there "
+                    "is no evidence here for a street grid.")
+
+        def undistort(u, v):
+            if k1 == 0.0:
+                return u, v
+            x, y = (u - cx) / fx, (v - cy) / fy
+            xu, yu = x, y
+            for _ in range(20):
+                s = 1.0 + k1 * (xu * xu + yu * yu)
+                xu, yu = x / s, y / s
+            return xu * fx + cx, yu * fy + cy
+
+        def to_ground(u, v):
+            u, v = undistort(u, v)
+            ray = _ray_world(u, v, fx, fy, cx, cy, cam_to_world)
+            if ray[1] >= -1e-9:
+                return None                      # at or above the horizon
+            return cam_pos + ray * (-cam_pos[1] / ray[1])
+
+        segments = []
+        for x0, y0, x1, y1 in found[:, 0]:
+            a = to_ground(float(x0), float(y0))
+            b = to_ground(float(x1), float(y1))
+            if a is not None and b is not None:
+                segments.append([a, b])
+        fit = estimate_grid_azimuth(np.asarray(segments)) if segments else None
+        if fit is None or not fit.usable:
+            why = fit.reason if fit is not None else "no line reached the ground"
+            return (out, "SKIPPED - %s (%s)." % (why, mask_note))
+
+        basis_u, basis_v = grid_basis(fit.azimuth_deg)
+        seen = np.asarray([s[0] for s in segments] + [s[1] for s in segments])
+        seen_u = seen @ basis_u
+        seen_v = seen @ basis_v
+        # Placeholders go OUTSIDE the ground the camera could see. Inside it the
+        # plate is the evidence, and an invented box would contradict it.
+        occupied = [(float(seen_u.min()), float(seen_u.max()),
+                     float(seen_v.min()), float(seen_v.max()))]
+        region = (float(seen_u.min()) - extend_m, float(seen_u.max()) + extend_m,
+                  float(seen_v.min()) - extend_m, float(seen_v.max()) + extend_m)
+        bands = []
+        if street_width_m > 0:
+            mid = 0.5 * (float(seen_v.min()) + float(seen_v.max()))
+            bands.append((mid - street_width_m / 2.0, mid + street_width_m / 2.0))
+
+        boxes = place_massing(
+            azimuth_deg=fit.azimuth_deg, ground_y=0.0,
+            observed_heights_m=heights, region_uv=region,
+            occupied_uv=occupied, street_bands_v=bands,
+            seed=int(seed), zone="off-frame / occluded")
+        if not boxes:
+            return (out, "grid fitted at %.2fdeg (%.0f%% coherent) but no room "
+                    "remained for placeholders once measured ground and the "
+                    "roadway were excluded."
+                    % (fit.azimuth_deg, 100 * fit.coherence))
+
+        scene = out.projection_scene
+        prims = list(getattr(scene, "proxy_geometry", None) or [])
+        start = len(prims)
+        for index, box in enumerate(boxes):
+            matrix, dims = box_transform(box, fit.azimuth_deg, 0.0)
+            prims.append(AtlasProxyPrimitive(
+                name="placeholder_mass_%03d" % (index + 1),
+                primitive_type="box",
+                transform_matrix=matrix,
+                dimensions=dims,
+                material="atlas_projection_proxy",
+                metadata={
+                    "role": PROXY_ROLE,
+                    "source": "block_massing",
+                    # The load-bearing tag. This is not measurement and no
+                    # downstream consumer may treat it as one.
+                    "provenance": "placeholder",
+                    "trust": "placeholder",
+                    "grid_azimuth_deg": float(fit.azimuth_deg),
+                    "height_m": float(box.height_m),
+                    "height_source": "resampled from observed roofs",
+                    "zone": box.zone,
+                },
+            ))
+        scene.proxy_geometry = prims
+        report = [massing_report(boxes, fit),
+                  "appended %d box primitives alongside %d existing (measured "
+                  "geometry untouched); %s" % (len(prims) - start, start, mask_note)]
+        return (out, "\n".join(report))
