@@ -4010,16 +4010,29 @@ class AtlasBlockoutMassing:
                 "ground_mask": ("MASK", {"tooltip": "Where the ground actually is. "
                     "Without it every line below the horizon is treated as a "
                     "ground line, and facade edges pollute the grid fit."}),
+                "hole_mask": ("MASK", {"tooltip": "hole_mask from "
+                    "AtlasDisocclusionGuide. Ground that the mask reports as "
+                    "COVERED is treated as measured and left alone; placeholders "
+                    "go only where geometry is actually missing. Without it the "
+                    "whole visible ground is assumed covered, which is coarser "
+                    "and blocks legitimate infill behind the foreground."}),
+
                 "extend_m": ("FLOAT", {"default": 200.0, "min": 20.0, "max": 2000.0,
                                        "step": 10.0}),
                 "street_width_m": ("FLOAT", {"default": 30.0, "min": 0.0,
                                              "max": 120.0, "step": 1.0}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2 ** 31 - 1}),
+                # Appended last on purpose: widgets serialise POSITIONALLY into
+                # saved workflows, so inserting one above `seed` would silently
+                # re-read every existing graph's values one slot across.
+                "cell_m": ("FLOAT", {"default": 10.0, "min": 2.0, "max": 60.0,
+                                     "step": 1.0}),
             },
         }
 
     def blockout(self, solve, image, observed_heights_m, ground_mask=None,
-                 extend_m=200.0, street_width_m=30.0, seed=0):
+                 hole_mask=None, extend_m=200.0, street_width_m=30.0, seed=0,
+                 cell_m=10.0):
         import copy
 
         import numpy as np
@@ -4131,10 +4144,48 @@ class AtlasBlockoutMassing:
         seen = np.asarray([s[0] for s in segments] + [s[1] for s in segments])
         seen_u = seen @ basis_u
         seen_v = seen @ basis_v
-        # Placeholders go OUTSIDE the ground the camera could see. Inside it the
-        # plate is the evidence, and an invented box would contradict it.
-        occupied = [(float(seen_u.min()), float(seen_u.max()),
-                     float(seen_v.min()), float(seen_v.max()))]
+        # Where may a placeholder go? Only where the plate is NOT the evidence.
+        #
+        # Without a hole mask the answer is the crude one: everything the camera
+        # could see is off limits, as a single bounding rectangle. That is safe
+        # but blunt — it also forbids the ground BEHIND a foreground building,
+        # which the camera could not see at all and which is exactly where a
+        # placeholder belongs.
+        #
+        # AtlasDisocclusionGuide answers it properly. Its hole_mask marks pixels
+        # where the geometry is missing, so ground that back-projects from a
+        # COVERED pixel is measured and untouchable, while ground under a hole is
+        # fair game. Cells rather than polygons because the mask is per-pixel and
+        # the placer wants rectangles; cell_m is that quantisation.
+        cell = max(float(cell_m), 1.0)
+        occupied = []
+        if hole_mask is not None:
+            hm = _resolve_exclude_mask(hole_mask, height_px, width_px)
+            step = max(1, int(min(height_px, width_px) // 256))
+            covered_cells = set()
+            hole_cells = set()
+            for py in range(0, height_px, step):
+                for px in range(0, width_px, step):
+                    pt = to_ground(float(px), float(py))
+                    if pt is None:
+                        continue
+                    key = (int(np.floor((pt @ basis_u) / cell)),
+                           int(np.floor((pt @ basis_v) / cell)))
+                    (hole_cells if hm[py, px] else covered_cells).add(key)
+            # A cell containing ANY covered pixel counts as covered: biased
+            # toward refusing to build, because a placeholder pushed through
+            # photographed surface is worse than a gap left open.
+            occupied = [(cu * cell, (cu + 1) * cell, cv * cell, (cv + 1) * cell)
+                        for cu, cv in covered_cells]
+            mask_note += ("; hole_mask supplied - %d covered ground cells are "
+                          "off limits, %d hole cells are open"
+                          % (len(covered_cells), len(hole_cells - covered_cells)))
+        else:
+            occupied = [(float(seen_u.min()), float(seen_u.max()),
+                         float(seen_v.min()), float(seen_v.max()))]
+            mask_note += ("; no hole_mask - the whole visible ground is assumed "
+                          "covered, so nothing is placed behind foreground "
+                          "geometry even where the camera never saw the ground")
         region = (float(seen_u.min()) - extend_m, float(seen_u.max()) + extend_m,
                   float(seen_v.min()) - extend_m, float(seen_v.max()) + extend_m)
         bands = []

@@ -358,9 +358,11 @@
    "tier": "experimental",
    "example_workflows": [],
    "dedicated_tests": [
+    "tests/test_block_massing.py",
     "tests/test_experimental_gate.py"
    ],
    "tests": [
+    "tests/test_block_massing.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_experimental_gate.py",
     "tests/test_node_usage_audit.py"
@@ -1527,9 +1529,11 @@
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
+    "tests/test_block_massing.py",
     "tests/test_disocclusion_guide.py"
    ],
    "tests": [
+    "tests/test_block_massing.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_disocclusion_guide.py"
    ],

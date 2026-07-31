@@ -354,3 +354,97 @@ class TestOrientationIsScaleFree:
         cross /= np.linalg.norm(cross)
         assert abs(cross[1]) < 1e-12, "the receding axis must be horizontal"
         assert abs(abs(float(np.dot(cross, V))) - 1.0) < 1e-9
+
+
+class TestDisocclusionWiring:
+    """hole_mask from AtlasDisocclusionGuide decides where geometry is MISSING.
+
+    Without it the node falls back to a single bounding rectangle over all
+    visible ground — safe, but it also forbids the ground BEHIND a foreground
+    building, which the camera never saw and which is exactly where a
+    placeholder belongs. The mask is what distinguishes "the plate covers this"
+    from "the plate merely points at this".
+    """
+
+    @staticmethod
+    def _fixture():
+        torch = pytest.importorskip("torch")
+        pytest.importorskip("cv2")
+        from atlas_camera.core.solver import solve_from_learned_prior
+        from atlas_camera.inference.learned_prior import CameraPrior
+        W, H = 640, 480
+        prior = CameraPrior(
+            focal_px=500.0, fov_h_deg=65.0, fov_v_deg=51.0, roll_deg=0.0,
+            pitch_deg=-35.0, up_cam=(0.0, 0.819, 0.574),
+            principal_point_px=(W / 2, H / 2), image_width=W, image_height=H)
+        solve = solve_from_learned_prior(prior, camera_height=20.0)
+        img = np.zeros((H, W, 3), dtype=np.float32)
+        for y in range(300, 470, 14):
+            img[y:y + 3, 40:600] = 1.0
+        return solve, torch.from_numpy(img)[None], W, H
+
+    def _run(self, hole=None, extend_m=25.0, seed=3):
+        from atlas_camera.comfy.nodes_geometry import AtlasBlockoutMassing
+        solve, img, _W, _H = self._fixture()
+        out, rep = AtlasBlockoutMassing().blockout(
+            solve, img, "12,18,25", hole_mask=hole, extend_m=extend_m,
+            street_width_m=0.0, seed=seed)
+        return len(out.projection_scene.proxy_geometry or []), rep
+
+    def test_a_hole_mask_OPENS_ground_the_crude_rule_forbids(self):
+        """The point of the wiring. With the region held tight to the visible
+        ground, the bounding-rect rule leaves nowhere to build; telling the node
+        the geometry is actually missing there lets it build."""
+        torch = pytest.importorskip("torch")
+        _solve, _img, W, H = self._fixture()
+        without, rep_a = self._run(hole=None)
+        allhole = torch.ones((1, H, W), dtype=torch.float32)
+        with_mask, rep_b = self._run(hole=allhole)
+        if "SKIPPED" in rep_a or "SKIPPED" in rep_b:
+            pytest.skip("no grid fitted on the synthetic plate")
+        assert with_mask > without, (
+            f"hole mask did not open any ground: {without} -> {with_mask}")
+
+    def test_covered_ground_yields_strictly_less_than_missing_ground(self):
+        """The mirror case, stated precisely.
+
+        A first version of this asserted that an all-covered mask builds NOTHING,
+        and it failed by one box. That assertion was wrong, not the code: ground
+        beyond the frame produces no mask pixels at all — neither covered nor
+        hole — so the mask cannot speak for it and it stays legitimately open for
+        off-frame extension. What must hold is the ordering: telling the node
+        everything visible is covered can only ever build less than telling it
+        everything is missing.
+        """
+        torch = pytest.importorskip("torch")
+        _s, _i, W, H = self._fixture()
+        covered, _ra = self._run(
+            hole=torch.zeros((1, H, W), dtype=torch.float32), extend_m=25.0)
+        missing, rb = self._run(
+            hole=torch.ones((1, H, W), dtype=torch.float32), extend_m=25.0)
+        if "SKIPPED" in rb:
+            pytest.skip("no grid fitted")
+        assert covered < missing, (
+            f"coverage made no difference: {covered} vs {missing}")
+
+    def test_the_report_states_which_rule_was_used(self):
+        """An operator must be able to tell a real coverage analysis from the
+        blunt fallback — they differ by a lot and look identical in the viewport."""
+        _n, without = self._run(hole=None)
+        assert "no hole_mask" in without
+        torch = pytest.importorskip("torch")
+        _s, _i, W, H = self._fixture()
+        _m, with_mask = self._run(hole=torch.ones((1, H, W), dtype=torch.float32))
+        assert "hole_mask supplied" in with_mask
+        assert "covered ground cells are off limits" in with_mask
+
+    def test_cell_m_is_the_last_widget(self):
+        """Widgets serialise POSITIONALLY into saved workflows. cell_m was added
+        after seed and must stay after it, or every existing graph reads its
+        values one slot across."""
+        from atlas_camera.comfy.nodes_geometry import AtlasBlockoutMassing
+        opt = AtlasBlockoutMassing.INPUT_TYPES()["optional"]
+        widgets = [k for k, v in opt.items()
+                   if isinstance(v, (list, tuple))
+                   and v[0] in ("FLOAT", "INT", "STRING", "BOOLEAN")]
+        assert widgets == ["extend_m", "street_width_m", "seed", "cell_m"]
