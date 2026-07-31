@@ -59,6 +59,15 @@ examples/review_packages/*
 # points at assets/atlas_camera_icon.png).
 !assets/*.png
 !examples/images/.gitkeep
+# Stock plates for the shipped example workflows. Committed deliberately and
+# kept SMALL (1280x720 jpg, ~250 KB each): before 2026-07-31 examples/images/
+# was fully ignored, so eight shipped workflows pointed at plates a fresh clone
+# never had. An example that cannot run is worse than no example.
+# Interior + exterior because one plate cannot serve both: the exterior carries
+# a ground plane, a street grid and buildings, which the scale, massing and
+# grid work all need.
+!examples/images/spacehangar.jpg
+!examples/images/ghosttown.jpg
 
 # Session/tooling artifacts
 .playwright-mcp/
