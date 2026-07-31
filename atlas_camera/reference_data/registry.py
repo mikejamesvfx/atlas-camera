@@ -31,6 +31,19 @@ class ScaleReference:
     category: str
     height: float | None = None
     ground_span_m: float | None = None
+    #: How far the MARKED geometry sits above the local walkable ground, when
+    #: that is not zero. Railway gauge is measured across the RAILHEADS, which
+    #: stand a rail's height (0.159-0.186 m, typically 0.172) above the ballast
+    #: — so a solver told "these two points are on the ground" returns the
+    #: camera height above the RAILS, not above the ground.
+    #:
+    #: Measured 2026-07-31: that is a pure datum error of exactly the offset,
+    #: with no distortion (agreement to 7e-15 across heights and pitches), and
+    #: it is relative — e/h. At 12 m camera height it is 1.4%, at 4.2 m it is
+    #: 4.1%, at eye level 1.6 m it is 10.75%. UNCORRECTED, gauge is therefore
+    #: WORSE than an assumed door below 8.35 m and worse than an assumed person
+    #: below 3.55 m, which inverts the entire reason for preferring it.
+    datum_offset_m: float | None = None
     units: str = "m"
     width: float | None = None
     depth: float | None = None
@@ -62,6 +75,8 @@ class ScaleReference:
             category=str(data.get("category", "uncategorized")),
             height=float(height) if height is not None else None,
             ground_span_m=float(span) if span is not None else None,
+            datum_offset_m=(float(data["datum_offset_m"])
+                            if data.get("datum_offset_m") is not None else None),
             units=str(data.get("units", "m")),
             width=float(data["width"]) if data.get("width") is not None else None,
             depth=float(data["depth"]) if data.get("depth") is not None else None,
@@ -80,6 +95,7 @@ class ScaleReference:
             "category": self.category,
             "height": self.height,
             "ground_span_m": self.ground_span_m,
+            "datum_offset_m": self.datum_offset_m,
             "units": self.units,
             "width": self.width,
             "depth": self.depth,

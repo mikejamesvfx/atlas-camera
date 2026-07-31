@@ -1127,9 +1127,12 @@ def resolve_reference_scale(
         reference_id = spec.get("reference_id")
         label = spec.get("label")
         size_prior = _SIZE_PRIOR_UNKNOWN
+        datum_offset = spec.get("datum_offset_m")
         if height_m is None and span_m is None and reference_id:
             ref = get_scale_reference(str(reference_id))
             size_prior = _SIZE_PRIOR.get(ref.confidence, _SIZE_PRIOR_UNKNOWN)
+            if datum_offset is None:
+                datum_offset = ref.datum_offset_m
             # A registry entry carries one or the other; ground_span_m wins when
             # both are present, because an entry that has a span was authored as
             # a span (rail gauge also has a railhead height that is NOT the
@@ -1167,6 +1170,22 @@ def resolve_reference_scale(
                 seg[0], seg[1], float(height_m), rotation=rotation, fx=fx, fy=fy, cx=cx, cy=cy
             )
             solved.update({"real_height_m": float(height_m), "kind": "vertical"})
+
+        # Datum correction. Both estimators return the camera height above the
+        # plane the MARKED points lie in, exactly — measured 2026-07-31, the
+        # offset propagates with no distortion (7e-15). So when the marked
+        # feature is not on the ground, the correction is a straight addition,
+        # and it must be reported: at eye level an uncorrected rail gauge is
+        # 10.75% low, which is worse than the assumed-height references it was
+        # brought in to beat.
+        if datum_offset and solved.get("camera_height"):
+            solved["camera_height_above_marked_plane"] = float(solved["camera_height"])
+            solved["camera_height"] = float(solved["camera_height"]) + float(datum_offset)
+            solved["datum_offset_m"] = float(datum_offset)
+            solved["datum_note"] = (
+                f"+{float(datum_offset):.3f}m datum correction: the marked "
+                "feature sits above the walkable ground, so the raw solve is "
+                "the height above the FEATURE, not above the ground")
 
         solved.update({
             "status": "solved" if solved.get("camera_height") else "rejected",

@@ -285,9 +285,14 @@ class TestThroughTheAggregator:
     """resolve_reference_scale is the shared entry AtlasApplyScaleReferences uses,
     so a span must flow through it with no node-side change at all."""
 
+    RAIL = 0.172
+
     def _rig_and_gauge(self, distance=6.0):
+        """Gauge marked where it actually is: on the RAILHEADS, standing a rail's
+        height above the ballast. Marking it on the ground plane would make the
+        fixture physically impossible and hide the datum correction."""
         rotation, project, h = _rig()
-        a, b = _span_points(project, h, 1.435, distance)
+        a, b = _span_points(project, h - self.RAIL, 1.435, distance)
         return rotation, project, h, {"reference_id": "rail_gauge_standard",
                                       "point_a_px": list(a), "point_b_px": list(b)}
 
@@ -384,6 +389,146 @@ class TestThroughTheAggregator:
                                        "bbox_px": [min(a[0], b[0]), y - 4.0,
                                                    max(a[0], b[0]), y]})
         assert got["camera_height"] == pytest.approx(h, rel=1e-6)
+
+
+class TestTheRailheadDatum:
+    """Measured 2026-07-31, after the first version of this track shipped
+    claiming 0.20% accuracy for rail gauge.
+
+    Gauge is measured across the RAILHEADS, which stand a rail's height above
+    the ballast. Both estimators return the camera height above the plane the
+    MARKED points lie in, so an uncorrected gauge answers a question nobody
+    asked: how high is the camera above the rails. The error is e/h and it is
+    therefore worst exactly where these plates are commonest — at eye level it
+    is 10.75%, which is worse than the assumed-height references gauge was
+    brought in to beat. The correction is a straight addition and must be
+    applied, and reported.
+    """
+
+    RAIL = 0.172   # 60E1/UIC60; profiles span 0.159-0.186
+
+    def _marked_on_rails(self, h_ground, distance=6.0):
+        """A camera h_ground above the ballast, gauge marked on the railheads."""
+        rotation, project, _h = _rig(h_ground)
+        y = -(h_ground - self.RAIL)
+        a, b = project([-1.435 / 2, y, -distance]), project([1.435 / 2, y, -distance])
+        return rotation, {"reference_id": "rail_gauge_standard",
+                          "point_a_px": list(a), "point_b_px": list(b)}
+
+    def _resolve(self, rotation, spec):
+        return resolve_reference_scale([spec], rotation=rotation,
+                                       fx=FX, fy=FY, cx=CX, cy=CY)
+
+    @pytest.mark.parametrize("h_ground", [1.6, 4.2, 12.0])
+    def test_the_reported_height_is_above_the_GROUND_not_the_rails(self, h_ground):
+        rotation, spec = self._marked_on_rails(h_ground)
+        got = self._resolve(rotation, spec)
+        assert got["camera_height"] == pytest.approx(h_ground, rel=1e-9)
+
+    def test_the_raw_uncorrected_value_is_kept_and_named(self):
+        """A reader who wants height above rail level must not have to subtract
+        it back out and guess whether the correction was applied."""
+        rotation, spec = self._marked_on_rails(4.2)
+        ref = self._resolve(rotation, spec)["references"][0]
+        assert ref["camera_height_above_marked_plane"] == pytest.approx(4.2 - self.RAIL,
+                                                                       rel=1e-9)
+        assert ref["datum_offset_m"] == pytest.approx(self.RAIL)
+
+    def test_the_correction_is_never_silent(self):
+        rotation, spec = self._marked_on_rails(4.2)
+        note = self._resolve(rotation, spec)["references"][0]["datum_note"]
+        assert "0.172" in note and "ground" in note
+
+    def test_the_offset_propagates_with_NO_distortion(self):
+        """The load-bearing measurement: this is a pure datum shift, not a scale
+        error. If it were multiplicative the fix would have to be a rescale, not
+        an addition, so the property is worth asserting rather than assuming."""
+        for h_ground in (1.2, 4.2, 25.0):
+            for pitch in (-3.0, -12.0, -45.0):
+                rotation, project, _ = _rig(h_ground, pitch)
+                y = -(h_ground - self.RAIL)
+                a, b = _span_points(project, h_ground - self.RAIL, 1.435, 6.0)
+                raw = _solve_span(a, b, 1.435, rotation)["camera_height"]
+                assert raw == pytest.approx(h_ground - self.RAIL, rel=1e-9), (
+                    f"h={h_ground} pitch={pitch}: offset distorted the solve")
+
+    @pytest.mark.parametrize("h_ground,worst", [(1.6, 0.09), (4.2, 0.03), (12.0, 0.01)])
+    def test_uncorrected_error_is_e_over_h_and_worst_when_lowest(
+            self, h_ground, worst):
+        """Pins the direction of the problem: it is RELATIVE, so a low camera
+        suffers most. The first version of this track quoted the 4.2m figure as
+        though it were the general case."""
+        rotation, project, _ = _rig(h_ground)
+        a, b = _span_points(project, h_ground - self.RAIL, 1.435, 6.0)
+        raw = _solve_span(a, b, 1.435, rotation)["camera_height"]
+        err = abs(raw - h_ground) / h_ground
+        assert err == pytest.approx(self.RAIL / h_ground, rel=1e-6)
+        assert err > worst, "the error must not be dismissible at this height"
+
+    def test_uncorrected_gauge_is_WORSE_than_an_assumed_door_at_eye_level(self):
+        """The finding that makes the correction mandatory rather than a
+        refinement. A door assumed to +/-3% gives about 2.06% total; gauge
+        uncorrected at 1.6m gives 10.75%. Preferring gauge on the strength of
+        its exact constant, while ignoring its datum, is a net loss."""
+        rotation, project, _ = _rig(1.6)
+        a, b = _span_points(project, 1.6 - self.RAIL, 1.435, 6.0)
+        raw = _solve_span(a, b, 1.435, rotation)["camera_height"]
+        assert abs(raw - 1.6) / 1.6 > 0.0206
+
+    def test_a_spec_can_override_the_offset_for_buried_track(self):
+        """Abandoned track — this project's actual use case — can have ballast
+        or vegetation up to the railhead, where the registry default is wrong."""
+        rotation, project, _ = _rig(4.2)
+        a, b = _span_points(project, 4.2, 1.435, 6.0)      # rails AT ground level
+        spec = {"reference_id": "rail_gauge_standard", "datum_offset_m": 0.0,
+                "point_a_px": list(a), "point_b_px": list(b)}
+        got = self._resolve(rotation, spec)
+        assert got["camera_height"] == pytest.approx(4.2, rel=1e-9)
+
+    def test_applying_the_offset_wrongly_costs_THE_SAME_as_omitting_it(self):
+        """The correction is two-sided. It is not a safe default to sprinkle on;
+        on buried track the registry value overshoots by exactly as much as
+        omitting it undershoots on clean track."""
+        rotation, project, _ = _rig(4.2)
+        a, b = _span_points(project, 4.2, 1.435, 6.0)      # rails AT ground level
+        got = self._resolve(rotation, {"reference_id": "rail_gauge_standard",
+                                       "point_a_px": list(a), "point_b_px": list(b)})
+        assert got["camera_height"] == pytest.approx(4.2 + self.RAIL, rel=1e-9)
+        assert abs(got["camera_height"] - 4.2) / 4.2 == pytest.approx(
+            self.RAIL / 4.2, rel=1e-6)
+
+    def test_a_reference_with_no_offset_is_untouched(self):
+        rotation, project, h = _rig()
+        spec = {"reference_id": "person_175cm",
+                "base_px": list(project([3.0, -h, -6.0])),
+                "top_px": list(project([3.0, -h + 1.75, -6.0]))}
+        got = self._resolve(rotation, spec)
+        assert "datum_note" not in got["references"][0]
+        assert got["camera_height"] == pytest.approx(h, rel=1e-9)
+
+
+class TestTheRailwayDatumsAreDeclared:
+    def test_every_gauge_carries_the_railhead_offset(self):
+        for gid in ("rail_gauge_standard", "rail_gauge_cape", "rail_gauge_metre"):
+            assert get_scale_reference(gid).datum_offset_m == pytest.approx(0.172)
+
+    def test_sleeper_pitch_declares_ZERO_rather_than_omitting_it(self):
+        """An omitted offset and a considered zero look identical to a solver but
+        not to a reader; sleeper tops really are at ballast crown."""
+        assert get_scale_reference("rail_sleeper_pitch").datum_offset_m == 0.0
+
+    def test_platform_height_shares_the_rail_datum(self):
+        """0.915m is specified FROM RAIL LEVEL, so its base is the railhead too.
+        Marking base-to-surface off the ballast measures ~1.087m instead, and
+        mixing the two datums is the easiest error available here."""
+        ref = get_scale_reference("platform_height_uk")
+        assert ref.datum_offset_m == pytest.approx(0.172)
+        assert "RAIL LEVEL" in (ref.notes or "")
+
+    def test_the_gauge_note_states_the_measured_consequence(self):
+        notes = get_scale_reference("rail_gauge_standard").notes or ""
+        assert "10.75%" in notes, "the eye-level figure is the one that matters"
+        assert "8.35" in notes, "and the height below which gauge stops winning"
 
 
 class TestTheConstraintsPathExplainsItself:

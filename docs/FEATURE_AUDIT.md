@@ -59,7 +59,7 @@ relative to itself, so a worktree silently audits a different tree.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `AtlasAddPatchView` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 8 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasApplyLUT` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasApplyScaleReferences` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasApplyScaleReferences` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 3 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasAssessImage` | atlas_camera/comfy/nodes_solve.py | standard | 5 | 5 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAssessOutput` | atlas_camera/comfy/nodes_qa.py | standard | 4 | 3 | not_attempted | not_attempted | 2 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAttachSourcePlate` | atlas_camera/comfy/nodes_solve.py | standard | 4 | 1 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |

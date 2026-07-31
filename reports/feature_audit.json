@@ -120,12 +120,14 @@
    "example_workflows": [],
    "dedicated_tests": [
     "tests/test_face_scale_node.py",
+    "tests/test_ground_span_scale.py",
     "tests/test_node_layer_contracts.py"
    ],
    "tests": [
     "tests/test_comfy_node_registry.py",
     "tests/test_facade_surface.py",
     "tests/test_face_scale_node.py",
+    "tests/test_ground_span_scale.py",
     "tests/test_node_layer_contracts.py"
    ],
    "mcp_tools": [],

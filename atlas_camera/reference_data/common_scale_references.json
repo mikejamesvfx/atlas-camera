@@ -230,7 +230,7 @@
     "confidence": "standard",
     "source_url": "https://en.wikipedia.org/wiki/Standard-gauge_railway",
     "source_note": "Standard gauge is specified as 1435 mm (4 ft 8.5 in).",
-    "notes": "EXACT specification, not a typical value — the strongest metric anchor available in a railway scene. Measured between the INNER faces of the two railheads, NOT rail centre to rail centre (~1.5 m); marking the wrong edges is a ~4% error that looks entirely reasonable. Mark it near the camera: a wider pixel span measures better.",
+    "notes": "EXACT specification, not a typical value — the strongest metric anchor available in a railway scene. Measured between the INNER faces of the two railheads, NOT rail centre to rail centre (~1.5 m); marking the wrong edges is a ~4% error that looks entirely reasonable. Mark it near the camera: a wider pixel span measures better. DATUM: gauge is measured across the RAILHEADS, which stand a rail's height (0.159-0.186 m by profile; 0.172 for 60E1/UIC60) above the ballast, so datum_offset_m corrects the solve from height-above-rails to height-above-ground. Measured 2026-07-31: uncorrected this is a pure e/h error - 1.4% at a 12 m camera, 4.1% at 4.2 m, 10.75% at eye level - which makes an UNCORRECTED gauge worse than an assumed door below 8.35 m and worse than an assumed person below 3.55 m. On abandoned track where ballast or vegetation has buried the sleepers, override datum_offset_m per-spec; guessing it to +/-0.05 m leaves ~3% at eye level and ~1.2% at 4.2 m.",
     "tags": [
       "rail",
       "railway",
@@ -239,7 +239,8 @@
       "train",
       "station",
       "scale"
-    ]
+    ],
+    "datum_offset_m": 0.172
   },
   {
     "id": "rail_gauge_metre",
@@ -250,7 +251,7 @@
     "confidence": "standard",
     "source_url": "https://en.wikipedia.org/wiki/Metre-gauge_railway",
     "source_note": "Metre gauge is specified as 1000 mm.",
-    "notes": "A SEPARATE id rather than a tolerance on standard gauge — 1.000 and 1.435 must never silently substitute for each other, since picking the wrong one is a silent 44% scale error. Confirm the network before using this.",
+    "notes": "A SEPARATE id rather than a tolerance on standard gauge — 1.000 and 1.435 must never silently substitute for each other, since picking the wrong one is a silent 44% scale error. Confirm the network before using this. DATUM: gauge is measured across the RAILHEADS, which stand a rail's height (0.159-0.186 m by profile; 0.172 for 60E1/UIC60) above the ballast, so datum_offset_m corrects the solve from height-above-rails to height-above-ground. Measured 2026-07-31: uncorrected this is a pure e/h error - 1.4% at a 12 m camera, 4.1% at 4.2 m, 10.75% at eye level - which makes an UNCORRECTED gauge worse than an assumed door below 8.35 m and worse than an assumed person below 3.55 m. On abandoned track where ballast or vegetation has buried the sleepers, override datum_offset_m per-spec; guessing it to +/-0.05 m leaves ~3% at eye level and ~1.2% at 4.2 m.",
     "tags": [
       "rail",
       "railway",
@@ -258,7 +259,8 @@
       "gauge",
       "narrow",
       "metre"
-    ]
+    ],
+    "datum_offset_m": 0.172
   },
   {
     "id": "rail_gauge_cape",
@@ -269,7 +271,7 @@
     "confidence": "standard",
     "source_url": "https://en.wikipedia.org/wiki/Narrow-gauge_railway",
     "source_note": "Cape gauge is specified as 1067 mm (3 ft 6 in).",
-    "notes": "Common in southern Africa, Japan, Indonesia, Queensland and New Zealand. Separate id for the same reason as metre gauge — never substitute.",
+    "notes": "Common in southern Africa, Japan, Indonesia, Queensland and New Zealand. Separate id for the same reason as metre gauge — never substitute. DATUM: gauge is measured across the RAILHEADS, which stand a rail's height (0.159-0.186 m by profile; 0.172 for 60E1/UIC60) above the ballast, so datum_offset_m corrects the solve from height-above-rails to height-above-ground. Measured 2026-07-31: uncorrected this is a pure e/h error - 1.4% at a 12 m camera, 4.1% at 4.2 m, 10.75% at eye level - which makes an UNCORRECTED gauge worse than an assumed door below 8.35 m and worse than an assumed person below 3.55 m. On abandoned track where ballast or vegetation has buried the sleepers, override datum_offset_m per-spec; guessing it to +/-0.05 m leaves ~3% at eye level and ~1.2% at 4.2 m.",
     "tags": [
       "rail",
       "railway",
@@ -277,7 +279,8 @@
       "gauge",
       "narrow",
       "cape"
-    ]
+    ],
+    "datum_offset_m": 0.172
   },
   {
     "id": "rail_sleeper_pitch",
@@ -288,7 +291,7 @@
     "confidence": "heuristic",
     "source_url": "https://en.wikipedia.org/wiki/Railroad_tie",
     "source_note": "Typical mainline sleeper spacing, ~600 mm centre to centre.",
-    "notes": "TYPICAL, not specified — varies by network, line speed and sleeper type (roughly 0.60-0.75 m). Weaker than gauge on two counts: the number is approximate, and a single pitch is a short pixel span. Its value is that it repeats down the track, so several marked pitches aggregate. Prefer gauge whenever both are visible.",
+    "notes": "TYPICAL, not specified — varies by network, line speed and sleeper type (roughly 0.60-0.75 m). Weaker than gauge on two counts: the number is approximate, and a single pitch is a short pixel span. Its value is that it repeats down the track, so several marked pitches aggregate. Prefer gauge whenever both are visible. DATUM: sleeper tops sit at ballast crown, i.e. effectively on the ground, so datum_offset_m is 0.0 - stated explicitly rather than omitted so it is not mistaken for an unconsidered field.",
     "tags": [
       "rail",
       "railway",
@@ -296,7 +299,8 @@
       "tie",
       "track",
       "pitch"
-    ]
+    ],
+    "datum_offset_m": 0.0
   },
   {
     "id": "platform_height_uk",
@@ -307,13 +311,14 @@
     "confidence": "standard",
     "source_url": "https://en.wikipedia.org/wiki/Railway_platform_height",
     "source_note": "UK standard platform height is 915 mm above rail level.",
-    "notes": "REGIONAL, unlike gauge — platform heights differ widely by country (roughly 0.55-1.25 m), so this is only usable when the location is known to be UK. Vertical: measured from rail level to platform surface, so its base is the RAILHEAD, not the ballast.",
+    "notes": "REGIONAL, unlike gauge — platform heights differ widely by country (roughly 0.55-1.25 m), so this is only usable when the location is known to be UK. Vertical: measured from rail level to platform surface, so its base is the RAILHEAD, not the ballast. DATUM: the 0.915 m is specified from RAIL LEVEL, so mark the base at the railhead and the same 0.172 m correction applies. Marking the base where the platform face meets the ballast instead measures ~1.087 m, not 0.915 - mixing the two datums is the easiest error to make here.",
     "tags": [
       "rail",
       "railway",
       "platform",
       "station",
       "uk"
-    ]
+    ],
+    "datum_offset_m": 0.172
   }
 ]
