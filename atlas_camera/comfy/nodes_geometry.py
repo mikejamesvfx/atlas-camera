@@ -35,7 +35,6 @@ from atlas_camera.comfy.node_helpers import (
     _parse_view_prompt,
     _pil_to_image_tensor,
     _replace_proxy_role_geometry,
-    _hole_mask_after_fill,
     _require_numpy,
     _require_pil,
     _require_torch,
@@ -248,7 +247,6 @@ class AtlasDeriveProjectionGeometry:
             relief_grid = self._RELIEF_QUALITY_PRESETS[relief_quality]
         from atlas_camera.core.plane_extraction import PlaneRansacConfig, extract_planes_ransac
         from atlas_camera.core.proxy_geometry import (
-            PROXY_ROLE,
             ProxyDerivationConfig,
             derive_projection_proxies,
             derive_vertical_extrusion_proxies,
@@ -3106,9 +3104,6 @@ class AtlasAddPatchView:
         from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
         from atlas_camera.core.schema import (
             AtlasIntrinsics,
-            AtlasPlateRef,
-            LatentCamera,
-            ProjectionSource,
         )
         from atlas_camera.core.solver import _resize_depth
         from atlas_camera.inference.depth_estimator import estimate_depth

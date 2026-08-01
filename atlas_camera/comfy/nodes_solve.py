@@ -11,9 +11,9 @@ import json
 import math
 import os
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 from atlas_camera.core.camera_spec import CameraSpec
-from atlas_camera.core.io import load_solve_json, save_solve_json
+from atlas_camera.core.io import load_solve_json
 from atlas_camera.core.solver import solve_from_constraints, solve_still_image
 from atlas_camera.importers.usd_camera_loader import USDCameraLoader
 
@@ -882,7 +882,6 @@ class AtlasScaleOverride:
         }
 
     def override(self, solve, scale=1.0, camera_height_m=0.0):
-        import copy
         out = copy.deepcopy(solve)
         extr = out.camera.extrinsics
         vm = [list(r) for r in extr.camera_view_matrix]   # world->cam
@@ -965,7 +964,6 @@ class AtlasRollTrim:
         }
 
     def trim(self, solve, roll_deg=0.0):
-        import copy
         import math
         out = copy.deepcopy(solve)
         d = float(roll_deg)
@@ -1077,7 +1075,6 @@ class AtlasGravityOverride:
         }
 
     def override(self, solve, pitch_deg=0.0, roll_deg=0.0):
-        import copy
         import math
 
         from atlas_camera.core.camera_math import look_at_view_matrix
@@ -2096,8 +2093,6 @@ class AtlasLoadRecord3D:
     def load(self, capture_path, frame_index=0, depth_resolution="colour_frame",
              min_confidence="medium"):
         from atlas_camera.importers.record3d import Record3DCapture
-        from atlas_camera.inference.depth_estimator import DepthResult
-        from atlas_camera.core.solver import _resize_depth
 
         np = _require_numpy()
         torch = _require_torch()

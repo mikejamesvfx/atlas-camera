@@ -404,9 +404,7 @@ ScanlineRender {{
 # materializes every ProjectionSource identically for both DCCs.
 from atlas_camera.exporters._layers import (  # noqa: E402
     collect_projection_layers,
-    decode_plate_b64 as _decode_plate_b64,
     layer_focal_mm as _layer_focal_mm,
-    mesh_from_primitive as _mesh_from_primitive,
 )
 
 
@@ -471,7 +469,6 @@ def write_nuke_layers_script(
     out.mkdir(parents=True, exist_ok=True)
     nk_path = out / f"{name}.nk"
 
-    from atlas_camera.exporters.relief_mesh_exporter import export_relief_mesh
 
     intr = solve.camera.intrinsics
     image_w = intr.image_width or 1920

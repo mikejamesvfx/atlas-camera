@@ -50,7 +50,6 @@ def _write_export_manifest(solve, output_dir, kind_paths, exporter: str) -> None
     A manifest failure must NEVER fail the export — everything degrades to a
     log line. Called with [(kind, path), ...]; empty paths are skipped.
     """
-    import logging
     try:
         from atlas_camera.exporters.manifest import (
             ManifestArtifact,

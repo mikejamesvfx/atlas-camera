@@ -684,7 +684,6 @@ def _metric_depth_and_validity(solve, depth, exclude_mask=None) -> "_MetricDepth
     """
     np = _require_numpy()
     from atlas_camera.core.depth_geometry import detect_sky_mask
-    from atlas_camera.core.relief_mesh import estimate_ground_scale
 
     params = _solve_camera_params(solve, depth)
     if params is None:

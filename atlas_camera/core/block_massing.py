@@ -28,7 +28,7 @@ segments that are already on the ground plane.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 #: A grid fit looser than this is not a grid. Streets in a real city are

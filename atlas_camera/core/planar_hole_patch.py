@@ -22,7 +22,6 @@ from typing import Any
 from atlas_camera.core import hole_field as _hole_field
 from atlas_camera.core.hole_field import (
     HoleField,
-    LatticeError,
     components,
     recover_lattice,
 )

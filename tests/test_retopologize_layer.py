@@ -25,7 +25,6 @@ from atlas_camera.core.schema import (
 def _relief_solve():
     """A solve carrying a primary relief mesh + one named layer source."""
     torch = pytest.importorskip("torch")
-    from atlas_camera.comfy.nodes import _relief_mesh_from_solve  # noqa: F401
     from atlas_camera.comfy.nodes_geometry import AtlasDeriveReliefMesh
     from atlas_camera.core.proxy_geometry import relief_mesh_primitive
     from atlas_camera.inference.depth_estimator import DepthResult

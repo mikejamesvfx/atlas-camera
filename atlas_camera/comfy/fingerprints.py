@@ -24,7 +24,6 @@ def _image_fingerprint(image) -> str:
     the image it was clicked FOR, so swapping the input photo re-arms the
     assessment gate instead of sailing through a stale approval (the same
     staleness class as 📐 Extract Angle's solve fingerprint)."""
-    import hashlib
 
     arr = image[0, ::16, ::16].cpu().numpy()
     h = hashlib.md5()
@@ -40,7 +39,6 @@ def _solve_fingerprint(solve, source_image) -> str:
     the previous image's stale angle. Image identity uses a 16x-subsampled
     tensor digest (full 4K hashing per execution is needless cost; a swapped
     photo always changes the subsample)."""
-    import hashlib
 
     h = hashlib.md5()
     extr = solve.camera.extrinsics

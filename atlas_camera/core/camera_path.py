@@ -14,7 +14,7 @@ round-trip. If either side's curve/easing changes, check the other.
 from __future__ import annotations
 
 from atlas_camera.core.camera_math import look_at_view_matrix
-from atlas_camera.core.schema import AtlasCameraPath, AtlasExtrinsics, Point3D
+from atlas_camera.core.schema import AtlasCameraPath, AtlasExtrinsics
 
 _Vec3 = tuple[float, float, float]
 

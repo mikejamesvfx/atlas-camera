@@ -6,7 +6,12 @@ nodes_export, nodes_viewport) and node_registry. This façade re-exports
 every node class, shared helper, and the registry mappings so that
 ``from atlas_camera.comfy.nodes import X`` and saved ComfyUI workflows
 keep working unchanged. New code should import from the specific module.
+
+Every import below is a deliberate re-export — "unused" is the whole point,
+and `tests/test_facade_surface.py` pins the resulting surface. Silenced once
+here rather than per line, so a genuinely dead import elsewhere still shows up.
 """
+# ruff: noqa: F401
 from __future__ import annotations
 
 from atlas_camera.comfy.viewport_payload import (  # noqa: F401

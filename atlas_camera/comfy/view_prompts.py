@@ -93,7 +93,6 @@ def _parse_exact_view(text):
     Key=value format (any order, comma or space separated) so the string is
     self-documenting in Show Text nodes and export logs.
     """
-    import re
 
     vals = dict(re.findall(
         r"(azimuth_deg|elevation_deg|distance_scale)\s*=\s*(-?\d+(?:\.\d+)?)",
