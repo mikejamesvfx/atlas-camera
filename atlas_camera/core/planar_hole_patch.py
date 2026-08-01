@@ -597,6 +597,14 @@ def patch_planar_holes(
     rejected: list[dict[str, Any]] = []
     cell_count = max(int(candidates.size), 1)
 
+    def _anchor(component: set[tuple[int, int]]) -> list[int]:
+        # The deterministic top-left cell (the same tie-break the fit budget
+        # uses). Lets consumers that labelled the same islands (the path
+        # selector) join a rejection back to its island id — cell counts
+        # alone are ambiguous.
+        row, col = min(component)
+        return [int(row), int(col)]
+
     # Reject obviously unsafe regions before applying the fit budget.  The old
     # largest-first loop let a handful of frame/sky components consume the
     # entire budget, so the small enclosed tears the node is meant to repair
@@ -613,11 +621,13 @@ def patch_planar_holes(
         if cfg.enclosed_only and touches_frame:
             rejected.append({
                 "cells": len(component),
+                "anchor_cell": _anchor(component),
                 "reason": "touches image frame",
             })
         elif fraction > float(cfg.max_hole_fraction):
             rejected.append({
                 "cells": len(component),
+                "anchor_cell": _anchor(component),
                 "reason": "component exceeds max_hole_fraction",
                 "hole_fraction": float(fraction),
                 "max_hole_fraction": float(cfg.max_hole_fraction),
@@ -641,6 +651,7 @@ def patch_planar_holes(
         if id(component) not in selected_component_ids:
             rejected.append({
                 "cells": len(component),
+                "anchor_cell": _anchor(component),
                 "reason": "component budget exceeded",
             })
 
@@ -654,6 +665,7 @@ def patch_planar_holes(
         if fit is None:
             rejected.append({
                 "cells": len(component),
+                "anchor_cell": _anchor(component),
                 **fit_diagnostic,
             })
             continue
@@ -714,6 +726,7 @@ def patch_planar_holes(
                 del edge_risk[risk_checkpoint:]
             rejected.append({
                 "cells": len(component),
+                "anchor_cell": _anchor(component),
                 "reason": "plane is behind or parallel to camera rays",
             })
             continue
@@ -741,6 +754,7 @@ def patch_planar_holes(
                 del edge_risk[risk_checkpoint:]
             rejected.append({
                 "cells": len(component),
+                "anchor_cell": _anchor(component),
                 "reason": "generated patch depth exceeds local support",
                 **depth_diagnostic,
                 "max_patch_depth_factor": float(cfg.max_patch_depth_factor),
@@ -774,6 +788,7 @@ def patch_planar_holes(
                 del edge_risk[risk_checkpoint:]
             rejected.append({
                 "cells": len(component),
+                "anchor_cell": _anchor(component),
                 "reason": "generated patch edge exceeds local scale",
                 **edge_diagnostic,
                 "max_patch_edge_factor": float(cfg.max_patch_edge_factor),
@@ -797,6 +812,7 @@ def patch_planar_holes(
                 edge_risk[index] = 0.0
         filled.append({
             "cells": len(component),
+            "anchor_cell": _anchor(component),
             "faces_added": 2 * len(component),
             **edge_diagnostic,
             **depth_diagnostic,

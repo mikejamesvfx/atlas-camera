@@ -222,6 +222,22 @@ def build_island_candidates(
                      0, len(cols) - 2)
         face_ids = cell_to_id[rr, cc]
 
+    # Join each fit rejection back to its island id via the deterministic
+    # top-left anchor cell (both modules label the same lattice, so anchors
+    # coincide). Without this, depth/plane-gate-rejected islands vanish from
+    # the preview with only aggregate counts, and the agent loop chases
+    # camera angles when the actual blocker is a fit gate.
+    island_rejections: dict[int, str] = {}
+    for item in fit_report.get("rejected") or []:
+        anchor = item.get("anchor_cell")
+        if not anchor or len(anchor) != 2:
+            continue
+        arow, acol = int(anchor[0]), int(anchor[1])
+        if 0 <= arow < cell_to_id.shape[0] and 0 <= acol < cell_to_id.shape[1]:
+            island_id = int(cell_to_id[arow, acol])
+            if island_id > 0:
+                island_rejections[island_id] = str(item.get("reason", "unknown"))
+
     return {
         "components": components,
         "component_by_id": component_by_id,
@@ -230,6 +246,7 @@ def build_island_candidates(
         "candidate_faces": candidate_faces,
         "face_ids": face_ids,
         "fit_report": fit_report,
+        "island_rejections": island_rejections,
         "rows": rows,
         "cols": cols,
     }
@@ -425,6 +442,20 @@ def build_path_hole_repair(
             "candidate-fit rejections: "
             + ", ".join(f"{count} {reason}"
                         for reason, count in sorted(reasons.items())))
+    island_rejections = built.get("island_rejections") or {}
+    if island_rejections:
+        # Name each rejected island so the agent loop can tune the NAMED
+        # gate instead of chasing camera angles for an island the fit
+        # already refused. Capped so a shattered plate cannot flood the
+        # report.
+        shown = sorted(island_rejections.items())[:12]
+        for island_id, reason in shown:
+            cells = len(component_by_id.get(island_id, ()))
+            report_lines.append(
+                f"island {island_id} ({cells} cells) rejected: {reason}")
+        if len(island_rejections) > len(shown):
+            report_lines.append(
+                f"... {len(island_rejections) - len(shown)} more rejected islands")
     return {
         "repair_mask": repair_mask,
         "view_id_map": id_map,
@@ -434,5 +465,6 @@ def build_path_hole_repair(
         "selected_ids": selected_ids,
         "visible_ids": visible_ids,
         "visible_counts": visible_counts,
+        "island_rejections": island_rejections,
         "report": "\n".join(report_lines),
     }

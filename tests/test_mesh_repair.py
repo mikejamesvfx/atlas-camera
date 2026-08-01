@@ -494,6 +494,88 @@ def test_fill_boundary_sawteeth_non_planar_notches_stay_wound():
     _assert_manifold_and_wound(new_f)
 
 
+def test_enclosed_hole_labels_are_8_connected_on_the_numpy_path():
+    """The cap size cutoff labels enclosed holes; the GPU path's 3x3 min-pool
+    is 8-connected, so the numpy fallback must be too — otherwise the same
+    scene caps different holes depending on whether torch imports (two
+    diagonal-touching holes read as one over-budget component on GPU and two
+    small in-budget ones on CPU)."""
+    from atlas_camera.core.mesh_repair import _min_label_components_numpy
+
+    capfill = np.zeros((6, 6), dtype=bool)
+    capfill[1, 1] = True          # two holes touching only diagonally
+    capfill[2, 2] = True
+    capfill[4, 4] = True          # and one separate hole
+    lbl = _min_label_components_numpy(capfill)
+    assert lbl[1, 1] == lbl[2, 2], "diagonal-touching holes must merge (8-conn)"
+    assert lbl[4, 4] != lbl[1, 1], "separate holes stay separate"
+
+
+def test_equal_depth_step_tolerance_scales_with_depth():
+    """The equal-depth gate must be RELATIVE: at a ~100 m staircase, lattice
+    depth noise is centimetres, not the millimetre an absolute 1e-3 allows.
+    A 90-degree corner with 2 cm of depth jitter at 100 m is the same corner
+    as a flat one at 1 m."""
+    # 3x3 vertex grid, cells (0,0),(0,1),(1,0) present, (1,1) missing — the
+    # notch corner at vertex (1,1) has boundary neighbours (1,2) and (2,1)
+    # meeting at 90 degrees. Depths ~100 m with +-2 cm jitter arranged
+    # MONOTONE through the corner so the valley branch cannot fire.
+    def vid(r, c):
+        return r * 3 + c
+
+    depth = np.full((3, 3), 100.0)
+    depth[1, 2] = 99.98    # prev neighbour
+    depth[1, 1] = 100.00   # the corner
+    depth[2, 1] = 100.02   # next neighbour
+    verts = np.array([[c * 1.0, -r * 1.0, -depth[r, c]]
+                      for r in range(3) for c in range(3)])
+    faces = []
+    for r, c in ((0, 0), (0, 1), (1, 0)):
+        a, b = vid(r, c), vid(r, c + 1)
+        d, e = vid(r + 1, c), vid(r + 1, c + 1)
+        faces.append([a, b, e])
+        faces.append([a, e, d])
+    f = np.asarray(faces, dtype=np.int64)
+
+    new_f, depths = fill_boundary_sawteeth(f, vertices=verts,
+                                           view_matrix=_identity_view(),
+                                           depth_far_m=0.0)
+    # With the absolute 1e-3 tolerance only the exactly-equal corner bridged;
+    # the two corners carrying the 2 cm jitter were skipped. Which corner
+    # claims which shared edge is loop-order dependent, so assert on the
+    # bridged DEPTHS: both jittered corners must be among the caps.
+    rounded = {round(d, 2) for d in depths}
+    assert {99.98, 100.02} <= rounded, f"jittered corners not bridged: {sorted(depths)}"
+    _assert_manifold_and_wound(new_f)
+
+
+def test_deep_valley_chain_smooths_to_fixpoint():
+    """Docstring contract: "Passes repeat until none qualifies." A deep
+    multi-level notch needs one pass per level — a hard 2-pass cap left the
+    remnant valley unbridged."""
+    n = 7
+    top_depths = [5.0, 9.0, 14.0, 20.0, 15.0, 10.0, 6.0]
+    verts = []
+    for i in range(n):
+        verts.append([float(i), 0.0, -10.0])            # bottom row
+    for i in range(n):
+        verts.append([float(i), 1.0, -top_depths[i]])   # top row: deep V
+    v = np.asarray(verts, dtype=np.float64)
+    faces = []
+    for i in range(n - 1):
+        a, b, d, e = i, i + 1, n + i, n + i + 1
+        faces.append([a, b, e])
+        faces.append([a, e, d])
+    f = np.asarray(faces, dtype=np.int64)
+
+    new_f, depths = fill_boundary_sawteeth(f, vertices=v,
+                                           view_matrix=_identity_view(),
+                                           depth_far_m=0.0)
+    # Each pass peels one level: 20, then 15, then 14, then 10, then 9.
+    assert len(depths) == 5, f"expected the full chain bridged, got {sorted(depths)}"
+    _assert_manifold_and_wound(new_f)
+
+
 def test_apply_boundary_sawtooth_fill_updates_mesh():
     """apply_boundary_sawtooth_fill mutates the mesh faces in place."""
     v, f = _sawtooth_strip(n_teeth=3)
@@ -771,7 +853,166 @@ def test_atlas_live_mesh_repair_cuda_backend():
     assert np.asarray(after.faces).max() < len(after.vertices), "faces must index valid vertices"
 
 
-def test_repair_relief_mesh_grid_cuda_ray_consistency():
+def _lattice_fixture(n=20, missing=(10, 10)):
+    """A hand-built compacted lattice mesh with one interior cell removed —
+    the exact shape a solve-stored relief mesh has, with a hole the grid
+    repair demonstrably fills (4 valid orthogonal neighbours)."""
+    W = H = 100
+    fx = fy = 120.0
+    cx = cy = (W - 1) / 2.0
+    view = np.eye(4, dtype=np.float64)
+
+    keep = np.ones((n, n), dtype=bool)
+    keep[missing] = False
+    idx = np.full((n, n), -1, dtype=np.int64)
+    verts, uvs = [], []
+    d = 10.0
+    for r in range(n):
+        for c in range(n):
+            if not keep[r, c]:
+                continue
+            u = c / (n - 1)
+            v = 1.0 - r / (n - 1)
+            x_px = u * (W - 1)
+            y_px = (1.0 - v) * (H - 1)
+            ray = np.array([(x_px - cx) / fx, -(y_px - cy) / fy, -1.0])
+            idx[r, c] = len(verts)
+            verts.append(ray * d)          # camera at origin: depth 10 along ray
+            uvs.append([u, v])
+    faces = []
+    for r in range(n - 1):
+        for c in range(n - 1):
+            a, b = idx[r, c], idx[r, c + 1]
+            dd, e = idx[r + 1, c], idx[r + 1, c + 1]
+            if min(a, b, dd, e) < 0:
+                continue                   # quad touching the missing cell
+            faces.append([a, dd, e])
+            faces.append([a, e, b])
+
+    class M:
+        pass
+
+    mesh = M()
+    mesh.vertices = np.asarray(verts, dtype=np.float64)
+    mesh.faces = np.asarray(faces, dtype=np.int64)
+    mesh.uvs = np.asarray(uvs, dtype=np.float64)
+    kwargs = dict(view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+                  image_width=W, image_height=H,
+                  fill_holes=True, fill_sawteeth=False)
+    return mesh, kwargs
+
+
+def test_grid_repair_bails_on_off_lattice_uvs():
+    """UVs regenerated off the sampling lattice (e.g. after boundary
+    smoothing with intrinsics) split one lattice line into near-duplicates;
+    searchsorted then binds vertices to the wrong rows silently. The recovery
+    must detect the irregular lattice and refuse, not mis-grid."""
+    pytest.importorskip("torch")
+    import copy
+
+    from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+
+    mesh, kwargs = _lattice_fixture()
+    control = copy.deepcopy(mesh)
+    n_h, _ = repair_relief_mesh_grid_cuda(control, **kwargs)
+    assert n_h > 0, "fixture must be repairable when the lattice is clean"
+
+    # Perturb a handful of UVs past the 5-dp rounding but below the lattice
+    # step — exactly what a projective UV regeneration of moved verts does.
+    mesh.uvs = np.asarray(mesh.uvs, dtype=np.float64).copy()
+    mesh.uvs[::37, 0] += 3e-4
+    before_v = np.asarray(mesh.vertices).copy()
+    before_f = np.asarray(mesh.faces).copy()
+    n_h2, n_s2 = repair_relief_mesh_grid_cuda(mesh, **kwargs)
+    assert (n_h2, n_s2) == (0, 0), "off-lattice UVs must refuse, not mis-grid"
+    assert np.array_equal(np.asarray(mesh.vertices), before_v)
+    assert np.array_equal(np.asarray(mesh.faces), before_f)
+
+
+def test_grid_repair_bails_on_cell_collisions():
+    """Two vertices quantizing to the same lattice cell shadow each other
+    (last-writer-wins) — the recovery must refuse instead."""
+    pytest.importorskip("torch")
+    from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+
+    mesh, kwargs = _lattice_fixture()
+    mesh.uvs = np.asarray(mesh.uvs, dtype=np.float64).copy()
+    mesh.uvs[1] = mesh.uvs[0]             # collision: vertex 1 shadows vertex 0
+    before_v = np.asarray(mesh.vertices).copy()
+    n_h, n_s = repair_relief_mesh_grid_cuda(mesh, **kwargs)
+    assert (n_h, n_s) == (0, 0)
+    assert np.array_equal(np.asarray(mesh.vertices), before_v)
+
+
+def test_cap_membrane_converges_on_a_large_hole():
+    """A harmonic membrane with LINEAR Dirichlet boundary IS the linear ramp
+    (linear functions are harmonic). The old Jacobi loop stopped on a
+    successive-delta test after 2(nr+nc) iterations — deltas go tiny while a
+    large membrane is still far from harmonic, leaving big caps domed toward
+    the mean-init instead of following the ramp."""
+    pytest.importorskip("torch")
+    from atlas_camera.core.mesh_repair import repair_relief_mesh_grid_cuda
+
+    n = 64
+    W = H = 100
+    fx = fy = 120.0
+    cx = cy = (W - 1) / 2.0
+    view = np.eye(4, dtype=np.float64)
+
+    def ramp(r):
+        return 8.0 + 0.05 * r
+
+    keep = np.ones((n, n), dtype=bool)
+    keep[20:45, 20:45] = False            # 25x25 enclosed hole
+    idx = np.full((n, n), -1, dtype=np.int64)
+    verts, uvs = [], []
+    for r in range(n):
+        for c in range(n):
+            if not keep[r, c]:
+                continue
+            u = c / (n - 1)
+            v = 1.0 - r / (n - 1)
+            x_px = u * (W - 1)
+            y_px = (1.0 - v) * (H - 1)
+            ray = np.array([(x_px - cx) / fx, -(y_px - cy) / fy, -1.0])
+            idx[r, c] = len(verts)
+            verts.append(ray * ramp(r))
+            uvs.append([u, v])
+    faces = []
+    for r in range(n - 1):
+        for c in range(n - 1):
+            a, b = idx[r, c], idx[r, c + 1]
+            dd, e = idx[r + 1, c], idx[r + 1, c + 1]
+            if min(a, b, dd, e) < 0:
+                continue
+            faces.append([a, dd, e])
+            faces.append([a, e, b])
+
+    class M:
+        pass
+
+    mesh = M()
+    mesh.vertices = np.asarray(verts, dtype=np.float64)
+    mesh.faces = np.asarray(faces, dtype=np.int64)
+    mesh.uvs = np.asarray(uvs, dtype=np.float64)
+    n_v0 = len(mesh.vertices)
+
+    repair_relief_mesh_grid_cuda(
+        mesh, view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy,
+        image_width=W, image_height=H,
+        fill_holes=False, fill_sawteeth=False, cap_enclosed=True,
+        max_hole_edges=1024)
+
+    new = np.asarray(mesh.vertices[n_v0:], dtype=np.float64)
+    assert len(new) > 400, "the 25x25 cap must materialize"
+    new_uv = np.asarray(mesh.uvs[n_v0:], dtype=np.float64)
+    rows = (1.0 - new_uv[:, 1]) * (n - 1)
+    expected = ramp(rows)
+    measured = -new[:, 2]                 # identity view: forward depth = -z
+    err = np.abs(measured - expected)
+    # Ramp spans 1.2 m across the hole; a converged membrane tracks it to
+    # well under 2 cm. The under-converged Jacobi missed by decimetres.
+    assert float(err.max()) < 0.02, f"membrane not harmonic: max err {err.max():.3f} m"
     """A vertex materialized by the grid path lands at the neighbour-averaged
     forward distance along its own camera ray — the same construction existing
     vertices satisfy — so re-projecting it reproduces that forward distance."""

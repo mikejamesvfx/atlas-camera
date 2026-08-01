@@ -490,6 +490,47 @@ def test_camera_path_beyond_budget_is_rejected_and_names_the_worst_frame():
     assert budget.path_worst_fraction > 0.02
 
 
+def test_camera_path_at_the_source_camera_is_not_charged_the_baseline():
+    """Axis probes report disocclusion RELATIVE to the source-view baseline —
+    tearing already visible from the recovered camera is a projection-coverage
+    problem, not a camera-move problem. Path frames must be measured on the
+    same zero point: a path that never leaves the source camera opens nothing,
+    even when the scene carries a large baseline (the real-4K case measured a
+    6% baseline against a 2% threshold)."""
+    width, height, focal = 400, 200, 400.0
+    cx, cy = width / 2.0, height / 2.0
+    depth = np.full((height, width), 8.0)
+    depth[60:140, 170:230] = np.nan          # enclosed hole: ~6% of frame
+    verts, faces = _torn_grid_mesh(depth, fx=focal, fy=focal, cx=cx, cy=cy)
+    mesh = ReliefMesh(vertices=verts, faces=faces,
+                      uvs=np.zeros((len(verts), 2), dtype=np.float64))
+    sealed_depth = np.full((height, width), 8.0)
+    sealed_verts, sealed_faces = _torn_grid_mesh(
+        sealed_depth, fx=focal, fy=focal, cx=cx, cy=cy, edge_rel=1e9)
+    sealed = ReliefMesh(vertices=sealed_verts, faces=sealed_faces,
+                        uvs=np.zeros((len(sealed_verts), 2), dtype=np.float64))
+    intr = build_intrinsics(image_width=width, image_height=height,
+                            focal_length_mm=35.0, sensor_width_mm=36.0)
+    intr.fx_px = intr.fy_px = focal
+    intr.cx_px, intr.cy_px = cx, cy
+    solve = AtlasSolve(
+        camera=AtlasCamera(
+            intrinsics=intr,
+            extrinsics=AtlasExtrinsics(camera_view_matrix=_lateral_view_matrix(0.0)),
+        ),
+        image_width=width, image_height=height,
+    )
+
+    budget = estimate_move_budget(
+        solve, mesh=mesh, sealed_mesh=sealed, threshold=0.02,
+        backend="numpy", axes=(),
+        camera_path=_straight_dolly_path(0.0),   # never leaves the source camera
+    )
+    assert budget.baseline_fraction > 0.02       # the trap is real in this scene
+    assert budget.path_within_budget is True
+    assert budget.path_worst_fraction < budget.baseline_fraction
+
+
 def test_move_budget_round_trips_through_dict():
     solve, mesh = _slab_solve_and_mesh()
     budget = estimate_move_budget(

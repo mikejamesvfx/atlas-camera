@@ -617,7 +617,11 @@ def fill_boundary_sawteeth(
 
     valley_depths: list[float] = []
     faces_work = f
-    max_passes = 2  # 2 passes is sufficient to bridge primary and secondary staircase corners without expensive graph re-traversals
+    # Fixpoint with a safety cap (the docstring's "passes repeat until none
+    # qualifies"): a deep multi-level notch needs one pass per level, and the
+    # early `if not added: break` already terminates real meshes in a handful
+    # of walks. The cap only bounds pathological inputs.
+    max_passes = 32
 
     for _ in range(max_passes):
         be = boundary_edges(faces_work)
@@ -666,8 +670,15 @@ def fill_boundary_sawteeth(
                 is_valley = (d_v > d[i - 1] and d_v > d[(i + 1) % n])
                 v1, v2 = a - b, c - b
                 n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
+                # "Equal depth" must be RELATIVE to the corner's own depth:
+                # lattice depth noise scales with distance (centimetres at
+                # 100 m), so an absolute millimetre tolerance missed real
+                # staircase corners on large-scale scenes and called
+                # everything equal on sub-metre ones.
+                depth_tol = 1e-3 * max(d_v, _EPS)
                 is_equal_depth_step = (
-                    abs(d_v - d[i - 1]) < 1e-3 and abs(d_v - d[(i + 1) % n]) < 1e-3
+                    abs(d_v - d[i - 1]) < depth_tol
+                    and abs(d_v - d[(i + 1) % n]) < depth_tol
                     and n1 > _EPS and n2 > _EPS and abs(float(np.dot(v1, v2) / (n1 * n2))) < 0.707
                 )
                 if not (is_valley or is_equal_depth_step):
@@ -719,6 +730,38 @@ def apply_boundary_sawtooth_fill(
     if n_added:
         mesh.faces = np.asarray(new_faces, dtype=faces.dtype)
     return n_added, depths
+
+
+def _min_label_components_numpy(capfill: np.ndarray) -> np.ndarray:
+    """Min-label component propagation over enclosed hole cells, 8-connected.
+
+    The numpy twin of the GPU 3x3 min-pool label pass: the pool kernel is
+    8-connected, so this fallback must be too — with 4-connectivity the same
+    scene labelled diagonal-touching holes as one over-budget component on
+    GPU and two in-budget ones on CPU, making the cap size cutoff
+    device-dependent. Non-hole cells carry the BIG sentinel.
+    """
+    nr, nc = capfill.shape
+    BIG = float(nr * nc + 1)
+    lbl = np.where(capfill,
+                   np.arange(nr * nc, dtype=np.float64).reshape(nr, nc), BIG)
+    shifts = ((1, 0), (-1, 0), (0, 1), (0, -1),
+              (1, 1), (1, -1), (-1, 1), (-1, -1))
+    for _ in range(min(nr + nc, 1024)):
+        m = lbl.copy()
+        for dr, dc in shifts:
+            s = np.full_like(lbl, BIG)
+            rs_dst = slice(max(dr, 0), nr + min(dr, 0))
+            cs_dst = slice(max(dc, 0), nc + min(dc, 0))
+            rs_src = slice(max(-dr, 0), nr + min(-dr, 0))
+            cs_src = slice(max(-dc, 0), nc + min(-dc, 0))
+            s[rs_dst, cs_dst] = lbl[rs_src, cs_src]
+            m = np.minimum(m, s)
+        m = np.where(capfill, m, BIG)
+        if (m == lbl).all():
+            break
+        lbl = m
+    return lbl
 
 
 def repair_relief_mesh_grid_cuda(
@@ -792,6 +835,21 @@ def repair_relief_mesh_grid_cuda(
     col_of = np.searchsorted(uu, uq)
     # v = 1 - row/(H-1): larger v is a SMALLER row index, so flip the axis.
     row_of = (nr - 1) - np.searchsorted(vv, vq)
+
+    # Lattice validation: UVs regenerated OFF the sampling lattice (boundary
+    # smoothing rewrites moved verts' projective UVs to exact re-projections)
+    # split one lattice line into near-duplicates, and searchsorted then binds
+    # vertices to the wrong rows SILENTLY. Refuse rather than mis-grid:
+    # (a) a lattice spacing far below the median step is a split line, not a
+    #     real sample row/col (5-dp rounding only absorbs serialization noise);
+    # (b) two vertices quantizing to one cell shadow each other
+    #     (last-writer-wins in cell2vidx below).
+    for axis_lines in (uu, vv):
+        steps = np.diff(axis_lines)
+        if len(steps) > 1 and float(steps.min()) < 0.25 * float(np.median(steps)):
+            return 0, 0
+    if len(np.unique(row_of.astype(np.int64) * nc + col_of)) != len(verts):
+        return 0, 0
 
     # Camera pose (row-major, column-vector points) — the exact convention
     # build_relief_mesh uses for back-projection and its band/near clips.
@@ -898,21 +956,7 @@ def repair_relief_mesh_grid_cuda(
                     lbl_t = m
                 lbl = lbl_t[0, 0].cpu().numpy()
             except ImportError:
-                lbl = lbl_init
-                for _ in range(min(nr + nc, 1024)):
-                    m = lbl.copy()
-                    for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                        s = np.full_like(lbl, BIG)
-                        rs_dst = slice(max(dr, 0), nr + min(dr, 0))
-                        cs_dst = slice(max(dc, 0), nc + min(dc, 0))
-                        rs_src = slice(max(-dr, 0), nr + min(-dr, 0))
-                        cs_src = slice(max(-dc, 0), nc + min(-dc, 0))
-                        s[rs_dst, cs_dst] = lbl[rs_src, cs_src]
-                        m = np.minimum(m, s)
-                    m = np.where(capfill, m, BIG)
-                    if (m == lbl).all():
-                        break
-                    lbl = m
+                lbl = _min_label_components_numpy(capfill)
             adj_valid = np.zeros((nr, nc), dtype=bool)
             for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 adj_valid |= _shift(vgrid, dr, dc)
@@ -942,19 +986,34 @@ def repair_relief_mesh_grid_cuda(
             usable_d = vgrid | capfill
             d_span = float(dgrid[vgrid].max() - dgrid[vgrid].min()) if vgrid.any() else 1.0
             tol = 1e-4 * max(d_span, 1e-6)
-            for _ in range(2 * (nr + nc)):
-                acc = np.zeros((nr, nc))
-                cnt = np.zeros((nr, nc))
-                for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    su = _shift(usable_d, dr, dc)
-                    sd = _shift(dwork, dr, dc)
-                    acc += np.where(su, sd, 0.0)
-                    cnt += su
-                relax = capfill & (cnt > 0)
-                new = np.where(relax, acc / np.maximum(cnt, 1), dwork)
-                delta = float(np.abs(new - dwork)[capfill].max())
-                dwork = new
-                if delta < tol:
+            # Red-black SOR with a RESIDUAL stopping test. The old Jacobi
+            # loop stopped on the successive-iterate delta after 2(nr+nc)
+            # passes — on a large membrane the per-pass delta goes tiny while
+            # the field is still far from harmonic, so big caps came out
+            # domed toward the mean-init (false convergence). The residual
+            # |cell − mean(neighbours)| is the actual harmonicity error, and
+            # SOR converges in O(diameter) sweeps instead of O(diameter²).
+            rr_idx, cc_idx = np.indices((nr, nc))
+            checker = ((rr_idx + cc_idx) & 1) == 0
+            omega = 1.9
+            for _ in range(16 * (nr + nc)):
+                converged = True
+                for color in (checker, ~checker):
+                    acc = np.zeros((nr, nc))
+                    cnt = np.zeros((nr, nc))
+                    for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        su = _shift(usable_d, dr, dc)
+                        sd = _shift(dwork, dr, dc)
+                        acc += np.where(su, sd, 0.0)
+                        cnt += su
+                    relax = capfill & (cnt > 0) & color
+                    if not relax.any():
+                        continue
+                    target = acc / np.maximum(cnt, 1)
+                    if float(np.abs(target - dwork)[relax].max()) >= tol:
+                        converged = False
+                    dwork = np.where(relax, dwork + omega * (target - dwork), dwork)
+                if converged:
                     break
             dgrid = dwork
         vgrid_conv = vgrid | capfill
@@ -989,8 +1048,15 @@ def repair_relief_mesh_grid_cuda(
 
     # New vertices: back-project each filled cell along its own camera ray at the
     # averaged forward distance. Pixel per lattice axis (UV -> source pixel).
+    # vv is ASCENDING v, and grid row 0 is the TOP of the image = the LARGEST
+    # v (row_of flips the axis above) — so per-ROW quantities must index
+    # vv[::-1]. Indexing vv[row] directly mirrored every materialized cell
+    # vertically: row-R membrane depth back-projected along row-(nr-1-R)'s
+    # ray (found by the harmonic-ramp cap test; invisible on symmetric
+    # fixtures).
+    vv_by_row = vv[::-1]
     px_axis = uu * max(image_width - 1, 1)
-    py_axis = (1.0 - vv) * max(image_height - 1, 1)
+    py_axis = (1.0 - vv_by_row) * max(image_height - 1, 1)
     dir_x = (px_axis[None, :] - cx) / fx                       # (1, nc)
     dir_y = -(py_axis[:, None] - cy) / fy                      # (nr, 1)
     dir_cam = np.stack([
@@ -1001,7 +1067,7 @@ def repair_relief_mesh_grid_cuda(
     world_dir = dir_cam @ R_cw.T
     new_rows, new_cols = np.where(newfill)
     new_pos = cam + d_out[new_rows, new_cols, None] * world_dir[new_rows, new_cols]
-    new_uv = np.stack([uu[new_cols], vv[new_rows]], axis=1)
+    new_uv = np.stack([uu[new_cols], vv_by_row[new_rows]], axis=1)
 
     n_verts0 = len(verts)
     cell2vidx[new_rows, new_cols] = n_verts0 + np.arange(len(new_rows))

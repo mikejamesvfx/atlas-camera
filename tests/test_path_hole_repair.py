@@ -138,6 +138,34 @@ def test_path_repair_paint_selects_stable_island_id():
     assert np.array_equal(painted["repair_mask"], automatic["repair_mask"])
 
 
+def test_rejected_island_reason_is_reported_per_island():
+    """A candidate-fit rejection must name the ISLAND, not just bump an
+    aggregate counter — the agent loop otherwise chases camera angles when
+    the actual blocker is a fit gate."""
+    mesh, camera, path = _fixture()
+    result = build_path_hole_repair(
+        mesh,
+        mesh.hole_mask,
+        source_camera=camera,
+        camera_path=path,
+        config=PathHoleRepairConfig(
+            resolution=128,
+            normal_tolerance_deg=15.0,
+            max_plane_error_m=0.02,
+            max_hole_fraction=0.01,   # the fixture island is ~3% of cells
+        ),
+    )
+
+    assert not result["visible_ids"]
+    rejections = result["island_rejections"]
+    assert rejections, "the rejected island must be identifiable by id"
+    ((island_id, reason),) = rejections.items()
+    assert island_id == 1
+    assert "max_hole_fraction" in reason
+    assert f"island {island_id}" in result["report"]
+    assert "max_hole_fraction" in result["report"]
+
+
 def test_path_repair_exclusion_removes_background_connected_holes():
     mesh, camera, path = _fixture()
     result = build_path_hole_repair(

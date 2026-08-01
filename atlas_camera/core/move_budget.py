@@ -928,24 +928,30 @@ def estimate_move_budget(
     if camera_path is not None:
         _evaluate_path(budget, camera_path, covered=covered, sealed=sealed, spec=spec,
                        width=width, height=height, ignore_mask=ignore_mask,
-                       backend=resolved, threshold=threshold)
+                       backend=resolved, threshold=threshold, baseline=baseline)
     return budget
 
 
 def _evaluate_path(budget: AtlasMoveBudget, camera_path: Any, *, covered, sealed,
-                   spec, width, height, ignore_mask, backend, threshold) -> None:
+                   spec, width, height, ignore_mask, backend, threshold,
+                   baseline: float = 0.0) -> None:
     np = _require_numpy()
     from atlas_camera.core.camera_path import sample_camera_path
 
     extrinsics = sample_camera_path(camera_path)
     frames: list[PathFrameSample] = []
     for index, extr in enumerate(extrinsics):
-        fraction, _, _ = tear_disocclusion_fraction(
+        raw_fraction, _, _ = tear_disocclusion_fraction(
             covered, sealed,
             view_matrix=np.asarray(extr.camera_view_matrix, dtype=np.float64),
             fx=spec.fx, fy=spec.fy, cx=spec.cx, cy=spec.cy,
             width=width, height=height, ignore_mask=ignore_mask, backend=backend,
         )
+        # Same zero point as the axis probes: the source-view baseline is a
+        # projection-coverage problem, reported once as `baseline_fraction`.
+        # Charging it to every path frame failed paths that never leave the
+        # source camera (the real-4K 6%-baseline-vs-2%-threshold trap).
+        fraction = max(0.0, raw_fraction - baseline)
         frames.append(PathFrameSample(frame_index=index, fraction=fraction,
                                       within_budget=fraction <= threshold))
     budget.path_frames = frames
