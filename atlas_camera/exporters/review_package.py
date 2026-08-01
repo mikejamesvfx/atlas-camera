@@ -14,10 +14,6 @@ from atlas_camera.exporters.maya_exporter import MayaExporter, write_maya_mel_la
 from atlas_camera.exporters.nuke_exporter import NukeExporter
 from atlas_camera.exporters.usd_exporter import USDExporter
 
-_DCC_EXPORTERS = [
-    (BlenderExporter(), "blender_open_scene", "blender_open_scene.py"),
-]
-
 
 @dataclass(slots=True)
 class ReviewPackageResult:
@@ -85,8 +81,10 @@ def build_review_package(
         source_image_name=source_image_name,
         use_package_source=True,
     )
-    for exporter, key, filename in _DCC_EXPORTERS:
-        result.files[key] = exporter.write_scene(solve, package_dir / filename)
+    result.files["blender_open_scene"] = BlenderExporter().write_scene(
+        solve,
+        package_dir / "blender_open_scene.py",
+    )
 
     result.files["maya_mel_launcher"] = write_maya_mel_launcher(package_dir, review_name=package_name)
 

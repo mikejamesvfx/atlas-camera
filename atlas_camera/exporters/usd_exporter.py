@@ -16,6 +16,7 @@ import math
 from atlas_camera.core.camera_math import derive_sensor_height_mm
 from atlas_camera.core.camera_path import sample_camera_path, sample_camera_path_fov_deg
 from atlas_camera.core.schema import AtlasCameraPath, AtlasIntrinsics, AtlasSolve
+from atlas_camera.exporters.dcc_transform import row_vector_flat
 
 
 def _import_pxr() -> tuple[Any, Any]:
@@ -51,13 +52,11 @@ def _gf_mat4(world_mat: Any, Gf: Any) -> Any:
     which was the first test in this file to actually check a placed camera's
     ExtractTranslation() rather than just its op count — every USD export
     before that fix silently placed cameras/prims at the origin.
+
+    The transpose itself is ``dcc_transform.row_vector_flat``, shared with the
+    Maya writer, which needs the identical layout for ``cmds.xform -matrix``.
     """
-    return Gf.Matrix4d(
-        world_mat[0][0], world_mat[1][0], world_mat[2][0], world_mat[3][0],
-        world_mat[0][1], world_mat[1][1], world_mat[2][1], world_mat[3][1],
-        world_mat[0][2], world_mat[1][2], world_mat[2][2], world_mat[3][2],
-        world_mat[0][3], world_mat[1][3], world_mat[2][3], world_mat[3][3],
-    )
+    return Gf.Matrix4d(*row_vector_flat(world_mat))
 
 
 def _define_ground_plane(stage: Any, path: str, Gf: Any, Sdf: Any, UsdGeom: Any, Vt: Any) -> Any:

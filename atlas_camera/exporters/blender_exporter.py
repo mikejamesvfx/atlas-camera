@@ -11,6 +11,10 @@ from pathlib import Path
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm
 from atlas_camera.core.schema import AtlasSolve
+from atlas_camera.exporters.dcc_transform import (
+    blender_matrix_from_atlas,
+    blender_point_from_atlas,
+)
 
 
 def _embedded_relief_mesh(solve: AtlasSolve) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int]], list[tuple[float, float]]] | None:
@@ -33,7 +37,9 @@ def _embedded_relief_mesh(solve: AtlasSolve) -> tuple[list[tuple[float, float, f
     if len(vertices_raw) < 9 or len(faces_raw) < 3:
         return None
     vertices = [
-        (float(vertices_raw[i]), -float(vertices_raw[i + 2]), float(vertices_raw[i + 1]))
+        blender_point_from_atlas(
+            vertices_raw[i], vertices_raw[i + 1], vertices_raw[i + 2]
+        )
         for i in range(0, len(vertices_raw) - 2, 3)
     ]
     faces = [
@@ -51,18 +57,11 @@ def write_blender_scene_script(solve: AtlasSolve, output_path: str | Path) -> Pa
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    # Convert Atlas Y-up world matrix to Blender Z-up: M_blender = T @ M_atlas
-    # T maps (x,y,z) -> (x,-z,y), i.e. new_Y = -old_Z, new_Z = old_Y.
-    # Row 0 = Atlas row 0 (X unchanged)
-    # Row 1 = negated Atlas row 2 (Blender Y = -Atlas Z)
-    # Row 2 = Atlas row 1 (Blender Z = Atlas Y)
+    # Atlas Y-up world matrix -> Blender Z-up (M_blender = T @ M_atlas, T maps
+    # (x,y,z) -> (x,-z,y)). The swap lives in dcc_transform so the matrix and
+    # the per-vertex conversion above can't drift apart.
     wm = solve.camera.extrinsics.camera_world_matrix
-    blender_world = [
-        [ wm[0][0],  wm[0][1],  wm[0][2],  wm[0][3]],
-        [-wm[2][0], -wm[2][1], -wm[2][2], -wm[2][3]],
-        [ wm[1][0],  wm[1][1],  wm[1][2],  wm[1][3]],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
+    blender_world = blender_matrix_from_atlas(wm)
     intrinsics = solve.camera.intrinsics
     focal = intrinsics.focal_length_mm or 35.0
     sensor_w = intrinsics.sensor_width_mm or 36.0

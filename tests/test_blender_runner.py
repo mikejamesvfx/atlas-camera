@@ -155,19 +155,37 @@ class TestCoordinateConvention:
 
     def test_it_matches_the_matrix_the_scene_EXPORTER_emits(self):
         """docs/DCC_EXPORTS.md records the exporter's verification as "Script
-        inspection" — the emitted matrix has never been executed. Parsing it and
-        checking it against the transform actually applied to geometry closes
-        that gap.
+        inspection" — the emitted matrix has never been executed. Running the
+        exporter's own conversion and checking it against the transform actually
+        applied to geometry closes that gap.
 
         Exporter rows: [x, -z, y] from the Atlas world matrix.
+
+        This used to assert on the exporter's SOURCE TEXT, matching the literal
+        `-wm[2][0], -wm[2][1], -wm[2][2]`. That pinned where the arithmetic was
+        typed rather than what it computes, so lifting it into
+        `exporters/dcc_transform.py` broke the test while the emitted matrix
+        stayed bit-identical. Asserting the arithmetic is strictly stronger:
+        a reformat cannot fail it, and a wrong sign cannot pass it.
         """
-        src = (ROOT / "atlas_camera" / "exporters"
-               / "blender_exporter.py").read_text(encoding="utf-8")
-        assert "-wm[2][0], -wm[2][1], -wm[2][2]" in src, (
-            "exporter row 1 is no longer -Atlas Z; convert.T must move with it")
-        assert "wm[1][0],  wm[1][1],  wm[1][2]" in src, (
-            "exporter row 2 is no longer +Atlas Y")
+        from atlas_camera.exporters.dcc_transform import blender_matrix_from_atlas
+
+        rng = np.random.default_rng(7)
+        world = np.eye(4)
+        world[:3, :3] = rng.normal(size=(3, 3))
+        world[:3, 3] = rng.normal(size=3) * 10.0
+
+        emitted = np.asarray(blender_matrix_from_atlas(world.tolist()),
+                             dtype=np.float64)
         T = convert.transform_matrix(np)
+
+        # The exporter's rows must be the SAME basis change the runner applies
+        # to geometry, or a scene and its meshes disagree by a 90 degree twist.
+        np.testing.assert_allclose(emitted[:3, :3], T @ world[:3, :3])
+        np.testing.assert_allclose(emitted[:3, 3], T @ world[:3, 3])
+        np.testing.assert_allclose(emitted[3], (0.0, 0.0, 0.0, 1.0))
+
+        # ...and that basis change is [x, -z, y].
         np.testing.assert_allclose(T[1], (0.0, 0.0, -1.0))
         np.testing.assert_allclose(T[2], (0.0, 1.0, 0.0))
 
