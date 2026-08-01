@@ -73,6 +73,47 @@ def _solve(prims=()):
     return solve
 
 
+def _gentle_step_depth(near=8.0, far=9.0):
+    """A 1 m step against an 8 m reference — a 12.5% relative discontinuity.
+
+    That is a tear at the 0.05 threshold this module hardcoded, and NOT a tear
+    at build_relief_mesh's actual `depth_edge_rel` default of 0.5. The gap
+    between those two numbers is the point.
+    """
+    depth = np.full((H, W), float(far))
+    depth[:, W // 3: 2 * W // 3] = float(near)
+    return depth
+
+
+def test_the_tear_threshold_is_a_parameter_not_a_hardcoded_constant():
+    """This module called 0.05 "the same silhouette test build_relief_mesh
+    tears on". build_relief_mesh's `depth_edge_rel` defaults to 0.5 and artists
+    relax it to 1.0 for forests, so the two tear sets disagreed by 10-20x on
+    stock settings while the comment claimed they matched. The threshold is now
+    something a caller can pass, so a caller holding the mesh's real value can
+    make them agree.
+    """
+    solve = _solve()
+    depth = _gentle_step_depth()
+
+    tight = build_occlusion_graph(solve, depth=depth)
+    assert not any("no silhouette discontinuities" in n for n in tight.notes), (
+        "the default threshold must still tear on a 12.5% step")
+
+    relaxed = build_occlusion_graph(solve, depth=depth, tear_edge_rel=0.5)
+    assert any("no silhouette discontinuities" in n for n in relaxed.notes), (
+        "at build_relief_mesh's own default this step is not a tear")
+
+
+def test_the_default_tear_threshold_is_unchanged():
+    """Behaviour pin: the parameter was added without moving the default."""
+    import inspect
+
+    from atlas_camera.core.occlusion_graph import build_occlusion_graph as fn
+
+    assert inspect.signature(fn).parameters["tear_edge_rel"].default == 0.05
+
+
 def _two_layer_depth(near=2.0, far=9.0):
     """A near slab in front of a far plane — one unambiguous occlusion boundary."""
     depth = np.full((H, W), float(far))

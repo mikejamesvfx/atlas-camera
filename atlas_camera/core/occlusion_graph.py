@@ -297,6 +297,7 @@ def build_occlusion_graph(
     *,
     depth: Any = None,
     tear_classes: dict[str, str] | None = None,
+    tear_edge_rel: float = 0.05,
 ) -> AtlasOcclusionGraph:
     """Derive the occlusion graph from a solved scene.
 
@@ -359,13 +360,15 @@ def build_occlusion_graph(
         )
         return graph
 
-    graph.edges = _tears_from_depth(np, solve, depth, graph)
+    graph.edges = _tears_from_depth(np, solve, depth, graph,
+                                    tear_edge_rel=tear_edge_rel)
     _apply_tear_classes(graph, tear_classes)
     return graph
 
 
 def _tears_from_depth(np: Any, solve: Any, depth: Any,
-                      graph: AtlasOcclusionGraph) -> list[OcclusionEdge]:
+                      graph: AtlasOcclusionGraph,
+                      *, tear_edge_rel: float = 0.05) -> list[OcclusionEdge]:
     """Recover occluder/occludee pairs from silhouette discontinuities.
 
     A depth discontinuity in the source image IS an occlusion boundary: the
@@ -394,8 +397,14 @@ def _tears_from_depth(np: Any, solve: Any, depth: Any,
         graph.notes.append("depth had no valid samples; tears were not analysed.")
         return []
 
-    # Relative depth step, the same silhouette test build_relief_mesh tears on.
-    edge_rel = 0.05
+    # Relative depth step — the same FORM of silhouette test build_relief_mesh
+    # applies, but NOT the same number. That function's `depth_edge_rel`
+    # defaults to 0.5 and artists relax it to 1.0 for forests, so this default
+    # of 0.05 produces a tear set 10-20x denser than the mesh's on stock
+    # settings. The two are not interchangeable and a caller holding the mesh's
+    # real threshold should pass it, which is why this is a parameter now
+    # rather than a constant with a comment claiming a match that never held.
+    edge_rel = float(tear_edge_rel)
     dx = np.zeros_like(depth, dtype=bool)
     dy = np.zeros_like(depth, dtype=bool)
     both_x = valid[:, 1:] & valid[:, :-1]
