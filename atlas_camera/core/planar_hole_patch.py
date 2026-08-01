@@ -19,6 +19,14 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from atlas_camera.core import hole_field as _hole_field
+from atlas_camera.core.hole_field import (
+    HoleField,
+    LatticeError,
+    components,
+    recover_lattice,
+)
+
 
 def _require_numpy() -> Any:
     try:
@@ -47,118 +55,14 @@ class PlanarHolePatchConfig:
     max_patch_depth_factor: float = 2.0
 
 
-def _mode_step(values: Any) -> int:
-    np = _require_numpy()
-    unique = np.unique(np.asarray(values, dtype=np.int64))
-    diffs = np.diff(unique)
-    diffs = diffs[diffs > 0]
-    if not len(diffs):
-        return 0
-    counts = np.bincount(diffs)
-    return int(np.argmax(counts[1:]) + 1)
-
-
-def _axis_lattice(length: int, step: int) -> Any:
-    np = _require_numpy()
-    values = np.arange(0, int(length), int(step), dtype=np.int64)
-    if not len(values) or values[-1] != int(length) - 1:
-        values = np.append(values, int(length) - 1)
-    return values
-
-
-def _recover_lattice(mesh: Any, width: int, height: int) -> dict[str, Any]:
-    """Recover the pre-compaction relief grid and locate every existing face."""
-    np = _require_numpy()
-    vertices = np.asarray(mesh.vertices, dtype=np.float64).reshape(-1, 3)
-    faces = np.asarray(mesh.faces, dtype=np.int64).reshape(-1, 3)
-    uvs = np.asarray(mesh.uvs, dtype=np.float64).reshape(-1, 2)
-    if len(vertices) < 3 or len(faces) < 1 or len(uvs) != len(vertices):
-        raise ValueError("relief mesh is empty or has mismatched vertex/UV arrays")
-
-    px = np.rint(uvs[:, 0] * max(width - 1, 1)).astype(np.int64)
-    py = np.rint((1.0 - uvs[:, 1]) * max(height - 1, 1)).astype(np.int64)
-    step_x = _mode_step(px)
-    step_y = _mode_step(py)
-    candidates = [v for v in (step_x, step_y) if v > 0]
-    if not candidates:
-        raise ValueError("could not recover a regular UV lattice")
-    step = max(candidates, key=candidates.count)
-    rows = _axis_lattice(height, step)
-    cols = _axis_lattice(width, step)
-
-    row_lookup = {int(v): i for i, v in enumerate(rows)}
-    col_lookup = {int(v): i for i, v in enumerate(cols)}
-    index_grid = np.full((len(rows), len(cols)), -1, dtype=np.int64)
-    grid_coords = np.full((len(vertices), 2), -1, dtype=np.int64)
-    mapped = 0
-    for vertex_index, (x, y) in enumerate(zip(px, py)):
-        r = row_lookup.get(int(y))
-        c = col_lookup.get(int(x))
-        if r is None or c is None:
-            continue
-        if index_grid[r, c] < 0:
-            index_grid[r, c] = vertex_index
-        grid_coords[vertex_index] = (r, c)
-        mapped += 1
-    if mapped < max(3, int(0.95 * len(vertices))):
-        raise ValueError(
-            "mesh UVs are no longer a structured relief lattice; "
-            "run Atlas Planar Hole Patch before retopology"
-        )
-
-    face_cells = np.full((len(faces), 2), -1, dtype=np.int64)
-    coverage = np.zeros((len(rows) - 1, len(cols) - 1), dtype=np.int16)
-    for face_index, face in enumerate(faces):
-        coords = grid_coords[face]
-        if (coords < 0).any():
-            continue
-        if int(coords[:, 0].max() - coords[:, 0].min()) > 1:
-            raise ValueError(
-                "mesh contains non-grid faces; run Atlas Planar Hole Patch "
-                "before retopology"
-            )
-        if int(coords[:, 1].max() - coords[:, 1].min()) > 1:
-            raise ValueError(
-                "mesh contains non-grid faces; run Atlas Planar Hole Patch "
-                "before retopology"
-            )
-        r = int(coords[:, 0].min())
-        c = int(coords[:, 1].min())
-        if r < coverage.shape[0] and c < coverage.shape[1]:
-            face_cells[face_index] = (r, c)
-            coverage[r, c] += 1
-
-    return {
-        "vertices": vertices,
-        "faces": faces,
-        "uvs": uvs,
-        "rows": rows,
-        "cols": cols,
-        "index_grid": index_grid,
-        "grid_coords": grid_coords,
-        "face_cells": face_cells,
-        "coverage": coverage,
-    }
-
-
-def _components(mask: Any) -> list[set[tuple[int, int]]]:
-    np = _require_numpy()
-    remaining = {tuple(int(v) for v in rc) for rc in np.argwhere(mask)}
-    out: list[set[tuple[int, int]]] = []
-    while remaining:
-        seed = remaining.pop()
-        component = {seed}
-        stack = [seed]
-        while stack:
-            r, c = stack.pop()
-            for neighbor in ((r - 1, c), (r + 1, c),
-                             (r, c - 1), (r, c + 1)):
-                if neighbor in remaining:
-                    remaining.remove(neighbor)
-                    component.add(neighbor)
-                    stack.append(neighbor)
-        out.append(component)
-    return out
+# The lattice and the component labeller moved to core/hole_field.py — they are
+# what "a hole" IS, and path_hole_repair was reaching across a module boundary
+# for the two private names below. They stay bound here so that import, and the
+# tests that pin it, keep resolving while callers migrate to the public names.
+_mode_step = _hole_field._mode_step
+_axis_lattice = _hole_field._axis_lattice
+_recover_lattice = recover_lattice
+_components = components
 
 
 def _vertex_normals(vertices: Any, faces: Any) -> Any:
@@ -529,12 +433,18 @@ def patch_planar_holes(
     image_width: int,
     image_height: int,
     config: PlanarHolePatchConfig | None = None,
+    hole_field: HoleField | None = None,
 ) -> tuple[Any, Any, dict[str, Any]]:
     """Return ``(patched_mesh, remaining_hole_mask, report)``.
 
     Accepted components replace any surviving half-quad faces in the selected
     cells, share existing perimeter vertices, and add planar interior vertices
     with exact projective UVs.  The input mesh is never mutated.
+
+    Pass `hole_field` when the caller has already labelled these islands and
+    needs the report's ids to be ITS ids.  `path_hole_repair` used to label the
+    same lattice a second time and join rejections back through a coincidence
+    of anchor cells; handing the field over makes that agreement structural.
     """
     np = _require_numpy()
     from atlas_camera.core.relief_mesh import ReliefMesh
@@ -563,7 +473,17 @@ def patch_planar_holes(
     col_centers = ((cols[:-1] + cols[1:]) // 2).astype(np.int64)
     selected_cells = selected_mask[np.ix_(row_centers, col_centers)]
     candidates = selected_cells & (coverage < 2)
-    components = _components(candidates)
+    if hole_field is None:
+        field = HoleField.from_cell_mask(candidates)
+    else:
+        if tuple(hole_field.id_map.shape) != tuple(candidates.shape):
+            raise ValueError(
+                f"caller's hole field is {tuple(hole_field.id_map.shape)} but "
+                f"this mesh's candidate lattice is {tuple(candidates.shape)}; "
+                "the two were built from different meshes and their island ids "
+                "would not correspond")
+        field = hole_field
+    components = field.as_component_list()
     vertex_normals = _vertex_normals(vertices, faces)
     topology_edges = np.sort(
         np.concatenate(
@@ -827,6 +747,14 @@ def patch_planar_holes(
         )
         if new_faces else kept_faces.copy()
     )
+    # Name the island on every record. The anchor is the deterministic top-left
+    # cell, so it identifies the island uniquely within THIS field — and when
+    # the caller supplied the field, within the caller's numbering too.
+    for record in (*rejected, *filled):
+        anchor = record.get("anchor_cell")
+        record["island_id"] = (
+            field.id_at((anchor[0], anchor[1])) if anchor else 0)
+
     stats = copy.deepcopy(getattr(mesh, "stats", None) or {})
     report = {
         "components_found": int(len(components)),
@@ -841,7 +769,10 @@ def patch_planar_holes(
         "filled": filled,
         "rejected": rejected,
     }
-    stats["planar_hole_patch"] = report
+    # The stats dict is serialized into the solve JSON, so it gets a snapshot
+    # of the plain data only. The live HoleField goes to the caller alone.
+    stats["planar_hole_patch"] = dict(report)
+    report["hole_field"] = field
     stats["n_vertices"] = int(len(new_vertices))
     stats["n_faces"] = int(len(all_faces))
     patched = ReliefMesh(

@@ -15,10 +15,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from atlas_camera.core.camera_path import sample_camera_path
+from atlas_camera.core.hole_field import HoleField, recover_lattice
 from atlas_camera.core.planar_hole_patch import (
     PlanarHolePatchConfig,
-    _components,
-    _recover_lattice,
     patch_planar_holes,
 )
 
@@ -160,7 +159,7 @@ def build_island_candidates(
     src_width = int(src_intr.image_width or 0)
     src_height = int(src_intr.image_height or 0)
 
-    lattice = _recover_lattice(mesh, src_width, src_height)
+    lattice = recover_lattice(mesh, src_width, src_height)
     rows = lattice["rows"]
     cols = lattice["cols"]
     coverage = lattice["coverage"]
@@ -168,14 +167,12 @@ def build_island_candidates(
     col_centers = ((cols[:-1] + cols[1:]) // 2).astype(np.int64)
     selected_cells = selected_mask[np.ix_(row_centers, col_centers)]
     candidate_cells = selected_cells & (coverage < 2)
-    components = _components(candidate_cells)
-    components.sort(key=lambda item: (len(item), min(item)))
-    cell_to_id = np.zeros(candidate_cells.shape, dtype=np.int32)
-    component_by_id: dict[int, set[tuple[int, int]]] = {}
-    for island_id, component in enumerate(components, start=1):
-        component_by_id[island_id] = component
-        for row, col in component:
-            cell_to_id[row, col] = island_id
+    # One labelling, handed to the fit below. Labelling here and again inside
+    # patch_planar_holes is what forced the anchor-coincidence join.
+    field = HoleField.from_cell_mask(candidate_cells)
+    components = field.as_component_list()
+    component_by_id = field.component_by_id()
+    cell_to_id = field.id_map
 
     fit_cfg = PlanarHolePatchConfig(
         ring_cells=int(cfg.ring_cells),
@@ -203,6 +200,7 @@ def build_island_candidates(
         image_width=src_width,
         image_height=src_height,
         config=fit_cfg,
+        hole_field=field,
     )
 
     faces_added = int(fit_report.get("faces_added", 0))
@@ -222,21 +220,15 @@ def build_island_candidates(
                      0, len(cols) - 2)
         face_ids = cell_to_id[rr, cc]
 
-    # Join each fit rejection back to its island id via the deterministic
-    # top-left anchor cell (both modules label the same lattice, so anchors
-    # coincide). Without this, depth/plane-gate-rejected islands vanish from
-    # the preview with only aggregate counts, and the agent loop chases
-    # camera angles when the actual blocker is a fit gate.
+    # The fit ran against OUR hole field, so each rejection already names the
+    # island in our numbering. Without this, depth/plane-gate-rejected islands
+    # vanish from the preview with only aggregate counts, and the agent loop
+    # chases camera angles when the actual blocker is a fit gate.
     island_rejections: dict[int, str] = {}
     for item in fit_report.get("rejected") or []:
-        anchor = item.get("anchor_cell")
-        if not anchor or len(anchor) != 2:
-            continue
-        arow, acol = int(anchor[0]), int(anchor[1])
-        if 0 <= arow < cell_to_id.shape[0] and 0 <= acol < cell_to_id.shape[1]:
-            island_id = int(cell_to_id[arow, acol])
-            if island_id > 0:
-                island_rejections[island_id] = str(item.get("reason", "unknown"))
+        island_id = int(item.get("island_id", 0))
+        if island_id > 0:
+            island_rejections[island_id] = str(item.get("reason", "unknown"))
 
     return {
         "components": components,
