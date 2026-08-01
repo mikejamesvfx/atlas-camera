@@ -461,7 +461,13 @@ def _face_camera_toward_negative_z(rotation: Any, np: Any) -> Any:
 
 
 def _rotation_from_up_vector(up: Any) -> Any:
-    """Build a world->cam rotation (Atlas Y-up) from the world-up direction in cam coords.
+    """Build a CAM->WORLD rotation (Atlas Y-up) from the world-up direction in cam coords.
+
+    Named for what it returns, checked against the caller: the solve stores this
+    as ``camera_rotation_matrix`` (cam->world) and derives
+    ``camera_view_matrix`` from its TRANSPOSE. This docstring previously said
+    world->cam, and two scale-tier call sites believed it — see the comment at
+    the `world_to_cam` binding in solve_still_image_learned.
 
     Yaw is unobservable from a single up-vector; the camera's horizontal
     forward is canonicalized to world -Z (DCC default forward — see
@@ -1303,6 +1309,18 @@ def solve_still_image_learned(
         fx = prior.focal_px * (width / max(prior.image_width, 1))
         fy = fx
     rotation = np.asarray(_rotation_from_up_vector(prior.up_cam))
+    # CAM->WORLD. The final camera is built from its transpose below
+    # (`camera_view_matrix=..._with_rotation_translation(rotation.T, ...)`), and
+    # `camera_rotation_matrix=rotation` is the cam->world 3x3 the schema stores.
+    #
+    # Both metric-scale tiers below want the OTHER one: estimate_ground_height_
+    # from_depth documents "``rotation`` is the world->cam matrix", and
+    # metric_height_from_reference transposes internally to recover cam->world.
+    # They were handed `rotation` directly, i.e. the inverse of what they asked
+    # for. A transpose is invisible for a level camera (R ~ R.T at zero pitch),
+    # so the suite never saw it; it scales with pitch, which is why elevated
+    # vantages fell back to `assumed_default` while level plates solved fine.
+    world_to_cam = rotation.T
 
     measure_height = isinstance(camera_height, str) and camera_height.lower() in (
         "auto", "measure", "depth",
@@ -1316,7 +1334,7 @@ def solve_still_image_learned(
     # Tier 1 — known-size reference objects (most reliable metric anchor).
     if scale_references:
         reference_scale = resolve_reference_scale(
-            scale_references, rotation=rotation, fx=fx, fy=fy,
+            scale_references, rotation=world_to_cam, fx=fx, fy=fy,
             cx=width / 2.0, cy=height / 2.0,
         )
         if reference_scale.get("camera_height") and \
@@ -1344,7 +1362,7 @@ def solve_still_image_learned(
         pitch_rad = math.radians(prior.pitch_deg)
         horizon_y = height / 2.0 + fy * math.tan(pitch_rad)
         ground = estimate_ground_height_from_depth(
-            depth_map, rotation=rotation, fx=fx, fy=fy,
+            depth_map, rotation=world_to_cam, fx=fx, fy=fy,
             cx=width / 2.0, cy=height / 2.0, horizon_y=horizon_y,
         )
         if scale_source != "reference_object" and ground.get("camera_height") and \
