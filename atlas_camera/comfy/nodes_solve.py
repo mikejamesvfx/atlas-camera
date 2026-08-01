@@ -1163,11 +1163,26 @@ class AtlasReferenceScaleSolve:
             "optional": {
                 "height_override_m": ("FLOAT", {"default": 0.0, "min": 0.0,
                     "tooltip": "0 = use the reference's registry height; else override in metres."}),
+                "storey_count": ("INT", {"default": 0, "min": 0, "max": 200,
+                    "tooltip": "COUNT THE STOREYS. On any plate with buildings this "
+                               "is the anchor that survives a high vantage, where "
+                               "people and cars are too small to measure. Pick one "
+                               "building visible base-to-roof, count its levels, and "
+                               "put the number here — the real height is count x "
+                               "storey_height_m, so you never type a product. "
+                               "0 = off. Overrides height_override_m when set."}),
+                "storey_height_m": ("FLOAT", {"default": 3.0, "min": 0.5, "max": 10.0,
+                    "step": 0.1,
+                    "tooltip": "Metres per storey. 3.0 matches the building_story_3m "
+                               "registry entry; the NYC birdseye doctrine measured a "
+                               "prewar tenement at 3.5. Prewar and commercial floors "
+                               "run taller than modern residential — this is a real "
+                               "difference, so it is a dial rather than a constant."}),
             },
         }
 
     def apply(self, solve, reference_id, bbox_x0, bbox_y0, bbox_x1, bbox_y1,
-              height_override_m=0.0):
+              height_override_m=0.0, storey_count=0, storey_height_m=3.0):
         from atlas_camera.core.solver import apply_reference_scale
         ref: dict[str, Any] = {
             "reference_id": reference_id,
@@ -1175,6 +1190,12 @@ class AtlasReferenceScaleSolve:
         }
         if height_override_m and height_override_m > 0:
             ref["height_m"] = height_override_m
+        if storey_count and int(storey_count) > 0:
+            # The count wins over a typed product. The count is what the artist
+            # verified by eye and what AtlasVLMScaleCues reports; a stale
+            # override silently beating it is the error this widget removes.
+            ref["height_m"] = float(int(storey_count)) * float(storey_height_m)
+            ref["storey_count"] = int(storey_count)
         apply_reference_scale(solve, [ref])
         return (solve, float(solve.camera.extrinsics.camera_position[1]))
 
