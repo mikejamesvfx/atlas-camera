@@ -9,6 +9,7 @@ import copy
 import math
 import os
 
+from atlas_camera.core.mask_ops import dilate
 from atlas_camera.comfy.node_helpers import (
     _BOUNDED_BAND_NOOP_M,
     _DEPTH_MODEL_CHOICES,
@@ -988,22 +989,10 @@ class AtlasDepthLayerMask:
             hole_mask_arr = mesh.hole_mask.astype(np.float32)
 
         if feather_px > 0 and occlusion_mask.any():
-            grown = occlusion_mask.copy()
-            for _ in range(int(feather_px)):
-                # Explicit zero-padded shifts, NOT np.roll — np.roll wraps
-                # around image borders, which would bleed occlusion from one
-                # edge (e.g. a foreground object touching the bottom of the
-                # frame, the common case) onto the opposite edge.
-                up = np.zeros_like(grown)
-                up[:-1, :] = grown[1:, :]
-                down = np.zeros_like(grown)
-                down[1:, :] = grown[:-1, :]
-                left = np.zeros_like(grown)
-                left[:, :-1] = grown[:, 1:]
-                right = np.zeros_like(grown)
-                right[:, 1:] = grown[:, :-1]
-                grown = grown | up | down | left | right
-            occlusion_mask = grown
+            # Clamped borders, not np.roll: wrapping would bleed occlusion from
+            # one edge (a foreground object touching the bottom of the frame,
+            # the common case) onto the opposite one.
+            occlusion_mask = dilate(occlusion_mask, int(feather_px))
 
         layer_t = torch.from_numpy(layer_mask.astype(np.float32)).unsqueeze(0)
         occ_t = torch.from_numpy(occlusion_mask.astype(np.float32)).unsqueeze(0)

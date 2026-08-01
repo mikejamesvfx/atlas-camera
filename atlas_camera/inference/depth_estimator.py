@@ -45,6 +45,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from atlas_camera.core.image_tiling import (       # noqa: F401  (re-exported)
+    _feather_weights,
+    assemble_tiles,
+    fit_affine_to_reference,
+    tile_boxes,
+)
 from atlas_camera.inference._common import bounded_cache_set, resolve_device
 
 
@@ -788,108 +794,6 @@ def _get_moge_model(model_id: str, device: str, checkpoint_path: str = ""):
     bounded_cache_set(_MOGE_MODEL_CACHE, key, model, _MOGE_MODEL_CACHE_MAX,
                       release_cuda=True)
     return model
-
-
-# --------------------------------------------------------------- tiled depth
-
-
-def tile_boxes(width: int, height: int, tile_side: int, overlap: float) -> list:
-    """Cover ``width x height`` in tiles of ~``tile_side``, overlapping by ``overlap``.
-
-    Returns ``[(x0, y0, x1, y1), ...]`` in source pixels. Tiles are distributed
-    EVENLY rather than laid left-to-right with a ragged remainder: a thin final
-    strip would get its own inferred scale from almost no context, which is the
-    worst possible input to a monocular model and shows up as a bright or dark
-    band down one edge.
-    """
-    step = max(1, int(round(tile_side * (1.0 - float(overlap)))))
-
-    def starts(total: int) -> list:
-        if total <= tile_side:
-            return [0]
-        n = int(-(-(total - tile_side) // step)) + 1        # ceil division
-        # Spread the n tiles evenly across the axis so every tile is full-size.
-        return [int(round(i * (total - tile_side) / (n - 1))) for i in range(n)]
-
-    return [(x, y, min(x + tile_side, width), min(y + tile_side, height))
-            for y in starts(height) for x in starts(width)]
-
-
-def _feather_weights(h: int, w: int, box, width: int, height: int, ramp: int, np):
-    """Cosine ramp toward tile edges, except where the tile meets the frame edge.
-
-    Feathering an edge that has no neighbour to blend with would fade the
-    outermost pixels toward zero and leave a dark rim around the whole plate.
-    """
-    x0, y0, x1, y1 = box
-    wx = np.ones(w, dtype=np.float64)
-    wy = np.ones(h, dtype=np.float64)
-    if ramp > 0:
-        t = 0.5 - 0.5 * np.cos(np.linspace(0.0, np.pi, min(ramp, w // 2 or 1)))
-        if x0 > 0:
-            wx[:len(t)] = np.minimum(wx[:len(t)], t)
-        if x1 < width:
-            wx[-len(t):] = np.minimum(wx[-len(t):], t[::-1])
-        t = 0.5 - 0.5 * np.cos(np.linspace(0.0, np.pi, min(ramp, h // 2 or 1)))
-        if y0 > 0:
-            wy[:len(t)] = np.minimum(wy[:len(t)], t)
-        if y1 < height:
-            wy[-len(t):] = np.minimum(wy[-len(t):], t[::-1])
-    return np.outer(wy, wx)
-
-
-def fit_affine_to_reference(tile_depth, reference, np, min_samples: int = 64):
-    """Least-squares ``(a, b)`` minimising ``|a*tile + b - reference|``.
-
-    THE reason tiling needs more than a paste. Monocular depth is scale- and
-    shift-ambiguous per input, so a tile of sky and a tile of pavement come back
-    on different scales even from a "metric" model. Stitching them directly puts
-    a visible step at every seam that no amount of feathering hides — the blend
-    just turns a hard step into a soft one.
-
-    Anchoring every tile to one global low-resolution pass puts them all in a
-    single frame of reference first; the feather then only has to hide model
-    noise, which it can.
-
-    Returns ``(1.0, 0.0)`` when there is too little overlap to fit — better a
-    tile that is merely unadjusted than one warped by a fit on ten pixels.
-    """
-    t = np.asarray(tile_depth, dtype=np.float64).ravel()
-    r = np.asarray(reference, dtype=np.float64).ravel()
-    ok = np.isfinite(t) & np.isfinite(r) & (t > 0) & (r > 0)
-    if int(ok.sum()) < min_samples:
-        return 1.0, 0.0
-    t, r = t[ok], r[ok]
-    # Guard a degenerate tile (flat depth): the normal equations are singular
-    # and would produce an enormous `a`.
-    if float(t.std()) < 1e-6:
-        return 1.0, float(np.median(r) - np.median(t))
-    a, b = np.polyfit(t, r, 1)
-    if not np.isfinite(a) or not np.isfinite(b) or a <= 0:
-        return 1.0, 0.0
-    return float(a), float(b)
-
-
-def assemble_tiles(tiles: list, width: int, height: int, ramp: int, np):
-    """Feather-blend ``[(box, depth_tile), ...]`` into one HxW map.
-
-    Weights accumulate per pixel and the sum divides at the end, so overlapping
-    regions are a true weighted mean rather than whichever tile happened to be
-    written last.
-    """
-    acc = np.zeros((height, width), dtype=np.float64)
-    wsum = np.zeros((height, width), dtype=np.float64)
-    for box, tile in tiles:
-        x0, y0, x1, y1 = box
-        th, tw = tile.shape[:2]
-        w = _feather_weights(th, tw, box, width, height, ramp, np)
-        finite = np.isfinite(tile)
-        acc[y0:y1, x0:x1] += np.where(finite, tile, 0.0) * w * finite
-        wsum[y0:y1, x0:x1] += w * finite
-    out = np.full((height, width), np.nan, dtype=np.float32)
-    hit = wsum > 1e-9
-    out[hit] = (acc[hit] / wsum[hit]).astype(np.float32)
-    return out
 
 
 def _estimate_depth_moge(

@@ -11,7 +11,6 @@ import io
 
 from atlas_camera.comfy.node_helpers import (
     _BAND_GEOMETRY_CHOICES,
-    _analytic_ground_forward_depth,
     _apply_band_split,
     _b64_png_to_mask,
     _band_resolution_validity,
@@ -988,6 +987,10 @@ class AtlasCleanPlateLayer:
                   band_geometry="relief", geometry_override="", band_ref_mask=None,
                   band_override="", max_edge_factor=12.0, normal_edge_deg=0.0,
                   quad_coherence=True):
+        from atlas_camera.core.band_geometry import (
+            boundary_overhang_cells,
+            flat_band_depth_field,
+        )
         from atlas_camera.core.proxy_geometry import relief_mesh_primitive
         from atlas_camera.core.relief_mesh import build_relief_mesh
         from atlas_camera.core.schema import (
@@ -1067,46 +1070,11 @@ class AtlasCleanPlateLayer:
         fill_for_mesh = fill_m
         heuristic = exclude_m is None
         if geometry != "relief":
-            band_region = valid_m & (metric_m >= near)
-            if far != float("inf"):
-                band_region &= metric_m <= far
-            if fill_m is not None:
-                # Flat depth covers the occluder footprint for free — include
-                # it in the region instead of diffusion-filling it.
-                band_region = band_region | (
-                    fill_m if exclude_m is None else (fill_m & ~exclude_m))
-            if geometry == "card":
-                # One fronto-parallel plane at the band's median depth — the
-                # classic DMP card; matches the projection_backdrop / sky
-                # dome constant-forward-Z convention.
-                const_raw = float(np.median(depth_m[band_region])) if band_region.any() else 1.0
-                geo_depth = np.full(depth_m.shape, const_raw, dtype=np.float64)
-            else:  # ground
-                # The exact analytic Y=0 plane along each pixel ray — raw
-                # units are metric/scale so build_relief_mesh's internal
-                # rescale-about-camera lands vertices on Y=0 on the nose.
-                geo_metric = _analytic_ground_forward_depth(extr, fx, fy, cx_m, cy_m, Hp, Wp)
-                if not np.isfinite(geo_metric).any():
-                    raise ValueError(
-                        "band_geometry='ground' needs a camera above the ground plane "
-                        "(solved camera height <= 0, or no ray ever hits Y=0).")
-                band_region &= np.isfinite(geo_metric)
-                # Non-ground pixels in the band (a wall base, an occluder's
-                # side) have analytic ground depths FAR beyond the band —
-                # near-horizontal rays run out toward the horizon. Cap at the
-                # band's far edge (or 4x the band's real 99th-pct depth when
-                # the band is open-ended) so only plausible ground-plane
-                # membership survives; the rest become holes/skirt.
-                if far != float("inf"):
-                    ground_cap = float(far)
-                elif band_region.any():
-                    ground_cap = 4.0 * float(np.percentile(metric_m[band_region], 99.0))
-                else:
-                    ground_cap = float("inf")
-                with np.errstate(invalid="ignore"):
-                    band_region &= ~(geo_metric > ground_cap)
-                geo_depth = geo_metric / max(float(scale), 1e-9)
-            depth_m = np.where(band_region, geo_depth, np.nan)
+            depth_m = flat_band_depth_field(
+                geometry, depth=depth_m, metric=metric_m, valid=valid_m,
+                near=near, far=far, scale=scale, extr=extr,
+                fx=fx, fy=fy, cx=cx_m, cy=cy_m, height=Hp, width=Wp,
+                fill_mask=fill_m, exclude_mask=exclude_m)
             band_min_for_mesh = None   # region already encodes membership;
             band_max_for_mesh = None   # analytic ground may exceed the band
             fill_for_mesh = None
@@ -1114,14 +1082,9 @@ class AtlasCleanPlateLayer:
             #                            the heuristic — must never run here
 
         choke = int(exclude_choke_cells) if exclude_m is not None else 0
-        overhang_cells = 0
-        if embed_matte:
-            overhang_cells = 2
-            if edge_extend_px and int(edge_extend_px) > 0:
-                cell_px = max(1, int(round(max(Hp, Wp) / max(int(relief_grid), 2))))
-                overhang_cells = 2 + int(np.ceil(int(edge_extend_px) / cell_px))
-            # The skirt must regrow the choked ring fully before extending.
-            overhang_cells += choke
+        overhang_cells = boundary_overhang_cells(
+            embed_matte=embed_matte, edge_extend_px=edge_extend_px,
+            relief_grid=relief_grid, height=Hp, width=Wp, choke_cells=choke)
         mesh = build_relief_mesh(
             depth_m, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx_m, cy=cy_m,
             grid_long_edge=int(relief_grid), depth_edge_rel=float(depth_edge_rel),

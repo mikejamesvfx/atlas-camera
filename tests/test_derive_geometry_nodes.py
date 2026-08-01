@@ -435,6 +435,29 @@ def test_backdrop_widget_is_appended_last():
         assert list(cls.INPUT_TYPES()["optional"])[-1] == "backdrop"
 
 
+def test_every_derive_node_refuses_a_focal_less_solve_the_same_way():
+    """Characterization pin, written before the four derive bodies were
+    collapsed onto one shared implementation. The refusal text is identical in
+    all four today only because it was copy-pasted four times; after the
+    collapse it is identical because there is one of it."""
+    pytest.importorskip("torch")
+    from atlas_camera.comfy.nodes_geometry import (
+        AtlasDeriveInteriorRoom,
+        AtlasDeriveRoofsFacades,
+        AtlasDeriveTowersSpires,
+    )
+
+    solve = _solve()
+    solve.camera.intrinsics.fx_px = 0.0
+    depth = _depth_result(_room_depth())
+    for node in (AtlasDeriveWalls(), AtlasDeriveTowersSpires(),
+                 AtlasDeriveRoofsFacades(), AtlasDeriveInteriorRoom()):
+        out, report = node.derive(solve, depth)
+        assert out is solve, f"{type(node).__name__} must pass the solve through"
+        assert report == ("SKIPPED — solve has no usable focal (fx <= 0); "
+                          "geometry unchanged"), type(node).__name__
+
+
 def test_no_usable_focal_reports_instead_of_silently_passing_through():
     """The old guard was a silent no-op; gate doctrine wants the explanation."""
     pytest.importorskip("torch")

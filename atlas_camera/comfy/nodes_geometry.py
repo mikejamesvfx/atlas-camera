@@ -15,6 +15,11 @@ import re
 import tempfile
 from pathlib import Path
 
+from atlas_camera.core.mask_ops import dilate
+from atlas_camera.core.patch_registration import (
+    solve_scale_from_primary,
+    splat_coverage,
+)
 from atlas_camera.comfy.node_helpers import (
     LIVE_FILL_WIDGETS,
     _AZIMUTH_VIEWS,
@@ -2332,6 +2337,33 @@ class AtlasPathGuidedHoleRepair:
         )
 
 
+def _derive_proxy_geometry(solve, depth, backdrop, *, extract, metadata):
+    """The shared derive body: resolve the camera, hand the depth map to one
+    extractor, clobber PROXY_ROLE geometry, apply the backdrop mode.
+
+    Four derive nodes carried this as a byte-identical preamble and tail, with
+    the refusal string written out four times. The only per-node knowledge is
+    which extractor runs and what the clobber records, so that is all a node
+    supplies. `extract` is called with the resolved camera as keywords.
+    """
+    params = _solve_camera_params(solve, depth)
+    if params is None:
+        # Silent no-op was the old behaviour; say why instead.
+        return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
+                       "geometry unchanged")
+    width, height, fx, fy, cx, cy = params
+    prims, stats = extract(
+        _depth_map_for_solve(depth, width, height),
+        view_matrix=solve.camera.extrinsics.camera_view_matrix,
+        fx=fx, fy=fy, cx=cx, cy=cy,
+        horizon_y=_horizon_y_from_solve(solve),
+        width=width, height=height,
+    )
+    out = _replace_proxy_role_geometry(solve, prims, stats, metadata)
+    note = _apply_backdrop_mode(out, backdrop)
+    return (out, note or "geometry derived; backdrop as measured")
+
+
 class AtlasDeriveWalls:
     """Vertical wall planes + foreground boxes/cylinders (azimuth_walls) — one
     job, general-purpose exterior blockout. Height is clipped to whatever 3D
@@ -2384,29 +2416,22 @@ class AtlasDeriveWalls:
     def derive(self, solve, depth, max_walls=4, max_objects=0, distance_modes=1,
                exclude_mask=None, ground_anchor=False, backdrop="measured_only"):
         from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_projection_proxies
-        params = _solve_camera_params(solve, depth)
-        if params is None:
-            # Silent no-op was the old behaviour; say why instead.
-            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
-                           "geometry unchanged")
-        width, height, fx, fy, cx, cy = params
-        depth_map = _depth_map_for_solve(depth, width, height)
-        horizon_y = _horizon_y_from_solve(solve)
-        extr = solve.camera.extrinsics
         cfg = ProxyDerivationConfig(max_objects=int(max_objects),
                                     wall_distance_modes=int(distance_modes),
                                     ground_anchor=bool(ground_anchor))
-        prims, stats = derive_projection_proxies(
-            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-            max_walls=int(max_walls), horizon_y=horizon_y, config=cfg,
-            exclude_mask=_resolve_exclude_mask(exclude_mask, height, width))
-        out = _replace_proxy_role_geometry(solve, prims, stats, {
+
+        def _extract(depth_map, *, width, height, **camera):
+            return derive_projection_proxies(
+                depth_map, max_walls=int(max_walls), config=cfg,
+                exclude_mask=_resolve_exclude_mask(exclude_mask, height, width),
+                **camera)
+
+        return _derive_proxy_geometry(solve, depth, backdrop, extract=_extract,
+                                      metadata={
             "primitive_method": "azimuth_walls", "derive_node": "AtlasDeriveWalls",
             "distance_modes": int(distance_modes),
             "ground_anchor": bool(ground_anchor),
         })
-        note = _apply_backdrop_mode(out, backdrop)
-        return (out, note or "geometry derived; backdrop as measured")
 
 
 class AtlasDeriveTowersSpires:
@@ -2465,31 +2490,24 @@ class AtlasDeriveTowersSpires:
     def derive(self, solve, depth, max_walls=4, max_objects=0, distance_modes=1,
                exclude_mask=None, ground_anchor=False, roofline_split=False, backdrop="measured_only"):
         from atlas_camera.core.proxy_geometry import ProxyDerivationConfig, derive_vertical_extrusion_proxies
-        params = _solve_camera_params(solve, depth)
-        if params is None:
-            # Silent no-op was the old behaviour; say why instead.
-            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
-                           "geometry unchanged")
-        width, height, fx, fy, cx, cy = params
-        depth_map = _depth_map_for_solve(depth, width, height)
-        horizon_y = _horizon_y_from_solve(solve)
-        extr = solve.camera.extrinsics
         cfg = ProxyDerivationConfig(max_objects=int(max_objects),
                                     wall_distance_modes=int(distance_modes),
                                     ground_anchor=bool(ground_anchor),
                                     roofline_split=bool(roofline_split))
-        prims, stats = derive_vertical_extrusion_proxies(
-            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-            max_walls=int(max_walls), horizon_y=horizon_y, config=cfg,
-            exclude_mask=_resolve_exclude_mask(exclude_mask, height, width))
-        out = _replace_proxy_role_geometry(solve, prims, stats, {
+
+        def _extract(depth_map, *, width, height, **camera):
+            return derive_vertical_extrusion_proxies(
+                depth_map, max_walls=int(max_walls), config=cfg,
+                exclude_mask=_resolve_exclude_mask(exclude_mask, height, width),
+                **camera)
+
+        return _derive_proxy_geometry(solve, depth, backdrop, extract=_extract,
+                                      metadata={
             "primitive_method": "vertical_extrusion", "derive_node": "AtlasDeriveTowersSpires",
             "distance_modes": int(distance_modes),
             "ground_anchor": bool(ground_anchor),
             "roofline_split": bool(roofline_split),
         })
-        note = _apply_backdrop_mode(out, backdrop)
-        return (out, note or "geometry derived; backdrop as measured")
 
 
 class AtlasDeriveRoofsFacades:
@@ -2517,23 +2535,16 @@ class AtlasDeriveRoofsFacades:
 
     def derive(self, solve, depth, max_planes=8, backdrop="measured_only"):
         from atlas_camera.core.plane_extraction import PlaneRansacConfig, extract_planes_ransac
-        params = _solve_camera_params(solve, depth)
-        if params is None:
-            # Silent no-op was the old behaviour; say why instead.
-            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
-                           "geometry unchanged")
-        width, height, fx, fy, cx, cy = params
-        depth_map = _depth_map_for_solve(depth, width, height)
-        horizon_y = _horizon_y_from_solve(solve)
-        extr = solve.camera.extrinsics
-        prims, stats = extract_planes_ransac(
-            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-            max_planes=int(max_planes), horizon_y=horizon_y, config=PlaneRansacConfig())
-        out = _replace_proxy_role_geometry(solve, prims, stats, {
+
+        def _extract(depth_map, *, width, height, **camera):
+            return extract_planes_ransac(
+                depth_map, max_planes=int(max_planes),
+                config=PlaneRansacConfig(), **camera)
+
+        return _derive_proxy_geometry(solve, depth, backdrop, extract=_extract,
+                                      metadata={
             "primitive_method": "ransac_planes", "derive_node": "AtlasDeriveRoofsFacades",
         })
-        note = _apply_backdrop_mode(out, backdrop)
-        return (out, note or "geometry derived; backdrop as measured")
 
 
 class AtlasDeriveInteriorRoom:
@@ -2558,23 +2569,15 @@ class AtlasDeriveInteriorRoom:
 
     def derive(self, solve, depth, backdrop="measured_only"):
         from atlas_camera.core.room_layout import RoomCuboidConfig, extract_room_cuboid
-        params = _solve_camera_params(solve, depth)
-        if params is None:
-            # Silent no-op was the old behaviour; say why instead.
-            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
-                           "geometry unchanged")
-        width, height, fx, fy, cx, cy = params
-        depth_map = _depth_map_for_solve(depth, width, height)
-        horizon_y = _horizon_y_from_solve(solve)
-        extr = solve.camera.extrinsics
-        prims, stats = extract_room_cuboid(
-            depth_map, view_matrix=extr.camera_view_matrix, fx=fx, fy=fy, cx=cx, cy=cy,
-            horizon_y=horizon_y, config=RoomCuboidConfig())
-        out = _replace_proxy_role_geometry(solve, prims, stats, {
+
+        def _extract(depth_map, *, width, height, **camera):
+            return extract_room_cuboid(
+                depth_map, config=RoomCuboidConfig(), **camera)
+
+        return _derive_proxy_geometry(solve, depth, backdrop, extract=_extract,
+                                      metadata={
             "primitive_method": "room_cuboid", "derive_node": "AtlasDeriveInteriorRoom",
         })
-        note = _apply_backdrop_mode(out, backdrop)
-        return (out, note or "geometry derived; backdrop as measured")
 
 
 class AtlasMergeGeometry:
@@ -3252,47 +3255,20 @@ class AtlasAddPatchView:
                     sub, view_matrix=extr.camera_view_matrix,
                     fx=fx / stride, fy=fy / stride,
                     cx=cx / stride, cy=cy / stride)
-                pts = bp_p.pts_world[bp_p.valid_depth]
-                qvm = np.asarray(patch_extr.camera_view_matrix, dtype=np.float64)
-                Rq, tq = qvm[:3, :3], qvm[:3, 3]
-                cam_q = pts @ Rq.T + tq
-                zq = -cam_q[:, 2]
-                front = zq > 1e-6
-                with np.errstate(all="ignore"):
-                    uq = pcx + pfx * cam_q[:, 0] / np.where(front, zq, np.nan)
-                    vq = pcy - pfy * cam_q[:, 1] / np.where(front, zq, np.nan)
-                hit = front & np.isfinite(uq) & np.isfinite(vq) & \
-                    (uq >= 0) & (uq < patch_w) & (vq >= 0) & (vq < patch_h)
-                coverage = np.zeros((patch_h, patch_w), dtype=bool)
-                coverage[vq[hit].astype(np.int64), uq[hit].astype(np.int64)] = True
                 # Close splat sparsity (patch pixels between projected
                 # samples) so 'seen' isn't undercounted — an undercounted
                 # coverage would let the AI patch overwrite real pixels.
-                close_px = max(2, int(round(2.0 * patch_w * stride / p_w)))
-                for _ in range(close_px):
-                    up = np.zeros_like(coverage)
-                    up[:-1, :] = coverage[1:, :]
-                    dn = np.zeros_like(coverage)
-                    dn[1:, :] = coverage[:-1, :]
-                    lf = np.zeros_like(coverage)
-                    lf[:, :-1] = coverage[:, 1:]
-                    rt = np.zeros_like(coverage)
-                    rt[:, 1:] = coverage[:, :-1]
-                    coverage = coverage | up | dn | lf | rt
+                coverage = splat_coverage(
+                    bp_p.pts_world[bp_p.valid_depth],
+                    camera={"view_matrix": patch_extr.camera_view_matrix,
+                            "fx": pfx, "fy": pfy, "cx": pcx, "cy": pcy,
+                            "width": patch_w, "height": patch_h},
+                    close_px=max(2, int(round(2.0 * patch_w * stride / p_w))))
                 unseen = ~coverage
                 if resolved_exclude is not None:
                     unseen &= ~resolved_exclude  # never paint sky onto geometry
-                for _ in range(int(unseen_dilate_px)):
-                    up = np.zeros_like(unseen)
-                    up[:-1, :] = unseen[1:, :]
-                    dn = np.zeros_like(unseen)
-                    dn[1:, :] = unseen[:-1, :]
-                    lf = np.zeros_like(unseen)
-                    lf[:, :-1] = unseen[:, 1:]
-                    rt = np.zeros_like(unseen)
-                    rt[:, 1:] = unseen[:, :-1]
-                    unseen = unseen | up | dn | lf | rt
-                mask_b64 = _mask_to_b64_png(unseen) or None
+                mask_b64 = _mask_to_b64_png(
+                    dilate(unseen, int(unseen_dilate_px))) or None
             return self._finish_patch(
                 solve, patch_image, patch_intr, patch_extr, patch_geom, mesh,
                 mask_b64, plate_ref, name, priority,
@@ -3305,34 +3281,18 @@ class AtlasAddPatchView:
         scale = None
         scale_source = "ground_fit"
         if primary_metric_map is not None:
-            bp_raw = back_project_normals(
-                depth_map, view_matrix=patch_extr.camera_view_matrix,
-                fx=pfx, fy=pfy, cx=pcx, cy=pcy)
-            pvm = np.asarray(extr.camera_view_matrix, dtype=np.float64)
-            R, t = pvm[:3, :3], pvm[:3, 3]
-            cam_pts = bp_raw.pts_world @ R.T + t
-            z_p = -cam_pts[..., 2]
-            patch_cam = np.asarray(
-                [float(v) for v in patch_extr.camera_position], dtype=np.float64)
-            z_cam = float(-(R @ patch_cam + t)[2])
-            with np.errstate(all="ignore"):
-                px = cx + fx * cam_pts[..., 0] / np.where(z_p > 1e-6, z_p, np.nan)
-                py = cy - fy * cam_pts[..., 1] / np.where(z_p > 1e-6, z_p, np.nan)
-            in_frame = np.isfinite(px) & np.isfinite(py) & \
-                (px >= 0) & (px < p_w) & (py >= 0) & (py < p_h)
-            sx = np.clip(np.where(in_frame, px, 0.0), 0, primary_metric_map.shape[1] - 1).astype(np.int64)
-            sy = np.clip(np.where(in_frame, py, 0.0), 0, primary_metric_map.shape[0] - 1).astype(np.int64)
-            m = primary_metric_map[sy, sx]
-            denom = z_p - z_cam
-            ok = bp_raw.valid_depth & in_frame & (z_p > 1e-6) & \
-                np.isfinite(m) & (m > 1e-4) & (np.abs(denom) > 1e-3)
-            if resolved_exclude is not None:
-                ok &= ~resolved_exclude  # sky pixels are noise for registration
-            with np.errstate(all="ignore"):
-                s_samples = (m - z_cam) / denom
-            ok &= np.isfinite(s_samples) & (s_samples > 1e-3) & (s_samples < 1e3)
-            if int(ok.sum()) >= 500:
-                scale = float(np.median(s_samples[ok]))
+            scale, _reg_info = solve_scale_from_primary(
+                depth_map,
+                patch_camera={"view_matrix": patch_extr.camera_view_matrix,
+                              "fx": pfx, "fy": pfy, "cx": pcx, "cy": pcy,
+                              "width": patch_w, "height": patch_h},
+                patch_camera_position=patch_extr.camera_position,
+                primary_metric_map=primary_metric_map,
+                primary_camera={"view_matrix": extr.camera_view_matrix,
+                                "fx": fx, "fy": fy, "cx": cx, "cy": cy,
+                                "width": p_w, "height": p_h},
+                exclude_mask=resolved_exclude)
+            if scale is not None:
                 scale_source = "primary_registration"
 
         if scale is None:
@@ -3675,19 +3635,12 @@ class AtlasOcclusionMask:
             primary_depth_map=primary_metric_map,
             depth_bias_rel=float(depth_bias),
         )
-        mask = invalid.astype(np.float32)
-
-        # 4-connected binary dilation, one pixel per iteration. np.roll wraps
-        # at the image border rather than clamping — negligible in practice
-        # since dilate_px is capped at 200 and target images are typically
-        # much larger, but a very small image + large dilate_px could wrap.
-        for _ in range(int(dilate_px)):
-            grown = mask.copy()
-            grown = np.maximum(grown, np.roll(mask, 1, axis=0))
-            grown = np.maximum(grown, np.roll(mask, -1, axis=0))
-            grown = np.maximum(grown, np.roll(mask, 1, axis=1))
-            grown = np.maximum(grown, np.roll(mask, -1, axis=1))
-            mask = grown
+        # 4-connected binary dilation with CLAMPED borders. The previous
+        # np.roll implementation wrapped, so a mask touching the left edge grew
+        # onto the right one — harmless at typical plate sizes, wrong at any
+        # size, and now impossible: core.mask_ops.dilate pins the border
+        # semantic in a test rather than a comment.
+        mask = dilate(invalid, int(dilate_px)).astype(np.float32)
 
         soft_edge_px = int(soft_edge_px)
         if soft_edge_px > 0:
