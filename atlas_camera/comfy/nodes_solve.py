@@ -12,10 +12,12 @@ import math
 import os
 from pathlib import Path
 from typing import Any, NamedTuple
+from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.io import load_solve_json, save_solve_json
 from atlas_camera.core.solver import solve_from_constraints, solve_still_image
 from atlas_camera.importers.usd_camera_loader import USDCameraLoader
 
+from atlas_camera.comfy.gate import Gate
 from atlas_camera.comfy.node_helpers import (
     _ASSESS_OUTPUT_SLOTS,
     _ATLAS_ASSESS_CACHE,
@@ -23,9 +25,7 @@ from atlas_camera.comfy.node_helpers import (
     _DEPTH_MODEL_CHOICES,
     _clone_solve_with_metadata,
     _depth_map_for_solve,
-    _execution_blocker,
     _extrinsics_from_view,
-    _image_fingerprint,
     _image_tensor_to_preview_b64,
     _pil_to_image_tensor,
     _recompute_horizon_line,
@@ -34,7 +34,6 @@ from atlas_camera.comfy.node_helpers import (
     _require_torch,
     _resolve_raw_hints,
     _save_image_tensor_to_tmp,
-    _solve_fingerprint,
     _stamp_raw_provenance,
 )
 from atlas_camera.comfy.nodes_viewport import AtlasDebugReport
@@ -1006,8 +1005,8 @@ class AtlasRollTrim:
         if out.horizon_line is not None and intr.fx_px and intr.image_width:
             fx = float(intr.fx_px)
             fy = float(intr.fy_px or intr.fx_px)
-            cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
-            cy = float(intr.cy_px if intr.cy_px is not None else (intr.image_height or 0) / 2.0)
+            spec = CameraSpec.from_intrinsics(intr)
+            cx, cy = spec.cx, spec.cy
             w = float(intr.image_width)
             a = r_cw[1][0] / fx
             b = -r_cw[1][1] / fy
@@ -1356,23 +1355,20 @@ class AtlasAssessImage:
         # proceed widget persists, so a new image sailed through the previous
         # image's approval). An empty approved_for with proceed=True is the
         # manual unconditional override.
-        img_fp = _image_fingerprint(image)
-        report = cached.report
         # auto_continue (default ON): advisory mode — never block; the solve
         # gate downstream is the first checkpoint. OFF restores the hard
-        # per-image ▶ Continue gate with its stale-approval re-arming.
-        effective_proceed = bool(auto_continue) or (
-            bool(proceed) and (not approved_for or approved_for == img_fp))
-        if not auto_continue and proceed and approved_for and approved_for != img_fp:
-            report = ("*** GATE RE-ARMED: the input image changed since ▶ Continue was "
-                      "clicked — review the fresh assessment below, then ▶ Continue "
-                      "again for this image. ***\n\n" + report)
-
-        if effective_proceed:
-            img_out = image
-        else:
-            blocker = _execution_blocker()
-            img_out = blocker if blocker is not None else image
+        # per-image ▶ Continue gate with its stale-approval re-arming (whose
+        # explanation advisory mode has no reason to show).
+        gate = Gate.for_image(image, proceed=proceed, approved_for=approved_for,
+                              bypass=bool(auto_continue))
+        report = cached.report
+        if not auto_continue:
+            report = gate.annotate(
+                report,
+                "the input image changed since ▶ Continue was clicked — review the "
+                "fresh assessment below, then ▶ Continue again for this image.",
+                sep="\n\n")
+        img_out = gate.route(image)
         # Staged 5-layer SAM prompts + per-band geometry recommendations —
         # plain strings, NOT gated: everything they feed (SAM3 nodes /
         # AtlasCleanPlateLayer) also consumes the gated image via the plate
@@ -1391,17 +1387,18 @@ class AtlasAssessImage:
         # resolved values into LINKED widgets — a widget converted to a
         # linked input keeps displaying its stale typed text otherwise
         # (found live: values flowed at execution but were invisible).
-        return {"ui": {"text": [report], "fingerprint": [img_fp],
-                       "sam_prompts": [sam["sky"], sam["far"], sam["bg"],
-                                       sam["mid"], sam["fg"]],
-                       "sam_geometry": [geom["far"], geom["bg"],
-                                        geom["mid"], geom["fg"]],
-                       "sam_bands": [band["far"], band["bg"],
-                                     band["mid"], band["fg"]]},
-                "result": (img_out, report, settings_json,
-                           sam["sky"], sam["far"], sam["bg"], sam["mid"], sam["fg"],
-                           geom["far"], geom["bg"], geom["mid"], geom["fg"],
-                           band["far"], band["bg"], band["mid"], band["fg"])}
+        return gate.envelope(
+            report,
+            (img_out, report, settings_json,
+             sam["sky"], sam["far"], sam["bg"], sam["mid"], sam["fg"],
+             geom["far"], geom["bg"], geom["mid"], geom["fg"],
+             band["far"], band["bg"], band["mid"], band["fg"]),
+            ui={"sam_prompts": [sam["sky"], sam["far"], sam["bg"],
+                                sam["mid"], sam["fg"]],
+                "sam_geometry": [geom["far"], geom["bg"],
+                                 geom["mid"], geom["fg"]],
+                "sam_bands": [band["far"], band["bg"],
+                              band["mid"], band["fg"]]})
 
 
 class AtlasSolveGate:
@@ -1458,7 +1455,8 @@ class AtlasSolveGate:
 
         np = _require_numpy()
 
-        fp = _solve_fingerprint(solve, source_image)
+        gate = Gate.for_solve(solve, source_image,
+                              proceed=proceed, approved_for=approved_for)
         intr = solve.camera.intrinsics
         extr = solve.camera.extrinsics
         try:
@@ -1473,9 +1471,8 @@ class AtlasSolveGate:
         meta = solve.debug_metadata or {}
         from atlas_camera.core.scene_health import scale_health
         sh = scale_health(solve)
-        effective = bool(proceed) and (not approved_for or approved_for == fp)
         lines = [
-            "✅ SOLVE APPROVED — heavy graph running." if effective else
+            "✅ SOLVE APPROVED — heavy graph running." if gate.passed else
             "⏸ SOLVE GATE — downstream paused. Review, then ✅ Approve Solve.",
             (f"focal: {intr.focal_length_mm:.1f}mm ({fov:.1f}° hFOV) on "
              f"{intr.sensor_width_mm}mm") if intr.focal_length_mm else "focal: n/a",
@@ -1487,18 +1484,10 @@ class AtlasSolveGate:
         ]
         if not sh.safe_to_export:
             lines.insert(1, f"⚠ SCALE NOT VERIFIED — {sh.detail}")
-        if proceed and approved_for and approved_for != fp:
-            lines.insert(0, "*** GATE RE-ARMED: the solve or image changed since "
-                            "approval — review and ✅ Approve again. ***")
-        report = "\n".join(l for l in lines if l)
-
-        if effective:
-            out = solve
-        else:
-            blocker = _execution_blocker()
-            out = blocker if blocker is not None else solve
-        return {"ui": {"text": [report], "fingerprint": [fp]},
-                "result": (out, report)}
+        report = gate.annotate(
+            "\n".join(l for l in lines if l),
+            "the solve or image changed since approval — review and ✅ Approve again.")
+        return gate.envelope(report, (gate.route(solve), report))
 
 
 class AtlasSceneHealthGate:
@@ -1562,9 +1551,14 @@ class AtlasSceneHealthGate:
         health = evaluate_scene_health(
             solve, depth, scope_statuses=statuses,
             matte_coverage_fn=AtlasDebugReport._matte_coverage)
-        fp = _solve_fingerprint(solve, source_image)
-        approval = bool(proceed) and (not approved_for or approved_for == fp)
-        effective = (health.level == "pass" and bool(pass_through_on_pass)) or approval
+        # A clean report is its own bypass: pass_through_on_pass lets a
+        # flag-free scene flow with zero clicks, while warn/fail still needs
+        # the explicit acknowledgement.
+        gate = Gate.for_solve(
+            solve, source_image, proceed=proceed, approved_for=approved_for,
+            bypass=(health.level == "pass" and bool(pass_through_on_pass)))
+        approval = gate.approved
+        effective = gate.passed
 
         # The indelible stamp — acknowledged=True only for an explicit
         # override of a warn/fail report, never for a clean pass-through.
@@ -1588,18 +1582,10 @@ class AtlasSceneHealthGate:
                          f"({len(health.flags)} flag(s)) — {state}")
             for f in health.flags:
                 lines.append(f"  {marks.get(f.severity, '•')} {f.message}")
-        if proceed and approved_for and approved_for != fp:
-            lines.insert(0, "*** GATE RE-ARMED: the solve or image changed since the "
-                            "acknowledgement — review and ✅ again. ***")
-        report = "\n".join(lines)
-
-        if effective:
-            out = solve
-        else:
-            blocker = _execution_blocker()
-            out = blocker if blocker is not None else solve
-        return {"ui": {"text": [report], "fingerprint": [fp]},
-                "result": (out, report)}
+        report = gate.annotate(
+            "\n".join(lines),
+            "the solve or image changed since the acknowledgement — review and ✅ again.")
+        return gate.envelope(report, (gate.route(solve), report))
 
 
 class AtlasVLMScaleCues:
@@ -1849,8 +1835,8 @@ class AtlasFaceScaleReference:
         K = solve.camera.intrinsics
         fx = float(K.fx_px or 0.0)
         fy = float(K.fy_px or fx)
-        cx = float(K.cx_px if K.cx_px is not None else K.image_width / 2.0)
-        cy = float(K.cy_px if K.cy_px is not None else K.image_height / 2.0)
+        cam_spec = CameraSpec.from_intrinsics(K)
+        cx, cy = cam_spec.cx, cam_spec.cy
         # View-matrix convention (CLAUDE.md): the world->cam rotation comes from
         # the 4x4's rotation block, never the transpose-ambiguous bare 3x3.
         world_to_cam = np.asarray(
@@ -2281,8 +2267,8 @@ class AtlasDecomposeCamera:
         extr = camera.extrinsics
         fx = intr.fx_px or 0.0
         fy = intr.fy_px or fx
-        cx = intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0
-        cy = intr.cy_px if intr.cy_px is not None else intr.image_height / 2.0
+        spec = CameraSpec.from_intrinsics(intr)
+        cx, cy = spec.cx, spec.cy
         pos = extr.camera_position
         focal_mm = intr.focal_length_mm or 0.0
         fov_h = 0.0

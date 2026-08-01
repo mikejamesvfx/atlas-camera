@@ -76,6 +76,7 @@ def run_stress(solve, *, res=512, az_steps=(3.0, 6.0), el_steps=(3.0,),
     import numpy as np
 
     from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+    from atlas_camera.core.camera_spec import CameraSpec
 
     intr = solve.camera.intrinsics
     extr = solve.camera.extrinsics
@@ -84,8 +85,10 @@ def run_stress(solve, *, res=512, az_steps=(3.0, 6.0), el_steps=(3.0,),
     ew, eh = max(8, int(round(W * scale))), max(8, int(round(H * scale)))
     fx = float(intr.fx_px) * scale
     fy = float(intr.fy_px or intr.fx_px) * scale
-    ccx = float(intr.cx_px if intr.cx_px is not None else W / 2.0) * scale
-    ccy = float(intr.cy_px if intr.cy_px is not None else H / 2.0) * scale
+    # `scale` is the preview downscale, not the spec's metric scale — it stays
+    # applied here, outside the spec, exactly as before.
+    spec = CameraSpec.from_solve(solve)
+    ccx, ccy = spec.cx * scale, spec.cy * scale
 
     meshes = _meshes_from_solve(solve)
     if not meshes:

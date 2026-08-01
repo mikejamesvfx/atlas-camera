@@ -40,8 +40,10 @@ import os
 from pathlib import Path
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm
+from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.schema import AtlasSolve
 from atlas_camera.exporters._plate import primary_plate_colorspace, primary_plate_path
+from atlas_camera.exporters.dcc_transform import COMPOSITION_XYZ, euler_degrees
 
 _SOURCE_IMAGE_NAME = "source_image.png"
 
@@ -70,8 +72,8 @@ def write_nuke_projection_script(
 
     # Principal-point offset as Nuke win_translate (normalised by aperture).
     # Nuke Y is up, image Y is down — flip the vertical component.
-    cx = intrinsics.cx_px if intrinsics.cx_px is not None else image_w / 2.0
-    cy = intrinsics.cy_px if intrinsics.cy_px is not None else image_h / 2.0
+    spec = CameraSpec.from_solve(solve)
+    cx, cy = spec.cx, spec.cy
     win_tx = (cx - image_w / 2.0) / image_w
     win_ty = -((cy - image_h / 2.0) / image_h)
 
@@ -275,8 +277,8 @@ def write_nuke_native_script(
 
     tx, ty, tz = solve.camera.extrinsics.camera_position
 
-    cx = intrinsics.cx_px if intrinsics.cx_px is not None else image_w / 2.0
-    cy = intrinsics.cy_px if intrinsics.cy_px is not None else image_h / 2.0
+    spec = CameraSpec.from_solve(solve)
+    cx, cy = spec.cx, spec.cy
     win_tx = (cx - image_w / 2.0) / image_w
     win_ty = -((cy - image_h / 2.0) / image_h)
 
@@ -411,24 +413,17 @@ from atlas_camera.exporters._layers import (  # noqa: E402
 def _matrix_to_nuke_euler_xyz(world_matrix) -> tuple[float, float, float]:
     """Decompose a cam->world 4x4's rotation to Nuke XYZ Euler degrees.
 
-    R = Rx(a) @ Ry(b) @ Rz(c) (column-vector). Verified round-trip exact (1e-16)
-    on real solves. Used for the RENDER camera so its translate/rotate channels
-    stay unlocked/animatable — Nuke's ``useMatrix true`` disables the TRS knobs,
-    so a matrix-driven camera can't be keyframed. Projection cameras keep
-    useMatrix (they're static, and the matrix is unambiguous). Pair with
-    ``rot_order XYZ`` on the node so Nuke composes it the same way.
+    R = Rx(a) @ Ry(b) @ Rz(c) (column-vector) — note this is the REVERSE of the
+    product Maya's identically-spelled "xyz" rotate order uses, which is why
+    the shared decomposition makes the caller name the composition. Verified
+    round-trip exact (1e-16) on real solves. Used for the RENDER camera so its
+    translate/rotate channels stay unlocked/animatable — Nuke's ``useMatrix
+    true`` disables the TRS knobs, so a matrix-driven camera can't be
+    keyframed. Projection cameras keep useMatrix (they're static, and the
+    matrix is unambiguous). Pair with ``rot_order XYZ`` on the node so Nuke
+    composes it the same way.
     """
-    import math
-    m = [list(r) for r in world_matrix]
-    sy = max(-1.0, min(1.0, float(m[0][2])))
-    b = math.asin(sy)
-    if abs(math.cos(b)) > 1e-6:
-        a = math.atan2(-float(m[1][2]), float(m[2][2]))
-        c = math.atan2(-float(m[0][1]), float(m[0][0]))
-    else:  # gimbal lock: fold c into a
-        a = math.atan2(float(m[2][1]), float(m[1][1]))
-        c = 0.0
-    return math.degrees(a), math.degrees(b), math.degrees(c)
+    return euler_degrees(world_matrix, composition=COMPOSITION_XYZ)
 
 
 def write_nuke_layers_script(
@@ -508,8 +503,10 @@ def write_nuke_layers_script(
         sensor_h = derive_sensor_height_mm(c_intr)
         w = c_intr.image_width or image_w
         h = c_intr.image_height or image_h
-        ccx = c_intr.cx_px if c_intr.cx_px is not None else w / 2.0
-        ccy = c_intr.cy_px if c_intr.cy_px is not None else h / 2.0
+        # for_image: `w`/`h` fall back to the PRIMARY plate's size when a layer
+        # camera records none, so the centre is that raster's, not c_intr's.
+        c_spec = CameraSpec.for_image(c_intr, w, h)
+        ccx, ccy = c_spec.cx, c_spec.cy
         win_tx = (ccx - w / 2.0) / w
         win_ty = -((ccy - h / 2.0) / h)
         tx, ty, tz = c_extr.camera_position

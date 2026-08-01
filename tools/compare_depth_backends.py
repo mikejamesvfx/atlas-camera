@@ -56,6 +56,7 @@ def compare_image(image_path: str, models: list[str], device: str | None,
                   grid_long_edge: int, depth_edge_rel: float) -> dict:
     import numpy as np
 
+    from atlas_camera.core.camera_spec import CameraSpec
     from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
     from atlas_camera.core.solver import (
         _resize_depth,
@@ -72,8 +73,8 @@ def compare_image(image_path: str, models: list[str], device: str | None,
     width, height = int(intr.image_width), int(intr.image_height)
     fx = float(intr.fx_px)
     fy = float(intr.fy_px or fx)
-    cx = float(intr.cx_px if intr.cx_px is not None else width / 2.0)
-    cy = float(intr.cy_px if intr.cy_px is not None else height / 2.0)
+    spec = CameraSpec.from_solve(solve)
+    cx, cy = spec.cx, spec.cy
     vm = np.asarray(extr.camera_view_matrix, dtype=np.float64)
     # Same horizon estimate solve_still_image_learned uses for its ground fit.
     horizon_y = height / 2.0 + fy * math.tan(math.radians(prior.pitch_deg))

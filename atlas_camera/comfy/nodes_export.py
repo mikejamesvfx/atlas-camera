@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.io import load_solve_json, save_solve_json
 from atlas_camera.exporters.blender_exporter import write_blender_scene_script
 from atlas_camera.exporters.nuke_exporter import write_nuke_native_script, write_nuke_projection_script
@@ -227,8 +228,10 @@ class AtlasExportReliefMesh:
                 "Relief mesh export needs a solved focal length — run a solve node "
                 "(e.g. Atlas Learned Solve) before this node."
             )
-        cx = intr.cx_px if intr.cx_px is not None else width / 2.0
-        cy = intr.cy_px if intr.cy_px is not None else height / 2.0
+        # for_image: `width`/`height` above already fall back to the wired
+        # tensor's size, which need not match the intrinsics' recorded plate.
+        spec = CameraSpec.for_image(intr, width, height)
+        cx, cy = spec.cx, spec.cy
 
         # Prefer the relief mesh ALREADY derived onto the solve — it carries all
         # the edge tuning (max_edge_factor / normal_edge_deg / band near-clip /

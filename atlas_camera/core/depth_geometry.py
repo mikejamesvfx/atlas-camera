@@ -22,6 +22,8 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from atlas_camera.core.camera_spec import CameraSpec, horizon_row
+
 
 def _require_numpy() -> Any:
     try:
@@ -554,33 +556,25 @@ def _solve_camera_params(solve, depth_result):
     Returns None when there's no usable focal length (caller should return the
     solve unchanged, matching AtlasDeriveProjectionGeometry's own behavior).
     """
-    intr = solve.camera.intrinsics
-    width = int(intr.image_width or depth_result.image_width)
-    height = int(intr.image_height or depth_result.image_height)
-    fx = intr.fx_px or 0.0
-    fy = intr.fy_px or fx
-    if fx <= 0:
+    spec = CameraSpec.from_solve(
+        solve,
+        width=depth_result.image_width,
+        height=depth_result.image_height,
+    )
+    if not spec.has_focal:
         return None
-    cx = intr.cx_px if intr.cx_px is not None else width / 2.0
-    cy = intr.cy_px if intr.cy_px is not None else height / 2.0
-    return width, height, fx, fy, cx, cy
-def _horizon_y_from_solve(solve):
-    """Image row of the solved horizon, or None — same extraction
-    AtlasDeriveProjectionGeometry already does from solve.horizon_line."""
-    if solve.horizon_line and solve.horizon_line.endpoints_px:
-        p1, p2 = solve.horizon_line.endpoints_px
-        return 0.5 * (float(p1[1]) + float(p2[1]))
-    return None
+    return spec.as_params()
+# Image row of the solved horizon, or None. The extraction lives at the camera
+# seam; this name stays because comfy/ and the tests import it.
+_horizon_y_from_solve = horizon_row
 def _recompute_horizon_line(out, r_cw):
     """Refresh the stored horizon line for a re-oriented camera (the RollTrim
     vanishing-line math: world-Y ray component zero, linear in (u, v))."""
     intr = out.camera.intrinsics
     if out.horizon_line is None or not intr.fx_px or not intr.image_width:
         return
-    fx = float(intr.fx_px)
-    fy = float(intr.fy_px or intr.fx_px)
-    cx = float(intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0)
-    cy = float(intr.cy_px if intr.cy_px is not None else (intr.image_height or 0) / 2.0)
+    spec = CameraSpec.from_intrinsics(intr)
+    fx, fy, cx, cy = spec.fx, spec.fy, spec.cx, spec.cy
     w = float(intr.image_width)
     a = r_cw[1][0] / fx
     b = -r_cw[1][1] / fy
@@ -675,13 +669,10 @@ def _ground_depth_compute(solve, width: int, height: int, near: float, far: floa
     intr = cam.intrinsics
     extr = cam.extrinsics
 
-    fx = intr.fx_px or 0.0
-    fy = intr.fy_px or fx
+    spec = CameraSpec.for_image(intr, width, height)
+    fx, fy, cx, cy = spec.fx, spec.fy, spec.cx, spec.cy
     if fx <= 0 or fy <= 0:
         return None, None
-
-    cx = intr.cx_px if intr.cx_px is not None else width / 2.0
-    cy = intr.cy_px if intr.cy_px is not None else height / 2.0
 
     vm = np.array(extr.camera_view_matrix, dtype=np.float64)  # 4×4
     cam_to_world = np.linalg.inv(vm)

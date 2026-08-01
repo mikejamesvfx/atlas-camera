@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Any
 
 from atlas_camera.comfy.node_helpers import _DEPTH_MODEL_CHOICES  # noqa: F401
+from atlas_camera.core.camera_spec import CameraSpec
 
 
 def _depth_array(depth: Any) -> Any:
@@ -93,13 +94,16 @@ def _relief_tear_mask(solve, shape):
         return None
     intr = solve.camera.intrinsics
     height, width = shape
+    # for_image: the raster is `shape`, whatever the caller asked for — the
+    # docstring's "at whatever resolution the caller actually needs" — so the
+    # centre fallback is this raster's, not the recorded plate's.
+    spec = CameraSpec.for_image(intr, width, height)
     coverage, _ = rasterize_coverage(
         verts, faces,
         view_matrix=np.asarray(solve.camera.extrinsics.camera_view_matrix,
                                dtype=np.float64),
         fx=float(intr.fx_px or width), fy=float(intr.fy_px or width),
-        cx=float(intr.cx_px if intr.cx_px is not None else width / 2.0),
-        cy=float(intr.cy_px if intr.cy_px is not None else height / 2.0),
+        cx=spec.cx, cy=spec.cy,
         width=width, height=height,
     )
     return ~coverage

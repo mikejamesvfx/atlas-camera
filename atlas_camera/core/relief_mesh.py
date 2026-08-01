@@ -20,6 +20,8 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
+from atlas_camera.core.camera_spec import CameraSpec
+
 
 def _require_numpy() -> Any:
     try:
@@ -171,42 +173,11 @@ def estimate_ground_scale(
     return scale, {"plane_y": y0, "inliers": int(cand.sum())}
 
 
-@dataclass(frozen=True)
-class ReliefMeshCameraSpec:
-    """Camera intrinsic/extrinsic and scale bundle for relief mesh construction."""
-
-    view_matrix: Any
-    fx: float
-    fy: float
-    cx: float
-    cy: float
-    scale: float = 1.0
-    horizon_y: float | None = None
-
-    @classmethod
-    def from_solve(cls, solve: Any, scale: float = 1.0) -> ReliefMeshCameraSpec:
-        """Construct camera spec bundle from an ATLAS_SOLVE object."""
-        intr = solve.camera.intrinsics
-        extr = solve.camera.extrinsics
-        fx = float(intr.fx_px or 0.0)
-        fy = float(intr.fy_px or fx)
-        width = int(intr.image_width or 1024)
-        height = int(intr.image_height or 1024)
-        cx = float(intr.cx_px if intr.cx_px is not None else width / 2.0)
-        cy = float(intr.cy_px if intr.cy_px is not None else height / 2.0)
-        horizon_y = None
-        if solve.horizon_line and solve.horizon_line.endpoints_px:
-            p1, p2 = solve.horizon_line.endpoints_px
-            horizon_y = 0.5 * (float(p1[1]) + float(p2[1]))
-        return cls(
-            view_matrix=extr.camera_view_matrix,
-            fx=fx,
-            fy=fy,
-            cx=cx,
-            cy=cy,
-            scale=float(scale),
-            horizon_y=horizon_y,
-        )
+# The bundle moved to core/camera_spec.py — it is the CAMERA seam, not a
+# relief-mesh detail, and 27 hand-rolled copies of its principal-point fallback
+# existed outside this file because nothing found it in here. The name stays
+# exported: depth_completion, move_budget and the tests import it.
+ReliefMeshCameraSpec = CameraSpec
 
 
 def repair_relief_grid_cuda(

@@ -10,6 +10,7 @@ import shutil
 from typing import Any
 from uuid import uuid4
 
+from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.io import load_solve_json, save_solve_json
 from atlas_camera.core.schema import AtlasSolve
 from atlas_camera.core.solver import solve_from_constraints, solve_still_image
@@ -402,8 +403,8 @@ def camera_analysis_response(
     extrinsics = camera.extrinsics
     fx = intrinsics.fx_px or 0.0
     fy = intrinsics.fy_px or fx
-    cx = intrinsics.cx_px if intrinsics.cx_px is not None else intrinsics.image_width / 2.0
-    cy = intrinsics.cy_px if intrinsics.cy_px is not None else intrinsics.image_height / 2.0
+    spec = CameraSpec.from_solve(solve)
+    cx, cy = spec.cx, spec.cy
     intrinsic_matrix = (
         (fx, 0.0, cx),
         (0.0, fy, cy),

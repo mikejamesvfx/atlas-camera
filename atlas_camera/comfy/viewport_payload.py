@@ -43,6 +43,7 @@ from atlas_camera.comfy.node_helpers import (
     _require_numpy,
     _require_pil,
 )
+from atlas_camera.core.camera_spec import CameraSpec
 
 _PRIMARY_DEPTH_MAX_EDGE = 2048
 
@@ -107,8 +108,13 @@ def _serialize_projection_sources(solve) -> list[dict[str, Any]]:
         s_extr = src.camera.extrinsics
         s_fx = s_intr.fx_px or 0.0
         s_fy = s_intr.fy_px or s_fx
-        s_cx = s_intr.cx_px if s_intr.cx_px is not None else (s_intr.image_width or 1) / 2.0
-        s_cy = s_intr.cy_px if s_intr.cy_px is not None else (s_intr.image_height or 1) / 2.0
+        # for_image with the `or 1`-guarded size, NOT from_solve: a patch source
+        # that records no plate size must still centre on 0.5 rather than 0.0,
+        # and principal_point_px stays out of the ladder here — this site never
+        # consulted it.
+        s_spec = CameraSpec.for_image(s_intr, s_intr.image_width or 1,
+                                      s_intr.image_height or 1)
+        s_cx, s_cy = s_spec.cx, s_spec.cy
         projection_sources.append({
             "name": src.name,
             "view_matrix": [list(row) for row in s_extr.camera_view_matrix],
@@ -200,8 +206,8 @@ solve, source_image, target_width: int, target_height: int,
     extr = cam.extrinsics
     fx = intr.fx_px or 0.0
     fy = intr.fy_px or fx
-    cx = intr.cx_px if intr.cx_px is not None else intr.image_width / 2.0
-    cy = intr.cy_px if intr.cy_px is not None else intr.image_height / 2.0
+    spec = CameraSpec.from_solve(solve)
+    cx, cy = spec.cx, spec.cy
     if shot_intrinsics is not None:
         render_fy = shot_intrinsics.fy_px or shot_intrinsics.fx_px or fy
         render_image_height = shot_intrinsics.image_height

@@ -10,9 +10,16 @@ from pathlib import Path
 import re
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm, mm_to_inches, pixel_offset_to_normalized_film_offset
+from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.proxy_geometry import PROXY_ROLE
 from atlas_camera.core.schema import AtlasSolve, Matrix4
 from atlas_camera.exporters._plate import primary_plate_colorspace, primary_plate_path
+from atlas_camera.exporters.dcc_transform import (
+    COMPOSITION_ZYX,
+    euler_degrees,
+    row_vector_flat,
+    translation,
+)
 
 NODE_CAMERA = "atlas_CAMERA"
 NODE_PROJECTION_GRP = "atlas_PROJECTION_GRP"
@@ -27,14 +34,11 @@ def _maya_matrix_from_atlas(matrix: Matrix4) -> list[float]:
 
     Transpose the 3x3 rotation block and put translation in the last row.
     Both systems are Y-up right-handed so no coordinate-axis swap is needed.
-    Shared by the camera and every proxy primitive transform below.
+    Shared by the camera and every proxy primitive transform below — and, via
+    ``dcc_transform.row_vector_flat``, with the USD writer, which needs the
+    identical transpose for ``Gf.Matrix4d``.
     """
-    return [
-        matrix[0][0], matrix[1][0], matrix[2][0], 0.0,
-        matrix[0][1], matrix[1][1], matrix[2][1], 0.0,
-        matrix[0][2], matrix[1][2], matrix[2][2], 0.0,
-        matrix[0][3], matrix[1][3], matrix[2][3], 1.0,
-    ]
+    return row_vector_flat(matrix, assume_affine=True)
 
 
 
@@ -59,8 +63,8 @@ def write_maya_scene_script(
     sensor_height_mm = derive_sensor_height_mm(intrinsics)
     horizontal_aperture_in = mm_to_inches(intrinsics.sensor_width_mm)
     vertical_aperture_in = mm_to_inches(sensor_height_mm)
-    cx = intrinsics.cx_px if intrinsics.cx_px is not None else intrinsics.image_width / 2.0
-    cy = intrinsics.cy_px if intrinsics.cy_px is not None else intrinsics.image_height / 2.0
+    spec = CameraSpec.from_solve(solve)
+    cx, cy = spec.cx, spec.cy
     horizontal_offset = pixel_offset_to_normalized_film_offset(
         cx - (intrinsics.image_width / 2.0),
         aperture_mm=intrinsics.sensor_width_mm,
@@ -342,20 +346,26 @@ def _matrix_to_maya_trs(world_matrix):
 
     Native .ma transform nodes take translate/rotate attributes, not a
     matrix, so the rotation block is decomposed into Maya's default rotate
-    order "xyz" (column-vector composition C = Rz @ Ry @ Rx). Standard
-    extraction: rx = atan2(C21, C22), ry = atan2(-C20, hypot(C21, C22)),
-    rz = atan2(C10, C00). Both frames are right-handed Y-up, so the 3x3
-    passes through untransposed (Atlas stores column-vector matrices).
-    Verified by a recomposition round-trip in tests/test_maya_layers_export.py.
-    """
-    import math
+    order "xyz" — which, despite the label, is the column-vector composition
+    C = Rz @ Ry @ Rx, the REVERSE of Nuke's identically-spelled "XYZ". Both
+    frames are right-handed Y-up, so the 3x3 passes through untransposed
+    (Atlas stores column-vector matrices). The decomposition itself lives in
+    ``dcc_transform.euler_degrees``, shared with the Nuke writer; verified by
+    a recomposition round-trip in tests/test_maya_layers_export.py and
+    tests/test_dcc_transform.py.
 
-    m = world_matrix
-    t = (float(m[0][3]), float(m[1][3]), float(m[2][3]))
-    rx = math.degrees(math.atan2(m[2][1], m[2][2]))
-    ry = math.degrees(math.atan2(-m[2][0], math.hypot(m[2][1], m[2][2])))
-    rz = math.degrees(math.atan2(m[1][0], m[0][0]))
-    return t, (rx, ry, rz)
+    That sharing is the fix for a real defect: at gimbal lock (|C20| = 1, i.e.
+    ry = ±90, reached by any camera whose right axis lands on world ±Z) the
+    standard extraction degenerates to atan2(0, 0) == 0 and silently discards
+    the camera's whole pitch (30 deg of pitch measured 30 deg of error,
+    2026-08-01). Nuke's writer had carried a degenerate branch since it was
+    written; this one had not, so the SAME Atlas 4x4 round-tripped exactly to
+    Nuke and wrongly to Maya.
+    """
+    return (
+        translation(world_matrix),
+        euler_degrees(world_matrix, composition=COMPOSITION_ZYX),
+    )
 
 
 def _ma_camera_blocks(node_name: str, camera, parent: str):
@@ -371,8 +381,10 @@ def _ma_camera_blocks(node_name: str, camera, parent: str):
     vfa = mm_to_inches(sensor_h_mm)
     w = intr.image_width or 1
     h = intr.image_height or 1
-    cx = intr.cx_px if intr.cx_px is not None else w / 2.0
-    cy = intr.cy_px if intr.cy_px is not None else h / 2.0
+    # for_image with the `or 1`-guarded size: a layer camera with no recorded
+    # plate must centre on 0.5, matching the w/h the film offsets divide by.
+    spec = CameraSpec.for_image(intr, w, h)
+    cx, cy = spec.cx, spec.cy
     hfo = pixel_offset_to_normalized_film_offset(
         cx - w / 2.0, aperture_mm=intr.sensor_width_mm or 36.0, image_size_px=w)
     vfo = pixel_offset_to_normalized_film_offset(

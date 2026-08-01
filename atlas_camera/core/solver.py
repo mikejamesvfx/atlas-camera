@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from atlas_camera.core.camera_math import FOCAL_FALLBACK_CONFIDENCE_PENALTY
+from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.confidence import ConfidenceModel
 from atlas_camera.core.intrinsics import build_intrinsics
 from atlas_camera.core.projection_scene import create_default_projection_scene
@@ -1425,8 +1426,8 @@ def apply_reference_scale(
     if fx <= 0:
         solve.debug_metadata["reference_scale"] = {"status": "no_focal_length"}
         return solve
-    cx = K.cx_px if K.cx_px is not None else K.image_width / 2.0
-    cy = K.cy_px if K.cy_px is not None else K.image_height / 2.0
+    _spec = CameraSpec.from_intrinsics(K)
+    cx, cy = _spec.cx, _spec.cy
     # View-matrix convention (CLAUDE.md): use the 4x4 camera_view_matrix's own
     # rotation block (world->cam, unambiguous), never the bare 3x3
     # camera_rotation_matrix (cam->world, transpose-ambiguous at call sites
