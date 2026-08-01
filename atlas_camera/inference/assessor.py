@@ -157,6 +157,11 @@ max_orbit_deg using this rubric:
 scale: if a known-size object is clearly visible (person, car, door),
 mention it as a reference-scale anchor opportunity (person ~1.75m, sedan
 ~1.45m tall, door ~2.0m) — this beats depth-based scale.
+If the plate contains BUILDINGS, also say so and COUNT THE STOREYS of one
+building whose facade is visible base-to-roof (~3m per storey). On a shot
+taken from height this is usually the ONLY usable anchor — people and cars
+are unreadable specks — and without it the solve falls back to an assumed
+1.6m camera height, which on an elevated vantage is wrong by tens of metres.
 
 OUTPUT FORMAT — respond with ONLY this JSON object, no prose outside it:
 {

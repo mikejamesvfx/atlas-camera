@@ -21,6 +21,21 @@ from urllib import error, request
 ProviderName = str
 
 
+# A single building storey, matching the `building_story_3m` registry entry.
+# NOT settled science: the MCP sky-rise doctrine's measured NYC example — a
+# prewar tenement counted base-to-roof — implied 3.5 m/storey, and prewar
+# ceilings genuinely run taller than modern residential. So this is the
+# registry's default, and `scale_references_from_observation` takes an override
+# rather than pretending one number fits every era.
+STOREY_HEIGHT_M = 3.0
+
+# Cue labels that mean "this is a building whose storeys can be counted".
+_STOREY_WORDS = (
+    "building", "storey", "story", "floor", "facade", "façade", "tenement",
+    "apartment", "high-rise", "highrise", "tower", "block", "skyscraper",
+)
+
+
 @dataclass(slots=True)
 class SceneScaleCue:
     label: str
@@ -29,6 +44,10 @@ class SceneScaleCue:
     suggested_reference_ids: list[str] = field(default_factory=list)
     notes: str | None = None
     source: str = "multimodal_helper"
+    # How many storeys the model counted on this facade, base to roof. The one
+    # scale anchor an elevated city plate reliably HAS — people and cars are
+    # unreadable specks from 60 m up.
+    storey_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -553,19 +572,42 @@ def _user_prompt(
     candidate_reference_ids: list[str] | None,
     app_context: dict[str, Any] | None,
 ) -> str:
+    # SHOW the shape, do not describe it. Measured live 2026-08-01 against
+    # gemma-4-12b-qat: given only prose, the model invented its own key names
+    # (`anchor_id`, `bbox_px_relative`, `description`, `confidence_score`) and
+    # every cue it produced was silently discarded. An explicit example object
+    # fixed that on the first attempt.
+    #
+    # Keep this SHORT. The verbose version of this prompt (1560 chars) drove the
+    # same model into a repetition loop on 4 of 4 attempts; the concise one
+    # answered cleanly every time. `test_the_prompt_stays_short_enough_for_a_
+    # local_model` guards the regression.
+    shape = {
+        "summary": "one line",
+        "scale_cues": [{
+            "label": "building",
+            "confidence": 0.85,
+            "bbox_px": [0, 0, 100, 200],
+            "storey_count": 11,
+            "suggested_reference_ids": ["building_story_3m"],
+        }],
+    }
     return (
-        "Analyze the image for camera-solve guidance. Identify visible scale anchors, "
-        "rough object-size candidates, perspective families, horizon/depth cues, lens "
-        "distortion risks, occlusions, and which additional artist guides would improve "
-        "the solve. For every scale_cue, report bbox_px as [x0, y0, x1, y1] in pixel "
-        "coordinates (top-left corner, then bottom-right corner) tightly enclosing the "
-        "object's full visible extent — for an upright object include its base (feet/"
-        "tyres) and its top. Prefer scale anchors that stand on the ground. Use this "
-        "Atlas app context:\n"
-        f"{json.dumps(app_context or {}, indent=2, sort_keys=True)}\n"
-        "Candidate scale reference IDs:\n"
-        f"{json.dumps(candidate_reference_ids or [], indent=2)}\n"
-        "Return JSON only."
+        "Analyze this image for camera-solve guidance: scale anchors, "
+        "perspective and horizon cues, lens distortion risks, occlusions.\n"
+        "bbox_px is [left, top, right, bottom] in PIXELS of this image, "
+        "enclosing the object base-to-top. Prefer anchors standing on the "
+        "ground.\n"
+        "BUILDINGS: pick one building whose facade is visible from street "
+        "level to roofline, COUNT ITS STOREYS, and give it a scale_cue with "
+        "storey_count. On a shot taken from height do this FIRST — people and "
+        "cars are too small to measure from up there, so a counted facade is "
+        "the only reliable anchor.\n"
+        "Return JSON only, exactly these keys:\n"
+        f"{json.dumps(shape)}\n"
+        f"Candidate reference IDs: {json.dumps(candidate_reference_ids or [])}\n"
+        + (f"Atlas context: {json.dumps(app_context, sort_keys=True)}\n"
+           if app_context else "")
     )
 
 
@@ -594,6 +636,7 @@ def _scene_observation_json_schema() -> dict[str, Any]:
                         },
                         "suggested_reference_ids": string_array,
                         "notes": {"type": "string"},
+                        "storey_count": {"type": "integer"},
                     },
                 },
             },
@@ -1159,7 +1202,21 @@ _LABEL_TO_REFERENCE_ID = {
     "bus": "city_bus",
     "container": "shipping_container_20ft", "shipping container": "shipping_container_20ft",
     "hoop": "basketball_hoop_rim", "basketball hoop": "basketball_hoop_rim",
+    # Buildings. Absent these, an elevated city plate has NO resolvable
+    # reference at all: measured live on a Manhattan birdseye where the VLM
+    # returned zero cues and the solve fell back to assumed_default 1.6 m.
+    **{word: "building_story_3m" for word in _STOREY_WORDS},
 }
+
+
+def _is_storey_reference(reference_id: str | None, label: str) -> bool:
+    """Does this cue describe something measured in storeys?
+
+    A stray `storey_count` on a person must not rescale the person.
+    """
+    if reference_id and reference_id.startswith("building_"):
+        return True
+    return any(word in (label or "").lower() for word in _STOREY_WORDS)
 
 
 def _resolve_reference_id(cue: "SceneScaleCue") -> str | None:
@@ -1188,6 +1245,7 @@ def scale_references_from_observation(
     observation: "MultimodalSceneObservation",
     *,
     min_confidence: float = 0.0,
+    storey_height_m: float = STOREY_HEIGHT_M,
 ) -> list[dict[str, Any]]:
     """Convert a VLM scene observation into solver ``scale_references`` specs.
 
@@ -1208,7 +1266,16 @@ def scale_references_from_observation(
             "source": "vlm_scale_cue",
         }
         reference_id = _resolve_reference_id(cue)
-        if reference_id:
+        count = cue.storey_count
+        if (count and int(count) > 0
+                and _is_storey_reference(reference_id, cue.label)):
+            # A counted facade is worth count x storey, not one storey. Emitting
+            # the bare reference_id here would hand the solver a 3 m building
+            # and rescale the whole scene by the storey count.
+            spec["height_m"] = float(int(count) * float(storey_height_m))
+            spec["storey_count"] = int(count)
+            spec["storey_height_m"] = float(storey_height_m)
+        elif reference_id:
             spec["reference_id"] = reference_id
         else:
             # No registry match — only usable if the cue itself carries a height.
@@ -1221,12 +1288,33 @@ def scale_references_from_observation(
 
 
 def _scene_scale_cue_from_payload(payload: dict[str, Any], *, source: str = "multimodal_helper") -> SceneScaleCue:
+    # Local models rename these fields freely. Measured live against
+    # gemma-4-12b-qat, which returned `anchor_id` / `confidence_score` /
+    # `description` and had every cue discarded. Accepting the aliases costs
+    # nothing and recovers otherwise-lost anchors.
+    #
+    # `bbox_px_relative` is deliberately NOT accepted: it arrives with
+    # pixel-looking values in an unstated coordinate space, and guessing that
+    # space would silently misplace the anchor — a wrong scale that looks
+    # plausible is worse than no scale.
+    anchor = payload.get("anchor_id")
     bbox = payload.get("bbox_px")
+    if bbox is None:
+        bbox = payload.get("bbox")
+    suggested = [str(item) for item in payload.get("suggested_reference_ids", [])]
+    if anchor and str(anchor) not in suggested:
+        # An anchor_id is usually a registry id — better evidence than any
+        # keyword match on the label.
+        suggested.append(str(anchor))
     return SceneScaleCue(
-        label=str(payload.get("label", "unknown")),
-        confidence=float(payload.get("confidence", 0.0)),
+        label=str(payload.get("label") or anchor or "unknown"),
+        confidence=float(payload.get("confidence",
+                                     payload.get("confidence_score", 0.0)) or 0.0),
         bbox_px=tuple(float(value) for value in bbox) if isinstance(bbox, list) and len(bbox) == 4 else None,  # type: ignore[arg-type]
-        suggested_reference_ids=[str(item) for item in payload.get("suggested_reference_ids", [])],
-        notes=payload.get("notes"),
+        suggested_reference_ids=suggested,
+        notes=payload.get("notes") or payload.get("description"),
         source=source,
+        storey_count=(int(payload["storey_count"])
+                      if str(payload.get("storey_count", "")).strip().lstrip("-").isdigit()
+                      else None),
     )
