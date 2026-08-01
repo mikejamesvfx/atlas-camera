@@ -349,6 +349,29 @@ def test_node_report_always_carries_the_lighting_caveat(tmp_path):
     assert "Lighting is NOT specified" in report
 
 
+def test_node_writes_the_reference_plate_it_was_given(tmp_path):
+    """The brief is for someone standing in the location holding a camera, and
+    the reference plate is the only thing in the package that shows them what
+    the shot they are matching looks like. It was silently never written: the
+    save was wrapped in `except Exception`, so a NameError on the (unimported)
+    tensor helper degraded into a "reference plate could not be written"
+    warning that read like a bad image rather than a missing import."""
+    torch = pytest.importorskip("torch")
+
+    solve = _solve_with_graph(tmp_path, [_ground("pavement")],
+                              [OcclusionEdge(occluder="car", occludee="pavement",
+                                             tear_pixels=21000)])
+    image = torch.zeros((1, 12, 16, 3), dtype=torch.float32)
+    _s, path, report = _node().build(solve, output_dir=str(tmp_path),
+                                     project_name="brief", reference_image=image)
+
+    from pathlib import Path
+
+    plate = Path(path).parent / "reference_plate.png"
+    assert plate.is_file(), "the reference plate was not written"
+    assert "reference plate could not be written" not in report
+
+
 def test_node_output_contract():
     from atlas_camera.comfy import node_registry as reg
     cls = reg.NODE_CLASS_MAPPINGS["AtlasShootList"]

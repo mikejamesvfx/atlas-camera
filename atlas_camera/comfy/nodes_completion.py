@@ -29,7 +29,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from atlas_camera.comfy.node_helpers import _DEPTH_MODEL_CHOICES  # noqa: F401
+from atlas_camera.comfy.node_helpers import (  # noqa: F401
+    _DEPTH_MODEL_CHOICES,
+    _image_tensor_to_pil,
+)
 from atlas_camera.core.camera_spec import CameraSpec
 
 
