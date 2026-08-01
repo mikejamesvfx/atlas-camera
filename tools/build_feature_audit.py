@@ -84,12 +84,19 @@ def build() -> dict:
         nodes[key] = {
             "module": _module_of(key),
             "tier": rec["kind"],
-            "example_workflows": rec["example_workflows"],
-            "dedicated_tests": rec["dedicated_tests"],
-            "tests": rec["tests"],
-            "mcp_tools": rec["mcp_tools"],
-            "repo_tools": rec["repo_tools"],
-            "docs": rec["docs"],
+            # COUNTS, not paths. Storing the matching file PATHS coupled this
+            # artifact to the full text of tests/, tools/, mcp/ and docs/: it
+            # carried 981 path entries and moved whenever any of those files was
+            # renamed, so it changed in 46 of 120 commits while only 13 touched
+            # the registry. The paths are still computed live — that is what
+            # tests/test_node_usage_audit.py asserts against — they are just not
+            # a thing this file has to stay fresh about.
+            "example_workflows": len(rec["example_workflows"]),
+            "dedicated_tests": len(rec["dedicated_tests"]),
+            "tests": len(rec["tests"]),
+            "mcp_tools": len(rec["mcp_tools"]),
+            "repo_tools": len(rec["repo_tools"]),
+            "docs": len(rec["docs"]),
             "product_evidence": rec["product_evidence"],
             "evidence_kinds": rec["evidence_kinds"],
             "live_execution": live.get("execution", "not_attempted"),
@@ -200,10 +207,10 @@ def render_markdown(report: dict) -> str:
     for key, r in report["nodes"].items():
         out.append("| " + " | ".join([
             f"`{key}`", cell(r["module"]), r["tier"],
-            str(len(r["example_workflows"])) or "0",
-            str(len(r["dedicated_tests"])),
+            str(r["example_workflows"]) or "0",
+            str(r["dedicated_tests"]),
             r["live_execution"], r["live_output"],
-            str(len(r["mcp_tools"])), str(len(r["docs"])),
+            str(r["mcp_tools"]), str(r["docs"]),
             cell(r["overlapping_replacement"]), cell(r["known_defect"]),
             cell(r["compatibility_risk"]), f"**{r['verdict']}**",
             cell(r["migration_action"]),
@@ -228,19 +235,25 @@ def render_markdown(report: dict) -> str:
         "|---|---|---|",
         "| Boundary Taubin smoothing | **migrated** | `AtlasRetopologizeLayer("
         "boundary_smooth_iterations)`, verbatim implementation, UVs regenerated |",
-        "| CUDA 2D grid hole fill | **removed** | `core/mesh_repair."
-        "repair_relief_mesh_grid_cuda` still exists but now has no node caller. "
-        "The replacement, `AtlasPlanarHolePatch`, is a different algorithm: "
+        "| CUDA 2D grid hole fill | **removed from the repair path** | "
+        "`core/mesh_repair.repair_relief_mesh_grid_cuda` is no longer reachable "
+        "from a default-tier REPAIR node, but it is NOT dead: `core/move_budget."
+        "seal_relief_mesh` calls it to seal a mesh before measuring disocclusion, "
+        "reached from `AtlasMoveBudget` (registered unconditionally), and "
+        "`AtlasLiveMeshRepair` still calls it on the legacy tier. The repair "
+        "replacement, `AtlasPlanarHolePatch`, is a different algorithm: "
         "per-component plane fitting with reports and gates, not a grid convolution |",
-        "| Harmonic enclosed-hole cap | **removed** | same function; the "
-        "membrane fill for sealed pockets has no equivalent in the planar patch |",
-        "| Post-hoc stretch cull (`remove_stretch_factor`) | **removed** | "
-        "`core/mesh_repair.remove_stretched_faces` still exists, no node caller. "
+        "| Harmonic enclosed-hole cap | **removed from the repair path** | same "
+        "function, same two surviving callers; the membrane fill for sealed "
+        "pockets has no equivalent in the planar patch |",
+        "| Post-hoc stretch cull (`remove_stretch_factor`) | **removed from the "
+        "default tier** | `core/mesh_repair.remove_stretched_faces` is still "
+        "called by `AtlasLiveMeshRepair` on the legacy tier. "
         "Deliberately NOT appended to `AtlasRetopologizeLayer`: every shipping "
         "workflow set it to 0.0, it has no node-level test, and `max_edge_factor` "
         "on the layer/derive nodes covers the same test at build time with the "
         "depth map in hand |", "",
-        "All three removed capabilities operated *downstream, on an already-built",
+        "All three operated *downstream, on an already-built",
         "solve*. What survives on the build path is unaffected: CPU hole fill and",
         "sawtooth bridging still run via `apply_live_mesh_repair` from",
         "`AtlasDeriveReliefMesh` and `AtlasDeriveProjectionGeometry`, and",

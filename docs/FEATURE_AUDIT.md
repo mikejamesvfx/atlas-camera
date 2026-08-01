@@ -1,6 +1,6 @@
 # Atlas Camera — feature audit
 
-Generated 2026-07-31 by `tools/build_feature_audit.py`. 
+Generated 2026-08-01 by `tools/build_feature_audit.py`. 
 Machine-gathered evidence from `tools/audit_node_usage.py`; judgements from 
 `tools/feature_audit_verdicts.py`. Regenerate with 
 `python tools/build_feature_audit.py` (`--check` verifies freshness).
@@ -118,14 +118,14 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasLayerPlan` | atlas_camera/comfy/nodes_completion.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 0 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasLayerPreview` | atlas_camera/comfy/nodes_viewport.py | standard | 2 | 1 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasLearnedSolveFromImage` | atlas_camera/comfy/nodes_solve.py | standard | 10 | 3 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
-| `AtlasLiveMeshRepair` | atlas_camera/comfy/nodes_geometry.py | legacy | 0 | 5 | not_attempted | not_attempted | 0 | 1 | AtlasPlanarHolePatch (per named layer) -> AtlasRetopologizeLayer(boundary_smooth_iterations) | CPU sawtooth path could emit non-manifold geometry and hang the pivot walk (fixed 2026-07-27 in core/mesh_repair.py, since the same code is reachable from tw… | medium — present in 3 shipping workflows, all of which are migrated in the same cycle; saved user graphs still resolve with ATLAS_LEGACY_NODES=1 for one migr… | **LEGACY_GATE** | boundary smoothing migrated to AtlasRetopologizeLayer; rewire workflows to the hole-patch chain; gate the node |
+| `AtlasLiveMeshRepair` | atlas_camera/comfy/nodes_geometry.py | legacy | 0 | 6 | not_attempted | not_attempted | 0 | 1 | AtlasPlanarHolePatch (per named layer) -> AtlasRetopologizeLayer(boundary_smooth_iterations) | CPU sawtooth path could emit non-manifold geometry and hang the pivot walk (fixed 2026-07-27 in core/mesh_repair.py, since the same code is reachable from tw… | medium — present in 3 shipping workflows, all of which are migrated in the same cycle; saved user graphs still resolve with ATLAS_LEGACY_NODES=1 for one migr… | **LEGACY_GATE** | boundary smoothing migrated to AtlasRetopologizeLayer; rewire workflows to the hole-patch chain; gate the node |
 | `AtlasLoadPlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 2 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasLoadRAW` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasLoadRecord3D` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasLoadSolveJSON` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 0 | ok | ok | 1 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMergeGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 1 | 3 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMogeNormals` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasMoveBudget` | atlas_camera/comfy/nodes_completion.py | standard | 1 | 3 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
+| `AtlasMoveBudget` | atlas_camera/comfy/nodes_completion.py | standard | 1 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasOcclusionGraph` | atlas_camera/comfy/nodes_completion.py | standard | 5 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasOcclusionMask` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasOutpaintDepth` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 0 | — | — | — | **KEEP_CORE** | — |
@@ -175,11 +175,11 @@ not mistaken for an equivalence:
 | Capability | Status | Where it went |
 |---|---|---|
 | Boundary Taubin smoothing | **migrated** | `AtlasRetopologizeLayer(boundary_smooth_iterations)`, verbatim implementation, UVs regenerated |
-| CUDA 2D grid hole fill | **removed** | `core/mesh_repair.repair_relief_mesh_grid_cuda` still exists but now has no node caller. The replacement, `AtlasPlanarHolePatch`, is a different algorithm: per-component plane fitting with reports and gates, not a grid convolution |
-| Harmonic enclosed-hole cap | **removed** | same function; the membrane fill for sealed pockets has no equivalent in the planar patch |
-| Post-hoc stretch cull (`remove_stretch_factor`) | **removed** | `core/mesh_repair.remove_stretched_faces` still exists, no node caller. Deliberately NOT appended to `AtlasRetopologizeLayer`: every shipping workflow set it to 0.0, it has no node-level test, and `max_edge_factor` on the layer/derive nodes covers the same test at build time with the depth map in hand |
+| CUDA 2D grid hole fill | **removed from the repair path** | `core/mesh_repair.repair_relief_mesh_grid_cuda` is no longer reachable from a default-tier REPAIR node, but it is NOT dead: `core/move_budget.seal_relief_mesh` calls it to seal a mesh before measuring disocclusion, reached from `AtlasMoveBudget` (registered unconditionally), and `AtlasLiveMeshRepair` still calls it on the legacy tier. The repair replacement, `AtlasPlanarHolePatch`, is a different algorithm: per-component plane fitting with reports and gates, not a grid convolution |
+| Harmonic enclosed-hole cap | **removed from the repair path** | same function, same two surviving callers; the membrane fill for sealed pockets has no equivalent in the planar patch |
+| Post-hoc stretch cull (`remove_stretch_factor`) | **removed from the default tier** | `core/mesh_repair.remove_stretched_faces` is still called by `AtlasLiveMeshRepair` on the legacy tier. Deliberately NOT appended to `AtlasRetopologizeLayer`: every shipping workflow set it to 0.0, it has no node-level test, and `max_edge_factor` on the layer/derive nodes covers the same test at build time with the depth map in hand |
 
-All three removed capabilities operated *downstream, on an already-built
+All three operated *downstream, on an already-built
 solve*. What survives on the build path is unaffected: CPU hole fill and
 sawtooth bridging still run via `apply_live_mesh_repair` from
 `AtlasDeriveReliefMesh` and `AtlasDeriveProjectionGeometry`, and

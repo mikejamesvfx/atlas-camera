@@ -28,6 +28,11 @@ import atlas_camera.comfy.nodes as nodes
 
 #: Public surface — node classes, registry mappings, shared constants.
 FACADE_PUBLIC = {
+    # Added when the derived pin below caught them: eight registered nodes had
+    # never been re-exported, and only a `>= 60` floor guarded that.
+    "AtlasBlenderOrganicFill", "AtlasBlockoutMassing", "AtlasDisocclusionGuide",
+    "AtlasExportPlateEXR", "AtlasOutpaintDepth", "AtlasShootList",
+    "AtlasSolvePatchViews", "AtlasStreamRecord3D",
     "ATLAS_EXPERIMENTAL_DEFAULT", "ATLAS_LEGACY_DEFAULT",
     "LEGACY_NODE_CLASS_MAPPINGS", "LEGACY_NODE_DISPLAY_NAME_MAPPINGS",
     "LEGACY_REPLACEMENTS", "AtlasAddPatchView", "AtlasApplyScaleReferences",
@@ -124,3 +129,25 @@ def test_registry_mappings_are_reachable_through_the_facade():
     """Saved workflows and comfy/__init__ resolve nodes through these."""
     assert len(nodes.NODE_CLASS_MAPPINGS) >= 60
     assert set(nodes.NODE_DISPLAY_NAME_MAPPINGS) == set(nodes.NODE_CLASS_MAPPINGS)
+
+
+def test_every_registered_node_class_is_reachable_as_a_facade_attribute():
+    """DERIVED from the registry, not typed out.
+
+    `FACADE_PUBLIC` above is a hand-maintained literal, and a hand-maintained
+    literal can only catch names somebody remembered to add to it: it drifted
+    far enough to miss eight registered nodes while still passing, because the
+    only other guard here was a `>= 60` floor. This assertion cannot drift —
+    adding a node to the registry without re-exporting it fails immediately.
+    """
+    from atlas_camera.comfy import node_registry
+
+    registered = (
+        set(node_registry.NODE_CLASS_MAPPINGS)
+        | set(node_registry.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
+        | set(node_registry.LEGACY_NODE_CLASS_MAPPINGS)
+    )
+    missing = sorted(key for key in registered if not hasattr(nodes, key))
+    assert missing == [], (
+        f"{len(missing)} registered node(s) are not re-exported by "
+        f"atlas_camera.comfy.nodes: {missing}")

@@ -30,6 +30,52 @@ def report():
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+_NO_CALLER_CLAIMS = {
+    "repair_relief_mesh_grid_cuda": "no node caller",
+    "remove_stretched_faces": "no node caller",
+}
+
+
+def _callers_of(function_name: str) -> list[str]:
+    """Files under atlas_camera/ that name `function_name`, excluding the
+    module that defines it."""
+    hits = []
+    for path in (REPO / "atlas_camera").rglob("*.py"):
+        if path.name == "mesh_repair.py":
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if function_name in text:
+            hits.append(str(path.relative_to(REPO)).replace("\\", "/"))
+    return sorted(hits)
+
+
+@pytest.mark.parametrize("function_name", sorted(_NO_CALLER_CLAIMS))
+def test_the_appendix_does_not_claim_a_called_function_is_uncalled(function_name):
+    """The 'capabilities REMOVED' appendix is PROSE hardcoded in the generator.
+
+    Because the freshness test compares generated against committed, a false
+    claim baked into the generator is permanently 'fresh' — it can never go
+    stale, only stay wrong. So check the claim against the code instead.
+
+    Both of these were in fact still called when this test was written:
+    `repair_relief_mesh_grid_cuda` from `core/move_budget.py` (reached from
+    `AtlasMoveBudget`, registered unconditionally) and `remove_stretched_faces`
+    from `AtlasLiveMeshRepair` on the legacy tier.
+    """
+    md = (REPO / "docs" / "FEATURE_AUDIT.md").read_text(encoding="utf-8")
+    if f"`core/mesh_repair.{function_name}`" not in md:
+        pytest.skip(f"{function_name} is no longer discussed in the appendix")
+    callers = _callers_of(function_name)
+    if not callers:
+        return
+    claim = _NO_CALLER_CLAIMS[function_name]
+    index = md.find(f"`core/mesh_repair.{function_name}`")
+    sentence = md[index:index + 400]
+    assert claim not in sentence, (
+        f"FEATURE_AUDIT.md says `{function_name}` has {claim}, but it is "
+        f"referenced from {callers}")
+
+
 def test_every_registered_node_has_exactly_one_verdict(report):
     from atlas_camera.comfy import node_registry as reg
     registered = set(reg.NODE_CLASS_MAPPINGS) | set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)

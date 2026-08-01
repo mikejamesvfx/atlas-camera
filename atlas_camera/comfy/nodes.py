@@ -95,12 +95,14 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasDebugReport,
     AtlasLayerPreview,
     AtlasInput,
+    AtlasDisocclusionGuide,
 )
 from atlas_camera.comfy.nodes_completion import (
     AtlasCompleteDepth,
     AtlasLayerPlan,
     AtlasMoveBudget,
     AtlasOcclusionGraph,
+    AtlasShootList,
 )
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_solve import (
@@ -132,6 +134,7 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasDecomposeSolve,
     AtlasDecomposeCamera,
     AtlasUSDCameraLoader,
+    AtlasStreamRecord3D,
 )
 from atlas_camera.comfy.nodes_planar import (
     AtlasPlanarUnwarp,
@@ -151,6 +154,7 @@ from atlas_camera.comfy.nodes_depth import (
     AtlasGroundMask,
     AtlasHorizonMask,
     AtlasVPVisualization,
+    AtlasOutpaintDepth,
 )
 from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveProjectionGeometry,
@@ -171,6 +175,9 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasImportAnglePatch,
     AtlasAddPatchView,
     AtlasOcclusionMask,
+    AtlasSolvePatchViews,
+    AtlasBlockoutMassing,
+    AtlasBlenderOrganicFill,
 )
 from atlas_camera.comfy.nodes_inpaint import (
     AtlasScopeMask,
@@ -196,6 +203,7 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportNukeLayers,
     AtlasExportMayaLayers,
     AtlasExportCameraPathUSD,
+    AtlasExportPlateEXR,
 )
 
 from atlas_camera.comfy.node_registry import (
