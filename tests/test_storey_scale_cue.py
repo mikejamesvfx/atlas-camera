@@ -13,6 +13,8 @@ specks. The one thing legible from a birdseye — building storeys — was the o
 thing not on the list, despite `building_story_3m` already existing in the
 registry and the MCP sky-rise doctrine telling operators to count them by hand.
 """
+import json
+
 import pytest
 
 from atlas_camera.inference.multimodal_helper import (
@@ -104,6 +106,96 @@ def test_a_count_on_a_non_building_cue_is_ignored():
         _observation(_cue(label="person", storey_count=19)))
     assert spec["reference_id"] == "person_175cm"
     assert "height_m" not in spec
+
+
+# ------------------------------------------------------ facade selection
+
+IMAGE = (1920, 1282)
+
+
+def test_a_facade_running_off_the_top_of_frame_is_refused():
+    """Measured live on the NYC birdseye: the model picked a tower whose
+    roofline leaves the frame (bbox y0=0) and counted only its VISIBLE storeys,
+    so its "base" was where it disappears behind a nearer building rather than
+    ground contact. That solved the camera at 34 m against a hand-measured
+    63.7 m. A truncated facade is not a usable reference."""
+    obs = _observation(_cue(bbox_px=(405.0, 0.0, 575.0, 550.0), storey_count=15))
+    assert scale_references_from_observation(obs, image_size=IMAGE) == []
+
+
+def test_the_refusal_is_explained_not_silent():
+    obs = _observation(_cue(bbox_px=(405.0, 0.0, 575.0, 550.0), storey_count=15))
+    scale_references_from_observation(obs, image_size=IMAGE)
+    joined = " ".join(obs.warnings).lower()
+    assert "frame" in joined and "building" in joined
+
+
+def test_a_facade_touching_the_bottom_edge_is_refused_too():
+    """Base cut off at the bottom is the same failure from the other end."""
+    obs = _observation(_cue(bbox_px=(994.0, 462.0, 1163.0, 1281.0), storey_count=5))
+    assert scale_references_from_observation(obs, image_size=IMAGE) == []
+
+
+def test_a_fully_visible_facade_is_kept():
+    """The doctrine's own anchor on this plate — a 5-storey tenement fully
+    inside the frame — must survive the check."""
+    obs = _observation(_cue(bbox_px=(994.0, 462.0, 1163.0, 645.0), storey_count=5))
+    (spec,) = scale_references_from_observation(obs, image_size=IMAGE)
+    assert spec["height_m"] == pytest.approx(15.0)
+    assert obs.warnings == []
+
+
+def test_without_an_image_size_nothing_is_refused():
+    """Back-compat: callers that cannot say how big the plate is keep the old
+    behaviour rather than losing every reference."""
+    obs = _observation(_cue(bbox_px=(405.0, 0.0, 575.0, 550.0), storey_count=15))
+    assert len(scale_references_from_observation(obs)) == 1
+
+
+def test_the_edge_margin_tolerates_near_misses():
+    """A box one pixel off the edge is still truncated."""
+    obs = _observation(_cue(bbox_px=(405.0, 1.0, 575.0, 550.0), storey_count=15))
+    assert scale_references_from_observation(obs, image_size=IMAGE) == []
+
+
+def test_a_non_facade_reference_is_not_edge_checked():
+    """Scoped deliberately: the measured evidence is about counted facades. A
+    person or car keeps whatever behaviour it had until there is evidence."""
+    obs = _observation(_cue(label="car", bbox_px=(0.0, 1000.0, 90.0, 1281.0)))
+    (spec,) = scale_references_from_observation(obs, image_size=IMAGE)
+    assert spec["reference_id"] == "sedan_car"
+
+
+def test_the_node_reports_why_it_dropped_a_facade():
+    """Gate doctrine: a silent branch-skip needs a visible explanation. The node
+    knows the plate size, so it is the one place that CAN run the frame check —
+    and it must say when it fires, or the artist just sees 'no references'."""
+    torch = pytest.importorskip("torch")
+
+    from atlas_camera.inference import multimodal_helper as mh
+    from atlas_camera.comfy.nodes_solve import AtlasVLMScaleCues
+
+    class _Provider:
+        def analyze_image(self, path, **kw):
+            return _observation(_cue(bbox_px=(405.0, 0.0, 575.0, 550.0),
+                                     storey_count=15))
+
+    original = mh.create_multimodal_provider
+    mh.create_multimodal_provider = lambda *a, **k: _Provider()
+    try:
+        image = torch.zeros((1, IMAGE[1], IMAGE[0], 3), dtype=torch.float32)
+        refs, report = AtlasVLMScaleCues().analyze(image, provider="lmstudio")
+    finally:
+        mh.create_multimodal_provider = original
+
+    assert json.loads(refs) == []
+    assert "roofline runs off the top" in report
+    assert "fully inside the frame" in report
+
+
+def test_the_prompt_demands_a_fully_visible_facade():
+    low = _user_prompt(None, None).lower()
+    assert "frame" in low
 
 
 # ------------------------------------------------- existing behaviour kept

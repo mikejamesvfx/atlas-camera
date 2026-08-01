@@ -598,11 +598,12 @@ def _user_prompt(
         "bbox_px is [left, top, right, bottom] in PIXELS of this image, "
         "enclosing the object base-to-top. Prefer anchors standing on the "
         "ground.\n"
-        "BUILDINGS: pick one building whose facade is visible from street "
-        "level to roofline, COUNT ITS STOREYS, and give it a scale_cue with "
-        "storey_count. On a shot taken from height do this FIRST — people and "
-        "cars are too small to measure from up there, so a counted facade is "
-        "the only reliable anchor.\n"
+        "BUILDINGS: pick one building ENTIRELY INSIDE THE FRAME — both its "
+        "street-level base and its roofline visible, touching no edge — COUNT "
+        "ITS STOREYS, and give it a scale_cue with storey_count. Prefer a "
+        "short fully-visible building over a tall cropped one. On a shot taken "
+        "from height do this FIRST: people and cars are too small to measure "
+        "from up there, so a counted facade is the only reliable anchor.\n"
         "Return JSON only, exactly these keys:\n"
         f"{json.dumps(shape)}\n"
         f"Candidate reference IDs: {json.dumps(candidate_reference_ids or [])}\n"
@@ -1241,11 +1242,39 @@ def _resolve_reference_id(cue: "SceneScaleCue") -> str | None:
     return matches[0].id if matches else None
 
 
+def _facade_is_truncated(bbox: Any, image_size: tuple[int, int],
+                         margin_px: float) -> str:
+    """Which frame edge a counted facade runs off, or "" if it is fully visible.
+
+    A counted facade is only a scale reference if BOTH ends are real: the base
+    must be ground contact and the top must be the roofline. Measured live on a
+    Manhattan birdseye — the model picked a tower whose roofline leaves the
+    frame and counted only its visible storeys, so its "base" was where the
+    building disappears behind a nearer one. That solved the camera at 34 m
+    against a hand-measured 63.7 m: a wrong answer wearing a
+    `scale_source=reference_object` label and 0.88 confidence, which is worse
+    than an honest fallback.
+    """
+    width, height = int(image_size[0]), int(image_size[1])
+    x0, y0, x1, y1 = (float(v) for v in bbox)
+    top, bottom = min(y0, y1), max(y0, y1)
+    left, right = min(x0, x1), max(x0, x1)
+    if top <= margin_px:
+        return "its roofline runs off the top of frame"
+    if bottom >= height - 1 - margin_px:
+        return "its base runs off the bottom of frame"
+    if left <= margin_px or right >= width - 1 - margin_px:
+        return "it is clipped by the side of frame"
+    return ""
+
+
 def scale_references_from_observation(
     observation: "MultimodalSceneObservation",
     *,
     min_confidence: float = 0.0,
     storey_height_m: float = STOREY_HEIGHT_M,
+    image_size: tuple[int, int] | None = None,
+    edge_margin_px: float = 2.0,
 ) -> list[dict[str, Any]]:
     """Convert a VLM scene observation into solver ``scale_references`` specs.
 
@@ -1267,8 +1296,23 @@ def scale_references_from_observation(
         }
         reference_id = _resolve_reference_id(cue)
         count = cue.storey_count
-        if (count and int(count) > 0
-                and _is_storey_reference(reference_id, cue.label)):
+        is_facade = (count and int(count) > 0
+                     and _is_storey_reference(reference_id, cue.label))
+        if is_facade and image_size is not None:
+            # Scoped to counted facades on purpose: that is where the failure
+            # was measured. A cut-off person or car has the same problem in
+            # principle, but changing those without evidence would be a guess.
+            truncated = _facade_is_truncated(cue.bbox_px, image_size,
+                                             edge_margin_px)
+            if truncated:
+                observation.warnings.append(
+                    f"ignored a {int(count)}-storey building reference because "
+                    f"{truncated} — a counted facade only measures the camera "
+                    f"when its base and roofline are both visible, so this one "
+                    f"would report a confident but wrong scale. Pick a shorter "
+                    f"building that is fully inside the frame.")
+                continue
+        if is_facade:
             # A counted facade is worth count x storey, not one storey. Emitting
             # the bare reference_id here would hand the solver a 3 m building
             # and rescale the whole scene by the storey count.

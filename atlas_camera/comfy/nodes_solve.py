@@ -1637,11 +1637,24 @@ class AtlasVLMScaleCues:
             prov = create_multimodal_provider(provider, model=model, base_url=base_url or None,
                                               api_key=api_key.strip() or None)
             obs = prov.analyze_image(tmp, candidate_reference_ids=candidate_ids)
-            refs = scale_references_from_observation(obs, min_confidence=min_confidence)
+            # The node is the only place that knows the plate's pixel size, so
+            # it is the only place that can check whether a counted facade is
+            # fully inside the frame. A truncated one measures the camera
+            # confidently and wrongly.
+            shape = getattr(image, "shape", None)
+            image_size = ((int(shape[2]), int(shape[1]))
+                          if shape is not None and len(shape) >= 3 else None)
+            refs = scale_references_from_observation(
+                obs, min_confidence=min_confidence, image_size=image_size)
             lines = [obs.summary or "VLM analysis complete."]
             for r in refs:
                 target = r.get("reference_id") or f"{r.get('height_m')} m"
-                lines.append(f"• {r.get('label')} → {target}  bbox={r['bbox_px']}  conf={r['confidence']:.2f}")
+                storeys = (f"  {r['storey_count']} storeys x "
+                           f"{r['storey_height_m']:g} m" if r.get("storey_count") else "")
+                lines.append(f"• {r.get('label')} → {target}{storeys}  "
+                             f"bbox={r['bbox_px']}  conf={r['confidence']:.2f}")
+            # Never drop a reference silently — gate doctrine.
+            lines.extend(str(w) for w in (obs.warnings or []))
             if not refs:
                 lines.append("(no usable scale references detected)")
             return (json.dumps(refs), "\n".join(str(s) for s in lines if s))
