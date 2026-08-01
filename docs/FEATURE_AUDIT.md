@@ -134,7 +134,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasPlanarRewarp` | atlas_camera/comfy/nodes_planar.py | standard | 0 | 1 | ok | ok | 0 | 1 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasPlanarUnwarp` | atlas_camera/comfy/nodes_planar.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasPredictHiddenGeometry` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 3 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasReferenceScaleSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 1 | 7 | — | — | — | **KEEP_CORE** | — |
+| `AtlasReferenceScaleSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 1 | 7 | — | — | — | **KEEP_CORE** | — |
 | `AtlasRegisterPlate` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 7 | — | — | — | **KEEP_CORE** | — |
 | `AtlasRenderFix` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 3 | not_attempted | not_attempted | 1 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasRetopologizeLayer` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 5 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
