@@ -114,6 +114,17 @@ def main():
                 f"shrinkwrap changed the vertex count ({len(before)} -> "
                 f"{len(after)}); it must only MOVE vertices")
 
+        # NEAREST has no native distance cap — ``project_limit`` is
+        # PROJECT-only in Blender's API — so enforce the limit here or the
+        # caller's shrinkwrap_limit_m is a NO-OP for the default wrap method
+        # and fill vertices snap onto unrelated geometry metres away (found
+        # live: a 4.11 m max move against a sub-metre limit). Same semantic
+        # as PROJECT's cap: a vertex with no surface within the limit stays
+        # where the remesh put it, and reads as un-snapped fill below.
+        if method != "PROJECT" and limit > 0:
+            over = np.linalg.norm(after - before, axis=1) > limit
+            after[over] = before[over]
+
         moved = np.linalg.norm(after - before, axis=1)
         # A vertex that moved found measured surface. One that did not is
         # invented fill left where numpy put it — the caller's drift gate keys

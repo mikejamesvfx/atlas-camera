@@ -240,3 +240,37 @@ class TestLayering:
         for path in pkg.glob("*.py"):
             src = path.read_text(encoding="utf-8")
             assert "atlas_camera.comfy" not in src, f"{path.name} imports comfy"
+
+
+class TestShrinkwrapLimitIntegration:
+    """Behavior contract for the distance limit — needs a real Blender.
+
+    The NEAREST_SURFACEPOINT wrap (the node's default) has no native distance
+    cap in Blender — ``project_limit`` is PROJECT-only — so the recipe must
+    clamp displacements itself or the ``shrinkwrap_limit_scale`` widget is a
+    no-op and fill vertices snap onto unrelated geometry metres away (found
+    live: a 4.11 m max move against a sub-metre limit on ghosttown).
+    """
+
+    @pytest.fixture
+    def blender_exe(self):
+        try:
+            from atlas_camera.blender import resolve_blender_exe as _r
+            return str(_r(""))
+        except RuntimeError:
+            pytest.skip("no local Blender install")
+
+    def test_nearest_wrap_honors_the_distance_limit(self, blender_exe):
+        from atlas_camera.blender import shrinkwrap_patch
+
+        patch_v = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        patch_f = np.array([[0, 1, 2]])
+        # Target 10 m away with a 1 m median edge: limit_scale=1 -> 1 m limit,
+        # nearest surface at 10 m -> nothing may snap.
+        target_v = np.array([[0.0, 0.0, -10.0], [1.0, 0.0, -10.0],
+                             [0.0, 1.0, -10.0]])
+        target_f = np.array([[0, 1, 2]])
+        got = shrinkwrap_patch(patch_v, patch_f, target_v, target_f,
+                               blender_path=blender_exe, limit_scale=1.0)
+        out_v = np.asarray(got["vertices"], dtype=np.float64)
+        assert np.allclose(out_v, patch_v, atol=1e-6),             f"verts snapped past the limit: {out_v}"
