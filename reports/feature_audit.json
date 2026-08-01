@@ -3474,11 +3474,13 @@
    "tier": "standard",
    "example_workflows": [],
    "dedicated_tests": [
+    "tests/test_atlas_input.py",
     "tests/test_migrate_legacy_nodes.py",
     "tests/test_planar_hole_patch.py",
     "tests/test_retopologize_layer.py"
    ],
    "tests": [
+    "tests/test_atlas_input.py",
     "tests/test_comfy_node_registry.py",
     "tests/test_facade_surface.py",
     "tests/test_migrate_legacy_nodes.py",

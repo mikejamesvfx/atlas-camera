@@ -1195,10 +1195,13 @@ class AtlasRetopologizeLayer:
                     "tooltip": "Which mesh to retopologize: blank = the primary scene relief "
                                "mesh; a layer name (AtlasCleanPlateLayer `name`, e.g. 'bg') = "
                                "that projection source only; '*' = every relief mesh."}),
-                "method": (["off", "quad", "decimate", "smooth"], {"default": "decimate",
+                "method": (["off", "quad", "decimate", "smooth", "voxel_remesh"],
+                   {"default": "decimate",
                     "tooltip": "quad = Instant Meshes quad remesh (pyinstantmeshes); decimate = "
                                "quadric decimation (trimesh + fast-simplification); smooth = "
-                               "trimesh Taubin relax (topology unchanged, UVs preserved). Same "
+                               "trimesh Taubin relax (topology unchanged, UVs preserved); "
+                               "voxel_remesh = watertight voxelize + surface nets (closes every "
+                               "interior tear; loses open-boundary silhouettes). Same "
                                "passes as the Maya/Nuke layer exporters, applied LIVE with the "
                                "layer's own camera regenerating projection UVs."}),
                 "target_vertex_count": ("INT", {"default": 2000, "min": 100, "max": 200000,

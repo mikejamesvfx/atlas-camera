@@ -363,6 +363,72 @@ def test_positional_sky_widget_turns_on_sky_card(monkeypatch):
     assert "sky card ON" in out["result"][4]
 
 
+# ---------------------------------------------------------------------------
+# retopo + edge smoothing (2026-08-01 plan: docs/dev/atlas_input_retopo_plan.md)
+# ---------------------------------------------------------------------------
+
+def test_retopo_widgets_appended_last_with_combo_subset():
+    """The three retopo widgets are APPENDED (widgets_values is positional),
+    and the combo is a pass-through SUBSET of AtlasRetopologizeLayer.method:
+    `smooth` is excluded (driven by smooth_iterations, which AtlasInput does
+    not expose — a guaranteed no-op dead value here)."""
+    it = AtlasInput.INPUT_TYPES()["optional"]
+    assert list(it)[-3:] == ["retopo_method", "retopo_target_vertex_count",
+                             "boundary_smooth_iterations"]
+    assert it["retopo_method"][0] == ["off", "quad", "decimate", "voxel_remesh"]
+    assert it["retopo_method"][1]["default"] == "off"
+    assert it["retopo_target_vertex_count"][1]["default"] == 2000
+    assert it["boundary_smooth_iterations"][1]["default"] == 0
+
+
+def test_retopologize_layer_combo_gained_voxel_remesh_appended_last():
+    """Prerequisite for AtlasInput's pass-through: the live node's method
+    combo gains voxel_remesh (already supported by core apply_retopo) as an
+    APPENDED value — existing saved workflows keep their positions."""
+    from atlas_camera.comfy.nodes_geometry import AtlasRetopologizeLayer
+    method_values = AtlasRetopologizeLayer.INPUT_TYPES()["optional"]["method"][0]
+    assert method_values == ["off", "quad", "decimate", "smooth", "voxel_remesh"]
+
+
+def test_retopo_off_emits_no_retopo_node(monkeypatch):
+    """Default stays exactly the pre-retopo graph — the front door must not
+    get slower for everyone who does not want this."""
+    for kw in ({}, {"layers": 3}):
+        graph, _ = _expand(monkeypatch, **kw)
+        assert not any(n["class_type"] == "AtlasRetopologizeLayer"
+                       for n in graph.values())
+
+
+def test_retopo_expands_one_star_node_at_chain_end(monkeypatch):
+    """ONE AtlasRetopologizeLayer with layer='*' terminates the solve chain —
+    covers layers=0 AND bands, one deepcopy, sky dome auto-skipped by the
+    node's own depth_relief_mesh source filter."""
+    for kw in ({"layers": 0}, {"layers": 3}):
+        graph, result = _expand(monkeypatch, retopo_method="decimate",
+                                retopo_target_vertex_count=1500,
+                                boundary_smooth_iterations=4, **kw)
+        retopos = [(i, n) for i, n in graph.items()
+                   if n["class_type"] == "AtlasRetopologizeLayer"]
+        assert len(retopos) == 1, kw
+        rid, node = retopos[0]
+        assert node["inputs"]["layer"] == "*"
+        assert node["inputs"]["method"] == "decimate"
+        assert node["inputs"]["target_vertex_count"] == 1500
+        assert node["inputs"]["boundary_smooth_iterations"] == 4
+        assert result[0] == [rid, 0]      # solve output IS the retopo node
+        assert "retopo" in result[4]
+
+
+def test_boundary_smooth_alone_emits_retopo_node_with_method_off(monkeypatch):
+    """method='off' + boundary_smooth_iterations>0 is the 'don't retopo,
+    just round the silhouette' configuration — it must still expand."""
+    graph, result = _expand(monkeypatch, boundary_smooth_iterations=6)
+    node = next(n for n in graph.values()
+                if n["class_type"] == "AtlasRetopologizeLayer")
+    assert node["inputs"]["method"] == "off"
+    assert node["inputs"]["boundary_smooth_iterations"] == 6
+
+
 def test_live_hole_fill_not_wired_to_card_or_ground(monkeypatch):
     """Card/ground single-layer path uses AtlasCleanPlateLayer, which does not
     accept live_fill_* kwargs."""

@@ -747,6 +747,21 @@ class AtlasInput:
                     "multiline": True, "tooltip": "Negative prompt for SDXL sky inpaint."}),
                 "sky_sdxl_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
                     "tooltip": "Seed for SDXL sky inpaint. 0 = deterministic default behavior of the sampler node."}),
+                "retopo_method": (["off", "quad", "decimate", "voxel_remesh"], {"default": "off",
+                    "tooltip": "Retopologize every relief mesh (single mesh or all bands) via "
+                               "ONE AtlasRetopologizeLayer 🔷 (layer='*') at the end of the "
+                               "chain — the sky dome is never touched. off (DEFAULT) = free; "
+                               "quad/decimate reduce to the vertex budget; voxel_remesh closes "
+                               "interior tears watertight. For `smooth` (interior Taubin) use "
+                               "the standalone 🔷 node — here boundary_smooth_iterations covers "
+                               "the silhouette-rounding case."}),
+                "retopo_target_vertex_count": ("INT", {"default": 2000, "min": 100, "max": 200000,
+                    "tooltip": "Per-mesh vertex budget for quad/decimate (ignored by voxel_remesh)."}),
+                "boundary_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 50,
+                    "tooltip": "Taubin-relax every open boundary loop AFTER retopo — rounds "
+                               "lattice-staircase silhouette jaggies; projective UVs regenerated "
+                               "per layer camera. Works with retopo_method=off ('just round the "
+                               "silhouette'). 0 = off."}),
                 # Live mesh repair (interior hole-fill / boundary sawtooth) is no
                 # longer configured here — wire the standalone AtlasLiveMeshRepair
                 # 🔧 node onto this node's `solve` output instead. It repairs any
@@ -766,7 +781,9 @@ class AtlasInput:
               sky_sdxl_checkpoint="SDXL/sd_xl_base_1.0.safetensors",
               sky_sdxl_positive="clear seamless sky, high detail, no buildings, no trees, no roofs",
               sky_sdxl_negative="building, tree, roof, person, vehicle, text, watermark, blurry",
-              sky_sdxl_seed=0, **_extra):
+              sky_sdxl_seed=0,
+              retopo_method="off", retopo_target_vertex_count=2000,
+              boundary_smooth_iterations=0, **_extra):
 
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
@@ -1028,6 +1045,23 @@ class AtlasInput:
                                exclude_mask=exclude_ref, **band_ref_kw, **layer_kw)
                 solve_chain = layer.out(0)
             notes.append(f"{n_bands} band layer(s), grid {int(mesh_resolution)}")
+
+        # 4. retopo + edge smoothing — ONE 🔷 node with layer="*" terminating
+        # the chain (docs/dev/atlas_input_retopo_plan.md): covers the layers=0
+        # single mesh and every band, one solve deepcopy instead of N, and the
+        # node's own depth_relief_mesh source filter keeps the sky dome out.
+        retopo_on = str(retopo_method) != "off" or int(boundary_smooth_iterations) > 0
+        if retopo_on:
+            retopo = g.node("AtlasRetopologizeLayer", solve=solve_chain,
+                            layer="*", method=str(retopo_method),
+                            target_vertex_count=int(retopo_target_vertex_count),
+                            boundary_smooth_iterations=int(boundary_smooth_iterations))
+            solve_chain = retopo.out(0)
+            notes.append(
+                f"retopo [{retopo_method}] ≤{int(retopo_target_vertex_count)} "
+                f"verts/mesh, boundary smooth ×{int(boundary_smooth_iterations)}"
+                if str(retopo_method) != "off" else
+                f"boundary smooth ×{int(boundary_smooth_iterations)} (no retopo)")
 
         report = "ATLAS INPUT — expanded graph\n" + "\n".join(f"  · {n}" for n in notes)
         return {
