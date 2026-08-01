@@ -503,40 +503,6 @@ def _cluster_walls_by_azimuth(
 # Main derivation
 # ---------------------------------------------------------------------------
 
-def derive_projection_proxies(
-    depth: Any,
-    *,
-    view_matrix: Any,
-    fx: float,
-    fy: float,
-    cx: float,
-    cy: float,
-    max_walls: int = 4,
-    horizon_y: float | None = None,
-    config: ProxyDerivationConfig | None = None,
-    exclude_mask: Any | None = None,
-) -> tuple[list[AtlasProxyPrimitive], dict[str, Any]]:
-    """Derive proxy geometry from a forward-z depth map and the recovered camera.
-
-    ``exclude_mask`` ((H,W) bool, aligned to ``depth``) removes pixels from the
-    WALL and OBJECT stages only — the ground fit / metric scale / backdrop
-    always use the full depth map, so several mask-scoped derive branches (one
-    SAM segment per building, merged afterwards) land in the SAME metric world
-    instead of each branch fitting a different ground scale.
-
-    Returns ``(primitives, debug_stats)``. Always emits the backdrop; ground,
-    walls, boxes and cylinders drop out gracefully when their fits are poor.
-    """
-    np = _require_numpy()
-    cfg = config or ProxyDerivationConfig()
-    depth = np.asarray(depth, dtype=np.float64)
-    height, width = depth.shape
-    if horizon_y is None:
-        horizon_y = height * 0.45
-
-    stats: dict[str, Any] = {"walls": 0, "boxes": 0, "cylinders": 0}
-    prims: list[AtlasProxyPrimitive] = []
-
 def _build_ground_primitive(np: Any, cfg: ProxyDerivationConfig, pts_world: Any, ground_inlier: Any, scale: float) -> AtlasProxyPrimitive | None:
     """Helper to build projection_ground primitive from ground inliers."""
     if int(ground_inlier.sum()) < 300:
