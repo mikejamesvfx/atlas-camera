@@ -111,3 +111,36 @@ def test_gate_report_no_warning_on_manual_scale(comfy_runtime):
     out = AtlasSolveGate().gate(s, torch.rand(1, 600, 800, 3))
     assert "SCALE NOT VERIFIED" not in out["result"][1]
     assert "scale: manual" in out["result"][1]
+
+
+# --- Gate-module extraction (2026-08-01) -----------------------------------
+# The fingerprint / arming / blocker / envelope machinery moved to
+# atlas_camera.comfy.gate; what stays this node's own is its wording and the
+# exact shape atlas_solve_gate.js reads.
+
+def test_rearm_sentence_is_this_nodes_own_wording(comfy_runtime):
+    torch = pytest.importorskip("torch")
+    solve, image = _solve(), torch.rand(1, 600, 800, 3)
+    out = AtlasSolveGate().gate(solve, image, proceed=True, approved_for="stale")
+    assert out["result"][1].startswith(
+        "*** GATE RE-ARMED: the solve or image changed since approval — "
+        "review and ✅ Approve again. ***\n")
+
+
+def test_envelope_shape_is_the_frontend_contract(comfy_runtime):
+    torch = pytest.importorskip("torch")
+    solve, image = _solve(), torch.rand(1, 600, 800, 3)
+    out = AtlasSolveGate().gate(solve, image)
+    assert set(out) == {"ui", "result"}
+    assert out["ui"] == {"text": [out["result"][1]],
+                         "fingerprint": [_solve_fingerprint(solve, image)]}
+    assert isinstance(out["result"], tuple) and len(out["result"]) == 2
+
+
+def test_gate_delegates_to_the_shared_gate_fingerprint(comfy_runtime):
+    # A byte of drift here silently re-arms every approved saved workflow.
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy.gate import Gate
+    solve, image = _solve(), torch.rand(1, 600, 800, 3)
+    out = AtlasSolveGate().gate(solve, image)
+    assert out["ui"]["fingerprint"] == [Gate.for_solve(solve, image).fingerprint]

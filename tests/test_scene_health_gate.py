@@ -149,3 +149,36 @@ def test_health_summary_suffix_reads_stamp(comfy_runtime):
     fp = _solve_fingerprint(s, img)
     AtlasSceneHealthGate().gate(s, img, proceed=True, approved_for=fp)
     assert "acknowledged" in _health_summary_suffix(s)
+
+
+# --- Gate-module extraction (2026-08-01) -----------------------------------
+# The five gate steps now live in atlas_camera.comfy.gate; these pin what the
+# node still OWNS — its own re-arm wording, and the doctrine that a clean
+# pass-through must not swallow the explanation of a stale acknowledgement.
+
+def test_rearm_sentence_is_this_nodes_own_wording(comfy_runtime):
+    s, img = _warn_solve(), _img()
+    out = AtlasSceneHealthGate().gate(s, img, proceed=True, approved_for="stale")
+    assert out["result"][1].startswith(
+        "*** GATE RE-ARMED: the solve or image changed since the "
+        "acknowledgement — review and ✅ again. ***\n")
+    assert isinstance(out["result"][0], FakeBlocker)
+
+
+def test_clean_passthrough_still_reports_a_stale_acknowledgement(comfy_runtime):
+    # bypass (pass_through_on_pass) widens what FLOWS, never what is SEEN:
+    # the user may override a warning but must never lose it.
+    s = _healthy_solve()
+    out = AtlasSceneHealthGate().gate(s, _img(), proceed=True, approved_for="stale")
+    assert out["result"][0] is s                      # a clean scene still flows
+    assert "GATE RE-ARMED" in out["result"][1]
+
+
+def test_envelope_shape_is_the_frontend_contract(comfy_runtime):
+    # atlas_scene_health_gate.js reads ui.text and ui.fingerprint by name.
+    s, img = _warn_solve(), _img()
+    out = AtlasSceneHealthGate().gate(s, img)
+    assert set(out) == {"ui", "result"}
+    assert out["ui"] == {"text": [out["result"][1]],
+                         "fingerprint": [_solve_fingerprint(s, img)]}
+    assert isinstance(out["result"], tuple) and len(out["result"]) == 2

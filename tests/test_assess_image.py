@@ -523,3 +523,62 @@ def test_image_data_url_leaves_small_image_untouched_in_size(tmp_path):
     url = _image_data_url(small)
     raw = base64.b64decode(url.split(",", 1)[1])
     assert Image.open(BytesIO(raw)).size == (640, 480)
+
+
+# --- Gate-module extraction (2026-08-01) -----------------------------------
+# The gate machinery moved to atlas_camera.comfy.gate; this node keeps its own
+# ▶ Continue wording, and advisory mode (auto_continue) keeps suppressing an
+# explanation there is nothing to explain.
+
+def _blocker_runtime(monkeypatch):
+    class FakeBlocker:
+        def __init__(self, message):
+            self.message = message
+
+    graph = types.ModuleType("comfy_execution.graph")
+    graph.ExecutionBlocker = FakeBlocker
+    pkg = types.ModuleType("comfy_execution")
+    pkg.graph = graph
+    monkeypatch.setitem(sys.modules, "comfy_execution", pkg)
+    monkeypatch.setitem(sys.modules, "comfy_execution.graph", graph)
+    return FakeBlocker
+
+
+def test_rearm_sentence_is_this_nodes_own_wording(monkeypatch):
+    _canned(monkeypatch)
+    _blocker_runtime(monkeypatch)
+    image = torch.rand(1, 32, 32, 3)
+    out = AtlasAssessImage().assess(image, proceed=True, approved_for="stale",
+                                    auto_continue=False)
+    assert out["result"][1].startswith(
+        "*** GATE RE-ARMED: the input image changed since ▶ Continue was clicked "
+        "— review the fresh assessment below, then ▶ Continue again for this "
+        "image. ***\n\n")
+
+
+def test_advisory_mode_shows_no_rearm_banner(monkeypatch):
+    # auto_continue never blocks, so a stale approved_for has nothing to
+    # re-arm — the report must stay the plain assessment.
+    _canned(monkeypatch)
+    _blocker_runtime(monkeypatch)
+    image = torch.rand(1, 32, 32, 3)
+    out = AtlasAssessImage().assess(image, proceed=True, approved_for="stale",
+                                    auto_continue=True)
+    assert out["result"][0] is image
+    assert "GATE RE-ARMED" not in out["result"][1]
+
+
+def test_envelope_shape_is_the_frontend_contract(monkeypatch):
+    # atlas_assess.js reads ui.text / ui.fingerprint; the mirrored SAM keys
+    # ride alongside without displacing them.
+    _canned(monkeypatch)
+    from atlas_camera.comfy.gate import Gate
+    image = torch.rand(1, 32, 32, 3)
+    out = AtlasAssessImage().assess(image)
+    assert set(out) == {"ui", "result"}
+    assert out["ui"]["text"] == [out["result"][1]]
+    assert out["ui"]["fingerprint"] == [Gate.for_image(image).fingerprint]
+    assert set(out["ui"]) == {"text", "fingerprint", "sam_prompts",
+                              "sam_geometry", "sam_bands"}
+    assert isinstance(out["result"], tuple)
+    assert len(out["result"]) == len(AtlasAssessImage.RETURN_NAMES)

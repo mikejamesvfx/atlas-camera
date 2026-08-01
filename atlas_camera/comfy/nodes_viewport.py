@@ -29,15 +29,14 @@ from atlas_camera.comfy.node_helpers import (
     _native_sam3_available,
     _moge_available,
     _decode_b64_to_tensor,
-    _execution_blocker,
     _graph_builder,
     _named_view_orbit_delta,
     _require_numpy,
     _require_pil,
     _require_torch,
-    _solve_fingerprint,
     build_segmentation_cascade,
 )
+from atlas_camera.comfy.gate import Gate, solve_fingerprint as _solve_fingerprint
 from atlas_camera.inference.depth_estimator import is_moge_model
 
 
@@ -340,17 +339,17 @@ class AtlasBlockoutViewport:
 
         def _patch_angle_strings(parsed):
             pa = (parsed or {}).get("patch_angle") or {}
-            # A stale extraction — made from a DIFFERENT solve/image than the
-            # one now wired in (or from before fingerprints existed) — must
-            # re-arm the pause, not silently patch at the old image's angle.
-            if pa and pa.get("fingerprint") != solve_fingerprint:
-                pa = {}
-            _patch_state["paused"] = not pa
-            if not pa:
-                blocker = _execution_blocker()
-                if blocker is not None:
-                    return (blocker,) * 5
-                return _pa_defaults
+            # The extraction itself is the approval, and it is scoped to the
+            # solve+image it was made from: a stale one — from a DIFFERENT
+            # solve/image, or from before fingerprints existed and so
+            # carrying none (blank never approves here) — must re-arm the
+            # pause, not silently patch at the old image's angle.
+            gate = Gate(solve_fingerprint, proceed=bool(pa),
+                        approved_for=str(pa.get("fingerprint") or ""),
+                        blank_is_unconditional=False)
+            _patch_state["paused"] = not gate.passed
+            if not gate.passed:
+                return gate.route_each(_pa_defaults)
             return (
                 str(pa.get("azimuth_view") or _pa_defaults[0]),
                 str(pa.get("elevation_view") or _pa_defaults[1]),
