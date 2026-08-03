@@ -72,14 +72,21 @@ All experimental nodes remain behind `ATLAS_EXPERIMENTAL=1`.
 
 ## Portal workflow recommendation
 
-The checked-in best workflows are:
+No portal workflow ships. The two tuned graphs that used to live under
+`examples/local/` were **deleted on 2026-08-03**, along with the two
+`atlas_path_guided_hole_repair_workflow-edit*.json` working copies. All four
+sat outside the widget-drift pin (`conftest.is_local_workflow` skips them) yet
+shipped inside the Registry archive, so they drifted unnoticed — three node
+types in the `-edit` graph and two in the portal graph had already gone stale
+enough to load with widget values in the wrong slots. An unvalidated workflow
+that ships is worse than no workflow: it fails in the artist's ComfyUI, not in
+CI. If a portal graph is checked back in, it belongs in `examples/` proper,
+under the pin, not in a skipped directory.
 
-- `examples/local/2026-07-16_atlas_retopo_portal_best.json`
-- `examples/local/2026-07-16_atlas_retopo_portal_best_api.json`
-
-The tuned chain increases the interior-hole budgets, disables the overly
-restrictive normal-edge gate, and uses a wider seam pass. The API workflow
-adds `AtlasMaskedSurfaceReconstruct` between planar repair and seam refinement:
+The chain itself is the recommendation, and it is unchanged. Increase the
+interior-hole budgets, disable the overly restrictive normal-edge gate, and
+use a wider seam pass, placing `AtlasMaskedSurfaceReconstruct` between planar
+repair and seam refinement:
 
 ```text
 derive projection geometry
