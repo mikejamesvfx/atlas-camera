@@ -217,7 +217,7 @@
    "dedicated_tests": 15,
    "tests": 17,
    "mcp_tools": 0,
-   "repo_tools": 12,
+   "repo_tools": 13,
    "docs": 7,
    "product_evidence": true,
    "evidence_kinds": [
@@ -404,7 +404,7 @@
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 1,
-   "repo_tools": 1,
+   "repo_tools": 3,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -672,7 +672,7 @@
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 1,
-   "repo_tools": 5,
+   "repo_tools": 6,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -750,11 +750,12 @@
    "dedicated_tests": 5,
    "tests": 7,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -1095,11 +1096,12 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 0,
    "product_evidence": true,
    "evidence_kinds": [
-    "dedicated_test"
+    "dedicated_test",
+    "repo_tool"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
@@ -1627,7 +1629,7 @@
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 1,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1685,7 +1687,7 @@
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
-   "repo_tools": 4,
+   "repo_tools": 5,
    "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1714,11 +1716,12 @@
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -1787,14 +1790,15 @@
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "experimental",
    "example_workflows": 0,
-   "dedicated_tests": 1,
-   "tests": 4,
+   "dedicated_tests": 2,
+   "tests": 5,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2057,14 +2061,15 @@
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "experimental",
    "example_workflows": 0,
-   "dedicated_tests": 1,
-   "tests": 4,
+   "dedicated_tests": 2,
+   "tests": 5,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2112,7 +2117,7 @@
    "dedicated_tests": 5,
    "tests": 7,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2428,7 +2433,7 @@
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 2,
-   "repo_tools": 3,
+   "repo_tools": 4,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [

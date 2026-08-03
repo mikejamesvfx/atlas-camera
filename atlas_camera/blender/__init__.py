@@ -12,10 +12,6 @@ startup; a node calls in and gets an instructive RuntimeError if Blender is
 absent.
 """
 from atlas_camera.blender.convert import atlas_to_blender, blender_to_atlas
-from atlas_camera.blender.boundary_fill import (
-    fill_selected_boundary_loops,
-    select_masked_interior_loops,
-)
 from atlas_camera.blender.exchange import read_result, write_exchange
 from atlas_camera.blender.organic_fill import (
     gate_movement,
@@ -41,7 +37,6 @@ __all__ = [
     "blender_to_atlas",
     "build_blender_command",
     "compact",
-    "fill_selected_boundary_loops",
     "gate_movement",
     "median_edge_length",
     "read_result",
@@ -51,7 +46,6 @@ __all__ = [
     "run_recipe",
     "shrinkwrap_patch",
     "select_torn_collar",
-    "select_masked_interior_loops",
     "weld_to_anchor",
     "write_exchange",
 ]

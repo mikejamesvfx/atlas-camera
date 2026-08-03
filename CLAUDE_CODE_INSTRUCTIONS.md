@@ -30,13 +30,22 @@ These nodes no longer appear in the ComfyUI registry or experimental menu:
 - `AtlasPlanarRewarp` (displayed as **Atlas Planar Rewarp**)
 - `AtlasPredictHiddenGeometry`
 - `AtlasBlenderOrganicFill`
-- `AtlasBlenderBoundaryFill`
 - `AtlasRenderFix`
 
-The Planar Unwrap/Rewrap implementation module was deleted. The four
-experimental implementations remain in source history where needed by legacy
-tests/documentation, but they are intentionally not registered. Do not
+The Planar Unwrap/Rewrap implementation module was deleted. The three
+experimental implementations above remain in source history where needed by
+legacy tests/documentation, but they are intentionally not registered. Do not
 re-register them unless the user explicitly asks to restore those workflows.
+
+`AtlasBlenderBoundaryFill` was **deleted outright on 2026-08-03**, not merely
+de-registered — it was never in any registry mapping in any commit, so no saved
+workflow can reference it. Removed with it: `atlas_camera/blender/boundary_fill.py`,
+its `recipes/boundary_fill.py` driver, `tests/test_blender_boundary_fill.py`, and
+`tools/build_holefill_boundary_fill_comparison_workflow.py` (the native-vs-Fill-Mesh
+lab builder). Its design rule is retained in `docs/DESIGN_RULES.md` and marked
+REMOVED, because the doctrine it records now governs the NumPy pair. Blender
+remains an optional path only for the pre-existing organic-fill/shrinkwrap
+recipes; do not add new Blender-dependent nodes before beta 0.8.
 
 The old live-fill widgets were also removed from the current derive/repair
 node contracts, including `live_fill_holes`, `live_fill_distance_m`,
@@ -56,9 +65,8 @@ widgets into existing saved workflow positions; append widgets only.
 - `AtlasGravityCompass` (standard): direct-manipulation orientation control
   backed by `AtlasGravityOverride`; `USE SOLVE` is a true pass-through and
   heading override is appended for positional-workflow compatibility.
-- Blender boundary-fill support remains available in source as an optional
-  native/Fill Mesh comparison path, but it is not one of the four experimental
-  menu nodes removed above.
+The Blender boundary-fill comparison path is gone entirely (see above); the two
+NumPy nodes are the whole repair surface.
 
 All experimental nodes remain behind `ATLAS_EXPERIMENTAL=1`.
 
