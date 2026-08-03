@@ -157,11 +157,6 @@
     "execution": "ok",
     "output": "ok"
    },
-   "AtlasPlanarRewarp": {
-    "execution": "ok",
-    "output": "ok",
-    "note": "returns the original image unchanged when warp_spec is None \u2014 correct fail-soft; ok with a real spec from AtlasPlanarUnwarp"
-   },
    "AtlasDepthAnything": {
     "execution": "ok",
     "output": "ok",

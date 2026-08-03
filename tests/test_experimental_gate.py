@@ -14,8 +14,8 @@ import atlas_camera.comfy.nodes as nodes
 
 def test_experimental_dicts_cover_exactly_the_experimental_nodes():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == {
-        "AtlasPredictHiddenGeometry", "AtlasRenderFix",
-        "AtlasBlenderOrganicFill",
+        "AtlasMaskedSurfaceReconstruct",
+        "AtlasRefineOcclusionSeams",
         "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
         "AtlasCompleteDepth", "AtlasBlockoutMassing"}
     assert set(nodes.EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS) == set(
@@ -39,9 +39,9 @@ def test_gate_helper_truthiness(monkeypatch):
 def test_registration_state_matches_the_gate():
     # Whatever environment this suite runs under, the merged mappings must
     # agree with the gate's verdict — no half-registered states.
-    registered = "AtlasRenderFix" in nodes.NODE_CLASS_MAPPINGS
+    registered = "AtlasCompleteDepth" in nodes.NODE_CLASS_MAPPINGS
     assert registered == nodes._experimental_enabled()
-    assert ("AtlasPredictHiddenGeometry" in nodes.NODE_CLASS_MAPPINGS) == registered
+    assert ("AtlasMaskedSurfaceReconstruct" in nodes.NODE_CLASS_MAPPINGS) == registered
     if registered:
         for k in nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS:
             assert k in nodes.NODE_DISPLAY_NAME_MAPPINGS

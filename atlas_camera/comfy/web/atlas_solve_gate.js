@@ -2,9 +2,10 @@
  * Atlas Solve Gate — the ✅ Approve Solve button.
  *
  * AtlasSolveGate pauses everything downstream of the solve (its solve
- * output returns ExecutionBlocker) until `proceed` is turned on, so the
- * first Queue costs only the solve + whatever cheap preview is wired
- * UNGATED. This button is the one-click approval: it sets `proceed`,
+ * output returns ExecutionBlocker) until `proceed` is turned on. Its appended
+ * preview_solve output remains live for cheap diagnostics. Direct compass
+ * manipulation is itself an artist approval and re-queues once on release;
+ * this button is the one-click approval for an untouched solved orientation: it sets `proceed`,
  * stamps the approval fingerprint of the LAST-GATED solve+image (delivered
  * via ui.fingerprint), and re-queues — the exact mechanics of
  * AtlasAssessImage's ▶ Continue (atlas_assess.js). Pure UI convenience:
@@ -47,7 +48,20 @@ app.registerExtension({
     nodeType.prototype.onExecuted = function (message) {
       origExec?.apply(this, arguments);
       const fp = Array.isArray(message?.fingerprint) ? message.fingerprint[0] : message?.fingerprint;
-      if (fp) this._atlasSolveGateFingerprint = fp;
+      if (fp) {
+        this._atlasSolveGateFingerprint = fp;
+        // A compass drag flows once via the documented blank-fingerprint
+        // manual override. Immediately scope it to the reviewed output so a
+        // later photo/re-solve still re-arms the gate.
+        if (this._atlasCompassPendingApproval) {
+          const approvedFor = this.widgets?.find((x) => x.name === "approved_for");
+          if (approvedFor) {
+            approvedFor.value = fp;
+            approvedFor.callback?.(fp);
+          }
+          this._atlasCompassPendingApproval = false;
+        }
+      }
       const text = Array.isArray(message?.text) ? message.text.join("\n") : message?.text;
       if (!text) return;
       let w = this.widgets?.find((x) => x.name === "solve_summary");

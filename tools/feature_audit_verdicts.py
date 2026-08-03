@@ -92,15 +92,14 @@ VERDICTS: dict[str, dict] = {
     },
 
     # --- the 2026-07-24 HOLD cohort, resolved 2026-07-27 --------------------
-    # All 14 now carry dedicated node-layer coverage
+    # All 13 remaining nodes carry dedicated node-layer coverage
     # (tests/test_node_layer_contracts.py), so the audit's own rule promotes
     # them to KEEP_CORE. Recorded explicitly rather than left to the default,
     # because the interesting part is WHY they were held and what closing the
-    # gap turned up: two of them (AtlasStereoRender, AtlasPlanarRewarp) looked
-    # covered but were not — tests/test_stereo_render.py and
-    # tests/test_planar_projection.py exercise the CORE math and never touch
-    # the node classes — and writing the tests exposed a real inverted-output
-    # bug in AtlasHorizonMask (see DEFECTS).
+    # gap turned up: AtlasStereoRender looked covered but was not —
+    # tests/test_stereo_render.py exercises CORE math and never touches the
+    # node class — and writing the tests exposed a real inverted-output bug in
+    # AtlasHorizonMask (see DEFECTS).
     **{
         name: {
             "verdict": "KEEP_CORE",
@@ -119,7 +118,7 @@ VERDICTS: dict[str, dict] = {
             "AtlasApplyScaleReferences", "AtlasConstrainedSolve",
             "AtlasDecomposeCamera", "AtlasDecomposeSolve", "AtlasDepthAnything",
             "AtlasGravityOverride", "AtlasGroundDepthMap", "AtlasHorizonMask",
-            "AtlasLoadPlate", "AtlasPlanarRewarp", "AtlasSegmentedSDXLInpaint",
+            "AtlasLoadPlate", "AtlasSegmentedSDXLInpaint",
             "AtlasStereoRender", "AtlasUSDCameraLoader", "AtlasVPVisualization",
         )
     },

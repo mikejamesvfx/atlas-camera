@@ -1048,8 +1048,9 @@ class AtlasGravityOverride:
     `AtlasPitchTrim` — set pitch here directly instead of trimming relative.)
     When you know the true angles (crop-probe, level references, or by eye),
     set them here: ``pitch_deg`` (positive = looking DOWN) and ``roll_deg``
-    re-pose the camera about its own position, preserving the horizontal
-    HEADING (yaw stays unobservable/canonical). Position never moves.
+    re-pose the camera about its own position. Horizontal heading is preserved
+    by default; enable ``heading_override`` to set an absolute Atlas world yaw
+    (0 = camera faces -Z, +90 = +X). Position never moves.
 
     Wire it between the solve and the depth/derive nodes, like the other
     dials. Stamps `debug_metadata["gravity_override"]`.
@@ -1071,10 +1072,19 @@ class AtlasGravityOverride:
                     "tooltip": "ABSOLUTE roll about the view axis (0 = level horizon). "
                                "Same screen direction as AtlasRollTrim: positive turns "
                                "the projected scene counter-clockwise."}),
+                # APPENDED: saved workflows store widgets positionally.
+                "heading_override": ("BOOLEAN", {"default": False,
+                    "tooltip": "Off preserves solved heading. On uses heading_deg "
+                               "to align the world X/Z grid."}),
+                "heading_deg": ("FLOAT", {"default": 0.0, "min": -180.0,
+                    "max": 180.0, "step": 0.05,
+                    "tooltip": "Absolute world heading: 0 faces Atlas -Z; +90 "
+                               "faces +X."}),
             },
         }
 
-    def override(self, solve, pitch_deg=0.0, roll_deg=0.0):
+    def override(self, solve, pitch_deg=0.0, roll_deg=0.0,
+                 heading_override=False, heading_deg=0.0):
         import math
 
         from atlas_camera.core.camera_math import look_at_view_matrix
@@ -1085,13 +1095,19 @@ class AtlasGravityOverride:
         wm = extr.camera_world_matrix
         fwd = (-float(wm[0][2]), -float(wm[1][2]), -float(wm[2][2]))
         old_pitch = math.degrees(math.asin(max(-1.0, min(1.0, fwd[1]))))
-        # Preserve heading: the horizontal component of the current forward.
+        # Preserve heading unless the appended explicit override is engaged.
+        # The switch is essential for old positional workflows: a newly
+        # defaulted 0-degree widget must not erase a non-zero solved heading.
         hx, hz = fwd[0], fwd[2]
         norm = math.hypot(hx, hz)
         if norm < 1e-9:
             hx, hz = 0.0, -1.0  # straight up/down: canonical -Z heading
             norm = 1.0
         hx, hz = hx / norm, hz / norm
+        old_heading = math.degrees(math.atan2(hx, -hz))
+        if heading_override:
+            h = math.radians(float(heading_deg))
+            hx, hz = math.sin(h), -math.cos(h)
 
         p = math.radians(float(pitch_deg))  # positive = down
         new_fwd = (hx * math.cos(p), -math.sin(p), hz * math.cos(p))
@@ -1115,6 +1131,12 @@ class AtlasGravityOverride:
         meta["gravity_override"] = {"pitch_deg": float(pitch_deg),
                                     "roll_deg": float(roll_deg),
                                     "previous_pitch_deg": round(old_pitch, 2)}
+        if heading_override:
+            meta["gravity_override"].update({
+                "heading_override": True,
+                "heading_deg": float(heading_deg),
+                "previous_heading_deg": round(old_heading, 2),
+            })
         out.debug_metadata = meta
 
         geom_warn = ""
@@ -1125,10 +1147,79 @@ class AtlasGravityOverride:
         report = (
             f"AtlasGravityOverride: pitch {old_pitch:+.1f}° → {-float(pitch_deg):+.1f}° "
             f"(looking {'down' if pitch_deg > 0 else 'up' if pitch_deg < 0 else 'level'}), "
-            f"roll set to {float(roll_deg):+.1f}°\n"
-            "  Absolute orientation; heading and position preserved. Every downstream "
-            "derive/export follows." + geom_warn)
+            f"roll set to {float(roll_deg):+.1f}°" +
+            (f", heading {old_heading:+.1f}° → {float(heading_deg):+.1f}°\n"
+             if heading_override else "\n") +
+            ("  Absolute orientation; heading set from the world XYZ control and "
+             if heading_override else
+             "  Absolute orientation; heading preserved and ") +
+            "position preserved. Every downstream derive/export follows." + geom_warn)
         return (out, report)
+
+
+class AtlasGravityCompass:
+    """Interactive high-level gravity direction control.
+
+    The frontend presents these ordinary, serializable values as a draggable
+    3D gravity compass.  Keeping the solve operation here (and delegating to
+    ``AtlasGravityOverride``) means API/headless workflows behave identically
+    to the graphic control and the established absolute-orientation math has
+    one source of truth.
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "orient"
+    CATEGORY = "Atlas Camera/Scale & Trim"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"solve": ("ATLAS_SOLVE",)},
+            "optional": {
+                "apply_override": ("BOOLEAN", {"default": False,
+                    "tooltip": "Off passes the solve through unchanged. Dragging the "
+                               "compass enables this automatically."}),
+                "pitch_deg": ("FLOAT", {"default": 0.0, "min": -89.0,
+                    "max": 89.0, "step": 0.05,
+                    "tooltip": "Absolute camera pitch. Positive looks down; the 3D "
+                               "compass is the intended control."}),
+                "roll_deg": ("FLOAT", {"default": 0.0, "min": -180.0,
+                    "max": 180.0, "step": 0.05,
+                    "tooltip": "Absolute camera roll. Positive turns the projected "
+                               "scene counter-clockwise."}),
+                # APPENDED: saved workflows store widgets positionally.
+                "heading_override": ("BOOLEAN", {"default": False,
+                    "tooltip": "Enable the central world XYZ heading ring."}),
+                "heading_deg": ("FLOAT", {"default": 0.0, "min": -180.0,
+                    "max": 180.0, "step": 0.05,
+                    "tooltip": "Absolute world heading used to align the grid."}),
+            },
+        }
+
+    def orient(self, solve, apply_override=False, pitch_deg=0.0, roll_deg=0.0,
+               heading_override=False, heading_deg=0.0):
+        if not apply_override:
+            return (solve,
+                    "AtlasGravityCompass: USE SOLVE — pass-through; learned gravity "
+                    "is unchanged. Drag the compass to activate an override.")
+
+        out, base_report = AtlasGravityOverride().override(
+            solve, pitch_deg=float(pitch_deg), roll_deg=float(roll_deg),
+            heading_override=bool(heading_override),
+            heading_deg=float(heading_deg))
+        meta = dict(out.debug_metadata or {})
+        meta["gravity_compass"] = {
+            "active": True,
+            "pitch_deg": float(pitch_deg),
+            "roll_deg": float(roll_deg),
+        }
+        if heading_override:
+            meta["gravity_compass"].update({
+                "heading_override": True,
+                "heading_deg": float(heading_deg),
+            })
+        out.debug_metadata = meta
+        return (out, "AtlasGravityCompass: OVERRIDE ACTIVE\n  " + base_report)
 
 
 class AtlasReferenceScaleSolve:
@@ -1425,12 +1516,12 @@ class AtlasSolveGate:
 
     The third gate in the established family (AtlasAssessImage gates the
     whole graph on VLM pre-flight; 📐 pauses the patch branch): wire
-    `solve → viewport` UNGATED for a cheap preview (a low-grid relief costs
-    seconds) and `solve → this gate → the heavy stack` (grid-1024 band
+    `preview_solve → viewport` for an always-live view of the incoming or
+    compass-corrected camera and `solve → the heavy stack` (grid-1024 band
     layers, sky dome, Fixer, exports — the minutes). The first Queue costs a
-    solve and a thumbnail-grade preview; check the camera in ℹ/📊 (or the
-    report rendered on this node), click ✅ Approve Solve, and the re-queue
-    runs the expensive graph exactly once, on a solve you signed off.
+    solve and a thumbnail-grade preview; check the camera in ℹ/📊, drag the
+    compass if gravity is wrong, click ✅ Approve Solve, and the re-queue runs
+    the expensive graph exactly once, on the orientation you signed off.
 
     Approval is fingerprint-scoped to (solve camera + source image): a new
     photo OR a re-solve with different settings re-arms the gate instead of
@@ -1439,8 +1530,8 @@ class AtlasSolveGate:
     unconditional override. Outside a ComfyUI runtime the gate degrades to
     pass-through (no ExecutionBlocker available).
     """
-    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
-    RETURN_NAMES = ("solve", "report")
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING", "ATLAS_SOLVE")
+    RETURN_NAMES = ("solve", "report", "preview_solve")
     FUNCTION = "gate"
     CATEGORY = "Atlas Camera/Gates & QA"
 
@@ -1463,32 +1554,77 @@ class AtlasSolveGate:
                     "given for (stamped by ✅). Mismatch re-arms the gate. "
                     "Leave empty when toggling proceed by hand to approve "
                     "unconditionally."}),
+                # APPENDED: saved workflows store widgets positionally.
+                "apply_override": ("BOOLEAN", {"default": False,
+                    "tooltip": "Use the gate's visual gravity compass instead "
+                               "of the incoming solved gravity."}),
+                "pitch_deg": ("FLOAT", {"default": 0.0, "min": -89.0,
+                    "max": 89.0, "step": 0.05,
+                    "tooltip": "Absolute camera pitch; positive looks down."}),
+                "roll_deg": ("FLOAT", {"default": 0.0, "min": -180.0,
+                    "max": 180.0, "step": 0.05,
+                    "tooltip": "Absolute camera roll; positive turns the scene "
+                               "counter-clockwise."}),
+                # APPENDED: saved workflows store widgets positionally.
+                "heading_override": ("BOOLEAN", {"default": False,
+                    "tooltip": "Enable the central world XYZ heading ring to "
+                               "align the horizontal grid."}),
+                "heading_deg": ("FLOAT", {"default": 0.0, "min": -180.0,
+                    "max": 180.0, "step": 0.05,
+                    "tooltip": "Absolute Atlas world heading: 0 faces -Z; +90 "
+                               "faces +X."}),
             },
         }
 
-    def gate(self, solve, source_image, proceed=False, approved_for="", **_extra):
+    def gate(self, solve, source_image, proceed=False, approved_for="",
+             apply_override=False, pitch_deg=0.0, roll_deg=0.0,
+             heading_override=False, heading_deg=0.0, **_extra):
         # **_extra: API-format exports can serialize the button widget as a
         # bogus input key — tolerate unknown kwargs (AssessImage precedent).
         import math as _math
 
         np = _require_numpy()
 
-        gate = Gate.for_solve(solve, source_image,
+        reviewed_solve = solve
+        if apply_override:
+            reviewed_solve, _ = AtlasGravityOverride().override(
+                solve, pitch_deg=float(pitch_deg), roll_deg=float(roll_deg),
+                heading_override=bool(heading_override),
+                heading_deg=float(heading_deg))
+            meta = dict(reviewed_solve.debug_metadata or {})
+            meta["gravity_compass"] = {
+                "active": True, "approved_at_solve_gate": False,
+                "pitch_deg": float(pitch_deg), "roll_deg": float(roll_deg),
+            }
+            if heading_override:
+                meta["gravity_compass"].update({
+                    "heading_override": True,
+                    "heading_deg": float(heading_deg),
+                })
+            reviewed_solve.debug_metadata = meta
+
+        # Fingerprint the REVIEWED orientation, not the raw input. Changing
+        # the compass therefore re-arms a previous approval.
+        gate = Gate.for_solve(reviewed_solve, source_image,
                               proceed=proceed, approved_for=approved_for)
-        intr = solve.camera.intrinsics
-        extr = solve.camera.extrinsics
+        if apply_override:
+            reviewed_solve.debug_metadata["gravity_compass"][
+                "approved_at_solve_gate"] = bool(gate.approved)
+        intr = reviewed_solve.camera.intrinsics
+        extr = reviewed_solve.camera.extrinsics
         try:
             vm = np.array(extr.camera_view_matrix, dtype=np.float64)
             fwd = np.linalg.inv(vm)[:3, :3] @ np.array([0.0, 0.0, -1.0])
-            pitch = _math.degrees(_math.asin(max(-1.0, min(1.0, float(fwd[1])))))
+            # Atlas artist convention: positive pitch means looking DOWN.
+            pitch = -_math.degrees(_math.asin(max(-1.0, min(1.0, float(fwd[1])))))
         except Exception:
             pitch = float("nan")
         fov = (2 * _math.degrees(_math.atan((intr.image_width or 0) /
                (2 * intr.fx_px))) if intr.fx_px else float("nan"))
         cam_h = (extr.camera_position or (0, float("nan"), 0))[1]
-        meta = solve.debug_metadata or {}
+        meta = reviewed_solve.debug_metadata or {}
         from atlas_camera.core.scene_health import scale_health
-        sh = scale_health(solve)
+        sh = scale_health(reviewed_solve)
         lines = [
             "✅ SOLVE APPROVED — heavy graph running." if gate.passed else
             "⏸ SOLVE GATE — downstream paused. Review, then ✅ Approve Solve.",
@@ -1496,16 +1632,27 @@ class AtlasSolveGate:
              f"{intr.sensor_width_mm}mm") if intr.focal_length_mm else "focal: n/a",
             f"camera height: {cam_h:.2f}m  (scale: {sh.status} / "
             f"{meta.get('scale_source', 'n/a')})",
-            f"pitch: {pitch:+.1f}°",
-            (f"confidence: {solve.confidence:.2f}  ({solve.source_method})"
-             if getattr(solve, "confidence", None) is not None else ""),
+            f"pitch: {pitch:+.1f}°  (positive = down)",
+            (f"gravity: COMPASS OVERRIDE  pitch {float(pitch_deg):+.1f}° / "
+             f"roll {float(roll_deg):+.1f}°" +
+             (f" / heading {float(heading_deg):+.1f}°" if heading_override else "")
+             if apply_override else
+             "gravity: incoming solve"),
+            (f"confidence: {reviewed_solve.confidence:.2f}  ({reviewed_solve.source_method})"
+             if getattr(reviewed_solve, "confidence", None) is not None else ""),
         ]
         if not sh.safe_to_export:
             lines.insert(1, f"⚠ SCALE NOT VERIFIED — {sh.detail}")
         report = gate.annotate(
             "\n".join(l for l in lines if l),
             "the solve or image changed since approval — review and ✅ Approve again.")
-        return gate.envelope(report, (gate.route(solve), report))
+        # preview_solve is deliberately UNGATED: it lets the viewport show
+        # exactly what the artist is about to approve.  The existing solve
+        # and report slots stay in positions 0/1 for saved workflows.
+        return gate.envelope(
+            report, (gate.route(reviewed_solve), report, reviewed_solve),
+            ui={"source_image": [_image_tensor_to_preview_b64(
+                source_image, quality=78, max_side=1024)]})
 
 
 class AtlasSceneHealthGate:

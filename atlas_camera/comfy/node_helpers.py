@@ -290,9 +290,12 @@ def _mask_to_b64_png(mask_arr) -> str:
         return ""
 
 
-def _image_tensor_to_preview_b64(image_tensor, *, quality: int = 85) -> str:
+def _image_tensor_to_preview_b64(image_tensor, *, quality: int = 85,
+                                 max_side: int | None = None) -> str:
     try:
         pil = _image_tensor_to_pil(image_tensor)
+        if max_side and max(pil.size) > int(max_side):
+            pil.thumbnail((int(max_side), int(max_side)))
         buf = io.BytesIO()
         pil.save(buf, format="JPEG", quality=int(quality))
         return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")

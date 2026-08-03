@@ -204,7 +204,6 @@ class AtlasDeriveProjectionGeometry:
                                "affects the relief_mesh branch (geometry_mode both/relief_mesh); "
                                "the primitives/wall-fitting branch is unaffected. Any resolution - "
                                "resized to match depth."}),
-                **LIVE_FILL_WIDGETS,
             },
         }
 
@@ -229,10 +228,7 @@ class AtlasDeriveProjectionGeometry:
                geometry_mode="relief_mesh", relief_grid=128,
                primitive_method="azimuth_walls", scene_type="manual",
                relief_quality="custom", depth_edge_rel=0.5,
-               exclude_mask=None,
-               live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=256,
-               live_fill_edge_sawteeth=False):
+               exclude_mask=None):
         torch = _require_torch()
         np = _require_numpy()
         preset = self._SCENE_TYPE_PRESETS.get(scene_type)
@@ -340,25 +336,12 @@ class AtlasDeriveProjectionGeometry:
                 horizon_y=horizon_y,
                 exclude_mask=resolved_exclude,
                 apply_sky_heuristic=resolved_exclude is None,
-                live_fill_holes=bool(live_fill_holes),
-                live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth),
             )
 
             stats["relief_mesh"] = {
                 "n_vertices": mesh.stats["n_vertices"],
                 "n_faces": mesh.stats["n_faces"],
             }
-            apply_live_mesh_repair(
-                mesh,
-                extr.camera_view_matrix,
-                live_fill_holes=live_fill_holes,
-                live_fill_distance_m=live_fill_distance_m,
-                live_fill_max_hole_edges=live_fill_max_hole_edges,
-                live_fill_edge_sawteeth=live_fill_edge_sawteeth,
-                stats=stats,
-                image_width=intr.image_width,
-                image_height=intr.image_height,
-            )
             keep.append(relief_mesh_primitive(mesh))
             hole_mask_arr = mesh.hole_mask.astype(np.float32)
 
@@ -372,10 +355,6 @@ class AtlasDeriveProjectionGeometry:
             "relief_grid": int(relief_grid),
             "relief_quality": relief_quality,
             "max_objects": int(max_objects),
-            "live_fill_holes": bool(live_fill_holes),
-            "live_fill_distance_m": float(live_fill_distance_m),
-            "live_fill_max_hole_edges": int(live_fill_max_hole_edges),
-            "live_fill_edge_sawteeth": bool(live_fill_edge_sawteeth),
             "derive_node": "AtlasDeriveProjectionGeometry",
         })
         hole_t = torch.from_numpy(hole_mask_arr).unsqueeze(0)
@@ -823,7 +802,6 @@ class AtlasDeriveReliefMesh:
                 "quad_coherence": ("BOOLEAN", {"default": True,
                     "tooltip": "Reject both triangles when either half of a grid quad fails. "
                                "Prevents one surviving diagonal from becoming a stretched UV wedge."}),
-                **LIVE_FILL_WIDGETS,
             },
         }
 
@@ -833,10 +811,7 @@ class AtlasDeriveReliefMesh:
                depth_edge_rel=0.5,
                exclude_mask=None, outlier_mask=None,
                max_edge_factor=12.0,
-               sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
-               live_fill_holes=False, live_fill_distance_m=0.0,
-               live_fill_max_hole_edges=256,
-               live_fill_edge_sawteeth=False):
+               sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -876,8 +851,7 @@ class AtlasDeriveReliefMesh:
             normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
             quad_coherence=bool(quad_coherence),
             apply_sky_heuristic=(resolved_exclude is None) and bool(sky_heuristic),
-            live_fill_holes=bool(live_fill_holes),
-            live_fill_edge_sawteeth=bool(live_fill_edge_sawteeth))
+        )
 
         stats = {
             "ground_scale": scale, "ground_fit": ground_info,
@@ -904,17 +878,6 @@ class AtlasDeriveReliefMesh:
                       f"{100.0 * float(resolved_exclude.mean()):.1f}% of frame and "
                       f"REPLACES the internal sky heuristic (it is not OR'd on top). "
                       f"Sky stays meshed unless this mask already contains it.")
-        apply_live_mesh_repair(
-            mesh,
-            extr.camera_view_matrix,
-            live_fill_holes=live_fill_holes,
-            live_fill_distance_m=live_fill_distance_m,
-            live_fill_max_hole_edges=live_fill_max_hole_edges,
-            live_fill_edge_sawteeth=live_fill_edge_sawteeth,
-            stats=stats,
-            image_width=solve.camera.intrinsics.image_width,
-            image_height=solve.camera.intrinsics.image_height,
-        )
         prims = [backdrop, relief_mesh_primitive(mesh)]
 
         out = _replace_proxy_role_geometry(solve, prims, stats, {
@@ -922,10 +885,6 @@ class AtlasDeriveReliefMesh:
             "depth_edge_rel": float(depth_edge_rel), "max_edge_factor": float(max_edge_factor),
             "sky_heuristic": bool(sky_heuristic), "normal_edge_deg": float(normal_edge_deg),
             "quad_coherence": bool(quad_coherence),
-            "live_fill_holes": bool(live_fill_holes),
-            "live_fill_distance_m": float(live_fill_distance_m),
-            "live_fill_max_hole_edges": int(live_fill_max_hole_edges),
-            "live_fill_edge_sawteeth": bool(live_fill_edge_sawteeth),
             "derive_node": "AtlasDeriveReliefMesh",
         })
         hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
@@ -1598,6 +1557,151 @@ class AtlasBlenderOrganicFill:
         return (solve_out, "\n".join(lines) or "nothing to fill")
 
 
+class AtlasBlenderBoundaryFill:
+    """🔬 Fill only mask-matched interior loops; preserve the existing mesh."""
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "fill"
+    CATEGORY = "Atlas Camera/Experimental"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "hole_mask": ("MASK", {
+                    "tooltip": "Wire remaining_holes from Atlas Planar Hole Patch. "
+                               "Only an overlapped interior boundary loop may fill.",
+                }),
+            },
+            "optional": {
+                "layer": ("STRING", {
+                    "default": "",
+                    "tooltip": "Layer name, '' for primary, '*' for every relief layer.",
+                }),
+                "backend": (["native", "fill_mesh_addon"], {
+                    "default": "native",
+                    "tooltip": "native is clean-room BMesh. fill_mesh_addon calls "
+                               "your separately installed Fill Mesh extension for A/B.",
+                }),
+                "max_hole_edges": ("INT", {
+                    "default": 256, "min": 3, "max": 4096,
+                    "tooltip": "Safety ceiling for a selected boundary loop, not remesh size.",
+                }),
+                "blender_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Blender executable. Empty probes Atlas's normal locations.",
+                }),
+                "timeout_s": ("INT", {
+                    "default": 600, "min": 30, "max": 7200,
+                    "tooltip": "Per-layer Blender budget.",
+                }),
+            },
+        }
+
+    def fill(self, solve, hole_mask, layer="", backend="native",
+             max_hole_edges=256, blender_path="", timeout_s=600):
+        """Add faces only where a source-space mask maps to a real hole rim.
+
+        A masked visual gap with no matching mesh boundary remains explicitly
+        unresolved: manufacturing a scene-wide cap would hide a depth problem,
+        not repair its topology.
+        """
+        from atlas_camera.blender.boundary_fill import (
+            fill_selected_boundary_loops,
+            select_masked_interior_loops,
+        )
+        from atlas_camera.exporters._layers import mesh_from_primitive
+
+        np = _require_numpy()
+        solve_out = copy.deepcopy(solve)
+        sel = str(layer or "").strip()
+        lines: list[str] = []
+
+        def _do(prim, camera, name):
+            meta = prim.metadata or {}
+            if prim.primitive_type != "mesh" or meta.get("source") != "depth_relief_mesh":
+                return
+            mesh = mesh_from_primitive(prim)
+            if mesh is None:
+                lines.append(f"{name}: empty mesh — skipped")
+                return
+            intr = getattr(camera, "intrinsics", None)
+            width = int(getattr(intr, "image_width", 0) or 0)
+            height = int(getattr(intr, "image_height", 0) or 0)
+            if width <= 1 or height <= 1:
+                lines.append(f"{name}: SKIPPED — no usable image dimensions for UV scope")
+                return
+            resolved = _resolve_exclude_mask(hole_mask, height, width)
+            if resolved is None:
+                lines.append(f"{name}: SKIPPED — hole_mask is required for scoped fill")
+                return
+            vertices = np.asarray(mesh.vertices, dtype=np.float64).reshape(-1, 3)
+            faces = np.asarray(mesh.faces, dtype=np.int64).reshape(-1, 3)
+            uvs = np.asarray(mesh.uvs, dtype=np.float64).reshape(-1, 2)
+            if len(uvs) != len(vertices):
+                lines.append(f"{name}: SKIPPED — mesh has {len(uvs)} UVs for "
+                             f"{len(vertices)} vertices; cannot safely map the mask")
+                return
+            try:
+                loops, scope = select_masked_interior_loops(
+                    faces, uvs, resolved, image_width=width, image_height=height,
+                    max_hole_edges=int(max_hole_edges))
+            except (ValueError, RuntimeError) as exc:
+                lines.append(f"{name}: SKIPPED — boundary analysis failed: {exc}")
+                return
+            if not loops:
+                if scope["masked_pixels"]:
+                    lines.append(
+                        f"{name}: UNRESOLVED — {scope['masked_pixels']} masked px, "
+                        f"but no matching interior boundary loop "
+                        f"({scope['boundary_loops']} loops; "
+                        f"{scope['perimeter_loops']} frame perimeter; "
+                        f"{scope['too_large_loops']} over {int(max_hole_edges)} edges). "
+                        "No synthetic cap or remesh was applied.")
+                else:
+                    lines.append(f"{name}: nothing in hole_mask — unchanged")
+                return
+            try:
+                got = fill_selected_boundary_loops(
+                    vertices, faces, loops, backend=str(backend),
+                    blender_path=str(blender_path), timeout_s=int(timeout_s))
+            except (RuntimeError, ValueError) as exc:
+                lines.append(f"{name}: SKIPPED — {exc}")
+                return
+            new_faces = np.asarray(got["faces"], dtype=np.int64).reshape(-1, 3)
+            # The driver validates Blender's result then returns these exact
+            # original vertices, so UVs and all existing mesh data stay intact.
+            meta["faces"] = new_faces.reshape(-1).tolist()
+            meta["n_faces"] = int(len(new_faces))
+            meta["blender_boundary_fill"] = dict(got.get("report") or {})
+            prim.metadata = meta
+            rep = got.get("report") or {}
+            lines.append(
+                f"{name}: {len(loops)} mask-matched interior loop(s), "
+                f"{len(faces)}->{len(new_faces)} faces (+{len(new_faces) - len(faces)}); "
+                f"backend={backend}; preserved "
+                f"{rep.get('existing_vertices_preserved', len(vertices))} vertices "
+                "and all pre-existing faces")
+
+        if sel in ("", "*"):
+            scene = getattr(solve_out, "projection_scene", None)
+            for prim in (getattr(scene, "proxy_geometry", None) or []):
+                _do(prim, solve_out.camera, "primary")
+        for src in (getattr(solve_out, "projection_sources", None) or []):
+            if sel == "*" or (sel and getattr(src, "name", "") == sel):
+                for prim in (getattr(src, "proxy_geometry", None) or []):
+                    _do(prim, src.camera, getattr(src, "name", "") or "layer")
+        if sel and sel != "*" and not lines:
+            names = [getattr(s, "name", "?")
+                     for s in (getattr(solve_out, "projection_sources", None) or [])]
+            lines.append(f"layer '{sel}' not found — available: "
+                         f"{', '.join(names) if names else '(none)'}; "
+                         "solve passed through")
+        return (solve_out, "\n".join(lines) or "nothing to fill")
+
+
 class AtlasPlanarHolePatch:
     """Fit conservative local planes into selected relief-mesh holes.
 
@@ -1993,6 +2097,376 @@ class AtlasPlanarHolePatch:
                 f"example {item['cells']} cells:{detail} "
                 f"({item['reason']})")
         return (out, remaining_t, "\n".join(lines), created_t)
+
+
+class AtlasMaskedSurfaceReconstruct:
+    """Cut a mask-defined relief region and reconstruct it without Blender.
+
+    The mask is deliberately authoritative: the node creates a local topology
+    rim even when the selected mesh is currently intact and therefore has no
+    boundary loop for BMesh/``mesh_repair`` to discover.  Forward depth is
+    harmonically interpolated from that rim and emitted on exact camera rays.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK", "STRING")
+    RETURN_NAMES = ("solve", "remaining_holes", "created_region", "report")
+    FUNCTION = "reconstruct"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "hole_mask": ("MASK", {
+                    "tooltip": "Authoritative image-space region to cut and rebuild. "
+                               "Unlike boundary fill, this may replace intact faces.",
+                }),
+            },
+            "optional": {
+                "layer": ("STRING", {
+                    "default": "",
+                    "tooltip": "Blank = primary relief mesh; otherwise the exact "
+                               "ProjectionSource layer name.",
+                }),
+                "rim_cells": ("INT", {
+                    "default": 1, "min": 0, "max": 12,
+                    "tooltip": "Grid-cell collar cut around the mask to manufacture "
+                               "a complete, well-supported local rim.",
+                }),
+                "max_components": ("INT", {
+                    "default": 64, "min": 1, "max": 1024,
+                    "tooltip": "Maximum enclosed mask islands to reconstruct.",
+                }),
+                "max_hole_fraction": ("FLOAT", {
+                    "default": 0.05, "min": 0.0001, "max": 1.0,
+                    "step": 0.005,
+                    "tooltip": "Largest accepted manufactured patch as a fraction "
+                               "of the relief lattice.",
+                }),
+                "enclosed_only": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Reject masks touching the frame; they do not have a "
+                               "closed support rim.",
+                }),
+                "smooth_iterations": ("INT", {
+                    "default": 128, "min": 1, "max": 2048,
+                    "tooltip": "Jacobi iterations for harmonic forward-depth "
+                               "interpolation inside the manufactured rim.",
+                }),
+            },
+        }
+
+    def reconstruct(
+        self,
+        solve,
+        hole_mask,
+        layer="",
+        rim_cells=1,
+        max_components=64,
+        max_hole_fraction=0.05,
+        enclosed_only=True,
+        smooth_iterations=128,
+    ):
+        torch = _require_torch()
+        np = _require_numpy()
+        from atlas_camera.core.masked_surface_reconstruct import (
+            MaskedSurfaceReconstructConfig,
+            reconstruct_masked_surface,
+        )
+        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+        from atlas_camera.exporters._layers import mesh_from_primitive
+
+        out = copy.deepcopy(solve)
+        target_name = str(layer or "").strip()
+        camera = out.camera
+        if target_name:
+            source = next(
+                (item for item in (getattr(out, "projection_sources", None) or [])
+                 if getattr(item, "name", "") == target_name),
+                None,
+            )
+            if source is None:
+                zero = torch.zeros(1, 1, 1)
+                return (out, zero, zero.clone(),
+                        f"layer '{target_name}' not found — solve passed through")
+            primitives = source.proxy_geometry
+            camera = source.camera
+        else:
+            scene = getattr(out, "projection_scene", None)
+            primitives = getattr(scene, "proxy_geometry", None) if scene else None
+
+        intr = camera.intrinsics
+        width = int(intr.image_width or 0)
+        height = int(intr.image_height or 0)
+        fx = float(intr.fx_px or 0.0)
+        fy = float(intr.fy_px or fx)
+        cx = float(intr.cx_px if intr.cx_px is not None else width / 2.0)
+        cy = float(intr.cy_px if intr.cy_px is not None else height / 2.0)
+        resolved = _resolve_exclude_mask(hole_mask, height, width)
+        if resolved is None:
+            resolved = np.zeros((height, width), dtype=bool)
+        remaining_t = torch.from_numpy(resolved.astype(np.float32)).unsqueeze(0)
+        created_t = torch.zeros_like(remaining_t)
+        if min(width, height) <= 1 or min(fx, fy) <= 0.0:
+            return (out, remaining_t, created_t,
+                    "invalid target camera/image dimensions — solve passed through")
+
+        primitive_index = next(
+            (index for index, primitive in enumerate(primitives or [])
+             if primitive.primitive_type == "mesh"
+             and (primitive.metadata or {}).get("source") == "depth_relief_mesh"),
+            None,
+        )
+        if primitive_index is None:
+            return (out, remaining_t, created_t,
+                    "target has no relief mesh — solve passed through")
+        primitive = primitives[primitive_index]
+        mesh = mesh_from_primitive(primitive)
+        if mesh is None:
+            return (out, remaining_t, created_t,
+                    "target relief mesh is empty — solve passed through")
+        edge_risk = (primitive.metadata or {}).get("edge_risk") or []
+        if len(edge_risk) == len(mesh.vertices):
+            mesh.edge_risk = np.asarray(edge_risk, dtype=np.float32)
+
+        config = MaskedSurfaceReconstructConfig(
+            rim_cells=int(rim_cells),
+            max_components=int(max_components),
+            max_hole_fraction=float(max_hole_fraction),
+            enclosed_only=bool(enclosed_only),
+            smooth_iterations=int(smooth_iterations),
+        )
+        try:
+            rebuilt, remaining, created, report = reconstruct_masked_surface(
+                mesh,
+                resolved,
+                view_matrix=camera.extrinsics.camera_view_matrix,
+                fx=fx,
+                fy=fy,
+                cx=cx,
+                cy=cy,
+                image_width=width,
+                image_height=height,
+                config=config,
+            )
+        except ValueError as exc:
+            return (out, remaining_t, created_t, f"SKIPPED — {exc}")
+
+        replacement = relief_mesh_primitive(rebuilt, name=primitive.name)
+        replacement.metadata["masked_surface_reconstruct"] = report
+        primitives[primitive_index] = replacement
+        remaining_t = torch.from_numpy(
+            remaining.astype(np.float32)).unsqueeze(0)
+        created_t = torch.from_numpy(created.astype(np.float32)).unsqueeze(0)
+        reasons: dict[str, int] = {}
+        for item in report["component_records"]:
+            if "reason" in item:
+                reason = str(item["reason"])
+                reasons[reason] = reasons.get(reason, 0) + 1
+        lines = [
+            f"reconstructed {report['components_reconstructed']}/"
+            f"{report['components_attempted']} attempted "
+            f"({report['components_found']} found)",
+            f"manufactured rim: {report['rim_cells']} cell(s)",
+            f"+{report['vertices_added']} verts, +{report['faces_added']} faces, "
+            f"-{report['faces_removed']} old faces",
+        ]
+        lines.extend(f"rejected {count}: {reason}"
+                     for reason, count in sorted(reasons.items()))
+        return (out, remaining_t, created_t, "\n".join(lines))
+
+
+class AtlasRefineOcclusionSeams:
+    """Smooth relief tear silhouettes with independent depth-layer strips.
+
+    Each visible boundary sheet is extended into the selected camera-space
+    hole and zipper-triangulated to a smoothed outer contour.  Opposing depth
+    layers are never connected, so the result adds camera-view underlap
+    without manufacturing the near/far curtain faces that ordinary bridge or
+    fill operations create.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK", "STRING")
+    RETURN_NAMES = ("solve", "remaining_holes", "created_region", "report")
+    FUNCTION = "refine"
+    CATEGORY = "Atlas Camera/Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "hole_mask": ("MASK", {
+                    "tooltip": "Camera-space gaps whose bordering relief sheets "
+                               "may receive independent underlap strips.",
+                }),
+            },
+            "optional": {
+                "layer": ("STRING", {
+                    "default": "",
+                    "tooltip": "Blank = primary relief mesh; otherwise the exact "
+                               "ProjectionSource layer name.",
+                }),
+                "seam_width_cells": ("FLOAT", {
+                    "default": 2.0, "min": 0.0, "max": 12.0, "step": 0.25,
+                    "tooltip": "How far each depth sheet extends into the gap, "
+                               "measured in relief lattice cells.",
+                }),
+                "smooth_iterations": ("INT", {
+                    "default": 8, "min": 0, "max": 128,
+                    "tooltip": "Taubin contour-smoothing passes on the new outer rim.",
+                }),
+                "smooth_strength": ("FLOAT", {
+                    "default": 0.35, "min": 0.0, "max": 0.95, "step": 0.05,
+                    "tooltip": "Contour smoothing strength; original registered "
+                               "vertices are never moved.",
+                }),
+                "max_chains": ("INT", {
+                    "default": 256, "min": 1, "max": 4096,
+                    "tooltip": "Longest eligible boundary chains processed per solve.",
+                }),
+                "max_layer_depth_rel": ("FLOAT", {
+                    "default": 0.08, "min": 0.001, "max": 1.0, "step": 0.01,
+                    "tooltip": "Maximum relative depth change along one sheet edge; "
+                               "prevents cross-depth curtain faces.",
+                }),
+                "min_chain_edges": ("INT", {
+                    "default": 2, "min": 1, "max": 64,
+                    "tooltip": "Ignore isolated boundary fragments shorter than this.",
+                }),
+                "global_direction": ([
+                    "away_from_camera",
+                    "screen_normal_receding",
+                ], {
+                    "default": "away_from_camera",
+                    "tooltip": "Global geometry direction. away_from_camera moves "
+                               "every new vertex parallel to camera optical -Z with "
+                               "zero camera X/Y displacement. screen_normal_receding "
+                               "retains the camera-view coverage-oriented behavior.",
+                }),
+            },
+        }
+
+    def refine(
+        self,
+        solve,
+        hole_mask,
+        layer="",
+        seam_width_cells=2.0,
+        smooth_iterations=8,
+        smooth_strength=0.35,
+        max_chains=256,
+        max_layer_depth_rel=0.08,
+        min_chain_edges=2,
+        global_direction="away_from_camera",
+    ):
+        torch = _require_torch()
+        np = _require_numpy()
+        from atlas_camera.core.occlusion_seam_refine import (
+            OcclusionSeamConfig,
+            refine_occlusion_seams,
+        )
+        from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+        from atlas_camera.exporters._layers import mesh_from_primitive
+
+        out = copy.deepcopy(solve)
+        target_name = str(layer or "").strip()
+        camera = out.camera
+        if target_name:
+            source = next(
+                (item for item in (getattr(out, "projection_sources", None) or [])
+                 if getattr(item, "name", "") == target_name),
+                None,
+            )
+            if source is None:
+                zero = torch.zeros(1, 1, 1)
+                return (out, zero, zero.clone(),
+                        f"layer '{target_name}' not found — solve passed through")
+            primitives = source.proxy_geometry
+            camera = source.camera
+        else:
+            scene = getattr(out, "projection_scene", None)
+            primitives = getattr(scene, "proxy_geometry", None) if scene else None
+
+        intr = camera.intrinsics
+        width = int(intr.image_width or 0)
+        height = int(intr.image_height or 0)
+        fx = float(intr.fx_px or 0.0)
+        fy = float(intr.fy_px or fx)
+        cx = float(intr.cx_px if intr.cx_px is not None else width / 2.0)
+        cy = float(intr.cy_px if intr.cy_px is not None else height / 2.0)
+        resolved = _resolve_exclude_mask(hole_mask, height, width)
+        if resolved is None:
+            resolved = np.zeros((height, width), dtype=bool)
+        remaining_t = torch.from_numpy(resolved.astype(np.float32)).unsqueeze(0)
+        created_t = torch.zeros_like(remaining_t)
+        if min(width, height) <= 1 or min(fx, fy) <= 0.0:
+            return (out, remaining_t, created_t,
+                    "invalid target camera/image dimensions — solve passed through")
+
+        primitive_index = next(
+            (index for index, primitive in enumerate(primitives or [])
+             if primitive.primitive_type == "mesh"
+             and (primitive.metadata or {}).get("source") == "depth_relief_mesh"),
+            None,
+        )
+        if primitive_index is None:
+            return (out, remaining_t, created_t,
+                    "target has no relief mesh — solve passed through")
+        primitive = primitives[primitive_index]
+        mesh = mesh_from_primitive(primitive)
+        if mesh is None:
+            return (out, remaining_t, created_t,
+                    "target relief mesh is empty — solve passed through")
+        edge_risk = (primitive.metadata or {}).get("edge_risk") or []
+        if len(edge_risk) == len(mesh.vertices):
+            mesh.edge_risk = np.asarray(edge_risk, dtype=np.float32)
+
+        config = OcclusionSeamConfig(
+            seam_width_cells=float(seam_width_cells),
+            smooth_iterations=int(smooth_iterations),
+            smooth_strength=float(smooth_strength),
+            max_chains=int(max_chains),
+            max_layer_depth_rel=float(max_layer_depth_rel),
+            min_chain_edges=int(min_chain_edges),
+            global_direction=str(global_direction),
+        )
+        try:
+            refined, remaining, created, report = refine_occlusion_seams(
+                mesh,
+                resolved,
+                view_matrix=camera.extrinsics.camera_view_matrix,
+                fx=fx,
+                fy=fy,
+                cx=cx,
+                cy=cy,
+                image_width=width,
+                image_height=height,
+                config=config,
+            )
+        except ValueError as exc:
+            return (out, remaining_t, created_t, f"SKIPPED — {exc}")
+
+        replacement = relief_mesh_primitive(refined, name=primitive.name)
+        replacement.metadata["occlusion_seam_refine"] = report
+        primitives[primitive_index] = replacement
+        remaining_t = torch.from_numpy(
+            remaining.astype(np.float32)).unsqueeze(0)
+        created_t = torch.from_numpy(created.astype(np.float32)).unsqueeze(0)
+        lines = [
+            f"refined {report['chains_refined']}/"
+            f"{report['chains_attempted']} boundary chains",
+            f"+{report['vertices_added']} verts, "
+            f"+{report['faces_added']} faces",
+            f"camera mask: {report['camera_mask_pixels_covered']} px covered, "
+            f"{report['remaining_mask_pixels']} px remaining",
+            f"rejected cross-depth edges: "
+            f"{report['cross_depth_edges_rejected']}",
+            f"global direction: {report['global_direction']}",
+            f"{report['elapsed_ms']:.1f} ms (NumPy; independent depth sheets)",
+        ]
+        return (out, remaining_t, created_t, "\n".join(lines))
 
 
 class AtlasPathGuidedHoleRepair:

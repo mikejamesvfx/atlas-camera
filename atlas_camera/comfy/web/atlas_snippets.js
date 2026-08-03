@@ -82,12 +82,6 @@ app.registerExtension({
                           { outSlotName: "solve", targetId: "export", inSlotName: "solve" }
                       ]},
                       { id: "export", type: "AtlasExportMayaReviewScene", offset: [400, 0] }
-                  ]),
-                  pushSnippet("Hidden Geometry (X-Ray)", [
-                      { id: "predict", type: "AtlasPredictHiddenGeometry", offset: [0, 0], links: [
-                          { outSlotName: "hidden_depth", targetId: "mesh", inSlotName: "metric_depth" }
-                      ]},
-                      { id: "mesh", type: "AtlasDeriveReliefMesh", offset: [400, 0] }
                   ])
               ]
           }

@@ -8,6 +8,8 @@ with different settings can sail through a stale approval.
 
 import sys
 import types
+import base64
+import io
 
 import pytest
 
@@ -113,6 +115,49 @@ def test_gate_report_no_warning_on_manual_scale(comfy_runtime):
     assert "scale: manual" in out["result"][1]
 
 
+def test_gate_compass_corrects_the_solve_before_approval(comfy_runtime):
+    torch = pytest.importorskip("torch")
+    solve, image = _solve(), torch.rand(1, 600, 800, 3)
+    out = AtlasSolveGate().gate(
+        solve, image, proceed=True, approved_for="",
+        apply_override=True, pitch_deg=22.0, roll_deg=-7.5)
+    reviewed = out["result"][0]
+    assert reviewed is not solve
+    assert reviewed.debug_metadata["gravity_compass"] == {
+        "active": True, "approved_at_solve_gate": True,
+        "pitch_deg": 22.0, "roll_deg": -7.5}
+    assert "COMPASS OVERRIDE" in out["result"][1]
+    assert out["result"][2] is reviewed
+
+
+def test_gate_compass_can_approve_world_heading(comfy_runtime):
+    torch = pytest.importorskip("torch")
+    solve, image = _solve(), torch.rand(1, 600, 800, 3)
+    out = AtlasSolveGate().gate(
+        solve, image, proceed=True, approved_for="",
+        apply_override=True, pitch_deg=18.0, roll_deg=-3.0,
+        heading_override=True, heading_deg=72.0)
+    reviewed = out["result"][0]
+    assert reviewed.debug_metadata["gravity_compass"] == {
+        "active": True, "approved_at_solve_gate": True,
+        "pitch_deg": 18.0, "roll_deg": -3.0,
+        "heading_override": True, "heading_deg": 72.0}
+    assert "heading +72.0°" in out["result"][1]
+
+
+def test_changing_gate_compass_rearms_a_previous_approval(comfy_runtime):
+    torch = pytest.importorskip("torch")
+    solve, image = _solve(), torch.rand(1, 600, 800, 3)
+    first = AtlasSolveGate().gate(
+        solve, image, apply_override=True, pitch_deg=10.0, roll_deg=2.0)
+    approved_for = first["ui"]["fingerprint"][0]
+    changed = AtlasSolveGate().gate(
+        solve, image, proceed=True, approved_for=approved_for,
+        apply_override=True, pitch_deg=15.0, roll_deg=2.0)
+    assert isinstance(changed["result"][0], FakeBlocker)
+    assert "RE-ARMED" in changed["result"][1]
+
+
 # --- Gate-module extraction (2026-08-01) -----------------------------------
 # The fingerprint / arming / blocker / envelope machinery moved to
 # atlas_camera.comfy.gate; what stays this node's own is its wording and the
@@ -132,9 +177,15 @@ def test_envelope_shape_is_the_frontend_contract(comfy_runtime):
     solve, image = _solve(), torch.rand(1, 600, 800, 3)
     out = AtlasSolveGate().gate(solve, image)
     assert set(out) == {"ui", "result"}
-    assert out["ui"] == {"text": [out["result"][1]],
-                         "fingerprint": [_solve_fingerprint(solve, image)]}
-    assert isinstance(out["result"], tuple) and len(out["result"]) == 2
+    assert out["ui"]["text"] == [out["result"][1]]
+    assert out["ui"]["fingerprint"] == [_solve_fingerprint(solve, image)]
+    preview = out["ui"]["source_image"][0]
+    assert preview.startswith("data:image/jpeg;base64,")
+    from PIL import Image
+    decoded = Image.open(io.BytesIO(base64.b64decode(preview.split(",", 1)[1])))
+    assert max(decoded.size) <= 1024
+    assert isinstance(out["result"], tuple) and len(out["result"]) == 3
+    assert out["result"][2] is solve  # appended always-live viewport branch
 
 
 def test_gate_delegates_to_the_shared_gate_fingerprint(comfy_runtime):

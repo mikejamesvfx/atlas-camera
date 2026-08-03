@@ -150,7 +150,7 @@ def render_markdown(report: dict) -> str:
     out = [
         "# Atlas Camera — feature audit",
         "",
-        f"Generated {report['generated_utc']} by `tools/build_feature_audit.py`. ",
+        f"Generated {report['generated_utc']} by `tools/build_feature_audit.py`.",
         "Machine-gathered evidence from `tools/audit_node_usage.py`; judgements from ",
         "`tools/feature_audit_verdicts.py`. Regenerate with ",
         "`python tools/build_feature_audit.py` (`--check` verifies freshness).",

@@ -30,7 +30,7 @@ import atlas_camera.comfy.nodes as nodes
 FACADE_PUBLIC = {
     # Added when the derived pin below caught them: eight registered nodes had
     # never been re-exported, and only a `>= 60` floor guarded that.
-    "AtlasBlenderOrganicFill", "AtlasBlockoutMassing", "AtlasDisocclusionGuide",
+    "AtlasBlockoutMassing", "AtlasDisocclusionGuide",
     "AtlasExportPlateEXR", "AtlasOutpaintDepth", "AtlasShootList",
     "AtlasSolvePatchViews", "AtlasStreamRecord3D",
     "ATLAS_EXPERIMENTAL_DEFAULT", "ATLAS_LEGACY_DEFAULT",
@@ -49,7 +49,7 @@ FACADE_PUBLIC = {
     "AtlasExportMayaLayers", "AtlasExportMayaReviewScene", "AtlasExportNuke",
     "AtlasExportNukeLayers", "AtlasExportReliefMesh", "AtlasExportReviewPackage",
     "AtlasExportSolveJSON", "AtlasExportUSD", "AtlasExtractAnglePatch",
-    "AtlasGravityOverride", "AtlasGroundDepthMap", "AtlasGroundMask",
+    "AtlasGravityOverride", "AtlasGravityCompass", "AtlasGroundDepthMap", "AtlasGroundMask",
     "AtlasHorizonMask", "AtlasImportAnglePatch", "AtlasInpaintCrop",
     "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
@@ -57,10 +57,10 @@ FACADE_PUBLIC = {
     "AtlasDepthCombine", "AtlasDepthDetailEnhance",
     "AtlasMergeGeometry", "AtlasMogeNormals", "AtlasOcclusionMask",
     "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
-    "AtlasPlanarUnwarp", "AtlasPlanarRewarp",
+    "AtlasMaskedSurfaceReconstruct",
+    "AtlasRefineOcclusionSeams",
     "AtlasLiveMeshRepair", "AtlasRetopologizeLayer", "AtlasStereoRender",
-    "AtlasPredictHiddenGeometry", "AtlasReferenceScaleSolve",
-    "AtlasRegisterPlate", "AtlasRenderFix", "AtlasRollTrim",
+    "AtlasReferenceScaleSolve", "AtlasRegisterPlate", "AtlasRollTrim",
     "AtlasSAM3Mask", "AtlasSDXLInpaint", "AtlasScaleOverride",
     "AtlasSceneHealthGate", "AtlasScopeMask", "AtlasSegmentedSDXLInpaint",
     "AtlasSemanticMask", "AtlasSkyDomeLayer", "AtlasSolveFromImage",

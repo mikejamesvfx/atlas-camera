@@ -125,6 +125,7 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasScaleOverride,
     AtlasRollTrim,
     AtlasGravityOverride,
+    AtlasGravityCompass,
     AtlasReferenceScaleSolve,
     AtlasAssessImage,
     AtlasSolveGate,
@@ -140,10 +141,6 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasDecomposeCamera,
     AtlasUSDCameraLoader,
     AtlasStreamRecord3D,
-)
-from atlas_camera.comfy.nodes_planar import (
-    AtlasPlanarUnwarp,
-    AtlasPlanarRewarp,
 )
 from atlas_camera.comfy.nodes_depth import (
     AtlasDepthAnything,
@@ -167,6 +164,8 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasLiveMeshRepair,
     AtlasRetopologizeLayer,
     AtlasPlanarHolePatch,
+    AtlasMaskedSurfaceReconstruct,
+    AtlasRefineOcclusionSeams,
     AtlasPathGuidedHoleRepair,
     AtlasDeriveWalls,
     AtlasDeriveTowersSpires,
@@ -174,15 +173,12 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveInteriorRoom,
     AtlasMergeGeometry,
     AtlasDefineShotCam,
-    AtlasPredictHiddenGeometry,
-    AtlasRenderFix,
     AtlasExtractAnglePatch,
     AtlasImportAnglePatch,
     AtlasAddPatchView,
     AtlasOcclusionMask,
     AtlasSolvePatchViews,
     AtlasBlockoutMassing,
-    AtlasBlenderOrganicFill,
 )
 from atlas_camera.comfy.nodes_inpaint import (
     AtlasScopeMask,

@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 
 from atlas_camera.comfy import node_registry as reg
+from conftest import is_local_workflow
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENTAL = set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
@@ -45,6 +46,8 @@ WORKFLOWS_USING_EXPERIMENTAL: set[str] = {
 def _actual() -> set[str]:
     found = set()
     for p in sorted((ROOT / "examples").rglob("*.json")):
+        if is_local_workflow(p):
+            continue  # artist comparison graphs are not shipped contracts
         try:
             g = json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError:

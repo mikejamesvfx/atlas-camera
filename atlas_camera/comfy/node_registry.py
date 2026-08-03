@@ -42,6 +42,7 @@ from atlas_camera.comfy.nodes_solve import (
     AtlasScaleOverride,
     AtlasRollTrim,
     AtlasGravityOverride,
+    AtlasGravityCompass,
     AtlasReferenceScaleSolve,
     AtlasAssessImage,
     AtlasSolveGate,
@@ -80,6 +81,8 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasLiveMeshRepair,
     AtlasRetopologizeLayer,
     AtlasPlanarHolePatch,
+    AtlasMaskedSurfaceReconstruct,
+    AtlasRefineOcclusionSeams,
     AtlasPathGuidedHoleRepair,
     AtlasDeriveWalls,
     AtlasDeriveTowersSpires,
@@ -87,19 +90,12 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveInteriorRoom,
     AtlasMergeGeometry,
     AtlasDefineShotCam,
-    AtlasPredictHiddenGeometry,
-    AtlasBlenderOrganicFill,
     AtlasBlockoutMassing,
-    AtlasRenderFix,
     AtlasExtractAnglePatch,
     AtlasImportAnglePatch,
     AtlasSolvePatchViews,
     AtlasAddPatchView,
     AtlasOcclusionMask,
-)
-from atlas_camera.comfy.nodes_planar import (
-    AtlasPlanarUnwarp,
-    AtlasPlanarRewarp,
 )
 from atlas_camera.comfy.nodes_inpaint import (
     AtlasScopeMask,
@@ -159,6 +155,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasSolveGate":             AtlasSolveGate,
     "AtlasSceneHealthGate":       AtlasSceneHealthGate,
     "AtlasGravityOverride":       AtlasGravityOverride,
+    "AtlasGravityCompass":        AtlasGravityCompass,
     "AtlasApplyScaleReferences":  AtlasApplyScaleReferences,
     "AtlasDeriveProjectionGeometry": AtlasDeriveProjectionGeometry,
     "AtlasSolvePatchViews":       AtlasSolvePatchViews,
@@ -200,8 +197,6 @@ NODE_CLASS_MAPPINGS = {
     "AtlasMogeNormals":           AtlasMogeNormals,
     "AtlasDepthDetailEnhance":    AtlasDepthDetailEnhance,
     "AtlasDepthCombine":          AtlasDepthCombine,
-    "AtlasPlanarUnwarp":          AtlasPlanarUnwarp,
-    "AtlasPlanarRewarp":          AtlasPlanarRewarp,
     # Experimental (research-only)
     "AtlasDeriveReliefMesh":      AtlasDeriveReliefMesh,
     "AtlasRetopologizeLayer":     AtlasRetopologizeLayer,
@@ -260,6 +255,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
     "AtlasSceneHealthGate":       "Atlas Scene Health Gate 🩺",
     "AtlasGravityOverride":       "Atlas Gravity Override 🎚",
+    "AtlasGravityCompass":        "Atlas Gravity Compass 🧭",
     "AtlasVLMScaleCues":          "Atlas VLM Scale Cues 👁",
     "AtlasApplyScaleReferences":  "Atlas Apply Scale References ✅",
     "AtlasDeriveProjectionGeometry": "Atlas Derive Projection Geometry 📽",
@@ -302,8 +298,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasMogeNormals":           "Atlas MoGe Normals 🧭",
     "AtlasDepthDetailEnhance":    "Atlas Depth Detail Enhance 🔬",
     "AtlasDepthCombine":          "Atlas Depth Combine ➕",
-    "AtlasPlanarUnwarp":          "Atlas Planar Unwarp ▱",
-    "AtlasPlanarRewarp":          "Atlas Planar Rewarp ▱",
     "AtlasDeriveReliefMesh":      "Atlas Derive Relief Mesh 🏔",
     "AtlasRetopologizeLayer":     "Atlas Retopologize Layer 🔷",
     "AtlasPlanarHolePatch":       "Atlas Planar Hole Patch ◩",
@@ -361,20 +355,18 @@ ATLAS_EXPERIMENTAL_DEFAULT = "0"
 
 EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasCompleteDepth": AtlasCompleteDepth,
-    "AtlasPredictHiddenGeometry": AtlasPredictHiddenGeometry,
-    "AtlasBlenderOrganicFill": AtlasBlenderOrganicFill,
+    "AtlasMaskedSurfaceReconstruct": AtlasMaskedSurfaceReconstruct,
+    "AtlasRefineOcclusionSeams": AtlasRefineOcclusionSeams,
     "AtlasBlockoutMassing": AtlasBlockoutMassing,
-    "AtlasRenderFix": AtlasRenderFix,
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasCompleteDepth": "Atlas Complete Depth 🩹 🔬 (experimental)",
-    "AtlasPredictHiddenGeometry": "Atlas Predict Hidden Geometry 🔬 (research)",
-    "AtlasBlenderOrganicFill": "Atlas Blender Organic Fill 🔬 (experimental)",
+    "AtlasMaskedSurfaceReconstruct": "Atlas Masked Surface Reconstruct 🔬 (NumPy)",
+    "AtlasRefineOcclusionSeams": "Atlas Refine Occlusion Seams 🔬 (NumPy underlap)",
     "AtlasBlockoutMassing": "Atlas Blockout Massing 🧱🔬 (experimental)",
-    "AtlasRenderFix": "Atlas Render Fix 🔬 (experimental)",
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
 }

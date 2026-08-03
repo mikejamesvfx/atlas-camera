@@ -1,5 +1,5 @@
 """core.planar_projection — homography exactness, round-trip identity, and the
-behind-camera/grazing alpha contract, plus the node-level plane_name fail-soft.
+behind-camera/grazing alpha contract.
 """
 
 import numpy as np
@@ -130,26 +130,3 @@ def test_plane_basis_from_primitive_columns():
     assert basis.n == (1.0, 0.0, 0.0)
     assert basis.c == (5.0, 6.0, 7.0)
     assert basis.name == "wall_a"
-
-
-def test_unwarp_node_fail_soft_on_unknown_plane_name():
-    torch = pytest.importorskip("torch")
-    from atlas_camera.comfy.nodes_planar import AtlasPlanarUnwarp
-    from atlas_camera.core.schema import (
-        AtlasExtrinsics, AtlasIntrinsics, AtlasProjectionScene,
-        AtlasProxyPrimitive, AtlasSolve, LatentCamera,
-    )
-    view, world, rot3 = look_at_view_matrix((0.0, 2.0, 6.0), (0.0, 0.0, 0.0))
-    extr = AtlasExtrinsics(camera_position=(0.0, 2.0, 6.0),
-                           camera_rotation_matrix=rot3,
-                           camera_world_matrix=world, camera_view_matrix=view)
-    intr = AtlasIntrinsics(image_width=W, image_height=H, fx_px=FX, fy_px=FY,
-                           cx_px=CX, cy_px=CY)
-    solve = AtlasSolve(camera=LatentCamera(intrinsics=intr, extrinsics=extr))
-    solve.projection_scene = AtlasProjectionScene(proxy_geometry=[
-        AtlasProxyPrimitive(name="facade_a", primitive_type="plane")])
-    img = torch.rand(1, H, W, 3)
-    flat, mask, spec, report = AtlasPlanarUnwarp().unwarp(
-        solve, img, plane_name="nope", max_resolution=512)
-    assert spec is not None                      # fell back to ground and worked
-    assert "not found" in report and "facade_a" in report

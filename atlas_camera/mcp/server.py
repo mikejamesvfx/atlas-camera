@@ -44,7 +44,7 @@ _KNOWN_DEPS = {
     "ShowText|pysssss": "pysssss custom-scripts (report display)",
 }
 
-_EXPERIMENTAL = ("AtlasPredictHiddenGeometry", "AtlasRenderFix")
+_EXPERIMENTAL = ()
 
 mcp = FastMCP(
     "atlas-camera",

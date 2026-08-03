@@ -54,10 +54,6 @@
       "sky_heuristic": true,
       "normal_edge_deg": 0,
       "quad_coherence": true,
-      "live_fill_holes": false,
-      "live_fill_distance_m": 0,
-      "live_fill_max_hole_edges": 256,
-      "live_fill_edge_sawteeth": false,
       "solve": [
         "2",
         0

@@ -92,7 +92,7 @@ def test_node_patches_depth_and_reports(monkeypatch, tmp_path):
     torch = pytest.importorskip("torch")
     from types import SimpleNamespace
 
-    from atlas_camera.comfy.nodes import AtlasPredictHiddenGeometry
+    from atlas_camera.comfy.nodes_geometry import AtlasPredictHiddenGeometry
     from atlas_camera.inference.depth_estimator import DepthResult
     import atlas_camera.inference.lari_hidden_geometry as lhg
 
@@ -137,7 +137,7 @@ def test_wt_backend_dispatch_and_report(monkeypatch, tmp_path):
     report carries WT's license + diffusion params."""
     torch = pytest.importorskip("torch")
 
-    from atlas_camera.comfy.nodes import AtlasPredictHiddenGeometry
+    from atlas_camera.comfy.nodes_geometry import AtlasPredictHiddenGeometry
     from atlas_camera.inference.depth_estimator import DepthResult
     import atlas_camera.inference.lari_hidden_geometry as lhg
     import atlas_camera.inference.wt_hidden_geometry as whg
@@ -227,7 +227,8 @@ def test_hidden_provenance_metadata_on_patched_depth(monkeypatch, tmp_path):
     torch = pytest.importorskip("torch")
     pytest.importorskip("PIL")
 
-    from atlas_camera.comfy.nodes import AtlasPredictHiddenGeometry, _b64_png_to_mask
+    from atlas_camera.comfy.nodes_geometry import AtlasPredictHiddenGeometry
+    from atlas_camera.comfy.nodes import _b64_png_to_mask
     from atlas_camera.inference.depth_estimator import DepthResult
     import atlas_camera.inference.lari_hidden_geometry as lhg
 
@@ -254,14 +255,7 @@ def test_hidden_provenance_metadata_on_patched_depth(monkeypatch, tmp_path):
     json.dumps(out.metadata)
 
 
-def test_node_registered_in_experimental_tier():
-    # Experimental nodes live behind the ATLAS_EXPERIMENTAL gate (default off
-    # on main so a stock ComfyUI's menu stays universal) — registration is
-    # asserted against the experimental mapping, which the gate merges in.
-    from atlas_camera.comfy.nodes import (
-        EXPERIMENTAL_NODE_CLASS_MAPPINGS,
-        EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS,
-        AtlasPredictHiddenGeometry,
-    )
-    assert EXPERIMENTAL_NODE_CLASS_MAPPINGS["AtlasPredictHiddenGeometry"] is AtlasPredictHiddenGeometry
-    assert "research" in EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS["AtlasPredictHiddenGeometry"]
+def test_hidden_geometry_node_is_not_registered():
+    from atlas_camera.comfy.nodes import EXPERIMENTAL_NODE_CLASS_MAPPINGS
+
+    assert "AtlasPredictHiddenGeometry" not in EXPERIMENTAL_NODE_CLASS_MAPPINGS

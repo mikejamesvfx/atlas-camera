@@ -74,12 +74,13 @@ function computeHiddenWidgets(sceneType) {
   return hidden;
 }
 
-// Standard ComfyUI/litegraph widget-hide trick: swap `.type` to something the
-// canvas draw loop doesn't recognise (so it's skipped) and make
-// `computeSize()` report a collapsed [width, -4] — the same convention
-// ComfyUI's own core widgets use for zero-height. Restores the original type/
-// computeSize on show, so the widget behaves exactly as before once visible
-// again. Does not touch `.value` — serialization/queueing are unaffected.
+// ComfyUI currently has two widget renderers: LiteGraph reads `widget.hidden`
+// while the Vue renderer reads `widget.options.hidden`.  Set both flags as
+// well as using the legacy zero-height/type convention.  Setting only the
+// latter collapses layout but can leave the value painted on top of the next
+// row (the apparent "widget drift" seen in saved workflows).  Restore every
+// original property exactly when showing the widget again.  `.value` is never
+// touched, so serialization and API queueing remain positional and stable.
 function setWidgetHidden(node, widgetName, hide) {
   const widget = node.widgets?.find((w) => w.name === widgetName);
   if (!widget) return;
@@ -87,15 +88,35 @@ function setWidgetHidden(node, widgetName, hide) {
     if (!widget._atlasHidden) {
       widget._atlasOrigType = widget.type;
       widget._atlasOrigComputeSize = widget.computeSize;
+      widget._atlasHadHidden = Object.prototype.hasOwnProperty.call(widget, "hidden");
+      widget._atlasOrigHidden = widget.hidden;
+      widget._atlasHadOptionsHidden = !!widget.options
+        && Object.prototype.hasOwnProperty.call(widget.options, "hidden");
+      widget._atlasOrigOptionsHidden = widget.options?.hidden;
       widget.type = "atlas_hidden";
       widget.computeSize = () => [0, -4];
+      widget.hidden = true;
+      if (widget.options) widget.options.hidden = true;
       widget._atlasHidden = true;
     }
   } else if (widget._atlasHidden) {
     widget.type = widget._atlasOrigType;
     widget.computeSize = widget._atlasOrigComputeSize;
+    if (widget._atlasHadHidden) widget.hidden = widget._atlasOrigHidden;
+    else delete widget.hidden;
+    if (widget.options) {
+      if (widget._atlasHadOptionsHidden) {
+        widget.options.hidden = widget._atlasOrigOptionsHidden;
+      } else {
+        delete widget.options.hidden;
+      }
+    }
     delete widget._atlasOrigType;
     delete widget._atlasOrigComputeSize;
+    delete widget._atlasHadHidden;
+    delete widget._atlasOrigHidden;
+    delete widget._atlasHadOptionsHidden;
+    delete widget._atlasOrigOptionsHidden;
     delete widget._atlasHidden;
   }
 }

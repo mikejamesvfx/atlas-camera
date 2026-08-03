@@ -27,6 +27,56 @@ def _read(name):
     return open(os.path.join(WEB, name), encoding="utf-8").read()
 
 
+# --- Gravity compass direction contract ------------------------------------
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_gravity_compass_direction_round_trips_and_stays_local():
+    src = _read("atlas_gravity_compass.js")
+    forward = re.search(
+        r"(function gravityDirectionFromAngles\(.*?\n\})", src, re.DOTALL)
+    inverse = re.search(
+        r"(function anglesFromGravityDirection\(.*?\n\})", src, re.DOTALL)
+    assert forward and inverse, "gravity compass conversion functions missing"
+    assert 'import("./lib/atlas-three.bundle.js")' in src
+    assert "https://" not in src and "http://" not in src
+    assert '["AtlasGravityCompass", "AtlasSolveGate"]' in src
+    assert "addDOMWidget" in src and "priorRemoved?.apply" in src
+    assert 'message?.source_image' in src
+    assert '_atlasGravityCompassPlate.src = source' in src
+    assert 'new THREE.Vector3(0, .88, 0), 2.15' in src
+    assert 'new THREE.RingGeometry(.58, .7, 64)' in src
+    assert 'mode: headingHit ? "heading" : "gravity"' in src
+    assert 'node._atlasCompassPendingApproval = true' in src
+    assert 'find((w) => w.name === "heading_override")' in src
+    assert "widget.hidden = true" in src
+    assert "widget.options.hidden = true" in src
+
+    gate_src = _read("atlas_solve_gate.js")
+    assert "this._atlasCompassPendingApproval" in gate_src
+    assert "approvedFor.value = fp" in gate_src
+
+    # The expensive downstream branch queues once when an interaction ends,
+    # never continuously while the artist drags the compass.
+    assert "function queueDecision()" in src
+    assert "if (changed) queueDecision();" in src
+    pointer_move = src.split('canvas.addEventListener("pointermove"', 1)[1].split(
+        'const endDrag', 1)[0]
+    assert "queuePrompt" not in pointer_move
+
+    samples = [[0, 0], [30, 0], [-18.5, 42], [75, -130], [-88, 179]]
+    script = ("const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));\n" +
+              forward.group(1) + "\n" + inverse.group(1) + "\n" +
+              f"const samples={json.dumps(samples)};\n" +
+              "console.log(JSON.stringify(samples.map(([p,r])=>" +
+              "anglesFromGravityDirection(gravityDirectionFromAngles(p,r)))));" )
+    result = subprocess.run(["node", "-e", script], capture_output=True,
+                            text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    for (pitch, roll), got in zip(samples, json.loads(result.stdout)):
+        assert got["pitch"] == pytest.approx(pitch, abs=1e-9)
+        assert got["roll"] == pytest.approx(roll, abs=1e-9)
+
+
 # --- Camera-path compact repair bake contract -------------------------------
 
 def test_camera_path_repair_bake_is_indexed_and_invalidates_stale_frames():
@@ -81,6 +131,18 @@ def test_scene_type_presets_mirror_js():
         assert entry, name
         for key in overrides:
             assert key in entry.group(1), f"{name}: key '{key}' missing in JS mirror"
+
+
+def test_scene_type_hidden_widgets_support_both_comfy_renderers():
+    src = _read("atlas_derive_geometry.js")
+
+    # LiteGraph and the Vue renderer use separate visibility fields.  The
+    # legacy type/computeSize trick alone collapses rows but leaves values
+    # painted over their neighbours on current ComfyUI builds.
+    assert "widget.hidden = true" in src
+    assert "widget.options.hidden = true" in src
+    assert "delete widget.hidden" in src
+    assert "delete widget.options.hidden" in src
 
 
 # --- Catmull-Rom + easing (atlas_blockout.js <-> camera_path.py) -------------

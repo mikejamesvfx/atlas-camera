@@ -15,7 +15,7 @@ import atlas_camera.comfy.nodes as nodes
 
 
 # The exact registered node keys at the time of the nodes.py modularization
-# (92 standard + 6 experimental + 2 legacy). Grown since the nodes.py
+# (91 standard + 6 experimental + 2 legacy). Grown since the nodes.py
 # modularization; the SET below is the contract, the count just guards it. ComfyUI serializes these keys into saved
 # workflows, so this set is a compatibility contract, not an implementation
 # detail.
@@ -40,12 +40,13 @@ NORMAL_KEYS = {
     "AtlasExportMayaLayers", "AtlasExportMayaReviewScene", "AtlasExportNuke",
     "AtlasExportNukeLayers", "AtlasExportReliefMesh", "AtlasExportReviewPackage",
     "AtlasExportSolveJSON", "AtlasExportUSD", "AtlasGravityOverride",
+    "AtlasGravityCompass",
     "AtlasGroundDepthMap", "AtlasHorizonMask",
     "AtlasInpaintCrop", "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",     "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasMogeNormals",
     "AtlasOcclusionMask", "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
     "AtlasReferenceScaleSolve",
-    "AtlasLoadPlate", "AtlasPlanarUnwarp", "AtlasPlanarRewarp",
+    "AtlasLoadPlate",
     "AtlasRegisterPlate", "AtlasRetopologizeLayer", "AtlasRollTrim", "AtlasSAM3Mask", "AtlasSDXLInpaint",
     "AtlasScaleOverride",
     "AtlasSceneHealthGate", "AtlasScopeMask", "AtlasSegmentedSDXLInpaint",
@@ -56,10 +57,11 @@ NORMAL_KEYS = {
 }
 
 EXPERIMENTAL_KEYS = {
-    "AtlasBlenderOrganicFill", "AtlasBlockoutMassing",
+    "AtlasBlockoutMassing",
+    "AtlasMaskedSurfaceReconstruct",
+    "AtlasRefineOcclusionSeams",
     "AtlasCompleteDepth",
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
-    "AtlasPredictHiddenGeometry", "AtlasRenderFix",
 }
 
 # Public helper/constant names some tests import directly from the module; the
@@ -75,12 +77,12 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 92
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 91
 
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 7
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 6
 
 
 def test_display_name_mapping_covers_registry():
@@ -128,7 +130,6 @@ def test_representative_public_class_imports():
     )
     # Experimental classes are importable as symbols even when gated out.
     from atlas_camera.comfy.nodes import (  # noqa: F401
-        AtlasPredictHiddenGeometry, AtlasRenderFix,
         AtlasExtractAnglePatch, AtlasImportAnglePatch,
     )
 

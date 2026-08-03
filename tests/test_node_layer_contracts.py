@@ -2,10 +2,9 @@
 
 The 2026-07-24 audit turned up 14 registered standard nodes with no shipping
 workflow, no dedicated test, and no MCP consumer. The C-1 live probe proved all
-14 EXECUTE, so none is dead code — but "it ran once by hand" is not a contract,
-and two of them (`AtlasStereoRender`, `AtlasPlanarRewarp`) were doubly
-misleading: `tests/test_stereo_render.py` and `tests/test_planar_projection.py`
-cover the CORE math and never touch the node classes, so a swapped output slot
+13 EXECUTE, so none is dead code — but "it ran once by hand" is not a contract.
+`AtlasStereoRender` was doubly misleading: `tests/test_stereo_render.py`
+covered the CORE math and never touched the node class, so a swapped output slot
 or a wrong tensor layout in the wrapper passed the whole suite.
 
 This file pins the wrapper: output arity and ORDER against RETURN_NAMES (slots
@@ -137,6 +136,64 @@ def test_gravity_override_is_absolute_so_reapplying_is_a_no_op(make_atlas_solve)
         np.asarray(solve.camera.extrinsics.camera_view_matrix, dtype=float),
         np.asarray(make_atlas_solve().camera.extrinsics.camera_view_matrix,
                    dtype=float))
+
+
+def test_gravity_override_can_set_absolute_world_heading(make_atlas_solve):
+    solve = make_atlas_solve()
+    once, report = _call(
+        "AtlasGravityOverride", solve, pitch_deg=0.0, roll_deg=0.0,
+        heading_override=True, heading_deg=90.0)
+    twice, _ = _call(
+        "AtlasGravityOverride", once, pitch_deg=0.0, roll_deg=0.0,
+        heading_override=True, heading_deg=90.0)
+
+    world = np.asarray(once.camera.extrinsics.camera_world_matrix, dtype=float)
+    forward = -world[:3, 2]
+    assert forward == pytest.approx((1.0, 0.0, 0.0), abs=1e-9)
+    assert np.allclose(
+        np.asarray(once.camera.extrinsics.camera_view_matrix, dtype=float),
+        np.asarray(twice.camera.extrinsics.camera_view_matrix, dtype=float),
+        atol=1e-9)
+    assert "heading" in report and "world XYZ" in report
+
+
+def test_gravity_compass_passes_through_until_engaged(make_atlas_solve):
+    solve = make_atlas_solve()
+    untouched, report = _call("AtlasGravityCompass", solve)
+    assert untouched is solve
+    assert "USE SOLVE" in report and "pass-through" in report
+    assert "gravity_compass" not in (solve.debug_metadata or {})
+
+
+def test_gravity_compass_matches_the_absolute_override(make_atlas_solve):
+    solve = make_atlas_solve()
+    compass, report = _call("AtlasGravityCompass", solve, apply_override=True,
+                            pitch_deg=17.5, roll_deg=-11.25)
+    numeric, _ = _call("AtlasGravityOverride", solve, pitch_deg=17.5,
+                       roll_deg=-11.25)
+    assert np.allclose(
+        np.asarray(compass.camera.extrinsics.camera_view_matrix, dtype=float),
+        np.asarray(numeric.camera.extrinsics.camera_view_matrix, dtype=float),
+        atol=1e-9)
+    assert compass.debug_metadata["gravity_compass"] == {
+        "active": True, "pitch_deg": 17.5, "roll_deg": -11.25}
+    assert "OVERRIDE ACTIVE" in report
+
+
+def test_gravity_compass_world_xyz_heading_matches_numeric_override(make_atlas_solve):
+    solve = make_atlas_solve()
+    compass, _ = _call(
+        "AtlasGravityCompass", solve, apply_override=True,
+        pitch_deg=13.0, roll_deg=-4.0,
+        heading_override=True, heading_deg=-38.0)
+    numeric, _ = _call(
+        "AtlasGravityOverride", solve, pitch_deg=13.0, roll_deg=-4.0,
+        heading_override=True, heading_deg=-38.0)
+    assert np.allclose(
+        np.asarray(compass.camera.extrinsics.camera_view_matrix, dtype=float),
+        np.asarray(numeric.camera.extrinsics.camera_view_matrix, dtype=float),
+        atol=1e-9)
+    assert compass.debug_metadata["gravity_compass"]["heading_deg"] == -38.0
 
 
 def test_vp_visualization_draws_only_what_its_toggles_ask_for(make_atlas_solve):
@@ -296,19 +353,6 @@ def test_apply_scale_references_survives_malformed_json(make_atlas_solve):
 # --------------------------------------------------------------------------
 # Nodes whose CORE is tested but whose wrapper was not
 # --------------------------------------------------------------------------
-
-def test_planar_rewarp_passes_the_plate_through_when_unwired():
-    """Documented fail-soft (confirmed in the C-1 probe): no warp_spec means
-    return the original plate untouched rather than raising."""
-    torch = pytest.importorskip("torch")
-    original = torch.rand(1, 32, 48, 3, dtype=torch.float32)
-    edited = torch.zeros(1, 32, 48, 3, dtype=torch.float32)
-
-    image, coverage = _call("AtlasPlanarRewarp", None, edited, original)
-    assert torch.allclose(image, original)
-    assert float(np.asarray(coverage).max()) == 0.0, (
-        "nothing was composited, so coverage must be empty")
-
 
 def _relief_solve(make_atlas_solve, width=64, height=48):
     """A solve carrying real projection geometry, via the same derive node a

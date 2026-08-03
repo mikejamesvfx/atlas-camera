@@ -40,8 +40,7 @@ def _relief_solve():
         camera_world_matrix=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))))
     solve = AtlasSolve(camera=cam, image_width=32, image_height=32)
     out = AtlasDeriveReliefMesh().derive(
-        solve, depth, relief_grid=32, depth_edge_rel=0.5,
-        live_fill_holes=False, live_fill_edge_sawteeth=False)[0]
+        solve, depth, relief_grid=32, depth_edge_rel=0.5)[0]
 
     # Named layer source: its own camera + a copy of the primary relief mesh.
     from atlas_camera.comfy.nodes import _relief_mesh_from_solve
