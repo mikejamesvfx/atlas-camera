@@ -15,7 +15,7 @@
   <a href="https://registry.comfy.org/nodes/atlas-camera"><img src="https://img.shields.io/badge/ComfyUI_Registry-atlas--camera-eaa03a" alt="ComfyUI Registry"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2fb7a6" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/python-3.10+-c4b29a" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/ComfyUI-92_nodes-8f8571" alt="92 nodes">
+  <img src="https://img.shields.io/badge/ComfyUI-91_nodes-8f8571" alt="91 nodes">
   <a href="https://mikejamesvfx.com"><img src="https://img.shields.io/badge/a-mikejamesvfx_tool-c4b29a" alt="a mikejamesvfx tool"></a>
 </p>
 
@@ -86,10 +86,12 @@ Full setup, including the research-only tier, is in **[INSTALL.md](INSTALL.md)**
 - **`main`** — the working tool: camera solve, geometry derivation, the layered
   2.5D digital-matte-painting rig, viewport, and every DCC exporter. No Docker,
   no research-licensed models.
-- **`experimental`** — the same codebase with two extra 🔬 nodes registered:
-  `AtlasRenderFix` (NVIDIA Fixer render repair) and `AtlasPredictHiddenGeometry`
-  (LaRI / World Tracing "X-ray" depth — research-only upstream, user-cloned).
-  Toggle on any branch with `ATLAS_EXPERIMENTAL=1`.
+- **`experimental`** — the same codebase with six extra 🔬 nodes registered,
+  including `AtlasMaskedSurfaceReconstruct` and `AtlasRefineOcclusionSeams`
+  (pure-NumPy relief repair). Toggle on any branch with `ATLAS_EXPERIMENTAL=1`.
+  The research-licensed track — LaRI / World Tracing "X-ray" depth and the
+  NVIDIA Fixer render repair — was removed before beta 0.8; nothing in the
+  pack now needs Docker or a user-cloned research model.
 
 ## The node pack
 
@@ -159,13 +161,14 @@ Atlas Camera is **[MIT](LICENSE)** — free for commercial use. It vendors nothi
 restrictive; every optional model or package is installed by the user, and its
 node fails soft with an informative message when absent.
 
-Two **optional** features are the exception, and only if you enable the
-experimental tier: the 🔬 hidden-geometry backends **LaRI** (no upstream license
-→ all rights reserved) and **World Tracing** (CC BY-NC-ND 4.0) are
-**research/non-commercial** — Atlas never redistributes them, and removing that
-one node removes the restriction. Every other part of Atlas — the solve,
-geometry, layer stack, viewport, and the full OpenColorIO output path — carries
-no non-commercial dependency. Full map in **[THIRD_PARTY.md](THIRD_PARTY.md)**.
+The research-licensed hidden-geometry track (**LaRI**, no upstream license;
+**World Tracing**, CC BY-NC-ND 4.0) was removed before beta 0.8, so **no node
+Atlas registers depends on a non-commercial model**. One caveat remains and it
+is yours to choose: Depth Anything V2's **large** weights are CC BY-NC 4.0,
+while its small/base weights are Apache 2.0 — pick the variant that suits your
+use. Everything else — the solve, geometry, layer stack, viewport, and the full
+OpenColorIO output path — is unrestricted. Full map in
+**[THIRD_PARTY.md](THIRD_PARTY.md)**.
 
 ---
 

@@ -313,88 +313,29 @@ Weights download from Hugging Face on first use. If the import fails on a missin
 small dependency (e.g. `scipy`), install just that package. A GPU is recommended;
 `infer()` autocasts to fp16 by default.
 
-### Second backend: World Tracing (diffusion, also research-only)
-
-The node's `model` combo can select `world-tracing-scene` — WT-DiT's r69l
-scene model (840×840, 6 layers, ~17s at 20 diffusion steps; generative, so pin
-the `seed` widget for reproducibility). Setup mirrors LaRI:
-
-```powershell
-git clone https://github.com/haoz19/world-tracing.git C:\path\to\world-tracing
-```
-
-then set the node's `wt_path` widget (or `ATLAS_WT_PATH`). Two extra
-requirements beyond LaRI's: the small `jaxtyping` package
-(`pip install --no-deps jaxtyping` into the ComfyUI venv), and the checkpoint
-is **HF-gated** — request access on the `haoz19` model pages, then
-authenticate the machine once (`huggingface-cli login` / `hf auth login` with
-a read token) so the first-use download works. License: **CC BY-NC-ND 4.0**
-(non-commercial research, no redistributed derivatives).
-
 To run the V2-vs-DA3 accuracy comparison yourself, see
 `tools/compare_depth_backends.py`.
 
-## Experimental: Hidden-Geometry Prediction (research-only)
-> **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI; the default hides it so the node menu stays universal.
+## Experimental: relief repair (`ATLAS_EXPERIMENTAL=1`)
+> **Gated nodes:** these register only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI; the default hides them so the node menu stays universal.
 
+`AtlasMaskedSurfaceReconstruct` 🔬 completes a relief hole that a mask
+identifies but that has no usable topology boundary: it cuts the selected
+cells plus a small collar, holds the collar depths fixed, solves a harmonic
+membrane across the interior, and rebuilds vertices on exact camera rays with
+exact projective UVs. `AtlasRefineOcclusionSeams` 🔬 zippers the staircase
+underlap along an occlusion tear, keeping the near and far sheets separate so
+no cross-depth curtain is ever created. Both are **pure NumPy** — no Blender,
+no Docker, no model download.
 
-`AtlasPredictHiddenGeometry` 🔬 predicts the surfaces hidden behind foreground
-occluders (LaRI layered ray intersections) and outputs an "X-ray" copy of an
-`ATLAS_DEPTH_MAP` with occluders replaced by predicted hidden depth — wire it
-into background band layers so disocclusion reveals get predicted geometry
-instead of diffusion-smoothed guesses. Best on indoor/architectural scenes —
-coverage can collapse toward zero on open terrain, where the depth then passes
-through nearly unchanged (a graceful no-op rather than a failure).
+Neither invents texture or hidden semantic structure. Use their
+`created_region` output to drive an inpaint or a clean plate.
 
-**The upstream LaRI repository has NO license (all rights reserved) — research
-use only, and atlas_camera bundles none of it.** You must clone it yourself:
-
-```powershell
-git clone https://github.com/ruili3/lari.git C:\path\to\lari
-```
-
-then set the node's `lari_path` widget (or the `ATLAS_LARI_PATH` env var) to
-that folder. Inference needs only the `[neural]` extra + CUDA — **no
-PyTorch3D** (that's only in LaRI's dataset tooling) and none of LaRI's pinned
-requirements. Weights (~1.3GB) download from HuggingFace (`ruili3/LaRI`) on
-first use. Without a clone the node fails with these instructions.
-
-## Experimental: Fixer Render Repair (Docker)
-> **Gated node:** this node registers only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI; the default hides it so the node menu stays universal.
-
-
-`AtlasRenderFix` 🔬 repairs projected-render artifacts (torn silhouettes,
-stretched texels, hard tear-holes) in an IMAGE batch with NVIDIA **Fixer**
-(the Difix3D+ successor, single-step diffusion) — typically wired between
-`AtlasBlockoutViewport`'s baked `path_frames` and a Video Combine node.
-Licensing is friendlier than the hidden-geometry track: the Fixer repo is
-Apache-2.0 and the `nvidia/Fixer` weights ship under the NVIDIA Open Model
-License (commercial use permitted).
-
-**Inference runs in Docker** — Fixer's `cosmos-predict2`/`transformer_engine`
-stack has no native Windows build, so this node shells out to a container
-instead of importing torch in-process. Three setup steps, each once:
-
-```powershell
-# 1. Clone Fixer and download its weights (~5.2GB, ungated)
-git clone https://github.com/nv-tlabs/Fixer.git C:\path\to\Fixer
-cd C:\path\to\Fixer
-hf download nvidia/Fixer --local-dir models
-
-# 2. Build the inference image (public NGC PyTorch base, ~35GB; the official
-#    cosmos container is auth-locked on nvcr.io, this recipe reproduces it)
-docker build -t fixer-spike-env -f docker/fixer/Dockerfile docker/fixer/
-
-# 3. Point the node at the clone
-#    (fixer_path widget, or the ATLAS_FIXER_PATH env var)
-```
-
-Docker Desktop with GPU support (WSL2 backend) must be running when the node
-executes. Budget ~1 minute model load/warmup per queue plus ~0.5 s/frame;
-frames near Fixer's native 576×1024 round-trip with the least softening.
-Known limits (spike-measured): mild overall softening, and large frame-edge
-reveals are not outpainted. Without docker/image/weights the node fails with
-these instructions.
+> **Removed before beta 0.8:** the research-licensed track — `AtlasPredictHiddenGeometry`
+> (LaRI / World Tracing "X-ray" depth, unlicensed upstream) and `AtlasRenderFix`
+> (NVIDIA Fixer, Docker-only inference) — is no longer registered, along with the
+> Blender boundary-fill node. Nothing in the pack now requires Docker, a
+> user-cloned research repo, or a Blender install.
 
 ## Optional Inpaint Integration
 

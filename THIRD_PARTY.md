@@ -13,8 +13,8 @@ pulls in and what its terms allow.
 | GeoCalib | Apache 2.0 | `pip install` from GitHub (`[neural]` docs) | Learned camera solve | ✅ |
 | Depth Anything V2 | Apache 2.0 (small/base weights; large is CC BY-NC 4.0 — check the variant you install) | HuggingFace via transformers | Depth estimation (legacy default) | ✅ small/base · ⚠ large |
 | Depth Anything 3 (`DA3METRIC-LARGE`) | Apache 2.0 | user-installed `depth_anything_3` package (`--no-deps`, see INSTALL.md) | **Default** depth backend | ✅ |
-| LaRI | **No upstream license** (all rights reserved by default) | user clones github.com/ruili3/lari → `lari_path`/`ATLAS_LARI_PATH` | `AtlasPredictHiddenGeometry` (lari-scene) | ❌ research only |
-| World Tracing (WT-DiT r69l) | **CC BY-NC-ND 4.0**, checkpoint HF-gated | user clones repo + requests checkpoint access → `wt_path`/`ATLAS_WT_PATH` | `AtlasPredictHiddenGeometry` (world-tracing-scene) | ❌ non-commercial |
+| LaRI | **No upstream license** (all rights reserved by default) | user clones github.com/ruili3/lari → `lari_path`/`ATLAS_LARI_PATH` | `AtlasPredictHiddenGeometry` (lari-scene) — **REMOVED, not registered** | ❌ research only |
+| World Tracing (WT-DiT r69l) | **CC BY-NC-ND 4.0**, checkpoint HF-gated | user clones repo + requests checkpoint access → `wt_path`/`ATLAS_WT_PATH` | `AtlasPredictHiddenGeometry` (world-tracing-scene) — **REMOVED, not registered** | ❌ non-commercial |
 | SAM 3 (via ComfyUI-RMBG) | per Meta's SAM license / pack's terms | ComfyUI Manager | Sky + foreground mattes in the hero workflows | check pack |
 | SegFormer ADE20K (b0/b2/b4) | transformers implementation Apache-2.0; **weights** published by NVIDIA on Hugging Face under NVIDIA's SegFormer model license (see the model card) | auto-download via `[neural]` transformers | `AtlasSemanticMask` 🧩 (named-class masks; 🎯 scope fallback) | **check the weights' terms before commercial use** |
 | comfyui-inpaint-nodes (LaMa/MAT) | **GPL-3.0** | ComfyUI Manager | X-ray clean plates, inpaint-layer track | graph-level only — see boundary below |
@@ -26,8 +26,12 @@ pulls in and what its terms allow.
 
 ## The two research-only backends, stated plainly
 
-The **hidden-geometry track is research-only** in any deployment that includes
-its backends:
+The **hidden-geometry track was removed before beta 0.8.** `AtlasPredictHiddenGeometry`
+is no longer registered in any tier, so neither backend below is reachable from
+ComfyUI. Their helper modules remain in source (`inference/lari_hidden_geometry.py`,
+`inference/wt_hidden_geometry.py`) and neither ever vendored upstream code or
+weights, so nothing restrictive was or is redistributed. Recorded here because
+the constraints apply again the moment the node is re-registered:
 
 - **LaRI** ships with no license file, which legally defaults to
   all-rights-reserved — stricter than any non-commercial license. Atlas never
@@ -40,8 +44,9 @@ its backends:
 
 Everything else in Atlas — the solve, geometry derivation, layer stack,
 viewport, and the whole professional/OCIO output path — carries **no
-non-commercial dependency**. Removing the 🔬 node from a graph removes the
-restriction.
+non-commercial dependency**. With the hidden-geometry node de-registered, the
+only licence choice left to the user is which Depth Anything V2 variant they
+install: small/base are Apache 2.0, **large** is CC BY-NC 4.0.
 
 ## The GPL boundary
 
