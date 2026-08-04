@@ -845,11 +845,18 @@ const PROJECTION_FRAGMENT_SHADER = `
     // blend boundary. Multiplying RGB by coverage here would double-premultiply.
     vec3 outColor = atlasLinearToSRGB(clamp(col.rgb * relight, 0.0, 1.0));
     // 🩻 hidden-geometry provenance overlay (debug): tint the surface region
-    // whose depth was SUBSTITUTED by AtlasPredictHiddenGeometry (the node's
+    // whose depth was SUBSTITUTED by a hidden-geometry predictor (its
     // hidden_mask, threaded through the ProjectionSource) — red = LaRI,
     // blue = World Tracing (uHiddenTint set per-source at material build).
     // Sampled at the same projected uv as the photo/matte; applied after the
     // sRGB encode since it's a display-space annotation, not scene color.
+    // DORMANT since beta 0.8: the research-licensed producer that wrote
+    // hidden_mask_b64 (AtlasPredictHiddenGeometry, LaRI/World-Tracing) is no
+    // longer registered, so uHasHiddenMask is 0 on every live source and this
+    // branch never fires. The plumbing is kept deliberately — mask + backend
+    // on the depth metadata, ridden into the ProjectionSource, sampled here —
+    // because it is the contract any future predictor would target. Deleting
+    // it would mean re-deriving the uv/edge-pad conventions from scratch.
     if (uDebugHidden > 0.5 && uHasHiddenMask > 0.5 && texture2D(uHiddenMask, uv).r > 0.5) {
       outColor = mix(outColor, uHiddenTint, 0.5);
     }
@@ -2205,10 +2212,14 @@ function buildNodeUI(node, containerEl) {
   toolbar.appendChild(bandBoxBtn);
 
   // 🩻 X-ray provenance overlay — tints the surface region whose depth was
-  // SUBSTITUTED by AtlasPredictHiddenGeometry (red = LaRI, blue = World
+  // SUBSTITUTED by a hidden-geometry predictor (red = LaRI, blue = World
   // Tracing) at 50% over the projected photo. Only visible under 📽 Project
   // (the tint lives in the projection shader) and only when a hidden-geometry
   // workflow threaded a hidden_mask into a ProjectionSource.
+  // DORMANT since beta 0.8 — no registered node produces hidden_mask any more
+  // (the research-licensed LaRI/World-Tracing track was removed), so the
+  // toggle is a no-op on every current workflow. Left in place with its shader
+  // path intact: see the matching note in the projection fragment shader.
   const dbgHiddenBtn = document.createElement("button");
   dbgHiddenBtn.textContent = "🩻 X-ray";
   dbgHiddenBtn.title = "Highlight predicted hidden geometry (red = LaRI, blue = World Tracing)";
