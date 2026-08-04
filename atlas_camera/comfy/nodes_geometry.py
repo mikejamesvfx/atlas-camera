@@ -1206,7 +1206,7 @@ class AtlasRetopologizeLayer:
         # remeshed scene can be exported. Their footprint CAN change here —
         # that is the trade of remeshing rather than welding, and the report
         # names every primitive it touched so a changed drawn plane is visible.
-        retopo_sources = ("depth_relief_mesh", "viewport_polygon")
+        retopo_sources = ("depth_relief_mesh", "viewport_polygon", "viewport_box")
 
         def _do(prim, camera, scope):
             meta = prim.metadata or {}

@@ -405,3 +405,132 @@ def test_retopo_still_ignores_non_mesh_primitives():
     _out, report = AtlasRetopologizeLayer().retopo(solve, layer="*")
 
     assert "projection_backdrop" not in report
+
+
+# ---------------------------------------------------------------------------
+# Blockout boxes: 8 corners -> a closed mesh
+# ---------------------------------------------------------------------------
+
+from atlas_camera.core.polygon_planes import box_mesh_from_corners
+
+
+def _unit_box(h=3.0):
+    """Bottom ring CCW seen from above, then the matching top ring."""
+    return [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (2.0, 0.0, -4.0), (0.0, 0.0, -4.0),
+            (0.0, h, 0.0), (2.0, h, 0.0), (2.0, h, -4.0), (0.0, h, -4.0)]
+
+
+def _faces_as_tris(packed):
+    verts = np.asarray(packed.vertices, dtype=float).reshape(-1, 3)
+    return [(verts[packed.faces[i]], verts[packed.faces[i + 1]], verts[packed.faces[i + 2]])
+            for i in range(0, len(packed.faces), 3)]
+
+
+def test_a_box_is_eight_corners_and_twelve_triangles():
+    packed = box_mesh_from_corners(_unit_box())
+
+    assert len(packed.vertices) == 24        # 8 corners x xyz
+    assert len(packed.faces) == 36           # 6 quads x 2 tris x 3 indices
+    assert len(packed.uvs) == 16
+
+
+def test_every_box_face_points_outward():
+    """A closed blockout box is only useful if it is not inside-out."""
+    packed = box_mesh_from_corners(_unit_box())
+    verts = np.asarray(packed.vertices, dtype=float).reshape(-1, 3)
+    centroid = verts.mean(axis=0)
+
+    for a, b, c in _faces_as_tris(packed):
+        normal = np.cross(b - a, c - a)
+        outward = ((a + b + c) / 3.0) - centroid
+        assert float(np.dot(normal, outward)) > 0.0
+
+
+def test_faces_stay_outward_after_a_corner_is_dragged():
+    """Edit moves individual corners, so winding cannot assume a neat cuboid."""
+    skewed = _unit_box()
+    skewed[6] = (3.4, 4.2, -5.1)      # drag one top corner well out
+    skewed[1] = (2.6, -0.3, 0.4)      # and one bottom corner
+
+    packed = box_mesh_from_corners(skewed)
+    verts = np.asarray(packed.vertices, dtype=float).reshape(-1, 3)
+    centroid = verts.mean(axis=0)
+
+    assert len(packed.faces) == 36
+    for a, b, c in _faces_as_tris(packed):
+        normal = np.cross(b - a, c - a)
+        outward = ((a + b + c) / 3.0) - centroid
+        assert float(np.dot(normal, outward)) > 0.0
+
+
+def test_box_corners_ride_through_untouched():
+    corners = _unit_box()
+
+    packed = box_mesh_from_corners(corners)
+
+    verts = np.asarray(packed.vertices, dtype=float).reshape(-1, 3)
+    for given, got in zip(corners, verts):
+        assert got == pytest.approx(np.asarray(given))
+
+
+def test_a_box_needs_exactly_eight_corners():
+    with pytest.raises(ValueError):
+        box_mesh_from_corners(_unit_box()[:6])
+
+
+def test_a_flat_box_is_rejected():
+    """Zero height is a degenerate solid, not a blockout."""
+    flat = _unit_box(h=0.0)
+
+    with pytest.raises(ValueError):
+        box_mesh_from_corners(flat)
+
+
+def _box_payload(fingerprint, corners=None, kind="box"):
+    return json.dumps({"drawn_polygons": [{
+        "id": "b1", "label": "back building mass", "enabled": True,
+        "kind": kind,
+        "points_world": corners or _unit_box(),
+        "fingerprint": fingerprint,
+    }]})
+
+
+def test_a_drawn_box_becomes_a_closed_mesh_primitive():
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+
+    (result, _s, _i) = _run_viewport(
+        _box_payload(_fingerprint_for(solve, image)), solve=solve)
+
+    prims = [p for p in result[12].projection_scene.proxy_geometry
+             if (p.metadata or {}).get("source") == "viewport_box"]
+    assert len(prims) == 1
+    assert len(prims[0].metadata["vertices"]) == 24
+    assert len(prims[0].metadata["faces"]) == 36
+    assert "back building mass" in result[14]
+
+
+def test_a_degenerate_box_is_reported_not_raised():
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+
+    (result, _s, _i) = _run_viewport(
+        _box_payload(_fingerprint_for(solve, image), corners=_unit_box(h=0.0)),
+        solve=solve)
+
+    assert [p for p in result[12].projection_scene.proxy_geometry
+            if (p.metadata or {}).get("source") == "viewport_box"] == []
+    assert "skipped" in result[14].lower()
+
+
+def test_retopo_collects_drawn_boxes_too():
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+    solve = _viewport_solve()
+    solve.projection_scene.proxy_geometry.append(
+        _mesh_prim("drawn_box_01", "viewport_box"))
+
+    _out, report = AtlasRetopologizeLayer().retopo(solve, layer="*")
+
+    assert "drawn_box_01" in report

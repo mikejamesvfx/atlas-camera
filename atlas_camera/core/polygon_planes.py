@@ -232,6 +232,66 @@ def polygon_from_world_points(
     )
 
 
+#: The six quads of a blockout box over the canonical corner order —
+#: bottom ring 0-3, then the matching top ring 4-7.
+BOX_QUADS = (
+    (0, 1, 2, 3),   # bottom
+    (4, 5, 6, 7),   # top
+    (0, 1, 5, 4),
+    (1, 2, 6, 5),
+    (2, 3, 7, 6),
+    (3, 0, 4, 7),
+)
+
+
+def box_mesh_from_corners(corners: Sequence[Sequence[float]]) -> DrawnPolygon:
+    """Close 8 corners into a blockout box (12 triangles).
+
+    Built for the viewport's box tool: click a footprint on the ground, drag it
+    up, then drag INDIVIDUAL corners in Edit. That last part is why winding is
+    decided per triangle against the centroid rather than assumed from the
+    corner order — once an artist has dragged corners around, the solid is no
+    longer a neat cuboid and a fixed winding table would leave faces
+    inside-out.
+    """
+    np = _require_numpy()
+    pts = np.asarray(corners, dtype=np.float64).reshape(-1, 3)
+    if len(pts) != 8:
+        raise ValueError(f"a blockout box needs exactly 8 corners, got {len(pts)}")
+    extent = pts.max(axis=0) - pts.min(axis=0)
+    if float(extent.min()) < 1e-6:
+        raise ValueError(
+            "degenerate box: it has no extent on one axis (a zero-height "
+            "footprint is not a solid)")
+
+    centroid = pts.mean(axis=0)
+    faces: list[int] = []
+    for a, b, c, d in BOX_QUADS:
+        for tri in ((a, b, c), (a, c, d)):
+            v0, v1, v2 = pts[list(tri)]
+            normal = np.cross(v1 - v0, v2 - v0)
+            outward = (v0 + v1 + v2) / 3.0 - centroid
+            if float(np.dot(normal, outward)) < 0.0:
+                tri = (tri[0], tri[2], tri[1])
+            faces.extend(int(i) for i in tri)
+
+    # Planar UVs over the two widest axes — projection is world-position based
+    # and ignores these, but exporters and DCC round-trips want something sane.
+    order = np.argsort(extent)[::-1][:2]
+    flat = pts[:, order]
+    lo, hi = flat.min(axis=0), flat.max(axis=0)
+    span = np.where((hi - lo) > 1e-9, hi - lo, 1.0)
+    uvs = (flat - lo) / span
+
+    return DrawnPolygon(
+        vertices=np.round(pts.reshape(-1), 4).tolist(),
+        faces=faces,
+        uvs=np.round(uvs.reshape(-1), 4).tolist(),
+        normal=(0.0, 1.0, 0.0),     # a closed solid has no single normal
+        offset=float(centroid[1]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Polygon utilities (pure 2D, pixel space)
 # ---------------------------------------------------------------------------

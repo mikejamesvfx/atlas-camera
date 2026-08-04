@@ -147,6 +147,26 @@ def _project_world_points(solve, pts_world, width, height):
     return list(zip(u.tolist(), v.tolist()))
 
 
+def _convex_hull_2d(points):
+    """Monotone-chain hull — a box's screen silhouette, for the drawn mask."""
+    pts = sorted(set((float(x), float(y)) for x, y in points))
+    if len(pts) < 3:
+        return pts
+
+    def half(seq):
+        out = []
+        for p in seq:
+            while len(out) >= 2:
+                (x1, y1), (x2, y2) = out[-2], out[-1]
+                if (x2 - x1) * (p[1] - y1) - (y2 - y1) * (p[0] - x1) > 0:
+                    break
+                out.pop()
+            out.append(p)
+        return out[:-1]
+
+    return half(pts) + half(list(reversed(pts)))
+
+
 def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
     """Turn client_data.drawn_polygons into mesh primitives on a COPY of the solve.
 
@@ -166,6 +186,7 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
 
     np = _require_numpy()
     from atlas_camera.core.polygon_planes import (
+        box_mesh_from_corners,
         establish_plane_from_hits,
         polygon_from_world_points,
         rasterize_polygon_mask,
@@ -201,6 +222,44 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
             continue
 
         pts = record.get("points_world") or []
+
+        # A box is a CLOSED solid, not an outline on a plane: 8 corners in, 12
+        # triangles out, winding decided per face so Edit can drag individual
+        # corners without turning it inside-out.
+        if str(record.get("kind") or "polygon") == "box":
+            try:
+                packed = box_mesh_from_corners(pts)
+            except (ValueError, TypeError) as exc:
+                lines.append('"%s": skipped(%s)' % (label, exc))
+                continue
+            made += 1
+            name = "drawn_box_%02d" % made
+            out.projection_scene.proxy_geometry.append(AtlasProxyPrimitive(
+                name=name,
+                primitive_type="mesh",
+                dimensions=(0.0, 0.0, 0.0),
+                material="atlas_projection_proxy",
+                metadata={
+                    "role": PROXY_ROLE,
+                    "source": "viewport_box",
+                    "label": label,
+                    "polygon_id": record.get("id") or name,
+                    "point_count": len(pts),
+                    "vertices": packed.vertices,
+                    "faces": packed.faces,
+                    "uvs": packed.uvs,
+                    "edge_risk": [],
+                },
+            ))
+            lines.append('%s "%s": ok(box, 8 corners)' % (name, label))
+            projected = _project_world_points(out, pts, width, height)
+            if projected is not None:
+                # A box's silhouette is the convex hull of its projected
+                # corners; the raw corner order would self-intersect.
+                mask |= rasterize_polygon_mask(
+                    _convex_hull_2d(projected), height, width)
+            continue
+
         plane = (record.get("plane") or {})
         normal = plane.get("normal")
         if not normal:

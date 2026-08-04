@@ -2655,7 +2655,31 @@ function buildNodeUI(node, containerEl) {
       line.userData.atlasHelper = true;
       drawGroup.add(line);
     };
-    for (const poly of drawnPolygons) outline(poly.points_world, 0x7ddc86, true);
+    const BOX_EDGES = [[0, 1], [1, 2], [2, 3], [3, 0],
+                       [4, 5], [5, 6], [6, 7], [7, 4],
+                       [0, 4], [1, 5], [2, 6], [3, 7]];
+    for (const poly of drawnPolygons) {
+      if (poly.kind === "box" && poly.points_world.length === 8) {
+        // An 8-corner solid is not a closed loop — drawing it as one would
+        // trace a nonsense zigzag through the middle of the box.
+        const flat = [];
+        for (const [a, b] of BOX_EDGES) {
+          flat.push(...poly.points_world[a], ...poly.points_world[b]);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position",
+          new THREE.BufferAttribute(new Float32Array(flat), 3));
+        const seg = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+          color: 0x7ddc86, depthTest: false, transparent: true,
+        }));
+        seg.renderOrder = 200000;
+        seg.userData.atlasHelper = true;
+        drawGroup.add(seg);
+      } else {
+        outline(poly.points_world, 0x7ddc86, true);
+      }
+    }
+    if (boxOn && boxStage > 0) refreshBoxPreview();
     if (editOn && drawnPolygons.length) {
       const flat = [];
       for (const poly of drawnPolygons) {
@@ -2749,14 +2773,22 @@ function buildNodeUI(node, containerEl) {
     return bestD <= tol ? best : null;
   }
 
-  function editRayToPolygonPlane(mapped, poly) {
+  function editRayToPolygonPlane(mapped, poly, index) {
     // Drag WITHIN the outline's own plane: an N-gon that stops being planar
-    // cannot be triangulated or projected sanely.
+    // cannot be triangulated or projected sanely. A BOX has no single plane,
+    // so its corners fall back to a camera-facing plane through the corner
+    // itself — a free drag in screen space at that corner's depth.
     drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
     const o = camera.getWorldPosition(new THREE.Vector3());
     const d = drawRaycaster.ray.direction;
-    return atlasIntersectRayWithPlane(
-      [o.x, o.y, o.z], [d.x, d.y, d.z], poly.plane);
+    let plane = poly.plane;
+    if (!plane || !plane.normal) {
+      const q = poly.points_world[index] || poly.points_world[0];
+      const fwd = camera.getWorldDirection(new THREE.Vector3());
+      const n = [fwd.x, fwd.y, fwd.z];
+      plane = { normal: n, offset: n[0] * q[0] + n[1] * q[1] + n[2] * q[2] };
+    }
+    return atlasIntersectRayWithPlane([o.x, o.y, o.z], [d.x, d.y, d.z], plane);
   }
 
   function mappedFromEvent(ev) {
@@ -2816,7 +2848,7 @@ function buildNodeUI(node, containerEl) {
         landed = [snapped.x, snapped.y, snapped.z];
       }
     }
-    if (!landed) landed = editRayToPolygonPlane(mapped, editDrag.poly);
+    if (!landed) landed = editRayToPolygonPlane(mapped, editDrag.poly, editDrag.index);
     if (!landed) return;
     editDrag.poly.points_world[editDrag.index] = landed;
     drawDirty = true;
@@ -2829,8 +2861,10 @@ function buildNodeUI(node, containerEl) {
     // Snapped points can leave the original plane, so re-fit it from what the
     // outline now IS. The stored plane drives the emitted normal and the UV
     // basis, so a stale one would misorient the projection.
-    const refit = atlasEstablishPlaneFromHits(editDrag.poly.points_world);
-    if (refit) editDrag.poly.plane = refit;
+    if (editDrag.poly.kind !== "box") {
+      const refit = atlasEstablishPlaneFromHits(editDrag.poly.points_world);
+      if (refit) editDrag.poly.plane = refit;
+    }
     editDrag = null;
     canvas.releasePointerCapture?.(ev.pointerId);
     refreshDrawOverlay();
@@ -2967,6 +3001,14 @@ function buildNodeUI(node, containerEl) {
   }
 
   function onDrawKey(ev) {
+    if (boxOn) {
+      if (ev.key === "Enter") { finishBox(); ev.preventDefault(); }
+      else if (ev.key === "Escape") {
+        boxStage = 0; boxBase = null; boxOpposite = null; boxHeight = 0;
+        refreshDrawOverlay(); drawHud(boxStatusLine()); ev.preventDefault();
+      }
+      return;
+    }
     if (!drawOn) return;
     if (ev.key === "Enter") { closeDrawnOutline(); ev.preventDefault(); }
     else if (ev.key === "Escape") {
@@ -3015,6 +3057,8 @@ function buildNodeUI(node, containerEl) {
   // Scoped to the canvas, never the document: unrelated ComfyUI hotkeys must
   // keep working (the same rule createOrbitControls follows).
   canvas.addEventListener("click", onDrawClick);
+  canvas.addEventListener("click", onBoxClick);
+  canvas.addEventListener("pointermove", onBoxMove);
   canvas.addEventListener("keydown", onDrawKey);
   canvas.addEventListener("pointerdown", onEditPointerDown, true);
   canvas.addEventListener("pointermove", onEditPointerMove, true);
@@ -3065,6 +3109,7 @@ function buildNodeUI(node, containerEl) {
   drawBtn.onclick = () => {
     drawOn = !drawOn;
     if (drawOn && editOn) editBtn.onclick();
+    if (drawOn && boxOn) boxBtn.onclick();
     drawBtn.style.background = drawOn ? "#1a3a1a" : "#2a2a2a";
     drawBtn.style.color = drawOn ? "#8f8" : "#ddd";
     // Orbiting while drawing would fight the click; the artist turns the
@@ -3091,6 +3136,7 @@ function buildNodeUI(node, containerEl) {
     editBtn.style.background = editOn ? "#1a2a3a" : "#2a2a2a";
     editBtn.style.color = editOn ? "#8cf" : "#ddd";
     if (editOn && drawOn) drawBtn.onclick();
+    if (editOn && boxOn) boxBtn.onclick();
     editDrag = null;
     refreshDrawOverlay();
     drawHud(editOn
@@ -3132,6 +3178,186 @@ function buildNodeUI(node, containerEl) {
     app.queuePrompt(0, 1);
   };
   toolbar.appendChild(drawApplyBtn);
+
+  // ---------------------------------------------------------------------------
+  // Box — three-stage blockout solid: footprint on the ground, then extrude up.
+  //
+  // A plane fills a hole you can see through; a box fills a MASS the camera
+  // never saw round the back of. On an XYZ perspective plate the ground plane
+  // is already known (scale is reconciled so ground sits at Y=0), which is what
+  // makes a footprint-then-extrude gesture well-defined from a single view.
+  //
+  // Stages: 1 = pick the base corner, 2 = drag the footprint, 3 = drag the
+  // height. Enter or a third click finishes; Esc cancels. The result is stored
+  // as 8 corners in the SAME points_world array a polygon uses, so Edit's
+  // handles, snapping and deletion all work on a box without a second code
+  // path (core/polygon_planes.box_mesh_from_corners closes them into 12
+  // triangles, deciding winding per face so dragged corners cannot invert it).
+  // ---------------------------------------------------------------------------
+  let boxOn = false;
+  let boxStage = 0;         // 0 idle, 1 footprint, 2 height
+  let boxBase = null;       // [x, y, z] first corner
+  let boxOpposite = null;   // [x, y, z] opposite footprint corner
+  let boxHeight = 0;
+
+  function boxCornersNow() {
+    if (!boxBase || !boxOpposite) return null;
+    const y = boxBase[1];
+    const x0 = boxBase[0], z0 = boxBase[2];
+    const x1 = boxOpposite[0], z1 = boxOpposite[2];
+    const h = boxHeight;
+    return [
+      [x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1],
+      [x0, y + h, z0], [x1, y + h, z0], [x1, y + h, z1], [x0, y + h, z1],
+    ];
+  }
+
+  function refreshBoxPreview() {
+    const corners = boxCornersNow();
+    if (!corners) return;
+    const EDGES = [[0, 1], [1, 2], [2, 3], [3, 0],
+                   [4, 5], [5, 6], [6, 7], [7, 4],
+                   [0, 4], [1, 5], [2, 6], [3, 7]];
+    const flat = [];
+    for (const [a, b] of EDGES) {
+      if (boxStage === 1 && a >= 4) continue;      // no lid until extruding
+      if (boxStage === 1 && b >= 4) continue;
+      flat.push(...corners[a], ...corners[b]);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position",
+      new THREE.BufferAttribute(new Float32Array(flat), 3));
+    const seg = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: 0xffcc44, depthTest: false, transparent: true,
+    }));
+    seg.renderOrder = 200003;
+    seg.userData.atlasHelper = true;
+    drawGroup.add(seg);
+  }
+
+  // Where a cursor ray meets the horizontal plane the footprint lives on.
+  function boxGroundPoint(mapped, baseY) {
+    drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+    const o = camera.getWorldPosition(new THREE.Vector3());
+    const d = drawRaycaster.ray.direction;
+    return atlasIntersectRayWithPlane(
+      [o.x, o.y, o.z], [d.x, d.y, d.z],
+      { normal: [0, 1, 0], offset: baseY });
+  }
+
+  // Height comes from a VERTICAL plane through the footprint centre that faces
+  // the camera — the standard way to read an up-drag off a 2D cursor.
+  function boxHeightAt(mapped) {
+    const corners = boxCornersNow();
+    if (!corners) return 0;
+    const cx = (boxBase[0] + boxOpposite[0]) / 2;
+    const cz = (boxBase[2] + boxOpposite[2]) / 2;
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    let n = [fwd.x, 0, fwd.z];
+    const len = Math.hypot(n[0], n[2]);
+    if (len < 1e-6) return boxHeight;               // looking straight down
+    n = [n[0] / len, 0, n[2] / len];
+    drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+    const o = camera.getWorldPosition(new THREE.Vector3());
+    const d = drawRaycaster.ray.direction;
+    const landed = atlasIntersectRayWithPlane(
+      [o.x, o.y, o.z], [d.x, d.y, d.z],
+      { normal: n, offset: n[0] * cx + n[2] * cz });
+    if (!landed) return boxHeight;
+    return Math.max(0.05, landed[1] - boxBase[1]);
+  }
+
+  function boxStatusLine() {
+    if (boxStage === 0) return "▣ click the base corner (snaps to geometry, else the ground)";
+    if (boxStage === 1) return "▣ drag the footprint · click to fix it · Esc cancels";
+    return `▣ drag the height (${boxHeight.toFixed(2)}m) · click or Enter finishes`;
+  }
+
+  function onBoxMove(ev) {
+    if (!boxOn || boxStage === 0) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+    if (boxStage === 1) {
+      const p = boxGroundPoint(mapped, boxBase[1]);
+      if (p) boxOpposite = p;
+    } else {
+      boxHeight = boxHeightAt(mapped);
+    }
+    refreshDrawOverlay();
+    drawHud(boxStatusLine());
+  }
+
+  function finishBox() {
+    const corners = boxCornersNow();
+    if (!corners || boxHeight <= 0.05) {
+      drawHud("▣ give the box some height first");
+      return;
+    }
+    drawnPolygons.push({
+      id: `b${drawnPolygons.length + 1}`,
+      label: `blockout box ${drawnPolygons.length + 1}`,
+      enabled: true,
+      kind: "box",
+      points_world: corners,
+    });
+    boxStage = 0; boxBase = null; boxOpposite = null; boxHeight = 0;
+    drawDirty = true;
+    refreshDrawOverlay();
+    drawHud(`▣ box added — ${drawnPolygons.length} shape(s) ready, click Apply`);
+  }
+
+  function onBoxClick(ev) {
+    if (!boxOn) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+
+    if (boxStage === 0) {
+      // Start on real geometry when the cursor is over some (a rooftop, a
+      // ledge); otherwise drop to the solved ground plane at Y=0.
+      drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+      const hits = drawRaycaster.intersectObjects(drawTargets(), false);
+      if (hits.length) {
+        const p = (editSnap && !ev.shiftKey) ? snapHitToEdge(hits[0], mapped)
+                                             : hits[0].point;
+        boxBase = [p.x, p.y, p.z];
+      } else {
+        const g = boxGroundPoint(mapped, 0);
+        if (!g) { drawHud("▣ that ray misses the ground plane"); return; }
+        boxBase = g;
+      }
+      boxOpposite = [...boxBase];
+      boxHeight = 0;
+      boxStage = 1;
+    } else if (boxStage === 1) {
+      boxStage = 2;
+    } else {
+      finishBox();
+    }
+    refreshDrawOverlay();
+    drawHud(boxStatusLine());
+  }
+
+  const boxBtn = document.createElement("button");
+  boxBtn.textContent = "▣ Box";
+  boxBtn.title = "Blockout solid: click the base corner, drag the footprint, click, "
+    + "drag the height, Enter to finish. The 8 corners are then editable one by one "
+    + "in Edit, exactly like polygon points.";
+  boxBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  boxBtn.onclick = () => {
+    boxOn = !boxOn;
+    boxBtn.style.background = boxOn ? "#3a2a1a" : "#2a2a2a";
+    boxBtn.style.color = boxOn ? "#fc8" : "#ddd";
+    if (boxOn) {
+      if (drawOn) drawBtn.onclick();
+      if (editOn) editBtn.onclick();
+    }
+    controls.setEnabled(!boxOn);
+    canvas.style.cursor = boxOn ? "crosshair" : "grab";
+    boxStage = 0; boxBase = null; boxOpposite = null; boxHeight = 0;
+    refreshDrawOverlay();
+    drawHud(boxOn ? boxStatusLine() : "");
+  };
+  toolbar.appendChild(boxBtn);
 
   // Restore previously-applied outlines from the persisted widget, so ✎ Edit
   // works after a reload / workflow reopen and not only in the session that
