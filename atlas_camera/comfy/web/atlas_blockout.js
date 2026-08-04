@@ -2659,7 +2659,11 @@ function buildNodeUI(node, containerEl) {
                        [4, 5], [5, 6], [6, 7], [7, 4],
                        [0, 4], [1, 5], [2, 6], [3, 7]];
     for (const poly of drawnPolygons) {
-      if (poly.kind === "box" && poly.points_world.length === 8) {
+      if (poly.kind === "sphere" && poly.points_world.length === 2) {
+        const [c, surf] = poly.points_world;
+        sphereWireframe(c, Math.hypot(surf[0] - c[0], surf[1] - c[1], surf[2] - c[2]),
+                        0x7ddc86);
+      } else if (poly.kind === "box" && poly.points_world.length === 8) {
         // An 8-corner solid is not a closed loop — drawing it as one would
         // trace a nonsense zigzag through the middle of the box.
         const flat = [];
@@ -2680,6 +2684,9 @@ function buildNodeUI(node, containerEl) {
       }
     }
     if (boxOn && boxStage > 0) refreshBoxPreview();
+    if (sphereOn && sphereStage === 1 && sphereRadius > 0) {
+      sphereWireframe(sphereCentreNow(), sphereRadius, 0xffcc44);
+    }
     if (editOn && drawnPolygons.length) {
       // Selected handles are drawn separately and hot, so a face grab is
       // visibly a FACE and not a single corner that happens to be under the
@@ -3217,6 +3224,14 @@ function buildNodeUI(node, containerEl) {
       ev.preventDefault();
       return;
     }
+    if (sphereOn) {
+      if (ev.key === "Enter") { finishSphere(); ev.preventDefault(); }
+      else if (ev.key === "Escape") {
+        sphereStage = 0; sphereContact = null; sphereRadius = 0;
+        refreshDrawOverlay(); drawHud(sphereStatusLine()); ev.preventDefault();
+      }
+      return;
+    }
     if (boxOn) {
       if (ev.key === "Enter") { finishBox(); ev.preventDefault(); }
       else if (ev.key === "Escape") {
@@ -3275,6 +3290,8 @@ function buildNodeUI(node, containerEl) {
   canvas.addEventListener("click", onDrawClick);
   canvas.addEventListener("click", onBoxClick);
   canvas.addEventListener("pointermove", onBoxMove);
+  canvas.addEventListener("click", onSphereClick);
+  canvas.addEventListener("pointermove", onSphereMove);
   canvas.addEventListener("keydown", onDrawKey);
   canvas.addEventListener("pointerdown", onEditPointerDown, true);
   canvas.addEventListener("pointermove", onEditPointerMove, true);
@@ -3326,6 +3343,7 @@ function buildNodeUI(node, containerEl) {
     drawOn = !drawOn;
     if (drawOn && editOn) editBtn.onclick();
     if (drawOn && boxOn) boxBtn.onclick();
+    if (drawOn && sphereOn) sphereBtn.onclick();
     drawBtn.style.background = drawOn ? "#1a3a1a" : "#2a2a2a";
     drawBtn.style.color = drawOn ? "#8f8" : "#ddd";
     // Orbiting while drawing would fight the click; the artist turns the
@@ -3353,6 +3371,7 @@ function buildNodeUI(node, containerEl) {
     editBtn.style.color = editOn ? "#8cf" : "#ddd";
     if (editOn && drawOn) drawBtn.onclick();
     if (editOn && boxOn) boxBtn.onclick();
+    if (editOn && sphereOn) sphereBtn.onclick();
     editDrag = null;
     refreshDrawOverlay();
     drawHud(editOn
@@ -3600,6 +3619,7 @@ function buildNodeUI(node, containerEl) {
     if (boxOn) {
       if (drawOn) drawBtn.onclick();
       if (editOn) editBtn.onclick();
+      if (sphereOn) sphereBtn.onclick();
     }
     controls.setEnabled(!boxOn);
     canvas.style.cursor = boxOn ? "crosshair" : "grab";
@@ -3608,6 +3628,157 @@ function buildNodeUI(node, containerEl) {
     drawHud(boxOn ? boxStatusLine() : "");
   };
   toolbar.appendChild(boxBtn);
+
+  // ---------------------------------------------------------------------------
+  // Sphere — two stages: click where it touches down, drag the radius.
+  //
+  // Stored as two CONTROL points (centre, and a point on the surface) rather
+  // than its mesh, so it has exactly two Edit handles and needs no
+  // sphere-specific editing code: drag the centre to move it, drag the surface
+  // handle to resize. Python rebuilds the mesh from those two
+  // (core/polygon_planes.sphere_mesh_from_control_points).
+  //
+  // Like a box it TOUCHES DOWN on the ground rather than being centred on the
+  // click — a blockout mass sits on the ground, so the contact point is what
+  // the artist is actually pointing at.
+  // ---------------------------------------------------------------------------
+  let sphereOn = false;
+  let sphereStage = 0;      // 0 idle, 1 dragging the radius
+  let sphereContact = null; // [x, y, z] where it rests
+  let sphereRadius = 0;
+
+  function sphereCentreNow() {
+    if (!sphereContact) return null;
+    return [sphereContact[0], sphereContact[1] + sphereRadius, sphereContact[2]];
+  }
+
+  function sphereControlPoints() {
+    const c = sphereCentreNow();
+    if (!c || sphereRadius <= 0) return null;
+    return [c, [c[0] + sphereRadius, c[1], c[2]]];
+  }
+
+  // Three great circles read as a sphere in wireframe without shipping a mesh
+  // to the overlay.
+  function sphereWireframe(centre, radius, color) {
+    const STEPS = 48;
+    const flat = [];
+    const axes = [[0, 1], [0, 2], [1, 2]];
+    for (const [a, b] of axes) {
+      for (let i = 0; i < STEPS; i += 1) {
+        for (const t of [i, i + 1]) {
+          const ang = (2 * Math.PI * t) / STEPS;
+          const p = [centre[0], centre[1], centre[2]];
+          p[a] += radius * Math.cos(ang);
+          p[b] += radius * Math.sin(ang);
+          flat.push(p[0], p[1], p[2]);
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position",
+      new THREE.BufferAttribute(new Float32Array(flat), 3));
+    const seg = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color, depthTest: false, transparent: true,
+    }));
+    seg.renderOrder = 200003;
+    seg.userData.atlasHelper = true;
+    drawGroup.add(seg);
+  }
+
+  function sphereStatusLine() {
+    if (sphereStage === 0) {
+      return "● click where the sphere touches down (ctrl-click for geometry)";
+    }
+    return `● drag the radius (${sphereRadius.toFixed(2)}m) · click or Enter finishes`;
+  }
+
+  function onSphereMove(ev) {
+    if (!sphereOn || sphereStage !== 1) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+    const p = boxGroundPoint(mapped, sphereContact[1]);
+    if (!p) return;
+    let r = Math.hypot(p[0] - sphereContact[0], p[2] - sphereContact[2]);
+    if (editSnap) r = Math.max(BOX_GRID_CELL, Math.round(r / BOX_GRID_CELL) * BOX_GRID_CELL);
+    sphereRadius = Math.max(0.05, r);
+    refreshDrawOverlay();
+    drawHud(sphereStatusLine());
+  }
+
+  function finishSphere() {
+    const control = sphereControlPoints();
+    if (!control || sphereRadius <= 0.05) {
+      drawHud("● give the sphere a radius first");
+      return;
+    }
+    drawnPolygons.push({
+      id: `s${drawnPolygons.length + 1}`,
+      label: `blockout sphere ${drawnPolygons.length + 1}`,
+      enabled: true,
+      kind: "sphere",
+      points_world: control,
+    });
+    sphereStage = 0; sphereContact = null; sphereRadius = 0;
+    drawDirty = true;
+    refreshDrawOverlay();
+    drawHud(`● sphere added — ${drawnPolygons.length} shape(s) ready, click Apply`);
+  }
+
+  function onSphereClick(ev) {
+    if (!sphereOn) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+
+    if (sphereStage === 0) {
+      let contact = null;
+      if (ev.ctrlKey || ev.metaKey) {
+        drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+        const hits = drawRaycaster.intersectObjects(drawTargets(), false);
+        if (hits.length) {
+          const hp = editSnap ? snapHitToEdge(hits[0], mapped) : hits[0].point;
+          contact = [hp.x, hp.y, hp.z];
+        } else {
+          drawHud("● ctrl-click found no geometry — resting on the ground");
+        }
+      }
+      if (!contact) {
+        contact = boxGroundPoint(mapped, 0);
+        if (!contact) { drawHud("● that ray misses the ground plane"); return; }
+      }
+      sphereContact = snapToGroundGrid(contact);
+      sphereRadius = 0;
+      sphereStage = 1;
+    } else {
+      finishSphere();
+    }
+    refreshDrawOverlay();
+    drawHud(sphereStatusLine());
+  }
+
+  const sphereBtn = document.createElement("button");
+  sphereBtn.textContent = "● Sphere";
+  sphereBtn.title = "Blockout sphere: click where it touches down (ctrl-click to rest it "
+    + "on geometry), drag the radius, Enter to finish. It is stored as a centre and a "
+    + "surface point, so Edit gives it exactly two handles — drag the centre to move "
+    + "it, the outer handle to resize.";
+  sphereBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  sphereBtn.onclick = () => {
+    sphereOn = !sphereOn;
+    sphereBtn.style.background = sphereOn ? "#2a1a3a" : "#2a2a2a";
+    sphereBtn.style.color = sphereOn ? "#c8f" : "#ddd";
+    if (sphereOn) {
+      if (drawOn) drawBtn.onclick();
+      if (editOn) editBtn.onclick();
+      if (boxOn) boxBtn.onclick();
+    }
+    controls.setEnabled(!sphereOn);
+    canvas.style.cursor = sphereOn ? "crosshair" : "grab";
+    sphereStage = 0; sphereContact = null; sphereRadius = 0;
+    refreshDrawOverlay();
+    drawHud(sphereOn ? sphereStatusLine() : "");
+  };
+  toolbar.appendChild(sphereBtn);
 
   // Restore previously-applied outlines from the persisted widget, so ✎ Edit
   // works after a reload / workflow reopen and not only in the session that

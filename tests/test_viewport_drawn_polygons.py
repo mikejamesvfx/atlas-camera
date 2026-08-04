@@ -623,3 +623,66 @@ def test_an_unknown_shape_kind_is_named_not_guessed_at():
     assert result[12].projection_scene.proxy_geometry == []
     assert "unknown shape kind" in result[14]
     assert "restart ComfyUI" in result[14]
+
+
+def _sphere_payload(fingerprint, points=None):
+    return json.dumps({"drawn_polygons": [{
+        "id": "s1", "label": "dome mass", "enabled": True, "kind": "sphere",
+        "points_world": points or [[0.0, 3.0, -8.0], [3.0, 3.0, -8.0]],
+        "fingerprint": fingerprint,
+    }]})
+
+
+def test_a_drawn_sphere_becomes_a_closed_mesh_primitive():
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+
+    (result, _s, _i) = _run_viewport(
+        _sphere_payload(_fingerprint_for(solve, image)), solve=solve)
+
+    prims = [p for p in result[12].projection_scene.proxy_geometry
+             if (p.metadata or {}).get("source") == "viewport_sphere"]
+    assert len(prims) == 1
+    n_verts = (SPHERE_RINGS + 1) * (SPHERE_SEGMENTS + 1)
+    assert len(prims[0].metadata["vertices"]) == n_verts * 3
+    assert "dome mass" in result[14]
+
+
+def test_a_sphere_with_coincident_control_points_is_reported():
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+
+    (result, _s, _i) = _run_viewport(
+        _sphere_payload(_fingerprint_for(solve, image),
+                        points=[[0.0, 3.0, -8.0], [0.0, 3.0, -8.0]]),
+        solve=solve)
+
+    assert [p for p in result[12].projection_scene.proxy_geometry
+            if (p.metadata or {}).get("source") == "viewport_sphere"] == []
+    assert "skipped" in result[14].lower()
+
+
+def test_a_sphere_needs_two_control_points_to_be_built():
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+
+    (result, _s, _i) = _run_viewport(
+        _sphere_payload(_fingerprint_for(solve, image), points=[[0.0, 3.0, -8.0]]),
+        solve=solve)
+
+    assert _drawn_prims(result[12]) == []
+    assert "skipped" in result[14].lower()
+
+
+def test_retopo_collects_drawn_spheres_too():
+    from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
+    solve = _viewport_solve()
+    solve.projection_scene.proxy_geometry.append(
+        _mesh_prim("drawn_sphere_01", "viewport_sphere"))
+
+    _out, report = AtlasRetopologizeLayer().retopo(solve, layer="*")
+
+    assert "drawn_sphere_01" in report

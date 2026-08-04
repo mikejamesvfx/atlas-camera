@@ -120,7 +120,7 @@ DRAWN_ROLE_SOURCE = "viewport_polygon"
 
 #: Shape kinds this build can turn into geometry. Anything else is
 #: reported rather than guessed at — see _apply_drawn_polygons.
-DRAWN_KINDS = ("polygon", "box")
+DRAWN_KINDS = ("polygon", "box", "sphere")
 
 
 def _camera_position(solve):
@@ -191,6 +191,7 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
     np = _require_numpy()
     from atlas_camera.core.polygon_planes import (
         box_mesh_from_corners,
+        sphere_mesh_from_control_points,
         establish_plane_from_hits,
         polygon_from_world_points,
         rasterize_polygon_mask,
@@ -238,6 +239,46 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
             lines.append('"%s": skipped(unknown shape kind %r — this Atlas build '
                          'does not support it; restart ComfyUI if you just '
                          'updated)' % (label, kind))
+            continue
+
+        # A sphere is stored as two CONTROL points (centre + a point on the
+        # surface), not as its mesh: that way it has exactly two Edit handles
+        # and needs no sphere-specific editing code.
+        if kind == "sphere":
+            try:
+                packed = sphere_mesh_from_control_points(
+                    pts[0] if len(pts) > 0 else None,
+                    pts[1] if len(pts) > 1 else None)
+            except (ValueError, TypeError, IndexError) as exc:
+                lines.append('"%s": skipped(%s)' % (label, exc))
+                continue
+            made += 1
+            name = "drawn_sphere_%02d" % made
+            out.projection_scene.proxy_geometry.append(AtlasProxyPrimitive(
+                name=name,
+                primitive_type="mesh",
+                dimensions=(0.0, 0.0, 0.0),
+                material="atlas_projection_proxy",
+                metadata={
+                    "role": PROXY_ROLE,
+                    "source": "viewport_sphere",
+                    "label": label,
+                    "polygon_id": record.get("id") or name,
+                    "point_count": len(pts),
+                    "control_points": [list(p) for p in pts[:2]],
+                    "vertices": packed.vertices,
+                    "faces": packed.faces,
+                    "uvs": packed.uvs,
+                    "edge_risk": [],
+                },
+            ))
+            lines.append('%s "%s": ok(sphere)' % (name, label))
+            mesh_pts = [packed.vertices[i:i + 3]
+                        for i in range(0, len(packed.vertices), 3)]
+            projected = _project_world_points(out, mesh_pts, width, height)
+            if projected is not None:
+                mask |= rasterize_polygon_mask(
+                    _convex_hull_2d(projected), height, width)
             continue
 
         # A box is a CLOSED solid, not an outline on a plane: 8 corners in, 12
