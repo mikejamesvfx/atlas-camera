@@ -446,3 +446,21 @@ def test_box_face_quads_mirror_python():
                 for row in re.findall(r"\[([\d,\s]+)\]", block.group(1))]
 
     assert js_quads == [tuple(q) for q in BOX_QUADS]
+
+
+def test_drawn_proxy_sources_mirror_python():
+    """The JS decides which surfaces get the smeared plate by metadata.source.
+
+    If it drifted from the sources Python actually writes, drawn surfaces would
+    silently fall back to the raw plate — i.e. be painted with whatever
+    occluded them, which is the exact problem the smear exists to fix.
+    """
+    from atlas_camera.comfy.nodes_viewport import DRAWN_SOURCES
+
+    src = _read("atlas_blockout.js")
+    block = re.search(r"const DRAWN_PROXY_SOURCES = new Set\(\[(.*?)\]\)",
+                      src, re.DOTALL)
+    assert block, "DRAWN_PROXY_SOURCES missing from atlas_blockout.js"
+    js_sources = set(re.findall(r'"([\w_]+)"', block.group(1)))
+
+    assert js_sources == set(DRAWN_SOURCES)

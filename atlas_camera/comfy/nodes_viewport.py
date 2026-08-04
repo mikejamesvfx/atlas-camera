@@ -122,6 +122,11 @@ DRAWN_ROLE_SOURCE = "viewport_polygon"
 #: reported rather than guessed at — see _apply_drawn_polygons.
 DRAWN_KINDS = ("polygon", "box", "sphere")
 
+#: metadata.source written by each drawn kind. One source of truth: the
+#: retopo union selects on it, and atlas_blockout.js mirrors it to decide
+#: which surfaces project the SMEARED plate.
+DRAWN_SOURCES = ("viewport_polygon", "viewport_box", "viewport_sphere")
+
 
 def _camera_position(solve):
     """World-space camera position from the solve's 4x4 view matrix."""
@@ -149,6 +154,37 @@ def _project_world_points(solve, pts_world, width, height):
     u = cx + cam[:, 0] / (-z) * fx
     v = cy - cam[:, 1] / (-z) * fy
     return list(zip(u.tolist(), v.tolist()))
+
+
+def _drawn_fill_plate_b64(source_image, mask_np, px):
+    """The plate with the drawn footprint filled in from its surroundings.
+
+    A drawn surface stands where the camera never saw: projecting the untouched
+    plate onto it paints it with whatever occluded it. This runs the SAME
+    deterministic edge-extend the clean-plate path uses
+    (``plate.ops._extend_edge_colors``, the Nuke premult->dilate trick), with
+    the footprint marked invalid so real pixels smear inward across it.
+
+    Deliberately not an inpaint: for a blockout mass a smeared gradient reads
+    correctly and costs nothing. Route ``drawn_mask`` to SDXL/LaMa when the
+    surface needs invented structure rather than colour.
+    """
+    if px <= 0 or mask_np is None or not mask_np.any():
+        return ""
+    np = _require_numpy()
+    try:
+        from atlas_camera.plate.ops import _extend_edge_colors
+        PILImage = _require_pil()
+        rgb = np.asarray(source_image[0].cpu().numpy(), dtype=np.float32) * 255.0
+        if rgb.shape[:2] != mask_np.shape:
+            return ""
+        filled, _grown = _extend_edge_colors(rgb, ~np.asarray(mask_np, dtype=bool), int(px))
+        pil = PILImage.fromarray(filled.clip(0, 255).astype("uint8"), mode="RGB")
+        buf = io.BytesIO()
+        pil.save(buf, format="JPEG", quality=88)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""     # a cosmetic fill must never take out the viewport
 
 
 def _convex_hull_2d(points):
@@ -490,13 +526,23 @@ class AtlasBlockoutViewport:
                                "reprojects the same pixels from the current moved camera and "
                                "returns patch_render_mask for inpainting.",
                 }),
+                # APPENDED last: ComfyUI's widgets_values is positional, so a
+                # workflow saved before this existed just gets the default.
+                "drawn_fill_px": ("INT", {"default": 96, "min": 0, "max": 512, "step": 8,
+                    "tooltip": "Fill drawn surfaces (✏️ Draw / ▣ Box / ● Sphere) "
+                               "by smearing the surrounding plate colours across their "
+                               "footprint, the same deterministic edge-extend the "
+                               "clean-plate path uses. They stand where the camera never "
+                               "saw, so the raw plate would paint them with whatever "
+                               "occluded them. 0 = off (leave the raw projection and "
+                               "route `drawn_mask` to a real inpaint instead)."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     def render(self, solve, source_image, resolution, client_data, primary_depth=None, preview_expand=1.0, controls=None,
                shot_cam=None, output_profile=None, debug_matte=None, patch_mask=None,
-               unique_id=None):
+               drawn_fill_px=96, unique_id=None):
         torch = _require_torch()
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
@@ -537,12 +583,14 @@ class AtlasBlockoutViewport:
                     m.cpu().numpy() if hasattr(m, "cpu") else m)
             except Exception:
                 patch_mask_b64 = ""  # a bad patch mask must never kill the viewport
-        _blockout_cache_set(node_id, _extract_blockout_camera(
+        blockout_payload = _extract_blockout_camera(
             solve, source_image, width, height, preview_expand=float(preview_expand),
             shot_intrinsics=shot_intrinsics, output_profile=output_profile,
             solve_fingerprint=solve_fingerprint, primary_depth=primary_depth,
             debug_matte_b64=debug_matte_b64,
-            patch_mask_b64=patch_mask_b64))
+            patch_mask_b64=patch_mask_b64)
+        blockout_payload["drawn_plate_b64"] = ""
+        _blockout_cache_set(node_id, blockout_payload)
 
         # IMPORTANT: return a "ui" payload. ComfyUI only emits the "executed"
         # websocket message (which triggers node.onExecuted / the frontend's
@@ -637,6 +685,11 @@ class AtlasBlockoutViewport:
             except Exception as exc:            # never kill the viewport
                 return (solve, torch.zeros(1, src_h, src_w, dtype=torch.float32),
                         f"AtlasBlockoutViewport: drawn polygons failed ({exc}).")
+            # The footprint is what the smear fills, so it is built here where
+            # the mask exists, then attached to the payload the browser fetches.
+            blockout_payload["drawn_plate_b64"] = _drawn_fill_plate_b64(
+                source_image, drawn_np, int(drawn_fill_px))
+            _blockout_cache_set(node_id, blockout_payload)
             if drawn_np is None:
                 drawn_mask = torch.zeros(1, src_h, src_w, dtype=torch.float32)
             else:

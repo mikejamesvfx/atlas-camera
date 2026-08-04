@@ -1156,6 +1156,12 @@ function attachAtlasEdgeRisk(geo, entry) {
 // Build meshes for the Python-derived projection proxies (ground/walls/boxes/
 // cylinders/backdrop). Transforms arrive as row-major 16-float arrays — the
 // same convention THREE.Matrix4.set() takes.
+// metadata.source values written by the viewport's own draw tools — kept in
+// step with nodes_viewport.DRAWN_KINDS' emitted sources.
+const DRAWN_PROXY_SOURCES = new Set([
+  "viewport_polygon", "viewport_box", "viewport_sphere",
+]);
+
 function buildDerivedProxies(scene, data) {
   const old = scene.getObjectByName("atlas_derived_proxies");
   if (old) {
@@ -1203,6 +1209,9 @@ function buildDerivedProxies(scene, data) {
     mesh.matrixAutoUpdate = false;
     mesh.matrix.set(...e.transform);
     mesh.userData.atlasDerived = true;
+    // Hand-drawn surfaces stand where the camera never saw, so they get the
+    // SMEARED plate rather than the raw one (see drawn_plate_b64 below).
+    mesh.userData.atlasDrawn = DRAWN_PROXY_SOURCES.has(e.metadata?.source);
     mesh.name = e.name || "derived_proxy";
     // Sentinel above any patch renderOrder (see priorityToRenderOrder) — the
     // primary is implicitly highest priority per ProjectionSource's contract,
@@ -5518,6 +5527,36 @@ function buildNodeUI(node, containerEl) {
         controls.syncFromCamera();
       }
       
+      const buildDrawnMat = (dTex) => {
+        // Drawn surfaces project the SMEARED plate: the raw one would paint
+        // them with whatever occluded them, since they stand exactly where the
+        // camera has no data. Same projector, different texture — so they stay
+        // registered with everything else.
+        if (!data.drawn_plate_b64) {
+          scene.traverse((c) => {
+            if (c.userData?.atlasDrawn) delete c.userData._projMaterial;
+          });
+          return;
+        }
+        new THREE.TextureLoader().load(data.drawn_plate_b64, (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const mat = makeProjectionMaterial(data, tex, { primaryDepthTexture: dTex });
+          let used = false;
+          scene.traverse((c) => {
+            if (!c.userData?.atlasDrawn) return;
+            const stale = c.userData._projMaterial;
+            c.userData._projMaterial = mat;
+            used = true;
+            if (stale && stale !== mat) {
+              stale.uniforms?.uTexture?.value?.dispose?.();
+              stale.dispose?.();
+            }
+          });
+          if (!used) { tex.dispose(); mat.dispose?.(); return; }
+          if (projectionOn) applyProjection(true);
+        });
+      };
+
       const buildPrimaryMat = (dTex) => {
         loadProjectionTexture(data, (tex) => {
           const old = projMaterial;
@@ -5525,6 +5564,7 @@ function buildNodeUI(node, containerEl) {
           if (projectionOn) applyProjection(true);
           if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
         });
+        buildDrawnMat(dTex);
       };
       
       if (data.primary_depth_b64) {

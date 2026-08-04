@@ -686,3 +686,67 @@ def test_retopo_collects_drawn_spheres_too():
     _out, report = AtlasRetopologizeLayer().retopo(solve, layer="*")
 
     assert "drawn_sphere_01" in report
+
+
+# ---------------------------------------------------------------------------
+# Default pixel fill: the drawn footprint smeared in from its surroundings
+# ---------------------------------------------------------------------------
+
+def _payload_for(unique_id):
+    from atlas_camera.comfy.node_helpers import _ATLAS_BLOCKOUT_CACHE
+    return _ATLAS_BLOCKOUT_CACHE[unique_id]
+
+
+def test_a_drawn_surface_gets_a_plate_smeared_in_from_its_surroundings():
+    """The camera never photographed behind an occluder, so projecting the
+    untouched plate onto a drawn surface paints it with the OCCLUDER. The
+    default is the same deterministic edge-extend the hole-fill path uses."""
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.rand((1, 256, 256, 3), dtype=torch.float32)
+    from atlas_camera.comfy.nodes import AtlasBlockoutViewport
+    AtlasBlockoutViewport().render(
+        solve, image, 256, _drawn_payload(_fingerprint_for(solve, image)),
+        unique_id="fill-on")
+
+    payload = _payload_for("fill-on")
+    assert payload.get("drawn_plate_b64", "").startswith("data:image/")
+
+
+def test_no_smear_plate_when_the_fill_is_switched_off():
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.rand((1, 256, 256, 3), dtype=torch.float32)
+    from atlas_camera.comfy.nodes import AtlasBlockoutViewport
+    AtlasBlockoutViewport().render(
+        solve, image, 256, _drawn_payload(_fingerprint_for(solve, image)),
+        drawn_fill_px=0, unique_id="fill-off")
+
+    assert _payload_for("fill-off").get("drawn_plate_b64", "") == ""
+
+
+def test_no_smear_plate_when_nothing_was_drawn():
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy.nodes import AtlasBlockoutViewport
+    AtlasBlockoutViewport().render(
+        _viewport_solve(), torch.zeros((1, 256, 256, 3)), 256, "",
+        unique_id="fill-none")
+
+    assert _payload_for("fill-none").get("drawn_plate_b64", "") == ""
+
+
+def test_the_smear_only_repaints_inside_the_drawn_footprint():
+    """Pixels outside the footprint are real photography and must not move."""
+    np_ = pytest.importorskip("numpy")
+    from atlas_camera.plate.ops import _extend_edge_colors
+
+    rgb = np_.zeros((64, 64, 3), dtype="float32")
+    rgb[:] = 200.0
+    hole = np_.zeros((64, 64), dtype=bool)
+    hole[20:40, 20:40] = True
+    rgb[hole] = 0.0
+
+    filled, _grown = _extend_edge_colors(rgb, ~hole, 64)
+
+    assert filled[hole].max() > 0.0, "the footprint should be filled in"
+    assert np_.allclose(filled[~hole], 200.0), "real pixels must be untouched"
