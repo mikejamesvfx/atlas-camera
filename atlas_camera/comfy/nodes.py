@@ -167,6 +167,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasMaskedSurfaceReconstruct,
     AtlasRefineOcclusionSeams,
     AtlasPathGuidedHoleRepair,
+    AtlasAddPlanePolygon,
     AtlasDeriveWalls,
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,

@@ -45,6 +45,7 @@ FACADE_PUBLIC = {
     "AtlasDepthBandSplit", "AtlasDepthLayerMask", "AtlasDepthMap",
     "AtlasDepthOutlierMask", "AtlasDeriveInteriorRoom", "AtlasDeriveProjectionGeometry",
     "AtlasDeriveReliefMesh", "AtlasDeriveRoofsFacades", "AtlasDeriveTowersSpires",
+    "AtlasAddPlanePolygon",
     "AtlasDeriveWalls", "AtlasExportBlender", "AtlasExportCameraPathUSD",
     "AtlasExportMayaLayers", "AtlasExportMayaReviewScene", "AtlasExportNuke",
     "AtlasExportNukeLayers", "AtlasExportReliefMesh", "AtlasExportReviewPackage",

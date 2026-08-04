@@ -1,15 +1,16 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-08-03",
+ "generated_utc": "2026-08-04",
  "counts": {
-  "standard": 91,
+  "standard": 92,
   "experimental": 6,
   "legacy": 2,
-  "total": 99,
-  "no_product_evidence": 0
+  "total": 100,
+  "no_product_evidence": 1
  },
  "verdict_counts": {
   "KEEP_CORE": 91,
+  "HOLD_NEEDS_EVIDENCE": 1,
   "KEEP_EXPERIMENTAL": 6,
   "LEGACY_GATE": 2
  },
@@ -31,7 +32,7 @@
    "tests": 11,
    "mcp_tools": 0,
    "repo_tools": 2,
-   "docs": 5,
+   "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -45,6 +46,30 @@
    "known_defect": null,
    "compatibility_risk": null,
    "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasAddPlanePolygon": {
+   "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 0,
+   "tests": 2,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 3,
+   "product_evidence": false,
+   "evidence_kinds": [
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "HOLD_NEEDS_EVIDENCE",
    "evidence": [],
    "migration_action": null,
    "notes": null
@@ -751,7 +776,7 @@
    "tests": 7,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 4,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -1820,7 +1845,7 @@
    "tests": 5,
    "mcp_tools": 0,
    "repo_tools": 3,
-   "docs": 3,
+   "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",

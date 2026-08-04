@@ -35,6 +35,7 @@ NORMAL_KEYS = {
     "AtlasDepthLayerMask", "AtlasDepthMap", "AtlasDepthOutlierMask",
     "AtlasDeriveInteriorRoom", "AtlasDeriveProjectionGeometry",
     "AtlasDeriveReliefMesh", "AtlasDeriveRoofsFacades", "AtlasDeriveTowersSpires",
+    "AtlasAddPlanePolygon",
     "AtlasDeriveWalls", "AtlasExportBlender", "AtlasExportCameraPathUSD",
     "AtlasExportPlateEXR",
     "AtlasExportMayaLayers", "AtlasExportMayaReviewScene", "AtlasExportNuke",
@@ -77,7 +78,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 91
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 92
 
 
 def test_experimental_registry_keys_exact():
