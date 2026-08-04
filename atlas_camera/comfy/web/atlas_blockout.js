@@ -2681,20 +2681,31 @@ function buildNodeUI(node, containerEl) {
     }
     if (boxOn && boxStage > 0) refreshBoxPreview();
     if (editOn && drawnPolygons.length) {
-      const flat = [];
+      // Selected handles are drawn separately and hot, so a face grab is
+      // visibly a FACE and not a single corner that happens to be under the
+      // cursor.
+      const plain = [], hot = [];
       for (const poly of drawnPolygons) {
-        for (const q of poly.points_world) flat.push(q[0], q[1], q[2]);
+        const selected = (editDrag && editDrag.poly === poly)
+          ? new Set(editDrag.indices) : null;
+        poly.points_world.forEach((q, i) => {
+          (selected && selected.has(i) ? hot : plain).push(q[0], q[1], q[2]);
+        });
       }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position",
-        new THREE.BufferAttribute(new Float32Array(flat), 3));
-      const handles = new THREE.Points(geo, new THREE.PointsMaterial({
-        color: editDrag ? 0xff9040 : 0x50d0ff,
-        size: 10, sizeAttenuation: false, depthTest: false,
-      }));
-      handles.renderOrder = 200002;
-      handles.userData.atlasHelper = true;
-      drawGroup.add(handles);
+      const addPoints = (arr, color, size) => {
+        if (!arr.length) return;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position",
+          new THREE.BufferAttribute(new Float32Array(arr), 3));
+        const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+          color, size, sizeAttenuation: false, depthTest: false,
+        }));
+        pts.renderOrder = 200002;
+        pts.userData.atlasHelper = true;
+        drawGroup.add(pts);
+      };
+      addPoints(plain, 0x50d0ff, 10);
+      addPoints(hot, 0xff9040, 14);
     }
     outline(drawPoints, 0xffffff, false);
     if (drawPoints.length) {
@@ -2810,6 +2821,84 @@ function buildNodeUI(node, containerEl) {
     return (best && bestD <= tol) ? best : hit.point.clone();
   }
 
+  // The six quads of a blockout box over the canonical corner order. MIRRORS
+  // core/polygon_planes.BOX_QUADS by hand (pinned in test_frontend_mirrors.py):
+  // the two must agree or a face selected here would not be the face Python
+  // closes into triangles.
+  const EDIT_BOX_QUADS = [
+    [0, 1, 2, 3], [4, 5, 6, 7],
+    [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
+  ];
+
+  function projectToNdc(p) {
+    return new THREE.Vector3(p[0], p[1], p[2]).project(camera);
+  }
+
+  function pointInScreenPolygon(mapped, pts) {
+    const proj = pts.map(projectToNdc);
+    let inside = false;
+    for (let i = 0, j = proj.length - 1; i < proj.length; j = i, i += 1) {
+      const a = proj[i], b = proj[j];
+      if ((a.y > mapped.y) !== (b.y > mapped.y)
+          && mapped.x < ((b.x - a.x) * (mapped.y - a.y)) / (b.y - a.y) + a.x) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function cameraDistanceTo(pts) {
+    const eye = camera.getWorldPosition(new THREE.Vector3());
+    let cx = 0, cy = 0, cz = 0;
+    for (const p of pts) { cx += p[0]; cy += p[1]; cz += p[2]; }
+    const n = pts.length || 1;
+    return Math.hypot(cx / n - eye.x, cy / n - eye.y, cz / n - eye.z);
+  }
+
+  // A whole FACE under the cursor, so a cube's lid can be raised in one drag
+  // rather than four. For a box that is one of its six quads; for a polygon it
+  // is the outline itself, which moves the whole shape. Nearest face wins when
+  // several overlap on screen.
+  function findFaceUnder(mapped) {
+    let best = null, bestDepth = Infinity;
+    for (const poly of drawnPolygons) {
+      if (poly.enabled === false) continue;
+      const groups = (poly.kind === "box" && poly.points_world.length === 8)
+        ? EDIT_BOX_QUADS
+        : [poly.points_world.map((_, i) => i)];
+      for (const indices of groups) {
+        if (indices.length < 3) continue;
+        const pts = indices.map((i) => poly.points_world[i]);
+        if (!pointInScreenPolygon(mapped, pts)) continue;
+        const depth = cameraDistanceTo(pts);
+        if (depth < bestDepth) { bestDepth = depth; best = { poly, indices: [...indices] }; }
+      }
+    }
+    return best;
+  }
+
+  function selectionCentroid(points) {
+    const c = [0, 0, 0];
+    for (const p of points) { c[0] += p[0]; c[1] += p[1]; c[2] += p[2]; }
+    const n = points.length || 1;
+    return [c[0] / n, c[1] / n, c[2] / n];
+  }
+
+  function applyEditDelta(delta) {
+    let d = delta;
+    // A box already snaps its footprint and height to whole grid cells, so a
+    // face move follows the same increments rather than drifting off them.
+    if (editSnap && editDrag.poly.kind === "box") {
+      d = [Math.round(d[0] / BOX_GRID_CELL) * BOX_GRID_CELL,
+           Math.round(d[1] / BOX_GRID_CELL) * BOX_GRID_CELL,
+           Math.round(d[2] / BOX_GRID_CELL) * BOX_GRID_CELL];
+    }
+    editDrag.indices.forEach((idx, k) => {
+      const o = editDrag.origins[k];
+      editDrag.poly.points_world[idx] = [o[0] + d[0], o[1] + d[1], o[2] + d[2]];
+    });
+  }
+
   function findEditPointNear(mapped) {
     const tol = 2 * 14 / Math.max(canvas.height, 1);
     let best = null, bestD = Infinity;
@@ -2833,7 +2922,9 @@ function buildNodeUI(node, containerEl) {
     const d = drawRaycaster.ray.direction;
     let plane = poly.plane;
     if (!plane || !plane.normal) {
-      const q = poly.points_world[index] || poly.points_world[0];
+      const q = (editDrag && editDrag.poly === poly && editDrag.origin)
+        ? editDrag.origin
+        : (poly.points_world[index] || poly.points_world[0]);
       const fwd = camera.getWorldDirection(new THREE.Vector3());
       const n = [fwd.x, fwd.y, fwd.z];
       plane = { normal: n, offset: n[0] * q[0] + n[1] * q[1] + n[2] * q[2] };
@@ -2855,14 +2946,24 @@ function buildNodeUI(node, containerEl) {
     const mapped = mappedFromEvent(ev);
     if (!mapped.inside) return;
     const found = findEditPointNear(mapped);
-    if (!found) return;
+    // A vertex under the cursor wins over the face behind it; otherwise fall
+    // through to face selection, so clicking a cube's lid grabs all four of
+    // its corners at once.
+    const sel = found
+      ? { poly: found.poly, indices: [found.index], pi: found.pi }
+      : findFaceUnder(mapped);
+    if (!sel) return;
 
     if (ev.ctrlKey || ev.metaKey) {
-      if (found.poly.points_world.length <= 3) {
-        drawnPolygons.splice(found.pi, 1);
-        drawHud("✎ outline deleted (a polygon needs 3 points)");
+      const pi = drawnPolygons.indexOf(sel.poly);
+      if (sel.poly.kind === "box" || sel.poly.kind === "sphere"
+          || sel.indices.length > 1 || sel.poly.points_world.length <= 3) {
+        // Deleting one corner of a solid would leave a shape its builder
+        // cannot close, so the whole thing goes.
+        drawnPolygons.splice(pi, 1);
+        drawHud("✎ shape deleted");
       } else {
-        found.poly.points_world.splice(found.index, 1);
+        sel.poly.points_world.splice(sel.indices[0], 1);
         drawHud("✎ point deleted");
       }
       drawDirty = true;
@@ -2872,13 +2973,20 @@ function buildNodeUI(node, containerEl) {
       return;
     }
 
+    const origins = sel.indices.map((i) => [...sel.poly.points_world[i]]);
     editDrag = {
-      poly: found.poly,
-      index: found.index,
-      origin: [...found.poly.points_world[found.index]],
+      poly: sel.poly,
+      indices: sel.indices,
+      index: sel.indices[0],
+      origins,
+      origin: selectionCentroid(origins),   // the reference the drag moves
       startNdc: { x: mapped.x, y: mapped.y },
       axis: null,
     };
+    drawHud(sel.indices.length > 1
+      ? `✎ face selected (${sel.indices.length} points) — `
+        + "SHIFT locks an axis"
+      : "✎ point grabbed — SHIFT locks an axis");
     canvas.setPointerCapture?.(ev.pointerId);
     refreshDrawOverlay();
     ev.stopPropagation();
@@ -2910,15 +3018,34 @@ function buildNodeUI(node, containerEl) {
           [o.x, o.y, o.z], [rd.x, rd.y, rd.z],
           editDrag.origin, EDIT_AXES[editDrag.axis]);
         if (onAxis) {
-          editDrag.poly.points_world[editDrag.index] = onAxis;
+          applyEditDelta([onAxis[0] - editDrag.origin[0],
+                          onAxis[1] - editDrag.origin[1],
+                          onAxis[2] - editDrag.origin[2]]);
           drawDirty = true;
           refreshDrawOverlay();
-          drawHud(`✎ ${editDrag.axis.toUpperCase()} axis locked — `
-                  + "release Shift for a free drag");
+          drawHud(`✎ ${editDrag.axis.toUpperCase()} axis locked`
+                  + (editDrag.indices.length > 1
+                     ? ` — moving ${editDrag.indices.length} points`
+                     : " — release Shift for a free drag"));
           ev.stopPropagation();
           return;
         }
       }
+    }
+
+    // A multi-point (face) selection TRANSLATES: snapping a face by its
+    // centroid onto a mesh edge would mean nothing, so only a lone vertex
+    // takes the edge snap below.
+    if (editDrag.indices.length > 1) {
+      const target = editRayToPolygonPlane(mapped, editDrag.poly, editDrag.index);
+      if (!target) return;
+      applyEditDelta([target[0] - editDrag.origin[0],
+                      target[1] - editDrag.origin[1],
+                      target[2] - editDrag.origin[2]]);
+      drawDirty = true;
+      refreshDrawOverlay();
+      ev.stopPropagation();
+      return;
     }
 
     // Otherwise snap to geometry FIRST: constraining the drag to the outline's
@@ -2945,7 +3072,7 @@ function buildNodeUI(node, containerEl) {
     // Snapped points can leave the original plane, so re-fit it from what the
     // outline now IS. The stored plane drives the emitted normal and the UV
     // basis, so a stale one would misorient the projection.
-    if (editDrag.poly.kind !== "box") {
+    if (editDrag.poly.kind !== "box" && editDrag.poly.kind !== "sphere") {
       const refit = atlasEstablishPlaneFromHits(editDrag.poly.points_world);
       if (refit) editDrag.poly.plane = refit;
     }

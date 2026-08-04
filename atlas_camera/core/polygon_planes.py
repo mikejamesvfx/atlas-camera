@@ -30,6 +30,7 @@ Numpy-only, host-agnostic: no ComfyUI, no torch.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
@@ -289,6 +290,79 @@ def box_mesh_from_corners(corners: Sequence[Sequence[float]]) -> DrawnPolygon:
         uvs=np.round(uvs.reshape(-1), 4).tolist(),
         normal=(0.0, 1.0, 0.0),     # a closed solid has no single normal
         offset=float(centroid[1]),
+    )
+
+
+#: UV-sphere tessellation for blockout spheres. Modest on purpose: this is a
+#: massing proxy that rides the solve JSON into the browser, not a render mesh.
+SPHERE_SEGMENTS = 16
+SPHERE_RINGS = 10
+
+
+def sphere_mesh_from_control_points(
+    centre: Sequence[float],
+    surface_point: Sequence[float],
+    *,
+    segments: int = SPHERE_SEGMENTS,
+    rings: int = SPHERE_RINGS,
+) -> DrawnPolygon:
+    """Build a blockout sphere from TWO control points.
+
+    Storing a centre and a point on the surface — rather than the generated
+    mesh vertices — is what lets the viewport's Edit handles drag a sphere with
+    no sphere-specific code: it has exactly two handles, and they behave like
+    any other point. Only the DISTANCE between them matters, so dragging the
+    surface handle in any direction just resizes.
+    """
+    np = _require_numpy()
+    if centre is None or surface_point is None:
+        raise ValueError("a sphere needs a centre and a surface control point")
+    c = np.asarray(centre, dtype=np.float64).reshape(3)
+    radius = float(np.linalg.norm(np.asarray(surface_point, dtype=np.float64).reshape(3) - c))
+    if radius < 1e-6:
+        raise ValueError("degenerate sphere: the control points coincide")
+
+    verts, uvs = [], []
+    for i in range(rings + 1):
+        phi = math.pi * i / rings
+        for j in range(segments + 1):
+            theta = 2.0 * math.pi * j / segments
+            verts.append((
+                c[0] + radius * math.sin(phi) * math.cos(theta),
+                c[1] + radius * math.cos(phi),
+                c[2] + radius * math.sin(phi) * math.sin(theta),
+            ))
+            uvs.append((j / segments, 1.0 - i / rings))
+
+    faces: list[int] = []
+    for i in range(rings):
+        for j in range(segments):
+            a = i * (segments + 1) + j
+            b = a + segments + 1
+            # The polar rows collapse to a point, so one triangle of each cell
+            # there is degenerate — skip it rather than ship zero-area faces.
+            if i != 0:
+                faces.extend((a, b, a + 1))
+            if i != rings - 1:
+                faces.extend((a + 1, b, b + 1))
+
+    pts = np.asarray(verts, dtype=np.float64)
+    # Wind outward: normals must face away from the centre for a closed solid.
+    fixed: list[int] = []
+    for k in range(0, len(faces), 3):
+        tri = faces[k:k + 3]
+        v0, v1, v2 = pts[tri]
+        outward = (v0 + v1 + v2) / 3.0 - c
+        if float(np.dot(np.cross(v1 - v0, v2 - v0), outward)) < 0.0:
+            tri = [tri[0], tri[2], tri[1]]
+        fixed.extend(int(i) for i in tri)
+
+    return DrawnPolygon(
+        vertices=np.round(pts.reshape(-1), 4).tolist(),
+        faces=fixed,
+        uvs=[round(float(v), 4) for uv in uvs for v in uv],
+        normal=(0.0, 1.0, 0.0),     # a closed solid has no single normal
+        offset=float(c[1]),
     )
 
 

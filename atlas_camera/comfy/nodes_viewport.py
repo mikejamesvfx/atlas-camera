@@ -118,6 +118,10 @@ class AtlasViewportControls:
 
 DRAWN_ROLE_SOURCE = "viewport_polygon"
 
+#: Shape kinds this build can turn into geometry. Anything else is
+#: reported rather than guessed at — see _apply_drawn_polygons.
+DRAWN_KINDS = ("polygon", "box")
+
 
 def _camera_position(solve):
     """World-space camera position from the solve's 4x4 view matrix."""
@@ -223,10 +227,23 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
 
         pts = record.get("points_world") or []
 
+        # An unrecognised kind must SAY so. A viewport newer than this build
+        # sends shapes it does not know, and treating them as plain outlines
+        # silently produced garbage: a box's 8 corners projected into a plane
+        # basis self-intersect, so they were reported as a self-intersecting
+        # polygon rather than "this build has no box support" (found live,
+        # 2026-08-04, on a ComfyUI started before the box code landed).
+        kind = str(record.get("kind") or "polygon")
+        if kind not in DRAWN_KINDS:
+            lines.append('"%s": skipped(unknown shape kind %r — this Atlas build '
+                         'does not support it; restart ComfyUI if you just '
+                         'updated)' % (label, kind))
+            continue
+
         # A box is a CLOSED solid, not an outline on a plane: 8 corners in, 12
         # triangles out, winding decided per face so Edit can drag individual
         # corners without turning it inside-out.
-        if str(record.get("kind") or "polygon") == "box":
+        if kind == "box":
             try:
                 packed = box_mesh_from_corners(pts)
             except (ValueError, TypeError) as exc:

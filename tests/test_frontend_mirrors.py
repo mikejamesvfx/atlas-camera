@@ -428,3 +428,21 @@ def test_axis_constraint_refuses_when_sighting_along_the_axis():
               + "atlasClosestPointOnAxis([0,10,0],[0,-1,0],[0,0,0],[0,1,0])));")
     assert json.loads(subprocess.run(
         ["node", "-e", script], capture_output=True, text=True, check=True).stdout) is None
+
+
+def test_box_face_quads_mirror_python():
+    """Face selection in the viewport must mean the same quads Python closes.
+
+    atlas_blockout.js picks a face by index set; core.polygon_planes closes the
+    box using its own table. If the two drifted, clicking a cube's lid would
+    move corners that are not the lid.
+    """
+    from atlas_camera.core.polygon_planes import BOX_QUADS
+
+    src = _read("atlas_blockout.js")
+    block = re.search(r"const EDIT_BOX_QUADS = \[(.*?)\];", src, re.DOTALL)
+    assert block, "EDIT_BOX_QUADS missing from atlas_blockout.js"
+    js_quads = [tuple(int(n) for n in row.split(","))
+                for row in re.findall(r"\[([\d,\s]+)\]", block.group(1))]
+
+    assert js_quads == [tuple(q) for q in BOX_QUADS]

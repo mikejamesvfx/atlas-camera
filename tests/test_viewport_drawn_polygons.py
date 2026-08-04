@@ -534,3 +534,92 @@ def test_retopo_collects_drawn_boxes_too():
     _out, report = AtlasRetopologizeLayer().retopo(solve, layer="*")
 
     assert "drawn_box_01" in report
+
+
+# ---------------------------------------------------------------------------
+# Blockout spheres: two control points -> a closed mesh
+# ---------------------------------------------------------------------------
+
+from atlas_camera.core.polygon_planes import (
+    SPHERE_RINGS,
+    SPHERE_SEGMENTS,
+    sphere_mesh_from_control_points,
+)
+
+
+def test_a_sphere_is_built_from_a_centre_and_a_surface_point():
+    """Only TWO handles, so Edit drags a sphere with no sphere-specific code."""
+    packed = sphere_mesh_from_control_points((1.0, 2.0, -5.0), (4.0, 2.0, -5.0))
+
+    n_verts = (SPHERE_RINGS + 1) * (SPHERE_SEGMENTS + 1)
+    assert len(packed.vertices) == n_verts * 3
+    assert len(packed.uvs) == n_verts * 2
+    # Two triangles per cell, minus the degenerate one in each polar row.
+    assert len(packed.faces) == (2 * SPHERE_RINGS * SPHERE_SEGMENTS
+                                 - 2 * SPHERE_SEGMENTS) * 3
+
+
+def test_every_sphere_vertex_sits_on_the_radius():
+    centre = np.array([1.0, 2.0, -5.0])
+    packed = sphere_mesh_from_control_points(centre, (4.0, 2.0, -5.0))
+
+    verts = np.asarray(packed.vertices, dtype=float).reshape(-1, 3)
+    radii = np.linalg.norm(verts - centre, axis=1)
+    # Vertices are rounded to 4 dp on the way out (the same compaction
+    # relief_mesh_primitive uses to keep solve JSON small), so 1e-4 is the
+    # tightest honest tolerance here.
+    assert radii.min() == pytest.approx(3.0, abs=1e-4)
+    assert radii.max() == pytest.approx(3.0, abs=1e-4)
+
+
+def test_sphere_faces_point_outward():
+    centre = np.array([0.0, 0.0, 0.0])
+    packed = sphere_mesh_from_control_points(centre, (2.0, 0.0, 0.0))
+    verts = np.asarray(packed.vertices, dtype=float).reshape(-1, 3)
+
+    for i in range(0, len(packed.faces), 3):
+        a, b, c = (verts[packed.faces[i + k]] for k in range(3))
+        normal = np.cross(b - a, c - a)
+        outward = (a + b + c) / 3.0 - centre
+        assert float(np.dot(normal, outward)) > 0.0
+
+
+def test_the_radius_is_the_distance_between_the_control_points():
+    """Dragging the surface handle in any direction only changes the radius."""
+    a = sphere_mesh_from_control_points((0.0, 0.0, 0.0), (0.0, 5.0, 0.0))
+    b = sphere_mesh_from_control_points((0.0, 0.0, 0.0), (0.0, 0.0, 5.0))
+
+    va = np.asarray(a.vertices, dtype=float).reshape(-1, 3)
+    vb = np.asarray(b.vertices, dtype=float).reshape(-1, 3)
+    assert np.allclose(np.linalg.norm(va, axis=1), np.linalg.norm(vb, axis=1))
+
+
+def test_a_zero_radius_sphere_is_rejected():
+    with pytest.raises(ValueError):
+        sphere_mesh_from_control_points((1.0, 1.0, 1.0), (1.0, 1.0, 1.0))
+
+
+def test_a_sphere_needs_exactly_two_control_points():
+    with pytest.raises(ValueError):
+        sphere_mesh_from_control_points((0.0, 0.0, 0.0), None)
+
+
+def test_an_unknown_shape_kind_is_named_not_guessed_at():
+    """A viewport newer than the running Python must not fail silently.
+
+    Live on 2026-08-04: a ComfyUI started before box support received
+    kind="box" records, treated them as outlines, and reported them as
+    self-intersecting polygons — true of the projected corners, but useless as
+    a diagnosis.
+    """
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+
+    (result, _s, _i) = _run_viewport(
+        _box_payload(_fingerprint_for(solve, image), kind="dodecahedron"),
+        solve=solve)
+
+    assert result[12].projection_scene.proxy_geometry == []
+    assert "unknown shape kind" in result[14]
+    assert "restart ComfyUI" in result[14]
