@@ -26,6 +26,22 @@ import { app } from "../../scripts/app.js";
 const NODE_CLASS = "AtlasAddPlanePolygon";
 const HANDLE_PX = 5;
 const HIT_PX = 8;
+const DEFAULT_NODE_SIZE = [420, 560];
+
+// LiteGraph otherwise lays the DOM widget out at its own `width`, which lets
+// the canvas escape the node border. Same fix, same reason, as
+// atlas_blockout.js:pinDomWidgetFullWidth.
+function pinDomWidgetFullWidth(domWidget) {
+  try {
+    Object.defineProperty(domWidget, "width", {
+      configurable: true,
+      get() { return undefined; },
+      set() {},
+    });
+  } catch (e) {
+    console.warn("[Atlas] could not pin polygon canvas width:", e);
+  }
+}
 
 // Outline colour by last-run outcome, so a fallback is visible on the canvas
 // rather than buried in the report string.
@@ -97,7 +113,8 @@ app.registerExtension({
 
     const container = document.createElement("div");
     container.style.cssText =
-      "width:100%;height:100%;min-width:0;display:flex;flex-direction:column;gap:4px;";
+      "width:100%;height:100%;min-width:0;display:flex;flex-direction:column;gap:4px;" +
+      "overflow:hidden;";
 
     const hint = document.createElement("div");
     hint.style.cssText = "font-size:10px;color:#9aa;line-height:1.4;padding:0 2px;";
@@ -108,21 +125,28 @@ app.registerExtension({
     const canvas = document.createElement("canvas");
     canvas.tabIndex = 0;
     canvas.style.cssText =
-      "width:100%;height:100%;min-height:180px;min-width:0;display:block;" +
+      "flex:1 1 auto;width:100%;min-height:160px;min-width:0;display:block;" +
       "background:#181818;border-radius:4px;outline:none;cursor:crosshair;";
 
     const list = document.createElement("div");
     list.style.cssText =
-      "max-height:96px;overflow-y:auto;font-size:11px;display:flex;flex-direction:column;gap:2px;";
+      "flex:0 0 auto;max-height:96px;overflow-y:auto;font-size:11px;" +
+      "display:flex;flex-direction:column;gap:2px;";
 
     container.append(hint, canvas, list);
 
-    const widget = node.addDOMWidget("atlas_polygon_canvas", "div", container, {
+    // Sizing follows atlas_blockout.js's proven DOM-widget contract: pinned
+    // width plus the sanctioned getMinHeight/getMaxHeight hooks. Never
+    // `computeSize` — returning a width there is what let this canvas render
+    // outside the node's own border.
+    const domWidget = node.addDOMWidget("atlas_polygon_canvas", "div", container, {
       serialize: false,
       getValue() { return null; },
       setValue() {},
+      getMinHeight() { return 220; },
+      getMaxHeight() { return 4096; },
     });
-    if (widget) widget.computeSize = () => [node.size[0], 260];
+    pinDomWidgetFullWidth(domWidget);
 
     // ---- geometry helpers -------------------------------------------------
 
@@ -398,13 +422,40 @@ app.registerExtension({
       return out;
     };
 
+    // The canvas backing store has to follow its CSS box, or a node resize
+    // leaves a stale (stretched, or blank grey) bitmap. This is a draw-time
+    // sync, not a layout hook: CSS still decides the box, and no JS ever sets
+    // the element's width/height style.
+    let boxW = 0;
+    let boxH = 0;
+    let ticking = true;
+    const tick = () => {
+      if (!ticking) return;
+      if (container.isConnected
+          && (canvas.clientWidth !== boxW || canvas.clientHeight !== boxH)) {
+        boxW = canvas.clientWidth;
+        boxH = canvas.clientHeight;
+        if (boxW > 0 && boxH > 0) draw();
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+
     const prevRemoved = node.onRemoved;
     node.onRemoved = function (...args) {
+      ticking = false;
       state.plate = null;
       state.polygons = [];
       list.replaceChildren();
       return prevRemoved?.apply(this, args);
     };
+
+    // Freshly added nodes get a usable canvas; a node restored from a save
+    // keeps whatever size it stored (onConfigure has already run by now).
+    node.setSize([
+      Math.max(node.size[0], DEFAULT_NODE_SIZE[0]),
+      Math.max(node.size[1], DEFAULT_NODE_SIZE[1]),
+    ]);
 
     renderList();
     draw();
