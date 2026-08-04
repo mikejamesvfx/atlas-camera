@@ -3377,8 +3377,7 @@ function buildNodeUI(node, containerEl) {
       return (editSnap
         ? "▣ click the base corner — on the ground grid, snapped to 1m cells"
         : "▣ click the base corner — on the ground plane (grid snap off)")
-        + "
-ctrl-click to start on geometry instead (a roof, a ledge)";
+        + "\nctrl-click to start on geometry instead (a roof, a ledge)";
     }
     if (boxStage === 1) return "▣ drag the footprint · click to fix it · Esc cancels";
     return `▣ drag the height (${boxHeight.toFixed(2)}m) · click or Enter finishes`;
