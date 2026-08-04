@@ -573,10 +573,6 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform sampler2D uTexture;
   uniform sampler2D uMatte;
   uniform float uHasMatte;
-  uniform sampler2D uHiddenMask;
-  uniform float uHasHiddenMask;
-  uniform float uDebugHidden;
-  uniform vec3 uHiddenTint;
   uniform float uLayerDebug;
   uniform vec3 uLayerTint;
   uniform sampler2D uPatchMask;
@@ -844,22 +840,6 @@ const PROJECTION_FRAGMENT_SHADER = `
     // below (premultipliedAlpha:false) and multiplies RGB exactly once at the
     // blend boundary. Multiplying RGB by coverage here would double-premultiply.
     vec3 outColor = atlasLinearToSRGB(clamp(col.rgb * relight, 0.0, 1.0));
-    // 🩻 hidden-geometry provenance overlay (debug): tint the surface region
-    // whose depth was SUBSTITUTED by a hidden-geometry predictor (its
-    // hidden_mask, threaded through the ProjectionSource) — red = LaRI,
-    // blue = World Tracing (uHiddenTint set per-source at material build).
-    // Sampled at the same projected uv as the photo/matte; applied after the
-    // sRGB encode since it's a display-space annotation, not scene color.
-    // DORMANT since beta 0.8: the research-licensed producer that wrote
-    // hidden_mask_b64 (AtlasPredictHiddenGeometry, LaRI/World-Tracing) is no
-    // longer registered, so uHasHiddenMask is 0 on every live source and this
-    // branch never fires. The plumbing is kept deliberately — mask + backend
-    // on the depth metadata, ridden into the ProjectionSource, sampled here —
-    // because it is the contract any future predictor would target. Deleting
-    // it would mean re-deriving the uv/edge-pad conventions from scratch.
-    if (uDebugHidden > 0.5 && uHasHiddenMask > 0.5 && texture2D(uHiddenMask, uv).r > 0.5) {
-      outColor = mix(outColor, uHiddenTint, 0.5);
-    }
     // 🎨 layer-debug overlay: tint EVERYTHING this projection source paints
     // with its own identifying color (base/primary + each ProjectionSource
     // get distinct palette entries at material build; legend in the toolbar).
@@ -942,7 +922,7 @@ const LAYER_DEBUG_PRIMARY = 0x2fd6c3;               // teal — base mesh + back
 const PLANAR_PATCH_DEBUG = 0xff2fd6;                 // magenta — generated hole islands
 const LAYER_DEBUG_PALETTE = [
   0xff6a3d, // orange — typically the fg layer
-  0x3d8bff, // blue   — typically the X-ray/bg layer
+  0x3d8bff, // blue   — typically the background layer
   0xffd23d, // yellow
   0xc95aff, // violet
   0x6aff5a, // green
@@ -991,13 +971,6 @@ function makeProjectionMaterial(data, texture, opts) {
       // uniform-gated branch means a null sampler is never actually read.
       uMatte: { value: options.matteTexture || null },
       uHasMatte: { value: options.matteTexture ? 1.0 : 0.0 },
-      // 🩻 hidden-geometry provenance mask + tint (debug overlay; uDebugHidden
-      // is synced live by syncProjectionLightUniforms like the light uniforms,
-      // since projection materials are rebuilt on every execution).
-      uHiddenMask: { value: options.hiddenMaskTexture || null },
-      uHasHiddenMask: { value: options.hiddenMaskTexture ? 1.0 : 0.0 },
-      uDebugHidden: { value: 0 },
-      uHiddenTint: { value: options.hiddenTint || new THREE.Color(1.0, 0.15, 0.15) },
       uPrimaryDepth: { value: options.primaryDepthTexture || null },
       uHasPrimaryDepth: { value: options.primaryDepthTexture ? 1.0 : 0.0 },
       uPrimaryDepthSize: { value: new THREE.Vector2(
@@ -1026,7 +999,7 @@ function makeProjectionMaterial(data, texture, opts) {
       uDbgCy: { value: 0.5 },
       uDbgImageSize: { value: new THREE.Vector2(1, 1) },
       // 🎨 layer-debug identity color (fixed per source at build; toggle is
-      // uLayerDebug, live-synced like uDebugHidden/the light uniforms).
+      // uLayerDebug, live-synced like the light uniforms).
       uLayerDebug: { value: 0 },
       uLayerTint: { value: options.layerTint || new THREE.Color(LAYER_DEBUG_PRIMARY) },
       // ◩ Planar-hole-patch identity, live-populated from the viewport's
@@ -1265,7 +1238,6 @@ function buildPatchSources(scene, data, onSourceReady) {
       if (pm) {
         pm.uniforms?.uTexture?.value?.dispose?.();
         pm.uniforms?.uMatte?.value?.dispose?.();
-        pm.uniforms?.uHiddenMask?.value?.dispose?.();
         pm.dispose?.();
       }
     });
@@ -1315,14 +1287,9 @@ function buildPatchSources(scene, data, onSourceReady) {
       // multi-angle patches keep the grazing-discard behavior so they only
       // fill surfaces they see reasonably head-on.
       const facingThreshold = src.projection_mode === "clean_plate" ? -1 : 0.2;
-      const build = (matteTexture, hiddenMaskTexture) => {
-        // 🩻 provenance tint per backend: red = LaRI, blue = World Tracing.
-        const hiddenTint = src.hidden_backend === "world-tracing"
-          ? new THREE.Color(0.2, 0.4, 1.0)
-          : new THREE.Color(1.0, 0.15, 0.15);
+      const build = (matteTexture) => {
         const patchMat = makeProjectionMaterial(src, tex,
           { facingThreshold, priority: src.priority, matteTexture,
-            hiddenMaskTexture, hiddenTint,
             layerTint: new THREE.Color(
               LAYER_DEBUG_PALETTE[idx % LAYER_DEBUG_PALETTE.length]) });
         for (const m of meshes) {
@@ -1330,7 +1297,6 @@ function buildPatchSources(scene, data, onSourceReady) {
           if (prev && prev !== patchMat) {
             prev.uniforms?.uTexture?.value?.dispose?.();
             prev.uniforms?.uMatte?.value?.dispose?.();
-            prev.uniforms?.uHiddenMask?.value?.dispose?.();
             prev.dispose?.();
           }
           m.userData._projMaterial = patchMat;
@@ -1340,14 +1306,7 @@ function buildPatchSources(scene, data, onSourceReady) {
       // Per-pixel edge matte (ProjectionSource.mask_b64): geometry stays
       // coarse; the matte cuts the true silhouette in the shader.
       // loadMatteFromB64 always calls back (null on missing/failed matte).
-      loadMatteFromB64(src.mask_b64, (matteTexture) => {
-        if (src.hidden_mask_b64) {
-          loadMatteFromB64(src.hidden_mask_b64,
-            (hm) => build(matteTexture, hm));
-        } else {
-          build(matteTexture, null);
-        }
-      });
+      loadMatteFromB64(src.mask_b64, (matteTexture) => build(matteTexture));
     });
   });
 }
@@ -1806,7 +1765,6 @@ function buildNodeUI(node, containerEl) {
   // 🩻 hidden-geometry provenance overlay toggle — synced into every
   // projection material by the same live mechanism as the lights (materials
   // are rebuilt on every execution, so a set-once approach would go stale).
-  let debugHiddenOn = false;
   let occludePrimaryOn = false;
   // 🎭 debug-matte isolate (node `debug_matte` input): ON by default — wiring
   // a matte means you want the isolate; the toolbar 🎭 button toggles it and
@@ -1822,7 +1780,7 @@ function buildNodeUI(node, containerEl) {
   let bumpStrength = 0;     // 💡 Lights panel "Detail" — photo-luminance relight bump
   let bumpScale = 8;        // 💡 Lights panel "Scale" — bump sampling offset (texels)
   function syncProjectionLightUniforms() {
-    const active = movableLights.some((l) => l.intensity > 0) || debugHiddenOn
+    const active = movableLights.some((l) => l.intensity > 0)
       || layerDebugOn || bumpStrength > 0 || occludePrimaryOn
       || (debugMatteOn && !!debugMatteTex) || (layerDebugOn && !!patchMaskTex);
     // Skip the traverse entirely while both lights have always been off (the
@@ -1840,9 +1798,6 @@ function buildNodeUI(node, containerEl) {
         mat.uniforms[`uLight${n}Color`].value.copy(l.color);
         mat.uniforms[`uLight${n}Intensity`].value = l.intensity;
       });
-      if (mat.uniforms.uDebugHidden) {
-        mat.uniforms.uDebugHidden.value = debugHiddenOn ? 1 : 0;
-      }
       if (mat.uniforms.uOccludePrimary) {
         mat.uniforms.uOccludePrimary.value = occludePrimaryOn ? 1 : 0;
       }
@@ -2220,25 +2175,6 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(bandBoxBtn);
 
-  // 🩻 X-ray provenance overlay — tints the surface region whose depth was
-  // SUBSTITUTED by a hidden-geometry predictor (red = LaRI, blue = World
-  // Tracing) at 50% over the projected photo. Only visible under 📽 Project
-  // (the tint lives in the projection shader) and only when a hidden-geometry
-  // workflow threaded a hidden_mask into a ProjectionSource.
-  // DORMANT since beta 0.8 — no registered node produces hidden_mask any more
-  // (the research-licensed LaRI/World-Tracing track was removed), so the
-  // toggle is a no-op on every current workflow. Left in place with its shader
-  // path intact: see the matching note in the projection fragment shader.
-  const dbgHiddenBtn = document.createElement("button");
-  dbgHiddenBtn.textContent = "🩻 X-ray";
-  dbgHiddenBtn.title = "Highlight predicted hidden geometry (red = LaRI, blue = World Tracing)";
-  dbgHiddenBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
-  dbgHiddenBtn.onclick = () => {
-    debugHiddenOn = !debugHiddenOn;
-    dbgHiddenBtn.style.background = debugHiddenOn ? "#4a1a2a" : "#2a2a2a";
-    dbgHiddenBtn.style.color = debugHiddenOn ? "#fac" : "#ddd";
-  };
-  toolbar.appendChild(dbgHiddenBtn);
 
   // ✂ Occlude ray-traced shadow map + filtered projection-edge cull
   const dbgOccludeBtn = document.createElement("button");
