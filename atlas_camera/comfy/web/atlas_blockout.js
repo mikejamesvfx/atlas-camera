@@ -3374,9 +3374,11 @@ function buildNodeUI(node, containerEl) {
 
   function boxStatusLine() {
     if (boxStage === 0) {
-      return editSnap
+      return (editSnap
         ? "▣ click the base corner — on the ground grid, snapped to 1m cells"
-        : "▣ click the base corner — on the ground plane (grid snap off)";
+        : "▣ click the base corner — on the ground plane (grid snap off)")
+        + "
+ctrl-click to start on geometry instead (a roof, a ledge)";
     }
     if (boxStage === 1) return "▣ drag the footprint · click to fix it · Esc cancels";
     return `▣ drag the height (${boxHeight.toFixed(2)}m) · click or Enter finishes`;
@@ -3421,14 +3423,28 @@ function buildNodeUI(node, containerEl) {
     if (!mapped.inside) return;
 
     if (boxStage === 0) {
-      // ALWAYS the solved ground plane (Y=0), never a geometry hit. Starting
-      // from geometry put the base wherever the relief mesh happened to be —
-      // and that mesh droops below the grid at torn edges, so boxes began
-      // underground (reported live). A blockout mass stands on the ground; if
-      // it needs to sit on a roof, raise it in Edit.
-      const g = boxGroundPoint(mapped, 0);
-      if (!g) { drawHud("▣ that ray misses the ground plane"); return; }
-      boxBase = snapToGroundGrid(g);
+      // Default: the solved ground plane (Y=0). Taking the base from geometry
+      // by default put it wherever the relief mesh happened to be — and that
+      // mesh droops below the grid at torn edges, so boxes began underground
+      // (reported live). Ctrl/Cmd-click asks for the geometry height
+      // explicitly, for a mass that starts on a roof or a ledge; X/Z still
+      // snap to the grid, only the height comes from the surface.
+      let base = null;
+      if (ev.ctrlKey || ev.metaKey) {
+        drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+        const hits = drawRaycaster.intersectObjects(drawTargets(), false);
+        if (hits.length) {
+          const hp = editSnap ? snapHitToEdge(hits[0], mapped) : hits[0].point;
+          base = [hp.x, hp.y, hp.z];
+        } else {
+          drawHud("▣ ctrl-click found no geometry — starting on the ground");
+        }
+      }
+      if (!base) {
+        base = boxGroundPoint(mapped, 0);
+        if (!base) { drawHud("▣ that ray misses the ground plane"); return; }
+      }
+      boxBase = snapToGroundGrid(base);   // preserves the height, snaps X/Z
       boxOpposite = [...boxBase];
       boxHeight = 0;
       boxStage = 1;
@@ -3445,7 +3461,9 @@ function buildNodeUI(node, containerEl) {
   boxBtn.textContent = "▣ Box";
   boxBtn.title = "Blockout solid: click the base corner, drag the footprint, click, "
     + "drag the height, Enter to finish. The base always sits on the ground plane "
-    + "(Y=0); with Snap on, the footprint and height land on whole 1m grid cells. "
+    + "(Y=0) unless you ctrl-click, which starts it at the height of the geometry "
+    + "under the cursor instead; with Snap on, the footprint and height land on "
+    + "whole 1m grid cells. "
     + "The 8 corners are then editable one by one in Edit, exactly like polygon "
     + "points — raise it onto a roof there if that is what you want.";
   boxBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
