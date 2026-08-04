@@ -131,7 +131,7 @@ def test_nothing_is_deleted_without_execution_evidence(report):
 
 
 def _without_generated_stamp(markdown: str) -> str:
-    """Drop the "Generated <date>" line before comparing.
+    """Delegate to the builder's own normalizer.
 
     That stamp is useful provenance but it must not gate freshness: comparing it
     made the suite go red at every calendar rollover with nothing actually
@@ -140,9 +140,16 @@ def _without_generated_stamp(markdown: str) -> str:
     regenerate without reading the diff, and that is how a genuinely stale
     artifact gets waved through. Found live 2026-07-29, a day after the file
     was last written.
+
+    The 2026-07-29 fix defined the normalizer HERE, so it only ever taught the
+    test to ignore the stamp — ``build_feature_audit.py --check``, the half the
+    docstring advertises to CI, kept comparing the whole markdown and kept
+    false-failing on rollover (found live 2026-08-04, a day after the last
+    regeneration — the same bug, the same distance from the last write). It now
+    lives in the builder and this is a thin alias, so the test exercises the
+    shipped code path instead of a copy that cannot go wrong.
     """
-    return "\n".join(l for l in markdown.splitlines()
-                     if not l.startswith("Generated "))
+    return _load("build_feature_audit").without_generated_stamp(markdown)
 
 
 def test_artifacts_are_regenerated_from_current_evidence():

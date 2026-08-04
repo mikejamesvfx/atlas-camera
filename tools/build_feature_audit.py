@@ -145,6 +145,22 @@ _LEGEND = """\
 """
 
 
+def without_generated_stamp(markdown: str) -> str:
+    """Drop the ``Generated <date>`` line so only CONTENT counts as stale.
+
+    ``render_markdown`` stamps today's UTC date, so a byte comparison of the
+    committed markdown against a fresh render fails on any day after the one
+    the artifacts were generated. That made ``--check`` report STALE with a
+    date-only diff and the advertised remedy (re-run the builder) "fixed" it
+    by rewriting the stamp — training the reader to regenerate without reading
+    the diff, which is exactly how a genuinely stale artifact gets waved
+    through. The staleness check must ignore the stamp; the JSON branch
+    already does, by comparing ``["nodes"]`` alone.
+    """
+    return "\n".join(l for l in markdown.splitlines()
+                     if not l.startswith("Generated "))
+
+
 def render_markdown(report: dict) -> str:
     c = report["counts"]
     out = [
@@ -289,7 +305,8 @@ def main() -> None:
         if not json_path.exists() or json.loads(
                 json_path.read_text(encoding="utf-8")).get("nodes") != report["nodes"]:
             stale.append(str(json_path))
-        if not md_path.exists() or md_path.read_text(encoding="utf-8") != md:
+        if not md_path.exists() or without_generated_stamp(
+                md_path.read_text(encoding="utf-8")) != without_generated_stamp(md):
             stale.append(str(md_path))
         if stale:
             raise SystemExit("STALE (run tools/build_feature_audit.py): "
