@@ -154,6 +154,26 @@ def test_packaging_faces_the_polygon_normal_toward_a_given_camera():
     assert float(np.dot(np.asarray(packed.normal), to_cam)) > 0.0
 
 
+def test_a_slightly_non_planar_outline_still_packages():
+    """Edge-snapping lets a dragged point leave the plane deliberately.
+
+    Points snap onto the mesh so the patch MEETS the geometry at a torn hole's
+    rim; the rim is not perfectly flat, so the outline no longer is either.
+    Triangulation projects into the plane basis, and the emitted mesh keeps the
+    real world points.
+    """
+    quad = [(0.0, 0.0, -5.0), (4.0, 0.0, -5.0),
+            (4.0, 3.0, -5.35), (0.0, 3.0, -4.7)]   # corners pulled off-plane
+
+    packed = polygon_from_world_points(quad, normal=(0.0, 0.0, 1.0))
+
+    assert len(packed.faces) == 6
+    verts = np.asarray(packed.vertices, dtype=float).reshape(-1, 3)
+    # The snapped depths survive: the mesh follows the geometry it snapped to.
+    assert verts[2][2] == pytest.approx(-5.35)
+    assert verts[3][2] == pytest.approx(-4.7)
+
+
 def test_too_few_points_refuses_to_package():
     with pytest.raises(ValueError):
         polygon_from_world_points([(0.0, 0.0, -5.0), (1.0, 0.0, -5.0)],

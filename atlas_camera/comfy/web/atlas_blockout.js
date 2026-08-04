@@ -2580,6 +2580,7 @@ function buildNodeUI(node, containerEl) {
   let editOn = false;       // ✎ Edit: move points of ALREADY-drawn outlines
   let editDrag = null;      // { poly, index } while a handle is being dragged
   let drawDirty = false;    // outlines changed since the last ✅ Apply
+  let editSnap = true;      // snap clicks/drags to mesh edges (Shift bypasses)
   let drawPlane = null;     // { normal, offset }
   let drawnPolygons = [];   // committed outlines, awaiting Apply
   let drawTilt = 0;         // radians, applied about the first-two-hits axis
@@ -2703,6 +2704,38 @@ function buildNodeUI(node, containerEl) {
 
   // Nearest committed-outline vertex to a click, in NDC (so the hit radius is
   // a constant ~14 px on screen whatever the preview resolution).
+  function closestPointOnSegment(point, a, b) {
+    const ab = b.clone().sub(a);
+    const len2 = ab.lengthSq();
+    if (len2 < 1e-12) return a.clone();
+    let t = point.clone().sub(a).dot(ab) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return a.clone().add(ab.multiplyScalar(t));
+  }
+
+  // Snap a surface hit onto the nearest EDGE of the triangle it landed on --
+  // and, since the closest point on a segment collapses to an endpoint near a
+  // corner, onto the nearest vertex too. A torn hole's rim IS mesh edges, so
+  // this is what makes a drawn patch actually meet the geometry instead of
+  // floating near it. Falls back to the raw surface hit when the cursor is not
+  // close to any edge, so a point can still be placed mid-face.
+  function snapHitToEdge(hit, mapped) {
+    const pos = hit.object?.geometry?.attributes?.position;
+    if (!hit.face || !pos) return hit.point.clone();
+    const vertex = (i) => new THREE.Vector3()
+      .fromBufferAttribute(pos, i).applyMatrix4(hit.object.matrixWorld);
+    const tri = [vertex(hit.face.a), vertex(hit.face.b), vertex(hit.face.c)];
+    const tol = 2 * 12 / Math.max(canvas.height, 1);   // ~12 px on screen
+    let best = null, bestD = Infinity;
+    for (let e = 0; e < 3; e += 1) {
+      const cand = closestPointOnSegment(hit.point, tri[e], tri[(e + 1) % 3]);
+      const proj = cand.clone().project(camera);
+      const d = Math.hypot(proj.x - mapped.x, proj.y - mapped.y);
+      if (d < bestD) { bestD = d; best = cand; }
+    }
+    return (best && bestD <= tol) ? best : hit.point.clone();
+  }
+
   function findEditPointNear(mapped) {
     const tol = 2 * 14 / Math.max(canvas.height, 1);
     let best = null, bestD = Infinity;
@@ -2768,7 +2801,22 @@ function buildNodeUI(node, containerEl) {
     if (!editDrag) return;
     const mapped = mappedFromEvent(ev);
     if (!mapped.inside) return;
-    const landed = editRayToPolygonPlane(mapped, editDrag.poly);
+
+    // Snap to geometry FIRST. Constraining the drag to the outline's own plane
+    // put the point where the PLANE is, not under the cursor -- reported live.
+    // Landing on the surface (edge-snapped) is what the artist is aiming at;
+    // the plane is re-fitted from the points afterwards instead of dictating
+    // them. Shift bypasses the snap for a free in-plane slide.
+    let landed = null;
+    if (editSnap && !ev.shiftKey) {
+      drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+      const hits = drawRaycaster.intersectObjects(drawTargets(), false);
+      if (hits.length) {
+        const snapped = snapHitToEdge(hits[0], mapped);
+        landed = [snapped.x, snapped.y, snapped.z];
+      }
+    }
+    if (!landed) landed = editRayToPolygonPlane(mapped, editDrag.poly);
     if (!landed) return;
     editDrag.poly.points_world[editDrag.index] = landed;
     drawDirty = true;
@@ -2778,6 +2826,11 @@ function buildNodeUI(node, containerEl) {
 
   function onEditPointerUp(ev) {
     if (!editDrag) return;
+    // Snapped points can leave the original plane, so re-fit it from what the
+    // outline now IS. The stored plane drives the emitted normal and the UV
+    // basis, so a stale one would misorient the projection.
+    const refit = atlasEstablishPlaneFromHits(editDrag.poly.points_world);
+    if (refit) editDrag.poly.plane = refit;
     editDrag = null;
     canvas.releasePointerCapture?.(ev.pointerId);
     refreshDrawOverlay();
@@ -2852,7 +2905,8 @@ function buildNodeUI(node, containerEl) {
 
     const hits = drawRaycaster.intersectObjects(drawTargets(), false);
     if (hits.length) {
-      const p = hits[0].point;
+      const p = (editSnap && !ev.shiftKey) ? snapHitToEdge(hits[0], mapped)
+                                           : hits[0].point;
       const world = [p.x, p.y, p.z];
       drawPoints.push(world);
       drawRays.push(ray);
@@ -3047,6 +3101,19 @@ function buildNodeUI(node, containerEl) {
       : "");
   };
   toolbar.appendChild(editBtn);
+
+  const snapBtn = document.createElement("button");
+  snapBtn.textContent = "Snap";
+  snapBtn.title = "Snap drawn and dragged points onto the nearest mesh edge/vertex "
+    + "under the cursor. A torn hole's rim IS mesh edges, so this is what makes a "
+    + "patch meet the geometry. Hold Shift to bypass for one gesture.";
+  snapBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#1a2a1a;color:#8f8;border:1px solid #444;border-radius:3px";
+  snapBtn.onclick = () => {
+    editSnap = !editSnap;
+    snapBtn.style.background = editSnap ? "#1a2a1a" : "#2a2a2a";
+    snapBtn.style.color = editSnap ? "#8f8" : "#ddd";
+  };
+  toolbar.appendChild(snapBtn);
 
   const drawApplyBtn = document.createElement("button");
   drawApplyBtn.textContent = "✅ Apply";
