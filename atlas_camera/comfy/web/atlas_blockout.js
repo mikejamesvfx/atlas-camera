@@ -2728,6 +2728,56 @@ function buildNodeUI(node, containerEl) {
 
   // Nearest committed-outline vertex to a click, in NDC (so the hit radius is
   // a constant ~14 px on screen whatever the preview resolution).
+  // Closest point on an infinite AXIS line to a cursor ray (Ericson's
+  // line-line closest approach). This is what makes a Shift-constrained drag
+  // track the cursor along one world axis instead of sliding freely in depth:
+  // without it a "drag upwards" also moved X and Z, and a pass over distant
+  // geometry threw the corner across the scene (reported live). Plain-array
+  // maths so tests/test_frontend_mirrors.py can execute it under node.
+  function atlasClosestPointOnAxis(rayOrigin, rayDir, axisOrigin, axisDir) {
+    const dl = Math.hypot(rayDir[0], rayDir[1], rayDir[2]) || 1;
+    const d1 = [rayDir[0] / dl, rayDir[1] / dl, rayDir[2] / dl];
+    const al = Math.hypot(axisDir[0], axisDir[1], axisDir[2]) || 1;
+    const d2 = [axisDir[0] / al, axisDir[1] / al, axisDir[2] / al];
+    const w0 = [rayOrigin[0] - axisOrigin[0],
+                rayOrigin[1] - axisOrigin[1],
+                rayOrigin[2] - axisOrigin[2]];
+    const b = d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2];
+    const denom = 1 - b * b;
+    if (Math.abs(denom) < 1e-9) return null;      // sighting along the axis
+    const d = d1[0] * w0[0] + d1[1] * w0[1] + d1[2] * w0[2];
+    const e = d2[0] * w0[0] + d2[1] * w0[1] + d2[2] * w0[2];
+    const t = (e - b * d) / denom;
+    return [axisOrigin[0] + t * d2[0],
+            axisOrigin[1] + t * d2[1],
+            axisOrigin[2] + t * d2[2]];
+  }
+
+  const EDIT_AXES = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+
+  // Which world axis the artist means, from the direction they actually
+  // dragged on screen: project each axis at the grabbed corner and take the
+  // one whose screen direction best matches the cursor delta. Locked for the
+  // rest of the gesture so it cannot flip mid-drag.
+  function pickConstraintAxis(origin, deltaNdc) {
+    const len = Math.hypot(deltaNdc.x, deltaNdc.y);
+    if (len < 1e-4) return null;
+    const dir = { x: deltaNdc.x / len, y: deltaNdc.y / len };
+    const base = new THREE.Vector3(...origin).project(camera);
+    let best = null, bestScore = 0;
+    for (const [name, axis] of Object.entries(EDIT_AXES)) {
+      const tip = new THREE.Vector3(
+        origin[0] + axis[0], origin[1] + axis[1], origin[2] + axis[2]
+      ).project(camera);
+      const sx = tip.x - base.x, sy = tip.y - base.y;
+      const slen = Math.hypot(sx, sy);
+      if (slen < 1e-6) continue;                  // axis points at the camera
+      const score = Math.abs((sx / slen) * dir.x + (sy / slen) * dir.y);
+      if (score > bestScore) { bestScore = score; best = name; }
+    }
+    return best;
+  }
+
   function closestPointOnSegment(point, a, b) {
     const ab = b.clone().sub(a);
     const len2 = ab.lengthSq();
@@ -2822,7 +2872,13 @@ function buildNodeUI(node, containerEl) {
       return;
     }
 
-    editDrag = { poly: found.poly, index: found.index };
+    editDrag = {
+      poly: found.poly,
+      index: found.index,
+      origin: [...found.poly.points_world[found.index]],
+      startNdc: { x: mapped.x, y: mapped.y },
+      axis: null,
+    };
     canvas.setPointerCapture?.(ev.pointerId);
     refreshDrawOverlay();
     ev.stopPropagation();
@@ -2834,13 +2890,41 @@ function buildNodeUI(node, containerEl) {
     const mapped = mappedFromEvent(ev);
     if (!mapped.inside) return;
 
-    // Snap to geometry FIRST. Constraining the drag to the outline's own plane
-    // put the point where the PLANE is, not under the cursor -- reported live.
-    // Landing on the surface (edge-snapped) is what the artist is aiming at;
-    // the plane is re-fitted from the points afterwards instead of dictating
-    // them. Shift bypasses the snap for a free in-plane slide.
+    // Shift locks the drag to ONE world axis. Without it a "drag upwards" also
+    // moved X and Z, and passing the cursor over distant geometry snapped the
+    // corner to that surface, throwing it across the scene (reported live).
+    // The axis is chosen from the direction actually dragged and then held for
+    // the rest of the gesture; X / Y / Z force it explicitly.
+    if (ev.shiftKey || editDrag.axis) {
+      if (!editDrag.axis) {
+        editDrag.axis = pickConstraintAxis(editDrag.origin, {
+          x: mapped.x - editDrag.startNdc.x,
+          y: mapped.y - editDrag.startNdc.y,
+        });
+      }
+      if (editDrag.axis) {
+        drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+        const o = camera.getWorldPosition(new THREE.Vector3());
+        const rd = drawRaycaster.ray.direction;
+        const onAxis = atlasClosestPointOnAxis(
+          [o.x, o.y, o.z], [rd.x, rd.y, rd.z],
+          editDrag.origin, EDIT_AXES[editDrag.axis]);
+        if (onAxis) {
+          editDrag.poly.points_world[editDrag.index] = onAxis;
+          drawDirty = true;
+          refreshDrawOverlay();
+          drawHud(`✎ ${editDrag.axis.toUpperCase()} axis locked — `
+                  + "release Shift for a free drag");
+          ev.stopPropagation();
+          return;
+        }
+      }
+    }
+
+    // Otherwise snap to geometry FIRST: constraining the drag to the outline's
+    // own plane put the point where the PLANE is, not under the cursor.
     let landed = null;
-    if (editSnap && !ev.shiftKey) {
+    if (editSnap) {
       drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
       const hits = drawRaycaster.intersectObjects(drawTargets(), false);
       if (hits.length) {
@@ -2939,8 +3023,7 @@ function buildNodeUI(node, containerEl) {
 
     const hits = drawRaycaster.intersectObjects(drawTargets(), false);
     if (hits.length) {
-      const p = (editSnap && !ev.shiftKey) ? snapHitToEdge(hits[0], mapped)
-                                           : hits[0].point;
+      const p = editSnap ? snapHitToEdge(hits[0], mapped) : hits[0].point;
       const world = [p.x, p.y, p.z];
       drawPoints.push(world);
       drawRays.push(ray);
@@ -3001,6 +3084,12 @@ function buildNodeUI(node, containerEl) {
   }
 
   function onDrawKey(ev) {
+    if (editDrag && "xyz".includes(ev.key.toLowerCase())) {
+      editDrag.axis = ev.key.toLowerCase();
+      drawHud(`✎ ${editDrag.axis.toUpperCase()} axis locked`);
+      ev.preventDefault();
+      return;
+    }
     if (boxOn) {
       if (ev.key === "Enter") { finishBox(); ev.preventDefault(); }
       else if (ev.key === "Escape") {
@@ -3141,8 +3230,8 @@ function buildNodeUI(node, containerEl) {
     refreshDrawOverlay();
     drawHud(editOn
       ? (drawnPolygons.length
-          ? "✎ drag a handle to move it · ctrl-click deletes it · "
-            + "then ✅ Apply"
+          ? "✎ drag a handle · SHIFT locks one axis (or press X/Y/Z) · "
+            + "ctrl-click deletes · then ✅ Apply"
           : "✎ nothing drawn yet — use ✏️ Draw first")
       : "");
   };
@@ -3152,7 +3241,7 @@ function buildNodeUI(node, containerEl) {
   snapBtn.textContent = "Snap";
   snapBtn.title = "Snap drawn and dragged points onto the nearest mesh edge/vertex "
     + "under the cursor. A torn hole's rim IS mesh edges, so this is what makes a "
-    + "patch meet the geometry. Hold Shift to bypass for one gesture.";
+    + "patch meet the geometry. Toggle off for free placement; in Edit, Shift constrains a drag to one axis instead.";
   snapBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#1a2a1a;color:#8f8;border:1px solid #444;border-radius:3px";
   snapBtn.onclick = () => {
     editSnap = !editSnap;
@@ -3317,8 +3406,7 @@ function buildNodeUI(node, containerEl) {
       drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
       const hits = drawRaycaster.intersectObjects(drawTargets(), false);
       if (hits.length) {
-        const p = (editSnap && !ev.shiftKey) ? snapHitToEdge(hits[0], mapped)
-                                             : hits[0].point;
+        const p = editSnap ? snapHitToEdge(hits[0], mapped) : hits[0].point;
         boxBase = [p.x, p.y, p.z];
       } else {
         const g = boxGroundPoint(mapped, 0);

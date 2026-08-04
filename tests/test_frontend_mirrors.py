@@ -375,3 +375,56 @@ def test_draw_picking_is_exact_when_nothing_is_letterboxed():
 
     assert centre["x"] == pytest.approx(0.0) and centre["y"] == pytest.approx(0.0)
     assert corner["x"] == pytest.approx(-1.0) and corner["y"] == pytest.approx(1.0)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_axis_constrained_drag_tracks_the_cursor_along_one_axis():
+    """Shift-drag rides a world axis; without it a corner slid in depth.
+
+    A free drag moved X, Y and Z at once — "drag upwards" did not go upwards,
+    and passing over distant geometry threw the corner across the scene
+    (found live, 2026-08-04).
+    """
+    src = _read("atlas_blockout.js")
+    fn = re.search(r"(  function atlasClosestPointOnAxis\(.*?\n  \})", src, re.DOTALL)
+    assert fn, "atlasClosestPointOnAxis missing from atlas_blockout.js"
+
+    r2 = 1.0 / (2 ** 0.5)
+    cases = [
+        # Ray straight down -Z at the origin, constrained to the Y axis: the
+        # closest approach is the origin itself.
+        {"o": [0, 0, 10], "d": [0, 0, -1], "p": [0, 0, 0], "a": [0, 1, 0],
+         "expect": [0, 0, 0]},
+        # Offset sideways: still y=0, because the ray never rises.
+        {"o": [5, 0, 10], "d": [0, 0, -1], "p": [0, 0, 0], "a": [0, 1, 0],
+         "expect": [0, 0, 0]},
+        # Rising 45 deg: reaches y=10 exactly where it crosses z=0.
+        {"o": [0, 0, 10], "d": [0, r2, -r2], "p": [0, 0, 0], "a": [0, 1, 0],
+         "expect": [0, 10, 0]},
+        # Constrained to X instead, from directly above.
+        {"o": [3, 10, 0], "d": [0, -1, 0], "p": [0, 0, 0], "a": [1, 0, 0],
+         "expect": [3, 0, 0]},
+    ]
+    script = (fn.group(1) + "\n"
+              + "const cases = " + json.dumps(cases) + ";\n"
+              + "console.log(JSON.stringify(cases.map((c) =>\n"
+              + "  atlasClosestPointOnAxis(c.o, c.d, c.p, c.a))));")
+    got = json.loads(subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+
+    for case, result in zip(cases, got):
+        assert result is not None, case
+        for a, b in zip(case["expect"], result):
+            assert b == pytest.approx(a, abs=1e-9)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_axis_constraint_refuses_when_sighting_along_the_axis():
+    """Looking straight down the axis leaves the position undetermined."""
+    src = _read("atlas_blockout.js")
+    fn = re.search(r"(  function atlasClosestPointOnAxis\(.*?\n  \})", src, re.DOTALL)
+    script = (fn.group(1)
+              + "\nconsole.log(JSON.stringify("
+              + "atlasClosestPointOnAxis([0,10,0],[0,-1,0],[0,0,0],[0,1,0])));")
+    assert json.loads(subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True).stdout) is None
