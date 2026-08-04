@@ -3,6 +3,47 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## 0.8.2 — 2026-08-03
+
+A **discoverability pass**. No node was added, removed, renamed or rewired, and
+no widget moved — this release changes where nodes appear in the menu and what
+the README leads with. Saved graphs load byte-identical.
+
+### One front door instead of ninety-one
+
+Typing `Atlas` into ComfyUI's node search returned 91 results spread across 13
+`Atlas Camera/<area>` sub-menus, with nothing marking where to begin. 53 of
+those 91 appeared in **no shipped example workflow at all** — present, tested
+and documented, but with nothing showing a newcomer what they were for.
+
+- **`Atlas`** now holds the working set: the nodes a shipped example workflow
+  actually touches, `AtlasInput` among them.
+- **`Atlas/advanced`** holds everything else — still registered, still tested,
+  still supported, just not where you start. Every experimental- and legacy-tier
+  node lives here regardless of workflow usage, so a gated node can never
+  present as the supported path.
+
+Only the `CATEGORY` field changed. ComfyUI serializes a node's registry **key**
+into a saved workflow and never its category, which is precisely what made this
+restructure available under the append-only rule: every key and display name is
+byte-identical to 0.8.1, verified by diffing the registry surface before and
+after, and all 11 shipped workflows load with zero missing-node errors.
+`tests/test_comfy_node_registry.py` now pins the two-tier menu so it cannot
+quietly drift back.
+
+### README leads with the job
+
+The node-count badge is gone — it advertised surface area, which was the
+problem rather than the selling point. The page now opens with what Atlas does
+in one sentence (one photograph in; a metric pinhole camera and a colour-managed
+projection setup out, for Nuke, Maya, USD and Blender), then the front-door
+workflow, then everything else behind a link to the node catalog rather than as
+an inline list.
+
+Three stale node counts (56, 58 and 60, none of them right) and two example
+workflows that no longer exist — `atlas_camera_staged_master_workflow.json` and
+`atlas_occlusion_cull_quickstart_workflow.json` — went with it.
+
 ## 0.8.1 — 2026-07-21
 
 Completes the arm64 story 0.8.0 started — the node pack no longer requires

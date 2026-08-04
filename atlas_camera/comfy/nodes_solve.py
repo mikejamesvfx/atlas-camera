@@ -46,7 +46,7 @@ from atlas_camera.comfy.nodes_viewport import AtlasDebugReport
 class AtlasUSDCameraLoader:
     RETURN_TYPES = ("ATLAS_CAMERA",)
     FUNCTION = "load"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -74,7 +74,7 @@ class AtlasRegisterPlate:
     RETURN_TYPES = ("IMAGE", "ATLAS_PLATE_REF")
     RETURN_NAMES = ("image", "plate_ref")
     FUNCTION = "register"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -137,7 +137,7 @@ class AtlasDeband:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "report")
     FUNCTION = "deband"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -195,7 +195,7 @@ class AtlasGrade:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "report")
     FUNCTION = "grade"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -240,7 +240,7 @@ class AtlasDefocus:
     RETURN_TYPES = ("IMAGE", "IMAGE", "STRING")
     RETURN_NAMES = ("image", "coc_preview", "report")
     FUNCTION = "defocus"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -302,7 +302,7 @@ class AtlasApplyLUT:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "report")
     FUNCTION = "apply"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -399,7 +399,7 @@ class AtlasLoadPlate:
     RETURN_TYPES = ("IMAGE", "MASK", "ATLAS_PLATE_REF", "STRING")
     RETURN_NAMES = ("image", "alpha", "plate_ref", "report")
     FUNCTION = "load"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -489,7 +489,7 @@ class AtlasAttachSourcePlate:
 
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "attach"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -520,7 +520,7 @@ class AtlasLoadRAW:
     RETURN_NAMES = ("image", "plate_ref", "raw_meta", "focal_length_mm",
                     "sensor_width_mm", "report")
     FUNCTION = "load"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -690,7 +690,7 @@ class AtlasSolveFromImage:
     """Solve camera from a ComfyUI IMAGE tensor (no file path needed)."""
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "solve"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -736,7 +736,7 @@ class AtlasConstrainedSolve:
     """Guided solve using line constraints JSON (from Atlas UI or hand-crafted)."""
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "solve"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -774,7 +774,7 @@ class AtlasLearnedSolveFromImage:
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "solve"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -861,7 +861,7 @@ class AtlasScaleOverride:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "override"
-    CATEGORY = "Atlas Camera/Scale & Trim"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -947,7 +947,7 @@ class AtlasRollTrim:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "trim"
-    CATEGORY = "Atlas Camera/Scale & Trim"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1058,7 +1058,7 @@ class AtlasGravityOverride:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "override"
-    CATEGORY = "Atlas Camera/Scale & Trim"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1169,7 +1169,7 @@ class AtlasGravityCompass:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "orient"
-    CATEGORY = "Atlas Camera/Scale & Trim"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1233,7 +1233,7 @@ class AtlasReferenceScaleSolve:
     RETURN_TYPES = ("ATLAS_SOLVE", "FLOAT")
     RETURN_NAMES = ("solve", "camera_height_m")
     FUNCTION = "apply"
-    CATEGORY = "Atlas Camera/Scale & Trim"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1342,7 +1342,7 @@ class AtlasAssessImage:
                     "geom_far", "geom_bg", "geom_mid", "geom_fg",
                     "band_far", "band_bg", "band_mid", "band_fg")
     FUNCTION = "assess"
-    CATEGORY = "Atlas Camera/Gates & QA"
+    CATEGORY = "Atlas"
     ASSESS_OUTPUT_SLOTS = _ASSESS_OUTPUT_SLOTS
     # OUTPUT_NODE so the assessment ALWAYS runs and shows its report on the
 
@@ -1533,7 +1533,7 @@ class AtlasSolveGate:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING", "ATLAS_SOLVE")
     RETURN_NAMES = ("solve", "report", "preview_solve")
     FUNCTION = "gate"
-    CATEGORY = "Atlas Camera/Gates & QA"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1676,7 +1676,7 @@ class AtlasSceneHealthGate:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "gate"
-    CATEGORY = "Atlas Camera/Gates & QA"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1767,7 +1767,7 @@ class AtlasVLMScaleCues:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("scale_references", "summary")
     FUNCTION = "analyze"
-    CATEGORY = "Atlas Camera/Scale & Trim"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1840,7 +1840,7 @@ class AtlasApplyScaleReferences:
     RETURN_TYPES = ("ATLAS_SOLVE", "FLOAT", "STRING")
     RETURN_NAMES = ("solve", "camera_height_m", "report")
     FUNCTION = "apply"
-    CATEGORY = "Atlas Camera/Scale & Trim"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1920,7 +1920,7 @@ class AtlasFaceScaleReference:
     RETURN_TYPES = ("ATLAS_SOLVE", "FLOAT", "STRING", "STRING")
     RETURN_NAMES = ("solve", "camera_height_m", "measurement", "report")
     FUNCTION = "measure"
-    CATEGORY = "Atlas Camera/Scale & Trim"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2212,7 +2212,7 @@ class AtlasLoadRecord3D:
     RETURN_TYPES = ("IMAGE", "ATLAS_SOLVE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
     RETURN_NAMES = ("image", "solve", "depth", "confidence_mask", "report")
     FUNCTION = "load"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas/advanced"
 
     _CONFIDENCE_FLOOR = {"any": 0, "medium": 1, "high": 2}
 
@@ -2313,7 +2313,7 @@ class AtlasStreamRecord3D:
     RETURN_TYPES = ("IMAGE", "ATLAS_SOLVE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
     RETURN_NAMES = ("image", "solve", "depth", "confidence_mask", "report")
     FUNCTION = "grab"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2381,7 +2381,7 @@ class AtlasLoadSolveJSON:
     """Load a previously saved AtlasSolve from a JSON file."""
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "load"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2400,7 +2400,7 @@ class AtlasDecomposeSolve:
     RETURN_TYPES = ("ATLAS_CAMERA", "FLOAT", "STRING", "INT", "INT", "STRING", "FLOAT")
     RETURN_NAMES = ("camera", "confidence", "source_method", "image_width", "image_height", "solve_json", "horizon_angle_deg")
     FUNCTION = "decompose"
-    CATEGORY = "Atlas Camera/Gates & QA"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2432,7 +2432,7 @@ class AtlasDecomposeCamera:
                     "cam_x", "cam_y", "cam_z",
                     "focal_mm", "fov_h_deg")
     FUNCTION = "decompose"
-    CATEGORY = "Atlas Camera/Gates & QA"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2521,7 +2521,7 @@ USE MoGe FOR THE DEPTH, NOT V2-Outdoor. The usual exterior doctrine does
     RETURN_TYPES = ("IMAGE", "STRING", "FLOAT", "IMAGE", "STRING")
     RETURN_NAMES = ("view", "exact_view", "focal_mm", "all_views", "report")
     FUNCTION = "split"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2641,7 +2641,7 @@ class AtlasEquirectMultiView:
     RETURN_TYPES = ("ATLAS_SOLVE", "IMAGE", "STRING")
     RETURN_NAMES = ("solve", "all_views", "report")
     FUNCTION = "build"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):

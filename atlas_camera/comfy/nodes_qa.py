@@ -367,7 +367,7 @@ class AtlasAssessOutput:
     RETURN_NAMES = ("report", "assessment_json", "json_path", "verdict",
                     "image_provenance", "assessed_image", "evidence_path")
     FUNCTION = "assess"
-    CATEGORY = "Atlas Camera/Gates & QA"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True
 
     @classmethod

@@ -217,10 +217,25 @@ def _depth_result(depth, is_metric=True):
                        near=float(d.min()), far=float(d.max()))
 
 
-def test_color_nodes_are_registered_with_color_category():
+def test_color_nodes_are_registered_in_the_atlas_menu():
+    """Colour nodes stay registered and menu-reachable after the 0.8.0 pass.
+
+    The 13 "Atlas Camera/<area>" categories collapsed to two — "Atlas" (the
+    front door: nodes a shipped example workflow actually touches) and
+    "Atlas/advanced" (everything else) — because 91 nodes spread over 13
+    sub-menus gave a first-time user no entry point. CATEGORY is menu metadata
+    only: it is never serialized into a saved graph, so this moved nothing that
+    a workflow depends on. Grade and Defocus appear in shipped workflows and so
+    sit in the front door; ApplyLUT does not, so it is advanced.
+    """
     from atlas_camera.comfy import nodes as N
-    for key in ("AtlasGrade", "AtlasDefocus", "AtlasApplyLUT"):
-        assert N.NODE_CLASS_MAPPINGS[key].CATEGORY == "Atlas Camera/Color"
+    expected = {
+        "AtlasGrade": "Atlas",
+        "AtlasDefocus": "Atlas",
+        "AtlasApplyLUT": "Atlas/advanced",
+    }
+    for key, category in expected.items():
+        assert N.NODE_CLASS_MAPPINGS[key].CATEGORY == category
         assert key in N.NODE_DISPLAY_NAME_MAPPINGS
 
 

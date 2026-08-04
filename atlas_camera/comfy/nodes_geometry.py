@@ -100,7 +100,7 @@ class AtlasDeriveProjectionGeometry:
     RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
     RETURN_NAMES = ("solve", "hole_mask")
     FUNCTION = "derive"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -735,7 +735,7 @@ class AtlasDeriveReliefMesh:
     RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
     RETURN_NAMES = ("solve", "hole_mask")
     FUNCTION = "derive"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -913,7 +913,7 @@ class AtlasLiveMeshRepair:
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "repair"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1144,7 +1144,7 @@ class AtlasRetopologizeLayer:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "retopo"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1576,7 +1576,7 @@ class AtlasPlanarHolePatch:
     RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "STRING", "MASK")
     RETURN_NAMES = ("solve", "remaining_holes", "report", "created_islands")
     FUNCTION = "patch"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1966,7 +1966,7 @@ class AtlasMaskedSurfaceReconstruct:
     RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK", "STRING")
     RETURN_NAMES = ("solve", "remaining_holes", "created_region", "report")
     FUNCTION = "reconstruct"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2145,7 +2145,7 @@ class AtlasRefineOcclusionSeams:
     RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK", "STRING")
     RETURN_NAMES = ("solve", "remaining_holes", "created_region", "report")
     FUNCTION = "refine"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2338,7 +2338,7 @@ class AtlasPathGuidedHoleRepair:
     RETURN_TYPES = ("MASK", "IMAGE", "MASK", "STRING")
     RETURN_NAMES = ("repair_mask", "angle_preview", "visible_islands", "report")
     FUNCTION = "select"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2700,7 +2700,7 @@ class AtlasDeriveWalls:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "derive"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2769,7 +2769,7 @@ class AtlasDeriveTowersSpires:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "derive"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2844,7 +2844,7 @@ class AtlasDeriveRoofsFacades:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "derive"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2882,7 +2882,7 @@ class AtlasDeriveInteriorRoom:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "derive"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2953,7 +2953,7 @@ class AtlasMergeGeometry:
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "merge"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -3010,7 +3010,7 @@ class AtlasDefineShotCam:
     RETURN_TYPES = ("ATLAS_SHOT_CAM",)
     RETURN_NAMES = ("shot_cam",)
     FUNCTION = "define"
-    CATEGORY = "Atlas Camera/Project"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -3057,7 +3057,7 @@ class AtlasExtractAnglePatch:
     RETURN_TYPES = ("IMAGE", "MASK", "STRING", "ATLAS_PATCH")
     RETURN_NAMES = ("patch_image", "patch_matte", "manifest_path", "patch_package")
     FUNCTION = "extract"
-    CATEGORY = "Atlas Camera/Patches"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -3180,7 +3180,7 @@ class AtlasImportAnglePatch:
     RETURN_TYPES = ("IMAGE", "MASK", "STRING", "ATLAS_PATCH")
     RETURN_NAMES = ("patch_image", "patch_matte", "patch_exact", "patch_package")
     FUNCTION = "import_patch"
-    CATEGORY = "Atlas Camera/Patches"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -3284,7 +3284,7 @@ class AtlasAddPatchView:
     """
     RETURN_TYPES = ("ATLAS_SOLVE",)
     FUNCTION = "add_patch"
-    CATEGORY = "Atlas Camera/Patches"
+    CATEGORY = "Atlas/advanced"
 
     # Aliases onto the shared module-level dicts (see above) — kept as class
     # attributes since tests/test_add_patch_view.py references
@@ -3771,7 +3771,7 @@ class AtlasOcclusionMask:
     RETURN_TYPES = ("MASK", "MASK")
     RETURN_NAMES = ("occlusion_mask", "coverage_mask")
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera/Patches"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -4018,7 +4018,7 @@ class AtlasSolvePatchViews:
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("patch_view_override", "patch_prompt", "view_plan", "report")
     FUNCTION = "solve_views"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -4271,7 +4271,7 @@ class AtlasBlockoutMassing:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "blockout"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):

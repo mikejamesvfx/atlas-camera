@@ -154,7 +154,7 @@ class AtlasOcclusionGraph:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "build"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -208,7 +208,7 @@ class AtlasMoveBudget:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "measure"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -301,7 +301,7 @@ class AtlasCompleteDepth:
     RETURN_TYPES = ("ATLAS_DEPTH_MAP", "MASK", "STRING")
     RETURN_NAMES = ("depth", "hidden_mask", "report")
     FUNCTION = "complete"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -452,7 +452,7 @@ class AtlasLayerPlan:
     RETURN_NAMES = ("solve", "report", "foreground_concepts",
                     "background_concepts")
     FUNCTION = "plan"
-    CATEGORY = "Atlas Camera/Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -595,7 +595,7 @@ class AtlasShootList:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING", "STRING")
     RETURN_NAMES = ("solve", "project_path", "report")
     FUNCTION = "build"
-    CATEGORY = "Atlas Camera/Masks & Depth"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):

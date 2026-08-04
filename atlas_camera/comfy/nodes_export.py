@@ -31,7 +31,7 @@ from atlas_camera.comfy.node_helpers import (
 class AtlasExportReviewPackage:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -51,7 +51,7 @@ class AtlasExportReviewPackage:
 class AtlasExportSolveJSON:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -73,7 +73,7 @@ class AtlasExportSolveJSON:
 class AtlasExportMayaReviewScene:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -118,7 +118,7 @@ class AtlasExportReliefMesh:
     RETURN_TYPES = ("STRING", "STRING", "ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("obj_path", "glb_path", "preview_solve", "report")
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -363,7 +363,7 @@ class AtlasExportUSD:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("usd_path",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas/advanced"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -391,7 +391,7 @@ class AtlasExportBlender:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("script_path",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -440,7 +440,7 @@ class AtlasExportNuke:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("script_path", "nk_path")
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -508,7 +508,7 @@ class AtlasExportNukeLayers:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("nk_path", "summary")
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -587,7 +587,7 @@ class AtlasExportMayaLayers:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("ma_path", "summary")
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -657,7 +657,7 @@ class AtlasExportCameraPathUSD:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("usd_path",)
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Export"
+    CATEGORY = "Atlas/advanced"
     OUTPUT_NODE = True  # terminal write-to-disk node; kept alive even without downstream connections
 
     @classmethod
@@ -712,7 +712,7 @@ class AtlasExportPlateEXR:
     RETURN_TYPES = ("STRING", "ATLAS_PLATE_REF", "STRING")
     RETURN_NAMES = ("exr_path", "plate_ref", "report")
     FUNCTION = "export"
-    CATEGORY = "Atlas Camera/Color"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):

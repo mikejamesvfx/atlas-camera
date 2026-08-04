@@ -189,3 +189,46 @@ def test_signature_defaults_match_declared_defaults():
                 mismatches.append(f"{key}.{name}: signature={p.default!r} declared={want!r}")
 
     assert not mismatches, "signature/INPUT_TYPES default mismatch:\n  " + "\n  ".join(mismatches)
+
+
+def test_every_node_sits_in_the_two_tier_atlas_menu():
+    """CATEGORY is exactly "Atlas" or "Atlas/advanced" — the 0.8.0 front door.
+
+    Before 0.8.0 the pack spread 91 registered nodes across 13
+    "Atlas Camera/<area>" sub-menus. Searching "Atlas" returned all of them
+    with nothing marking where to start, and 53 of the 91 appeared in no
+    shipped example workflow at all. The rule now: a node a shipped workflow
+    actually touches is front-door ("Atlas"); everything else, including every
+    experimental- and legacy-tier node, is "Atlas/advanced".
+
+    This is metadata only. ComfyUI serializes the registry KEY into a saved
+    graph, never the category, so recategorizing cannot break a saved
+    workflow — which is what makes it the one restructure available under the
+    append-only rule. The keys and display names themselves stay pinned by
+    the tests above.
+    """
+    import atlas_camera.comfy.nodes as nodes
+    from atlas_camera.comfy import node_registry as reg
+
+    everything = {**reg.NODE_CLASS_MAPPINGS,
+                  **reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS,
+                  **(getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}) or {})}
+    allowed = {"Atlas", "Atlas/advanced"}
+
+    wrong = {key: getattr(cls, "CATEGORY", None)
+             for key, cls in everything.items()
+             if getattr(cls, "CATEGORY", None) not in allowed}
+    assert not wrong, f"nodes outside the two-tier menu: {wrong}"
+
+    # A front door with nothing behind it, or everything behind it, is not a
+    # front door. Guard both directions rather than pinning an exact count,
+    # which would go stale the moment a workflow lands.
+    front = [k for k, c in everything.items() if c.CATEGORY == "Atlas"]
+    assert 10 < len(front) < len(everything) / 2, (
+        f"front door holds {len(front)} of {len(everything)} nodes")
+    assert "AtlasInput" in front, "AtlasInput is the front door and must be in it"
+
+    # Tier gating and menu tier are independent axes, and an experimental node
+    # must never present as supported no matter which workflow uses it.
+    for key in reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS:
+        assert everything[key].CATEGORY == "Atlas/advanced", key

@@ -70,7 +70,7 @@ class AtlasScopeMask:
     RETURN_TYPES = ("MASK", "STRING")
     RETURN_NAMES = ("exclude_mask", "status")
     FUNCTION = "build"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -192,7 +192,7 @@ class AtlasSemanticMask:
     RETURN_TYPES = ("MASK", "STRING")
     RETURN_NAMES = ("mask", "report")
     FUNCTION = "segment"
-    CATEGORY = "Atlas Camera/Masks & Depth"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -259,7 +259,7 @@ class AtlasSAM3Mask:
     RETURN_TYPES = ("MASK", "STRING")
     RETURN_NAMES = ("mask", "report")
     FUNCTION = "segment"
-    CATEGORY = "Atlas Camera/Masks & Depth"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -405,7 +405,7 @@ class AtlasInpaintCrop:
     RETURN_TYPES = ("IMAGE", "MASK", "ATLAS_CROP_REGION")
     RETURN_NAMES = ("cropped_image", "cropped_mask", "crop_region")
     FUNCTION = "crop"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -476,7 +476,7 @@ class AtlasInpaintStitch:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "stitch"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -539,7 +539,7 @@ class AtlasSDXLInpaint:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "report")
     FUNCTION = "expand_sdxl"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -654,7 +654,7 @@ class AtlasInstanceMask:
     RETURN_TYPES = ("MASK", "STRING")
     RETURN_NAMES = ("mask", "report")
     FUNCTION = "select"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -692,7 +692,7 @@ class AtlasSegmentedSDXLInpaint:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "report")
     FUNCTION = "expand_stack"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -798,7 +798,7 @@ class AtlasCleanPlateLayer:
     RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK")
     RETURN_NAMES = ("solve", "hole_mask", "extend_mask")
     FUNCTION = "add_layer"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1319,7 +1319,7 @@ class AtlasCleanPlateStack:
     RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
     RETURN_NAMES = ("solve", "report")
     FUNCTION = "stack"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     _PRIORITIES = (15.0, 10.0, 5.0, 0.0)   # slot 1..4, farthest-highest
 
@@ -1466,7 +1466,7 @@ class AtlasSkyDomeLayer:
     RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK")
     RETURN_NAMES = ("solve", "hole_mask", "extend_mask")
     FUNCTION = "add_layer"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):

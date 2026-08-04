@@ -61,7 +61,7 @@ class AtlasViewportControls:
     RETURN_TYPES = ("ATLAS_VIEWPORT_LINK", "ATLAS_OUTPUT_PROFILE")
     RETURN_NAMES = ("controls", "output_profile")
     FUNCTION = "profile"
-    CATEGORY = "Atlas Camera/Blockout"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -170,7 +170,7 @@ class AtlasBlockoutViewport:
                     "patch_azimuth_view", "patch_elevation_view", "patch_distance", "patch_prompt",
                     "patch_exact", "patch_render_mask")
     FUNCTION = "render"
-    CATEGORY = "Atlas Camera/Blockout"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True  # kept alive even without downstream connections
 
     @classmethod
@@ -435,7 +435,7 @@ class AtlasDebugReport:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("report", "json_path")
     FUNCTION = "report"
-    CATEGORY = "Atlas Camera/Gates & QA"
+    CATEGORY = "Atlas"
     OUTPUT_NODE = True
 
     @classmethod
@@ -562,7 +562,7 @@ class AtlasLayerPreview:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "preview"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -637,7 +637,7 @@ class AtlasInput:
     RETURN_TYPES = ("ATLAS_SOLVE", "IMAGE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
     RETURN_NAMES = ("solve", "image", "depth", "sky_mask", "report")
     FUNCTION = "build"
-    CATEGORY = "Atlas Camera/Solve"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1086,7 +1086,7 @@ class AtlasStereoRender:
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "STRING")
     RETURN_NAMES = ("stereo", "left", "right", "report")
     FUNCTION = "render"
-    CATEGORY = "Atlas Camera/Blockout"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1264,7 +1264,7 @@ class AtlasDisocclusionGuide:
     RETURN_TYPES = ("IMAGE", "MASK", "STRING")
     RETURN_NAMES = ("guide", "hole_mask", "report")
     FUNCTION = "guide"
-    CATEGORY = "Atlas Camera/Blockout"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):

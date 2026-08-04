@@ -44,7 +44,7 @@ class AtlasDepthAnything:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("depth_image",)
     FUNCTION = "estimate"
-    CATEGORY = "Atlas Camera/Masks & Depth"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -105,7 +105,7 @@ class AtlasDepthMap:
     RETURN_TYPES = ("ATLAS_DEPTH_MAP",)
     RETURN_NAMES = ("depth",)
     FUNCTION = "estimate"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -176,7 +176,7 @@ class AtlasDepthOutlierMask:
     RETURN_TYPES = ("MASK", "STRING")
     RETURN_NAMES = ("outlier_mask", "report")
     FUNCTION = "detect"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -235,7 +235,7 @@ class AtlasMogeNormals:
     RETURN_TYPES = ("ATLAS_DEPTH_MAP", "STRING")
     RETURN_NAMES = ("depth", "report")
     FUNCTION = "attach"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -321,7 +321,7 @@ class AtlasDepthDetailEnhance:
     RETURN_TYPES = ("ATLAS_DEPTH_MAP", "STRING")
     RETURN_NAMES = ("depth", "report")
     FUNCTION = "enhance"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -396,7 +396,7 @@ class AtlasDepthCombine:
     RETURN_TYPES = ("ATLAS_DEPTH_MAP", "STRING")
     RETURN_NAMES = ("depth", "report")
     FUNCTION = "combine"
-    CATEGORY = "Atlas Camera/Derive Geometry"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -478,7 +478,7 @@ class AtlasGroundDepthMap:
     RETURN_TYPES = ("IMAGE", "MASK")
     RETURN_NAMES = ("depth_image", "ground_mask")
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera/Masks & Depth"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -511,7 +511,7 @@ class AtlasGroundMask:
     """Binary MASK: 1 = ground visible (ray hits Y=0 plane), 0 = sky/above horizon."""
     RETURN_TYPES = ("MASK",)
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera/Masks & Depth"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -541,7 +541,7 @@ class AtlasHorizonMask:
     """
     RETURN_TYPES = ("MASK",)
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera/Masks & Depth"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -605,7 +605,7 @@ class AtlasVPVisualization:
     """Draw vanishing-point convergence lines and horizon onto an image using PIL."""
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "visualize"
-    CATEGORY = "Atlas Camera/Gates & QA"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -702,7 +702,7 @@ class AtlasDepthBandSplit:
     RETURN_TYPES = ("ATLAS_BAND_SPLIT",)
     RETURN_NAMES = ("band_split",)
     FUNCTION = "define"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -757,7 +757,7 @@ class AtlasBoundedBand:
     RETURN_TYPES = ("ATLAS_BAND_SPLIT", "FLOAT", "STRING")
     RETURN_NAMES = ("band_split", "cutoff_m", "report")
     FUNCTION = "measure"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -858,7 +858,7 @@ class AtlasDepthLayerMask:
     RETURN_TYPES = ("MASK", "MASK", "MASK")
     RETURN_NAMES = ("layer_mask", "occlusion_mask", "hole_mask")
     FUNCTION = "generate"
-    CATEGORY = "Atlas Camera/Inpaint Layers"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1038,7 +1038,7 @@ class AtlasOutpaintDepth:
     RETURN_TYPES = ("ATLAS_DEPTH_MAP", "MASK", "STRING", "ATLAS_SOLVE")
     RETURN_NAMES = ("depth", "ring_mask", "report", "widened_solve")
     FUNCTION = "outpaint"
-    CATEGORY = "Atlas Camera/Masks & Depth"
+    CATEGORY = "Atlas/advanced"
 
     @classmethod
     def INPUT_TYPES(cls):
