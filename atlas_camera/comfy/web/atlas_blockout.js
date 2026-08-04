@@ -2577,6 +2577,9 @@ function buildNodeUI(node, containerEl) {
   let drawHits = [];        // world points that hit geometry (establish the plane)
   let drawPoints = [];      // the outline being drawn, world space
   let drawRays = [];        // the click ray behind each point, for re-projection
+  let editOn = false;       // ✎ Edit: move points of ALREADY-drawn outlines
+  let editDrag = null;      // { poly, index } while a handle is being dragged
+  let drawDirty = false;    // outlines changed since the last ✅ Apply
   let drawPlane = null;     // { normal, offset }
   let drawnPolygons = [];   // committed outlines, awaiting Apply
   let drawTilt = 0;         // radians, applied about the first-two-hits axis
@@ -2652,6 +2655,22 @@ function buildNodeUI(node, containerEl) {
       drawGroup.add(line);
     };
     for (const poly of drawnPolygons) outline(poly.points_world, 0x7ddc86, true);
+    if (editOn && drawnPolygons.length) {
+      const flat = [];
+      for (const poly of drawnPolygons) {
+        for (const q of poly.points_world) flat.push(q[0], q[1], q[2]);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position",
+        new THREE.BufferAttribute(new Float32Array(flat), 3));
+      const handles = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: editDrag ? 0xff9040 : 0x50d0ff,
+        size: 10, sizeAttenuation: false, depthTest: false,
+      }));
+      handles.renderOrder = 200002;
+      handles.userData.atlasHelper = true;
+      drawGroup.add(handles);
+    }
     outline(drawPoints, 0xffffff, false);
     if (drawPoints.length) {
       const flat = [];
@@ -2680,6 +2699,90 @@ function buildNodeUI(node, containerEl) {
       if (landed) drawPoints[i] = landed;
     }
     refreshDrawOverlay();
+  }
+
+  // Nearest committed-outline vertex to a click, in NDC (so the hit radius is
+  // a constant ~14 px on screen whatever the preview resolution).
+  function findEditPointNear(mapped) {
+    const tol = 2 * 14 / Math.max(canvas.height, 1);
+    let best = null, bestD = Infinity;
+    drawnPolygons.forEach((poly, pi) => {
+      poly.points_world.forEach((q, vi) => {
+        const proj = new THREE.Vector3(q[0], q[1], q[2]).project(camera);
+        const d = Math.hypot(proj.x - mapped.x, proj.y - mapped.y);
+        if (d < bestD) { bestD = d; best = { poly, pi, index: vi }; }
+      });
+    });
+    return bestD <= tol ? best : null;
+  }
+
+  function editRayToPolygonPlane(mapped, poly) {
+    // Drag WITHIN the outline's own plane: an N-gon that stops being planar
+    // cannot be triangulated or projected sanely.
+    drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+    const o = camera.getWorldPosition(new THREE.Vector3());
+    const d = drawRaycaster.ray.direction;
+    return atlasIntersectRayWithPlane(
+      [o.x, o.y, o.z], [d.x, d.y, d.z], poly.plane);
+  }
+
+  function mappedFromEvent(ev) {
+    return atlasContainNdc(ev.clientX, ev.clientY, canvas.getBoundingClientRect(),
+                           canvas.width, canvas.height);
+  }
+
+  // CAPTURE phase: createOrbitControls binds pointerdown on the bubble phase,
+  // so grabbing a handle here (and stopping propagation) suppresses the orbit
+  // drag for that gesture only — orbiting anywhere else still works while
+  // editing, which is how you reach a point on the far side.
+  function onEditPointerDown(ev) {
+    if (!editOn) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+    const found = findEditPointNear(mapped);
+    if (!found) return;
+
+    if (ev.ctrlKey || ev.metaKey) {
+      if (found.poly.points_world.length <= 3) {
+        drawnPolygons.splice(found.pi, 1);
+        drawHud("✎ outline deleted (a polygon needs 3 points)");
+      } else {
+        found.poly.points_world.splice(found.index, 1);
+        drawHud("✎ point deleted");
+      }
+      drawDirty = true;
+      refreshDrawOverlay();
+      ev.stopPropagation();
+      ev.preventDefault();
+      return;
+    }
+
+    editDrag = { poly: found.poly, index: found.index };
+    canvas.setPointerCapture?.(ev.pointerId);
+    refreshDrawOverlay();
+    ev.stopPropagation();
+    ev.preventDefault();
+  }
+
+  function onEditPointerMove(ev) {
+    if (!editDrag) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+    const landed = editRayToPolygonPlane(mapped, editDrag.poly);
+    if (!landed) return;
+    editDrag.poly.points_world[editDrag.index] = landed;
+    drawDirty = true;
+    refreshDrawOverlay();
+    ev.stopPropagation();
+  }
+
+  function onEditPointerUp(ev) {
+    if (!editDrag) return;
+    editDrag = null;
+    canvas.releasePointerCapture?.(ev.pointerId);
+    refreshDrawOverlay();
+    drawHud("✎ moved — click ✅ Apply to rebuild the geometry");
+    ev.stopPropagation();
   }
 
   function drawHud(message) {
@@ -2859,6 +2962,9 @@ function buildNodeUI(node, containerEl) {
   // keep working (the same rule createOrbitControls follows).
   canvas.addEventListener("click", onDrawClick);
   canvas.addEventListener("keydown", onDrawKey);
+  canvas.addEventListener("pointerdown", onEditPointerDown, true);
+  canvas.addEventListener("pointermove", onEditPointerMove, true);
+  canvas.addEventListener("pointerup", onEditPointerUp, true);
 
   // Tilt / push: the "adjustable after" half of the plane rules. Both
   // re-intersect the STORED click rays, so the outline keeps the shape drawn
@@ -2904,6 +3010,7 @@ function buildNodeUI(node, containerEl) {
   drawBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
   drawBtn.onclick = () => {
     drawOn = !drawOn;
+    if (drawOn && editOn) editBtn.onclick();
     drawBtn.style.background = drawOn ? "#1a3a1a" : "#2a2a2a";
     drawBtn.style.color = drawOn ? "#8f8" : "#ddd";
     // Orbiting while drawing would fight the click; the artist turns the
@@ -2919,6 +3026,28 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(drawBtn);
 
+  const editBtn = document.createElement("button");
+  editBtn.textContent = "✎ Edit";
+  editBtn.title = "Move points of outlines you have already drawn: drag a handle to "
+    + "slide it WITHIN its own plane, ctrl-click a handle to delete it. Orbiting "
+    + "still works — only the grab itself suppresses it. Click ✅ Apply to rebuild.";
+  editBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  editBtn.onclick = () => {
+    editOn = !editOn;
+    editBtn.style.background = editOn ? "#1a2a3a" : "#2a2a2a";
+    editBtn.style.color = editOn ? "#8cf" : "#ddd";
+    if (editOn && drawOn) drawBtn.onclick();
+    editDrag = null;
+    refreshDrawOverlay();
+    drawHud(editOn
+      ? (drawnPolygons.length
+          ? "✎ drag a handle to move it · ctrl-click deletes it · "
+            + "then ✅ Apply"
+          : "✎ nothing drawn yet — use ✏️ Draw first")
+      : "");
+  };
+  toolbar.appendChild(editBtn);
+
   const drawApplyBtn = document.createElement("button");
   drawApplyBtn.textContent = "✅ Apply";
   drawApplyBtn.title = "Build the drawn outlines into the solve's geometry and re-queue, "
@@ -2926,6 +3055,7 @@ function buildNodeUI(node, containerEl) {
   drawApplyBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
   drawApplyBtn.onclick = () => {
     if (drawPoints.length >= 3) closeDrawnOutline();
+    drawDirty = false;
     if (!drawnPolygons.length) {
       drawHud("✏️ nothing to apply — draw an outline and press Enter first");
       return;
@@ -2935,6 +3065,20 @@ function buildNodeUI(node, containerEl) {
     app.queuePrompt(0, 1);
   };
   toolbar.appendChild(drawApplyBtn);
+
+  // Restore previously-applied outlines from the persisted widget, so ✎ Edit
+  // works after a reload / workflow reopen and not only in the session that
+  // drew them.
+  try {
+    const cdWidget = node.widgets?.find((w) => w.name === "client_data");
+    const stored = cdWidget?.value ? JSON.parse(cdWidget.value).drawn_polygons : null;
+    if (Array.isArray(stored) && stored.length) {
+      drawnPolygons = stored
+        .filter((poly) => Array.isArray(poly?.points_world) && poly.plane)
+        .map((poly) => ({ ...poly, points_world: poly.points_world.map((q) => [...q]) }));
+      refreshDrawOverlay();
+    }
+  } catch (_) { /* malformed client_data — the backend guard reports it */ }
 
   // ---------------------------------------------------------------------------
   // 🧭 Safe Zone — MEASURE the scene's actual safe camera envelope and clamp
