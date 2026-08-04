@@ -106,6 +106,12 @@ graphify-out/
 docs/dev/
 docs/artifacts/
 
+# Local scratch workflows — machine-specific experiments, A/B labs and
+# one-off test graphs. The SHIPPING examples in examples/*.json are pinned by
+# tests/test_example_workflows.py; these are not, and a `git add -A` swept
+# them in once already.
+examples/local/
+
 # Golden-frame gate: per-failure debug renders are generated on demand.
 # The BASELINES in tests/golden/*.png are committed deliberately.
 tests/golden/_failures/
