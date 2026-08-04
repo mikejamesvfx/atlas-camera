@@ -349,6 +349,7 @@ def fit_polygon_plane(
     cy: float,
     mode: str = "auto",
     min_inlier_fraction: float = 0.35,
+    scale: float | None = None,
 ) -> PolygonPlaneFit:
     """Fit the plane an artist-clicked outline lies on.
 
@@ -378,13 +379,26 @@ def fit_polygon_plane(
     r_cw, cam_pos = _camera_frame(np, view_matrix)
     bp = back_project_normals(depth, view_matrix=view_matrix, fx=fx, fy=fy,
                               cx=cx, cy=cy)
-    gf = fit_ground_and_scale(bp, horizon_y=height * 0.45)
-    pts_world = gf.pts_world_scaled
+    # An ADOPTED scale beats a locally-derived one. Atlas has two independent
+    # ground-scale estimators (relief_mesh.estimate_ground_scale and
+    # depth_geometry.fit_ground_and_scale) that disagree on some plates — a
+    # bird's-eye shot most of all, where "below the horizon with a vertical
+    # normal" describes rooftops, not ground. Re-deriving here puts the plane
+    # in a different world from the geometry it is supposed to sit beside, so
+    # callers pass the scale their upstream derive node already committed to.
+    if scale is None:
+        gf = fit_ground_and_scale(bp, horizon_y=height * 0.45)
+        applied_scale = float(gf.scale)
+        pts_world = gf.pts_world_scaled
+    else:
+        applied_scale = float(scale)
+        pts_world = cam_pos + applied_scale * (bp.pts_world - cam_pos)
     mask = _polygon_mask(np, points, height, width)
 
     stats: dict[str, Any] = {
         "point_count": len(points),
-        "depth_scale_applied": float(gf.scale),
+        "depth_scale_applied": applied_scale,
+        "scale_source": "adopted" if scale is not None else "own_ground_fit",
         "polygon_pixels": int(mask.sum()),
     }
 

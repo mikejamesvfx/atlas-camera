@@ -1,0 +1,582 @@
+{
+  "id": "41ee7496-82d1-4fe3-a194-b567adb11bf8",
+  "revision": 0,
+  "last_node_id": 7,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AtlasLoadPlate",
+      "pos": [
+        80,
+        482
+      ],
+      "size": [
+        390,
+        300
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            3,
+            5,
+            7,
+            9
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 3
+        }
+      ],
+      "widgets_values": [
+        "C:\\Users\\miike\\Desktop\\AtlasCamera_Claude\\examples\\images\\newyork_birdseye.jpg",
+        "auto",
+        "sRGB - Display",
+        false
+      ],
+      "title": "NEW YORK \u00b7 bird's-eye source plate",
+      "properties": {
+        "Node name for S&R": "AtlasLoadPlate"
+      }
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        590,
+        218
+      ],
+      "size": [
+        420,
+        390
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "raw_meta",
+          "type": "ATLAS_RAW_META",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "widgets_values": [
+        "assume",
+        120.0,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36.0,
+        "pinhole",
+        "auto",
+        0.0
+      ],
+      "title": "LEARNED SOLVE \u00b7 intentionally review gravity",
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      }
+    },
+    {
+      "id": 3,
+      "type": "AtlasSolveGate",
+      "pos": [
+        1140,
+        192
+      ],
+      "size": [
+        500,
+        650
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 2
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "preview_solve",
+          "type": "ATLAS_SOLVE",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "widgets_values": [
+        false,
+        "",
+        false,
+        0.0,
+        0.0,
+        false,
+        0.0
+      ],
+      "title": "\ud83e\udded ORIENTATION COMPASS \u00b7 gravity + world XYZ",
+      "properties": {
+        "Node name for S&R": "AtlasSolveGate"
+      }
+    },
+    {
+      "id": 4,
+      "type": "AtlasDeriveProjectionGeometry",
+      "pos": [
+        1760,
+        240
+      ],
+      "size": [
+        470,
+        556
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            6,
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        4,
+        6,
+        "auto",
+        "both",
+        256,
+        "azimuth_walls",
+        "aerial",
+        "medium",
+        0.5,
+        false,
+        0.0,
+        256,
+        false
+      ],
+      "title": "APPROVED AERIAL \u00b7 derive relief + building proxies",
+      "properties": {
+        "Node name for S&R": "AtlasDeriveProjectionGeometry"
+      }
+    },
+    {
+      "id": 5,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2350,
+        460
+      ],
+      "size": [
+        760,
+        650
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 6
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": null
+        },
+        {
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 3
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 4
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [],
+          "slot_index": 5
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 6
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 7
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 8
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 9
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 10
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 11
+        }
+      ],
+      "widgets_values": [
+        1024,
+        "",
+        1.0
+      ],
+      "title": "APPROVED 3D VIEW \u00b7 updates on compass release",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      }
+    },
+    {
+      "id": 6,
+      "type": "AtlasDebugReport",
+      "pos": [
+        2350,
+        110
+      ],
+      "size": [
+        470,
+        280
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": null
+        },
+        {
+          "name": "status_1",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_2",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_3",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "widgets_values": [
+        "atlas_debug/newyork_gravity_compass.json"
+      ],
+      "title": "APPROVED CAMERA + GEOMETRY \u00b7 diagnostic",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      }
+    },
+    {
+      "id": 7,
+      "type": "PreviewImage",
+      "pos": [
+        590,
+        678
+      ],
+      "size": [
+        430,
+        500
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 9
+        }
+      ],
+      "outputs": [],
+      "widgets_values": [],
+      "title": "SOURCE PLATE \u00b7 full image reference",
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      3,
+      1,
+      0,
+      3,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
+      1,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      6,
+      4,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      1,
+      0,
+      5,
+      1,
+      "IMAGE"
+    ],
+    [
+      8,
+      4,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      1,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "title": "ATLAS FLAGSHIP \u00b7 NEW YORK GRAVITY COMPASS",
+      "bounding": [
+        25,
+        0,
+        3140,
+        1233
+      ],
+      "color": "#1d5665",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {
+    "atlas_pipeline": "New York bird's-eye -> learned solve -> embedded Gravity Compass -> approved aerial projection geometry -> 3D viewport",
+    "atlas_instructions": "Queue once to reveal the compass. Drag gravity or world heading; release to approve, re-queue once, derive aerial geometry, and update the 3D view.",
+    "atlas_layout_report": "nodes=7 edges=9 overlaps=0 crossings=0 bounds=[80, 110, 3110, 1178]"
+  },
+  "version": 0.4
+}

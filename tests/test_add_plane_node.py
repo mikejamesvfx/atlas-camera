@@ -150,6 +150,37 @@ def test_input_solve_is_not_mutated():
     assert len(out.projection_scene.proxy_geometry) == 1
 
 
+def test_adopts_the_scale_the_upstream_derive_node_committed_to():
+    """Two independent ground-scale fits put the plane in a different world.
+
+    AtlasDeriveReliefMesh records its estimate_ground_scale result; re-deriving
+    a scale here is what put a drawn plane far closer to camera than the mesh
+    it sits beside (bird's-eye plate, 2026-08-04).
+    """
+    depth, visible = _wall_scene()
+    solve = _solve()
+    solve.projection_scene.debug_metadata["proxy_derivation"] = {"ground_scale": 0.5}
+
+    out, report = _add(
+        solve=solve, depth=_depth_result(depth), polygons=_wall_polygon_json(visible))
+
+    plane = _hand_planes(out)[0]
+    assert plane.metadata["fit_stats"]["depth_scale_applied"] == 0.5
+    assert plane.metadata["fit_stats"]["scale_source"] == "adopted"
+    assert "adopted" in report
+
+
+def test_derives_its_own_scale_when_the_solve_records_none():
+    depth, visible = _wall_scene()
+
+    out, report = _add(
+        solve=_solve(), depth=_depth_result(depth), polygons=_wall_polygon_json(visible))
+
+    plane = _hand_planes(out)[0]
+    assert plane.metadata["fit_stats"]["scale_source"] == "own_ground_fit"
+    assert "own ground fit" in report
+
+
 def test_missing_depth_uses_the_rectangle_solve_and_says_so():
     _depth, visible = _wall_scene()
     out, report = _add(

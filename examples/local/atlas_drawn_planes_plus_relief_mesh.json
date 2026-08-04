@@ -1,0 +1,491 @@
+{
+ "id": "96c2fbf6-3397-475e-a831-496082a89fa4",
+ "revision": 0,
+ "last_node_id": 6,
+ "last_link_id": 11,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "LoadImage",
+   "pos": [
+    40,
+    60
+   ],
+   "size": [
+    340,
+    320
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      1,
+      2,
+      8,
+      10
+     ]
+    },
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "newyork_Birdseye.png"
+   ],
+   "title": "1. City plate"
+  },
+  {
+   "id": 2,
+   "type": "AtlasLearnedSolveFromImage",
+   "pos": [
+    420,
+    60
+   ],
+   "size": [
+    360,
+    140
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 1
+    },
+    {
+     "name": "raw_meta",
+     "type": "ATLAS_RAW_META",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "ATLAS_SOLVE",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      3,
+      4
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasLearnedSolveFromImage"
+   },
+   "widgets_values": [
+    "measure_from_depth",
+    1.6,
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    36.0,
+    "pinhole",
+    "auto",
+    0.0
+   ],
+   "title": "2. Solve"
+  },
+  {
+   "id": 3,
+   "type": "AtlasDepthMap",
+   "pos": [
+    800,
+    60
+   ],
+   "size": [
+    360,
+    140
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 2
+    },
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 3
+    }
+   ],
+   "outputs": [
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "links": [
+      5,
+      7,
+      11
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasDepthMap"
+   },
+   "widgets_values": [
+    "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+    "auto",
+    9,
+    0,
+    "",
+    0,
+    0.25
+   ],
+   "title": "3. Depth (shared)"
+  },
+  {
+   "id": 4,
+   "type": "AtlasDeriveReliefMesh",
+   "pos": [
+    420,
+    260
+   ],
+   "size": [
+    360,
+    140
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 4
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 5
+    },
+    {
+     "name": "exclude_mask",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "outlier_mask",
+     "type": "MASK",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      6
+     ]
+    },
+    {
+     "name": "hole_mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasDeriveReliefMesh"
+   },
+   "widgets_values": [
+    128,
+    "custom",
+    0.5,
+    12.0,
+    true,
+    0.0,
+    true
+   ],
+   "title": "4. Relief mesh \u2014 the organic pass"
+  },
+  {
+   "id": 5,
+   "type": "AtlasAddPlanePolygon",
+   "pos": [
+    800,
+    260
+   ],
+   "size": [
+    420,
+    560
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 6
+    },
+    {
+     "name": "depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 7
+    },
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 8
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      9
+     ]
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasAddPlanePolygon"
+   },
+   "widgets_values": [
+    "{\n \"version\": 1,\n \"polygons\": [\n  {\n   \"id\": \"p1\",\n   \"label\": \"right tower facade\",\n   \"points\": [\n    [\n     0.665,\n     0.02\n    ],\n    [\n     0.995,\n     0.06\n    ],\n    [\n     0.995,\n     0.99\n    ],\n    [\n     0.645,\n     0.93\n    ]\n   ],\n   \"fit_mode\": \"inherit\",\n   \"enabled\": true\n  },\n  {\n   \"id\": \"p2\",\n   \"label\": \"white rooftop\",\n   \"points\": [\n    [\n     0.345,\n     0.62\n    ],\n    [\n     0.47,\n     0.505\n    ],\n    [\n     0.585,\n     0.545\n    ],\n    [\n     0.44,\n     0.72\n    ]\n   ],\n   \"fit_mode\": \"inherit\",\n   \"enabled\": true\n  },\n  {\n   \"id\": \"p3\",\n   \"label\": \"brick rooftop (left)\",\n   \"points\": [\n    [\n     0.005,\n     0.6\n    ],\n    [\n     0.185,\n     0.55\n    ],\n    [\n     0.215,\n     0.72\n    ],\n    [\n     0.02,\n     0.8\n    ]\n   ],\n   \"fit_mode\": \"inherit\",\n   \"enabled\": true\n  }\n ]\n}",
+    "auto",
+    "hand_plane",
+    0.35
+   ],
+   "title": "5. Draw planes \u270f\ufe0f \u2014 click hard surfaces the relief mesh tears on"
+  },
+  {
+   "id": 6,
+   "type": "AtlasBlockoutViewport",
+   "pos": [
+    1260,
+    60
+   ],
+   "size": [
+    900,
+    760
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 9
+    },
+    {
+     "name": "source_image",
+     "type": "IMAGE",
+     "link": 10
+    },
+    {
+     "name": "primary_depth",
+     "type": "ATLAS_DEPTH_MAP",
+     "link": 11
+    },
+    {
+     "name": "controls",
+     "type": "ATLAS_VIEWPORT_LINK",
+     "link": null
+    },
+    {
+     "name": "shot_cam",
+     "type": "ATLAS_SHOT_CAM",
+     "link": null
+    },
+    {
+     "name": "output_profile",
+     "type": "ATLAS_OUTPUT_PROFILE",
+     "link": null
+    },
+    {
+     "name": "debug_matte",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "patch_mask",
+     "type": "MASK",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "shaded",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "name": "depth",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "name": "normal",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "name": "mask",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "name": "path_frames",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "name": "camera_path",
+     "type": "ATLAS_CAMERA_PATH",
+     "links": []
+    },
+    {
+     "name": "patch_azimuth_view",
+     "type": "STRING",
+     "links": []
+    },
+    {
+     "name": "patch_elevation_view",
+     "type": "STRING",
+     "links": []
+    },
+    {
+     "name": "patch_distance",
+     "type": "STRING",
+     "links": []
+    },
+    {
+     "name": "patch_prompt",
+     "type": "STRING",
+     "links": []
+    },
+    {
+     "name": "patch_exact",
+     "type": "STRING",
+     "links": []
+    },
+    {
+     "name": "patch_render_mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasBlockoutViewport"
+   },
+   "widgets_values": [
+    768,
+    "",
+    1.0
+   ],
+   "title": "6. Look at it"
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "IMAGE"
+  ],
+  [
+   2,
+   1,
+   0,
+   3,
+   0,
+   "IMAGE"
+  ],
+  [
+   3,
+   2,
+   0,
+   3,
+   1,
+   "ATLAS_SOLVE"
+  ],
+  [
+   4,
+   2,
+   0,
+   4,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   5,
+   3,
+   0,
+   4,
+   1,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   6,
+   4,
+   0,
+   5,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   7,
+   3,
+   0,
+   5,
+   1,
+   "ATLAS_DEPTH_MAP"
+  ],
+  [
+   8,
+   1,
+   0,
+   5,
+   2,
+   "IMAGE"
+  ],
+  [
+   9,
+   5,
+   0,
+   6,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   10,
+   1,
+   0,
+   6,
+   1,
+   "IMAGE"
+  ],
+  [
+   11,
+   3,
+   0,
+   6,
+   2,
+   "ATLAS_DEPTH_MAP"
+  ]
+ ],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4
+}

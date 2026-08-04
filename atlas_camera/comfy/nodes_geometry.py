@@ -4656,6 +4656,20 @@ class AtlasAddPlanePolygon:
             # carries every outline (anchored on the analytic ground plane).
             depth_map = np.full((height, width), np.nan)
 
+        # ADOPT the metric scale the upstream derive node already committed to.
+        # Atlas has two independent ground-scale estimators
+        # (relief_mesh.estimate_ground_scale, used by AtlasDeriveReliefMesh, and
+        # depth_geometry.fit_ground_and_scale) which disagree on some plates —
+        # a bird's-eye shot worst of all, where "below the horizon with a
+        # vertical normal" describes rooftops rather than ground. Sharing the
+        # depth map is not enough; the SCALE has to be shared too, or the drawn
+        # plane lands in a different world from the mesh beside it.
+        derivation = (out.projection_scene.debug_metadata or {}).get("proxy_derivation") or {}
+        adopted = derivation.get("ground_scale")
+        adopted = float(adopted) if isinstance(adopted, (int, float)) else None
+        scale_note = (f"adopted upstream scale {adopted:.4g}" if adopted is not None
+                      else "own ground fit (no upstream scale on the solve)")
+
         lines, statuses, made = [], [], 0
         for index, record in enumerate(records):
             record = record if isinstance(record, dict) else {}
@@ -4681,7 +4695,8 @@ class AtlasAddPlanePolygon:
             fit = fit_polygon_plane(
                 points, depth=depth_map, view_matrix=view_matrix,
                 fx=fx, fy=fy, cx=cx, cy=cy, mode=mode,
-                min_inlier_fraction=float(min_inlier_fraction))
+                min_inlier_fraction=float(min_inlier_fraction),
+                scale=adopted)
             if not fit.ok:
                 _skip(fit.reason)
                 continue
@@ -4722,6 +4737,6 @@ class AtlasAddPlanePolygon:
                 "planes": made, "requested": len(records),
                 "fit_mode": fit_mode, "name_prefix": name_prefix,
             }
-        header = ("AtlasAddPlanePolygon: %d plane(s) from %d outline(s)."
-                  % (made, len(records)))
+        header = ("AtlasAddPlanePolygon: %d plane(s) from %d outline(s); %s."
+                  % (made, len(records), scale_note))
         return _done("\n".join([header, *lines]), statuses)

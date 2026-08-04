@@ -1,0 +1,5122 @@
+{
+  "id": "atlas-holefill-lab",
+  "revision": 0,
+  "last_node_id": 51,
+  "last_link_id": 113,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        900
+      ],
+      "size": [
+        340,
+        402
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            1,
+            2,
+            4,
+            11,
+            21,
+            31,
+            41,
+            53,
+            59,
+            73,
+            83,
+            94,
+            103,
+            112
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "Test plate",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "LoadImage",
+        "#sdppp_variant": "default",
+        "#sdppp_simple_content": "canvas",
+        "#sdppp_simple_mask": "canvas",
+        "#sdppp_simple_boundary": "canvas",
+        "#sdppp_label": ""
+      },
+      "widgets_values": [
+        "ghosttown.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AtlasLearnedSolveFromImage",
+      "pos": [
+        40,
+        1382
+      ],
+      "size": [
+        340,
+        322
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "raw_meta",
+          "shape": 7,
+          "type": "ATLAS_RAW_META",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ATLAS_SOLVE",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            3,
+            5,
+            15,
+            25
+          ]
+        }
+      ],
+      "title": "Shared solve",
+      "properties": {
+        "Node name for S&R": "AtlasLearnedSolveFromImage"
+      },
+      "widgets_values": [
+        "measure_from_depth",
+        1.6,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        36,
+        "pinhole",
+        "auto",
+        0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AtlasDepthMap",
+      "pos": [
+        40,
+        1784
+      ],
+      "size": [
+        340,
+        322
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "solve",
+          "shape": 7,
+          "type": "ATLAS_SOLVE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "slot_index": 0,
+          "links": [
+            6,
+            9,
+            12,
+            16,
+            19,
+            22,
+            26,
+            29,
+            32,
+            38,
+            42,
+            50,
+            54,
+            60,
+            63,
+            70,
+            74,
+            79,
+            84,
+            95,
+            104,
+            113
+          ]
+        }
+      ],
+      "title": "Shared depth",
+      "properties": {
+        "Node name for S&R": "AtlasDepthMap"
+      },
+      "widgets_values": [
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        "auto",
+        9,
+        0,
+        "",
+        0,
+        0.25
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AtlasSAM3Mask",
+      "pos": [
+        40,
+        2186
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "concepts_extra",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "slot_index": 0,
+          "links": [
+            7,
+            17,
+            27
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "Shared sky mask",
+      "properties": {
+        "Node name for S&R": "AtlasSAM3Mask"
+      },
+      "widgets_values": [
+        "sky",
+        0.5,
+        "auto",
+        "merged",
+        0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        570,
+        40
+      ],
+      "size": [
+        340,
+        490
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 5
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 6
+        },
+        {
+          "name": "exclude_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 7
+        },
+        {
+          "name": "outlier_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            8,
+            10,
+            35,
+            48,
+            55
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": [
+            13,
+            36,
+            56
+          ]
+        }
+      ],
+      "title": "[A] baseline mesh",
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        512,
+        "custom",
+        0.5,
+        12,
+        true,
+        0,
+        true,
+        false,
+        0,
+        256,
+        false
+      ]
+    },
+    {
+      "id": 6,
+      "type": "AtlasDebugReport",
+      "pos": [
+        980,
+        40
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 8
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 9
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[A_baseline] debug",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_A_baseline.json"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1390,
+        40
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 11
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 12
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[A] viewport",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 8,
+      "type": "MaskToImage",
+      "pos": [
+        1800,
+        40
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            14
+          ]
+        }
+      ],
+      "title": "[A] holes mask",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "PreviewImage",
+      "pos": [
+        2210,
+        40
+      ],
+      "size": [
+        340,
+        348
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "[A] holes",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 10,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        570,
+        660
+      ],
+      "size": [
+        340,
+        490
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 15
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 16
+        },
+        {
+          "name": "exclude_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 17
+        },
+        {
+          "name": "outlier_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            18,
+            20,
+            68,
+            75
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": [
+            23,
+            76
+          ]
+        }
+      ],
+      "title": "[B] tuned thresholds",
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        512,
+        "custom",
+        0.5,
+        48,
+        true,
+        55,
+        true,
+        false,
+        0,
+        256,
+        false
+      ]
+    },
+    {
+      "id": 11,
+      "type": "AtlasDebugReport",
+      "pos": [
+        980,
+        660
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 18
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 19
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[B_thresholds] debug",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_B_thresholds.json"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1390,
+        660
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 20
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 21
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 22
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[B] viewport",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 13,
+      "type": "MaskToImage",
+      "pos": [
+        1800,
+        660
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            24
+          ]
+        }
+      ],
+      "title": "[B] holes mask",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 14,
+      "type": "PreviewImage",
+      "pos": [
+        2210,
+        660
+      ],
+      "size": [
+        340,
+        348
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "[B] holes",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 15,
+      "type": "AtlasDeriveReliefMesh",
+      "pos": [
+        570,
+        1280
+      ],
+      "size": [
+        340,
+        490
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 25
+        },
+        {
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 26
+        },
+        {
+          "name": "exclude_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 27
+        },
+        {
+          "name": "outlier_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            28,
+            30
+          ]
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": [
+            33
+          ]
+        }
+      ],
+      "title": "[C] live grid fill",
+      "properties": {
+        "Node name for S&R": "AtlasDeriveReliefMesh"
+      },
+      "widgets_values": [
+        512,
+        "custom",
+        0.5,
+        12,
+        true,
+        0,
+        true,
+        true,
+        0,
+        256,
+        true
+      ]
+    },
+    {
+      "id": 16,
+      "type": "AtlasDebugReport",
+      "pos": [
+        980,
+        1280
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 28
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 29
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[C_livefill] debug",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_C_livefill.json"
+      ]
+    },
+    {
+      "id": 17,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1390,
+        1280
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 30
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 31
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 32
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[C] viewport",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 18,
+      "type": "MaskToImage",
+      "pos": [
+        1800,
+        1280
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 33
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            34
+          ]
+        }
+      ],
+      "title": "[C] holes mask",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 19,
+      "type": "PreviewImage",
+      "pos": [
+        2210,
+        1280
+      ],
+      "size": [
+        340,
+        348
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 34
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "[C] holes",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 20,
+      "type": "AtlasPlanarHolePatch",
+      "pos": [
+        570,
+        1900
+      ],
+      "size": [
+        340,
+        460
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 35
+        },
+        {
+          "name": "hole_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 36
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            37,
+            40
+          ]
+        },
+        {
+          "name": "remaining_holes",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": [
+            44
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 2,
+          "links": [
+            39
+          ]
+        },
+        {
+          "name": "created_islands",
+          "type": "MASK",
+          "slot_index": 3,
+          "links": [
+            43,
+            46
+          ]
+        }
+      ],
+      "title": "[D] planar patch",
+      "properties": {
+        "Node name for S&R": "AtlasPlanarHolePatch"
+      },
+      "widgets_values": [
+        "",
+        2,
+        64,
+        25,
+        0.15,
+        0.05,
+        true,
+        0.3,
+        20,
+        2
+      ]
+    },
+    {
+      "id": 21,
+      "type": "AtlasDebugReport",
+      "pos": [
+        980,
+        1900
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 37
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 38
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": 39
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[D_planar] debug",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_D_planar.json"
+      ]
+    },
+    {
+      "id": 22,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1390,
+        1900
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 40
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 41
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 42
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 43
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[D] viewport",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 23,
+      "type": "MaskToImage",
+      "pos": [
+        1800,
+        1900
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 44
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            45
+          ]
+        }
+      ],
+      "title": "[D] remaining mask",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 24,
+      "type": "PreviewImage",
+      "pos": [
+        2210,
+        1900
+      ],
+      "size": [
+        340,
+        348
+      ],
+      "flags": {},
+      "order": 35,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 45
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "[D] remaining",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 25,
+      "type": "MaskToImage",
+      "pos": [
+        2620,
+        1900
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 46
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            47
+          ]
+        }
+      ],
+      "title": "[D] created mask",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 26,
+      "type": "PreviewImage",
+      "pos": [
+        3030,
+        1900
+      ],
+      "size": [
+        340,
+        348
+      ],
+      "flags": {},
+      "order": 36,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 47
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "[D] created",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 27,
+      "type": "AtlasRetopologizeLayer",
+      "pos": [
+        570,
+        2520
+      ],
+      "size": [
+        340,
+        322
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            49,
+            52
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": [
+            51
+          ]
+        }
+      ],
+      "title": "[E] voxel remesh",
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "",
+        "voxel_remesh",
+        2000,
+        0,
+        30,
+        false,
+        8
+      ]
+    },
+    {
+      "id": 28,
+      "type": "AtlasDebugReport",
+      "pos": [
+        980,
+        2520
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 49
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 50
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": 51
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[E_voxel] debug",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_E_voxel.json"
+      ]
+    },
+    {
+      "id": 29,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1390,
+        2520
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 52
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 53
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 54
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[E] viewport",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 30,
+      "type": "AtlasPlanarHolePatch",
+      "pos": [
+        570,
+        3140
+      ],
+      "size": [
+        340,
+        460
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 55
+        },
+        {
+          "name": "hole_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 56
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            57
+          ]
+        },
+        {
+          "name": "remaining_holes",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 2,
+          "links": [
+            64
+          ]
+        },
+        {
+          "name": "created_islands",
+          "type": "MASK",
+          "slot_index": 3,
+          "links": [
+            61,
+            66
+          ]
+        }
+      ],
+      "title": "[F] patch, budget 256, err 0.25",
+      "properties": {
+        "Node name for S&R": "AtlasPlanarHolePatch"
+      },
+      "widgets_values": [
+        "",
+        2,
+        256,
+        25,
+        0.25,
+        0.05,
+        true,
+        0.3,
+        20,
+        2
+      ]
+    },
+    {
+      "id": 31,
+      "type": "AtlasRetopologizeLayer",
+      "pos": [
+        980,
+        3140
+      ],
+      "size": [
+        340,
+        322
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 57
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            58,
+            62
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": [
+            65
+          ]
+        }
+      ],
+      "title": "[F] boundary smooth",
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "",
+        "off",
+        2000,
+        0,
+        30,
+        false,
+        8
+      ]
+    },
+    {
+      "id": 32,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1800,
+        3140
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 37,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 58
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 59
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 60
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 61
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[F] viewport (patch tint)",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 33,
+      "type": "AtlasDebugReport",
+      "pos": [
+        1390,
+        3140
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 38,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 62
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 63
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": 64
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": 65
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[F_stack] debug",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_F_stack.json"
+      ]
+    },
+    {
+      "id": 34,
+      "type": "MaskToImage",
+      "pos": [
+        2210,
+        3140
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 66
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            67
+          ]
+        }
+      ],
+      "title": "[F] created mask",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "MaskToImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 35,
+      "type": "PreviewImage",
+      "pos": [
+        2620,
+        3140
+      ],
+      "size": [
+        340,
+        348
+      ],
+      "flags": {},
+      "order": 39,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 67
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "[F] created",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.27.0",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 36,
+      "type": "AtlasBlenderOrganicFill",
+      "pos": [
+        570,
+        3760
+      ],
+      "size": [
+        340,
+        382
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 68
+        },
+        {
+          "name": "assessment_json",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            69,
+            72
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": [
+            71
+          ]
+        }
+      ],
+      "title": "[G] organic fill (Blender)",
+      "properties": {
+        "Node name for S&R": "AtlasBlenderOrganicFill"
+      },
+      "widgets_values": [
+        "",
+        "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe",
+        192,
+        3,
+        8,
+        4,
+        3,
+        600,
+        false
+      ]
+    },
+    {
+      "id": 37,
+      "type": "AtlasDebugReport",
+      "pos": [
+        980,
+        3760
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 69
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 70
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": 71
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[G_organic] debug",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_G_organic.json"
+      ]
+    },
+    {
+      "id": 38,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1390,
+        3760
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 72
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 73
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 74
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[G] viewport",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 39,
+      "type": "AtlasPlanarHolePatch",
+      "pos": [
+        570,
+        4380
+      ],
+      "size": [
+        340,
+        460
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 75
+        },
+        {
+          "name": "hole_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 76
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "slot_index": 0,
+          "links": [
+            77,
+            87,
+            96
+          ]
+        },
+        {
+          "name": "remaining_holes",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": [
+            86,
+            88,
+            97
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 2,
+          "links": [
+            80,
+            91,
+            100
+          ]
+        },
+        {
+          "name": "created_islands",
+          "type": "MASK",
+          "slot_index": 3,
+          "links": [
+            85,
+            93
+          ]
+        }
+      ],
+      "title": "[H] patch first",
+      "properties": {
+        "Node name for S&R": "AtlasPlanarHolePatch"
+      },
+      "widgets_values": [
+        "",
+        2,
+        256,
+        25,
+        0.25,
+        0.05,
+        true,
+        0.3,
+        20,
+        2
+      ]
+    },
+    {
+      "id": 40,
+      "type": "AtlasBlenderBoundaryFill",
+      "pos": [
+        980,
+        4380
+      ],
+      "size": [
+        340,
+        382
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 77
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "link": 86
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            78,
+            82
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            81
+          ]
+        }
+      ],
+      "title": "[H_native] scoped boundary fill \u2014 Atlas BMesh (no voxel remesh)",
+      "properties": {
+        "Node name for S&R": "AtlasBlenderBoundaryFill"
+      },
+      "widgets_values": [
+        "",
+        "native",
+        256,
+        "",
+        600
+      ]
+    },
+    {
+      "id": 41,
+      "type": "AtlasDebugReport",
+      "pos": [
+        1390,
+        4380
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 41,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 78
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 79
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": 80
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": 81
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[H_native] debug \u2014 planar + native BMesh",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_H_native_boundary.json"
+      ]
+    },
+    {
+      "id": 42,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1800,
+        4380
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 40,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 82
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 83
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 84
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 85
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[H_native] viewport \u2014 original topology + closure faces",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 43,
+      "type": "AtlasBlenderBoundaryFill",
+      "pos": [
+        980,
+        4940
+      ],
+      "size": [
+        340,
+        382
+      ],
+      "flags": {},
+      "order": 42,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 87
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "link": 88
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            89,
+            92
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            90
+          ]
+        }
+      ],
+      "title": "[H_addon] scoped boundary fill \u2014 installed Fill Mesh",
+      "properties": {
+        "Node name for S&R": "AtlasBlenderBoundaryFill"
+      },
+      "widgets_values": [
+        "",
+        "fill_mesh_addon",
+        256,
+        "",
+        600
+      ]
+    },
+    {
+      "id": 44,
+      "type": "AtlasDebugReport",
+      "pos": [
+        1390,
+        4940
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 43,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 89
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": null
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": 91
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": 90
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[H_addon] debug \u2014 planar + installed Fill Mesh",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_H_fill_mesh_addon.json"
+      ]
+    },
+    {
+      "id": 45,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1800,
+        4940
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 44,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 92
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 94
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 95
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 93
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[H_addon] viewport \u2014 installed Fill Mesh result",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 46,
+      "type": "AtlasMaskedSurfaceReconstruct",
+      "pos": [
+        980,
+        5580
+      ],
+      "size": [
+        340,
+        382
+      ],
+      "flags": {},
+      "order": 45,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 96
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "link": 97
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            98,
+            101,
+            105
+          ]
+        },
+        {
+          "name": "remaining_holes",
+          "type": "MASK",
+          "links": [
+            106
+          ]
+        },
+        {
+          "name": "created_region",
+          "type": "MASK",
+          "links": [
+            102
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            99,
+            108
+          ]
+        }
+      ],
+      "title": "[H_numpy] masked surface reconstruction \u2014 manufactured local rim",
+      "properties": {
+        "Node name for S&R": "AtlasMaskedSurfaceReconstruct"
+      },
+      "widgets_values": [
+        "",
+        1,
+        64,
+        0.2,
+        true,
+        128
+      ]
+    },
+    {
+      "id": 47,
+      "type": "AtlasDebugReport",
+      "pos": [
+        1390,
+        5580
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 46,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 98
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": null
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": 100
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": 99
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[H_numpy] debug \u2014 manufactured rim reconstruction",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_H_numpy_surface_reconstruct.json"
+      ]
+    },
+    {
+      "id": 48,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1800,
+        5580
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 47,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 101
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 103
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 104
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 102
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[H_numpy] viewport \u2014 camera-ray reconstruction",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 49,
+      "type": "AtlasRefineOcclusionSeams",
+      "pos": [
+        980,
+        6220
+      ],
+      "size": [
+        340,
+        382
+      ],
+      "flags": {},
+      "order": 48,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 105
+        },
+        {
+          "name": "hole_mask",
+          "type": "MASK",
+          "link": 106
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            107,
+            110
+          ]
+        },
+        {
+          "name": "remaining_holes",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "created_region",
+          "type": "MASK",
+          "links": [
+            111
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            109
+          ]
+        }
+      ],
+      "title": "[H_seams] smooth sawtooth boundaries \u2014 independent depth sheets",
+      "properties": {
+        "Node name for S&R": "AtlasRefineOcclusionSeams"
+      },
+      "widgets_values": [
+        "",
+        2.0,
+        8,
+        0.35,
+        256,
+        0.08,
+        2,
+        "away_from_camera"
+      ]
+    },
+    {
+      "id": 50,
+      "type": "AtlasDebugReport",
+      "pos": [
+        1390,
+        6220
+      ],
+      "size": [
+        340,
+        262
+      ],
+      "flags": {},
+      "order": 49,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 107
+        },
+        {
+          "name": "depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": null
+        },
+        {
+          "name": "status_1",
+          "shape": 7,
+          "type": "STRING",
+          "link": 108
+        },
+        {
+          "name": "status_2",
+          "shape": 7,
+          "type": "STRING",
+          "link": 109
+        },
+        {
+          "name": "status_3",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "status_4",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "vlm_report",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "json_path",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "[H_seams] debug \u2014 NumPy reconstruction + seam underlap",
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/holefill_H_numpy_occlusion_seams.json"
+      ]
+    },
+    {
+      "id": 51,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1800,
+        6220
+      ],
+      "size": [
+        340,
+        558
+      ],
+      "flags": {},
+      "order": 50,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 110
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 112
+        },
+        {
+          "name": "primary_depth",
+          "shape": 7,
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 113
+        },
+        {
+          "name": "controls",
+          "shape": 7,
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null
+        },
+        {
+          "name": "shot_cam",
+          "shape": 7,
+          "type": "ATLAS_SHOT_CAM",
+          "link": null
+        },
+        {
+          "name": "output_profile",
+          "shape": 7,
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null
+        },
+        {
+          "name": "debug_matte",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "patch_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 111
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shaded",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "IMAGE",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "path_frames",
+          "type": "IMAGE",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        },
+        {
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "slot_index": 7,
+          "links": []
+        },
+        {
+          "name": "patch_distance",
+          "type": "STRING",
+          "slot_index": 8,
+          "links": []
+        },
+        {
+          "name": "patch_prompt",
+          "type": "STRING",
+          "slot_index": 9,
+          "links": []
+        },
+        {
+          "name": "patch_exact",
+          "type": "STRING",
+          "slot_index": 10,
+          "links": []
+        },
+        {
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "slot_index": 11,
+          "links": []
+        }
+      ],
+      "title": "[H_seams] viewport \u2014 smoothed dual-sheet underlap",
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        768,
+        "",
+        1,
+        ""
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      1,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      1,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      2,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      6,
+      3,
+      0,
+      5,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      7,
+      4,
+      0,
+      5,
+      2,
+      "MASK"
+    ],
+    [
+      8,
+      5,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
+      3,
+      0,
+      6,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      10,
+      5,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      11,
+      1,
+      0,
+      7,
+      1,
+      "IMAGE"
+    ],
+    [
+      12,
+      3,
+      0,
+      7,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      13,
+      5,
+      1,
+      8,
+      0,
+      "MASK"
+    ],
+    [
+      14,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      2,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      16,
+      3,
+      0,
+      10,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      17,
+      4,
+      0,
+      10,
+      2,
+      "MASK"
+    ],
+    [
+      18,
+      10,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      19,
+      3,
+      0,
+      11,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      20,
+      10,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      21,
+      1,
+      0,
+      12,
+      1,
+      "IMAGE"
+    ],
+    [
+      22,
+      3,
+      0,
+      12,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      23,
+      10,
+      1,
+      13,
+      0,
+      "MASK"
+    ],
+    [
+      24,
+      13,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      2,
+      0,
+      15,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      26,
+      3,
+      0,
+      15,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      27,
+      4,
+      0,
+      15,
+      2,
+      "MASK"
+    ],
+    [
+      28,
+      15,
+      0,
+      16,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      29,
+      3,
+      0,
+      16,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      30,
+      15,
+      0,
+      17,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      31,
+      1,
+      0,
+      17,
+      1,
+      "IMAGE"
+    ],
+    [
+      32,
+      3,
+      0,
+      17,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      33,
+      15,
+      1,
+      18,
+      0,
+      "MASK"
+    ],
+    [
+      34,
+      18,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      35,
+      5,
+      0,
+      20,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      36,
+      5,
+      1,
+      20,
+      1,
+      "MASK"
+    ],
+    [
+      37,
+      20,
+      0,
+      21,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      38,
+      3,
+      0,
+      21,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      39,
+      20,
+      2,
+      21,
+      2,
+      "STRING"
+    ],
+    [
+      40,
+      20,
+      0,
+      22,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      41,
+      1,
+      0,
+      22,
+      1,
+      "IMAGE"
+    ],
+    [
+      42,
+      3,
+      0,
+      22,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      43,
+      20,
+      3,
+      22,
+      7,
+      "MASK"
+    ],
+    [
+      44,
+      20,
+      1,
+      23,
+      0,
+      "MASK"
+    ],
+    [
+      45,
+      23,
+      0,
+      24,
+      0,
+      "IMAGE"
+    ],
+    [
+      46,
+      20,
+      3,
+      25,
+      0,
+      "MASK"
+    ],
+    [
+      47,
+      25,
+      0,
+      26,
+      0,
+      "IMAGE"
+    ],
+    [
+      48,
+      5,
+      0,
+      27,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      49,
+      27,
+      0,
+      28,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      50,
+      3,
+      0,
+      28,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      51,
+      27,
+      1,
+      28,
+      2,
+      "STRING"
+    ],
+    [
+      52,
+      27,
+      0,
+      29,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      53,
+      1,
+      0,
+      29,
+      1,
+      "IMAGE"
+    ],
+    [
+      54,
+      3,
+      0,
+      29,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      55,
+      5,
+      0,
+      30,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      56,
+      5,
+      1,
+      30,
+      1,
+      "MASK"
+    ],
+    [
+      57,
+      30,
+      0,
+      31,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      58,
+      31,
+      0,
+      32,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      59,
+      1,
+      0,
+      32,
+      1,
+      "IMAGE"
+    ],
+    [
+      60,
+      3,
+      0,
+      32,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      61,
+      30,
+      3,
+      32,
+      7,
+      "MASK"
+    ],
+    [
+      62,
+      31,
+      0,
+      33,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      63,
+      3,
+      0,
+      33,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      64,
+      30,
+      2,
+      33,
+      2,
+      "STRING"
+    ],
+    [
+      65,
+      31,
+      1,
+      33,
+      3,
+      "STRING"
+    ],
+    [
+      66,
+      30,
+      3,
+      34,
+      0,
+      "MASK"
+    ],
+    [
+      67,
+      34,
+      0,
+      35,
+      0,
+      "IMAGE"
+    ],
+    [
+      68,
+      10,
+      0,
+      36,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      69,
+      36,
+      0,
+      37,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      70,
+      3,
+      0,
+      37,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      71,
+      36,
+      1,
+      37,
+      2,
+      "STRING"
+    ],
+    [
+      72,
+      36,
+      0,
+      38,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      73,
+      1,
+      0,
+      38,
+      1,
+      "IMAGE"
+    ],
+    [
+      74,
+      3,
+      0,
+      38,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      75,
+      10,
+      0,
+      39,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      76,
+      10,
+      1,
+      39,
+      1,
+      "MASK"
+    ],
+    [
+      77,
+      39,
+      0,
+      40,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      78,
+      40,
+      0,
+      41,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      79,
+      3,
+      0,
+      41,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      80,
+      39,
+      2,
+      41,
+      2,
+      "STRING"
+    ],
+    [
+      81,
+      40,
+      1,
+      41,
+      3,
+      "STRING"
+    ],
+    [
+      82,
+      40,
+      0,
+      42,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      83,
+      1,
+      0,
+      42,
+      1,
+      "IMAGE"
+    ],
+    [
+      84,
+      3,
+      0,
+      42,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      85,
+      39,
+      3,
+      42,
+      7,
+      "MASK"
+    ],
+    [
+      86,
+      39,
+      1,
+      40,
+      1,
+      "MASK"
+    ],
+    [
+      87,
+      39,
+      0,
+      43,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      88,
+      39,
+      1,
+      43,
+      1,
+      "MASK"
+    ],
+    [
+      89,
+      43,
+      0,
+      44,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      90,
+      43,
+      1,
+      44,
+      3,
+      "STRING"
+    ],
+    [
+      91,
+      39,
+      2,
+      44,
+      2,
+      "STRING"
+    ],
+    [
+      92,
+      43,
+      0,
+      45,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      93,
+      39,
+      3,
+      45,
+      7,
+      "MASK"
+    ],
+    [
+      94,
+      1,
+      0,
+      45,
+      1,
+      "IMAGE"
+    ],
+    [
+      95,
+      3,
+      0,
+      45,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      96,
+      39,
+      0,
+      46,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      97,
+      39,
+      1,
+      46,
+      1,
+      "MASK"
+    ],
+    [
+      98,
+      46,
+      0,
+      47,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      99,
+      46,
+      3,
+      47,
+      3,
+      "STRING"
+    ],
+    [
+      100,
+      39,
+      2,
+      47,
+      2,
+      "STRING"
+    ],
+    [
+      101,
+      46,
+      0,
+      48,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      102,
+      46,
+      2,
+      48,
+      7,
+      "MASK"
+    ],
+    [
+      103,
+      1,
+      0,
+      48,
+      1,
+      "IMAGE"
+    ],
+    [
+      104,
+      3,
+      0,
+      48,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      105,
+      46,
+      0,
+      49,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      106,
+      46,
+      1,
+      49,
+      1,
+      "MASK"
+    ],
+    [
+      107,
+      49,
+      0,
+      50,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      108,
+      46,
+      3,
+      50,
+      2,
+      "STRING"
+    ],
+    [
+      109,
+      49,
+      3,
+      50,
+      3,
+      "STRING"
+    ],
+    [
+      110,
+      49,
+      0,
+      51,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      111,
+      49,
+      2,
+      51,
+      7,
+      "MASK"
+    ],
+    [
+      112,
+      1,
+      0,
+      51,
+      1,
+      "IMAGE"
+    ],
+    [
+      113,
+      3,
+      0,
+      51,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Shared: plate + solve + depth",
+      "bounding": [
+        10,
+        824,
+        400,
+        1654
+      ],
+      "color": "#444",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "A - baseline (defaults): honest holes",
+      "bounding": [
+        540,
+        -36,
+        2040,
+        596
+      ],
+      "color": "#335159",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "B - tuned tear thresholds (mef 48 / normal 55)",
+      "bounding": [
+        540,
+        584,
+        2040,
+        596
+      ],
+      "color": "#353",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "C - live grid fill (holes + sawteeth)",
+      "bounding": [
+        540,
+        1204,
+        2040,
+        596
+      ],
+      "color": "#533",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "D - planar hole patch (on A, defaults): the budget cliff",
+      "bounding": [
+        540,
+        1824,
+        2860,
+        566
+      ],
+      "color": "#355",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "E - voxel remesh (on A, watertight)",
+      "bounding": [
+        540,
+        2444,
+        1220,
+        526
+      ],
+      "color": "#535",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "F - tuned: patch 256/0.25 -> boundary smooth -> viewport",
+      "bounding": [
+        540,
+        3064,
+        2450,
+        566
+      ],
+      "color": "#553",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "G - Blender organic fill on B (voxel + shrinkwrap)",
+      "bounding": [
+        540,
+        3684,
+        1220,
+        526
+      ],
+      "color": "#345",
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "H \u2014 boundary-fill A/B, NumPy reconstruction, and dual-sheet seam refinement",
+      "bounding": [
+        540,
+        4304,
+        2450,
+        2520
+      ],
+      "color": "#453",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.45,
+      "offset": [
+        2381.6051793981483,
+        -1275.4320761598192
+      ]
+    },
+    "frontendVersion": "1.45.20",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

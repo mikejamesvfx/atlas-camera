@@ -142,6 +142,45 @@ def test_normal_points_back_toward_the_camera():
     assert float(np.dot(np.asarray(fit.normal), cam - centre)) > 0.0
 
 
+def test_an_explicit_scale_overrides_the_local_ground_fit():
+    """Scale MUST be adoptable: re-deriving it puts the plane in another world.
+
+    AtlasDeriveReliefMesh fits its scale with relief_mesh.estimate_ground_scale;
+    a second, independent fit here lands the plane at a different distance than
+    the mesh it is supposed to sit beside.
+    """
+    normal = np.array([0.0, 0.0, 1.0])
+    depth, visible = _scene(normal, (0.0, 0.0, -8.0))
+    polygon = _inset_polygon(visible)
+
+    own = fit_polygon_plane(polygon, depth=depth, **CAMERA)
+    halved = fit_polygon_plane(polygon, depth=depth, **CAMERA, scale=0.5)
+
+    assert own.ok and halved.ok
+    assert own.stats["depth_scale_applied"] == 1.0
+    assert halved.stats["depth_scale_applied"] == 0.5
+    # Scaling is about the camera, so a half-scale world halves the distance
+    # from the camera to the same surface: the wall sits 8 m out, and the
+    # camera is on the plane's normal axis at z=0.
+    assert abs(abs(own.distance_m) - 8.0) < 0.08
+    assert abs(abs(halved.distance_m) - 4.0) < 0.05
+
+
+def test_an_adopted_scale_still_reprojects_onto_the_clicked_pixels():
+    depth, visible = _scene((0.0, 0.0, 1.0), (0.0, 0.0, -8.0))
+    polygon = _inset_polygon(visible)
+
+    fit = fit_polygon_plane(polygon, depth=depth, **CAMERA, scale=0.5)
+
+    verts = np.asarray(fit.vertices, dtype=float).reshape(-1, 3)
+    cam = np.array([0.0, CAM_HEIGHT, 0.0])
+    for (px, py), world in zip(polygon, verts):
+        local = world - cam
+        u = CX + local[0] / (-local[2]) * FX
+        v = CY - local[1] / (-local[2]) * FY
+        assert abs(u - px) < 0.5 and abs(v - py) < 0.5
+
+
 # --- rectangle-homography fallback -----------------------------------------
 
 def test_rectangle_path_recovers_orientation_without_usable_depth():
