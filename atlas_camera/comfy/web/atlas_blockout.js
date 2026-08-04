@@ -2544,6 +2544,22 @@ function buildNodeUI(node, containerEl) {
     return { normal: nrm, offset: nrm[0] * a[0] + nrm[1] * a[1] + nrm[2] * a[2] };
   }
 
+  // The canvas is object-fit:contain (see its cssText above), so the drawing
+  // buffer is LETTERBOXED inside the element box: the rendered image does not
+  // fill the client rect, and naive rect-relative NDC puts every picking ray
+  // off by the bar size. Found live — clicks did not land where they were made,
+  // and on a near-edge-on plane the small angular error became a huge world
+  // displacement. Pure math, pinned by tests/test_frontend_mirrors.py.
+  function atlasContainNdc(clientX, clientY, rect, bufW, bufH) {
+    const scale = Math.min(rect.width / bufW, rect.height / bufH);
+    const dispW = bufW * scale, dispH = bufH * scale;
+    const originX = rect.left + (rect.width - dispW) / 2;
+    const originY = rect.top + (rect.height - dispH) / 2;
+    const x = ((clientX - originX) / dispW) * 2 - 1;
+    const y = -(((clientY - originY) / dispH) * 2 - 1);
+    return { x, y, inside: x >= -1 && x <= 1 && y >= -1 && y <= 1 };
+  }
+
   function atlasIntersectRayWithPlane(origin, direction, plane) {
     const dlen = Math.hypot(direction[0], direction[1], direction[2]) || 1;
     const d = [direction[0] / dlen, direction[1] / dlen, direction[2] / dlen];
@@ -2560,6 +2576,7 @@ function buildNodeUI(node, containerEl) {
   let drawOn = false;
   let drawHits = [];        // world points that hit geometry (establish the plane)
   let drawPoints = [];      // the outline being drawn, world space
+  let drawRays = [];        // the click ray behind each point, for re-projection
   let drawPlane = null;     // { normal, offset }
   let drawnPolygons = [];   // committed outlines, awaiting Apply
   let drawTilt = 0;         // radians, applied about the first-two-hits axis
@@ -2651,6 +2668,20 @@ function buildNodeUI(node, containerEl) {
     }
   }
 
+  // Re-intersect every stored click ray with the CURRENT (tilted/pushed) plane.
+  // The outline keeps its on-screen shape; only its depth/orientation moves.
+  function recomputeDrawPoints() {
+    const plane = drawPlaneAdjusted();
+    if (!plane) return;
+    for (let i = 0; i < drawPoints.length; i += 1) {
+      const r = drawRays[i];
+      if (!r) continue;
+      const landed = atlasIntersectRayWithPlane(r[0], r[1], plane);
+      if (landed) drawPoints[i] = landed;
+    }
+    refreshDrawOverlay();
+  }
+
   function drawHud(message) {
     drawStatus.textContent = message;
     drawStatus.style.display = message ? "block" : "none";
@@ -2664,22 +2695,64 @@ function buildNodeUI(node, containerEl) {
     const rule = drawHits.length >= 3 ? "best-fit" : "vertical through 2 hits";
     return `✏️ plane set (${rule}) · ${drawPoints.length} point(s) · ` +
       `tilt ${(drawTilt * 180 / Math.PI).toFixed(0)}° push ${drawPush.toFixed(2)}m\n` +
-      "click to add · Enter closes · Esc discards · Backspace undoes";
+      "click to add · ctrl-click deletes · Enter closes · Esc discards";
   }
 
   function onDrawClick(ev) {
     if (!drawOn) return;
     const box = canvas.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
-      ((ev.clientX - box.left) / box.width) * 2 - 1,
-      -((ev.clientY - box.top) / box.height) * 2 + 1);
+    const mapped = atlasContainNdc(ev.clientX, ev.clientY, box,
+                                   canvas.width, canvas.height);
+    if (!mapped.inside) {
+      drawHud("✏️ that click is in the letterbox bar, not the image");
+      return;
+    }
+    const ndc = new THREE.Vector2(mapped.x, mapped.y);
+
+    // Ctrl/Cmd-click removes the point under the cursor. Compared in NDC with
+    // a tolerance derived from the drawing buffer, so the hit radius is a
+    // constant ~14 px on screen whatever the preview resolution.
+    if (ev.ctrlKey || ev.metaKey) {
+      const tol = 2 * 14 / Math.max(canvas.height, 1);
+      let best = -1, bestD = Infinity;
+      for (let i = 0; i < drawPoints.length; i += 1) {
+        const q = new THREE.Vector3(...drawPoints[i]).project(camera);
+        const d = Math.hypot(q.x - mapped.x, q.y - mapped.y);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      if (best >= 0 && bestD <= tol) {
+        drawPoints.splice(best, 1);
+        drawRays.splice(best, 1);
+        // A removed point may also have been one of the plane-defining hits.
+        if (drawHits.length > drawPoints.length) {
+          drawHits = drawHits.slice(0, drawPoints.length);
+          drawPlane = drawHits.length >= 2
+            ? atlasEstablishPlaneFromHits(drawHits) : null;
+        }
+        refreshDrawOverlay();
+        drawHud(drawStatusLine());
+      } else {
+        drawHud("✏️ ctrl-click a point to delete it (none under the cursor)");
+      }
+      return;
+    }
+
     drawRaycaster.setFromCamera(ndc, camera);
+    const rayOrigin = camera.getWorldPosition(new THREE.Vector3());
+    const rayDir = drawRaycaster.ray.direction.clone();
+    // Remembered alongside the point (only once the point is ACCEPTED, so a
+    // rejected click leaves no orphan): adjusting tilt/push re-intersects every
+    // stored ray, keeping the outline where it was drawn ON SCREEN while the
+    // plane moves under it.
+    const ray = [[rayOrigin.x, rayOrigin.y, rayOrigin.z],
+                 [rayDir.x, rayDir.y, rayDir.z]];
 
     const hits = drawRaycaster.intersectObjects(drawTargets(), false);
     if (hits.length) {
       const p = hits[0].point;
       const world = [p.x, p.y, p.z];
       drawPoints.push(world);
+      drawRays.push(ray);
       // Only the clicks BEFORE the plane exists define it; afterwards a hit is
       // just another outline point, so the plane cannot drift mid-outline.
       if (!drawPlane) {
@@ -2693,15 +2766,15 @@ function buildNodeUI(node, containerEl) {
                 "to establish the plane");
         return;
       }
-      const origin = camera.getWorldPosition(new THREE.Vector3());
-      const dir = drawRaycaster.ray.direction;
       const landed = atlasIntersectRayWithPlane(
-        [origin.x, origin.y, origin.z], [dir.x, dir.y, dir.z], plane);
+        [rayOrigin.x, rayOrigin.y, rayOrigin.z],
+        [rayDir.x, rayDir.y, rayDir.z], plane);
       if (!landed) {
         drawHud("✏️ that ray does not meet the plane — orbit and try again");
         return;
       }
       drawPoints.push(landed);
+      drawRays.push(ray);
     }
     refreshDrawOverlay();
     drawHud(drawStatusLine());
@@ -2725,10 +2798,13 @@ function buildNodeUI(node, containerEl) {
       },
     });
     drawPoints = [];
+    drawRays = [];
     drawHits = [];
     drawPlane = null;
     drawTilt = 0;
     drawPush = 0;
+    if (drawTiltInput) drawTiltInput.value = "0";
+    if (drawPushInput) drawPushInput.value = "0";
     refreshDrawOverlay();
     drawHud(`✏️ ${drawnPolygons.length} outline(s) ready — click ✅ Apply to build them`);
   }
@@ -2737,11 +2813,12 @@ function buildNodeUI(node, containerEl) {
     if (!drawOn) return;
     if (ev.key === "Enter") { closeDrawnOutline(); ev.preventDefault(); }
     else if (ev.key === "Escape") {
-      drawPoints = []; drawHits = []; drawPlane = null;
+      drawPoints = []; drawRays = []; drawHits = []; drawPlane = null;
       refreshDrawOverlay(); drawHud(drawStatusLine()); ev.preventDefault();
     } else if (ev.key === "Backspace" || ev.key === "Delete") {
       if (drawPoints.length) {
         drawPoints.pop();
+        drawRays.pop();
         if (drawHits.length > drawPoints.length) {
           drawHits.pop();
           drawPlane = atlasEstablishPlaneFromHits(drawHits);
@@ -2783,6 +2860,42 @@ function buildNodeUI(node, containerEl) {
   canvas.addEventListener("click", onDrawClick);
   canvas.addEventListener("keydown", onDrawKey);
 
+  // Tilt / push: the "adjustable after" half of the plane rules. Both
+  // re-intersect the STORED click rays, so the outline keeps the shape drawn
+  // on screen while the plane rotates about the clicked edge or slides along
+  // its own normal.
+  const drawAdjust = document.createElement("div");
+  drawAdjust.style.cssText =
+    "display:none;align-items:center;gap:4px;font-size:10px;color:#9c9;" +
+    "padding:2px 6px;background:#1a201a;border:1px solid #3a4a3a;border-radius:3px;";
+  const drawTiltInput = document.createElement("input");
+  drawTiltInput.type = "range";
+  drawTiltInput.min = "-60"; drawTiltInput.max = "60"; drawTiltInput.step = "1";
+  drawTiltInput.value = "0";
+  drawTiltInput.title = "Tilt the plane about the axis through the clicked edge";
+  drawTiltInput.style.cssText = "width:70px;";
+  const drawPushInput = document.createElement("input");
+  drawPushInput.type = "range";
+  drawPushInput.min = "-20"; drawPushInput.max = "20"; drawPushInput.step = "0.1";
+  drawPushInput.value = "0";
+  drawPushInput.title = "Push the plane along its own normal (metres)";
+  drawPushInput.style.cssText = "width:70px;";
+  const drawAdjustLabel = document.createElement("span");
+  drawAdjustLabel.textContent = "tilt 0° push 0.0m";
+  const onAdjust = () => {
+    drawTilt = Number(drawTiltInput.value) * Math.PI / 180;
+    drawPush = Number(drawPushInput.value);
+    drawAdjustLabel.textContent =
+      `tilt ${Number(drawTiltInput.value).toFixed(0)}° ` +
+      `push ${drawPush.toFixed(1)}m`;
+    recomputeDrawPoints();
+    drawHud(drawStatusLine());
+  };
+  drawTiltInput.oninput = onAdjust;
+  drawPushInput.oninput = onAdjust;
+  drawAdjust.append(drawTiltInput, drawPushInput, drawAdjustLabel);
+  toolbar.appendChild(drawAdjust);
+
   const drawBtn = document.createElement("button");
   drawBtn.textContent = "✏️ Draw";
   drawBtn.title = "Draw an N-gon in 3D to fill an occluded hole. Orbit until the "
@@ -2798,7 +2911,11 @@ function buildNodeUI(node, containerEl) {
     controls.setEnabled(!drawOn);
     canvas.style.cursor = drawOn ? "crosshair" : "grab";
     drawHud(drawOn ? drawStatusLine() : "");
-    if (!drawOn) { drawPoints = []; drawHits = []; drawPlane = null; refreshDrawOverlay(); }
+    drawAdjust.style.display = drawOn ? "flex" : "none";
+    if (!drawOn) {
+      drawPoints = []; drawRays = []; drawHits = []; drawPlane = null;
+      refreshDrawOverlay();
+    }
   };
   toolbar.appendChild(drawBtn);
 

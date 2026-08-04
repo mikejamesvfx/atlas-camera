@@ -317,3 +317,61 @@ def test_drawn_plane_rules_numerically_match_js():
         else:
             for a, b in zip(py_hit, got["hit"]):
                 assert float(a) == pytest.approx(b, abs=1e-9)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_draw_picking_accounts_for_the_letterboxed_canvas():
+    """The canvas is object-fit:contain, so the buffer is letterboxed.
+
+    Using the element rect for picking NDC put every drawn vertex off by the
+    bar size — and on a near-edge-on plane that small angular error became a
+    huge world displacement (found live, 2026-08-04).
+    """
+    src = _read("atlas_blockout.js")
+    fn = re.search(r"(  function atlasContainNdc\(.*?\n  \})", src, re.DOTALL)
+    assert fn, "atlasContainNdc missing from atlas_blockout.js"
+
+    # 800x400 element showing a 400x400 buffer: 200px pillarbox each side.
+    rect = {"left": 0, "top": 0, "width": 800, "height": 400}
+    probes = [
+        # centre of the IMAGE is NDC origin
+        {"x": 400, "y": 200, "expect": [0.0, 0.0], "inside": True},
+        # left/right edges of the IMAGE, not of the element
+        {"x": 200, "y": 200, "expect": [-1.0, 0.0], "inside": True},
+        {"x": 600, "y": 200, "expect": [1.0, 0.0], "inside": True},
+        # top edge of the image
+        {"x": 400, "y": 0, "expect": [0.0, 1.0], "inside": True},
+        # inside the element but in the pillarbox bar: rejected
+        {"x": 50, "y": 200, "expect": None, "inside": False},
+    ]
+    script = (fn.group(1) + "\n"
+              + "const rect = " + json.dumps(rect) + ";\n"
+              + "const probes = " + json.dumps(probes) + ";\n"
+              + "console.log(JSON.stringify(probes.map(\n"
+              + "  (p) => atlasContainNdc(p.x, p.y, rect, 400, 400))));")
+    got = json.loads(subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+
+    for probe, result in zip(probes, got):
+        assert result["inside"] is probe["inside"], probe
+        if probe["expect"] is not None:
+            assert result["x"] == pytest.approx(probe["expect"][0], abs=1e-9)
+            assert result["y"] == pytest.approx(probe["expect"][1], abs=1e-9)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_draw_picking_is_exact_when_nothing_is_letterboxed():
+    """Same aspect: the mapping must reduce to the plain rect-relative one."""
+    src = _read("atlas_blockout.js")
+    fn = re.search(r"(  function atlasContainNdc\(.*?\n  \})", src, re.DOTALL)
+    rect = {"left": 10, "top": 20, "width": 400, "height": 200}
+    script = (fn.group(1) + "\n"
+              + "const r = " + json.dumps(rect) + ";\n"
+              + "console.log(JSON.stringify([\n"
+              + "  atlasContainNdc(210, 120, r, 800, 400),\n"
+              + "  atlasContainNdc(10, 20, r, 800, 400)]));")
+    centre, corner = json.loads(subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+
+    assert centre["x"] == pytest.approx(0.0) and centre["y"] == pytest.approx(0.0)
+    assert corner["x"] == pytest.approx(-1.0) and corner["y"] == pytest.approx(1.0)
