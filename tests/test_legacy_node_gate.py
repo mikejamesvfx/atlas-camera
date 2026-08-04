@@ -18,7 +18,7 @@ import pytest
 from atlas_camera.comfy import node_registry as registry
 from atlas_camera.comfy import nodes
 
-LEGACY_KEYS = {"AtlasLiveMeshRepair", "AtlasGroundMask"}
+LEGACY_KEYS = {"AtlasLiveMeshRepair", "AtlasGroundMask", "AtlasAddPlanePolygon"}
 
 
 def test_legacy_tier_is_closed_by_default():

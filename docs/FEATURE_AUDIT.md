@@ -29,17 +29,17 @@ relative to itself, so a worktree silently audits a different tree.
 
 ## Counts
 
-* standard: **92**
+* standard: **91**
 * experimental: **6**
-* legacy: **2**
+* legacy: **3**
 * total registered: **100**
 * standard nodes with no product evidence: **0**
 
 | Verdict | Nodes |
 |---|---:|
-| `KEEP_CORE` | 92 |
+| `KEEP_CORE` | 91 |
 | `KEEP_EXPERIMENTAL` | 6 |
-| `LEGACY_GATE` | 2 |
+| `LEGACY_GATE` | 3 |
 
 ## Verdict legend
 
@@ -57,8 +57,8 @@ relative to itself, so a worktree silently audits a different tree.
 
 | Name | Module | Tier | Workflows | Dedicated tests | Live exec | Meaningful output | MCP | Docs | Overlapping replacement | Known defect | Compat risk | Verdict | Migration action |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `AtlasAddPatchView` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 10 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
-| `AtlasAddPlanePolygon` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasAddPatchView` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 9 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasAddPlanePolygon` | atlas_camera/comfy/nodes_geometry.py | legacy | 0 | 1 | not_attempted | not_attempted | 0 | 2 | AtlasBlockoutViewport (✏️ Draw -> ✅ Apply, `solve` output) | drew on the FLAT PLATE, which cannot see an occluded hole — the hole only exists once the model is turned, and depth inside such an outline belongs to the oc… | none — shipped and superseded the same day (2026-08-04); no shipping workflow ever referenced it | **LEGACY_GATE** | Draw the outline in AtlasBlockoutViewport (✏️ Draw), press ✅ Apply, and take geometry from its `solve` output. |
 | `AtlasApplyLUT` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasApplyScaleReferences` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 3 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasAssessImage` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 6 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
@@ -86,7 +86,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasDepthOutlierMask` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDeriveInteriorRoom` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
 | `AtlasDeriveProjectionGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 5 | not_attempted | not_attempted | 0 | 5 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
-| `AtlasDeriveReliefMesh` | atlas_camera/comfy/nodes_geometry.py | standard | 8 | 12 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDeriveReliefMesh` | atlas_camera/comfy/nodes_geometry.py | standard | 8 | 11 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDeriveRoofsFacades` | atlas_camera/comfy/nodes_geometry.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 2 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
 | `AtlasDeriveTowersSpires` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 2 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
 | `AtlasDeriveWalls` | atlas_camera/comfy/nodes_geometry.py | standard | 1 | 5 | not_attempted | not_attempted | 0 | 3 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
@@ -125,7 +125,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasLoadRecord3D` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasLoadSolveJSON` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 0 | ok | ok | 1 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMaskedSurfaceReconstruct` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasMergeGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 1 | 4 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasMergeGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 1 | 3 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMogeNormals` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMoveBudget` | atlas_camera/comfy/nodes_completion.py | standard | 1 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasOcclusionGraph` | atlas_camera/comfy/nodes_completion.py | standard | 5 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
@@ -189,6 +189,7 @@ Re-exposing any of the three is a one-widget append if evidence appears.
 
 ## Appendix — known defects
 
+* **`AtlasAddPlanePolygon`** (LEGACY_GATE) — drew on the FLAT PLATE, which cannot see an occluded hole — the hole only exists once the model is turned, and depth inside such an outline belongs to the occluder, not the intended surface. Also re-derived its own metric scale instead of adopting the upstream one (fixed before retirement, but the design was the real fault)
 * **`AtlasDeriveInteriorRoom`** (KEEP_CORE) — FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because the node had no report output. Now: the primitive records backdrop_depth_source/backdrop_extents_source, an appended `backdrop` widget defaults to measured_only (invented backdrops are dropped and reported; 'always' restores the old behaviour and says the plane is invented), and an appended `report` output carries the explanation. The fx<=0 guard now reports instead of silently no-opping.
 * **`AtlasDeriveProjectionGeometry`** (KEEP_CORE) — FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because the node had no report output. Now: the primitive records backdrop_depth_source/backdrop_extents_source, an appended `backdrop` widget defaults to measured_only (invented backdrops are dropped and reported; 'always' restores the old behaviour and says the plane is invented), and an appended `report` output carries the explanation. The fx<=0 guard now reports instead of silently no-opping.
 * **`AtlasDeriveRoofsFacades`** (KEEP_CORE) — FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because the node had no report output. Now: the primitive records backdrop_depth_source/backdrop_extents_source, an appended `backdrop` widget defaults to measured_only (invented backdrops are dropped and reported; 'always' restores the old behaviour and says the plane is invented), and an appended `report` output carries the explanation. The fx<=0 guard now reports instead of silently no-opping.

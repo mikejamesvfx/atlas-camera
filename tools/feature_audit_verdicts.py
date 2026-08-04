@@ -40,6 +40,32 @@ VERDICT_VALUES = frozenset({
 
 #: node key -> explicit judgement. Anything absent is defaulted (see module doc).
 VERDICTS: dict[str, dict] = {
+    "AtlasAddPlanePolygon": {
+        "verdict": "LEGACY_GATE",
+        "overlapping_replacement":
+            "AtlasBlockoutViewport (✏️ Draw -> ✅ Apply, `solve` output)",
+        "known_defect":
+            "drew on the FLAT PLATE, which cannot see an occluded hole — the "
+            "hole only exists once the model is turned, and depth inside such "
+            "an outline belongs to the occluder, not the intended surface. "
+            "Also re-derived its own metric scale instead of adopting the "
+            "upstream one (fixed before retirement, but the design was the "
+            "real fault)",
+        "compatibility_risk":
+            "none — shipped and superseded the same day (2026-08-04); no "
+            "shipping workflow ever referenced it",
+        "evidence": [
+            "0 shipping example workflows referenced it (registered and "
+            "retired inside one day)",
+            "its geometry core (core/polygon_planes.py) is KEPT and reused by "
+            "the viewport drawing tool, so no capability is lost",
+            "the plate-space fit it existed for cannot solve the occluded-hole "
+            "case it was built for (live: newyork_Birdseye)",
+        ],
+        "migration_action":
+            "Draw the outline in AtlasBlockoutViewport (✏️ Draw), press "
+            "✅ Apply, and take geometry from its `solve` output.",
+    },
     "AtlasLiveMeshRepair": {
         "verdict": "LEGACY_GATE",
         "overlapping_replacement":

@@ -116,6 +116,144 @@ class AtlasViewportControls:
         ))
 
 
+DRAWN_ROLE_SOURCE = "viewport_polygon"
+
+
+def _camera_position(solve):
+    """World-space camera position from the solve's 4x4 view matrix."""
+    np = _require_numpy()
+    vm = np.asarray(solve.camera.extrinsics.camera_view_matrix, dtype=np.float64)
+    return np.linalg.inv(vm)[:3, 3]
+
+
+def _project_world_points(solve, pts_world, width, height):
+    """World points -> source-image pixels. None if anything lands behind."""
+    np = _require_numpy()
+    from atlas_camera.core.camera_spec import CameraSpec
+
+    spec = CameraSpec.from_solve(solve, width=width, height=height)
+    if not spec.has_focal:
+        return None
+    _w, _h, fx, fy, cx, cy = spec.as_params()
+    vm = np.asarray(solve.camera.extrinsics.camera_view_matrix, dtype=np.float64)
+    pts = np.asarray(pts_world, dtype=np.float64).reshape(-1, 3)
+    homo = np.concatenate([pts, np.ones((len(pts), 1))], axis=1)
+    cam = homo @ vm.T
+    z = cam[:, 2]
+    if np.any(z >= -1e-6):          # camera looks down -Z
+        return None
+    u = cx + cam[:, 0] / (-z) * fx
+    v = cy - cam[:, 1] / (-z) * fy
+    return list(zip(u.tolist(), v.tolist()))
+
+
+def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
+    """Turn client_data.drawn_polygons into mesh primitives on a COPY of the solve.
+
+    Drawing happens in the 3D viewport because an occluded hole only exists
+    once the model is turned; the points arrive already in world space, so
+    nothing is re-fitted here.
+
+    APPENDS rather than clobbers — a hand-drawn surface is an addition, the
+    same reasoning AtlasAddPatchView follows, not a re-derivation of the whole
+    PROXY_ROLE set.
+
+    Returns ``(solve_out, mask_array_or_None, report)``. Never raises: a bad
+    outline is reported and skipped, and the solve still flows so a downstream
+    export cannot break just because nothing has been drawn yet.
+    """
+    import copy
+
+    np = _require_numpy()
+    from atlas_camera.core.polygon_planes import (
+        establish_plane_from_hits,
+        polygon_from_world_points,
+        rasterize_polygon_mask,
+    )
+    from atlas_camera.core.proxy_geometry import PROXY_ROLE
+    from atlas_camera.core.schema import AtlasProxyPrimitive
+
+    out = copy.deepcopy(solve)
+    records = (data or {}).get("drawn_polygons") or []
+    if not records:
+        return out, None, "AtlasBlockoutViewport: no polygons drawn in the viewport."
+
+    cam_pos = _camera_position(out)
+    lines, made = [], 0
+    mask = np.zeros((height, width), dtype=bool)
+
+    for index, record in enumerate(records):
+        record = record if isinstance(record, dict) else {}
+        label = record.get("label") or record.get("id") or f"polygon {index + 1}"
+
+        if not record.get("enabled", True):
+            lines.append('"%s": skipped(disabled)' % label)
+            continue
+
+        # Same staleness discipline as the patch branch: an outline drawn
+        # against a DIFFERENT solve/image must not silently re-apply here.
+        gate = Gate(fingerprint, proceed=True,
+                    approved_for=str(record.get("fingerprint") or ""),
+                    blank_is_unconditional=False)
+        if not gate.approved:
+            lines.append('"%s": skipped(stale — drawn against another solve/image)'
+                         % label)
+            continue
+
+        pts = record.get("points_world") or []
+        plane = (record.get("plane") or {})
+        normal = plane.get("normal")
+        if not normal:
+            established = establish_plane_from_hits(pts) if len(pts) >= 2 else None
+            if established is None:
+                lines.append('"%s": skipped(no plane — under-determined outline)' % label)
+                continue
+            normal = established[0]
+
+        try:
+            packed = polygon_from_world_points(
+                pts, normal=normal, camera_position=cam_pos)
+        except (ValueError, TypeError) as exc:
+            lines.append('"%s": skipped(%s)' % (label, exc))
+            continue
+
+        made += 1
+        name = "drawn_plane_%02d" % made
+        out.projection_scene.proxy_geometry.append(AtlasProxyPrimitive(
+            name=name,
+            primitive_type="mesh",
+            dimensions=(0.0, 0.0, 0.0),
+            material="atlas_projection_proxy",
+            metadata={
+                "role": PROXY_ROLE,
+                "source": DRAWN_ROLE_SOURCE,
+                "label": label,
+                "polygon_id": record.get("id") or name,
+                "point_count": len(pts),
+                "normal": list(packed.normal),
+                "distance_m": float(packed.offset),
+                "established_from": record.get("established_from") or {},
+                "vertices": packed.vertices,
+                "faces": packed.faces,
+                "uvs": packed.uvs,
+                "edge_risk": [],
+            },
+        ))
+        lines.append('%s "%s": ok(%d points)' % (name, label, len(pts)))
+
+        projected = _project_world_points(out, pts, width, height)
+        if projected is not None:
+            mask |= rasterize_polygon_mask(projected, height, width)
+
+    if made:
+        out.projection_scene.debug_metadata["drawn_polygons"] = {
+            "planes": made, "requested": len(records),
+        }
+    header = ("AtlasBlockoutViewport: %d drawn plane(s) from %d outline(s)."
+              % (made, len(records)))
+    return out, (mask if made else None), "\n".join([header, *lines])
+
+
 class AtlasBlockoutViewport:
     """
     Browser-based 3D blockout viewport initialized with the recovered camera.
@@ -164,11 +302,16 @@ class AtlasBlockoutViewport:
        branch resumes automatically. Outside a ComfyUI runtime they fall
        back to the zero-orbit named-view defaults.
     """
+    # Slots 0-11 are a saved-workflow contract (positional). The drawn-polygon
+    # outputs APPEND at 12-14 so existing links keep pointing at what they
+    # always pointed at.
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "ATLAS_CAMERA_PATH",
-                    "STRING", "STRING", "STRING", "STRING", "STRING", "MASK")
+                    "STRING", "STRING", "STRING", "STRING", "STRING", "MASK",
+                    "ATLAS_SOLVE", "MASK", "STRING")
     RETURN_NAMES = ("shaded", "depth", "normal", "mask", "path_frames", "camera_path",
                     "patch_azimuth_view", "patch_elevation_view", "patch_distance", "patch_prompt",
-                    "patch_exact", "patch_render_mask")
+                    "patch_exact", "patch_render_mask",
+                    "solve", "drawn_mask", "draw_report")
     FUNCTION = "render"
     CATEGORY = "Atlas"
     OUTPUT_NODE = True  # kept alive even without downstream connections
@@ -358,6 +501,33 @@ class AtlasBlockoutViewport:
                 _patch_exact_string(pa),
             )
 
+        # Drawn polygons live in source-image space, not render space: the mask
+        # is meant to line up with the plate for inpainting.
+        src_h, src_w = int(source_image.shape[1]), int(source_image.shape[2])
+
+        def _drawn_outputs(parsed):
+            """(solve, drawn_mask, draw_report) — always produced, never blocked.
+
+            Unlike the patch outputs there is no ExecutionBlocker here: a
+            downstream export must not break just because nothing has been
+            drawn yet, so the input solve flows through unchanged and the
+            report says what happened.
+            """
+            try:
+                out_solve, drawn_np, report = _apply_drawn_polygons(
+                    solve, parsed, fingerprint=solve_fingerprint,
+                    width=src_w, height=src_h)
+            except Exception as exc:            # never kill the viewport
+                return (solve, torch.zeros(1, src_h, src_w, dtype=torch.float32),
+                        f"AtlasBlockoutViewport: drawn polygons failed ({exc}).")
+            if drawn_np is None:
+                drawn_mask = torch.zeros(1, src_h, src_w, dtype=torch.float32)
+            else:
+                import numpy as _np
+                drawn_mask = torch.from_numpy(
+                    _np.ascontiguousarray(drawn_np.astype("float32"))).unsqueeze(0)
+            return (out_solve, drawn_mask, report)
+
         if not client_data.strip():
             blank = torch.zeros(1, height, width, 3, dtype=torch.float32)
             blank_mask = torch.zeros(1, height, width, dtype=torch.float32)
@@ -365,7 +535,7 @@ class AtlasBlockoutViewport:
             ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
             return {"ui": ui_payload,
                     "result": (blank, blank, blank, blank, blank, None)
-                    + pa_strings + (blank_mask,)}
+                    + pa_strings + (blank_mask,) + _drawn_outputs(None)}
 
         try:
             data = json.loads(client_data)
@@ -376,7 +546,7 @@ class AtlasBlockoutViewport:
             ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
             return {"ui": ui_payload,
                     "result": (blank, blank, blank, blank, blank, None)
-                    + pa_strings + (blank_mask,)}
+                    + pa_strings + (blank_mask,) + _drawn_outputs(None)}
 
         shaded = _decode_b64_to_tensor(data.get("shaded", ""), width, height)
         depth  = _decode_b64_to_tensor(data.get("depth",  ""), width, height)
@@ -404,7 +574,7 @@ class AtlasBlockoutViewport:
         ui_payload["atlas_patch_paused"] = [_patch_state["paused"]]
         return {"ui": ui_payload,
                 "result": (shaded, depth, normal, mask, path_frames, camera_path)
-                + pa_strings + (patch_render_mask,)}
+                + pa_strings + (patch_render_mask,) + _drawn_outputs(data)}
 
     @classmethod
     def IS_CHANGED(cls, client_data="", **_):

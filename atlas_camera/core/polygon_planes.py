@@ -73,6 +73,165 @@ class PolygonPlaneFit:
     stats: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class DrawnPolygon:
+    """A viewport-drawn N-gon, packaged for the viewport payload / exporters."""
+
+    vertices: list[float] = field(default_factory=list)   # flat world xyz
+    faces: list[int] = field(default_factory=list)        # flat triangle indices
+    uvs: list[float] = field(default_factory=list)        # flat planar uv, 0..1
+    normal: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset: float = 0.0                                   # plane offset: n . P
+
+
+# ---------------------------------------------------------------------------
+# Viewport-drawn polygons (world space)
+#
+# Drawing happens in the 3D viewport, not on the flat plate, because an
+# occluded hole only exists once the model is turned. A click there is a ray:
+# the ones that HIT geometry establish the plane, and everything after is a
+# ray x plane intersection, so an outline can be drawn straight across a hole
+# that has nothing to hit.
+#
+# These rules are mirrored in atlas_blockout.js for live interaction (accepted
+# hand-sync duplication, the same arrangement as SCENE_TYPE_PRESETS); this is
+# the source of truth and the tested copy.
+# ---------------------------------------------------------------------------
+
+def establish_plane_from_hits(
+    hits: Sequence[Sequence[float]],
+    *,
+    up: Sequence[float] = (0.0, 1.0, 0.0),
+) -> tuple[tuple[float, float, float], float] | None:
+    """The plane an artist's first clicks define. ``None`` when under-determined.
+
+    Three or more non-collinear hits best-fit a plane. Exactly two hits — the
+    case where a hole runs off the frame edge and only two of its edges are
+    visible — raise a GRAVITY-ALIGNED plane containing both points: Atlas
+    already knows which way is up, and a vertical plane is the building-facade
+    answer. Collinear hits have no unique best fit, so they take the same
+    vertical rule.
+
+    Returns ``(normal, offset)`` with the plane as ``n . P == offset``.
+    """
+    np = _require_numpy()
+    pts = np.asarray(hits, dtype=np.float64).reshape(-1, 3)
+    if len(pts) < 2:
+        return None
+
+    up_v = np.asarray(up, dtype=np.float64)
+    up_v = up_v / (np.linalg.norm(up_v) or 1.0)
+
+    if len(pts) >= 3:
+        # Newell's method rather than an SVD fit: exact for 3 points and for
+        # any coplanar set, degenerate-safe on collinear input, and — the
+        # deciding reason — expressible in plain JS without an eigen-solver,
+        # so atlas_blockout.js mirrors it EXACTLY and the mirror can be
+        # numerically pinned (tests/test_frontend_mirrors.py).
+        rolled = np.roll(pts, -1, axis=0)
+        normal = np.array([
+            float(np.sum((pts[:, 1] - rolled[:, 1]) * (pts[:, 2] + rolled[:, 2]))),
+            float(np.sum((pts[:, 2] - rolled[:, 2]) * (pts[:, 0] + rolled[:, 0]))),
+            float(np.sum((pts[:, 0] - rolled[:, 0]) * (pts[:, 1] + rolled[:, 1]))),
+        ])
+        span = float(np.max(pts.max(axis=0) - pts.min(axis=0)))
+        # A collinear click sequence has no enclosed area, so Newell collapses
+        # toward zero: fall through to the vertical rule below.
+        if float(np.linalg.norm(normal)) > 1e-8 * max(span * span, 1e-12):
+            normal = normal / float(np.linalg.norm(normal))
+            centroid = pts.mean(axis=0)
+            return (tuple(float(v) for v in normal), float(np.dot(normal, centroid)))
+
+    # Vertical rule: a plane containing world-up and the two outermost hits.
+    span = pts[-1] - pts[0]
+    normal = np.cross(up_v, span)
+    norm = float(np.linalg.norm(normal))
+    if norm < 1e-9:
+        # The hits differ only in height — every vertical plane contains them.
+        return None
+    normal = normal / norm
+    return (tuple(float(v) for v in normal), float(np.dot(normal, pts[0])))
+
+
+def intersect_ray_with_plane(
+    origin: Any,
+    direction: Any,
+    plane: tuple[Sequence[float], float],
+) -> Any | None:
+    """Where a viewport click lands once the plane exists — hole or no hole.
+
+    ``None`` when the ray is parallel to the plane or points away from it.
+    """
+    np = _require_numpy()
+    normal, offset = plane
+    n = np.asarray(normal, dtype=np.float64)
+    o = np.asarray(origin, dtype=np.float64)
+    d = np.asarray(direction, dtype=np.float64)
+    d = d / (np.linalg.norm(d) or 1.0)
+    denom = float(np.dot(n, d))
+    if abs(denom) < 1e-9:
+        return None
+    t = (float(offset) - float(np.dot(n, o))) / denom
+    if t <= 1e-6 or not np.isfinite(t):
+        return None
+    return o + t * d
+
+
+def polygon_from_world_points(
+    points_world: Sequence[Sequence[float]],
+    *,
+    normal: Sequence[float],
+    camera_position: Sequence[float] | None = None,
+) -> DrawnPolygon:
+    """Package world-space outline points as a triangulated, UV'd polygon.
+
+    The points are already 3D and already on their plane, so nothing is
+    re-fitted here — this only triangulates (ear clipping, in the plane's own
+    basis) and lays out planar UVs. Raises ``ValueError`` for outlines too
+    small or self-intersecting.
+    """
+    np = _require_numpy()
+    pts = np.asarray(points_world, dtype=np.float64).reshape(-1, 3)
+    if len(pts) < 3:
+        raise ValueError("a polygon needs at least 3 points")
+
+    n = np.asarray(normal, dtype=np.float64)
+    n = n / (np.linalg.norm(n) or 1.0)
+    centre = pts.mean(axis=0)
+    if camera_position is not None:
+        # Face the camera, matching the projection material's expectation.
+        to_cam = np.asarray(camera_position, dtype=np.float64) - centre
+        if float(np.dot(n, to_cam)) < 0.0:
+            n = -n
+
+    u_ax, v_ax, _n = arbitrary_plane_axes(np, n)
+    local = pts - centre
+    uu = local @ u_ax
+    vv = local @ v_ax
+
+    # Triangulation and the simple-polygon test happen in the plane's own 2D
+    # basis; triangulate_polygon raises on a self-intersecting outline.
+    flat = [(float(a), float(b)) for a, b in zip(uu, vv)]
+    faces = triangulate_polygon(flat)
+
+    verts = pts
+    i, j, k = faces[0]
+    if float(np.dot(np.cross(verts[j] - verts[i], verts[k] - verts[i]), n)) < 0.0:
+        faces = [(a, c, b) for a, b, c in faces]
+
+    span_u = float(uu.max() - uu.min()) or 1.0
+    span_v = float(vv.max() - vv.min()) or 1.0
+    uvs = np.stack([(uu - uu.min()) / span_u, (vv - vv.min()) / span_v], axis=-1)
+
+    return DrawnPolygon(
+        vertices=np.round(verts.reshape(-1), 4).tolist(),
+        faces=[int(v) for tri in faces for v in tri],
+        uvs=np.round(uvs.reshape(-1), 4).tolist(),
+        normal=(float(n[0]), float(n[1]), float(n[2])),
+        offset=float(np.dot(n, centre)),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Polygon utilities (pure 2D, pixel space)
 # ---------------------------------------------------------------------------
@@ -180,6 +339,11 @@ def triangulate_polygon(points: Sequence[Point2D]) -> list[tuple[int, int, int]]
             raise ValueError("polygon could not be triangulated")
     faces.append((remaining[0], remaining[1], remaining[2]))
     return faces
+
+
+def rasterize_polygon_mask(points: Sequence[Point2D], height: int, width: int):
+    """Public even-odd rasterization of a pixel-space polygon to (H, W) bool."""
+    return _polygon_mask(_require_numpy(), points, height, width)
 
 
 def _polygon_mask(np, points: Sequence[Point2D], height: int, width: int):

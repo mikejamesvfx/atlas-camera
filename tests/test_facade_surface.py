@@ -45,7 +45,6 @@ FACADE_PUBLIC = {
     "AtlasDepthBandSplit", "AtlasDepthLayerMask", "AtlasDepthMap",
     "AtlasDepthOutlierMask", "AtlasDeriveInteriorRoom", "AtlasDeriveProjectionGeometry",
     "AtlasDeriveReliefMesh", "AtlasDeriveRoofsFacades", "AtlasDeriveTowersSpires",
-    "AtlasAddPlanePolygon",
     "AtlasDeriveWalls", "AtlasExportBlender", "AtlasExportCameraPathUSD",
     "AtlasExportMayaLayers", "AtlasExportMayaReviewScene", "AtlasExportNuke",
     "AtlasExportNukeLayers", "AtlasExportReliefMesh", "AtlasExportReviewPackage",
@@ -60,6 +59,7 @@ FACADE_PUBLIC = {
     "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
     "AtlasMaskedSurfaceReconstruct",
     "AtlasRefineOcclusionSeams",
+    "AtlasAddPlanePolygon",   # legacy-gated, still importable
     "AtlasLiveMeshRepair", "AtlasRetopologizeLayer", "AtlasStereoRender",
     "AtlasReferenceScaleSolve", "AtlasRegisterPlate", "AtlasRollTrim",
     "AtlasSAM3Mask", "AtlasSDXLInpaint", "AtlasScaleOverride",

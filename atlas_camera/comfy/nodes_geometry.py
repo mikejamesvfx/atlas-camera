@@ -1202,10 +1202,17 @@ class AtlasRetopologizeLayer:
         sel = str(layer or "").strip()
         lines = []
 
-        def _do(prim, camera, name):
+        # Viewport-drawn N-gons join the relief mesh in the union, so one
+        # remeshed scene can be exported. Their footprint CAN change here —
+        # that is the trade of remeshing rather than welding, and the report
+        # names every primitive it touched so a changed drawn plane is visible.
+        retopo_sources = ("depth_relief_mesh", "viewport_polygon")
+
+        def _do(prim, camera, scope):
             meta = prim.metadata or {}
-            if prim.primitive_type != "mesh" or meta.get("source") != "depth_relief_mesh":
+            if prim.primitive_type != "mesh" or meta.get("source") not in retopo_sources:
                 return
+            name = f"{scope}/{prim.name}" if getattr(prim, "name", "") else scope
             mesh = mesh_from_primitive(prim)
             if mesh is None:
                 lines.append(f"{name}: empty mesh — skipped")

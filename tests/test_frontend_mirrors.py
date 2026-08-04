@@ -254,3 +254,66 @@ def test_fov_channel_numerically_matches_js():
         ],
         fps=24.0, frame_count=frame_count)
     assert sample_camera_path_fov_deg(no_fov_path) is None
+
+
+# --- viewport drawn-plane rules --------------------------------------------
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_drawn_plane_rules_numerically_match_js():
+    """atlas_blockout.js's plane rules must agree with core/polygon_planes.py.
+
+    These decide where a drawn N-gon lands in 3D. A hand-slip on either side
+    would put the JS preview and the applied geometry in different places —
+    the artist would draw one plane and get another.
+    """
+    from atlas_camera.core.polygon_planes import (
+        establish_plane_from_hits, intersect_ray_with_plane)
+
+    src = _read("atlas_blockout.js")
+    establish = re.search(
+        r"(  function atlasEstablishPlaneFromHits\(.*?\n  \})", src, re.DOTALL)
+    intersect = re.search(
+        r"(  function atlasIntersectRayWithPlane\(.*?\n  \})", src, re.DOTALL)
+    assert establish and intersect, "drawn-plane mirror functions missing from the JS"
+
+    cases = [
+        [[1.0, 0.5, -4.0], [3.0, 2.5, -4.0]],                    # two hits -> vertical
+        [[0.0, 0.0, -6.0], [2.0, 0.0, -6.0], [0.0, 3.0, -8.0]],  # three -> Newell
+        [[0.0, 2.0, -5.0], [4.0, 2.0, -5.0],
+         [4.0, 4.0, -9.0], [0.0, 4.0, -9.0]],                    # coplanar sloped roof
+        [[0.0, 0.0, -5.0], [1.0, 1.0, -5.0], [2.0, 2.0, -5.0]],  # collinear -> vertical
+        [[1.0, 0.0, -5.0], [1.0, 4.0, -5.0]],                    # degenerate -> null
+    ]
+    ray = {"origin": [0.0, 1.6, 0.0], "direction": [0.2, 0.1, -1.0]}
+
+    script = (establish.group(1) + "\n" + intersect.group(1) + "\n"
+              + "const cases = " + json.dumps(cases) + ";\n"
+              + "const ray = " + json.dumps(ray) + ";\n"
+              + "const out = cases.map((c) => {\n"
+              + "  const p = atlasEstablishPlaneFromHits(c);\n"
+              + "  if (!p) return null;\n"
+              + "  return {normal: p.normal, offset: p.offset,\n"
+              + "          hit: atlasIntersectRayWithPlane(ray.origin, ray.direction, p)};\n"
+              + "});\n"
+              + "console.log(JSON.stringify(out));")
+    js = json.loads(subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+
+    for hits, got in zip(cases, js):
+        expected = establish_plane_from_hits(hits)
+        if expected is None:
+            assert got is None, f"JS established a plane Python refuses: {hits}"
+            continue
+        assert got is not None, f"JS refused a plane Python establishes: {hits}"
+        normal, offset = expected
+        for a, b in zip(normal, got["normal"]):
+            assert a == pytest.approx(b, abs=1e-9)
+        assert offset == pytest.approx(got["offset"], abs=1e-9)
+
+        py_hit = intersect_ray_with_plane(
+            ray["origin"], ray["direction"], (normal, offset))
+        if py_hit is None:
+            assert got["hit"] is None
+        else:
+            for a, b in zip(py_hit, got["hit"]):
+                assert float(a) == pytest.approx(b, abs=1e-9)

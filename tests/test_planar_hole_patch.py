@@ -477,7 +477,9 @@ def test_comfy_node_stitches_patch_into_one_retopologizable_relief_mesh():
 
     _retopo_out, retopo_report = AtlasRetopologizeLayer().retopo(
         out, method="off")
-    assert "primary: unchanged" in retopo_report
+    # Retopo now labels each primitive it touched (scope/name), so a drawn
+    # plane in the union is visible rather than folded into "primary".
+    assert "primary/projection_relief_mesh: unchanged" in retopo_report
 
 
 def test_wall_and_tower_nodes_default_to_no_foreground_cubes():

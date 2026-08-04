@@ -173,7 +173,8 @@ def test_patch_mask_rides_payload_and_viewport_encodes_it():
         _solve(), image, 64, "", patch_mask=patch, unique_id="patchmask-test")
     payload = _ATLAS_BLOCKOUT_CACHE["patchmask-test"]
     assert payload["patch_mask_b64"].startswith("data:image/png;base64,")
-    assert AtlasBlockoutViewport.RETURN_NAMES[-1] == "patch_render_mask"
+    # Slot 11, not "last": the drawn-polygon outputs append after it.
+    assert AtlasBlockoutViewport.RETURN_NAMES[11] == "patch_render_mask"
 
 
 def test_viewport_decodes_patch_render_mask_as_comfy_mask():
@@ -186,7 +187,7 @@ def test_viewport_decodes_patch_render_mask_as_comfy_mask():
     client_data = '{"patch_render_mask": "' + _mask_to_b64_png(patch) + '"}'
     result = AtlasBlockoutViewport().render(
         _solve(), torch.zeros((1, 64, 64, 3)), 64, client_data)["result"]
-    rendered = result[-1]
+    rendered = result[AtlasBlockoutViewport.RETURN_NAMES.index("patch_render_mask")]
     assert rendered.shape == (1, 64, 64)
     assert float(rendered.max()) == pytest.approx(1.0)
     assert int(torch.count_nonzero(rendered)) == int(patch.sum())

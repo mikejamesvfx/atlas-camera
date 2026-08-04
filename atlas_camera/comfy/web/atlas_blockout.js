@@ -2477,6 +2477,349 @@ function buildNodeUI(node, containerEl) {
   toolbar.appendChild(angleBtn);
 
   // ---------------------------------------------------------------------------
+  // ✏️ Draw — author N-gons directly in 3D, then Apply.
+  //
+  // The reason this lives in the VIEWPORT and not on the flat plate: an
+  // occluded hole only exists once the model is turned. Drawing on the plate
+  // cannot see it, and depth inside such an outline belongs to the occluder,
+  // not to the surface the artist means.
+  //
+  // A click is a ray. The clicks that HIT geometry establish the plane; every
+  // click after that is a ray x plane intersection, so the outline can be
+  // drawn straight across a hole that has nothing to hit.
+  //
+  // atlasEstablishPlaneFromHits / atlasIntersectRayWithPlane below MIRROR
+  // core/polygon_planes.py by hand (the repo's accepted-duplication pattern,
+  // same as the Catmull-Rom path math). They are deliberately plain-array
+  // maths with no THREE dependency so tests/test_frontend_mirrors.py can
+  // execute them under node and pin them numerically against Python.
+  // ---------------------------------------------------------------------------
+  function atlasEstablishPlaneFromHits(hits, up) {
+    const U = up || [0, 1, 0];
+    const n = hits.length;
+    if (n < 2) return null;
+    const ulen = Math.hypot(U[0], U[1], U[2]) || 1;
+    const u = [U[0] / ulen, U[1] / ulen, U[2] / ulen];
+
+    if (n >= 3) {
+      // Newell's method — exact for 3 points and for any coplanar set, and
+      // it collapses to zero on collinear input.
+      let nx = 0, ny = 0, nz = 0;
+      for (let i = 0; i < n; i += 1) {
+        const a = hits[i], b = hits[(i + 1) % n];
+        nx += (a[1] - b[1]) * (a[2] + b[2]);
+        ny += (a[2] - b[2]) * (a[0] + b[0]);
+        nz += (a[0] - b[0]) * (a[1] + b[1]);
+      }
+      let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      for (const p of hits) {
+        for (let k = 0; k < 3; k += 1) {
+          if (p[k] < lo[k]) lo[k] = p[k];
+          if (p[k] > hi[k]) hi[k] = p[k];
+        }
+      }
+      const span = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+      const mag = Math.hypot(nx, ny, nz);
+      if (mag > 1e-8 * Math.max(span * span, 1e-12)) {
+        const nrm = [nx / mag, ny / mag, nz / mag];
+        const c = [0, 0, 0];
+        for (const p of hits) { c[0] += p[0] / n; c[1] += p[1] / n; c[2] += p[2] / n; }
+        return { normal: nrm, offset: nrm[0] * c[0] + nrm[1] * c[1] + nrm[2] * c[2] };
+      }
+    }
+
+    // Two hits (or collinear ones): raise a GRAVITY-ALIGNED plane through
+    // them. Yaw is the only free choice left and vertical is the facade
+    // answer — the case where a hole runs off the frame edge and only two of
+    // its edges are visible to click.
+    const a = hits[0], b = hits[n - 1];
+    const span = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const nx = u[1] * span[2] - u[2] * span[1];
+    const ny = u[2] * span[0] - u[0] * span[2];
+    const nz = u[0] * span[1] - u[1] * span[0];
+    const mag = Math.hypot(nx, ny, nz);
+    // The hits differ only in height: every vertical plane contains them.
+    if (mag < 1e-9) return null;
+    const nrm = [nx / mag, ny / mag, nz / mag];
+    return { normal: nrm, offset: nrm[0] * a[0] + nrm[1] * a[1] + nrm[2] * a[2] };
+  }
+
+  function atlasIntersectRayWithPlane(origin, direction, plane) {
+    const dlen = Math.hypot(direction[0], direction[1], direction[2]) || 1;
+    const d = [direction[0] / dlen, direction[1] / dlen, direction[2] / dlen];
+    const n = plane.normal;
+    const denom = n[0] * d[0] + n[1] * d[1] + n[2] * d[2];
+    if (Math.abs(denom) < 1e-9) return null;
+    const t = (plane.offset
+      - (n[0] * origin[0] + n[1] * origin[1] + n[2] * origin[2])) / denom;
+    if (!(t > 1e-6) || !Number.isFinite(t)) return null;
+    return [origin[0] + t * d[0], origin[1] + t * d[1], origin[2] + t * d[2]];
+  }
+
+  // -- draw-mode state --------------------------------------------------------
+  let drawOn = false;
+  let drawHits = [];        // world points that hit geometry (establish the plane)
+  let drawPoints = [];      // the outline being drawn, world space
+  let drawPlane = null;     // { normal, offset }
+  let drawnPolygons = [];   // committed outlines, awaiting Apply
+  let drawTilt = 0;         // radians, applied about the first-two-hits axis
+  let drawPush = 0;         // metres along the plane normal
+  const drawRaycaster = new THREE.Raycaster();
+  const drawGroup = new THREE.Group();
+  drawGroup.name = "atlas_draw_overlay";
+  drawGroup.userData.atlasHelper = true;   // excluded from render passes
+  scene.add(drawGroup);
+
+  function drawTargets() {
+    const targets = [];
+    scene.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.userData?.atlasDerived || o.userData?.atlasPatch) targets.push(o);
+    });
+    return targets;
+  }
+
+  function drawPlaneAdjusted() {
+    if (!drawPlane) return null;
+    if (!drawTilt && !drawPush) return drawPlane;
+    let normal = drawPlane.normal.slice();
+    let offset = drawPlane.offset;
+    if (drawTilt && drawHits.length >= 2) {
+      // Rotate the normal about the axis through the first two hits, so the
+      // plane pivots on the edge the artist actually clicked.
+      const a = drawHits[0], b = drawHits[drawHits.length - 1];
+      const ax = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const alen = Math.hypot(ax[0], ax[1], ax[2]) || 1;
+      const k = [ax[0] / alen, ax[1] / alen, ax[2] / alen];
+      const c = Math.cos(drawTilt), s = Math.sin(drawTilt);
+      const kdotn = k[0] * normal[0] + k[1] * normal[1] + k[2] * normal[2];
+      const kxn = [
+        k[1] * normal[2] - k[2] * normal[1],
+        k[2] * normal[0] - k[0] * normal[2],
+        k[0] * normal[1] - k[1] * normal[0],
+      ];
+      normal = [
+        normal[0] * c + kxn[0] * s + k[0] * kdotn * (1 - c),
+        normal[1] * c + kxn[1] * s + k[1] * kdotn * (1 - c),
+        normal[2] * c + kxn[2] * s + k[2] * kdotn * (1 - c),
+      ];
+      // Keep the plane on the clicked edge through the rotation.
+      offset = normal[0] * a[0] + normal[1] * a[1] + normal[2] * a[2];
+    }
+    return { normal, offset: offset + drawPush };
+  }
+
+  function clearDrawOverlay() {
+    for (const child of [...drawGroup.children]) {
+      child.geometry?.dispose?.();
+      child.material?.dispose?.();
+      drawGroup.remove(child);
+    }
+  }
+
+  function refreshDrawOverlay() {
+    clearDrawOverlay();
+    const outline = (pts, color, closed) => {
+      if (pts.length < 2) return;
+      const flat = [];
+      for (const p of pts) flat.push(p[0], p[1], p[2]);
+      if (closed) flat.push(pts[0][0], pts[0][1], pts[0][2]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position",
+        new THREE.BufferAttribute(new Float32Array(flat), 3));
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+        color, depthTest: false, transparent: true,
+      }));
+      line.renderOrder = 200000;
+      line.userData.atlasHelper = true;
+      drawGroup.add(line);
+    };
+    for (const poly of drawnPolygons) outline(poly.points_world, 0x7ddc86, true);
+    outline(drawPoints, 0xffffff, false);
+    if (drawPoints.length) {
+      const flat = [];
+      for (const p of drawPoints) flat.push(p[0], p[1], p[2]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position",
+        new THREE.BufferAttribute(new Float32Array(flat), 3));
+      const dots = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: 0xffcc44, size: 8, sizeAttenuation: false, depthTest: false,
+      }));
+      dots.renderOrder = 200001;
+      dots.userData.atlasHelper = true;
+      drawGroup.add(dots);
+    }
+  }
+
+  function drawHud(message) {
+    drawStatus.textContent = message;
+    drawStatus.style.display = message ? "block" : "none";
+  }
+
+  function drawStatusLine() {
+    if (!drawPlane) {
+      return `✏️ click surfaces to set the plane — ${drawHits.length} hit(s), ` +
+        "2 raises a vertical plane, 3+ best-fit";
+    }
+    const rule = drawHits.length >= 3 ? "best-fit" : "vertical through 2 hits";
+    return `✏️ plane set (${rule}) · ${drawPoints.length} point(s) · ` +
+      `tilt ${(drawTilt * 180 / Math.PI).toFixed(0)}° push ${drawPush.toFixed(2)}m\n` +
+      "click to add · Enter closes · Esc discards · Backspace undoes";
+  }
+
+  function onDrawClick(ev) {
+    if (!drawOn) return;
+    const box = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((ev.clientX - box.left) / box.width) * 2 - 1,
+      -((ev.clientY - box.top) / box.height) * 2 + 1);
+    drawRaycaster.setFromCamera(ndc, camera);
+
+    const hits = drawRaycaster.intersectObjects(drawTargets(), false);
+    if (hits.length) {
+      const p = hits[0].point;
+      const world = [p.x, p.y, p.z];
+      drawPoints.push(world);
+      // Only the clicks BEFORE the plane exists define it; afterwards a hit is
+      // just another outline point, so the plane cannot drift mid-outline.
+      if (!drawPlane) {
+        drawHits.push(world);
+        drawPlane = atlasEstablishPlaneFromHits(drawHits);
+      }
+    } else {
+      const plane = drawPlaneAdjusted();
+      if (!plane) {
+        drawHud("✏️ nothing hit yet — the first clicks must land on geometry " +
+                "to establish the plane");
+        return;
+      }
+      const origin = camera.getWorldPosition(new THREE.Vector3());
+      const dir = drawRaycaster.ray.direction;
+      const landed = atlasIntersectRayWithPlane(
+        [origin.x, origin.y, origin.z], [dir.x, dir.y, dir.z], plane);
+      if (!landed) {
+        drawHud("✏️ that ray does not meet the plane — orbit and try again");
+        return;
+      }
+      drawPoints.push(landed);
+    }
+    refreshDrawOverlay();
+    drawHud(drawStatusLine());
+  }
+
+  function closeDrawnOutline() {
+    if (drawPoints.length < 3) {
+      drawHud("✏️ an outline needs at least 3 points");
+      return;
+    }
+    const plane = drawPlaneAdjusted() || drawPlane;
+    drawnPolygons.push({
+      id: `d${drawnPolygons.length + 1}`,
+      label: `drawn plane ${drawnPolygons.length + 1}`,
+      enabled: true,
+      points_world: drawPoints,
+      plane: { normal: plane.normal, offset: plane.offset },
+      established_from: {
+        hits: drawHits.length,
+        rule: drawHits.length >= 3 ? "best_fit_newell" : "vertical_through_two_hits",
+      },
+    });
+    drawPoints = [];
+    drawHits = [];
+    drawPlane = null;
+    drawTilt = 0;
+    drawPush = 0;
+    refreshDrawOverlay();
+    drawHud(`✏️ ${drawnPolygons.length} outline(s) ready — click ✅ Apply to build them`);
+  }
+
+  function onDrawKey(ev) {
+    if (!drawOn) return;
+    if (ev.key === "Enter") { closeDrawnOutline(); ev.preventDefault(); }
+    else if (ev.key === "Escape") {
+      drawPoints = []; drawHits = []; drawPlane = null;
+      refreshDrawOverlay(); drawHud(drawStatusLine()); ev.preventDefault();
+    } else if (ev.key === "Backspace" || ev.key === "Delete") {
+      if (drawPoints.length) {
+        drawPoints.pop();
+        if (drawHits.length > drawPoints.length) {
+          drawHits.pop();
+          drawPlane = atlasEstablishPlaneFromHits(drawHits);
+        }
+      } else if (drawnPolygons.length) {
+        drawnPolygons.pop();
+      }
+      refreshDrawOverlay(); drawHud(drawStatusLine()); ev.preventDefault();
+    }
+  }
+
+  function persistDrawnPolygonsToClientData() {
+    const widget = node.widgets?.find((w) => w.name === "client_data");
+    if (!widget) return;
+    let existing = {};
+    try { existing = widget.value ? JSON.parse(widget.value) : {}; } catch (_) { existing = {}; }
+    // Merge, like every other viewport button, so Apply never clobbers a
+    // baked path or a stored render pass.
+    existing.drawn_polygons = drawnPolygons.map((p) => ({
+      ...p,
+      // Identity of the solve+image these were drawn against: the backend
+      // drops them rather than re-applying an outline authored on another
+      // photo (the same discipline 📐 Extract Angle uses).
+      fingerprint: recoveredData?.solve_fingerprint || "",
+    }));
+    widget.value = JSON.stringify(existing);
+    widget.callback?.(widget.value);
+  }
+
+  const drawStatus = document.createElement("div");
+  drawStatus.style.cssText =
+    "display:none;position:absolute;left:8px;bottom:8px;z-index:12;padding:6px 8px;" +
+    "font:11px/1.45 monospace;white-space:pre;color:#dfe;background:rgba(20,26,20,.86);" +
+    "border:1px solid #4a6;border-radius:4px;pointer-events:none;";
+  canvasWrap.appendChild(drawStatus);
+
+  // Scoped to the canvas, never the document: unrelated ComfyUI hotkeys must
+  // keep working (the same rule createOrbitControls follows).
+  canvas.addEventListener("click", onDrawClick);
+  canvas.addEventListener("keydown", onDrawKey);
+
+  const drawBtn = document.createElement("button");
+  drawBtn.textContent = "✏️ Draw";
+  drawBtn.title = "Draw an N-gon in 3D to fill an occluded hole. Orbit until the "
+    + "hole's surviving edges are visible, click them to establish the plane, then "
+    + "click across the hole freely. Enter closes the outline, ✅ Apply builds them.";
+  drawBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  drawBtn.onclick = () => {
+    drawOn = !drawOn;
+    drawBtn.style.background = drawOn ? "#1a3a1a" : "#2a2a2a";
+    drawBtn.style.color = drawOn ? "#8f8" : "#ddd";
+    // Orbiting while drawing would fight the click; the artist turns the
+    // model first, then draws.
+    controls.setEnabled(!drawOn);
+    canvas.style.cursor = drawOn ? "crosshair" : "grab";
+    drawHud(drawOn ? drawStatusLine() : "");
+    if (!drawOn) { drawPoints = []; drawHits = []; drawPlane = null; refreshDrawOverlay(); }
+  };
+  toolbar.appendChild(drawBtn);
+
+  const drawApplyBtn = document.createElement("button");
+  drawApplyBtn.textContent = "✅ Apply";
+  drawApplyBtn.title = "Build the drawn outlines into the solve's geometry and re-queue, "
+    + "so the `solve` output carries them downstream (retopo / export).";
+  drawApplyBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  drawApplyBtn.onclick = () => {
+    if (drawPoints.length >= 3) closeDrawnOutline();
+    if (!drawnPolygons.length) {
+      drawHud("✏️ nothing to apply — draw an outline and press Enter first");
+      return;
+    }
+    persistDrawnPolygonsToClientData();
+    drawHud(`✅ applying ${drawnPolygons.length} outline(s) — re-queued`);
+    app.queuePrompt(0, 1);
+  };
+  toolbar.appendChild(drawApplyBtn);
+
+  // ---------------------------------------------------------------------------
   // 🧭 Safe Zone — MEASURE the scene's actual safe camera envelope and clamp
   // the orbit to it, so the artist cannot move into holes at all. This is the
   // no-diffusion MVP answer to coverage: instead of generating patches for
