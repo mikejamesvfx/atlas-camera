@@ -62,7 +62,10 @@ drawTargets()          // meshes flagged atlasDerived / atlasPatch — what draw
 The six tools live on a **DCC-style vertical rail** (`drawRail`) overlaid on the
 LEFT edge of the canvas, vertically centred, icon-only (full wording stays in
 each button's tooltip): **✏️ Draw**, **▣ Box**, **● Sphere** │ **✎ Edit**,
-**🧲 Snap** │ **✅ Apply**. The rail is a child of `canvasWrap` and is NEVER
+**🧲 Snap**, **🗑 Delete** │ **✅ Apply**. 🗑 removes the `editSel` shape (or,
+with no selection, the most recent shape) and sets `drawDirty`; Apply persists
+even a now-EMPTY list when dirty, so deleting the last shape can actually
+unbake it. The rail is a child of `canvasWrap` and is NEVER
 reparented by `mountControls` — it stays on the viewport even when the main
 toolbar moves to an AtlasViewportControls node. The tilt/push `drawAdjust` row
 is a contextual flyout anchored right of the rail, shown only while Draw is
@@ -77,28 +80,29 @@ or Apply closes the loop (`closeDrawnOutline`, needs ≥3 points). Fills a
 
 **Box (~L3370)** — three-stage blockout SOLID for mass the camera never saw round
 the back of: `boxStage` 1 pick base corner → 2 drag footprint → 3 drag height.
-Footprint snaps to the 1 m ground grid (`BOX_GRID_CELL = 1.0`, `snapToGroundGrid`).
-`boxCornersNow()` builds the 8 corners; `refreshBoxPreview` draws the wire preview.
-Enter or a third click finishes, Esc cancels.
+Ground contact is **Y-only**: the first click rests the base on the ground (or
+geometry via ctrl-click) but X/Z stay where the cursor ray landed, and the
+footprint/height follow the cursor freely (the old 1 m grid quantise was
+reverted live — it fought the artist when hugging a torn edge).
+`boxCornersNow()` builds the 8 corners; `refreshBoxPreview` draws the wire
+preview. Enter or a third click finishes, Esc cancels.
 
 **Sphere (~L3600)** — two-stage: click the touch-down point (ctrl-click snaps it
 to geometry via `snapHitToEdge`, else it rests on the ground), then drag the
-radius (also grid-snapped). `sphereControlPoints()` returns `[centre, surface]`,
+radius freely. `sphereControlPoints()` returns `[centre, surface]`,
 stored as `kind:"sphere"`. Preview is three great-circle rings.
 
 ## Snap (`editSnap`, default ON)
 
-One toggle drives snapping for BOTH drawing and editing. Two different flavours
-under it:
-
-- **Edge/vertex snap** — drawn/dragged points snap to the nearest mesh
-  edge/vertex under the cursor (`snapHitToEdge`). This is what makes a patch rim
-  actually meet a torn hole's geometry.
-- **Ground-grid snap** — box footprints and sphere centres/radii quantise to the
-  1 m grid (`snapToGroundGrid`), so a blockout sits ON the perspective grid.
+One flavour: **edge/vertex snap** — drawn/dragged points snap to the nearest
+mesh edge/vertex under the cursor (`snapHitToEdge`). This is what makes a patch
+rim actually meet a torn hole's geometry. (A second flavour, ground-GRID
+quantise of box footprints/heights and sphere radii, existed and was reverted
+live — the 1 m jumps fought the artist; ground contact is now Y-only on the
+first click.)
 
 **Shift bypasses snap** while drawing (free placement). In **Edit**, Shift instead
-constrains a drag to one axis (or press X/Y/Z). The snap helpers all early-return
+constrains a drag to one axis (or press X/Y/Z). The snap helper early-returns
 the raw point when `editSnap` is false — so a "snap won't turn off" bug means a
 path that isn't checking the flag.
 
@@ -106,8 +110,8 @@ path that isn't checking the flag.
 
 Drag a handle to slide a point WITHIN its own plane; ctrl-click a handle to delete
 it (guarded so a polygon can't drop below 3 points, ~L2911). Orbit still works —
-only the grab itself suppresses it. Box faces move as quads (`EDIT_BOX_QUADS`) and
-re-snap to `BOX_GRID_CELL`. When a polygon's points move, its plane is refit from
+only the grab itself suppresses it. Box faces move as quads (`EDIT_BOX_QUADS`),
+translating freely. When a polygon's points move, its plane is refit from
 the moved hits (`atlasEstablishPlaneFromHits`, ~L3027) so the projection basis
 stays correct. Edits set `drawDirty`; **Apply** rebuilds.
 

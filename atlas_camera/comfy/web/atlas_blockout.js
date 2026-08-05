@@ -2949,14 +2949,7 @@ function buildNodeUI(node, containerEl) {
   }
 
   function applyEditDelta(delta) {
-    let d = delta;
-    // A box already snaps its footprint and height to whole grid cells, so a
-    // face move follows the same increments rather than drifting off them.
-    if (editSnap && editDrag.poly.kind === "box") {
-      d = [Math.round(d[0] / BOX_GRID_CELL) * BOX_GRID_CELL,
-           Math.round(d[1] / BOX_GRID_CELL) * BOX_GRID_CELL,
-           Math.round(d[2] / BOX_GRID_CELL) * BOX_GRID_CELL];
-    }
+    const d = delta;
     editDrag.indices.forEach((idx, k) => {
       const o = editDrag.origins[k];
       editDrag.poly.points_world[idx] = [o[0] + d[0], o[1] + d[1], o[2] + d[2]];
@@ -3511,14 +3504,42 @@ function buildNodeUI(node, containerEl) {
   drawApplyBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
   drawApplyBtn.onclick = () => {
     if (drawPoints.length >= 3) closeDrawnOutline();
-    drawDirty = false;
-    if (!drawnPolygons.length) {
+    // Zero shapes is still applyable when dirty: deleting the LAST shape has
+    // to persist the now-empty list, or the baked geometry could never be
+    // removed again.
+    if (!drawnPolygons.length && !drawDirty) {
       drawHud("✏️ nothing to apply — draw an outline and press Enter first");
       return;
     }
+    drawDirty = false;
     persistDrawnPolygonsToClientData();
-    drawHud(`✅ applying ${drawnPolygons.length} outline(s) — re-queued`);
+    drawHud(drawnPolygons.length
+      ? `✅ applying ${drawnPolygons.length} outline(s) — re-queued`
+      : "✅ removing the deleted shapes — re-queued");
     app.queuePrompt(0, 1);
+  };
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.textContent = "🗑";
+  deleteBtn.title = "Delete the selected shape (grab one in ✎ Edit first); with no "
+    + "selection, deletes the most recent shape. Ctrl-click a handle in Edit still "
+    + "deletes a single point. Click ✅ Apply to rebuild without it.";
+  deleteBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  deleteBtn.onclick = () => {
+    if (editSel && drawnPolygons.includes(editSel.poly)) {
+      drawnPolygons.splice(drawnPolygons.indexOf(editSel.poly), 1);
+      drawHud("🗑 selected shape deleted — ✅ Apply to rebuild without it");
+    } else if (drawnPolygons.length) {
+      drawnPolygons.pop();
+      drawHud("🗑 last shape deleted — ✅ Apply to rebuild without it");
+    } else {
+      drawHud("🗑 nothing to delete");
+      return;
+    }
+    editSel = null;
+    editDrag = null;
+    drawDirty = true;
+    refreshDrawOverlay();
   };
 
   // ---------------------------------------------------------------------------
@@ -3542,19 +3563,11 @@ function buildNodeUI(node, containerEl) {
   let boxOpposite = null;   // [x, y, z] opposite footprint corner
   let boxHeight = 0;
 
-  // One cell of the viewport's ground grid — GridHelper(20, 20) above, so
-  // size 20 over 20 divisions = 1 metre. Snapping the footprint to it is what
-  // makes a blockout box sit ON the perspective grid rather than at whatever
-  // arbitrary fraction the cursor ray happened to hit.
-  const BOX_GRID_CELL = 1.0;
-
-  function snapToGroundGrid(p) {
-    if (!editSnap || !p) return p;
-    return [Math.round(p[0] / BOX_GRID_CELL) * BOX_GRID_CELL,
-            p[1],
-            Math.round(p[2] / BOX_GRID_CELL) * BOX_GRID_CELL];
-  }
-
+  // Ground contact is a Y-only affair: the first click RESTS the shape on the
+  // ground plane (or on geometry via ctrl-click) but X/Z stay exactly where
+  // the cursor ray landed. An earlier build also quantised X/Z (and the
+  // footprint/height/radius) to the 1 m grid cells — reverted live: the grid
+  // jumps fought the artist when a blockout had to hug a torn edge.
   function boxCornersNow() {
     if (!boxBase || !boxOpposite) return null;
     const y = boxBase[1];
@@ -3619,16 +3632,13 @@ function buildNodeUI(node, containerEl) {
       [o.x, o.y, o.z], [d.x, d.y, d.z],
       { normal: n, offset: n[0] * cx + n[2] * cz });
     if (!landed) return boxHeight;
-    const raw = Math.max(0.05, landed[1] - boxBase[1]);
-    if (!editSnap) return raw;
-    return Math.max(BOX_GRID_CELL,
-                    Math.round(raw / BOX_GRID_CELL) * BOX_GRID_CELL);
+    return Math.max(0.05, landed[1] - boxBase[1]);
   }
 
   function boxStatusLine() {
     if (boxStage === 0) {
       return (editSnap
-        ? "▣ click the base corner — on the ground grid, snapped to 1m cells"
+        ? "▣ click the base corner — it rests on the ground (ctrl-click: on geometry)"
         : "▣ click the base corner — on the ground plane (grid snap off)")
         + "\nctrl-click to start on geometry instead (a roof, a ledge)";
     }
@@ -3642,7 +3652,7 @@ function buildNodeUI(node, containerEl) {
     if (!mapped.inside) return;
     if (boxStage === 1) {
       const p = boxGroundPoint(mapped, boxBase[1]);
-      if (p) boxOpposite = snapToGroundGrid(p);
+      if (p) boxOpposite = p;
     } else {
       boxHeight = boxHeightAt(mapped);
     }
@@ -3696,7 +3706,7 @@ function buildNodeUI(node, containerEl) {
         base = boxGroundPoint(mapped, 0);
         if (!base) { drawHud("▣ that ray misses the ground plane"); return; }
       }
-      boxBase = snapToGroundGrid(base);   // preserves the height, snaps X/Z
+      boxBase = base;   // Y already rests on ground/geometry; X/Z stay free
       boxOpposite = [...boxBase];
       boxHeight = 0;
       boxStage = 1;
@@ -3714,8 +3724,7 @@ function buildNodeUI(node, containerEl) {
   boxBtn.title = "Blockout solid: click the base corner, drag the footprint, click, "
     + "drag the height, Enter to finish. The base always sits on the ground plane "
     + "(Y=0) unless you ctrl-click, which starts it at the height of the geometry "
-    + "under the cursor instead; with Snap on, the footprint and height land on "
-    + "whole 1m grid cells. "
+    + "under the cursor instead; the footprint and height follow the cursor freely. "
     + "The 8 corners are then editable one by one in Edit, exactly like polygon "
     + "points — raise it onto a roof there if that is what you want.";
   boxBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
@@ -3805,8 +3814,7 @@ function buildNodeUI(node, containerEl) {
     if (!mapped.inside) return;
     const p = boxGroundPoint(mapped, sphereContact[1]);
     if (!p) return;
-    let r = Math.hypot(p[0] - sphereContact[0], p[2] - sphereContact[2]);
-    if (editSnap) r = Math.max(BOX_GRID_CELL, Math.round(r / BOX_GRID_CELL) * BOX_GRID_CELL);
+    const r = Math.hypot(p[0] - sphereContact[0], p[2] - sphereContact[2]);
     sphereRadius = Math.max(0.05, r);
     refreshDrawOverlay();
     drawHud(sphereStatusLine());
@@ -3852,7 +3860,7 @@ function buildNodeUI(node, containerEl) {
         contact = boxGroundPoint(mapped, 0);
         if (!contact) { drawHud("● that ray misses the ground plane"); return; }
       }
-      sphereContact = snapToGroundGrid(contact);
+      sphereContact = contact;
       sphereRadius = 0;
       sphereStage = 1;
     } else {
@@ -3905,9 +3913,10 @@ function buildNodeUI(node, containerEl) {
   styleRailBtn(sphereBtn, "●");
   styleRailBtn(editBtn, "✎");
   styleRailBtn(snapBtn, "🧲");
+  styleRailBtn(deleteBtn, "🗑");
   styleRailBtn(drawApplyBtn, "✅");
   drawRail.append(drawBtn, boxBtn, sphereBtn, railSeparator(),
-                  editBtn, snapBtn, railSeparator(), drawApplyBtn);
+                  editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
 
   // Restore previously-applied outlines from the persisted widget, so ✎ Edit
   // works after a reload / workflow reopen and not only in the session that
