@@ -209,13 +209,15 @@ def test_empty_path_is_refused_with_a_useful_message(tmp_path):
 
 
 def test_node_is_registered_under_a_stable_key():
+    # Record3D capture is ATLAS_IOS-gated for v1, so the stable key lives in
+    # the ios tier rather than the default mapping (same keys either way).
     from atlas_camera.comfy.node_registry import (
-        NODE_CLASS_MAPPINGS,
-        NODE_DISPLAY_NAME_MAPPINGS,
+        IOS_NODE_CLASS_MAPPINGS,
+        IOS_NODE_DISPLAY_NAME_MAPPINGS,
     )
 
-    assert NODE_CLASS_MAPPINGS["AtlasLoadRecord3D"] is AtlasLoadRecord3D
-    assert NODE_DISPLAY_NAME_MAPPINGS["AtlasLoadRecord3D"] == "Atlas Load Record3D Capture 📱"
+    assert IOS_NODE_CLASS_MAPPINGS["AtlasLoadRecord3D"] is AtlasLoadRecord3D
+    assert IOS_NODE_DISPLAY_NAME_MAPPINGS["AtlasLoadRecord3D"] == "Atlas Load Record3D Capture 📱"
 
 
 def test_depth_output_is_accepted_by_atlas_depth_combine(tmp_path):
