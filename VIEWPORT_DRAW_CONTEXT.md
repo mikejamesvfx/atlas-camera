@@ -61,7 +61,7 @@ drawTargets()          // meshes flagged atlasDerived / atlasPatch — what draw
 
 The six tools live on a **DCC-style vertical rail** (`drawRail`) overlaid on the
 LEFT edge of the canvas, vertically centred, icon-only (full wording stays in
-each button's tooltip): **✏️ Draw**, **▣ Box**, **● Sphere** │ **✎ Edit**,
+each button's tooltip): **✏️ Draw**, **⬜ Quad**, **▣ Box**, **● Sphere** │ **✎ Edit**,
 **🧲 Snap**, **🗑 Delete** │ **✅ Apply**. 🗑 removes the `editSel` shape (or,
 with no selection, the most recent shape) and sets `drawDirty`; Apply persists
 even a now-EMPTY list when dirty, so deleting the last shape can actually
@@ -77,6 +77,20 @@ cancels the others.
 (rays kept in `drawRays` so they re-project if the plane is tilted/pushed). Enter
 or Apply closes the loop (`closeDrawnOutline`, needs ≥3 points). Fills a
 *see-through hole* — i.e. a plane.
+
+**⬜ Quad** — Maya-style live quad draw, the tear-filler: 4 clicks (any order —
+re-ordered into the non-crossing loop by min perimeter, `orderQuad`) commit a
+quad on the 4th; each following quad costs 2 clicks, seeded from the nearest
+edge of the previous one (`nearestQuadEdge`), so strips grow in any direction.
+Clicks edge/vertex-snap to the tear rim like ✏️ Draw; off-mesh (mid-tear)
+clicks land on the plane fit from the points so far. Esc/Enter ends the strip,
+Backspace pops point → last quad. **Not a new kind**: every committed quad is
+an ordinary kind-less 4-point polygon (`{points_world, plane}`,
+`established_from.rule: "quad_draw"`) — meshing, Edit, gizmo, 🗑 and Apply need
+zero new code. Adjacent quads COPY the shared edge's values (JSON shapes can't
+share references); they coincide at commit, and edge-snap re-meets them if
+edited later. Intended split: ⬜ Quad for enclosed medium/large tears, ✏️ Draw
+n-gons for boundary edges, ▣ Box / ● Sphere for large-scale mass.
 
 **Box (~L3370)** — three-stage blockout SOLID for mass the camera never saw round
 the back of: `boxStage` 1 pick base corner → 2 drag footprint → 3 drag height.

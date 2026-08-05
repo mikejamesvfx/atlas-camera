@@ -2676,6 +2676,20 @@ function buildNodeUI(node, containerEl) {
       addPoints(plain, 0x50d0ff, 10);
       addPoints(hot, 0xff9040, 14);
     }
+    if (quadOn && quadPoints.length) {
+      outline(quadPoints, 0xffe066, quadPoints.length >= 3);
+      const flat = [];
+      for (const p of quadPoints) flat.push(p[0], p[1], p[2]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position",
+        new THREE.BufferAttribute(new Float32Array(flat), 3));
+      const dots = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: 0xffe066, size: 9, sizeAttenuation: false, depthTest: false,
+      }));
+      dots.renderOrder = 200001;
+      dots.userData.atlasHelper = true;
+      drawGroup.add(dots);
+    }
     outline(drawPoints, 0xffffff, false);
     if (drawPoints.length) {
       const flat = [];
@@ -2908,7 +2922,7 @@ function buildNodeUI(node, containerEl) {
   // Called per-frame from animate() beside updatePivotGizmo, so it tracks the
   // selection through drags and stays a constant on-screen size while orbiting.
   function updateEditGizmo() {
-    if (!editSel || !editOn || drawOn || boxOn || sphereOn
+    if (!editSel || !editOn || drawOn || boxOn || sphereOn || quadOn
         || !drawnPolygons.includes(editSel.poly)) {
       if (editGizmo) editGizmo.visible = false;
       return;
@@ -3323,6 +3337,30 @@ function buildNodeUI(node, containerEl) {
       ev.preventDefault();
       return;
     }
+    if (quadOn) {
+      if (ev.key === "Enter" || ev.key === "Escape") {
+        // End the strip: an unfinished quad is discarded, committed ones stay.
+        quadPoints = [];
+        quadPrev = null;
+        refreshDrawOverlay();
+        drawHud(quadStatusLine());
+        ev.preventDefault();
+      } else if (ev.key === "Backspace" || ev.key === "Delete") {
+        if (quadPoints.length) {
+          quadPoints.pop();
+        } else if (drawnPolygons.length) {
+          // commitQuad stores the SAME array in the shape and in quadPrev, so
+          // identity tells us whether the popped shape was this strip's last.
+          const popped = drawnPolygons.pop();
+          if (quadPrev && popped.points_world === quadPrev) quadPrev = null;
+          drawDirty = true;
+        }
+        refreshDrawOverlay();
+        drawHud(quadStatusLine());
+        ev.preventDefault();
+      }
+      return;
+    }
     if (sphereOn) {
       if (ev.key === "Enter") { finishSphere(); ev.preventDefault(); }
       else if (ev.key === "Escape") {
@@ -3387,6 +3425,7 @@ function buildNodeUI(node, containerEl) {
   // Scoped to the canvas, never the document: unrelated ComfyUI hotkeys must
   // keep working (the same rule createOrbitControls follows).
   canvas.addEventListener("click", onDrawClick);
+  canvas.addEventListener("click", onQuadClick);
   canvas.addEventListener("click", onBoxClick);
   canvas.addEventListener("pointermove", onBoxMove);
   canvas.addEventListener("click", onSphereClick);
@@ -3447,6 +3486,7 @@ function buildNodeUI(node, containerEl) {
     if (drawOn && editOn) editBtn.onclick();
     if (drawOn && boxOn) boxBtn.onclick();
     if (drawOn && sphereOn) sphereBtn.onclick();
+    if (drawOn && quadOn) quadBtn.onclick();
     drawBtn.style.background = drawOn ? "#1a3a1a" : "#2a2a2a";
     drawBtn.style.color = drawOn ? "#8f8" : "#ddd";
     // Orbiting while drawing would fight the click; the artist turns the
@@ -3474,6 +3514,7 @@ function buildNodeUI(node, containerEl) {
     if (editOn && drawOn) drawBtn.onclick();
     if (editOn && boxOn) boxBtn.onclick();
     if (editOn && sphereOn) sphereBtn.onclick();
+    if (editOn && quadOn) quadBtn.onclick();
     editDrag = null;
     editSel = null;
     refreshDrawOverlay();
@@ -3736,6 +3777,7 @@ function buildNodeUI(node, containerEl) {
       if (drawOn) drawBtn.onclick();
       if (editOn) editBtn.onclick();
       if (sphereOn) sphereBtn.onclick();
+      if (quadOn) quadBtn.onclick();
     }
     controls.setEnabled(!boxOn);
     canvas.style.cursor = boxOn ? "crosshair" : "grab";
@@ -3885,12 +3927,198 @@ function buildNodeUI(node, containerEl) {
       if (drawOn) drawBtn.onclick();
       if (editOn) editBtn.onclick();
       if (boxOn) boxBtn.onclick();
+      if (quadOn) quadBtn.onclick();
     }
     controls.setEnabled(!sphereOn);
     canvas.style.cursor = sphereOn ? "crosshair" : "grab";
     sphereStage = 0; sphereContact = null; sphereRadius = 0;
     refreshDrawOverlay();
     drawHud(sphereOn ? sphereStatusLine() : "");
+  };
+
+  // ---------------------------------------------------------------------------
+  // ⬜ Quad — Maya-style live quad draw, for filling ENCLOSED tears fast.
+  //
+  // The rail's tear-filler: 4 clicks make the first quad (any click order —
+  // the points are re-ordered into the non-crossing loop by min perimeter,
+  // and each click edge/vertex-snaps to the tear rim exactly like ✏️ Draw),
+  // then each FOLLOWING quad costs 2 clicks: the first of them seeds the new
+  // quad from the nearest edge of the previous one, so strips grow in any
+  // direction like Maya's quad-draw. Esc/Enter ends the strip; Backspace pops
+  // the last point, then the last quad.
+  //
+  // Deliberately NOT a new kind: every committed quad is an ordinary
+  // kind-less 4-point polygon ({points_world, plane}) — meshing, ✎ Edit,
+  // the gizmo, 🗑 and ✅ Apply all work on it with zero new code paths.
+  // Adjacent quads COPY their shared edge's values (JSON shapes cannot share
+  // references); they coincide exactly at commit, and edge-snap re-meets them
+  // if one is edited later.
+  // ---------------------------------------------------------------------------
+  let quadOn = false;
+  let quadPoints = [];      // the quad being built (seeded with 2 pts mid-strip)
+  let quadPrev = null;      // points_world of the last committed quad, for seeding
+  let quadCount = 0;
+
+  const quadDist3 = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  function quadPerimeter(pts) {
+    let s = 0;
+    for (let i = 0; i < pts.length; i += 1) s += quadDist3(pts[i], pts[(i + 1) % pts.length]);
+    return s;
+  }
+  // The simple (non-self-intersecting) loop through 4 points is the cyclic
+  // order with the smallest perimeter — a bowtie always pays for its crossing
+  // with two longer diagonally-swapped edges. lockFirstEdge keeps a seeded
+  // strip edge adjacent (only the last two points may swap).
+  function orderQuad(pts, lockFirstEdge) {
+    const orders = lockFirstEdge
+      ? [[0, 1, 2, 3], [0, 1, 3, 2]]
+      : [[0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3]];
+    let best = null, bestP = Infinity;
+    for (const o of orders) {
+      const cand = o.map((i) => pts[i]);
+      const p = quadPerimeter(cand);
+      if (p < bestP) { bestP = p; best = cand; }
+    }
+    return best;
+  }
+  // Nearest edge of the previous quad to a clicked point — the edge the new
+  // quad grows from, so a strip can turn any direction mid-flow.
+  function nearestQuadEdge(pts, p) {
+    let best = null, bestD = Infinity;
+    for (let i = 0; i < 4; i += 1) {
+      const a = new THREE.Vector3(...pts[i]);
+      const b = new THREE.Vector3(...pts[(i + 1) % 4]);
+      const on = closestPointOnSegment(new THREE.Vector3(...p), a, b);
+      const d = on.distanceTo(new THREE.Vector3(...p));
+      if (d < bestD) { bestD = d; best = [pts[i], pts[(i + 1) % 4]]; }
+    }
+    return best;
+  }
+
+  function quadStatusLine() {
+    const seeded = quadPrev && quadPoints.length >= 2;
+    const need = 4 - quadPoints.length;
+    if (!quadPoints.length && !quadPrev) {
+      return "⬜ click 4 points around a tear (snap grabs the rim) — the 4th commits";
+    }
+    if (!quadPoints.length && quadPrev) {
+      return "⬜ strip: click near an edge of the last quad to grow from it · Esc/Enter ends";
+    }
+    return `⬜ ${quadPoints.length} point(s)${seeded ? " (2 seeded from the last quad)" : ""}`
+      + ` — ${need} more commit${need === 1 ? "s" : ""} the quad`
+      + " · Backspace undoes · Esc/Enter ends";
+  }
+
+  function commitQuad() {
+    const seeded = !!quadPrev;
+    const pts = orderQuad(quadPoints.map((p) => [...p]), seeded);
+    const plane = atlasEstablishPlaneFromHits(pts);
+    if (!plane) {
+      drawHud("⬜ those 4 points are degenerate — Backspace and re-click");
+      return;
+    }
+    quadCount += 1;
+    drawnPolygons.push({
+      id: `q${quadCount}`,
+      label: `quad ${quadCount}`,
+      enabled: true,
+      points_world: pts,
+      plane: { normal: plane.normal, offset: plane.offset },
+      established_from: { hits: 4, rule: "quad_draw" },
+    });
+    quadPrev = pts;
+    quadPoints = [];
+    drawDirty = true;
+    refreshDrawOverlay();
+    drawHud("⬜ quad committed — click to grow the strip, Esc/Enter to end, ✅ Apply builds");
+  }
+
+  function onQuadClick(ev) {
+    if (!quadOn) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) {
+      drawHud("⬜ that click is in the letterbox bar, not the image");
+      return;
+    }
+    // Ctrl-click removes the in-progress point under the cursor (same NDC
+    // tolerance as ✏️ Draw).
+    if (ev.ctrlKey || ev.metaKey) {
+      const tol = 2 * 14 / Math.max(canvas.height, 1);
+      let best = -1, bestD = Infinity;
+      for (let i = 0; i < quadPoints.length; i += 1) {
+        const q = new THREE.Vector3(...quadPoints[i]).project(camera);
+        const d = Math.hypot(q.x - mapped.x, q.y - mapped.y);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      if (best >= 0 && bestD <= tol) quadPoints.splice(best, 1);
+      refreshDrawOverlay();
+      drawHud(quadStatusLine());
+      return;
+    }
+
+    const ndc = new THREE.Vector2(mapped.x, mapped.y);
+    drawRaycaster.setFromCamera(ndc, camera);
+    let landed = null;
+    const hits = drawRaycaster.intersectObjects(drawTargets(), false);
+    if (hits.length) {
+      const p = (editSnap && !ev.shiftKey) ? snapHitToEdge(hits[0], mapped) : hits[0].point;
+      landed = [p.x, p.y, p.z];
+    } else {
+      // Off-mesh (mid-tear, where the hole IS): land on the plane fit from the
+      // points placed so far — mid-tear clicks stay coplanar with the rim.
+      const fitFrom = quadPoints.length >= 2 ? quadPoints : quadPrev;
+      const plane = fitFrom ? atlasEstablishPlaneFromHits(fitFrom) : null;
+      if (plane) {
+        const o = camera.getWorldPosition(new THREE.Vector3());
+        const d = drawRaycaster.ray.direction;
+        landed = atlasIntersectRayWithPlane([o.x, o.y, o.z], [d.x, d.y, d.z], plane);
+      }
+      if (!landed) {
+        drawHud("⬜ nothing hit — the first clicks must land on geometry (the tear rim)");
+        return;
+      }
+    }
+
+    // First click of a strip continuation: seed the new quad with the nearest
+    // edge of the previous one, so this click is already point 3 of 4.
+    if (!quadPoints.length && quadPrev) {
+      const edge = nearestQuadEdge(quadPrev, landed);
+      quadPoints = [[...edge[1]], [...edge[0]]];
+    }
+    quadPoints.push(landed);
+    if (quadPoints.length >= 4) {
+      commitQuad();
+      return;
+    }
+    refreshDrawOverlay();
+    drawHud(quadStatusLine());
+  }
+
+  const quadBtn = document.createElement("button");
+  quadBtn.textContent = "⬜ Quad";
+  quadBtn.title = "Maya-style quad draw for filling enclosed tears: click 4 points "
+    + "around the hole (snap grabs the rim edges; any click order) and the 4th "
+    + "commits the quad. After that each quad costs 2 clicks — the strip grows "
+    + "from whichever edge of the last quad you click nearest. Esc/Enter ends "
+    + "the strip, Backspace undoes, ✅ Apply builds. Use ✏️ Draw / ▣ Box for "
+    + "boundary edges and large-scale mass instead.";
+  quadBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  quadBtn.onclick = () => {
+    quadOn = !quadOn;
+    quadBtn.style.background = quadOn ? "#2a2a1a" : "#2a2a2a";
+    quadBtn.style.color = quadOn ? "#ff8" : "#ddd";
+    if (quadOn) {
+      if (drawOn) drawBtn.onclick();
+      if (editOn) editBtn.onclick();
+      if (boxOn) boxBtn.onclick();
+      if (sphereOn) sphereBtn.onclick();
+    }
+    controls.setEnabled(!quadOn);
+    canvas.style.cursor = quadOn ? "crosshair" : "grab";
+    quadPoints = [];
+    quadPrev = null;
+    refreshDrawOverlay();
+    drawHud(quadOn ? quadStatusLine() : "");
   };
 
   // Assemble the rail in DCC order — create tools, edit tools, apply — with
@@ -3909,13 +4137,14 @@ function buildNodeUI(node, containerEl) {
     return s;
   };
   styleRailBtn(drawBtn, "✏️");
+  styleRailBtn(quadBtn, "⬜");
   styleRailBtn(boxBtn, "▣");
   styleRailBtn(sphereBtn, "●");
   styleRailBtn(editBtn, "✎");
   styleRailBtn(snapBtn, "🧲");
   styleRailBtn(deleteBtn, "🗑");
   styleRailBtn(drawApplyBtn, "✅");
-  drawRail.append(drawBtn, boxBtn, sphereBtn, railSeparator(),
+  drawRail.append(drawBtn, quadBtn, boxBtn, sphereBtn, railSeparator(),
                   editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
 
   // Restore previously-applied outlines from the persisted widget, so ✎ Edit
