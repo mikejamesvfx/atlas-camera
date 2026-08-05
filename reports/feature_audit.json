@@ -195,11 +195,12 @@
    "tests": 6,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 0,
+   "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
-    "dedicated_test"
+    "dedicated_test",
+    "docs"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
@@ -572,7 +573,7 @@
    "tests": 3,
    "mcp_tools": 1,
    "repo_tools": 0,
-   "docs": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -910,11 +911,12 @@
    "tests": 5,
    "mcp_tools": 0,
    "repo_tools": 2,
-   "docs": 0,
+   "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
-    "repo_tool"
+    "repo_tool",
+    "docs"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
@@ -1099,11 +1101,12 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 0,
+   "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
-    "repo_tool"
+    "repo_tool",
+    "docs"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
@@ -1231,10 +1234,11 @@
    "tests": 5,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 0,
+   "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
-    "dedicated_test"
+    "dedicated_test",
+    "docs"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
@@ -1446,10 +1450,11 @@
    "tests": 5,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 0,
+   "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
-    "dedicated_test"
+    "dedicated_test",
+    "docs"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
@@ -1575,13 +1580,14 @@
    "tests": 3,
    "mcp_tools": 1,
    "repo_tools": 2,
-   "docs": 0,
+   "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
     "mcp",
-    "repo_tool"
+    "repo_tool",
+    "docs"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
@@ -1962,11 +1968,12 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 0,
+   "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
-    "repo_tool"
+    "repo_tool",
+    "docs"
    ],
    "live_execution": "not_attempted",
    "live_output": "not_attempted",
