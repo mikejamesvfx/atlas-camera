@@ -84,7 +84,6 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasMaskedSurfaceReconstruct,
     AtlasRefineOcclusionSeams,
     AtlasPathGuidedHoleRepair,
-    AtlasAddPlanePolygon,
     AtlasDeriveWalls,
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
@@ -391,24 +390,17 @@ if _experimental_enabled():
 ATLAS_LEGACY_DEFAULT = "0"
 
 LEGACY_NODE_CLASS_MAPPINGS = {
-    "AtlasAddPlanePolygon": AtlasAddPlanePolygon,
     "AtlasLiveMeshRepair": AtlasLiveMeshRepair,
     "AtlasGroundMask": AtlasGroundMask,
 }
 
 LEGACY_NODE_DISPLAY_NAME_MAPPINGS = {
-    "AtlasAddPlanePolygon": "Atlas Draw Plane ✏️ (superseded)",
     "AtlasLiveMeshRepair": "Atlas Live Mesh Repair 🔧",
     "AtlasGroundMask": "Atlas Ground Mask",
 }
 
 #: key -> the supported replacement, surfaced in the banner and the audit.
 LEGACY_REPLACEMENTS = {
-    # Superseded the day it shipped: drawing an outline on the flat plate
-    # cannot see an occluded hole, because the hole only exists once the
-    # model is turned. Drawing moved into the viewport itself.
-    "AtlasAddPlanePolygon":
-        "AtlasBlockoutViewport ✏️ Draw -> Apply, then its `solve` output",
     "AtlasLiveMeshRepair":
         "AtlasPlanarHolePatch (layer='*') -> AtlasRetopologizeLayer"
         "(boundary_smooth_iterations)",

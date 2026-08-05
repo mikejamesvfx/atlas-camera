@@ -60,7 +60,6 @@ FACADE_PUBLIC = {
     "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
     "AtlasMaskedSurfaceReconstruct",
     "AtlasRefineOcclusionSeams",
-    "AtlasAddPlanePolygon",   # legacy-gated, still importable
     "AtlasLiveMeshRepair", "AtlasRetopologizeLayer", "AtlasStereoRender",
     "AtlasReferenceScaleSolve", "AtlasRegisterPlate", "AtlasRollTrim",
     "AtlasSAM3Mask", "AtlasSDXLInpaint", "AtlasScaleOverride",

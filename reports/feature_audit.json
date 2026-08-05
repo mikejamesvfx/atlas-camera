@@ -3,16 +3,16 @@
  "generated_utc": "2026-08-05",
  "counts": {
   "standard": 89,
-  "legacy": 3,
   "experimental": 6,
+  "legacy": 2,
   "ios": 2,
-  "total": 100,
+  "total": 99,
   "no_product_evidence": 0
  },
  "verdict_counts": {
   "KEEP_CORE": 89,
-  "LEGACY_GATE": 3,
   "KEEP_EXPERIMENTAL": 6,
+  "LEGACY_GATE": 2,
   "IOS_GATE": 2
  },
  "live_probe": {
@@ -49,35 +49,6 @@
    "verdict": "KEEP_CORE",
    "evidence": [],
    "migration_action": null,
-   "notes": null
-  },
-  "AtlasAddPlanePolygon": {
-   "module": "atlas_camera/comfy/nodes_geometry.py",
-   "tier": "legacy",
-   "example_workflows": 0,
-   "dedicated_tests": 1,
-   "tests": 2,
-   "mcp_tools": 0,
-   "repo_tools": 0,
-   "docs": 2,
-   "product_evidence": true,
-   "evidence_kinds": [
-    "dedicated_test",
-    "docs"
-   ],
-   "live_execution": "not_attempted",
-   "live_output": "not_attempted",
-   "live_note": null,
-   "overlapping_replacement": "AtlasBlockoutViewport (\u270f\ufe0f Draw -> \u2705 Apply, `solve` output)",
-   "known_defect": "drew on the FLAT PLATE, which cannot see an occluded hole \u2014 the hole only exists once the model is turned, and depth inside such an outline belongs to the occluder, not the intended surface. Also re-derived its own metric scale instead of adopting the upstream one (fixed before retirement, but the design was the real fault)",
-   "compatibility_risk": "none \u2014 shipped and superseded the same day (2026-08-04); no shipping workflow ever referenced it",
-   "verdict": "LEGACY_GATE",
-   "evidence": [
-    "0 shipping example workflows referenced it (registered and retired inside one day)",
-    "its geometry core (core/polygon_planes.py) is KEPT and reused by the viewport drawing tool, so no capability is lost",
-    "the plate-space fit it existed for cannot solve the occluded-hole case it was built for (live: newyork_Birdseye)"
-   ],
-   "migration_action": "Draw the outline in AtlasBlockoutViewport (\u270f\ufe0f Draw), press \u2705 Apply, and take geometry from its `solve` output.",
    "notes": null
   },
   "AtlasApplyLUT": {
