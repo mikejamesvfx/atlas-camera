@@ -3383,8 +3383,15 @@ function buildNodeUI(node, containerEl) {
       return;
     }
     if (quadOn) {
-      if (ev.key === "Enter" || ev.key === "Escape") {
-        // End the strip: an unfinished quad is discarded, committed ones stay.
+      if (ev.key === "Enter") {
+        // Enter CONFIRMS AND EXITS: the artist's next move is orbiting to the
+        // next hole, so drop straight back to the orbit cursor. An unfinished
+        // quad is discarded; committed ones stay.
+        quadBtn.onclick();
+        drawHud("⬜ done — orbit to the next hole, ✅ Apply builds the fills");
+        ev.preventDefault();
+      } else if (ev.key === "Escape") {
+        // Esc stays IN the tool: discard the in-progress quad / end the strip.
         quadPoints = [];
         quadPrev = null;
         refreshDrawOverlay();
@@ -3407,7 +3414,17 @@ function buildNodeUI(node, containerEl) {
       return;
     }
     if (sphereOn) {
-      if (ev.key === "Enter") { finishSphere(); ev.preventDefault(); }
+      if (ev.key === "Enter") {
+        const before = drawnPolygons.length;
+        finishSphere();
+        // Only exit when a sphere actually committed (finishSphere guards on
+        // radius); otherwise stay so its hint remains actionable.
+        if (drawnPolygons.length > before) {
+          sphereBtn.onclick();
+          drawHud("● sphere placed — orbit freely, ✅ Apply builds");
+        }
+        ev.preventDefault();
+      }
       else if (ev.key === "Escape") {
         sphereStage = 0; sphereContact = null; sphereRadius = 0;
         refreshDrawOverlay(); drawHud(sphereStatusLine()); ev.preventDefault();
@@ -3415,7 +3432,15 @@ function buildNodeUI(node, containerEl) {
       return;
     }
     if (boxOn) {
-      if (ev.key === "Enter") { finishBox(); ev.preventDefault(); }
+      if (ev.key === "Enter") {
+        const before = drawnPolygons.length;
+        finishBox();
+        if (drawnPolygons.length > before) {
+          boxBtn.onclick();
+          drawHud("▣ box placed — orbit freely, ✅ Apply builds");
+        }
+        ev.preventDefault();
+      }
       else if (ev.key === "Escape") {
         boxStage = 0; boxBase = null; boxOpposite = null; boxHeight = 0;
         refreshDrawOverlay(); drawHud(boxStatusLine()); ev.preventDefault();
@@ -3423,7 +3448,15 @@ function buildNodeUI(node, containerEl) {
       return;
     }
     if (!drawOn) return;
-    if (ev.key === "Enter") { closeDrawnOutline(); ev.preventDefault(); }
+    if (ev.key === "Enter") {
+      const before = drawnPolygons.length;
+      closeDrawnOutline();
+      if (drawnPolygons.length > before) {
+        drawBtn.onclick();
+        drawHud("✏️ outline closed — orbit freely, ✅ Apply builds");
+      }
+      ev.preventDefault();
+    }
     else if (ev.key === "Escape") {
       drawPoints = []; drawRays = []; drawHits = []; drawPlane = null;
       refreshDrawOverlay(); drawHud(drawStatusLine()); ev.preventDefault();
