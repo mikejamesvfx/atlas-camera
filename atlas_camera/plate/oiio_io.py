@@ -130,6 +130,89 @@ def list_colorspaces() -> list[str]:
     return [cfg.getColorSpaceNameByIndex(i) for i in range(cfg.getNumColorSpaces())]
 
 
+# Canonical Atlas colourspace name -> the OCIO ROLE that denotes the same space,
+# where a standard role exists. Roles are config-INDEPENDENT: `scene_linear`
+# resolves to whatever a config calls its rendering space, and `aces_interchange`
+# is REQUIRED by the ACES spec to be ACES2065-1 in any ACES config. Resolving
+# through a role is what lets Atlas honour a user's $OCIO studio config instead of
+# only OIIO's built-in ACES config. NOTE: "Linear Rec.709 (sRGB)" and the display
+# space deliberately have NO entry here — no standard role denotes them, so they
+# fall through to the name-alias table below rather than being forced onto a role.
+_SPACE_ROLES = {
+    "ACEScg": "scene_linear",
+    "ACES2065-1": "aces_interchange",
+}
+
+# Canonical name -> ordered candidate names to try when neither the exact name nor
+# a role resolves in the active config. Covers the spaces likely to differ across
+# the configs Atlas meets: OIIO's built-in cg/studio config, the older ACES 1.x
+# reference config, and common studio naming.
+_SPACE_ALIASES = {
+    "ACEScg": ("ACEScg", "ACES - ACEScg", "lin_ap1"),
+    "ACES2065-1": ("ACES2065-1", "ACES - ACES2065-1", "lin_ap0"),
+    "Linear Rec.709 (sRGB)": (
+        "Linear Rec.709 (sRGB)",        # OCIO v2 built-in cg / studio config
+        "Utility - Linear - Rec.709",   # ACES 1.0.3 reference config
+        "Linear Rec.709",
+        "lin_rec709",
+    ),
+    "sRGB - Display": ("sRGB - Display", "Output - sRGB", "sRGB", "srgb_display"),
+}
+
+
+def resolve_colorspace(name: str) -> str:
+    """Map an Atlas colourspace request to a name that EXISTS in the ACTIVE OCIO
+    config, so a conversion works whether the user is on OIIO's built-in ACES
+    config or their own $OCIO studio config.
+
+    A hardcoded ``"ACEScg"`` only works because it happens to be spelled that way
+    in the built-in config; a studio config may call the same space something else
+    (ACES 1.0.3 names linear Rec.709 ``Utility - Linear - Rec.709``). Resolving
+    first through OCIO roles, then through known cross-config aliases, removes that
+    brittleness while staying colourimetrically exact — a role or alias names the
+    SAME space, it never approximates it.
+
+    First hit wins:
+      1. ``name`` is already a colourspace in the active config.
+      2. ``name`` is (or maps to) an OCIO role that resolves in the config.
+      3. a known cross-config alias for ``name`` exists in the config.
+
+    Anything unresolved raises with the config's actual spaces listed, so a
+    mis-set $OCIO fails loudly at the call site instead of silently mis-tagging a
+    plate. If OIIO is unavailable the name is returned untouched — the caller's own
+    ``_require_oiio`` raises the actionable install error first.
+    """
+    if not name:
+        return name
+    known = set(list_colorspaces())
+    if not known:                      # no OIIO / no config — let the caller raise
+        return name
+    if name in known:                  # 1. already valid in this config
+        return name
+
+    cfg = ColorConfigCache.get()
+    for role in (name, _SPACE_ROLES.get(name, "")):   # 2. role resolution
+        if not role:
+            continue
+        try:
+            resolved = cfg.getColorSpaceNameByRole(role)
+        except Exception:              # noqa: BLE001 - binding differences degrade to aliases
+            resolved = ""
+        if resolved and resolved in known:
+            return resolved
+
+    for cand in _SPACE_ALIASES.get(name, ()):         # 3. cross-config aliases
+        if cand in known:
+            return cand
+
+    raise RuntimeError(
+        f"Colourspace {name!r} is not in the active OCIO config, and no role or "
+        f"known alias maps to it. The active config offers: {sorted(known)[:12]}"
+        f"{' ...' if len(known) > 12 else ''}. Point $OCIO at an ACES-compatible "
+        f"config, or install [oiio] to use the built-in ACES config."
+    )
+
+
 def auto_colorspace_for_path(path: str) -> str:
     """Infer what a file of this type conventionally holds."""
     ext = os.path.splitext(str(path))[1].lower()
@@ -170,16 +253,22 @@ def read_plate(path: str, *, input_colorspace: str = "auto",
                     else input_colorspace))
 
     resolved_out = "" if raw_data else (output_colorspace or "")
-    if resolved_out and resolved_out != resolved_in:
+    # Resolve both endpoints to what the ACTIVE OCIO config actually calls these
+    # spaces (role- or alias-based) before comparing or converting: this honours a
+    # user's $OCIO studio config, and comparing the RESOLVED names skips a needless
+    # convert when input and output are the same space spelled two different ways.
+    conv_in = resolve_colorspace(resolved_in) if resolved_out else resolved_in
+    conv_out = resolve_colorspace(resolved_out) if resolved_out else ""
+    if resolved_out and conv_out != conv_in:
         # OCIO transforms RGB, never alpha. Files with alpha are treated as
         # associated/premultiplied: OIIO must divide RGB by alpha, transform
         # the straight colour, then re-premultiply while leaving alpha itself
         # unchanged. Keep this explicit instead of depending on binding defaults.
         converted = ImageBufAlgo.colorconvert(
-            buf, resolved_in, resolved_out, unpremult=True)
+            buf, conv_in, conv_out, unpremult=True)
         if converted.has_error:
             raise RuntimeError(
-                f"Colour conversion {resolved_in!r} -> {resolved_out!r} failed: "
+                f"Colour conversion {conv_in!r} -> {conv_out!r} failed: "
                 f"{converted.geterror()}. Available spaces: {list_colorspaces()[:8]}...")
         buf = converted
 
@@ -237,17 +326,25 @@ def write_exr(path: str, pixels: Any, *, bit_depth: str = "half",
         raise RuntimeError(f"Could not stage pixels for {path}: {buf.geterror()}")
 
     tagged = source_colorspace
-    if source_colorspace and output_colorspace and source_colorspace != output_colorspace:
-        # Same associated-alpha contract as read_plate: transform straight RGB
-        # between an unpremultiply/re-premultiply pair; alpha remains data.
-        conv = ImageBufAlgo.colorconvert(
-            buf, source_colorspace, output_colorspace, unpremult=True)
-        if conv.has_error:
-            raise RuntimeError(
-                f"Colour conversion {source_colorspace!r} -> {output_colorspace!r} "
-                f"failed: {conv.geterror()}")
-        buf = conv
-        tagged = output_colorspace
+    if source_colorspace and output_colorspace:
+        # Resolve both endpoints to the active OCIO config's real names (role- or
+        # alias-based) so a studio $OCIO config works and equal spaces spelled two
+        # ways don't trigger a needless convert. Tag the file with the resolved
+        # OUTPUT name — what the pixels actually are in this config — so read_plate
+        # (which resolves tags the same way) reads it back correctly anywhere.
+        conv_src = resolve_colorspace(source_colorspace)
+        conv_out = resolve_colorspace(output_colorspace)
+        if conv_src != conv_out:
+            # Same associated-alpha contract as read_plate: transform straight RGB
+            # between an unpremultiply/re-premultiply pair; alpha remains data.
+            conv = ImageBufAlgo.colorconvert(
+                buf, conv_src, conv_out, unpremult=True)
+            if conv.has_error:
+                raise RuntimeError(
+                    f"Colour conversion {conv_src!r} -> {conv_out!r} "
+                    f"failed: {conv.geterror()}")
+            buf = conv
+            tagged = conv_out
 
     spec = ImageSpec(w, h, c, bit_depth)
     spec.attribute("compression", compression)
