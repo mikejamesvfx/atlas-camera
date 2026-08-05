@@ -121,7 +121,10 @@ def test_missing_file_raises_actionably(tmp_path):
 
 def test_bad_colorspace_names_the_available_ones(tmp_path):
     p = write_exr(str(tmp_path / "x.exr"), np.zeros((4, 4, 3), "float32"))
-    with pytest.raises(RuntimeError, match="Colour conversion"):
+    # resolve_colorspace() now rejects an unknown space up front (role/alias
+    # resolution) with a message that lists what the active config DOES offer,
+    # so a mis-set space fails clearly instead of mid-conversion.
+    with pytest.raises(RuntimeError, match="active config offers"):
         read_plate(p, input_colorspace="ACEScg", output_colorspace="NotARealSpace")
 
 
