@@ -72,7 +72,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasCleanPlateStack` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasCompleteDepth` | atlas_camera/comfy/nodes_completion.py | experimental | 0 | 1 | not_attempted | not_attempted | 1 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasConstrainedSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasDeband` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDeband` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDebugReport` | atlas_camera/comfy/nodes_viewport.py | standard | 4 | 3 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDecomposeCamera` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasDecomposeSolve` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 1 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |

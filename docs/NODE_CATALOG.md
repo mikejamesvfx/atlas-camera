@@ -231,25 +231,11 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-**Menu structure (2026-07-21):** every node lives in an `Atlas Camera/<folder>`
+**Menu structure (2026-08-05):** the Add-Node menu groups every node by pipeline stage. Ten numbered folders under `Atlas` run in workflow order: `01 · Input & Camera`, `02 · Orient & Scale`, `03 · Depth`, `04 · Masks`, `05 · Geometry`, `06 · Patch & Repair`, `07 · Clean Plate & Inpaint`, `08 · Look & Render`, `09 · QA & Gates`, `10 · Export`, plus `Atlas/advanced` for every gated node (experimental, legacy, iOS). Zero-padded prefixes force the order, since ComfyUI sorts folders as strings.
 
-subcategory — the flat top-level "Atlas Camera" list is empty. Folders: `Solve`,
+One map drives it: `node_registry.MENU_CATEGORY` is stamped onto every class at import, so the whole menu is edited in one place. CATEGORY is menu-placement only — it is never serialized into a saved graph, so re-foldering never affects a node key or an existing workflow, unlike a rename.
 
-`Scale & Trim`, `Masks & Depth`, `Gates & QA`, `Derive Geometry`, `Inpaint
-
-Layers`, `Patches`, `Export`, `Color`, `Blockout`, `Project`, `Experimental`.
-
-CATEGORY is menu-placement only — changing it never affects a node key or a saved
-
-workflow, unlike a rename. **Three nodes were removed in this same pass** (their
-
-keys are gone, so a saved workflow referencing one will fail to load): the
-
-`AtlasMegaPipeline` 🔬 monolith (unused, crashed), `AtlasLoadImageSolveCamera`
-
-(long-deprecated file-path solve), and `AtlasPitchTrim` (the gravity-mirror
-
-pitch dial — recoverable from git if the flip-repair is wanted back).
+This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), which had themselves replaced 13 scattered `Atlas Camera/<area>` folders (2026-07-21). **In that 2026-07-21 pass three nodes were removed** (their keys are gone, so a saved workflow referencing one will fail to load): the `AtlasMegaPipeline` 🔬 monolith (unused, crashed), `AtlasLoadImageSolveCamera` (long-deprecated file-path solve), and `AtlasPitchTrim` (the gravity-mirror pitch dial — recoverable from git if the flip-repair is wanted back).
 
 
 

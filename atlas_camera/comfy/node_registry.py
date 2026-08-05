@@ -453,3 +453,101 @@ if _ios_enabled():
     NODE_DISPLAY_NAME_MAPPINGS.update(IOS_NODE_DISPLAY_NAME_MAPPINGS)
     print("[Atlas Camera] ATLAS_IOS=1 — registering iOS/phone-capture nodes: "
           + ", ".join(IOS_NODE_CLASS_MAPPINGS))
+
+
+# ---------------------------------------------------------------------------
+# Menu taxonomy — the ONE place that decides which folder each node sits in.
+# ComfyUI builds the Add-Node menu from each class's CATEGORY, splitting on "/".
+# Setting it here (instead of per-class) keeps the whole menu visible and
+# editable in one map. Zero-padded numeric prefixes (01..10) force pipeline
+# order, because ComfyUI sorts folders as strings; "advanced" sorts after the
+# digits and holds every gated tier (experimental + legacy + iOS). CATEGORY is
+# metadata only — never serialized into a saved graph — so re-foldering cannot
+# break an existing workflow; that is what makes this the one restructure the
+# append-only key/display-name contract permits.
+_MENU_FOLDERS = {
+    "Atlas/01 \u00b7 Input & Camera": (
+        "AtlasInput", "AtlasLoadPlate", "AtlasLoadRAW", "AtlasRegisterPlate",
+        "AtlasAttachSourcePlate", "AtlasSolveFromImage",
+        "AtlasLearnedSolveFromImage", "AtlasConstrainedSolve", "AtlasSplitEquirect",
+        "AtlasEquirectMultiView", "AtlasUSDCameraLoader", "AtlasLoadSolveJSON",
+        "AtlasDecomposeCamera", "AtlasDecomposeSolve",
+    ),
+    "Atlas/02 \u00b7 Orient & Scale": (
+        "AtlasGravityCompass", "AtlasGravityOverride", "AtlasRollTrim",
+        "AtlasScaleOverride", "AtlasReferenceScaleSolve", "AtlasFaceScaleReference",
+        "AtlasVLMScaleCues", "AtlasApplyScaleReferences",
+    ),
+    "Atlas/03 \u00b7 Depth": (
+        "AtlasDepthAnything", "AtlasDepthMap", "AtlasMogeNormals",
+        "AtlasDepthDetailEnhance", "AtlasDepthCombine", "AtlasGroundDepthMap",
+        "AtlasDepthBandSplit", "AtlasBoundedBand", "AtlasDepthLayerMask",
+        "AtlasDepthOutlierMask", "AtlasOutpaintDepth",
+    ),
+    "Atlas/04 \u00b7 Masks": (
+        "AtlasHorizonMask", "AtlasSemanticMask", "AtlasInstanceMask",
+        "AtlasSAM3Mask", "AtlasScopeMask", "AtlasOcclusionMask",
+    ),
+    "Atlas/05 \u00b7 Geometry": (
+        "AtlasDeriveProjectionGeometry", "AtlasDeriveReliefMesh", "AtlasDeriveWalls",
+        "AtlasDeriveTowersSpires", "AtlasDeriveRoofsFacades",
+        "AtlasDeriveInteriorRoom", "AtlasMergeGeometry", "AtlasRetopologizeLayer",
+        "AtlasDefineShotCam",
+    ),
+    "Atlas/06 \u00b7 Patch & Repair": (
+        "AtlasAddPatchView", "AtlasSolvePatchViews", "AtlasPlanarHolePatch",
+        "AtlasPathGuidedHoleRepair", "AtlasOcclusionGraph", "AtlasLayerPlan",
+        "AtlasShootList", "AtlasDisocclusionGuide",
+    ),
+    "Atlas/07 \u00b7 Clean Plate & Inpaint": (
+        "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasLayerPreview",
+        "AtlasSkyDomeLayer", "AtlasInpaintCrop", "AtlasInpaintStitch",
+        "AtlasSDXLInpaint", "AtlasSegmentedSDXLInpaint",
+    ),
+    "Atlas/08 \u00b7 Look & Render": (
+        "AtlasBlockoutViewport", "AtlasViewportControls", "AtlasVPVisualization",
+        "AtlasStereoRender", "AtlasMoveBudget", "AtlasDebugReport", "AtlasGrade",
+        "AtlasDeband", "AtlasDefocus", "AtlasApplyLUT",
+    ),
+    "Atlas/09 \u00b7 QA & Gates": (
+        "AtlasAssessImage", "AtlasAssessOutput", "AtlasSceneHealthGate",
+        "AtlasSolveGate",
+    ),
+    "Atlas/10 \u00b7 Export": (
+        "AtlasExportNuke", "AtlasExportNukeLayers", "AtlasExportMayaLayers",
+        "AtlasExportMayaReviewScene", "AtlasExportBlender", "AtlasExportUSD",
+        "AtlasExportCameraPathUSD", "AtlasExportReliefMesh", "AtlasExportPlateEXR",
+        "AtlasExportReviewPackage", "AtlasExportSolveJSON",
+    ),
+    # Every gated tier lands here: experimental, legacy, and iOS. They only
+    # appear in the menu when their flag registers them, but carry the folder
+    # regardless so they land in the right place when enabled.
+    "Atlas/advanced": (
+        "AtlasCompleteDepth", "AtlasBlockoutMassing", "AtlasExtractAnglePatch",
+        "AtlasImportAnglePatch", "AtlasMaskedSurfaceReconstruct",
+        "AtlasRefineOcclusionSeams", "AtlasLiveMeshRepair", "AtlasGroundMask",
+        "AtlasLoadRecord3D", "AtlasStreamRecord3D",
+    ),
+}
+
+#: node key -> menu folder (CATEGORY). Derived from the readable folder map above.
+MENU_CATEGORY = {key: folder
+                 for folder, keys in _MENU_FOLDERS.items() for key in keys}
+
+
+def _apply_menu_categories() -> None:
+    """Stamp each registered class's CATEGORY from MENU_CATEGORY, across all tiers.
+
+    Runs at import so ComfyUI reads the folder off the class when it builds the
+    menu. CATEGORY is metadata only (never serialized), so this only moves where
+    a node shows up, never what a saved graph resolves to.
+    """
+    for _m in (NODE_CLASS_MAPPINGS, EXPERIMENTAL_NODE_CLASS_MAPPINGS,
+               LEGACY_NODE_CLASS_MAPPINGS, IOS_NODE_CLASS_MAPPINGS):
+        for _key, _cls in _m.items():
+            _cat = MENU_CATEGORY.get(_key)
+            if _cat:
+                _cls.CATEGORY = _cat
+
+
+_apply_menu_categories()
