@@ -1,0 +1,151 @@
+# Atlas Viewport — draw / box / sphere, with snap + edit (working context)
+
+Scope: **only** the in-viewport blockout drawing tools on the **Atlas Viewport**
+node (`AtlasBlockoutViewport`). Hand this to Claude Code before tweaking those
+tools so it doesn't have to re-read ~6k lines of `atlas_blockout.js`. Nothing
+here covers the rest of the viewport (projection, band boxes, debug overlays).
+
+## One-paragraph model
+
+The viewport is a single Three.js widget on the Atlas Viewport node. On top of
+the orbit view it has a **draw overlay** (`drawGroup`, name `atlas_draw_overlay`,
+flagged `atlasHelper` so render/export passes skip it). You draw blockout shapes
+onto the scene; they collect in one array, `drawnPolygons`; and **✅ Apply** bakes
+them into the solve and re-queues the graph so the `solve` output carries them
+downstream (retopo / export). Nothing is baked until Apply — drawing only builds
+overlay previews.
+
+All three primitives share ONE data shape and ONE edit path:
+
+```
+{ id, label, enabled, kind, points_world }     // kind: "polygon" | "box" | "sphere"
+```
+
+- polygon → `points_world` = outline vertices (N)
+- box → `points_world` = 8 corners (4 footprint, 4 top)
+- sphere → `points_world` = `[centre, surfacePoint]` (radius = |surface − centre|)
+
+Because box and sphere reuse the same `points_world` array a polygon uses,
+**Edit's handles, snapping and deletion work on all three with no separate code
+path.** That reuse is deliberate — don't fork it lightly.
+
+## Files
+
+| Piece | File | Notes |
+|---|---|---|
+| Viewport widget + all draw tools | `atlas_camera/comfy/web/atlas_blockout.js` | the tools live ~L2520–3700 |
+| Widget ⇄ node bridge | `atlas_camera/comfy/viewport_payload.py` | serialises the drawn shapes to/from the node |
+| The node | `atlas_camera/comfy/nodes_viewport.py` | `AtlasBlockoutViewport` (menu: "Atlas Viewport") |
+| Mesh builders | `atlas_camera/core/polygon_planes.py` | `box_mesh_from_corners` (~L248), `sphere_mesh` (~L302), polygon-plane meshing |
+| Primitive → triangles | `atlas_camera/core/primitive_mesh.py` | `tessellate_primitive` + unit builders, for measure/export |
+
+Everything about the DRAW / SNAP / EDIT *feel* is in `atlas_blockout.js`. The
+`.py` files only matter when a baked shape's geometry comes out wrong.
+
+## Shared state (`atlas_blockout.js`, ~L2521)
+
+```
+drawnPolygons          // committed shapes, awaiting Apply
+drawPoints/drawRays/drawHits   // outline being drawn + click rays + geometry hits
+drawPlane              // { normal, offset } — polygons are drawn ON this plane
+editOn                 // ✎ Edit mode
+editDrag               // { poly, index } while a handle is dragged
+editSnap               // Snap toggle, default TRUE — shared by draw AND edit
+drawDirty              // shapes changed since last Apply
+drawTilt / drawPush    // nudge the draw plane (radians / metres along normal)
+drawGroup              // the atlas_draw_overlay Three.Group (excluded from render)
+drawTargets()          // meshes flagged atlasDerived / atlasPatch — what draws hit + snap to
+```
+
+## The tools (left tool rail, ~L3300+)
+
+The six tools live on a **DCC-style vertical rail** (`drawRail`) overlaid on the
+LEFT edge of the canvas, vertically centred, icon-only (full wording stays in
+each button's tooltip): **✏️ Draw**, **▣ Box**, **● Sphere** │ **✎ Edit**,
+**🧲 Snap** │ **✅ Apply**. The rail is a child of `canvasWrap` and is NEVER
+reparented by `mountControls` — it stays on the viewport even when the main
+toolbar moves to an AtlasViewportControls node. The tilt/push `drawAdjust` row
+is a contextual flyout anchored right of the rail, shown only while Draw is
+active. Draw / Box / Sphere / Edit are mutually exclusive — entering one
+cancels the others.
+
+**✏️ Draw (polygon)** — click to drop outline points. The first hits on geometry
+(`drawTargets()`) establish `drawPlane`; later points project onto that plane
+(rays kept in `drawRays` so they re-project if the plane is tilted/pushed). Enter
+or Apply closes the loop (`closeDrawnOutline`, needs ≥3 points). Fills a
+*see-through hole* — i.e. a plane.
+
+**Box (~L3370)** — three-stage blockout SOLID for mass the camera never saw round
+the back of: `boxStage` 1 pick base corner → 2 drag footprint → 3 drag height.
+Footprint snaps to the 1 m ground grid (`BOX_GRID_CELL = 1.0`, `snapToGroundGrid`).
+`boxCornersNow()` builds the 8 corners; `refreshBoxPreview` draws the wire preview.
+Enter or a third click finishes, Esc cancels.
+
+**Sphere (~L3600)** — two-stage: click the touch-down point (ctrl-click snaps it
+to geometry via `snapHitToEdge`, else it rests on the ground), then drag the
+radius (also grid-snapped). `sphereControlPoints()` returns `[centre, surface]`,
+stored as `kind:"sphere"`. Preview is three great-circle rings.
+
+## Snap (`editSnap`, default ON)
+
+One toggle drives snapping for BOTH drawing and editing. Two different flavours
+under it:
+
+- **Edge/vertex snap** — drawn/dragged points snap to the nearest mesh
+  edge/vertex under the cursor (`snapHitToEdge`). This is what makes a patch rim
+  actually meet a torn hole's geometry.
+- **Ground-grid snap** — box footprints and sphere centres/radii quantise to the
+  1 m grid (`snapToGroundGrid`), so a blockout sits ON the perspective grid.
+
+**Shift bypasses snap** while drawing (free placement). In **Edit**, Shift instead
+constrains a drag to one axis (or press X/Y/Z). The snap helpers all early-return
+the raw point when `editSnap` is false — so a "snap won't turn off" bug means a
+path that isn't checking the flag.
+
+## Edit (`✎ Edit`, `editOn`)
+
+Drag a handle to slide a point WITHIN its own plane; ctrl-click a handle to delete
+it (guarded so a polygon can't drop below 3 points, ~L2911). Orbit still works —
+only the grab itself suppresses it. Box faces move as quads (`EDIT_BOX_QUADS`) and
+re-snap to `BOX_GRID_CELL`. When a polygon's points move, its plane is refit from
+the moved hits (`atlasEstablishPlaneFromHits`, ~L3027) so the projection basis
+stays correct. Edits set `drawDirty`; **Apply** rebuilds.
+
+**Translate gizmo (`editSel` / `editGizmo`).** A grab becomes a persistent
+selection (`editSel = {poly, indices}`); on release a Maya-style gizmo — three
+coloured, screen-constant axis arrows — appears at the selection centroid
+(`ensureEditGizmo`/`updateEditGizmo`, driven per-frame from `animate()` beside
+`updatePivotGizmo`). Dragging an arrow tip (`pickGizmoAxis`, same NDC tolerance
+as `findEditPointNear`) starts an `editDrag` with `axis` PRE-SET — all movement
+still goes through the existing `atlasClosestPointOnAxis` branch. Axis lock
+(gizmo, Shift, or X/Y/Z) brightens that arrow and dims the others
+(`setGizmoAxisEmphasis`); idle hover over a tip highlights it. Empty click
+deselects (without eating the event, so orbit works); deleting the selected
+shape, toggling Edit off, or entering another tool hides the gizmo. The gizmo
+lives directly in `scene` (NOT `drawGroup`, which is cleared every
+`refreshDrawOverlay`) and is `atlasHelper`-tagged on every child so it never
+leaks into renders/exports.
+
+## Apply flow
+
+`✅ Apply` (`drawApplyBtn.onclick`): closes any open outline → clears `drawDirty`
+→ `persistDrawnPolygonsToClientData()` hands `drawnPolygons` to the node payload →
+`app.queuePrompt(0, 1)` re-runs the graph. Backend: `viewport_payload.py` reads
+the shapes and `polygon_planes.py` builds the meshes into the solve.
+
+## Gotchas when tweaking
+
+- **`points_world` is world-space and shared across all three kinds.** If you add
+  a kind or change the array shape, update all of: the `kind ==` branches in the
+  overlay renderer (~L2606), the edit-handle logic, `viewport_payload.py`, and
+  `polygon_planes.py`. One shared array is what keeps Edit/Snap kind-agnostic.
+- **Nothing persists without Apply.** Drawing only builds overlay previews; the
+  payload is written only in `persistDrawnPolygonsToClientData`, and geometry
+  rebuilds only on the re-queue.
+- **Snap is one flag, two behaviours.** Edge-snap (to `drawTargets()`) vs
+  ground-grid snap are different code — a "snap feels wrong" bug is usually in the
+  wrong one of the two.
+- **The overlay group is `atlasHelper` and skipped by render/export.** Add any new
+  preview mesh to `drawGroup` and flag `userData.atlasHelper = true`, or it leaks
+  into the projection.
+- Line numbers here are approximate — grep the function name, the file drifts.

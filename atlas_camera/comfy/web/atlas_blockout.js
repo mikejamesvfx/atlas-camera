@@ -1661,6 +1661,20 @@ function buildNodeUI(node, containerEl) {
 
   canvasWrap.append(canvas, diagramSvg, metaHud, localControlsLayer);
 
+  // DCC-style vertical tool rail for the blockout draw tools (Draw / Box /
+  // Sphere / Edit / Snap / Apply). Lives on canvasWrap and is NEVER reparented
+  // by mountControls: these tools act on the canvas under the cursor, so they
+  // stay with the viewport even when the rest of the toolbar moves to an
+  // AtlasViewportControls node. Vertically centred so it clears metaHud
+  // (top-left) and drawStatus / the layer legend (bottom-left).
+  const drawRail = document.createElement("div");
+  drawRail.style.cssText =
+    "position:absolute;left:6px;top:50%;transform:translateY(-50%);z-index:10;" +
+    "display:flex;flex-direction:column;gap:2px;padding:4px 3px;" +
+    "background:rgba(16,16,22,0.82);border:1px solid #333;border-radius:5px;" +
+    "pointer-events:auto;line-height:normal;";
+  canvasWrap.appendChild(drawRail);
+
   // Three.js setup
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
   renderer.setSize(previewW, previewH, false);
@@ -1939,6 +1953,7 @@ function buildNodeUI(node, containerEl) {
     }
     syncProjectionLightUniforms();
     updatePivotGizmo();   // track the orbit target + rescale to the scene
+    updateEditGizmo();    // pin the ✎ translate gizmo to the edit selection
     // Deferred aspect snap: execution can finish while the node is scrolled
     // off-screen, where ComfyUI hides the DOM widget and every rect measures
     // 0 — snapNodeHeightToRenderAspect stashes the aspect instead, and this
@@ -2524,6 +2539,8 @@ function buildNodeUI(node, containerEl) {
   let drawRays = [];        // the click ray behind each point, for re-projection
   let editOn = false;       // ✎ Edit: move points of ALREADY-drawn outlines
   let editDrag = null;      // { poly, index } while a handle is being dragged
+  let editSel = null;       // { poly, indices } — persistent selection after a
+                            // grab, so the translate gizmo has something to sit on
   let drawDirty = false;    // outlines changed since the last ✅ Apply
   let editSnap = true;      // snap clicks/drags to mesh edges (Shift bypasses)
   let drawPlane = null;     // { normal, offset }
@@ -2836,6 +2853,101 @@ function buildNodeUI(node, containerEl) {
     return [c[0] / n, c[1] / n, c[2] / n];
   }
 
+  // ✎ translate gizmo — three screen-constant coloured axis arrows at the
+  // persistent selection (editSel), Maya-style. Grabbing an arrow tip starts an
+  // axis-locked drag of that selection: it only PRE-SETS editDrag.axis — all
+  // the movement maths is the existing atlasClosestPointOnAxis path in
+  // onEditPointerMove, unchanged. Lives directly in `scene` (drawGroup is
+  // cleared by every refreshDrawOverlay, which runs per drag frame) and is
+  // tagged atlasHelper on the group and every child so render/export passes
+  // skip it — same discipline as the pivot gizmo and the ground grid.
+  const GIZMO_AXIS_COLORS = { x: 0xff5555, y: 0x55ff55, z: 0x5599ff };
+  const GIZMO_SHAFT_LEN = 4;      // in gizmo-local units, scaled per frame
+  const GIZMO_TIP_AT = 4.6;
+  let editGizmo = null;
+  function ensureEditGizmo() {
+    if (editGizmo) return;
+    editGizmo = new THREE.Group();
+    editGizmo.name = "atlas_edit_gizmo";
+    editGizmo.userData.atlasHelper = true;
+    for (const [name, axis] of Object.entries(EDIT_AXES)) {
+      const col = GIZMO_AXIS_COLORS[name];
+      const shaft = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(axis[0] * GIZMO_SHAFT_LEN, axis[1] * GIZMO_SHAFT_LEN,
+                            axis[2] * GIZMO_SHAFT_LEN)]),
+        new THREE.LineBasicMaterial({
+          color: col, depthTest: false, transparent: true, opacity: 0.9 }));
+      shaft.renderOrder = 200003;
+      const tip = new THREE.Mesh(
+        new THREE.ConeGeometry(0.45, 1.2, 10),
+        new THREE.MeshBasicMaterial({
+          color: col, depthTest: false, transparent: true, opacity: 0.9 }));
+      tip.position.set(axis[0] * GIZMO_TIP_AT, axis[1] * GIZMO_TIP_AT,
+                       axis[2] * GIZMO_TIP_AT);
+      // ConeGeometry points +Y; orient it along its axis.
+      if (name === "x") tip.rotation.z = -Math.PI / 2;
+      if (name === "z") tip.rotation.x = Math.PI / 2;
+      tip.renderOrder = 200004;
+      shaft.userData.atlasHelper = true; shaft.userData.atlasGizmoAxis = name;
+      tip.userData.atlasHelper = true; tip.userData.atlasGizmoAxis = name;
+      editGizmo.add(shaft, tip);
+    }
+    editGizmo.visible = false;
+    scene.add(editGizmo);
+  }
+  function gizmoTipWorld(name) {
+    const a = EDIT_AXES[name];
+    const s = editGizmo.scale.x;
+    const p = editGizmo.position;
+    return [p.x + a[0] * GIZMO_TIP_AT * s,
+            p.y + a[1] * GIZMO_TIP_AT * s,
+            p.z + a[2] * GIZMO_TIP_AT * s];
+  }
+  // Called per-frame from animate() beside updatePivotGizmo, so it tracks the
+  // selection through drags and stays a constant on-screen size while orbiting.
+  function updateEditGizmo() {
+    if (!editSel || !editOn || drawOn || boxOn || sphereOn
+        || !drawnPolygons.includes(editSel.poly)) {
+      if (editGizmo) editGizmo.visible = false;
+      return;
+    }
+    ensureEditGizmo();
+    const pts = editSel.indices
+      .map((i) => editSel.poly.points_world[i]).filter(Boolean);
+    if (!pts.length) { editGizmo.visible = false; return; }
+    const c = selectionCentroid(pts);
+    editGizmo.position.set(c[0], c[1], c[2]);
+    const dist = camera.position.distanceTo(editGizmo.position) || 10;
+    editGizmo.scale.setScalar(Math.max(dist * 0.02, 0.02));
+    editGizmo.visible = true;
+  }
+  // Nearest arrow tip to the cursor in NDC — the same constant-pixel tolerance
+  // findEditPointNear uses, so grabbing a gizmo feels like grabbing a handle.
+  function pickGizmoAxis(mapped) {
+    if (!editGizmo || !editGizmo.visible) return null;
+    const tol = 2 * 14 / Math.max(canvas.height, 1);
+    let best = null, bestD = Infinity;
+    for (const name of Object.keys(EDIT_AXES)) {
+      const t = gizmoTipWorld(name);
+      const proj = new THREE.Vector3(t[0], t[1], t[2]).project(camera);
+      const d = Math.hypot(proj.x - mapped.x, proj.y - mapped.y);
+      if (d < bestD) { bestD = d; best = name; }
+    }
+    return bestD <= tol ? best : null;
+  }
+  // axis = "x"|"y"|"z" brightens that arrow and dims the others (the visual
+  // "axis locked" feedback, shared by gizmo drags AND Shift / X/Y/Z locks);
+  // null restores the resting look.
+  function setGizmoAxisEmphasis(axis) {
+    if (!editGizmo) return;
+    for (const child of editGizmo.children) {
+      const mine = child.userData.atlasGizmoAxis === axis;
+      child.material.opacity = axis ? (mine ? 1.0 : 0.25) : 0.9;
+    }
+  }
+
   function applyEditDelta(delta) {
     let d = delta;
     // A box already snaps its footprint and height to whole grid cells, so a
@@ -2897,6 +3009,33 @@ function buildNodeUI(node, containerEl) {
     if (!editOn) return;
     const mapped = mappedFromEvent(ev);
     if (!mapped.inside) return;
+    // A gizmo arrow under the cursor wins over everything (Maya order): it
+    // starts an axis-locked drag of the persistent selection with the axis
+    // already chosen — the move handler's existing axis branch does the rest.
+    if (editSel && editGizmo?.visible && !ev.ctrlKey && !ev.metaKey) {
+      const axis = pickGizmoAxis(mapped);
+      if (axis) {
+        const origins = editSel.indices.map((i) => [...editSel.poly.points_world[i]]);
+        editDrag = {
+          poly: editSel.poly,
+          indices: [...editSel.indices],
+          index: editSel.indices[0],
+          origins,
+          origin: selectionCentroid(origins),
+          startNdc: { x: mapped.x, y: mapped.y },
+          axis,
+        };
+        setGizmoAxisEmphasis(axis);
+        drawHud(`✎ ${axis.toUpperCase()} axis drag`
+                + (editDrag.indices.length > 1
+                   ? ` — moving ${editDrag.indices.length} points` : ""));
+        canvas.setPointerCapture?.(ev.pointerId);
+        refreshDrawOverlay();
+        ev.stopPropagation();
+        ev.preventDefault();
+        return;
+      }
+    }
     const found = findEditPointNear(mapped);
     // A vertex under the cursor wins over the face behind it; otherwise fall
     // through to face selection, so clicking a cube's lid grabs all four of
@@ -2904,7 +3043,12 @@ function buildNodeUI(node, containerEl) {
     const sel = found
       ? { poly: found.poly, indices: [found.index], pi: found.pi }
       : findFaceUnder(mapped);
-    if (!sel) return;
+    if (!sel) {
+      // Empty click deselects (gizmo hides) but must NOT eat the event —
+      // orbiting on empty space still has to work while editing.
+      editSel = null;
+      return;
+    }
 
     if (ev.ctrlKey || ev.metaKey) {
       const pi = drawnPolygons.indexOf(sel.poly);
@@ -2918,6 +3062,8 @@ function buildNodeUI(node, containerEl) {
         sel.poly.points_world.splice(sel.indices[0], 1);
         drawHud("✎ point deleted");
       }
+      // Stored indices are stale after any delete on that shape.
+      if (editSel && editSel.poly === sel.poly) editSel = null;
       drawDirty = true;
       refreshDrawOverlay();
       ev.stopPropagation();
@@ -2935,6 +3081,9 @@ function buildNodeUI(node, containerEl) {
       startNdc: { x: mapped.x, y: mapped.y },
       axis: null,
     };
+    // The grab becomes the persistent selection: on release the translate
+    // gizmo appears here for axis-clean follow-up nudges.
+    editSel = { poly: sel.poly, indices: [...sel.indices] };
     drawHud(sel.indices.length > 1
       ? `✎ face selected (${sel.indices.length} points) — `
         + "SHIFT locks an axis"
@@ -2946,7 +3095,15 @@ function buildNodeUI(node, containerEl) {
   }
 
   function onEditPointerMove(ev) {
-    if (!editDrag) return;
+    if (!editDrag) {
+      // Idle hover: light up the arrow tip under the cursor so the gizmo
+      // reads as grabbable before it is grabbed.
+      if (editOn && editSel && editGizmo?.visible) {
+        const hoverMapped = mappedFromEvent(ev);
+        setGizmoAxisEmphasis(hoverMapped.inside ? pickGizmoAxis(hoverMapped) : null);
+      }
+      return;
+    }
     const mapped = mappedFromEvent(ev);
     if (!mapped.inside) return;
 
@@ -2973,6 +3130,7 @@ function buildNodeUI(node, containerEl) {
           applyEditDelta([onAxis[0] - editDrag.origin[0],
                           onAxis[1] - editDrag.origin[1],
                           onAxis[2] - editDrag.origin[2]]);
+          setGizmoAxisEmphasis(editDrag.axis);
           drawDirty = true;
           refreshDrawOverlay();
           drawHud(`✎ ${editDrag.axis.toUpperCase()} axis locked`
@@ -3029,9 +3187,11 @@ function buildNodeUI(node, containerEl) {
       if (refit) editDrag.poly.plane = refit;
     }
     editDrag = null;
+    setGizmoAxisEmphasis(null);
     canvas.releasePointerCapture?.(ev.pointerId);
     refreshDrawOverlay();
-    drawHud("✎ moved — click ✅ Apply to rebuild the geometry");
+    drawHud("✎ moved — drag a gizmo arrow for an axis-clean nudge, "
+            + "then ✅ Apply to rebuild");
     ev.stopPropagation();
   }
 
@@ -3165,6 +3325,7 @@ function buildNodeUI(node, containerEl) {
   function onDrawKey(ev) {
     if (editDrag && "xyz".includes(ev.key.toLowerCase())) {
       editDrag.axis = ev.key.toLowerCase();
+      setGizmoAxisEmphasis(editDrag.axis);
       drawHud(`✎ ${editDrag.axis.toUpperCase()} axis locked`);
       ev.preventDefault();
       return;
@@ -3246,10 +3407,14 @@ function buildNodeUI(node, containerEl) {
   // re-intersect the STORED click rays, so the outline keeps the shape drawn
   // on screen while the plane rotates about the clicked edge or slides along
   // its own normal.
+  // Shown as a contextual flyout beside the rail only while ✏️ Draw is active —
+  // tilt/push belong to the draw gesture, not the main toolbar.
   const drawAdjust = document.createElement("div");
   drawAdjust.style.cssText =
     "display:none;align-items:center;gap:4px;font-size:10px;color:#9c9;" +
-    "padding:2px 6px;background:#1a201a;border:1px solid #3a4a3a;border-radius:3px;";
+    "padding:2px 6px;background:#1a201a;border:1px solid #3a4a3a;border-radius:3px;" +
+    "position:absolute;left:52px;top:50%;transform:translateY(-50%);z-index:10;" +
+    "pointer-events:auto;line-height:normal;white-space:nowrap;";
   const drawTiltInput = document.createElement("input");
   drawTiltInput.type = "range";
   drawTiltInput.min = "-60"; drawTiltInput.max = "60"; drawTiltInput.step = "1";
@@ -3276,7 +3441,7 @@ function buildNodeUI(node, containerEl) {
   drawTiltInput.oninput = onAdjust;
   drawPushInput.oninput = onAdjust;
   drawAdjust.append(drawTiltInput, drawPushInput, drawAdjustLabel);
-  toolbar.appendChild(drawAdjust);
+  canvasWrap.appendChild(drawAdjust);
 
   const drawBtn = document.createElement("button");
   drawBtn.textContent = "✏️ Draw";
@@ -3302,7 +3467,6 @@ function buildNodeUI(node, containerEl) {
       refreshDrawOverlay();
     }
   };
-  toolbar.appendChild(drawBtn);
 
   const editBtn = document.createElement("button");
   editBtn.textContent = "✎ Edit";
@@ -3318,6 +3482,7 @@ function buildNodeUI(node, containerEl) {
     if (editOn && boxOn) boxBtn.onclick();
     if (editOn && sphereOn) sphereBtn.onclick();
     editDrag = null;
+    editSel = null;
     refreshDrawOverlay();
     drawHud(editOn
       ? (drawnPolygons.length
@@ -3326,7 +3491,6 @@ function buildNodeUI(node, containerEl) {
           : "✎ nothing drawn yet — use ✏️ Draw first")
       : "");
   };
-  toolbar.appendChild(editBtn);
 
   const snapBtn = document.createElement("button");
   snapBtn.textContent = "Snap";
@@ -3339,7 +3503,6 @@ function buildNodeUI(node, containerEl) {
     snapBtn.style.background = editSnap ? "#1a2a1a" : "#2a2a2a";
     snapBtn.style.color = editSnap ? "#8f8" : "#ddd";
   };
-  toolbar.appendChild(snapBtn);
 
   const drawApplyBtn = document.createElement("button");
   drawApplyBtn.textContent = "✅ Apply";
@@ -3357,7 +3520,6 @@ function buildNodeUI(node, containerEl) {
     drawHud(`✅ applying ${drawnPolygons.length} outline(s) — re-queued`);
     app.queuePrompt(0, 1);
   };
-  toolbar.appendChild(drawApplyBtn);
 
   // ---------------------------------------------------------------------------
   // Box — three-stage blockout solid: footprint on the ground, then extrude up.
@@ -3572,7 +3734,6 @@ function buildNodeUI(node, containerEl) {
     refreshDrawOverlay();
     drawHud(boxOn ? boxStatusLine() : "");
   };
-  toolbar.appendChild(boxBtn);
 
   // ---------------------------------------------------------------------------
   // Sphere — two stages: click where it touches down, drag the radius.
@@ -3723,7 +3884,30 @@ function buildNodeUI(node, containerEl) {
     refreshDrawOverlay();
     drawHud(sphereOn ? sphereStatusLine() : "");
   };
-  toolbar.appendChild(sphereBtn);
+
+  // Assemble the rail in DCC order — create tools, edit tools, apply — with
+  // thin separators between the groups. Rail buttons are icon-sized; the full
+  // wording stays in each button's title tooltip.
+  const styleRailBtn = (btn, glyph) => {
+    btn.textContent = glyph;
+    btn.style.width = "32px";
+    btn.style.padding = "5px 0";
+    btn.style.fontSize = "14px";
+    btn.style.textAlign = "center";
+  };
+  const railSeparator = () => {
+    const s = document.createElement("div");
+    s.style.cssText = "height:1px;margin:2px 3px;background:#3a3a44;";
+    return s;
+  };
+  styleRailBtn(drawBtn, "✏️");
+  styleRailBtn(boxBtn, "▣");
+  styleRailBtn(sphereBtn, "●");
+  styleRailBtn(editBtn, "✎");
+  styleRailBtn(snapBtn, "🧲");
+  styleRailBtn(drawApplyBtn, "✅");
+  drawRail.append(drawBtn, boxBtn, sphereBtn, railSeparator(),
+                  editBtn, snapBtn, railSeparator(), drawApplyBtn);
 
   // Restore previously-applied outlines from the persisted widget, so ✎ Edit
   // works after a reload / workflow reopen and not only in the session that
