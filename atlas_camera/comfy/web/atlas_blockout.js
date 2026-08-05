@@ -2541,6 +2541,8 @@ function buildNodeUI(node, containerEl) {
   let editDrag = null;      // { poly, index } while a handle is being dragged
   let editSel = null;       // { poly, indices } — persistent selection after a
                             // grab, so the translate gizmo has something to sit on
+  let editWeld = null;      // { poly, index } — the ADJOINING vertex the dragged
+                            // one is about to weld onto (both draw red)
   let drawDirty = false;    // outlines changed since the last ✅ Apply
   let editSnap = true;      // snap clicks/drags to mesh edges (Shift bypasses)
   let drawPlane = null;     // { normal, offset }
@@ -2653,12 +2655,21 @@ function buildNodeUI(node, containerEl) {
       // Selected handles are drawn separately and hot, so a face grab is
       // visibly a FACE and not a single corner that happens to be under the
       // cursor.
-      const plain = [], hot = [];
+      // Weld pair draws RED (both the dragged vertex and its target), hot
+      // selection orange, the rest blue.
+      const plain = [], hot = [], weld = [];
       for (const poly of drawnPolygons) {
         const selected = (editDrag && editDrag.poly === poly)
           ? new Set(editDrag.indices) : null;
+        const weldIdx = (editWeld && editWeld.poly === poly) ? editWeld.index : -1;
         poly.points_world.forEach((q, i) => {
-          (selected && selected.has(i) ? hot : plain).push(q[0], q[1], q[2]);
+          if (i === weldIdx || (editWeld && selected && selected.has(i))) {
+            weld.push(q[0], q[1], q[2]);
+          } else if (selected && selected.has(i)) {
+            hot.push(q[0], q[1], q[2]);
+          } else {
+            plain.push(q[0], q[1], q[2]);
+          }
         });
       }
       const addPoints = (arr, color, size) => {
@@ -2675,6 +2686,7 @@ function buildNodeUI(node, containerEl) {
       };
       addPoints(plain, 0x50d0ff, 10);
       addPoints(hot, 0xff9040, 14);
+      addPoints(weld, 0xff3030, 16);
     }
     if (quadOn && quadPoints.length) {
       outline(quadPoints, 0xffe066, quadPoints.length >= 3);
@@ -2983,6 +2995,26 @@ function buildNodeUI(node, containerEl) {
     return bestD <= tol ? best : null;
   }
 
+  // Nearest vertex of ANOTHER shape to the cursor — the weld target. Welding
+  // is what actually closes the hairline between two quads that copied a
+  // shared edge: on release the dragged vertex takes the target's exact
+  // coordinates, so the two outlines coincide instead of nearly-meeting.
+  // Same-shape vertices are excluded: a weld inside one outline would leave a
+  // duplicate point its own triangulation chokes on.
+  function findWeldTarget(mapped) {
+    const tol = 2 * 14 / Math.max(canvas.height, 1);
+    let best = null, bestD = Infinity;
+    for (const poly of drawnPolygons) {
+      if (editDrag && poly === editDrag.poly) continue;
+      poly.points_world.forEach((q, vi) => {
+        const proj = new THREE.Vector3(q[0], q[1], q[2]).project(camera);
+        const d = Math.hypot(proj.x - mapped.x, proj.y - mapped.y);
+        if (d < bestD) { bestD = d; best = { poly, index: vi, point: q }; }
+      });
+    }
+    return bestD <= tol ? best : null;
+  }
+
   function editRayToPolygonPlane(mapped, poly, index) {
     // Drag WITHIN the outline's own plane: an N-gon that stops being planar
     // cannot be triangulated or projected sanely. A BOX has no single plane,
@@ -3091,6 +3123,7 @@ function buildNodeUI(node, containerEl) {
     // The grab becomes the persistent selection: on release the translate
     // gizmo appears here for axis-clean follow-up nudges.
     editSel = { poly: sel.poly, indices: [...sel.indices] };
+    editWeld = null;
     drawHud(sel.indices.length > 1
       ? `✎ face selected (${sel.indices.length} points) — `
         + "SHIFT locks an axis"
@@ -3120,6 +3153,7 @@ function buildNodeUI(node, containerEl) {
     // The axis is chosen from the direction actually dragged and then held for
     // the rest of the gesture; X / Y / Z force it explicitly.
     if (ev.shiftKey || editDrag.axis) {
+      editWeld = null;
       if (!editDrag.axis) {
         editDrag.axis = pickConstraintAxis(editDrag.origin, {
           x: mapped.x - editDrag.startNdc.x,
@@ -3154,6 +3188,7 @@ function buildNodeUI(node, containerEl) {
     // centroid onto a mesh edge would mean nothing, so only a lone vertex
     // takes the edge snap below.
     if (editDrag.indices.length > 1) {
+      editWeld = null;
       const target = editRayToPolygonPlane(mapped, editDrag.poly, editDrag.index);
       if (!target) return;
       applyEditDelta([target[0] - editDrag.origin[0],
@@ -3167,8 +3202,13 @@ function buildNodeUI(node, containerEl) {
 
     // Otherwise snap to geometry FIRST: constraining the drag to the outline's
     // own plane put the point where the PLANE is, not under the cursor.
+    // An adjoining shape's VERTEX outranks a mesh edge: near one, both draw
+    // red and the drag locks onto its exact coordinates — release welds.
     let landed = null;
-    if (editSnap) {
+    editWeld = editSnap ? findWeldTarget(mapped) : null;
+    if (editWeld) {
+      landed = [...editWeld.point];
+    } else if (editSnap) {
       drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
       const hits = drawRaycaster.intersectObjects(drawTargets(), false);
       if (hits.length) {
@@ -3179,6 +3219,7 @@ function buildNodeUI(node, containerEl) {
     if (!landed) landed = editRayToPolygonPlane(mapped, editDrag.poly, editDrag.index);
     if (!landed) return;
     editDrag.poly.points_world[editDrag.index] = landed;
+    if (editWeld) drawHud("✎ on an adjoining vertex — release to weld");
     drawDirty = true;
     refreshDrawOverlay();
     ev.stopPropagation();
@@ -3193,12 +3234,16 @@ function buildNodeUI(node, containerEl) {
       const refit = atlasEstablishPlaneFromHits(editDrag.poly.points_world);
       if (refit) editDrag.poly.plane = refit;
     }
+    const welded = !!editWeld;
+    editWeld = null;
     editDrag = null;
     setGizmoAxisEmphasis(null);
     canvas.releasePointerCapture?.(ev.pointerId);
     refreshDrawOverlay();
-    drawHud("✎ moved — drag a gizmo arrow for an axis-clean nudge, "
-            + "then ✅ Apply to rebuild");
+    drawHud(welded
+      ? "✎ welded — the two outlines now share that corner exactly · ✅ Apply rebuilds"
+      : "✎ moved — drag a gizmo arrow for an axis-clean nudge, "
+        + "then ✅ Apply to rebuild");
     ev.stopPropagation();
   }
 

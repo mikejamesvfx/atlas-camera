@@ -125,7 +125,14 @@ path that isn't checking the flag.
 Drag a handle to slide a point WITHIN its own plane; ctrl-click a handle to delete
 it (guarded so a polygon can't drop below 3 points, ~L2911). Orbit still works —
 only the grab itself suppresses it. Box faces move as quads (`EDIT_BOX_QUADS`),
-translating freely. When a polygon's points move, its plane is refit from
+translating freely. **Vertex weld** (`editWeld`, `findWeldTarget`): dragging a
+single vertex near ANOTHER shape's vertex outranks mesh-edge snap — both draw
+RED and the drag locks onto the target's exact coordinates; release welds
+(coincident values — shapes can't share references through JSON). This is how
+the copied shared edge between two ⬜ quads is re-closed after editing.
+Same-shape vertices are excluded (a weld inside one outline would duplicate a
+point its own triangulation chokes on); gated on the 🧲 Snap toggle like every
+other snap. When a polygon's points move, its plane is refit from
 the moved hits (`atlasEstablishPlaneFromHits`, ~L3027) so the projection basis
 stays correct. Edits set `drawDirty`; **Apply** rebuilds.
 
