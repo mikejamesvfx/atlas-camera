@@ -9,16 +9,17 @@ so they are reviewable in a diff, next to the evidence that justifies them.
 Rules (applied by `build_feature_audit.py` in this order):
 
 1. an explicit entry in ``VERDICTS`` wins;
-2. otherwise ``experimental`` -> KEEP_EXPERIMENTAL, ``legacy`` -> LEGACY_GATE;
+2. otherwise ``experimental`` -> KEEP_EXPERIMENTAL, ``legacy`` -> LEGACY_GATE, ``ios`` -> IOS_GATE;
 3. otherwise product evidence -> KEEP_CORE, none -> HOLD_NEEDS_EVIDENCE.
 
-Only the seven allowed verdicts may appear:
+Only the eight allowed verdicts may appear:
 
     KEEP_CORE             product evidence exists; stays in the standard registry
     KEEP_EXPERIMENTAL     stays behind ATLAS_EXPERIMENTAL
     MIGRATE_CAPABILITY    node goes, but a capability moves to a supported node first
     DEPRECATE             still registered, marked superseded, removal scheduled
     LEGACY_GATE           moved behind ATLAS_LEGACY_NODES this cycle
+    IOS_GATE              held behind ATLAS_IOS (iOS/Record3D capture); a v2 capability
     DELETE                removed outright
     HOLD_NEEDS_EVIDENCE   zero product evidence, no proven duplicate — keep, revisit
 
@@ -34,6 +35,7 @@ VERDICT_VALUES = frozenset({
     "MIGRATE_CAPABILITY",
     "DEPRECATE",
     "LEGACY_GATE",
+    "IOS_GATE",
     "DELETE",
     "HOLD_NEEDS_EVIDENCE",
 })

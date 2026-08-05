@@ -164,8 +164,6 @@ NODE_CLASS_MAPPINGS = {
     "AtlasOcclusionMask":         AtlasOcclusionMask,
     "AtlasConstrainedSolve":      AtlasConstrainedSolve,
     "AtlasFaceScaleReference":    AtlasFaceScaleReference,
-    "AtlasLoadRecord3D":          AtlasLoadRecord3D,
-    "AtlasStreamRecord3D":        AtlasStreamRecord3D,
     "AtlasSplitEquirect":         AtlasSplitEquirect,
     "AtlasEquirectMultiView":     AtlasEquirectMultiView,
     "AtlasLoadSolveJSON":         AtlasLoadSolveJSON,
@@ -265,8 +263,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasOcclusionMask":         "Atlas Occlusion Mask 🕳",
     "AtlasConstrainedSolve":      "Atlas Constrained Solve",
     "AtlasFaceScaleReference":    "Atlas Face Scale Reference 🙂",
-    "AtlasLoadRecord3D":          "Atlas Load Record3D Capture 📱",
-    "AtlasStreamRecord3D":        "Atlas Record3D Live Stream 📲",
     "AtlasSplitEquirect":         "Atlas Split Equirect 🌐",
     "AtlasEquirectMultiView":     "Atlas Equirect Multi-View 🌐",
     "AtlasLoadSolveJSON":         "Atlas Load Solve JSON",
@@ -431,3 +427,37 @@ if _legacy_enabled():
     NODE_DISPLAY_NAME_MAPPINGS.update(LEGACY_NODE_DISPLAY_NAME_MAPPINGS)
     print("[Atlas Camera] ATLAS_LEGACY_NODES=1 — registering superseded nodes: "
           + "; ".join(f"{k} (use: {v})" for k, v in LEGACY_REPLACEMENTS.items()))
+
+
+# ---------------------------------------------------------------------------
+# iOS / phone-capture tier (📱) — Record3D file import + live USB stream from an
+# iPhone/iPad. Held out of the v1 DEFAULT node menu because the iOS capture app
+# is not part of the v1 public release; the nodes and their [record3d] /
+# [record3d-stream] extras stay in the tree so an opted-in user (or a later
+# release) can turn them on. Independent of the experimental/legacy gates — a
+# node is never in more than one tier. Keys and display names stay byte-identical
+# to when these lived in the base tier, so a saved graph that used them still
+# resolves once the flag is set (the append-only contract).
+ATLAS_IOS_DEFAULT = "0"
+
+IOS_NODE_CLASS_MAPPINGS = {
+    "AtlasLoadRecord3D": AtlasLoadRecord3D,
+    "AtlasStreamRecord3D": AtlasStreamRecord3D,
+}
+
+IOS_NODE_DISPLAY_NAME_MAPPINGS = {
+    "AtlasLoadRecord3D": "Atlas Load Record3D Capture 📱",
+    "AtlasStreamRecord3D": "Atlas Record3D Live Stream 📲",
+}
+
+
+def _ios_enabled() -> bool:
+    v = os.environ.get("ATLAS_IOS", ATLAS_IOS_DEFAULT)
+    return v.strip().lower() not in ("", "0", "false", "off", "no")
+
+
+if _ios_enabled():
+    NODE_CLASS_MAPPINGS.update(IOS_NODE_CLASS_MAPPINGS)
+    NODE_DISPLAY_NAME_MAPPINGS.update(IOS_NODE_DISPLAY_NAME_MAPPINGS)
+    print("[Atlas Camera] ATLAS_IOS=1 — registering iOS/phone-capture nodes: "
+          + ", ".join(IOS_NODE_CLASS_MAPPINGS))

@@ -1,17 +1,19 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-08-04",
+ "generated_utc": "2026-08-05",
  "counts": {
-  "standard": 91,
+  "standard": 89,
   "legacy": 3,
   "experimental": 6,
+  "ios": 2,
   "total": 100,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 91,
+  "KEEP_CORE": 89,
   "LEGACY_GATE": 3,
-  "KEEP_EXPERIMENTAL": 6
+  "KEEP_EXPERIMENTAL": 6,
+  "IOS_GATE": 2
  },
  "live_probe": {
   "host": "127.0.0.1:8188",
@@ -1765,8 +1767,8 @@
    "notes": null
   },
   "AtlasLoadRecord3D": {
-   "module": "atlas_camera/comfy/nodes_solve.py",
-   "tier": "standard",
+   "module": "",
+   "tier": "ios",
    "example_workflows": 0,
    "dedicated_tests": 2,
    "tests": 5,
@@ -1785,7 +1787,7 @@
    "overlapping_replacement": null,
    "known_defect": null,
    "compatibility_risk": null,
-   "verdict": "KEEP_CORE",
+   "verdict": "IOS_GATE",
    "evidence": [],
    "migration_action": null,
    "notes": null
@@ -2567,8 +2569,8 @@
    "notes": null
   },
   "AtlasStreamRecord3D": {
-   "module": "atlas_camera/comfy/nodes_solve.py",
-   "tier": "standard",
+   "module": "",
+   "tier": "ios",
    "example_workflows": 0,
    "dedicated_tests": 1,
    "tests": 3,
@@ -2586,7 +2588,7 @@
    "overlapping_replacement": null,
    "known_defect": null,
    "compatibility_risk": null,
-   "verdict": "KEEP_CORE",
+   "verdict": "IOS_GATE",
    "evidence": [],
    "migration_action": null,
    "notes": null

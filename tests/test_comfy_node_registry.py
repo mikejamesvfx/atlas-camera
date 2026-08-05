@@ -15,7 +15,7 @@ import atlas_camera.comfy.nodes as nodes
 
 
 # The exact registered node keys at the time of the nodes.py modularization
-# (91 standard + 6 experimental + 2 legacy). Grown since the nodes.py
+# (89 standard + 6 experimental + 2 legacy + 2 iOS). Grown since the nodes.py
 # modularization; the SET below is the contract, the count just guards it. ComfyUI serializes these keys into saved
 # workflows, so this set is a compatibility contract, not an implementation
 # detail.
@@ -43,7 +43,7 @@ NORMAL_KEYS = {
     "AtlasGravityCompass",
     "AtlasGroundDepthMap", "AtlasHorizonMask",
     "AtlasInpaintCrop", "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
-    "AtlasLayerPreview", "AtlasLearnedSolveFromImage",     "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasMogeNormals",
+    "AtlasLayerPreview", "AtlasLearnedSolveFromImage",     "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasMogeNormals",
     "AtlasOcclusionMask", "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
     "AtlasReferenceScaleSolve",
     "AtlasLoadPlate",
@@ -51,7 +51,7 @@ NORMAL_KEYS = {
     "AtlasScaleOverride",
     "AtlasSceneHealthGate", "AtlasScopeMask", "AtlasSegmentedSDXLInpaint",
     "AtlasSemanticMask", "AtlasSkyDomeLayer", "AtlasSolveFromImage", "AtlasStereoRender",
-    "AtlasSolveGate", "AtlasStreamRecord3D", "AtlasOutpaintDepth", "AtlasShootList",
+    "AtlasSolveGate", "AtlasOutpaintDepth", "AtlasShootList",
     "AtlasUSDCameraLoader", "AtlasVLMScaleCues",
     "AtlasVPVisualization", "AtlasViewportControls",
 }
@@ -62,6 +62,14 @@ EXPERIMENTAL_KEYS = {
     "AtlasRefineOcclusionSeams",
     "AtlasCompleteDepth",
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
+}
+
+# iOS / Record3D capture tier — gated behind ATLAS_IOS, held out of the v1
+# default menu (a v2 capability). Keys stay byte-identical to when they were in
+# the standard tier so a saved graph still resolves once the flag is set.
+IOS_KEYS = {
+    "AtlasLoadRecord3D",
+    "AtlasStreamRecord3D",
 }
 
 # Public helper/constant names some tests import directly from the module; the
@@ -77,7 +85,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 91
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 89
 
 
 def test_experimental_registry_keys_exact():
@@ -118,6 +126,33 @@ def test_experimental_gate_merges_when_enabled(monkeypatch):
         assert EXPERIMENTAL_KEYS <= set(registry.NODE_DISPLAY_NAME_MAPPINGS)
     finally:
         monkeypatch.delenv("ATLAS_EXPERIMENTAL", raising=False)
+        importlib.reload(registry)  # rebuild the default (gate-off) dicts
+        importlib.reload(nodes)     # rebind the façade to the restored mappings
+
+
+def test_ios_registry_keys_exact():
+    assert set(nodes.IOS_NODE_CLASS_MAPPINGS) == IOS_KEYS
+    assert len(nodes.IOS_NODE_CLASS_MAPPINGS) == 2
+
+
+def test_ios_gate_off_by_default():
+    # v1 ships the iOS/Record3D capture tier gated closed: the keys are NOT in
+    # the standard registry and stay in their own mapping.
+    assert nodes.ATLAS_IOS_DEFAULT == "0"
+    assert not (IOS_KEYS & set(nodes.NODE_CLASS_MAPPINGS))
+
+
+def test_ios_gate_merges_when_enabled(monkeypatch):
+    # With ATLAS_IOS truthy, a fresh import merges the 2 capture nodes into the
+    # standard registry — same shape as the experimental/legacy gates.
+    import atlas_camera.comfy.node_registry as registry
+    monkeypatch.setenv("ATLAS_IOS", "1")
+    importlib.reload(registry)
+    try:
+        assert IOS_KEYS <= set(registry.NODE_CLASS_MAPPINGS)
+        assert IOS_KEYS <= set(registry.NODE_DISPLAY_NAME_MAPPINGS)
+    finally:
+        monkeypatch.delenv("ATLAS_IOS", raising=False)
         importlib.reload(registry)  # rebuild the default (gate-off) dicts
         importlib.reload(nodes)     # rebind the façade to the restored mappings
 
@@ -212,7 +247,8 @@ def test_every_node_sits_in_the_two_tier_atlas_menu():
 
     everything = {**reg.NODE_CLASS_MAPPINGS,
                   **reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS,
-                  **(getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}) or {})}
+                  **(getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}) or {}),
+                  **(getattr(reg, "IOS_NODE_CLASS_MAPPINGS", {}) or {})}
     allowed = {"Atlas", "Atlas/advanced"}
 
     wrong = {key: getattr(cls, "CATEGORY", None)

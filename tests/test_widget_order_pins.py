@@ -15,6 +15,7 @@ import pytest
 
 from atlas_camera.comfy.node_registry import (
     EXPERIMENTAL_NODE_CLASS_MAPPINGS,
+    IOS_NODE_CLASS_MAPPINGS,
     NODE_CLASS_MAPPINGS,
 )
 
@@ -47,7 +48,7 @@ def _normalize_for_compare(names):
     return [n for n in names]
 
 
-@pytest.mark.parametrize("name,cls", list(NODE_CLASS_MAPPINGS.items()) + list(EXPERIMENTAL_NODE_CLASS_MAPPINGS.items()))
+@pytest.mark.parametrize("name,cls", list(NODE_CLASS_MAPPINGS.items()) + list(EXPERIMENTAL_NODE_CLASS_MAPPINGS.items()) + list(IOS_NODE_CLASS_MAPPINGS.items()))
 def test_node_signature_matches_input_types_order(name, cls):
     input_types = cls.INPUT_TYPES()
     input_names = _input_names_in_order(input_types)

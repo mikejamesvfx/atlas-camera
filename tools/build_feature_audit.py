@@ -75,6 +75,8 @@ def build() -> dict:
             verdict = "KEEP_EXPERIMENTAL"
         elif rec["kind"] == "legacy":
             verdict = "LEGACY_GATE"
+        elif rec["kind"] == "ios":
+            verdict = "IOS_GATE"
         elif rec["product_evidence"]:
             verdict = "KEEP_CORE"
         else:
@@ -140,6 +142,7 @@ _LEGEND = """\
 | `MIGRATE_CAPABILITY` | node goes, capability moves to a supported node first |
 | `DEPRECATE` | still registered, marked superseded, removal scheduled |
 | `LEGACY_GATE` | moved behind `ATLAS_LEGACY_NODES` this cycle |
+| `IOS_GATE` | held behind `ATLAS_IOS` (iOS/Record3D capture); a v2 capability |
 | `DELETE` | removed outright |
 | `HOLD_NEEDS_EVIDENCE` | zero product evidence, no proven duplicate — keep, revisit |
 """

@@ -48,7 +48,7 @@ GENERIC_TESTS = frozenset({
 
 
 def registered_nodes() -> tuple[dict, set]:
-    """Return ({name: 'standard'|'experimental'|'legacy'}, all_names)."""
+    """Return ({name: 'standard'|'experimental'|'legacy'|'ios'}, all_names)."""
     from atlas_camera.comfy import node_registry as reg
     kinds = {k: "standard" for k in reg.NODE_CLASS_MAPPINGS}
     for k in reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS:
@@ -56,6 +56,8 @@ def registered_nodes() -> tuple[dict, set]:
     # getattr so the tool still runs against a checkout without the gate.
     for k in getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}):
         kinds.setdefault(k, "legacy")
+    for k in getattr(reg, "IOS_NODE_CLASS_MAPPINGS", {}):
+        kinds.setdefault(k, "ios")
     return kinds, set(kinds)
 
 

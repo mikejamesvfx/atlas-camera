@@ -80,6 +80,7 @@ def test_every_registered_node_has_exactly_one_verdict(report):
     from atlas_camera.comfy import node_registry as reg
     registered = set(reg.NODE_CLASS_MAPPINGS) | set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
     registered |= set(getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}))
+    registered |= set(getattr(reg, "IOS_NODE_CLASS_MAPPINGS", {}))
     assert set(report["nodes"]) == registered
 
 
@@ -95,6 +96,7 @@ def test_hand_authored_verdicts_name_real_nodes():
     from atlas_camera.comfy import node_registry as reg
     registered = set(reg.NODE_CLASS_MAPPINGS) | set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
     registered |= set(getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}))
+    registered |= set(getattr(reg, "IOS_NODE_CLASS_MAPPINGS", {}))
     unknown = sorted(set(verdicts.VERDICTS) - registered)
     assert unknown == [], f"verdicts for unregistered nodes: {unknown}"
     unknown_defects = sorted(set(verdicts.DEFECTS) - registered)

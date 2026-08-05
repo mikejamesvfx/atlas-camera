@@ -163,12 +163,18 @@ def test_graphs_only_reference_registered_nodes(tmp_path, kind):
     from atlas_camera.comfy import node_registry as reg
 
     builtin = {"SaveImage", "LoadImage", "PreviewImage"}
+    # Gated tiers count as registered here: a record3d graph legitimately uses
+    # the ATLAS_IOS-gated capture nodes, which aren't in the default mapping.
+    registered = {**reg.NODE_CLASS_MAPPINGS,
+                  **reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS,
+                  **getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}),
+                  **getattr(reg, "IOS_NODE_CLASS_MAPPINGS", {})}
     graph = bridge.GRAPH_BUILDERS[kind](tmp_path / "x.png")
     for node in graph.values():
         ct = node["class_type"]
         if ct in builtin:
             continue
-        assert ct in reg.NODE_CLASS_MAPPINGS, f"{ct} is not a registered node"
+        assert ct in registered, f"{ct} is not a registered node"
 
 
 def test_still_graph_asks_for_geometry_by_a_valid_mesh_mode(tmp_path):

@@ -220,4 +220,8 @@ from atlas_camera.comfy.node_registry import (
     LEGACY_REPLACEMENTS,
     ATLAS_LEGACY_DEFAULT,
     _legacy_enabled,
+    IOS_NODE_CLASS_MAPPINGS,
+    IOS_NODE_DISPLAY_NAME_MAPPINGS,
+    ATLAS_IOS_DEFAULT,
+    _ios_enabled,
 )

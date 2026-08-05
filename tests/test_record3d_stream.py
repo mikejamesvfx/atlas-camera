@@ -242,7 +242,8 @@ def test_close_disconnects_the_stream():
 def test_node_is_registered_and_never_serves_a_cached_result():
     from atlas_camera.comfy import node_registry as reg
 
-    cls = reg.NODE_CLASS_MAPPINGS["AtlasStreamRecord3D"]
+    # Gated into the iOS tier (ATLAS_IOS) for v1, so look it up there.
+    cls = reg.IOS_NODE_CLASS_MAPPINGS["AtlasStreamRecord3D"]
     assert cls.RETURN_NAMES == ("image", "solve", "depth", "confidence_mask", "report")
     # A live source must always re-execute: the phone has moved since last run.
     assert cls.IS_CHANGED() != cls.IS_CHANGED(), "IS_CHANGED must not compare equal"
@@ -253,8 +254,8 @@ def test_node_matches_the_file_loader_output_contract():
     line up — otherwise swapping one for the other silently rewires a graph."""
     from atlas_camera.comfy import node_registry as reg
 
-    stream = reg.NODE_CLASS_MAPPINGS["AtlasStreamRecord3D"]
-    file_ = reg.NODE_CLASS_MAPPINGS["AtlasLoadRecord3D"]
+    stream = reg.IOS_NODE_CLASS_MAPPINGS["AtlasStreamRecord3D"]
+    file_ = reg.IOS_NODE_CLASS_MAPPINGS["AtlasLoadRecord3D"]
     assert stream.RETURN_TYPES == file_.RETURN_TYPES
     assert stream.RETURN_NAMES == file_.RETURN_NAMES
 
