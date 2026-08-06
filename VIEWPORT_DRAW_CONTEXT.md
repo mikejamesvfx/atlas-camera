@@ -68,8 +68,8 @@ button's legacy onclick tints and wins). A **status chip** (`railStatus`,
 ("Box · Snap on"); every rail onclick is WRAPPED (not replaced — the
 mutual-exclusion cross-calls still work) to refresh it. `metaHud` moved to
 left:66px/top:46px to clear the rail. Icon-only (full wording stays in
-each button's tooltip): **✏️ Draw**, **⬜ Quad**, **➬ Extrude**, **▣ Box**,
-**● Sphere** │ **✎ Edit**,
+each button's tooltip): **🪄 Wand**, **✏️ Draw**, **⬜ Quad**, **➬ Extrude**,
+**▣ Box**, **● Sphere** │ **✎ Edit**,
 **🧲 Snap**, **🗑 Delete** │ **✅ Apply**. 🗑 removes the `editSel` shape (or,
 with no selection, the most recent shape) and sets `drawDirty`; Apply persists
 even a now-EMPTY list when dirty, so deleting the last shape can actually
@@ -91,6 +91,19 @@ stays in the tool and just discards the in-progress shape.
 (rays kept in `drawRays` so they re-project if the plane is tilted/pushed). Enter
 or Apply closes the loop (`closeDrawnOutline`, needs ≥3 points). Fills a
 *see-through hole* — i.e. a plane.
+
+**🪄 Wand** — one-click hole fill (`meshBoundaryLoops`, `onWandClick`): click
+INSIDE any enclosed tear. Boundary loops are extracted per drawTargets() mesh
+(edges owned by exactly one triangle; vertices deduped by rounded position so
+buffer seams don't break loops) and cached on `userData._atlasWandLoops`
+keyed by geometry uuid (re-extracted after every execution's rebuild). The
+click picks the INNERMOST containing loop by projected NDC area
+(`WAND_MAX_NDC_AREA 0.8` rejects the mesh's outer border; `WAND_MAX_RIM 600`
+rejects monster rims → use Quad/Draw). The fill commits the loop's EXACT rim
+vertices as an ordinary drawn polygon (`established_from.rule: "wand_fill"`)
+— born welded at every vertex. Already-filled rims are skipped (no duplicate
+stacking). Degenerate rims are safe: `_apply_drawn_polygons` wraps each
+polygon in try/except and reports "skipped(...)" instead of failing the node.
 
 **⬜ Quad** — Maya-style live quad draw, the tear-filler: 4 clicks (any order —
 re-ordered into the non-crossing loop by min perimeter, `orderQuad`) commit a

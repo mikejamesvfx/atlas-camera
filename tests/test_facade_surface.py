@@ -28,6 +28,7 @@ import atlas_camera.comfy.nodes as nodes
 
 #: Public surface — node classes, registry mappings, shared constants.
 FACADE_PUBLIC = {
+    "AtlasProject",
     # Added when the derived pin below caught them: eight registered nodes had
     # never been re-exported, and only a `>= 60` floor guarded that.
     "AtlasBlockoutMassing", "AtlasDisocclusionGuide",

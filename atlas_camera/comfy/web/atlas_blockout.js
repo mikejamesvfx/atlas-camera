@@ -2951,7 +2951,8 @@ function buildNodeUI(node, containerEl) {
   // Called per-frame from animate() beside updatePivotGizmo, so it tracks the
   // selection through drags and stays a constant on-screen size while orbiting.
   function updateEditGizmo() {
-    if (!editSel || !editOn || drawOn || boxOn || sphereOn || quadOn || extrudeOn
+    if (!editSel || !editOn || drawOn || boxOn || sphereOn || quadOn
+        || extrudeOn || wandOn
         || !drawnPolygons.includes(editSel.poly)) {
       if (editGizmo) editGizmo.visible = false;
       return;
@@ -3431,6 +3432,21 @@ function buildNodeUI(node, containerEl) {
       ev.preventDefault();
       return;
     }
+    if (wandOn) {
+      if (ev.key === "Enter" || ev.key === "Escape") {
+        wandBtn.onclick();
+        drawHud("🪄 done — orbit freely, ✅ Apply builds the fills");
+        ev.preventDefault();
+      } else if ((ev.key === "Backspace" || ev.key === "Delete")
+                 && drawnPolygons.length) {
+        drawnPolygons.pop();
+        drawDirty = true;
+        refreshDrawOverlay();
+        drawHud("🪄 last fill removed");
+        ev.preventDefault();
+      }
+      return;
+    }
     if (extrudeOn) {
       if (ev.key === "Enter" || ev.key === "Escape") {
         extrudeBtn.onclick();
@@ -3564,6 +3580,7 @@ function buildNodeUI(node, containerEl) {
   // keep working (the same rule createOrbitControls follows).
   canvas.addEventListener("click", onDrawClick);
   canvas.addEventListener("click", onQuadClick);
+  canvas.addEventListener("click", onWandClick);
   canvas.addEventListener("click", onBoxClick);
   canvas.addEventListener("pointermove", onBoxMove);
   canvas.addEventListener("click", onSphereClick);
@@ -3629,6 +3646,7 @@ function buildNodeUI(node, containerEl) {
     if (drawOn && sphereOn) sphereBtn.onclick();
     if (drawOn && quadOn) quadBtn.onclick();
     if (drawOn && extrudeOn) extrudeBtn.onclick();
+    if (drawOn && wandOn) wandBtn.onclick();
     drawBtn.style.background = drawOn ? "#1a3a1a" : "#2a2a2a";
     drawBtn.style.color = drawOn ? "#8f8" : "#ddd";
     // Orbiting while drawing would fight the click; the artist turns the
@@ -3658,6 +3676,7 @@ function buildNodeUI(node, containerEl) {
     if (editOn && sphereOn) sphereBtn.onclick();
     if (editOn && quadOn) quadBtn.onclick();
     if (editOn && extrudeOn) extrudeBtn.onclick();
+    if (editOn && wandOn) wandBtn.onclick();
     editDrag = null;
     editSel = null;
     refreshDrawOverlay();
@@ -3922,6 +3941,7 @@ function buildNodeUI(node, containerEl) {
       if (sphereOn) sphereBtn.onclick();
       if (quadOn) quadBtn.onclick();
       if (extrudeOn) extrudeBtn.onclick();
+      if (wandOn) wandBtn.onclick();
     }
     controls.setEnabled(!boxOn);
     canvas.style.cursor = boxOn ? "crosshair" : "grab";
@@ -4073,6 +4093,7 @@ function buildNodeUI(node, containerEl) {
       if (boxOn) boxBtn.onclick();
       if (quadOn) quadBtn.onclick();
       if (extrudeOn) extrudeBtn.onclick();
+      if (wandOn) wandBtn.onclick();
     }
     controls.setEnabled(!sphereOn);
     canvas.style.cursor = sphereOn ? "crosshair" : "grab";
@@ -4291,6 +4312,7 @@ function buildNodeUI(node, containerEl) {
       if (boxOn) boxBtn.onclick();
       if (sphereOn) sphereBtn.onclick();
       if (extrudeOn) extrudeBtn.onclick();
+      if (wandOn) wandBtn.onclick();
     }
     controls.setEnabled(!quadOn);
     canvas.style.cursor = quadOn ? "crosshair" : "grab";
@@ -4442,6 +4464,7 @@ function buildNodeUI(node, containerEl) {
       if (boxOn) boxBtn.onclick();
       if (sphereOn) sphereBtn.onclick();
       if (quadOn) quadBtn.onclick();
+      if (wandOn) wandBtn.onclick();
     }
     controls.setEnabled(!extrudeOn);
     canvas.style.cursor = extrudeOn ? "crosshair" : "grab";
@@ -4449,6 +4472,189 @@ function buildNodeUI(node, containerEl) {
     refreshDrawOverlay();
     drawHud(extrudeOn
       ? "➬ grab an edge of a drawn shape and pull a quad out of it"
+      : "");
+  };
+
+  // ---------------------------------------------------------------------------
+  // 🪄 Wand — one-click hole fill: click INSIDE any enclosed tear and its
+  // boundary rim becomes the fill.
+  //
+  // Boundary loops are extracted from each drawTargets() mesh (edges owned by
+  // exactly ONE triangle are hole rims; vertices deduped by position so seams
+  // in the buffer don't break loops), cached per geometry. A click picks the
+  // INNERMOST loop containing the cursor (smallest projected area — the mesh's
+  // outer border always contains the click too, but never wins, and a hard
+  // area cap rejects it outright). The fill commits the loop's EXACT rim
+  // vertices as an ordinary drawn polygon — born welded to the mesh at every
+  // vertex, and Edit / 🗑 / ✅ Apply work on it like anything else. Degenerate
+  // rims are safe: the backend wraps each polygon in try/except and reports
+  // "skipped(...)" instead of failing the node.
+  // ---------------------------------------------------------------------------
+  let wandOn = false;
+  let wandCount = 0;
+  const WAND_MAX_RIM = 600;      // rim verts; bigger holes → use Quad/Draw
+  const WAND_MAX_NDC_AREA = 0.8; // full viewport is 4.0 — outer borders lose
+
+  function meshBoundaryLoops(mesh) {
+    const geo = mesh.geometry;
+    if (!geo?.attributes?.position) return [];
+    const cached = mesh.userData._atlasWandLoops;
+    if (cached && cached.uuid === geo.uuid) return cached.loops;
+    const pos = geo.attributes.position;
+    const count = pos.count;
+    // Dedup vertices by rounded position — torn meshes often duplicate rim
+    // vertices across triangles, which would break edge counting.
+    const canon = new Map();      // posKey -> canonical id
+    const ids = new Array(count);
+    const canonPos = [];
+    for (let i = 0; i < count; i += 1) {
+      const k = pos.getX(i).toFixed(5) + "," + pos.getY(i).toFixed(5) + ","
+        + pos.getZ(i).toFixed(5);
+      let id = canon.get(k);
+      if (id === undefined) {
+        id = canonPos.length;
+        canon.set(k, id);
+        canonPos.push([pos.getX(i), pos.getY(i), pos.getZ(i)]);
+      }
+      ids[i] = id;
+    }
+    const idx = geo.index ? geo.index.array : null;
+    const triCount = (idx ? idx.length : count) / 3;
+    const edges = new Map();      // "a_b" (a<b) -> count
+    for (let t = 0; t < triCount; t += 1) {
+      const a = ids[idx ? idx[t * 3] : t * 3];
+      const b = ids[idx ? idx[t * 3 + 1] : t * 3 + 1];
+      const c = ids[idx ? idx[t * 3 + 2] : t * 3 + 2];
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        if (u === v) continue;
+        const key = u < v ? u + "_" + v : v + "_" + u;
+        edges.set(key, (edges.get(key) || 0) + 1);
+      }
+    }
+    const adj = new Map();        // boundary adjacency: id -> [ids]
+    for (const [key, n] of edges) {
+      if (n !== 1) continue;
+      const [u, v] = key.split("_").map(Number);
+      if (!adj.has(u)) adj.set(u, []);
+      if (!adj.has(v)) adj.set(v, []);
+      adj.get(u).push(v);
+      adj.get(v).push(u);
+    }
+    const usedEdge = new Set();
+    const loops = [];
+    for (const start of adj.keys()) {
+      for (const first of adj.get(start)) {
+        const k0 = start < first ? start + "_" + first : first + "_" + start;
+        if (usedEdge.has(k0)) continue;
+        const loop = [start];
+        let prev = start, cur = first;
+        usedEdge.add(k0);
+        while (cur !== start && loop.length <= WAND_MAX_RIM + 1) {
+          loop.push(cur);
+          const next = (adj.get(cur) || []).find((n) => {
+            if (n === prev) return false;
+            const k = cur < n ? cur + "_" + n : n + "_" + cur;
+            return !usedEdge.has(k);
+          });
+          if (next === undefined) break;
+          const k = cur < next ? cur + "_" + next : next + "_" + cur;
+          usedEdge.add(k);
+          prev = cur;
+          cur = next;
+        }
+        if (cur === start && loop.length >= 3) {
+          const world = loop.map((id) => {
+            const p = new THREE.Vector3(...canonPos[id])
+              .applyMatrix4(mesh.matrixWorld);
+            return [p.x, p.y, p.z];
+          });
+          loops.push(world);
+        }
+      }
+    }
+    mesh.userData._atlasWandLoops = { uuid: geo.uuid, loops };
+    return loops;
+  }
+
+  function ndcLoopArea(pts) {
+    let area = 0;
+    const proj = pts.map(projectToNdc);
+    for (let i = 0, j = proj.length - 1; i < proj.length; j = i, i += 1) {
+      area += (proj[j].x + proj[i].x) * (proj[j].y - proj[i].y);
+    }
+    return Math.abs(area / 2);
+  }
+
+  function onWandClick(ev) {
+    if (!wandOn) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+    // A rim already claimed by an earlier wand fill is skipped, so re-clicking
+    // a filled hole doesn't stack duplicates (the derived mesh still reports
+    // the boundary — the fill is a separate polygon on top of it).
+    const alreadyFilled = (loop) => drawnPolygons.some((p) =>
+      p.established_from?.rule === "wand_fill"
+      && p.points_world.length === loop.length
+      && quadDist3(p.points_world[0], loop[0]) < 1e-6);
+    let best = null, bestArea = Infinity;
+    for (const mesh of drawTargets()) {
+      for (const loop of meshBoundaryLoops(mesh)) {
+        if (loop.length > WAND_MAX_RIM) continue;
+        if (alreadyFilled(loop)) continue;
+        if (!pointInScreenPolygon(mapped, loop)) continue;
+        const area = ndcLoopArea(loop);
+        if (area > WAND_MAX_NDC_AREA) continue;   // outer border / huge rim
+        if (area < bestArea) { bestArea = area; best = loop; }
+      }
+    }
+    if (!best) {
+      drawHud("🪄 no enclosed hole under the cursor — click INSIDE a bounded "
+              + "tear (very large holes need ⬜ Quad / ✏️ Draw)");
+      return;
+    }
+    const pts = best.map((p) => [...p]);
+    const plane = atlasEstablishPlaneFromHits(pts);
+    if (!plane) {
+      drawHud("🪄 that rim is degenerate — fill it with ⬜ Quad instead");
+      return;
+    }
+    wandCount += 1;
+    drawnPolygons.push({
+      id: `w${wandCount}`,
+      label: `wand fill ${wandCount}`,
+      enabled: true,
+      points_world: pts,
+      plane: { normal: plane.normal, offset: plane.offset },
+      established_from: { hits: pts.length, rule: "wand_fill" },
+    });
+    drawDirty = true;
+    refreshDrawOverlay();
+    drawHud(`🪄 hole filled (${pts.length} rim verts, born welded) — keep `
+            + "clicking holes, Enter exits, ✅ Apply builds");
+  }
+
+  const wandBtn = document.createElement("button");
+  wandBtn.textContent = "🪄 Wand";
+  wandBtn.title = "Magic-wand hole fill: click INSIDE any enclosed tear and its "
+    + "boundary rim becomes the fill — every rim vertex is used exactly, so the "
+    + "patch is born welded to the mesh. Keep clicking holes, Enter exits, "
+    + "✅ Apply builds. Very large or open-edged holes still need ⬜ Quad / ✏️ Draw.";
+  wandBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  wandBtn.onclick = () => {
+    wandOn = !wandOn;
+    if (wandOn) {
+      if (drawOn) drawBtn.onclick();
+      if (editOn) editBtn.onclick();
+      if (boxOn) boxBtn.onclick();
+      if (sphereOn) sphereBtn.onclick();
+      if (quadOn) quadBtn.onclick();
+      if (extrudeOn) extrudeBtn.onclick();
+    }
+    controls.setEnabled(!wandOn);
+    canvas.style.cursor = wandOn ? "crosshair" : "grab";
+    refreshDrawOverlay();
+    drawHud(wandOn
+      ? "🪄 click inside an enclosed tear to fill it — Enter exits"
       : "");
   };
 
@@ -4480,6 +4686,10 @@ function buildNodeUI(node, containerEl) {
     trash: railSvg('<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13"/>'
       + '<path d="M10 11v5.5M14 11v5.5"/>'),
     apply: railSvg('<path d="M4.5 12.5l5.5 5.5L19.5 6.5"/>'),
+    wand: railSvg('<path d="M4 20l9-9"/>'
+      + '<path d="M15.5 3.5v4M13.5 5.5h4"/>'
+      + '<path d="M20 9.5v3M18.5 11h3"/>'
+      + '<path d="M17 16.5v2.5M15.8 17.8h2.5" opacity="0.7"/>'),
   };
   const styleRailBtn = (btn, icon) => {
     btn.innerHTML = RAIL_ICONS[icon];
@@ -4498,6 +4708,7 @@ function buildNodeUI(node, containerEl) {
     s.style.cssText = "height:1px;margin:3px 6px;background:#34343e;";
     return s;
   };
+  styleRailBtn(wandBtn, "wand");
   styleRailBtn(drawBtn, "draw");
   styleRailBtn(quadBtn, "quad");
   styleRailBtn(extrudeBtn, "extrude");
@@ -4507,7 +4718,8 @@ function buildNodeUI(node, containerEl) {
   styleRailBtn(snapBtn, "snap");
   styleRailBtn(deleteBtn, "trash");
   styleRailBtn(drawApplyBtn, "apply");
-  drawRail.append(drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn, railSeparator(),
+  drawRail.append(wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
+                  railSeparator(),
                   editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
 
   // The chip mirrors whichever tool is live plus the snap state. Every rail
@@ -4523,6 +4735,7 @@ function buildNodeUI(node, containerEl) {
   function updateRailStatus() {
     railStatus.textContent = "";
     const active =
+      wandOn ? ["wand", "Wand"] :
       drawOn ? ["draw", "Draw"] :
       quadOn ? ["quad", "Quad"] :
       extrudeOn ? ["extrude", "Extrude"] :
@@ -4554,6 +4767,7 @@ function buildNodeUI(node, containerEl) {
       btn.style.background = on ? "#1d3a5c" : "transparent";
       btn.style.color = on ? "#8ec2ff" : "#c9c9d1";
     };
+    set(wandBtn, wandOn);
     set(drawBtn, drawOn);
     set(quadBtn, quadOn);
     set(extrudeBtn, extrudeOn);
@@ -4566,7 +4780,7 @@ function buildNodeUI(node, containerEl) {
   deleteBtn.style.color = "#c9c9d1";
   drawApplyBtn.style.background = "#1e3a24";
   drawApplyBtn.style.color = "#7dd87d";
-  for (const b of [drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
+  for (const b of [wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
                    editBtn, snapBtn]) {
     const orig = b.onclick;
     b.onclick = () => { orig(); syncRailActive(); updateRailStatus(); };

@@ -247,6 +247,8 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 
 |---|---|---|---|
 
+| `AtlasProject` | project, shot, colour_mode; opt project_root, create_tree | project (ATLAS_PROJECT) | Sets the delivery project once: routes every export into `<root>/<project>/<shot>/...` and pins the colour lane, Standard (sRGB, 8-bit) or VFX (ACEScg, float). |
+
 | `AtlasSolveFromImage` | image (IMAGE), ±focal_mm, ±sensor_mm, ±detect_vanishing_points, ±raw_meta (ATLAS_RAW_META) | ATLAS_SOLVE | Geometric VP solve; accepts ComfyUI tensor. VP detection defaults ON. `raw_meta` (from `AtlasLoadRAW` 📷) supplies EXIF focal + measured sensor when the widgets are at defaults — finally implements the "0 = auto-detect or EXIF" tooltip |
 
 | `AtlasLearnedSolveFromImage` | image (IMAGE), ±height_mode, ±camera_height_m, ±depth_model, ±sensor_mm, ±weights, ±device, ±focal_length_mm, ±raw_meta (ATLAS_RAW_META) | ATLAS_SOLVE | Learned GeoCalib prior (focal+gravity). `height_mode=measure_from_depth` fits the ground plane to measure camera height (no assumed eye height) and fills the depth slot. `focal_length_mm` (APPENDED 2026-07-18) / a wired `raw_meta`: trusted EXIF focal REPLACES GeoCalib's estimate (gravity retained) — see the RAW design rule. Needs `[neural]` |

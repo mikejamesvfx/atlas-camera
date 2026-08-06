@@ -1,6 +1,6 @@
 # Atlas Camera — feature audit
 
-Generated 2026-08-05 by `tools/build_feature_audit.py`.
+Generated 2026-08-06 by `tools/build_feature_audit.py`.
 Machine-gathered evidence from `tools/audit_node_usage.py`; judgements from 
 `tools/feature_audit_verdicts.py`. Regenerate with 
 `python tools/build_feature_audit.py` (`--check` verifies freshness).
@@ -29,11 +29,11 @@ relative to itself, so a worktree silently audits a different tree.
 
 ## Counts
 
-* standard: **89**
+* standard: **90**
 * experimental: **6**
 * legacy: **2**
-* total registered: **99**
-* standard nodes with no product evidence: **0**
+* total registered: **100**
+* standard nodes with no product evidence: **1**
 
 | Verdict | Nodes |
 |---|---:|
@@ -41,6 +41,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `KEEP_EXPERIMENTAL` | 6 |
 | `LEGACY_GATE` | 2 |
 | `IOS_GATE` | 2 |
+| `HOLD_NEEDS_EVIDENCE` | 1 |
 
 ## Verdict legend
 
@@ -134,6 +135,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasOutpaintDepth` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasPathGuidedHoleRepair` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasPlanarHolePatch` | atlas_camera/comfy/nodes_geometry.py | standard | 1 | 4 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasProject` | atlas_camera/comfy/nodes_project.py | standard | 0 | 0 | not_attempted | not_attempted | 0 | 1 | — | — | — | **HOLD_NEEDS_EVIDENCE** | — |
 | `AtlasReferenceScaleSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 1 | 7 | — | — | — | **KEEP_CORE** | — |
 | `AtlasRefineOcclusionSeams` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasRegisterPlate` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 7 | — | — | — | **KEEP_CORE** | — |
@@ -165,6 +167,7 @@ Each of these executes correctly and returns meaningful output; what
 it lacks is a consumer. That is a reason to find evidence or schedule
 deprecation, not a reason to delete.
 
+* **`AtlasProject`** — 
 
 ## Appendix — capabilities REMOVED, not replaced
 

@@ -20,6 +20,7 @@ import atlas_camera.comfy.nodes as nodes
 # workflows, so this set is a compatibility contract, not an implementation
 # detail.
 NORMAL_KEYS = {
+    "AtlasProject",
     "AtlasAddPatchView", "AtlasApplyScaleReferences", "AtlasAssessImage",
     "AtlasAssessOutput",
     "AtlasLayerPlan",
@@ -85,7 +86,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 89
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 90
 
 
 def test_experimental_registry_keys_exact():

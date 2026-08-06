@@ -27,6 +27,7 @@ from atlas_camera.comfy.nodes_completion import (
     AtlasShootList,
 )
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
+from atlas_camera.comfy.nodes_project import AtlasProject
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
     AtlasRegisterPlate,
@@ -226,6 +227,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasDebugReport":           AtlasDebugReport,
     "AtlasLayerPreview":          AtlasLayerPreview,
     "AtlasInput":                 AtlasInput,
+    "AtlasProject":               AtlasProject,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -324,6 +326,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDebugReport":           "Atlas Debug Report 🔍",
     "AtlasLayerPreview":          "Atlas Layer Preview 🎨",
     "AtlasInput":                 "Atlas Input 🎬",
+    "AtlasProject":               "Atlas Project 🎬",
 }
 
 # ---------------------------------------------------------------------------
@@ -467,6 +470,7 @@ if _ios_enabled():
 # append-only key/display-name contract permits.
 _MENU_FOLDERS = {
     "Atlas/01 \u00b7 Input & Camera": (
+        "AtlasProject",
         "AtlasInput", "AtlasLoadPlate", "AtlasLoadRAW", "AtlasRegisterPlate",
         "AtlasAttachSourcePlate", "AtlasSolveFromImage",
         "AtlasLearnedSolveFromImage", "AtlasConstrainedSolve", "AtlasSplitEquirect",

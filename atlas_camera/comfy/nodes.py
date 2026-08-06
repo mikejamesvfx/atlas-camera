@@ -14,6 +14,8 @@ here rather than per line, so a genuinely dead import elsewhere still shows up.
 # ruff: noqa: F401
 from __future__ import annotations
 
+from atlas_camera.comfy.nodes_project import AtlasProject  # noqa: F401
+
 from atlas_camera.comfy.viewport_payload import (  # noqa: F401
     _fit_long_edge,
     _plate_ref_to_dict,
