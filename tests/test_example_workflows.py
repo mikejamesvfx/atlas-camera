@@ -71,6 +71,7 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_derive_planar_geometry_workflow.json",
                      "atlas_export_fanout_workflow.json",
                      "atlas_input_quickstart_workflow.json",
+                     "atlas_layered_cleanplate_holefill_workflow.json",
                      "atlas_layered_projection_workflow.json",
                      "atlas_metric_scale_references_workflow.json",
                      "atlas_occlusion_analysis_workflow.json",
