@@ -4542,40 +4542,44 @@ function buildNodeUI(node, containerEl) {
       adj.get(u).push(v);
       adj.get(v).push(u);
     }
+    // Walk the boundary graph. CLOSED loops are enclosed holes; walks that
+    // dead-end (junction vertices where tears pinch the border, degree > 2)
+    // are kept as OPEN CHAINS — the bay fallback needs exactly those rim
+    // runs, and an early build that discarded them (and truncated any walk
+    // over the rim cap) is why boundary bays never filled (found live).
+    // No length cap here: the cap applies to what a FILL may use, not to
+    // extraction — capping the walk silently threw away the outer border.
+    const ekey = (u, v) => (u < v ? u + "_" + v : v + "_" + u);
     const usedEdge = new Set();
-    const loops = [];
+    const loops = [], chains = [];
     for (const start of adj.keys()) {
       for (const first of adj.get(start)) {
-        const k0 = start < first ? start + "_" + first : first + "_" + start;
+        const k0 = ekey(start, first);
         if (usedEdge.has(k0)) continue;
-        const loop = [start];
-        let prev = start, cur = first;
         usedEdge.add(k0);
-        while (cur !== start && loop.length <= WAND_MAX_RIM + 1) {
-          loop.push(cur);
-          const next = (adj.get(cur) || []).find((n) => {
-            if (n === prev) return false;
-            const k = cur < n ? cur + "_" + n : n + "_" + cur;
-            return !usedEdge.has(k);
-          });
+        const path = [start, first];
+        let prev = start, cur = first, closed = false;
+        while (path.length < 100000) {
+          const next = (adj.get(cur) || []).find(
+            (n) => n !== prev && !usedEdge.has(ekey(cur, n)));
           if (next === undefined) break;
-          const k = cur < next ? cur + "_" + next : next + "_" + cur;
-          usedEdge.add(k);
+          usedEdge.add(ekey(cur, next));
           prev = cur;
           cur = next;
+          if (cur === start) { closed = true; break; }
+          path.push(cur);
         }
-        if (cur === start && loop.length >= 3) {
-          const world = loop.map((id) => {
-            const p = new THREE.Vector3(...canonPos[id])
-              .applyMatrix4(mesh.matrixWorld);
-            return [p.x, p.y, p.z];
-          });
-          loops.push(world);
-        }
+        if (path.length < 3) continue;
+        const world = path.map((id) => {
+          const p = new THREE.Vector3(...canonPos[id])
+            .applyMatrix4(mesh.matrixWorld);
+          return [p.x, p.y, p.z];
+        });
+        (closed ? loops : chains).push(world);
       }
     }
-    mesh.userData._atlasWandLoops = { uuid: geo.uuid, loops };
-    return loops;
+    mesh.userData._atlasWandLoops = { uuid: geo.uuid, loops, chains };
+    return mesh.userData._atlasWandLoops;
   }
 
   function ndcLoopArea(pts) {
@@ -4592,10 +4596,10 @@ function buildNodeUI(node, containerEl) {
   // nearly touch — the bay's mouth — bridge them, and fill the enclosed arc.
   // Pairs are only searched among rim verts local to the click, which keeps
   // the O(n²) pair scan tiny even on a many-thousand-vertex border loop.
-  function wandBayFromLoop(loop, mapped) {
-    const n = loop.length;
-    if (n < 8) return null;
-    const proj = loop.map(projectToNdc);
+  function wandBayFromPath(path, mapped, closed) {
+    const n = path.length;
+    if (n < 6) return null;
+    const proj = path.map(projectToNdc);
     const local = [];
     for (let i = 0; i < n; i += 1) {
       if (Math.hypot(proj[i].x - mapped.x, proj[i].y - mapped.y) <= WAND_BAY_LOCAL_R) {
@@ -4606,16 +4610,23 @@ function buildNodeUI(node, containerEl) {
     for (let ai = 0; ai < local.length; ai += 1) {
       for (let bi = ai + 1; bi < local.length; bi += 1) {
         const a = local[ai], b = local[bi];
-        const stride = Math.min(b - a, n - (b - a));
-        if (stride < 3) continue;                       // adjacent rim verts
         const gap = Math.hypot(proj[a].x - proj[b].x, proj[a].y - proj[b].y);
         if (gap > WAND_GAP_NDC) continue;               // mouth too wide
-        // Two arcs close a..b; the bay is whichever encloses the click.
-        const arcs = [[], []];
-        for (let i = a; i !== b; i = (i + 1) % n) arcs[0].push(loop[i]);
-        arcs[0].push(loop[b]);
-        for (let i = b; i !== a; i = (i + 1) % n) arcs[1].push(loop[i]);
-        arcs[1].push(loop[a]);
+        const arcs = [];
+        if (closed) {
+          const stride = Math.min(b - a, n - (b - a));
+          if (stride < 3) continue;                     // adjacent rim verts
+          // Two arcs close a..b; the bay is whichever encloses the click.
+          const fwd = [], back = [];
+          for (let i = a; i !== b; i = (i + 1) % n) fwd.push(path[i]);
+          fwd.push(path[b]);
+          for (let i = b; i !== a; i = (i + 1) % n) back.push(path[i]);
+          back.push(path[a]);
+          arcs.push(fwd, back);
+        } else {
+          if (b - a < 3) continue;
+          arcs.push(path.slice(a, b + 1));              // sub-run + bridge
+        }
         for (const arc of arcs) {
           if (arc.length < 3 || arc.length > WAND_MAX_RIM) continue;
           if (!pointInScreenPolygon(mapped, arc)) continue;
@@ -4641,10 +4652,12 @@ function buildNodeUI(node, containerEl) {
       && p.points_world.length === pts.length
       && quadDist3(p.points_world[0], pts[0]) < 1e-6);
     let best = null, bestArea = Infinity, bestRule = "wand_fill";
-    const allLoops = [];
+    const allPaths = [];    // [points, closed] — loops AND open chains
     for (const mesh of drawTargets()) {
-      for (const loop of meshBoundaryLoops(mesh)) {
-        allLoops.push(loop);
+      const { loops, chains } = meshBoundaryLoops(mesh);
+      for (const chain of chains) allPaths.push([chain, false]);
+      for (const loop of loops) {
+        allPaths.push([loop, true]);
         if (loop.length > WAND_MAX_RIM) continue;
         if (alreadyFilled(loop)) continue;
         if (!pointInScreenPolygon(mapped, loop)) continue;
@@ -4654,10 +4667,11 @@ function buildNodeUI(node, containerEl) {
       }
     }
     if (!best) {
-      // No closed interior loop — try the boundary-bay fallback on EVERY
-      // loop (including the outer border the first pass rejects).
-      for (const loop of allLoops) {
-        const bay = wandBayFromLoop(loop, mapped);
+      // No closed interior loop — try the boundary-bay fallback on every
+      // path: closed loops the first pass rejected AND the open chains the
+      // border's junction points break its rim into.
+      for (const [path, closed] of allPaths) {
+        const bay = wandBayFromPath(path, mapped, closed);
         if (bay && !alreadyFilled(bay.arc) && bay.area < bestArea) {
           bestArea = bay.area;
           best = bay.arc;
