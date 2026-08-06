@@ -713,6 +713,34 @@ def test_a_drawn_surface_gets_a_plate_smeared_in_from_its_surroundings():
     assert payload.get("drawn_plate_b64", "").startswith("data:image/")
 
 
+def test_a_connected_clean_plate_replaces_the_smear():
+    """clean_plate is the simple-composite path: drawn surfaces project the
+    supplied image instead of the automatic edge-extend smear, even with
+    drawn_fill_px left at its default."""
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.rand((1, 256, 256, 3), dtype=torch.float32)
+    clean = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+    clean[..., 1] = 1.0     # flat green — trivially distinct from the plate
+    from atlas_camera.comfy.nodes import AtlasBlockoutViewport
+    AtlasBlockoutViewport().render(
+        solve, image, 256, _drawn_payload(_fingerprint_for(solve, image)),
+        clean_plate=clean, unique_id="clean-plate")
+
+    b64 = _payload_for("clean-plate").get("drawn_plate_b64", "")
+    assert b64.startswith("data:image/")
+    # And it is the clean plate, not a smear of the source: decode and check
+    # the dominant channel.
+    import base64 as _b64
+    from io import BytesIO
+    from PIL import Image as PILImage
+    raw = _b64.b64decode(b64.split(",", 1)[1])
+    arr = PILImage.open(BytesIO(raw)).convert("RGB")
+    import numpy as _np
+    px = _np.asarray(arr, dtype=_np.float32)
+    assert px[..., 1].mean() > 200 and px[..., 0].mean() < 60
+
+
 def test_incremental_smear_matches_a_fresh_full_compute():
     """The per-node smear cache re-smears only a crop around the mask diff;
     the result must be byte-identical to a fresh full-frame pass, including

@@ -13,6 +13,7 @@ import os
 from atlas_camera.comfy.viewport_payload import (
     _extract_blockout_camera,
     _fit_long_edge,
+    _image_tensor_to_preview_b64,
 )
 from atlas_camera.comfy.node_helpers import (
     _ASSESS_OUTPUT_SLOTS,
@@ -549,7 +550,7 @@ class AtlasBlockoutViewport:
             "required": {
                 "solve": ("ATLAS_SOLVE",),
                 "source_image": ("IMAGE",),
-                "resolution": ("INT", {"default": 768, "min": 128, "max": 4096, "step": 8,
+                "resolution": ("INT", {"default": 1024, "min": 128, "max": 8192, "step": 8,
                     "tooltip": "Long-edge render resolution; the short side auto-follows the "
                                "source image aspect (viewport inherits the image's aspect). "
                                "Also settable by dragging the node's own resize handle."}),
@@ -610,13 +611,21 @@ class AtlasBlockoutViewport:
                                "saw, so the raw plate would paint them with whatever "
                                "occluded them. 0 = off (leave the raw projection and "
                                "route `drawn_mask` to a real inpaint instead)."}),
+                # APPENDED last (link input — takes no widgets_values slot).
+                "clean_plate": ("IMAGE", {
+                    "tooltip": "Optional clean plate for simple composites: drawn "
+                               "surfaces (✏️/⬜/➬/▣/●/🪄) project THIS image instead "
+                               "of the automatic smear — paint or generate the "
+                               "occluded content once and every drawn fill samples "
+                               "it, same projector as the source plate so it stays "
+                               "registered. Overrides drawn_fill_px."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     def render(self, solve, source_image, resolution, client_data, primary_depth=None, preview_expand=1.0, controls=None,
                shot_cam=None, output_profile=None, debug_matte=None, patch_mask=None,
-               drawn_fill_px=96, unique_id=None):
+               drawn_fill_px=96, clean_plate=None, unique_id=None):
         torch = _require_torch()
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
@@ -761,9 +770,18 @@ class AtlasBlockoutViewport:
                         f"AtlasBlockoutViewport: drawn polygons failed ({exc}).")
             # The footprint is what the smear fills, so it is built here where
             # the mask exists, then attached to the payload the browser fetches.
-            blockout_payload["drawn_plate_b64"] = _drawn_fill_plate_b64(
-                source_image, drawn_np, int(drawn_fill_px),
-                cache_key=str(node_id) if node_id is not None else None)
+            if clean_plate is not None:
+                # An explicit clean plate beats the automatic smear: the user
+                # painted/generated the occluded content, so drawn surfaces
+                # project it directly (same projector — stays registered).
+                blockout_payload["drawn_plate_b64"] = (
+                    _image_tensor_to_preview_b64(clean_plate, quality=88) or "")
+                if node_id is not None:
+                    _DRAWN_FILL_CACHE.pop(str(node_id), None)
+            else:
+                blockout_payload["drawn_plate_b64"] = _drawn_fill_plate_b64(
+                    source_image, drawn_np, int(drawn_fill_px),
+                    cache_key=str(node_id) if node_id is not None else None)
             _blockout_cache_set(node_id, blockout_payload)
             if drawn_np is None:
                 drawn_mask = torch.zeros(1, src_h, src_w, dtype=torch.float32)
