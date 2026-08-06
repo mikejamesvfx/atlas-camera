@@ -4499,9 +4499,9 @@ function buildNodeUI(node, containerEl) {
 
   function meshBoundaryLoops(mesh) {
     const geo = mesh.geometry;
-    if (!geo?.attributes?.position) return [];
+    if (!geo?.attributes?.position) return { loops: [], chains: [] };
     const cached = mesh.userData._atlasWandLoops;
-    if (cached && cached.uuid === geo.uuid) return cached.loops;
+    if (cached && cached.uuid === geo.uuid) return cached;
     const pos = geo.attributes.position;
     const count = pos.count;
     // Dedup vertices by rounded position — torn meshes often duplicate rim
