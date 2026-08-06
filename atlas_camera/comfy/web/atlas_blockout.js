@@ -3479,14 +3479,12 @@ function buildNodeUI(node, containerEl) {
     }
     if (sphereOn) {
       if (ev.key === "Enter") {
-        const before = drawnPolygons.length;
-        finishSphere();
-        // Only exit when a sphere actually committed (finishSphere guards on
-        // radius); otherwise stay so its hint remains actionable.
-        if (drawnPolygons.length > before) {
-          sphereBtn.onclick();
-          drawHud("● sphere placed — orbit freely, ✅ Apply builds");
-        }
+        // Enter ALWAYS exits to orbit (any tool, any state — the artist's
+        // next move is orbiting): commit the in-progress sphere when it has a
+        // radius, discard a half-placed one.
+        if (sphereStage === 1 && sphereRadius > 0.05) finishSphere();
+        sphereBtn.onclick();
+        drawHud("● done — orbit freely, ✅ Apply builds");
         ev.preventDefault();
       }
       else if (ev.key === "Escape") {
@@ -3497,12 +3495,11 @@ function buildNodeUI(node, containerEl) {
     }
     if (boxOn) {
       if (ev.key === "Enter") {
-        const before = drawnPolygons.length;
-        finishBox();
-        if (drawnPolygons.length > before) {
-          boxBtn.onclick();
-          drawHud("▣ box placed — orbit freely, ✅ Apply builds");
-        }
+        // Enter ALWAYS exits to orbit: commit the box when it has height,
+        // discard a half-built one.
+        if (boxStage >= 2 && boxHeight > 0.05) finishBox();
+        boxBtn.onclick();
+        drawHud("▣ done — orbit freely, ✅ Apply builds");
         ev.preventDefault();
       }
       else if (ev.key === "Escape") {
@@ -3513,12 +3510,11 @@ function buildNodeUI(node, containerEl) {
     }
     if (!drawOn) return;
     if (ev.key === "Enter") {
-      const before = drawnPolygons.length;
-      closeDrawnOutline();
-      if (drawnPolygons.length > before) {
-        drawBtn.onclick();
-        drawHud("✏️ outline closed — orbit freely, ✅ Apply builds");
-      }
+      // Enter ALWAYS exits to orbit: close the outline when it has 3+ points,
+      // discard a shorter one.
+      if (drawPoints.length >= 3) closeDrawnOutline();
+      drawBtn.onclick();
+      drawHud("✏️ done — orbit freely, ✅ Apply builds");
       ev.preventDefault();
     }
     else if (ev.key === "Escape") {

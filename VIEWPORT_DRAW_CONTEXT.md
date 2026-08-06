@@ -78,11 +78,13 @@ reparented by `mountControls` — it stays on the viewport even when the main
 toolbar moves to an AtlasViewportControls node. The tilt/push `drawAdjust` row
 is a contextual flyout anchored right of the rail, shown only while Draw is
 active. Draw / Box / Sphere / Edit are mutually exclusive — entering one
-cancels the others. **Enter confirms AND exits the tool** (back to orbit —
-the artist's next move is always orbiting to the next hole): quad → ends the
-strip and leaves ⬜; Draw/Box/Sphere → exits only when a shape actually
-committed (the finish guards keep their hints otherwise). Esc stays in the
-tool and just discards the in-progress shape.
+cancels the others. **Enter ALWAYS exits the tool** (back to orbit — the
+artist's next move is always orbiting to the next hole), in every tool and
+every state: it commits the in-progress shape when commit-able (outline ≥3
+points, box with height, sphere with radius) and discards a half-built one.
+This matters because box/sphere auto-commit on their final CLICK — the artist
+then hits Enter with nothing in progress and must still get orbit back. Esc
+stays in the tool and just discards the in-progress shape.
 
 **✏️ Draw (polygon)** — click to drop outline points. The first hits on geometry
 (`drawTargets()`) establish `drawPlane`; later points project onto that plane
