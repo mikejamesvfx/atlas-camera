@@ -3244,6 +3244,19 @@ function buildNodeUI(node, containerEl) {
 
   function onEditPointerUp(ev) {
     if (!editDrag) return;
+    // A single-vertex drag welds ON RELEASE too, when it ends on another
+    // shape's vertex — this covers gizmo / Shift / X-Y-Z axis drags, which
+    // bypass the live weld preview to keep the axis pure but should still
+    // weld when they land on a corner.
+    if (editDrag.indices.length === 1 && editSnap && !editWeld) {
+      const upMapped = mappedFromEvent(ev);
+      const t = upMapped.inside ? findWeldTarget(upMapped) : null;
+      if (t) {
+        editDrag.poly.points_world[editDrag.index] = [...t.point];
+        editWeld = t;
+        drawDirty = true;
+      }
+    }
     // Snapped points can leave the original plane, so re-fit it from what the
     // outline now IS. The stored plane drives the emitted normal and the UV
     // basis, so a stale one would misorient the projection.
@@ -3328,6 +3341,25 @@ function buildNodeUI(node, containerEl) {
     // plane moves under it.
     const ray = [[rayOrigin.x, rayOrigin.y, rayOrigin.z],
                  [rayDir.x, rayDir.y, rayDir.z]];
+
+    // An existing drawn corner under the cursor outranks the mesh: the point
+    // takes its exact coordinates (born welded), and counts as a plane-
+    // establishing hit like any surface click.
+    if (editSnap && !ev.shiftKey) {
+      const t = findWeldTarget(mapped);
+      if (t) {
+        const world = [...t.point];
+        drawPoints.push(world);
+        drawRays.push(ray);
+        if (!drawPlane) {
+          drawHits.push(world);
+          drawPlane = atlasEstablishPlaneFromHits(drawHits);
+        }
+        refreshDrawOverlay();
+        drawHud(drawStatusLine());
+        return;
+      }
+    }
 
     const hits = drawRaycaster.intersectObjects(drawTargets(), false);
     if (hits.length) {
@@ -4176,8 +4208,17 @@ function buildNodeUI(node, containerEl) {
     const ndc = new THREE.Vector2(mapped.x, mapped.y);
     drawRaycaster.setFromCamera(ndc, camera);
     let landed = null;
-    const hits = drawRaycaster.intersectObjects(drawTargets(), false);
-    if (hits.length) {
+    // A click on an EXISTING drawn corner takes its exact coordinates first —
+    // new quads are born already welded to their neighbours instead of
+    // nearly-meeting them.
+    if (editSnap && !ev.shiftKey) {
+      const t = findWeldTarget(mapped);
+      if (t) landed = [...t.point];
+    }
+    const hits = landed ? [] : drawRaycaster.intersectObjects(drawTargets(), false);
+    if (landed) {
+      // welded to a drawn vertex — nothing more to resolve
+    } else if (hits.length) {
       const p = (editSnap && !ev.shiftKey) ? snapHitToEdge(hits[0], mapped) : hits[0].point;
       landed = [p.x, p.y, p.z];
     } else {

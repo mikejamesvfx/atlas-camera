@@ -155,7 +155,13 @@ RED and the drag locks onto the target's exact coordinates; release welds
 the copied shared edge between two ⬜ quads is re-closed after editing.
 Same-shape vertices are excluded (a weld inside one outline would duplicate a
 point its own triangulation chokes on); gated on the 🧲 Snap toggle like every
-other snap. When a polygon's points move, its plane is refit from
+other snap. Weld fires in THREE places: live during a free drag; ON RELEASE of
+gizmo / Shift / X-Y-Z axis drags (they bypass the live preview to keep the
+axis pure but still weld when they land on a corner); and at CREATION — a
+⬜ Quad or ✏️ Draw click on an existing drawn corner takes its exact
+coordinates (born welded; in Draw it also counts as a plane-establishing hit).
+The backend never re-fits `points_world` (`polygon_from_world_points`:
+"nothing is re-fitted here"), so coincident coordinates survive Apply intact. When a polygon's points move, its plane is refit from
 the moved hits (`atlasEstablishPlaneFromHits`, ~L3027) so the projection basis
 stays correct. Edits set `drawDirty`; **Apply** rebuilds.
 
