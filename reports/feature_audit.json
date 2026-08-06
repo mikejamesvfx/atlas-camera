@@ -7,14 +7,13 @@
   "legacy": 2,
   "ios": 2,
   "total": 100,
-  "no_product_evidence": 1
+  "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 89,
+  "KEEP_CORE": 90,
   "KEEP_EXPERIMENTAL": 6,
   "LEGACY_GATE": 2,
-  "IOS_GATE": 2,
-  "HOLD_NEEDS_EVIDENCE": 1
+  "IOS_GATE": 2
  },
  "live_probe": {
   "host": "127.0.0.1:8188",
@@ -2045,13 +2044,14 @@
    "module": "atlas_camera/comfy/nodes_project.py",
    "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 0,
-   "tests": 2,
+   "dedicated_tests": 1,
+   "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 0,
    "docs": 1,
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2060,7 +2060,7 @@
    "overlapping_replacement": null,
    "known_defect": null,
    "compatibility_risk": null,
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "verdict": "KEEP_CORE",
    "evidence": [],
    "migration_action": null,
    "notes": null

@@ -102,7 +102,13 @@ click picks the INNERMOST containing loop by projected NDC area
 rejects monster rims → use Quad/Draw). The fill commits the loop's EXACT rim
 vertices as an ordinary drawn polygon (`established_from.rule: "wand_fill"`)
 — born welded at every vertex. Already-filled rims are skipped (no duplicate
-stacking). Degenerate rims are safe: `_apply_drawn_polygons` wraps each
+stacking). **Boundary-bay fallback** (`wandBayFromLoop`, rule
+`"wand_bay_fill"`): a hole that OPENS onto the mesh's outer border has no
+closed interior loop, so when the first pass finds nothing the wand looks for
+two rim vertices near the click whose projections nearly touch (mouth ≤
+`WAND_GAP_NDC 0.15`), bridges them, and fills the enclosed arc — the pair
+scan is limited to rim verts within `WAND_BAY_LOCAL_R` of the click so the
+O(n²) stays tiny on a many-thousand-vertex border loop. Degenerate rims are safe: `_apply_drawn_polygons` wraps each
 polygon in try/except and reports "skipped(...)" instead of failing the node.
 
 **⬜ Quad** — Maya-style live quad draw, the tear-filler: 4 clicks (any order —

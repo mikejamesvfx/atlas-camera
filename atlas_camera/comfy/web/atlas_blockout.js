@@ -4494,6 +4494,8 @@ function buildNodeUI(node, containerEl) {
   let wandCount = 0;
   const WAND_MAX_RIM = 600;      // rim verts; bigger holes → use Quad/Draw
   const WAND_MAX_NDC_AREA = 0.8; // full viewport is 4.0 — outer borders lose
+  const WAND_GAP_NDC = 0.15;     // widest bay MOUTH the fallback will bridge
+  const WAND_BAY_LOCAL_R = 0.45; // only rim verts this close to the click count
 
   function meshBoundaryLoops(mesh) {
     const geo = mesh.geometry;
@@ -4585,6 +4587,47 @@ function buildNodeUI(node, containerEl) {
     return Math.abs(area / 2);
   }
 
+  // Fallback for holes that OPEN onto the mesh's outer border (no closed
+  // interior loop): find two rim vertices near the click whose projections
+  // nearly touch — the bay's mouth — bridge them, and fill the enclosed arc.
+  // Pairs are only searched among rim verts local to the click, which keeps
+  // the O(n²) pair scan tiny even on a many-thousand-vertex border loop.
+  function wandBayFromLoop(loop, mapped) {
+    const n = loop.length;
+    if (n < 8) return null;
+    const proj = loop.map(projectToNdc);
+    const local = [];
+    for (let i = 0; i < n; i += 1) {
+      if (Math.hypot(proj[i].x - mapped.x, proj[i].y - mapped.y) <= WAND_BAY_LOCAL_R) {
+        local.push(i);
+      }
+    }
+    let best = null, bestArea = Infinity;
+    for (let ai = 0; ai < local.length; ai += 1) {
+      for (let bi = ai + 1; bi < local.length; bi += 1) {
+        const a = local[ai], b = local[bi];
+        const stride = Math.min(b - a, n - (b - a));
+        if (stride < 3) continue;                       // adjacent rim verts
+        const gap = Math.hypot(proj[a].x - proj[b].x, proj[a].y - proj[b].y);
+        if (gap > WAND_GAP_NDC) continue;               // mouth too wide
+        // Two arcs close a..b; the bay is whichever encloses the click.
+        const arcs = [[], []];
+        for (let i = a; i !== b; i = (i + 1) % n) arcs[0].push(loop[i]);
+        arcs[0].push(loop[b]);
+        for (let i = b; i !== a; i = (i + 1) % n) arcs[1].push(loop[i]);
+        arcs[1].push(loop[a]);
+        for (const arc of arcs) {
+          if (arc.length < 3 || arc.length > WAND_MAX_RIM) continue;
+          if (!pointInScreenPolygon(mapped, arc)) continue;
+          const area = ndcLoopArea(arc);
+          if (area > WAND_MAX_NDC_AREA) continue;
+          if (area < bestArea) { bestArea = area; best = arc; }
+        }
+      }
+    }
+    return best ? { arc: best, area: bestArea } : null;
+  }
+
   function onWandClick(ev) {
     if (!wandOn) return;
     const mapped = mappedFromEvent(ev);
@@ -4592,13 +4635,16 @@ function buildNodeUI(node, containerEl) {
     // A rim already claimed by an earlier wand fill is skipped, so re-clicking
     // a filled hole doesn't stack duplicates (the derived mesh still reports
     // the boundary — the fill is a separate polygon on top of it).
-    const alreadyFilled = (loop) => drawnPolygons.some((p) =>
-      p.established_from?.rule === "wand_fill"
-      && p.points_world.length === loop.length
-      && quadDist3(p.points_world[0], loop[0]) < 1e-6);
-    let best = null, bestArea = Infinity;
+    const alreadyFilled = (pts) => drawnPolygons.some((p) =>
+      (p.established_from?.rule === "wand_fill"
+       || p.established_from?.rule === "wand_bay_fill")
+      && p.points_world.length === pts.length
+      && quadDist3(p.points_world[0], pts[0]) < 1e-6);
+    let best = null, bestArea = Infinity, bestRule = "wand_fill";
+    const allLoops = [];
     for (const mesh of drawTargets()) {
       for (const loop of meshBoundaryLoops(mesh)) {
+        allLoops.push(loop);
         if (loop.length > WAND_MAX_RIM) continue;
         if (alreadyFilled(loop)) continue;
         if (!pointInScreenPolygon(mapped, loop)) continue;
@@ -4608,8 +4654,21 @@ function buildNodeUI(node, containerEl) {
       }
     }
     if (!best) {
-      drawHud("🪄 no enclosed hole under the cursor — click INSIDE a bounded "
-              + "tear (very large holes need ⬜ Quad / ✏️ Draw)");
+      // No closed interior loop — try the boundary-bay fallback on EVERY
+      // loop (including the outer border the first pass rejects).
+      for (const loop of allLoops) {
+        const bay = wandBayFromLoop(loop, mapped);
+        if (bay && !alreadyFilled(bay.arc) && bay.area < bestArea) {
+          bestArea = bay.area;
+          best = bay.arc;
+          bestRule = "wand_bay_fill";
+        }
+      }
+    }
+    if (!best) {
+      drawHud("🪄 no enclosed hole under the cursor — a boundary notch must "
+              + "have a mouth narrower than the bridge tolerance; otherwise "
+              + "use ⬜ Quad / ✏️ Draw");
       return;
     }
     const pts = best.map((p) => [...p]);
@@ -4625,12 +4684,13 @@ function buildNodeUI(node, containerEl) {
       enabled: true,
       points_world: pts,
       plane: { normal: plane.normal, offset: plane.offset },
-      established_from: { hits: pts.length, rule: "wand_fill" },
+      established_from: { hits: pts.length, rule: bestRule },
     });
     drawDirty = true;
     refreshDrawOverlay();
-    drawHud(`🪄 hole filled (${pts.length} rim verts, born welded) — keep `
-            + "clicking holes, Enter exits, ✅ Apply builds");
+    drawHud(`🪄 ${bestRule === "wand_bay_fill" ? "boundary notch" : "hole"} `
+            + `filled (${pts.length} rim verts, born welded) — keep clicking, `
+            + "Enter exits, ✅ Apply builds");
   }
 
   const wandBtn = document.createElement("button");
