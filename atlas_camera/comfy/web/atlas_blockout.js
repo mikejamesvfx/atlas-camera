@@ -6698,7 +6698,11 @@ function buildNodeUI(node, containerEl) {
         }
         new THREE.TextureLoader().load(data.clean_plate_b64, (tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
-          const mat = makeProjectionMaterial(data, tex, { primaryDepthTexture: dTex });
+          // NO depth cull on the clean-plate backdrop: primary_depth marks
+          // everything behind the foreground as occluded, which is EXACTLY
+          // where the clean plate must show — culling it painted those
+          // regions black (found live, first clean-plate composite).
+          const mat = makeProjectionMaterial(data, tex, { primaryDepthTexture: null });
           let used = false;
           scene.traverse((c) => {
             if (c.name !== "projection_backdrop") return;
