@@ -4494,8 +4494,8 @@ function buildNodeUI(node, containerEl) {
   let wandCount = 0;
   const WAND_MAX_RIM = 600;      // rim verts; bigger holes → use Quad/Draw
   const WAND_MAX_NDC_AREA = 0.8; // full viewport is 4.0 — outer borders lose
-  const WAND_GAP_NDC = 0.15;     // widest bay MOUTH the fallback will bridge
-  const WAND_BAY_LOCAL_R = 0.45; // only rim verts this close to the click count
+  const WAND_GAP_NDC = 0.3;      // widest bay MOUTH the fallback will bridge
+  const WAND_BAY_LOCAL_R = 0.7;  // only rim verts this close to the click count
 
   function meshBoundaryLoops(mesh) {
     const geo = mesh.geometry;
