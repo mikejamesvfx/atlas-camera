@@ -1651,7 +1651,8 @@ function buildNodeUI(node, containerEl) {
 
   // Metadata HUD: solved lens/distance/confidence readout.
   const metaHud = document.createElement("div");
-  metaHud.style.cssText = "position:absolute;top:6px;left:6px;padding:6px 8px;background:rgba(10,10,14,0.72);" +
+  // left:66px clears the tool rail; top:46px sits under its status chip.
+  metaHud.style.cssText = "position:absolute;top:46px;left:66px;padding:6px 8px;background:rgba(10,10,14,0.72);" +
     "color:#cde;font:10px/1.5 monospace;border-radius:4px;pointer-events:none;white-space:pre;display:none;";
 
   const localControlsLayer = document.createElement("div");
@@ -1669,11 +1670,21 @@ function buildNodeUI(node, containerEl) {
   // (top-left) and drawStatus / the layer legend (bottom-left).
   const drawRail = document.createElement("div");
   drawRail.style.cssText =
-    "position:absolute;left:6px;top:50%;transform:translateY(-50%);z-index:10;" +
-    "display:flex;flex-direction:column;gap:2px;padding:4px 3px;" +
-    "background:rgba(16,16,22,0.82);border:1px solid #333;border-radius:5px;" +
+    "position:absolute;left:10px;top:12px;z-index:10;" +
+    "display:flex;flex-direction:column;gap:4px;padding:8px 6px;" +
+    "background:rgba(18,18,24,0.95);border:1px solid #2c2c34;border-radius:10px;" +
     "pointer-events:auto;line-height:normal;";
   canvasWrap.appendChild(drawRail);
+
+  // Status chip beside the rail — the horizontal bar naming the active tool
+  // and the snap state ("Box · Snap on"), mirroring the rail's own icons.
+  const railStatus = document.createElement("div");
+  railStatus.style.cssText =
+    "position:absolute;left:66px;top:12px;z-index:10;display:flex;align-items:center;" +
+    "gap:7px;padding:6px 12px;background:rgba(24,24,30,0.92);border:1px solid #2c2c34;" +
+    "border-radius:9px;color:#ddd;font:12px/1 sans-serif;pointer-events:none;" +
+    "line-height:normal;white-space:nowrap;";
+  canvasWrap.appendChild(railStatus);
 
   // Three.js setup
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -3547,7 +3558,7 @@ function buildNodeUI(node, containerEl) {
   drawAdjust.style.cssText =
     "display:none;align-items:center;gap:4px;font-size:10px;color:#9c9;" +
     "padding:2px 6px;background:#1a201a;border:1px solid #3a4a3a;border-radius:3px;" +
-    "position:absolute;left:52px;top:50%;transform:translateY(-50%);z-index:10;" +
+    "position:absolute;left:66px;top:46px;z-index:10;" +
     "pointer-events:auto;line-height:normal;white-space:nowrap;";
   const drawTiltInput = document.createElement("input");
   drawTiltInput.type = "range";
@@ -4405,31 +4416,126 @@ function buildNodeUI(node, containerEl) {
   };
 
   // Assemble the rail in DCC order — create tools, edit tools, apply — with
-  // thin separators between the groups. Rail buttons are icon-sized; the full
-  // wording stays in each button's title tooltip.
-  const styleRailBtn = (btn, glyph) => {
-    btn.textContent = glyph;
-    btn.style.width = "32px";
-    btn.style.padding = "5px 0";
-    btn.style.fontSize = "14px";
-    btn.style.textAlign = "center";
+  // thin separators between the groups. Buttons carry monochrome line-art SVG
+  // icons (stroke:currentColor, so each button's existing colour toggling
+  // recolours the icon for free); the full wording stays in each tooltip.
+  const railSvg = (inner) =>
+    `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" ` +
+    `stroke="currentColor" stroke-width="1.7" stroke-linecap="round" ` +
+    `stroke-linejoin="round">${inner}</svg>`;
+  const RAIL_ICONS = {
+    draw: railSvg('<path d="M17 3.5l3.5 3.5L8 19.5 3.5 20.5 4.5 16 17 3.5z"/>'
+      + '<path d="M14.5 6l3.5 3.5"/>'),
+    quad: railSvg('<rect x="5.5" y="5.5" width="13" height="13" rx="1"/>'
+      + '<rect x="3.6" y="3.6" width="3.8" height="3.8" fill="currentColor" stroke="none"/>'
+      + '<rect x="16.6" y="3.6" width="3.8" height="3.8" fill="currentColor" stroke="none"/>'
+      + '<rect x="3.6" y="16.6" width="3.8" height="3.8" fill="currentColor" stroke="none"/>'
+      + '<rect x="16.6" y="16.6" width="3.8" height="3.8" fill="currentColor" stroke="none"/>'),
+    extrude: railSvg('<path d="M4 19.5h16"/><path d="M12 16V5.5"/>'
+      + '<path d="M8 9.5L12 5.5l4 4"/>'),
+    box: railSvg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/>'
+      + '<path d="M12 12l8-4.5M12 12L4 7.5M12 12v9"/>'),
+    sphere: railSvg('<circle cx="12" cy="12" r="8.5"/>'
+      + '<path d="M3.5 12c2.6 3.2 14.4 3.2 17 0" opacity="0.6"/>'),
+    edit: railSvg('<path d="M6 3l12 9.5-5.5 1 2.8 6-3 1.3-2.7-6L6 18V3z"/>'),
+    snap: railSvg('<path d="M7 3.5v8a5 5 0 0 0 10 0v-8"/>'
+      + '<path d="M7 8h4M13 8h4"/>'),
+    trash: railSvg('<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13"/>'
+      + '<path d="M10 11v5.5M14 11v5.5"/>'),
+    apply: railSvg('<path d="M4.5 12.5l5.5 5.5L19.5 6.5"/>'),
+  };
+  const styleRailBtn = (btn, icon) => {
+    btn.innerHTML = RAIL_ICONS[icon];
+    btn.style.width = "44px";
+    btn.style.height = "44px";
+    btn.style.padding = "0";
+    btn.style.display = "flex";
+    btn.style.alignItems = "center";
+    btn.style.justifyContent = "center";
+    btn.style.borderRadius = "8px";
+    btn.style.borderColor = "transparent";
+    btn.style.background = "transparent";
   };
   const railSeparator = () => {
     const s = document.createElement("div");
-    s.style.cssText = "height:1px;margin:2px 3px;background:#3a3a44;";
+    s.style.cssText = "height:1px;margin:3px 6px;background:#34343e;";
     return s;
   };
-  styleRailBtn(drawBtn, "✏️");
-  styleRailBtn(quadBtn, "⬜");
-  styleRailBtn(extrudeBtn, "➬");
-  styleRailBtn(boxBtn, "▣");
-  styleRailBtn(sphereBtn, "●");
-  styleRailBtn(editBtn, "✎");
-  styleRailBtn(snapBtn, "🧲");
-  styleRailBtn(deleteBtn, "🗑");
-  styleRailBtn(drawApplyBtn, "✅");
+  styleRailBtn(drawBtn, "draw");
+  styleRailBtn(quadBtn, "quad");
+  styleRailBtn(extrudeBtn, "extrude");
+  styleRailBtn(boxBtn, "box");
+  styleRailBtn(sphereBtn, "sphere");
+  styleRailBtn(editBtn, "edit");
+  styleRailBtn(snapBtn, "snap");
+  styleRailBtn(deleteBtn, "trash");
+  styleRailBtn(drawApplyBtn, "apply");
   drawRail.append(drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn, railSeparator(),
                   editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
+
+  // The chip mirrors whichever tool is live plus the snap state. Every rail
+  // button's onclick is wrapped (not replaced — mutual-exclusion cross-calls
+  // still work) so the chip refreshes after any toggle.
+  const chipIcon = (name) => {
+    const s = document.createElement("span");
+    s.style.cssText = "display:inline-flex;width:15px;height:15px;";
+    s.innerHTML = RAIL_ICONS[name]
+      .replace('width="26" height="26"', 'width="15" height="15"');
+    return s;
+  };
+  function updateRailStatus() {
+    railStatus.textContent = "";
+    const active =
+      drawOn ? ["draw", "Draw"] :
+      quadOn ? ["quad", "Quad"] :
+      extrudeOn ? ["extrude", "Extrude"] :
+      boxOn ? ["box", "Box"] :
+      sphereOn ? ["sphere", "Sphere"] :
+      editOn ? ["edit", "Edit"] : null;
+    if (active) {
+      railStatus.appendChild(chipIcon(active[0]));
+      railStatus.appendChild(document.createTextNode(active[1]));
+    } else {
+      railStatus.appendChild(document.createTextNode("Orbit"));
+    }
+    const dot = document.createElement("span");
+    dot.textContent = "·";
+    dot.style.color = "#666";
+    railStatus.appendChild(dot);
+    const snapWrap = document.createElement("span");
+    snapWrap.style.cssText = "display:inline-flex;align-items:center;gap:5px;"
+      + (editSnap ? "color:#7dd87d;" : "color:#888;");
+    snapWrap.appendChild(chipIcon("snap"));
+    snapWrap.appendChild(document.createTextNode(editSnap ? "Snap on" : "Snap off"));
+    railStatus.appendChild(snapWrap);
+  }
+  // Uniform active styling (the buttons' own onclicks still set their legacy
+  // toolbar tints — this runs after them and wins): active tool = blue fill,
+  // snap = green, idle = bare icon.
+  function syncRailActive() {
+    const set = (btn, on) => {
+      btn.style.background = on ? "#1d3a5c" : "transparent";
+      btn.style.color = on ? "#8ec2ff" : "#c9c9d1";
+    };
+    set(drawBtn, drawOn);
+    set(quadBtn, quadOn);
+    set(extrudeBtn, extrudeOn);
+    set(boxBtn, boxOn);
+    set(sphereBtn, sphereOn);
+    set(editBtn, editOn);
+    snapBtn.style.background = editSnap ? "#1e3a24" : "transparent";
+    snapBtn.style.color = editSnap ? "#7dd87d" : "#c9c9d1";
+  }
+  deleteBtn.style.color = "#c9c9d1";
+  drawApplyBtn.style.background = "#1e3a24";
+  drawApplyBtn.style.color = "#7dd87d";
+  for (const b of [drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
+                   editBtn, snapBtn]) {
+    const orig = b.onclick;
+    b.onclick = () => { orig(); syncRailActive(); updateRailStatus(); };
+  }
+  syncRailActive();
+  updateRailStatus();
 
   // Restore previously-applied outlines from the persisted widget, so ✎ Edit
   // works after a reload / workflow reopen and not only in the session that

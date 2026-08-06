@@ -59,8 +59,15 @@ drawTargets()          // meshes flagged atlasDerived / atlasPatch — what draw
 
 ## The tools (left tool rail, ~L3300+)
 
-The six tools live on a **DCC-style vertical rail** (`drawRail`) overlaid on the
-LEFT edge of the canvas, vertically centred, icon-only (full wording stays in
+The tools live on a **DCC-style vertical rail** (`drawRail`) pinned to the
+TOP-LEFT of the canvas: 44 px buttons with monochrome line-art SVG icons
+(`RAIL_ICONS`, stroke:currentColor so state colours recolour them), active
+tool = blue fill / snap = green (`syncRailActive`, which runs AFTER each
+button's legacy onclick tints and wins). A **status chip** (`railStatus`,
+`updateRailStatus`) sits right of the rail showing the live tool + snap state
+("Box · Snap on"); every rail onclick is WRAPPED (not replaced — the
+mutual-exclusion cross-calls still work) to refresh it. `metaHud` moved to
+left:66px/top:46px to clear the rail. Icon-only (full wording stays in
 each button's tooltip): **✏️ Draw**, **⬜ Quad**, **➬ Extrude**, **▣ Box**,
 **● Sphere** │ **✎ Edit**,
 **🧲 Snap**, **🗑 Delete** │ **✅ Apply**. 🗑 removes the `editSel` shape (or,
