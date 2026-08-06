@@ -27,6 +27,18 @@ from atlas_camera.comfy.node_helpers import (
 )
 
 
+def _project_routed_dir(project, output_dir, lane):
+    """Route an exporter's output into the delivery project's tree.
+
+    With a project connected the exporter's own output_dir/path is superseded
+    by the shot's DCC lane (<root>/<project>/<shot>/<lane>, created on
+    demand); without one the argument passes through untouched — the
+    no-project fallback every existing workflow relies on.
+    """
+    if project is None:
+        return output_dir
+    return str(project.subdir(lane, create=True))
+
 
 class AtlasExportReviewPackage:
     RETURN_TYPES = ("STRING",)
@@ -40,10 +52,14 @@ class AtlasExportReviewPackage:
             "required": {
                 "solve": ("ATLAS_SOLVE",),
                 "output_dir": ("STRING", {"default": "review_packages"}),
-            }
+            },
+            "optional": {
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's review/ lane and supersedes output_dir."}),
+            },
         }
 
-    def export(self, solve, output_dir):
+    def export(self, solve, output_dir, project=None):
+        output_dir = _project_routed_dir(project, output_dir, "review")
         result = build_review_package(solve, output_dir)
         return (str(result.package_dir),)
 
@@ -60,10 +76,16 @@ class AtlasExportSolveJSON:
             "required": {
                 "solve": ("ATLAS_SOLVE",),
                 "output_path": ("STRING", {"default": "atlas_solve.json"}),
-            }
+            },
+            "optional": {
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's solves/ lane (keeping only output_path's file name) and supersedes output_path's directory."}),
+            },
         }
 
-    def export(self, solve, output_path):
+    def export(self, solve, output_path, project=None):
+        if project is not None:
+            name = Path(str(output_path)).name or "atlas_solve.json"
+            output_path = str(project.subdir("solves", create=True) / name)
         dest = str(save_solve_json(solve, output_path))
         _write_export_manifest(solve, Path(dest).parent or Path("."),
                                [("solve_json", dest)], "AtlasExportSolveJSON")
@@ -91,10 +113,13 @@ class AtlasExportMayaReviewScene:
                                "(not just the camera) when opening the scene."}),
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata to embed in the review package."}),
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's maya/ lane and supersedes output_dir."}),
             },
         }
 
-    def export(self, solve, output_dir, relief_mesh_obj_path="", output_profile=None):
+    def export(self, solve, output_dir, relief_mesh_obj_path="", output_profile=None,
+               project=None):
+        output_dir = _project_routed_dir(project, output_dir, "maya")
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
         result = build_review_package(
@@ -196,6 +221,7 @@ class AtlasExportReliefMesh:
                 "retopo_pure_quad": ("BOOLEAN", {"default": False,
                     "tooltip": "quad only: force a pure-quad output (no triangles). False allows "
                                "quad-dominant (triangles where the field can't place a quad)."}),
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's geo/ lane and supersedes output_dir."}),
             },
         }
 
@@ -208,7 +234,8 @@ class AtlasExportReliefMesh:
                fill_depth_near_m=0.0, fill_depth_far_m=0.0,
                retopo_method="off", retopo_target_vertex_count=2000,
                retopo_smooth_iterations=0, retopo_crease_angle=30.0,
-               retopo_pure_quad=False):
+               retopo_pure_quad=False, project=None):
+        output_dir = _project_routed_dir(project, output_dir, "geo")
         from atlas_camera.core.relief_mesh import build_relief_mesh, estimate_ground_scale
         from atlas_camera.core.solver import _resize_depth
         from atlas_camera.exporters.relief_mesh_exporter import (
@@ -372,11 +399,15 @@ class AtlasExportUSD:
             "required": {
                 "solve": ("ATLAS_SOLVE",),
                 "output_dir": ("STRING", {"default": "atlas_exports"}),
-            }
+            },
+            "optional": {
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's usd/ lane and supersedes output_dir."}),
+            },
         }
 
-    def export(self, solve, output_dir):
+    def export(self, solve, output_dir, project=None):
         from atlas_camera.exporters.usd_exporter import USDExporter
+        output_dir = _project_routed_dir(project, output_dir, "usd")
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
         dest = out / "camera.usda"
@@ -404,10 +435,12 @@ class AtlasExportBlender:
             "optional": {
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata to include in the exported solve context."}),
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's blender/ lane and supersedes output_dir."}),
             },
         }
 
-    def export(self, solve, output_dir, output_profile=None):
+    def export(self, solve, output_dir, output_profile=None, project=None):
+        output_dir = _project_routed_dir(project, output_dir, "blender")
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
         out = Path(output_dir)
@@ -458,10 +491,13 @@ class AtlasExportNuke:
                                "obj_path here to see real derived geometry in Nuke."}),
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata for Read/colorspace annotations."}),
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's nuke/ lane and supersedes output_dir."}),
             },
         }
 
-    def export(self, solve, output_dir, relief_mesh_obj_path="", output_profile=None):
+    def export(self, solve, output_dir, relief_mesh_obj_path="", output_profile=None,
+               project=None):
+        output_dir = _project_routed_dir(project, output_dir, "nuke")
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
         out = Path(output_dir)
@@ -527,14 +563,16 @@ class AtlasExportNukeLayers:
                 "retopo_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 20}),
                 "retopo_crease_angle": ("FLOAT", {"default": 30.0, "min": 0.0, "max": 180.0, "step": 1.0}),
                 "retopo_pure_quad": ("BOOLEAN", {"default": False}),
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's nuke/ lane and supersedes output_dir."}),
             },
         }
 
     def export(self, solve, output_dir, output_profile=None,
                retopo_method="off", retopo_target_vertex_count=2000,
                retopo_smooth_iterations=0, retopo_crease_angle=30.0,
-               retopo_pure_quad=False):
+               retopo_pure_quad=False, project=None):
         from atlas_camera.exporters.nuke_exporter import write_nuke_layers_script
+        output_dir = _project_routed_dir(project, output_dir, "nuke")
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
         try:
@@ -606,14 +644,16 @@ class AtlasExportMayaLayers:
                 "retopo_smooth_iterations": ("INT", {"default": 0, "min": 0, "max": 20}),
                 "retopo_crease_angle": ("FLOAT", {"default": 30.0, "min": 0.0, "max": 180.0, "step": 1.0}),
                 "retopo_pure_quad": ("BOOLEAN", {"default": False}),
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's maya/ lane and supersedes output_dir."}),
             },
         }
 
     def export(self, solve, output_dir, output_profile=None,
                retopo_method="off", retopo_target_vertex_count=2000,
                retopo_smooth_iterations=0, retopo_crease_angle=30.0,
-               retopo_pure_quad=False):
+               retopo_pure_quad=False, project=None):
         from atlas_camera.exporters.maya_exporter import write_maya_layers_scene
+        output_dir = _project_routed_dir(project, output_dir, "maya")
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
         try:
@@ -667,11 +707,15 @@ class AtlasExportCameraPathUSD:
                 "solve": ("ATLAS_SOLVE",),
                 "camera_path": ("ATLAS_CAMERA_PATH",),
                 "output_dir": ("STRING", {"default": "atlas_exports"}),
-            }
+            },
+            "optional": {
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's usd/ lane and supersedes output_dir."}),
+            },
         }
 
-    def export(self, solve, camera_path, output_dir):
+    def export(self, solve, camera_path, output_dir, project=None):
         from atlas_camera.exporters.usd_exporter import USDExporter
+        output_dir = _project_routed_dir(project, output_dir, "usd")
         if camera_path is None or not camera_path.keyframes:
             raise ValueError(
                 "No camera path yet — open AtlasBlockoutViewport, use 🎥 Camera Path "
@@ -733,13 +777,15 @@ class AtlasExportPlateEXR:
                 "file_name": ("STRING", {"default": "",
                     "tooltip": "Output file name. Blank = source stem + '_acescg.exr' "
                                "(or the lowercased target space when it isn't ACEScg)."}),
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's plates/ lane and supersedes output_dir."}),
             },
         }
 
     def export(self, plate_ref, output_colorspace="ACEScg",
                output_dir="atlas_exports/acescg_plates", bit_depth="half",
-               file_name="", **_extra):
+               file_name="", project=None, **_extra):
         from atlas_camera.core.schema import AtlasPlateRef
+        output_dir = _project_routed_dir(project, output_dir, "plates")
         from atlas_camera.plate import read_plate, write_exr
 
         src = getattr(plate_ref, "image_path", None)
