@@ -4494,8 +4494,25 @@ function buildNodeUI(node, containerEl) {
   let wandCount = 0;
   const WAND_MAX_RIM = 600;      // rim verts; bigger holes → use Quad/Draw
   const WAND_MAX_NDC_AREA = 0.8; // full viewport is 4.0 — outer borders lose
-  const WAND_GAP_NDC = 0.3;      // widest bay MOUTH the fallback will bridge
-  const WAND_BAY_LOCAL_R = 0.7;  // only rim verts this close to the click count
+  // Bay mouth tolerance is WORLD-space, relative to the rim's own edge
+  // length: a mouth up to this many median rim edges bridges, wider refuses.
+  // Tears jag at relief-grid resolution, so "median rim edge" ≈ one grid
+  // cell — this stays stable across zoom (the old NDC tolerance shrank and
+  // grew with the camera) and across scene scale (metric vs assumed).
+  const WAND_GAP_EDGE_FACTOR = 8;
+  const WAND_BAY_LOCAL_R = 0.7;  // only rim verts this close to the click count (NDC — interaction locality)
+
+  function medianRimEdge(path) {
+    const n = Math.min(path.length - 1, 200);
+    if (n < 1) return 0;
+    const step = Math.max(1, Math.floor((path.length - 1) / n));
+    const lens = [];
+    for (let i = 0; i + step < path.length; i += step) {
+      lens.push(quadDist3(path[i], path[i + step]) / step);
+    }
+    lens.sort((x, y) => x - y);
+    return lens[Math.floor(lens.length / 2)] || 0;
+  }
 
   function meshBoundaryLoops(mesh) {
     const geo = mesh.geometry;
@@ -4606,12 +4623,14 @@ function buildNodeUI(node, containerEl) {
         local.push(i);
       }
     }
+    const gapTol = WAND_GAP_EDGE_FACTOR * medianRimEdge(path);
+    if (!gapTol) return null;
     let best = null, bestArea = Infinity;
     for (let ai = 0; ai < local.length; ai += 1) {
       for (let bi = ai + 1; bi < local.length; bi += 1) {
         const a = local[ai], b = local[bi];
-        const gap = Math.hypot(proj[a].x - proj[b].x, proj[a].y - proj[b].y);
-        if (gap > WAND_GAP_NDC) continue;               // mouth too wide
+        const gap = quadDist3(path[a], path[b]);
+        if (gap > gapTol) continue;                     // mouth too wide
         const arcs = [];
         if (closed) {
           const stride = Math.min(b - a, n - (b - a));
@@ -4692,7 +4711,8 @@ function buildNodeUI(node, containerEl) {
     if (!best) {
       // Diagnostic HUD: say WHY nothing matched, so tolerance tuning has
       // numbers instead of guesses.
-      let loops = 0, chains = 0, localVerts = 0, minGap = Infinity;
+      let loops = 0, chains = 0, localVerts = 0;
+      let minGap = Infinity, minGapTol = 0;
       for (const [path, closed] of allPaths) {
         if (closed) loops += 1; else chains += 1;
         const proj = path.map(projectToNdc);
@@ -4702,20 +4722,22 @@ function buildNodeUI(node, containerEl) {
               <= WAND_BAY_LOCAL_R) local.push(i);
         }
         localVerts += local.length;
+        const tol = WAND_GAP_EDGE_FACTOR * medianRimEdge(path);
         for (let ai = 0; ai < local.length; ai += 1) {
           for (let bi = ai + 1; bi < local.length; bi += 1) {
             const a = local[ai], b = local[bi];
             if (Math.abs(b - a) < 3) continue;
-            const g = Math.hypot(proj[a].x - proj[b].x, proj[a].y - proj[b].y);
-            if (g < minGap) minGap = g;
+            const g = quadDist3(path[a], path[b]);
+            if (g < minGap) { minGap = g; minGapTol = tol; }
           }
         }
       }
-      console.warn("[atlas wand] no fill:", { loops, chains, localVerts, minGap });
+      console.warn("[atlas wand] no fill:",
+                   { loops, chains, localVerts, minGap, minGapTol });
       drawHud("🪄 no fill — " + loops + " loop(s), " + chains + " chain(s), "
               + localVerts + " rim vert(s) near click, closest mouth "
-              + (minGap === Infinity ? "n/a" : minGap.toFixed(2))
-              + ` NDC (limit ${WAND_GAP_NDC})`);
+              + (minGap === Infinity ? "n/a"
+                 : minGap.toFixed(2) + "m (limit " + minGapTol.toFixed(2) + "m)"));
       return;
     }
     const pts = best.map((p) => [...p]);

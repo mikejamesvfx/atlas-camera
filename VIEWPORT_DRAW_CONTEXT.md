@@ -105,10 +105,12 @@ vertices as an ordinary drawn polygon (`established_from.rule: "wand_fill"`)
 stacking). **Boundary-bay fallback** (`wandBayFromPath`, rule
 `"wand_bay_fill"`): a hole that OPENS onto the mesh's outer border has no
 closed interior loop, so when the first pass finds nothing the wand looks for
-two rim vertices near the click whose projections nearly touch (mouth ≤
-`WAND_GAP_NDC 0.3`), bridges them, and fills the enclosed arc/run — the pair
-scan is limited to rim verts within `WAND_BAY_LOCAL_R 0.7` of the click so
-the O(n²) stays tiny. CRITICAL extraction rules (both found live as "no bay
+two rim vertices near the click that nearly touch in WORLD space — mouth ≤
+`WAND_GAP_EDGE_FACTOR 8` × the rim's own median edge length (`medianRimEdge`;
+tears jag at relief-grid resolution, so that ≈ 8 grid cells — stable across
+zoom and scene scale, unlike the earlier NDC tolerance) — bridges them, and
+fills the enclosed arc/run. The pair scan is limited to rim verts within
+`WAND_BAY_LOCAL_R 0.7` NDC of the click so the O(n²) stays tiny. CRITICAL extraction rules (both found live as "no bay
 ever fills"): the boundary walk is NOT length-capped (`WAND_MAX_RIM` caps
 what a FILL may use, not extraction — capping the walk silently discarded
 the outer border), and walks that dead-end at junction vertices (tears
