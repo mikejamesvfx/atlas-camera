@@ -2990,6 +2990,13 @@ class AtlasMergeGeometry:
                 if seen_backdrop:
                     continue
                 seen_backdrop = True
+            # COPY, then tag provenance: the viewport routes its clean_plate
+            # texture onto solve_b geometry (the clean-background layer of a
+            # two-branch layered solve), and tagging the original in place
+            # would mutate solve_b for every other consumer.
+            p = copy.deepcopy(p)
+            p.metadata = dict(p.metadata or {})
+            p.metadata["merged_from"] = "solve_b"
             out.projection_scene.proxy_geometry.append(p)
             merged_from_b += 1
         out.projection_scene.debug_metadata["proxy_derivation_merge"] = {

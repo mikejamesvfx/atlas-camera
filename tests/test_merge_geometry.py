@@ -123,3 +123,23 @@ def test_merge_records_debug_metadata():
     assert meta["solve_a_prims"] == 1
     assert meta["solve_b_prims_merged"] == 2
     assert meta["merged_prims_total"] == 3
+
+
+def test_merged_b_geometry_is_tagged_with_its_provenance():
+    """The viewport routes its clean_plate texture onto solve_b geometry (the
+    clean-background layer of a two-branch layered solve), so every b-side
+    primitive is tagged merged_from="solve_b" — on a COPY: solve_b's own
+    primitives must stay untouched for any other consumer."""
+    solve_a = _solve(0.0, _prim("projection_wall_01"))
+    solve_b = _solve(0.0, _prim("projection_relief_mesh", "mesh"))
+
+    (out,) = AtlasMergeGeometry().merge(solve_a, solve_b)
+
+    merged_b = [p for p in out.projection_scene.proxy_geometry
+                if (p.metadata or {}).get("merged_from") == "solve_b"]
+    assert [p.name for p in merged_b] == ["projection_relief_mesh"]
+    a_side = [p for p in out.projection_scene.proxy_geometry
+              if p.name == "projection_wall_01"]
+    assert "merged_from" not in (a_side[0].metadata or {})
+    assert all("merged_from" not in (p.metadata or {})
+               for p in solve_b.projection_scene.proxy_geometry)

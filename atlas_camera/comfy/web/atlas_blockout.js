@@ -1185,6 +1185,9 @@ function buildDerivedProxies(scene, data) {
     // Hand-drawn surfaces stand where the camera never saw, so they get the
     // SMEARED plate rather than the raw one (see drawn_plate_b64 below).
     mesh.userData.atlasDrawn = DRAWN_PROXY_SOURCES.has(e.metadata?.source);
+    // solve_b geometry from AtlasMergeGeometry is the clean-background layer
+    // of a layered solve — with a clean_plate connected it projects THAT.
+    mesh.userData.atlasCleanSource = e.metadata?.merged_from === "solve_b";
     mesh.name = e.name || "derived_proxy";
     // Sentinel above any patch renderOrder (see priorityToRenderOrder) — the
     // primary is implicitly highest priority per ProjectionSource's contract,
@@ -6689,13 +6692,17 @@ function buildNodeUI(node, containerEl) {
       };
 
       const buildBackdropMat = (dTex) => {
-        // With a clean plate connected the projection_backdrop plane projects
-        // IT instead of the source photo: tears in the primary mesh then
-        // reveal the clean background behind the foreground — the simple
-        // composite. Same projector, so it stays registered with the plate.
+        // With a clean plate connected, the projection_backdrop plane AND any
+        // solve_b geometry merged in by AtlasMergeGeometry (atlasCleanSource —
+        // the clean-background layer of a layered solve) project IT instead
+        // of the source photo: tears in the primary mesh then reveal the
+        // clean background behind the foreground — the simple composite.
+        // Same projector, so it stays registered with the plate.
+        const wantsClean = (c) =>
+          c.name === "projection_backdrop" || c.userData?.atlasCleanSource;
         if (!data.clean_plate_b64) {
           scene.traverse((c) => {
-            if (c.name === "projection_backdrop") delete c.userData._projMaterial;
+            if (wantsClean(c)) delete c.userData._projMaterial;
           });
           return;
         }
@@ -6704,14 +6711,14 @@ function buildNodeUI(node, containerEl) {
           // projection shader flips V itself, so three.js must not.
           tex.flipY = false;
           tex.colorSpace = THREE.SRGBColorSpace;
-          // NO depth cull on the clean-plate backdrop: primary_depth marks
+          // NO depth cull on clean-plate surfaces: primary_depth marks
           // everything behind the foreground as occluded, which is EXACTLY
           // where the clean plate must show — culling it painted those
           // regions black (found live, first clean-plate composite).
           const mat = makeProjectionMaterial(data, tex, { primaryDepthTexture: null });
           let used = false;
           scene.traverse((c) => {
-            if (c.name !== "projection_backdrop") return;
+            if (!wantsClean(c)) return;
             const stale = c.userData._projMaterial;
             c.userData._projMaterial = mat;
             used = true;
