@@ -6667,6 +6667,9 @@ function buildNodeUI(node, containerEl) {
           return;
         }
         new THREE.TextureLoader().load(data.drawn_plate_b64, (tex) => {
+          // Same top-left-origin convention as loadProjectionTexture: the
+          // projection shader flips V itself, so three.js must not.
+          tex.flipY = false;
           tex.colorSpace = THREE.SRGBColorSpace;
           const mat = makeProjectionMaterial(data, tex, { primaryDepthTexture: dTex });
           let used = false;
@@ -6697,6 +6700,9 @@ function buildNodeUI(node, containerEl) {
           return;
         }
         new THREE.TextureLoader().load(data.clean_plate_b64, (tex) => {
+          // Same top-left-origin convention as loadProjectionTexture: the
+          // projection shader flips V itself, so three.js must not.
+          tex.flipY = false;
           tex.colorSpace = THREE.SRGBColorSpace;
           // NO depth cull on the clean-plate backdrop: primary_depth marks
           // everything behind the foreground as occluded, which is EXACTLY
