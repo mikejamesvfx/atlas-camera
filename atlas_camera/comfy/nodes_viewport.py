@@ -156,7 +156,13 @@ def _project_world_points(solve, pts_world, width, height):
     return list(zip(u.tolist(), v.tolist()))
 
 
-def _drawn_fill_plate_b64(source_image, mask_np, px):
+#: Per-viewport-node smear cache: previous mask + filled plate, so an Apply
+#: that only ADDS a few fills re-smears a padded bbox around the change and
+#: reuses the rest. Keyed by the node's unique_id (one live entry per node).
+_DRAWN_FILL_CACHE: dict = {}
+
+
+def _drawn_fill_plate_b64(source_image, mask_np, px, cache_key=None):
     """The plate with the drawn footprint filled in from its surroundings.
 
     A drawn surface stands where the camera never saw: projecting the untouched
@@ -168,8 +174,18 @@ def _drawn_fill_plate_b64(source_image, mask_np, px):
     Deliberately not an inpaint: for a blockout mass a smeared gradient reads
     correctly and costs nothing. Route ``drawn_mask`` to SDXL/LaMa when the
     surface needs invented structure rather than colour.
+
+    INCREMENTAL: with a ``cache_key`` (the node's unique_id), the previous
+    mask and filled plate are kept, and the next call re-smears only a padded
+    bounding box around the mask DIFF — the smear reaches at most ``px``
+    pixels, so a crop padded by 2*px reproduces the full-frame result for the
+    changed region exactly (the wand workflow adds a handful of fills per
+    Apply; re-smearing the whole 2k plate every time was the reported cost).
+    An unchanged mask returns the cached encoding outright.
     """
     if px <= 0 or mask_np is None or not mask_np.any():
+        if cache_key is not None:
+            _DRAWN_FILL_CACHE.pop(cache_key, None)
         return ""
     np = _require_numpy()
     try:
@@ -178,11 +194,69 @@ def _drawn_fill_plate_b64(source_image, mask_np, px):
         rgb = np.asarray(source_image[0].cpu().numpy(), dtype=np.float32) * 255.0
         if rgb.shape[:2] != mask_np.shape:
             return ""
-        filled, _grown = _extend_edge_colors(rgb, ~np.asarray(mask_np, dtype=bool), int(px))
+        mask = np.asarray(mask_np, dtype=bool)
+        # Cheap plate identity: shape + px + a strided checksum. Exact float
+        # equality is right here — the same tensor yields the same sum.
+        sig = (rgb.shape, int(px), float(rgb[::32, ::32].sum()))
+        cache = _DRAWN_FILL_CACHE.get(cache_key) if cache_key is not None else None
+        filled = None
+        if cache is not None and cache["sig"] == sig and cache["mask"].shape == mask.shape:
+            old_mask = cache["mask"]
+            diff = mask ^ old_mask
+            if not diff.any():
+                return cache["b64"]
+            ys, xs = np.nonzero(diff)
+            pad = int(px) * 2 + 8
+            H, W = mask.shape
+            y0 = max(0, int(ys.min()) - pad)
+            y1 = min(H, int(ys.max()) + 1 + pad)
+            x0 = max(0, int(xs.min()) - pad)
+            x1 = min(W, int(xs.max()) + 1 + pad)
+            # Grow the crop until no masked pixel sits within a smear-reach of
+            # its border: a fill straddling the border would otherwise lose the
+            # part of its neighborhood outside the crop and refill differently
+            # than a full-frame pass. Growth only ever adds area, so the kept
+            # region outside stays valid.
+            guard = int(px) + 2
+            for _ in range(64):
+                sub = mask[y0:y1, x0:x1]
+                grew = False
+                if y0 > 0 and sub[:guard].any():
+                    y0 = max(0, y0 - pad); grew = True
+                if y1 < H and sub[-guard:].any():
+                    y1 = min(H, y1 + pad); grew = True
+                if x0 > 0 and sub[:, :guard].any():
+                    x0 = max(0, x0 - pad); grew = True
+                if x1 < W and sub[:, -guard:].any():
+                    x1 = min(W, x1 + pad); grew = True
+                if not grew:
+                    break
+            if (y1 - y0) * (x1 - x0) <= 0.6 * mask.size:
+                # Valid pixels are never altered by the smear, so the frame
+                # outside the crop is: plate everywhere, cached fill where the
+                # mask survives from last time. Inside the crop the edge-extend
+                # recomputes every masked pixel from the surrounding plate —
+                # stale fill values there are overwritten, never read.
+                filled = rgb.copy()
+                keep = old_mask & mask
+                keep[y0:y1, x0:x1] = False
+                filled[keep] = cache["filled"][keep]
+                sub, _grown = _extend_edge_colors(
+                    np.ascontiguousarray(filled[y0:y1, x0:x1]),
+                    ~mask[y0:y1, x0:x1], int(px))
+                filled[y0:y1, x0:x1] = sub
+        if filled is None:
+            filled, _grown = _extend_edge_colors(rgb, ~mask, int(px))
         pil = PILImage.fromarray(filled.clip(0, 255).astype("uint8"), mode="RGB")
         buf = io.BytesIO()
         pil.save(buf, format="JPEG", quality=88)
-        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+        b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+        if cache_key is not None:
+            _DRAWN_FILL_CACHE[cache_key] = {
+                "sig": sig, "mask": mask.copy(),
+                "filled": filled.astype(np.float32), "b64": b64,
+            }
+        return b64
     except Exception:
         return ""     # a cosmetic fill must never take out the viewport
 
@@ -688,7 +762,8 @@ class AtlasBlockoutViewport:
             # The footprint is what the smear fills, so it is built here where
             # the mask exists, then attached to the payload the browser fetches.
             blockout_payload["drawn_plate_b64"] = _drawn_fill_plate_b64(
-                source_image, drawn_np, int(drawn_fill_px))
+                source_image, drawn_np, int(drawn_fill_px),
+                cache_key=str(node_id) if node_id is not None else None)
             _blockout_cache_set(node_id, blockout_payload)
             if drawn_np is None:
                 drawn_mask = torch.zeros(1, src_h, src_w, dtype=torch.float32)

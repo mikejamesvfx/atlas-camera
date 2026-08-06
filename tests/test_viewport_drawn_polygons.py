@@ -713,6 +713,40 @@ def test_a_drawn_surface_gets_a_plate_smeared_in_from_its_surroundings():
     assert payload.get("drawn_plate_b64", "").startswith("data:image/")
 
 
+def test_incremental_smear_matches_a_fresh_full_compute():
+    """The per-node smear cache re-smears only a crop around the mask diff;
+    the result must be byte-identical to a fresh full-frame pass, including
+    when the new fill lands close enough to an old one that the crop has to
+    grow to keep the old fill's smear neighborhood intact."""
+    torch = pytest.importorskip("torch")
+    np = pytest.importorskip("numpy")
+    from atlas_camera.comfy.nodes_viewport import (
+        _drawn_fill_plate_b64, _DRAWN_FILL_CACHE)
+
+    torch.manual_seed(7)
+    image = torch.rand((1, 128, 128, 3), dtype=torch.float32)
+    mask_a = np.zeros((128, 128), dtype=bool)
+    mask_a[20:40, 20:40] = True
+    mask_ab = mask_a.copy()
+    mask_ab[44:60, 30:50] = True      # near A: forces the crop-growth path
+    mask_ab[90:110, 80:100] = True    # far from A: plain incremental region
+
+    _DRAWN_FILL_CACHE.clear()
+    _drawn_fill_plate_b64(image, mask_a, 16, cache_key="inc")      # prime
+    incremental = _drawn_fill_plate_b64(image, mask_ab, 16, cache_key="inc")
+    fresh = _drawn_fill_plate_b64(image, mask_ab, 16)              # no cache
+    assert incremental == fresh
+
+    # An unchanged mask short-circuits to the cached encoding.
+    again = _drawn_fill_plate_b64(image, mask_ab.copy(), 16, cache_key="inc")
+    assert again == incremental
+
+    # px=0 / empty mask drops the entry rather than serving a stale plate.
+    _drawn_fill_plate_b64(image, np.zeros((128, 128), dtype=bool), 16,
+                          cache_key="inc")
+    assert "inc" not in _DRAWN_FILL_CACHE
+
+
 def test_no_smear_plate_when_the_fill_is_switched_off():
     torch = pytest.importorskip("torch")
     solve = _viewport_solve()
