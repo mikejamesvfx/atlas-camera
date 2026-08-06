@@ -729,6 +729,9 @@ def test_a_connected_clean_plate_replaces_the_smear():
 
     b64 = _payload_for("clean-plate").get("drawn_plate_b64", "")
     assert b64.startswith("data:image/")
+    # The clean plate is also published as its own layer for the backdrop
+    # plane (tears in the primary mesh reveal it), drawn shapes or not.
+    assert _payload_for("clean-plate").get("clean_plate_b64", "") == b64
     # And it is the clean plate, not a smear of the source: decode and check
     # the dominant channel.
     import base64 as _b64

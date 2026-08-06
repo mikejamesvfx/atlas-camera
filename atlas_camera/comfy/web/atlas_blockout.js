@@ -6685,6 +6685,36 @@ function buildNodeUI(node, containerEl) {
         });
       };
 
+      const buildBackdropMat = (dTex) => {
+        // With a clean plate connected the projection_backdrop plane projects
+        // IT instead of the source photo: tears in the primary mesh then
+        // reveal the clean background behind the foreground — the simple
+        // composite. Same projector, so it stays registered with the plate.
+        if (!data.clean_plate_b64) {
+          scene.traverse((c) => {
+            if (c.name === "projection_backdrop") delete c.userData._projMaterial;
+          });
+          return;
+        }
+        new THREE.TextureLoader().load(data.clean_plate_b64, (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const mat = makeProjectionMaterial(data, tex, { primaryDepthTexture: dTex });
+          let used = false;
+          scene.traverse((c) => {
+            if (c.name !== "projection_backdrop") return;
+            const stale = c.userData._projMaterial;
+            c.userData._projMaterial = mat;
+            used = true;
+            if (stale && stale !== mat) {
+              stale.uniforms?.uTexture?.value?.dispose?.();
+              stale.dispose?.();
+            }
+          });
+          if (!used) { tex.dispose(); mat.dispose?.(); return; }
+          if (projectionOn) applyProjection(true);
+        });
+      };
+
       const buildPrimaryMat = (dTex) => {
         loadProjectionTexture(data, (tex) => {
           const old = projMaterial;
@@ -6693,6 +6723,7 @@ function buildNodeUI(node, containerEl) {
           if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
         });
         buildDrawnMat(dTex);
+        buildBackdropMat(dTex);
       };
       
       if (data.primary_depth_b64) {

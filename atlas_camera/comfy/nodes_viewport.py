@@ -673,6 +673,13 @@ class AtlasBlockoutViewport:
             debug_matte_b64=debug_matte_b64,
             patch_mask_b64=patch_mask_b64)
         blockout_payload["drawn_plate_b64"] = ""
+        # The clean plate is a LAYER, not just a drawn-surface texture: the
+        # projection_backdrop plane projects it too, so tears in the primary
+        # mesh reveal the clean background behind the foreground — the simple
+        # composite. Sent whether or not anything was drawn.
+        blockout_payload["clean_plate_b64"] = (
+            (_image_tensor_to_preview_b64(clean_plate, quality=88) or "")
+            if clean_plate is not None else "")
         _blockout_cache_set(node_id, blockout_payload)
 
         # IMPORTANT: return a "ui" payload. ComfyUI only emits the "executed"
@@ -774,8 +781,9 @@ class AtlasBlockoutViewport:
                 # An explicit clean plate beats the automatic smear: the user
                 # painted/generated the occluded content, so drawn surfaces
                 # project it directly (same projector — stays registered).
+                # Encoded once above for the backdrop layer; reused here.
                 blockout_payload["drawn_plate_b64"] = (
-                    _image_tensor_to_preview_b64(clean_plate, quality=88) or "")
+                    blockout_payload.get("clean_plate_b64", ""))
                 if node_id is not None:
                     _DRAWN_FILL_CACHE.pop(str(node_id), None)
             else:
