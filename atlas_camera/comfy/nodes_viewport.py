@@ -613,12 +613,13 @@ class AtlasBlockoutViewport:
                                "route `drawn_mask` to a real inpaint instead)."}),
                 # APPENDED last (link input — takes no widgets_values slot).
                 "clean_plate": ("IMAGE", {
-                    "tooltip": "Optional clean plate for simple composites: drawn "
-                               "surfaces (✏️/⬜/➬/▣/●/🪄) project THIS image instead "
-                               "of the automatic smear — paint or generate the "
-                               "occluded content once and every drawn fill samples "
-                               "it, same projector as the source plate so it stays "
-                               "registered. Overrides drawn_fill_px."}),
+                    "tooltip": "Optional clean plate — the BACKGROUND layer of a "
+                               "layered composite: the projection_backdrop plane and "
+                               "any solve_b geometry merged in by AtlasMergeGeometry "
+                               "project THIS image, so tears in the foreground reveal "
+                               "the clean background through the same registered "
+                               "projector. Drawn/wand fills patch the foreground's "
+                               "own tears and keep the drawn_fill_px smear."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -777,19 +778,15 @@ class AtlasBlockoutViewport:
                         f"AtlasBlockoutViewport: drawn polygons failed ({exc}).")
             # The footprint is what the smear fills, so it is built here where
             # the mask exists, then attached to the payload the browser fetches.
-            if clean_plate is not None:
-                # An explicit clean plate beats the automatic smear: the user
-                # painted/generated the occluded content, so drawn surfaces
-                # project it directly (same projector — stays registered).
-                # Encoded once above for the backdrop layer; reused here.
-                blockout_payload["drawn_plate_b64"] = (
-                    blockout_payload.get("clean_plate_b64", ""))
-                if node_id is not None:
-                    _DRAWN_FILL_CACHE.pop(str(node_id), None)
-            else:
-                blockout_payload["drawn_plate_b64"] = _drawn_fill_plate_b64(
-                    source_image, drawn_np, int(drawn_fill_px),
-                    cache_key=str(node_id) if node_id is not None else None)
+            # Drawn/wand fills patch the PRIMARY layer's own tears, so they
+            # always take the source-plate smear — never the clean plate,
+            # which is the BACKGROUND layer (backdrop plane + merged solve_b
+            # geometry). An earlier build routed the clean plate here too and
+            # machine tears came back filled with background (found live on
+            # the first layered-solve run).
+            blockout_payload["drawn_plate_b64"] = _drawn_fill_plate_b64(
+                source_image, drawn_np, int(drawn_fill_px),
+                cache_key=str(node_id) if node_id is not None else None)
             _blockout_cache_set(node_id, blockout_payload)
             if drawn_np is None:
                 drawn_mask = torch.zeros(1, src_h, src_w, dtype=torch.float32)

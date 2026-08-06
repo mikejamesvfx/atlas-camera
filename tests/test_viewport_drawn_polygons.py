@@ -713,10 +713,12 @@ def test_a_drawn_surface_gets_a_plate_smeared_in_from_its_surroundings():
     assert payload.get("drawn_plate_b64", "").startswith("data:image/")
 
 
-def test_a_connected_clean_plate_replaces_the_smear():
-    """clean_plate is the simple-composite path: drawn surfaces project the
-    supplied image instead of the automatic edge-extend smear, even with
-    drawn_fill_px left at its default."""
+def test_a_connected_clean_plate_feeds_the_background_not_the_fills():
+    """clean_plate is the BACKGROUND layer (backdrop plane + merged solve_b
+    geometry): it is published as clean_plate_b64, while drawn/wand fills —
+    which patch the PRIMARY layer's own tears — keep the source-plate smear.
+    An earlier build routed the clean plate onto the fills too and machine
+    tears came back filled with background (found live, layered solve)."""
     torch = pytest.importorskip("torch")
     solve = _viewport_solve()
     image = torch.rand((1, 256, 256, 3), dtype=torch.float32)
@@ -727,17 +729,17 @@ def test_a_connected_clean_plate_replaces_the_smear():
         solve, image, 256, _drawn_payload(_fingerprint_for(solve, image)),
         clean_plate=clean, unique_id="clean-plate")
 
-    b64 = _payload_for("clean-plate").get("drawn_plate_b64", "")
-    assert b64.startswith("data:image/")
-    # The clean plate is also published as its own layer for the backdrop
-    # plane (tears in the primary mesh reveal it), drawn shapes or not.
-    assert _payload_for("clean-plate").get("clean_plate_b64", "") == b64
-    # And it is the clean plate, not a smear of the source: decode and check
-    # the dominant channel.
+    payload = _payload_for("clean-plate")
+    clean_b64 = payload.get("clean_plate_b64", "")
+    drawn_b64 = payload.get("drawn_plate_b64", "")
+    assert clean_b64.startswith("data:image/")
+    assert drawn_b64.startswith("data:image/")
+    assert drawn_b64 != clean_b64        # fills keep the smear
+    # The published clean layer IS the clean plate: flat green dominates.
     import base64 as _b64
     from io import BytesIO
     from PIL import Image as PILImage
-    raw = _b64.b64decode(b64.split(",", 1)[1])
+    raw = _b64.b64decode(clean_b64.split(",", 1)[1])
     arr = PILImage.open(BytesIO(raw)).convert("RGB")
     import numpy as _np
     px = _np.asarray(arr, dtype=_np.float32)
