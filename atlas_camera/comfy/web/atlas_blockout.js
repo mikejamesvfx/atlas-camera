@@ -4641,6 +4641,16 @@ function buildNodeUI(node, containerEl) {
 
   function onWandClick(ev) {
     if (!wandOn) return;
+    // A thrown exception would silently kill every later click — surface it.
+    try {
+      onWandClickInner(ev);
+    } catch (err) {
+      console.error("[atlas wand]", err);
+      drawHud("🪄 internal error — see the browser console: " + err.message);
+    }
+  }
+
+  function onWandClickInner(ev) {
     const mapped = mappedFromEvent(ev);
     if (!mapped.inside) return;
     // A rim already claimed by an earlier wand fill is skipped, so re-clicking
@@ -4680,9 +4690,32 @@ function buildNodeUI(node, containerEl) {
       }
     }
     if (!best) {
-      drawHud("🪄 no enclosed hole under the cursor — a boundary notch must "
-              + "have a mouth narrower than the bridge tolerance; otherwise "
-              + "use ⬜ Quad / ✏️ Draw");
+      // Diagnostic HUD: say WHY nothing matched, so tolerance tuning has
+      // numbers instead of guesses.
+      let loops = 0, chains = 0, localVerts = 0, minGap = Infinity;
+      for (const [path, closed] of allPaths) {
+        if (closed) loops += 1; else chains += 1;
+        const proj = path.map(projectToNdc);
+        const local = [];
+        for (let i = 0; i < path.length; i += 1) {
+          if (Math.hypot(proj[i].x - mapped.x, proj[i].y - mapped.y)
+              <= WAND_BAY_LOCAL_R) local.push(i);
+        }
+        localVerts += local.length;
+        for (let ai = 0; ai < local.length; ai += 1) {
+          for (let bi = ai + 1; bi < local.length; bi += 1) {
+            const a = local[ai], b = local[bi];
+            if (Math.abs(b - a) < 3) continue;
+            const g = Math.hypot(proj[a].x - proj[b].x, proj[a].y - proj[b].y);
+            if (g < minGap) minGap = g;
+          }
+        }
+      }
+      console.warn("[atlas wand] no fill:", { loops, chains, localVerts, minGap });
+      drawHud("🪄 no fill — " + loops + " loop(s), " + chains + " chain(s), "
+              + localVerts + " rim vert(s) near click, closest mouth "
+              + (minGap === Infinity ? "n/a" : minGap.toFixed(2))
+              + ` NDC (limit ${WAND_GAP_NDC})`);
       return;
     }
     const pts = best.map((p) => [...p]);
