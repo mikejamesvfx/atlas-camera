@@ -2688,6 +2688,12 @@ function buildNodeUI(node, containerEl) {
       addPoints(hot, 0xff9040, 14);
       addPoints(weld, 0xff3030, 16);
     }
+    if (extrudeDrag && extrudeDrag.delta) {
+      const { a, b, delta: d } = extrudeDrag;
+      outline([a, b,
+               [b[0] + d[0], b[1] + d[1], b[2] + d[2]],
+               [a[0] + d[0], a[1] + d[1], a[2] + d[2]]], 0xffe066, true);
+    }
     if (quadOn && quadPoints.length) {
       outline(quadPoints, 0xffe066, quadPoints.length >= 3);
       const flat = [];
@@ -2934,7 +2940,7 @@ function buildNodeUI(node, containerEl) {
   // Called per-frame from animate() beside updatePivotGizmo, so it tracks the
   // selection through drags and stays a constant on-screen size while orbiting.
   function updateEditGizmo() {
-    if (!editSel || !editOn || drawOn || boxOn || sphereOn || quadOn
+    if (!editSel || !editOn || drawOn || boxOn || sphereOn || quadOn || extrudeOn
         || !drawnPolygons.includes(editSel.poly)) {
       if (editGizmo) editGizmo.visible = false;
       return;
@@ -3382,6 +3388,21 @@ function buildNodeUI(node, containerEl) {
       ev.preventDefault();
       return;
     }
+    if (extrudeOn) {
+      if (ev.key === "Enter" || ev.key === "Escape") {
+        extrudeBtn.onclick();
+        drawHud("➬ done — orbit freely, ✅ Apply builds the extrusions");
+        ev.preventDefault();
+      } else if ((ev.key === "Backspace" || ev.key === "Delete")
+                 && drawnPolygons.length) {
+        drawnPolygons.pop();
+        drawDirty = true;
+        refreshDrawOverlay();
+        drawHud("➬ last shape removed");
+        ev.preventDefault();
+      }
+      return;
+    }
     if (quadOn) {
       if (ev.key === "Enter") {
         // Enter CONFIRMS AND EXITS: the artist's next move is orbiting to the
@@ -3512,6 +3533,9 @@ function buildNodeUI(node, containerEl) {
   canvas.addEventListener("pointerdown", onEditPointerDown, true);
   canvas.addEventListener("pointermove", onEditPointerMove, true);
   canvas.addEventListener("pointerup", onEditPointerUp, true);
+  canvas.addEventListener("pointerdown", onExtrudePointerDown, true);
+  canvas.addEventListener("pointermove", onExtrudePointerMove, true);
+  canvas.addEventListener("pointerup", onExtrudePointerUp, true);
 
   // Tilt / push: the "adjustable after" half of the plane rules. Both
   // re-intersect the STORED click rays, so the outline keeps the shape drawn
@@ -3565,6 +3589,7 @@ function buildNodeUI(node, containerEl) {
     if (drawOn && boxOn) boxBtn.onclick();
     if (drawOn && sphereOn) sphereBtn.onclick();
     if (drawOn && quadOn) quadBtn.onclick();
+    if (drawOn && extrudeOn) extrudeBtn.onclick();
     drawBtn.style.background = drawOn ? "#1a3a1a" : "#2a2a2a";
     drawBtn.style.color = drawOn ? "#8f8" : "#ddd";
     // Orbiting while drawing would fight the click; the artist turns the
@@ -3593,6 +3618,7 @@ function buildNodeUI(node, containerEl) {
     if (editOn && boxOn) boxBtn.onclick();
     if (editOn && sphereOn) sphereBtn.onclick();
     if (editOn && quadOn) quadBtn.onclick();
+    if (editOn && extrudeOn) extrudeBtn.onclick();
     editDrag = null;
     editSel = null;
     refreshDrawOverlay();
@@ -3856,6 +3882,7 @@ function buildNodeUI(node, containerEl) {
       if (editOn) editBtn.onclick();
       if (sphereOn) sphereBtn.onclick();
       if (quadOn) quadBtn.onclick();
+      if (extrudeOn) extrudeBtn.onclick();
     }
     controls.setEnabled(!boxOn);
     canvas.style.cursor = boxOn ? "crosshair" : "grab";
@@ -4006,6 +4033,7 @@ function buildNodeUI(node, containerEl) {
       if (editOn) editBtn.onclick();
       if (boxOn) boxBtn.onclick();
       if (quadOn) quadBtn.onclick();
+      if (extrudeOn) extrudeBtn.onclick();
     }
     controls.setEnabled(!sphereOn);
     canvas.style.cursor = sphereOn ? "crosshair" : "grab";
@@ -4146,10 +4174,34 @@ function buildNodeUI(node, containerEl) {
       // points placed so far — mid-tear clicks stay coplanar with the rim.
       const fitFrom = quadPoints.length >= 2 ? quadPoints : quadPrev;
       const plane = fitFrom ? atlasEstablishPlaneFromHits(fitFrom) : null;
+      const o = camera.getWorldPosition(new THREE.Vector3());
+      const d = drawRaycaster.ray.direction;
       if (plane) {
-        const o = camera.getWorldPosition(new THREE.Vector3());
-        const d = drawRaycaster.ray.direction;
         landed = atlasIntersectRayWithPlane([o.x, o.y, o.z], [d.x, d.y, d.z], plane);
+      }
+      // Grazing-ray guard (found live): orbiting between clicks can leave the
+      // strip's plane nearly edge-on to the camera, and the intersection then
+      // lands absurdly far away — a sliver quad shooting across the scene.
+      // A landing further from the existing points than 4× their own spread
+      // is rejected and re-landed on a CAMERA-FACING plane through the last
+      // point instead, which is always well-conditioned.
+      if (fitFrom && fitFrom.length) {
+        let spread = 0;
+        for (let i = 1; i < fitFrom.length; i += 1) {
+          spread = Math.max(spread, quadDist3(fitFrom[i - 1], fitFrom[i]));
+        }
+        const limit = 4 * Math.max(spread, 1);
+        const near = (p) => fitFrom.some((q) => quadDist3(p, q) <= limit);
+        if (!landed || !near(landed)) {
+          const anchor = fitFrom[fitFrom.length - 1];
+          const fwd = camera.getWorldDirection(new THREE.Vector3());
+          const n = [fwd.x, fwd.y, fwd.z];
+          const facing = {
+            normal: n,
+            offset: n[0] * anchor[0] + n[1] * anchor[1] + n[2] * anchor[2],
+          };
+          landed = atlasIntersectRayWithPlane([o.x, o.y, o.z], [d.x, d.y, d.z], facing);
+        }
       }
       if (!landed) {
         drawHud("⬜ nothing hit — the first clicks must land on geometry (the tear rim)");
@@ -4190,6 +4242,7 @@ function buildNodeUI(node, containerEl) {
       if (editOn) editBtn.onclick();
       if (boxOn) boxBtn.onclick();
       if (sphereOn) sphereBtn.onclick();
+      if (extrudeOn) extrudeBtn.onclick();
     }
     controls.setEnabled(!quadOn);
     canvas.style.cursor = quadOn ? "crosshair" : "grab";
@@ -4197,6 +4250,158 @@ function buildNodeUI(node, containerEl) {
     quadPrev = null;
     refreshDrawOverlay();
     drawHud(quadOn ? quadStatusLine() : "");
+  };
+
+  // ---------------------------------------------------------------------------
+  // ➬ Extrude — pull a NEW quad out of any existing drawn edge, Maya-style.
+  //
+  // The complement to ⬜ Quad: instead of clicking 4 fresh points, grab an edge
+  // of a shape that already exists (quad, drawn n-gon, or box wire) and DRAG —
+  // the edge's two endpoints are copied and follow the cursor on a
+  // camera-facing plane through the grab point (always well-conditioned, no
+  // grazing-plane blowups), release commits the quad. Each committed extrusion
+  // is an ordinary kind-less 4-point polygon like ⬜ Quad's output, so Edit /
+  // weld / 🗑 / Apply all just work; the source edge's values are COPIED, and
+  // the red weld snap re-closes the seam if either side is edited later.
+  // ---------------------------------------------------------------------------
+  let extrudeOn = false;
+  let extrudeDrag = null;   // { a, b, grab, delta } while pulling
+  let extrudeCount = 0;
+
+  function ndcSegDist(m, a, b) {
+    const abx = b.x - a.x, aby = b.y - a.y;
+    const len2 = abx * abx + aby * aby;
+    let t = len2 > 1e-12 ? ((m.x - a.x) * abx + (m.y - a.y) * aby) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(m.x - (a.x + t * abx), m.y - (a.y + t * aby));
+  }
+
+  // Nearest edge of ANY drawn shape to the cursor, in screen space (constant
+  // ~14 px tolerance like every other pick). Spheres have no edges to pull.
+  function nearestDrawnEdge(mapped) {
+    const tol = 2 * 14 / Math.max(canvas.height, 1);
+    const EX_BOX_EDGES = [[0, 1], [1, 2], [2, 3], [3, 0],
+                          [4, 5], [5, 6], [6, 7], [7, 4],
+                          [0, 4], [1, 5], [2, 6], [3, 7]];
+    let best = null, bestD = Infinity;
+    for (const poly of drawnPolygons) {
+      if (poly.kind === "sphere") continue;
+      const pts = poly.points_world;
+      const pairs = (poly.kind === "box" && pts.length === 8)
+        ? EX_BOX_EDGES
+        : pts.map((_, i) => [i, (i + 1) % pts.length]);
+      for (const [i0, i1] of pairs) {
+        const a = projectToNdc(pts[i0]);
+        const b = projectToNdc(pts[i1]);
+        const d = ndcSegDist(mapped, a, b);
+        if (d < bestD) { bestD = d; best = { a: pts[i0], b: pts[i1] }; }
+      }
+    }
+    return bestD <= tol ? best : null;
+  }
+
+  function onExtrudePointerDown(ev) {
+    if (!extrudeOn) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+    const edge = nearestDrawnEdge(mapped);
+    if (!edge) {
+      drawHud("➬ no edge under the cursor — grab an edge of a drawn shape");
+      return;
+    }
+    const grab = [(edge.a[0] + edge.b[0]) / 2,
+                  (edge.a[1] + edge.b[1]) / 2,
+                  (edge.a[2] + edge.b[2]) / 2];
+    extrudeDrag = { a: [...edge.a], b: [...edge.b], grab, delta: null };
+    canvas.setPointerCapture?.(ev.pointerId);
+    drawHud("➬ pull the new edge out — release to commit");
+    ev.stopPropagation();
+    ev.preventDefault();
+  }
+
+  function onExtrudePointerMove(ev) {
+    if (!extrudeDrag) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+    drawRaycaster.setFromCamera(new THREE.Vector2(mapped.x, mapped.y), camera);
+    const o = camera.getWorldPosition(new THREE.Vector3());
+    const d = drawRaycaster.ray.direction;
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    const n = [fwd.x, fwd.y, fwd.z];
+    const g = extrudeDrag.grab;
+    const facing = { normal: n, offset: n[0] * g[0] + n[1] * g[1] + n[2] * g[2] };
+    const landed = atlasIntersectRayWithPlane([o.x, o.y, o.z], [d.x, d.y, d.z], facing);
+    if (!landed) return;
+    extrudeDrag.delta = [landed[0] - g[0], landed[1] - g[1], landed[2] - g[2]];
+    refreshDrawOverlay();
+    ev.stopPropagation();
+  }
+
+  function onExtrudePointerUp(ev) {
+    if (!extrudeDrag) return;
+    const { a, b, delta } = extrudeDrag;
+    extrudeDrag = null;
+    canvas.releasePointerCapture?.(ev.pointerId);
+    const len = delta ? Math.hypot(delta[0], delta[1], delta[2]) : 0;
+    if (len < 0.02) {
+      refreshDrawOverlay();
+      drawHud("➬ barely moved — drag further to pull a quad out");
+      ev.stopPropagation();
+      return;
+    }
+    const pts = orderQuad([
+      [...a], [...b],
+      [b[0] + delta[0], b[1] + delta[1], b[2] + delta[2]],
+      [a[0] + delta[0], a[1] + delta[1], a[2] + delta[2]],
+    ], true);
+    const plane = atlasEstablishPlaneFromHits(pts);
+    if (!plane) {
+      refreshDrawOverlay();
+      drawHud("➬ that pull is degenerate — try a different direction");
+      ev.stopPropagation();
+      return;
+    }
+    extrudeCount += 1;
+    drawnPolygons.push({
+      id: `x${extrudeCount}`,
+      label: `extrude ${extrudeCount}`,
+      enabled: true,
+      points_world: pts,
+      plane: { normal: plane.normal, offset: plane.offset },
+      established_from: { hits: 4, rule: "edge_extrude" },
+    });
+    drawDirty = true;
+    refreshDrawOverlay();
+    drawHud("➬ quad extruded — pull another edge, Enter exits, ✅ Apply builds");
+    ev.stopPropagation();
+  }
+
+  const extrudeBtn = document.createElement("button");
+  extrudeBtn.textContent = "➬ Extrude";
+  extrudeBtn.title = "Pull a new quad out of an existing edge: grab any edge of a "
+    + "drawn shape (quad, n-gon or box) and drag — the edge is copied and follows "
+    + "the cursor, release commits the quad. Perfect for extending a strip's "
+    + "bottom/side edges over a tear instead of clicking new quads. Enter exits, "
+    + "✅ Apply builds; the red weld snap in ✎ Edit re-closes any seam later.";
+  extrudeBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  extrudeBtn.onclick = () => {
+    extrudeOn = !extrudeOn;
+    extrudeBtn.style.background = extrudeOn ? "#2a221a" : "#2a2a2a";
+    extrudeBtn.style.color = extrudeOn ? "#fc6" : "#ddd";
+    if (extrudeOn) {
+      if (drawOn) drawBtn.onclick();
+      if (editOn) editBtn.onclick();
+      if (boxOn) boxBtn.onclick();
+      if (sphereOn) sphereBtn.onclick();
+      if (quadOn) quadBtn.onclick();
+    }
+    controls.setEnabled(!extrudeOn);
+    canvas.style.cursor = extrudeOn ? "crosshair" : "grab";
+    extrudeDrag = null;
+    refreshDrawOverlay();
+    drawHud(extrudeOn
+      ? "➬ grab an edge of a drawn shape and pull a quad out of it"
+      : "");
   };
 
   // Assemble the rail in DCC order — create tools, edit tools, apply — with
@@ -4216,13 +4421,14 @@ function buildNodeUI(node, containerEl) {
   };
   styleRailBtn(drawBtn, "✏️");
   styleRailBtn(quadBtn, "⬜");
+  styleRailBtn(extrudeBtn, "➬");
   styleRailBtn(boxBtn, "▣");
   styleRailBtn(sphereBtn, "●");
   styleRailBtn(editBtn, "✎");
   styleRailBtn(snapBtn, "🧲");
   styleRailBtn(deleteBtn, "🗑");
   styleRailBtn(drawApplyBtn, "✅");
-  drawRail.append(drawBtn, quadBtn, boxBtn, sphereBtn, railSeparator(),
+  drawRail.append(drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn, railSeparator(),
                   editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
 
   // Restore previously-applied outlines from the persisted widget, so ✎ Edit

@@ -61,7 +61,8 @@ drawTargets()          // meshes flagged atlasDerived / atlasPatch — what draw
 
 The six tools live on a **DCC-style vertical rail** (`drawRail`) overlaid on the
 LEFT edge of the canvas, vertically centred, icon-only (full wording stays in
-each button's tooltip): **✏️ Draw**, **⬜ Quad**, **▣ Box**, **● Sphere** │ **✎ Edit**,
+each button's tooltip): **✏️ Draw**, **⬜ Quad**, **➬ Extrude**, **▣ Box**,
+**● Sphere** │ **✎ Edit**,
 **🧲 Snap**, **🗑 Delete** │ **✅ Apply**. 🗑 removes the `editSel` shape (or,
 with no selection, the most recent shape) and sets `drawDirty`; Apply persists
 even a now-EMPTY list when dirty, so deleting the last shape can actually
@@ -95,6 +96,17 @@ zero new code. Adjacent quads COPY the shared edge's values (JSON shapes can't
 share references); they coincide at commit, and edge-snap re-meets them if
 edited later. Intended split: ⬜ Quad for enclosed medium/large tears, ✏️ Draw
 n-gons for boundary edges, ▣ Box / ● Sphere for large-scale mass.
+
+**➬ Extrude** — pull a new quad out of ANY existing drawn edge (quad, n-gon,
+box wire; spheres have no edges): grab near an edge (`nearestDrawnEdge`,
+screen-space ~14 px pick), drag — the two endpoints are copied and translate
+on a CAMERA-FACING plane through the grab point (always well-conditioned; no
+grazing-plane blowups), release commits. Output is the same kind-less 4-point
+polygon as ⬜ Quad (`established_from.rule: "edge_extrude"`). Backspace pops
+the last shape; Enter/Esc exits. Related guard in ⬜ Quad's off-mesh landing:
+a landing further from the existing points than 4× their spread (the
+grazing-ray blowup after an orbit, found live) is re-landed on a camera-facing
+plane through the last point.
 
 **Box (~L3370)** — three-stage blockout SOLID for mass the camera never saw round
 the back of: `boxStage` 1 pick base corner → 2 drag footprint → 3 drag height.
