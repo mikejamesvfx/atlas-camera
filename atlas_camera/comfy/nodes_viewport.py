@@ -787,6 +787,53 @@ class AtlasBlockoutViewport:
             blockout_payload["drawn_plate_b64"] = _drawn_fill_plate_b64(
                 source_image, drawn_np, int(drawn_fill_px),
                 cache_key=str(node_id) if node_id is not None else None)
+            # Re-extract the render payload from the APPLIED solve, so THIS
+            # viewport shows the geometry it just baked.
+            #
+            # The payload above was built from the INPUT solve, before the
+            # polygons existed — so the browser rendered the drawn surfaces
+            # only as the JS overlay preview, and the baked meshes could be
+            # seen nowhere except by wiring a SECOND viewport downstream of
+            # this node's `solve` output. That second window is what artists
+            # were actually doing, and it renders the fills BLACK: geometry
+            # rides the solve and inherits fine, but `drawn_plate_b64` is
+            # rebuilt per node from that node's own client_data, so a viewport
+            # that drew nothing produces an empty plate — and the frontend
+            # treats an empty plate as "no drawn surfaces exist" and deletes
+            # _projMaterial from every atlasDrawn mesh (buildDrawnMat in
+            # atlas_blockout.js). Rebuilding here fixes both at once: the fill
+            # appears in the window it was drawn in, beside the smear that
+            # belongs to it, and no second viewport is needed.
+            #
+            # Only when something was actually applied — an unchanged payload
+            # costs nothing and this re-extraction serialises geometry.
+            if out_solve is not solve:
+                try:
+                    reapplied = _extract_blockout_camera(
+                        out_solve, source_image, width, height,
+                        preview_expand=float(preview_expand),
+                        shot_intrinsics=shot_intrinsics,
+                        output_profile=output_profile,
+                        solve_fingerprint=solve_fingerprint,
+                        primary_depth=primary_depth,
+                        debug_matte_b64=debug_matte_b64,
+                        patch_mask_b64=patch_mask_b64)
+                except Exception:  # noqa: BLE001 — never kill the viewport
+                    pass           # keep the input-solve payload as before
+                else:
+                    # Updated IN PLACE, never rebound. `blockout_payload` is a
+                    # closure variable from the enclosing render(); assigning
+                    # to the name here would make it local to this function and
+                    # turn the item assignment above into an unbound-local
+                    # crash (which is exactly what it did).
+                    #
+                    # The plate keys are dropped from the re-extraction first:
+                    # _extract_blockout_camera does not produce them, so
+                    # letting update() through would not clobber them today,
+                    # but popping says the intent instead of relying on that.
+                    reapplied.pop("drawn_plate_b64", None)
+                    reapplied.pop("clean_plate_b64", None)
+                    blockout_payload.update(reapplied)
             _blockout_cache_set(node_id, blockout_payload)
             if drawn_np is None:
                 drawn_mask = torch.zeros(1, src_h, src_w, dtype=torch.float32)

@@ -860,3 +860,78 @@ def test_collapsing_the_rail_does_not_touch_draw_state():
     body = src[start:start + 240]
     for forbidden in ("drawnPolygons", "drawDirty", "drawOn", "editOn", "editSnap"):
         assert forbidden not in body, f"collapse handler must not touch {forbidden}"
+
+
+# --- the drawn fill renders in the window it was drawn in --------------------
+#
+# Reported live 2026-08-07: an artist wand-filled holes, pressed Apply, and had
+# to wire a SECOND viewport off this node's `solve` output to see the result —
+# where the fills then rendered BLACK.
+#
+# One cause behind both halves. The browser payload was extracted from the
+# INPUT solve, before _apply_drawn_polygons ran, so the baked meshes existed
+# only on the `solve` OUTPUT and this viewport could show them nowhere. A
+# downstream viewport does inherit the geometry (it rides the solve) but NOT
+# the smear: `drawn_plate_b64` is rebuilt per node from that node's own
+# client_data, so a viewport that drew nothing yields an empty plate — and the
+# frontend reads an empty plate as "no drawn surfaces" and strips
+# _projMaterial from every atlasDrawn mesh, which is why they came out black
+# rather than merely mistextured.
+
+
+def _payload_after(client_data, solve=None):
+    """Render once and return the payload the browser would fetch."""
+    from atlas_camera.comfy.node_helpers import _ATLAS_BLOCKOUT_CACHE
+    _ATLAS_BLOCKOUT_CACHE.clear()
+    result, solve_used, image = _run_viewport(client_data, solve=solve)
+    assert _ATLAS_BLOCKOUT_CACHE, "render must publish a payload for the browser"
+    return list(_ATLAS_BLOCKOUT_CACHE.values())[-1], result
+
+
+def _payload_drawn_meshes(payload):
+    """Proxies the frontend will flag atlasDrawn (DRAWN_PROXY_SOURCES)."""
+    drawn = {"viewport_polygon", "viewport_box", "viewport_sphere"}
+    return [p for p in (payload.get("proxy_geometry") or [])
+            if ((p.get("metadata") or {}).get("source")) in drawn]
+
+
+def test_the_payload_carries_the_geometry_this_viewport_just_baked():
+    """The fix: after Apply, THIS viewport's own payload contains the drawn
+    mesh, so the fill appears in the window it was drawn in."""
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+    fingerprint = _fingerprint_for(solve, image)
+
+    payload, result = _payload_after(_drawn_payload(fingerprint), solve=solve)
+
+    assert _drawn_prims(result[12]), "precondition: the polygon was baked"
+    assert _payload_drawn_meshes(payload), (
+        "the render payload must carry the drawn mesh — without it the fill is "
+        "invisible in this viewport and only a second downstream viewport can "
+        "show it")
+
+
+def test_the_drawn_smear_travels_with_the_geometry_it_belongs_to():
+    """Geometry and its texture must appear in the SAME payload. Split across
+    two nodes, the frontend deletes the material and the fill renders black."""
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+    fingerprint = _fingerprint_for(solve, image)
+
+    payload, _ = _payload_after(_drawn_payload(fingerprint), solve=solve)
+
+    assert _payload_drawn_meshes(payload)
+    assert payload.get("drawn_plate_b64"), (
+        "a payload carrying atlasDrawn meshes must also carry the smear plate "
+        "they project — an empty plate makes buildDrawnMat strip their "
+        "material and they render black")
+
+
+def test_nothing_drawn_leaves_the_payload_untouched():
+    """The re-extraction is conditional: no polygons means no extra work and
+    no change to what the browser receives."""
+    payload, result = _payload_after("")
+    assert not _payload_drawn_meshes(payload)
+    assert not payload.get("drawn_plate_b64")
