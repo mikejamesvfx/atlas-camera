@@ -138,7 +138,7 @@
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 2,
-   "repo_tools": 3,
+   "repo_tools": 4,
    "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
@@ -166,7 +166,7 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
@@ -217,7 +217,7 @@
    "dedicated_tests": 16,
    "tests": 18,
    "mcp_tools": 0,
-   "repo_tools": 13,
+   "repo_tools": 14,
    "docs": 7,
    "product_evidence": true,
    "evidence_kinds": [
@@ -244,12 +244,13 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 1,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
     "mcp",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -270,7 +271,7 @@
    "dedicated_tests": 11,
    "tests": 13,
    "mcp_tools": 1,
-   "repo_tools": 3,
+   "repo_tools": 4,
    "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
@@ -564,13 +565,14 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 1,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
     "mcp",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -642,7 +644,7 @@
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -669,7 +671,7 @@
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 1,
-   "repo_tools": 6,
+   "repo_tools": 7,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -773,7 +775,7 @@
    "dedicated_tests": 11,
    "tests": 13,
    "mcp_tools": 0,
-   "repo_tools": 4,
+   "repo_tools": 5,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -929,7 +931,7 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 1,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
@@ -957,12 +959,13 @@
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -1010,7 +1013,7 @@
    "dedicated_tests": 0,
    "tests": 2,
    "mcp_tools": 1,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1037,7 +1040,7 @@
    "dedicated_tests": 0,
    "tests": 2,
    "mcp_tools": 1,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1064,7 +1067,7 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 1,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1089,8 +1092,8 @@
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 1,
-   "tests": 3,
+   "dedicated_tests": 2,
+   "tests": 4,
    "mcp_tools": 0,
    "repo_tools": 1,
    "docs": 1,
@@ -1118,7 +1121,7 @@
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1145,13 +1148,14 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 1,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
     "mcp",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -1172,7 +1176,7 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 1,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1200,7 +1204,7 @@
    "dedicated_tests": 0,
    "tests": 2,
    "mcp_tools": 1,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1302,12 +1306,13 @@
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -1415,12 +1420,13 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "ok",
@@ -1521,7 +1527,7 @@
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 0,
-   "repo_tools": 5,
+   "repo_tools": 6,
    "docs": 9,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1574,7 +1580,7 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 1,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1605,7 +1611,7 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1632,7 +1638,7 @@
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 1,
-   "repo_tools": 3,
+   "repo_tools": 4,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1716,10 +1722,10 @@
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 2,
-   "tests": 4,
+   "dedicated_tests": 3,
+   "tests": 5,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1904,7 +1910,7 @@
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 1,
-   "repo_tools": 5,
+   "repo_tools": 6,
    "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2039,12 +2045,13 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2143,7 +2150,7 @@
    "dedicated_tests": 6,
    "tests": 8,
    "mcp_tools": 0,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2195,7 +2202,7 @@
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 1,
-   "repo_tools": 5,
+   "repo_tools": 6,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2405,7 +2412,7 @@
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2673,7 +2680,7 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 0,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [

@@ -327,14 +327,18 @@ def test_build_signature_matches_input_types_widget_order():
     import inspect
     from atlas_camera.mcp.comfy_http import is_widget
     sig = inspect.signature(AtlasInput.build)
-    params = [n for n in list(sig.parameters.keys())[1:]
-              if not n.startswith("_") and n != "image"]
     it = AtlasInput.INPUT_TYPES()
-    widgets = []
+    widgets, links = [], set()
     for sec in ("required", "optional"):
         for name, spec in it.get(sec, {}).items():
-            if is_widget(spec):
-                widgets.append(name)
+            (widgets.append(name) if is_widget(spec) else links.add(name))
+    # LINK inputs (image, raw_meta) are keyword-delivered and carry no
+    # positional slot, so they are excluded on both sides rather than being
+    # required to interleave. What this pin protects is the WIDGET sequence:
+    # any link param must therefore sit after every widget in the signature,
+    # which the comparison below still enforces by order.
+    params = [n for n in list(sig.parameters.keys())[1:]
+              if not n.startswith("_") and n not in links]
     assert params == widgets, f"build params {params} vs widgets {widgets}"
 
 
@@ -372,9 +376,13 @@ def test_retopo_widgets_appended_last_with_combo_subset():
     and the combo is a pass-through SUBSET of AtlasRetopologizeLayer.method:
     `smooth` is excluded (driven by smooth_iterations, which AtlasInput does
     not expose — a guaranteed no-op dead value here)."""
+    from atlas_camera.mcp.comfy_http import is_widget
     it = AtlasInput.INPUT_TYPES()["optional"]
-    assert list(it)[-3:] == ["retopo_method", "retopo_target_vertex_count",
-                             "boundary_smooth_iterations"]
+    # Last three WIDGETS, not last three entries: raw_meta is a link input
+    # appended after them, and a link occupies no positional widget slot.
+    widget_names = [n for n, spec in it.items() if is_widget(spec)]
+    assert widget_names[-3:] == ["retopo_method", "retopo_target_vertex_count",
+                                 "boundary_smooth_iterations"]
     assert it["retopo_method"][0] == ["off", "quad", "decimate", "voxel_remesh"]
     assert it["retopo_method"][1]["default"] == "off"
     assert it["retopo_target_vertex_count"][1]["default"] == 2000
@@ -464,3 +472,41 @@ def test_live_hole_fill_not_wired_to_banded_layers(monkeypatch):
     # No DeriveReliefMesh in banded path
     assert not any(n["class_type"] == "AtlasDeriveReliefMesh" for n in graph.values())
 
+
+
+# --- RAW metadata passthrough ------------------------------------------------
+#
+# Found live 2026-08-07 while testing the export-fanout workflow against a
+# camera RAW: AtlasLoadRAW hands back EXIF focal + a measured sensor width as
+# `raw_meta`, and AtlasLearnedSolveFromImage has always accepted it, but
+# AtlasInput — the FRONT DOOR, and the node the shipping workflows use — had no
+# way to receive it. So the one-node path silently threw away the only
+# *measured* intrinsics in the graph and let GeoCalib guess a focal it did not
+# have to guess. `raw_meta` is a LINK input, not a widget, so adding it cannot
+# shift widgets_values on any saved workflow.
+
+
+def test_raw_meta_is_forwarded_to_the_inner_solve(monkeypatch):
+    graph, _ = _expand(monkeypatch, raw_meta="RAW_META_SENTINEL")
+    solve = next(n for n in graph.values()
+                 if n["class_type"] == "AtlasLearnedSolveFromImage")
+    assert solve["inputs"]["raw_meta"] == "RAW_META_SENTINEL"
+
+
+def test_raw_meta_absent_when_not_wired(monkeypatch):
+    """Unwired must mean ABSENT, not None. A literal None reaching the inner
+    node's input dict is a value ComfyUI would try to validate as an
+    ATLAS_RAW_META link."""
+    graph, _ = _expand(monkeypatch)
+    solve = next(n for n in graph.values()
+                 if n["class_type"] == "AtlasLearnedSolveFromImage")
+    assert "raw_meta" not in solve["inputs"]
+
+
+def test_raw_meta_is_a_link_input_not_a_widget():
+    """Widget order is POSITIONAL in widgets_values. raw_meta must stay a link
+    input so no saved AtlasInput workflow shifts a value."""
+    spec = AtlasInput.INPUT_TYPES()
+    entry = spec["optional"]["raw_meta"]
+    assert entry[0] == "ATLAS_RAW_META"
+    assert len(entry) == 1 or not isinstance(entry[1], dict) or "default" not in entry[1]

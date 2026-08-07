@@ -23,6 +23,7 @@ from atlas_camera.comfy.node_helpers import (
     _ATLAS_ASSESS_CACHE,
 
     _DEPTH_MODEL_CHOICES,
+    _project_routed_dir,
     _clone_solve_with_metadata,
     _depth_map_for_solve,
     _extrinsics_from_view,
@@ -551,6 +552,12 @@ class AtlasLoadRAW:
                     "tooltip": "Colorspace TAG for the sidecar. rawpy's linear output has "
                                "sRGB/Rec.709 primaries — NOT ACEScg; convert downstream "
                                "via OCIO. Retag only if your config names it differently."}),
+                # LINK input, so it takes no positional slot and the frozen
+                # widget order above is untouched. Without it the developed EXR
+                # was the one file outside the delivery tree that every DCC
+                # export lands inside — and on the VFX lane it is the file the
+                # whole colour story is about.
+                "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes the developed EXR into the project tree's plates/ lane and supersedes output_dir."}),
             },
         }
 
@@ -578,7 +585,8 @@ class AtlasLoadRAW:
 
     def load(self, file_path, undistort=True, half_size=False, white_balance="camera",
              exposure_ev=0.0, write_exr=True, output_dir="atlas_exports/raw_plates",
-             colorspace="Linear Rec.709 (sRGB)"):
+             colorspace="Linear Rec.709 (sRGB)", project=None):
+        output_dir = _project_routed_dir(project, output_dir, "plates")
         np = _require_numpy()
         torch = _require_torch()
         from atlas_camera.core.schema import AtlasPlateRef

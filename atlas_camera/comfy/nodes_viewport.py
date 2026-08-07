@@ -1203,6 +1203,15 @@ class AtlasInput:
                 # longer configured here — wire the standalone AtlasLiveMeshRepair
                 # 🔧 node onto this node's `solve` output instead. It repairs any
                 # relief mesh on the solve (single mesh or per-layer) downstream.
+                #
+                # AtlasLoadRAW's metadata, forwarded to the inner solve. A LINK
+                # input, never a widget, so adding it cannot shift a saved
+                # workflow's positional widgets_values. Without it the front
+                # door threw away the only MEASURED intrinsics in a RAW graph —
+                # EXIF focal + the camera-model sensor lookup — and let GeoCalib
+                # guess a focal it did not have to guess (found live 2026-08-07
+                # wiring AtlasLoadRAW into the export-fanout example).
+                "raw_meta": ("ATLAS_RAW_META",),
             },
         }
 
@@ -1220,7 +1229,7 @@ class AtlasInput:
               sky_sdxl_negative="building, tree, roof, person, vehicle, text, watermark, blurry",
               sky_sdxl_seed=0,
               retopo_method="off", retopo_target_vertex_count=2000,
-              boundary_smooth_iterations=0, **_extra):
+              boundary_smooth_iterations=0, raw_meta=None, **_extra):
 
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
@@ -1278,8 +1287,14 @@ class AtlasInput:
             effective_depth_model = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
             notes.append("MoGe + sky requested → depth auto-switched to DA2-Outdoor")
 
+        # Pass raw_meta through ONLY when it is wired. An unwired optional must
+        # be ABSENT from the emitted node's inputs, not present as None —
+        # ComfyUI validates a present key as a real ATLAS_RAW_META link.
+        solve_kwargs = {}
+        if raw_meta is not None:
+            solve_kwargs["raw_meta"] = raw_meta
         solve = g.node("AtlasLearnedSolveFromImage", image=image_ref,
-                       depth_model=effective_depth_model)
+                       depth_model=effective_depth_model, **solve_kwargs)
 
         depth = g.node("AtlasDepthMap", image=image_ref, solve=solve.out(0),
                        depth_model=effective_depth_model)

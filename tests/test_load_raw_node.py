@@ -144,8 +144,12 @@ def test_no_raw_meta_no_hints():
 
 def test_widget_order_pins():
     """Positional widget serialization: these orders are frozen forever."""
+    from atlas_camera.mcp.comfy_http import is_widget
     input_types = AtlasLoadRAW.INPUT_TYPES()
-    load_raw_optional = list(input_types["optional"].keys())
+    # WIDGETS only — `project` (ATLAS_PROJECT, appended 2026-08-07) is a link
+    # input and occupies no positional slot, so it cannot shift these.
+    load_raw_optional = [n for n, spec in input_types["optional"].items()
+                         if is_widget(spec)]
     assert load_raw_optional == ["undistort", "half_size", "white_balance",
                                  "exposure_ev", "write_exr", "output_dir",
                                  "colorspace"]
@@ -165,3 +169,56 @@ def test_intrinsics_hint_shape():
                     "sensor_height_mm": 24.0}
     assert _fake_result(focal_length_mm=None, sensor_width_mm=None,
                         sensor_height_mm=None).intrinsics_hint() == {}
+
+
+# --- delivery-project routing -------------------------------------------------
+#
+# Found live 2026-08-07: on the VFX lane every DCC export lands under
+# <root>/<project>/<shot>/, but AtlasLoadRAW's developed EXR went to its own
+# loose output_dir, so the ONE file the colour story is about — the undistorted
+# scene-linear plate — was the only thing outside the delivery tree.
+# AtlasExportPlateEXR already routed to the `plates` lane; this brings the
+# loader to the same place by the same helper.
+
+
+def test_load_raw_routes_the_exr_into_the_project_plates_lane(monkeypatch, raw_file,
+                                                              tmp_path):
+    from atlas_camera.core.project import build_project
+    _patch_import(monkeypatch, _fake_result())
+    monkeypatch.setattr(AtlasLoadRAW, "_write_exr_sidecar",
+                        staticmethod(lambda *a: ("out/DSC_0001_linear.exr", None)))
+    project = build_project(str(tmp_path / "deliveries"), "p", "s010",
+                            "VFX (ACEScg / float)")
+    seen = {}
+
+    import atlas_camera.comfy.nodes_solve as solve_mod
+    real = solve_mod._project_routed_dir
+
+    def spy(proj, output_dir, lane):
+        seen["lane"] = lane
+        seen["result"] = real(proj, output_dir, lane)
+        return seen["result"]
+
+    solve_mod._project_routed_dir = spy
+    try:
+        AtlasLoadRAW().load(raw_file, project=project)
+    finally:
+        solve_mod._project_routed_dir = real
+
+    assert seen["lane"] == "plates"
+    assert seen["result"] == str(project.subdir("plates"))
+
+
+def test_load_raw_without_a_project_keeps_its_own_output_dir(raw_file):
+    """The no-project fallback every existing workflow relies on."""
+    import atlas_camera.comfy.nodes_solve as solve_mod
+    assert solve_mod._project_routed_dir(None, "atlas_exports/raw_plates",
+                                         "plates") == "atlas_exports/raw_plates"
+
+
+def test_load_raw_project_is_a_link_input_appended_after_the_frozen_widgets():
+    """The widget order above is frozen; project must be a LINK input, so it
+    takes no positional slot and cannot shift a saved workflow."""
+    optional = AtlasLoadRAW.INPUT_TYPES()["optional"]
+    assert list(optional)[-1] == "project"
+    assert optional["project"][0] == "ATLAS_PROJECT"

@@ -27,17 +27,10 @@ from atlas_camera.comfy.node_helpers import (
 )
 
 
-def _project_routed_dir(project, output_dir, lane):
-    """Route an exporter's output into the delivery project's tree.
-
-    With a project connected the exporter's own output_dir/path is superseded
-    by the shot's DCC lane (<root>/<project>/<shot>/<lane>, created on
-    demand); without one the argument passes through untouched — the
-    no-project fallback every existing workflow relies on.
-    """
-    if project is None:
-        return output_dir
-    return str(project.subdir(lane, create=True))
+# Moved to node_helpers 2026-08-07 so AtlasLoadRAW (nodes_solve) can route its
+# developed EXR into the same tree without nodes_solve importing nodes_export.
+# Re-exported here because every call site in this module reads as local.
+from atlas_camera.comfy.node_helpers import _project_routed_dir  # noqa: E402,F401
 
 
 class AtlasExportReviewPackage:

@@ -1150,3 +1150,21 @@ def _apply_backdrop_mode(solve, mode="measured_only"):
     return ("backdrop: dropped an ASSUMED backdrop — the frame carried no "
             "valid depth, so it would have been an invented plane at 60 m "
             "(backdrop=always restores it)")
+
+
+def _project_routed_dir(project, output_dir, lane):
+    """Route a node's file output into the delivery project's tree.
+
+    With a project connected the node's own output_dir/path is superseded by
+    the shot's lane (<root>/<project>/<shot>/<lane>, created on demand);
+    without one the argument passes through untouched — the no-project
+    fallback every existing workflow relies on.
+
+    Lives here rather than in nodes_export because AtlasLoadRAW (nodes_solve)
+    routes its developed EXR through it too, and a solve module importing an
+    export module to reach a four-line helper would be the wrong dependency
+    for the wrong reason. node_helpers is the leaf both already import.
+    """
+    if project is None:
+        return output_dir
+    return str(project.subdir(lane, create=True))

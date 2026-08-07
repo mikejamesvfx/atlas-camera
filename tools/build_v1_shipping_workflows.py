@@ -374,6 +374,13 @@ WHAT LANDS WHERE
 • Camera path USD — the viewport's baked move, once you have made one.
 • Solve JSON — the portable contract every other tool reads.
 
+STARTING FROM A CAMERA RAW
+No RAW ships in the repo — one file would be twice the size of the whole tracked tree — so this graph starts from a jpg. To run the real colour path, drop in AtlasLoadRAW 📷 (NEF/CR2/CR3/RAF/ARW) ahead of the solve and make three connections:
+• AtlasLoadRAW.image → AtlasInput.image — the developed, undistorted plate.
+• AtlasLoadRAW.raw_meta → AtlasInput.raw_meta — EXIF focal plus the sensor width looked up from the camera model. This is the only MEASURED intrinsic in the graph, and a measured focal always beats a learned one; wire it and the solver stops guessing.
+• AtlasLoadRAW.plate_ref → AtlasAttachSourcePlate, if you want the float plate tracked by reference into the exports.
+Set the project's colour lane to VFX (ACEScg / float) — it already is here — and AtlasLoadRAW writes an undistorted ACEScg EXR alongside the solve.
+
 THE CAMERA PATH EXPORT SHIPS MUTED
 AtlasExportCameraPathUSD is the one muted node in this graph, and deliberately so: it raises rather than no-ops when no path has been baked, which is the state every first queue is in. To use it — queue once, open the viewport, add keyframes with 🎥 Camera Path, click ⏺ Bake Proxy Path, then unmute the node (Ctrl+M) and queue again. The move leaves the viewport as USD.
 
