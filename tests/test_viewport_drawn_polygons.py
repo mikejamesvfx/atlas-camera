@@ -988,3 +988,62 @@ def test_re_extraction_keeps_the_input_solve_fingerprint():
     assert payload.get("solve_fingerprint") == expected, (
         "the payload must keep the INPUT solve's fingerprint — deriving it "
         "from the applied solve makes every later outline read as stale")
+
+
+# --- naming the self-intersection (2026-08-07) -------------------------------
+#
+# Two wand fills came back "skipped(polygon is self-intersecting)" and that was
+# the end of the trail: the message named the category, not the defect, so there
+# was no way to tell a rim that PINCHES (walks back through a vertex it already
+# used — a torn relief mesh where two tears meet at a shared vertex) from one
+# whose edges genuinely CROSS. Those want different fixes, and one of them —
+# a rim that merely touches itself without crossing — is a perfectly fillable
+# shape we are currently refusing.
+
+from atlas_camera.core.polygon_planes import triangulate_polygon
+
+
+def _reason(points):
+    with pytest.raises(ValueError) as excinfo:
+        triangulate_polygon(points)
+    return str(excinfo.value)
+
+
+def test_a_repeated_vertex_is_named_as_such():
+    pinch = [(0, 0), (3, 0), (3, 1), (1.5, 1), (3, 2), (3, 3), (0, 3), (1.5, 1)]
+    reason = _reason(pinch)
+    assert "self-intersecting" in reason
+    assert "vertex 7" in reason and "vertex 3" in reason, reason
+
+
+def test_a_touching_loop_is_reported_as_a_repeat_not_a_crossing():
+    """It shares a point without any edge crossing — calling that a crossing
+    would send the fix in the wrong direction."""
+    touch = [(0, 0), (2, 0), (1, 1), (2, 2), (0, 2), (1, 1)]
+    reason = _reason(touch)
+    assert "repeat" in reason.lower(), reason
+    assert "cross" not in reason.lower(), reason
+
+
+def test_genuinely_crossing_edges_name_the_edge_pair():
+    bowtie = [(0, 0), (4, 4), (4, 0), (0, 4)]
+    reason = _reason(bowtie)
+    assert "cross" in reason.lower(), reason
+    # the two offending edges are identified by index, not just "somewhere"
+    assert "edge" in reason.lower(), reason
+
+
+def test_the_reason_reaches_the_viewport_hud():
+    """End to end: the detail must survive into the payload the HUD reads."""
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+    fingerprint = _fingerprint_for(solve, image)
+    bowtie = [[0.0, 0.0, -5.0], [4.0, 4.0, -5.0], [4.0, 0.0, -5.0], [0.0, 4.0, -5.0]]
+    payload, _ = _payload_after(_drawn_payload(fingerprint, points=bowtie),
+                                solve=solve)
+    report = payload.get("draw_report") or ""
+    assert "skipped(" in report
+    assert "edge" in report.lower(), (
+        "the HUD must receive the specific defect, not just the category:\n"
+        + report)

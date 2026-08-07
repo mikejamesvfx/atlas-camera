@@ -410,7 +410,40 @@ def _segments_cross(a: Point2D, b: Point2D, c: Point2D, d: Point2D) -> bool:
 
 def _is_simple(points: Sequence[Point2D]) -> bool:
     """True when no two non-adjacent edges cross."""
+    return _self_intersection_reason(points) is None
+
+
+def _self_intersection_reason(points: Sequence[Point2D]) -> str | None:
+    """Name the specific defect, or None when the outline is simple.
+
+    "polygon is self-intersecting" names the CATEGORY, and two wand fills that
+    failed on 2026-08-07 showed that is not enough to act on. A rim that
+    PINCHES — walks back through a vertex it already used, which is what a
+    boundary walk produces where two tears of a torn relief mesh meet at a
+    shared vertex — needs splitting into sub-loops. A rim whose edges genuinely
+    CROSS needs re-tracing. They are different bugs and the old message could
+    not tell them apart, so the trail ended at the report.
+
+    Repeats are checked FIRST and reported as repeats: a loop that merely
+    touches itself shares a point without any edge crossing, and calling that a
+    crossing sends the fix in the wrong direction.
+
+    Note these are the points AFTER projection into the plane basis, so a
+    "repeat" can also mean two distinct 3D points that flattened onto each
+    other — itself worth knowing, since it means the outline is far from planar.
+    """
     n = len(points)
+    seen: dict[tuple[float, float], int] = {}
+    for index, point in enumerate(points):
+        key = (round(float(point[0]), 9), round(float(point[1]), 9))
+        first = seen.get(key)
+        if first is not None:
+            return (f"vertex {index} repeats vertex {first} at "
+                    f"({key[0]:g}, {key[1]:g}) — the outline returns through a "
+                    f"point it already used (a pinched rim), so it encloses "
+                    f"more than one region")
+        seen[key] = index
+
     for i in range(n):
         a, b = points[i], points[(i + 1) % n]
         for j in range(i + 1, n):
@@ -418,8 +451,9 @@ def _is_simple(points: Sequence[Point2D]) -> bool:
                 continue
             c, d = points[j], points[(j + 1) % n]
             if _segments_cross(a, b, c, d):
-                return False
-    return True
+                return (f"edge {i}->{(i + 1) % n} crosses edge "
+                        f"{j}->{(j + 1) % n}")
+    return None
 
 
 def _point_in_triangle(p, a, b, c) -> bool:
@@ -442,8 +476,13 @@ def triangulate_polygon(points: Sequence[Point2D]) -> list[tuple[int, int, int]]
     n = len(points)
     if n < 3:
         raise ValueError("a polygon needs at least 3 points")
-    if not _is_simple(points):
-        raise ValueError("polygon is self-intersecting")
+    reason = _self_intersection_reason(points)
+    if reason is not None:
+        # The specific defect, not just the category — this string is what
+        # reaches the artist's viewport HUD through _apply_drawn_polygons'
+        # per-outline report, and it is the whole difference between "a fill
+        # was dropped" and knowing which fix it needs.
+        raise ValueError(f"polygon is self-intersecting: {reason}")
 
     order = list(range(n))
     if _signed_area(points) < 0:
