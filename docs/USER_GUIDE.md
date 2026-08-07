@@ -319,6 +319,44 @@ Final color fidelity belongs downstream:
 The practical rule: **browser output is for deciding and previewing; plate
 refs plus output profiles are for final handoff.**
 
+### Starting from a camera RAW, for a Nuke/ACES delivery
+
+`AtlasLoadRAW` 📷 writes two things: an IMAGE tensor for the solve, and a
+scene-linear `_linear.exr` sidecar. The sidecar carries **sRGB/Rec.709
+primaries** and is tagged `Linear Rec.709 (sRGB)`, because that is what rawpy's
+linear output actually is. It is *not* ACEScg, and Atlas will never pretend
+otherwise.
+
+The correct chain for an ACES comp is therefore:
+
+```
+AtlasLoadRAW → AtlasExportPlateEXR (output_colorspace = ACEScg)
+             → AtlasRegisterPlate / AtlasAttachSourcePlate → the DCC exporters
+```
+
+**The mistake is feeding the `_linear.exr` sidecar straight into an ACES
+comp.** Nothing errors; the Rec.709 primaries are simply read as AP1 and the
+colour is quietly wrong. `AtlasExportPlateEXR` is the node that does the actual
+conversion, and attaching *its* output is what makes the exported Nuke script
+tag a Read correctly.
+
+Two related controls worth knowing:
+
+- **`headroom`** (default 6.0) scales the scene-linear EXR so diffuse white
+  lands near 1.0, which is what ACES expects. Without it the plate reads about
+  2.6 stops dark under an ACES view transform — correct numbers, wrong
+  convention. The value matches rawtoaces' `--headroom` default and is stamped
+  into the file as `atlas:headroom`. Set it to 1.0 only if you want the raw
+  clip-normalised file, and expect the dark result.
+- **`project`** routes the developed EXR into `<project>/<shot>/plates/`
+  alongside every other delivery, instead of a loose `output_dir`.
+
+If a Read comes into Nuke tagged `scene_linear` when you expected otherwise,
+check the sticky note Atlas writes beside it: it reports the source colourspace
+it used, and flags a `MISMATCH` when the file's own tag disagrees with what the
+solve claims. An "unspecified" there is honest — it means no plate colourspace
+was registered, so Nuke applied its own default rather than Atlas inventing one.
+
 ---
 
 ## Reading the diagnostics

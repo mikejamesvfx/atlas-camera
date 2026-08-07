@@ -58,7 +58,7 @@ def test_node_registered():
 def test_load_outputs(monkeypatch, raw_file):
     _patch_import(monkeypatch, _fake_result())
     monkeypatch.setattr(AtlasLoadRAW, "_write_exr_sidecar",
-                        staticmethod(lambda *a: ("out/DSC_0001_linear.exr", None)))
+                        staticmethod(lambda *a, **k: ("out/DSC_0001_linear.exr", None)))
     image, plate_ref, raw_meta, focal, sensor_w, report = AtlasLoadRAW().load(raw_file)
     assert tuple(image.shape) == (1, 8, 12, 3)
     assert image.dtype == torch.float32
@@ -75,7 +75,7 @@ def test_load_outputs(monkeypatch, raw_file):
 def test_exr_failure_degrades_to_proxy(monkeypatch, raw_file):
     _patch_import(monkeypatch, _fake_result())
     monkeypatch.setattr(AtlasLoadRAW, "_write_exr_sidecar",
-                        staticmethod(lambda *a: (None, "EXR sidecar FAILED: codec")))
+                        staticmethod(lambda *a, **k: (None, "EXR sidecar FAILED: codec")))
     _, plate_ref, _, _, _, report = AtlasLoadRAW().load(raw_file)
     assert plate_ref.image_path is None
     assert plate_ref.is_proxy is True
@@ -152,7 +152,7 @@ def test_widget_order_pins():
                          if is_widget(spec)]
     assert load_raw_optional == ["undistort", "half_size", "white_balance",
                                  "exposure_ev", "write_exr", "output_dir",
-                                 "colorspace"]
+                                 "colorspace", "headroom"]
     exr_tooltip = input_types["optional"]["write_exr"][1]["tooltip"]
     assert "OpenImageIO" in exr_tooltip
     assert "OpenCV is not used" in exr_tooltip
@@ -186,7 +186,7 @@ def test_load_raw_routes_the_exr_into_the_project_plates_lane(monkeypatch, raw_f
     from atlas_camera.core.project import build_project
     _patch_import(monkeypatch, _fake_result())
     monkeypatch.setattr(AtlasLoadRAW, "_write_exr_sidecar",
-                        staticmethod(lambda *a: ("out/DSC_0001_linear.exr", None)))
+                        staticmethod(lambda *a, **k: ("out/DSC_0001_linear.exr", None)))
     project = build_project(str(tmp_path / "deliveries"), "p", "s010",
                             "VFX (ACEScg / float)")
     seen = {}
@@ -222,3 +222,67 @@ def test_load_raw_project_is_a_link_input_appended_after_the_frozen_widgets():
     optional = AtlasLoadRAW.INPUT_TYPES()["optional"]
     assert list(optional)[-1] == "project"
     assert optional["project"][0] == "ATLAS_PROJECT"
+
+
+# --- headroom widget (docs/dev/raw_aces_headroom_and_colorspace_fix.md) -------
+
+
+def test_headroom_widget_is_appended_last_among_the_frozen_widgets():
+    from atlas_camera.mcp.comfy_http import is_widget
+    optional = AtlasLoadRAW.INPUT_TYPES()["optional"]
+    widgets = [n for n, spec in optional.items() if is_widget(spec)]
+    assert widgets[-1] == "headroom", (
+        "widgets_values is positional — headroom must APPEND, never insert")
+    spec = optional["headroom"]
+    assert spec[0] == "FLOAT"
+    assert spec[1]["default"] == 6.0
+
+
+def test_load_passes_headroom_through_to_import_raw(monkeypatch, raw_file):
+    import atlas_camera.raw.pipeline as pipeline
+    seen = {}
+
+    def spy(*a, **kw):
+        seen.update(kw)
+        return _fake_result(headroom=kw.get("headroom", 6.0))
+
+    monkeypatch.setattr(pipeline, "import_raw", spy)
+    monkeypatch.setattr(AtlasLoadRAW, "_write_exr_sidecar",
+                        staticmethod(lambda *a, **k: ("out/x.exr", None)))
+    AtlasLoadRAW().load(raw_file, headroom=6.0)
+    assert seen["headroom"] == 6.0
+
+
+def test_report_names_the_headroom_factor(monkeypatch, raw_file):
+    """The default changes the delivered plate's exposure by 2.6 stops, so a
+    graph saved before this landed silently gets brighter EXRs. That is the
+    fix, not a regression — but it has to be unmissable in the report."""
+    _patch_import(monkeypatch, _fake_result(headroom=6.0))
+    monkeypatch.setattr(AtlasLoadRAW, "_write_exr_sidecar",
+                        staticmethod(lambda *a, **k: ("out/x.exr", None)))
+    report = AtlasLoadRAW().load(raw_file, headroom=6.0)[5]
+    assert "headroom: 6x" in report
+
+
+def test_report_flags_a_headroom_of_one_as_not_aces_referred(monkeypatch, raw_file):
+    _patch_import(monkeypatch, _fake_result(headroom=1.0))
+    monkeypatch.setattr(AtlasLoadRAW, "_write_exr_sidecar",
+                        staticmethod(lambda *a, **k: ("out/x.exr", None)))
+    report = AtlasLoadRAW().load(raw_file, headroom=1.0)[5]
+    assert "NOT ACES-referred" in report
+
+
+def test_the_exr_records_the_headroom_it_was_written_with(monkeypatch, raw_file):
+    """atlas:headroom comes from the import RESULT, never from the widget, so
+    the attribute cannot drift from the pixels it describes."""
+    seen = {}
+
+    def fake_sidecar(linear_rgb, raw_path, output_dir, *, headroom=6.0):
+        seen["headroom"] = headroom
+        return ("out/x.exr", None)
+
+    _patch_import(monkeypatch, _fake_result(headroom=6.0))
+    monkeypatch.setattr(AtlasLoadRAW, "_write_exr_sidecar",
+                        staticmethod(fake_sidecar))
+    AtlasLoadRAW().load(raw_file, headroom=6.0)
+    assert seen["headroom"] == 6.0

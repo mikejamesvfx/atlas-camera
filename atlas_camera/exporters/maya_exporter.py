@@ -13,7 +13,11 @@ from atlas_camera.core.camera_math import derive_sensor_height_mm, mm_to_inches,
 from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.proxy_geometry import PROXY_ROLE
 from atlas_camera.core.schema import AtlasSolve, Matrix4
-from atlas_camera.exporters._plate import primary_plate_colorspace, primary_plate_path
+from atlas_camera.exporters._plate import (
+    _resolved_or_verbatim,
+    primary_plate_colorspace,
+    primary_plate_path,
+)
 from atlas_camera.exporters.dcc_transform import (
     COMPOSITION_ZYX,
     euler_degrees,
@@ -98,7 +102,10 @@ def write_maya_scene_script(
     ]
     relief_mesh_obj_path_str = str(relief_mesh_obj_path) if relief_mesh_obj_path else None
     source_plate_path = None if use_package_source else primary_plate_path(solve, must_exist=True)
-    source_colorspace = primary_plate_colorspace(solve)
+    # Resolve against the active OCIO config before writing: a verbatim
+    # literal the DCC's config does not know is silently swapped for its
+    # scene_linear default, with no warning anywhere.
+    source_colorspace = _resolved_or_verbatim(primary_plate_colorspace(solve))
     output_profile = getattr(solve, "output_profile", None)
     ocio_summary = (
         output_profile.to_dict() if output_profile and hasattr(output_profile, "to_dict") else None

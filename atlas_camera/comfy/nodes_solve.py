@@ -552,6 +552,14 @@ class AtlasLoadRAW:
                     "tooltip": "Colorspace TAG for the sidecar. rawpy's linear output has "
                                "sRGB/Rec.709 primaries — NOT ACEScg; convert downstream "
                                "via OCIO. Retag only if your config names it differently."}),
+                "headroom": ("FLOAT", {"default": 6.0, "min": 0.25, "max": 64.0,
+                    "step": 0.25,
+                    "tooltip": "Highlight headroom factor, applied to the scene-linear EXR "
+                               "(display/solve tensor unaffected). Matches rawtoaces' "
+                               "--headroom default of 6.0: sensor clip lands ~6x above 1.0 so "
+                               "diffuse white sits near 1.0, which is what ACES scene-linear "
+                               "expects. 1.0 = raw clip-normalised (pre-2026-08 behaviour, "
+                               "reads ~2.6 stops dark under an ACES view transform)."}),
                 # LINK input, so it takes no positional slot and the frozen
                 # widget order above is untouched. Without it the developed EXR
                 # was the one file outside the delivery tree that every DCC
@@ -585,7 +593,7 @@ class AtlasLoadRAW:
 
     def load(self, file_path, undistort=True, half_size=False, white_balance="camera",
              exposure_ev=0.0, write_exr=True, output_dir="atlas_exports/raw_plates",
-             colorspace="Linear Rec.709 (sRGB)", project=None):
+             colorspace="Linear Rec.709 (sRGB)", headroom=6.0, project=None):
         output_dir = _project_routed_dir(project, output_dir, "plates")
         np = _require_numpy()
         torch = _require_torch()
@@ -604,7 +612,8 @@ class AtlasLoadRAW:
         result = import_raw(str(path), undistort=bool(undistort),
                             half_size=bool(half_size),
                             white_balance=white_balance,
-                            exposure_ev=float(exposure_ev))
+                            exposure_ev=float(exposure_ev),
+                            headroom=float(headroom))
 
         image = torch.from_numpy(
             np.ascontiguousarray(result.display_srgb)).unsqueeze(0)
@@ -612,7 +621,8 @@ class AtlasLoadRAW:
         exr_path, exr_warning = (None, None)
         if write_exr:
             exr_path, exr_warning = self._write_exr_sidecar(
-                result.linear_rgb, str(path), output_dir)
+                result.linear_rgb, str(path), output_dir,
+                headroom=result.headroom)
 
         # 'auto' is a WIDGET value, not a colourspace — recording it on the ref
         # hands Nuke/Maya a string they cannot resolve. The sidecar is written
@@ -647,7 +657,7 @@ class AtlasLoadRAW:
                 "\n".join(report_lines))
 
     @staticmethod
-    def _write_exr_sidecar(linear_rgb, raw_path, output_dir):
+    def _write_exr_sidecar(linear_rgb, raw_path, output_dir, *, headroom=6.0):
         """Write the scene-linear half-float EXR. Returns (path, warning).
 
         Writes through OpenImageIO, NOT opencv. opencv's EXR codec is disabled
@@ -664,7 +674,11 @@ class AtlasLoadRAW:
 
         The written file is TAGGED with its colourspace, so it can be read back
         correctly with no out-of-band knowledge — something opencv's writer
-        cannot do at all.
+        cannot do at all. It also records ``atlas:headroom``: the pixels have
+        been multiplied by that factor, and a plate that has been scaled has to
+        say by how much or any downstream re-grade is guesswork. The value is
+        passed in from the import result rather than re-read from a widget, so
+        the attribute cannot drift from the pixels it describes.
         """
         from atlas_camera.plate import oiio_available, oiio_diagnostics, write_exr
 
@@ -680,7 +694,8 @@ class AtlasLoadRAW:
             # what the file is tagged as — never ACEScg. OCIO converts later.
             write_exr(str(exr_path), linear_rgb, bit_depth="half",
                       source_colorspace="Linear Rec.709 (sRGB)",
-                      extra_attribs={"atlas:source_raw": str(raw_path)})
+                      extra_attribs={"atlas:source_raw": str(raw_path),
+                                     "atlas:headroom": float(headroom)})
         except Exception as exc:  # noqa: BLE001 — report, never fail the load
             return None, (f"EXR sidecar FAILED: {exc} · plate_ref downgraded to "
                           f"proxy. Backend: {oiio_diagnostics()}")

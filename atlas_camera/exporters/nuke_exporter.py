@@ -42,10 +42,33 @@ from pathlib import Path
 from atlas_camera.core.camera_math import derive_sensor_height_mm
 from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.schema import AtlasSolve
-from atlas_camera.exporters._plate import primary_plate_colorspace, primary_plate_path
+from atlas_camera.exporters._plate import (
+    _resolved_or_verbatim,
+    plate_file_colorspace,
+    primary_plate_colorspace,
+    primary_plate_path,
+)
 from atlas_camera.exporters.dcc_transform import COMPOSITION_XYZ, euler_degrees
 
 _SOURCE_IMAGE_NAME = "source_image.png"
+
+
+def _file_tag_note(plate_path, declared):
+    """One sticky-note line when the plate file's own ``oiio:ColorSpace``
+    disagrees with the colourspace the solve declares for it.
+
+    One of the two is wrong whenever they differ, and the export is the last
+    place a human could still catch it — the delivered .nk tagging ACEScg over
+    a ``lin_rec709_scene`` file (2026-08-07) went unnoticed precisely because
+    nothing compared them. Silent when they agree, silent when the file cannot
+    be read: an unreadable plate is normal (it may only resolve on the DCC
+    machine) and is not evidence of a mismatch.
+    """
+    on_disk = plate_file_colorspace(plate_path)
+    if not on_disk or not declared or on_disk == declared:
+        return ""
+    return (f"MISMATCH: file declares '{on_disk}', solve says '{declared}' "
+            f"- one of these is wrong\\n")
 
 
 def write_nuke_projection_script(
@@ -90,7 +113,10 @@ def write_nuke_projection_script(
         # sidestep the whole TCL-escaping question, so normalise here rather
         # than trying to double-escape backslashes through two parsers.
         source_plate_path = source_plate_path.replace("\\", "/")
-    source_colorspace = primary_plate_colorspace(solve)
+    # Resolve against the active OCIO config before writing: a verbatim
+    # literal the DCC's config does not know is silently swapped for its
+    # scene_linear default, with no warning anywhere.
+    source_colorspace = _resolved_or_verbatim(primary_plate_colorspace(solve))
     output_profile = getattr(solve, "output_profile", None)
     ocio_summary = (
         output_profile.to_dict() if output_profile and hasattr(output_profile, "to_dict") else None
@@ -183,7 +209,8 @@ def build_projection(package_dir=None):
     ocio_note["label"].setValue(
         "Atlas color handoff\\n"
         "Source colorspace: " + str(source_colorspace or "unspecified") + "\\n"
-        "Output profile: " + {str(ocio_summary)!r}
+        + {_file_tag_note(source_plate_path, source_colorspace)!r}
+        + "Output profile: " + {str(ocio_summary)!r}
     )
 
     # Solved camera — world matrix in row-major order
@@ -299,7 +326,10 @@ def write_nuke_native_script(
         # is what made the quickstart's .nk unable to resolve its plate.
         fallback = str(solve.image_path or "")
         source_plate_path = fallback.replace("\\", "/") if os.path.exists(fallback) else ""
-    source_colorspace = primary_plate_colorspace(solve)
+    # Resolve against the active OCIO config before writing: a verbatim
+    # literal the DCC's config does not know is silently swapped for its
+    # scene_linear default, with no warning anywhere.
+    source_colorspace = _resolved_or_verbatim(primary_plate_colorspace(solve))
     suffix = Path(source_plate_path).suffix.lower().lstrip(".") or "exr"
 
     output_profile = getattr(solve, "output_profile", None)
@@ -309,6 +339,7 @@ def write_nuke_native_script(
     note_label = (
         "Atlas color handoff\\n"
         f"Source colorspace: {source_colorspace or 'unspecified'}\\n"
+        f"{_file_tag_note(source_plate_path, source_colorspace)}"
         f"Output profile: {ocio_summary}"
     ).replace('"', '\\"')
 

@@ -29,6 +29,11 @@ class RawImportResult:
     distortion: dict[str, float] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     source_path: str = ""
+    # The headroom factor actually applied to linear_rgb. RECORDED, not
+    # recomputed: the node's report and the EXR's atlas:headroom attribute both
+    # read it from here, and a plate that has been scaled must be able to say
+    # by how much or a downstream re-grade is guesswork.
+    headroom: float = 6.0
 
     def intrinsics_hint(self) -> dict[str, Any]:
         """Exactly the dict ``solve_still_image(intrinsics_hint=...)`` consumes."""
@@ -52,17 +57,36 @@ class RawImportResult:
         lines = [f"{cam} · {focal} · {sensor}",
                  f"undistort: {self.undistort_status}"
                  + (f" ({self.lens_model})" if self.lens_model else "")]
+        # The scale is reported unconditionally. It changes exposure of the
+        # delivered plate, so it can never be something the artist has to go
+        # looking for — and at 1.0 the file is NOT ACES-referred, which is the
+        # exact confusion this line exists to end.
+        if float(self.headroom) == 1.0:
+            lines.append(
+                "headroom: 1.0x — clip-normalised, NOT ACES-referred; expect "
+                "~2.6 stops dark under an ACES view transform. Set 6.0 to "
+                "match rawtoaces.")
+        else:
+            lines.append(
+                f"headroom: {self.headroom:g}x (rawtoaces default 6.0) · "
+                f"diffuse white ~1.0, clip ~{self.headroom:g}")
         lines.extend(self.warnings)
         return lines
 
 
 def import_raw(path: str, *, undistort: bool = True, half_size: bool = False,
-               white_balance: str = "camera", exposure_ev: float = 0.0) -> RawImportResult:
-    """Decode + meta-harvest a RAW file into everything the solve needs."""
+               white_balance: str = "camera", exposure_ev: float = 0.0,
+               headroom: float = 6.0) -> RawImportResult:
+    """Decode + meta-harvest a RAW file into everything the solve needs.
+
+    ``headroom`` scales the scene-linear master only (see ``decode_raw``); the
+    display tensor the solver reads is unaffected.
+    """
     meta = read_raw_metadata(path)
     linear, display = decode_raw(path, half_size=half_size,
                                  white_balance=white_balance,
-                                 exposure_ev=exposure_ev)
+                                 exposure_ev=exposure_ev,
+                                 headroom=headroom)
     height, width = linear.shape[:2]
 
     undistort_applied = False
@@ -113,6 +137,7 @@ def import_raw(path: str, *, undistort: bool = True, half_size: bool = False,
         distortion=distortion,
         warnings=warnings,
         source_path=str(path),
+        headroom=float(headroom),
     )
 
 
