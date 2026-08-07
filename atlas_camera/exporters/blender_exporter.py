@@ -11,6 +11,7 @@ from pathlib import Path
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm
 from atlas_camera.core.schema import AtlasSolve
+from atlas_camera.exporters._plate import primary_plate_path
 from atlas_camera.exporters.dcc_transform import (
     blender_matrix_from_atlas,
     blender_point_from_atlas,
@@ -77,8 +78,23 @@ def write_blender_scene_script(solve: AtlasSolve, output_path: str | Path) -> Pa
     offset_u = (intrinsics.cx_px / image_w) if intrinsics.cx_px is not None else 0.5
     offset_v = (intrinsics.cy_px / image_h) if intrinsics.cy_px is not None else 0.5
 
-    source_plate = getattr(solve, "source_plate", None)
-    source_image_path = str(getattr(source_plate, "image_path", "") or "")
+    # Same plate resolution as Nuke and Maya. This used to read
+    # solve.source_plate.image_path directly, which made Blender the only
+    # exporter with no fallback to the solve's own image_path: without an
+    # AtlasRegisterPlate in the graph it resolved to "" and fell through to
+    # <package_dir>/source_image.png, a file that only exists inside a review
+    # PACKAGE. A standalone export therefore built the whole projection
+    # material, wired it up, and never assigned an image — which renders as
+    # untextured geometry rather than as any kind of error. Found live
+    # 2026-08-07: Blender came out of the export fan-out grey while Maya from
+    # the identical solve was correct.
+    #
+    # must_exist=True for the same reason the others pass it: this path is
+    # baked into a script that has to LOAD, and every tensor solve records a
+    # NamedTemporaryFile the solve node has already unlinked. A registered
+    # plate_ref is still taken verbatim — it may legitimately resolve only on
+    # the Blender machine.
+    source_image_path = str(primary_plate_path(solve, must_exist=True) or "")
     relief_mesh = _embedded_relief_mesh(solve)
     relief_block = ""
     if relief_mesh is not None:
@@ -206,11 +222,19 @@ def build_scene(package_dir=None):
         img_tex.image = bpy.data.images.load(img_path, check_existing=True)
     links.new(combine.outputs["Vector"], img_tex.inputs["Vector"])
 
-    diffuse = nodes.new("ShaderNodeBsdfDiffuse")
-    links.new(img_tex.outputs["Color"], diffuse.inputs["Color"])
+    # UNLIT on purpose. Two reasons, and the first is why this scene used to
+    # come up black: nothing here creates a light, so a Diffuse BSDF renders
+    # pure black in Rendered view no matter how good the texture is — which
+    # looks exactly like a missing texture and hid a real path bug behind it.
+    # The second reason stands on its own: a projected plate is already-lit
+    # photography, so shading it again is double-lighting. Same doctrine as
+    # the Atlas viewport's unlit projection shader.
+    emission = nodes.new("ShaderNodeEmission")
+    emission.inputs["Strength"].default_value = 1.0
+    links.new(img_tex.outputs["Color"], emission.inputs["Color"])
 
     out = nodes.new("ShaderNodeOutputMaterial")
-    links.new(diffuse.outputs["BSDF"], out.inputs["Surface"])
+    links.new(emission.outputs["Emission"], out.inputs["Surface"])
 
     for target in projection_targets:
         target.data.materials.append(mat)
