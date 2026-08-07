@@ -228,3 +228,115 @@ def test_camera_path_fov_survives_dict_round_trip():
     path = AtlasCameraPath(keyframes=[kf], fps=24.0, frame_count=3)
     restored = AtlasCameraPath.from_dict(path.to_dict())
     assert restored.keyframes[0].fov_deg == pytest.approx(47.25)
+
+
+# --- 🎬 Cinematic rig-noise (shake) ------------------------------------------
+
+
+def _shake_path(enabled=True, intensity=1.0, seed=7, frame_count=12):
+    return AtlasCameraPath(
+        keyframes=[
+            _kf(0, (0.0, 1.6, 8.0), (0.0, 1.0, 0.0)),
+            _kf(frame_count - 1, (2.0, 1.6, 6.0), (0.0, 1.0, 0.0)),
+        ],
+        fps=24.0, frame_count=frame_count,
+        shake_enabled=enabled, shake_intensity=intensity, shake_seed=seed,
+    )
+
+
+def test_shake_offsets_deterministic_and_seed_sensitive():
+    from atlas_camera.core.camera_path import shake_offsets
+
+    a = shake_offsets(7.25, 24.0, 1.0, 7)
+    b = shake_offsets(7.25, 24.0, 1.0, 7)
+    c = shake_offsets(7.25, 24.0, 1.0, 8)
+    assert a == b
+    assert a != c
+    assert any(v != 0.0 for v in a)
+
+
+def test_shake_offsets_zero_intensity_is_exact_zero():
+    from atlas_camera.core.camera_path import shake_offsets
+
+    assert shake_offsets(42.0, 24.0, 0.0, 7) == (0.0,) * 6
+    assert shake_offsets(42.0, 24.0, -1.0, 7) == (0.0,) * 6
+
+
+def test_shake_offsets_linear_in_intensity():
+    from atlas_camera.core.camera_path import shake_offsets
+
+    one = shake_offsets(13.5, 24.0, 1.0, 3)
+    two = shake_offsets(13.5, 24.0, 2.0, 3)
+    for v1, v2 in zip(one, two):
+        assert v2 == pytest.approx(2.0 * v1, rel=1e-12)
+
+
+def test_apply_shake_to_pose_zero_offsets_is_identity():
+    from atlas_camera.core.camera_path import apply_shake_to_pose
+
+    pose = ((1.0, 2.0, 3.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+    assert apply_shake_to_pose(*pose, (0.0,) * 6) == pose
+
+
+def test_apply_shake_translation_moves_position_and_target_together():
+    from atlas_camera.core.camera_path import apply_shake_to_pose
+
+    pos, tgt, up = (0.0, 1.6, 8.0), (0.0, 1.6, 0.0), (0.0, 1.0, 0.0)
+    pos2, tgt2, up2 = apply_shake_to_pose(pos, tgt, up, (0.01, -0.02, 0.005, 0, 0, 0))
+    trans_p = tuple(b - a for a, b in zip(pos, pos2))
+    trans_t = tuple(b - a for a, b in zip(tgt, tgt2))
+    for a, b in zip(trans_p, trans_t):
+        assert a == pytest.approx(b, abs=1e-12)
+    assert up2 == up  # no roll requested
+
+
+def test_sample_camera_path_is_clean_by_default_even_when_enabled():
+    clean = sample_camera_path(_shake_path(enabled=False))
+    with_fields = sample_camera_path(_shake_path(enabled=True))
+    for a, b in zip(clean, with_fields):
+        assert a.camera_position == b.camera_position
+
+
+def test_sample_camera_path_apply_shake_differs_and_is_bounded():
+    clean = sample_camera_path(_shake_path())
+    shaken = sample_camera_path(_shake_path(), apply_shake=True)
+    moved = 0
+    for a, b in zip(clean, shaken):
+        d = sum((x - y) ** 2 for x, y in zip(a.camera_position, b.camera_position)) ** 0.5
+        assert d < 0.05 * 8.5  # well under ~5% of the ~8m subject distance
+        if d > 0:
+            moved += 1
+    assert moved == len(clean)
+
+
+def test_sample_camera_path_apply_shake_disabled_or_zero_matches_clean():
+    for path in (_shake_path(enabled=False), _shake_path(intensity=0.0)):
+        clean = sample_camera_path(path)
+        opted_in = sample_camera_path(path, apply_shake=True)
+        for a, b in zip(clean, opted_in):
+            assert a.camera_position == b.camera_position
+            assert a.camera_view_matrix == b.camera_view_matrix
+
+
+def test_single_keyframe_with_shake_becomes_per_frame_motion():
+    path = AtlasCameraPath(
+        keyframes=[_kf(0, (0.0, 1.6, 8.0), (0.0, 1.0, 0.0))],
+        fps=24.0, frame_count=8,
+        shake_enabled=True, shake_intensity=1.0, shake_seed=5,
+    )
+    frames = sample_camera_path(path, apply_shake=True)
+    positions = {f.camera_position for f in frames}
+    assert len(positions) > 1  # a locked-off tripod with rig noise moves
+
+
+def test_shake_fields_survive_dict_round_trip_and_default_off():
+    path = _shake_path(enabled=True, intensity=1.35, seed=99)
+    restored = AtlasCameraPath.from_dict(path.to_dict())
+    assert restored.shake_enabled is True
+    assert restored.shake_intensity == pytest.approx(1.35)
+    assert restored.shake_seed == 99
+
+    legacy = AtlasCameraPath.from_dict({"keyframes": [], "fps": 24.0, "frame_count": 0})
+    assert legacy.shake_enabled is False
+    assert legacy.shake_intensity == pytest.approx(1.0)
+    assert legacy.shake_seed == 1

@@ -464,3 +464,93 @@ def test_drawn_proxy_sources_mirror_python():
     js_sources = set(re.findall(r'"([\w_]+)"', block.group(1)))
 
     assert js_sources == set(DRAWN_SOURCES)
+
+
+# --- 🎬 Cinematic rig-noise shake (atlas_blockout.js <-> camera_path.py) -----
+
+
+def test_shake_fields_persist_in_both_camera_path_writers():
+    """persistPathToClientData AND the bake each build camera_path by hand —
+    if either dropped the shake keys, Python would silently sample a clean
+    path while the baked pixels carried the noise."""
+    src = _read("atlas_blockout.js")
+    assert src.count("shake_enabled: pathShakeEnabled") == 2
+    assert src.count("shake_intensity: pathShakeIntensity") == 2
+    assert src.count("shake_seed: pathShakeSeed") == 2
+    # Bake + playback must share ONE application point.
+    assert "const pose = shakenPoseAtFrame(frame);" in src
+    assert "sampleKeyframePoseAtFrame(frame);\n    if (!pose) return;" not in src
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_camera_shake_numerically_matches_js():
+    """atlasHash01/atlasShakeOffsetsJS/atlasApplyShakeToPoseJS vs the Python
+    twins. The USD export applies the Python side to the same path whose
+    pixels the JS baked — a hand-slip here would ship a DCC camera that
+    doesn't match its own plates."""
+    from atlas_camera.core.camera_path import (
+        _hash01, apply_shake_to_pose, shake_offsets)
+
+    src = _read("atlas_blockout.js")
+    h = re.search(r"(function atlasHash01\(.*?\n  \})", src, re.DOTALL)
+    so = re.search(r"(function atlasShakeOffsetsJS\(.*?\n  \})", src, re.DOTALL)
+    ap = re.search(r"(function atlasApplyShakeToPoseJS\(.*?\n  \})", src, re.DOTALL)
+    assert h and so and ap, "shake JS mirrors not found"
+
+    frames = [0.0, 1.0, 7.25, 42.0, 99.5]
+    fpss = [24.0, 30.0]
+    intensities = [0.0, 0.5, 1.0, 2.0]
+    seeds = [1, 7, 123456789]
+    poses = [
+        # ordinary pose
+        {"pos": [0.0, 1.6, 8.0], "tgt": [0.5, 1.0, 0.0], "up": [0.0, 1.0, 0.0]},
+        # near-vertical look (right-vector fallback branch)
+        {"pos": [0.0, 10.0, 0.0], "tgt": [0.0, 0.0, 1e-8], "up": [0.0, 0.0, -1.0]},
+    ]
+    off_probe = [0.01, -0.02, 0.005, 0.3, -0.2, 0.15]
+
+    script = (
+        h.group(1) + "\n" + so.group(1) + "\n" + ap.group(1) + "\n"
+        + f"const frames={json.dumps(frames)}, fpss={json.dumps(fpss)},"
+        + f" intensities={json.dumps(intensities)}, seeds={json.dumps(seeds)};\n"
+        + f"const poses={json.dumps(poses)}, offProbe={json.dumps(off_probe)};\n"
+        + "const offsets = [];\n"
+        + "for (const f of frames) for (const fps of fpss)"
+        + " for (const i of intensities) for (const s of seeds)"
+        + " offsets.push(atlasShakeOffsetsJS(f, fps, i, s));\n"
+        + "const applied = poses.map((p) =>"
+        + " atlasApplyShakeToPoseJS(p.pos, p.tgt, p.up, offProbe));\n"
+        + "const hashes = seeds.map((s) => atlasHash01(s));\n"
+        + "console.log(JSON.stringify({offsets, applied, hashes}));"
+    )
+    result = subprocess.run(["node", "-e", script], capture_output=True,
+                            text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    js = json.loads(result.stdout)
+
+    for seed, js_h in zip(seeds, js["hashes"]):
+        assert _hash01(seed) == pytest.approx(js_h, abs=1e-12)
+
+    idx = 0
+    for f in frames:
+        for fps in fpss:
+            for intensity in intensities:
+                for seed in seeds:
+                    py = shake_offsets(f, fps, intensity, seed)
+                    for a, b in zip(py, js["offsets"][idx]):
+                        assert a == pytest.approx(b, abs=1e-9), (f, fps, intensity, seed)
+                    if intensity == 0.0:
+                        assert all(v == 0 for v in js["offsets"][idx])
+                        assert py == (0.0,) * 6
+                    idx += 1
+
+    for pose, got in zip(poses, js["applied"]):
+        py_pos, py_tgt, py_up = apply_shake_to_pose(
+            tuple(pose["pos"]), tuple(pose["tgt"]), tuple(pose["up"]),
+            tuple(off_probe))
+        for a, b in zip(py_pos, got["position"]):
+            assert a == pytest.approx(b, abs=1e-9)
+        for a, b in zip(py_tgt, got["target"]):
+            assert a == pytest.approx(b, abs=1e-9)
+        for a, b in zip(py_up, got["up"]):
+            assert a == pytest.approx(b, abs=1e-9)

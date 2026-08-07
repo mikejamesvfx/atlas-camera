@@ -199,7 +199,10 @@ class USDExporter:
         destination = Path(output_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
 
-        frames = sample_camera_path(camera_path)
+        # apply_shake=True: the exported camera carries the 🎬 Cinematic rig
+        # noise (when the path enables it) so the DCC camera matches the baked
+        # path_frames pixel motion. Analysis consumers keep the clean default.
+        frames = sample_camera_path(camera_path, apply_shake=True)
         fovs = sample_camera_path_fov_deg(camera_path)
 
         stage = Usd.Stage.CreateNew(str(destination))

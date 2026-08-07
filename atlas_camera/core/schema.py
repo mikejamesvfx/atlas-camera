@@ -488,6 +488,12 @@ class AtlasCameraPath:
     frame_count: int = 0
     lens_scale: float = 1.0
     baked_frame_indices: list[int] = field(default_factory=list)
+    # 🎬 Cinematic rig-noise (track chatter / jib bounce / resonance). Cosmetic
+    # layer: sample_camera_path applies it only when asked (apply_shake=True) —
+    # analysis consumers (move_budget, path repair) always see the clean move.
+    shake_enabled: bool = False
+    shake_intensity: float = 1.0
+    shake_seed: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return _json_ready(self)
@@ -505,6 +511,9 @@ class AtlasCameraPath:
             baked_frame_indices=[
                 int(value) for value in data.get("baked_frame_indices", [])
             ],
+            shake_enabled=bool(data.get("shake_enabled", False)),
+            shake_intensity=float(data.get("shake_intensity", 1.0)),
+            shake_seed=int(data.get("shake_seed", 1)),
         )
 
 

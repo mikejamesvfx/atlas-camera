@@ -296,7 +296,7 @@ function createOrbitControls(camera, dom) {
   const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
                             "KeyW", "KeyS", "KeyA", "KeyD", "KeyQ", "KeyE"]);
   const pressed = new Set();
-  let navShift = false, lastNavT = 0;
+  let navShift = false, lastNavT = 0, navShakeEnv = 0;
   function onKeyDown(e) {
     if (!enabled || !NAV_KEYS.has(e.code)) return;
     pressed.add(e.code);
@@ -452,21 +452,32 @@ function createOrbitControls(camera, dom) {
       const now = performance.now();
       const dt = lastNavT ? Math.min(0.1, (now - lastNavT) / 1000) : 0;
       lastNavT = now;
-      if (!enabled || dragging || pressed.size === 0) return;
-      const step = sph.radius * 0.15 * dt * (navShift ? 4 : 1);
-      if (!(step > 0)) return;
-      const forward = target.clone().sub(camera.position).normalize();
-      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
-      const move = new THREE.Vector3();
-      if (pressed.has("ArrowUp") || pressed.has("KeyW")) move.add(forward);
-      if (pressed.has("ArrowDown") || pressed.has("KeyS")) move.sub(forward);
-      if (pressed.has("ArrowRight")) move.add(right);
-      if (pressed.has("ArrowLeft")) move.sub(right);
-      if (pressed.has("KeyA") || pressed.has("KeyE")) move.y += 1;
-      if (pressed.has("KeyD") || pressed.has("KeyQ")) move.y -= 1;
-      if (move.lengthSq() === 0) return;
-      this.pan(move.normalize().multiplyScalar(step));
+      let moved = false;
+      if (enabled && !dragging && pressed.size > 0) {
+        const step = sph.radius * 0.15 * dt * (navShift ? 4 : 1);
+        if (step > 0) {
+          const forward = target.clone().sub(camera.position).normalize();
+          const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+          const move = new THREE.Vector3();
+          if (pressed.has("ArrowUp") || pressed.has("KeyW")) move.add(forward);
+          if (pressed.has("ArrowDown") || pressed.has("KeyS")) move.sub(forward);
+          if (pressed.has("ArrowRight")) move.add(right);
+          if (pressed.has("ArrowLeft")) move.sub(right);
+          if (pressed.has("KeyA") || pressed.has("KeyE")) move.y += 1;
+          if (pressed.has("KeyD") || pressed.has("KeyQ")) move.y -= 1;
+          if (move.lengthSq() > 0) {
+            this.pan(move.normalize().multiplyScalar(step));
+            moved = true;
+          }
+        }
+      }
+      // 🎬 handheld envelope: ramps toward 1 while the keys actually move the
+      // camera, decays to 0 at rest — animate() scales the live nav shake by
+      // it so navigation shake fades in/out instead of popping.
+      navShakeEnv += ((moved ? 1 : 0) - navShakeEnv) * Math.min(1, dt * 5);
+      if (!moved && navShakeEnv < 0.001) navShakeEnv = 0;
     },
+    getNavShakeEnv() { return navShakeEnv; },
     // Measured (or default) orbit limits — pass null to restore defaults.
     setLimits(l) {
       limits = l ? { ...l }
@@ -1956,14 +1967,41 @@ function buildNodeUI(node, containerEl) {
   // (set by the Camera Path "Play" button, below) drives it during path preview.
   let pathPlayback = null; // { startTime, durationSec, onDone }
   let applyPathPoseAtT = null; // assigned once the Camera Path block below runs
+  let bakeInProgress = false; // set by bakeProxyPathFrames; gates the nav shake
+  // 🎬 live handheld shake for the tracking keys: subtract-prev/add-new so the
+  // orbit controller's state is never touched and the camera lands back on its
+  // exact base pose once the envelope decays. Never during path playback or a
+  // bake — those own the camera, and baked pixels must stay deterministic.
+  const navShakeOffset = new THREE.Vector3();
   function animate() {
     node._atlasRafId = requestAnimationFrame(animate);
     const now = performance.now();
+    camera.position.sub(navShakeOffset); // restore the base pose from last frame
+    navShakeOffset.set(0, 0, 0);
     controls.updateKeys();  // UE-style tracking keys (self-timed; no-op when idle)
     if (pathPlayback) {
       const t = Math.min(1, (now - pathPlayback.startTime) / 1000 / pathPlayback.durationSec);
       applyPathPoseAtT(t);
-      if (t >= 1) { const done = pathPlayback.onDone; pathPlayback = null; done?.(); }
+      if (t >= 1) {
+        const done = pathPlayback.onDone;
+        pathPlayback = null;
+        camera.up.set(0, 1, 0); // undo any 🎬 shake roll before restoring
+        done?.();
+      }
+    } else if (!bakeInProgress && pathShakeEnabled && pathShakeIntensity > 0) {
+      const env = controls.getNavShakeEnv();
+      if (env > 0.001) {
+        // Wall-clock time base (fed in as frame@24fps) — frame-rate
+        // independent; deterministic per timestamp, though nav shake is a
+        // live-preview feel only and is never baked or exported.
+        const off = atlasShakeOffsetsJS((now / 1000) * 24, 24, pathShakeIntensity * env, pathShakeSeed);
+        const radius = controls.getFrame().radius || 1;
+        navShakeOffset
+          .copy(new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0).multiplyScalar(off[0] * radius))
+          .addScaledVector(new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1), off[1] * radius)
+          .addScaledVector(new THREE.Vector3().setFromMatrixColumn(camera.matrix, 2), -off[2] * radius);
+        camera.position.add(navShakeOffset);
+      }
     }
     syncProjectionLightUniforms();
     updatePivotGizmo();   // track the orbit target + rescale to the scene
@@ -5162,6 +5200,12 @@ function buildNodeUI(node, containerEl) {
   let pathFrameCount = PATH_FRAME_COUNT;
   let pathFps = PATH_FPS;
   let pathLensScale = 1.2;
+  // 🎬 Cinematic rig-noise state — persisted in client_data.camera_path and
+  // read by Python's sample_camera_path (USD export opts in; analysis
+  // consumers always get the clean move).
+  let pathShakeEnabled = false;
+  let pathShakeIntensity = 1.0;
+  let pathShakeSeed = 1;
   const pathGroup = new THREE.Group();
   pathGroup.userData.atlasHelper = true; // excluded from render passes like the grid
   pathGroup.visible = false;
@@ -5181,6 +5225,85 @@ function buildNodeUI(node, containerEl) {
   function catmullRom1JS(p0, p1, p2, p3, t) {
     const t2 = t * t, t3 = t2 * t;
     return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+  }
+  // 🎬 Cinematic rig-noise (track chatter / jib bounce / mechanical resonance)
+  // — mirrors _hash01 / shake_offsets / apply_shake_to_pose in camera_path.py
+  // EXACTLY (the same accepted hand-sync duplication as catmullRom3JS above;
+  // pinned by tests/test_frontend_mirrors.py). Determinism doctrine: phases
+  // come from a 32-bit INTEGER hash of (seed, band) — never Math.random() at
+  // sample time and never a float sin-fract hash — so live preview, bake and
+  // the Python USD export sample bit-identical curves.
+  function atlasHash01(n) {
+    n = n >>> 0;
+    n = (((n ^ 61) >>> 0) ^ (n >>> 16)) >>> 0;
+    n = Math.imul(n, 9) >>> 0;
+    n = (n ^ (n >>> 4)) >>> 0;
+    n = Math.imul(n, 0x27d4eb2d) >>> 0;
+    n = (n ^ (n >>> 15)) >>> 0;
+    return n / 4294967296;
+  }
+  function atlasShakeOffsetsJS(frame, fps, intensity, seed) {
+    if (!(intensity > 0)) return [0, 0, 0, 0, 0, 0];
+    const t = fps > 0 ? frame / fps : 0;
+    const TWO_PI = 6.283185307179586;
+    const ph = (k) => atlasHash01(((Math.imul(seed, 1013) >>> 0) + k) >>> 0) * TWO_PI;
+    const sin = Math.sin;
+    // Jib bounce (low frequency): vertical sway + slight pitch/roll.
+    let dy = 0.0040 * (sin(TWO_PI * 0.35 * t + ph(0)) + 0.6 * sin(TWO_PI * 0.65 * t + ph(1)));
+    let dx = 0.0012 * sin(TWO_PI * 0.45 * t + ph(2));
+    let dz = 0;
+    let rx = 0.12 * sin(TWO_PI * 0.35 * t + ph(3));
+    let ry = 0;
+    let rz = 0.07 * sin(TWO_PI * 0.55 * t + ph(4));
+    // Track chatter (high frequency): small lateral/axial buzz + yaw.
+    dx += 0.0007 * (sin(TWO_PI * 9.1 * t + ph(5)) + sin(TWO_PI * 11.7 * t + ph(6)) + sin(TWO_PI * 13.9 * t + ph(7)));
+    dz += 0.0007 * (sin(TWO_PI * 9.1 * t + ph(8)) + sin(TWO_PI * 11.7 * t + ph(9)) + sin(TWO_PI * 13.9 * t + ph(10)));
+    ry += 0.03 * sin(TWO_PI * 11.7 * t + ph(11));
+    // Mechanical resonance (beat-modulated mid frequency).
+    dy += 0.0015 * sin(TWO_PI * 4.3 * t + ph(12)) * (0.5 + 0.5 * sin(TWO_PI * 0.18 * t + ph(13)));
+    rx += 0.02 * sin(TWO_PI * 4.3 * t + ph(14)) * (0.5 + 0.5 * sin(TWO_PI * 0.18 * t + ph(15)));
+    return [dx * intensity, dy * intensity, dz * intensity, rx * intensity, ry * intensity, rz * intensity];
+  }
+  function atlasApplyShakeToPoseJS(pos, tgt, up, off) {
+    const dx = off[0], dy = off[1], dz = off[2];
+    const rxDeg = off[3], ryDeg = off[4], rzDeg = off[5];
+    if (dx === 0 && dy === 0 && dz === 0 && rxDeg === 0 && ryDeg === 0 && rzDeg === 0) {
+      return { position: pos, target: tgt, up: up };
+    }
+    const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const scl = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const rot = (v, axis, ang) => { // Rodrigues about UNIT axis
+      const c = Math.cos(ang), s = Math.sin(ang);
+      const cr = cross(axis, v), d = dot(axis, v);
+      return [
+        v[0] * c + cr[0] * s + axis[0] * d * (1 - c),
+        v[1] * c + cr[1] * s + axis[1] * d * (1 - c),
+        v[2] * c + cr[2] * s + axis[2] * d * (1 - c),
+      ];
+    };
+    const fwd = sub(tgt, pos);
+    let dist = Math.sqrt(dot(fwd, fwd));
+    if (dist <= 1e-12) dist = 1;
+    const f = scl(fwd, 1 / dist);
+    let r = cross(f, [0, 1, 0]);
+    const rlen = Math.sqrt(dot(r, r));
+    r = rlen > 1e-6 ? scl(r, 1 / rlen) : [1, 0, 0];
+    const u = cross(r, f);
+    const trans = [
+      (r[0] * dx + u[0] * dy + f[0] * dz) * dist,
+      (r[1] * dx + u[1] * dy + f[1] * dz) * dist,
+      (r[2] * dx + u[2] * dy + f[2] * dz) * dist,
+    ];
+    const pos2 = add(pos, trans);
+    const deg = Math.PI / 180;
+    let f2 = rot(f, u, ryDeg * deg);
+    f2 = rot(f2, r, rxDeg * deg);
+    const tgt2 = add(pos2, scl(f2, dist));
+    const up2 = rot(up, f2, rzDeg * deg);
+    return { position: pos2, target: tgt2, up: up2 };
   }
   // Keyframed VERTICAL fov channel (🌀 Vertigo) — mirrors camera_path.py's
   // sample_camera_path_fov_deg exactly (fill-forward missing fovs, phantom
@@ -5235,13 +5358,32 @@ function buildNodeUI(node, containerEl) {
       fovDeg: sampleFovChannel(kfs, frame),
     };
   }
+  // Keyframe pose with the 🎬 Cinematic rig noise layered on — the ONE
+  // application point shared by live playback and the bake, so baked pixels
+  // match the preview exactly. `up` is [0,1,0] unless shake roll tilts it.
+  function shakenPoseAtFrame(frame) {
+    const pose = sampleKeyframePoseAtFrame(frame);
+    if (!pose) return null;
+    if (!pathShakeEnabled || !(pathShakeIntensity > 0)) {
+      return { position: pose.position, target: pose.target, up: [0, 1, 0], fovDeg: pose.fovDeg };
+    }
+    const off = atlasShakeOffsetsJS(frame, pathFps, pathShakeIntensity, pathShakeSeed);
+    const p = pose.position, tg = pose.target;
+    const shaken = atlasApplyShakeToPoseJS([p.x, p.y, p.z], [tg.x, tg.y, tg.z], [0, 1, 0], off);
+    return {
+      position: { x: shaken.position[0], y: shaken.position[1], z: shaken.position[2] },
+      target: { x: shaken.target[0], y: shaken.target[1], z: shaken.target[2] },
+      up: shaken.up,
+      fovDeg: pose.fovDeg,
+    };
+  }
   // Exposed to the shared animate() loop above via the outer `applyPathPoseAtT` name.
   applyPathPoseAtT = function (t) {
     const frame = t * Math.max(0, pathFrameCount - 1);
-    const pose = sampleKeyframePoseAtFrame(frame);
+    const pose = shakenPoseAtFrame(frame);
     if (!pose) return;
     camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-    camera.up.set(0, 1, 0);
+    camera.up.set(pose.up[0], pose.up[1], pose.up[2]);
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
     // 🔭 playback lens (display/bake-only FOV multiplier; slider below). Read
     // per-frame so dragging the slider mid-preview applies live. A keyframed
@@ -5312,6 +5454,8 @@ function buildNodeUI(node, containerEl) {
       keyframes: pathKeyframes.map(kfToJSON), fps: pathFps,
       frame_count: pathFrameCount, lens_scale: pathLensScale,
       baked_frame_indices: [],
+      shake_enabled: pathShakeEnabled, shake_intensity: pathShakeIntensity,
+      shake_seed: pathShakeSeed,
     };
     widget.value = JSON.stringify(existing);
     widget.callback?.(widget.value);
@@ -5329,6 +5473,10 @@ function buildNodeUI(node, containerEl) {
         pathFrameCount = cp.frame_count || PATH_FRAME_COUNT;
         pathLensScale = Number(cp.lens_scale ?? existing.atlas_proxy_path?.lens_scale
           ?? pathLensScale) || pathLensScale;
+        pathShakeEnabled = !!cp.shake_enabled;
+        const shakeIntensity = Number(cp.shake_intensity);
+        pathShakeIntensity = Number.isFinite(shakeIntensity) ? shakeIntensity : 1.0;
+        pathShakeSeed = Math.max(1, Math.floor(Number(cp.shake_seed) || 1));
       }
     } catch (_) { /* no persisted path yet */ }
   }
@@ -5346,6 +5494,7 @@ function buildNodeUI(node, containerEl) {
     // to yield to is gone) — playback re-poses the camera per-frame anyway.
     if (!pathMode) {
       pathPlayback = null; // cancelling mid-play skips onDone —
+      camera.up.set(0, 1, 0); // — so undo any 🎬 shake roll here too
       if (pivotGizmo) pivotGizmo.visible = pivotOn; // — so restore the gizmo here
       grid.visible = true; // — and the floor grid
       if (recoveredData) { // — and undo the 🔭 playback lens
@@ -5656,6 +5805,56 @@ function buildNodeUI(node, containerEl) {
   };
   lensWrap.append(lensLabel, lensSlider, lensReadout);
 
+  // 🎬 Cinematic rig-noise controls. Unlike the 🔭 lens (display/bake-only),
+  // shake ALSO reaches the exported USD camera — sample_camera_path applies it
+  // when the path enables it, so the DCC camera matches the baked pixels.
+  // The same intensity drives a live-only handheld layer on the WASD/arrow
+  // tracking keys (see animate()). All changes persist via
+  // persistPathToClientData, which also invalidates stale baked frames.
+  const shakeWrap = document.createElement("span");
+  shakeWrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;padding-left:6px;border-left:1px solid #333;";
+  shakeWrap.title = "Cinematic rig noise: deterministic track chatter + jib bounce + mechanical resonance " +
+    "on path playback, baked frames AND the exported USD camera (same seed everywhere). " +
+    "Also adds a live handheld feel to the tracking keys. 🎲 rerolls the seed.";
+  const shakeBtn = document.createElement("button");
+  shakeBtn.textContent = "🎬";
+  shakeBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  const syncShakeBtn = () => { shakeBtn.style.background = pathShakeEnabled ? "#3a2a1a" : "#2a2a2a"; };
+  const shakeSlider = document.createElement("input");
+  shakeSlider.type = "range";
+  shakeSlider.min = "0";
+  shakeSlider.max = "2";
+  shakeSlider.step = "0.05";
+  shakeSlider.value = String(pathShakeIntensity);
+  shakeSlider.style.cssText = "width:70px;";
+  const shakeReadout = document.createElement("span");
+  shakeReadout.style.cssText = "min-width:38px;color:#da9;";
+  const syncShakeReadout = () => { shakeReadout.textContent = `${pathShakeIntensity.toFixed(2)}×`; };
+  shakeBtn.onclick = () => {
+    pathShakeEnabled = !pathShakeEnabled;
+    syncShakeBtn();
+    persistPathToClientData();
+  };
+  shakeSlider.oninput = () => {
+    pathShakeIntensity = parseFloat(shakeSlider.value) || 0;
+    syncShakeReadout();
+    persistPathToClientData();
+    // shakenPoseAtFrame reads the vars per frame — a mid-preview drag applies
+    // live, same as the 🔭 lens.
+  };
+  const reseedBtn = document.createElement("button");
+  reseedBtn.textContent = "🎲";
+  reseedBtn.title = "Reroll the shake seed (a different but equally deterministic take)";
+  reseedBtn.style.cssText = "padding:2px 5px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  reseedBtn.onclick = () => {
+    // Math.random at CLICK time only — sampling stays fully deterministic.
+    pathShakeSeed = 1 + Math.floor(Math.random() * 0x7fffffff);
+    persistPathToClientData();
+  };
+  syncShakeBtn();
+  syncShakeReadout();
+  shakeWrap.append(shakeBtn, shakeSlider, shakeReadout, reseedBtn);
+
   const playBtn = document.createElement("button");
   playBtn.textContent = "▶ Play";
   playBtn.style.cssText = "padding:2px 6px;font-size:11px;cursor:pointer;background:#2a2a3a;color:#dcf;border:1px solid #546;border-radius:3px";
@@ -5699,6 +5898,7 @@ function buildNodeUI(node, containerEl) {
     const wasPlaying = !!pathPlayback;
     let outputRt = null;
     pathPlayback = null;
+    bakeInProgress = true; // keeps the live nav handheld shake out of baked renders
     pathGroup.visible = false; // exclude keyframe markers/line from baked frames
     grid.visible = false; // keep the floor grid out of baked frames
     if (pivotGizmo) pivotGizmo.visible = false; // keep the 🎯 marker out of baked frames
@@ -5713,10 +5913,12 @@ function buildNodeUI(node, containerEl) {
       if (recoveredData) camera.fov = playbackLensFovDeg();
       camera.updateProjectionMatrix();
       for (const frame of frameIndices) {
-        const pose = sampleKeyframePoseAtFrame(frame);
+        // shakenPoseAtFrame (not sampleKeyframePoseAtFrame): the 🎬 rig noise
+        // bakes into the pixels through the SAME helper playback uses.
+        const pose = shakenPoseAtFrame(frame);
         if (!pose) continue;
         camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-        camera.up.set(0, 1, 0);
+        camera.up.set(pose.up[0], pose.up[1], pose.up[2]);
         camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
         // Keyframed fov (🌀 Vertigo) — same base-composes-with-🔭-lens rule
         // as applyPathPoseAtT, re-set per frame since the ramp animates.
@@ -5740,6 +5942,8 @@ function buildNodeUI(node, containerEl) {
         keyframes: pathKeyframes.map(kfToJSON), fps: pathFps,
         frame_count: pathFrameCount, lens_scale: pathLensScale,
         baked_frame_indices: bakedFrameIndices,
+        shake_enabled: pathShakeEnabled, shake_intensity: pathShakeIntensity,
+        shake_seed: pathShakeSeed,
       };
       existing.atlas_proxy_path = {
         transport: "jpeg_base64_proxy_ldr",
@@ -5757,9 +5961,11 @@ function buildNodeUI(node, containerEl) {
       }
       app.queuePrompt(0, 1);
     } finally {
+      bakeInProgress = false;
       outputRt?.dispose();
       camera.position.copy(savedPos);
       camera.quaternion.copy(savedQuat);
+      camera.up.set(0, 1, 0); // undo any 🎬 shake roll left on the up vector
       camera.aspect = savedAspect;
       camera.fov = savedFov;
       camera.updateProjectionMatrix();
@@ -5933,7 +6139,7 @@ function buildNodeUI(node, containerEl) {
   importWrap.append(importBtn, importFbxInput, importSamplesInput, importScaleInput, importStatusEl);
 
   pathPanel.append(
-    moveWrap, lensWrap, playBtn, repairBakeBtn, bakeBtn, importWrap);
+    moveWrap, lensWrap, shakeWrap, playBtn, repairBakeBtn, bakeBtn, importWrap);
 
   // 📊 Diagram toggle — layered VP / horizon / ground SVG overlay, each layer
   // independently dimmable. Vanishing points are populated only by the
