@@ -935,3 +935,56 @@ def test_nothing_drawn_leaves_the_payload_untouched():
     payload, result = _payload_after("")
     assert not _payload_drawn_meshes(payload)
     assert not payload.get("drawn_plate_b64")
+
+
+def test_a_skipped_outline_is_reported_to_the_browser():
+    """A dropped fill must be explainable from the viewport alone.
+
+    draw_report was an output-only STRING, so an outline skipped for a stale
+    fingerprint / unknown kind / bad geometry simply failed to appear and the
+    artist had nothing to read — three drawn, two filled, no reason given.
+    The gate doctrine forbids exactly that silence, so the report now rides the
+    payload too and the frontend raises it in the draw HUD.
+    """
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    # A deliberately STALE outline: drawn against a different solve/image.
+    payload, result = _payload_after(_drawn_payload("not-the-current-fingerprint"),
+                                     solve=solve)
+    assert "skipped(" in (payload.get("draw_report") or ""), (
+        "the payload must carry the per-outline report so the viewport can "
+        "explain a dropped fill")
+    assert "skipped(" in result[14], "the STRING output keeps its contract too"
+
+
+def test_a_clean_apply_reports_no_skips():
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+    payload, _ = _payload_after(_drawn_payload(_fingerprint_for(solve, image)),
+                                solve=solve)
+    assert "skipped(" not in (payload.get("draw_report") or "")
+
+
+def test_re_extraction_keeps_the_input_solve_fingerprint():
+    """The payload's fingerprint must stay the INPUT solve's.
+
+    Re-extracting the payload from the APPLIED solve is one small step away
+    from also re-deriving the fingerprint off that solve — and that would be
+    quietly catastrophic: the browser stamps newly drawn outlines with the
+    fingerprint it was handed, Python still gates against the input solve's,
+    and every outline drawn after the first Apply would be dropped as
+    'stale (drawn against another solve/image)'. Exactly the symptom this
+    whole investigation started from, and it would look like the fills
+    randomly stopped working.
+    """
+    torch = pytest.importorskip("torch")
+    solve = _viewport_solve()
+    image = torch.zeros((1, 256, 256, 3), dtype=torch.float32)
+    expected = _fingerprint_for(solve, image)
+
+    payload, _ = _payload_after(_drawn_payload(expected), solve=solve)
+
+    assert payload.get("solve_fingerprint") == expected, (
+        "the payload must keep the INPUT solve's fingerprint — deriving it "
+        "from the applied solve makes every later outline read as stale")

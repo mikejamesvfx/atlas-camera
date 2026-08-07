@@ -834,6 +834,14 @@ class AtlasBlockoutViewport:
                     reapplied.pop("drawn_plate_b64", None)
                     reapplied.pop("clean_plate_b64", None)
                     blockout_payload.update(reapplied)
+            # Carry the per-outline report to the browser. It was an output-only
+            # STRING, so an outline that got skipped — stale fingerprint, an
+            # unknown shape kind, a self-intersecting outline — vanished with no
+            # explanation anywhere the artist was looking: they drew three fills,
+            # got two, and had nothing to read. That is precisely the silent
+            # branch-skip the gate doctrine forbids (CLAUDE.md). The STRING
+            # output stays exactly as it was for anyone who wired it.
+            blockout_payload["draw_report"] = report
             _blockout_cache_set(node_id, blockout_payload)
             if drawn_np is None:
                 drawn_mask = torch.zeros(1, src_h, src_w, dtype=torch.float32)

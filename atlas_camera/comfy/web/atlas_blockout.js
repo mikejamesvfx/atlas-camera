@@ -6936,6 +6936,22 @@ function buildNodeUI(node, containerEl) {
         });
       };
 
+      // A skipped outline has to SAY so. The per-outline report used to be a
+      // STRING output only, so a fill that was dropped — stale fingerprint,
+      // unknown shape kind, self-intersecting outline — just failed to appear:
+      // you drew three, got two, and nothing anywhere told you why. Silence on
+      // a branch skip is what the gate doctrine exists to prevent. Only
+      // surfaced when something actually skipped; an all-ok report stays quiet
+      // so the HUD does not nag on every successful Apply.
+      if (typeof data.draw_report === "string" && data.draw_report.includes("skipped(")) {
+        const skipped = data.draw_report
+          .split("\n")
+          .filter((line) => line.includes("skipped("));
+        if (skipped.length) {
+          drawHud(`⚠️ ${skipped.length} outline(s) skipped — ${skipped.join(" · ")}`);
+        }
+      }
+
       const buildBackdropMat = (dTex) => {
         // With a clean plate connected, the projection_backdrop plane AND any
         // solve_b geometry merged in by AtlasMergeGeometry (atlasCleanSource —
