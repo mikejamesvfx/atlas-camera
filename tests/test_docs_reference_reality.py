@@ -168,3 +168,55 @@ def test_no_other_shipped_doc_hardcodes_a_node_count():
         "node lands — cite NODE_CATALOG instead, or add the doc to "
         "_COUNT_CLAIMS so the number is checked against the registry:\n  "
         + "\n  ".join(offenders))
+
+
+# --- version drift -----------------------------------------------------------
+#
+# On 2026-08-07 pyproject said 0.8.1, atlas_camera.__version__ said 0.8.1, and
+# CHANGELOG's newest entry was a dated 0.8.2 — a release documented but never
+# versioned. Nothing failed, because no test compared them.
+#
+# Note pyproject's version is ALSO the registry publish trigger: the publish
+# workflow fires on a push to main that touches pyproject.toml. So a bump is a
+# release action, not a tidy-up, and these tests are deliberately written so
+# that keeping the version put is a valid way to be consistent.
+
+import re as _re
+
+
+def _pyproject_version():
+    text = open(os.path.join(ROOT, "pyproject.toml"), encoding="utf-8").read()
+    match = _re.search(r'^version\s*=\s*"([^"]+)"', text, _re.MULTILINE)
+    assert match, "pyproject.toml has no version"
+    return match.group(1)
+
+
+def test_the_package_version_matches_pyproject():
+    """A wheel built from pyproject and the running package must not disagree
+    about what they are."""
+    import atlas_camera
+    assert atlas_camera.__version__ == _pyproject_version(), (
+        f"atlas_camera.__version__ is {atlas_camera.__version__!r} but "
+        f"pyproject says {_pyproject_version()!r}")
+
+
+def test_the_changelog_does_not_claim_an_unreleased_version_as_released():
+    """CHANGELOG's newest entry must be the shipped version, or be explicitly
+    marked unreleased.
+
+    A dated heading is a claim that the version went out. When the newest one
+    runs ahead of pyproject, the changelog is describing a release that does
+    not exist — which is what happened with 0.8.2. Either bump (a release
+    action, and it publishes) or say 'unreleased'.
+    """
+    text = open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8").read()
+    headings = _re.findall(r"^##\s+(.+)$", text, _re.MULTILINE)
+    assert headings, "CHANGELOG has no version headings"
+    newest = headings[0].strip()
+    version = _pyproject_version()
+    if newest.lower().startswith("unreleased") or "unreleased" in newest.lower():
+        return                                    # explicitly pending — honest
+    assert newest.startswith(version), (
+        f"CHANGELOG's newest entry is {newest!r} but the shipped version is "
+        f"{version!r}. Either bump pyproject (a RELEASE — note this publishes "
+        f"to the ComfyUI registry) or mark the entry unreleased.")

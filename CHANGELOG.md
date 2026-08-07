@@ -3,7 +3,13 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
-## 0.8.2 — 2026-08-03
+## 0.8.2 — unreleased (branch cut 2026-08-03)
+
+> Written but not shipped: `pyproject.toml` still declares **0.8.1**, so
+> nothing carrying these notes has been published. Bumping the version is
+> the release action — and it is not a tidy-up, because the publish
+> workflow fires on a push to `main` that touches `pyproject.toml` and
+> pushes the pack to the public ComfyUI registry.
 
 A **discoverability pass**. No node was added, removed, renamed or rewired, and
 no widget moved — this release changes where nodes appear in the menu and what
