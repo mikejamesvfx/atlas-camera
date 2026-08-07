@@ -304,3 +304,49 @@ def test_usd_export_camera_animation_vertigo_time_samples_focal(tmp_path, make_a
     assert focal_attr.Get(Usd.TimeCode(0)) == pytest.approx(expected_first, rel=1e-5)
     assert focal_attr.Get(Usd.TimeCode(frame_count - 1)) == pytest.approx(expected_last, rel=1e-5)
     assert focal_attr.Get(Usd.TimeCode(frame_count - 1)) < focal_attr.Get(Usd.TimeCode(0))
+
+
+def test_usd_export_camera_animation_applies_cinematic_shake(tmp_path, make_atlas_solve):
+    # 🎬 A single-keyframe (locked-off) path with shake enabled must export
+    # per-frame-VARYING transforms — the DCC camera matches the baked pixels.
+    # Same seed twice -> identical samples (deterministic take).
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+    solve = make_atlas_solve()
+    frame_count = 9
+
+    def shaky_path():
+        return AtlasCameraPath(
+            keyframes=[AtlasCameraKeyframe(
+                frame_index=0, position=(0.0, 5.0, 10.0), target=(0.0, 0.0, 0.0))],
+            fps=24.0, frame_count=frame_count,
+            shake_enabled=True, shake_intensity=1.0, shake_seed=17,
+        )
+
+    def translations(usd_file):
+        stage = Usd.Stage.Open(str(usd_file))
+        op = UsdGeom.Xformable(
+            stage.GetPrimAtPath("/AtlasCamera/Camera")).GetOrderedXformOps()[0]
+        return [tuple(op.Get(Usd.TimeCode(f)).ExtractTranslation())
+                for f in range(frame_count)]
+
+    path_a = USDExporter().export_camera_animation(
+        shaky_path(), solve.camera.intrinsics, tmp_path / "shake_a.usda")
+    path_b = USDExporter().export_camera_animation(
+        shaky_path(), solve.camera.intrinsics, tmp_path / "shake_b.usda")
+
+    trans_a = translations(path_a)
+    assert len(set(trans_a)) > 1  # rig noise moves the locked-off camera
+    for t in trans_a:  # ...but only subtly (bounded well under the ~11m dist)
+        assert sum((a - b) ** 2 for a, b in zip(t, (0.0, 5.0, 10.0))) ** 0.5 < 0.6
+    assert trans_a == translations(path_b)  # same seed -> identical take
+
+    # Shake fields present but disabled -> the old static export exactly.
+    clean = AtlasCameraPath(
+        keyframes=[AtlasCameraKeyframe(
+            frame_index=0, position=(0.0, 5.0, 10.0), target=(0.0, 0.0, 0.0))],
+        fps=24.0, frame_count=frame_count, shake_enabled=False)
+    path_c = USDExporter().export_camera_animation(
+        clean, solve.camera.intrinsics, tmp_path / "shake_off.usda")
+    for t in translations(path_c):
+        assert t == pytest.approx((0.0, 5.0, 10.0))
