@@ -4822,6 +4822,10 @@ function buildNodeUI(node, containerEl) {
       + '<path d="M15.5 3.5v4M13.5 5.5h4"/>'
       + '<path d="M20 9.5v3M18.5 11h3"/>'
       + '<path d="M17 16.5v2.5M15.8 17.8h2.5" opacity="0.7"/>'),
+    // Chevrons for the rail collapse toggle: up = "fold the tools away",
+    // down = "bring them back".
+    collapse: railSvg('<path d="M6 14.5l6-6 6 6"/>'),
+    expand: railSvg('<path d="M6 9.5l6 6 6-6"/>'),
   };
   const styleRailBtn = (btn, icon) => {
     btn.innerHTML = RAIL_ICONS[icon];
@@ -4850,9 +4854,44 @@ function buildNodeUI(node, containerEl) {
   styleRailBtn(snapBtn, "snap");
   styleRailBtn(deleteBtn, "trash");
   styleRailBtn(drawApplyBtn, "apply");
-  drawRail.append(wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
-                  railSeparator(),
-                  editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
+  // Collapse toggle. The tool buttons live in their own container so hiding
+  // them leaves the toggle itself on screen — a control that can hide its own
+  // only affordance for coming back is a trap. Purely presentational: it never
+  // changes the active tool, never touches drawnPolygons and never sets
+  // drawDirty, so folding the rail away mid-draw cannot lose work. The status
+  // chip stays visible for exactly that reason — with the rail hidden it is
+  // the only thing still reporting that Draw or Snap is live.
+  //
+  // Session-only, and deliberately NOT persisted into client_data: this is
+  // presentation state, not solve evidence, and a saved workflow that opened
+  // with its tools already hidden would read as a broken viewport.
+  const railTools = document.createElement("div");
+  railTools.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+  railTools.append(wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
+                   railSeparator(),
+                   editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
+
+  let railToolsVisible = true;   // tools ON by default
+  const railToggleBtn = document.createElement("button");
+  railToggleBtn.style.cssText =
+    "width:44px;height:24px;padding:0;display:flex;align-items:center;" +
+    "justify-content:center;border:1px solid transparent;border-radius:8px;" +
+    "background:transparent;color:#8a8a94;cursor:pointer;";
+  function syncRailCollapsed() {
+    railTools.style.display = railToolsVisible ? "flex" : "none";
+    railToggleBtn.innerHTML = RAIL_ICONS[railToolsVisible ? "collapse" : "expand"]
+      .replace('width="26" height="26"', 'width="20" height="20"');
+    railToggleBtn.title = railToolsVisible
+      ? "Hide the blockout tool rail (the active tool and snap state stay as "
+        + "they are — nothing is discarded)"
+      : "Show the blockout tool rail";
+  }
+  railToggleBtn.onclick = () => {
+    railToolsVisible = !railToolsVisible;
+    syncRailCollapsed();
+  };
+  drawRail.append(railToggleBtn, railTools);
+  syncRailCollapsed();
 
   // The chip mirrors whichever tool is live plus the snap state. Every rail
   // button's onclick is wrapped (not replaced — mutual-exclusion cross-calls

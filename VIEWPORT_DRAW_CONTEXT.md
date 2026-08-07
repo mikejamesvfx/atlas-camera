@@ -70,7 +70,17 @@ mutual-exclusion cross-calls still work) to refresh it. `metaHud` moved to
 left:66px/top:46px to clear the rail. Icon-only (full wording stays in
 each button's tooltip): **🪄 Wand**, **✏️ Draw**, **⬜ Quad**, **➬ Extrude**,
 **▣ Box**, **● Sphere** │ **✎ Edit**,
-**🧲 Snap**, **🗑 Delete** │ **✅ Apply**. 🗑 removes the `editSel` shape (or,
+**🧲 Snap**, **🗑 Delete** │ **✅ Apply**. A **chevron toggle** (`railToggleBtn`,
+`syncRailCollapsed`, 2026-08-07) sits at the TOP of the rail and folds the tools
+away; the buttons live in an inner `railTools` container so the toggle itself
+stays on screen when they are hidden (a control that can hide its own only way
+back is a trap). Tools are VISIBLE by default. Collapsing is presentation-only —
+it never changes the active tool, touches `drawnPolygons` or sets `drawDirty`,
+so folding mid-draw cannot lose work, and `railStatus` stays visible because
+with the rail hidden it is the only thing still reporting that Draw or Snap is
+live. Session-only, never written to `client_data`: a saved workflow that opened
+with its tools already hidden would read as a broken viewport.
+🗑 removes the `editSel` shape (or,
 with no selection, the most recent shape) and sets `drawDirty`; Apply persists
 even a now-EMPTY list when dirty, so deleting the last shape can actually
 unbake it. The rail is a child of `canvasWrap` and is NEVER

@@ -817,3 +817,46 @@ def test_the_smear_only_repaints_inside_the_drawn_footprint():
 
     assert filled[hole].max() > 0.0, "the footprint should be filled in"
     assert np_.allclose(filled[~hole], 200.0), "real pixels must be untouched"
+
+
+# --- tool-rail collapse toggle (atlas_blockout.js, 2026-08-07) ---------------
+#
+# Text pins, because the rail is browser-only DOM with no Python side. What
+# these protect is not the styling but three decisions that are easy to undo by
+# accident and expensive to notice: the tools default to VISIBLE, the toggle is
+# NOT inside the container it hides, and collapsing is presentation-only.
+
+import os as _os
+
+_WEB_DIR = _os.path.join(_os.path.dirname(__file__), "..",
+                         "atlas_camera", "comfy", "web")
+
+
+def _blockout_src():
+    return open(_os.path.join(_WEB_DIR, "atlas_blockout.js"),
+                encoding="utf-8").read()
+
+
+def test_rail_tools_are_visible_by_default():
+    assert "let railToolsVisible = true;" in _blockout_src()
+
+
+def test_the_toggle_is_not_inside_the_container_it_hides():
+    """syncRailCollapsed hides `railTools`, so the toggle must be a sibling.
+    Appending it to railTools instead would hide the button along with the
+    tools and leave no way to bring them back."""
+    src = _blockout_src()
+    assert "drawRail.append(railToggleBtn, railTools);" in src
+    assert 'railTools.style.display = railToolsVisible ? "flex" : "none";' in src
+    # the toggle is appended to the rail, never to the collapsing container
+    assert "railTools.append(railToggleBtn" not in src
+
+
+def test_collapsing_the_rail_does_not_touch_draw_state():
+    """Folding the rail away mid-draw must not discard shapes or flip tools —
+    it is a view control, not an escape hatch."""
+    src = _blockout_src()
+    start = src.index("railToggleBtn.onclick")
+    body = src[start:start + 240]
+    for forbidden in ("drawnPolygons", "drawDirty", "drawOn", "editOn", "editSnap"):
+        assert forbidden not in body, f"collapse handler must not touch {forbidden}"
