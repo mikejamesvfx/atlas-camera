@@ -164,7 +164,9 @@ def _finish(graph: Graph, slug: str, group_specs, layout, notes: str) -> dict:
 
 QUICKSTART_NOTE = """ATLAS INPUT QUICKSTART — the front door. One node, plate in, camera and geometry out.
 
-1. Pick a plate in Load Image and queue once.
+1. Queue once. Load Image starts on ComfyUI's bundled example.png so this runs with nothing to download.
+   For a REAL result, swap in your own photo — or grab the Atlas plate pack from mikejamesvfx.com. No images
+   ship in this repo, so every shipping workflow starts on the neutral placeholder by construction.
 2. Click Camera View for the recovered camera; click Project to inspect the photo projection.
 3. Orbit gently. Solve JSON lands in atlas_exports/ and carries the camera anywhere.
 
@@ -267,7 +269,7 @@ atlas_input_quickstart_workflow.json produces this same result from one node. Th
 
 THE CHAIN
 1. AtlasLearnedSolveFromImage — the camera. GeoCalib's learned prior gives focal length, pitch and roll from a single frame. This is a METRIC pinhole camera with a real focal length in mm, not a pose guess.
-2. AtlasGravityCompass — the beat a plain depth solve gets wrong. On a steep down-angle (try newyork_Birdseye.png) the compass reports and can override pitch, roll and heading. Leave apply_override off to read the solve; turn it on to correct it.
+2. AtlasGravityCompass — the beat a plain depth solve gets wrong. On a steep down-angle (a birds-eye plate shows this best) the compass reports and can override pitch, roll and heading. Leave apply_override off to read the solve; turn it on to correct it.
 3. AtlasDepthMap — monocular metric depth, shared downstream so every branch agrees on scale. Exterior plates take the V2 Metric Outdoor model; interiors take MoGe.
 4. AtlasDeriveReliefMesh — depth becomes a triangulated mesh, torn at silhouettes, with the camera projection baked into the UVs. The tears are deliberate: a tear is honest missing information, and the fix is a layer, never a raised threshold.
 5. AtlasBlockoutViewport — the recovered camera and the projection, live.
@@ -286,8 +288,8 @@ def build_stages(object_info: dict, layout) -> dict:
     slug = "atlas_quickstart_solve_project_export_workflow"
     graph = Graph(object_info)
 
-    load = graph.node("LoadImage", title="1 · SOURCE PLATE · GHOST TOWN", values={
-        "image": "ghosttown.jpg", "image_upload": "image",
+    load = graph.node("LoadImage", title="1 · SOURCE PLATE", values={
+        "image": "example.png", "image_upload": "image",
     }, size=(360, 310))
     solve = graph.node("AtlasLearnedSolveFromImage", title="2 · CAMERA · learned metric prior", values={
         "height_mode": "assume",
@@ -313,7 +315,7 @@ def build_stages(object_info: dict, layout) -> dict:
         "relief_quality": "custom",
         "depth_edge_rel": 0.5,
         "max_edge_factor": 12.0,
-        "sky_heuristic": True,
+        "sky_heuristic": False,
         "normal_edge_deg": 0.0,
         "quad_coherence": True,
     }, size=(430, 320))
@@ -392,8 +394,8 @@ def build_fanout(object_info: dict, layout) -> dict:
     slug = "atlas_export_fanout_workflow"
     graph = Graph(object_info)
 
-    load = graph.node("LoadImage", title="1 · SOURCE PLATE · OCEAN CASTLE", values={
-        "image": "oceancastle.jpg", "image_upload": "image",
+    load = graph.node("LoadImage", title="1 · SOURCE PLATE", values={
+        "image": "example.png", "image_upload": "image",
     }, size=(360, 310))
     atlas_input = graph.node("AtlasInput", title="2 · SOLVE + RELIEF", values={
         "layers": 0,
@@ -404,7 +406,7 @@ def build_fanout(object_info: dict, layout) -> dict:
         "inpaint": False,
         "edge_extend_px": 24,
         "max_edge_factor": 12.0,
-        "sky_heuristic": True,
+        "sky_heuristic": False,
         "normal_edge_deg": 0.0,
         "depth_model": OUTDOOR_DEPTH,
         "vlm_scope": True,
@@ -533,8 +535,8 @@ def build_layered(object_info: dict, layout) -> dict:
     slug = "atlas_layered_projection_workflow"
     graph = Graph(object_info)
 
-    load = graph.node("LoadImage", title="1 · SOURCE PLATE · GHOST TOWN", values={
-        "image": "ghosttown.jpg", "image_upload": "image",
+    load = graph.node("LoadImage", title="1 · SOURCE PLATE", values={
+        "image": "example.png", "image_upload": "image",
     }, size=(360, 310))
     solve = graph.node("AtlasLearnedSolveFromImage", title="2 · CAMERA", values={
         "height_mode": "assume",
@@ -573,7 +575,7 @@ def build_layered(object_info: dict, layout) -> dict:
         "relief_quality": "custom",
         "depth_edge_rel": 0.5,
         "max_edge_factor": 12.0,
-        "sky_heuristic": True,
+        "sky_heuristic": False,
         "normal_edge_deg": 0.0,
         "quad_coherence": True,
     }, size=(430, 320))

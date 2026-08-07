@@ -50,21 +50,21 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "oceancastle.jpg",
+        "example.png",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE \u00b7 OCEAN CASTLE"
+      "title": "1 \u00b7 SOURCE PLATE"
     },
     {
       "id": 2,
       "type": "AtlasInput",
       "pos": [
         1040,
-        759
+        747
       ],
       "size": [
         440,
-        1492
+        1516
       ],
       "flags": {},
       "order": 1,
@@ -335,6 +335,13 @@
           "widget": {
             "name": "boundary_smooth_iterations"
           }
+        },
+        {
+          "localized_name": "raw_meta",
+          "name": "raw_meta",
+          "type": "ATLAS_RAW_META",
+          "link": null,
+          "shape": 7
         }
       ],
       "outputs": [
@@ -401,7 +408,7 @@
         "",
         24,
         12.0,
-        true,
+        false,
         0.0,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
         true,
@@ -1828,9 +1835,9 @@
       "title": "1 \u00b7 SOLVE + DELIVERY PROJECT \u00b7 read the note",
       "bounding": [
         -5,
-        671,
+        659,
         2550,
-        2351
+        2363
       ],
       "color": "#35536b",
       "font_size": 24,

@@ -174,7 +174,7 @@ doctrine travels with the tools:
    building in the plate → re-solves or runs a workflow with
    AtlasReferenceScaleSolve / camera_height_m
 
-5. atlas_run_workflow  workflow_path="examples/atlas_camera_staged_master_agentic_assessment_workflow.json"
+5. atlas_run_workflow  workflow_path="examples/atlas_layered_projection_workflow.json"
      → completed, node errors verbatim, plus the bounded terminal QA report
 
 6. atlas_read_debug_report         (layer census, red flags)
@@ -186,7 +186,7 @@ doctrine travels with the tools:
 ```
 
 For relief tears, read `atlas://path-repair`, validate and run
-`examples/atlas_path_guided_hole_repair_workflow.json`, then inspect the three
+a path-guided repair graph of your own, then inspect the three
 bounded STRING reports returned by `atlas_run_workflow`. A missing selection
 calls for a different path angle/exclusion mask; a final rejection calls for
 the specifically named edge or depth gate to be evaluated—not a blanket

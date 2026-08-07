@@ -1,7 +1,8 @@
 # Atlas Camera — ComfyUI Integration
 
 > **Vintage note (2026-07-09):** this page's two-track mental model is still
-> correct, but the catalog has grown to **56 nodes** — including the shared-depth
+> correct, but the catalog has grown considerably since (see
+> `docs/NODE_CATALOG.md` for the current, generated count) — including the shared-depth
 > layer nodes, the sky dome, the Output Desk color track, and the experimental
 > hidden-geometry 🔬 node — and the default depth model is `V2-Metric-Outdoor`
 > (DA3 is the default only on the `experimental-da3-default` branch).
@@ -318,7 +319,7 @@ Work through these in order. Each step depends on the previous passing.
 ```
 atlas_camera/comfy/
   __init__.py          ← WEB_DIRECTORY, API route registration (with double-import guard)
-  nodes.py             ← All 18 node classes + helpers (_extract_blockout_camera, _ground_depth_compute, etc.)
+  nodes.py             ← Every node class + helpers (_extract_blockout_camera, _ground_depth_compute, etc.)
   web/
     atlas_blockout.js  ← ComfyUI frontend extension (Three.js viewport, camera apply, render passes)
 

@@ -41,7 +41,7 @@ RECOVER  →  DERIVE  →  PROJECT  →  EXPORT
 atlas_camera.core       ← DCC-agnostic schema, solver, math (zero required deps)
 atlas_camera.exporters  ← Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  ← Atlas JSON and USD camera loaders
-atlas_camera.comfy      ← ComfyUI node library (56 nodes; +2 experimental behind ATLAS_EXPERIMENTAL)
+atlas_camera.comfy      ← ComfyUI node library (count in docs/NODE_CATALOG.md; experimental tier behind ATLAS_EXPERIMENTAL)
 atlas_camera.ui         ← Optional FastAPI project service + React/Three.js workbench
 atlas_camera.reference_data ← Curated scale-reference registry (person/door/car/etc.)
 atlas_camera.inference  ← Depth Anything V2, GeoCalib, local VLM helpers
@@ -416,7 +416,7 @@ goes through Python's `warnings` module, not FPU flags. Wrapped the
 
 ### 4.6 Full 26-node learned pipeline validated end-to-end
 
-Ran `atlas_camera_learned_workflow.json`'s complete graph (solve → VLM cues →
+Ran the learned-solve graph of the day (solve → VLM cues →
 apply scale → derive geometry → decompose → all analysis nodes → viewport →
 all 5 DCC export formats) against a live ComfyUI instance. One real
 environment gap found and fixed along the way: `AtlasExportUSD` needs the
@@ -564,8 +564,9 @@ ComfyUI's browser canvas for interactive, click-around testing:
 | File | Demonstrates |
 |---|---|
 | `atlas_input_quickstart_workflow.json` | Fast relief path: LoadImage → 🎬 AtlasInput → Atlas Viewport, with Output Desk and working `layers=0` SolveJSON/Nuke-relief/Maya-relief/Blender/USD/OBJ/GLB outputs plus optional Nuke/Maya layer packages. Native-SAM segmentation guidance; distinct relative export folders. Start here. |
-| `atlas_camera_staged_master_workflow.json` | 🏗 The five-layer master — five native ComfyUI subgraphs, VLM + solve gates, native SAM3 sky/scope, four cropped SDXL clean plates, per-layer previews, 🔍 debug JSON, and Nuke/Maya/Blender/USD exports. No LaMa, KJ rails, or rgthree dependency. |
-| `atlas_occlusion_cull_quickstart_workflow.json` | Controlled Project/✂ Occlude A/B: identical to the fast quickstart plus exactly `AtlasInput.depth → viewport.primary_depth`, so culling uses the metric map that produced the relief mesh. |
+| `atlas_quickstart_solve_project_export_workflow.json` | The front door taken apart: `AtlasLearnedSolveFromImage` → `AtlasGravityCompass` → `AtlasDepthMap` → `AtlasDeriveReliefMesh` → viewport, so any stage can be taken over or overridden. |
+| `atlas_export_fanout_workflow.json` | The DCC payoff: one solve into eight native exporters, every path routed by an `AtlasProject` delivery tree on the ACEScg lane. |
+| `atlas_layered_projection_workflow.json` | The 2.5D stack a matte painter opens: band split → layer matte → relief → clean-plate layer → sky dome → occlusion graph → layer plan. |
 | `*_agentic_assessment_workflow.json` | One twin of each workflow above, preserving its graph and appending an enabled `AtlasAssessOutput` plus an exact-evidence preview. The Ghost Town and Space Hangar sample plates make the smoke meaningful. Each run retains the assessed PNG, coverage matte, source reference, hashes, and a distinct stable JSON report. Use these for MCP/headless runs. |
 
 **The shipping catalog is deliberately pinned to these three base/agentic
@@ -654,7 +655,7 @@ inconclusive until a browser or DCC render is supplied.
 
 This session closed the loop from "detect where projection fails" to "fix it
 end-to-end and hand off to both DCCs." Everything below ships in the hero
-workflow `examples/atlas_camera_master_dmp_workflow.json`. Node count is now
+workflow of that era (since removed). Node count is now
 45.
 
 ### Hole masks and exclusion masks
@@ -742,7 +743,7 @@ plus an **invented-pixels matte** exported to Nuke for regrain, and mesh
 boundary skirts now **recede away from camera with a bevel** (slope in cell
 units, 1.0 = 45°). Gate approvals and viewport navigation are
 fingerprint-stable across image swaps. Hero recipe:
-`examples/atlas_camera_ultra_single_image_workflow.json`. Next planned
+an ultra single-image graph of that era (since removed). Next planned
 lever: `frame_outpaint_px` for band layers (the sky's widened-camera trick),
 since Safe Zone measurements show the frame edge — not silhouettes — is the
 binding constraint on wide scenes.

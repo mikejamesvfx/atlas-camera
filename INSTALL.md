@@ -84,7 +84,7 @@ no deps and add its runtime deps separately:
 > ```
 >
 > Verified on a real install: LTXVideo went from a hard import failure to
-> loading all 78 of its nodes, with atlas-camera (68 nodes), `geocalib`,
+> loading all of its nodes, with atlas-camera, `geocalib`,
 > `pixeloe` and `transparent-background` all still importing cleanly.
 
 **Development install (editable + symlink):** keeps the checkout wherever you
@@ -406,7 +406,7 @@ KSampler → VAE decode subgraph instead, and feed its output into
 
 ## Optional Master-Workflow Integrations (2026-07-08)
 
-The hero workflow `examples/atlas_camera_staged_master_workflow.json` uses three
+The layered workflow `examples/atlas_layered_projection_workflow.json` can use
 optional external pieces — each fails soft or has a documented placeholder:
 
 - **Sky / scope segmentation** — `AtlasSAM3Mask` (this package's own node,
@@ -457,7 +457,7 @@ optional external pieces — each fails soft or has a documented placeholder:
 
   The third-party `SAM3Segment` node
   ([ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)) still works if
-  manually wired (e.g. in `examples/atlas_camera_staged_master_workflow.json`)
+  manually wired (e.g. in `examples/atlas_layered_projection_workflow.json`)
   but is no longer preferred by `AtlasInput`'s own cascade. It hard-requires
   `triton` (CUDA-only — on Windows + NVIDIA, `python_embeded\python.exe -m pip
   install triton-windows`; on Mac/CPU/AMD it cannot load at all). Grounded-SAM2

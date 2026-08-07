@@ -427,7 +427,7 @@ sanity-checking a solve and, since 2026-07-09, for tuning the layer stack:
 ## What's new (2026-07-08) — the complete DMP workflow
 
 This guide's three mental models still hold. On top of them, the hero
-workflow (`examples/atlas_camera_staged_master_workflow.json`) now assembles the
+workflow (since replaced by `examples/atlas_layered_projection_workflow.json`) assembled the
 full matte-painting pipeline: a **VLM pre-flight** that assesses your photo
 and recommends settings (the graph pauses until you click ▶ Continue), **sky
 separation** onto a far card driven by a SAM segmentation (with deterministic
@@ -537,7 +537,7 @@ Blender, textured Relief OBJ/GLB, and relief-based Nuke/Maya scenes. Separate
 Nuke/Maya layer packages activate at `layers>=1`. Color-aware handoffs inherit
 Output Desk metadata.
 
-`examples/atlas_occlusion_cull_quickstart_workflow.json` is the matched A/B
+A matched occlusion A/B graph (no longer shipped) was the
 twin. It adds exactly `AtlasInput.depth → viewport.primary_depth`; queue it,
 enable Project, then toggle ✂ Occlude while orbiting. Do not replace that map
 with depth from a different model, crop, retopo pass, or camera. Keep
@@ -565,7 +565,7 @@ Remove `--validate-only` to queue all three and require a structured report.
 
 ## What's new (2026-07-21) — five native layer subgraphs + SDXL
 
-The staged master (`examples/atlas_camera_staged_master_workflow.json`) is the
+The layered stack (`examples/atlas_layered_projection_workflow.json`) is the
 flagship: five fixed layers — a sky card plus far/bg/mid/fg depth bands — now
 live in five real ComfyUI subgraphs. The old LaMa nodes, KJ Set/Get rails,
 shared upscaler, and rgthree group bypasser are gone. Open a layer subgraph to

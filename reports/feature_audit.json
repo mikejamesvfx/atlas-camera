@@ -1307,7 +1307,7 @@
    "tests": 4,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -2046,7 +2046,7 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 1,
+   "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",

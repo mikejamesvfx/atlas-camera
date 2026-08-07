@@ -52,10 +52,10 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "ghosttown.jpg",
+        "example.png",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE \u00b7 GHOST TOWN"
+      "title": "1 \u00b7 SOURCE PLATE"
     },
     {
       "id": 2,
@@ -542,7 +542,7 @@
         "custom",
         0.5,
         12.0,
-        true,
+        false,
         0.0,
         true
       ],
@@ -961,7 +961,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "SOLVE STAGES \u2014 the front door taken apart, so you can take over a stage.\n\natlas_input_quickstart_workflow.json produces this same result from one node. This graph is that node opened up: every stage is a node you can inspect, swap or override.\n\nTHE CHAIN\n1. AtlasLearnedSolveFromImage \u2014 the camera. GeoCalib's learned prior gives focal length, pitch and roll from a single frame. This is a METRIC pinhole camera with a real focal length in mm, not a pose guess.\n2. AtlasGravityCompass \u2014 the beat a plain depth solve gets wrong. On a steep down-angle (try newyork_Birdseye.png) the compass reports and can override pitch, roll and heading. Leave apply_override off to read the solve; turn it on to correct it.\n3. AtlasDepthMap \u2014 monocular metric depth, shared downstream so every branch agrees on scale. Exterior plates take the V2 Metric Outdoor model; interiors take MoGe.\n4. AtlasDeriveReliefMesh \u2014 depth becomes a triangulated mesh, torn at silhouettes, with the camera projection baked into the UVs. The tears are deliberate: a tear is honest missing information, and the fix is a layer, never a raised threshold.\n5. AtlasBlockoutViewport \u2014 the recovered camera and the projection, live.\n\nWHAT TO OVERRIDE FIRST\n\u2022 height_mode / camera_height_m on the solve. The solver assumes a standing eye height by default; type a real camera height and the whole scene rescales. The solver assumes, you correct.\n\u2022 focal_length_mm, if you know the lens. A measured value always beats a learned one.\n\u2022 depth_model, if the plate is interior \u2014 MoGe reads rooms far better than the outdoor metric model.\n\u2022 relief_grid and depth_edge_rel on the mesh, to trade density against silhouette fidelity.\n\nRESOLUTION\nThe solver is resolution-independent and has been validated past 8k. The viewport renders up to 8k."
+        "SOLVE STAGES \u2014 the front door taken apart, so you can take over a stage.\n\natlas_input_quickstart_workflow.json produces this same result from one node. This graph is that node opened up: every stage is a node you can inspect, swap or override.\n\nTHE CHAIN\n1. AtlasLearnedSolveFromImage \u2014 the camera. GeoCalib's learned prior gives focal length, pitch and roll from a single frame. This is a METRIC pinhole camera with a real focal length in mm, not a pose guess.\n2. AtlasGravityCompass \u2014 the beat a plain depth solve gets wrong. On a steep down-angle (a birds-eye plate shows this best) the compass reports and can override pitch, roll and heading. Leave apply_override off to read the solve; turn it on to correct it.\n3. AtlasDepthMap \u2014 monocular metric depth, shared downstream so every branch agrees on scale. Exterior plates take the V2 Metric Outdoor model; interiors take MoGe.\n4. AtlasDeriveReliefMesh \u2014 depth becomes a triangulated mesh, torn at silhouettes, with the camera projection baked into the UVs. The tears are deliberate: a tear is honest missing information, and the fix is a layer, never a raised threshold.\n5. AtlasBlockoutViewport \u2014 the recovered camera and the projection, live.\n\nWHAT TO OVERRIDE FIRST\n\u2022 height_mode / camera_height_m on the solve. The solver assumes a standing eye height by default; type a real camera height and the whole scene rescales. The solver assumes, you correct.\n\u2022 focal_length_mm, if you know the lens. A measured value always beats a learned one.\n\u2022 depth_model, if the plate is interior \u2014 MoGe reads rooms far better than the outdoor metric model.\n\u2022 relief_grid and depth_edge_rel on the mesh, to trade density against silhouette fidelity.\n\nRESOLUTION\nThe solver is resolution-independent and has been validated past 8k. The viewport renders up to 8k."
       ],
       "title": "READ ME \u00b7 which stage to take over first"
     }
