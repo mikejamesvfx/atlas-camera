@@ -348,9 +348,10 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
             assert lid in (nodes[sid]["outputs"][sslot].get("links") or []), f"{p.name}: link {lid}"
             assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
         checked += 1
-    # 0 between the 2026-07-31 cull and the replacement set; bump as each new
+    # 0 between the 2026-07-31 cull and the replacement set, 11 while that set
+    # was being assembled, 4 since the v1 cut (2026-08-07). Bump as each new
     # workflow lands so a silent disappearance still fails loudly.
-    assert checked == 11
+    assert checked == 4
 
 
 def test_frontend_only_rgthree_nodes_are_virtual():

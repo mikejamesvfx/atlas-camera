@@ -1,35 +1,46 @@
 {
   "id": "abcf0898-2667-533f-a424-46fadd40dce5",
-  "revision": 0,
-  "last_node_id": 13,
-  "last_link_id": 16,
+  "revision": 1,
+  "last_node_id": 14,
+  "last_link_id": 29,
   "nodes": [
     {
       "id": 1,
       "type": "LoadImage",
       "pos": [
         40,
-        80
+        1343
       ],
       "size": [
-        340,
-        120
+        360,
+        432
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "image"
+          }
+        }
+      ],
       "outputs": [
         {
+          "localized_name": "IMAGE",
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            1,
-            3,
-            16
+            1
           ]
         },
         {
+          "localized_name": "MASK",
           "name": "MASK",
           "type": "MASK",
           "links": []
@@ -39,518 +50,877 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "ghosttown.jpg"
+        "oceancastle.jpg",
+        "image"
       ],
-      "title": "1. Plate"
+      "title": "1 \u00b7 SOURCE PLATE \u00b7 OCEAN CASTLE"
     },
     {
       "id": 2,
-      "type": "AtlasLearnedSolveFromImage",
+      "type": "AtlasInput",
       "pos": [
-        400,
-        80
+        1040,
+        759
       ],
       "size": [
-        340,
-        120
+        440,
+        1492
       ],
       "flags": {},
       "order": 1,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "link": 1
         },
         {
-          "name": "raw_meta",
-          "type": "ATLAS_RAW_META",
-          "link": null
+          "localized_name": "layers",
+          "name": "layers",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "layers"
+          }
+        },
+        {
+          "localized_name": "mesh",
+          "name": "mesh",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "mesh"
+          }
+        },
+        {
+          "localized_name": "mesh_resolution",
+          "name": "mesh_resolution",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "mesh_resolution"
+          }
+        },
+        {
+          "localized_name": "use_vlm",
+          "name": "use_vlm",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "use_vlm"
+          }
+        },
+        {
+          "localized_name": "vlm_provider",
+          "name": "vlm_provider",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "vlm_provider"
+          }
+        },
+        {
+          "localized_name": "vlm_model",
+          "name": "vlm_model",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "vlm_model"
+          }
+        },
+        {
+          "localized_name": "sky",
+          "name": "sky",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky"
+          }
+        },
+        {
+          "localized_name": "sky_prompt",
+          "name": "sky_prompt",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_prompt"
+          }
+        },
+        {
+          "localized_name": "scope_prompts",
+          "name": "scope_prompts",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "scope_prompts"
+          }
+        },
+        {
+          "localized_name": "inpaint",
+          "name": "inpaint",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "inpaint"
+          }
+        },
+        {
+          "localized_name": "upscale_model",
+          "name": "upscale_model",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "upscale_model"
+          }
+        },
+        {
+          "localized_name": "edge_extend_px",
+          "name": "edge_extend_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "edge_extend_px"
+          }
+        },
+        {
+          "localized_name": "max_edge_factor",
+          "name": "max_edge_factor",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "max_edge_factor"
+          }
+        },
+        {
+          "localized_name": "sky_heuristic",
+          "name": "sky_heuristic",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_heuristic"
+          }
+        },
+        {
+          "localized_name": "normal_edge_deg",
+          "name": "normal_edge_deg",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "normal_edge_deg"
+          }
+        },
+        {
+          "localized_name": "depth_model",
+          "name": "depth_model",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "depth_model"
+          }
+        },
+        {
+          "localized_name": "vlm_scope",
+          "name": "vlm_scope",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "vlm_scope"
+          }
+        },
+        {
+          "localized_name": "sky_inpaint_mode",
+          "name": "sky_inpaint_mode",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_inpaint_mode"
+          }
+        },
+        {
+          "localized_name": "sky_lama_grow_px",
+          "name": "sky_lama_grow_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_lama_grow_px"
+          }
+        },
+        {
+          "localized_name": "sky_sdxl_checkpoint",
+          "name": "sky_sdxl_checkpoint",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_sdxl_checkpoint"
+          }
+        },
+        {
+          "localized_name": "sky_sdxl_positive",
+          "name": "sky_sdxl_positive",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_sdxl_positive"
+          }
+        },
+        {
+          "localized_name": "sky_sdxl_negative",
+          "name": "sky_sdxl_negative",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_sdxl_negative"
+          }
+        },
+        {
+          "localized_name": "sky_sdxl_seed",
+          "name": "sky_sdxl_seed",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_sdxl_seed"
+          }
+        },
+        {
+          "localized_name": "retopo_method",
+          "name": "retopo_method",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_method"
+          }
+        },
+        {
+          "localized_name": "retopo_target_vertex_count",
+          "name": "retopo_target_vertex_count",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_target_vertex_count"
+          }
+        },
+        {
+          "localized_name": "boundary_smooth_iterations",
+          "name": "boundary_smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "boundary_smooth_iterations"
+          }
         }
       ],
       "outputs": [
         {
-          "name": "ATLAS_SOLVE",
+          "localized_name": "solve",
+          "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
             2,
-            4
+            7,
+            9,
+            11,
+            13,
+            15,
+            17,
+            19,
+            21
           ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasLearnedSolveFromImage"
-      },
-      "widgets_values": [
-        "measure_from_depth",
-        1.6,
-        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        36.0,
-        "pinhole",
-        "auto",
-        0.0
-      ],
-      "title": "2. Solve"
-    },
-    {
-      "id": 3,
-      "type": "AtlasDepthMap",
-      "pos": [
-        760,
-        80
-      ],
-      "size": [
-        340,
-        120
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
+        },
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 3
-        },
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 2
-        }
-      ],
-      "outputs": [
-        {
-          "name": "depth",
-          "type": "ATLAS_DEPTH_MAP",
           "links": [
-            5,
-            7
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasDepthMap"
-      },
-      "widgets_values": [
-        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
-        "auto",
-        9,
-        0,
-        "",
-        0,
-        0.25
-      ],
-      "title": "3. Depth"
-    },
-    {
-      "id": 4,
-      "type": "AtlasDeriveReliefMesh",
-      "pos": [
-        1120,
-        80
-      ],
-      "size": [
-        340,
-        120
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 4
-        },
-        {
-          "name": "depth",
-          "type": "ATLAS_DEPTH_MAP",
-          "link": 5
-        },
-        {
-          "name": "exclude_mask",
-          "type": "MASK",
-          "link": null
-        },
-        {
-          "name": "outlier_mask",
-          "type": "MASK",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "links": [
-            6
+            3,
+            23
           ]
         },
         {
-          "name": "hole_mask",
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            4
+          ]
+        },
+        {
+          "localized_name": "sky_mask",
+          "name": "sky_mask",
           "type": "MASK",
           "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasDeriveReliefMesh"
-      },
-      "widgets_values": [
-        128,
-        "custom",
-        0.5,
-        12.0,
-        true,
-        0.0,
-        true
-      ],
-      "title": "4. Relief mesh - the exporters carry THIS, so derive it before fanning out"
-    },
-    {
-      "id": 5,
-      "type": "AtlasOcclusionGraph",
-      "pos": [
-        1480,
-        80
-      ],
-      "size": [
-        340,
-        120
-      ],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 6
         },
         {
-          "name": "depth",
-          "type": "ATLAS_DEPTH_MAP",
-          "link": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "links": [
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15
-          ]
-        },
-        {
+          "localized_name": "report",
           "name": "report",
           "type": "STRING",
           "links": []
         }
       ],
       "properties": {
-        "Node name for S&R": "AtlasOcclusionGraph"
+        "Node name for S&R": "AtlasInput"
       },
-      "widgets_values": [],
-      "title": "5. Occlusion graph"
+      "widgets_values": [
+        0,
+        "relief",
+        512,
+        false,
+        "lmstudio",
+        "",
+        false,
+        "sky",
+        "",
+        false,
+        "",
+        24,
+        12.0,
+        true,
+        0.0,
+        "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        true,
+        "lama",
+        32,
+        "SDXL/sd_xl_base_1.0.safetensors",
+        "clear seamless sky, high detail, no buildings, no trees, no roofs",
+        "building, tree, roof, person, vehicle, text, watermark, blurry",
+        0,
+        "off",
+        2000,
+        0
+      ],
+      "title": "2 \u00b7 SOLVE + RELIEF"
     },
     {
-      "id": 6,
-      "type": "AtlasExportBlender",
+      "id": 3,
+      "type": "AtlasProject",
       "pos": [
-        1900,
-        60
+        40,
+        939
       ],
       "size": [
-        340,
-        120
+        430,
+        334
       ],
       "flags": {},
-      "order": 5,
+      "order": 2,
       "mode": 0,
       "inputs": [
         {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 8
+          "localized_name": "project",
+          "name": "project",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "project"
+          }
         },
         {
-          "name": "output_profile",
-          "type": "ATLAS_OUTPUT_PROFILE",
-          "link": null
+          "localized_name": "shot",
+          "name": "shot",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "shot"
+          }
+        },
+        {
+          "localized_name": "colour_mode",
+          "name": "colour_mode",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "colour_mode"
+          }
+        },
+        {
+          "localized_name": "project_root",
+          "name": "project_root",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "project_root"
+          }
+        },
+        {
+          "localized_name": "create_tree",
+          "name": "create_tree",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "create_tree"
+          }
         }
       ],
       "outputs": [
         {
-          "name": "script_path",
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "links": [
+            8,
+            10,
+            12,
+            14,
+            16,
+            18,
+            20,
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasProject"
+      },
+      "widgets_values": [
+        "atlas_demo",
+        "shot010",
+        "VFX (ACEScg / float)",
+        "",
+        true
+      ],
+      "title": "3 \u00b7 DELIVERY PROJECT \u00b7 routes every export"
+    },
+    {
+      "id": 4,
+      "type": "AtlasViewportControls",
+      "pos": [
+        40,
+        1845
+      ],
+      "size": [
+        440,
+        442
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "config_label",
+          "name": "config_label",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "config_label"
+          }
+        },
+        {
+          "localized_name": "config_path",
+          "name": "config_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "config_path"
+          }
+        },
+        {
+          "localized_name": "working_colorspace",
+          "name": "working_colorspace",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "working_colorspace"
+          }
+        },
+        {
+          "localized_name": "output_colorspace",
+          "name": "output_colorspace",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_colorspace"
+          }
+        },
+        {
+          "localized_name": "display",
+          "name": "display",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "display"
+          }
+        },
+        {
+          "localized_name": "view",
+          "name": "view",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "view"
+          }
+        },
+        {
+          "localized_name": "display_trim",
+          "name": "display_trim",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "display_trim"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "controls",
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "links": [
+            5
+          ]
+        },
+        {
+          "localized_name": "output_profile",
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "links": [
+            6,
+            27,
+            28,
+            29
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasViewportControls"
+      },
+      "widgets_values": [
+        "ACES 2.0 / Studio",
+        "",
+        "ACEScg",
+        "ACES - ACEScg",
+        "sRGB - Display",
+        "ACES 2.0 SDR-video",
+        1.0
+      ],
+      "title": "OUTPUT DESK \u00b7 OCIO metadata"
+    },
+    {
+      "id": 5,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        1600,
+        1926
+      ],
+      "size": [
+        900,
+        680
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 2
+        },
+        {
+          "localized_name": "source_image",
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "localized_name": "resolution",
+          "name": "resolution",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "resolution"
+          }
+        },
+        {
+          "localized_name": "client_data",
+          "name": "client_data",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "client_data"
+          }
+        },
+        {
+          "localized_name": "primary_depth",
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 4,
+          "shape": 7
+        },
+        {
+          "localized_name": "preview_expand",
+          "name": "preview_expand",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "preview_expand"
+          }
+        },
+        {
+          "localized_name": "controls",
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": 5,
+          "shape": 7
+        },
+        {
+          "localized_name": "shot_cam",
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "output_profile",
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": 6,
+          "shape": 7
+        },
+        {
+          "localized_name": "debug_matte",
+          "name": "debug_matte",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "patch_mask",
+          "name": "patch_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "drawn_fill_px",
+          "name": "drawn_fill_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "drawn_fill_px"
+          }
+        },
+        {
+          "localized_name": "clean_plate",
+          "name": "clean_plate",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "shaded",
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "path_frames",
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "camera_path",
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": [
+            26
+          ]
+        },
+        {
+          "localized_name": "patch_azimuth_view",
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_elevation_view",
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_distance",
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_prompt",
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_exact",
+          "name": "patch_exact",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_render_mask",
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "localized_name": "drawn_mask",
+          "name": "drawn_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "draw_report",
+          "name": "draw_report",
           "type": "STRING",
           "links": []
         }
       ],
       "properties": {
-        "Node name for S&R": "AtlasExportBlender"
+        "Node name for S&R": "AtlasBlockoutViewport"
       },
       "widgets_values": [
-        "output/atlas_exports"
+        1280,
+        "",
+        1.0,
+        96
       ],
-      "title": "6. Blender scene script"
+      "title": "4 \u00b7 VIEWPORT \u00b7 make a move, then re-queue"
+    },
+    {
+      "id": 6,
+      "type": "Note",
+      "pos": [
+        40,
+        2357
+      ],
+      "size": [
+        880,
+        620
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "EXPORT FAN-OUT \u2014 one photograph, eight native DCC deliverables, one project tree.\n\nAtlasProject is the delivery desk. Name the project and shot, pick a colour lane, and every export node wired to its project output writes into <project_root>/<project>/<shot>/ instead of its own loose output_dir. Unwire the project link and each node falls back to its own path exactly as before, so an existing graph never changes behaviour by accident.\n\nTHE ONE CHOICE: COLOUR LANE\n\u2022 Standard (sRGB) \u2014 photographers and designers. 8/16-bit, sRGB texture space.\n\u2022 VFX (ACEScg / float) \u2014 the managed float path. ACEScg working space, float EXR plates, colour metadata carried into Nuke, Maya, Blender and USD.\nThis graph ships on the VFX lane because that is the lane the DCC exports are for. A camera RAW forces the choice, because the file itself cannot tell you which one it is.\n\nWHAT LANDS WHERE\n\u2022 Nuke \u2014 a .nk with the projection camera grouped with the geometry, plus a Python build script.\n\u2022 Maya \u2014 a .ma review scene, camera and relief mesh, ready to look through.\n\u2022 Blender \u2014 a build script; run it and the scene assembles.\n\u2022 USD \u2014 the recovered camera on a stage, axis set at export time.\n\u2022 Relief mesh \u2014 OBJ+MTL and a self-contained GLB, the projection baked into the UVs.\n\u2022 Review package \u2014 the shareable summary bundle.\n\u2022 Camera path USD \u2014 the viewport's baked move, once you have made one.\n\u2022 Solve JSON \u2014 the portable contract every other tool reads.\n\nTHE CAMERA PATH EXPORT SHIPS MUTED\nAtlasExportCameraPathUSD is the one muted node in this graph, and deliberately so: it raises rather than no-ops when no path has been baked, which is the state every first queue is in. To use it \u2014 queue once, open the viewport, add keyframes with \ud83c\udfa5 Camera Path, click \u23fa Bake Proxy Path, then unmute the node (Ctrl+M) and queue again. The move leaves the viewport as USD.\n\nRETOPOLOGY IS EXPORT-ONLY\nThe retopo widgets on the export nodes never touch the live projection mesh. Leave them off for projection fidelity. Live retopology happens only through AtlasRetopologizeLayer, which regenerates the projective UVs. Quad output additionally needs pyinstantmeshes."
+      ],
+      "title": "READ ME \u00b7 the project tree and the colour lane"
     },
     {
       "id": 7,
-      "type": "AtlasExportNuke",
+      "type": "AtlasExportSolveJSON",
       "pos": [
-        1900,
-        210
+        1600,
+        40
       ],
       "size": [
-        340,
-        120
+        390,
+        166
       ],
       "flags": {},
       "order": 6,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 9
+          "link": 7
         },
         {
-          "name": "output_profile",
-          "type": "ATLAS_OUTPUT_PROFILE",
-          "link": null
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_path"
+          }
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 8,
+          "shape": 7
         }
       ],
       "outputs": [
         {
-          "name": "script_path",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "nk_path",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasExportNuke"
-      },
-      "widgets_values": [
-        "output/atlas_exports",
-        ""
-      ],
-      "title": "6. Nuke script"
-    },
-    {
-      "id": 8,
-      "type": "AtlasExportNukeLayers",
-      "pos": [
-        1900,
-        360
-      ],
-      "size": [
-        340,
-        120
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 10
-        },
-        {
-          "name": "output_profile",
-          "type": "ATLAS_OUTPUT_PROFILE",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "nk_path",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "summary",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasExportNukeLayers"
-      },
-      "widgets_values": [
-        "output/atlas_exports",
-        "off",
-        2000,
-        0,
-        30.0,
-        false
-      ],
-      "title": "6. Nuke, one node per layer"
-    },
-    {
-      "id": 9,
-      "type": "AtlasExportMayaLayers",
-      "pos": [
-        1900,
-        510
-      ],
-      "size": [
-        340,
-        120
-      ],
-      "flags": {},
-      "order": 8,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 11
-        },
-        {
-          "name": "output_profile",
-          "type": "ATLAS_OUTPUT_PROFILE",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "ma_path",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "summary",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasExportMayaLayers"
-      },
-      "widgets_values": [
-        "output/atlas_exports",
-        "off",
-        2000,
-        0,
-        30.0,
-        false
-      ],
-      "title": "6. Maya, one node per layer"
-    },
-    {
-      "id": 10,
-      "type": "AtlasExportMayaReviewScene",
-      "pos": [
-        1900,
-        660
-      ],
-      "size": [
-        340,
-        120
-      ],
-      "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 12
-        },
-        {
-          "name": "output_profile",
-          "type": "ATLAS_OUTPUT_PROFILE",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasExportMayaReviewScene"
-      },
-      "widgets_values": [
-        "output/atlas_exports",
-        ""
-      ],
-      "title": "6. Maya review scene"
-    },
-    {
-      "id": 11,
-      "type": "AtlasExportReviewPackage",
-      "pos": [
-        1900,
-        810
-      ],
-      "size": [
-        340,
-        120
-      ],
-      "flags": {},
-      "order": 10,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 13
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasExportReviewPackage"
-      },
-      "widgets_values": [
-        "output/atlas_exports"
-      ],
-      "title": "6. Review package (report.md + open scripts)"
-    },
-    {
-      "id": 12,
-      "type": "AtlasExportSolveJSON",
-      "pos": [
-        1900,
-        960
-      ],
-      "size": [
-        340,
-        120
-      ],
-      "flags": {},
-      "order": 11,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 14
-        }
-      ],
-      "outputs": [
-        {
+          "localized_name": "STRING",
           "name": "STRING",
           "type": "STRING",
           "links": []
@@ -560,53 +930,249 @@
         "Node name for S&R": "AtlasExportSolveJSON"
       },
       "widgets_values": [
-        "output/atlas_exports/atlas_solve.json"
+        "atlas_solve.json"
       ],
-      "title": "6g. Solve JSON - the contract every other exporter reads"
+      "title": "Solve JSON \u00b7 the portable contract"
     },
     {
-      "id": 13,
+      "id": 8,
       "type": "AtlasExportReliefMesh",
       "pos": [
-        1900,
-        1110
+        1600,
+        748
       ],
       "size": [
-        340,
-        120
+        440,
+        1108
       ],
       "flags": {},
-      "order": 12,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 15
+          "link": 9
         },
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 16
+          "link": 23
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "grid_long_edge",
+          "name": "grid_long_edge",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "grid_long_edge"
+          }
+        },
+        {
+          "localized_name": "depth_edge_rel",
+          "name": "depth_edge_rel",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "depth_edge_rel"
+          }
+        },
+        {
+          "localized_name": "depth_model",
+          "name": "depth_model",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "depth_model"
+          }
+        },
+        {
+          "localized_name": "device",
+          "name": "device",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "device"
+          }
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "format"
+          }
+        },
+        {
+          "localized_name": "use_solve_mesh",
+          "name": "use_solve_mesh",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "use_solve_mesh"
+          }
+        },
+        {
+          "localized_name": "max_edge_factor",
+          "name": "max_edge_factor",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "max_edge_factor"
+          }
+        },
+        {
+          "localized_name": "normal_edge_deg",
+          "name": "normal_edge_deg",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "normal_edge_deg"
+          }
+        },
+        {
+          "localized_name": "fill_interior_holes",
+          "name": "fill_interior_holes",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "fill_interior_holes"
+          }
+        },
+        {
+          "localized_name": "max_hole_edges",
+          "name": "max_hole_edges",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "max_hole_edges"
+          }
+        },
+        {
+          "localized_name": "fill_depth_near_m",
+          "name": "fill_depth_near_m",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "fill_depth_near_m"
+          }
+        },
+        {
+          "localized_name": "fill_depth_far_m",
+          "name": "fill_depth_far_m",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "fill_depth_far_m"
+          }
+        },
+        {
+          "localized_name": "retopo_method",
+          "name": "retopo_method",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_method"
+          }
+        },
+        {
+          "localized_name": "retopo_target_vertex_count",
+          "name": "retopo_target_vertex_count",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_target_vertex_count"
+          }
+        },
+        {
+          "localized_name": "retopo_smooth_iterations",
+          "name": "retopo_smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "retopo_crease_angle",
+          "name": "retopo_crease_angle",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_crease_angle"
+          }
+        },
+        {
+          "localized_name": "retopo_pure_quad",
+          "name": "retopo_pure_quad",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_pure_quad"
+          }
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 10,
+          "shape": 7
         }
       ],
       "outputs": [
         {
+          "localized_name": "obj_path",
           "name": "obj_path",
           "type": "STRING",
-          "links": []
+          "links": [
+            24,
+            25
+          ]
         },
         {
+          "localized_name": "glb_path",
           "name": "glb_path",
           "type": "STRING",
           "links": []
         },
         {
+          "localized_name": "preview_solve",
           "name": "preview_solve",
           "type": "ATLAS_SOLVE",
           "links": []
         },
         {
+          "localized_name": "report",
           "name": "report",
           "type": "STRING",
           "links": []
@@ -616,7 +1182,7 @@
         "Node name for S&R": "AtlasExportReliefMesh"
       },
       "widgets_values": [
-        "output/atlas_exports",
+        "relief",
         128,
         0.5,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
@@ -635,7 +1201,392 @@
         30.0,
         false
       ],
-      "title": "6h. Relief mesh OBJ/GLB (needs the plate for its texture)"
+      "title": "Relief OBJ + GLB \u00b7 projection baked into UVs"
+    },
+    {
+      "id": 9,
+      "type": "AtlasExportNuke",
+      "pos": [
+        2620,
+        1177
+      ],
+      "size": [
+        430,
+        244
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "relief_mesh_obj_path",
+          "name": "relief_mesh_obj_path",
+          "type": "STRING",
+          "link": 24,
+          "shape": 7,
+          "widget": {
+            "name": "relief_mesh_obj_path"
+          }
+        },
+        {
+          "localized_name": "output_profile",
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": 27,
+          "shape": 7
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 12,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "script_path",
+          "name": "script_path",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "nk_path",
+          "name": "nk_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportNuke"
+      },
+      "widgets_values": [
+        "nuke",
+        ""
+      ],
+      "title": "Nuke \u00b7 .nk + build script"
+    },
+    {
+      "id": 10,
+      "type": "AtlasExportMayaReviewScene",
+      "pos": [
+        2620,
+        1491
+      ],
+      "size": [
+        430,
+        244
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 13
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "relief_mesh_obj_path",
+          "name": "relief_mesh_obj_path",
+          "type": "STRING",
+          "link": 25,
+          "shape": 7,
+          "widget": {
+            "name": "relief_mesh_obj_path"
+          }
+        },
+        {
+          "localized_name": "output_profile",
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": 28,
+          "shape": 7
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 14,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "STRING",
+          "name": "STRING",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportMayaReviewScene"
+      },
+      "widgets_values": [
+        "maya",
+        ""
+      ],
+      "title": "Maya \u00b7 .ma review scene"
+    },
+    {
+      "id": 11,
+      "type": "AtlasExportBlender",
+      "pos": [
+        1600,
+        2676
+      ],
+      "size": [
+        430,
+        190
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 15
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "output_profile",
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": 29,
+          "shape": 7
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 16,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "script_path",
+          "name": "script_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportBlender"
+      },
+      "widgets_values": [
+        "blender"
+      ],
+      "title": "Blender \u00b7 build script"
+    },
+    {
+      "id": 12,
+      "type": "AtlasExportUSD",
+      "pos": [
+        1600,
+        276
+      ],
+      "size": [
+        430,
+        166
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 17
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 18,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "usd_path",
+          "name": "usd_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportUSD"
+      },
+      "widgets_values": [
+        "usd"
+      ],
+      "title": "USD \u00b7 recovered camera on a stage"
+    },
+    {
+      "id": 13,
+      "type": "AtlasExportReviewPackage",
+      "pos": [
+        1600,
+        512
+      ],
+      "size": [
+        430,
+        166
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 19
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 20,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "STRING",
+          "name": "STRING",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportReviewPackage"
+      },
+      "widgets_values": [
+        "review"
+      ],
+      "title": "Review package \u00b7 shareable bundle"
+    },
+    {
+      "id": 14,
+      "type": "AtlasExportCameraPathUSD",
+      "pos": [
+        2620,
+        1805
+      ],
+      "size": [
+        430,
+        190
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 2,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 21
+        },
+        {
+          "localized_name": "camera_path",
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "link": 26
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 22,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "usd_path",
+          "name": "usd_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportCameraPathUSD"
+      },
+      "widgets_values": [
+        "camera_path"
+      ],
+      "title": "Camera path USD \u00b7 MUTED until you bake a path"
     }
   ],
   "links": [
@@ -651,77 +1602,77 @@
       2,
       2,
       0,
-      3,
-      1,
+      5,
+      0,
       "ATLAS_SOLVE"
     ],
     [
       3,
+      2,
       1,
-      0,
-      3,
-      0,
+      5,
+      1,
       "IMAGE"
     ],
     [
       4,
       2,
-      0,
+      2,
+      5,
       4,
-      0,
-      "ATLAS_SOLVE"
+      "ATLAS_DEPTH_MAP"
     ],
     [
       5,
-      3,
-      0,
       4,
-      1,
-      "ATLAS_DEPTH_MAP"
+      0,
+      5,
+      6,
+      "ATLAS_VIEWPORT_LINK"
     ],
     [
       6,
       4,
-      0,
+      1,
       5,
-      0,
-      "ATLAS_SOLVE"
+      8,
+      "ATLAS_OUTPUT_PROFILE"
     ],
     [
       7,
-      3,
+      2,
       0,
-      5,
-      1,
-      "ATLAS_DEPTH_MAP"
+      7,
+      0,
+      "ATLAS_SOLVE"
     ],
     [
       8,
-      5,
+      3,
       0,
-      6,
-      0,
-      "ATLAS_SOLVE"
+      7,
+      2,
+      "ATLAS_PROJECT"
     ],
     [
       9,
-      5,
+      2,
       0,
-      7,
+      8,
       0,
       "ATLAS_SOLVE"
     ],
     [
       10,
-      5,
+      3,
       0,
       8,
-      0,
-      "ATLAS_SOLVE"
+      20,
+      "ATLAS_PROJECT"
     ],
     [
       11,
-      5,
+      2,
       0,
       9,
       0,
@@ -729,47 +1680,188 @@
     ],
     [
       12,
-      5,
+      3,
       0,
-      10,
-      0,
-      "ATLAS_SOLVE"
+      9,
+      4,
+      "ATLAS_PROJECT"
     ],
     [
       13,
-      5,
+      2,
       0,
-      11,
+      10,
       0,
       "ATLAS_SOLVE"
     ],
     [
       14,
-      5,
+      3,
+      0,
+      10,
+      4,
+      "ATLAS_PROJECT"
+    ],
+    [
+      15,
+      2,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      16,
+      3,
+      0,
+      11,
+      3,
+      "ATLAS_PROJECT"
+    ],
+    [
+      17,
+      2,
       0,
       12,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      15,
-      5,
+      18,
+      3,
+      0,
+      12,
+      2,
+      "ATLAS_PROJECT"
+    ],
+    [
+      19,
+      2,
       0,
       13,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      16,
-      1,
+      20,
+      3,
       0,
       13,
+      2,
+      "ATLAS_PROJECT"
+    ],
+    [
+      21,
+      2,
+      0,
+      14,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      22,
+      3,
+      0,
+      14,
+      3,
+      "ATLAS_PROJECT"
+    ],
+    [
+      23,
+      2,
+      1,
+      8,
       1,
       "IMAGE"
+    ],
+    [
+      24,
+      8,
+      0,
+      9,
+      2,
+      "STRING"
+    ],
+    [
+      25,
+      8,
+      0,
+      10,
+      2,
+      "STRING"
+    ],
+    [
+      26,
+      5,
+      5,
+      14,
+      1,
+      "ATLAS_CAMERA_PATH"
+    ],
+    [
+      27,
+      4,
+      1,
+      9,
+      3,
+      "ATLAS_OUTPUT_PROFILE"
+    ],
+    [
+      28,
+      4,
+      1,
+      10,
+      3,
+      "ATLAS_OUTPUT_PROFILE"
+    ],
+    [
+      29,
+      4,
+      1,
+      11,
+      2,
+      "ATLAS_OUTPUT_PROFILE"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "title": "1 \u00b7 SOLVE + DELIVERY PROJECT \u00b7 read the note",
+      "bounding": [
+        -5,
+        671,
+        2550,
+        2351
+      ],
+      "color": "#35536b",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "2 \u00b7 EIGHT NATIVE DELIVERABLES \u00b7 every path routed by the project",
+      "bounding": [
+        1555,
+        -48,
+        1540,
+        2959
+      ],
+      "color": "#375c4a",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
   "config": {},
-  "extra": {},
+  "extra": {
+    "ds": {
+      "scale": 0.58,
+      "offset": [
+        35,
+        85
+      ]
+    },
+    "frontendVersion": "1.25.11",
+    "workflowRendererVersion": "LG",
+    "atlas_shipping_set": "v1",
+    "atlas_notes": "One solve into eight DCC exports, all routed by AtlasProject."
+  },
   "version": 0.4
 }

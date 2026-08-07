@@ -127,6 +127,21 @@
       "tail": "tail: move budget + stereo render",
       "workflow": "atlas_equirect_360_workflow"
     },
+    "atlas_export_fanout_workflow": {
+      "already_tears_pct": 10.9,
+      "dolly_unbounded": true,
+      "n_images": 1,
+      "non_black_frac": 0.85044,
+      "ok": true,
+      "runtime_s": 81.4,
+      "scored_image": "bench_00040_.png",
+      "size": [
+        2048,
+        576
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_export_fanout_workflow"
+    },
     "atlas_input_quickstart_agentic_assessment_workflow": {
       "already_tears_pct": 6.3,
       "dolly_unbounded": true,
@@ -143,13 +158,13 @@
       "workflow": "atlas_input_quickstart_agentic_assessment_workflow"
     },
     "atlas_input_quickstart_workflow": {
-      "already_tears_pct": 4.3,
+      "already_tears_pct": 5.5,
       "dolly_unbounded": true,
       "n_images": 1,
       "non_black_frac": 0.90871,
       "ok": true,
-      "runtime_s": 46.0,
-      "scored_image": "bench_00028_.png",
+      "runtime_s": 56.2,
+      "scored_image": "bench_00041_.png",
       "size": [
         1536,
         768
@@ -171,6 +186,21 @@
       ],
       "tail": "tail: move budget + stereo render",
       "workflow": "atlas_input_walkthrough_switches_workflow"
+    },
+    "atlas_layered_projection_workflow": {
+      "already_tears_pct": 1.1,
+      "dolly_unbounded": true,
+      "n_images": 1,
+      "non_black_frac": 0.9662,
+      "ok": true,
+      "runtime_s": 26.1,
+      "scored_image": "bench_00042_.png",
+      "size": [
+        2048,
+        576
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_layered_projection_workflow"
     },
     "atlas_layered_segmentation_workflow": {
       "ok": false,
@@ -249,6 +279,21 @@
       ],
       "tail": "tail: move budget + stereo render",
       "workflow": "atlas_plate_color_grade_defocus_lut_workflow"
+    },
+    "atlas_quickstart_solve_project_export_workflow": {
+      "already_tears_pct": 6.0,
+      "dolly_unbounded": true,
+      "n_images": 1,
+      "non_black_frac": 0.90937,
+      "ok": true,
+      "runtime_s": 21.0,
+      "scored_image": "bench_00043_.png",
+      "size": [
+        2048,
+        576
+      ],
+      "tail": "tail: move budget + stereo render",
+      "workflow": "atlas_quickstart_solve_project_export_workflow"
     },
     "atlas_raw_3layer_ocio_workflow": {
       "ok": false,

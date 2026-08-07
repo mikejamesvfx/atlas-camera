@@ -38,9 +38,12 @@ EXPERIMENTAL = set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
 # ground the plate never saw; it is gate-hidden, so this workflow is named
 # EXPERIMENTAL_ and documented as needing ATLAS_EXPERIMENTAL=1. A conscious,
 # reviewed choice - which is exactly what this pin is for.
-WORKFLOWS_USING_EXPERIMENTAL: set[str] = {
-    "atlas_EXPERIMENTAL_blockout_massing_workflow.json",
-}
+# Empty since the v1 cut (2026-08-07). atlas_EXPERIMENTAL_blockout_massing was
+# the only entry, and it moved to examples/local/ precisely because a gated node
+# loads RED on a default install — the failure mode this pin exists to surface.
+# Keep the set: an empty pin still fails loudly the moment a shipping workflow
+# reaches for an experimental node again.
+WORKFLOWS_USING_EXPERIMENTAL: set[str] = set()
 
 
 def _actual() -> set[str]:
