@@ -95,6 +95,7 @@ build/
 
 # Codex machine-specific tooling — never commit
 .codex/
+.worktrees/
 
 # Graphify knowledge graph — a local tooling artifact, kept on disk but never
 # published (it also bloated the Registry archive by ~12 MB).
