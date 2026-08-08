@@ -554,3 +554,107 @@ def test_camera_shake_numerically_matches_js():
             assert a == pytest.approx(b, abs=1e-9)
         for a, b in zip(py_up, got["up"]):
             assert a == pytest.approx(b, abs=1e-9)
+
+
+# --- 🪄 wand pinched-rim split (atlas_blockout.js) ---------------------------
+#
+# Where two tears of a torn relief mesh meet at a shared vertex, the boundary
+# walk returns through that vertex and hands the wand ONE figure-8 loop, which
+# the backend then rightly refuses as "vertex N repeats vertex M" (see
+# docs/dev/wand_self_intersecting_rims.md). The fix is at extraction:
+# splitLoopAtRepeats splits a closed walk at every repeated vertex id into
+# simple sub-loops, each of which fills fine — and the touching-loop case
+# (shares a point, no crossing) falls out of the same split for free.
+
+
+def _run_split(cases):
+    src = _read("atlas_blockout.js")
+    fn = re.search(r"(function splitLoopAtRepeats\(.*?\n  \})", src, re.DOTALL)
+    assert fn, "splitLoopAtRepeats not found in atlas_blockout.js"
+    script = (fn.group(1) + "\n"
+              + f"const cases = {json.dumps(cases)};\n"
+              + "console.log(JSON.stringify(cases.map(splitLoopAtRepeats)));")
+    result = subprocess.run(["node", "-e", script], capture_output=True,
+                            text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def _id_sets(loops):
+    return sorted(sorted(loop) for loop in loops)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_a_pinched_figure8_walk_splits_into_two_simple_loops():
+    [got] = _run_split([[0, 1, 2, 0, 3, 4]])
+    assert _id_sets(got) == [[0, 1, 2], [0, 3, 4]]
+    for loop in got:
+        assert len(loop) == len(set(loop)), f"sub-loop still repeats: {loop}"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_a_double_pinch_yields_three_loops():
+    [got] = _run_split([[0, 1, 2, 0, 3, 4, 0, 5, 6]])
+    assert _id_sets(got) == [[0, 1, 2], [0, 3, 4], [0, 5, 6]]
+    for loop in got:
+        assert len(loop) == len(set(loop)), f"sub-loop still repeats: {loop}"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_a_healthy_loop_passes_through_untouched():
+    [got] = _run_split([[0, 1, 2, 3, 4]])
+    assert got == [[0, 1, 2, 3, 4]], (
+        "a loop with no repeated vertex must come back exactly as given — "
+        "the split is a no-op on healthy rims")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_degenerate_sub_loops_are_dropped():
+    # Splitting [0,1,0,2,3] at the repeated 0 leaves [0,1] — under 3 vertices,
+    # not a polygon, dropped. Only the fillable remainder survives.
+    [got] = _run_split([[0, 1, 0, 2, 3]])
+    assert _id_sets(got) == [[0, 2, 3]]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_sub_loops_keep_walk_adjacency():
+    """Every consecutive pair in a sub-loop (wrapping) must be a consecutive
+    pair of the original walk — the split may cut the path, never reorder it,
+    or the fill's rim would no longer trace real mesh edges."""
+    path = [0, 1, 2, 0, 3, 4]
+    edges = set()
+    for i in range(len(path)):
+        a, b = path[i], path[(i + 1) % len(path)]
+        edges.add((min(a, b), max(a, b)))
+    [got] = _run_split([path])
+    for loop in got:
+        for i in range(len(loop)):
+            a, b = loop[i], loop[(i + 1) % len(loop)]
+            assert (min(a, b), max(a, b)) in edges, (
+                f"sub-loop edge {a}->{b} is not an edge of the walk")
+
+
+def test_already_filled_dedup_looks_past_the_shared_pinch_vertex():
+    """Every lobe of a split pinched rim STARTS at the pinch vertex, so two
+    equal-length lobes share their first point. A dedup that compares only
+    length + first vertex would call the second lobe 'already filled' after
+    the first is clicked — it must compare a later vertex too."""
+    src = _read("atlas_blockout.js")
+    body = re.search(r"const alreadyFilled = \(pts\) =>(.*?);\n", src, re.DOTALL)
+    assert body, "alreadyFilled not found in onWandClickInner"
+    assert "points_world[1]" in body.group(1), (
+        "alreadyFilled compares only the first rim vertex — sibling lobes of "
+        "a pinched rim share it and would wrongly skip")
+
+
+def test_mesh_boundary_loops_split_closed_walks():
+    """Integration pin: meshBoundaryLoops must route every CLOSED walk through
+    splitLoopAtRepeats before mapping to world space. Open chains stay whole —
+    the bay fallback needs the full rim run."""
+    src = _read("atlas_blockout.js")
+    body = re.search(r"function meshBoundaryLoops\(mesh\) \{(.*?)\n  \}",
+                     src, re.DOTALL)
+    assert body, "meshBoundaryLoops not found"
+    assert "splitLoopAtRepeats" in body.group(1), (
+        "meshBoundaryLoops does not call splitLoopAtRepeats — pinched rims "
+        "will reach the backend as figure-8 loops and be skipped")

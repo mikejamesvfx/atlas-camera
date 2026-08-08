@@ -4555,6 +4555,37 @@ function buildNodeUI(node, containerEl) {
     return lens[Math.floor(lens.length / 2)] || 0;
   }
 
+  // A closed boundary walk that returns through a vertex it already used is a
+  // figure-8 — a PINCHED rim, which is what the walk produces where two tears
+  // of a torn relief mesh meet at a single shared vertex. Packaged whole, the
+  // backend rightly refuses it as self-intersecting ("vertex N repeats vertex
+  // M", docs/dev/wand_self_intersecting_rims.md). Each lobe is a fillable hole
+  // in its own right, so split at every repeated id into simple sub-loops —
+  // the innermost-containing-loop pick then fills whichever lobe was clicked.
+  // A rim that merely TOUCHES itself splits into fills the same way. No-op on
+  // healthy rims; sub-loops under 3 vertices are not polygons and are dropped.
+  function splitLoopAtRepeats(path) {
+    const loops = [];
+    const stack = [];
+    const at = new Map();         // id -> index in stack
+    for (const id of path) {
+      const j = at.get(id);
+      if (j === undefined) {
+        at.set(id, stack.length);
+        stack.push(id);
+        continue;
+      }
+      // The cycle from the earlier occurrence back to here is one lobe; the
+      // pinch vertex stays on the stack — the walk continues through it.
+      const lobe = stack.slice(j);
+      for (const v of lobe.slice(1)) at.delete(v);
+      stack.length = j + 1;
+      if (lobe.length >= 3) loops.push(lobe);
+    }
+    if (stack.length >= 3) loops.push(stack);
+    return loops;
+  }
+
   function meshBoundaryLoops(mesh) {
     const geo = mesh.geometry;
     if (!geo?.attributes?.position) return { loops: [], chains: [] };
@@ -4628,12 +4659,19 @@ function buildNodeUI(node, containerEl) {
           path.push(cur);
         }
         if (path.length < 3) continue;
-        const world = path.map((id) => {
+        const toWorld = (sub) => sub.map((id) => {
           const p = new THREE.Vector3(...canonPos[id])
             .applyMatrix4(mesh.matrixWorld);
           return [p.x, p.y, p.z];
         });
-        (closed ? loops : chains).push(world);
+        if (closed) {
+          // Split pinched walks HERE, on exact integer ids — after world
+          // mapping it would take an epsilon to see the repeat.
+          for (const sub of splitLoopAtRepeats(path)) loops.push(toWorld(sub));
+        } else {
+          // Open chains stay whole: the bay fallback needs the full rim run.
+          chains.push(toWorld(path));
+        }
       }
     }
     mesh.userData._atlasWandLoops = { uuid: geo.uuid, loops, chains };
@@ -4716,11 +4754,15 @@ function buildNodeUI(node, containerEl) {
     // A rim already claimed by an earlier wand fill is skipped, so re-clicking
     // a filled hole doesn't stack duplicates (the derived mesh still reports
     // the boundary — the fill is a separate polygon on top of it).
+    // Two vertices, not one: sibling lobes of a split pinched rim all START
+    // at the shared pinch vertex, so equal-length lobes match on the first
+    // point alone and the second lobe would wrongly read as already filled.
     const alreadyFilled = (pts) => drawnPolygons.some((p) =>
       (p.established_from?.rule === "wand_fill"
        || p.established_from?.rule === "wand_bay_fill")
       && p.points_world.length === pts.length
-      && quadDist3(p.points_world[0], pts[0]) < 1e-6);
+      && quadDist3(p.points_world[0], pts[0]) < 1e-6
+      && quadDist3(p.points_world[1], pts[1]) < 1e-6);
     let best = null, bestArea = Infinity, bestRule = "wand_fill";
     const allPaths = [];    // [points, closed] — loops AND open chains
     for (const mesh of drawTargets()) {

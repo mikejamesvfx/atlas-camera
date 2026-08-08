@@ -106,7 +106,15 @@ or Apply closes the loop (`closeDrawnOutline`, needs ≥3 points). Fills a
 INSIDE any enclosed tear. Boundary loops are extracted per drawTargets() mesh
 (edges owned by exactly one triangle; vertices deduped by rounded position so
 buffer seams don't break loops) and cached on `userData._atlasWandLoops`
-keyed by geometry uuid (re-extracted after every execution's rebuild). The
+keyed by geometry uuid (re-extracted after every execution's rebuild).
+**Pinched walks are split at extraction** (`splitLoopAtRepeats`, 2026-08-08):
+where two tears meet at a shared vertex the boundary walk returns a figure-8
+that reuses that vertex — the backend refuses it as self-intersecting — so
+closed walks are split at every repeated vertex id into simple sub-loops
+(exact integer ids, before world mapping; sub-loops under 3 verts dropped;
+open chains stay whole for the bay fallback). Each lobe fills independently;
+`alreadyFilled` dedup compares the first TWO rim vertices because sibling
+lobes share their starting pinch vertex. The
 click picks the INNERMOST containing loop by projected NDC area
 (`WAND_MAX_NDC_AREA 0.8` rejects the mesh's outer border; `WAND_MAX_RIM 600`
 rejects monster rims → use Quad/Draw). The fill commits the loop's EXACT rim
