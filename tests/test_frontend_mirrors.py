@@ -554,3 +554,56 @@ def test_camera_shake_numerically_matches_js():
             assert a == pytest.approx(b, abs=1e-9)
         for a, b in zip(py_up, got["up"]):
             assert a == pytest.approx(b, abs=1e-9)
+
+
+# --- 🧹 Clear-all rail button (atlas_blockout.js) ---------------------------
+#
+# Text pins, not executed math: the button's whole body lives inside the
+# buildNodeUI closure (drawnPolygons / drawPoints / drawHud / refreshDrawOverlay
+# are all closed-over), so there is nothing extractable to run under node the
+# way splitLoopAtRepeats is. What these pin are the four properties that make
+# the control safe rather than merely present.
+
+
+def test_clear_all_is_on_the_rail_next_to_the_single_shape_delete():
+    src = _read("atlas_blockout.js")
+    assert 'styleRailBtn(clearAllBtn, "trashAll");' in src
+    assert "trashAll: railSvg(" in src
+    # Appended after 🗑 inside railTools, before the Apply separator.
+    assert "editBtn, snapBtn, deleteBtn, clearAllBtn," in src
+
+
+def test_clear_all_needs_two_clicks_and_never_opens_a_modal():
+    """One click on a control that can destroy an entire drawing session, with
+    no undo anywhere in the viewport, is the failure this gate exists for.
+
+    And it must NOT be a window confirm(): a modal blocks the whole ComfyUI
+    page until dismissed (see the browser-dialog rule), where an armed button
+    costs nothing to ignore.
+    """
+    src = _read("atlas_blockout.js")
+    assert "let clearArmed = false;" in src
+    assert "if (!clearArmed) {" in src
+    assert "clearArmed = true;" in src
+    body = src[src.index("clearAllBtn.onclick"):src.index("// Box — three-stage")]
+    assert "confirm(" not in body
+    # Arming expires on its own — a stale arm would make the NEXT click a
+    # one-click wipe, which is exactly what the gate is for.
+    assert "const CLEAR_ARM_MS = 4000;" in src
+    assert "clearArmTimer = setTimeout(" in src
+    # ...and so does moving on to any other rail action.
+    assert "b.onclick = () => { disarmClearAll(); orig(); };" in src
+
+
+def test_clear_all_marks_the_drawing_dirty_so_an_empty_list_can_apply():
+    """Apply refuses an empty list unless drawDirty — without this the last
+    wipe could never be baked, and the geometry would survive the clear.
+    """
+    src = _read("atlas_blockout.js")
+    body = src[src.index("clearAllBtn.onclick"):src.index("// Box — three-stage")]
+    assert "drawnPolygons.length = 0;" in body      # in place: the payload holds it
+    assert "drawDirty = true;" in body
+    assert "refreshDrawOverlay();" in body
+    # The half-drawn outline goes too, or the viewport reads as "not cleared".
+    assert "drawPoints = []; drawRays = []; drawHits = []; drawPlane = null;" in body
+    assert "editSel = null;" in body

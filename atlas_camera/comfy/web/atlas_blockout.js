@@ -3786,6 +3786,64 @@ function buildNodeUI(node, containerEl) {
     refreshDrawOverlay();
   };
 
+  // Clear ALL drawn/filled shapes in one go. 🗑 deletes one at a time, which is
+  // the wrong tool after a wand session leaves thirty fills on a torn mesh —
+  // thirty clicks to start over (asked for live 2026-08-08).
+  //
+  // ARMED IN TWO CLICKS, never one: there is no undo in the viewport, and this
+  // is the only control that can destroy an entire session's drawing. The first
+  // click arms and says how many shapes are at stake; a second click within
+  // CLEAR_ARM_MS commits; doing nothing disarms. Deliberately NOT a window
+  // confirm() — a modal dialog blocks the whole ComfyUI page (and any automation
+  // driving it) until dismissed, where an armed button costs nothing to ignore.
+  const CLEAR_ARM_MS = 4000;
+  let clearArmed = false;
+  let clearArmTimer = null;
+  const clearAllBtn = document.createElement("button");
+  clearAllBtn.textContent = "🧹";
+  clearAllBtn.title = "Clear ALL drawn and wand-filled shapes at once, plus any "
+    + "outline still in progress. Click once to arm, again to confirm (there is "
+    + "no undo). Click ✅ Apply afterwards to rebuild without them — an empty "
+    + "list applies, so this really does unbake the geometry.";
+  clearAllBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  function disarmClearAll() {
+    clearArmed = false;
+    if (clearArmTimer !== null) { clearTimeout(clearArmTimer); clearArmTimer = null; }
+    clearAllBtn.style.background = "transparent";
+    clearAllBtn.style.color = "#c9c9d1";
+  }
+  clearAllBtn.onclick = () => {
+    const pending = drawPoints.length;
+    if (!drawnPolygons.length && !pending) {
+      disarmClearAll();
+      drawHud("🧹 nothing to clear");
+      return;
+    }
+    if (!clearArmed) {
+      clearArmed = true;
+      clearAllBtn.style.background = "#4a1d1d";
+      clearAllBtn.style.color = "#ff9b9b";
+      drawHud(`🧹 clear ALL ${drawnPolygons.length} shape(s)`
+        + (pending ? ` + the outline in progress` : "")
+        + ` — click 🧹 again to confirm, there is no undo`);
+      clearArmTimer = setTimeout(() => {
+        if (!clearArmed) return;
+        disarmClearAll();
+        drawHud("🧹 clear-all disarmed");
+      }, CLEAR_ARM_MS);
+      return;
+    }
+    const n = drawnPolygons.length;
+    disarmClearAll();
+    drawnPolygons.length = 0;          // same array — the overlay/payload hold it
+    drawPoints = []; drawRays = []; drawHits = []; drawPlane = null;
+    editSel = null;
+    editDrag = null;
+    drawDirty = true;                  // an EMPTY list still applies when dirty
+    refreshDrawOverlay();
+    drawHud(`🧹 cleared ${n} shape(s) — ✅ Apply to rebuild without them`);
+  };
+
   // ---------------------------------------------------------------------------
   // Box — three-stage blockout solid: footprint on the ground, then extrude up.
   //
@@ -4555,6 +4613,37 @@ function buildNodeUI(node, containerEl) {
     return lens[Math.floor(lens.length / 2)] || 0;
   }
 
+  // A closed boundary walk that returns through a vertex it already used is a
+  // figure-8 — a PINCHED rim, which is what the walk produces where two tears
+  // of a torn relief mesh meet at a single shared vertex. Packaged whole, the
+  // backend rightly refuses it as self-intersecting ("vertex N repeats vertex
+  // M", docs/dev/wand_self_intersecting_rims.md). Each lobe is a fillable hole
+  // in its own right, so split at every repeated id into simple sub-loops —
+  // the innermost-containing-loop pick then fills whichever lobe was clicked.
+  // A rim that merely TOUCHES itself splits into fills the same way. No-op on
+  // healthy rims; sub-loops under 3 vertices are not polygons and are dropped.
+  function splitLoopAtRepeats(path) {
+    const loops = [];
+    const stack = [];
+    const at = new Map();         // id -> index in stack
+    for (const id of path) {
+      const j = at.get(id);
+      if (j === undefined) {
+        at.set(id, stack.length);
+        stack.push(id);
+        continue;
+      }
+      // The cycle from the earlier occurrence back to here is one lobe; the
+      // pinch vertex stays on the stack — the walk continues through it.
+      const lobe = stack.slice(j);
+      for (const v of lobe.slice(1)) at.delete(v);
+      stack.length = j + 1;
+      if (lobe.length >= 3) loops.push(lobe);
+    }
+    if (stack.length >= 3) loops.push(stack);
+    return loops;
+  }
+
   function meshBoundaryLoops(mesh) {
     const geo = mesh.geometry;
     if (!geo?.attributes?.position) return { loops: [], chains: [] };
@@ -4628,12 +4717,19 @@ function buildNodeUI(node, containerEl) {
           path.push(cur);
         }
         if (path.length < 3) continue;
-        const world = path.map((id) => {
+        const toWorld = (sub) => sub.map((id) => {
           const p = new THREE.Vector3(...canonPos[id])
             .applyMatrix4(mesh.matrixWorld);
           return [p.x, p.y, p.z];
         });
-        (closed ? loops : chains).push(world);
+        if (closed) {
+          // Split pinched walks HERE, on exact integer ids — after world
+          // mapping it would take an epsilon to see the repeat.
+          for (const sub of splitLoopAtRepeats(path)) loops.push(toWorld(sub));
+        } else {
+          // Open chains stay whole: the bay fallback needs the full rim run.
+          chains.push(toWorld(path));
+        }
       }
     }
     mesh.userData._atlasWandLoops = { uuid: geo.uuid, loops, chains };
@@ -4716,11 +4812,15 @@ function buildNodeUI(node, containerEl) {
     // A rim already claimed by an earlier wand fill is skipped, so re-clicking
     // a filled hole doesn't stack duplicates (the derived mesh still reports
     // the boundary — the fill is a separate polygon on top of it).
+    // Two vertices, not one: sibling lobes of a split pinched rim all START
+    // at the shared pinch vertex, so equal-length lobes match on the first
+    // point alone and the second lobe would wrongly read as already filled.
     const alreadyFilled = (pts) => drawnPolygons.some((p) =>
       (p.established_from?.rule === "wand_fill"
        || p.established_from?.rule === "wand_bay_fill")
       && p.points_world.length === pts.length
-      && quadDist3(p.points_world[0], pts[0]) < 1e-6);
+      && quadDist3(p.points_world[0], pts[0]) < 1e-6
+      && quadDist3(p.points_world[1], pts[1]) < 1e-6);
     let best = null, bestArea = Infinity, bestRule = "wand_fill";
     const allPaths = [];    // [points, closed] — loops AND open chains
     for (const mesh of drawTargets()) {
@@ -4855,6 +4955,10 @@ function buildNodeUI(node, containerEl) {
       + '<path d="M7 8h4M13 8h4"/>'),
     trash: railSvg('<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13"/>'
       + '<path d="M10 11v5.5M14 11v5.5"/>'),
+    // Clear-all: the same bin, shifted right to make room for sweep strokes —
+    // "everything goes in", distinct from the single-shape 🗑 at a glance.
+    trashAll: railSvg('<path d="M7.5 7.5h13M13 7.5V5h4v2.5M9.5 7.5l1 12.5h8l1-12.5"/>'
+      + '<path d="M1.5 7h4M1.5 11h4M1.5 15h4" opacity="0.75"/>'),
     apply: railSvg('<path d="M4.5 12.5l5.5 5.5L19.5 6.5"/>'),
     wand: railSvg('<path d="M4 20l9-9"/>'
       + '<path d="M15.5 3.5v4M13.5 5.5h4"/>'
@@ -4891,6 +4995,7 @@ function buildNodeUI(node, containerEl) {
   styleRailBtn(editBtn, "edit");
   styleRailBtn(snapBtn, "snap");
   styleRailBtn(deleteBtn, "trash");
+  styleRailBtn(clearAllBtn, "trashAll");
   styleRailBtn(drawApplyBtn, "apply");
   // Collapse toggle. The tool buttons live in their own container so hiding
   // them leaves the toggle itself on screen — a control that can hide its own
@@ -4907,7 +5012,8 @@ function buildNodeUI(node, containerEl) {
   railTools.style.cssText = "display:flex;flex-direction:column;gap:4px;";
   railTools.append(wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
                    railSeparator(),
-                   editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
+                   editBtn, snapBtn, deleteBtn, clearAllBtn,
+                   railSeparator(), drawApplyBtn);
 
   let railToolsVisible = true;   // tools ON by default
   const railToggleBtn = document.createElement("button");
@@ -4987,12 +5093,20 @@ function buildNodeUI(node, containerEl) {
     snapBtn.style.color = editSnap ? "#7dd87d" : "#c9c9d1";
   }
   deleteBtn.style.color = "#c9c9d1";
+  clearAllBtn.style.color = "#c9c9d1";
   drawApplyBtn.style.background = "#1e3a24";
   drawApplyBtn.style.color = "#7dd87d";
+  // Any OTHER rail action disarms a pending clear-all: the artist has moved on,
+  // and an arm that outlived the moment would turn the next 🧹 click into a
+  // one-click wipe — exactly what the two-click gate exists to prevent.
   for (const b of [wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
                    editBtn, snapBtn]) {
     const orig = b.onclick;
-    b.onclick = () => { orig(); syncRailActive(); updateRailStatus(); };
+    b.onclick = () => { disarmClearAll(); orig(); syncRailActive(); updateRailStatus(); };
+  }
+  for (const b of [deleteBtn, drawApplyBtn]) {
+    const orig = b.onclick;
+    b.onclick = () => { disarmClearAll(); orig(); };
   }
   syncRailActive();
   updateRailStatus();

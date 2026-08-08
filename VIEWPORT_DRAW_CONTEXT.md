@@ -70,7 +70,7 @@ mutual-exclusion cross-calls still work) to refresh it. `metaHud` moved to
 left:66px/top:46px to clear the rail. Icon-only (full wording stays in
 each button's tooltip): **🪄 Wand**, **✏️ Draw**, **⬜ Quad**, **➬ Extrude**,
 **▣ Box**, **● Sphere** │ **✎ Edit**,
-**🧲 Snap**, **🗑 Delete** │ **✅ Apply**. A **chevron toggle** (`railToggleBtn`,
+**🧲 Snap**, **🗑 Delete**, **🧹 Clear all** │ **✅ Apply**. A **chevron toggle** (`railToggleBtn`,
 `syncRailCollapsed`, 2026-08-07) sits at the TOP of the rail and folds the tools
 away; the buttons live in an inner `railTools` container so the toggle itself
 stays on screen when they are hidden (a control that can hide its own only way
@@ -83,7 +83,17 @@ with its tools already hidden would read as a broken viewport.
 🗑 removes the `editSel` shape (or,
 with no selection, the most recent shape) and sets `drawDirty`; Apply persists
 even a now-EMPTY list when dirty, so deleting the last shape can actually
-unbake it. The rail is a child of `canvasWrap` and is NEVER
+unbake it. **🧹 Clear all** (`clearAllBtn`, 2026-08-08) empties `drawnPolygons`
+in ONE action plus any outline still in progress — 🗑 one-at-a-time is the wrong
+tool after a wand session leaves thirty fills on a torn mesh. It is **armed in
+two clicks**: the first arms (button goes red, HUD names how many shapes are at
+stake), a second within `CLEAR_ARM_MS` (4 s) commits, and doing nothing — or
+touching any other rail button, which all call `disarmClearAll()` — disarms.
+Deliberately NOT a `window.confirm()`: a modal blocks the whole ComfyUI page
+until dismissed, where an armed button costs nothing to ignore. There is no undo
+in the viewport, which is the entire reason for the gate. It sets `drawDirty` on
+the same empty-list-applies path as 🗑, so a clear followed by ✅ Apply really
+does unbake the geometry. The rail is a child of `canvasWrap` and is NEVER
 reparented by `mountControls` — it stays on the viewport even when the main
 toolbar moves to an AtlasViewportControls node. The tilt/push `drawAdjust` row
 is a contextual flyout anchored right of the rail, shown only while Draw is

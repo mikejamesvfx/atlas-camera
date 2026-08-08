@@ -520,21 +520,44 @@ def rasterize_polygon_mask(points: Sequence[Point2D], height: int, width: int):
 
 
 def _polygon_mask(np, points: Sequence[Point2D], height: int, width: int):
-    """Even-odd rasterization of the polygon onto an (H, W) bool grid."""
-    ys, xs = np.mgrid[0:height, 0:width]
-    px = xs + 0.5
-    py = ys + 0.5
+    """Even-odd rasterization of the polygon onto an (H, W) bool grid.
+
+    Work is bounded to the polygon's own extent: pixels outside the bounding
+    box cannot be inside, and an edge can only flip pixels on the scanlines it
+    straddles, so each edge touches only its own row band within the box. The
+    original full-frame pass per edge was O(edges x W x H) — ~17s for one
+    600-vert wand rim on a 2K plate, in the per-solve hot path
+    (_apply_drawn_polygons re-rasterizes every enabled fill every execution).
+    """
     inside = np.zeros((height, width), dtype=bool)
     n = len(points)
+    if n == 0:
+        return inside
+
+    xs = [float(p[0]) for p in points]
+    ys = [float(p[1]) for p in points]
+    col_lo = max(0, int(math.floor(min(xs) - 1.0)))
+    col_hi = min(width, int(math.ceil(max(xs) + 1.0)))
+    row_lo = max(0, int(math.floor(min(ys) - 1.0)))
+    row_hi = min(height, int(math.ceil(max(ys) + 1.0)))
+    if col_lo >= col_hi or row_lo >= row_hi:
+        return inside
+
+    px = np.arange(col_lo, col_hi, dtype=np.float64) + 0.5   # (cols,)
+    box = inside[row_lo:row_hi, col_lo:col_hi]               # view — writes land
     for i in range(n):
         x0, y0 = points[i]
         x1, y1 = points[(i + 1) % n]
         if y0 == y1:
             continue
+        r0 = max(row_lo, int(math.floor(min(y0, y1) - 0.5)))
+        r1 = min(row_hi, int(math.ceil(max(y0, y1) + 0.5)))
+        if r0 >= r1:
+            continue
+        py = np.arange(r0, r1, dtype=np.float64)[:, None] + 0.5   # (rows, 1)
         straddles = ((y0 > py) != (y1 > py))
-        with np.errstate(divide="ignore", invalid="ignore"):
-            x_cross = (x1 - x0) * (py - y0) / (y1 - y0) + x0
-        inside ^= straddles & (px < x_cross)
+        x_cross = (x1 - x0) * (py - y0) / (y1 - y0) + x0
+        box[r0 - row_lo:r1 - row_lo, :] ^= straddles & (px[None, :] < x_cross)
     return inside
 
 
