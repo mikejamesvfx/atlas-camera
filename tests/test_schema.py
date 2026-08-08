@@ -160,3 +160,22 @@ def test_plate_refs_and_output_profile_round_trip_through_solve_json():
     assert restored.output_profile.output_colorspace == "ACES - ACEScg"
     assert restored.projection_sources[0].plate_ref.image_path == "plates/hero.exr"
     assert restored.projection_sources[0].image_b64.startswith("data:image/jpeg")
+
+
+def test_solve_json_carries_the_package_version_that_produced_it():
+    """An agent or pipeline consuming a solve artifact must be able to ask
+    "which Atlas produced this?" without interpreting Git history (2026-08-08
+    hygiene pass). schema_version says what the STRUCTURE means;
+    atlas_version says which build wrote it. from_dict ignores unknown keys,
+    so old JSONs without the stamp still load."""
+    import atlas_camera
+    from atlas_camera.core.intrinsics import build_intrinsics as _bi
+
+    solve = AtlasSolve(camera=AtlasCamera(intrinsics=_bi(
+        image_width=64, image_height=64)))
+    data = solve.to_dict()
+
+    assert data["atlas_version"] == atlas_camera.__version__
+    # and it survives a JSON round trip without breaking from_dict
+    restored = AtlasSolve.from_json(solve.to_json())
+    assert restored.to_dict()["atlas_version"] == atlas_camera.__version__

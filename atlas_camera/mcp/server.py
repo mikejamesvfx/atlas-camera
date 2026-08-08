@@ -46,6 +46,40 @@ _KNOWN_DEPS = {
 
 _EXPERIMENTAL = ()
 
+# Capability manifest + licence metadata (2026-08-08 hygiene pass): one call
+# answers "what can this install do, under which licences?" for agents and
+# pipelines. mcp_tools is pinned against the @mcp.tool() surface by
+# tests/test_mcp_server_health.py, so it cannot silently drift.
+_CAPABILITIES = {
+    "mcp_tools": [
+        "atlas_health", "atlas_validate_workflow", "atlas_run_workflow",
+        "atlas_solve_image", "atlas_read_debug_report",
+        "atlas_read_output_assessment", "atlas_inspect_viewport",
+        "atlas_export_scene", "atlas_node_catalog",
+    ],
+    "dcc_exporters": ["nuke", "maya", "blender", "usd", "obj", "glb"],
+    # The one deliberately browser-bound operation — ⏺ Bake runs in the
+    # viewport's WebGL context and is absent from MCP (see module docstring).
+    "camera_move_bake": "browser_only",
+    "transport": "stdio",
+}
+
+# "Atlas code licence" and "selected inference-model licence" are separate
+# compliance fields (deep-research report). Facts mirror INSTALL.md — the
+# gated SAM3 repo and the non-commercial DA3 giant weights are the two that
+# bite commercial users.
+_LICENCES = {
+    "atlas_camera": "MIT",
+    "models": {
+        "geocalib": {"licence": "Apache-2.0"},
+        "depth_anything_v2": {"code": "Apache-2.0",
+                              "weights": "small Apache-2.0; base/large CC-BY-NC-4.0"},
+        "depth_anything_3": {"weights": "DA3NESTED-GIANT-LARGE-1.1 CC-BY-NC-4.0"},
+        "moge_2": {"licence": "MIT"},
+        "sam3": {"licence": "Meta SAM-License-1.0", "gated": True},
+    },
+}
+
 mcp = FastMCP(
     "atlas-camera",
     instructions=(
@@ -88,6 +122,8 @@ def atlas_health() -> str:
         "experimental_registered": all(n in oi for n in _EXPERIMENTAL),
         "missing_third_party": [f"{k} — {v}" for k, v in _KNOWN_DEPS.items()
                                 if k not in oi],
+        "capabilities": _CAPABILITIES,
+        "licences": _LICENCES,
     }, indent=1)
 
 

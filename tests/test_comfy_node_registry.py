@@ -289,3 +289,42 @@ def test_every_node_sits_in_a_numbered_pipeline_folder():
              **(getattr(reg, "IOS_NODE_CLASS_MAPPINGS", {}) or {})}
     for key in gated:
         assert reg.MENU_CATEGORY[key] == "Atlas/advanced", key
+
+
+def test_registry_surface_hash_is_stable_and_tracks_the_registered_surface():
+    """registry_surface_hash() lets an artifact record WHICH node surface
+    produced it (2026-08-08 hygiene pass) — an agent can then ask "was this
+    debug report written by the registry I'm talking to?" without git
+    archaeology. It must be deterministic across calls and change iff the
+    registered keys change."""
+    import atlas_camera.comfy.node_registry as reg
+
+    h1 = reg.registry_surface_hash()
+    h2 = reg.registry_surface_hash()
+    assert h1 == h2
+    assert isinstance(h1, str) and len(h1) == 12, (
+        "short stable hex digest — long enough to be unambiguous, short "
+        "enough to eyeball in a JSON artifact")
+
+    # Sensitive to the surface: a hypothetical extra key changes the hash.
+    import hashlib
+    keys = sorted({**reg.NODE_CLASS_MAPPINGS,
+                   **reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS,
+                   **(getattr(reg, "LEGACY_NODE_CLASS_MAPPINGS", {}) or {}),
+                   **(getattr(reg, "IOS_NODE_CLASS_MAPPINGS", {}) or {})})
+    expected = hashlib.sha256("\n".join(keys).encode()).hexdigest()[:12]
+    assert h1 == expected, (
+        "hash must cover the FULL registered surface (standard + gated) in "
+        "sorted key order")
+
+
+def test_debug_report_and_assessment_stamp_the_registry_hash():
+    """Text pin: both comfy-layer artifact writers include registry_hash.
+    (Runtime tests for these writers need torch; the wiring is one call each,
+    pinned here the same way frontend mirrors are pinned.)"""
+    import os
+    base = os.path.join(os.path.dirname(__file__), "..", "atlas_camera", "comfy")
+    for name in ("nodes_viewport.py", "nodes_qa.py"):
+        src = open(os.path.join(base, name), encoding="utf-8").read()
+        assert "registry_surface_hash" in src, f"{name} does not stamp registry_hash"
+        assert '"registry_hash"' in src, f"{name} does not emit a registry_hash key"

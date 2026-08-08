@@ -589,6 +589,16 @@ class LatentScene:
 
         data = _json_ready(self)
         data["schema_version"] = self.schema_version
+        # Which build wrote this artifact (schema_version says what the
+        # STRUCTURE means; this says who produced it). Lazy import: the
+        # parent package is initialised by the time to_dict runs, and the
+        # fallback keeps core usable if packaging metadata is absent —
+        # a stamp failure must never fail a solve export.
+        try:
+            from atlas_camera import __version__ as _atlas_version
+        except Exception:
+            _atlas_version = "unknown"
+        data["atlas_version"] = _atlas_version
         data["scene_type"] = "latent_scene"
         data["confidence_detail"] = self.camera.confidence.to_dict()
         # Derived trust stamp (like confidence_detail): every exported solve

@@ -555,3 +555,18 @@ def _apply_menu_categories() -> None:
 
 
 _apply_menu_categories()
+
+
+def registry_surface_hash() -> str:
+    """Short stable digest of the FULL registered node surface (standard +
+    experimental + legacy + iOS keys, sorted). Stamped into comfy-layer
+    artifacts (debug report, output assessment) so a consumer can tell which
+    registry surface produced them without interpreting Git history. Keys
+    only — display names and categories are presentation, and gating env vars
+    must not change the hash between two installs of the same build.
+    """
+    import hashlib
+
+    keys = sorted({**NODE_CLASS_MAPPINGS, **EXPERIMENTAL_NODE_CLASS_MAPPINGS,
+                   **LEGACY_NODE_CLASS_MAPPINGS, **IOS_NODE_CLASS_MAPPINGS})
+    return hashlib.sha256("\n".join(keys).encode()).hexdigest()[:12]
