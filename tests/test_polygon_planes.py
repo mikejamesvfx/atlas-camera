@@ -315,3 +315,87 @@ def test_normalized_points_scale_to_any_plate_resolution():
 def test_normalized_points_reject_out_of_range_values():
     with pytest.raises(ValueError):
         points_from_normalized([(0.5, 1.4)], 100, 100)
+
+
+# --- polygon mask rasterization ---------------------------------------------
+#
+# rasterize_polygon_mask is in the per-execution hot path: every enabled drawn
+# fill re-rasterizes its mask on every solve (_apply_drawn_polygons). The
+# original implementation did one FULL-FRAME numpy pass per polygon edge —
+# O(edges x W x H) — which benchmarked at ~17s for a single 600-vert wand rim
+# on a 2048x1152 plate (2026-08-08, the "solve got slow" report). The fix
+# restricts work to the polygon's bounding box and each edge's own row band;
+# these tests pin exact equivalence with a brute-force even-odd reference,
+# and a wall-clock bound that the full-frame implementation cannot meet.
+
+from atlas_camera.core.polygon_planes import rasterize_polygon_mask
+
+
+def _brute_force_mask(points, height, width):
+    """Per-pixel even-odd crossing count — independent reference."""
+    mask = np.zeros((height, width), dtype=bool)
+    n = len(points)
+    for row in range(height):
+        py = row + 0.5
+        for col in range(width):
+            px = col + 0.5
+            inside = False
+            for i in range(n):
+                x0, y0 = points[i]
+                x1, y1 = points[(i + 1) % n]
+                if y0 == y1:
+                    continue
+                if (y0 > py) != (y1 > py):
+                    x_cross = (x1 - x0) * (py - y0) / (y1 - y0) + x0
+                    if px < x_cross:
+                        inside = not inside
+            mask[row, col] = inside
+    return mask
+
+
+@pytest.mark.parametrize("points", [
+    # convex, interior
+    [(8.0, 8.0), (30.0, 10.0), (28.0, 32.0), (6.0, 28.0)],
+    # concave star — multiple crossings per scanline
+    [(20.0, 2.0), (24.0, 16.0), (38.0, 16.0), (26.0, 24.0), (32.0, 38.0),
+     (20.0, 28.0), (8.0, 38.0), (14.0, 24.0), (2.0, 16.0), (16.0, 16.0)],
+    # partially OUTSIDE the frame (negative and past-edge coordinates)
+    [(-10.0, -6.0), (25.0, -4.0), (30.0, 20.0), (-8.0, 24.0)],
+    # entirely outside the frame
+    [(50.0, 50.0), (70.0, 50.0), (70.0, 70.0), (50.0, 70.0)],
+    # horizontal edges (skipped by the crossing rule)
+    [(5.0, 5.0), (35.0, 5.0), (35.0, 30.0), (5.0, 30.0)],
+], ids=["convex", "star", "partial", "outside", "horizontal"])
+def test_rasterized_mask_matches_brute_force_even_odd(points):
+    got = rasterize_polygon_mask(points, 40, 40)
+    expected = _brute_force_mask(points, 40, 40)
+    assert got.shape == expected.shape
+    assert (got == expected).all()
+
+
+def test_a_big_wand_rim_rasterizes_in_bounded_time():
+    """A 600-vert rim (WAND_MAX_RIM) on a 2K plate must stay interactive.
+
+    The full-frame-pass-per-edge implementation took ~17s here; the bounded
+    implementation must land well under a second — generous 2s bound so slow
+    CI machines don't flake, still 8x under the defect."""
+    import math
+    import random
+    import time
+
+    rng = random.Random(1)
+    n = 600
+    pts = []
+    for i in range(n):
+        a = 2 * math.pi * i / n
+        r = 300.0 * (1.0 + 0.35 * rng.random())
+        pts.append((1000.0 + r * math.cos(a), 550.0 + r * math.sin(a)))
+
+    t0 = time.perf_counter()
+    mask = rasterize_polygon_mask(pts, 1152, 2048)
+    elapsed = time.perf_counter() - t0
+
+    assert mask.any(), "the rim must actually rasterize"
+    assert elapsed < 2.0, (
+        f"rasterize took {elapsed:.2f}s — the per-edge work is not bounded "
+        "to the polygon's own extent")
