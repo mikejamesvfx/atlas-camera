@@ -556,9 +556,15 @@ class AtlasAssessOutput:
             from atlas_camera import __version__ as atlas_version
         except Exception:
             atlas_version = "unknown"
+        try:
+            from atlas_camera.comfy.node_registry import registry_surface_hash
+            registry_hash = registry_surface_hash()
+        except Exception:
+            registry_hash = "unknown"
         data = {
             "schema": 2,
             "atlas_version": atlas_version,
+            "registry_hash": registry_hash,
             "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "status": status,
             "verdict": overall,

@@ -74,14 +74,16 @@ Maya and Resolve. Render format is a project-level camera up to **8192 px**.
 
 ## Install tiers
 
-The core is pure NumPy with **zero required dependencies** — solve a camera and
-export to your DCC with no GPU. Every node registers without heavy dependencies;
-a GPU is only needed for the optional neural features.
+The dependency contract has three tiers: the **schema, solve JSON and DCC
+exporters are dependency-free**; numerical camera recovery needs **NumPy**;
+automatic line detection needs **NumPy + OpenCV** (`[vision]`). Every node
+registers without heavy dependencies; a GPU is only needed for the optional
+neural features.
 
 | Tier | Install | Adds |
 |---|---|---|
-| **Core** | *(nothing)* | Camera solve from vanishing points, masks, DCC export — pure Python, no GPU |
-| **`[vision]`** | numpy + opencv | Geometric solve with line detection + debug overlays |
+| **Core** | *(nothing)* | Schema, solve JSON, masks, DCC export — pure Python, no GPU |
+| **`[vision]`** | numpy + opencv | Vanishing-point camera solve with line detection + debug overlays |
 | **`[neural]`** | torch + GeoCalib | Learned solve, monocular depth, depth-driven geometry, patches |
 
 Depth Anything V2 (`V2-Metric-Outdoor`) is the default depth backend — Apache-

@@ -988,12 +988,18 @@ class AtlasDebugReport:
             from atlas_camera import __version__ as _atlas_version
         except Exception:
             _atlas_version = "unknown"
+        try:
+            from atlas_camera.comfy.node_registry import registry_surface_hash
+            _registry_hash = registry_surface_hash()
+        except Exception:
+            _registry_hash = "unknown"
         data = {
             # Versioned for external consumers (this JSON is parsed by
             # tooling/AI assistants, not just eyeballed): bump "schema" on
             # any breaking key change.
             "schema": 1,
             "atlas_version": _atlas_version,
+            "registry_hash": _registry_hash,
             "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "camera": camera,
             "depth": depth_info,

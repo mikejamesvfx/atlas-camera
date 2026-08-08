@@ -53,6 +53,38 @@ Three stale node counts (56, 58 and 60, none of them right) and two example
 workflows that no longer exist — `atlas_camera_staged_master_workflow.json` and
 `atlas_occlusion_cull_quickstart_workflow.json` — went with it.
 
+### The wand fills the rims it used to refuse
+
+Where two tears of a torn relief mesh meet at a shared vertex, the boundary
+walk returned one figure-8 loop the backend rightly refused as
+self-intersecting — the "wand fill skipped" trail from 0.8.2's diagnosis
+commits, now fixed. Closed walks are split at repeated vertices into simple
+lobes at extraction, so one click fills whichever lobe was clicked, and a rim
+that merely touches itself fills the same way. Separately, the polygon mask
+rasterizer is now bounded to each fill's own extent: a 600-vertex wand rim on
+a 2K plate dropped from ~17 s to ~0.07 s, which returns solves with many
+accumulated fills to their baseline time.
+
+### Artifacts say who made them
+
+Machine-readable provenance for agents and pipelines (the deep-research
+report's month-one hygiene items):
+
+- **Solve JSON now carries `atlas_version`** beside its existing
+  `schema_version` — which build wrote it vs what the structure means.
+- **Debug reports and output assessments add `registry_hash`**, a short
+  digest of the full registered node surface, so a consumer can tell whether
+  an artifact came from the registry it is talking to.
+- **`atlas_health` gains `capabilities` and `licences` blocks**: the exact
+  MCP tool list (test-pinned against the decorated surface), DCC exporters,
+  the explicit `camera_move_bake: "browser_only"` gap, and code licence
+  (MIT) separated from per-model weight licences — gated SAM3 and the
+  non-commercial DA3 giant weights are the two that bite commercial users.
+- **README states the real dependency contract**: schema/JSON/export =
+  dependency-free; numerical recovery = NumPy; line detection = NumPy +
+  OpenCV. The old "zero required dependencies" absolute is gone, and a doc
+  guard keeps it gone.
+
 ## 0.8.1 — 2026-07-21
 
 Completes the arm64 story 0.8.0 started — the node pack no longer requires

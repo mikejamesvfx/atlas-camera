@@ -220,3 +220,18 @@ def test_the_changelog_does_not_claim_an_unreleased_version_as_released():
         f"CHANGELOG's newest entry is {newest!r} but the shipped version is "
         f"{version!r}. Either bump pyproject (a RELEASE — note this publishes "
         f"to the ComfyUI registry) or mark the entry unreleased.")
+
+
+def test_readme_states_the_three_tier_dependency_contract():
+    """"The core is pure NumPy with zero required dependencies" read as a
+    contradiction in a clean environment: the numerical solver lazily
+    REQUIRES NumPy and raises with an install hint when it is absent
+    (deep-research report, 2026-08-08). The honest contract has three tiers —
+    schema/JSON/export = dependency-free; numerical camera recovery = NumPy;
+    automatic line detection = NumPy + OpenCV — and the README must state it
+    rather than the old absolute."""
+    readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+    assert "zero required dependencies" not in readme, (
+        "the old absolute claim is back — the solver requires NumPy")
+    for phrase in ("dependency-free", "NumPy", "OpenCV"):
+        assert phrase in readme, f"three-tier dependency contract lost: {phrase}"
