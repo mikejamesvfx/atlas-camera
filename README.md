@@ -42,9 +42,11 @@ geometry, and hands you a scene you can look through — one node, sensible
 defaults, no wiring. Everything else in the pack exists to take over a stage of
 that chain once you need to.
 
-In the ComfyUI node search, **`Atlas`** is the working set — the nodes the
-shipped example workflows actually use. **`Atlas/advanced`** is everything else:
-still supported, still tested, just not where you start.
+In the ComfyUI Add-Node menu, **`Atlas` holds ten numbered folders in pipeline
+order** — `01 · Input & Camera` through `10 · Export` — so the menu reads as the
+job rather than as an alphabet. **`Atlas/advanced`** holds every gated node
+(experimental, legacy, iOS): still supported, still tested, just not where you
+start.
 
 ## What comes out
 
