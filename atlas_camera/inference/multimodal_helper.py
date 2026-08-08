@@ -665,6 +665,30 @@ def _image_base64(path: Path) -> str:
 _VLM_MAX_IMAGE_SIDE = 1280
 
 
+def _vlm_bbox_to_plate_factor(image_size: tuple[int, int] | None) -> float:
+    """Multiplier taking a VLM bbox from SENT-image pixels back to plate pixels.
+
+    `_image_data_url` downscales the long edge to `_VLM_MAX_IMAGE_SIDE` before
+    encoding, so a model never sees plate coordinates and cannot return them —
+    every bbox comes back in the reduced space. Reconciling that here, once,
+    keeps `bbox_px` meaning what its name and the prompt both promise ("in
+    PIXELS of this image") for every consumer downstream.
+
+    Left unreconciled it broke two things silently on any plate over 1280 px
+    (found live 2026-08-08 on a 7380x4928 D810 frame): `_facade_is_truncated`
+    stopped firing, because a 1280-space box always looks far from the edges of
+    a 4928 px tall frame; and the emitted box was ~5.8x too small, so anything
+    applying it to the real plate measured the wrong pixels. This module
+    already refuses `bbox_px_relative` for precisely this reason.
+    """
+    if not image_size:
+        return 1.0
+    longest = max(int(image_size[0]), int(image_size[1]))
+    if longest <= _VLM_MAX_IMAGE_SIDE:
+        return 1.0                      # no downscale happened, none to undo
+    return longest / float(_VLM_MAX_IMAGE_SIDE)
+
+
 def _image_data_url(path: Path) -> str:
     # Downscale large plates so the VLM actually accepts the image (found live:
     # a 4K plate → lmstudio 400 "Invalid image detected"). Falls back to the raw
@@ -1285,11 +1309,16 @@ def scale_references_from_observation(
     (LLM cues are never auto-promoted).
     """
     refs: list[dict[str, Any]] = []
+    # The model was shown a downscaled copy, so its boxes arrive in that space.
+    # Map them back BEFORE the truncation check and before emitting, so both
+    # the guard and every consumer work in plate pixels.
+    bbox_factor = _vlm_bbox_to_plate_factor(image_size)
     for cue in observation.scale_cues:
         if cue.bbox_px is None or float(cue.confidence) < min_confidence:
             continue
+        bbox_px = tuple(float(v) * bbox_factor for v in cue.bbox_px)
         spec: dict[str, Any] = {
-            "bbox_px": [float(v) for v in cue.bbox_px],
+            "bbox_px": [float(v) for v in bbox_px],
             "confidence": float(cue.confidence),
             "label": cue.label,
             "source": "vlm_scale_cue",
@@ -1302,7 +1331,7 @@ def scale_references_from_observation(
             # Scoped to counted facades on purpose: that is where the failure
             # was measured. A cut-off person or car has the same problem in
             # principle, but changing those without evidence would be a guess.
-            truncated = _facade_is_truncated(cue.bbox_px, image_size,
+            truncated = _facade_is_truncated(bbox_px, image_size,
                                              edge_margin_px)
             if truncated:
                 observation.warnings.append(
