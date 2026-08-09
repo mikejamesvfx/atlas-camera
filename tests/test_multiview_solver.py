@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import inspect
+import math
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -96,6 +101,45 @@ def _anchor_vp_result() -> dict[str, object]:
         "num_lines_total": 0,
         "image_size": (_HEIGHT, _WIDTH),
     }
+
+
+def _camera_to_world_from_angles(
+    pitch_deg: float, roll_deg: float, yaw_deg: float = 32.0,
+) -> np.ndarray:
+    pitch, roll, yaw = map(math.radians, (pitch_deg, roll_deg, yaw_deg))
+    pitch_rotation = np.array((
+        (1.0, 0.0, 0.0),
+        (0.0, math.cos(pitch), -math.sin(pitch)),
+        (0.0, math.sin(pitch), math.cos(pitch)),
+    ))
+    roll_rotation = np.array((
+        (math.cos(roll), -math.sin(roll), 0.0),
+        (math.sin(roll), math.cos(roll), 0.0),
+        (0.0, 0.0, 1.0),
+    ))
+    yaw_rotation = np.array((
+        (math.cos(yaw), 0.0, math.sin(yaw)),
+        (0.0, 1.0, 0.0),
+        (-math.sin(yaw), 0.0, math.cos(yaw)),
+    ))
+    return yaw_rotation @ pitch_rotation @ roll_rotation
+
+
+def _project_direction_to_vanishing_point(
+    world_direction: tuple[float, float, float],
+    camera_to_world: np.ndarray,
+    *,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+) -> np.ndarray:
+    camera_direction = camera_to_world.T @ np.asarray(world_direction)
+    assert abs(float(camera_direction[2])) > 1.0e-6
+    return np.array((
+        cx - fx * camera_direction[0] / camera_direction[2],
+        cy + fy * camera_direction[1] / camera_direction[2],
+    ))
 
 
 def _feature_set(count: int) -> FeatureSet:
@@ -302,6 +346,40 @@ def test_validation_collects_all_mismatches_and_capture_time_is_diagnostic_only(
     ]
 
 
+@pytest.mark.parametrize(
+    ("serial_field", "first", "second"),
+    (
+        ("body_serial_number", "BODY-AbC-123", "BODY-aBc-123"),
+        ("lens_serial_number", "LENS-XyZ-987", "LENS-xYz-987"),
+    ),
+)
+def test_validation_treats_case_distinct_serials_as_different_devices(
+    serial_field: str, first: str, second: str,
+) -> None:
+    first_kwargs = {
+        "body_serial": first if serial_field == "body_serial_number" else "BODY-1",
+        "lens_serial": first if serial_field == "lens_serial_number" else "LENS-1",
+    }
+    second_kwargs = {
+        "body_serial": second if serial_field == "body_serial_number" else "BODY-1",
+        "lens_serial": second if serial_field == "lens_serial_number" else "LENS-1",
+    }
+
+    diagnostics = validate_multiview_frames(
+        [
+            _frame(label="one", **first_kwargs),
+            _frame(label="two", **second_kwargs),
+        ],
+        MultiViewSettings(),
+    )
+
+    assert diagnostics is not None
+    assert diagnostics.outcome_code == "metadata_mismatch"
+    assert serial_field in {
+        item["field"] for item in diagnostics.metadata_checks
+    }
+
+
 @pytest.mark.parametrize(("frame_count", "summary_text"), ((1, "two or three"), (4, "two or three")))
 def test_validation_requires_two_or_three_frames(frame_count: int, summary_text: str) -> None:
     diagnostics = validate_multiview_frames(
@@ -343,6 +421,64 @@ def test_missing_anchor_vanishing_points_never_guesses_world_up(monkeypatch) -> 
     assert out.diagnostics.outcome_code == "degenerate_geometry"
     assert "architectural lines" in out.diagnostics.summary
     assert "artist constraints" in out.diagnostics.summary
+
+
+@pytest.mark.parametrize(("pitch_deg", "roll_deg"), ((-15.0, 0.0), (-12.0, 8.0)))
+def test_anchor_horizon_matches_returned_extrinsics_with_asymmetric_focal_axes(
+    monkeypatch, pitch_deg: float, roll_deg: float,
+) -> None:
+    fx, fy = 1200.0, 800.0
+    sensor_width = _FOCAL_MM * _WIDTH / fx
+    sensor_height = _FOCAL_MM * _HEIGHT / fy
+    known_camera_to_world = _camera_to_world_from_angles(pitch_deg, roll_deg)
+    vp_result = _anchor_vp_result()
+    vp_result.update({
+        "vp1": _project_direction_to_vanishing_point(
+            (1.0, 0.0, 0.0), known_camera_to_world,
+            fx=fx, fy=fy, cx=_WIDTH / 2.0, cy=_HEIGHT / 2.0,
+        ),
+        "vp2": _project_direction_to_vanishing_point(
+            (0.0, 0.0, 1.0), known_camera_to_world,
+            fx=fx, fy=fy, cx=_WIDTH / 2.0, cy=_HEIGHT / 2.0,
+        ),
+    })
+    _install_pipeline(monkeypatch, mode="rotation_only")
+    monkeypatch.setattr(
+        "atlas_camera.core.multiview_solver.VanishingPointDetector.detect_vanishing_points",
+        lambda _image, *, random_seed: vp_result,
+    )
+
+    out = solve_multiview(
+        [
+            _frame(
+                label="one", sensor_width=sensor_width,
+                sensor_height=sensor_height,
+            ),
+            _frame(
+                label="two", sensor_width=sensor_width,
+                sensor_height=sensor_height,
+            ),
+        ],
+        MultiViewSettings(capture_mode="rotation_only"),
+    )
+
+    assert out.solve is not None
+    intrinsics = out.solve.camera.intrinsics
+    assert intrinsics.fx_px == pytest.approx(fx)
+    assert intrinsics.fy_px == pytest.approx(fy)
+    camera_to_world = np.asarray(
+        out.solve.camera.extrinsics.camera_world_matrix,
+        dtype=np.float64,
+    )[:3, :3]
+    up_camera = camera_to_world.T @ np.array((0.0, 1.0, 0.0))
+    a, b, c = out.solve.horizon_line.line_coefficients
+    for image_x in (0.0, _WIDTH / 2.0, float(_WIDTH)):
+        horizon_from_vps = -(a * image_x + c) / b
+        normalized_x = (image_x - intrinsics.cx_px) / intrinsics.fx_px
+        horizon_from_pose = intrinsics.cy_px + intrinsics.fy_px * (
+            up_camera[0] * normalized_x - up_camera[2]
+        ) / up_camera[1]
+        assert horizon_from_pose == pytest.approx(horizon_from_vps, abs=1.0e-8)
 
 
 def test_insufficient_overlap_fails_before_model_fitting(monkeypatch) -> None:
@@ -508,6 +644,85 @@ def test_repeated_solve_serializes_byte_identically(monkeypatch) -> None:
     assert second.solve is not None
     assert first.solve.to_json() == second.solve.to_json()
     assert first.diagnostics.to_dict() == second.diagnostics.to_dict()
+
+
+def test_solve_json_is_byte_identical_across_fresh_processes() -> None:
+    test_path = str(Path(__file__).resolve())
+    repository_root = str(Path(__file__).resolve().parents[1])
+    script = f"""
+import dataclasses
+import runpy
+import sys
+
+import atlas_camera.core.multiview_geometry as geometry_module
+import atlas_camera.core.multiview_solver as solver_module
+
+namespace = runpy.run_path({test_path!r})
+monkeypatch = namespace["pytest"].MonkeyPatch()
+try:
+    np = namespace["np"]
+    width, height = 640, 360
+    focal_px = namespace["_FOCAL_MM"] * width / namespace["_SENSOR_WIDTH_MM"]
+    vp_result = {{
+        "vp1": np.array((width / 2.0 - focal_px, height / 2.0)),
+        "vp2": np.array((width / 2.0 + focal_px, height / 2.0)),
+        "vp3": None,
+        "left_lines": [],
+        "right_lines": [],
+        "vertical_lines": [],
+        "num_lines_total": 0,
+    }}
+    monkeypatch.setattr(
+        solver_module.VanishingPointDetector,
+        "detect_vanishing_points",
+        lambda _image, *, random_seed: vp_result,
+    )
+    monkeypatch.setattr(
+        geometry_module,
+        "fit_pair_models",
+        lambda pair, *_args: namespace["_evidence"](pair, "rotation_only"),
+    )
+    image = np.random.default_rng(42).integers(
+        0, 256, (height, width, 3), dtype=np.uint8,
+    )
+    frames = [
+        dataclasses.replace(
+            namespace["_frame"](label="one", width=width, height=height),
+            image=image,
+        ),
+        dataclasses.replace(
+            namespace["_frame"](label="two", width=width, height=height),
+            image=image.copy(),
+        ),
+    ]
+    outcome = namespace["solve_multiview"](
+        frames,
+        namespace["MultiViewSettings"](capture_mode="rotation_only", seed=91),
+    )
+    if outcome.solve is None:
+        raise RuntimeError(outcome.diagnostics.to_dict())
+    sys.stdout.write(outcome.solve.to_json())
+finally:
+    monkeypatch.undo()
+"""
+
+    def solve_bytes(hash_seed: str) -> bytes:
+        environment = os.environ.copy()
+        environment["PYTHONHASHSEED"] = hash_seed
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=repository_root,
+            env=environment,
+            capture_output=True,
+            check=True,
+        )
+        return completed.stdout
+
+    first = solve_bytes("1")
+    second = solve_bytes("937")
+
+    assert first.startswith(b"{")
+    assert first == second
 
 
 def test_qwen_pixels_are_not_an_input_to_the_solver_signature() -> None:

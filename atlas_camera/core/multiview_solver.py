@@ -86,6 +86,14 @@ def _normalised_text(value: Any) -> str | None:
     return " ".join(str(value).strip().casefold().split())
 
 
+def _serial_identity(value: Any) -> str | None:
+    """Preserve serial identity while removing safe boundary padding."""
+    if value is None:
+        return None
+    serial = str(value).strip("\x00 \t\r\n\v\f")
+    return serial or None
+
+
 def _developed_dimensions(frame: MultiViewFrame) -> tuple[int | None, int | None]:
     width = _meta_value(frame.raw_meta, "width")
     height = _meta_value(frame.raw_meta, "height")
@@ -216,13 +224,13 @@ def _validation_checks(frames: Sequence[MultiViewFrame]) -> list[dict[str, Any]]
         present = [
             (frame_index, _meta_value(frame.raw_meta, field_name))
             for frame_index, frame in enumerate(frames)
-            if _normalised_text(_meta_value(frame.raw_meta, field_name))
+            if _serial_identity(_meta_value(frame.raw_meta, field_name))
         ]
         if len(present) >= 2:
             anchor_index, anchor_value = present[0]
-            anchor_normalised = _normalised_text(anchor_value)
+            anchor_identity = _serial_identity(anchor_value)
             for frame_index, value in present[1:]:
-                if _normalised_text(value) != anchor_normalised:
+                if _serial_identity(value) != anchor_identity:
                     item = _check(field_name, frame_index, anchor_value, value)
                     item["comparison_frame"] = anchor_index + 1
                     checks.append(item)
@@ -328,13 +336,13 @@ def _anchor_orientation(
         return None
     ray_a = np.array((
         (first[0] - intrinsics.cx_px) / intrinsics.fx_px,
-        (first[1] - intrinsics.cy_px) / intrinsics.fy_px,
-        1.0,
+        -(first[1] - intrinsics.cy_px) / intrinsics.fy_px,
+        -1.0,
     ))
     ray_b = np.array((
         (second[0] - intrinsics.cx_px) / intrinsics.fx_px,
-        (second[1] - intrinsics.cy_px) / intrinsics.fy_px,
-        1.0,
+        -(second[1] - intrinsics.cy_px) / intrinsics.fy_px,
+        -1.0,
     ))
     cosine = abs(float(np.dot(ray_a, ray_b))) / float(
         np.linalg.norm(ray_a) * np.linalg.norm(ray_b)
@@ -344,33 +352,26 @@ def _anchor_orientation(
     if not math.isfinite(cosine) or cosine > 0.5:
         return None
     try:
-        direction_a = np.array((
-            first[0] - intrinsics.cx_px,
-            first[1] - intrinsics.cy_px,
-            intrinsics.fx_px,
-        ), dtype=np.float64)
-        direction_b = np.array((
-            second[0] - intrinsics.cx_px,
-            second[1] - intrinsics.cy_px,
-            intrinsics.fx_px,
-        ), dtype=np.float64)
+        direction_a = np.asarray(ray_a, dtype=np.float64)
+        direction_b = np.asarray(ray_b, dtype=np.float64)
         direction_a /= np.linalg.norm(direction_a)
         direction_b /= np.linalg.norm(direction_b)
-        direction_c = np.cross(direction_a, direction_b)
-        direction_c /= np.linalg.norm(direction_c)
-        direction_b = np.cross(direction_c, direction_a)
-        direction_b /= np.linalg.norm(direction_b)
-        candidates = (direction_a, direction_b, direction_c)
-        up_index = int(np.argmax([abs(value[1]) for value in candidates]))
-        up = candidates[up_index].copy()
+        # vp1/vp2 are the detector's two horizontal architectural groups.  In
+        # Atlas camera coordinates (+X right, +Y up, camera looks down -Z),
+        # their cross product is therefore recovered world-up in CAMERA space.
+        # Matrix columns below are world axes expressed in camera coordinates,
+        # i.e. world-to-camera; transpose once to obtain the schema's
+        # camera-to-world transform.
+        up = np.cross(direction_b, direction_a)
+        up /= np.linalg.norm(up)
         if up[1] < 0.0:
             up = -up
-        right, forward = (
-            candidates[index] for index in range(3) if index != up_index
-        )
-        anchor_camera_to_world = np.column_stack((right, up, forward))
-        if np.linalg.det(anchor_camera_to_world) < 0.0:
-            anchor_camera_to_world = np.column_stack((right, up, -forward))
+        forward = np.cross(direction_a, up)
+        forward /= np.linalg.norm(forward)
+        right = np.cross(up, forward)
+        right /= np.linalg.norm(right)
+        world_to_camera = np.column_stack((right, up, forward))
+        anchor_camera_to_world = world_to_camera.T
     except (ValueError, np.linalg.LinAlgError, FloatingPointError):
         return None
     vanishing_points = VanishingPointDetector.to_schema_vanishing_points(result)
