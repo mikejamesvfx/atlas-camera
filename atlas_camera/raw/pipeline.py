@@ -34,6 +34,7 @@ class RawImportResult:
     # read it from here, and a plate that has been scaled must be able to say
     # by how much or a downstream re-grade is guesswork.
     headroom: float = 6.0
+    orientation: int | None = None
 
     def intrinsics_hint(self) -> dict[str, Any]:
         """Exactly the dict ``solve_still_image(intrinsics_hint=...)`` consumes."""
@@ -137,6 +138,7 @@ def import_raw(path: str, *, undistort: bool = True, half_size: bool = False,
         distortion=distortion,
         warnings=warnings,
         source_path=str(path),
+        orientation=getattr(meta, "orientation", None),
         headroom=float(headroom),
     )
 

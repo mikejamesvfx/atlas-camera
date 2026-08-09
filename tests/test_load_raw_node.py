@@ -34,6 +34,7 @@ def _fake_result(**overrides):
         undistort_applied=True,
         undistort_status="applied",
         source_path="D:/shots/DSC_0001.NEF",
+        orientation=1,
     )
     defaults.update(overrides)
     return RawImportResult(**defaults)
