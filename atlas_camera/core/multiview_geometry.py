@@ -121,10 +121,11 @@ def _hartley_normalize(points_xy: Any) -> tuple[Any, Any]:
     points = np.asarray(points_xy, dtype=np.float64)
     centroid = np.mean(points, axis=0)
     centred = points - centroid
-    rms_distance = math.sqrt(float(np.mean(np.sum(centred * centred, axis=1))))
-    if not math.isfinite(rms_distance) or rms_distance <= 1.0e-15:
+    distances = np.linalg.norm(centred, axis=1)
+    mean_distance = float(np.mean(distances))
+    if not math.isfinite(mean_distance) or mean_distance <= 1.0e-15:
         raise ValueError("degenerate point normalization")
-    scale = math.sqrt(2.0) / rms_distance
+    scale = math.sqrt(2.0) / mean_distance
     transform = np.array([
         [scale, 0.0, -scale * centroid[0]],
         [0.0, scale, -scale * centroid[1]],
@@ -330,6 +331,18 @@ def _pose_reprojection_error(points_xyz: Any, calibrated_a: Any, calibrated_b: A
     return float(np.median(errors))
 
 
+def _select_pose_candidate_index(positive_depth_counts: Any,
+                                 median_reprojection_errors: Any) -> int:
+    """Select a four-pose candidate by cheirality, error, then stable index."""
+    if len(positive_depth_counts) != 4 or len(median_reprojection_errors) != 4:
+        raise ValueError("essential decomposition must provide four pose candidates")
+    return min(range(4), key=lambda candidate_index: (
+        -int(positive_depth_counts[candidate_index]),
+        float(median_reprojection_errors[candidate_index]),
+        candidate_index,
+    ))
+
+
 def _decompose_essential(essential: Any, calibrated_a: Any,
                          calibrated_b: Any) -> tuple[Any, Any, Any, float, float]:
     np = _require_numpy()
@@ -349,8 +362,10 @@ def _decompose_essential(essential: Any, calibrated_a: Any,
         (rotations[0], direction), (rotations[0], -direction),
         (rotations[1], direction), (rotations[1], -direction),
     )
-    ranked: list[tuple[tuple[float, float, int], Any, Any, Any, Any]] = []
-    for candidate_index, (rotation, translation) in enumerate(candidates):
+    candidate_results: list[tuple[Any, Any, Any, Any]] = []
+    positive_depth_counts: list[int] = []
+    median_reprojection_errors: list[float] = []
+    for rotation, translation in candidates:
         points_xyz = _triangulate(calibrated_a, calibrated_b, rotation, translation)
         camera_b = (rotation @ points_xyz.T).T + translation
         positive = (
@@ -361,11 +376,13 @@ def _decompose_essential(essential: Any, calibrated_a: Any,
         reprojection = _pose_reprojection_error(
             points_xyz, calibrated_a, calibrated_b, rotation, translation,
         )
-        ranked.append((
-            (-float(positive_count), reprojection, candidate_index),
-            rotation, translation, points_xyz, positive,
-        ))
-    _, rotation, translation, points_xyz, positive = min(ranked, key=lambda item: item[0])
+        positive_depth_counts.append(positive_count)
+        median_reprojection_errors.append(reprojection)
+        candidate_results.append((rotation, translation, points_xyz, positive))
+    winner_index = _select_pose_candidate_index(
+        positive_depth_counts, median_reprojection_errors,
+    )
+    rotation, translation, points_xyz, positive = candidate_results[winner_index]
     fraction = float(np.count_nonzero(positive) / len(positive)) if len(positive) else 0.0
     if np.any(positive):
         camera_b_center = -rotation.T @ translation
@@ -520,15 +537,12 @@ def fit_pair_models(matches: PairMatches, intr_a: AtlasIntrinsics,
 
 def _translated_passes(evidence: PairModelEvidence,
                        profile: QualityProfile) -> bool:
-    occupied_cells = evidence.essential_occupied_grid_cells
-    if occupied_cells < 0:
-        occupied_cells = profile.min_grid_cells
     return (
         evidence.essential_matrix is not None
         and evidence.relative_rotation is not None
         and evidence.translation_direction is not None
         and evidence.essential_inlier_count >= profile.min_inliers
-        and occupied_cells >= profile.min_grid_cells
+        and evidence.essential_occupied_grid_cells >= profile.min_grid_cells
         and evidence.median_essential_error_px <= profile.reprojection_threshold_px
         and evidence.positive_depth_fraction >= _POSITIVE_DEPTH_FRACTION
         and evidence.median_triangulation_angle_deg >= profile.min_triangulation_angle_deg

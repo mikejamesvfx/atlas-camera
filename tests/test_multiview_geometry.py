@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from itertools import combinations
 import math
 
 import numpy as np
@@ -10,6 +11,10 @@ import pytest
 
 from atlas_camera.core.multiview_geometry import (
     MotionModelError,
+    _decompose_essential,
+    _hartley_normalize,
+    _sample_schedule,
+    _select_pose_candidate_index,
     _sampson_errors_px,
     fit_pair_models,
     select_capture_mode,
@@ -185,8 +190,14 @@ def test_pair_model_fit_ignores_ambient_numpy_random_state() -> None:
     assert first.positive_depth_fraction == second.positive_depth_fraction
 
 
-def test_mode_selection_accepts_legacy_evidence_without_grid_diagnostic() -> None:
-    # Catches a Task 3 field addition breaking callers built against Task 1.
+@pytest.mark.parametrize(("requested_mode", "outcome_code"), (
+    ("auto", "ambiguous_motion_model"),
+    ("translated", "degenerate_geometry"),
+))
+def test_mode_selection_fails_closed_without_spatial_evidence(
+    requested_mode: str, outcome_code: str,
+) -> None:
+    # Catches unavailable grid evidence being promoted to the profile minimum.
     matches, intr_a, intr_b = _project_known_scene(
         rotation_y_deg=7.0, translation=(0.8, 0.0, 0.1), outliers=30,
     )
@@ -194,10 +205,17 @@ def test_mode_selection_accepts_legacy_evidence_without_grid_diagnostic() -> Non
         matches, intr_a, intr_b, MultiViewSettings(), "34" * 32,
     )
 
-    assert select_capture_mode(
-        replace(evidence, essential_occupied_grid_cells=-1),
-        "translated", QUALITY_PROFILES["balanced"],
-    ) == "translated"
+    missing_spatial_evidence = replace(
+        evidence, essential_occupied_grid_cells=-1,
+    )
+
+    with pytest.raises(MotionModelError, match=outcome_code) as caught:
+        select_capture_mode(
+            missing_spatial_evidence, requested_mode,
+            QUALITY_PROFILES["balanced"],
+        )
+
+    assert caught.value.outcome_code == outcome_code
 
 
 def test_mode_selection_fails_closed_without_rotation_specific_residual() -> None:
@@ -261,3 +279,69 @@ def test_collinear_correspondences_produce_no_minimal_model() -> None:
 
     assert evidence.essential_matrix is None
     assert evidence.homography is None
+
+
+def test_hartley_normalization_uses_mean_euclidean_radius() -> None:
+    # Catches RMS-radius normalization, which is not Hartley's construction.
+    points = np.array([
+        [-4.0, -1.0],
+        [-1.0, 0.0],
+        [2.0, 2.0],
+        [9.0, 8.0],
+    ], dtype=np.float64)
+
+    normalized, _ = _hartley_normalize(points)
+
+    assert np.mean(normalized, axis=0) == pytest.approx((0.0, 0.0), abs=1.0e-12)
+    assert np.mean(np.linalg.norm(normalized, axis=1)) == pytest.approx(
+        math.sqrt(2.0), abs=1.0e-12,
+    )
+
+
+def test_sample_schedules_pin_budgets_uniqueness_and_combination_caps() -> None:
+    # Catches iteration-budget drift, duplicate samples, or off-by-one caps.
+    essential = _sample_schedule(20, 8, 2_048, "aa" * 32, 0, "essential")
+    homography = _sample_schedule(20, 4, 1_024, "aa" * 32, 0, "homography")
+    capped_essential = _sample_schedule(9, 8, 2_048, "aa" * 32, 0, "essential")
+    capped_homography = _sample_schedule(5, 4, 1_024, "aa" * 32, 0, "homography")
+
+    assert len(essential) == len(set(essential)) == 2_048
+    assert len(homography) == len(set(homography)) == 1_024
+    assert capped_essential == tuple(combinations(range(9), 8))
+    assert capped_homography == tuple(combinations(range(5), 4))
+
+
+def test_sample_schedule_seed_material_is_fully_separated() -> None:
+    # Catches omission of fingerprint, exposed seed, or model name from SHA256.
+    baseline = _sample_schedule(20, 8, 32, "ab" * 32, 7, "essential")
+
+    assert baseline == _sample_schedule(20, 8, 32, "ab" * 32, 7, "essential")
+    assert baseline != _sample_schedule(20, 8, 32, "cd" * 32, 7, "essential")
+    assert baseline != _sample_schedule(20, 8, 32, "ab" * 32, 8, "essential")
+    assert baseline != _sample_schedule(20, 8, 32, "ab" * 32, 7, "homography")
+
+
+def test_four_pose_selection_orders_cheirality_error_then_index() -> None:
+    # Catches a reordering of the load-bearing four-pose winner tuple.
+    positive_depth_counts = (99, 100, 100, 100)
+    median_reprojection_errors = (0.01, 0.3, 0.2, 0.2)
+
+    assert _select_pose_candidate_index(
+        positive_depth_counts, median_reprojection_errors,
+    ) == 2
+
+
+def test_four_pose_exact_tie_selects_first_decomposition_candidate() -> None:
+    # Catches unstable candidate choice when cheirality and error both tie.
+    essential = np.array([
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0],
+    ], dtype=np.float64)
+
+    rotation, translation, _, _, _ = _decompose_essential(
+        essential, np.empty((0, 2)), np.empty((0, 2)),
+    )
+
+    assert rotation == pytest.approx(np.eye(3), abs=1.0e-12)
+    assert translation == pytest.approx((-1.0, 0.0, 0.0), abs=1.0e-12)
