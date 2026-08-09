@@ -1,7 +1,7 @@
 # Deterministic Multi-View RAW Camera Solve
 
 **Date:** 2026-08-09  
-**Status:** Approved design, awaiting written-spec review
+**Status:** Approved design; spec-panel reviewed 2026-08-09 (thresholds inlined, dependency surface named, failure diagnostics routed to atlas_debug)
 
 ## Purpose
 
@@ -40,7 +40,11 @@ Its widgets include:
 - `match_quality`: `balanced`, `conservative`, or `permissive`, with
   `balanced` as the default; and
 - `seed`: an integer mixed into the content-derived deterministic sample
-  schedule, defaulting to `0`.
+  schedule, defaulting to `0`. Every seed value is equally deterministic; it
+  exists as an escape hatch when the content-derived schedule happens to land
+  on degenerate samples, letting an artist re-roll the candidate order without
+  touching the images. Leave it at `0` unless a solve fails on evidence that
+  looks sufficient.
 
 All widgets are appended in their final positional order. Combo values are append-only after release.
 
@@ -106,6 +110,28 @@ Translated reconstruction initially has arbitrary scale. Fit a ground plane to s
 
 If the ground plane or height is unusable, report `scale unavailable` and do not emit a metric solve. Rotation-only sets have no translation scale to resolve.
 
+### Fixed quality thresholds
+
+These are the released numbers behind `match_quality` (append-only once
+shipped; changing them is a behaviour change to every saved workflow):
+
+| Profile | Ratio | Min inliers | Reprojection (px) | Min triangulation angle | Min grid cells | Max features |
+|---|---|---|---|---|---|---|
+| `conservative` | 0.70 | 64 | 1.0 | 1.5° | 8 | 8000 |
+| `balanced` | 0.75 | 48 | 1.5 | 1.0° | 6 | 8000 |
+| `permissive` | 0.80 | 32 | 2.5 | 0.5° | 4 | 10000 |
+
+All profiles additionally require a positive-depth fraction of at least 0.75
+for a translated model. Three-view closure fails as `inconsistent_third_view`
+beyond `0.5°` rotation, `1.5°` translation direction, or `2.0 px` median
+closed-track reprojection under `balanced`; the limits scale linearly with the
+selected profile's reprojection threshold relative to `1.5 px`. The ground
+plane used for metric scale must have its normal within `20°` of the recovered
+up direction, at least 24 inlier landmarks covering at least 15% of valid
+landmarks, and a positive anchor-to-plane distance. The metric anchor itself
+is exact by construction: one uniform scale sets photo 1's height to the
+entered `camera_height_m` with no fitted residual.
+
 ## Qwen Multiple-Angles Integration
 
 `AtlasAddPatchView` remains downstream of `AtlasMultiViewSolve`.
@@ -119,7 +145,7 @@ This preserves the useful deterministic camera relationship declared by the Qwen
 
 ## Determinism Contract
 
-For identical ordered image content, RAW metadata, settings, Atlas version, and supported dependency versions, repeated runs must produce identical:
+For identical ordered image content, RAW metadata, settings, Atlas version, and an unchanged dependency environment — the exact installed numpy and opencv-python builds, since OpenCV releases may legitimately alter feature extraction output — repeated runs must produce identical:
 
 - feature and match selections;
 - candidate sampling order;
@@ -155,6 +181,12 @@ four node outputs only for successful translated or rotation-only outcomes. On
 any failure it raises an actionable error containing the outcome code and
 summary; ComfyUI cannot return output links and raise in the same execution.
 It must never emit a plausible but untrustworthy `ATLAS_SOLVE`.
+
+Because a raise strands the node outputs, the adapter first writes the failed
+run's structured diagnostics to `atlas_debug/multiview_failure.json` and its
+pair overlays to `atlas_debug/multiview_failure_pair_N.png` under ComfyUI's
+working directory (the AtlasDebugReport convention), and names that path in
+the raised error. A debug-write failure never masks the registration error.
 
 ## Diagnostics and Confidence
 
@@ -201,8 +233,8 @@ The acceptance run writes overlays and a registration report. It passes when:
 
 - all expected cameras register in the correct mode;
 - all photographed plates align in the Atlas viewport without obvious camera-to-camera sliding;
-- reprojection and closure errors are under the thresholds fixed by the implementation plan;
-- metric height agrees with the measured anchor within the documented numerical tolerance;
+- reprojection and closure errors are under the fixed quality thresholds tabled above;
+- the recorded scale provenance carries the entered anchor height exactly (the uniform scale is exact by construction);
 - repeated runs are byte-equivalent under the determinism contract; and
 - adding Qwen sources does not change any photographed camera value.
 

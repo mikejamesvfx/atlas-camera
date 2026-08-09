@@ -127,3 +127,6 @@ tests/golden/_failures/
 # not source — and an 11 MB binary committed by accident is painful to
 # remove from history afterwards.
 *.bundle
+
+# AtlasMultiViewSolve failure diagnostics land under the runtime CWD.
+atlas_debug/

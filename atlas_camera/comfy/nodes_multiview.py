@@ -272,6 +272,38 @@ def _require_photographed_frame(
     )
 
 
+def _write_failure_debug(details: dict[str, Any], overlays: tuple[Any, ...], np: Any) -> str:
+    """Persist failure diagnostics where an artist can reach them.
+
+    The adapter must raise on failure (ComfyUI cannot return links and raise in
+    one execution), which would otherwise strand the overlays and structured
+    diagnostics of exactly the runs that need inspecting.  Mirrors the
+    AtlasDebugReport doctrine: a stable path under ComfyUI's CWD, and a debug
+    write failure must never mask the real registration error.
+    """
+    try:
+        debug_dir = os.path.abspath("atlas_debug")
+        os.makedirs(debug_dir, exist_ok=True)
+        path = os.path.join(debug_dir, "multiview_failure.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(details, handle, sort_keys=True, indent=2)
+        try:
+            from PIL import Image
+            for index, overlay in enumerate(overlays, start=1):
+                pixels = np.clip(
+                    np.ascontiguousarray(overlay, dtype=np.float32) * 255.0,
+                    0.0, 255.0,
+                ).astype(np.uint8)
+                Image.fromarray(pixels).save(
+                    os.path.join(debug_dir, f"multiview_failure_pair_{index}.png")
+                )
+        except Exception:  # noqa: BLE001 - overlays are best-effort extras.
+            pass
+        return path
+    except Exception:  # noqa: BLE001 - never mask the registration error.
+        return ""
+
+
 def _overlay_batch(overlays: tuple[Any, ...], np: Any, torch: Any) -> Any:
     if overlays:
         pixels = np.stack([
@@ -380,9 +412,15 @@ class AtlasMultiViewSolve:
         if outcome.solve is None:
             code = outcome.diagnostics.outcome_code
             summary = outcome.diagnostics.summary
+            debug_path = _write_failure_debug(details, outcome.overlays, np)
+            debug_hint = (
+                f"\nfailure diagnostics and overlays written to: {debug_path}"
+                if debug_path else ""
+            )
             raise RuntimeError(
                 f"AtlasMultiViewSolve [{code}]: {summary}\n"
                 f"registration diagnostics: {json.dumps(details, sort_keys=True)}"
+                f"{debug_hint}"
             )
 
         registration_json = json.dumps(details, sort_keys=True)

@@ -375,25 +375,52 @@ def test_node_passes_three_photographs_to_solver_in_authoritative_order(monkeypa
     np.testing.assert_array_equal(captured["frames"][2].image, raw_3.display_srgb)
 
 
-def test_node_raises_exact_sorted_diagnostics_when_registration_fails(monkeypatch):
+def test_node_raises_exact_sorted_diagnostics_when_registration_fails(monkeypatch, tmp_path):
     module = pytest.importorskip("atlas_camera.comfy.nodes_multiview")
+    monkeypatch.chdir(tmp_path)
     diagnostics = RegistrationDiagnostics(
         "insufficient_overlap", "only 12 matches",
         scale={"z": 2, "a": 1},
     )
+    overlay = np.full((4, 6, 3), 0.5, dtype=np.float32)
     monkeypatch.setattr(
         module, "solve_multiview",
-        lambda *_: RegistrationOutcome(None, diagnostics),
+        lambda *_: RegistrationOutcome(None, diagnostics, overlays=(overlay,)),
     )
     args = _call_args()
     args.pop("_raw_3")
     details = diagnostics.to_dict()
+    debug_path = tmp_path / "atlas_debug" / "multiview_failure.json"
     expected = (
         "AtlasMultiViewSolve [insufficient_overlap]: only 12 matches\n"
-        f"registration diagnostics: {json.dumps(details, sort_keys=True)}"
+        f"registration diagnostics: {json.dumps(details, sort_keys=True)}\n"
+        f"failure diagnostics and overlays written to: {debug_path}"
     )
     with pytest.raises(RuntimeError, match="^" + re.escape(expected) + "$"):
         _node_class()().solve(**args)
+
+    assert json.loads(debug_path.read_text(encoding="utf-8")) == json.loads(
+        json.dumps(details, sort_keys=True)
+    )
+
+
+def test_failure_debug_write_errors_never_mask_the_registration_error(monkeypatch, tmp_path):
+    module = pytest.importorskip("atlas_camera.comfy.nodes_multiview")
+    monkeypatch.chdir(tmp_path)
+    diagnostics = RegistrationDiagnostics("degenerate_geometry", "planar scene")
+    monkeypatch.setattr(
+        module, "solve_multiview",
+        lambda *_: RegistrationOutcome(None, diagnostics),
+    )
+    monkeypatch.setattr(
+        module.os, "makedirs",
+        lambda *a, **k: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+    args = _call_args()
+    args.pop("_raw_3")
+    with pytest.raises(RuntimeError, match=r"AtlasMultiViewSolve \[degenerate_geometry\]: planar scene"):
+        _node_class()().solve(**args)
+    assert not (tmp_path / "atlas_debug").exists()
 
 
 def test_facade_import_and_execution_dependency_boundary_in_a_fresh_process():
