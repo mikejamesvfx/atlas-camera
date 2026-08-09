@@ -269,6 +269,16 @@ def _intrinsics_for_frame(frame: MultiViewFrame) -> AtlasIntrinsics:
     sensor_height = (
         float(sensor_height_value) if sensor_height_value is not None else None
     )
+    # RAW develop applies EXIF orientation to the PIXELS, but the physical
+    # sensor millimetres stay in landscape.  For a transposed orientation the
+    # developed width spans the sensor's SHORT side — divide accordingly or fx
+    # is wrong by the sensor aspect (~1.5x), which collapsed every portrait
+    # X-H2 essential-matrix consensus to a handful of grid cells (found live
+    # 2026-08-09 on the first real acceptance captures).
+    orientation = _meta_value(frame.raw_meta, "orientation")
+    transposed = orientation in (5, 6, 7, 8)
+    if transposed and sensor_height is not None and sensor_height > 0.0:
+        sensor_width, sensor_height = sensor_height, sensor_width
     fx = focal * float(width) / sensor_width
     fy = (
         focal * float(height) / sensor_height
@@ -382,6 +392,65 @@ def _anchor_orientation(
         image_width=intrinsics.image_width,
     )
     return anchor_camera_to_world, horizon, vanishing_points
+
+
+def _anchor_orientation_from_up(
+    intrinsics: AtlasIntrinsics,
+    up_hint: Sequence[float],
+) -> tuple[Any, AtlasHorizon, list[AtlasVanishingPoint]] | None:
+    """Anchor basis from a caller-supplied world-up in camera coordinates.
+
+    Fallback for scenes with no two orthogonal architectural vanishing points
+    (parks, organic subjects).  Builds the same world-to-camera column basis as
+    the VP path: world up is the hint, and world -Z faces the camera's view
+    direction, matching the recovered-camera-faces-negative-Z convention.  The
+    horizon is the image line of rays orthogonal to up.  No vanishing points
+    are fabricated.
+    """
+    np = _require_numpy()
+    up = np.asarray(tuple(float(v) for v in up_hint), dtype=np.float64).reshape(-1)
+    if up.shape != (3,) or not np.all(np.isfinite(up)):
+        return None
+    norm = float(np.linalg.norm(up))
+    if norm < 1e-9:
+        return None
+    up = up / norm
+    if up[1] < 0.0:
+        up = -up
+    view = np.array((0.0, 0.0, -1.0))
+    world_z = -(view - up * float(view @ up))
+    z_norm = float(np.linalg.norm(world_z))
+    if z_norm < 1e-9:
+        # Camera looking straight along gravity; horizontal facing is undefined.
+        return None
+    world_z /= z_norm
+    world_x = np.cross(up, world_z)
+    world_x /= np.linalg.norm(world_x)
+    world_to_camera = np.column_stack((world_x, up, world_z))
+    anchor_camera_to_world = world_to_camera.T
+
+    # Horizon: pixels whose rays are orthogonal to up.  With the Atlas ray
+    # ((x-cx)/fx, -(y-cy)/fy, -1), ray·up = 0 expands to a*x + b*y + c = 0:
+    a = float(up[0]) / intrinsics.fx_px
+    b = -float(up[1]) / intrinsics.fy_px
+    c = (
+        -float(up[0]) * intrinsics.cx_px / intrinsics.fx_px
+        + float(up[1]) * intrinsics.cy_px / intrinsics.fy_px
+        - float(up[2])
+    )
+    endpoints = None
+    if abs(b) > 1e-12:
+        y_at = lambda x: (-c - a * x) / b  # noqa: E731
+        endpoints = (
+            (0.0, float(y_at(0.0))),
+            (float(intrinsics.image_width), float(y_at(float(intrinsics.image_width)))),
+        )
+    horizon = AtlasHorizon(
+        line_coefficients=(a, b, c),
+        endpoints_px=endpoints,
+        confidence=0.5,
+    )
+    return anchor_camera_to_world, horizon, []
 
 
 def _required_pairs(frame_count: int) -> tuple[tuple[int, int], ...]:
@@ -788,7 +857,17 @@ def solve_multiview(
         return RegistrationOutcome(None, validation)
 
     intrinsics = tuple(_intrinsics_for_frame(frame) for frame in ordered_frames)
+    anchor_warnings: list[str] = []
     anchored = _anchor_orientation(ordered_frames[0], intrinsics[0], settings.seed)
+    if anchored is None and settings.anchor_up_hint is not None:
+        anchored = _anchor_orientation_from_up(intrinsics[0], settings.anchor_up_hint)
+        if anchored is not None:
+            source = settings.anchor_up_hint_source or "caller-supplied up hint"
+            anchor_warnings.append(
+                f"anchor world-up came from {source}: photo 1 has no two "
+                "orthogonal architectural vanishing points. Reproducibility "
+                "follows the hint's provider, not the VP detector."
+            )
     if anchored is None:
         return _failure(
             "degenerate_geometry",
@@ -1085,7 +1164,7 @@ def solve_multiview(
             for index, camera in enumerate(cameras)
         ],
         scale=scale_info,
-        warnings=(
+        warnings=anchor_warnings + (
             ["Rotation-only capture recovered no translation geometry or metric scale."]
             if mode == "rotation_only" else []
         ),

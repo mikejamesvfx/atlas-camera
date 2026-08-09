@@ -131,6 +131,7 @@ def _cache_fingerprint(
     camera_height_m: float,
     match_quality: str,
     seed: int,
+    learned_anchor_fallback: bool = False,
 ) -> str:
     """Hash every content-bearing link and persisted widget in socket order."""
     payload = {
@@ -155,6 +156,7 @@ def _cache_fingerprint(
             "camera_height_m": camera_height_m,
             "match_quality": match_quality,
             "seed": seed,
+            "learned_anchor_fallback": bool(learned_anchor_fallback),
         },
     }
     encoded = json.dumps(
@@ -272,6 +274,45 @@ def _require_photographed_frame(
     )
 
 
+def _overlay_unit_float(overlay: Any, np: Any) -> Any:
+    """Adapt a core overlay to 0..1 float32 regardless of its dtype.
+
+    render_match_overlay returns uint8 0..255 canvases; treating those as
+    already-unit floats white-clips every preview (found live on the first
+    real X-H2 failure overlay).
+    """
+    pixels = np.ascontiguousarray(overlay)
+    if pixels.dtype == np.uint8:
+        return pixels.astype(np.float32) / 255.0
+    return np.clip(pixels.astype(np.float32), 0.0, 1.0)
+
+
+def _learned_anchor_up_hint(anchor_image: Any, np: Any) -> tuple[tuple[float, float, float], str]:
+    """Run GeoCalib on the anchor plate and return (up_cam, source label).
+
+    Torch stays at this adapter boundary: core receives only the resulting
+    up vector via MultiViewSettings.anchor_up_hint.
+    """
+    try:
+        from atlas_camera.inference.learned_prior import estimate_camera_prior
+    except ImportError as exc:
+        raise RuntimeError(
+            "AtlasMultiViewSolve: learned_anchor_fallback needs the [neural] "
+            "extra — pip install -e .[neural] and "
+            "pip install \"git+https://github.com/cvg/GeoCalib.git\""
+        ) from exc
+    import tempfile
+    from PIL import Image
+
+    pixels = np.clip(np.ascontiguousarray(anchor_image, dtype=np.float32), 0.0, 1.0)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "anchor.png")
+        Image.fromarray((pixels * 255.0 + 0.5).astype(np.uint8)).save(path)
+        prior = estimate_camera_prior(path)
+    up = tuple(float(v) for v in prior.up_cam)
+    return (up[0], up[1], up[2]), f"learned prior ({prior.source_model})"
+
+
 def _write_failure_debug(details: dict[str, Any], overlays: tuple[Any, ...], np: Any) -> str:
     """Persist failure diagnostics where an artist can reach them.
 
@@ -291,7 +332,7 @@ def _write_failure_debug(details: dict[str, Any], overlays: tuple[Any, ...], np:
             from PIL import Image
             for index, overlay in enumerate(overlays, start=1):
                 pixels = np.clip(
-                    np.ascontiguousarray(overlay, dtype=np.float32) * 255.0,
+                    _overlay_unit_float(overlay, np) * 255.0,
                     0.0, 255.0,
                 ).astype(np.uint8)
                 Image.fromarray(pixels).save(
@@ -306,9 +347,7 @@ def _write_failure_debug(details: dict[str, Any], overlays: tuple[Any, ...], np:
 
 def _overlay_batch(overlays: tuple[Any, ...], np: Any, torch: Any) -> Any:
     if overlays:
-        pixels = np.stack([
-            np.ascontiguousarray(overlay, dtype=np.float32) for overlay in overlays
-        ])
+        pixels = np.stack([_overlay_unit_float(overlay, np) for overlay in overlays])
     else:
         pixels = np.empty((0, 0, 0, 3), dtype=np.float32)
     return torch.from_numpy(np.ascontiguousarray(pixels, dtype=np.float32))
@@ -342,6 +381,7 @@ class AtlasMultiViewSolve:
                 "camera_height_m": ("FLOAT", {"default": 0.0, "min": 0.0, "step": 0.01}),
                 "match_quality": (["balanced", "conservative", "permissive"], {"default": "balanced"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "learned_anchor_fallback": ("BOOLEAN", {"default": False}),
             },
         }
 
@@ -361,12 +401,14 @@ class AtlasMultiViewSolve:
         camera_height_m: float = 0.0,
         match_quality: str = "balanced",
         seed: int = 0,
+        learned_anchor_fallback: bool = False,
     ) -> str:
         return _cache_fingerprint(
             image_1, image_2, image_3,
             raw_meta_1, raw_meta_2, raw_meta_3,
             plate_ref_1, plate_ref_2, plate_ref_3,
             capture_mode, camera_height_m, match_quality, seed,
+            learned_anchor_fallback,
         )
 
     def solve(
@@ -384,6 +426,7 @@ class AtlasMultiViewSolve:
         camera_height_m: float = 0.0,
         match_quality: str = "balanced",
         seed: int = 0,
+        learned_anchor_fallback: bool = False,
     ):
         np = _require_numpy()
         frames = [
@@ -399,6 +442,13 @@ class AtlasMultiViewSolve:
                 "AtlasMultiViewSolve: image_3 must be connected when raw_meta_3 or plate_ref_3 is supplied."
             )
 
+        anchor_up_hint = None
+        anchor_up_hint_source = ""
+        if learned_anchor_fallback:
+            anchor_up_hint, anchor_up_hint_source = _learned_anchor_up_hint(
+                frames[0].image, np,
+            )
+
         outcome = solve_multiview(
             frames,
             MultiViewSettings(
@@ -406,6 +456,8 @@ class AtlasMultiViewSolve:
                 camera_height_m=float(camera_height_m),
                 match_quality=match_quality,
                 seed=int(seed),
+                anchor_up_hint=anchor_up_hint,
+                anchor_up_hint_source=anchor_up_hint_source,
             ),
         )
         details = outcome.diagnostics.to_dict()

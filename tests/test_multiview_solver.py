@@ -729,3 +729,79 @@ finally:
 
 def test_qwen_pixels_are_not_an_input_to_the_solver_signature() -> None:
     assert list(inspect.signature(solve_multiview).parameters) == ["frames", "settings"]
+
+
+def test_anchor_orientation_from_up_builds_right_handed_atlas_basis() -> None:
+    from atlas_camera.core.multiview_solver import _anchor_orientation_from_up
+    from atlas_camera.core.schema import AtlasIntrinsics
+
+    intrinsics = AtlasIntrinsics(
+        fx_px=_FX, fy_px=_FX, cx_px=_WIDTH / 2.0, cy_px=_HEIGHT / 2.0,
+        image_width=_WIDTH, image_height=_HEIGHT,
+    )
+    tilt = np.deg2rad(10.0)
+    up_hint = (0.0, float(np.cos(tilt)), float(np.sin(tilt)))
+    anchored = _anchor_orientation_from_up(intrinsics, up_hint)
+    assert anchored is not None
+    camera_to_world, horizon, vanishing_points = anchored
+
+    world_to_camera = camera_to_world.T
+    assert np.linalg.det(world_to_camera) == pytest.approx(1.0)
+    assert world_to_camera.T @ world_to_camera == pytest.approx(np.eye(3))
+    assert world_to_camera[:, 1] == pytest.approx(np.array(up_hint))
+    assert vanishing_points == []
+
+    # Horizon pixels' rays are orthogonal to up.
+    a, b, c = horizon.line_coefficients
+    x = 100.0
+    y = (-c - a * x) / b
+    ray = np.array((
+        (x - intrinsics.cx_px) / intrinsics.fx_px,
+        -(y - intrinsics.cy_px) / intrinsics.fy_px,
+        -1.0,
+    ))
+    assert float(ray @ np.array(up_hint)) == pytest.approx(0.0, abs=1e-9)
+
+    # A negated hint flips to keep +Y up.
+    flipped = _anchor_orientation_from_up(intrinsics, tuple(-v for v in up_hint))
+    assert flipped is not None
+    assert flipped[0].T[:, 1] == pytest.approx(np.array(up_hint))
+
+
+def test_anchor_orientation_from_up_rejects_degenerate_hints() -> None:
+    from atlas_camera.core.multiview_solver import _anchor_orientation_from_up
+    from atlas_camera.core.schema import AtlasIntrinsics
+
+    intrinsics = AtlasIntrinsics(
+        fx_px=_FX, fy_px=_FX, cx_px=_WIDTH / 2.0, cy_px=_HEIGHT / 2.0,
+        image_width=_WIDTH, image_height=_HEIGHT,
+    )
+    assert _anchor_orientation_from_up(intrinsics, (0.0, 0.0, 0.0)) is None
+    # Looking straight along gravity: horizontal facing undefined.
+    assert _anchor_orientation_from_up(intrinsics, (0.0, 0.0, 1.0)) is None
+    assert _anchor_orientation_from_up(intrinsics, (float("nan"), 1.0, 0.0)) is None
+
+
+def test_anchor_up_hint_enters_the_registration_fingerprint() -> None:
+    from atlas_camera.core.multiview_types import registration_fingerprint
+
+    frames = ()
+    base = MultiViewSettings()
+    hinted = MultiViewSettings(anchor_up_hint=(0.0, 1.0, 0.0), anchor_up_hint_source="learned prior (geocalib)")
+    assert registration_fingerprint(frames, base) != registration_fingerprint(frames, hinted)
+
+
+def test_portrait_orientation_swaps_sensor_millimetres_for_intrinsics() -> None:
+    from atlas_camera.core.multiview_solver import _intrinsics_for_frame
+
+    landscape = _frame(width=_WIDTH, height=_HEIGHT, orientation=1)
+    portrait = _frame(width=_HEIGHT, height=_WIDTH, orientation=8)
+
+    flat = _intrinsics_for_frame(landscape)
+    assert flat.fx_px == pytest.approx(_FOCAL_MM * _WIDTH / _SENSOR_WIDTH_MM)
+    assert flat.fy_px == pytest.approx(_FOCAL_MM * _HEIGHT / _SENSOR_HEIGHT_MM)
+
+    tall = _intrinsics_for_frame(portrait)
+    # Rotated pixels: the developed width spans the sensor's SHORT side.
+    assert tall.fx_px == pytest.approx(_FOCAL_MM * _HEIGHT / _SENSOR_HEIGHT_MM)
+    assert tall.fy_px == pytest.approx(_FOCAL_MM * _WIDTH / _SENSOR_WIDTH_MM)

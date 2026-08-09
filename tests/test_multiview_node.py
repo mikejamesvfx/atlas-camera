@@ -154,7 +154,7 @@ def test_node_contract_and_widget_order():
         key for key, value in spec["optional"].items()
         if not value[1].get("forceInput", False)
     ]
-    assert widgets == ["capture_mode", "camera_height_m", "match_quality", "seed"]
+    assert widgets == ["capture_mode", "camera_height_m", "match_quality", "seed", "learned_anchor_fallback"]
 
 
 def test_node_fingerprint_changes_when_any_link_or_widget_changes():
@@ -195,7 +195,8 @@ def test_node_fingerprint_changes_when_any_link_or_widget_changes():
         plate_ref_1=args["plate_ref_2"], plate_ref_2=args["plate_ref_1"],
     )))
     for name, value in (("capture_mode", "rotation_only"), ("camera_height_m", 1.65),
-                        ("match_quality", "conservative"), ("seed", 9)):
+                        ("match_quality", "conservative"), ("seed", 9),
+                        ("learned_anchor_fallback", True)):
         changed.append(cls.IS_CHANGED(**dict(args, **{name: value})))
 
     assert all(value != first for value in changed)
@@ -322,7 +323,7 @@ def test_node_is_thin_orchestrator_and_batches_overlays(monkeypatch):
         diagnostics=diagnostics,
         overlays=(
             np.full((2, 5, 3), 0.25, dtype=np.float64),
-            np.full((2, 5, 3), 0.75, dtype=np.float64),
+            np.full((2, 5, 3), 191, dtype=np.uint8),
         ),
     )
 
@@ -340,7 +341,11 @@ def test_node_is_thin_orchestrator_and_batches_overlays(monkeypatch):
     assert result[0] is solve
     assert result[1] == "rotation_only: stable panorama"
     assert result[2] == json.dumps(diagnostics.to_dict(), sort_keys=True)
-    np.testing.assert_array_equal(result[3].numpy(), np.stack(outcome.overlays).astype(np.float32))
+    expected_overlays = np.stack((
+        outcome.overlays[0].astype(np.float32),
+        outcome.overlays[1].astype(np.float32) / 255.0,
+    ))
+    np.testing.assert_array_equal(result[3].numpy(), expected_overlays)
     assert [frame.label for frame in captured["frames"]] == ["photo_1", "photo_2"]
     assert captured["frames"][0].image.dtype == np.float32
     assert captured["frames"][0].image.flags.c_contiguous

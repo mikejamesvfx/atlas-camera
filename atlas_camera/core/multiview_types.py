@@ -43,6 +43,13 @@ class MultiViewSettings:
     camera_height_m: float = 0.0
     match_quality: MatchQuality = "balanced"
     seed: int = 0
+    #: Optional world-up direction in Atlas camera coordinates for photo 1,
+    #: used ONLY when the deterministic vanishing-point anchor fails.  The
+    #: caller (adapter layer) supplies it — typically from a learned prior —
+    #: so core stays torch-free.  It enters the registration fingerprint via
+    #: asdict, and using it is recorded as a diagnostics warning.
+    anchor_up_hint: tuple[float, float, float] | None = None
+    anchor_up_hint_source: str = ""
 
     def __post_init__(self) -> None:
         if self.capture_mode not in ("auto", "translated", "rotation_only"):
