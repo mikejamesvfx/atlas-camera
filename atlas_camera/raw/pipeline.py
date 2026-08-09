@@ -35,6 +35,10 @@ class RawImportResult:
     # by how much or a downstream re-grade is guesswork.
     headroom: float = 6.0
     orientation: int | None = None
+    body_serial_number: str | None = None
+    lens_serial_number: str | None = None
+    capture_datetime: str | None = None
+    metadata_source: str | None = None
 
     def intrinsics_hint(self) -> dict[str, Any]:
         """Exactly the dict ``solve_still_image(intrinsics_hint=...)`` consumes."""
@@ -58,6 +62,8 @@ class RawImportResult:
         lines = [f"{cam} · {focal} · {sensor}",
                  f"undistort: {self.undistort_status}"
                  + (f" ({self.lens_model})" if self.lens_model else "")]
+        if self.metadata_source == "embedded_jpeg":
+            lines.append("metadata: embedded JPEG EXIF preview")
         # The scale is reported unconditionally. It changes exposure of the
         # delivered plate, so it can never be something the artist has to go
         # looking for — and at 1.0 the file is NOT ACES-referred, which is the
@@ -139,6 +145,10 @@ def import_raw(path: str, *, undistort: bool = True, half_size: bool = False,
         warnings=warnings,
         source_path=str(path),
         orientation=getattr(meta, "orientation", None),
+        body_serial_number=meta.body_serial_number,
+        lens_serial_number=meta.lens_serial_number,
+        capture_datetime=meta.capture_datetime,
+        metadata_source=meta.metadata_source,
         headroom=float(headroom),
     )
 

@@ -35,6 +35,10 @@ def _fake_result(**overrides):
         undistort_status="applied",
         source_path="D:/shots/DSC_0001.NEF",
         orientation=1,
+        body_serial_number=None,
+        lens_serial_number=None,
+        capture_datetime=None,
+        metadata_source="container",
     )
     defaults.update(overrides)
     return RawImportResult(**defaults)

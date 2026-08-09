@@ -40,3 +40,4 @@ def test_import_raw_end_to_end():
     hint = result.intrinsics_hint()
     if result.focal_length_mm:
         assert hint["focal_length_mm"] == result.focal_length_mm
+    assert result.metadata_source in ("embedded_jpeg", "container", "none")
