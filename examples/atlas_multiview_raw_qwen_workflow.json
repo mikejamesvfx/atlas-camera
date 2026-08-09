@@ -1,0 +1,310 @@
+{
+  "id": "5e21b630-fce6-43d1-9c77-927e8f0564cd",
+  "revision": 0,
+  "last_node_id": 0,
+  "last_link_id": 15,
+  "nodes": [
+    {
+      "id": "1ac3cc8d-095d-4d22-8f4a-4db31a6cb001",
+      "type": "AtlasLoadRAW",
+      "pos": [40, 40],
+      "size": [360, 574],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {"name": "file_path", "type": "STRING", "link": null, "widget": {"name": "file_path"}},
+        {"name": "undistort", "type": "BOOLEAN", "link": null, "widget": {"name": "undistort"}},
+        {"name": "half_size", "type": "BOOLEAN", "link": null, "widget": {"name": "half_size"}},
+        {"name": "white_balance", "type": "COMBO", "link": null, "widget": {"name": "white_balance"}},
+        {"name": "exposure_ev", "type": "FLOAT", "link": null, "widget": {"name": "exposure_ev"}},
+        {"name": "write_exr", "type": "BOOLEAN", "link": null, "widget": {"name": "write_exr"}},
+        {"name": "output_dir", "type": "STRING", "link": null, "widget": {"name": "output_dir"}},
+        {"name": "colorspace", "type": "STRING", "link": null, "widget": {"name": "colorspace"}},
+        {"name": "headroom", "type": "FLOAT", "link": null, "widget": {"name": "headroom"}},
+        {"name": "project", "type": "ATLAS_PROJECT", "link": null, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "image", "type": "IMAGE", "links": [1, 15]},
+        {"name": "plate_ref", "type": "ATLAS_PLATE_REF", "links": [7]},
+        {"name": "raw_meta", "type": "ATLAS_RAW_META", "links": [4]},
+        {"name": "focal_length_mm", "type": "FLOAT", "links": []},
+        {"name": "sensor_width_mm", "type": "FLOAT", "links": []},
+        {"name": "report", "type": "STRING", "links": []}
+      ],
+      "properties": {"Node name for S&R": "AtlasLoadRAW"},
+      "widgets_values": ["atlas_multiview/photo_01.RAF", true, false, "camera", 0.0, true, "atlas_exports/raw_plates", "Linear Rec.709 (sRGB)", 6.0],
+      "title": "PHOTO 1 · deterministic anchor · measured lens height"
+    },
+    {
+      "id": "2bc4dd9e-1a6e-4e33-905b-5ec42b7dc002",
+      "type": "AtlasLoadRAW",
+      "pos": [40, 684],
+      "size": [360, 574],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "file_path", "type": "STRING", "link": null, "widget": {"name": "file_path"}},
+        {"name": "undistort", "type": "BOOLEAN", "link": null, "widget": {"name": "undistort"}},
+        {"name": "half_size", "type": "BOOLEAN", "link": null, "widget": {"name": "half_size"}},
+        {"name": "white_balance", "type": "COMBO", "link": null, "widget": {"name": "white_balance"}},
+        {"name": "exposure_ev", "type": "FLOAT", "link": null, "widget": {"name": "exposure_ev"}},
+        {"name": "write_exr", "type": "BOOLEAN", "link": null, "widget": {"name": "write_exr"}},
+        {"name": "output_dir", "type": "STRING", "link": null, "widget": {"name": "output_dir"}},
+        {"name": "colorspace", "type": "STRING", "link": null, "widget": {"name": "colorspace"}},
+        {"name": "headroom", "type": "FLOAT", "link": null, "widget": {"name": "headroom"}},
+        {"name": "project", "type": "ATLAS_PROJECT", "link": null, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "image", "type": "IMAGE", "links": [2]},
+        {"name": "plate_ref", "type": "ATLAS_PLATE_REF", "links": [8]},
+        {"name": "raw_meta", "type": "ATLAS_RAW_META", "links": [5]},
+        {"name": "focal_length_mm", "type": "FLOAT", "links": []},
+        {"name": "sensor_width_mm", "type": "FLOAT", "links": []},
+        {"name": "report", "type": "STRING", "links": []}
+      ],
+      "properties": {"Node name for S&R": "AtlasLoadRAW"},
+      "widgets_values": ["atlas_multiview/photo_02.RAF", true, false, "camera", 0.0, true, "atlas_exports/raw_plates", "Linear Rec.709 (sRGB)", 6.0],
+      "title": "PHOTO 2 · lateral move · about 70% overlap"
+    },
+    {
+      "id": "3cd5eeaf-2b7f-4f44-a16c-6fd53c8ed003",
+      "type": "AtlasLoadRAW",
+      "pos": [40, 1328],
+      "size": [360, 574],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "file_path", "type": "STRING", "link": null, "widget": {"name": "file_path"}},
+        {"name": "undistort", "type": "BOOLEAN", "link": null, "widget": {"name": "undistort"}},
+        {"name": "half_size", "type": "BOOLEAN", "link": null, "widget": {"name": "half_size"}},
+        {"name": "white_balance", "type": "COMBO", "link": null, "widget": {"name": "white_balance"}},
+        {"name": "exposure_ev", "type": "FLOAT", "link": null, "widget": {"name": "exposure_ev"}},
+        {"name": "write_exr", "type": "BOOLEAN", "link": null, "widget": {"name": "write_exr"}},
+        {"name": "output_dir", "type": "STRING", "link": null, "widget": {"name": "output_dir"}},
+        {"name": "colorspace", "type": "STRING", "link": null, "widget": {"name": "colorspace"}},
+        {"name": "headroom", "type": "FLOAT", "link": null, "widget": {"name": "headroom"}},
+        {"name": "project", "type": "ATLAS_PROJECT", "link": null, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "image", "type": "IMAGE", "links": [3]},
+        {"name": "plate_ref", "type": "ATLAS_PLATE_REF", "links": [9]},
+        {"name": "raw_meta", "type": "ATLAS_RAW_META", "links": [6]},
+        {"name": "focal_length_mm", "type": "FLOAT", "links": []},
+        {"name": "sensor_width_mm", "type": "FLOAT", "links": []},
+        {"name": "report", "type": "STRING", "links": []}
+      ],
+      "properties": {"Node name for S&R": "AtlasLoadRAW"},
+      "widgets_values": ["atlas_multiview/photo_03.RAF", true, false, "camera", 0.0, true, "atlas_exports/raw_plates", "Linear Rec.709 (sRGB)", 6.0],
+      "title": "PHOTO 3 · optional · disconnect all 3 wires for a 2-photo solve"
+    },
+    {
+      "id": "4de6ffb0-3c80-4055-b27d-70e64d9fe004",
+      "type": "AtlasMultiViewSolve",
+      "pos": [600, 1300],
+      "size": [420, 520],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "image_1", "type": "IMAGE", "link": 1},
+        {"name": "image_2", "type": "IMAGE", "link": 2},
+        {"name": "image_3", "type": "IMAGE", "link": 3, "shape": 7},
+        {"name": "raw_meta_1", "type": "ATLAS_RAW_META", "link": 4, "shape": 7},
+        {"name": "raw_meta_2", "type": "ATLAS_RAW_META", "link": 5, "shape": 7},
+        {"name": "raw_meta_3", "type": "ATLAS_RAW_META", "link": 6, "shape": 7},
+        {"name": "plate_ref_1", "type": "ATLAS_PLATE_REF", "link": 7, "shape": 7},
+        {"name": "plate_ref_2", "type": "ATLAS_PLATE_REF", "link": 8, "shape": 7},
+        {"name": "plate_ref_3", "type": "ATLAS_PLATE_REF", "link": 9, "shape": 7},
+        {"name": "capture_mode", "type": "COMBO", "link": null, "widget": {"name": "capture_mode"}},
+        {"name": "camera_height_m", "type": "FLOAT", "link": null, "widget": {"name": "camera_height_m"}},
+        {"name": "match_quality", "type": "COMBO", "link": null, "widget": {"name": "match_quality"}},
+        {"name": "seed", "type": "INT", "link": null, "widget": {"name": "seed"}}
+      ],
+      "outputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "links": [10]},
+        {"name": "report", "type": "STRING", "links": []},
+        {"name": "registration_json", "type": "STRING", "links": []},
+        {"name": "match_overlays", "type": "IMAGE", "links": [14]}
+      ],
+      "properties": {"Node name for S&R": "AtlasMultiViewSolve"},
+      "widgets_values": ["auto", 1.43, "balanced", 0, "fixed"],
+      "title": "DETERMINISTIC REGISTRATION · balanced default · permissive only after overlap review"
+    },
+    {
+      "id": "5ef700c1-4d91-4166-838e-81f75eaff005",
+      "type": "LoadImage",
+      "pos": [600, 700],
+      "size": [440, 432],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "COMBO", "link": null, "shape": 7, "widget": {"name": "image"}}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [11]},
+        {"name": "MASK", "type": "MASK", "links": []}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png", "image"],
+      "title": "OPTIONAL QWEN-GENERATED PATCH · downstream evidence only"
+    },
+    {
+      "id": "6f0811d2-5ea2-4277-949f-92086fb0a006",
+      "type": "AtlasAddPatchView",
+      "pos": [1140, 40],
+      "size": [440, 988],
+      "flags": {},
+      "order": 5,
+      "mode": 4,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 10},
+        {"name": "patch_image", "type": "IMAGE", "link": 11},
+        {"name": "patch_azimuth_view", "type": "COMBO", "link": null, "widget": {"name": "patch_azimuth_view"}},
+        {"name": "patch_elevation_view", "type": "COMBO", "link": null, "widget": {"name": "patch_elevation_view"}},
+        {"name": "patch_distance", "type": "COMBO", "link": null, "widget": {"name": "patch_distance"}},
+        {"name": "source_azimuth_view", "type": "COMBO", "link": null, "widget": {"name": "source_azimuth_view"}},
+        {"name": "source_elevation_view", "type": "COMBO", "link": null, "widget": {"name": "source_elevation_view"}},
+        {"name": "flip_azimuth", "type": "BOOLEAN", "link": null, "widget": {"name": "flip_azimuth"}},
+        {"name": "name", "type": "STRING", "link": null, "widget": {"name": "name"}},
+        {"name": "depth_model", "type": "COMBO", "link": null, "widget": {"name": "depth_model"}},
+        {"name": "relief_grid", "type": "INT", "link": null, "widget": {"name": "relief_grid"}},
+        {"name": "priority", "type": "FLOAT", "link": null, "widget": {"name": "priority"}},
+        {"name": "plate_ref", "type": "ATLAS_PLATE_REF", "link": null, "shape": 7},
+        {"name": "device", "type": "COMBO", "link": null, "widget": {"name": "device"}},
+        {"name": "patch_view_override", "type": "STRING", "link": null, "shape": 7},
+        {"name": "exact_view_override", "type": "STRING", "link": null, "shape": 7},
+        {"name": "mask_unseen_only", "type": "BOOLEAN", "link": null, "widget": {"name": "mask_unseen_only"}},
+        {"name": "unseen_dilate_px", "type": "INT", "link": null, "widget": {"name": "unseen_dilate_px"}},
+        {"name": "primary_depth", "type": "ATLAS_DEPTH_MAP", "link": null, "shape": 7},
+        {"name": "exclude_mask", "type": "MASK", "link": null, "shape": 7},
+        {"name": "geometry_source", "type": "COMBO", "link": null, "widget": {"name": "geometry_source"}}
+      ],
+      "outputs": [
+        {"name": "ATLAS_SOLVE", "type": "ATLAS_SOLVE", "links": [12, 13]}
+      ],
+      "properties": {"Node name for S&R": "AtlasAddPatchView"},
+      "widgets_values": ["front-right quarter view", "eye-level shot", "medium shot", "front view", "eye-level shot", false, "qwen_patch", "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf", 96, 1.0, "auto", true, 16, "reuse_scene"],
+      "title": "OPTIONAL PATCH · BYPASSED · enable only after supplying Qwen image"
+    },
+    {
+      "id": "7a1922e3-6fb3-4388-a5a0-a31970c1b007",
+      "type": "AtlasBlockoutViewport",
+      "pos": [1700, 40],
+      "size": [900, 680],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 12},
+        {"name": "source_image", "type": "IMAGE", "link": 15},
+        {"name": "resolution", "type": "INT", "link": null, "widget": {"name": "resolution"}},
+        {"name": "client_data", "type": "STRING", "link": null, "widget": {"name": "client_data"}},
+        {"name": "primary_depth", "type": "ATLAS_DEPTH_MAP", "link": null, "shape": 7},
+        {"name": "preview_expand", "type": "FLOAT", "link": null, "widget": {"name": "preview_expand"}},
+        {"name": "controls", "type": "ATLAS_VIEWPORT_LINK", "link": null, "shape": 7},
+        {"name": "shot_cam", "type": "ATLAS_SHOT_CAM", "link": null, "shape": 7},
+        {"name": "output_profile", "type": "ATLAS_OUTPUT_PROFILE", "link": null, "shape": 7},
+        {"name": "debug_matte", "type": "MASK", "link": null, "shape": 7},
+        {"name": "patch_mask", "type": "MASK", "link": null, "shape": 7},
+        {"name": "drawn_fill_px", "type": "INT", "link": null, "widget": {"name": "drawn_fill_px"}},
+        {"name": "clean_plate", "type": "IMAGE", "link": null, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "shaded", "type": "IMAGE", "links": []},
+        {"name": "depth", "type": "IMAGE", "links": []},
+        {"name": "normal", "type": "IMAGE", "links": []},
+        {"name": "mask", "type": "IMAGE", "links": []},
+        {"name": "path_frames", "type": "IMAGE", "links": []},
+        {"name": "camera_path", "type": "ATLAS_CAMERA_PATH", "links": []},
+        {"name": "patch_azimuth_view", "type": "STRING", "links": []},
+        {"name": "patch_elevation_view", "type": "STRING", "links": []},
+        {"name": "patch_distance", "type": "STRING", "links": []},
+        {"name": "patch_prompt", "type": "STRING", "links": []},
+        {"name": "patch_exact", "type": "STRING", "links": []},
+        {"name": "patch_render_mask", "type": "MASK", "links": []},
+        {"name": "solve", "type": "ATLAS_SOLVE", "links": []},
+        {"name": "drawn_mask", "type": "MASK", "links": []},
+        {"name": "draw_report", "type": "STRING", "links": []}
+      ],
+      "properties": {"Node name for S&R": "AtlasBlockoutViewport"},
+      "widgets_values": [1024, "", 1.0, 96],
+      "title": "REGISTERED MULTI-VIEW · photo 1 projection and camera rig"
+    },
+    {
+      "id": "8b2a33f4-70c4-4499-b6b1-b42a81d2c008",
+      "type": "AtlasDebugReport",
+      "pos": [1700, 800],
+      "size": [440, 286],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "solve", "type": "ATLAS_SOLVE", "link": 13},
+        {"name": "depth", "type": "ATLAS_DEPTH_MAP", "link": null, "shape": 7},
+        {"name": "file_path", "type": "STRING", "link": null, "widget": {"name": "file_path"}},
+        {"name": "status_1", "type": "STRING", "link": null, "shape": 7},
+        {"name": "status_2", "type": "STRING", "link": null, "shape": 7},
+        {"name": "status_3", "type": "STRING", "link": null, "shape": 7},
+        {"name": "status_4", "type": "STRING", "link": null, "shape": 7},
+        {"name": "vlm_report", "type": "STRING", "link": null, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "report", "type": "STRING", "links": []},
+        {"name": "json_path", "type": "STRING", "links": []}
+      ],
+      "properties": {"Node name for S&R": "AtlasDebugReport"},
+      "widgets_values": ["atlas_debug/multiview_registration.json"],
+      "title": "REGISTRATION / SCENE REPORT"
+    },
+    {
+      "id": "9c3b4405-81d5-45aa-87c2-c53b92e3d009",
+      "type": "PreviewImage",
+      "pos": [1140, 1300],
+      "size": [440, 348],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 14}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "PreviewImage"},
+      "widgets_values": [],
+      "title": "PAIR MATCH OVERLAYS · photographed evidence"
+    }
+  ],
+  "links": [
+    [1, "1ac3cc8d-095d-4d22-8f4a-4db31a6cb001", 0, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 0, "IMAGE"],
+    [2, "2bc4dd9e-1a6e-4e33-905b-5ec42b7dc002", 0, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 1, "IMAGE"],
+    [3, "3cd5eeaf-2b7f-4f44-a16c-6fd53c8ed003", 0, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 2, "IMAGE"],
+    [4, "1ac3cc8d-095d-4d22-8f4a-4db31a6cb001", 2, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 3, "ATLAS_RAW_META"],
+    [5, "2bc4dd9e-1a6e-4e33-905b-5ec42b7dc002", 2, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 4, "ATLAS_RAW_META"],
+    [6, "3cd5eeaf-2b7f-4f44-a16c-6fd53c8ed003", 2, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 5, "ATLAS_RAW_META"],
+    [7, "1ac3cc8d-095d-4d22-8f4a-4db31a6cb001", 1, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 6, "ATLAS_PLATE_REF"],
+    [8, "2bc4dd9e-1a6e-4e33-905b-5ec42b7dc002", 1, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 7, "ATLAS_PLATE_REF"],
+    [9, "3cd5eeaf-2b7f-4f44-a16c-6fd53c8ed003", 1, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 8, "ATLAS_PLATE_REF"],
+    [10, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 0, "6f0811d2-5ea2-4277-949f-92086fb0a006", 0, "ATLAS_SOLVE"],
+    [11, "5ef700c1-4d91-4166-838e-81f75eaff005", 0, "6f0811d2-5ea2-4277-949f-92086fb0a006", 1, "IMAGE"],
+    [12, "6f0811d2-5ea2-4277-949f-92086fb0a006", 0, "7a1922e3-6fb3-4388-a5a0-a31970c1b007", 0, "ATLAS_SOLVE"],
+    [13, "6f0811d2-5ea2-4277-949f-92086fb0a006", 0, "8b2a33f4-70c4-4499-b6b1-b42a81d2c008", 0, "ATLAS_SOLVE"],
+    [14, "4de6ffb0-3c80-4055-b27d-70e64d9fe004", 3, "9c3b4405-81d5-45aa-87c2-c53b92e3d009", 0, "IMAGE"],
+    [15, "1ac3cc8d-095d-4d22-8f4a-4db31a6cb001", 0, "7a1922e3-6fb3-4388-a5a0-a31970c1b007", 1, "IMAGE"]
+  ],
+  "groups": [
+    {"id": 1, "title": "1 · PHOTOGRAPHED CAPTURE · static scene · same camera/lens/settings · fixed focus/zoom/orientation", "bounding": [10, 0, 420, 1942], "color": "#3f5968", "font_size": 24},
+    {"id": 2, "title": "2 · DETERMINISTIC SOLVE · measured inputs only · photo 1 is anchor", "bounding": [560, 1230, 500, 660], "color": "#355d45", "font_size": 24},
+    {"id": 3, "title": "3 · OPTIONAL GENERATED EVIDENCE · NEVER wire into registration", "bounding": [560, 0, 1060, 1172], "color": "#6b4f35", "font_size": 24},
+    {"id": 4, "title": "4 · REGISTERED VIEWPORT + SCENE / DEBUG REPORT", "bounding": [1660, 0, 900, 1126], "color": "#53456b", "font_size": 24},
+    {"id": 5, "title": "5 · PAIR MATCH OVERLAYS · PHOTOGRAPHED EVIDENCE", "bounding": [1100, 1230, 520, 458], "color": "#4f4360", "font_size": 24}
+  ],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 0.72, "offset": [-10, 20]},
+    "atlas_note": "Use a lateral translated baseline for metric registration. Rotation in place recovers orientation only. Qwen imagery is downstream patch evidence and never photographed registration input."
+  },
+  "version": 0.4
+}

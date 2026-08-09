@@ -1234,6 +1234,16 @@ function proxyEntryToGeometry(e) {
   return attachAtlasEdgeRisk(geo, e);
 }
 
+function projectionEvidenceLabel(evidenceType) {
+  return evidenceType === "photographed" ? "PHOTO"
+    : evidenceType === "generated" ? "GENERATED" : "SOURCE";
+}
+
+function projectionGeometryEntries(src, data) {
+  return src.proxy_geometry?.length ? src.proxy_geometry
+    : src.evidence_type === "photographed" ? (data.proxy_geometry || []) : [];
+}
+
 // Build the multi-angle patch sources (AtlasAddPatchView). Each source is its
 // own camera + AI novel-view image + geometry; each mesh carries its OWN
 // projection material (bound to that source's camera+image, with a facing-ratio
@@ -1271,7 +1281,7 @@ function buildPatchSources(scene, data, onSourceReady) {
     group.userData.band_geometry = src.band_geometry;
     group.userData.projection_mode = src.projection_mode;
     const meshes = [];
-    for (const e of (src.proxy_geometry || [])) {
+    for (const e of projectionGeometryEntries(src, data)) {
       const geo = proxyEntryToGeometry(e);
       if (!geo) continue;
       const mat = new THREE.MeshStandardMaterial({ color: 0x8a9a80, roughness: 0.85, side: THREE.DoubleSide });
@@ -2273,7 +2283,7 @@ function buildNodeUI(node, containerEl) {
     }
     (recoveredData?.projection_sources || []).forEach((s, i) => {
       rows.push([hex(LAYER_DEBUG_PALETTE[i % LAYER_DEBUG_PALETTE.length]),
-                 s.name || `layer ${i}`]);
+                 `${s.name || `layer ${i}`} · ${projectionEvidenceLabel(s.evidence_type)}`]);
     });
     layerLegend.replaceChildren(...rows.map(([c, label]) => {
       const row = document.createElement("div");
@@ -3786,6 +3796,64 @@ function buildNodeUI(node, containerEl) {
     refreshDrawOverlay();
   };
 
+  // Clear ALL drawn/filled shapes in one go. 🗑 deletes one at a time, which is
+  // the wrong tool after a wand session leaves thirty fills on a torn mesh —
+  // thirty clicks to start over (asked for live 2026-08-08).
+  //
+  // ARMED IN TWO CLICKS, never one: there is no undo in the viewport, and this
+  // is the only control that can destroy an entire session's drawing. The first
+  // click arms and says how many shapes are at stake; a second click within
+  // CLEAR_ARM_MS commits; doing nothing disarms. Deliberately NOT a window
+  // confirm() — a modal dialog blocks the whole ComfyUI page (and any automation
+  // driving it) until dismissed, where an armed button costs nothing to ignore.
+  const CLEAR_ARM_MS = 4000;
+  let clearArmed = false;
+  let clearArmTimer = null;
+  const clearAllBtn = document.createElement("button");
+  clearAllBtn.textContent = "🧹";
+  clearAllBtn.title = "Clear ALL drawn and wand-filled shapes at once, plus any "
+    + "outline still in progress. Click once to arm, again to confirm (there is "
+    + "no undo). Click ✅ Apply afterwards to rebuild without them — an empty "
+    + "list applies, so this really does unbake the geometry.";
+  clearAllBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  function disarmClearAll() {
+    clearArmed = false;
+    if (clearArmTimer !== null) { clearTimeout(clearArmTimer); clearArmTimer = null; }
+    clearAllBtn.style.background = "transparent";
+    clearAllBtn.style.color = "#c9c9d1";
+  }
+  clearAllBtn.onclick = () => {
+    const pending = drawPoints.length;
+    if (!drawnPolygons.length && !pending) {
+      disarmClearAll();
+      drawHud("🧹 nothing to clear");
+      return;
+    }
+    if (!clearArmed) {
+      clearArmed = true;
+      clearAllBtn.style.background = "#4a1d1d";
+      clearAllBtn.style.color = "#ff9b9b";
+      drawHud(`🧹 clear ALL ${drawnPolygons.length} shape(s)`
+        + (pending ? ` + the outline in progress` : "")
+        + ` — click 🧹 again to confirm, there is no undo`);
+      clearArmTimer = setTimeout(() => {
+        if (!clearArmed) return;
+        disarmClearAll();
+        drawHud("🧹 clear-all disarmed");
+      }, CLEAR_ARM_MS);
+      return;
+    }
+    const n = drawnPolygons.length;
+    disarmClearAll();
+    drawnPolygons.length = 0;          // same array — the overlay/payload hold it
+    drawPoints = []; drawRays = []; drawHits = []; drawPlane = null;
+    editSel = null;
+    editDrag = null;
+    drawDirty = true;                  // an EMPTY list still applies when dirty
+    refreshDrawOverlay();
+    drawHud(`🧹 cleared ${n} shape(s) — ✅ Apply to rebuild without them`);
+  };
+
   // ---------------------------------------------------------------------------
   // Box — three-stage blockout solid: footprint on the ground, then extrude up.
   //
@@ -4897,6 +4965,10 @@ function buildNodeUI(node, containerEl) {
       + '<path d="M7 8h4M13 8h4"/>'),
     trash: railSvg('<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13"/>'
       + '<path d="M10 11v5.5M14 11v5.5"/>'),
+    // Clear-all: the same bin, shifted right to make room for sweep strokes —
+    // "everything goes in", distinct from the single-shape 🗑 at a glance.
+    trashAll: railSvg('<path d="M7.5 7.5h13M13 7.5V5h4v2.5M9.5 7.5l1 12.5h8l1-12.5"/>'
+      + '<path d="M1.5 7h4M1.5 11h4M1.5 15h4" opacity="0.75"/>'),
     apply: railSvg('<path d="M4.5 12.5l5.5 5.5L19.5 6.5"/>'),
     wand: railSvg('<path d="M4 20l9-9"/>'
       + '<path d="M15.5 3.5v4M13.5 5.5h4"/>'
@@ -4933,6 +5005,7 @@ function buildNodeUI(node, containerEl) {
   styleRailBtn(editBtn, "edit");
   styleRailBtn(snapBtn, "snap");
   styleRailBtn(deleteBtn, "trash");
+  styleRailBtn(clearAllBtn, "trashAll");
   styleRailBtn(drawApplyBtn, "apply");
   // Collapse toggle. The tool buttons live in their own container so hiding
   // them leaves the toggle itself on screen — a control that can hide its own
@@ -4949,7 +5022,8 @@ function buildNodeUI(node, containerEl) {
   railTools.style.cssText = "display:flex;flex-direction:column;gap:4px;";
   railTools.append(wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
                    railSeparator(),
-                   editBtn, snapBtn, deleteBtn, railSeparator(), drawApplyBtn);
+                   editBtn, snapBtn, deleteBtn, clearAllBtn,
+                   railSeparator(), drawApplyBtn);
 
   let railToolsVisible = true;   // tools ON by default
   const railToggleBtn = document.createElement("button");
@@ -5029,12 +5103,20 @@ function buildNodeUI(node, containerEl) {
     snapBtn.style.color = editSnap ? "#7dd87d" : "#c9c9d1";
   }
   deleteBtn.style.color = "#c9c9d1";
+  clearAllBtn.style.color = "#c9c9d1";
   drawApplyBtn.style.background = "#1e3a24";
   drawApplyBtn.style.color = "#7dd87d";
+  // Any OTHER rail action disarms a pending clear-all: the artist has moved on,
+  // and an arm that outlived the moment would turn the next 🧹 click into a
+  // one-click wipe — exactly what the two-click gate exists to prevent.
   for (const b of [wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
                    editBtn, snapBtn]) {
     const orig = b.onclick;
-    b.onclick = () => { orig(); syncRailActive(); updateRailStatus(); };
+    b.onclick = () => { disarmClearAll(); orig(); syncRailActive(); updateRailStatus(); };
+  }
+  for (const b of [deleteBtn, drawApplyBtn]) {
+    const orig = b.onclick;
+    b.onclick = () => { disarmClearAll(); orig(); };
   }
   syncRailActive();
   updateRailStatus();

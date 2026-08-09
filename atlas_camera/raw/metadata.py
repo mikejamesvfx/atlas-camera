@@ -31,6 +31,10 @@ class RawMetadata:
     orientation: int | None = None
     raw_tags: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    body_serial_number: str | None = None
+    lens_serial_number: str | None = None
+    capture_datetime: str | None = None
+    metadata_source: str | None = None
 
 
 @dataclass(slots=True)
@@ -81,6 +85,17 @@ def _to_int(value: Any) -> int | None:
     return int(number) if number is not None else None
 
 
+def _to_orientation(value: Any) -> int | None:
+    """Read EXIF orientation, including exifread's numeric IfdTag values."""
+    orientation = _to_int(value)
+    if orientation is not None:
+        return orientation
+    values = getattr(value, "values", None)
+    if isinstance(values, (list, tuple)) and len(values) == 1:
+        return _to_int(values[0])
+    return None
+
+
 def _to_str(value: Any) -> str | None:
     if value is None:
         return None
@@ -114,7 +129,11 @@ def _metadata_from_tags(tags: dict[str, Any]) -> RawMetadata:
         focal_plane_y_res=_to_float(tag("EXIF FocalPlaneYResolution", "FocalPlaneYResolution")),
         focal_plane_res_unit=_to_int(
             tag("EXIF FocalPlaneResolutionUnit", "FocalPlaneResolutionUnit")),
-        orientation=_to_int(tag("Image Orientation", "Orientation")),
+        orientation=_to_orientation(tag("Image Orientation", "Orientation")),
+        body_serial_number=_to_str(tag("EXIF BodySerialNumber", "BodySerialNumber")),
+        lens_serial_number=_to_str(tag("EXIF LensSerialNumber", "LensSerialNumber")),
+        capture_datetime=_to_str(
+            tag("EXIF DateTimeOriginal", "DateTimeOriginal", "Image DateTime", "DateTime")),
         # MakerNote blobs (LensData etc.) can be huge — cap for the debug dump.
         raw_tags={key: str(value)[:120] for key, value in tags.items()},
     )
@@ -179,23 +198,51 @@ def read_raw_metadata(path: str) -> RawMetadata:
             "Install with: pip install -e .[raw]") from exc
 
     tags: dict[str, Any] = {}
-    try:
-        with open(path, "rb") as handle:
-            # details=True: MakerNote parsing is required for lens metadata on
-            # Nikon NEFs (no standard LensModel tag — found live on a D810).
-            tags = dict(exifread.process_file(handle, details=True))
-    except Exception as exc:  # noqa: BLE001 — any parse failure degrades soft
-        meta = RawMetadata()
-        meta.warnings.append(f"exifread failed on {path}: {exc}")
-        tags = {}
+    warnings: list[str] = []
+    metadata_source = "none"
+    if str(path).lower().endswith(".raf"):
+        try:
+            # RAF's TIFF container can reject exifread, but rawpy can expose
+            # its embedded JPEG without decoding or demosaicing the RAW.
+            import io
+            import rawpy
+
+            raw = rawpy.imread(str(path))
+            try:
+                thumb = raw.extract_thumb()
+            finally:
+                raw.close()
+            if thumb.format != rawpy.ThumbFormat.JPEG:
+                raise ValueError(f"embedded thumbnail is {thumb.format!r}, not JPEG")
+            tags = dict(exifread.process_file(io.BytesIO(thumb.data), details=True))
+            if tags:
+                metadata_source = "embedded_jpeg"
+        except Exception as exc:  # noqa: BLE001 — metadata remains best-effort
+            warnings.append(f"RAF embedded JPEG metadata failed on {path}: {exc}")
+            tags = {}
+
+    if not tags:
+        try:
+            with open(path, "rb") as handle:
+                # details=True: MakerNote parsing is required for lens metadata on
+                # Nikon NEFs (no standard LensModel tag — found live on a D810).
+                tags = dict(exifread.process_file(handle, details=True))
+            if tags:
+                metadata_source = "container"
+        except Exception as exc:  # noqa: BLE001 — any parse failure degrades soft
+            warnings.append(f"exifread failed on {path}: {exc}")
+            tags = {}
 
     if not tags:
         # Pillow reads TIFF-container EXIF for some formats exifread chokes on.
         pil_tags = _pillow_exif_tags(path)
         if pil_tags:
             tags = pil_tags
+            metadata_source = "container"
 
     meta = _metadata_from_tags(tags) if tags else RawMetadata()
+    meta.metadata_source = metadata_source
+    meta.warnings = warnings + meta.warnings
     if not tags:
         meta.warnings.append(
             "No EXIF metadata could be read (CR3 metadata is best-effort — "

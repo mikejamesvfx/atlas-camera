@@ -541,7 +541,10 @@ def write_maya_layers_scene(
     out.mkdir(parents=True, exist_ok=True)
     ma_path = out / f"{name}.ma"
 
-    from atlas_camera.exporters._layers import collect_projection_layers
+    from atlas_camera.exporters._layers import (
+        collect_projection_layers,
+        projection_layer_provenance,
+    )
 
     layers, skipped = collect_projection_layers(
         solve, out,
@@ -598,6 +601,7 @@ def write_maya_layers_scene(
     ma_path.write_text("\n".join(blocks) + "\n", encoding="utf-8")
     return {
         "ma_path": str(ma_path),
-        "layers": [l["name"] for l in layers],
+        "layers": [layer["name"] for layer in layers],
+        "layer_provenance": projection_layer_provenance(layers),
         "skipped": skipped,
     }

@@ -338,9 +338,16 @@ METRIC SCALE — measured, not assumed, and often WRONG on elevated vantages:
   AtlasScaleOverride camera_height_m (temple city ≈16 m) or a known-size
   reference (AtlasReferenceScaleSolve). THE SKY-RISE DOCTRINE (NYC birdseye,
   2026-07-17): on any plate with buildings, COUNT THE STOREYS — pick one fully
-  visible base-to-roof, count levels x 3.5 m, and give
+  visible base-to-roof, multiply by a storey height, and give
   AtlasReferenceScaleSolve its bbox with height_override_m
-  (reference_id=building_story_3m). On the NYC plate the counted 5-storey
+  (reference_id=building_story_3m). MIND WHICH STOREY HEIGHT: the registry
+  heuristic is 3 m (building_story_3m; building_3_story=9 m,
+  building_25_story=75 m), and STOREY_HEIGHT_M=3.0 is what a VLM cue uses when
+  you supply no override. The NYC figure below used an EXPLICIT
+  height_override_m of 17.5 m — 3.5 m/storey, a pre-war floor-to-floor — so it
+  differs from the heuristic by design, not by error. On a 6-storey facade that
+  choice alone is a 3 m swing; state which one you used. On the NYC plate the
+  counted 5-storey
   tenement (17.5 m, bbox 3820,1775-4470,2480) locks the camera at 63.7 m,
   conf 0.96, scale_source=reference_object — the photographer recalled
   70-100 m and the original eyeballed 25 m dial was ~2.5x small. Lesson: an

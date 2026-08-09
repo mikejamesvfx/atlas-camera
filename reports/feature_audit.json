@@ -1,16 +1,16 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-08-08",
+ "generated_utc": "2026-08-09",
  "counts": {
-  "standard": 90,
+  "standard": 91,
   "experimental": 6,
   "legacy": 2,
   "ios": 2,
-  "total": 100,
+  "total": 101,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 90,
+  "KEEP_CORE": 91,
   "KEEP_EXPERIMENTAL": 6,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
@@ -28,14 +28,15 @@
   "AtlasAddPatchView": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": 0,
-   "dedicated_tests": 9,
-   "tests": 11,
+   "example_workflows": 1,
+   "dedicated_tests": 12,
+   "tests": 14,
    "mcp_tools": 0,
    "repo_tools": 2,
-   "docs": 6,
+   "docs": 9,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -139,7 +140,7 @@
    "tests": 4,
    "mcp_tools": 2,
    "repo_tools": 4,
-   "docs": 4,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -213,7 +214,7 @@
   "AtlasBlockoutViewport": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": 4,
+   "example_workflows": 5,
    "dedicated_tests": 17,
    "tests": 19,
    "mcp_tools": 0,
@@ -400,14 +401,15 @@
   "AtlasDebugReport": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": 0,
-   "dedicated_tests": 3,
-   "tests": 5,
+   "example_workflows": 1,
+   "dedicated_tests": 4,
+   "tests": 6,
    "mcp_tools": 1,
    "repo_tools": 3,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -1697,7 +1699,7 @@
    "tests": 4,
    "mcp_tools": 0,
    "repo_tools": 5,
-   "docs": 2,
+   "docs": 1,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -1721,14 +1723,15 @@
   "AtlasLoadRAW": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": 0,
-   "dedicated_tests": 3,
-   "tests": 5,
+   "example_workflows": 1,
+   "dedicated_tests": 6,
+   "tests": 8,
    "mcp_tools": 0,
    "repo_tools": 2,
-   "docs": 4,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -1902,6 +1905,32 @@
    ],
    "migration_action": "none; keep",
    "notes": "Answers \"how far can this camera move before the unseen geometry shows?\" by bisecting the move against the occlusion graph, rather than leaving it to the artist's eye."
+  },
+  "AtlasMultiViewSolve": {
+   "module": "atlas_camera/comfy/nodes_multiview.py",
+   "tier": "standard",
+   "example_workflows": 1,
+   "dedicated_tests": 2,
+   "tests": 4,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 6,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "workflow",
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
   },
   "AtlasOcclusionGraph": {
    "module": "atlas_camera/comfy/nodes_completion.py",

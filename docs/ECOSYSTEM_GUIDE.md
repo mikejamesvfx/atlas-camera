@@ -104,6 +104,7 @@ actually wire them in.
 |---|---|
 | `AtlasLearnedSolveFromImage` | **Recommended default.** GeoCalib neural prior predicts focal length + gravity direction directly from image content. Robust on AI-generated images (27/33 usable on a test set, vs. 18/33 for VP solving) and reports genuine, meaningful confidence. |
 | `AtlasSolveFromImage` | Classical vanishing-point solve — detects and triangulates converging line families. Best on real photographs with clean architectural lines; fragile on AI imagery (locally-plausible-but-globally-inconsistent perspective breaks the RANSAC fit) and reports a constant, uninformative 0.75 confidence regardless of fit quality. |
+| `AtlasMultiViewSolve` | Deterministic calibrated rig from two or three ordered `AtlasLoadRAW` photographs. Photo 1 anchors the world frame; a lateral translated baseline plus measured lens-centre height provides the metric path. Rotation in place recovers orientation only. Generated/Qwen views are rejected as registration evidence and belong downstream in `AtlasAddPatchView`. |
 | `AtlasConstrainedSolve` | Artist-guided solve from explicit line/scale constraints JSON. |
 | `AtlasLoadSolveJSON` | Reload a previously exported solve. |
 
@@ -549,10 +550,13 @@ For a full Nuke/Maya round-trip beyond just writing files, wire an
 needs a *linear* `IMAGE` tensor for further ComfyUI-side compositing, rather
 than only writing to disk.
 
-The asset-dependent OCIO/RAW workflow bundles are distributed separately from
-the six repository workflows. Their current recipe is `AtlasLoadPlate` or
-`AtlasLoadRAW` → solve/attach → Output Desk → DCC exporters; Atlas's loaders
-use OpenImageIO/rawpy rather than an OpenCV EXR dependency.
+The repository now includes one portable RAW multi-view graph,
+`atlas_multiview_raw_qwen_workflow.json`, using input-relative placeholder
+paths. It demonstrates `AtlasLoadRAW` ×3 → `AtlasMultiViewSolve` → viewport,
+report, and match-overlay review, with a bypassed downstream Qwen patch slot
+through `AtlasAddPatchView`. Other asset-dependent OCIO/RAW bundles remain
+separate. Atlas's loaders use OpenImageIO/rawpy rather than an OpenCV EXR
+dependency.
 
 ---
 
@@ -567,10 +571,11 @@ ComfyUI's browser canvas for interactive, click-around testing:
 | `atlas_quickstart_solve_project_export_workflow.json` | The front door taken apart: `AtlasLearnedSolveFromImage` → `AtlasGravityCompass` → `AtlasDepthMap` → `AtlasDeriveReliefMesh` → viewport, so any stage can be taken over or overridden. |
 | `atlas_export_fanout_workflow.json` | The DCC payoff: one solve into eight native exporters, every path routed by an `AtlasProject` delivery tree on the ACEScg lane. |
 | `atlas_layered_projection_workflow.json` | The 2.5D stack a matte painter opens: band split → layer matte → relief → clean-plate layer → sky dome → occlusion graph → layer plan. |
-| `*_agentic_assessment_workflow.json` | One twin of each workflow above, preserving its graph and appending an enabled `AtlasAssessOutput` plus an exact-evidence preview. The Ghost Town and Space Hangar sample plates make the smoke meaningful. Each run retains the assessed PNG, coverage matte, source reference, hashes, and a distinct stable JSON report. Use these for MCP/headless runs. |
+| `atlas_multiview_raw_qwen_workflow.json` | Hand-authored photographed-registration graph: user-supplied relative RAF placeholders → deterministic multi-view solve → viewport, scene/debug report, and pair overlays; the optional downstream Qwen patch is bypassed by default. Set up the RAF inputs before queueing. |
 
-**The shipping catalog is deliberately pinned to these three base/agentic
-pairs** (release focus). Every workflow this guide's earlier sections mention by name
+**The shipping catalog is deliberately pinned to five workflows:** four generated,
+bundled-plate benchmark graphs plus the separately accepted RAW multi-view graph.
+No base/agentic pairs ship in this catalog. Every workflow this guide's earlier sections mention by name
 (core projection, learned pipeline, VP-only, merge scenarios, hidden-geometry
 heroes, master DMP variants, OCIO/plate proofs, calibration tests) still
 exists in git history — recover any of them with
@@ -586,9 +591,9 @@ current UI workflow through the canonical live-schema converter:
 Use `--convert-only <path>` when an API JSON is needed for inspection or a
 separate `/prompt` client.
 
-For the release smoke test, run
-`python tools/smoke_agentic_assessment_workflows.py`: it validates against the
-live schema, queues all three agentic variants, and fails unless each returns
+For historical/local agentic variants, the non-shipping
+`python tools/smoke_agentic_assessment_workflows.py` validates against the
+live schema, queues the configured agentic variants, and fails unless each returns
 one structured, provenance-safe terminal report with hashed evidence. A blank
 browser-owned viewport is reconstructed in the recovered camera from the real
 projection layers; the VLM sees that output, its union-coverage matte, and the

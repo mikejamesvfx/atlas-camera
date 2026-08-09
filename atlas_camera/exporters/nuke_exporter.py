@@ -436,6 +436,7 @@ ScanlineRender {{
 from atlas_camera.exporters._layers import (  # noqa: E402
     collect_projection_layers,
     layer_focal_mm as _layer_focal_mm,
+    projection_layer_provenance,
 )
 
 
@@ -573,7 +574,7 @@ def write_nuke_layers_script(
     blocks.append(f'''StickyNote {{
  inputs 0
  name StickyNote1
- label "Atlas layered camera projection\\n{len(layers)} layer(s): {', '.join(l['name'] for l in layers)}\\nRender camera = primary solve; layer order resolved by real z-depth."
+ label "Atlas layered camera projection\\n{len(layers)} layer(s): {', '.join(layer['name'] for layer in layers)}\\nRender camera = primary solve; layer order resolved by real z-depth."
  xpos -220
  ypos -120
 }}''')
@@ -670,7 +671,8 @@ ScanlineRender {{
     nk_path.write_text("\n".join(blocks) + "\n", encoding="utf-8")
     return {
         "nk_path": str(nk_path),
-        "layers": [l["name"] for l in layers],
+        "layers": [layer["name"] for layer in layers],
+        "layer_provenance": projection_layer_provenance(layers),
         "skipped": skipped,
     }
 

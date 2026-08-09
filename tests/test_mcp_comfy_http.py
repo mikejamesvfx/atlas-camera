@@ -324,7 +324,7 @@ def test_official_subgraph_expands_and_applies_proxy_widgets():
 
 
 def test_shipping_workflows_flatten_against_recorded_shapes():
-    """The six shipped UI workflows must parse and resolve their KJ rails
+    """The five shipped UI workflows must parse and resolve their KJ rails
     structurally (no oi lookups — VIRTUAL/link walk only). Full validation
     runs against a live server; here we pin the JSONs are structurally sound
     (bidirectional links, resolvable rails). Was over examples/showcase +
@@ -349,9 +349,10 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
             assert nodes[tid]["inputs"][tslot].get("link") == lid, f"{p.name}: link {lid} dst"
         checked += 1
     # 0 between the 2026-07-31 cull and the replacement set, 11 while that set
-    # was being assembled, 4 since the v1 cut (2026-08-07). Bump as each new
+    # was being assembled, 4 at the v1 cut (2026-08-07), and 5 after the
+    # deterministic RAW multi-view workflow (2026-08-09). Bump as each new
     # workflow lands so a silent disappearance still fails loudly.
-    assert checked == 4
+    assert checked == 5
 
 
 def test_frontend_only_rgthree_nodes_are_virtual():

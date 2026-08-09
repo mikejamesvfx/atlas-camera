@@ -14,9 +14,9 @@
 
 
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 100
+The former 9,110-line `nodes.py` was split into responsibility modules; the 101
 
-node classes (90 standard + 6 experimental + 2 legacy + 2 iOS) now live in the
+node classes (91 standard + 6 experimental + 2 legacy + 2 iOS) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -227,7 +227,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (90 standard + 6 experimental + 2 legacy + 2 iOS = 100 registered)
+### Node catalog (91 standard + 6 experimental + 2 legacy + 2 iOS = 101 registered)
 
 
 
@@ -250,6 +250,8 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 | `AtlasProject` | project, shot, colour_mode; opt project_root, create_tree | project (ATLAS_PROJECT) | Sets the delivery project once: routes every export into `<root>/<project>/<shot>/...` and pins the colour lane, Standard (sRGB, 8-bit) or VFX (ACEScg, float). |
 
 | `AtlasSolveFromImage` | image (IMAGE), ±focal_mm, ±sensor_mm, ±detect_vanishing_points, ±raw_meta (ATLAS_RAW_META) | ATLAS_SOLVE | Geometric VP solve; accepts ComfyUI tensor. VP detection defaults ON. `raw_meta` (from `AtlasLoadRAW` 📷) supplies EXIF focal + measured sensor when the widgets are at defaults — finally implements the "0 = auto-detect or EXIF" tooltip |
+
+| `AtlasMultiViewSolve` | image_1, image_2 (IMAGE); ±image_3 (IMAGE); ±raw_meta_1..3 (ATLAS_RAW_META); ±plate_ref_1..3 (ATLAS_PLATE_REF); ±capture_mode, ±camera_height_m, ±match_quality, ±seed | solve (ATLAS_SOLVE), report, registration_json (STRING), match_overlays (IMAGE) | 📷📷 Deterministic two/three-photo RAW rig recovery. Every supplied photograph must be a single-element BHWC IMAGE plus matching `AtlasLoadRAW` metadata and a non-proxy `AtlasLoadRAW` source plate with a durable path and preview; generated/Qwen projection sources are refused before matching. Photo order is authoritative (photo 1 anchors the world frame). A sideways/lateral translated baseline with measured photo-1 lens-centre height is the accurate metric path; `rotation_only` can recover orientation but deliberately emits no translation or metric scale. `IS_CHANGED` fingerprints the ordered image content, RAW metadata, plate references, and four persisted widgets, so identical evidence reuses cache while every meaningful input change reruns. Shipping graph: `examples/atlas_multiview_raw_qwen_workflow.json`; local acceptance: `tools/validate_multiview_capture.py`. Needs `[vision]`. |
 
 | `AtlasLearnedSolveFromImage` | image (IMAGE), ±height_mode, ±camera_height_m, ±depth_model, ±sensor_mm, ±weights, ±device, ±focal_length_mm, ±raw_meta (ATLAS_RAW_META) | ATLAS_SOLVE | Learned GeoCalib prior (focal+gravity). `height_mode=measure_from_depth` fits the ground plane to measure camera height (no assumed eye height) and fills the depth slot. `focal_length_mm` (APPENDED 2026-07-18) / a wired `raw_meta`: trusted EXIF focal REPLACES GeoCalib's estimate (gravity retained) — see the RAW design rule. Needs `[neural]` |
 
@@ -586,7 +588,7 @@ The route is registered in `comfy/__init__.py` behind the double-import guard (c
 
 
 
-**Shipping catalog: FOUR workflows** (v1 cut, 2026-08-07). `tests/test_example_workflows.py` pins these names so a deletion or an unreviewed addition fails loudly — review means adding the name there. Each answers a different question, and each runs on a fresh clone with a bundled plate and no gated node:
+**Shipping catalog: FIVE workflows** (four generated v1 workflows plus the RAW multi-view graph, 2026-08-09). `tests/test_example_workflows.py` pins these names so a deletion or an unreviewed addition fails loudly — review means adding the name there. The generated four each answer a different question and run on a fresh clone with a bundled plate and no gated node; the fifth is the hand-authored `atlas_multiview_raw_qwen_workflow.json`, whose user-supplied input-relative RAF placeholders must be set up before execution:
 
 | File | The question it answers |
 |---|---|
@@ -594,12 +596,13 @@ The route is registered in `comfy/__init__.py` behind the double-import guard (c
 | `atlas_quickstart_solve_project_export_workflow.json` | "What are the stages?" The explicit chain the front door hides. |
 | `atlas_export_fanout_workflow.json` | "What do I get in my DCC?" Eight exporters routed by one `AtlasProject`. |
 | `atlas_layered_projection_workflow.json` | "How do I matte-paint with it?" The 2.5D layer stack. |
+| `atlas_multiview_raw_qwen_workflow.json` | "How do I register a photographed RAW rig?" Three user-supplied relative RAF inputs, deterministic solve evidence, viewport/debug review, and a bypassed downstream Qwen patch slot. |
 
-**No image assets ship in this repo** (2026-08-07). Every shipping workflow's `LoadImage` therefore starts on ComfyUI's own bundled `example.png`, which is the only plate guaranteed to exist on a fresh install — so all four queue green with nothing to download. The Atlas plate pack is distributed from the project website instead. One consequence is baked into the graphs: `example.png` classifies as almost entirely above-horizon far field, so the outdoor `sky_heuristic` is OFF everywhere (left on, it eats the whole frame and leaves an empty export mesh). Turn it back on with a real outdoor plate. `tests/test_shipping_workflow_plates.py` pins this: a workflow may not reference an image the repo does not ship.
+**No image assets ship in this repo** (2026-08-07). The four generated workflows' `LoadImage` nodes therefore start on ComfyUI's own bundled `example.png`, the only plate guaranteed on a fresh install, so those four queue green with nothing to download. The RAW multi-view workflow also uses `example.png` only for its bypassed optional Qwen patch slot; its three registration inputs are user-supplied RAF placeholders and do not queue until the artist provides them. The Atlas plate pack is distributed from the project website instead. One consequence is baked into the generated graphs: `example.png` classifies as almost entirely above-horizon far field, so the outdoor `sky_heuristic` is OFF there (left on, it eats the whole frame and leaves an empty export mesh). Turn it back on with a real outdoor plate. `tests/test_shipping_workflow_plates.py` pins this: a `LoadImage` widget may not reference an image the repo does not ship.
 
-All four are GENERATED, never hand-edited: `tools/build_v1_shipping_workflows.py` reads widget order and defaults from a live `/object_info` and auto-lays-out the result. The UI format is redundantly linked and `widgets_values` is positional, and both fail silently on load, which is why hand-authoring is not an option here. Regenerate with the tool, then re-run the benchmark — loading is not acceptance.
+The four v1 workflows are GENERATED, never hand-edited: `tools/build_v1_shipping_workflows.py` reads widget order and defaults from a live `/object_info` and auto-lays-out the result. The RAW multi-view workflow is intentionally hand-authored and protected by graph-integrity, positional-widget, source-boundary, and path-portability regressions. UI format is redundantly linked and `widgets_values` is positional, so any edit must preserve both representations.
 
-Acceptance is EXECUTION: every one of the four is green through `tools/workflow_benchmark.py`, which scores what came out (`non_black_frac`, `already_tears_pct`, `dropped_faces`, `dolly_m`) rather than whether the graph parsed. `tools/validate_ui_workflow.py` (or the MCP `atlas_validate_workflow`) is the separate structural check.
+Acceptance is EXECUTION for the four generated graphs: each is green through `tools/workflow_benchmark.py`, which scores what came out (`non_black_frac`, `already_tears_pct`, `dropped_faces`, `dolly_m`) rather than whether the graph parsed. The RAW multi-view graph instead has photographed X-H2 evidence through `tools/validate_multiview_capture.py`; structured solver rejection remains honest acceptance evidence and is not a generated-plate benchmark claim. `tools/validate_ui_workflow.py` (or the MCP `atlas_validate_workflow`) is the separate structural check.
 
 Two deliberate constraints are visible in the graphs:
 

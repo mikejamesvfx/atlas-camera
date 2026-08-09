@@ -175,6 +175,7 @@ _FLAG_SEVERITY = {
     # Independent-intrinsics cross-check: a depth backend that predicts its own
     # focal (Depth Pro) disagrees with the solve's fx beyond the ratio band.
     "focal_mismatch": "warn",
+    "mixed_projection_evidence": "warn",
 }
 
 # Acceptable ratio band for depth-model focal vs solve fx (~±0.4 stop of FOV).
@@ -205,6 +206,7 @@ class HealthReport:
     per_layer: list[dict[str, Any]] = field(default_factory=list)
     depth: dict[str, Any] | None = None
     scale: ScaleHealth | None = None
+    projection_evidence_counts: dict[str, int] = field(default_factory=dict)
 
     @property
     def flag_messages(self) -> list[str]:
@@ -218,6 +220,7 @@ class HealthReport:
             "per_layer": self.per_layer,
             "depth": self.depth,
             "scale": self.scale.to_dict() if self.scale else None,
+            "projection_evidence_counts": self.projection_evidence_counts,
         }
 
 
@@ -293,21 +296,30 @@ def evaluate_scene_health(
         pass
 
     sources: list[dict[str, Any]] = []
+    evidence_counts = {"photographed": 0, "generated": 0, "unknown": 0}
     for src in getattr(solve, "projection_sources", None) or []:
         meta = src.metadata or {}
+        evidence_type = meta.get("evidence_type", "unknown")
+        if evidence_type not in {"photographed", "generated"}:
+            evidence_type = "unknown"
+        evidence_counts[evidence_type] += 1
+        source_geometry = list(src.proxy_geometry or [])
+        if not source_geometry and evidence_type == "photographed":
+            source_geometry = list(solve.projection_scene.proxy_geometry or [])
         n_verts = sum(int((g.metadata or {}).get("n_vertices") or 0)
-                      for g in (src.proxy_geometry or []))
+                      for g in source_geometry)
         n_faces = sum(int((g.metadata or {}).get("n_faces") or 0)
-                      for g in (src.proxy_geometry or []))
+                      for g in source_geometry)
         cov = matte_coverage_fn(getattr(src, "mask_b64", None)) \
             if matte_coverage_fn else None
         # Mesh QA metrics ride the relief-mesh primitive's metadata (the
         # outlier/stretched-edge tier): surface them per layer and use them
         # as quality-based fallback triggers.
-        mesh_meta = next((g.metadata or {} for g in (src.proxy_geometry or [])
+        mesh_meta = next((g.metadata or {} for g in source_geometry
                           if (g.metadata or {}).get("source") == "depth_relief_mesh"), {})
         entry = {
             "name": src.name, "priority": src.priority,
+            "evidence_type": evidence_type,
             "projection_mode": meta.get("projection_mode"),
             "band_geometry": meta.get("band_geometry"),
             "near_m": meta.get("near_m"), "far_m": meta.get("far_m"),
@@ -357,6 +369,12 @@ def evaluate_scene_health(
                 f"{src.name}: p95 world/UV edge ratio {float(stretch):.1f} — "
                 "likely stretched texels; prefer card or segmented inpaint",
                 src.name))
+
+    if evidence_counts["photographed"] and evidence_counts["generated"]:
+        flags.append(_flag(
+            "mixed_projection_evidence",
+            "mixed photographed/generated projection evidence — generated cameras did not "
+            "influence the photographed registration"))
 
     # Band continuity (clean-plate band layers only, sorted by near edge).
     # NOTE: the membership expression's operator precedence is preserved
@@ -437,4 +455,5 @@ def evaluate_scene_health(
     elif flags:
         level = "warn"
     return HealthReport(level=level, flags=flags, camera=camera,
-                        per_layer=sources, depth=depth_info, scale=scale)
+                        per_layer=sources, depth=depth_info, scale=scale,
+                        projection_evidence_counts=evidence_counts)

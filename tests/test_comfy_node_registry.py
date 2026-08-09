@@ -15,12 +15,13 @@ import atlas_camera.comfy.nodes as nodes
 
 
 # The exact registered node keys at the time of the nodes.py modularization
-# (89 standard + 6 experimental + 2 legacy + 2 iOS). Grown since the nodes.py
+# 91 standard + 6 experimental + 2 legacy + 2 iOS. The set below is the
 # modularization; the SET below is the contract, the count just guards it. ComfyUI serializes these keys into saved
 # workflows, so this set is a compatibility contract, not an implementation
 # detail.
 NORMAL_KEYS = {
     "AtlasProject",
+    "AtlasMultiViewSolve",
     "AtlasAddPatchView", "AtlasApplyScaleReferences", "AtlasAssessImage",
     "AtlasAssessOutput",
     "AtlasLayerPlan",
@@ -86,7 +87,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 90
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 91
 
 
 def test_experimental_registry_keys_exact():
@@ -322,7 +323,6 @@ def test_debug_report_and_assessment_stamp_the_registry_hash():
     """Text pin: both comfy-layer artifact writers include registry_hash.
     (Runtime tests for these writers need torch; the wiring is one call each,
     pinned here the same way frontend mirrors are pinned.)"""
-    import os
     base = os.path.join(os.path.dirname(__file__), "..", "atlas_camera", "comfy")
     for name in ("nodes_viewport.py", "nodes_qa.py"):
         src = open(os.path.join(base, name), encoding="utf-8").read()

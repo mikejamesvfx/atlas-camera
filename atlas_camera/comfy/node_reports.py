@@ -43,7 +43,9 @@ def _health_summary_suffix(solve) -> str:
     n = len(stamp.get("flags") or [])
     ack = "acknowledged" if stamp.get("acknowledged") else "UNACKNOWLEDGED"
     return f" | 🩺 health: {str(stamp['level']).upper()} ({n} flag(s) {ack})"
-def _write_export_manifest(solve, output_dir, kind_paths, exporter: str) -> None:
+def _write_export_manifest(
+    solve, output_dir, kind_paths, exporter: str, *, extra=None,
+) -> None:
     """Write/merge atlas_project.json beside an export + embed the identity
     hash as a leading comment in text artifacts that tolerate one (.nk/.py/.ma).
 
@@ -61,7 +63,9 @@ def _write_export_manifest(solve, output_dir, kind_paths, exporter: str) -> None
             return
         write_project_manifest(
             solve, output_dir,
-            artifacts=[ManifestArtifact(k, p, exporter) for k, p in pairs])
+            artifacts=[ManifestArtifact(k, p, exporter) for k, p in pairs],
+            extra=extra,
+        )
         ident = manifest_identity_hash(solve)
         for _, p in pairs:
             prefix = _IDENTITY_COMMENT_PREFIX.get(Path(p).suffix.lower())

@@ -22,20 +22,23 @@ Typing `Atlas` into ComfyUI's node search returned 91 results spread across 13
 those 91 appeared in **no shipped example workflow at all** — present, tested
 and documented, but with nothing showing a newcomer what they were for.
 
-- **`Atlas`** now holds the working set: the nodes a shipped example workflow
-  actually touches, `AtlasInput` among them.
-- **`Atlas/advanced`** holds everything else — still registered, still tested,
-  still supported, just not where you start. Every experimental- and legacy-tier
-  node lives here regardless of workflow usage, so a gated node can never
-  present as the supported path.
+- **Ten numbered pipeline folders** carry the 90 standard nodes in the order you
+  actually work: `Atlas/01 — Input & Camera`, `02 — Orient & Scale`,
+  `03 — Depth`, `04 — Masks`, `05 — Geometry`, `06 — Patch & Repair`,
+  `07 — Clean Plate & Inpaint`, `08 — Look & Render`, `09 — QA & Gates`,
+  `10 — Export`. The number is the front door: the menu reads as the pipeline
+  rather than as an alphabet.
+- **`Atlas/advanced`** holds every experimental-, legacy- and iOS-tier node
+  regardless of workflow usage, so a gated node can never present as the
+  supported path.
 
 Only the `CATEGORY` field changed. ComfyUI serializes a node's registry **key**
 into a saved workflow and never its category, which is precisely what made this
 restructure available under the append-only rule: every key and display name is
 byte-identical to 0.8.1, verified by diffing the registry surface before and
-after, and all 11 shipped workflows load with zero missing-node errors.
-`tests/test_comfy_node_registry.py` now pins the two-tier menu so it cannot
-quietly drift back.
+after, and all 4 shipped example workflows load with zero missing-node errors.
+`tests/test_comfy_node_registry.py` pins both the numbered folders and the
+`Atlas/advanced` rule for gated tiers, so neither can quietly drift back.
 
 ### README leads with the job
 

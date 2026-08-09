@@ -357,6 +357,70 @@ it used, and flags a `MISMATCH` when the file's own tag disagrees with what the
 solve claims. An "unspecified" there is honest — it means no plate colourspace
 was registered, so Nuke applied its own default rather than Atlas inventing one.
 
+### Capturing two or three RAW photos for a deterministic rig
+
+Use `examples/atlas_multiview_raw_qwen_workflow.json` when one photograph is
+not enough. Put two or three RAF/NEF/CR3/ARW/DNG files under ComfyUI's input
+folder, point the `AtlasLoadRAW` nodes at those input-relative paths, and keep
+the order intentional: **photo 1 is the deterministic world-frame anchor**.
+
+For the accurate, metric path, move the camera **sideways/laterally** between
+photos rather than turning it in place:
+
+1. Photograph a static scene. Moving people, foliage, traffic, reflections,
+   or changing shadows can contaminate the shared feature tracks.
+2. Keep the same camera, lens, exposure/settings, focal length, focus, zoom,
+   and orientation. Do not refocus, rotate portrait/landscape, or change a
+   zoom lens between frames.
+3. Aim for roughly **70% overlap**. Include useful texture and architectural
+   lines across the frame rather than one small detailed object against blank
+   sky or a featureless wall.
+4. Measure the vertical distance from the ground to the **centre of the lens**
+   for photo 1 and enter it as `camera_height_m`. A translated solve without a
+   valid positive measured height can estimate direction but must report
+   `scale_unavailable` instead of inventing metric scale.
+
+`rotation_only` is a constrained fallback for a tripod pan or a camera turned
+about its optical centre. It can estimate relative orientation, but it cannot
+recover camera translation, parallax geometry, or metric scale. It is not an
+equivalent substitute for a translated baseline.
+
+Start with `match_quality=balanced`. If the pair overlays show genuine static
+scene features spread across the frame but a pair falls just below the match
+count, `permissive` is the existing artist-facing flexibility: it relaxes the
+count/error profile while retaining the spatial-consensus, dynamic-scene,
+positive-depth, triangulation, closure, and scale gates. Treat its next honest
+rejection as evidence, not a request to keep lowering a threshold. In the X-H2
+acceptance capture, permissive admitted the raw matches but correctly stopped
+at `dynamic_scene_contamination` because the fitted consensus occupied too few
+4×4 image cells.
+
+The optional Qwen image in the shipping workflow is deliberately downstream
+of `AtlasMultiViewSolve`, through a bypassed `AtlasAddPatchView`. Enable that
+branch only after generating the patch. A generated view is useful evidence
+for filling unseen appearance; it is **never** a photographed registration
+frame and must never be wired into `image_1..3`, `raw_meta_1..3`, or
+`plate_ref_1..3`.
+
+For repeatable local acceptance outside ComfyUI, save a manifest such as:
+
+```json
+{
+  "raw_paths": ["left.raf", "centre.raf", "right.raf"],
+  "camera_height_m": 1.43,
+  "capture_mode": "auto",
+  "match_quality": "balanced",
+  "seed": 0
+}
+```
+
+Then run `python tools/validate_multiview_capture.py manifest.json
+--output-dir acceptance`. The runner imports the real RAWs, calls the same
+deterministic solver, and writes canonical `registration.json` plus every
+available ordered pair overlay (`pair_01.png`, `pair_02.png`, `pair_12.png`).
+Solver rejection remains a structured report, so an honestly diagnosed
+failure can be compared across repeated runs without weakening the gates.
+
 ---
 
 ## Reading the diagnostics

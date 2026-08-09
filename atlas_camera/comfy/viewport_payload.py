@@ -103,6 +103,10 @@ def _serialize_projection_sources(solve) -> list[dict[str, Any]]:
     sources = getattr(solve, "projection_sources", None) or []
     projection_sources = []
     for src in sources:
+        metadata = src.metadata or {}
+        evidence_type = metadata.get("evidence_type", "unknown")
+        if evidence_type not in {"photographed", "generated"}:
+            evidence_type = "unknown"
         s_intr = src.camera.intrinsics
         s_extr = src.camera.extrinsics
         s_fx = s_intr.fx_px or 0.0
@@ -128,12 +132,13 @@ def _serialize_projection_sources(solve) -> list[dict[str, Any]]:
             "priority": float(src.priority),
             "azimuth_deg": float(src.azimuth_deg),
             "elevation_deg": float(src.elevation_deg),
-            "projection_mode": (src.metadata or {}).get("projection_mode"),
-            "near_m": (src.metadata or {}).get("near_m"),
-            "far_m": (src.metadata or {}).get("far_m"),
-            "band_geometry": (src.metadata or {}).get("band_geometry"),
-            "hidden_mask_b64": (src.metadata or {}).get("hidden_mask_b64") or "",
-            "hidden_backend": (src.metadata or {}).get("hidden_backend") or "",
+            "evidence_type": evidence_type,
+            "projection_mode": metadata.get("projection_mode"),
+            "near_m": metadata.get("near_m"),
+            "far_m": metadata.get("far_m"),
+            "band_geometry": metadata.get("band_geometry"),
+            "hidden_mask_b64": metadata.get("hidden_mask_b64") or "",
+            "hidden_backend": metadata.get("hidden_backend") or "",
             "proxy_geometry": serialize_proxy_geometry(
                 AtlasProjectionScene(proxy_geometry=list(src.proxy_geometry)),
             ),

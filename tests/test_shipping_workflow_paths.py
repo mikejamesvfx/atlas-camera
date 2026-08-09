@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import pytest
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from conftest import is_local_workflow
 
@@ -22,9 +22,30 @@ ROOT = Path(__file__).resolve().parents[1]
 def _is_absolute_machine_path(v: object) -> bool:
     if not isinstance(v, str) or len(v) < 3:
         return False
-    if v[0].isalpha() and v[1] == ":" and v[2] in "\\/":   # Windows drive
-        return True
-    return v.startswith("/Users/") or v.startswith("/home/")
+    return PureWindowsPath(v).is_absolute() or PurePosixPath(v).is_absolute()
+
+
+@pytest.mark.parametrize("value", [
+    r"C:\Users\artist\plate.exr",
+    "D:/plates/plate.exr",
+    r"\\server\share\plate.exr",
+    r"\\?\C:\plates\plate.exr",
+    r"\\?\UNC\server\share\plate.exr",
+    "/var/tmp/plate.exr",
+    "/opt/show/plate.exr",
+])
+def test_absolute_machine_path_guard_covers_windows_and_posix_roots(value):
+    assert _is_absolute_machine_path(value)
+
+
+@pytest.mark.parametrize("value", [
+    "atlas_multiview/photo_01.RAF",
+    "example.png",
+    "../shared/plate.exr",
+    r"atlas_multiview\photo_02.RAF",
+])
+def test_absolute_machine_path_guard_allows_relative_placeholders(value):
+    assert not _is_absolute_machine_path(value)
 
 
 def _shipping_workflows() -> list[Path]:
@@ -64,5 +85,21 @@ def test_no_shipping_workflow_has_absolute_machine_paths():
     assert not problems, (
         "absolute machine paths in shipped workflows "
         "(run tools/normalize_workflow_paths.py):\n" + "\n".join(problems))
+
+
+def test_multiview_raw_workflow_uses_input_relative_placeholders():
+    path = ROOT / "examples" / "atlas_multiview_raw_qwen_workflow.json"
+    workflow = json.loads(path.read_text(encoding="utf-8"))
+    raw_widgets = [
+        node["widgets_values"][0]
+        for node in workflow["nodes"]
+        if node["type"] == "AtlasLoadRAW"
+    ]
+    assert raw_widgets == [
+        "atlas_multiview/photo_01.RAF",
+        "atlas_multiview/photo_02.RAF",
+        "atlas_multiview/photo_03.RAF",
+    ]
+    assert all(not _is_absolute_machine_path(value) for value in raw_widgets)
 
 
