@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
+from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -18,6 +22,9 @@ from atlas_camera.core.multiview_types import (
 )
 from atlas_camera.core.schema import AtlasPlateRef
 from atlas_camera.raw.pipeline import RawImportResult
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class _Tensor:
@@ -57,11 +64,24 @@ def _image(value: float = 0.0, *, batch: int = 1) -> _Tensor:
     return _Tensor(np.full((batch, 3, 4, 3), value, dtype=np.float64))
 
 
-def _raw(index: int, *, model: str = "Atlas RAW") -> RawImportResult:
-    pixels = np.zeros((3, 4, 3), dtype=np.float32)
+def _image_from_raw(raw: RawImportResult, *, batch: int = 1) -> _Tensor:
+    """Model the single BHWC IMAGE emitted beside this AtlasLoadRAW metadata."""
+    return _Tensor(np.repeat(raw.display_srgb[None, ...], batch, axis=0))
+
+
+def _raw(
+    index: int,
+    *,
+    model: str = "Atlas RAW",
+    display_srgb: np.ndarray | None = None,
+    linear_rgb: np.ndarray | None = None,
+) -> RawImportResult:
+    pixels = np.full((3, 4, 3), index / 10.0, dtype=np.float32)
+    display = pixels if display_srgb is None else np.asarray(display_srgb, dtype=np.float32)
+    linear = pixels if linear_rgb is None else np.asarray(linear_rgb, dtype=np.float32)
     return RawImportResult(
-        linear_rgb=pixels,
-        display_srgb=pixels,
+        linear_rgb=linear,
+        display_srgb=display,
         width=4,
         height=3,
         focal_length_mm=35.0,
@@ -97,8 +117,8 @@ def _plate(raw: RawImportResult, *, registered_from: str = "AtlasLoadRAW") -> At
 def _call_args():
     raw_1, raw_2, raw_3 = _raw(1), _raw(2), _raw(3)
     return {
-        "image_1": _image(0.1),
-        "image_2": _image(0.2),
+        "image_1": _image_from_raw(raw_1),
+        "image_2": _image_from_raw(raw_2),
         "image_3": None,
         "raw_meta_1": raw_1,
         "raw_meta_2": raw_2,
@@ -144,17 +164,28 @@ def test_node_fingerprint_changes_when_any_link_or_widget_changes():
     first = cls.IS_CHANGED(**args)
     assert cls.IS_CHANGED(**args) == first
 
-    changed = []
-    for name, value in (("image_1", _image(0.11)), ("image_2", _image(0.21))):
-        candidate = dict(args, **{name: value})
-        changed.append(cls.IS_CHANGED(**candidate))
+    changed_image_1 = args["raw_meta_1"].display_srgb.copy()
+    changed_image_1[0, 0, 0] = 0.11
+    changed_raw_1 = replace(args["raw_meta_1"], display_srgb=changed_image_1)
+    changed_image_2 = args["raw_meta_2"].display_srgb.copy()
+    changed_image_2[0, 0, 0] = 0.21
+    changed_raw_2 = replace(args["raw_meta_2"], display_srgb=changed_image_2)
+    changed = [
+        cls.IS_CHANGED(**dict(
+            args, image_1=_image_from_raw(changed_raw_1), raw_meta_1=changed_raw_1,
+        )),
+        cls.IS_CHANGED(**dict(
+            args, image_2=_image_from_raw(changed_raw_2), raw_meta_2=changed_raw_2,
+        )),
+    ]
 
     raw_3 = _raw(3)
-    third = dict(args, image_3=_image(0.3), raw_meta_3=raw_3, plate_ref_3=_plate(raw_3))
+    third = dict(args, image_3=_image_from_raw(raw_3), raw_meta_3=raw_3, plate_ref_3=_plate(raw_3))
     changed.append(cls.IS_CHANGED(**third))
     changed.append(cls.IS_CHANGED(**dict(args, raw_meta_1=_raw(1, model="Changed body"))))
     changed.append(cls.IS_CHANGED(**dict(args, plate_ref_2=AtlasPlateRef(
-        image_path="C:/RAW/other.exr", role="source", is_proxy=False,
+        image_path="C:/RAW/other.exr", preview_b64="data:image/png;base64,photographed",
+        role="source", is_proxy=False,
         metadata={"registered_from": "AtlasLoadRAW", "raw_source": "C:/RAW/photo_2.nef"},
     ))))
     changed.append(cls.IS_CHANGED(**dict(
@@ -171,11 +202,52 @@ def test_node_fingerprint_changes_when_any_link_or_widget_changes():
     assert len(set(changed)) == len(changed)
 
 
+def test_node_cache_tracks_raw_display_binding_but_not_solver_irrelevant_linear_pixels():
+    cls = _node_class()
+    args = _call_args()
+    args.pop("_raw_3")
+    first = cls.IS_CHANGED(**args)
+
+    changed_display = args["raw_meta_1"].display_srgb.copy()
+    changed_display[0, 0, 0] = 0.77
+    changed_raw = replace(args["raw_meta_1"], display_srgb=changed_display)
+    mismatched = cls.IS_CHANGED(**dict(args, raw_meta_1=changed_raw))
+    accepted = cls.IS_CHANGED(**dict(
+        args, raw_meta_1=changed_raw, image_1=_image_from_raw(changed_raw),
+    ))
+    assert mismatched != first
+    assert accepted != first
+
+    changed_linear = args["raw_meta_1"].linear_rgb.copy()
+    changed_linear[0, 0, 0] = 0.77
+    linear_only = replace(args["raw_meta_1"], linear_rgb=changed_linear)
+    assert cls.IS_CHANGED(**dict(args, raw_meta_1=linear_only)) == first
+
+
 def test_node_rejects_multi_photo_image_batches():
     args = _call_args()
     args.pop("_raw_3")
     args["image_1"] = _image(batch=2)
     with pytest.raises(RuntimeError, match="image_1 must contain exactly one photograph \\(batch size 1\\); got 2"):
+        _node_class()().solve(**args)
+
+
+@pytest.mark.parametrize(
+    ("image", "message"),
+    [
+        (_Tensor(np.zeros((1, 3, 4), dtype=np.float32)), "must be a BHWC IMAGE tensor"),
+        (_Tensor(np.zeros((1, 3, 4, 5), dtype=np.float32)), "must have exactly 3 channels"),
+        (_Tensor(np.zeros((1, 3, 4, 3), dtype=np.uint8)), "must contain floating-point values"),
+    ],
+    ids=("rank", "nchw", "integer"),
+)
+def test_node_rejects_non_bhwc_or_nonfloating_image_inputs(image, message, monkeypatch):
+    module = pytest.importorskip("atlas_camera.comfy.nodes_multiview")
+    monkeypatch.setattr(module, "solve_multiview", lambda *_: pytest.fail("solver must not run"))
+    args = _call_args()
+    args.pop("_raw_3")
+    args["image_1"] = image
+    with pytest.raises(RuntimeError, match=message):
         _node_class()().solve(**args)
 
 
@@ -204,15 +276,39 @@ def test_node_requires_photographed_plate_preview_for_public_output():
         _node_class()().solve(**args)
 
 
+def test_node_rejects_image_that_does_not_bind_to_trusted_raw_display(monkeypatch):
+    module = pytest.importorskip("atlas_camera.comfy.nodes_multiview")
+    monkeypatch.setattr(module, "solve_multiview", lambda *_: pytest.fail("solver must not run"))
+    args = _call_args()
+    args.pop("_raw_3")
+    args["image_1"] = _image(0.99)
+    with pytest.raises(RuntimeError, match="pixels do not match trusted RAW display_srgb"):
+        _node_class()().solve(**args)
+
+
 def test_node_requires_complete_third_photo_before_solver_runs(monkeypatch):
     module = pytest.importorskip("atlas_camera.comfy.nodes_multiview")
     monkeypatch.setattr(module, "solve_multiview", lambda *_: pytest.fail("solver must not run"))
     args = _call_args()
-    args["image_3"] = _image(0.3)
+    args["image_3"] = _image_from_raw(args["_raw_3"])
     args["raw_meta_3"] = None
     args["plate_ref_3"] = None
     args.pop("_raw_3")
     with pytest.raises(RuntimeError, match="image_3 requires a complete photographed RAW frame"):
+        _node_class()().solve(**args)
+
+
+def test_node_rejects_unphotographed_third_photo_before_solver_runs(monkeypatch):
+    module = pytest.importorskip("atlas_camera.comfy.nodes_multiview")
+    monkeypatch.setattr(module, "solve_multiview", lambda *_: pytest.fail("solver must not run"))
+    args = _call_args()
+    raw_3 = args.pop("_raw_3")
+    args.update(
+        image_3=_image_from_raw(raw_3),
+        raw_meta_3=raw_3,
+        plate_ref_3=_plate(raw_3, registered_from="AtlasAddPatchView"),
+    )
+    with pytest.raises(RuntimeError, match="generated or proxy projection source"):
         _node_class()().solve(**args)
 
 
@@ -254,6 +350,31 @@ def test_node_is_thin_orchestrator_and_batches_overlays(monkeypatch):
     assert captured["settings"].seed == 0
 
 
+def test_node_passes_three_photographs_to_solver_in_authoritative_order(monkeypatch):
+    module = pytest.importorskip("atlas_camera.comfy.nodes_multiview")
+    captured = {}
+    diagnostics = RegistrationDiagnostics("rotation_only", "stable panorama")
+    outcome = RegistrationOutcome(solve=object(), diagnostics=diagnostics, overlays=())
+
+    def fake_solve(frames, settings):
+        captured["frames"] = frames
+        return outcome
+
+    monkeypatch.setattr(module, "solve_multiview", fake_solve)
+    monkeypatch.setattr(module, "_require_torch", lambda: _Torch)
+    args = _call_args()
+    raw_3 = args.pop("_raw_3")
+    args.update(
+        image_3=_image_from_raw(raw_3), raw_meta_3=raw_3, plate_ref_3=_plate(raw_3),
+    )
+    _node_class()().solve(**args)
+
+    assert [frame.label for frame in captured["frames"]] == ["photo_1", "photo_2", "photo_3"]
+    np.testing.assert_array_equal(captured["frames"][0].image, args["raw_meta_1"].display_srgb)
+    np.testing.assert_array_equal(captured["frames"][1].image, args["raw_meta_2"].display_srgb)
+    np.testing.assert_array_equal(captured["frames"][2].image, raw_3.display_srgb)
+
+
 def test_node_raises_exact_sorted_diagnostics_when_registration_fails(monkeypatch):
     module = pytest.importorskip("atlas_camera.comfy.nodes_multiview")
     diagnostics = RegistrationDiagnostics(
@@ -273,3 +394,37 @@ def test_node_raises_exact_sorted_diagnostics_when_registration_fails(monkeypatc
     )
     with pytest.raises(RuntimeError, match="^" + re.escape(expected) + "$"):
         _node_class()().solve(**args)
+
+
+def test_facade_import_and_execution_dependency_boundary_in_a_fresh_process():
+    script = """
+import builtins
+
+original_import = builtins.__import__
+missing = {"numpy", "cv2", "torch"}
+
+def blocked_import(name, *args, **kwargs):
+    if name.split(".", 1)[0] in missing:
+        raise ModuleNotFoundError(name)
+    return original_import(name, *args, **kwargs)
+
+builtins.__import__ = blocked_import
+import atlas_camera.comfy.nodes as nodes
+assert nodes.AtlasMultiViewSolve.__name__ == "AtlasMultiViewSolve"
+try:
+    nodes.AtlasMultiViewSolve().solve(None, None)
+except RuntimeError as exc:
+    assert str(exc) == (
+        "AtlasMultiViewSolve requires NumPy. Install with: pip install -e .[vision]"
+    )
+else:
+    raise AssertionError("execution must report the missing optional dependency")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

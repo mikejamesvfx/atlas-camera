@@ -79,10 +79,11 @@ def _array_signature(value: Any) -> dict[str, Any]:
 def _cache_value(value: Any, *, exclude_raw_pixels: bool = False) -> Any:
     """Make link values JSON-stable without importing optional packages.
 
-    RawImportResult carries two image arrays in addition to the metadata.  The
-    matching IMAGE socket already fingerprints their displayed photograph, so
-    omitting those arrays here avoids hashing a 24 MP frame three times while
-    retaining every trusted RAW metadata field.
+    RawImportResult carries two image arrays in addition to the metadata.  Its
+    display pixels are represented separately as a RAW/IMAGE binding signature;
+    `linear_rgb` is deliberately omitted because solve_multiview never reads it.
+    This avoids repeatedly hashing a 24 MP linear master that cannot affect a
+    solve, while retaining every trusted RAW metadata field.
     """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
@@ -103,6 +104,17 @@ def _cache_value(value: Any, *, exclude_raw_pixels: bool = False) -> Any:
     if hasattr(value, "to_dict"):
         return _cache_value(value.to_dict())
     return str(value)
+
+
+def _raw_display_signature(raw_meta: Any) -> Any:
+    """Fingerprint the display pixels that must bind to the IMAGE socket.
+
+    This separate signature is required even though genuine inputs duplicate
+    IMAGE content: a changed RawImportResult must invalidate Comfy's cache so
+    runtime validation can reject an attempted sidecar substitution.
+    """
+    display_srgb = getattr(raw_meta, "display_srgb", None)
+    return _array_signature(display_srgb) if display_srgb is not None else None
 
 
 def _cache_fingerprint(
@@ -128,6 +140,11 @@ def _cache_fingerprint(
             _cache_value(raw_meta_1, exclude_raw_pixels=True),
             _cache_value(raw_meta_2, exclude_raw_pixels=True),
             _cache_value(raw_meta_3, exclude_raw_pixels=True),
+        ],
+        "raw_display_bindings": [
+            _raw_display_signature(raw_meta_1),
+            _raw_display_signature(raw_meta_2),
+            _raw_display_signature(raw_meta_3),
         ],
         "plate_references": [
             _cache_value(plate_ref_1), _cache_value(plate_ref_2),
@@ -165,7 +182,38 @@ def _image_to_hwc_float32(image: Any, name: str, np: Any) -> Any:
             f"AtlasMultiViewSolve: {name} must contain exactly one photograph "
             f"(batch size 1); got {pixels.shape[0]}."
         )
+    if int(pixels.shape[-1]) != 3:
+        raise RuntimeError(
+            f"AtlasMultiViewSolve: {name} must have exactly 3 channels in BHWC order; "
+            f"got {pixels.shape[-1]}."
+        )
+    if not np.issubdtype(pixels.dtype, np.floating):
+        raise RuntimeError(
+            f"AtlasMultiViewSolve: {name} must contain floating-point values; "
+            f"got {pixels.dtype}."
+        )
     return np.ascontiguousarray(pixels[0], dtype=np.float32)
+
+
+def _raw_display_to_hwc_float32(raw_meta: Any, name: str, np: Any) -> Any:
+    """Canonicalize the AtlasLoadRAW display image used to bind IMAGE evidence."""
+    display_srgb = getattr(raw_meta, "display_srgb", None)
+    if display_srgb is None:
+        raise RuntimeError(
+            f"AtlasMultiViewSolve: {name} requires RawImportResult.display_srgb "
+            "to bind the IMAGE socket to photographed RAW evidence."
+        )
+    display = np.asarray(display_srgb)
+    if display.ndim != 3 or int(display.shape[-1]) != 3:
+        raise RuntimeError(
+            f"AtlasMultiViewSolve: {name} has malformed RawImportResult.display_srgb; "
+            "expected HWC with 3 channels."
+        )
+    if not np.issubdtype(display.dtype, np.floating):
+        raise RuntimeError(
+            f"AtlasMultiViewSolve: {name} has non-floating RawImportResult.display_srgb."
+        )
+    return np.ascontiguousarray(display, dtype=np.float32)
 
 
 def _require_photographed_frame(
@@ -210,6 +258,11 @@ def _require_photographed_frame(
         raise RuntimeError(
             f"AtlasMultiViewSolve: {name} image dimensions {pixels.shape[1]}x{pixels.shape[0]} "
             f"do not match trusted RAW metadata {raw_meta.width}x{raw_meta.height}."
+        )
+    if not np.array_equal(pixels, _raw_display_to_hwc_float32(raw_meta, name, np)):
+        raise RuntimeError(
+            f"AtlasMultiViewSolve: {name} pixels do not match trusted RAW display_srgb; "
+            "wire the IMAGE output from the same AtlasLoadRAW node."
         )
     return MultiViewFrame(
         image=pixels,
