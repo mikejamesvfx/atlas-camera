@@ -161,3 +161,30 @@ def test_import_raw_propagates_embedded_metadata_fields(monkeypatch):
     assert result.capture_datetime == "2026:08:09 12:34:56"
     assert result.metadata_source == "embedded_jpeg"
     assert "metadata: embedded JPEG EXIF preview" in result.summary_lines()
+
+
+def test_import_raw_accepts_legacy_metadata_without_new_provenance_fields(monkeypatch):
+    """Direct accesses to appended fields would break existing metadata doubles."""
+    import numpy as np
+    from atlas_camera.raw import pipeline
+
+    legacy_meta = SimpleNamespace(
+        camera_make="NIKON CORPORATION",
+        camera_model="NIKON D810",
+        lens_model=None,
+        focal_length_mm=20.0,
+        orientation=1,
+        warnings=[],
+    )
+    pixels = np.zeros((4, 6, 3), dtype=np.float32)
+    monkeypatch.setattr(pipeline, "read_raw_metadata", lambda path: legacy_meta)
+    monkeypatch.setattr(pipeline, "decode_raw", lambda *args, **kwargs: (pixels, pixels))
+    monkeypatch.setattr(pipeline, "resolve_sensor_size", lambda *args: metadata.SensorResolution(36.0, 24.0, "camera_db"))
+
+    result = pipeline.import_raw("legacy.nef", undistort=False)
+
+    assert result.orientation == 1
+    assert result.body_serial_number is None
+    assert result.lens_serial_number is None
+    assert result.capture_datetime is None
+    assert result.metadata_source is None
