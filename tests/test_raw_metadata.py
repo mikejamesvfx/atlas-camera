@@ -98,6 +98,25 @@ def test_capture_datetime_falls_back_to_image_datetime():
     assert result.capture_datetime == "2026:08:09 12:34:56"
 
 
+def test_raw_metadata_preserves_legacy_raw_tags_and_warnings_positions():
+    """Inserting new fields before these legacy slots corrupts positional callers."""
+    raw_tags = {"Image Make": "FUJIFILM"}
+    warnings = ["legacy warning"]
+
+    result = metadata.RawMetadata(
+        "FUJIFILM", "X-H2", None, None, None, None, None, None,
+        None, None, None, 8, raw_tags, warnings,
+    )
+
+    assert result.orientation == 8
+    assert result.raw_tags == raw_tags
+    assert result.warnings == warnings
+    assert result.body_serial_number is None
+    assert result.lens_serial_number is None
+    assert result.capture_datetime is None
+    assert result.metadata_source is None
+
+
 def test_import_raw_propagates_embedded_metadata_fields(monkeypatch):
     """Dropping identity metadata at the pipeline boundary hides RAW provenance."""
     import numpy as np

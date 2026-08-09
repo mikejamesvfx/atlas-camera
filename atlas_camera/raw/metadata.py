@@ -29,12 +29,12 @@ class RawMetadata:
     focal_plane_y_res: float | None = None
     focal_plane_res_unit: int | None = None
     orientation: int | None = None
+    raw_tags: dict[str, str] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
     body_serial_number: str | None = None
     lens_serial_number: str | None = None
     capture_datetime: str | None = None
     metadata_source: str | None = None
-    raw_tags: dict[str, str] = field(default_factory=dict)
-    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
