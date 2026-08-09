@@ -9,6 +9,11 @@ tests use, so this also covers the primitive->ReliefMesh round-trip
 (_mesh_from_primitive is relief_mesh_primitive's exact inverse).
 """
 
+# ruff: noqa: E402 — optional torch/Pillow gates must run before Atlas imports
+
+import copy
+import json
+
 import numpy as np
 import pytest
 
@@ -137,6 +142,60 @@ def test_layer_cameras_carry_their_own_pose(tmp_path):
     write_nuke_layers_script(solve, tmp_path)
     nk = (tmp_path / "nuke_layers.nk").read_text(encoding="utf-8")
     assert "translate {3.0 2.5 1.0}" in nk
+
+
+def test_mixed_evidence_layers_preserve_cameras_and_geometry_provenance(tmp_path):
+    """Adding Qwen keeps photographed cameras byte-identical in the manifest."""
+    from atlas_camera.comfy.nodes import AtlasAddPatchView
+    from atlas_camera.core.proxy_geometry import PROXY_ROLE
+    from atlas_camera.exporters._layers import collect_projection_layers
+
+    solve = _layered_solve()
+    photographed, generated_template = solve.projection_sources
+    primary_geometry = copy.deepcopy(photographed.proxy_geometry)
+    for primitive in primary_geometry:
+        primitive.metadata["role"] = PROXY_ROLE
+    solve.projection_scene.proxy_geometry = primary_geometry
+    photographed.proxy_geometry = []
+    photographed.metadata["evidence_type"] = "photographed"
+    photographed.name = "photo"
+    solve.projection_sources = [photographed]
+    before = json.dumps(
+        [source.camera.extrinsics.camera_view_matrix
+         for source in solve.projection_sources
+         if source.metadata.get("evidence_type") == "photographed"],
+        separators=(",", ":"),
+    )
+    patch_image = torch.rand(1, H, W, 3, dtype=torch.float32)
+    (with_qwen,) = AtlasAddPatchView()._finish_patch(
+        solve, patch_image,
+        generated_template.camera.intrinsics,
+        generated_template.camera.extrinsics,
+        generated_template.proxy_geometry,
+        None, generated_template.mask_b64, generated_template.plate_ref,
+        "qwen", generated_template.priority,
+        45.0, 0.0, 1.0,
+        "front-right quarter view", "eye-level shot", "medium shot",
+        "front view", False, (0.0, 0.0, -10.0), "qwen-test",
+        "reuse_scene", 1.0, None,
+    )
+
+    layers, skipped = collect_projection_layers(with_qwen, tmp_path)
+
+    assert skipped == []
+    assert [layer["evidence_type"] for layer in layers] == [
+        "photographed", "generated",
+    ]
+    assert [layer["geometry_source"] for layer in layers] == [
+        "primary_scene", "source",
+    ]
+    after = json.dumps(
+        [source.camera.extrinsics.camera_view_matrix
+         for source in with_qwen.projection_sources
+         if source.metadata.get("evidence_type") == "photographed"],
+        separators=(",", ":"),
+    )
+    assert after == before
 
 
 def test_export_errors_loudly_without_layers(tmp_path):

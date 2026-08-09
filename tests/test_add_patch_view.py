@@ -120,6 +120,23 @@ def test_add_patch_orbits_camera_and_appends_source(monkeypatch):
     assert src.camera.extrinsics.camera_position[1] == pytest.approx(eye[1], abs=1e-3)
 
 
+def test_qwen_patch_is_explicitly_generated(monkeypatch):
+    """Removing the Qwen provenance stamp must make downstream trust ambiguous."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
+
+    (out,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="right side view",
+        geometry_source="own_depth", relief_grid=48,
+    )
+
+    assert out.projection_sources[-1].metadata["evidence_type"] == "generated"
+
+
 def test_add_patch_does_not_mutate_input_solve(monkeypatch):
     torch = pytest.importorskip("torch")
     pytest.importorskip("PIL")
@@ -249,7 +266,6 @@ def test_scale_registers_against_primary_overlap(monkeypatch):
     # ground fit must come out at 1.0 for the closed-form expectation --
     # monkeypatch estimate_ground_scale to isolate the registration math.
     import atlas_camera.core.relief_mesh as rm
-    real_egs = rm.estimate_ground_scale
     monkeypatch.setattr(rm, "estimate_ground_scale",
                         lambda *a, **k: (1.0, {"reason": "test"}))
 
@@ -273,7 +289,7 @@ def test_exclude_mask_removes_patch_sky_geometry(monkeypatch):
     patch mesh entirely -- hallucinated near-depth sky otherwise triangulates
     into geometry bulging toward the camera (found live)."""
     torch = pytest.importorskip("torch")
-    np = pytest.importorskip("numpy")
+    pytest.importorskip("numpy")
     pytest.importorskip("PIL")
     _patch_estimate_depth(monkeypatch)
 

@@ -1234,6 +1234,16 @@ function proxyEntryToGeometry(e) {
   return attachAtlasEdgeRisk(geo, e);
 }
 
+function projectionEvidenceLabel(evidenceType) {
+  return evidenceType === "photographed" ? "PHOTO"
+    : evidenceType === "generated" ? "GENERATED" : "SOURCE";
+}
+
+function projectionGeometryEntries(src, data) {
+  return src.proxy_geometry?.length ? src.proxy_geometry
+    : src.evidence_type === "photographed" ? (data.proxy_geometry || []) : [];
+}
+
 // Build the multi-angle patch sources (AtlasAddPatchView). Each source is its
 // own camera + AI novel-view image + geometry; each mesh carries its OWN
 // projection material (bound to that source's camera+image, with a facing-ratio
@@ -1271,7 +1281,7 @@ function buildPatchSources(scene, data, onSourceReady) {
     group.userData.band_geometry = src.band_geometry;
     group.userData.projection_mode = src.projection_mode;
     const meshes = [];
-    for (const e of (src.proxy_geometry || [])) {
+    for (const e of projectionGeometryEntries(src, data)) {
       const geo = proxyEntryToGeometry(e);
       if (!geo) continue;
       const mat = new THREE.MeshStandardMaterial({ color: 0x8a9a80, roughness: 0.85, side: THREE.DoubleSide });
@@ -2273,7 +2283,7 @@ function buildNodeUI(node, containerEl) {
     }
     (recoveredData?.projection_sources || []).forEach((s, i) => {
       rows.push([hex(LAYER_DEBUG_PALETTE[i % LAYER_DEBUG_PALETTE.length]),
-                 s.name || `layer ${i}`]);
+                 `${s.name || `layer ${i}`} · ${projectionEvidenceLabel(s.evidence_type)}`]);
     });
     layerLegend.replaceChildren(...rows.map(([c, label]) => {
       const row = document.createElement("div");

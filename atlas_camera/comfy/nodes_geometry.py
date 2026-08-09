@@ -3715,6 +3715,7 @@ class AtlasAddPatchView:
         metadata = {
             "source": ("exact_render_patch" if exact_delta is not None
                        else "multi_angle_lora_patch"),
+            "evidence_type": "generated",
             "patch_azimuth_view": patch_azimuth_view,
             "patch_elevation_view": patch_elevation_view,
             "patch_distance": patch_distance,

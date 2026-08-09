@@ -18,6 +18,8 @@ from collections import OrderedDict
 import hashlib
 import threading
 
+from atlas_camera.core.schema import AtlasProxyPrimitive
+
 
 _RETOPO_CACHE: OrderedDict[str, tuple[Any, Any, Any, dict[str, Any]]] = OrderedDict()
 _RETOPO_CACHE_LOCK = threading.Lock()
@@ -168,6 +170,18 @@ def mesh_from_primitive(prim):
     )
 
 
+def _projection_geometry_for_source(
+    solve, src,
+) -> tuple[list[AtlasProxyPrimitive], str]:
+    """Choose a source's export geometry without inventing generated evidence."""
+    source_geometry = list(src.proxy_geometry or [])
+    if source_geometry:
+        return source_geometry, "source"
+    if (src.metadata or {}).get("evidence_type") == "photographed":
+        return list(solve.projection_scene.proxy_geometry or []), "primary_scene"
+    return [], "source"
+
+
 def collect_projection_layers(
     solve,
     output_dir: str | Path,
@@ -196,8 +210,9 @@ def collect_projection_layers(
     layers: list[dict[str, Any]] = []
     skipped: list[str] = []
     for src in getattr(solve, "projection_sources", None) or []:
+        source_geometry, geometry_source = _projection_geometry_for_source(solve, src)
         mesh_prim = next(
-            (p for p in (src.proxy_geometry or []) if p.primitive_type == "mesh"), None)
+            (p for p in source_geometry if p.primitive_type == "mesh"), None)
         mesh = mesh_from_primitive(mesh_prim) if mesh_prim is not None else None
         if mesh is None:
             skipped.append(f"{src.name}: no mesh geometry")
@@ -263,6 +278,10 @@ def collect_projection_layers(
         layers.append({
             "name": safe,
             "camera": src.camera,
+            "evidence_type": ((src.metadata or {}).get("evidence_type")
+                              if (src.metadata or {}).get("evidence_type")
+                              in {"photographed", "generated"} else "unknown"),
+            "geometry_source": geometry_source,
             "plate_path": plate_path.replace("\\", "/"),
             "colorspace": colorspace,
             "obj_path": str(Path(written["obj"]).resolve()).replace("\\", "/"),

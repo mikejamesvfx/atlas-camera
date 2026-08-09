@@ -5,6 +5,8 @@ closed for warn/fail, content-fingerprint approval identity, every skip has a
 visible explanation, and the health stamp is indelible either way.
 """
 
+# ruff: noqa: E402 — optional torch gate must run before Atlas imports
+
 import sys
 import types
 
@@ -130,6 +132,32 @@ def test_pass_stamp_is_not_marked_acknowledged(comfy_runtime):
     AtlasSceneHealthGate().gate(s, _img())
     assert s.debug_metadata["scene_health"]["level"] == "pass"
     assert s.debug_metadata["scene_health"]["acknowledged"] is False
+
+
+def test_mixed_evidence_stamp_records_counts_and_registration_warning(comfy_runtime):
+    s = _healthy_solve()
+    geometry = [AtlasProxyPrimitive(
+        name="surface", primitive_type="plane", metadata={"n_vertices": 4},
+    )]
+    s.projection_sources = [
+        ProjectionSource(
+            camera=_cam(320, 240), name="photo", proxy_geometry=geometry,
+            metadata={"evidence_type": "photographed"},
+        ),
+        ProjectionSource(
+            camera=_cam(320, 240), name="qwen", proxy_geometry=geometry,
+            metadata={"evidence_type": "generated"},
+        ),
+    ]
+
+    AtlasSceneHealthGate().gate(s, _img())
+
+    stamp = s.debug_metadata["scene_health"]
+    assert stamp["projection_evidence_counts"] == {
+        "photographed": 1, "generated": 1, "unknown": 0,
+    }
+    assert any(flag["code"] == "mixed_projection_evidence"
+               for flag in stamp["flags"])
 
 
 def test_pass_through_outside_comfy():
