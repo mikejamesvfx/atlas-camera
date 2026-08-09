@@ -7,6 +7,7 @@ registration fingerprint; no OpenCV estimator or process-global RNG is used.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field, replace
 from itertools import combinations
 import hashlib
 import math
@@ -28,6 +29,53 @@ _ESSENTIAL_SAMPLES = 2_048
 _HOMOGRAPHY_SAMPLES = 1_024
 _POSITIVE_DEPTH_FRACTION = 0.75
 _MINIMAL_RANK_RELATIVE_TOLERANCE = 1.0e-12
+_REFINEMENT_DAMPING = (
+    1.0e-3, 3.0e-4, 1.0e-4, 3.0e-5,
+    1.0e-5, 3.0e-6, 1.0e-6, 1.0e-6,
+)
+
+
+@dataclass(frozen=True)
+class FeatureObservation:
+    frame_index: int
+    feature_index: int
+    point_xy: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class FeatureTrack:
+    track_id: int
+    observations: tuple[FeatureObservation, ...]
+
+
+@dataclass(frozen=True)
+class CameraRig:
+    rotations: tuple[Any, ...]
+    translations: tuple[Any, ...]
+    landmarks: Any
+    reprojection_rmse_px: float
+    _pair_evidence: tuple[PairModelEvidence, ...] = field(
+        default=(), repr=False, compare=False, kw_only=True,
+    )
+    _tracks: tuple[FeatureTrack, ...] = field(
+        default=(), repr=False, compare=False, kw_only=True,
+    )
+    _intrinsics: tuple[AtlasIntrinsics, ...] = field(
+        default=(), repr=False, compare=False, kw_only=True,
+    )
+
+
+@dataclass(frozen=True)
+class ClosureMetrics:
+    rotation_error_deg: float
+    translation_direction_error_deg: float
+    median_reprojection_px: float
+
+
+@dataclass(frozen=True)
+class RefinedRig(CameraRig):
+    accepted_track_ids: tuple[int, ...]
+    closure: ClosureMetrics
 
 
 class MotionModelError(ValueError):
@@ -624,4 +672,584 @@ def select_capture_mode(evidence: PairModelEvidence, requested_mode: CaptureMode
     )
 
 
-__all__ = ["MotionModelError", "fit_pair_models", "select_capture_mode"]
+def build_tracks(pair_matches: Any, n_frames: int) -> tuple[FeatureTrack, ...]:
+    """Join stable feature identities into deterministic closed tracks."""
+    np = _require_numpy()
+    if n_frames < 2:
+        raise ValueError("at least two frames are required to build tracks")
+    parents: dict[tuple[int, int], tuple[int, int]] = {}
+    coordinates: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    edges: set[frozenset[tuple[int, int]]] = set()
+
+    def find(node: tuple[int, int]) -> tuple[int, int]:
+        parent = parents.setdefault(node, node)
+        while parent != parents[parent]:
+            parent = parents[parent]
+        while node != parent:
+            next_node = parents[node]
+            parents[node] = parent
+            node = next_node
+        return parent
+
+    def union(first: tuple[int, int], second: tuple[int, int]) -> None:
+        root_a, root_b = find(first), find(second)
+        if root_a == root_b:
+            return
+        if root_b < root_a:
+            root_a, root_b = root_b, root_a
+        parents[root_b] = root_a
+
+    ordered_pairs = sorted(
+        tuple(pair_matches), key=lambda pair: (int(pair.frame_a), int(pair.frame_b)),
+    )
+    for pair in ordered_pairs:
+        frame_a, frame_b = int(pair.frame_a), int(pair.frame_b)
+        if (
+            frame_a == frame_b or frame_a < 0 or frame_b < 0
+            or frame_a >= n_frames or frame_b >= n_frames
+        ):
+            raise ValueError("pair frame indices must name two distinct input frames")
+        points_a = np.asarray(pair.points_a, dtype=np.float64)
+        points_b = np.asarray(pair.points_b, dtype=np.float64)
+        indices = np.asarray(pair.indices, dtype=np.int64)
+        if (
+            points_a.ndim != 2 or points_a.shape[1:] != (2,)
+            or points_b.shape != points_a.shape
+            or indices.shape != (len(points_a), 2)
+        ):
+            raise ValueError("pair matches must contain aligned N-by-2 points and indices")
+        if not np.all(np.isfinite(points_a)) or not np.all(np.isfinite(points_b)):
+            raise ValueError("track observations must be finite")
+        for point_a, point_b, feature_indices in zip(points_a, points_b, indices):
+            node_a = (frame_a, int(feature_indices[0]))
+            node_b = (frame_b, int(feature_indices[1]))
+            coordinate_a = (float(point_a[0]), float(point_a[1]))
+            coordinate_b = (float(point_b[0]), float(point_b[1]))
+            coordinates.setdefault(node_a, []).append(coordinate_a)
+            coordinates.setdefault(node_b, []).append(coordinate_b)
+            union(node_a, node_b)
+            edges.add(frozenset((node_a, node_b)))
+
+    components: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for node in sorted(parents):
+        components.setdefault(find(node), []).append(node)
+    observation_tuples: list[tuple[FeatureObservation, ...]] = []
+    for nodes in components.values():
+        nodes = sorted(nodes)
+        frames = [node[0] for node in nodes]
+        if len(nodes) < 2 or len(frames) != len(set(frames)):
+            continue
+        if any(len(set(coordinates[node])) != 1 for node in nodes):
+            continue
+        if len(nodes) >= 3 and any(
+            frozenset((first, second)) not in edges
+            for first, second in combinations(nodes, 2)
+        ):
+            continue
+        observations = tuple(
+            FeatureObservation(node[0], node[1], coordinates[node][0])
+            for node in nodes
+        )
+        observation_tuples.append(observations)
+    observation_tuples.sort(key=lambda observations: tuple(
+        (item.frame_index, item.feature_index, item.point_xy[0], item.point_xy[1])
+        for item in observations
+    ))
+    return tuple(
+        FeatureTrack(track_id, observations)
+        for track_id, observations in enumerate(observation_tuples)
+    )
+
+
+def _normalise_direction(direction: Any) -> Any:
+    np = _require_numpy()
+    result = np.asarray(direction, dtype=np.float64).reshape(3)
+    norm = float(np.linalg.norm(result))
+    if not math.isfinite(norm) or norm <= 1.0e-15:
+        raise MotionModelError("degenerate_geometry", "relative translation is unavailable")
+    return result / norm
+
+
+def _relative_pose_map(pair_evidence: Any) -> dict[tuple[int, int], PairModelEvidence]:
+    return {
+        (int(evidence.frame_a), int(evidence.frame_b)): evidence
+        for evidence in sorted(
+            tuple(pair_evidence),
+            key=lambda value: (int(value.frame_a), int(value.frame_b)),
+        )
+    }
+
+
+def initialise_rig(pair_evidence: Any,
+                   mode: Literal["translated", "rotation_only"]) -> CameraRig:
+    """Compose pair poses into a stable photo-1-anchored camera rig."""
+    np = _require_numpy()
+    if mode not in ("translated", "rotation_only"):
+        raise ValueError(f"unsupported selected mode {mode!r}")
+    evidence_tuple = tuple(sorted(
+        tuple(pair_evidence),
+        key=lambda value: (int(value.frame_a), int(value.frame_b)),
+    ))
+    if not evidence_tuple:
+        raise MotionModelError("degenerate_geometry", "pair evidence is empty")
+    frame_count = 1 + max(
+        max(int(value.frame_a), int(value.frame_b)) for value in evidence_tuple
+    )
+    rotations: list[Any | None] = [None] * frame_count
+    translations: list[Any | None] = [None] * frame_count
+    rotations[0] = np.eye(3, dtype=np.float64)
+    translations[0] = np.zeros(3, dtype=np.float64)
+    pair_map = _relative_pose_map(evidence_tuple)
+
+    for frame_index in range(1, frame_count):
+        direct = pair_map.get((0, frame_index))
+        if direct is None or direct.relative_rotation is None:
+            raise MotionModelError(
+                "degenerate_geometry", f"photo 1 has no pose evidence for frame {frame_index}",
+            )
+        rotations[frame_index] = np.ascontiguousarray(
+            direct.relative_rotation, dtype=np.float64,
+        )
+        translations[frame_index] = (
+            np.zeros(3, dtype=np.float64) if mode == "rotation_only"
+            else _normalise_direction(direct.translation_direction)
+        )
+
+    if mode == "translated" and frame_count == 3:
+        closing = pair_map.get((1, 2))
+        if closing is not None and closing.translation_direction is not None:
+            if closing.relative_rotation is None:
+                raise MotionModelError(
+                    "inconsistent_third_view",
+                    "closing pair has translation evidence without a relative rotation",
+                )
+            direction_01 = _normalise_direction(pair_map[(0, 1)].translation_direction)
+            direction_02 = _normalise_direction(pair_map[(0, 2)].translation_direction)
+            direction_12 = _normalise_direction(closing.translation_direction)
+            relative_rotation_12 = np.asarray(
+                closing.relative_rotation, dtype=np.float64,
+            )
+            scale_system = np.column_stack((
+                direction_02,
+                -(relative_rotation_12 @ direction_01),
+                -direction_12,
+            ))
+            _, _, vh = np.linalg.svd(scale_system)
+            scales = vh[-1]
+            if scales[1] < 0.0:
+                scales = -scales
+            if scales[1] > 1.0e-12 and scales[0] > 1.0e-12:
+                translations[1] = direction_01
+                translations[2] = direction_02 * float(scales[0] / scales[1])
+
+    error_field = (
+        "median_essential_error_px" if mode == "translated"
+        else "median_homography_error_px"
+    )
+    finite_errors = [
+        float(getattr(value, error_field)) for value in evidence_tuple
+        if math.isfinite(float(getattr(value, error_field)))
+    ]
+    initial_rmse = (
+        math.sqrt(sum(value * value for value in finite_errors) / len(finite_errors))
+        if finite_errors else float("inf")
+    )
+    return CameraRig(
+        tuple(np.ascontiguousarray(value, dtype=np.float64) for value in rotations),
+        tuple(np.asarray(value, dtype=np.float64) for value in translations),
+        np.empty((0, 3), dtype=np.float64),
+        initial_rmse,
+        _pair_evidence=evidence_tuple,
+    )
+
+
+def _skew(vector: Any) -> Any:
+    np = _require_numpy()
+    x_value, y_value, z_value = np.asarray(vector, dtype=np.float64)
+    return np.array([
+        [0.0, -z_value, y_value],
+        [z_value, 0.0, -x_value],
+        [-y_value, x_value, 0.0],
+    ], dtype=np.float64)
+
+
+def _rotation_increment(rotation_vector: Any) -> Any:
+    np = _require_numpy()
+    vector = np.asarray(rotation_vector, dtype=np.float64)
+    angle = float(np.linalg.norm(vector))
+    matrix = _skew(vector)
+    if angle <= 1.0e-12:
+        return np.eye(3, dtype=np.float64) + matrix + 0.5 * (matrix @ matrix)
+    sine_scale = math.sin(angle) / angle
+    cosine_scale = (1.0 - math.cos(angle)) / (angle * angle)
+    return np.eye(3, dtype=np.float64) + sine_scale * matrix + cosine_scale * (matrix @ matrix)
+
+
+def _triangulate_track(track: FeatureTrack, rotations: tuple[Any, ...],
+                       translations: tuple[Any, ...], intrinsic_matrices: tuple[Any, ...]) -> Any | None:
+    np = _require_numpy()
+    rows: list[Any] = []
+    for observation in track.observations:
+        frame_index = observation.frame_index
+        inverse_intrinsic = np.linalg.inv(intrinsic_matrices[frame_index])
+        ray = inverse_intrinsic @ np.array(
+            (observation.point_xy[0], observation.point_xy[1], 1.0),
+            dtype=np.float64,
+        )
+        x_value, y_value = ray[0] / ray[2], ray[1] / ray[2]
+        projection = np.column_stack((rotations[frame_index], translations[frame_index]))
+        rows.extend((
+            x_value * projection[2] - projection[0],
+            y_value * projection[2] - projection[1],
+        ))
+    design = np.asarray(rows, dtype=np.float64)
+    row_norms = np.linalg.norm(design, axis=1)
+    if np.any(row_norms <= 1.0e-15):
+        return None
+    design /= row_norms[:, None]
+    _, _, vh = np.linalg.svd(design, full_matrices=True)
+    homogeneous = vh[-1]
+    if abs(float(homogeneous[3])) <= 1.0e-15:
+        return None
+    point = np.asarray(homogeneous[:3] / homogeneous[3], dtype=np.float64)
+    if not np.all(np.isfinite(point)):
+        return None
+    for observation in track.observations:
+        camera_point = rotations[observation.frame_index] @ point + translations[observation.frame_index]
+        if not math.isfinite(float(camera_point[2])) or camera_point[2] <= 1.0e-12:
+            return None
+    return point
+
+
+def _project_pixel(point: Any, rotation: Any, translation: Any,
+                   intrinsic_matrix: Any) -> Any | None:
+    np = _require_numpy()
+    camera_point = rotation @ point + translation
+    if camera_point[2] <= 1.0e-12:
+        return None
+    projected = intrinsic_matrix @ camera_point
+    pixel = projected[:2] / projected[2]
+    return np.asarray(pixel, dtype=np.float64)
+
+
+def _track_errors(track: FeatureTrack, point: Any, rotations: tuple[Any, ...],
+                  translations: tuple[Any, ...], intrinsic_matrices: tuple[Any, ...]) -> list[float]:
+    np = _require_numpy()
+    errors: list[float] = []
+    for observation in track.observations:
+        pixel = _project_pixel(
+            point, rotations[observation.frame_index],
+            translations[observation.frame_index],
+            intrinsic_matrices[observation.frame_index],
+        )
+        if pixel is None:
+            return [float("inf")]
+        errors.append(float(np.linalg.norm(
+            pixel - np.asarray(observation.point_xy, dtype=np.float64),
+        )))
+    return errors
+
+
+def _huber_cost_and_weight(residual: Any, delta: float) -> tuple[float, float]:
+    np = _require_numpy()
+    norm = float(np.linalg.norm(residual))
+    if norm <= delta:
+        return 0.5 * norm * norm, 1.0
+    return delta * (norm - 0.5 * delta), delta / max(norm, 1.0e-15)
+
+
+def _pose_observations(frame_index: int, tracks: tuple[FeatureTrack, ...],
+                       landmarks: dict[int, Any]) -> list[tuple[Any, Any]]:
+    observations: list[tuple[Any, Any]] = []
+    for track in tracks:
+        point = landmarks.get(track.track_id)
+        if point is None:
+            continue
+        for observation in track.observations:
+            if observation.frame_index == frame_index:
+                observations.append((point, observation))
+    return observations
+
+
+def _pose_cost(frame_index: int, observations: list[tuple[Any, Any]],
+               rotation: Any, translation: Any, intrinsic_matrix: Any,
+               delta: float) -> float:
+    np = _require_numpy()
+    total = 0.0
+    for point, observation in observations:
+        pixel = _project_pixel(point, rotation, translation, intrinsic_matrix)
+        if pixel is None:
+            return float("inf")
+        residual = pixel - np.asarray(observation.point_xy, dtype=np.float64)
+        cost, _ = _huber_cost_and_weight(residual, delta)
+        total += cost
+    return total
+
+
+def _pose_step(frame_index: int, observations: list[tuple[Any, Any]],
+               rotation: Any, translation: Any, intrinsic_matrix: Any,
+               delta: float, damping: float,
+               rotation_only: bool = False) -> tuple[Any, Any]:
+    np = _require_numpy()
+    parameter_count = 3 if rotation_only else 6
+    normal = np.zeros((parameter_count, parameter_count), dtype=np.float64)
+    gradient = np.zeros(parameter_count, dtype=np.float64)
+    fx, fy = float(intrinsic_matrix[0, 0]), float(intrinsic_matrix[1, 1])
+    valid_count = 0
+    for point, observation in observations:
+        camera_point = rotation @ point + translation
+        x_value, y_value, z_value = camera_point
+        if z_value <= 1.0e-12:
+            continue
+        pixel = np.array((
+            fx * x_value / z_value + intrinsic_matrix[0, 2],
+            fy * y_value / z_value + intrinsic_matrix[1, 2],
+        ), dtype=np.float64)
+        residual = pixel - np.asarray(observation.point_xy, dtype=np.float64)
+        projection_jacobian = np.array((
+            (fx / z_value, 0.0, -fx * x_value / (z_value * z_value)),
+            (0.0, fy / z_value, -fy * y_value / (z_value * z_value)),
+        ), dtype=np.float64)
+        camera_jacobian = -_skew(camera_point)
+        if not rotation_only:
+            camera_jacobian = np.column_stack((camera_jacobian, np.eye(3, dtype=np.float64)))
+        jacobian = projection_jacobian @ camera_jacobian
+        _, weight = _huber_cost_and_weight(residual, delta)
+        normal += weight * (jacobian.T @ jacobian)
+        gradient += weight * (jacobian.T @ residual)
+        valid_count += 1
+    if valid_count < parameter_count:
+        return rotation, translation
+    normal += damping * np.eye(parameter_count, dtype=np.float64)
+    try:
+        increment = np.linalg.solve(normal, -gradient)
+    except np.linalg.LinAlgError:
+        return rotation, translation
+    rotation_delta = _rotation_increment(increment[:3])
+    candidate_rotation = rotation_delta @ rotation
+    candidate_translation = (
+        np.zeros(3, dtype=np.float64) if rotation_only
+        else rotation_delta @ translation + increment[3:]
+    )
+    current_cost = _pose_cost(
+        frame_index, observations, rotation, translation,
+        intrinsic_matrix, delta,
+    )
+    candidate_cost = _pose_cost(
+        frame_index, observations, candidate_rotation,
+        candidate_translation, intrinsic_matrix, delta,
+    )
+    if candidate_cost < current_cost:
+        return (
+            np.ascontiguousarray(candidate_rotation, dtype=np.float64),
+            np.asarray(candidate_translation, dtype=np.float64),
+        )
+    return rotation, translation
+
+
+def _angle_between_vectors(first: Any, second: Any) -> float:
+    np = _require_numpy()
+    norm = float(np.linalg.norm(first) * np.linalg.norm(second))
+    if norm <= 1.0e-15:
+        return float("inf")
+    cosine = float(np.dot(first, second) / norm)
+    return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
+
+
+def _rotation_error_degrees(first: Any, second: Any) -> float:
+    np = _require_numpy()
+    relative = np.asarray(first, dtype=np.float64) @ np.asarray(second, dtype=np.float64).T
+    cosine = (float(np.trace(relative)) - 1.0) * 0.5
+    return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
+
+
+def measure_three_view_closure(refined: RefinedRig) -> ClosureMetrics:
+    """Measure pose-edge disagreement and closed-track pixel residual."""
+    np = _require_numpy()
+    rotation_errors: list[float] = []
+    translation_errors: list[float] = []
+    for evidence in refined._pair_evidence:
+        frame_a, frame_b = int(evidence.frame_a), int(evidence.frame_b)
+        if frame_a >= len(refined.rotations) or frame_b >= len(refined.rotations):
+            continue
+        predicted_rotation = refined.rotations[frame_b] @ refined.rotations[frame_a].T
+        if evidence.relative_rotation is not None:
+            rotation_errors.append(_rotation_error_degrees(
+                predicted_rotation, evidence.relative_rotation,
+            ))
+        if evidence.translation_direction is not None:
+            predicted_translation = (
+                refined.translations[frame_b]
+                - predicted_rotation @ refined.translations[frame_a]
+            )
+            translation_errors.append(_angle_between_vectors(
+                predicted_translation, evidence.translation_direction,
+            ))
+    landmark_by_id = {
+        track_id: refined.landmarks[index]
+        for index, track_id in enumerate(refined.accepted_track_ids)
+        if index < len(refined.landmarks)
+    }
+    closed_errors: list[float] = []
+    if len(refined.rotations) >= 3 and refined._intrinsics:
+        matrices = tuple(_intrinsic_matrix(value) for value in refined._intrinsics)
+        for track in refined._tracks:
+            if len(track.observations) != len(refined.rotations):
+                continue
+            point = landmark_by_id.get(track.track_id)
+            if point is not None:
+                closed_errors.extend(_track_errors(
+                    track, point, refined.rotations, refined.translations, matrices,
+                ))
+    median_reprojection = (
+        float(np.median(np.asarray(closed_errors, dtype=np.float64)))
+        if closed_errors else float("inf")
+    )
+    return ClosureMetrics(
+        max(rotation_errors, default=0.0),
+        max(translation_errors, default=0.0),
+        median_reprojection,
+    )
+
+
+def _resolve_profile(profile: QualityProfile | str) -> QualityProfile:
+    if isinstance(profile, QualityProfile):
+        return profile
+    try:
+        return QUALITY_PROFILES[profile]
+    except KeyError as exc:
+        raise ValueError(f"unknown quality profile {profile!r}") from exc
+
+
+def refine_rig(rig: CameraRig, tracks: Any, intrinsics: Any,
+               mode: Literal["translated", "rotation_only"],
+               profile: QualityProfile | str = "balanced") -> RefinedRig:
+    """Run fixed-order deterministic landmark/pose alternating refinement."""
+    np = _require_numpy()
+    if mode not in ("translated", "rotation_only"):
+        raise ValueError(f"unsupported selected mode {mode!r}")
+    selected_profile = _resolve_profile(profile)
+    delta = float(selected_profile.reprojection_threshold_px)
+    ordered_tracks = tuple(sorted(tuple(tracks), key=lambda value: value.track_id))
+    intrinsics_tuple = tuple(intrinsics)
+    if len(rig.rotations) != len(rig.translations) or len(rig.rotations) != len(intrinsics_tuple):
+        raise ValueError("rig poses and intrinsics must have the same frame count")
+    matrices = tuple(_intrinsic_matrix(value) for value in intrinsics_tuple)
+    rotations = tuple(np.ascontiguousarray(value, dtype=np.float64) for value in rig.rotations)
+    translations = tuple(np.asarray(value, dtype=np.float64) for value in rig.translations)
+    if mode == "rotation_only":
+        translations = tuple(np.zeros(3, dtype=np.float64) for _ in translations)
+        # Rotation-only tracks carry directions, not finite landmarks.  Map each
+        # anchor ray to a distant point so the same pose-only equations apply.
+        directional_landmarks: dict[int, Any] = {}
+        accepted: list[FeatureTrack] = []
+        inverse_anchor = np.linalg.inv(matrices[0])
+        for track in ordered_tracks:
+            anchor = next((item for item in track.observations if item.frame_index == 0), None)
+            if anchor is None:
+                continue
+            ray = inverse_anchor @ np.array((*anchor.point_xy, 1.0), dtype=np.float64)
+            ray /= ray[2]
+            errors = _track_errors(track, ray, rotations, translations, matrices)
+            if errors and max(errors) <= 4.0 * delta:
+                accepted.append(track)
+                directional_landmarks[track.track_id] = ray
+        for damping in _REFINEMENT_DAMPING:
+            rotation_list, translation_list = list(rotations), list(translations)
+            for frame_index in range(1, len(rotations)):
+                observations = _pose_observations(
+                    frame_index, tuple(accepted), directional_landmarks,
+                )
+                rotation_list[frame_index], translation_list[frame_index] = _pose_step(
+                    frame_index, observations,
+                    rotation_list[frame_index], np.zeros(3, dtype=np.float64),
+                    matrices[frame_index], delta, damping, rotation_only=True,
+                )
+            rotations, translations = tuple(rotation_list), tuple(translation_list)
+        accepted_tracks = tuple(accepted)
+        landmarks_by_id = directional_landmarks
+    else:
+        accepted_tracks_list: list[FeatureTrack] = []
+        landmarks_by_id: dict[int, Any] = {}
+        for track in ordered_tracks:
+            point = _triangulate_track(track, rotations, translations, matrices)
+            if point is None:
+                continue
+            errors = _track_errors(track, point, rotations, translations, matrices)
+            if errors and max(errors) <= 4.0 * delta:
+                accepted_tracks_list.append(track)
+                landmarks_by_id[track.track_id] = point
+        accepted_tracks = tuple(accepted_tracks_list)
+        for damping in _REFINEMENT_DAMPING:
+            retriangulated: dict[int, Any] = {}
+            for track in accepted_tracks:
+                point = _triangulate_track(track, rotations, translations, matrices)
+                if point is not None:
+                    retriangulated[track.track_id] = point
+            accepted_tracks = tuple(
+                track for track in accepted_tracks if track.track_id in retriangulated
+            )
+            landmarks_by_id = retriangulated
+            rotation_list, translation_list = list(rotations), list(translations)
+            for frame_index in range(1, len(rotations)):
+                observations = _pose_observations(
+                    frame_index, accepted_tracks, landmarks_by_id,
+                )
+                rotation_list[frame_index], translation_list[frame_index] = _pose_step(
+                    frame_index, observations,
+                    rotation_list[frame_index], translation_list[frame_index],
+                    matrices[frame_index], delta, damping,
+                )
+            rotations, translations = tuple(rotation_list), tuple(translation_list)
+        final_landmarks: dict[int, Any] = {}
+        for track in accepted_tracks:
+            point = _triangulate_track(track, rotations, translations, matrices)
+            if point is not None:
+                final_landmarks[track.track_id] = point
+        accepted_tracks = tuple(
+            track for track in accepted_tracks if track.track_id in final_landmarks
+        )
+        landmarks_by_id = final_landmarks
+
+    accepted_ids = tuple(track.track_id for track in accepted_tracks)
+    landmark_array = np.asarray(
+        [landmarks_by_id[track_id] for track_id in accepted_ids], dtype=np.float64,
+    ).reshape((-1, 3))
+    all_errors: list[float] = []
+    for track in accepted_tracks:
+        all_errors.extend(_track_errors(
+            track, landmarks_by_id[track.track_id], rotations, translations, matrices,
+        ))
+    rmse = (
+        math.sqrt(float(np.mean(np.square(np.asarray(all_errors, dtype=np.float64)))))
+        if all_errors else float("inf")
+    )
+    provisional = RefinedRig(
+        rotations, translations, landmark_array, rmse,
+        accepted_ids, ClosureMetrics(0.0, 0.0, float("inf")),
+        _pair_evidence=rig._pair_evidence,
+        _tracks=ordered_tracks,
+        _intrinsics=intrinsics_tuple,
+    )
+    refined = replace(provisional, closure=measure_three_view_closure(provisional))
+    if mode == "translated" and len(rotations) >= 3:
+        scale = delta / QUALITY_PROFILES["balanced"].reprojection_threshold_px
+        closure = refined.closure
+        if (
+            closure.rotation_error_deg > 0.5 * scale
+            or closure.translation_direction_error_deg > 1.5 * scale
+            or closure.median_reprojection_px > 2.0 * scale
+        ):
+            raise MotionModelError(
+                "inconsistent_third_view",
+                "three-view closure exceeded deterministic rotation, translation, or pixel limits",
+            )
+    return refined
+
+
+__all__ = [
+    "CameraRig", "ClosureMetrics", "FeatureObservation", "FeatureTrack",
+    "MotionModelError", "RefinedRig", "build_tracks", "fit_pair_models",
+    "initialise_rig", "measure_three_view_closure", "refine_rig",
+    "select_capture_mode",
+]

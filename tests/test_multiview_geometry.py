@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from itertools import combinations
 import math
 
@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 from atlas_camera.core.multiview_geometry import (
+    FeatureObservation,
+    FeatureTrack,
     MotionModelError,
     _decompose_essential,
     _hartley_normalize,
@@ -17,12 +19,16 @@ from atlas_camera.core.multiview_geometry import (
     _sample_schedule,
     _select_pose_candidate_index,
     _sampson_errors_px,
+    build_tracks,
     fit_pair_models,
+    initialise_rig,
+    refine_rig,
     select_capture_mode,
 )
 from atlas_camera.core.multiview_types import (
     MultiViewSettings,
     PairMatches,
+    PairModelEvidence,
     QUALITY_PROFILES,
 )
 from atlas_camera.core.schema import AtlasIntrinsics
@@ -101,6 +107,108 @@ def _project_known_scene(*, rotation_y_deg: float,
         occupied_grid_cells=16,
     )
     return matches, intr_a, intr_b
+
+
+@dataclass(frozen=True)
+class _ThreeCameraFixture:
+    pairs: tuple[PairMatches, ...]
+    evidence: tuple[PairModelEvidence, ...]
+    intrinsics: tuple[AtlasIntrinsics, ...]
+
+
+def _relative_evidence(frame_a: int, frame_b: int,
+                       rotations: tuple[np.ndarray, ...],
+                       translations: tuple[np.ndarray, ...]) -> PairModelEvidence:
+    relative_rotation = rotations[frame_b] @ rotations[frame_a].T
+    relative_translation = (
+        translations[frame_b]
+        - relative_rotation @ translations[frame_a]
+    )
+    relative_translation /= np.linalg.norm(relative_translation)
+    return PairModelEvidence(
+        frame_a=frame_a,
+        frame_b=frame_b,
+        essential_matrix=np.eye(3, dtype=np.float64),
+        homography=None,
+        relative_rotation=relative_rotation,
+        translation_direction=relative_translation,
+        essential_inliers=np.ones(140, dtype=bool),
+        homography_inliers=np.zeros(140, dtype=bool),
+        essential_inlier_count=140,
+        homography_inlier_count=0,
+        median_essential_error_px=1.2,
+        median_homography_error_px=float("inf"),
+        median_triangulation_angle_deg=4.0,
+        positive_depth_fraction=1.0,
+        essential_occupied_grid_cells=16,
+    )
+
+
+def _three_camera_fixture(*, noise_px: float = 0.35, outliers: int = 0,
+                          scramble_pair_1_2: bool = False) -> _ThreeCameraFixture:
+    rng = np.random.Generator(np.random.PCG64(2026080917))
+    width, height = 1280, 720
+    intrinsics = tuple(
+        AtlasIntrinsics(
+            image_width=width, image_height=height,
+            fx_px=900.0 + 15.0 * index,
+            fy_px=880.0 + 12.0 * index,
+            cx_px=640.0 - 3.0 * index,
+            cy_px=360.0 + 2.0 * index,
+        )
+        for index in range(3)
+    )
+    matrices = tuple(_intrinsic_matrix_for_test(value) for value in intrinsics)
+    rotations = (np.eye(3), _rotation_y(4.0), _rotation_y(-3.0))
+    translations = (
+        np.zeros(3, dtype=np.float64),
+        np.array((0.75, 0.02, 0.10), dtype=np.float64),
+        np.array((-0.60, 0.03, 0.20), dtype=np.float64),
+    )
+    points_xyz = np.column_stack((
+        rng.uniform(-2.8, 2.8, 140),
+        rng.uniform(-1.6, 1.6, 140),
+        rng.uniform(7.0, 15.0, 140),
+    ))
+    image_points = tuple(
+        _project(points_xyz, rotations[index], translations[index], matrices[index])
+        + rng.normal(0.0, noise_px, size=(len(points_xyz), 2))
+        for index in range(3)
+    )
+    pairs: list[PairMatches] = []
+    for pair_number, (frame_a, frame_b) in enumerate(((0, 1), (0, 2), (1, 2))):
+        points_a = image_points[frame_a].copy()
+        points_b = image_points[frame_b].copy()
+        if scramble_pair_1_2 and (frame_a, frame_b) == (1, 2):
+            points_b = np.roll(points_b, 37, axis=0)
+        indices = np.column_stack((np.arange(140), np.arange(140)))
+        if outliers:
+            first = 140 + pair_number * outliers
+            outlier_indices = np.arange(first, first + outliers)
+            points_a = np.vstack((points_a, rng.uniform(
+                (0.0, 0.0), (width - 1.0, height - 1.0), size=(outliers, 2),
+            )))
+            points_b = np.vstack((points_b, rng.uniform(
+                (0.0, 0.0), (width - 1.0, height - 1.0), size=(outliers, 2),
+            )))
+            indices = np.vstack((indices, np.column_stack((outlier_indices, outlier_indices))))
+        pairs.append(PairMatches(
+            frame_a, frame_b, points_a, points_b, indices,
+            np.zeros(len(points_a), dtype=np.float64), 16,
+        ))
+    evidence = tuple(
+        _relative_evidence(frame_a, frame_b, rotations, translations)
+        for frame_a, frame_b in ((0, 1), (0, 2), (1, 2))
+    )
+    return _ThreeCameraFixture(tuple(pairs), evidence, intrinsics)
+
+
+def _intrinsic_matrix_for_test(intrinsics: AtlasIntrinsics) -> np.ndarray:
+    return np.array([
+        [intrinsics.fx_px, 0.0, intrinsics.cx_px],
+        [0.0, intrinsics.fy_px, intrinsics.cy_px],
+        [0.0, 0.0, 1.0],
+    ], dtype=np.float64)
 
 
 def test_translated_pair_selects_essential_model_exactly() -> None:
@@ -347,3 +455,80 @@ def test_four_pose_exact_tie_selects_first_decomposition_candidate() -> None:
 
     assert rotation == pytest.approx(np.eye(3), abs=1.0e-12)
     assert translation == pytest.approx((-1.0, 0.0, 0.0), abs=1.0e-12)
+
+
+def test_three_view_tracks_close_and_refinement_reduces_error() -> None:
+    # Catches unstable track joins, uncalibrated DLT, and non-improving BA.
+    fixture = _three_camera_fixture(noise_px=0.35, outliers=45)
+
+    tracks = build_tracks(fixture.pairs, n_frames=3)
+    initial = initialise_rig(fixture.evidence, "translated")
+    refined = refine_rig(
+        initial, tracks, fixture.intrinsics, "translated",
+    )
+
+    assert refined.reprojection_rmse_px < initial.reprojection_rmse_px
+    assert refined.closure.rotation_error_deg < 0.15
+    assert refined.closure.translation_direction_error_deg < 0.5
+    assert len(refined.accepted_track_ids) >= 120
+    assert refined.accepted_track_ids == tuple(sorted(refined.accepted_track_ids))
+    assert refined.landmarks.dtype == np.float64
+    assert refined.rotations[0] == pytest.approx(np.eye(3), abs=0.0)
+    assert refined.translations[0] == pytest.approx(np.zeros(3), abs=0.0)
+
+
+def test_inconsistent_third_view_has_a_distinct_error() -> None:
+    # Catches an independently inconsistent closing pair being silently ignored.
+    fixture = _three_camera_fixture(scramble_pair_1_2=True)
+    tracks = build_tracks(fixture.pairs, n_frames=3)
+    initial = initialise_rig(fixture.evidence, "translated")
+
+    with pytest.raises(MotionModelError, match="inconsistent_third_view") as caught:
+        refine_rig(initial, tracks, fixture.intrinsics, "translated")
+
+    assert caught.value.outcome_code == "inconsistent_third_view"
+
+
+def test_incomplete_closing_pose_has_the_closure_failure_code() -> None:
+    # Catches a partially populated closing edge leaking a low-level matrix error.
+    fixture = _three_camera_fixture()
+    incomplete = replace(fixture.evidence[2], relative_rotation=None)
+
+    with pytest.raises(MotionModelError, match="inconsistent_third_view") as caught:
+        initialise_rig((*fixture.evidence[:2], incomplete), "translated")
+
+    assert caught.value.outcome_code == "inconsistent_third_view"
+
+
+def test_track_builder_rejects_duplicate_frame_components_and_sorts_observations() -> None:
+    # Catches union-find components that alias two features from the same frame.
+    pair_0_1 = PairMatches(
+        0, 1,
+        np.array(((30.0, 20.0), (10.0, 10.0))),
+        np.array(((31.0, 20.0), (11.0, 10.0))),
+        np.array(((3, 7), (1, 5))), np.zeros(2), 2,
+    )
+    pair_0_2 = PairMatches(
+        0, 2,
+        np.array(((30.0, 20.0), (10.0, 10.0))),
+        np.array(((32.0, 20.0), (12.0, 10.0))),
+        np.array(((3, 9), (1, 8))), np.zeros(2), 2,
+    )
+    pair_1_2 = PairMatches(
+        1, 2,
+        np.array(((31.0, 20.0), (11.0, 10.0))),
+        np.array(((32.0, 20.0), (12.0, 10.0))),
+        # The second edge aliases a second frame-2 feature into the component
+        # that already contains feature 8, so only the independent first track survives.
+        np.array(((7, 9), (5, 10))), np.zeros(2), 2,
+    )
+
+    tracks = build_tracks((pair_1_2, pair_0_2, pair_0_1), n_frames=3)
+
+    assert tracks == (
+        FeatureTrack(0, (
+            FeatureObservation(0, 3, (30.0, 20.0)),
+            FeatureObservation(1, 7, (31.0, 20.0)),
+            FeatureObservation(2, 9, (32.0, 20.0)),
+        )),
+    )
