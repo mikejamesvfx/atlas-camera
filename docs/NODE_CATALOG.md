@@ -588,7 +588,7 @@ The route is registered in `comfy/__init__.py` behind the double-import guard (c
 
 
 
-**Shipping catalog: FOUR workflows** (v1 cut, 2026-08-07). `tests/test_example_workflows.py` pins these names so a deletion or an unreviewed addition fails loudly — review means adding the name there. Each answers a different question, and each runs on a fresh clone with a bundled plate and no gated node:
+**Shipping catalog: FIVE workflows** (four generated v1 workflows plus the RAW multi-view graph, 2026-08-09). `tests/test_example_workflows.py` pins these names so a deletion or an unreviewed addition fails loudly — review means adding the name there. The generated four each answer a different question and run on a fresh clone with a bundled plate and no gated node; the fifth is the hand-authored `atlas_multiview_raw_qwen_workflow.json`, whose user-supplied input-relative RAF placeholders must be set up before execution:
 
 | File | The question it answers |
 |---|---|
@@ -596,12 +596,13 @@ The route is registered in `comfy/__init__.py` behind the double-import guard (c
 | `atlas_quickstart_solve_project_export_workflow.json` | "What are the stages?" The explicit chain the front door hides. |
 | `atlas_export_fanout_workflow.json` | "What do I get in my DCC?" Eight exporters routed by one `AtlasProject`. |
 | `atlas_layered_projection_workflow.json` | "How do I matte-paint with it?" The 2.5D layer stack. |
+| `atlas_multiview_raw_qwen_workflow.json` | "How do I register a photographed RAW rig?" Three user-supplied relative RAF inputs, deterministic solve evidence, viewport/debug review, and a bypassed downstream Qwen patch slot. |
 
-**No image assets ship in this repo** (2026-08-07). Every shipping workflow's `LoadImage` therefore starts on ComfyUI's own bundled `example.png`, which is the only plate guaranteed to exist on a fresh install — so all four queue green with nothing to download. The Atlas plate pack is distributed from the project website instead. One consequence is baked into the graphs: `example.png` classifies as almost entirely above-horizon far field, so the outdoor `sky_heuristic` is OFF everywhere (left on, it eats the whole frame and leaves an empty export mesh). Turn it back on with a real outdoor plate. `tests/test_shipping_workflow_plates.py` pins this: a workflow may not reference an image the repo does not ship.
+**No image assets ship in this repo** (2026-08-07). The four generated workflows' `LoadImage` nodes therefore start on ComfyUI's own bundled `example.png`, the only plate guaranteed on a fresh install, so those four queue green with nothing to download. The RAW multi-view workflow also uses `example.png` only for its bypassed optional Qwen patch slot; its three registration inputs are user-supplied RAF placeholders and do not queue until the artist provides them. The Atlas plate pack is distributed from the project website instead. One consequence is baked into the generated graphs: `example.png` classifies as almost entirely above-horizon far field, so the outdoor `sky_heuristic` is OFF there (left on, it eats the whole frame and leaves an empty export mesh). Turn it back on with a real outdoor plate. `tests/test_shipping_workflow_plates.py` pins this: a `LoadImage` widget may not reference an image the repo does not ship.
 
-All four are GENERATED, never hand-edited: `tools/build_v1_shipping_workflows.py` reads widget order and defaults from a live `/object_info` and auto-lays-out the result. The UI format is redundantly linked and `widgets_values` is positional, and both fail silently on load, which is why hand-authoring is not an option here. Regenerate with the tool, then re-run the benchmark — loading is not acceptance.
+The four v1 workflows are GENERATED, never hand-edited: `tools/build_v1_shipping_workflows.py` reads widget order and defaults from a live `/object_info` and auto-lays-out the result. The RAW multi-view workflow is intentionally hand-authored and protected by graph-integrity, positional-widget, source-boundary, and path-portability regressions. UI format is redundantly linked and `widgets_values` is positional, so any edit must preserve both representations.
 
-Acceptance is EXECUTION: every one of the four is green through `tools/workflow_benchmark.py`, which scores what came out (`non_black_frac`, `already_tears_pct`, `dropped_faces`, `dolly_m`) rather than whether the graph parsed. `tools/validate_ui_workflow.py` (or the MCP `atlas_validate_workflow`) is the separate structural check.
+Acceptance is EXECUTION for the four generated graphs: each is green through `tools/workflow_benchmark.py`, which scores what came out (`non_black_frac`, `already_tears_pct`, `dropped_faces`, `dolly_m`) rather than whether the graph parsed. The RAW multi-view graph instead has photographed X-H2 evidence through `tools/validate_multiview_capture.py`; structured solver rejection remains honest acceptance evidence and is not a generated-plate benchmark claim. `tools/validate_ui_workflow.py` (or the MCP `atlas_validate_workflow`) is the separate structural check.
 
 Two deliberate constraints are visible in the graphs:
 

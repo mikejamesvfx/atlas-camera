@@ -298,7 +298,7 @@
     {"id": 1, "title": "1 · PHOTOGRAPHED CAPTURE · static scene · same camera/lens/settings · fixed focus/zoom/orientation", "bounding": [10, 0, 420, 1942], "color": "#3f5968", "font_size": 24},
     {"id": 2, "title": "2 · DETERMINISTIC SOLVE · measured inputs only · photo 1 is anchor", "bounding": [560, 1230, 500, 660], "color": "#355d45", "font_size": 24},
     {"id": 3, "title": "3 · OPTIONAL GENERATED EVIDENCE · NEVER wire into registration", "bounding": [560, 0, 1060, 1172], "color": "#6b4f35", "font_size": 24},
-    {"id": 4, "title": "4 · REGISTERED VIEWPORT + CANONICAL REPORT", "bounding": [1660, 0, 900, 1126], "color": "#53456b", "font_size": 24},
+    {"id": 4, "title": "4 · REGISTERED VIEWPORT + SCENE / DEBUG REPORT", "bounding": [1660, 0, 900, 1126], "color": "#53456b", "font_size": 24},
     {"id": 5, "title": "5 · PAIR MATCH OVERLAYS · PHOTOGRAPHED EVIDENCE", "bounding": [1100, 1230, 520, 458], "color": "#4f4360", "font_size": 24}
   ],
   "config": {},

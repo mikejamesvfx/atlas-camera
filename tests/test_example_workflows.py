@@ -217,6 +217,11 @@ def test_multiview_raw_workflow_pins_photographed_registration_boundary():
     patch = next(node for node in nodes.values() if node["type"] == "AtlasAddPatchView")
     assert patch["mode"] == 4  # optional branch ships bypassed until Qwen imagery exists
 
+    report_group = next(group for group in wf["groups"]
+                        if "REGISTERED VIEWPORT" in group["title"])
+    assert "CANONICAL" not in report_group["title"]
+    assert "SCENE / DEBUG REPORT" in report_group["title"]
+
 
 def test_multiview_raw_workflow_preserves_positional_widget_order():
     wf = _workflow("atlas_multiview_raw_qwen_workflow.json")

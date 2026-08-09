@@ -12,8 +12,14 @@ import argparse
 from collections.abc import Callable, Mapping
 import json
 import math
+import os
 from pathlib import Path
+import posixpath
+import sys
 from typing import Any
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from atlas_camera.core.multiview_solver import solve_multiview
 from atlas_camera.core.multiview_types import MultiViewFrame, MultiViewSettings
@@ -28,6 +34,7 @@ _PAIR_NAMES = {
     2: ("pair_01.png",),
     3: ("pair_01.png", "pair_02.png", "pair_12.png"),
 }
+_CANONICAL_OVERLAY_NAMES = ("pair_01.png", "pair_02.png", "pair_12.png")
 _METADATA_FIELDS = (
     "camera_make", "camera_model", "lens_model", "focal_length_mm",
     "sensor_width_mm", "sensor_height_mm", "sensor_source", "orientation",
@@ -38,12 +45,23 @@ _METADATA_FIELDS = (
 def canonical_json(value: Any) -> str:
     """Serialize a report deterministically, including a final newline."""
     return json.dumps(
-        _json_ready(value),
+        _canonical_ready(value),
         sort_keys=True,
         indent=2,
         ensure_ascii=True,
         allow_nan=False,
     ) + "\n"
+
+
+def _canonical_ready(value: Any) -> Any:
+    value = _json_ready(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, list):
+        return [_canonical_ready(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _canonical_ready(item) for key, item in value.items()}
+    return value
 
 
 def _load_manifest(
@@ -91,11 +109,27 @@ def _resolved_paths(raw_paths: list[str], base_dir: Path) -> list[Path]:
     return paths
 
 
-def _frame_metadata(raw: Any, index: int, source_path: Path) -> dict[str, Any]:
+def _display_paths(
+    raw_paths: list[str], resolved_paths: list[Path],
+) -> list[str]:
+    """Return stable manifest-relative references without machine roots."""
+    displays: list[str] = []
+    for authored, resolved in zip(raw_paths, resolved_paths):
+        authored_path = Path(authored).expanduser()
+        if not authored_path.is_absolute():
+            displays.append(posixpath.normpath(authored.replace("\\", "/")))
+            continue
+        # Absolute fixture roots are author-machine data even when they happen
+        # to sit below cwd. Keep the ordered filename as evidence, not its root.
+        displays.append(resolved.name)
+    return displays
+
+
+def _frame_metadata(raw: Any, index: int, source_path: str) -> dict[str, Any]:
     metadata = {
         "frame": index + 1,
         "label": f"photo_{index + 1}",
-        "source_path": str(source_path),
+        "source_path": source_path,
     }
     for field_name in _METADATA_FIELDS:
         value = getattr(raw, field_name, None)
@@ -138,6 +172,43 @@ def _write_report(output_dir: Path, report: dict[str, Any]) -> None:
     )
 
 
+def _clear_canonical_overlays(output_dir: Path) -> None:
+    """Remove only runner-owned pair outputs from a prior invocation."""
+    for name in _CANONICAL_OVERLAY_NAMES:
+        try:
+            (output_dir / name).unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _privacy_safe_report(
+    value: Any,
+    resolved_paths: list[Path],
+    display_paths: list[str],
+) -> Any:
+    """Replace every known resolved input spelling in persisted evidence."""
+    replacements: list[tuple[str, str]] = []
+    for resolved, display in zip(resolved_paths, display_paths):
+        spellings = {str(resolved), resolved.as_posix(), os.fspath(resolved)}
+        replacements.extend((spelling, display) for spelling in spellings if spelling)
+    replacements.sort(key=lambda item: len(item[0]), reverse=True)
+
+    def scrub(item: Any) -> Any:
+        if isinstance(item, str):
+            for machine_path, display in replacements:
+                item = item.replace(machine_path, display)
+            return item
+        if isinstance(item, list):
+            return [scrub(child) for child in item]
+        if isinstance(item, tuple):
+            return [scrub(child) for child in item]
+        if isinstance(item, dict):
+            return {str(key): scrub(child) for key, child in item.items()}
+        return item
+
+    return scrub(value)
+
+
 def _write_overlay(path: Path, overlay: Any) -> None:
     try:
         import numpy as np
@@ -174,42 +245,23 @@ def run_manifest(
     payload, base_dir = _load_manifest(manifest)
     _validate_manifest(payload)
     paths = _resolved_paths(payload["raw_paths"], base_dir)
+    display_paths = _display_paths(payload["raw_paths"], paths)
     destination = Path(output_dir) if output_dir is not None else base_dir / "multiview_acceptance"
     destination = destination.expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
+    _clear_canonical_overlays(destination)
     report = _base_report(payload, len(paths))
 
     height = float(payload["camera_height_m"])
-    if payload["capture_mode"] == "translated" and (
-        not math.isfinite(height) or height <= 0.0
-    ):
-        report.update({
-            "outcome_code": "scale_unavailable",
-            "summary": "Translated capture needs a positive measured photo-1 lens-centre height.",
-            "scale": {
-                "source": "unavailable",
-                "camera_height_m": height if math.isfinite(height) else None,
-            },
-            "warnings": ["Translation may be estimated, but metric scale is unavailable."],
-            "diagnostics": {
-                "outcome_code": "scale_unavailable",
-                "summary": "Translated capture needs a positive measured photo-1 lens-centre height.",
-                "scale": {
-                    "source": "unavailable",
-                    "camera_height_m": height if math.isfinite(height) else None,
-                },
-            },
-        })
-        _write_report(destination, report)
-        return report
-
     frames: list[MultiViewFrame] = []
+    current_index = 0
     try:
-        for index, path in enumerate(paths):
+        for index, (path, display_path) in enumerate(zip(paths, display_paths)):
+            current_index = index
             if not path.is_file():
-                raise FileNotFoundError(f"RAW file not found: {path}")
+                raise FileNotFoundError("RAW file not found")
             raw = import_raw(str(path), half_size=half_size)
-            report["frames"].append(_frame_metadata(raw, index, path))
+            report["frames"].append(_frame_metadata(raw, index, display_path))
             frames.append(MultiViewFrame(
                 image=raw.display_srgb,
                 raw_meta=raw,
@@ -217,13 +269,17 @@ def run_manifest(
                 label=f"photo_{index + 1}",
             ))
     except Exception as exc:  # noqa: BLE001 - acceptance evidence must be structured.
-        summary = f"RAW import failed: {type(exc).__name__}: {exc}"
+        summary = (
+            f"RAW import failed for photo_{current_index + 1} "
+            f"({display_paths[current_index]}): {type(exc).__name__}"
+        )
         report.update({
             "outcome_code": "metadata_mismatch",
             "summary": summary,
             "warnings": [summary],
             "diagnostics": {"outcome_code": "metadata_mismatch", "summary": summary},
         })
+        report = _privacy_safe_report(report, paths, display_paths)
         _write_report(destination, report)
         return report
 
@@ -260,12 +316,8 @@ def run_manifest(
             if warning not in report["warnings"]:
                 report["warnings"].append(warning)
 
-        for name, overlay in zip(_PAIR_NAMES[len(paths)], outcome.overlays):
-            if overlay is None:
-                continue
-            _write_overlay(destination / name, overlay)
-            report["overlays"].append(name)
     except Exception as exc:  # noqa: BLE001 - keep unexpected real failures inspectable.
+        _clear_canonical_overlays(destination)
         summary = f"deterministic solver failed unexpectedly: {type(exc).__name__}: {exc}"
         report.update({
             "outcome_code": "degenerate_geometry",
@@ -275,7 +327,21 @@ def run_manifest(
             "solve": None,
             "overlays": [],
         })
+    else:
+        try:
+            for name, overlay in zip(_PAIR_NAMES[len(paths)], outcome.overlays):
+                if overlay is None:
+                    continue
+                _write_overlay(destination / name, overlay)
+                report["overlays"].append(name)
+        except Exception as exc:  # noqa: BLE001 - persist artifact failure safely.
+            _clear_canonical_overlays(destination)
+            report["overlays"] = []
+            report["warnings"].append(
+                f"overlay artifact write failed: {type(exc).__name__}: {exc}"
+            )
 
+    report = _privacy_safe_report(report, paths, display_paths)
     _write_report(destination, report)
     return report
 
