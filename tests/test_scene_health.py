@@ -133,3 +133,36 @@ def test_review_report_markdown_scale_trust_section(tmp_path):
     assert "**NO — verify before delivery**" in md
     md_ok = _report_markdown(_solve(scale_source="manual_override"), result)
     assert "Safe to export: yes" in md_ok
+
+
+def test_multiview_measured_camera_height_is_measured_and_safe():
+    s = _solve(scale_source="measured_camera_height",
+               scale={"source": "measured_camera_height", "inlier_fraction": 0.22})
+    sh = scale_health(s)
+    assert sh.status == SCALE_STATUS_MEASURED
+    assert sh.safe_to_export is True
+    assert sh.confidence == pytest.approx(0.22)
+
+
+def test_measured_baseline_is_measured_and_safe():
+    s = _solve(scale_source="measured_baseline",
+               scale={"source": "measured_baseline", "baseline_m": 0.8})
+    sh = scale_health(s)
+    assert sh.status == SCALE_STATUS_MEASURED
+    assert sh.safe_to_export is True
+    assert sh.confidence == pytest.approx(0.95)
+    assert "0.8 m" in sh.detail
+
+
+def test_learned_depth_prior_is_measured_with_spread_driven_confidence():
+    s = _solve(scale_source="learned_depth_prior",
+               scale={"source": "learned_depth_prior", "scale_factor": 14.8,
+                      "sample_count": 363,
+                      "median_absolute_deviation": 2.36})
+    sh = scale_health(s)
+    assert sh.status == SCALE_STATUS_MEASURED
+    assert sh.safe_to_export is True
+    # spread 2.36/14.8 ~ 16% -> confidence ~ 0.84
+    assert sh.confidence == pytest.approx(1.0 - 2.36 / 14.8, abs=1e-6)
+    assert "learned depth prior" in sh.detail
+    assert "363" in sh.detail

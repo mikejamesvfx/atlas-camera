@@ -127,6 +127,37 @@ def _scale_health_inner(solve: Any) -> ScaleHealth:
             f"Camera height measured from the depth ground plane, "
             f"confidence {conf:.2f}.")
 
+    if source == "measured_camera_height":
+        scale_meta = meta.get("scale") if isinstance(meta.get("scale"), dict) else {}
+        conf = float(scale_meta.get("inlier_fraction", 0.8) or 0.8)
+        return ScaleHealth(
+            SCALE_STATUS_MEASURED, source, conf, height, True,
+            "Metric scale from the fitted multi-view ground plane and the "
+            f"entered camera height, ground support {conf:.2f}.")
+
+    if source == "measured_baseline":
+        scale_meta = meta.get("scale") if isinstance(meta.get("scale"), dict) else {}
+        baseline = scale_meta.get("baseline_m")
+        baseline_text = f" ({float(baseline):g} m)" if baseline else ""
+        return ScaleHealth(
+            SCALE_STATUS_MEASURED, source, 0.95, height, True,
+            f"Metric scale from the measured camera baseline{baseline_text} — "
+            "a direct measurement applied to the recovered rig.")
+
+    if source == "learned_depth_prior":
+        scale_meta = meta.get("scale") if isinstance(meta.get("scale"), dict) else {}
+        factor = float(scale_meta.get("scale_factor", 0.0) or 0.0)
+        spread = float(scale_meta.get("median_absolute_deviation", 0.0) or 0.0)
+        relative = spread / factor if factor > 0.0 else 1.0
+        conf = min(0.85, max(0.3, 1.0 - relative))
+        samples = int(scale_meta.get("sample_count", 0) or 0)
+        return ScaleHealth(
+            SCALE_STATUS_MEASURED, source, conf, height, True,
+            f"Metric scale from an opt-in learned depth prior ({samples} "
+            f"landmark samples, ratio spread {relative:.0%}). Expect roughly "
+            "20-30% absolute-scale uncertainty; a measured baseline or "
+            "reference beats it.")
+
     if source == "manual_override":
         return ScaleHealth(
             SCALE_STATUS_MANUAL, source, 1.0, height, True,
