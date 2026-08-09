@@ -104,6 +104,7 @@ actually wire them in.
 |---|---|
 | `AtlasLearnedSolveFromImage` | **Recommended default.** GeoCalib neural prior predicts focal length + gravity direction directly from image content. Robust on AI-generated images (27/33 usable on a test set, vs. 18/33 for VP solving) and reports genuine, meaningful confidence. |
 | `AtlasSolveFromImage` | Classical vanishing-point solve — detects and triangulates converging line families. Best on real photographs with clean architectural lines; fragile on AI imagery (locally-plausible-but-globally-inconsistent perspective breaks the RANSAC fit) and reports a constant, uninformative 0.75 confidence regardless of fit quality. |
+| `AtlasMultiViewSolve` | Deterministic calibrated rig from two or three ordered `AtlasLoadRAW` photographs. Photo 1 anchors the world frame; a lateral translated baseline plus measured lens-centre height provides the metric path. Rotation in place recovers orientation only. Generated/Qwen views are rejected as registration evidence and belong downstream in `AtlasAddPatchView`. |
 | `AtlasConstrainedSolve` | Artist-guided solve from explicit line/scale constraints JSON. |
 | `AtlasLoadSolveJSON` | Reload a previously exported solve. |
 
@@ -549,10 +550,13 @@ For a full Nuke/Maya round-trip beyond just writing files, wire an
 needs a *linear* `IMAGE` tensor for further ComfyUI-side compositing, rather
 than only writing to disk.
 
-The asset-dependent OCIO/RAW workflow bundles are distributed separately from
-the six repository workflows. Their current recipe is `AtlasLoadPlate` or
-`AtlasLoadRAW` → solve/attach → Output Desk → DCC exporters; Atlas's loaders
-use OpenImageIO/rawpy rather than an OpenCV EXR dependency.
+The repository now includes one portable RAW multi-view graph,
+`atlas_multiview_raw_qwen_workflow.json`, using input-relative placeholder
+paths. It demonstrates `AtlasLoadRAW` ×3 → `AtlasMultiViewSolve` → viewport,
+report, and match-overlay review, with a bypassed downstream Qwen patch slot
+through `AtlasAddPatchView`. Other asset-dependent OCIO/RAW bundles remain
+separate. Atlas's loaders use OpenImageIO/rawpy rather than an OpenCV EXR
+dependency.
 
 ---
 

@@ -66,3 +66,19 @@ def test_no_shipping_workflow_has_absolute_machine_paths():
         "(run tools/normalize_workflow_paths.py):\n" + "\n".join(problems))
 
 
+def test_multiview_raw_workflow_uses_input_relative_placeholders():
+    path = ROOT / "examples" / "atlas_multiview_raw_qwen_workflow.json"
+    workflow = json.loads(path.read_text(encoding="utf-8"))
+    raw_widgets = [
+        node["widgets_values"][0]
+        for node in workflow["nodes"]
+        if node["type"] == "AtlasLoadRAW"
+    ]
+    assert raw_widgets == [
+        "atlas_multiview/photo_01.RAF",
+        "atlas_multiview/photo_02.RAF",
+        "atlas_multiview/photo_03.RAF",
+    ]
+    assert all(not _is_absolute_machine_path(value) for value in raw_widgets)
+
+
