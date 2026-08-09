@@ -13,6 +13,7 @@ from atlas_camera.core.multiview_geometry import (
     MotionModelError,
     _decompose_essential,
     _hartley_normalize,
+    _model_sample_schedules,
     _sample_schedule,
     _select_pose_candidate_index,
     _sampson_errors_px,
@@ -300,8 +301,9 @@ def test_hartley_normalization_uses_mean_euclidean_radius() -> None:
 
 def test_sample_schedules_pin_budgets_uniqueness_and_combination_caps() -> None:
     # Catches iteration-budget drift, duplicate samples, or off-by-one caps.
-    essential = _sample_schedule(20, 8, 2_048, "aa" * 32, 0, "essential")
-    homography = _sample_schedule(20, 4, 1_024, "aa" * 32, 0, "homography")
+    essential, homography = _model_sample_schedules(
+        20, MultiViewSettings(), "aa" * 32,
+    )
     capped_essential = _sample_schedule(9, 8, 2_048, "aa" * 32, 0, "essential")
     capped_homography = _sample_schedule(5, 4, 1_024, "aa" * 32, 0, "homography")
 

@@ -110,6 +110,24 @@ def _sample_schedule(count: int, sample_size: int, budget: int,
     return tuple(samples)
 
 
+def _model_sample_schedules(count: int, settings: MultiViewSettings,
+                            fingerprint: str) -> tuple[
+                                tuple[tuple[int, ...], ...],
+                                tuple[tuple[int, ...], ...],
+                            ]:
+    """Build the production essential/homography schedules and exact budgets."""
+    return (
+        _sample_schedule(
+            count, 8, _ESSENTIAL_SAMPLES,
+            fingerprint, settings.seed, "essential",
+        ),
+        _sample_schedule(
+            count, 4, _HOMOGRAPHY_SAMPLES,
+            fingerprint, settings.seed, "homography",
+        ),
+    )
+
+
 def _homogeneous(points_xy: Any) -> Any:
     np = _require_numpy()
     points = np.asarray(points_xy, dtype=np.float64)
@@ -476,13 +494,8 @@ def fit_pair_models(matches: PairMatches, intr_a: AtlasIntrinsics,
     profile = QUALITY_PROFILES[settings.match_quality]
     inverse_intrinsic_a = np.linalg.inv(intrinsic_a)
     inverse_intrinsic_b = np.linalg.inv(intrinsic_b)
-    essential_schedule = _sample_schedule(
-        len(points_a), 8, _ESSENTIAL_SAMPLES,
-        fingerprint, settings.seed, "essential",
-    )
-    homography_schedule = _sample_schedule(
-        len(points_a), 4, _HOMOGRAPHY_SAMPLES,
-        fingerprint, settings.seed, "homography",
+    essential_schedule, homography_schedule = _model_sample_schedules(
+        len(points_a), settings, fingerprint,
     )
     essential, essential_inliers, median_essential = _fit_best_essential(
         calibrated_a, calibrated_b, points_a, points_b,
