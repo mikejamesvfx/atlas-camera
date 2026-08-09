@@ -95,6 +95,8 @@ class PairModelEvidence:
     median_homography_error_px: float
     median_triangulation_angle_deg: float
     positive_depth_fraction: float
+    essential_occupied_grid_cells: int = -1
+    homography_rotation_residual_px: float | None = None
 
 
 @dataclass
