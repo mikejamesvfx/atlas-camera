@@ -9,13 +9,17 @@ import math
 import numpy as np
 import pytest
 
+import atlas_camera.core.multiview_geometry as geometry
 from atlas_camera.core.multiview_geometry import (
+    CameraRig,
+    ClosureMetrics,
     FeatureObservation,
     FeatureTrack,
     MotionModelError,
     _decompose_essential,
     _hartley_normalize,
     _model_sample_schedules,
+    _pose_step,
     _sample_schedule,
     _select_pose_candidate_index,
     _sampson_errors_px,
@@ -209,6 +213,26 @@ def _intrinsic_matrix_for_test(intrinsics: AtlasIntrinsics) -> np.ndarray:
         [0.0, intrinsics.fy_px, intrinsics.cy_px],
         [0.0, 0.0, 1.0],
     ], dtype=np.float64)
+
+
+def _empty_three_camera_rig() -> tuple[CameraRig, tuple[AtlasIntrinsics, ...]]:
+    intrinsics = tuple(
+        AtlasIntrinsics(
+            image_width=1280, image_height=720,
+            fx_px=900.0, fy_px=880.0, cx_px=640.0, cy_px=360.0,
+        )
+        for _ in range(3)
+    )
+    return CameraRig(
+        rotations=tuple(np.eye(3, dtype=np.float64) for _ in range(3)),
+        translations=(
+            np.zeros(3, dtype=np.float64),
+            np.array((1.0, 0.0, 0.0), dtype=np.float64),
+            np.array((-1.0, 0.0, 0.0), dtype=np.float64),
+        ),
+        landmarks=np.empty((0, 3), dtype=np.float64),
+        reprojection_rmse_px=float("inf"),
+    ), intrinsics
 
 
 def test_translated_pair_selects_essential_model_exactly() -> None:
@@ -532,3 +556,195 @@ def test_track_builder_rejects_duplicate_frame_components_and_sorts_observations
             FeatureObservation(2, 9, (32.0, 20.0)),
         )),
     )
+
+
+@pytest.mark.parametrize("closure_axis", ("rotation", "translation", "pixels"))
+def test_valid_closed_tracks_exercise_each_three_view_closure_gate(
+    closure_axis: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Catches closure checks that only reject an empty/invalid track set.
+    fixture = _three_camera_fixture(noise_px=0.0)
+    pairs = fixture.pairs
+    evidence = fixture.evidence
+    if closure_axis == "rotation":
+        closing = replace(
+            evidence[2],
+            relative_rotation=_rotation_y(0.75) @ evidence[2].relative_rotation,
+        )
+        evidence = (*evidence[:2], closing)
+    elif closure_axis == "translation":
+        closing = replace(
+            evidence[2],
+            translation_direction=(
+                _rotation_y(2.0) @ evidence[2].translation_direction
+            ),
+        )
+        evidence = (*evidence[:2], closing)
+    else:
+        offsets = np.column_stack((
+            8.0 * np.where(np.arange(140) % 2 == 0, -1.0, 1.0),
+            8.0 * np.where(np.arange(140) % 4 < 2, -1.0, 1.0),
+        ))
+        pairs = tuple(
+            replace(pair, points_b=np.asarray(pair.points_b) + offsets)
+            if pair.frame_b == 2 else pair
+            for pair in pairs
+        )
+    tracks = build_tracks(pairs, n_frames=3)
+    assert sum(len(track.observations) == 3 for track in tracks) == 140
+    captured: list[ClosureMetrics] = []
+    original_measure = geometry.measure_three_view_closure
+
+    def capture_closure(refined: geometry.RefinedRig) -> ClosureMetrics:
+        metrics = original_measure(refined)
+        captured.append(metrics)
+        return metrics
+
+    monkeypatch.setattr(geometry, "measure_three_view_closure", capture_closure)
+    initial = initialise_rig(evidence, "translated")
+
+    with pytest.raises(MotionModelError, match="inconsistent_third_view") as caught:
+        refine_rig(initial, tracks, fixture.intrinsics, "translated")
+
+    assert caught.value.outcome_code == "inconsistent_third_view"
+    assert captured
+    if closure_axis == "rotation":
+        assert captured[0].rotation_error_deg > 0.5
+        assert captured[0].median_reprojection_px < 2.0
+    elif closure_axis == "translation":
+        assert captured[0].translation_direction_error_deg > 1.5
+        assert captured[0].median_reprojection_px < 2.0
+    else:
+        assert captured[0].median_reprojection_px > 2.0
+
+
+def test_rotation_only_refinement_updates_rotation_and_pins_all_translations() -> None:
+    # Catches a six-parameter update leaking translation into shared-centre capture.
+    matches, intr_a, intr_b = _project_known_scene(
+        rotation_y_deg=24.0, translation=(0.0, 0.0, 0.0),
+    )
+    tracks = build_tracks((matches,), n_frames=2)
+    initial_secondary = _rotation_y(23.8)
+    rig = CameraRig(
+        rotations=(np.eye(3, dtype=np.float64), initial_secondary.copy()),
+        translations=(np.ones(3, dtype=np.float64), -np.ones(3, dtype=np.float64)),
+        landmarks=np.empty((0, 3), dtype=np.float64),
+        reprojection_rmse_px=10.0,
+    )
+
+    refined = refine_rig(
+        rig, tracks, (intr_a, intr_b), "rotation_only",
+    )
+
+    assert all(np.array_equal(value, np.zeros(3)) for value in refined.translations)
+    assert np.array_equal(refined.rotations[0], np.eye(3))
+    assert not np.array_equal(refined.rotations[1], initial_secondary)
+    initial_error = abs(24.0 - 23.8)
+    refined_angle = math.degrees(math.atan2(
+        refined.rotations[1][0, 2], refined.rotations[1][0, 0],
+    ))
+    assert abs(24.0 - refined_angle) < initial_error
+
+
+def test_refinement_uses_exactly_eight_fixed_damping_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Catches iteration-count, damping-value, or secondary-camera ordering drift.
+    rig, intrinsics = _empty_three_camera_rig()
+    calls: list[tuple[int, float]] = []
+
+    def record_step(
+        frame_index: int, observations: list[tuple[object, object]],
+        rotation: np.ndarray, translation: np.ndarray,
+        intrinsic_matrix: np.ndarray, delta: float, damping: float,
+        rotation_only: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        calls.append((frame_index, damping))
+        return rotation, translation
+
+    monkeypatch.setattr(geometry, "_pose_step", record_step)
+    monkeypatch.setattr(
+        geometry, "measure_three_view_closure",
+        lambda _: ClosureMetrics(0.0, 0.0, 0.0),
+    )
+
+    refine_rig(rig, (), intrinsics, "translated")
+
+    damping = (1e-3, 3e-4, 1e-4, 3e-5, 1e-5, 3e-6, 1e-6, 1e-6)
+    assert calls == [
+        (frame_index, value)
+        for value in damping
+        for frame_index in (1, 2)
+    ]
+
+
+def test_pose_step_rejects_an_equal_cost_candidate() -> None:
+    # Catches <= acceptance accidentally admitting a non-decreasing pose step.
+    intrinsic = np.array([
+        [900.0, 0.0, 640.0],
+        [0.0, 880.0, 360.0],
+        [0.0, 0.0, 1.0],
+    ], dtype=np.float64)
+    rotation = np.eye(3, dtype=np.float64)
+    translation = np.zeros(3, dtype=np.float64)
+    points = [
+        np.array((x_value, y_value, 5.0 + index), dtype=np.float64)
+        for index, (x_value, y_value) in enumerate((
+            (-1.0, -0.5), (-0.5, 0.7), (0.2, -0.8),
+            (0.8, 0.6), (1.2, -0.1), (-1.3, 0.2),
+        ))
+    ]
+    observations = []
+    for index, point in enumerate(points):
+        projected = intrinsic @ point
+        pixel = projected[:2] / projected[2]
+        observations.append((
+            point, FeatureObservation(1, index, (float(pixel[0]), float(pixel[1]))),
+        ))
+
+    got_rotation, got_translation = _pose_step(
+        1, observations, rotation, translation, intrinsic,
+        delta=1.5, damping=1.0e-3,
+    )
+
+    assert got_rotation is rotation
+    assert got_translation is translation
+
+
+@pytest.mark.parametrize(("profile_name", "metric_name", "limit"), (
+    ("conservative", "rotation", 0.5 * (1.0 / 1.5)),
+    ("conservative", "translation", 1.5 * (1.0 / 1.5)),
+    ("conservative", "pixels", 2.0 * (1.0 / 1.5)),
+    ("balanced", "rotation", 0.5),
+    ("balanced", "translation", 1.5),
+    ("balanced", "pixels", 2.0),
+    ("permissive", "rotation", 0.5 * (2.5 / 1.5)),
+    ("permissive", "translation", 1.5 * (2.5 / 1.5)),
+    ("permissive", "pixels", 2.0 * (2.5 / 1.5)),
+))
+def test_quality_profile_scales_each_closure_boundary(
+    profile_name: str, metric_name: str, limit: float,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Catches a hard-coded balanced gate or >= rejection at the exact boundary.
+    rig, intrinsics = _empty_three_camera_rig()
+    current = [ClosureMetrics(0.0, 0.0, 0.0)]
+    monkeypatch.setattr(
+        geometry, "measure_three_view_closure", lambda _: current[0],
+    )
+
+    values = {"rotation": 0.0, "translation": 0.0, "pixels": 0.0}
+    values[metric_name] = limit
+    current[0] = ClosureMetrics(
+        values["rotation"], values["translation"], values["pixels"],
+    )
+    refine_rig(rig, (), intrinsics, "translated", profile_name)
+
+    values[metric_name] = math.nextafter(limit, math.inf)
+    current[0] = ClosureMetrics(
+        values["rotation"], values["translation"], values["pixels"],
+    )
+    with pytest.raises(MotionModelError, match="inconsistent_third_view") as caught:
+        refine_rig(rig, (), intrinsics, "translated", profile_name)
+
+    assert caught.value.outcome_code == "inconsistent_third_view"
