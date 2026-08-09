@@ -10,6 +10,7 @@ import pytest
 
 from atlas_camera.core.multiview_geometry import (
     MotionModelError,
+    _sampson_errors_px,
     fit_pair_models,
     select_capture_mode,
 )
@@ -199,8 +200,8 @@ def test_mode_selection_accepts_legacy_evidence_without_grid_diagnostic() -> Non
     ) == "translated"
 
 
-def test_mode_selection_accepts_legacy_homography_residual_field() -> None:
-    # Catches a Task 3 field addition breaking rotation-only classification.
+def test_mode_selection_fails_closed_without_rotation_specific_residual() -> None:
+    # Catches a planar homography transfer error masquerading as pure rotation.
     matches, intr_a, intr_b = _project_known_scene(
         rotation_y_deg=24.0, translation=(0.0, 0.0, 0.0),
     )
@@ -208,7 +209,55 @@ def test_mode_selection_accepts_legacy_homography_residual_field() -> None:
         matches, intr_a, intr_b, MultiViewSettings(), "56" * 32,
     )
 
-    assert select_capture_mode(
-        replace(evidence, homography_rotation_residual_px=None),
-        "rotation_only", QUALITY_PROFILES["balanced"],
-    ) == "rotation_only"
+    legacy = replace(
+        evidence,
+        essential_matrix=None,
+        relative_rotation=None,
+        translation_direction=None,
+        essential_inlier_count=0,
+        homography_rotation_residual_px=None,
+        median_homography_error_px=0.0,
+    )
+
+    with pytest.raises(MotionModelError, match="ambiguous_motion_model"):
+        select_capture_mode(
+            legacy, "rotation_only", QUALITY_PROFILES["balanced"],
+        )
+
+
+def test_sampson_error_is_measured_in_anisotropic_pixel_coordinates() -> None:
+    # Catches scalar-average focal conversion changing the inlier threshold.
+    fundamental = np.array([
+        [-3.97637431e-08, -6.66666667e-07, 6.61556023e-04],
+        [6.55957920e-08, 0.0, -4.70874428e-04],
+        [-6.90384399e-05, 2.74666667e-03, -1.05400660],
+    ], dtype=np.float64)
+    points_a = np.array([[826.6666666666666, 340.0]], dtype=np.float64)
+    points_b = np.array([[711.27615123, 266.04341422]], dtype=np.float64)
+
+    errors = _sampson_errors_px(fundamental, points_a, points_b)
+
+    assert errors[0] == pytest.approx(0.9003025532, abs=1.0e-6)
+
+
+def test_collinear_correspondences_produce_no_minimal_model() -> None:
+    # Catches rank-deficient minimal samples entering consensus scoring.
+    intrinsics = AtlasIntrinsics(
+        image_width=1280, image_height=720,
+        fx_px=900.0, fy_px=880.0, cx_px=640.0, cy_px=360.0,
+    )
+    x_values = np.linspace(80.0, 1200.0, 64, dtype=np.float64)
+    points_a = np.column_stack((x_values, 0.25 * x_values + 40.0))
+    points_b = np.column_stack((1.03 * x_values + 12.0, 0.2575 * x_values + 51.0))
+    matches = PairMatches(
+        0, 1, points_a, points_b,
+        np.column_stack((np.arange(64), np.arange(64))),
+        np.zeros(64, dtype=np.float64), 4,
+    )
+
+    evidence = fit_pair_models(
+        matches, intrinsics, intrinsics, MultiViewSettings(), "78" * 32,
+    )
+
+    assert evidence.essential_matrix is None
+    assert evidence.homography is None

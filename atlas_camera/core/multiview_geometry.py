@@ -27,6 +27,7 @@ from atlas_camera.core.schema import AtlasIntrinsics
 _ESSENTIAL_SAMPLES = 2_048
 _HOMOGRAPHY_SAMPLES = 1_024
 _POSITIVE_DEPTH_FRACTION = 0.75
+_MINIMAL_RANK_RELATIVE_TOLERANCE = 1.0e-12
 
 
 class MotionModelError(ValueError):
@@ -150,7 +151,13 @@ def _fit_essential_eight_point(points_a: Any, points_b: Any) -> Any:
         y_b * x_a, y_b * y_a, y_b,
         x_a, y_a, np.ones(len(norm_a), dtype=np.float64),
     ))
-    _, _, vh = np.linalg.svd(design, full_matrices=True)
+    _, singular_values, vh = np.linalg.svd(design, full_matrices=True)
+    if (
+        len(singular_values) < 8
+        or singular_values[-1]
+        <= singular_values[0] * _MINIMAL_RANK_RELATIVE_TOLERANCE
+    ):
+        raise ValueError("rank-deficient essential sample")
     essential = transform_b.T @ vh[-1].reshape(3, 3) @ transform_a
     u, singular_values, vh = np.linalg.svd(essential)
     average = 0.5 * float(singular_values[0] + singular_values[1])
@@ -172,30 +179,33 @@ def _fit_homography_four_point(points_a: Any, points_b: Any) -> Any:
             0.0, 0.0, 0.0, -x_value, -y_value, -1.0,
             v_value * x_value, v_value * y_value, v_value,
         )
-    _, _, vh = np.linalg.svd(design, full_matrices=True)
+    _, singular_values, vh = np.linalg.svd(design, full_matrices=True)
+    if (
+        len(singular_values) < 8
+        or singular_values[-1]
+        <= singular_values[0] * _MINIMAL_RANK_RELATIVE_TOLERANCE
+    ):
+        raise ValueError("rank-deficient homography sample")
     homography = (
         np.linalg.inv(transform_b) @ vh[-1].reshape(3, 3) @ transform_a
     )
     return _canonical_model(homography)
 
 
-def _sampson_errors_px(essential: Any, calibrated_a: Any, calibrated_b: Any,
-                       focal_scale: float) -> Any:
+def _sampson_errors_px(fundamental: Any, points_a: Any, points_b: Any) -> Any:
     np = _require_numpy()
-    homogeneous_a = _homogeneous(calibrated_a)
-    homogeneous_b = _homogeneous(calibrated_b)
-    lines_b = (essential @ homogeneous_a.T).T
-    lines_a = (essential.T @ homogeneous_b.T).T
+    homogeneous_a = _homogeneous(points_a)
+    homogeneous_b = _homogeneous(points_b)
+    lines_b = (fundamental @ homogeneous_a.T).T
+    lines_a = (fundamental.T @ homogeneous_b.T).T
     residual = np.sum(homogeneous_b * lines_b, axis=1)
     denominator = (
         lines_b[:, 0] ** 2 + lines_b[:, 1] ** 2
         + lines_a[:, 0] ** 2 + lines_a[:, 1] ** 2
     )
-    errors = np.full(len(calibrated_a), np.inf, dtype=np.float64)
+    errors = np.full(len(points_a), np.inf, dtype=np.float64)
     valid = denominator > np.finfo(np.float64).eps
-    errors[valid] = (
-        np.abs(residual[valid]) / np.sqrt(denominator[valid]) * focal_scale
-    )
+    errors[valid] = np.abs(residual[valid]) / np.sqrt(denominator[valid])
     return errors
 
 
@@ -230,7 +240,8 @@ def _score_candidate(model: Any, errors: Any, threshold_px: float,
 
 
 def _fit_best_essential(
-    points_a: Any, points_b: Any, threshold_px: float, focal_scale: float,
+    calibrated_a: Any, calibrated_b: Any, pixel_a: Any, pixel_b: Any,
+    inverse_intrinsic_a: Any, inverse_intrinsic_b: Any, threshold_px: float,
     schedule: tuple[tuple[int, ...], ...],
 ) -> tuple[Any | None, Any, float]:
     np = _require_numpy()
@@ -239,17 +250,18 @@ def _fit_best_essential(
         sample_indices = np.asarray(sample, dtype=np.int64)
         try:
             model = _fit_essential_eight_point(
-                points_a[sample_indices], points_b[sample_indices],
+                calibrated_a[sample_indices], calibrated_b[sample_indices],
             )
         except (ValueError, np.linalg.LinAlgError):
             continue
-        errors = _sampson_errors_px(model, points_a, points_b, focal_scale)
+        fundamental = inverse_intrinsic_b.T @ model @ inverse_intrinsic_a
+        errors = _sampson_errors_px(fundamental, pixel_a, pixel_b)
         score, inliers = _score_candidate(model, errors, threshold_px, sample)
         candidate = (score, model, inliers, errors)
         if best is None or score < best[0]:
             best = candidate
     if best is None:
-        return None, np.zeros(len(points_a), dtype=bool), float("inf")
+        return None, np.zeros(len(calibrated_a), dtype=bool), float("inf")
     _, model, inliers, errors = best
     median = float(np.median(errors[inliers])) if np.any(inliers) else float("inf")
     return model, inliers, median
@@ -445,10 +457,8 @@ def fit_pair_models(matches: PairMatches, intr_a: AtlasIntrinsics,
     calibrated_a = _calibrated_points(points_a, intrinsic_a)
     calibrated_b = _calibrated_points(points_b, intrinsic_b)
     profile = QUALITY_PROFILES[settings.match_quality]
-    focal_scale = 0.25 * (
-        intrinsic_a[0, 0] + intrinsic_a[1, 1]
-        + intrinsic_b[0, 0] + intrinsic_b[1, 1]
-    )
+    inverse_intrinsic_a = np.linalg.inv(intrinsic_a)
+    inverse_intrinsic_b = np.linalg.inv(intrinsic_b)
     essential_schedule = _sample_schedule(
         len(points_a), 8, _ESSENTIAL_SAMPLES,
         fingerprint, settings.seed, "essential",
@@ -458,8 +468,9 @@ def fit_pair_models(matches: PairMatches, intr_a: AtlasIntrinsics,
         fingerprint, settings.seed, "homography",
     )
     essential, essential_inliers, median_essential = _fit_best_essential(
-        calibrated_a, calibrated_b, profile.reprojection_threshold_px,
-        focal_scale, essential_schedule,
+        calibrated_a, calibrated_b, points_a, points_b,
+        inverse_intrinsic_a, inverse_intrinsic_b,
+        profile.reprojection_threshold_px, essential_schedule,
     )
     homography, homography_inliers, median_homography = _fit_best_homography(
         points_a, points_b, profile.reprojection_threshold_px,
@@ -528,7 +539,7 @@ def _rotation_only_passes(evidence: PairModelEvidence,
                           profile: QualityProfile) -> bool:
     rotation_residual = evidence.homography_rotation_residual_px
     if rotation_residual is None:
-        rotation_residual = evidence.median_homography_error_px
+        return False
     return (
         evidence.homography is not None
         and evidence.homography_inlier_count >= profile.min_inliers
