@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import posixpath
 import sys
 from typing import Any
@@ -103,26 +103,31 @@ def _resolved_paths(raw_paths: list[str], base_dir: Path) -> list[Path]:
     paths: list[Path] = []
     for raw_path in raw_paths:
         path = Path(raw_path).expanduser()
-        if not path.is_absolute():
-            path = base_dir / path
-        paths.append(path.resolve())
+        if _is_authored_absolute(raw_path):
+            # Preserve foreign-flavor absolute syntax for the IO probe. Joining
+            # it to this host's manifest directory would invent a local path.
+            paths.append(path)
+        else:
+            paths.append((base_dir / path).resolve())
     return paths
 
 
-def _display_paths(
-    raw_paths: list[str], resolved_paths: list[Path],
-) -> list[str]:
-    """Return stable manifest-relative references without machine roots."""
-    displays: list[str] = []
-    for authored, resolved in zip(raw_paths, resolved_paths):
-        authored_path = Path(authored).expanduser()
-        if not authored_path.is_absolute():
-            displays.append(posixpath.normpath(authored.replace("\\", "/")))
-            continue
-        # Absolute fixture roots are author-machine data even when they happen
-        # to sit below cwd. Keep the ordered filename as evidence, not its root.
-        displays.append(resolved.name)
-    return displays
+def _is_authored_absolute(authored: str) -> bool:
+    return (
+        PureWindowsPath(authored).is_absolute()
+        or PurePosixPath(authored).is_absolute()
+    )
+
+
+def _report_source(authored: str) -> str:
+    """Return a stable reference under both Windows and POSIX grammars."""
+    windows_path = PureWindowsPath(authored)
+    if windows_path.is_absolute():
+        return windows_path.name
+    posix_path = PurePosixPath(authored)
+    if posix_path.is_absolute():
+        return posix_path.name
+    return posixpath.normpath(authored.replace("\\", "/"))
 
 
 def _frame_metadata(raw: Any, index: int, source_path: str) -> dict[str, Any]:
@@ -245,7 +250,7 @@ def run_manifest(
     payload, base_dir = _load_manifest(manifest)
     _validate_manifest(payload)
     paths = _resolved_paths(payload["raw_paths"], base_dir)
-    display_paths = _display_paths(payload["raw_paths"], paths)
+    display_paths = [_report_source(path) for path in payload["raw_paths"]]
     destination = Path(output_dir) if output_dir is not None else base_dir / "multiview_acceptance"
     destination = destination.expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
@@ -338,7 +343,7 @@ def run_manifest(
             _clear_canonical_overlays(destination)
             report["overlays"] = []
             report["warnings"].append(
-                f"overlay artifact write failed: {type(exc).__name__}: {exc}"
+                f"overlay artifact write failed for {name}: {type(exc).__name__}"
             )
 
     report = _privacy_safe_report(report, paths, display_paths)

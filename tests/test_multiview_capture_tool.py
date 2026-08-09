@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -17,7 +17,7 @@ from atlas_camera.core.multiview_types import (
     RegistrationDiagnostics,
     RegistrationOutcome,
 )
-from tools.validate_multiview_capture import canonical_json, run_manifest
+from tools.validate_multiview_capture import _report_source, canonical_json, run_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -254,7 +254,8 @@ def test_partial_overlay_write_failure_leaves_no_canonical_overlay(
         nonlocal writes
         writes += 1
         if writes == 2:
-            raise OSError("disk full")
+            private_destination = tmp_path / "private-output" / path.name
+            raise PermissionError(f"access denied: {private_destination}")
         real_write(path, overlay)
 
     monkeypatch.setattr(runner, "_write_overlay", fail_second)
@@ -263,7 +264,10 @@ def test_partial_overlay_write_failure_leaves_no_canonical_overlay(
 
     assert result["outcome_code"] == "insufficient_overlap"
     assert result["overlays"] == []
-    assert "overlay artifact write failed" in " ".join(result["warnings"])
+    assert result["warnings"] == [
+        "overlay artifact write failed for pair_02.png: PermissionError",
+    ]
+    assert str(tmp_path) not in canonical_json(result)
     assert not any((output / name).exists()
                    for name in ("pair_01.png", "pair_02.png", "pair_12.png"))
 
@@ -310,6 +314,54 @@ def test_import_failure_summary_does_not_embed_resolved_machine_path(tmp_path):
     assert result["outcome_code"] == "metadata_mismatch"
     assert str(tmp_path) not in report_text
     assert "private-author" not in report_text
+
+
+@pytest.mark.parametrize(("first_root", "second_root"), [
+    (r"Q:\private-alpha\shots", r"R:\private-beta\shots"),
+    (r"\\private-alpha\share\shots", r"\\private-beta\share\shots"),
+    (r"\\?\Q:\private-alpha\shots", r"\\?\R:\private-beta\shots"),
+    ("/private-alpha/shots", "/private-beta/shots"),
+])
+def test_foreign_absolute_inputs_have_stable_private_missing_reports(
+    tmp_path, monkeypatch, first_root, second_root,
+):
+    monkeypatch.setattr(Path, "is_file", lambda _path: False)
+
+    def report_for(root, output_name):
+        separator = "/" if root.startswith("/") else "\\"
+        return run_manifest(
+            _manifest(tmp_path, raw_paths=[
+                f"{root}{separator}shot_01.RAF",
+                f"{root}{separator}shot_02.RAF",
+            ]),
+            output_dir=tmp_path / output_name,
+            solve_fn=_translated_stub,
+        )
+
+    first = report_for(first_root, "first")
+    second = report_for(second_root, "second")
+
+    assert first["outcome_code"] == "metadata_mismatch"
+    assert canonical_json(first) == canonical_json(second)
+    report_text = canonical_json(first)
+    assert "shot_01.RAF" in report_text
+    assert "private-alpha" not in report_text
+    assert "private-beta" not in report_text
+    assert first_root not in report_text
+    assert second_root not in report_text
+
+
+@pytest.mark.parametrize(("authored", "foreign_parser", "expected"), [
+    (r"Q:\private\shot.RAF", PurePosixPath, "shot.RAF"),
+    (r"\\server\share\private\shot.RAF", PurePosixPath, "shot.RAF"),
+    (r"\\?\Q:\private\shot.RAF", PurePosixPath, "shot.RAF"),
+    ("/private/shots/shot.RAF", PureWindowsPath, "shot.RAF"),
+])
+def test_report_source_classifies_absolute_paths_independent_of_host(
+    authored, foreign_parser, expected,
+):
+    assert not foreign_parser(authored).is_absolute()
+    assert _report_source(authored) == expected
 
 
 def test_rotation_only_reports_no_translation_or_metric_scale(tmp_path, monkeypatch):
