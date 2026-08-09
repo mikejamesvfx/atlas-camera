@@ -83,10 +83,24 @@ Use mutual matching, ratio filtering, spatial distribution checks, and determini
 
 ### 3. Competing motion models
 
-Evaluate both models from the same ordered evidence:
+Evaluate three interpretations from the same ordered evidence:
 
-- a calibrated essential-matrix model for translated capture; and
+- a calibrated essential-matrix model for translated capture;
+- a planar-translated model — Faugeras homography decomposition — for
+  translated capture of a near-planar scene (a street facade), where the
+  essential matrix is degenerate. It requires the homography to fit well AND
+  to be inconsistent with a pure rotation, its inliers to dominate the raw
+  matches (>= 50%), and the decomposed pose to clear the same cheirality and
+  parallax bars as the essential path. Its spatial-coverage bar is two grid
+  cells below the profile minimum, because one plane legitimately
+  concentrates its consensus — the inlier-dominance requirement is the
+  compensating anti-contamination guard (added 2026-08-09, validated on the
+  sh001 X-H2 street set); and
 - a homography/rotation model for a shared optical centre.
+
+In auto the essential model outranks planar-translated, which outranks
+rotation-only. A rig may mix essential and planar pairs — both are translated
+capture; each pair's `pose_source` is recorded in diagnostics.
 
 Sampling uses a fixed schedule derived from the input fingerprint and exposed seed, with fixed iteration budgets and stable tie-breaking. It must not depend on ambient random state, GPU inference, or thread completion order.
 
@@ -128,7 +142,11 @@ closed-track reprojection under `balanced`; the limits scale linearly with the
 selected profile's reprojection threshold relative to `1.5 px`. The ground
 plane used for metric scale must have its normal within `20°` of the recovered
 up direction, at least 24 inlier landmarks covering at least 15% of valid
-landmarks, and a positive anchor-to-plane distance. The metric anchor itself
+landmarks, and a positive anchor-to-plane distance; its RANSAC tolerance is 5%
+of the candidate spread (roughly 8 cm at street scale — real road crown and
+triangulation noise, measured live 2026-08-09). Ground candidacy itself is a
+world-space test — landmarks below the anchor camera in the recovered Y-up
+frame — not an image-space horizon test. The metric anchor itself
 is exact by construction: one uniform scale sets photo 1's height to the
 entered `camera_height_m` with no fitted residual.
 
@@ -164,7 +182,7 @@ The node fails closed and names the actionable cause:
 - `metadata_mismatch`: camera, lens, focal, dimensions, orientation, or undistortion conflict;
 - `insufficient_overlap`: too few well-distributed shared features;
 - `dynamic_scene_contamination`: consensus is dominated by inconsistent moving regions;
-- `degenerate_geometry`: translated pose is unsupported, commonly because the observed scene is effectively planar;
+- `degenerate_geometry`: translated pose is unsupported by any model — a planar scene alone no longer lands here (the planar-translated model covers it), but a scene that defeats both decompositions still does;
 - `scale_unavailable`: relative translated rig is valid but metric scale cannot be anchored;
 - `inconsistent_third_view`: photo 3 does not close against the photo 1-2 rig;
 - `ambiguous_motion_model`: neither translated nor rotation-only interpretation passes its checks.

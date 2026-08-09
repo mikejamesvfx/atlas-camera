@@ -469,6 +469,121 @@ def _decompose_essential(essential: Any, calibrated_a: Any,
     )
 
 
+def _planar_pose_candidates(calibrated_homography: Any) -> list[tuple[Any, Any, Any]]:
+    """Faugeras SVD decomposition of a calibrated homography into (R, t, n).
+
+    Returns the physically meaningful candidates (positive-determinant branch)
+    of H ~ R + t n^T.  Translation is direction-only, like the essential path;
+    the plane normal n is expressed in camera A.  Candidate order is
+    deterministic: the two sign choices of (eps1, eps3) enumerated in a fixed
+    sequence, each contributing one (R, t, n) and its (R, -t, -n) mirror.
+    """
+    np = _require_numpy()
+    u, singular_values, vh = np.linalg.svd(calibrated_homography)
+    d1, d2, d3 = (float(value) for value in singular_values)
+    if d2 <= 1.0e-12 or not all(math.isfinite(v) for v in (d1, d2, d3)):
+        raise ValueError("singular calibrated homography")
+    scaled = calibrated_homography / d2
+    if float(np.linalg.det(scaled)) < 0.0:
+        scaled = -scaled
+    u, singular_values, vh = np.linalg.svd(scaled)
+    if np.linalg.det(u) < 0.0:
+        u[:, -1] *= -1.0
+        vh[-1, :] *= -1.0
+    d1, d2, d3 = (float(value) for value in singular_values)
+    v = vh.T
+    span = d1 * d1 - d3 * d3
+    if span <= 1.0e-15:
+        # d1 == d3: pure rotation (or identity) — no planar translation.
+        raise ValueError("homography carries no resolvable planar translation")
+    x1 = math.sqrt(max(0.0, (d1 * d1 - d2 * d2) / span))
+    x3 = math.sqrt(max(0.0, (d2 * d2 - d3 * d3) / span))
+    sin_theta_base = (d1 - d3) * x1 * x3 / d2
+    cos_theta = (d1 * x3 * x3 + d3 * x1 * x1) / d2
+    candidates: list[tuple[Any, Any, Any]] = []
+    for eps1, eps3 in ((1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)):
+        sin_theta = eps1 * eps3 * sin_theta_base
+        rotation_prime = np.array((
+            (cos_theta, 0.0, -sin_theta),
+            (0.0, 1.0, 0.0),
+            (sin_theta, 0.0, cos_theta),
+        ), dtype=np.float64)
+        normal_prime = np.array((eps1 * x1, 0.0, eps3 * x3), dtype=np.float64)
+        translation_prime = (d1 - d3) * np.array(
+            (eps1 * x1, 0.0, -eps3 * x3), dtype=np.float64,
+        )
+        rotation = u @ rotation_prime @ vh
+        translation = u @ translation_prime
+        normal = v @ normal_prime
+        norm = float(np.linalg.norm(translation))
+        if not math.isfinite(norm) or norm < 1.0e-12:
+            continue
+        translation = translation / norm
+        candidates.append((rotation, translation, normal))
+        candidates.append((rotation, -translation, -normal))
+    if not candidates:
+        raise ValueError("homography decomposition produced no candidates")
+    return candidates
+
+
+def _decompose_homography_planar(
+    homography: Any, intrinsic_a: Any, intrinsic_b: Any,
+    calibrated_a: Any, calibrated_b: Any,
+) -> tuple[Any, Any, Any, float, float]:
+    """Recover (R, t_dir, n, positive_fraction, triangulation_angle_deg).
+
+    Mirrors _decompose_essential's deterministic selection: triangulate the
+    homography inliers under every candidate pose, then pick by maximum
+    positive-depth count, then median reprojection, then candidate index.  The
+    plane normal must face camera A (n_z < 0 in the Atlas-camera looking
+    convention is expressed here in OpenCV coords as n pointing toward the
+    camera: n[2] > 0 rejected after cheirality — handled implicitly, since a
+    plane behind the camera fails positive depth).
+    """
+    np = _require_numpy()
+    calibrated = np.linalg.inv(intrinsic_b) @ homography @ intrinsic_a
+    candidates = _planar_pose_candidates(calibrated)
+    positive_depth_counts: list[int] = []
+    median_reprojection_errors: list[float] = []
+    candidate_results: list[tuple[Any, Any, Any, Any, Any]] = []
+    for rotation, translation, normal in candidates:
+        points_xyz = _triangulate(calibrated_a, calibrated_b, rotation, translation)
+        camera_b = (rotation @ points_xyz.T).T + translation
+        positive = (
+            np.all(np.isfinite(points_xyz), axis=1)
+            & (points_xyz[:, 2] > 0.0) & (camera_b[:, 2] > 0.0)
+        )
+        positive_depth_counts.append(int(np.count_nonzero(positive)))
+        median_reprojection_errors.append(_pose_reprojection_error(
+            points_xyz, calibrated_a, calibrated_b, rotation, translation,
+        ))
+        candidate_results.append((rotation, translation, normal, points_xyz, positive))
+    winner = min(range(len(candidate_results)), key=lambda index: (
+        -positive_depth_counts[index],
+        median_reprojection_errors[index],
+        index,
+    ))
+    rotation, translation, normal, points_xyz, positive = candidate_results[winner]
+    fraction = float(np.count_nonzero(positive) / len(positive)) if len(positive) else 0.0
+    if np.any(positive):
+        camera_b_center = -rotation.T @ translation
+        rays_a = points_xyz[positive]
+        rays_b = points_xyz[positive] - camera_b_center
+        norms = np.linalg.norm(rays_a, axis=1) * np.linalg.norm(rays_b, axis=1)
+        cosine = np.sum(rays_a * rays_b, axis=1) / norms
+        angles = np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))
+        triangulation_angle = float(np.median(angles))
+    else:
+        triangulation_angle = 0.0
+    return (
+        np.ascontiguousarray(rotation, dtype=np.float64),
+        np.asarray(translation, dtype=np.float64),
+        np.asarray(normal, dtype=np.float64),
+        fraction,
+        triangulation_angle,
+    )
+
+
 def _nearest_rotation(calibrated_homography: Any) -> Any:
     np = _require_numpy()
     determinant = float(np.linalg.det(calibrated_homography))
@@ -574,6 +689,24 @@ def fit_pair_models(matches: PairMatches, intr_a: AtlasIntrinsics,
         homography, intrinsic_a, intrinsic_b,
         points_a, points_b, homography_inliers,
     )
+    planar_rotation = None
+    planar_translation = None
+    planar_normal = None
+    planar_positive_fraction = 0.0
+    planar_triangulation_angle = 0.0
+    if homography is not None and np.count_nonzero(homography_inliers) >= 4:
+        try:
+            (
+                planar_rotation, planar_translation, planar_normal,
+                planar_positive_fraction, planar_triangulation_angle,
+            ) = _decompose_homography_planar(
+                homography, intrinsic_a, intrinsic_b,
+                calibrated_a[homography_inliers], calibrated_b[homography_inliers],
+            )
+        except (ValueError, np.linalg.LinAlgError):
+            planar_rotation = None
+            planar_translation = None
+            planar_normal = None
     return PairModelEvidence(
         frame_a=matches.frame_a,
         frame_b=matches.frame_b,
@@ -593,6 +726,14 @@ def fit_pair_models(matches: PairMatches, intr_a: AtlasIntrinsics,
             points_a, essential_inliers, intr_a.image_width, intr_a.image_height,
         ),
         homography_rotation_residual_px=rotation_residual,
+        planar_rotation=planar_rotation,
+        planar_translation_direction=planar_translation,
+        planar_plane_normal=planar_normal,
+        planar_positive_depth_fraction=planar_positive_fraction,
+        planar_median_triangulation_angle_deg=planar_triangulation_angle,
+        homography_occupied_grid_cells=_occupied_grid_cells(
+            points_a, homography_inliers, intr_a.image_width, intr_a.image_height,
+        ),
     )
 
 
@@ -607,6 +748,41 @@ def _translated_passes(evidence: PairModelEvidence,
         and evidence.median_essential_error_px <= profile.reprojection_threshold_px
         and evidence.positive_depth_fraction >= _POSITIVE_DEPTH_FRACTION
         and evidence.median_triangulation_angle_deg >= profile.min_triangulation_angle_deg
+    )
+
+
+def _planar_translated_passes(evidence: PairModelEvidence,
+                              profile: QualityProfile) -> bool:
+    """Near-planar scene with genuine translation: homography decomposition.
+
+    Requires the homography to fit well AND to be inconsistent with a pure
+    rotation (large rotation residual) — otherwise rotation-only is the honest
+    interpretation.  The decomposed pose must clear the same cheirality and
+    parallax bars as the essential path.
+    """
+    rotation_residual = evidence.homography_rotation_residual_px
+    total_matches = len(evidence.homography_inliers)
+    # A single plane legitimately concentrates its consensus (a facade band
+    # under sky and road), so the planar gate accepts two fewer grid cells
+    # than the profile — but in exchange the homography inliers must DOMINATE
+    # the raw matches (>= 50%), which a moving object's localized consensus
+    # essentially never does.  Found live 2026-08-09 on the sh001 street set:
+    # 226/361 inliers, 20.5 deg parallax, 3/16 cells.
+    relaxed_min_cells = max(2, profile.min_grid_cells - 2)
+    return (
+        evidence.homography is not None
+        and evidence.planar_rotation is not None
+        and evidence.planar_translation_direction is not None
+        and evidence.homography_inlier_count >= profile.min_inliers
+        and evidence.homography_occupied_grid_cells >= relaxed_min_cells
+        and total_matches > 0
+        and evidence.homography_inlier_count * 2 >= total_matches
+        and evidence.median_homography_error_px <= profile.reprojection_threshold_px
+        and rotation_residual is not None
+        and rotation_residual > profile.reprojection_threshold_px
+        and evidence.planar_positive_depth_fraction >= _POSITIVE_DEPTH_FRACTION
+        and evidence.planar_median_triangulation_angle_deg
+            >= profile.min_triangulation_angle_deg
     )
 
 
@@ -638,21 +814,37 @@ def _score_summary(evidence: PairModelEvidence) -> str:
         "rotation_homography("
         f"inliers={evidence.homography_inlier_count}, "
         f"transfer_error_px={evidence.median_homography_error_px:.6g}, "
-        f"rotation_residual_px={rotation_residual_text})"
+        f"rotation_residual_px={rotation_residual_text}); "
+        "planar_translated("
+        f"decomposed={evidence.planar_rotation is not None}, "
+        f"cells={evidence.homography_occupied_grid_cells}, "
+        f"positive_depth={evidence.planar_positive_depth_fraction:.6g}, "
+        f"angle_deg={evidence.planar_median_triangulation_angle_deg:.6g})"
     )
 
 
-def select_capture_mode(evidence: PairModelEvidence, requested_mode: CaptureMode,
-                        profile: QualityProfile) -> Literal["translated", "rotation_only"]:
-    """Select a supported interpretation or fail with an exact outcome code."""
+def select_capture_mode(
+    evidence: PairModelEvidence, requested_mode: CaptureMode,
+    profile: QualityProfile,
+) -> Literal["translated", "translated_planar", "rotation_only"]:
+    """Select a supported interpretation or fail with an exact outcome code.
+
+    "translated_planar" is a translated capture whose pair pose comes from
+    homography decomposition — a near-planar scene where the essential matrix
+    is degenerate.  It ranks after the essential model and before
+    rotation-only in auto, and satisfies a forced "translated" request.
+    """
     if requested_mode not in ("auto", "translated", "rotation_only"):
         raise ValueError(f"unsupported capture mode {requested_mode!r}")
     translated = _translated_passes(evidence, profile)
+    planar = _planar_translated_passes(evidence, profile)
     rotation_only = _rotation_only_passes(evidence, profile)
     summary = _score_summary(evidence)
     if requested_mode == "translated":
         if translated:
             return "translated"
+        if planar:
+            return "translated_planar"
         raise MotionModelError(
             "degenerate_geometry", f"forced translated model failed checks; {summary}",
         )
@@ -665,6 +857,8 @@ def select_capture_mode(evidence: PairModelEvidence, requested_mode: CaptureMode
         )
     if translated:
         return "translated"
+    if planar:
+        return "translated_planar"
     if rotation_only:
         return "rotation_only"
     raise MotionModelError(

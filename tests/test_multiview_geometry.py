@@ -748,3 +748,104 @@ def test_quality_profile_scales_each_closure_boundary(
         refine_rig(rig, (), intrinsics, "translated", profile_name)
 
     assert caught.value.outcome_code == "inconsistent_third_view"
+
+
+def _project_planar_scene(*, rotation_y_deg: float = 4.0,
+                          translation: tuple[float, float, float] = (0.8, 0.05, 0.0),
+                          ) -> tuple[PairMatches, AtlasIntrinsics, AtlasIntrinsics,
+                                     np.ndarray, np.ndarray]:
+    """All landmarks on one plane (z = 8 + 0.15x): the essential-degenerate case."""
+    rng = np.random.Generator(np.random.PCG64(20260810))
+    width, height = 1280, 720
+    intr = AtlasIntrinsics(
+        image_width=width, image_height=height,
+        fx_px=900.0, fy_px=900.0, cx_px=640.0, cy_px=360.0,
+    )
+    matrix = np.array([
+        [900.0, 0.0, 640.0],
+        [0.0, 900.0, 360.0],
+        [0.0, 0.0, 1.0],
+    ], dtype=np.float64)
+    xs = rng.uniform(-4.0, 4.0, 160)
+    ys = rng.uniform(-2.5, 2.5, 160)
+    zs = 8.0 + 0.15 * xs
+    points_xyz = np.column_stack((xs, ys, zs))
+    rotation = _rotation_y(rotation_y_deg)
+    translation_vec = np.asarray(translation, dtype=np.float64)
+    points_a = _project(points_xyz, np.eye(3), np.zeros(3), matrix)
+    points_b = _project(points_xyz, rotation, translation_vec, matrix)
+    count = len(points_a)
+    matches = PairMatches(
+        frame_a=0, frame_b=1,
+        points_a=points_a.astype(np.float32),
+        points_b=points_b.astype(np.float32),
+        indices=np.column_stack((np.arange(count), np.arange(count))).astype(np.int64),
+        distances=np.zeros(count, dtype=np.float32),
+        occupied_grid_cells=16,
+    )
+    return matches, intr, intr, rotation, translation_vec
+
+
+def test_planar_scene_decomposes_to_the_true_translated_pose() -> None:
+    matches, intr_a, intr_b, true_rotation, true_translation = _project_planar_scene()
+    settings = MultiViewSettings(match_quality="balanced")
+    evidence = fit_pair_models(
+        matches, intr_a, intr_b, settings,
+        "planar-decomposition-fingerprint",
+    )
+    assert evidence.planar_rotation is not None
+    assert evidence.planar_translation_direction is not None
+    assert evidence.planar_plane_normal is not None
+    assert evidence.planar_positive_depth_fraction > 0.9
+    assert evidence.planar_median_triangulation_angle_deg > 1.0
+    assert evidence.homography_occupied_grid_cells >= 6
+
+    rotation_error = np.degrees(np.arccos(np.clip(
+        (np.trace(evidence.planar_rotation @ true_rotation.T) - 1.0) / 2.0, -1.0, 1.0,
+    )))
+    assert rotation_error < 0.5
+
+    direction = np.asarray(evidence.planar_translation_direction, dtype=np.float64)
+    expected = true_translation / np.linalg.norm(true_translation)
+    assert float(np.dot(direction, expected)) > 0.999
+
+    # The recovered plane normal (camera A frame) matches z = 8 + 0.15x, whose
+    # unit normal is (-0.15, 0, 1)/norm up to sign.
+    normal = np.asarray(evidence.planar_plane_normal, dtype=np.float64)
+    plane = np.array((-0.15, 0.0, 1.0))
+    plane /= np.linalg.norm(plane)
+    assert abs(float(np.dot(normal, plane))) > 0.999
+
+
+def test_planar_translated_wins_auto_when_essential_is_degenerate() -> None:
+    from atlas_camera.core.multiview_geometry import (
+        _planar_translated_passes,
+        select_capture_mode,
+    )
+    matches, intr_a, intr_b, _, _ = _project_planar_scene()
+    settings = MultiViewSettings(match_quality="balanced")
+    profile = QUALITY_PROFILES["balanced"]
+    evidence = fit_pair_models(
+        matches, intr_a, intr_b, settings,
+        "planar-selection-fingerprint",
+    )
+    assert _planar_translated_passes(evidence, profile)
+    mode = select_capture_mode(evidence, "auto", profile)
+    assert mode in ("translated", "translated_planar")
+    # Forcing translated must accept the planar interpretation too.
+    forced = select_capture_mode(evidence, "translated", profile)
+    assert forced in ("translated", "translated_planar")
+
+
+def test_pure_rotation_still_selects_rotation_only_not_planar() -> None:
+    from atlas_camera.core.multiview_geometry import select_capture_mode
+    matches, intr_a, intr_b, _, _ = _project_planar_scene(
+        rotation_y_deg=6.0, translation=(0.0, 0.0, 0.0),
+    )
+    settings = MultiViewSettings(match_quality="balanced")
+    profile = QUALITY_PROFILES["balanced"]
+    evidence = fit_pair_models(
+        matches, intr_a, intr_b, settings,
+        "pure-rotation-fingerprint",
+    )
+    assert select_capture_mode(evidence, "auto", profile) == "rotation_only"

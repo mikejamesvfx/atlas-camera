@@ -9,6 +9,7 @@ loaded only when the public solver runs.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from itertools import combinations
 import hashlib
 import math
@@ -376,6 +377,15 @@ def _anchor_orientation(
         up /= np.linalg.norm(up)
         if up[1] < 0.0:
             up = -up
+        # EXIF orientation is already applied to the developed pixels, so
+        # recovered world-up must sit near image-up.  Beyond 45 degrees the
+        # detector has misclassified the architectural groups (found live
+        # 2026-08-09: a street facade passed orthogonality yet yielded an up
+        # 72.5 degrees off vertical, silently poisoning the whole rig frame
+        # and every downstream ground test).  Fail the VP anchor instead so
+        # the caller's up hint — when provided — can take over.
+        if float(up[1]) < math.cos(math.radians(45.0)):
+            return None
         forward = np.cross(direction_a, up)
         forward /= np.linalg.norm(forward)
         right = np.cross(up, forward)
@@ -522,18 +532,28 @@ def _pair_metric(matches: PairMatches) -> dict[str, Any]:
 
 def _select_mode(
     evidence: Sequence[PairModelEvidence], settings: MultiViewSettings,
-) -> Literal["translated", "rotation_only"]:
+) -> tuple[Literal["translated", "rotation_only"], tuple[str, ...]]:
+    """Select one rig-wide mode plus each pair's pose source.
+
+    Essential-translated and planar-translated pairs agree on TRANSLATED
+    capture — a rig may mix them (e.g. a facade pair beside a corner pair).
+    Only translated-versus-rotation disagreement is ambiguous.
+    """
     profile = QUALITY_PROFILES[settings.match_quality]
-    modes = tuple(
+    pair_modes = tuple(
         geometry.select_capture_mode(item, settings.capture_mode, profile)
         for item in evidence
     )
-    if len(set(modes)) != 1:
+    kinds = {
+        "translated" if value in ("translated", "translated_planar") else value
+        for value in pair_modes
+    }
+    if len(kinds) != 1:
         raise geometry.MotionModelError(
             "ambiguous_motion_model",
             "required pairs disagree on translated versus rotation-only capture",
         )
-    return modes[0]
+    return kinds.pop(), pair_modes
 
 
 def _compose_anchor_rig(refined: geometry.RefinedRig, anchor_basis: Any) -> tuple[Any, Any, Any]:
@@ -588,30 +608,25 @@ def _ground_candidates(
     tracks: Sequence[geometry.FeatureTrack],
     horizon: AtlasHorizon,
 ) -> tuple[Any, tuple[int, ...]]:
+    """Landmarks below the anchor camera in the recovered world frame.
+
+    Ground candidacy is a WORLD test (Y < 0: below the optical centre, since
+    the anchor camera sits at the origin of the Y-up anchor frame), not an
+    image-space horizon test.  The VP-derived horizon line proved fragile on
+    real captures — a portrait street facade put it at y=9577 in a 3876-tall
+    frame, silently discarding every road landmark and failing the solve as
+    scale_unavailable (found live 2026-08-09).  The plane fit downstream still
+    enforces the up-facing normal, inlier count, and support fraction.
+    """
     np = _require_numpy()
-    track_map = {track.track_id: track for track in tracks}
-    coefficients = horizon.line_coefficients
-    if abs(float(coefficients[1])) <= 1.0e-12:
-        return np.empty((0, 3), dtype=np.float64), ()
+    del tracks, horizon  # Retained in the signature for call-site stability.
+    del accepted_track_ids
     points: list[Any] = []
     source_indices: list[int] = []
-    for landmark_index, (track_id, point) in enumerate(
-        zip(accepted_track_ids, np.asarray(landmarks, dtype=np.float64))
-    ):
+    for landmark_index, point in enumerate(np.asarray(landmarks, dtype=np.float64)):
         if not np.all(np.isfinite(point)):
             continue
-        track = track_map.get(int(track_id))
-        anchor = next(
-            (item for item in track.observations if item.frame_index == 0),
-            None,
-        ) if track is not None else None
-        if anchor is None:
-            continue
-        x_value, y_value = anchor.point_xy
-        horizon_y = -(
-            coefficients[0] * x_value + coefficients[2]
-        ) / coefficients[1]
-        if y_value > horizon_y:
+        if float(point[1]) < 0.0:
             points.append(point)
             source_indices.append(landmark_index)
     return (
@@ -647,7 +662,12 @@ def _fit_ground_plane(
         return None
     centre = np.median(points, axis=0)
     spread = float(np.median(np.linalg.norm(points - centre, axis=1)))
-    threshold = max(1.0e-8, 0.01 * spread)
+    # 5% of the candidate spread, not 1%: at street scale that is roughly an
+    # 8 cm plane tolerance, matching real road crown/texture plus the
+    # triangulation noise of far-from-plane points.  1% (~1.6 cm) rejected
+    # every genuine road inlier on the first real X-H2 street set (15/109
+    # against a 24 minimum; found live 2026-08-09).
+    threshold = max(1.0e-8, 0.05 * spread)
     up = np.array((0.0, 1.0, 0.0), dtype=np.float64)
     cosine_limit = math.cos(math.radians(_GROUND_NORMAL_LIMIT_DEG))
     best: tuple[Any, ...] | None = None
@@ -958,20 +978,36 @@ def solve_multiview(
                     overlays=overlays,
                 )
 
-        mode = _select_mode(pair_evidence, settings)
+        mode, pair_modes = _select_mode(pair_evidence, settings)
         for pair_index, (matches, evidence) in enumerate(zip(
             pair_matches, pair_evidence,
         )):
+            pair_mode = pair_modes[pair_index]
             selected_inliers = (
                 evidence.essential_inliers
-                if mode == "translated" else evidence.homography_inliers
+                if pair_mode == "translated" else evidence.homography_inliers
             )
+            pair_metrics[pair_index]["pose_source"] = {
+                "translated": "essential",
+                "translated_planar": "homography_decomposition",
+                "rotation_only": "rotation_homography",
+            }[pair_mode]
             overlays[pair_index] = features.render_match_overlay(
                 ordered_frames[matches.frame_a].image,
                 ordered_frames[matches.frame_b].image,
                 matches,
                 selected_inliers,
             )
+        # Planar pairs feed the rig their homography-decomposed pose through
+        # the same evidence fields the essential path uses.
+        pair_evidence = [
+            replace(
+                evidence,
+                relative_rotation=evidence.planar_rotation,
+                translation_direction=evidence.planar_translation_direction,
+            ) if pair_modes[pair_index] == "translated_planar" else evidence
+            for pair_index, evidence in enumerate(pair_evidence)
+        ]
         tracks = geometry.build_tracks(pair_matches, len(ordered_frames))
         initial = geometry.initialise_rig(pair_evidence, mode)
         refined = geometry.refine_rig(

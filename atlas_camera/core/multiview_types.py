@@ -104,6 +104,16 @@ class PairModelEvidence:
     positive_depth_fraction: float
     essential_occupied_grid_cells: int = -1
     homography_rotation_residual_px: float | None = None
+    #: Planar-translated evidence (homography decomposition, Faugeras).  Fills
+    #: when the fitted homography carries genuine translation, so near-planar
+    #: scenes (street facades) can register even when the essential matrix is
+    #: degenerate.  Appended 2026-08-09; defaults keep older callers valid.
+    planar_rotation: Any | None = None
+    planar_translation_direction: Any | None = None
+    planar_plane_normal: Any | None = None
+    planar_positive_depth_fraction: float = 0.0
+    planar_median_triangulation_angle_deg: float = 0.0
+    homography_occupied_grid_cells: int = -1
 
 
 @dataclass

@@ -406,7 +406,7 @@
    "tests": 6,
    "mcp_tools": 1,
    "repo_tools": 3,
-   "docs": 5,
+   "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
