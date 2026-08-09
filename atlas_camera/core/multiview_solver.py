@@ -470,15 +470,24 @@ def _select_mode(
 def _compose_anchor_rig(refined: geometry.RefinedRig, anchor_basis: Any) -> tuple[Any, Any, Any]:
     np = _require_numpy()
     basis = np.asarray(anchor_basis, dtype=np.float64)
+    opencv_to_atlas = np.diag((1.0, -1.0, -1.0))
     camera_to_world: list[Any] = []
     positions: list[Any] = []
     for rotation, translation in zip(refined.rotations, refined.translations):
-        world_to_camera_local = np.asarray(rotation, dtype=np.float64)
-        translation = np.asarray(translation, dtype=np.float64)
-        local_position = -world_to_camera_local.T @ translation
+        world_to_camera_cv = np.asarray(rotation, dtype=np.float64)
+        translation_cv = np.asarray(translation, dtype=np.float64)
+        world_to_camera_local = (
+            opencv_to_atlas @ world_to_camera_cv @ opencv_to_atlas
+        )
+        translation_local = opencv_to_atlas @ translation_cv
+        local_position = -world_to_camera_local.T @ translation_local
         camera_to_world.append(basis @ world_to_camera_local.T)
         positions.append(basis @ local_position)
-    landmarks = np.asarray(refined.landmarks, dtype=np.float64).reshape((-1, 3)) @ basis.T
+    landmarks = (
+        np.asarray(refined.landmarks, dtype=np.float64).reshape((-1, 3))
+        @ opencv_to_atlas.T
+        @ basis.T
+    )
     return (
         tuple(np.ascontiguousarray(value, dtype=np.float64) for value in camera_to_world),
         np.asarray(positions, dtype=np.float64),

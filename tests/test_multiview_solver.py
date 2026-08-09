@@ -223,7 +223,9 @@ def _ground_landmarks(count: int) -> np.ndarray:
     indices = np.arange(count, dtype=np.float64)
     x_values = (np.mod(indices, 10.0) - 4.5) * 0.5
     z_values = 5.0 + np.floor(indices / 10.0) * 1.25
-    return np.column_stack((x_values, np.full(count, -1.0), z_values))
+    # RefinedRig landmarks are OpenCV-local (+Y down); the solver adapter
+    # converts them to Atlas camera coordinates before applying the anchor.
+    return np.column_stack((x_values, np.full(count, 1.0), z_values))
 
 
 def _install_pipeline(
