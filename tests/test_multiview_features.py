@@ -15,7 +15,7 @@ from atlas_camera.core.multiview_features import (
     match_features,
     render_match_overlay,
 )
-from atlas_camera.core.multiview_types import QUALITY_PROFILES
+from atlas_camera.core.multiview_types import FeatureSet, QUALITY_PROFILES
 
 
 def _shifted_checkerboard() -> tuple[object, object]:
@@ -69,3 +69,39 @@ def test_matches_are_mutual_spatially_distributed_and_overlay_is_stable():
     overlay_b = render_match_overlay(left, right, matches, inliers)
     assert overlay_a.shape == (320, 640, 3)
     assert hashlib.sha256(overlay_a.tobytes()).hexdigest() == hashlib.sha256(overlay_b.tobytes()).hexdigest()
+
+
+def test_grid_uses_frame_dimensions_for_a_dense_corner_cluster():
+    features_a = FeatureSet(
+        np.array([[5.0, 5.0], [10.0, 10.0]], np.float32),
+        np.array([[0.0], [20.0]], np.float32), np.zeros(2, np.float32),
+        np.array([0, 1], np.int64), (100, 100),
+    )
+    features_b = FeatureSet(
+        np.array([[6.0, 5.0], [11.0, 10.0]], np.float32),
+        np.array([[0.0], [20.0]], np.float32), np.zeros(2, np.float32),
+        np.array([0, 1], np.int64), (100, 100),
+    )
+
+    matches = match_features(features_a, features_b, QUALITY_PROFILES["balanced"], 0, 1)
+
+    assert matches.occupied_grid_cells == 1
+
+
+def test_matching_rejects_ratio_ambiguous_and_one_way_pairs():
+    features_a = FeatureSet(
+        np.zeros((4, 2), np.float32),
+        np.array([[4.9], [5.2], [20.0], [50.0]], np.float32),
+        np.zeros(4, np.float32), np.array([8, 4, 7, 3], np.int64), (100, 100),
+    )
+    features_b = FeatureSet(
+        np.zeros((5, 2), np.float32),
+        np.array([[4.9], [5.0], [20.10], [20.12], [50.0]], np.float32),
+        np.zeros(5, np.float32), np.array([2, 9, 5, 6, 1], np.int64), (100, 100),
+    )
+
+    matches = match_features(features_a, features_b, QUALITY_PROFILES["balanced"], 0, 1)
+
+    np.testing.assert_array_equal(matches.indices, np.array([[3, 1], [8, 2]], np.int64))
+    assert len(set(matches.indices[:, 0])) == len(matches.indices)
+    assert len(set(matches.indices[:, 1])) == len(matches.indices)

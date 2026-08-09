@@ -48,8 +48,9 @@ def extract_features(image: Any, profile: QualityProfile) -> FeatureSet:
     """Extract SIFT features in a process-independent, stable ordering."""
     np = _require_numpy()
     cv2 = _require_cv2()
+    gray = _gray_uint8(image)
     keypoints, descriptors = cv2.SIFT_create(nfeatures=profile.max_features).detectAndCompute(
-        _gray_uint8(image), None,
+        gray, None,
     )
     keypoints = keypoints or []
     order = sorted(range(len(keypoints)), key=lambda i: (
@@ -69,7 +70,8 @@ def extract_features(image: Any, profile: QualityProfile) -> FeatureSet:
     # The original SIFT position remains available for downstream diagnostics,
     # while the arrays above are ordered by the deterministic key.
     stable_indices = np.asarray(order, dtype=np.int64)
-    return FeatureSet(points_xy, descriptors, responses, stable_indices)
+    return FeatureSet(points_xy, descriptors, responses, stable_indices,
+                      (int(gray.shape[1]), int(gray.shape[0])))
 
 
 def _ratio_matches(knn_matches: Any, ratio: float) -> dict[int, tuple[int, float]]:
@@ -80,13 +82,14 @@ def _ratio_matches(knn_matches: Any, ratio: float) -> dict[int, tuple[int, float
     }
 
 
-def _occupied_grid_cells(points_xy: Any) -> int:
+def _occupied_grid_cells(points_xy: Any, image_size: tuple[int, int] | None) -> int:
     np = _require_numpy()
-    if len(points_xy) == 0:
+    if len(points_xy) == 0 or image_size is None:
         return 0
-    minima = np.min(points_xy, axis=0)
-    spans = np.maximum(np.max(points_xy, axis=0) - minima, 1e-9)
-    scaled = np.floor((points_xy - minima) / spans * 4.0).astype(np.int64)
+    width, height = image_size
+    if width <= 0 or height <= 0:
+        return 0
+    scaled = np.floor(points_xy / np.array((width, height), dtype=np.float32) * 4.0).astype(np.int64)
     scaled = np.clip(scaled, 0, 3)
     return len({(int(cell[0]), int(cell[1])) for cell in scaled})
 
@@ -124,7 +127,7 @@ def match_features(a: FeatureSet, b: FeatureSet, profile: QualityProfile,
     points_b = np.asarray([b.points_xy[pair[4]] for pair in unique_pairs], dtype=np.float32).reshape((-1, 2))
     distances = np.asarray([pair[2] for pair in unique_pairs], dtype=np.float32)
     return PairMatches(frame_a, frame_b, points_a, points_b, indices, distances,
-                       _occupied_grid_cells(points_a))
+                       _occupied_grid_cells(points_a, a.image_size))
 
 
 def _overlay_image(image: Any) -> Any:

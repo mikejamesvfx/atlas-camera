@@ -65,6 +65,7 @@ class FeatureSet:
     descriptors: Any
     responses: Any
     stable_indices: Any
+    image_size: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
