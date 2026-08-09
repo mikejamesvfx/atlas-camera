@@ -805,3 +805,78 @@ def test_portrait_orientation_swaps_sensor_millimetres_for_intrinsics() -> None:
     # Rotated pixels: the developed width spans the sensor's SHORT side.
     assert tall.fx_px == pytest.approx(_FOCAL_MM * _HEIGHT / _SENSOR_HEIGHT_MM)
     assert tall.fy_px == pytest.approx(_FOCAL_MM * _WIDTH / _SENSOR_WIDTH_MM)
+
+
+def test_measured_baseline_is_the_top_scale_anchor(monkeypatch) -> None:
+    _install_pipeline(monkeypatch)
+    out = solve_multiview(
+        [_frame(label="one"), _frame(label="two")],
+        MultiViewSettings(baseline_m=0.8),
+    )
+
+    assert out.solve is not None
+    assert out.diagnostics.scale["source"] == "measured_baseline"
+    assert out.solve.debug_metadata["scale_source"] == "measured_baseline"
+    primary = np.asarray(out.solve.camera.extrinsics.camera_position)
+    secondary = np.asarray(
+        out.solve.projection_sources[0].camera.extrinsics.camera_position
+    )
+    assert float(np.linalg.norm(secondary - primary)) == pytest.approx(0.8)
+    # No camera height entered: the note says the vertical origin is the camera.
+    assert any("optical centre" in note for note in out.diagnostics.scale["notes"])
+
+
+def test_baseline_with_camera_height_seats_photo_one_at_that_height(monkeypatch) -> None:
+    _install_pipeline(monkeypatch)
+    out = solve_multiview(
+        [_frame(label="one"), _frame(label="two")],
+        MultiViewSettings(baseline_m=0.8, camera_height_m=1.66),
+    )
+
+    assert out.solve is not None
+    assert out.diagnostics.scale["source"] == "measured_baseline"
+    assert out.solve.camera.extrinsics.camera_position[1] == pytest.approx(1.66)
+
+
+def test_learned_depth_prior_scales_when_no_measured_anchor_exists(monkeypatch) -> None:
+    count = 60
+    flat_landmarks = np.column_stack((
+        (np.mod(np.arange(count, dtype=np.float64), 10.0) - 4.5) * 0.5,
+        np.full(count, 1.0),
+        np.full(count, 5.0),
+    ))
+    _install_pipeline(monkeypatch, landmarks=flat_landmarks)
+    depth = np.full((720, 1280), 10.0, dtype=np.float32)
+
+    frames = [
+        _frame(label="one"),
+        _frame(label="two"),
+    ]
+    from dataclasses import replace as dataclass_replace
+    frames[0] = dataclass_replace(frames[0], metric_depth=depth)
+    out = solve_multiview(frames, MultiViewSettings())
+
+    assert out.solve is not None
+    scale = out.diagnostics.scale
+    assert scale["source"] == "learned_depth_prior"
+    # Predicted 10 m over recovered 5 -> uniform scale factor 2.
+    assert scale["scale_factor"] == pytest.approx(2.0)
+    primary = np.asarray(out.solve.camera.extrinsics.camera_position)
+    secondary = np.asarray(
+        out.solve.projection_sources[0].camera.extrinsics.camera_position
+    )
+    assert float(np.linalg.norm(secondary - primary)) == pytest.approx(2.0)
+    assert any("monocular depth prior" in warning for warning in out.diagnostics.warnings)
+
+
+def test_scale_unavailable_names_every_remedy(monkeypatch) -> None:
+    _install_pipeline(monkeypatch, landmarks=_ground_landmarks(23))
+    out = solve_multiview(
+        [_frame(label="one"), _frame(label="two")],
+        MultiViewSettings(camera_height_m=1.43),
+    )
+
+    assert out.solve is None
+    assert out.diagnostics.outcome_code == "scale_unavailable"
+    assert "baseline_m" in out.diagnostics.summary
+    assert "depth" in out.diagnostics.summary

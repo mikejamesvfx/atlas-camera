@@ -154,7 +154,10 @@ def test_node_contract_and_widget_order():
         key for key, value in spec["optional"].items()
         if not value[1].get("forceInput", False)
     ]
-    assert widgets == ["capture_mode", "camera_height_m", "match_quality", "seed", "learned_anchor_fallback"]
+    assert widgets == [
+        "capture_mode", "camera_height_m", "match_quality", "seed",
+        "learned_anchor_fallback", "baseline_m", "learned_scale_fallback",
+    ]
 
 
 def test_node_fingerprint_changes_when_any_link_or_widget_changes():
@@ -196,7 +199,8 @@ def test_node_fingerprint_changes_when_any_link_or_widget_changes():
     )))
     for name, value in (("capture_mode", "rotation_only"), ("camera_height_m", 1.65),
                         ("match_quality", "conservative"), ("seed", 9),
-                        ("learned_anchor_fallback", True)):
+                        ("learned_anchor_fallback", True), ("baseline_m", 0.8),
+                        ("learned_scale_fallback", True)):
         changed.append(cls.IS_CHANGED(**dict(args, **{name: value})))
 
     assert all(value != first for value in changed)

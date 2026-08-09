@@ -714,6 +714,100 @@ def _fit_ground_plane(
     }
 
 
+def _apply_uniform_metric_scale(
+    positions: Any,
+    landmarks: Any,
+    scale: float,
+    camera_height_m: float,
+) -> tuple[Any, Any, list[str]]:
+    """Uniformly scale a rig; optionally seat photo 1 at the measured height.
+
+    Used by the baseline and learned-depth anchors, which pin absolute size
+    without fitting a ground plane.  When a camera height is also entered the
+    world is shifted so photo 1 sits at that height above Y=0 (a flat-ground
+    assumption, stated in the notes); otherwise photo 1 stays at Y=0 and the
+    consumer is told the vertical origin is the camera, not the ground.
+    """
+    np = _require_numpy()
+    scaled_positions = np.asarray(positions, dtype=np.float64) * float(scale)
+    scaled_landmarks = np.asarray(landmarks, dtype=np.float64) * float(scale)
+    notes: list[str] = []
+    if math.isfinite(float(camera_height_m)) and camera_height_m > 0.0:
+        shift = float(camera_height_m) - float(scaled_positions[0, 1])
+        scaled_positions = scaled_positions + np.array((0.0, shift, 0.0))
+        scaled_landmarks = scaled_landmarks + np.array((0.0, shift, 0.0))
+        notes.append(
+            "World Y=0 is the ground assumed flat below photo 1 at the "
+            "entered camera height; no ground plane was fitted."
+        )
+    else:
+        notes.append(
+            "World Y origin is photo 1's optical centre; enter camera_height_m "
+            "to seat the rig on an assumed ground plane."
+        )
+    return scaled_positions, scaled_landmarks, notes
+
+
+def _depth_prior_scale(
+    world_landmarks: Any,
+    anchor_camera_to_world: Any,
+    accepted_track_ids: Sequence[int],
+    tracks: Sequence[geometry.FeatureTrack],
+    metric_depth: Any,
+) -> dict[str, Any] | None:
+    """Median ratio between predicted metric depth and recovered depth.
+
+    Samples the learned depth map at each accepted track's photo-1 pixel and
+    compares against the landmark's forward distance in the anchor camera.
+    Requires at least 24 well-behaved samples and a median-absolute-deviation
+    spread under 50% of the median — a learned map that disagrees with itself
+    that badly must not silently set metric scale.
+    """
+    np = _require_numpy()
+    depth = np.asarray(metric_depth, dtype=np.float64)
+    if depth.ndim != 2 or not len(accepted_track_ids):
+        return None
+    height, width = depth.shape
+    world_to_camera = np.asarray(anchor_camera_to_world, dtype=np.float64).T
+    track_map = {track.track_id: track for track in tracks}
+    ratios: list[float] = []
+    for track_id, point in zip(
+        accepted_track_ids, np.asarray(world_landmarks, dtype=np.float64),
+    ):
+        if not np.all(np.isfinite(point)):
+            continue
+        track = track_map.get(int(track_id))
+        anchor = next(
+            (item for item in track.observations if item.frame_index == 0),
+            None,
+        ) if track is not None else None
+        if anchor is None:
+            continue
+        column = int(round(float(anchor.point_xy[0])))
+        row = int(round(float(anchor.point_xy[1])))
+        if not (0 <= row < height and 0 <= column < width):
+            continue
+        predicted = float(depth[row, column])
+        recovered = -float((world_to_camera @ point)[2])
+        if (
+            math.isfinite(predicted) and 0.5 <= predicted <= 500.0
+            and math.isfinite(recovered) and recovered > 1.0e-6
+        ):
+            ratios.append(predicted / recovered)
+    if len(ratios) < _GROUND_MIN_INLIERS:
+        return None
+    ratio_array = np.asarray(sorted(ratios), dtype=np.float64)
+    median = float(np.median(ratio_array))
+    spread = float(np.median(np.abs(ratio_array - median)))
+    if not math.isfinite(median) or median <= 0.0 or spread > 0.5 * median:
+        return None
+    return {
+        "scale_factor": median,
+        "sample_count": len(ratios),
+        "median_absolute_deviation": spread,
+    }
+
+
 def _rotate_vector_to_up(normal: Any) -> Any:
     np = _require_numpy()
     source = np.asarray(normal, dtype=np.float64)
@@ -1053,48 +1147,121 @@ def solve_multiview(
     }
     output_track_ids: Sequence[int] = ()
     if mode == "translated":
-        if (
-            not math.isfinite(float(settings.camera_height_m))
-            or settings.camera_height_m <= 0.0
-        ):
-            return _failure(
-                "scale_unavailable",
-                "Translated registration needs a positive measured photo-1 "
-                "lens-centre height",
-                metadata_checks=metadata_checks,
-                pair_metrics=pair_metrics,
-                scale={"camera_height_m": float(settings.camera_height_m)},
-                overlays=overlays,
-            )
-        ground_points, _ = _ground_candidates(
-            world_landmarks, refined.accepted_track_ids, tracks, horizon,
+        np = _require_numpy()
+        height_available = (
+            math.isfinite(float(settings.camera_height_m))
+            and settings.camera_height_m > 0.0
         )
-        fit = _fit_ground_plane(ground_points, fingerprint, settings.seed)
-        if fit is None:
+        baseline_available = (
+            math.isfinite(float(settings.baseline_m)) and settings.baseline_m > 0.0
+        )
+        anchor_depth = ordered_frames[0].metric_depth
+        scaled = False
+
+        # Anchor tier 1: a measured baseline pins scale directly on the rig.
+        if baseline_available:
+            recovered_baseline = float(np.linalg.norm(
+                np.asarray(positions[1]) - np.asarray(positions[0]),
+            ))
+            if recovered_baseline <= 1.0e-9:
+                return _failure(
+                    "scale_unavailable",
+                    "baseline_m is set but the recovered photo 1-2 baseline "
+                    "is numerically zero",
+                    metadata_checks=metadata_checks,
+                    pair_metrics=pair_metrics,
+                    scale={"baseline_m": float(settings.baseline_m)},
+                    overlays=overlays,
+                )
+            scale = float(settings.baseline_m) / recovered_baseline
+            positions, world_landmarks, notes = _apply_uniform_metric_scale(
+                positions, world_landmarks, scale, settings.camera_height_m,
+            )
+            scale_info = {
+                "source": "measured_baseline",
+                "baseline_m": float(settings.baseline_m),
+                "scale_factor": scale,
+                "camera_height_m": (
+                    float(settings.camera_height_m) if height_available else None
+                ),
+                "notes": notes,
+            }
+            scale_source = "measured_baseline"
+            scaled = True
+
+        # Anchor tier 2: fitted ground plane plus the measured camera height.
+        if not scaled and height_available:
+            ground_points, _ = _ground_candidates(
+                world_landmarks, refined.accepted_track_ids, tracks, horizon,
+            )
+            fit = _fit_ground_plane(ground_points, fingerprint, settings.seed)
+            if fit is not None:
+                camera_to_world, positions, world_landmarks, scale_info = (
+                    _apply_metric_ground_scale(
+                        camera_to_world,
+                        positions,
+                        world_landmarks,
+                        ground_points,
+                        fit,
+                        settings.camera_height_m,
+                    )
+                )
+                scale_source = "measured_camera_height"
+                scaled = True
+
+        # Anchor tier 3 (opt-in): learned metric depth on photo 1.
+        if not scaled and anchor_depth is not None:
+            prior = _depth_prior_scale(
+                world_landmarks,
+                camera_to_world[0],
+                refined.accepted_track_ids,
+                tracks,
+                anchor_depth,
+            )
+            if prior is not None:
+                positions, world_landmarks, notes = _apply_uniform_metric_scale(
+                    positions, world_landmarks,
+                    float(prior["scale_factor"]), settings.camera_height_m,
+                )
+                anchor_warnings.append(
+                    "Metric scale came from a learned monocular depth prior "
+                    f"({prior['sample_count']} landmark samples). Expect "
+                    "roughly 20-30% absolute-scale uncertainty; enter "
+                    "baseline_m or capture textured ground for a measured "
+                    "anchor."
+                )
+                scale_info = {
+                    "source": "learned_depth_prior",
+                    **{key: float(value) for key, value in prior.items()},
+                    "camera_height_m": (
+                        float(settings.camera_height_m) if height_available else None
+                    ),
+                    "notes": notes,
+                }
+                scale_source = "learned_depth_prior"
+                scaled = True
+
+        if not scaled:
+            remedies = (
+                "enter a measured baseline_m, enter camera_height_m with "
+                "textured ground in the overlap, or enable the learned depth "
+                "scale fallback"
+            )
             return _failure(
                 "scale_unavailable",
-                "Translated registration has no valid ground plane with a "
-                "normal within 20 degrees of recovered up, at least 24 inliers, "
-                "15% support, and positive anchor distance",
+                "Translated registration has no usable metric anchor: no "
+                "measured baseline, no valid ground plane (normal within 20 "
+                "degrees of up, 24 inliers, 15% support, positive anchor "
+                f"distance), and no accepted depth prior — {remedies}",
                 metadata_checks=metadata_checks,
                 pair_metrics=pair_metrics,
                 scale={
                     "camera_height_m": float(settings.camera_height_m),
-                    "valid_ground_landmarks": int(len(ground_points)),
+                    "baseline_m": float(settings.baseline_m),
+                    "depth_prior_supplied": anchor_depth is not None,
                 },
                 overlays=overlays,
             )
-        camera_to_world, positions, world_landmarks, scale_info = (
-            _apply_metric_ground_scale(
-                camera_to_world,
-                positions,
-                world_landmarks,
-                ground_points,
-                fit,
-                settings.camera_height_m,
-            )
-        )
-        scale_source = "measured_camera_height"
         output_track_ids = refined.accepted_track_ids
     else:
         positions = _require_numpy().zeros_like(positions)

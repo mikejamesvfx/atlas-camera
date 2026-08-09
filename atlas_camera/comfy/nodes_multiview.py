@@ -7,7 +7,7 @@ boundary, and converts the deterministic result back to ComfyUI values.
 
 from __future__ import annotations
 
-from dataclasses import fields, is_dataclass
+from dataclasses import fields, is_dataclass, replace as dataclass_replace
 import hashlib
 import json
 import os
@@ -132,6 +132,8 @@ def _cache_fingerprint(
     match_quality: str,
     seed: int,
     learned_anchor_fallback: bool = False,
+    baseline_m: float = 0.0,
+    learned_scale_fallback: bool = False,
 ) -> str:
     """Hash every content-bearing link and persisted widget in socket order."""
     payload = {
@@ -157,6 +159,8 @@ def _cache_fingerprint(
             "match_quality": match_quality,
             "seed": seed,
             "learned_anchor_fallback": bool(learned_anchor_fallback),
+            "baseline_m": float(baseline_m),
+            "learned_scale_fallback": bool(learned_scale_fallback),
         },
     }
     encoded = json.dumps(
@@ -313,6 +317,36 @@ def _learned_anchor_up_hint(anchor_image: Any, np: Any) -> tuple[tuple[float, fl
     return (up[0], up[1], up[2]), f"learned prior ({prior.source_model})"
 
 
+def _learned_metric_depth(anchor_image: Any, np: Any) -> Any:
+    """Run the outdoor metric depth model on the anchor plate.
+
+    Depth-model doctrine: exteriors use V2-Metric-Outdoor (the estimator's
+    default).  Returns the HxW float32 metres map at plate resolution; torch
+    stays at this adapter boundary — core only samples the array.
+    """
+    try:
+        from atlas_camera.inference.depth_estimator import estimate_depth
+    except ImportError as exc:
+        raise RuntimeError(
+            "AtlasMultiViewSolve: learned_scale_fallback needs the [neural] "
+            "extra — pip install -e .[neural]"
+        ) from exc
+    import tempfile
+    from PIL import Image
+
+    pixels = np.clip(np.ascontiguousarray(anchor_image, dtype=np.float32), 0.0, 1.0)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "anchor.png")
+        Image.fromarray((pixels * 255.0 + 0.5).astype(np.uint8)).save(path)
+        result = estimate_depth(path)
+    if not result.is_metric:
+        raise RuntimeError(
+            "AtlasMultiViewSolve: the configured depth model returned relative "
+            "depth; the scale fallback needs a metric model."
+        )
+    return np.ascontiguousarray(result.depth, dtype=np.float32)
+
+
 def _write_failure_debug(details: dict[str, Any], overlays: tuple[Any, ...], np: Any) -> str:
     """Persist failure diagnostics where an artist can reach them.
 
@@ -382,6 +416,8 @@ class AtlasMultiViewSolve:
                 "match_quality": (["balanced", "conservative", "permissive", "salvage"], {"default": "balanced"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "learned_anchor_fallback": ("BOOLEAN", {"default": False}),
+                "baseline_m": ("FLOAT", {"default": 0.0, "min": 0.0, "step": 0.01}),
+                "learned_scale_fallback": ("BOOLEAN", {"default": False}),
             },
         }
 
@@ -402,13 +438,15 @@ class AtlasMultiViewSolve:
         match_quality: str = "balanced",
         seed: int = 0,
         learned_anchor_fallback: bool = False,
+        baseline_m: float = 0.0,
+        learned_scale_fallback: bool = False,
     ) -> str:
         return _cache_fingerprint(
             image_1, image_2, image_3,
             raw_meta_1, raw_meta_2, raw_meta_3,
             plate_ref_1, plate_ref_2, plate_ref_3,
             capture_mode, camera_height_m, match_quality, seed,
-            learned_anchor_fallback,
+            learned_anchor_fallback, baseline_m, learned_scale_fallback,
         )
 
     def solve(
@@ -427,6 +465,8 @@ class AtlasMultiViewSolve:
         match_quality: str = "balanced",
         seed: int = 0,
         learned_anchor_fallback: bool = False,
+        baseline_m: float = 0.0,
+        learned_scale_fallback: bool = False,
     ):
         np = _require_numpy()
         frames = [
@@ -448,6 +488,10 @@ class AtlasMultiViewSolve:
             anchor_up_hint, anchor_up_hint_source = _learned_anchor_up_hint(
                 frames[0].image, np,
             )
+        if learned_scale_fallback:
+            frames[0] = dataclass_replace(
+                frames[0], metric_depth=_learned_metric_depth(frames[0].image, np),
+            )
 
         outcome = solve_multiview(
             frames,
@@ -458,6 +502,7 @@ class AtlasMultiViewSolve:
                 seed=int(seed),
                 anchor_up_hint=anchor_up_hint,
                 anchor_up_hint_source=anchor_up_hint_source,
+                baseline_m=float(baseline_m),
             ),
         )
         details = outcome.diagnostics.to_dict()

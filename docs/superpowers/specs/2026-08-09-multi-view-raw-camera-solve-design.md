@@ -120,7 +120,28 @@ For rotation-only sets, refine camera orientations with every camera position fi
 
 Canonicalize the rig into photo 1's Atlas world frame. Preserve Atlas's right-handed, Y-up convention and recovered-camera-facing-negative-Z convention at the core boundary.
 
-Translated reconstruction initially has arbitrary scale. Fit a ground plane to suitable jointly triangulated street points, then apply one uniform scale so photo 1 has the entered `camera_height_m`. This explicit measurement is the version-one metric anchor. Learned monocular depth does not determine relative pose or metric scale.
+Translated reconstruction initially has arbitrary scale. Three metric anchors
+resolve it, in strict priority order (revised 2026-08-09 after the first real
+captures showed textureless asphalt/grass rarely supports the ground fit):
+
+1. **Measured baseline** (`baseline_m` widget, 0.0 = unset): the measured
+   distance between photo 1 and photo 2 optical centres, applied directly to
+   the recovered baseline. Needs no ground plane. When `camera_height_m` is
+   also entered the rig is seated so photo 1 sits at that height above Y=0
+   (flat-ground assumption, stated in the scale notes); otherwise photo 1
+   stays at the vertical origin.
+2. **Fitted ground plane + `camera_height_m`**: the original anchor —
+   requires the plane-fit criteria tabled below.
+3. **Learned metric depth prior** (`learned_scale_fallback` widget, opt-in,
+   default off): the outdoor metric depth model predicts photo 1's depth map
+   at the adapter boundary; core takes the median ratio between predicted and
+   recovered landmark depths (>= 24 samples, median-absolute-deviation under
+   50% of the median, else rejected). Recorded with a diagnostics warning
+   naming its roughly 20-30% absolute-scale uncertainty. Learned depth still
+   never determines relative pose.
+
+If no anchor succeeds, report `scale_unavailable` naming every remedy and do
+not emit a metric solve.
 
 If the ground plane or height is unusable, report `scale unavailable` and do not emit a metric solve. Rotation-only sets have no translation scale to resolve.
 
@@ -271,7 +292,9 @@ The acceptance run writes overlays and a registration report. It passes when:
 - More than three photographs.
 - Mixed cameras, lenses, focal lengths, or inconsistent development settings.
 - Non-static scene reconstruction.
-- Metric scale inferred from learned monocular depth.
+- Metric scale inferred from learned monocular depth WITHOUT the artist
+  opting in (the `learned_scale_fallback` widget is the explicit opt-in).
 - Treating Qwen pixels as measured registration evidence.
 - Dense multi-view stereo or texture seam optimisation.
-- Automatic known-baseline scale input; camera height is the sole metric anchor.
+- AUTOMATIC baseline detection; the `baseline_m` widget is a manual measured
+  value in the same trust class as `camera_height_m`.

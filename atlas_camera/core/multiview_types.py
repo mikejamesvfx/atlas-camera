@@ -57,6 +57,11 @@ class MultiViewSettings:
     #: asdict, and using it is recorded as a diagnostics warning.
     anchor_up_hint: tuple[float, float, float] | None = None
     anchor_up_hint_source: str = ""
+    #: Measured distance in metres between photo 1 and photo 2 optical
+    #: centres.  0.0 means unset.  When set it is the highest-priority metric
+    #: anchor for a translated solve — a direct measurement of the recovered
+    #: baseline needs no ground plane at all.
+    baseline_m: float = 0.0
 
     def __post_init__(self) -> None:
         if self.capture_mode not in ("auto", "translated", "rotation_only"):
@@ -71,6 +76,11 @@ class MultiViewFrame:
     raw_meta: Any
     plate_ref: AtlasPlateRef | None = None
     label: str = ""
+    #: Optional HxW float32 metric depth map (metres, forward distance) for
+    #: this frame, supplied by the ADAPTER when the artist opts into the
+    #: learned depth scale fallback.  Core only samples it; inference stays at
+    #: the adapter boundary.  Only photo 1's map is consulted.
+    metric_depth: Any = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +175,9 @@ def registration_fingerprint(frames: list[MultiViewFrame] | tuple[MultiViewFrame
     for index, frame in enumerate(frames):
         _update_json(digest, {"frame": index, "label": frame.label})
         _update_image(digest, frame.image)
+        _update_json(digest, {"has_metric_depth": frame.metric_depth is not None})
+        if frame.metric_depth is not None:
+            _update_image(digest, frame.metric_depth)
         _update_json(digest, _raw_validation_values(frame.raw_meta))
         _update_json(digest, {
             "plate_source_path": (

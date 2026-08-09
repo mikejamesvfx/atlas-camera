@@ -555,6 +555,22 @@
             "name": "learned_anchor_fallback"
           },
           "link": null
+        },
+        {
+          "name": "baseline_m",
+          "type": "FLOAT",
+          "widget": {
+            "name": "baseline_m"
+          },
+          "link": null
+        },
+        {
+          "name": "learned_scale_fallback",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "learned_scale_fallback"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -592,6 +608,8 @@
         "balanced",
         0,
         "fixed",
+        false,
+        0.0,
         false
       ],
       "title": "DETERMINISTIC REGISTRATION \u00b7 balanced default \u00b7 permissive only after overlap review"
