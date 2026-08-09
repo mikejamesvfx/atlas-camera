@@ -4,8 +4,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -22,7 +20,7 @@ def test_audit_covers_every_registered_node():
     kinds, names = audit.registered_nodes()
     data = audit.audit()
     assert set(data) == names            # exactly the registered set, nothing invented
-    assert len(names) == 100    # 90 standard + 6 experimental + 2 legacy + 2 iOS
+    assert len(names) == 101    # 91 standard + 6 experimental + 2 legacy + 2 iOS
     for name, rec in data.items():
         assert rec["kind"] in ("standard", "experimental", "legacy", "ios")
         assert rec["status"] in ("referenced", "registered_only")
