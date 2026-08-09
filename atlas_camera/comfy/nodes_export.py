@@ -593,7 +593,8 @@ class AtlasExportNukeLayers:
         summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
         _write_export_manifest(solve, output_dir,
                                [("nuke_scene", result["nk_path"])],
-                               "AtlasExportNukeLayers")
+                               "AtlasExportNukeLayers",
+                               extra={"projection_layers": result["layer_provenance"]})
         return (result["nk_path"], summary)
 
 
@@ -672,7 +673,8 @@ class AtlasExportMayaLayers:
         summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
         _write_export_manifest(solve, output_dir,
                                [("maya_scene", result["ma_path"])],
-                               "AtlasExportMayaLayers")
+                               "AtlasExportMayaLayers",
+                               extra={"projection_layers": result["layer_provenance"]})
         return (result["ma_path"], summary)
 
 

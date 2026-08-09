@@ -175,13 +175,27 @@ def test_export_node_helper_writes_manifest_and_embeds_identity(tmp_path):
     nk = tmp_path / "scene.nk"
     nk.write_text("Root {\n}\n", encoding="utf-8")
     s = _solve()
-    _write_export_manifest(s, tmp_path, [("nuke_scene", str(nk))], "Test")
+    identity_before = manifest_identity_hash(s)
+    layer_provenance = [{
+        "name": "photo_2",
+        "evidence_type": "photographed",
+        "geometry_source": "primary_scene",
+    }]
+    _write_export_manifest(
+        s, tmp_path, [("nuke_scene", str(nk))], "Test",
+        extra={"projection_layers": layer_provenance},
+    )
     data = load_project_manifest(tmp_path / MANIFEST_FILENAME)
     assert data["artifacts"][0]["exporter"] == "Test"
+    assert data["extra"]["projection_layers"] == layer_provenance
+    assert data["identity_hash"] == identity_before
     first_line = nk.read_text(encoding="utf-8").splitlines()[0]
     assert first_line == f"# atlas_project_identity: {data['identity_hash']}"
     # Idempotent: a re-export replaces the comment, never stacks it.
-    _write_export_manifest(s, tmp_path, [("nuke_scene", str(nk))], "Test")
+    _write_export_manifest(
+        s, tmp_path, [("nuke_scene", str(nk))], "Test",
+        extra={"projection_layers": layer_provenance},
+    )
     lines = nk.read_text(encoding="utf-8").splitlines()
     assert lines[0].startswith("# atlas_project_identity: ")
     assert not lines[1].startswith("# atlas_project_identity")

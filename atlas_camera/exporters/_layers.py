@@ -182,6 +182,18 @@ def _projection_geometry_for_source(
     return [], "source"
 
 
+def projection_layer_provenance(layers: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """JSON-ready provenance for the manifest, excluding scene-format details."""
+    return [
+        {
+            "name": str(layer["name"]),
+            "evidence_type": str(layer["evidence_type"]),
+            "geometry_source": str(layer["geometry_source"]),
+        }
+        for layer in layers
+    ]
+
+
 def collect_projection_layers(
     solve,
     output_dir: str | Path,

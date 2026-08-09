@@ -5,6 +5,8 @@ networks. Reuses the analytic layered-solve fixture pattern from
 tests/test_nuke_layers_export.py.
 """
 
+# ruff: noqa: E402 — optional torch/Pillow gates must run before Atlas imports
+
 import math
 
 import numpy as np
@@ -179,10 +181,24 @@ def test_node_wrapper_does_not_mask_retopology_value_errors(monkeypatch, tmp_pat
 
 
 def test_node_wrapper_returns_paths_and_summary(tmp_path):
+    from atlas_camera.exporters.manifest import (
+        MANIFEST_FILENAME,
+        load_project_manifest,
+    )
+
     solve = _layered_solve()
+    solve.projection_sources[0].metadata["evidence_type"] = "photographed"
+    solve.projection_sources[1].metadata["evidence_type"] = "generated"
     ma_path, summary = AtlasExportMayaLayers().export(solve, str(tmp_path))
     assert ma_path.endswith("maya_layers.ma")
     assert "2 layer(s): sky, bg" in summary
+    manifest = load_project_manifest(tmp_path / MANIFEST_FILENAME)
+    assert manifest["extra"]["projection_layers"] == [
+        {"name": "sky", "evidence_type": "photographed",
+         "geometry_source": "source"},
+        {"name": "bg", "evidence_type": "generated",
+         "geometry_source": "source"},
+    ]
 
 
 def test_node_wrapper_retopologizes_every_layer(tmp_path):

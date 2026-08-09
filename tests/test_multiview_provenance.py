@@ -177,3 +177,16 @@ console.log(JSON.stringify({
         "labels": ["PHOTO", "GENERATED", "SOURCE", "SOURCE"],
         "photo": ["primary"], "generated": [], "own": ["private"],
     }
+
+    build_call = re.search(
+        r"function buildPatchSources\([^)]*\) \{.*?"
+        r"for \(const e of projectionGeometryEntries\(src, data\)\)",
+        source, re.DOTALL,
+    )
+    assert build_call, "buildPatchSources bypasses projectionGeometryEntries"
+    legend_call = re.search(
+        r"function refreshLayerLegend\(\) \{.*?"
+        r"projectionEvidenceLabel\(s\.evidence_type\)",
+        source, re.DOTALL,
+    )
+    assert legend_call, "projection-source legend bypasses projectionEvidenceLabel"

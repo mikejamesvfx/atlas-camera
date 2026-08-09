@@ -12,7 +12,6 @@ tests use, so this also covers the primitive->ReliefMesh round-trip
 # ruff: noqa: E402 — optional torch/Pillow gates must run before Atlas imports
 
 import copy
-import json
 
 import numpy as np
 import pytest
@@ -147,8 +146,13 @@ def test_layer_cameras_carry_their_own_pose(tmp_path):
 def test_mixed_evidence_layers_preserve_cameras_and_geometry_provenance(tmp_path):
     """Adding Qwen keeps photographed cameras byte-identical in the manifest."""
     from atlas_camera.comfy.nodes import AtlasAddPatchView
+    from atlas_camera.core.confidence import ConfidenceModel
     from atlas_camera.core.proxy_geometry import PROXY_ROLE
     from atlas_camera.exporters._layers import collect_projection_layers
+    from atlas_camera.exporters.manifest import (
+        MANIFEST_FILENAME,
+        load_project_manifest,
+    )
 
     solve = _layered_solve()
     photographed, generated_template = solve.projection_sources
@@ -157,15 +161,47 @@ def test_mixed_evidence_layers_preserve_cameras_and_geometry_provenance(tmp_path
         primitive.metadata["role"] = PROXY_ROLE
     solve.projection_scene.proxy_geometry = primary_geometry
     photographed.proxy_geometry = []
-    photographed.metadata["evidence_type"] = "photographed"
+    photographed.camera.confidence = ConfidenceModel.for_latent_camera(
+        global_score=0.88, defaults=0.77,
+    )
+    photographed.metadata.update({
+        "evidence_type": "photographed",
+        "registration_method": "deterministic_sift_calibrated_multiview",
+        "capture_mode": "translated",
+        "confidence": 0.88,
+        "scale_source": "measured_camera_height",
+        "scale_provenance": "measured_camera_height",
+        "source_order": 2,
+        "anchor_identity": "photo_1",
+        "anchor_frame_index": 0,
+    })
     photographed.name = "photo"
     solve.projection_sources = [photographed]
-    before = json.dumps(
-        [source.camera.extrinsics.camera_view_matrix
-         for source in solve.projection_sources
-         if source.metadata.get("evidence_type") == "photographed"],
-        separators=(",", ":"),
-    )
+    solve.debug_metadata.update({
+        "solve_mode": "deterministic_raw_multiview",
+        "capture_mode": "translated",
+        "scale_source": "measured_camera_height",
+        "scale": {
+            "source": "measured_camera_height",
+            "factor": 1.0,
+            "ground_plane": {"normal": [0.0, 1.0, 0.0], "height_m": 1.6},
+        },
+        "anchor_frame_index": 0,
+        "anchor_identity": "photo_1",
+        "registration_fingerprint": "stable-photo-registration",
+        "generated_inputs_used": False,
+    })
+    before = {
+        "camera_view_matrix": copy.deepcopy(
+            photographed.camera.extrinsics.camera_view_matrix),
+        "camera_world_matrix": copy.deepcopy(
+            photographed.camera.extrinsics.camera_world_matrix),
+        "camera_rotation_matrix": copy.deepcopy(
+            photographed.camera.extrinsics.camera_rotation_matrix),
+        "confidence": photographed.camera.confidence.to_dict(),
+        "source_metadata": copy.deepcopy(photographed.metadata),
+        "solve_debug_metadata": copy.deepcopy(solve.debug_metadata),
+    }
     patch_image = torch.rand(1, H, W, 3, dtype=torch.float32)
     (with_qwen,) = AtlasAddPatchView()._finish_patch(
         solve, patch_image,
@@ -189,13 +225,32 @@ def test_mixed_evidence_layers_preserve_cameras_and_geometry_provenance(tmp_path
     assert [layer["geometry_source"] for layer in layers] == [
         "primary_scene", "source",
     ]
-    after = json.dumps(
-        [source.camera.extrinsics.camera_view_matrix
-         for source in with_qwen.projection_sources
-         if source.metadata.get("evidence_type") == "photographed"],
-        separators=(",", ":"),
-    )
-    assert after == before
+    photo_after = with_qwen.projection_sources[0]
+    assert photo_after.camera.extrinsics.camera_view_matrix == before["camera_view_matrix"]
+    assert photo_after.camera.extrinsics.camera_world_matrix == before["camera_world_matrix"]
+    assert photo_after.camera.extrinsics.camera_rotation_matrix == before["camera_rotation_matrix"]
+    assert photo_after.camera.confidence.to_dict() == before["confidence"]
+    assert photo_after.metadata == before["source_metadata"]
+    assert with_qwen.debug_metadata == before["solve_debug_metadata"]
+
+    node_dir = tmp_path / "node_export"
+    AtlasExportNukeLayers().export(with_qwen, str(node_dir))
+    manifest = load_project_manifest(node_dir / MANIFEST_FILENAME)
+    assert manifest["extra"]["projection_layers"] == [
+        {"name": "photo", "evidence_type": "photographed",
+         "geometry_source": "primary_scene"},
+        {"name": "qwen", "evidence_type": "generated",
+         "geometry_source": "source"},
+    ]
+    assert with_qwen.projection_sources[0].camera.extrinsics.camera_view_matrix \
+        == before["camera_view_matrix"]
+    assert with_qwen.projection_sources[0].camera.extrinsics.camera_world_matrix \
+        == before["camera_world_matrix"]
+    assert with_qwen.projection_sources[0].camera.extrinsics.camera_rotation_matrix \
+        == before["camera_rotation_matrix"]
+    assert with_qwen.projection_sources[0].camera.confidence.to_dict() == before["confidence"]
+    assert with_qwen.projection_sources[0].metadata == before["source_metadata"]
+    assert with_qwen.debug_metadata == before["solve_debug_metadata"]
 
 
 def test_export_errors_loudly_without_layers(tmp_path):
