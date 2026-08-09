@@ -18,13 +18,14 @@ def test_raf_embedded_jpeg_metadata_is_preferred_and_closes_raw_handle(monkeypat
     raw_handle.close = lambda: setattr(raw_handle, "closed", True)
     raw_handle.extract_thumb = lambda: SimpleNamespace(
         format="JPEG", data=b"jpeg-exif")
-    rawpy = SimpleNamespace(
-        ThumbFormat=SimpleNamespace(JPEG="JPEG"),
-        imread=lambda path: raw_handle,
-    )
-    monkeypatch.setitem(sys.modules, "rawpy", rawpy)
-
     seen = {"calls": 0}
+
+    def imread(raw_path):
+        seen["rawpy_path"] = raw_path
+        return raw_handle
+
+    rawpy = SimpleNamespace(ThumbFormat=SimpleNamespace(JPEG="JPEG"), imread=imread)
+    monkeypatch.setitem(sys.modules, "rawpy", rawpy)
 
     def process_file(handle, *, details):
         seen["calls"] += 1
@@ -45,9 +46,14 @@ def test_raf_embedded_jpeg_metadata_is_preferred_and_closes_raw_handle(monkeypat
 
     path = tmp_path / "x-h2.RAF"
     path.write_bytes(b"RAF container must not be parsed")
-    result = metadata.read_raw_metadata(str(path))
+    result = metadata.read_raw_metadata(path)
 
-    assert seen == {"calls": 1, "data": b"jpeg-exif", "details": True}
+    assert seen == {
+        "calls": 1,
+        "data": b"jpeg-exif",
+        "details": True,
+        "rawpy_path": str(path),
+    }
     assert raw_handle.closed is True
     assert result.camera_make == "FUJIFILM"
     assert result.camera_model == "X-H2"
@@ -115,6 +121,19 @@ def test_raw_metadata_preserves_legacy_raw_tags_and_warnings_positions():
     assert result.lens_serial_number is None
     assert result.capture_datetime is None
     assert result.metadata_source is None
+
+
+def test_orientation_reads_exifread_ifdtag_values():
+    """Stringifying an exifread orientation tag loses its numeric rotation."""
+    class IfdTagLike:
+        values = [8]
+
+        def __str__(self):
+            return "Rotated 90 CCW"
+
+    result = metadata._metadata_from_tags({"Image Orientation": IfdTagLike()})
+
+    assert result.orientation == 8
 
 
 def test_import_raw_propagates_embedded_metadata_fields(monkeypatch):

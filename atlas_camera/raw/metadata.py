@@ -85,6 +85,17 @@ def _to_int(value: Any) -> int | None:
     return int(number) if number is not None else None
 
 
+def _to_orientation(value: Any) -> int | None:
+    """Read EXIF orientation, including exifread's numeric IfdTag values."""
+    orientation = _to_int(value)
+    if orientation is not None:
+        return orientation
+    values = getattr(value, "values", None)
+    if isinstance(values, (list, tuple)) and len(values) == 1:
+        return _to_int(values[0])
+    return None
+
+
 def _to_str(value: Any) -> str | None:
     if value is None:
         return None
@@ -118,7 +129,7 @@ def _metadata_from_tags(tags: dict[str, Any]) -> RawMetadata:
         focal_plane_y_res=_to_float(tag("EXIF FocalPlaneYResolution", "FocalPlaneYResolution")),
         focal_plane_res_unit=_to_int(
             tag("EXIF FocalPlaneResolutionUnit", "FocalPlaneResolutionUnit")),
-        orientation=_to_int(tag("Image Orientation", "Orientation")),
+        orientation=_to_orientation(tag("Image Orientation", "Orientation")),
         body_serial_number=_to_str(tag("EXIF BodySerialNumber", "BodySerialNumber")),
         lens_serial_number=_to_str(tag("EXIF LensSerialNumber", "LensSerialNumber")),
         capture_datetime=_to_str(
@@ -196,7 +207,7 @@ def read_raw_metadata(path: str) -> RawMetadata:
             import io
             import rawpy
 
-            raw = rawpy.imread(path)
+            raw = rawpy.imread(str(path))
             try:
                 thumb = raw.extract_thumb()
             finally:
