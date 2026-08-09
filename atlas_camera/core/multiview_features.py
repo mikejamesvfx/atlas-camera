@@ -44,14 +44,38 @@ def _gray_uint8(image: Any) -> Any:
     return np.rint(np.clip(np.nan_to_num(gray, nan=0.0, posinf=255.0, neginf=0.0), 0, 255)).astype(np.uint8)
 
 
+#: Long-side bound for feature detection.  SIFT on a full 40MP plate finds
+#: fine-scale detail that does not repeat between frames, HALVING the usable
+#: inliers versus a bounded develop (measured live 2026-08-09: the sh004 pair
+#: dropped from 250 essential inliers over 7 grid cells at half size to 113
+#: over 2 at full resolution).  Detection happens on a deterministically
+#: downscaled copy; keypoint coordinates are scaled back so every downstream
+#: consumer stays in full-resolution pixels.
+_FEATURE_DETECT_MAX_SIDE = 4000
+
+
 def extract_features(image: Any, profile: QualityProfile) -> FeatureSet:
     """Extract SIFT features in a process-independent, stable ordering."""
     np = _require_numpy()
     cv2 = _require_cv2()
     gray = _gray_uint8(image)
+    scale = 1.0
+    longest = max(gray.shape[0], gray.shape[1])
+    if longest > _FEATURE_DETECT_MAX_SIDE:
+        scale = _FEATURE_DETECT_MAX_SIDE / float(longest)
+        gray_detect = cv2.resize(
+            gray,
+            (int(round(gray.shape[1] * scale)), int(round(gray.shape[0] * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+    else:
+        gray_detect = gray
     keypoints, descriptors = cv2.SIFT_create(nfeatures=profile.max_features).detectAndCompute(
-        gray, None,
+        gray_detect, None,
     )
+    if scale != 1.0:
+        for keypoint in keypoints or []:
+            keypoint.pt = (keypoint.pt[0] / scale, keypoint.pt[1] / scale)
     keypoints = keypoints or []
     order = sorted(range(len(keypoints)), key=lambda i: (
         round(keypoints[i].pt[1], 6), round(keypoints[i].pt[0], 6),

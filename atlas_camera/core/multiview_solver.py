@@ -957,9 +957,22 @@ def solve_multiview(
                     evidence.median_homography_error_px
                 ),
             })
+            # A dominant homography consensus is the planar-candidate
+            # signature: judge it by the planar gate's relaxed spatial bar,
+            # or the early contamination check kills facades before the
+            # planar-translated model is ever consulted (found live
+            # 2026-08-09: full-res sh001 spans 3 cells, half-size spans 4).
+            planar_candidate = (
+                evidence.homography is not None
+                and evidence.homography_inlier_count * 2 >= len(matches.indices)
+            )
+            min_cells = (
+                max(2, profile.min_grid_cells - 2) if planar_candidate
+                else profile.min_grid_cells
+            )
             if (
                 len(matches.indices) >= 2 * profile.min_inliers
-                and cells < profile.min_grid_cells
+                and cells < min_cells
             ):
                 metric["consensus_bounding_box_px"] = bounding_box
                 overlays[pair_index] = features.render_match_overlay(

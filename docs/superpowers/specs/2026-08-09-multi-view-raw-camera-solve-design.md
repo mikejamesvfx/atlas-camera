@@ -134,6 +134,16 @@ shipped; changing them is a behaviour change to every saved workflow):
 | `conservative` | 0.70 | 64 | 1.0 | 1.5° | 8 | 8000 |
 | `balanced` | 0.75 | 48 | 1.5 | 1.0° | 6 | 8000 |
 | `permissive` | 0.80 | 32 | 2.5 | 0.5° | 4 | 10000 |
+| `salvage` | 0.90 | 24 | 3.0 | 0.3° | 2 | 12000 |
+
+`salvage` (appended 2026-08-09) is the explicit last resort for captures where
+the stricter profiles detect too little calibration evidence — repetitive
+texture strangled by the Lowe ratio, thin overlap. The geometric checks
+remain the guards; the diagnostics, not the picture, carry the trust verdict.
+Feature DETECTION additionally runs on a deterministically bounded copy of
+each plate (long side ≤ 4000 px, keypoints scaled back to full-resolution
+pixels): full-resolution SIFT on 40MP plates finds fine detail that does not
+repeat between frames and measurably halves usable inliers.
 
 All profiles additionally require a positive-depth fraction of at least 0.75
 for a translated model. Three-view closure fails as `inconsistent_third_view`

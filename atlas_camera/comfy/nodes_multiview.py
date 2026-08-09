@@ -379,7 +379,7 @@ class AtlasMultiViewSolve:
                 "plate_ref_3": ("ATLAS_PLATE_REF", {"forceInput": True}),
                 "capture_mode": (["auto", "translated", "rotation_only"], {"default": "auto"}),
                 "camera_height_m": ("FLOAT", {"default": 0.0, "min": 0.0, "step": 0.01}),
-                "match_quality": (["balanced", "conservative", "permissive"], {"default": "balanced"}),
+                "match_quality": (["balanced", "conservative", "permissive", "salvage"], {"default": "balanced"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "learned_anchor_fallback": ("BOOLEAN", {"default": False}),
             },

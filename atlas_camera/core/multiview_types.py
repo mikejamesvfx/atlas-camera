@@ -11,7 +11,7 @@ from typing import Any, Literal
 from atlas_camera.core.schema import AtlasPlateRef, AtlasSolve, _json_ready
 
 CaptureMode = Literal["auto", "translated", "rotation_only"]
-MatchQuality = Literal["balanced", "conservative", "permissive"]
+MatchQuality = Literal["balanced", "conservative", "permissive", "salvage"]
 OutcomeCode = Literal[
     "translated", "rotation_only", "metadata_mismatch",
     "insufficient_overlap", "dynamic_scene_contamination",
@@ -34,6 +34,13 @@ QUALITY_PROFILES = {
     "conservative": QualityProfile(0.70, 64, 1.0, 1.5, 8, 8000),
     "balanced": QualityProfile(0.75, 48, 1.5, 1.0, 6, 8000),
     "permissive": QualityProfile(0.80, 32, 2.5, 0.5, 4, 10000),
+    # Last-resort floor for captures where the stricter profiles detect too
+    # little calibration evidence (repetitive texture killed by the Lowe
+    # ratio, thin overlap).  The 0.9 ratio admits repetitive-texture matches
+    # (brick/rivets: 49 mutual at 0.75 versus 309 at 0.9, measured live
+    # 2026-08-09) and the geometric checks — cheirality, parallax, closure —
+    # remain the guards.  Trust the diagnostics, not the pretty picture.
+    "salvage": QualityProfile(0.90, 24, 3.0, 0.3, 2, 12000),
 }
 
 
@@ -55,7 +62,7 @@ class MultiViewSettings:
         if self.capture_mode not in ("auto", "translated", "rotation_only"):
             raise ValueError(f"capture_mode must be auto, translated, or rotation_only; got {self.capture_mode!r}")
         if self.match_quality not in QUALITY_PROFILES:
-            raise ValueError(f"match_quality must be balanced, conservative, or permissive; got {self.match_quality!r}")
+            raise ValueError(f"match_quality must be balanced, conservative, permissive, or salvage; got {self.match_quality!r}")
 
 
 @dataclass(frozen=True)
