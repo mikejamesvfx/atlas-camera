@@ -376,15 +376,17 @@ class AtlasProjectionScene:
 
 @dataclass(slots=True)
 class ProjectionSource:
-    """An extra camera + AI novel-view image + its own geometry, layered as a
-    projection patch to texture areas the primary recovered camera could not see.
+    """An extra projection camera and plate layered into the primary world frame.
 
-    Built by ``AtlasAddPatchView``: the ``camera`` is orbit-constructed around the
-    scene pivot (``camera_math.orbit_camera``) so it shares the primary's world
-    frame; ``image_b64`` is a browser-preview data URI, while ``plate_ref`` is
-    the float-safe final source reference when one exists; ``proxy_geometry``
-    is that view's own depth-derived geometry in the patch camera's frame.
-    ``priority`` orders blending (higher wins; the primary is implicitly highest).
+    Sources may be registered photographs or generated novel-view patches;
+    ``metadata["evidence_type"]`` keeps those evidence classes explicit.
+    Photographed sources carry a recovered camera from the deterministic
+    multi-view rig, while ``AtlasAddPatchView`` orbit-constructs generated
+    cameras around the scene pivot. ``image_b64`` is a browser-preview data URI,
+    ``plate_ref`` is the float-safe final source reference when one exists, and
+    ``proxy_geometry`` is private source geometry (or empty when a photographed
+    source reuses the primary scene). ``priority`` orders blending (higher wins;
+    the primary is implicitly highest).
     """
 
     camera: LatentCamera
