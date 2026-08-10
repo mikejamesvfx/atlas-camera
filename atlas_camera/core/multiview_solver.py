@@ -470,16 +470,21 @@ def _anchor_orientation_from_up(
     return anchor_camera_to_world, horizon, []
 
 
-def _required_pairs(frame_count: int) -> tuple[tuple[int, int], ...]:
+def _required_pairs(
+    frame_count: int, topology: str = "auto",
+) -> tuple[tuple[int, int], ...]:
     """Pair topology: full triangle up to 3 frames, anchor-star beyond.
 
     Two and three frames keep every pairing (the 3-frame closure constraint
     needs the full triangle).  A burst uses (0, i) only: N-1 pairs instead of
     N(N-1)/2, and the rig composer already reads exactly the (0, i) poses.
     Every frame must therefore share overlap with photo 1 — the documented
-    burst capture contract.
+    burst capture contract.  topology="anchor_star" forces the star at every
+    count, deliberately trading the three-view closure weld for tolerance of
+    tiny-baseline noise (the closure gate only arms when a closing pair
+    exists).
     """
-    if frame_count <= 3:
+    if topology != "anchor_star" and frame_count <= 3:
         return tuple(combinations(range(frame_count), 2))
     return tuple((0, index) for index in range(1, frame_count))
 
@@ -1017,7 +1022,9 @@ def solve_multiview(
     pair_matches: list[PairMatches] = []
     pair_metrics: list[dict[str, Any]] = []
     overlays: list[Any] = []
-    for frame_a, frame_b in _required_pairs(len(ordered_frames)):
+    for frame_a, frame_b in _required_pairs(
+        len(ordered_frames), settings.pair_topology,
+    ):
         matches = features.match_features(
             extracted[frame_a], extracted[frame_b], profile, frame_a, frame_b,
         )

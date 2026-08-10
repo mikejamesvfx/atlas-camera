@@ -157,6 +157,7 @@ def test_node_contract_and_widget_order():
     assert widgets == [
         "capture_mode", "camera_height_m", "match_quality", "seed",
         "learned_anchor_fallback", "baseline_m", "learned_scale_fallback",
+        "pair_topology",
     ]
 
 
@@ -481,6 +482,7 @@ def test_burst_node_contract_and_widget_order():
         "frame_stride", "max_frames", "half_size", "capture_mode",
         "camera_height_m", "match_quality", "seed", "learned_anchor_fallback",
         "baseline_m", "learned_scale_fallback", "write_plates", "plates_dir",
+        "pair_topology",
     ]
 
 

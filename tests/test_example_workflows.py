@@ -210,7 +210,7 @@ def test_multiview_raw_workflow_pins_photographed_registration_boundary():
 
     registration = next(node for node in nodes.values()
                         if node["type"] == "AtlasMultiViewSolve")
-    assert registration["widgets_values"] == ["auto", 1.43, "balanced", 0, "fixed", False, 0.0, False]
+    assert registration["widgets_values"] == ["auto", 1.43, "balanced", 0, "fixed", False, 0.0, False, "auto"]
     inbound = [link for link in wf["links"] if link[3] == registration["id"]]
     assert {nodes[link[1]]["type"] for link in inbound} == {"AtlasLoadRAW"}
 
@@ -233,6 +233,7 @@ def test_multiview_raw_workflow_preserves_positional_widget_order():
         "AtlasMultiViewSolve": [
             "capture_mode", "camera_height_m", "match_quality", "seed",
             "learned_anchor_fallback", "baseline_m", "learned_scale_fallback",
+            "pair_topology",
         ],
         "AtlasAddPatchView": [
             "patch_azimuth_view", "patch_elevation_view", "patch_distance",

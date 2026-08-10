@@ -573,10 +573,13 @@ def test_valid_closed_tracks_exercise_each_three_view_closure_gate(
         )
         evidence = (*evidence[:2], closing)
     elif closure_axis == "translation":
+        # The fixture's 4-degree parallax scales the direction limit to
+        # 3.75 degrees (observability-aware closure, 2026-08-10) — perturb
+        # beyond it so the gate still has something real to catch.
         closing = replace(
             evidence[2],
             translation_direction=(
-                _rotation_y(2.0) @ evidence[2].translation_direction
+                _rotation_y(4.5) @ evidence[2].translation_direction
             ),
         )
         evidence = (*evidence[:2], closing)
@@ -612,7 +615,8 @@ def test_valid_closed_tracks_exercise_each_three_view_closure_gate(
         assert captured[0].rotation_error_deg > 0.5
         assert captured[0].median_reprojection_px < 2.0
     elif closure_axis == "translation":
-        assert captured[0].translation_direction_error_deg > 1.5
+        # Limit is 3.75 deg here: 1.5 base x (10 / the fixture's 4-deg parallax).
+        assert captured[0].translation_direction_error_deg > 3.75
         assert captured[0].median_reprojection_px < 2.0
     else:
         assert captured[0].median_reprojection_px > 2.0
@@ -849,3 +853,50 @@ def test_pure_rotation_still_selects_rotation_only_not_planar() -> None:
         "pure-rotation-fingerprint",
     )
     assert select_capture_mode(evidence, "auto", profile) == "rotation_only"
+
+
+def test_closure_direction_limit_scales_with_pair_observability() -> None:
+    from atlas_camera.core.multiview_geometry import _closure_limits
+
+    def evidence_with_angle(angle: float) -> PairModelEvidence:
+        return PairModelEvidence(
+            0, 1, None, None, None, None,
+            np.zeros(1, dtype=bool), np.zeros(1, dtype=bool),
+            0, 0, float("inf"), float("inf"), angle, 0.0,
+        )
+
+    delta = QUALITY_PROFILES["balanced"].reprojection_threshold_px
+
+    # Daylight parallax (>= reference): the original limits, unchanged.
+    rot, direction, px = _closure_limits(delta, [evidence_with_angle(20.0)])
+    assert rot == pytest.approx(0.5)
+    assert direction == pytest.approx(1.5)
+    assert px == pytest.approx(2.0)
+
+    # Tiny-baseline night pair (2 deg): direction limit x5, others fixed.
+    rot, direction, px = _closure_limits(delta, [evidence_with_angle(2.0)])
+    assert rot == pytest.approx(0.5)
+    assert direction == pytest.approx(1.5 * 5.0)
+    assert px == pytest.approx(2.0)
+
+    # The WEAKEST pair governs.
+    _, direction, _ = _closure_limits(
+        delta, [evidence_with_angle(20.0), evidence_with_angle(2.0)],
+    )
+    assert direction == pytest.approx(1.5 * 5.0)
+
+    # Zero/absent parallax cannot open the gate arbitrarily wide.
+    _, direction, _ = _closure_limits(delta, [evidence_with_angle(0.0)])
+    assert direction == pytest.approx(1.5)  # no measurable angles -> reference
+    _, direction, _ = _closure_limits(delta, [evidence_with_angle(0.5)])
+    assert direction == pytest.approx(1.5 * 10.0)  # clamped at x10
+
+    # Planar-translated pairs contribute their planar parallax.
+    planar = PairModelEvidence(
+        0, 1, None, None, None, None,
+        np.zeros(1, dtype=bool), np.zeros(1, dtype=bool),
+        0, 0, float("inf"), float("inf"), 0.0, 0.0,
+        planar_median_triangulation_angle_deg=25.0,
+    )
+    _, direction, _ = _closure_limits(delta, [planar])
+    assert direction == pytest.approx(1.5)

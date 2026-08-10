@@ -1257,6 +1257,50 @@ def _rotation_error_degrees(first: Any, second: Any) -> float:
     return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
 
 
+#: Parallax at (and above) which a pairwise translation direction is treated
+#: as fully observed.  Below it, direction uncertainty grows as roughly
+#: reference/parallax — a 0.5 m baseline against a 30 m night street measures
+#: its direction to a few degrees at best, and holding such a rig to the
+#: daylight tolerance rejected captures whose pairs were individually superb
+#: (470/586/364 inliers at ~0.9 px; found live 2026-08-10).
+_REFERENCE_PARALLAX_DEG = 10.0
+_MAX_DIRECTION_TOLERANCE_SCALE = 10.0
+
+
+def _closure_limits(
+    delta: float, pair_evidence: Sequence[PairModelEvidence],
+) -> tuple[float, float, float]:
+    """Closure gates: fixed rotation and pixel bars, observability-scaled direction.
+
+    Rotation closes from the full match set and pixel closure lives in image
+    space — neither depends on baseline length, so their limits stay fixed
+    (scaled only by the quality profile, as before).  The translation
+    DIRECTION limit additionally scales with the weakest pair's parallax:
+    direction is only as measurable as the triangulation angle that observed
+    it.  Clamped so a degenerate zero-parallax pair cannot open the gate
+    arbitrarily wide.
+    """
+    scale = delta / QUALITY_PROFILES["balanced"].reprojection_threshold_px
+    pair_angles: list[float] = []
+    for evidence in pair_evidence:
+        angle = max(
+            float(evidence.median_triangulation_angle_deg or 0.0),
+            float(evidence.planar_median_triangulation_angle_deg or 0.0),
+        )
+        if angle > 0.0:
+            pair_angles.append(angle)
+    weakest = min(pair_angles) if pair_angles else _REFERENCE_PARALLAX_DEG
+    direction_scale = min(
+        _MAX_DIRECTION_TOLERANCE_SCALE,
+        max(1.0, _REFERENCE_PARALLAX_DEG / weakest),
+    )
+    return (
+        0.5 * scale,
+        1.5 * scale * direction_scale,
+        2.0 * scale,
+    )
+
+
 def measure_three_view_closure(refined: RefinedRig) -> ClosureMetrics:
     """Measure pose-edge disagreement and closed-track pixel residual."""
     np = _require_numpy()
@@ -1426,17 +1470,29 @@ def refine_rig(rig: CameraRig, tracks: Any, intrinsics: Any,
         _intrinsics=intrinsics_tuple,
     )
     refined = replace(provisional, closure=measure_three_view_closure(provisional))
-    if mode == "translated" and len(rotations) >= 3:
-        scale = delta / QUALITY_PROFILES["balanced"].reprojection_threshold_px
+    # The closure weld needs an independent CLOSING pair (an edge not anchored
+    # at photo 1).  Anchor-star rigs have none — their pose-vs-evidence drift
+    # is the refinement doing its job, not an inconsistency to reject.
+    has_closing_pair = not rig._pair_evidence or any(
+        int(evidence.frame_a) != 0 for evidence in rig._pair_evidence
+    )
+    if mode == "translated" and len(rotations) >= 3 and has_closing_pair:
+        rotation_limit, direction_limit, pixel_limit = _closure_limits(
+            delta, rig._pair_evidence,
+        )
         closure = refined.closure
         if (
-            closure.rotation_error_deg > 0.5 * scale
-            or closure.translation_direction_error_deg > 1.5 * scale
-            or closure.median_reprojection_px > 2.0 * scale
+            closure.rotation_error_deg > rotation_limit
+            or closure.translation_direction_error_deg > direction_limit
+            or closure.median_reprojection_px > pixel_limit
         ):
             raise MotionModelError(
                 "inconsistent_third_view",
-                "three-view closure exceeded deterministic rotation, translation, or pixel limits",
+                "three-view closure exceeded deterministic limits "
+                f"(rotation {closure.rotation_error_deg:.2f}deg vs {rotation_limit:.2f}, "
+                f"direction {closure.translation_direction_error_deg:.2f}deg vs "
+                f"{direction_limit:.2f}, pixel {closure.median_reprojection_px:.2f}px "
+                f"vs {pixel_limit:.2f})",
             )
     return refined
 

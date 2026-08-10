@@ -30,7 +30,7 @@ FOCAL_MM = 35.0
 SENSOR_WIDTH_MM = 40.0
 SENSOR_HEIGHT_MM = 30.0
 FOCAL_PX = FOCAL_MM * WIDTH / SENSOR_WIDTH_MM
-SOLVER_SEED = 1907
+SOLVER_SEED = 1  # re-rolled 2026-08-10: pair_topology entered the fingerprint
 
 
 def _camera_rotation() -> np.ndarray:

@@ -134,6 +134,7 @@ def _cache_fingerprint(
     learned_anchor_fallback: bool = False,
     baseline_m: float = 0.0,
     learned_scale_fallback: bool = False,
+    pair_topology: str = "auto",
 ) -> str:
     """Hash every content-bearing link and persisted widget in socket order."""
     payload = {
@@ -161,6 +162,7 @@ def _cache_fingerprint(
             "learned_anchor_fallback": bool(learned_anchor_fallback),
             "baseline_m": float(baseline_m),
             "learned_scale_fallback": bool(learned_scale_fallback),
+            "pair_topology": str(pair_topology),
         },
     }
     encoded = json.dumps(
@@ -418,6 +420,7 @@ class AtlasMultiViewSolve:
                 "learned_anchor_fallback": ("BOOLEAN", {"default": False}),
                 "baseline_m": ("FLOAT", {"default": 0.0, "min": 0.0, "step": 0.01}),
                 "learned_scale_fallback": ("BOOLEAN", {"default": False}),
+                "pair_topology": (["auto", "anchor_star"], {"default": "auto"}),
             },
         }
 
@@ -440,6 +443,7 @@ class AtlasMultiViewSolve:
         learned_anchor_fallback: bool = False,
         baseline_m: float = 0.0,
         learned_scale_fallback: bool = False,
+        pair_topology: str = "auto",
     ) -> str:
         return _cache_fingerprint(
             image_1, image_2, image_3,
@@ -447,6 +451,7 @@ class AtlasMultiViewSolve:
             plate_ref_1, plate_ref_2, plate_ref_3,
             capture_mode, camera_height_m, match_quality, seed,
             learned_anchor_fallback, baseline_m, learned_scale_fallback,
+            pair_topology,
         )
 
     def solve(
@@ -467,6 +472,7 @@ class AtlasMultiViewSolve:
         learned_anchor_fallback: bool = False,
         baseline_m: float = 0.0,
         learned_scale_fallback: bool = False,
+        pair_topology: str = "auto",
     ):
         np = _require_numpy()
         frames = [
@@ -503,6 +509,7 @@ class AtlasMultiViewSolve:
                 anchor_up_hint=anchor_up_hint,
                 anchor_up_hint_source=anchor_up_hint_source,
                 baseline_m=float(baseline_m),
+                pair_topology=pair_topology,
             ),
         )
         details = outcome.diagnostics.to_dict()
@@ -576,6 +583,7 @@ class AtlasMultiViewSolveBurst:
                 "learned_scale_fallback": ("BOOLEAN", {"default": False}),
                 "write_plates": ("BOOLEAN", {"default": True}),
                 "plates_dir": ("STRING", {"default": "atlas_exports/burst_plates"}),
+                "pair_topology": (["auto", "anchor_star"], {"default": "auto"}),
             },
         }
 
@@ -628,6 +636,7 @@ class AtlasMultiViewSolveBurst:
         learned_scale_fallback: bool = False,
         write_plates: bool = True,
         plates_dir: str = "atlas_exports/burst_plates",
+        pair_topology: str = "auto",
     ) -> str:
         try:
             files = cls._selected_files(burst_dir, frame_stride, max_frames)
@@ -653,6 +662,7 @@ class AtlasMultiViewSolveBurst:
                 "learned_scale_fallback": bool(learned_scale_fallback),
                 "write_plates": bool(write_plates),
                 "plates_dir": str(plates_dir),
+                "pair_topology": str(pair_topology),
             },
         }
         return hashlib.sha256(
@@ -728,6 +738,7 @@ class AtlasMultiViewSolveBurst:
         learned_scale_fallback: bool = False,
         write_plates: bool = True,
         plates_dir: str = "atlas_exports/burst_plates",
+        pair_topology: str = "auto",
     ):
         np = _require_numpy()
         from atlas_camera.raw.pipeline import import_raw
@@ -766,6 +777,7 @@ class AtlasMultiViewSolveBurst:
                 anchor_up_hint=anchor_up_hint,
                 anchor_up_hint_source=anchor_up_hint_source,
                 baseline_m=float(baseline_m),
+                pair_topology=pair_topology,
             ),
         )
         details = outcome.diagnostics.to_dict()

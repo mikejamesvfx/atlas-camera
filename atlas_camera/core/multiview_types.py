@@ -62,12 +62,21 @@ class MultiViewSettings:
     #: anchor for a translated solve — a direct measurement of the recovered
     #: baseline needs no ground plane at all.
     baseline_m: float = 0.0
+    #: Pair topology. "auto" keeps the full triangle up to three frames (the
+    #: closure constraint) and anchor-star beyond.  "anchor_star" forces
+    #: (photo 1, i) pairs at every count — the burst shape — trading the
+    #: three-view closure weld for tolerance of tiny-baseline noise; relative
+    #: scales then couple only through shared multi-frame tracks in
+    #: refinement.
+    pair_topology: str = "auto"
 
     def __post_init__(self) -> None:
         if self.capture_mode not in ("auto", "translated", "rotation_only"):
             raise ValueError(f"capture_mode must be auto, translated, or rotation_only; got {self.capture_mode!r}")
         if self.match_quality not in QUALITY_PROFILES:
             raise ValueError(f"match_quality must be balanced, conservative, permissive, or salvage; got {self.match_quality!r}")
+        if self.pair_topology not in ("auto", "anchor_star"):
+            raise ValueError(f"pair_topology must be auto or anchor_star; got {self.pair_topology!r}")
 
 
 @dataclass(frozen=True)

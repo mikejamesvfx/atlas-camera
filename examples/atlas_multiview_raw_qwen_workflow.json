@@ -571,6 +571,14 @@
             "name": "learned_scale_fallback"
           },
           "link": null
+        },
+        {
+          "name": "pair_topology",
+          "type": "COMBO",
+          "widget": {
+            "name": "pair_topology"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -610,7 +618,8 @@
         "fixed",
         false,
         0.0,
-        false
+        false,
+        "auto"
       ],
       "title": "DETERMINISTIC REGISTRATION \u00b7 balanced default \u00b7 permissive only after overlap review"
     },
