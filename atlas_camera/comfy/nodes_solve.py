@@ -499,10 +499,39 @@ class AtlasAttachSourcePlate:
                 "solve": ("ATLAS_SOLVE",),
                 "plate_ref": ("ATLAS_PLATE_REF",),
             },
+            "optional": {
+                "source_name": ("STRING", {"default": "",
+                    "tooltip": "Blank = the PRIMARY source plate (the original behaviour). "
+                               "A ProjectionSource name (e.g. 'photo_2' from a multi-view "
+                               "solve) retargets that source's plate instead, which is the "
+                               "only way a converted plate reaches a NON-anchor camera - "
+                               "without it a two-photo rig delivers one ACEScg plate and "
+                               "one still tagged Linear Rec.709, and only the anchor plate "
+                               "renders correctly in Nuke."}),
+            },
         }
 
-    def attach(self, solve, plate_ref):
-        return (_clone_solve_with_metadata(solve, source_plate=plate_ref),)
+    def attach(self, solve, plate_ref, source_name=""):
+        name = str(source_name or "").strip()
+        if not name:
+            return (_clone_solve_with_metadata(solve, source_plate=plate_ref),)
+
+        out = copy.deepcopy(solve)
+        sources = list(getattr(out, "projection_sources", None) or [])
+        matched = [s for s in sources if s.name == name]
+        if not matched:
+            known = ", ".join(sorted(s.name for s in sources)) or "(none)"
+            raise RuntimeError(
+                f"AtlasAttachSourcePlate: no projection source named {name!r} on this "
+                f"solve. Known sources: {known}. Leave source_name blank to attach the "
+                f"primary source plate.")
+        for source in matched:
+            source.plate_ref = plate_ref
+            # image_b64 is the browser preview built from the OLD plate; leaving a
+            # stale one would show the pre-conversion pixels in the viewport while
+            # the exporters reference the new file.
+            source.image_b64 = plate_ref.preview_b64 or source.image_b64
+        return (out,)
 
 
 class AtlasLoadRAW:

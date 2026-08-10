@@ -752,6 +752,13 @@ class AtlasExportPlateEXR:
     RETURN_NAMES = ("exr_path", "plate_ref", "report")
     FUNCTION = "export"
     CATEGORY = "Atlas/advanced"
+    # Writing a file IS the node's job, so it is terminal like every sibling
+    # exporter (Nuke / Maya / relief mesh all set this). Without it ComfyUI only
+    # runs the node when something consumes an output, and a graph that converts
+    # a plate to ACEScg purely for delivery has no consumer — so the conversion
+    # was skipped in silence and the workflow shipped Linear Rec.709 plates while
+    # reporting success (found live on the sh004 two-RAW delivery, 2026-08-10).
+    OUTPUT_NODE = True
 
     @classmethod
     def INPUT_TYPES(cls):
