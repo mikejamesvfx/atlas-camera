@@ -204,6 +204,17 @@ class AtlasDeriveProjectionGeometry:
                                "affects the relief_mesh branch (geometry_mode both/relief_mesh); "
                                "the primitives/wall-fitting branch is unaffected. Any resolution - "
                                "resized to match depth."}),
+                "sub_quad_boundary": ("BOOLEAN", {"default": False,
+                    "tooltip": "Cut a torn cell AT the depth cliff instead of deleting the whole "
+                               "cell. Tearing is per grid cell, so a silhouette can only turn in "
+                               "whole-cell steps AND a cell of real surface is lost on both sides "
+                               "of every cliff - measured 5.67px mean boundary error at grid 128 "
+                               "on a 1024px plate (step 8px), i.e. WORSE than the 4px quantization "
+                               "bound. This finds the cliff in the full-resolution depth and "
+                               "rebuilds each side up to it, never joining them: 5.67 -> 1.43px, "
+                               "and 1.35px with boundary_smooth_iterations on top. Costs ~5% more "
+                               "vertices (it scales with silhouette LENGTH, not mesh area). The "
+                               "tear itself is untouched - same thresholds, same cells torn."}),
             },
         }
 
@@ -228,7 +239,7 @@ class AtlasDeriveProjectionGeometry:
                geometry_mode="relief_mesh", relief_grid=128,
                primitive_method="azimuth_walls", scene_type="manual",
                relief_quality="custom", depth_edge_rel=0.5,
-               exclude_mask=None):
+               exclude_mask=None, sub_quad_boundary=False):
         torch = _require_torch()
         np = _require_numpy()
         preset = self._SCENE_TYPE_PRESETS.get(scene_type)
@@ -336,12 +347,15 @@ class AtlasDeriveProjectionGeometry:
                 horizon_y=horizon_y,
                 exclude_mask=resolved_exclude,
                 apply_sky_heuristic=resolved_exclude is None,
+                sub_quad_boundary=bool(sub_quad_boundary),
             )
 
             stats["relief_mesh"] = {
                 "n_vertices": mesh.stats["n_vertices"],
                 "n_faces": mesh.stats["n_faces"],
             }
+            if "sub_quad_cut" in mesh.stats:
+                stats["relief_mesh"]["sub_quad_cut"] = mesh.stats["sub_quad_cut"]
             keep.append(relief_mesh_primitive(mesh))
             hole_mask_arr = mesh.hole_mask.astype(np.float32)
 
@@ -802,6 +816,17 @@ class AtlasDeriveReliefMesh:
                 "quad_coherence": ("BOOLEAN", {"default": True,
                     "tooltip": "Reject both triangles when either half of a grid quad fails. "
                                "Prevents one surviving diagonal from becoming a stretched UV wedge."}),
+                "sub_quad_boundary": ("BOOLEAN", {"default": False,
+                    "tooltip": "Cut a torn cell AT the depth cliff instead of deleting the whole "
+                               "cell. Tearing is per grid cell, so a silhouette can only turn in "
+                               "whole-cell steps AND a cell of real surface is lost on both sides "
+                               "of every cliff - measured 5.67px mean boundary error at grid 128 "
+                               "on a 1024px plate (step 8px), i.e. WORSE than the 4px quantization "
+                               "bound. This finds the cliff in the full-resolution depth and "
+                               "rebuilds each side up to it, never joining them: 5.67 -> 1.43px, "
+                               "and 1.35px with boundary_smooth_iterations on top. Costs ~5% more "
+                               "vertices (it scales with silhouette LENGTH, not mesh area). The "
+                               "tear itself is untouched - same thresholds, same cells torn."}),
             },
         }
 
@@ -811,7 +836,8 @@ class AtlasDeriveReliefMesh:
                depth_edge_rel=0.5,
                exclude_mask=None, outlier_mask=None,
                max_edge_factor=12.0,
-               sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True):
+               sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
+               sub_quad_boundary=False):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -851,6 +877,7 @@ class AtlasDeriveReliefMesh:
             normal_edge_deg=(float(normal_edge_deg) if float(normal_edge_deg) > 0 else None),
             quad_coherence=bool(quad_coherence),
             apply_sky_heuristic=(resolved_exclude is None) and bool(sky_heuristic),
+            sub_quad_boundary=bool(sub_quad_boundary),
         )
 
         stats = {
@@ -862,6 +889,21 @@ class AtlasDeriveReliefMesh:
                 "quad_coherence": mesh.stats.get("quad_coherence", bool(quad_coherence)),
             },
         }
+        # Cutting cells emits faces from partial quads, which deflates
+        # torn_fraction against its whole-quad denominator. Carry both figures so
+        # the QA gate and every earlier measurement keep comparing like with like,
+        # and say out loud when the cell budget truncated the pass.
+        if "sub_quad_cut" in mesh.stats:
+            cut_info = mesh.stats["sub_quad_cut"]
+            stats["relief_mesh"]["sub_quad_cut"] = cut_info
+            stats["relief_mesh"]["torn_fraction_whole_quad"] = mesh.stats[
+                "torn_fraction_whole_quad"]
+            if cut_info["budget_truncated"]:
+                print(f"[Atlas] AtlasDeriveReliefMesh: sub_quad_boundary cut "
+                      f"{cut_info['max_cut_cells']} of "
+                      f"{cut_info['n_candidate_cells']} cliff cells and stopped at "
+                      f"the budget — the rest stay whole-quad torn. Raise "
+                      f"max_cut_cells or lower relief_grid.")
         # An explicit exclude_mask REPLACES the sky heuristic (line above), and
         # nothing said so out loud: a mask wired with the wrong polarity meshes
         # the sky and still reports success. Record coverage so the polarity is

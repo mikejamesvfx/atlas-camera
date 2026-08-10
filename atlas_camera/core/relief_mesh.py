@@ -263,6 +263,8 @@ def build_relief_mesh(
     quad_coherence: bool = False,
     live_fill_holes: bool = False,
     live_fill_edge_sawteeth: bool = False,
+    sub_quad_boundary: bool = False,
+    max_cut_cells: int = 20000,
 ) -> ReliefMesh:
 
     """Triangulate a forward-z depth map into a world-space relief mesh.
@@ -624,6 +626,27 @@ def build_relief_mesh(
             s_near = float(band_min_m) / fwd[near_bad]
             pts[near_bad] = cam + s_near[:, None] * (pts[near_bad] - cam)
 
+    def _unproject_px(u_px: float, v_px: float, depth_value: float):
+        """One fractional source pixel + depth -> the same world point the
+        lattice would land on. Every step above, in the same order, so a
+        sub-quad cut vertex can never drift from the lattice edge it joins."""
+        d_one = float(depth_value)
+        local = np.array([
+            (float(u_px) - cx) / fx * d_one,
+            -(float(v_px) - cy) / fy * d_one,
+            -d_one,
+        ], dtype=np.float64)
+        point = R_cw @ local + cam
+        point = cam + float(scale) * (point - cam)
+        if floor_clamp is not None and cam[1] > floor_clamp and point[1] < floor_clamp:
+            s_fix = (cam[1] - floor_clamp) / max(cam[1] - point[1], 1e-9)
+            point = cam + s_fix * (point - cam)
+        if band_min_m is not None:
+            fwd_one = -float((point - cam) @ R_cw[:, 2])
+            if 1e-6 < fwd_one < float(band_min_m):
+                point = cam + (float(band_min_m) / fwd_one) * (point - cam)
+        return point
+
     # UVs: each vertex is its own image pixel. OBJ vt origin is bottom-left.
     u_uv = cols.astype(np.float64) / max(width - 1, 1)
     v_uv = 1.0 - rows.astype(np.float64) / max(height - 1, 1)
@@ -783,15 +806,59 @@ def build_relief_mesh(
     edge_risk_grid[~ring_two] = 0.0
     edge_risk_grid[boundary] = 1.0
 
+    # Sub-quad cut: a cell torn across a single depth cliff still owns real
+    # surface on BOTH sides of that cliff, and deleting the whole cell throws it
+    # away — which is why the measured boundary error exceeds the step/2
+    # quantization bound. Recover each sheet up to the cliff WITHOUT joining
+    # them. Runs LAST, purely additively: hole_mask, torn_fraction, the stretch
+    # diagnostic and edge_risk are all computed from the lattice above and stay
+    # comparable with every historical measurement. Opt-in — it changes vertex
+    # and face counts, so it is the artist's explicit choice, never a silent
+    # reshape of every mesh.
+    cut_positions = cut_uv_pixels = None
+    cut_info = None
+    if sub_quad_boundary:
+        from atlas_camera.core.subquad_cut import cut_torn_quads
+
+        cut = cut_torn_quads(
+            grid_depth=d, grid_valid=vgrid, rows=rows, cols=cols,
+            torn=~(ok_a & ok_b), depth_full=depth, valid_full=valid_full,
+            lattice_index=idx, unproject=_unproject_px,
+            max_cut_cells=int(max_cut_cells),
+        )
+        cut_info = cut["stats"]
+        if len(cut["faces"]):
+            cut_positions = cut["positions"]
+            cut_uv_pixels = cut["uv_pixels"]
+            faces = np.concatenate(
+                [faces, cut["faces"].astype(faces.dtype)], axis=0)
+
     verts = pts.reshape(-1, 3)
     uvs_flat = uvs.reshape(-1, 2)
+    edge_risk_flat = edge_risk_grid.reshape(-1)
+
+    if cut_positions is not None:
+        # Sub-quad cut vertices sit at fractional pixels, so their UVs come
+        # straight from that pixel — the projective UV bake makes this exact, and
+        # it is why a heightfield with image-registered UVs can be cut sub-cell
+        # at all. edge_risk is 1.0: these vertices ARE the open boundary.
+        verts = np.concatenate([verts, cut_positions], axis=0)
+        cut_uvs = np.stack([
+            cut_uv_pixels[:, 0] / max(width - 1, 1),
+            1.0 - cut_uv_pixels[:, 1] / max(height - 1, 1),
+        ], axis=1)
+        uvs_flat = np.concatenate([uvs_flat, cut_uvs], axis=0)
+        edge_risk_flat = np.concatenate([
+            edge_risk_flat,
+            np.ones(len(cut_positions), dtype=edge_risk_flat.dtype),
+        ], axis=0)
 
     # Compact to referenced vertices only (clean OBJ for DCC import).
     used, remap = np.unique(faces.reshape(-1), return_inverse=True)
     faces = remap.reshape(-1, 3).astype(np.int32)
     verts = verts[used].astype(np.float32)
     uvs_flat = uvs_flat[used].astype(np.float32)
-    edge_risk = edge_risk_grid.reshape(-1)[used].astype(np.float32)
+    edge_risk = edge_risk_flat[used].astype(np.float32)
 
     n_quads = 2 * (nr - 1) * (nc - 1)
     stats = {
@@ -807,6 +874,14 @@ def build_relief_mesh(
     }
     if live_grid_repair_info is not None:
         stats["live_grid_repair"] = live_grid_repair_info
+    if cut_info is not None:
+        # torn_fraction above counts EMITTED faces against whole-quad slots, so a
+        # cut cell — which emits faces without being whole — deflates it. Report
+        # the whole-quad figure alongside so the QA gates (`torn_excessive`) and
+        # every historical measurement keep comparing like with like.
+        stats["sub_quad_cut"] = cut_info
+        stats["torn_fraction_whole_quad"] = float(
+            1.0 - (len(faces) - cut_info["n_new_faces"]) / max(n_quads, 1))
 
     return ReliefMesh(vertices=verts, faces=faces, uvs=uvs_flat, stats=stats,
                       hole_mask=hole_mask, filled_mask=filled_mask_full,
