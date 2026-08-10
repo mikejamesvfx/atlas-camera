@@ -90,3 +90,38 @@ def test_planar_patch_mask_is_reprojected_for_layer_color_and_proxy_pass():
     assert "generated planar hole islands" in SOURCE
     assert "patch_render_mask: patchMaskB64" in SOURCE
     assert 'passes: ["shaded", "depth", "normal", "mask", "patch_render_mask"]' in SOURCE
+
+
+def test_the_matte_feather_is_not_gated_on_the_occlusion_toggle():
+    """A silhouette matte says nothing about depth occlusion.
+
+    The feather used to sit inside `uOccludePrimary > 0.5` and fall back to a
+    hard `discard` at 0.5 with the toggle off — and that toggle is off by
+    default, so the shipped path put a binary cut back on the exact edge the
+    matte exists to soften.
+    """
+    assert "} else if (matte < 0.5) {" not in SOURCE, (
+        "the matte's hard-discard fallback is back")
+    block = SOURCE.split("if (uHasMatte > 0.5) {", 1)[1].split("\n    }", 1)[0]
+    # Comments in this block explain the gate that was REMOVED, so strip them
+    # before looking for the gate itself.
+    code = "\n".join(line for line in block.splitlines()
+                     if not line.strip().startswith("//"))
+    assert "uOccludePrimary" not in code
+    assert "discard" not in code
+
+
+def test_offscreen_render_targets_are_multisampled_except_the_measuring_probe():
+    """The canvas is antialias:true but WebGLRenderTarget defaults to samples:0,
+    so every offscreen render came back aliased while the viewport looked smooth.
+
+    The 160px coverage probe is the one deliberate exception: it is MEASURED,
+    and resolving samples would blend partial coverage into the counts.
+    """
+    import re
+    targets = re.findall(r"new THREE\.WebGLRenderTarget\((.*?)\);", SOURCE)
+    assert targets, "no render targets found — the pin has drifted"
+    sampled = [t for t in targets if "samples: 4" in t]
+    unsampled = [t for t in targets if "samples: 4" not in t]
+    assert len(sampled) == 3, f"expected 3 multisampled targets, got {sampled}"
+    assert len(unsampled) == 1 and "W, H" in unsampled[0]

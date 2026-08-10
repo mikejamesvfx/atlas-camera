@@ -1247,8 +1247,12 @@ def serialize_proxy_geometry(
     out: list[dict[str, Any]] = []
     for prim in prims:
         flat = [float(v) for row in prim.transform_matrix for v in row]
+        # The matte is a str and would otherwise sail through this scalar filter,
+        # putting a second full-resolution PNG in the payload beside the copy
+        # lifted to the top level below.
         meta = {k: v for k, v in (prim.metadata or {}).items()
-                if isinstance(v, (str, int, float, bool)) or v is None}
+                if (isinstance(v, (str, int, float, bool)) or v is None)
+                and k != "silhouette_matte_b64"}
         entry: dict[str, Any] = {
             "name": prim.name,
             "type": prim.primitive_type,
@@ -1265,6 +1269,11 @@ def serialize_proxy_geometry(
             # Per-vertex linear coverage risk for viewport-only soft tear edges.
             # Exporters never consume it; positions/faces/UVs remain unchanged.
             entry["edge_risk"] = md.get("edge_risk", [])
+            # Full-resolution silhouette matte (PNG data URI). Lifted to the top
+            # level beside edge_risk because it is the same KIND of thing — a
+            # viewport-only coverage field the geometry does not encode — and the
+            # projection material reads it from there, not out of metadata.
+            entry["silhouette_matte_b64"] = md.get("silhouette_matte_b64", "")
         out.append(entry)
     return out
 

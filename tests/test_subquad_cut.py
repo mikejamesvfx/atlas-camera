@@ -280,3 +280,81 @@ def test_a_saddle_cell_is_left_torn_rather_than_guessed():
     assert result["stats"]["n_saddle_cells"] == 1
     assert result["stats"]["n_cut_cells"] == 0
     assert len(result["faces"]) == 0
+
+
+# ------------------------------------------- the silhouette matte (sky/exclusion)
+
+
+class TestSilhouetteMatte:
+    """The OTHER half of the staircase, and a structurally different one.
+
+    At a depth cliff the near and far sheets project to the SAME pixel, so one
+    scalar matte cannot keep one and cut the other — that is `sub_quad_boundary`'s
+    job. At a sky/exclusion boundary there is no second sheet, so a full-res matte
+    cuts the true edge exactly. That asymmetry is why the doctrine's live number
+    was a SKYLINE strip, and why these two features do not overlap.
+    """
+
+    SLOPE_SKY, INTERCEPT_SKY = 0.35, 150.0
+
+    def _sky(self):
+        ys, xs = np.mgrid[0:H, 0:W].astype(np.float64)
+        return ys < (xs * self.SLOPE_SKY + self.INTERCEPT_SKY)
+
+    def _build(self, **kw):
+        flat = np.full((H, W), 8.0, dtype=np.float32)
+        base = dict(BUILD)
+        base.update(apply_sky_heuristic=False, exclude_mask=self._sky())
+        return build_relief_mesh(flat, **base, **kw)
+
+    def test_off_by_default(self):
+        assert self._build().silhouette_alpha is None
+
+    def test_the_matte_crossing_tracks_the_true_skyline_not_the_lattice(self):
+        mesh = self._build(silhouette_matte=True)
+        alpha = mesh.silhouette_alpha
+        assert alpha is not None and alpha.shape == (H, W)
+
+        step = max(H, W) / GRID
+        errors = []
+        for col in range(4, W - 4):
+            column = alpha[:, col]
+            crossings = np.where((column[:-1] < 0.5) & (column[1:] >= 0.5))[0]
+            if crossings.size:
+                true_row = col * self.SLOPE_SKY + self.INTERCEPT_SKY
+                errors.append(abs(crossings[0] + 0.5 - true_row))
+        errors = np.asarray(errors)
+        assert errors.size > W // 2
+        # Lattice quantization would be ~step/2; the matte must be far better or
+        # it is just the staircase again at full resolution.
+        assert float(errors.mean()) < 0.25 * step
+
+    def test_it_is_not_derived_from_hole_mask(self):
+        """hole_mask's tear contribution is a nearest upsample of the quad
+        lattice, so deriving the matte from it would ship the staircase."""
+        mesh = self._build(silhouette_matte=True)
+        binary = mesh.silhouette_alpha >= 0.5
+        assert not np.array_equal(binary, ~np.asarray(mesh.hole_mask, dtype=bool))
+
+    def test_the_matte_is_soft_at_the_boundary_and_hard_elsewhere(self):
+        """The shader feathers with smoothstep(0.5 +/- fwidth), so the field has
+        to CROSS 0.5 rather than jump it, and must be flat well away from the
+        edge or the feather would eat real surface."""
+        alpha = self._build(silhouette_matte=True).silhouette_alpha
+        assert 0.0 <= float(alpha.min()) and float(alpha.max()) <= 1.0
+        partial = (alpha > 0.05) & (alpha < 0.95)
+        assert partial.any(), "no transition band — nothing to feather"
+        assert float(partial.mean()) < 0.05, "the ramp is too wide to be an edge"
+
+    def test_the_skirt_and_the_matte_are_one_switch(self):
+        """An unmatted skirt carries replicated sky pixels on receding geometry
+        (found live on monument valley), which is why edge_overhang_cells forbids
+        growing into the exclusion at all. The matte lifts that ban — so the ban
+        must only lift WITH the matte."""
+        without = self._build(edge_overhang_cells=2)
+        with_matte = self._build(edge_overhang_cells=2, silhouette_matte=True)
+        # Without the matte the skirt cannot enter the exclusion, so the mesh is
+        # unchanged from having no skirt at all there.
+        assert without.silhouette_alpha is None
+        assert len(with_matte.vertices) > len(without.vertices), (
+            "the matte did not license any skirt growth — nothing to cut back")

@@ -330,6 +330,10 @@ Geometry & projection
   (default off) cuts a torn cell at the cliff instead of deleting it whole —
   same grid, same thresholds, same cells torn, boundary 5.67→1.43px. The two
   sheets must never share a vertex.
+- Two staircases, two fixes, no overlap: `sub_quad_boundary` for DEPTH CLIFFS
+  (geometry — both sheets share a pixel, so no matte can help), `silhouette_matte`
+  for the SKY/EXCLUSION edge (a full-res matte cutting a skirt back). The skirt
+  and the matte are ONE switch — an unmatted skirt is a measured defect.
 - Scoring tearing needs `tear_metrics.score_tears(render_depth=...)`. Alpha
   alone reads a closed coverage gap as a missed edge and cannot tell a cut from
   a mesh that never tears. The step test is RELATIVE to the nearby true edge's

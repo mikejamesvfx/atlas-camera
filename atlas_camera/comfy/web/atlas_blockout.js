@@ -770,15 +770,17 @@ const PROJECTION_FRAGMENT_SHADER = `
     // same projected pixel as the photo itself, so it needs no separate UVs.
     if (uHasMatte > 0.5) {
       float matte = texture2D(uMatte, uv).r;
-      if (uOccludePrimary > 0.5) {
-        // Mattes are linear DATA. Filter only their coverage; never pass them
-        // through the RGB display transform below. fwidth gives a roughly
-        // one-pixel transition at any viewport scale.
-        float matteFeather = clamp(0.5 * fwidth(matte), 0.04, 0.25);
-        coverage *= smoothstep(0.5 - matteFeather, 0.5 + matteFeather, matte);
-      } else if (matte < 0.5) {
-        discard;
-      }
+      // Mattes are linear DATA. Filter only their coverage; never pass them
+      // through the RGB display transform below. fwidth gives a roughly
+      // one-pixel transition at any viewport scale.
+      //
+      // Feathered UNCONDITIONALLY. This used to sit inside uOccludePrimary and
+      // fall back to a hard discard at 0.5 with the toggle off, which put a
+      // binary cut back on the exact edge the matte exists to soften — and the
+      // toggle is off by default. Coverage from a silhouette matte says nothing
+      // about depth occlusion; the two were never related.
+      float matteFeather = clamp(0.5 * fwidth(matte), 0.04, 0.25);
+      coverage *= smoothstep(0.5 - matteFeather, 0.5 + matteFeather, matte);
     }
     vec3 toCam = normalize(uCamPos - vWorldPos);
     float facing = abs(dot(normalize(vWorldNormal), toCam));
@@ -1428,7 +1430,13 @@ function atlasReadRenderTargetAsBase64(renderer, renderTarget, width, height, mi
 
 function atlasRenderSceneToBase64(renderer, scene, camera, width, height, options = {}) {
   if (!THREE) return null;
-  const renderTarget = options.renderTarget || new THREE.WebGLRenderTarget(width, height);
+  // `samples` matters here and was never set: the visible canvas is created with
+  // antialias:true, but a WebGLRenderTarget defaults to samples:0, so every
+  // OFFSCREEN render — previews, baked path frames, the output desk — came back
+  // strictly aliased while the viewport beside it looked smooth. Silhouettes are
+  // exactly where that shows. Ignored on WebGL1.
+  const renderTarget = options.renderTarget
+    || new THREE.WebGLRenderTarget(width, height, { samples: 4 });
   const ownsRenderTarget = !options.renderTarget;
   const hasOverrideMaterial = Object.prototype.hasOwnProperty.call(options, "overrideMaterial");
   const prevOverrideMaterial = scene.overrideMaterial;
@@ -1463,7 +1471,7 @@ async function renderAllPasses(
     if (obj && obj.visible) { obj.visible = false; hidden.push(obj); }
   }
 
-  const rt = new THREE.WebGLRenderTarget(width, height);
+  const rt = new THREE.WebGLRenderTarget(width, height, { samples: 4 });
 
   function renderToBase64(overrideMat) {
     const options = { renderTarget: rt };
@@ -5154,6 +5162,9 @@ function buildNodeUI(node, containerEl) {
     const H = Math.max(8, Math.round(W / (camera.aspect || 1.7778)));
     if (!node._atlasProbeRT || node._atlasProbeRT.width !== W || node._atlasProbeRT.height !== H) {
       node._atlasProbeRT?.dispose();
+      // Deliberately NOT multisampled, unlike every other target here: this
+      // 160px probe is MEASURED for coverage, not looked at, and resolving
+      // samples would blend partial coverage into the very counts it reports.
       node._atlasProbeRT = new THREE.WebGLRenderTarget(W, H);
     }
     const rt = node._atlasProbeRT;
@@ -6029,7 +6040,9 @@ function buildNodeUI(node, containerEl) {
     try {
       const frames = [];
       const bakedFrameIndices = [];
-      outputRt = new THREE.WebGLRenderTarget(W, H);
+      // Baked frames are a deliverable, not a preview — MSAA here is the
+      // difference between a clean silhouette and a stair-stepped one.
+      outputRt = new THREE.WebGLRenderTarget(W, H, { samples: 4 });
       camera.aspect = W / H;
       // Baked frames honor the 🔭 playback lens so the recording matches the
       // preview exactly (the USD camera ships the solved intrinsics — plus
@@ -7117,12 +7130,24 @@ function buildNodeUI(node, containerEl) {
         });
       };
 
+      // The primary relief mesh's OWN silhouette matte, when AtlasDeriveReliefMesh
+      // shipped one. Patch layers have always had `mask_b64`; the primary — the
+      // layer whose grid-quantized skyline is the visible staircase — never did,
+      // so uHasMatte was 0 on every path through this file.
+      const primaryMatteB64 = (data.proxy_geometry || []).find(
+        (e) => e.type === "mesh" && e.metadata?.source === "depth_relief_mesh"
+          && e.silhouette_matte_b64)?.silhouette_matte_b64 || "";
+
       const buildPrimaryMat = (dTex) => {
         loadProjectionTexture(data, (tex) => {
-          const old = projMaterial;
-          projMaterial = makeProjectionMaterial(data, tex, { primaryDepthTexture: dTex });
-          if (projectionOn) applyProjection(true);
-          if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
+          loadMatteFromB64(primaryMatteB64, (matteTexture) => {
+            const old = projMaterial;
+            projMaterial = makeProjectionMaterial(data, tex, {
+              primaryDepthTexture: dTex, matteTexture,
+            });
+            if (projectionOn) applyProjection(true);
+            if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
+          });
         });
         buildDrawnMat(dTex);
         buildBackdropMat(dTex);

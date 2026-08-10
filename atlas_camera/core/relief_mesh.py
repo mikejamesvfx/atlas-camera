@@ -84,6 +84,20 @@ class ReliefMesh:
     surrounding background, not data — surfaced so artists can QA what was
     invented. None when no fill was requested.
 
+    ``silhouette_alpha`` (H,W) float32 or None — full-resolution per-pixel
+    coverage for the layer's own silhouette, 1 on photographed surface and 0 in
+    genuine no-data (sky heuristic / exclude_mask / invalid depth / band clip),
+    crossing 0.5 AT the true boundary so a shader can feather it with `fwidth`.
+    Built from the per-pixel test, NOT from ``hole_mask``, whose tear
+    contribution is a nearest-neighbour upsample of the quad lattice and
+    therefore carries the very staircase this field exists to cut away.
+
+    It answers the EXCLUSION boundary only, and that limit is structural rather
+    than an omission: at a depth cliff the near and far sheets occupy the SAME
+    projected pixel, so one scalar in one UV space cannot keep one and cut the
+    other. Cliff staircases are geometry work (`sub_quad_boundary`); this is the
+    skyline. None unless ``silhouette_matte`` was requested.
+
     ``edge_risk`` (N,) float32 — a compact viewport-only coverage field on the
     mesh vertices. 1.0 marks the kept side of a torn-quad or frame boundary;
     two inward topology rings are binomial-averaged before the true boundary is
@@ -100,6 +114,7 @@ class ReliefMesh:
     hole_mask: Any = None
     filled_mask: Any = None
     edge_risk: Any = None
+    silhouette_alpha: Any = None
 
 
 def estimate_ground_scale(
@@ -265,6 +280,7 @@ def build_relief_mesh(
     live_fill_edge_sawteeth: bool = False,
     sub_quad_boundary: bool = False,
     max_cut_cells: int = 20000,
+    silhouette_matte: bool = False,
 ) -> ReliefMesh:
 
     """Triangulate a forward-z depth map into a world-space relief mesh.
@@ -413,6 +429,15 @@ def build_relief_mesh(
     # afterward.
     hole_mask = ~valid_full
 
+    # Full-resolution silhouette coverage, captured BEFORE grid decimation gets
+    # anywhere near it — that is the entire point. A 5x5 binomial average of the
+    # binary per-pixel test lands on 0.5 exactly at the boundary, which is the
+    # crossing the projection shader's smoothstep(0.5 +/- fwidth) expects, and
+    # gives it a one-to-two pixel ramp to feather instead of a hard step.
+    silhouette_alpha = None
+    if silhouette_matte:
+        silhouette_alpha = _binomial_average_5x5(valid_full.astype(np.float32))
+
     step = max(1, int(round(max(height, width) / max(grid_long_edge, 2))))
     rows = np.arange(0, height, step)
     cols = np.arange(0, width, step)
@@ -522,6 +547,17 @@ def build_relief_mesh(
         # the sky region). Band-clip / frame-ring / tear regions still grow.
         forbid_grid = excl_grid  # original exclusion: the choked ring regrows,
         # true sky never does.
+        if silhouette_matte:
+            # ...unless a full-resolution matte is going out with this mesh. The
+            # ban above exists because an UNMATTED skirt shows its replicated
+            # pixels; the matte cuts every skirt texel past the true per-pixel
+            # boundary, which is the half of the doctrine that was missing here
+            # ("a matte can only CUT geometry that exists"; "NEVER overhang
+            # unmatted"). Coupled deliberately — one flag drives both, exactly as
+            # AtlasCleanPlateLayer passes `2 if embed_matte else 0` — so the
+            # monument-valley failure cannot come back by growing the skirt
+            # without also emitting the matte that trims it.
+            forbid_grid = None
         for _ring in range(int(edge_overhang_cells)):
             acc = np.zeros_like(d)
             cnt = np.zeros_like(d)
@@ -885,7 +921,7 @@ def build_relief_mesh(
 
     return ReliefMesh(vertices=verts, faces=faces, uvs=uvs_flat, stats=stats,
                       hole_mask=hole_mask, filled_mask=filled_mask_full,
-                      edge_risk=edge_risk)
+                      edge_risk=edge_risk, silhouette_alpha=silhouette_alpha)
 
 
 def build_sky_dome_mesh(

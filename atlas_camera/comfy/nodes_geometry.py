@@ -827,6 +827,19 @@ class AtlasDeriveReliefMesh:
                                "and 1.35px with boundary_smooth_iterations on top. Costs ~5% more "
                                "vertices (it scales with silhouette LENGTH, not mesh area). The "
                                "tear itself is untouched - same thresholds, same cells torn."}),
+                "silhouette_matte": ("BOOLEAN", {"default": False,
+                    "tooltip": "Cut the SKY/EXCLUSION silhouette per-pixel in the viewport "
+                               "instead of at grid resolution. Grows a boundary skirt outward "
+                               "(edge_overhang_cells, defaulted to 2) and ships a full-resolution "
+                               "matte the projection shader cuts it back with - measured strip "
+                               "uncovered 0.083 -> 0.000 with ZERO pixels spilled into the sky, "
+                               "and the matte's edge tracks the true skyline to 0.25px against "
+                               "4px lattice quantization. The skirt and the matte are ONE switch "
+                               "on purpose: an unmatted skirt carries replicated sky pixels on "
+                               "receding geometry (found live on monument valley). Does NOT help "
+                               "depth-cliff staircases - at a cliff both sheets share a pixel, so "
+                               "one matte cannot keep one and cut the other; that is "
+                               "sub_quad_boundary's job."}),
             },
         }
 
@@ -837,7 +850,7 @@ class AtlasDeriveReliefMesh:
                exclude_mask=None, outlier_mask=None,
                max_edge_factor=12.0,
                sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
-               sub_quad_boundary=False):
+               sub_quad_boundary=False, silhouette_matte=False):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -878,6 +891,12 @@ class AtlasDeriveReliefMesh:
             quad_coherence=bool(quad_coherence),
             apply_sky_heuristic=(resolved_exclude is None) and bool(sky_heuristic),
             sub_quad_boundary=bool(sub_quad_boundary),
+            silhouette_matte=bool(silhouette_matte),
+            # The skirt is what the matte cuts. Requesting a matte without any
+            # geometry to trim would leave the boundary exactly where it is, so
+            # the two travel together (AtlasCleanPlateLayer's `2 if embed_matte
+            # else 0`, applied to the primary layer at last).
+            edge_overhang_cells=(2 if silhouette_matte else 0),
         )
 
         stats = {
@@ -920,7 +939,27 @@ class AtlasDeriveReliefMesh:
                       f"{100.0 * float(resolved_exclude.mean()):.1f}% of frame and "
                       f"REPLACES the internal sky heuristic (it is not OR'd on top). "
                       f"Sky stays meshed unless this mask already contains it.")
-        prims = [backdrop, relief_mesh_primitive(mesh)]
+        relief_prim = relief_mesh_primitive(mesh)
+        # PNG-encode at the HOST boundary, not in core: the matte is a numpy
+        # field until something needs to transport it, and core stays free of
+        # PIL. Same split edge_risk uses (core emits floats, the payload encodes).
+        if getattr(mesh, "silhouette_alpha", None) is not None:
+            from atlas_camera.comfy.node_helpers import _mask_to_b64_png
+
+            encoded = _mask_to_b64_png(mesh.silhouette_alpha)
+            relief_prim.metadata["silhouette_matte_b64"] = encoded
+            stats["relief_mesh"]["silhouette_matte"] = {
+                "encoded": bool(encoded),
+                "shape": [int(v) for v in mesh.silhouette_alpha.shape],
+            }
+            if not encoded:
+                # Fails soft like every other b64 encoder here, but silence would
+                # leave an unmatted skirt on screen — the exact defect the matte
+                # was coupled to the skirt to prevent.
+                print("[Atlas] AtlasDeriveReliefMesh: silhouette matte failed to "
+                      "encode — the boundary skirt will render UNMATTED. Install "
+                      "Pillow, or turn silhouette_matte off.")
+        prims = [backdrop, relief_prim]
 
         out = _replace_proxy_role_geometry(solve, prims, stats, {
             "relief_grid": int(relief_grid), "relief_quality": relief_quality,
