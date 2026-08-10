@@ -1274,6 +1274,10 @@ def serialize_proxy_geometry(
             # viewport-only coverage field the geometry does not encode — and the
             # projection material reads it from there, not out of metadata.
             entry["silhouette_matte_b64"] = md.get("silhouette_matte_b64", "")
+            # "soft" = a CONTINUOUS visibility field (soft layering); the
+            # shader must multiply it in directly rather than threshold at
+            # 0.5, which would re-binarize the very gradient it carries.
+            entry["silhouette_matte_mode"] = md.get("silhouette_matte_mode", "cut")
         out.append(entry)
     return out
 

@@ -840,6 +840,8 @@ class AtlasDeriveReliefMesh:
                                "depth-cliff staircases - at a cliff both sheets share a pixel, so "
                                "one matte cannot keep one and cut the other; that is "
                                "sub_quad_boundary's job."}),
+                "soft_visibility": ("BOOLEAN", {"default": False,
+                    "tooltip": "SOFT LAYERING (SLIDE, ICCV 2021) - the viewport answer to sawtooth silhouettes. Instead of TEARING at a depth cliff and leaving a hole to feather, keep the surface continuous (it rubber-bands across the cliff) and fade those fragments with a per-pixel visibility A = exp(-beta*|grad disparity|^2) computed at PLATE resolution. No tear means no boundary to quantize, so there is no staircase at ANY grid - and the lattice stays intact, so planar hole patch and the CUDA repair keep working (unlike sub_quad_boundary, which this supersedes and disables). Measured on a diagonal cliff: fade to 0.039 over a 4px feather while smooth receding ground stays at 0.987. Needs something BEHIND to reveal (BG clean-plate / sky dome / clean_plate input) or the fade shows the backdrop. Export still tears - a DCC has no shader to fade with."}),
             },
         }
 
@@ -850,7 +852,8 @@ class AtlasDeriveReliefMesh:
                exclude_mask=None, outlier_mask=None,
                max_edge_factor=12.0,
                sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
-               sub_quad_boundary=False, silhouette_matte=False):
+               sub_quad_boundary=False, silhouette_matte=False,
+               soft_visibility=False):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -892,6 +895,7 @@ class AtlasDeriveReliefMesh:
             apply_sky_heuristic=(resolved_exclude is None) and bool(sky_heuristic),
             sub_quad_boundary=bool(sub_quad_boundary),
             silhouette_matte=bool(silhouette_matte),
+            soft_visibility=bool(soft_visibility),
             # The skirt is what the matte cuts. Requesting a matte without any
             # geometry to trim would leave the boundary exactly where it is, so
             # the two travel together (AtlasCleanPlateLayer's `2 if embed_matte
@@ -948,6 +952,8 @@ class AtlasDeriveReliefMesh:
 
             encoded = _mask_to_b64_png(mesh.silhouette_alpha)
             relief_prim.metadata["silhouette_matte_b64"] = encoded
+            relief_prim.metadata["silhouette_matte_mode"] = (
+                "soft" if soft_visibility else "cut")
             stats["relief_mesh"]["silhouette_matte"] = {
                 "encoded": bool(encoded),
                 "shape": [int(v) for v in mesh.silhouette_alpha.shape],

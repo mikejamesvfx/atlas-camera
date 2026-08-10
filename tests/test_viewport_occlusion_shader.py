@@ -161,3 +161,43 @@ def test_click_tolerances_stay_in_screen_pixels_under_supersampling():
     scaled = re.findall(r"2 \* \d+ / Math\.max\(canvas\.height / previewScale, 1\)",
                         SOURCE)
     assert len(scaled) == 7
+
+
+def test_a_soft_visibility_matte_is_multiplied_not_thresholded():
+    """Soft layering ships a CONTINUOUS field A = exp(-beta*|grad D|^2).
+
+    Running it through the 0.5 smoothstep would re-binarize the exact gradient
+    it exists to carry and put the hard edge straight back — the artifact the
+    whole approach removes.
+    """
+    assert "uniform float uMatteSoft;" in SOURCE
+    assert "if (uMatteSoft > 0.5) {" in SOURCE
+    assert "coverage *= clamp(matte, 0.0, 1.0);" in SOURCE
+    # The cut path must survive untouched for hand-authored mattes.
+    assert "coverage *= smoothstep(0.5 - matteFeather, 0.5 + matteFeather, matte);" in SOURCE
+
+
+def test_the_soft_stretch_fade_acts_alone():
+    """An untorn mesh keeps its rubber-band triangles, and their texel footprint
+    explodes — an independent detector of exactly those fragments.
+
+    It must NOT be multiplied by edgeRisk the way the ordinary stretch term is
+    (`coverage *= 1.0 - footprintRisk * edgeRisk`), or a camera-facing smear in
+    a smooth depth region fades by nothing at all.
+    """
+    assert "uniform float uSoftStretch;" in SOURCE
+    block = SOURCE.split("if (uSoftStretch > 0.0) {", 1)[1].split("}", 1)[0]
+    assert "majorFootprint" in block
+    assert "edgeRisk" not in block, "the soft stretch fade must not be gated by edgeRisk"
+
+
+def test_the_soft_terms_are_not_gated_on_the_occlusion_toggle():
+    """`uOccludePrimary` is off by default AND ANDs in the topologyDilate hard
+    cut. Silhouette coverage is not occlusion semantics."""
+    for marker in ("if (uMatteSoft > 0.5) {", "if (uSoftStretch > 0.0) {"):
+        before = SOURCE.split(marker, 1)[0]
+        # the nearest enclosing occlusion branch must have closed already
+        assert before.count("if (uOccludePrimary > 0.5 && uHasPrimaryDepth > 0.5) {") \
+            <= before.count("uOccludePrimary")
+    assert "uMatteSoft: { value: options.matteSoft ? 1.0 : 0.0 }," in SOURCE
+    assert "uSoftStretch: { value: options.matteSoft ? 1.0 : 0.0 }," in SOURCE

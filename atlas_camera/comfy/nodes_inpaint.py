@@ -998,6 +998,8 @@ class AtlasCleanPlateLayer:
                                "0.25px of truth vs 4px lattice). Skirt and matte are ONE switch - "
                                "an unmatted skirt shows replicated pixels. Handles the "
                                "sky/exclusion edge; depth cliffs need sub_quad_boundary."}),
+                "soft_visibility": ("BOOLEAN", {"default": False,
+                    "tooltip": "SOFT LAYERING (SLIDE, ICCV 2021) - the viewport answer to sawtooth silhouettes. Instead of TEARING at a depth cliff and leaving a hole to feather, keep the surface continuous (it rubber-bands across the cliff) and fade those fragments with a per-pixel visibility A = exp(-beta*|grad disparity|^2) computed at PLATE resolution. No tear means no boundary to quantize, so there is no staircase at ANY grid - and the lattice stays intact, so planar hole patch and the CUDA repair keep working (unlike sub_quad_boundary, which this supersedes and disables). Measured on a diagonal cliff: fade to 0.039 over a 4px feather while smooth receding ground stays at 0.987. Needs something BEHIND to reveal (BG clean-plate / sky dome / clean_plate input) or the fade shows the backdrop. Export still tears - a DCC has no shader to fade with."}),
             },
         }
 
@@ -1009,7 +1011,7 @@ class AtlasCleanPlateLayer:
                   band_geometry="relief", geometry_override="", band_ref_mask=None,
                   band_override="", max_edge_factor=12.0, normal_edge_deg=0.0,
                   quad_coherence=True, sub_quad_boundary=False,
-                  silhouette_matte=False):
+                  silhouette_matte=False, soft_visibility=False):
         from atlas_camera.core.band_geometry import (
             boundary_overhang_cells,
             flat_band_depth_field,
@@ -1127,6 +1129,7 @@ class AtlasCleanPlateLayer:
             exclude_choke_cells=choke,
             sub_quad_boundary=bool(sub_quad_boundary),
             silhouette_matte=bool(silhouette_matte),
+            soft_visibility=bool(soft_visibility),
             # A matte needs surface to cut back from. This node already computes
             # `overhang_cells` from embed_matte (the `2 if embed_matte else 0`
             # coupling); silhouette_matte is the same bargain, so it takes the
@@ -1137,6 +1140,8 @@ class AtlasCleanPlateLayer:
         if getattr(mesh, "silhouette_alpha", None) is not None:
             encoded = _mask_to_b64_png(mesh.silhouette_alpha)
             relief_prim.metadata["silhouette_matte_b64"] = encoded
+            relief_prim.metadata["silhouette_matte_mode"] = (
+                "soft" if soft_visibility else "cut")
             if not encoded:
                 print(f"[Atlas] AtlasCleanPlateLayer '{name}': silhouette matte failed "
                       f"to encode — this band's skirt will render UNMATTED.")

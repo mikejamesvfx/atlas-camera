@@ -33,6 +33,24 @@ def _require_numpy() -> Any:
     return np
 
 
+#: Falloff constant for the soft-visibility field, A = exp(-beta*||grad(D)||^2),
+#: on disparity normalised by its own median and 5x5-binomial widened.
+#: Calibrated on the diagonal-cliff + smooth-ramp fixtures
+#: (tests/test_soft_visibility.py): a real occlusion step drives A to 0.039 min
+#: / 0.094 mean over a 4 px feather, while smooth receding ground (40 m -> 6 m
+#: across frame) stays at 0.987 — the two ends that matter, since fading a
+#: receding floor would be the failure mode. Larger = harder/narrower fade.
+SOFT_VISIBILITY_BETA = 30.0
+
+#: Long-edge cap for the soft-visibility texture. The field is smooth, so
+#: unlike a binary matte it decimates without aliasing and bilinear
+#: filtering reconstructs the ramp on the GPU. Keeps an 8K+ plate from
+#: allocating a ~180 MB float field (plus gradient temporaries) and a
+#: quarter-gigabyte GPU texture for one alpha channel. Matches
+#: viewport_payload._PRIMARY_DEPTH_MAX_EDGE for the same reason.
+SOFT_VISIBILITY_MAX_EDGE = 2048
+
+
 def _binomial_average_5x5(values: Any) -> Any:
     """Return a separable 5x5 binomial average of a 2D scalar field.
 
@@ -281,6 +299,8 @@ def build_relief_mesh(
     sub_quad_boundary: bool = False,
     max_cut_cells: int = 20000,
     silhouette_matte: bool = False,
+    soft_visibility: bool = False,
+    soft_visibility_beta: float = 0.0,
 ) -> ReliefMesh:
 
     """Triangulate a forward-z depth map into a world-space relief mesh.
@@ -437,6 +457,74 @@ def build_relief_mesh(
     silhouette_alpha = None
     if silhouette_matte:
         silhouette_alpha = _binomial_average_5x5(valid_full.astype(np.float32))
+
+    # Soft layering (SLIDE, ICCV 2021). Instead of tearing the mesh at a depth
+    # cliff and leaving a hole to feather, keep the surface CONTINUOUS and hand
+    # the shader a per-pixel visibility that falls off where the depth does:
+    #
+    #     A = exp(-beta * ||grad(disparity)||^2)
+    #
+    # The mesh rubber-bands across the cliff and those fragments fade instead of
+    # being cut, so there is no boundary to quantize and therefore no staircase
+    # at any grid resolution. This is the VIEWPORT answer; export keeps tearing
+    # (a DCC has no shader to fade with).
+    #
+    # Disparity, not depth: 1/d compresses the far field, so the gradient
+    # measures a real occlusion step rather than firing on every distant slope.
+    # Normalising by the median disparity makes beta scene-scale-free.
+    soft_beta_used = None
+    if soft_visibility:
+        # SCALE FIRST. A plate-resolution float field is 180 MB at 8K before the
+        # several temporaries the gradient needs, and an 8192-square texture is
+        # a quarter-gigabyte of VRAM for one alpha channel. A CONTINUOUS field
+        # is the one kind of mask that survives decimation gracefully — unlike a
+        # binary cut, which aliases — so cap it and let bilinear filtering
+        # reconstruct the ramp on the GPU. Stride-gather, not area-average:
+        # averaging would soften the very cliff being measured.
+        soft_stride = max(1, int(np.ceil(max(height, width)
+                                         / float(SOFT_VISIBILITY_MAX_EDGE))))
+        if soft_stride > 1:
+            rr = np.arange(0, height, soft_stride)
+            cc = np.arange(0, width, soft_stride)
+            soft_depth = depth[np.ix_(rr, cc)]
+            soft_valid = valid_full[np.ix_(rr, cc)]
+        else:
+            soft_depth, soft_valid = depth, valid_full
+        with np.errstate(divide="ignore", invalid="ignore"):
+            disparity = np.where(soft_valid & (soft_depth > 1e-6),
+                                 1.0 / soft_depth, np.nan)
+        finite = np.isfinite(disparity)
+        median_disparity = (float(np.median(disparity[finite]))
+                            if finite.any() else 1.0)
+        norm = disparity / max(median_disparity, 1e-9)
+        # Invalid pixels carry no surface; treat them as flat so their borders
+        # do not read as a cliff on top of already being excluded.
+        norm = np.where(finite, norm, 0.0).astype(np.float32)
+        gy, gx = np.gradient(norm)
+        # Deliberately measured PER SAMPLE of the capped grid, not per plate
+        # pixel. A depth STEP has no finite gradient — sampling one at stride s
+        # yields delta/(2s) per plate pixel, so a "per plate pixel" gradient
+        # makes the same cliff read progressively flatter as the plate grows
+        # (measured: cliff alpha 0.003 at 1K, 0.489 at 4K, 0.833 at 8K — an 8K
+        # plate stopped fading at all). Per sample, a step always reads delta/2,
+        # so beta means one thing everywhere and the fade band stays a constant
+        # few texels — which is also the constant FRACTION OF FRAME an artist
+        # actually perceives.
+        # Widen the band before the exponential. A central difference is nonzero
+        # for ~2 px either side of a step, which would fade a sliver rather than
+        # a feather; the 5x5 binomial spreads it to a few pixels and removes the
+        # single-pixel speckle a noisy monocular depth puts on every edge.
+        grad_sq = _binomial_average_5x5((gx * gx + gy * gy).astype(np.float32))
+        beta = (float(soft_visibility_beta) if soft_visibility_beta > 0.0
+                else SOFT_VISIBILITY_BETA)
+        soft_beta_used = beta
+        alpha = np.exp(-beta * grad_sq).astype(np.float32)
+        # An excluded pixel has nothing to show; keep it fully transparent so
+        # sky/scope masks still cut rather than fade.
+        alpha[~soft_valid] = 0.0
+        silhouette_alpha = np.clip(alpha, 0.0, 1.0)
+        # A cut boundary is meaningless when nothing is cut.
+        sub_quad_boundary = False
 
     step = max(1, int(round(max(height, width) / max(grid_long_edge, 2))))
     rows = np.arange(0, height, step)
@@ -753,6 +841,21 @@ def build_relief_mesh(
         coherent = ok_a & ok_b
         ok_a = coherent
         ok_b = coherent
+
+    if soft_visibility:
+        # Soft layering: the fade IS the silhouette, so nothing is torn. The
+        # tear tests still RAN, above, with the caller's real thresholds — keep
+        # their verdict as the honest quality number (torn_fraction is ~0 here
+        # by construction and stops meaning anything), then emit every triangle
+        # whose corners have data. Evaluating and discarding beats duplicating
+        # the tear logic in a reporting helper that could drift from it.
+        n_quads_total = 2 * int(ok_a.size)
+        soft_would_tear = float(
+            1.0 - (int(ok_a.sum()) + int(ok_b.sum())) / max(n_quads_total, 1))
+        has_data = v00 & v10 & v01
+        ok_a = has_data
+        ok_b = v10 & v11 & v01
+
     tri_a = np.stack([i00[ok_a], i10[ok_a], i01[ok_a]], axis=1)
     tri_b = np.stack([i10[ok_b], i11[ok_b], i01[ok_b]], axis=1)
     faces = np.concatenate([tri_a, tri_b], axis=0)
@@ -910,6 +1013,16 @@ def build_relief_mesh(
     }
     if live_grid_repair_info is not None:
         stats["live_grid_repair"] = live_grid_repair_info
+    if soft_visibility:
+        # torn_fraction is ~0 here BY CONSTRUCTION, so it stops being a quality
+        # signal. Report what the tear tests actually said, otherwise
+        # `torn_excessive` reads a soft layer as flawless and the inpaint router
+        # loses the only number telling it how much there is to fill.
+        stats["soft_visibility"] = {
+            "beta": float(soft_beta_used),
+            "torn_fraction_if_torn": soft_would_tear,
+        }
+        stats["torn_fraction_whole_quad"] = soft_would_tear
     if cut_info is not None:
         # torn_fraction above counts EMITTED faces against whole-quad slots, so a
         # cut cell — which emits faces without being whole — deflates it. Report

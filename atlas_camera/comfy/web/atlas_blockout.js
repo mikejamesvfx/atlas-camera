@@ -604,6 +604,8 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform sampler2D uTexture;
   uniform sampler2D uMatte;
   uniform float uHasMatte;
+  uniform float uMatteSoft;   // 1 = continuous visibility field, do not threshold
+  uniform float uSoftStretch; // 0 = off; soft-layering smear fade strength
   uniform float uLayerDebug;
   uniform vec3 uLayerTint;
   uniform sampler2D uPatchMask;
@@ -799,8 +801,26 @@ const PROJECTION_FRAGMENT_SHADER = `
       // binary cut back on the exact edge the matte exists to soften — and the
       // toggle is off by default. Coverage from a silhouette matte says nothing
       // about depth occlusion; the two were never related.
-      float matteFeather = clamp(0.5 * fwidth(matte), 0.04, 0.25);
-      coverage *= smoothstep(0.5 - matteFeather, 0.5 + matteFeather, matte);
+      if (uMatteSoft > 0.5) {
+        // SOFT LAYERING: the matte is a CONTINUOUS visibility field
+        // A = exp(-beta*|grad disparity|^2), not a cut-here mask. Multiply it
+        // in directly — thresholding at 0.5 would re-binarize the exact
+        // gradient it exists to carry and put the hard edge straight back.
+        coverage *= clamp(matte, 0.0, 1.0);
+      } else {
+        float matteFeather = clamp(0.5 * fwidth(matte), 0.04, 0.25);
+        coverage *= smoothstep(0.5 - matteFeather, 0.5 + matteFeather, matte);
+      }
+    }
+    // Soft layering keeps the mesh UNTORN, so a rubber-band triangle spanning a
+    // depth cliff survives to be shaded. Its texel footprint explodes (one
+    // screen pixel covers many source texels), which is an independent detector
+    // of exactly those fragments — and it has to act ALONE here. The stretch
+    // term further down multiplies by edgeRisk, so a camera-facing smear in a
+    // smooth depth region fades by nothing at all.
+    if (uSoftStretch > 0.0) {
+      coverage *= 1.0 - uSoftStretch * smoothstep(
+        uStretchStart, uStretchEnd, majorFootprint);
     }
     vec3 toCam = normalize(uCamPos - vWorldPos);
     float facing = abs(dot(normalize(vWorldNormal), toCam));
@@ -1004,6 +1024,8 @@ function makeProjectionMaterial(data, texture, opts) {
       // uniform-gated branch means a null sampler is never actually read.
       uMatte: { value: options.matteTexture || null },
       uHasMatte: { value: options.matteTexture ? 1.0 : 0.0 },
+      uMatteSoft: { value: options.matteSoft ? 1.0 : 0.0 },
+      uSoftStretch: { value: options.matteSoft ? 1.0 : 0.0 },
       uPrimaryDepth: { value: options.primaryDepthTexture || null },
       uHasPrimaryDepth: { value: options.primaryDepthTexture ? 1.0 : 0.0 },
       uPrimaryDepthSize: { value: new THREE.Vector2(
@@ -1333,9 +1355,9 @@ function buildPatchSources(scene, data, onSourceReady) {
       // multi-angle patches keep the grazing-discard behavior so they only
       // fill surfaces they see reasonably head-on.
       const facingThreshold = src.projection_mode === "clean_plate" ? -1 : 0.2;
-      const build = (matteTexture) => {
+      const build = (matteTexture, matteSoft) => {
         const patchMat = makeProjectionMaterial(src, tex,
-          { facingThreshold, priority: src.priority, matteTexture,
+          { facingThreshold, priority: src.priority, matteTexture, matteSoft,
             layerTint: new THREE.Color(
               LAYER_DEBUG_PALETTE[idx % LAYER_DEBUG_PALETTE.length]) });
         for (const m of meshes) {
@@ -1355,9 +1377,15 @@ function buildPatchSources(scene, data, onSourceReady) {
       // `silhouette_matte` carries one on its relief primitive, which is how the
       // silhouette work reaches the layer stack at all.
       // loadMatteFromB64 always calls back (null on missing/failed matte).
-      const bandMatte = (src.proxy_geometry || []).find(
-        (e) => e.type === "mesh" && e.silhouette_matte_b64)?.silhouette_matte_b64 || "";
-      loadMatteFromB64(src.mask_b64 || bandMatte, (matteTexture) => build(matteTexture));
+      const bandEntry = (src.proxy_geometry || []).find(
+        (e) => e.type === "mesh" && e.silhouette_matte_b64);
+      const bandMatte = bandEntry?.silhouette_matte_b64 || "";
+      // A hand-authored mask_b64 is a CUT; only the band's own field can
+      // be soft, so the mode follows whichever matte actually won.
+      const bandSoft = !src.mask_b64
+        && bandEntry?.silhouette_matte_mode === "soft";
+      loadMatteFromB64(src.mask_b64 || bandMatte,
+        (matteTexture) => build(matteTexture, bandSoft));
     });
   });
 }
@@ -7165,9 +7193,12 @@ function buildNodeUI(node, containerEl) {
       // shipped one. Patch layers have always had `mask_b64`; the primary — the
       // layer whose grid-quantized skyline is the visible staircase — never did,
       // so uHasMatte was 0 on every path through this file.
-      const primaryMatteB64 = (data.proxy_geometry || []).find(
+      const primaryMatteEntry = (data.proxy_geometry || []).find(
         (e) => e.type === "mesh" && e.metadata?.source === "depth_relief_mesh"
-          && e.silhouette_matte_b64)?.silhouette_matte_b64 || "";
+          && e.silhouette_matte_b64);
+      const primaryMatteB64 = primaryMatteEntry?.silhouette_matte_b64 || "";
+      const primaryMatteSoft =
+        primaryMatteEntry?.silhouette_matte_mode === "soft";
 
       const buildPrimaryMat = (dTex) => {
         loadProjectionTexture(data, (tex) => {
@@ -7175,6 +7206,7 @@ function buildNodeUI(node, containerEl) {
             const old = projMaterial;
             projMaterial = makeProjectionMaterial(data, tex, {
               primaryDepthTexture: dTex, matteTexture,
+              matteSoft: primaryMatteSoft,
             });
             if (projectionOn) applyProjection(true);
             if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
