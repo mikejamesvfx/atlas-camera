@@ -312,8 +312,12 @@ Nodes & widgets
 - Combo VALUES are append-only; never rename/reorder registered node keys,
   display names, or existing combo values (they serialize into workflows).
 - New widgets are APPENDED last (positional `widgets_values`).
-- `AtlasCleanPlateLayer` is capability-frozen: no new widgets — new features
-  land as companion nodes feeding its existing inputs.
+- `AtlasCleanPlateLayer` freeze LIFTED 2026-08-10: it kept the silhouette work
+  (`sub_quad_boundary`/`silhouette_matte`) off every band layer, which is where
+  the staircase is actually seen. Appending preserves the positional contract
+  the freeze existed to protect, so the freeze was costing the feature and
+  buying nothing. Companion nodes remain right for anything NOT a passthrough
+  to `build_relief_mesh`.
 - ComfyUI's backend rejects STRING->combo links: expose `*_override` STRING
   inputs instead (the `patch_view_override` pattern).
 - Any persisted widget that gates execution needs a content fingerprint, and

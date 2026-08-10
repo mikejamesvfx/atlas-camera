@@ -976,6 +976,28 @@ class AtlasCleanPlateLayer:
                 "quad_coherence": ("BOOLEAN", {"default": True,
                     "tooltip": "Reject both triangles when either half of a grid quad fails; avoids "
                                "surviving diagonal UV wedges at band boundaries."}),
+                # The capability freeze on this node kept the 2026-08-10 silhouette
+                # work off every band layer — the layers whose staircases artists
+                # actually see. Lifted deliberately: the freeze protects the
+                # POSITIONAL widget contract, and appending preserves that
+                # exactly, so what it was really costing was the feature.
+                "sub_quad_boundary": ("BOOLEAN", {"default": False,
+                    "tooltip": "Cut a torn cell AT the depth cliff instead of deleting the whole "
+                               "cell. A band silhouette can otherwise only turn in whole-cell steps "
+                               "AND loses a cell of real surface on both sides of every cliff - "
+                               "measured 5.67px mean boundary error at grid 128 on a 1024px plate "
+                               "(step 8px), WORSE than the 4px quantization bound. Reads the cliff "
+                               "from the full-resolution depth and rebuilds both sides up to it, "
+                               "never joining them: 5.67 -> 1.43px, camera coverage 97.8 -> 100%, "
+                               "~5% more vertices. Same thresholds, same cells torn."}),
+                "silhouette_matte": ("BOOLEAN", {"default": False,
+                    "tooltip": "Cut this band's exclusion silhouette per-pixel rather than at grid "
+                               "resolution: grows a boundary skirt and ships a full-resolution "
+                               "matte the projection shader trims it back with (strip uncovered "
+                               "0.083 -> 0.000, zero pixels spilled past the boundary, edge within "
+                               "0.25px of truth vs 4px lattice). Skirt and matte are ONE switch - "
+                               "an unmatted skirt shows replicated pixels. Handles the "
+                               "sky/exclusion edge; depth cliffs need sub_quad_boundary."}),
             },
         }
 
@@ -986,7 +1008,8 @@ class AtlasCleanPlateLayer:
                   exclude_choke_cells=2, band_side="manual", band_split=None,
                   band_geometry="relief", geometry_override="", band_ref_mask=None,
                   band_override="", max_edge_factor=12.0, normal_edge_deg=0.0,
-                  quad_coherence=True):
+                  quad_coherence=True, sub_quad_boundary=False,
+                  silhouette_matte=False):
         from atlas_camera.core.band_geometry import (
             boundary_overhang_cells,
             flat_band_depth_field,
@@ -1102,8 +1125,22 @@ class AtlasCleanPlateLayer:
             quad_coherence=bool(quad_coherence),
             overhang_bevel_rel=float(skirt_bevel),
             exclude_choke_cells=choke,
-            edge_overhang_cells=overhang_cells)
-        patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
+            sub_quad_boundary=bool(sub_quad_boundary),
+            silhouette_matte=bool(silhouette_matte),
+            # A matte needs surface to cut back from. This node already computes
+            # `overhang_cells` from embed_matte (the `2 if embed_matte else 0`
+            # coupling); silhouette_matte is the same bargain, so it takes the
+            # same floor rather than shipping an unmatted skirt.
+            edge_overhang_cells=(max(overhang_cells, 2) if silhouette_matte
+                                 else overhang_cells))
+        relief_prim = relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")
+        if getattr(mesh, "silhouette_alpha", None) is not None:
+            encoded = _mask_to_b64_png(mesh.silhouette_alpha)
+            relief_prim.metadata["silhouette_matte_b64"] = encoded
+            if not encoded:
+                print(f"[Atlas] AtlasCleanPlateLayer '{name}': silhouette matte failed "
+                      f"to encode — this band's skirt will render UNMATTED.")
+        patch_geom = [relief_prim]
 
         # This source's OWN camera: same pose, widened intrinsics when
         # outpainted (per-ProjectionSource cameras make this free — exactly

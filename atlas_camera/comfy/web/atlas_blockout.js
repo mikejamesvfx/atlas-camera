@@ -1349,10 +1349,15 @@ function buildPatchSources(scene, data, onSourceReady) {
         }
         if (typeof onSourceReady === "function") onSourceReady();
       };
-      // Per-pixel edge matte (ProjectionSource.mask_b64): geometry stays
-      // coarse; the matte cuts the true silhouette in the shader.
+      // Per-pixel edge matte: geometry stays coarse; the matte cuts the true
+      // silhouette in the shader. `mask_b64` is the source's own hand-authored
+      // or unseen-areas matte and wins; failing that, a band layer built with
+      // `silhouette_matte` carries one on its relief primitive, which is how the
+      // silhouette work reaches the layer stack at all.
       // loadMatteFromB64 always calls back (null on missing/failed matte).
-      loadMatteFromB64(src.mask_b64, (matteTexture) => build(matteTexture));
+      const bandMatte = (src.proxy_geometry || []).find(
+        (e) => e.type === "mesh" && e.silhouette_matte_b64)?.silhouette_matte_b64 || "";
+      loadMatteFromB64(src.mask_b64 || bandMatte, (matteTexture) => build(matteTexture));
     });
   });
 }

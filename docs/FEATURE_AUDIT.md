@@ -64,7 +64,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasApplyScaleReferences` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 3 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasAssessImage` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 6 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAssessOutput` | atlas_camera/comfy/nodes_qa.py | standard | 1 | 2 | not_attempted | not_attempted | 2 | 3 | — | — | — | **KEEP_CORE** | — |
-| `AtlasAttachSourcePlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasAttachSourcePlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
 | `AtlasBlockoutMassing` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 3 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasBlockoutViewport` | atlas_camera/comfy/nodes_viewport.py | standard | 8 | 17 | not_attempted | not_attempted | 0 | 7 | — | — | — | **KEEP_CORE** | — |
 | `AtlasBoundedBand` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
@@ -97,10 +97,10 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasExportCameraPathUSD` | atlas_camera/comfy/nodes_export.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportMayaLayers` | atlas_camera/comfy/nodes_export.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportMayaReviewScene` | atlas_camera/comfy/nodes_export.py | standard | 1 | 0 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportNuke` | atlas_camera/comfy/nodes_export.py | standard | 2 | 0 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportNuke` | atlas_camera/comfy/nodes_export.py | standard | 2 | 1 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportNukeLayers` | atlas_camera/comfy/nodes_export.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportPlateEXR` | atlas_camera/comfy/nodes_export.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportReliefMesh` | atlas_camera/comfy/nodes_export.py | standard | 1 | 3 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportPlateEXR` | atlas_camera/comfy/nodes_export.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportReliefMesh` | atlas_camera/comfy/nodes_export.py | standard | 1 | 4 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportReviewPackage` | atlas_camera/comfy/nodes_export.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportSolveJSON` | atlas_camera/comfy/nodes_export.py | standard | 4 | 1 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportUSD` | atlas_camera/comfy/nodes_export.py | standard | 1 | 0 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
