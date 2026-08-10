@@ -574,6 +574,8 @@ class AtlasMultiViewSolveBurst:
                 "learned_anchor_fallback": ("BOOLEAN", {"default": False}),
                 "baseline_m": ("FLOAT", {"default": 0.0, "min": 0.0, "step": 0.01}),
                 "learned_scale_fallback": ("BOOLEAN", {"default": False}),
+                "write_plates": ("BOOLEAN", {"default": True}),
+                "plates_dir": ("STRING", {"default": "atlas_exports/burst_plates"}),
             },
         }
 
@@ -624,6 +626,8 @@ class AtlasMultiViewSolveBurst:
         learned_anchor_fallback: bool = False,
         baseline_m: float = 0.0,
         learned_scale_fallback: bool = False,
+        write_plates: bool = True,
+        plates_dir: str = "atlas_exports/burst_plates",
     ) -> str:
         try:
             files = cls._selected_files(burst_dir, frame_stride, max_frames)
@@ -647,11 +651,67 @@ class AtlasMultiViewSolveBurst:
                 "learned_anchor_fallback": bool(learned_anchor_fallback),
                 "baseline_m": float(baseline_m),
                 "learned_scale_fallback": bool(learned_scale_fallback),
+                "write_plates": bool(write_plates),
+                "plates_dir": str(plates_dir),
             },
         }
         return hashlib.sha256(
             json.dumps(payload, sort_keys=True).encode("utf-8")
         ).hexdigest()
+
+    @staticmethod
+    def _plate_ref_for_frame(result: Any, source_path: str, write_plates: bool,
+                             plates_dir: str, np: Any) -> Any:
+        """Build the per-frame plate reference every ProjectionSource projects.
+
+        Reuses AtlasLoadRAW's EXR sidecar writer so every burst frame gets the
+        same scene-linear plate the three-photo path gets from its loaders —
+        this is what turns the extra burst cameras from geometry-only into
+        texture-projecting layers.  A failed EXR write degrades to a preview
+        proxy, exactly like the loader.
+        """
+        import base64
+        import io
+
+        from PIL import Image
+
+        from atlas_camera.comfy.nodes_solve import AtlasLoadRAW
+        from atlas_camera.core.schema import AtlasPlateRef
+
+        exr_path = None
+        exr_warning = ""
+        if write_plates:
+            exr_path, exr_warning = AtlasLoadRAW._write_exr_sidecar(
+                result.linear_rgb, source_path, plates_dir,
+                headroom=result.headroom,
+            )
+        pixels = (
+            np.clip(np.asarray(result.display_srgb, dtype=np.float32), 0.0, 1.0)
+            * 255.0 + 0.5
+        ).astype(np.uint8)
+        pil = Image.fromarray(pixels, mode="RGB")
+        pil.thumbnail((1280, 1280))
+        buffer = io.BytesIO()
+        pil.save(buffer, format="JPEG", quality=85)
+        preview = (
+            "data:image/jpeg;base64,"
+            + base64.b64encode(buffer.getvalue()).decode("ascii")
+        )
+        return AtlasPlateRef(
+            image_path=(str(exr_path) if exr_path else None),
+            preview_b64=preview,
+            colorspace="Linear Rec.709 (sRGB)",
+            bit_depth="16f" if exr_path else "8-bit/proxy",
+            role="source",
+            is_proxy=exr_path is None,
+            metadata={
+                "registered_from": "AtlasMultiViewSolveBurst",
+                "raw_source": str(source_path),
+                "camera_model": result.camera_model,
+                "undistort_status": result.undistort_status,
+                **({"plate_warning": exr_warning} if exr_warning else {}),
+            },
+        )
 
     def solve(
         self,
@@ -666,6 +726,8 @@ class AtlasMultiViewSolveBurst:
         learned_anchor_fallback: bool = False,
         baseline_m: float = 0.0,
         learned_scale_fallback: bool = False,
+        write_plates: bool = True,
+        plates_dir: str = "atlas_exports/burst_plates",
     ):
         np = _require_numpy()
         from atlas_camera.raw.pipeline import import_raw
@@ -678,6 +740,9 @@ class AtlasMultiViewSolveBurst:
                 image=np.ascontiguousarray(result.display_srgb, dtype=np.float32),
                 raw_meta=result,
                 label=item.name,
+                plate_ref=self._plate_ref_for_frame(
+                    result, str(item), bool(write_plates), str(plates_dir), np,
+                ),
             ))
 
         anchor_up_hint = None

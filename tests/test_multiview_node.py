@@ -480,7 +480,7 @@ def test_burst_node_contract_and_widget_order():
     assert list(spec["optional"]) == [
         "frame_stride", "max_frames", "half_size", "capture_mode",
         "camera_height_m", "match_quality", "seed", "learned_anchor_fallback",
-        "baseline_m", "learned_scale_fallback",
+        "baseline_m", "learned_scale_fallback", "write_plates", "plates_dir",
     ]
 
 
@@ -506,3 +506,26 @@ def test_burst_node_fingerprint_tracks_folder_and_widgets(tmp_path):
     assert cls.IS_CHANGED(burst_dir=str(tmp_path), baseline_m=0.9) != first
     (tmp_path / "DSC003.JPG").write_bytes(b"xxxx")
     assert cls.IS_CHANGED(burst_dir=str(tmp_path)) != first
+
+
+def test_burst_plate_ref_without_exr_is_an_honest_proxy():
+    cls = NODE_CLASS_MAPPINGS["AtlasMultiViewSolveBurst"]
+    result = _raw(1, model="Burst body")
+    ref = cls._plate_ref_for_frame(result, "C:/burst/DSC001.JPG", False, "unused", np)
+    assert ref.image_path is None
+    assert ref.is_proxy is True
+    assert ref.bit_depth == "8-bit/proxy"
+    assert ref.role == "source"
+    assert ref.preview_b64.startswith("data:image/jpeg;base64,")
+    assert ref.metadata["registered_from"] == "AtlasMultiViewSolveBurst"
+    assert ref.metadata["raw_source"] == "C:/burst/DSC001.JPG"
+    assert ref.metadata["camera_model"] == "Burst body"
+
+
+def test_burst_plate_ref_fingerprint_covers_plate_widgets(tmp_path):
+    cls = NODE_CLASS_MAPPINGS["AtlasMultiViewSolveBurst"]
+    for index in range(3):
+        (tmp_path / f"DSC{index:03d}.JPG").write_bytes(b"x")
+    first = cls.IS_CHANGED(burst_dir=str(tmp_path))
+    assert cls.IS_CHANGED(burst_dir=str(tmp_path), write_plates=False) != first
+    assert cls.IS_CHANGED(burst_dir=str(tmp_path), plates_dir="elsewhere") != first
