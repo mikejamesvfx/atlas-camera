@@ -197,3 +197,108 @@ def test_pareto_does_not_collapse_a_genuine_trade():
                                    missed_edge_fraction=(10 - i) / 10))
                for i in range(1, 10)]
     assert len(pareto_front(entries)) == len(entries)
+
+
+# ------------------------------------- tearing is topology, not a coverage gap
+
+
+def _cut_render(depth, sid, *, gap_px=0):
+    """A mesh that separates the two sheets, leaving ``gap_px`` of uncovered
+    pixels at the seam. gap_px=0 is the sub-quad cut: torn, but nothing missing.
+    """
+    alpha = np.ones(depth.shape, dtype=np.float64)
+    render = depth.astype(np.float64).copy()
+    mid = depth.shape[1] // 2
+    if gap_px:
+        alpha[:, mid - gap_px:mid + gap_px] = 0.0
+        render[:, mid - gap_px:mid + gap_px] = np.nan
+    return alpha, render
+
+
+def _curtain_render(depth, ramp_px=8):
+    """A mesh that rubber-sheets across the cliff: full coverage and the whole
+    depth step smeared over ``ramp_px`` pixels instead of reproduced."""
+    h, w = depth.shape
+    mid = w // 2
+    render = depth.astype(np.float64).copy()
+    lo, hi = mid - ramp_px // 2, mid + ramp_px // 2
+    ramp = np.linspace(depth[0, 0], depth[0, -1], hi - lo)
+    render[:, lo:hi] = ramp[None, :]
+    return np.ones(depth.shape, dtype=np.float64), render
+
+
+def test_a_cut_with_no_gap_is_not_a_missed_edge():
+    """The defect this parameter exists for.
+
+    `sub_quad_boundary` tears the topology and still covers every pixel, because
+    at a cliff BOTH sheets are photographed right up to the edge. Scored on alpha
+    alone that is indistinguishable from never tearing, and it scored WORSE than
+    the whole-cell tear it improves on (measured 0.00 -> 0.98 missed).
+    """
+    depth, sid = _two_surfaces()
+    alpha, render = _cut_render(depth, sid)
+
+    gap_only = score_tears(truth_depth=depth, surface_ids=sid, coverage_alpha=alpha)
+    assert gap_only.missed_edge_fraction > 0.9      # the historical blind spot
+
+    with_depth = score_tears(truth_depth=depth, surface_ids=sid,
+                             coverage_alpha=alpha, render_depth=render)
+    assert with_depth.missed_edge_fraction == 0.0
+    assert with_depth.bridged_edge_fraction == 0.0
+    assert with_depth.coverage == 1.0
+
+
+def test_a_curtain_is_caught_even_though_it_also_steps():
+    """A smeared step is not a reproduced step, and an ABSOLUTE threshold cannot
+    tell them apart — the first version of this check could not, and scored a
+    mesh that never tears as perfect. A curtain spread over one grid cell still
+    steps every pixel, just by cell-sized fractions of the cliff.
+    """
+    depth, sid = _two_surfaces()
+    alpha, render = _curtain_render(depth)
+
+    per_pixel_step = (depth[0, -1] - depth[0, 0]) / 8
+    assert per_pixel_step > 0.25, "fixture must exceed the absolute jump floor"
+
+    score = score_tears(truth_depth=depth, surface_ids=sid,
+                        coverage_alpha=alpha, render_depth=render)
+    assert score.missed_edge_fraction > 0.9
+    assert score.bridged_edge_fraction > 0.9
+
+
+def test_the_three_renders_are_ordered_correctly():
+    """Cut > whole-cell tear > curtain. The scalar must agree with the geometry.
+
+    Measured on the real diagonal-cliff fixture: 1.000 / 0.991 / 0.504.
+    """
+    depth, sid = _two_surfaces()
+    cut = score_tears(truth_depth=depth, surface_ids=sid,
+                      **dict(zip(("coverage_alpha", "render_depth"),
+                                 _cut_render(depth, sid))))
+    torn = score_tears(truth_depth=depth, surface_ids=sid,
+                       **dict(zip(("coverage_alpha", "render_depth"),
+                                  _cut_render(depth, sid, gap_px=2))))
+    curtain = score_tears(truth_depth=depth, surface_ids=sid,
+                          **dict(zip(("coverage_alpha", "render_depth"),
+                                     _curtain_render(depth))))
+    assert cut.combined_score() >= torn.combined_score() > curtain.combined_score()
+    assert curtain.bridged_edge_fraction > max(cut.bridged_edge_fraction,
+                                               torn.bridged_edge_fraction)
+
+
+def test_omitting_render_depth_is_byte_identical_to_the_historical_score():
+    """Every recorded score and every existing caller must be unaffected."""
+    depth, sid = _two_surfaces()
+    alpha, _render = _cut_render(depth, sid, gap_px=2)
+    score = score_tears(truth_depth=depth, surface_ids=sid, coverage_alpha=alpha)
+    assert score.metadata["tear_evidence"] == "coverage_gap"
+    assert score.bridged_edge_fraction == 0.0
+    assert score.to_dict()["combined_score"] == score.combined_score()
+
+
+def test_render_depth_shape_mismatch_is_rejected():
+    depth, sid = _two_surfaces()
+    alpha, _ = _cut_render(depth, sid)
+    with pytest.raises(ValueError, match="render_depth"):
+        score_tears(truth_depth=depth, surface_ids=sid, coverage_alpha=alpha,
+                    render_depth=np.zeros((4, 4)))
