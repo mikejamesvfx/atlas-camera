@@ -1305,7 +1305,15 @@ def relief_mesh_primitive(mesh: Any, *, name: str = "projection_relief_mesh") ->
             "source": "depth_relief_mesh",
             "n_vertices": int(len(mesh.vertices)),
             "n_faces": int(len(mesh.faces)),
+            # QA gates on this. `torn_fraction` counts EMITTED faces against
+            # whole-quad slots, so a sub-quad cut — which emits faces from
+            # partial quads — deflates it and would quietly loosen
+            # `torn_excessive`. Report the whole-quad figure alongside so the
+            # gate compares like with like; absent when no cut ran.
             "torn_fraction": float((mesh.stats or {}).get("torn_fraction", 0.0)),
+            **({"torn_fraction_whole_quad":
+                float((mesh.stats or {})["torn_fraction_whole_quad"])}
+               if "torn_fraction_whole_quad" in (mesh.stats or {}) else {}),
             "quad_coherence": bool((mesh.stats or {}).get("quad_coherence", False)),
             "stretch_ratio_p95": float((mesh.stats or {}).get("stretch_ratio_p95", 0.0)),
             "stretch_fraction_gt12": float((mesh.stats or {}).get("stretch_fraction_gt12", 0.0)),

@@ -46,7 +46,15 @@ def build_output_solve_summary(solve: Any, depth: Any = None) -> dict[str, Any]:
             "type": getattr(primitive, "primitive_type", ""),
             "n_vertices": meta.get("n_vertices"),
             "n_faces": meta.get("n_faces"),
-            "torn_fraction": meta.get("torn_fraction"),
+            # Gate on the WHOLE-QUAD figure whenever a sub-quad cut ran: cut
+            # cells emit faces from partial quads, which deflates the plain
+            # ratio and would make `torn_excessive` quietly more permissive on
+            # exactly the meshes doing something clever. The raw value is kept
+            # beside it so the two are never confused for one another.
+            "torn_fraction": (meta.get("torn_fraction_whole_quad")
+                              if meta.get("torn_fraction_whole_quad") is not None
+                              else meta.get("torn_fraction")),
+            "torn_fraction_emitted": meta.get("torn_fraction"),
             "stretch_ratio_p95": meta.get("stretch_ratio_p95"),
         })
     result = {

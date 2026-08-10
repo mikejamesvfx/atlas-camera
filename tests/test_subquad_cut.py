@@ -358,3 +358,27 @@ class TestSilhouetteMatte:
         assert without.silhouette_alpha is None
         assert len(with_matte.vertices) > len(without.vertices), (
             "the matte did not license any skirt growth — nothing to cut back")
+
+
+def test_the_qa_gate_sees_the_whole_quad_tear_ratio(cliff_depth):
+    """A safety gate must not get looser because a feature got cleverer.
+
+    `torn_fraction` counts EMITTED faces against whole-quad slots. A cut cell
+    emits faces from a PARTIAL quad, so the ratio drops and `torn_excessive`
+    (nodes_qa) would pass meshes it should flag — the gate quietly relaxing on
+    exactly the meshes doing something new.
+    """
+    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+
+    base = build_relief_mesh(cliff_depth, **BUILD)
+    cut = build_relief_mesh(cliff_depth, sub_quad_boundary=True, **BUILD)
+
+    base_meta = relief_mesh_primitive(base).metadata
+    cut_meta = relief_mesh_primitive(cut).metadata
+
+    assert "torn_fraction_whole_quad" not in base_meta, "no cut ran — nothing to correct"
+    # The emitted ratio really is deflated; that is the trap.
+    assert cut_meta["torn_fraction"] < base_meta["torn_fraction"]
+    # ...and the honest figure travels with it, matching the uncut build.
+    assert cut_meta["torn_fraction_whole_quad"] == pytest.approx(
+        base_meta["torn_fraction"], abs=1e-9)
