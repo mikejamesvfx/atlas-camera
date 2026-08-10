@@ -225,3 +225,31 @@ class TestScalesToLargePlates:
         self._alpha(5464, 8192)
         elapsed = time.perf_counter() - start
         assert elapsed < 20.0, f"8K soft-visibility build took {elapsed:.1f}s"
+
+
+def test_band_clipping_still_holes_and_dominates_the_tear_number(cliff):
+    """A band layer owns a depth SLICE; outside it there is no data to fade.
+
+    Measured on the live sh004 bands: torn_fraction stayed ~0.35 with soft
+    visibility on, which reads as "it did nothing" until you separate the two
+    causes. Cliff tears go to zero; band-clip holes are untouched and dominate
+    the number. Anyone reading torn_fraction on a banded layer to judge soft
+    visibility will conclude it is broken.
+    """
+    kw = dict(BUILD)
+    kw["max_edge_factor"] = 12.0
+    deep = np.where(cliff < 6.0, NEAR_M, 30.0).astype(np.float32)
+
+    plain = build_relief_mesh(deep, **kw)
+    soft = build_relief_mesh(deep, soft_visibility=True, **kw)
+    assert plain.stats["torn_fraction"] > 0.0
+    assert soft.stats["torn_fraction"] == 0.0, "cliff tears must go"
+
+    clipped_plain = build_relief_mesh(deep, band_max_m=19.0, **kw)
+    clipped_soft = build_relief_mesh(deep, band_max_m=19.0, soft_visibility=True, **kw)
+    assert clipped_plain.stats["torn_fraction"] > 0.3, "fixture must actually clip"
+    assert clipped_soft.stats["torn_fraction"] == pytest.approx(
+        clipped_plain.stats["torn_fraction"], abs=1e-9), (
+        "band-clip holes are missing DATA, not a silhouette — fading them would "
+        "reveal whatever the smear happened to sample")
+    assert clipped_soft.stats["soft_visibility"]["beta"] > 0.0
