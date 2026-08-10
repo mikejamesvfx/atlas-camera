@@ -375,14 +375,23 @@ def test_retopo_widgets_appended_last_with_combo_subset():
     """The three retopo widgets are APPENDED (widgets_values is positional),
     and the combo is a pass-through SUBSET of AtlasRetopologizeLayer.method:
     `smooth` is excluded (driven by smooth_iterations, which AtlasInput does
-    not expose — a guaranteed no-op dead value here)."""
+    not expose — a guaranteed no-op dead value here).
+
+    Later widgets may follow them (`sub_quad_boundary` did, 2026-08-10) — what
+    this pins is that the trio stays CONTIGUOUS and in order, so no saved
+    workflow's positional values shift underneath it.
+    """
     from atlas_camera.mcp.comfy_http import is_widget
     it = AtlasInput.INPUT_TYPES()["optional"]
-    # Last three WIDGETS, not last three entries: raw_meta is a link input
-    # appended after them, and a link occupies no positional widget slot.
+    # WIDGETS only, not entries: raw_meta is a link input appended after them,
+    # and a link occupies no positional widget slot.
     widget_names = [n for n, spec in it.items() if is_widget(spec)]
-    assert widget_names[-3:] == ["retopo_method", "retopo_target_vertex_count",
-                                 "boundary_smooth_iterations"]
+    trio = ["retopo_method", "retopo_target_vertex_count",
+            "boundary_smooth_iterations"]
+    start = widget_names.index(trio[0])
+    assert widget_names[start:start + 3] == trio
+    assert widget_names[-1] == "sub_quad_boundary"
+    assert it["sub_quad_boundary"][1]["default"] is False
     assert it["retopo_method"][0] == ["off", "quad", "decimate", "voxel_remesh"]
     assert it["retopo_method"][1]["default"] == "off"
     assert it["retopo_target_vertex_count"][1]["default"] == 2000

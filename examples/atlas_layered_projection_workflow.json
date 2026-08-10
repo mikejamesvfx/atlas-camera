@@ -1,8 +1,8 @@
 {
   "id": "ff547cce-9b2b-5ca6-915a-c582c1ab14b5",
   "revision": 1,
-  "last_node_id": 17,
-  "last_link_id": 31,
+  "last_node_id": 18,
+  "last_link_id": 32,
   "nodes": [
     {
       "id": 1,
@@ -58,7 +58,7 @@
         "example.png",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE"
+      "title": "1 · SOURCE PLATE"
     },
     {
       "id": 2,
@@ -184,7 +184,7 @@
         "auto",
         0.0
       ],
-      "title": "2 \u00b7 CAMERA"
+      "title": "2 · CAMERA"
     },
     {
       "id": 3,
@@ -312,7 +312,7 @@
         0,
         0.25
       ],
-      "title": "3 \u00b7 DEPTH \u00b7 shared by every layer"
+      "title": "3 · DEPTH · shared by every layer"
     },
     {
       "id": 4,
@@ -368,7 +368,7 @@
         0.55,
         0.0
       ],
-      "title": "4 \u00b7 BAND SPLIT \u00b7 the near/far cut"
+      "title": "4 · BAND SPLIT · the near/far cut"
     },
     {
       "id": 5,
@@ -579,7 +579,7 @@
         "",
         true
       ],
-      "title": "5 \u00b7 LAYER MATTE \u00b7 the band, as a matte"
+      "title": "5 · LAYER MATTE · the band, as a matte"
     },
     {
       "id": 6,
@@ -651,7 +651,7 @@
         1024,
         8
       ],
-      "title": "SKY MASK \u00b7 pure geometry, zero deps"
+      "title": "SKY MASK · pure geometry, zero deps"
     },
     {
       "id": 7,
@@ -792,9 +792,9 @@
         false,
         0.0,
         true,
-        false
+        true
       ],
-      "title": "6 \u00b7 BASE RELIEF \u00b7 tears are information"
+      "title": "6 · BASE RELIEF · tears are information"
     },
     {
       "id": 8,
@@ -1123,7 +1123,7 @@
         0.0,
         true
       ],
-      "title": "7 \u00b7 CLEAN PLATE LAYER \u00b7 the mid band you paint on"
+      "title": "7 · CLEAN PLATE LAYER · the mid band you paint on"
     },
     {
       "id": 9,
@@ -1248,7 +1248,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            19
+            32
           ]
         },
         {
@@ -1276,7 +1276,7 @@
         64,
         0.0
       ],
-      "title": "8 \u00b7 SKY DOME \u00b7 farthest, priority -10"
+      "title": "8 · SKY DOME · farthest, priority -10"
     },
     {
       "id": 10,
@@ -1327,7 +1327,7 @@
         "Node name for S&R": "AtlasOcclusionGraph"
       },
       "widgets_values": [],
-      "title": "9 \u00b7 OCCLUSION GRAPH \u00b7 who hides whom"
+      "title": "9 · OCCLUSION GRAPH · who hides whom"
     },
     {
       "id": 11,
@@ -1411,7 +1411,7 @@
       "widgets_values": [
         false
       ],
-      "title": "10 \u00b7 LAYER PLAN \u00b7 read this before exporting"
+      "title": "10 · LAYER PLAN · read this before exporting"
     },
     {
       "id": 12,
@@ -1476,7 +1476,7 @@
         0,
         ""
       ],
-      "title": "LAYER PREVIEW \u00b7 the matte over the plate"
+      "title": "LAYER PREVIEW · the matte over the plate"
     },
     {
       "id": 13,
@@ -1595,7 +1595,7 @@
         "ACES 2.0 SDR-video",
         1.0
       ],
-      "title": "OUTPUT DESK \u00b7 OCIO metadata"
+      "title": "OUTPUT DESK · OCIO metadata"
     },
     {
       "id": 14,
@@ -1815,7 +1815,7 @@
         1.0,
         96
       ],
-      "title": "11 \u00b7 VIEWPORT \u00b7 orbit for the parallax"
+      "title": "11 · VIEWPORT · orbit for the parallax"
     },
     {
       "id": 15,
@@ -1870,7 +1870,7 @@
       "widgets_values": [
         "atlas_exports/atlas_layered_projection_workflow/atlas_solve.json"
       ],
-      "title": "Solve JSON \u00b7 the whole stack"
+      "title": "Solve JSON · the whole stack"
     },
     {
       "id": 16,
@@ -1993,7 +1993,7 @@
         30.0,
         false
       ],
-      "title": "Nuke Layers \u00b7 per-band cameras, plates, mattes"
+      "title": "Nuke Layers · per-band cameras, plates, mattes"
     },
     {
       "id": 17,
@@ -2015,9 +2015,131 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "LAYERED PROJECTION \u2014 one plate becomes an ordered, controllable 2.5D stack.\n\nThis is the workflow a matte painter opens. A single relief mesh is one surface; a layered stack is separate surfaces at separate depths, each with its own plate, its own matte and its own priority, which is what gives you real parallax on a move and a layer you can paint on in isolation.\n\nTHE STACK, FAR TO NEAR\n1. AtlasDepthBandSplit \u2014 the near/far cut, as a fraction of the depth range. Everything downstream addresses a band by name rather than by hand-typed metres.\n2. AtlasDepthLayerMask \u2014 that band as an actual matte, feathered, with its occlusion and hole masks.\n3. AtlasDeriveReliefMesh \u2014 the base surface. Its tears are load-bearing information about what the camera could not see.\n4. AtlasCleanPlateLayer \u2014 the mid band as its own layer, carrying its own plate. This is the layer you paint on, and the one that holds parallax when the camera moves.\n5. AtlasSkyDomeLayer \u2014 the far field on a dome behind everything. Priority is negative so it sits farthest back: band priorities are FARTHEST-highest.\n6. AtlasOcclusionGraph \u2014 works out which layer hides which, so the stack composites in the right order.\n7. AtlasLayerPlan \u2014 the readable summary of the finished stack. Read its report before exporting.\n\nSEAM DOCTRINE\nEdge-extend smear lives on the layers BEHIND. The frontmost band keeps a clean cut. If a seam shows, raise edge_extend_px on the layer behind it, never on the one in front.\n\nWHY THIS GRAPH USES AtlasHorizonMask FOR THE SKY\nAtlasSkyDomeLayer requires a sky mask. The better source is a segmenter, but AtlasSAM3Mask needs the [sam3] extra and a Hugging Face token for a gated repo. The horizon mask is pure solve geometry and needs nothing, so this example runs on a fresh clone. On a real plate, swap in AtlasSAM3Mask with the prompt \"sky\", or AtlasInput's own sky output, and the dome will follow the actual skyline instead of the horizon line.\n\nAtlasBoundedBand is absent for the same reason: its foreground_mask is required and only a segmenter produces one. Add it once you have segmentation, and it will bound the band to a real object instead of a depth percentile.\n\nWHAT TO TUNE FIRST\n\u2022 split on the band split \u2014 the single most useful dial in this graph.\n\u2022 near_pct / far_pct on the clean plate layer, to widen or narrow the mid band.\n\u2022 radius_m on the sky dome, if the horizon parallaxes wrongly on a move.\n\u2022 feather_px on the layer mask, if a matte edge reads hard."
+        "LAYERED PROJECTION — one plate becomes an ordered, controllable 2.5D stack.\n\nThis is the workflow a matte painter opens. A single relief mesh is one surface; a layered stack is separate surfaces at separate depths, each with its own plate, its own matte and its own priority, which is what gives you real parallax on a move and a layer you can paint on in isolation.\n\nTHE STACK, FAR TO NEAR\n1. AtlasDepthBandSplit — the near/far cut, as a fraction of the depth range. Everything downstream addresses a band by name rather than by hand-typed metres.\n2. AtlasDepthLayerMask — that band as an actual matte, feathered, with its occlusion and hole masks.\n3. AtlasDeriveReliefMesh — the base surface. Its tears are load-bearing information about what the camera could not see.\n4. AtlasCleanPlateLayer — the mid band as its own layer, carrying its own plate. This is the layer you paint on, and the one that holds parallax when the camera moves.\n5. AtlasSkyDomeLayer — the far field on a dome behind everything. Priority is negative so it sits farthest back: band priorities are FARTHEST-highest.\n6. AtlasOcclusionGraph — works out which layer hides which, so the stack composites in the right order.\n7. AtlasLayerPlan — the readable summary of the finished stack. Read its report before exporting.\n\nSEAM DOCTRINE\nEdge-extend smear lives on the layers BEHIND. The frontmost band keeps a clean cut. If a seam shows, raise edge_extend_px on the layer behind it, never on the one in front.\n\nWHY THIS GRAPH USES AtlasHorizonMask FOR THE SKY\nAtlasSkyDomeLayer requires a sky mask. The better source is a segmenter, but AtlasSAM3Mask needs the [sam3] extra and a Hugging Face token for a gated repo. The horizon mask is pure solve geometry and needs nothing, so this example runs on a fresh clone. On a real plate, swap in AtlasSAM3Mask with the prompt \"sky\", or AtlasInput's own sky output, and the dome will follow the actual skyline instead of the horizon line.\n\nAtlasBoundedBand is absent for the same reason: its foreground_mask is required and only a segmenter produces one. Add it once you have segmentation, and it will bound the band to a real object instead of a depth percentile.\n\nWHAT TO TUNE FIRST\n• split on the band split — the single most useful dial in this graph.\n• near_pct / far_pct on the clean plate layer, to widen or narrow the mid band.\n• radius_m on the sky dome, if the horizon parallaxes wrongly on a move.\n• feather_px on the layer mask, if a matte edge reads hard."
       ],
-      "title": "READ ME \u00b7 the stack, the seam doctrine, what to tune"
+      "title": "READ ME · the stack, the seam doctrine, what to tune"
+    },
+    {
+      "id": 18,
+      "type": "AtlasRetopologizeLayer",
+      "pos": [
+        3730,
+        1036
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 32
+        },
+        {
+          "localized_name": "layer",
+          "name": "layer",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "layer"
+          }
+        },
+        {
+          "localized_name": "method",
+          "name": "method",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "method"
+          }
+        },
+        {
+          "localized_name": "target_vertex_count",
+          "name": "target_vertex_count",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "target_vertex_count"
+          }
+        },
+        {
+          "localized_name": "smooth_iterations",
+          "name": "smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "crease_angle",
+          "name": "crease_angle",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "crease_angle"
+          }
+        },
+        {
+          "localized_name": "pure_quad",
+          "name": "pure_quad",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "pure_quad"
+          }
+        },
+        {
+          "localized_name": "boundary_smooth_iterations",
+          "name": "boundary_smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "boundary_smooth_iterations"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            19
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "*",
+        "off",
+        2000,
+        0,
+        30.0,
+        false,
+        8
+      ],
+      "title": "ROUND THE SILHOUETTE · boundary smooth ×8 🔷"
     }
   ],
   "links": [
@@ -2166,14 +2288,6 @@
       "IMAGE"
     ],
     [
-      19,
-      9,
-      0,
-      10,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       20,
       3,
       0,
@@ -2268,11 +2382,27 @@
       16,
       2,
       "ATLAS_OUTPUT_PROFILE"
+    ],
+    [
+      32,
+      9,
+      0,
+      18,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      19,
+      18,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
     ]
   ],
   "groups": [
     {
-      "title": "1 \u00b7 BUILD THE STACK \u00b7 far to near",
+      "title": "1 · BUILD THE STACK · far to near",
       "bounding": [
         -5,
         -48,
@@ -2284,7 +2414,7 @@
       "flags": {}
     },
     {
-      "title": "2 \u00b7 INSPECT + DELIVER",
+      "title": "2 · INSPECT + DELIVER",
       "bounding": [
         -5,
         264,

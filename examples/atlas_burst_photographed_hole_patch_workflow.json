@@ -1,8 +1,8 @@
 {
   "id": "11fd57dc-a46d-4487-8a84-44e014189267",
   "revision": 0,
-  "last_node_id": 6,
-  "last_link_id": 8,
+  "last_node_id": 7,
+  "last_link_id": 9,
   "nodes": [
     {
       "id": 1,
@@ -430,8 +430,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            4,
-            7
+            9
           ]
         },
         {
@@ -454,7 +453,7 @@
         true,
         0.0,
         "off",
-        false
+        true
       ],
       "title": "3 · DERIVE RELIEF MESH & HOLE MASK 🏔"
     },
@@ -802,6 +801,129 @@
       },
       "widgets_values": [],
       "title": "5 · THE PATCH CROP · REAL PIXELS FROM A FLANKING FRAME 🖼"
+    },
+    {
+      "id": 7,
+      "type": "AtlasRetopologizeLayer",
+      "pos": [
+        1420,
+        380
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 9
+        },
+        {
+          "localized_name": "layer",
+          "name": "layer",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "layer"
+          }
+        },
+        {
+          "localized_name": "method",
+          "name": "method",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "method"
+          }
+        },
+        {
+          "localized_name": "target_vertex_count",
+          "name": "target_vertex_count",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "target_vertex_count"
+          }
+        },
+        {
+          "localized_name": "smooth_iterations",
+          "name": "smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "crease_angle",
+          "name": "crease_angle",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "crease_angle"
+          }
+        },
+        {
+          "localized_name": "pure_quad",
+          "name": "pure_quad",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "pure_quad"
+          }
+        },
+        {
+          "localized_name": "boundary_smooth_iterations",
+          "name": "boundary_smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "boundary_smooth_iterations"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            4,
+            7
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "",
+        "off",
+        2000,
+        0,
+        30.0,
+        false,
+        8
+      ],
+      "title": "ROUND THE SILHOUETTE · boundary smooth ×8 🔷"
     }
   ],
   "links": [
@@ -830,14 +952,6 @@
       "IMAGE"
     ],
     [
-      4,
-      3,
-      0,
-      4,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       5,
       3,
       1,
@@ -854,20 +968,36 @@
       "IMAGE"
     ],
     [
-      7,
-      3,
-      0,
-      5,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       8,
       4,
       0,
       6,
       0,
       "IMAGE"
+    ],
+    [
+      9,
+      3,
+      0,
+      7,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      4,
+      7,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      7,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
     ]
   ],
   "groups": [

@@ -53,7 +53,7 @@
         "example.png",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE"
+      "title": "1 · SOURCE PLATE"
     },
     {
       "id": 2,
@@ -420,9 +420,10 @@
         0,
         "off",
         2000,
-        0
+        8,
+        true
       ],
-      "title": "2 \u00b7 SOLVE + RELIEF"
+      "title": "2 · SOLVE + RELIEF"
     },
     {
       "id": 3,
@@ -517,7 +518,7 @@
         "",
         true
       ],
-      "title": "3 \u00b7 DELIVERY PROJECT \u00b7 routes every export"
+      "title": "3 · DELIVERY PROJECT · routes every export"
     },
     {
       "id": 4,
@@ -638,7 +639,7 @@
         "ACES 2.0 SDR-video",
         1.0
       ],
-      "title": "OUTPUT DESK \u00b7 OCIO metadata"
+      "title": "OUTPUT DESK · OCIO metadata"
     },
     {
       "id": 5,
@@ -860,7 +861,7 @@
         1.0,
         96
       ],
-      "title": "4 \u00b7 VIEWPORT \u00b7 make a move, then re-queue"
+      "title": "4 · VIEWPORT · make a move, then re-queue"
     },
     {
       "id": 6,
@@ -882,9 +883,9 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "EXPORT FAN-OUT \u2014 one photograph, eight native DCC deliverables, one project tree.\n\nAtlasProject is the delivery desk. Name the project and shot, pick a colour lane, and every export node wired to its project output writes into <project_root>/<project>/<shot>/ instead of its own loose output_dir. Unwire the project link and each node falls back to its own path exactly as before, so an existing graph never changes behaviour by accident.\n\nTHE ONE CHOICE: COLOUR LANE\n\u2022 Standard (sRGB) \u2014 photographers and designers. 8/16-bit, sRGB texture space.\n\u2022 VFX (ACEScg / float) \u2014 the managed float path. ACEScg working space, float EXR plates, colour metadata carried into Nuke, Maya, Blender and USD.\nThis graph ships on the VFX lane because that is the lane the DCC exports are for. A camera RAW forces the choice, because the file itself cannot tell you which one it is.\n\nWHAT LANDS WHERE\n\u2022 Nuke \u2014 a .nk with the projection camera grouped with the geometry, plus a Python build script.\n\u2022 Maya \u2014 a .ma review scene, camera and relief mesh, ready to look through.\n\u2022 Blender \u2014 a build script; run it and the scene assembles.\n\u2022 USD \u2014 the recovered camera on a stage, axis set at export time.\n\u2022 Relief mesh \u2014 OBJ+MTL and a self-contained GLB, the projection baked into the UVs.\n\u2022 Review package \u2014 the shareable summary bundle.\n\u2022 Camera path USD \u2014 the viewport's baked move, once you have made one.\n\u2022 Solve JSON \u2014 the portable contract every other tool reads.\n\nSTARTING FROM A CAMERA RAW\nNo RAW ships in the repo \u2014 one file would be twice the size of the whole tracked tree \u2014 so this graph starts from a jpg. To run the real colour path, drop in AtlasLoadRAW \ud83d\udcf7 (NEF/CR2/CR3/RAF/ARW) ahead of the solve and make three connections:\n\u2022 AtlasLoadRAW.image \u2192 AtlasInput.image \u2014 the developed, undistorted plate.\n\u2022 AtlasLoadRAW.raw_meta \u2192 AtlasInput.raw_meta \u2014 EXIF focal plus the sensor width looked up from the camera model. This is the only MEASURED intrinsic in the graph, and a measured focal always beats a learned one; wire it and the solver stops guessing.\n\u2022 AtlasLoadRAW.plate_ref \u2192 AtlasAttachSourcePlate, if you want the float plate tracked by reference into the exports.\nSet the project's colour lane to VFX (ACEScg / float) \u2014 it already is here \u2014 and AtlasLoadRAW writes an undistorted ACEScg EXR alongside the solve.\n\nTHE CAMERA PATH EXPORT SHIPS MUTED\nAtlasExportCameraPathUSD is the one muted node in this graph, and deliberately so: it raises rather than no-ops when no path has been baked, which is the state every first queue is in. To use it \u2014 queue once, open the viewport, add keyframes with \ud83c\udfa5 Camera Path, click \u23fa Bake Proxy Path, then unmute the node (Ctrl+M) and queue again. The move leaves the viewport as USD.\n\nRETOPOLOGY IS EXPORT-ONLY\nThe retopo widgets on the export nodes never touch the live projection mesh. Leave them off for projection fidelity. Live retopology happens only through AtlasRetopologizeLayer, which regenerates the projective UVs. Quad output additionally needs pyinstantmeshes."
+        "EXPORT FAN-OUT — one photograph, eight native DCC deliverables, one project tree.\n\nAtlasProject is the delivery desk. Name the project and shot, pick a colour lane, and every export node wired to its project output writes into <project_root>/<project>/<shot>/ instead of its own loose output_dir. Unwire the project link and each node falls back to its own path exactly as before, so an existing graph never changes behaviour by accident.\n\nTHE ONE CHOICE: COLOUR LANE\n• Standard (sRGB) — photographers and designers. 8/16-bit, sRGB texture space.\n• VFX (ACEScg / float) — the managed float path. ACEScg working space, float EXR plates, colour metadata carried into Nuke, Maya, Blender and USD.\nThis graph ships on the VFX lane because that is the lane the DCC exports are for. A camera RAW forces the choice, because the file itself cannot tell you which one it is.\n\nWHAT LANDS WHERE\n• Nuke — a .nk with the projection camera grouped with the geometry, plus a Python build script.\n• Maya — a .ma review scene, camera and relief mesh, ready to look through.\n• Blender — a build script; run it and the scene assembles.\n• USD — the recovered camera on a stage, axis set at export time.\n• Relief mesh — OBJ+MTL and a self-contained GLB, the projection baked into the UVs.\n• Review package — the shareable summary bundle.\n• Camera path USD — the viewport's baked move, once you have made one.\n• Solve JSON — the portable contract every other tool reads.\n\nSTARTING FROM A CAMERA RAW\nNo RAW ships in the repo — one file would be twice the size of the whole tracked tree — so this graph starts from a jpg. To run the real colour path, drop in AtlasLoadRAW 📷 (NEF/CR2/CR3/RAF/ARW) ahead of the solve and make three connections:\n• AtlasLoadRAW.image → AtlasInput.image — the developed, undistorted plate.\n• AtlasLoadRAW.raw_meta → AtlasInput.raw_meta — EXIF focal plus the sensor width looked up from the camera model. This is the only MEASURED intrinsic in the graph, and a measured focal always beats a learned one; wire it and the solver stops guessing.\n• AtlasLoadRAW.plate_ref → AtlasAttachSourcePlate, if you want the float plate tracked by reference into the exports.\nSet the project's colour lane to VFX (ACEScg / float) — it already is here — and AtlasLoadRAW writes an undistorted ACEScg EXR alongside the solve.\n\nTHE CAMERA PATH EXPORT SHIPS MUTED\nAtlasExportCameraPathUSD is the one muted node in this graph, and deliberately so: it raises rather than no-ops when no path has been baked, which is the state every first queue is in. To use it — queue once, open the viewport, add keyframes with 🎥 Camera Path, click ⏺ Bake Proxy Path, then unmute the node (Ctrl+M) and queue again. The move leaves the viewport as USD.\n\nRETOPOLOGY IS EXPORT-ONLY\nThe retopo widgets on the export nodes never touch the live projection mesh. Leave them off for projection fidelity. Live retopology happens only through AtlasRetopologizeLayer, which regenerates the projective UVs. Quad output additionally needs pyinstantmeshes."
       ],
-      "title": "READ ME \u00b7 the project tree and the colour lane"
+      "title": "READ ME · the project tree and the colour lane"
     },
     {
       "id": 7,
@@ -939,7 +940,7 @@
       "widgets_values": [
         "atlas_solve.json"
       ],
-      "title": "Solve JSON \u00b7 the portable contract"
+      "title": "Solve JSON · the portable contract"
     },
     {
       "id": 8,
@@ -1208,7 +1209,7 @@
         30.0,
         false
       ],
-      "title": "Relief OBJ + GLB \u00b7 projection baked into UVs"
+      "title": "Relief OBJ + GLB · projection baked into UVs"
     },
     {
       "id": 9,
@@ -1287,7 +1288,7 @@
         "nuke",
         ""
       ],
-      "title": "Nuke \u00b7 .nk + build script"
+      "title": "Nuke · .nk + build script"
     },
     {
       "id": 10,
@@ -1360,7 +1361,7 @@
         "maya",
         ""
       ],
-      "title": "Maya \u00b7 .ma review scene"
+      "title": "Maya · .ma review scene"
     },
     {
       "id": 11,
@@ -1422,7 +1423,7 @@
       "widgets_values": [
         "blender"
       ],
-      "title": "Blender \u00b7 build script"
+      "title": "Blender · build script"
     },
     {
       "id": 12,
@@ -1477,7 +1478,7 @@
       "widgets_values": [
         "usd"
       ],
-      "title": "USD \u00b7 recovered camera on a stage"
+      "title": "USD · recovered camera on a stage"
     },
     {
       "id": 13,
@@ -1532,7 +1533,7 @@
       "widgets_values": [
         "review"
       ],
-      "title": "Review package \u00b7 shareable bundle"
+      "title": "Review package · shareable bundle"
     },
     {
       "id": 14,
@@ -1593,7 +1594,7 @@
       "widgets_values": [
         "camera_path"
       ],
-      "title": "Camera path USD \u00b7 MUTED until you bake a path"
+      "title": "Camera path USD · MUTED until you bake a path"
     }
   ],
   "links": [
@@ -1832,7 +1833,7 @@
   ],
   "groups": [
     {
-      "title": "1 \u00b7 SOLVE + DELIVERY PROJECT \u00b7 read the note",
+      "title": "1 · SOLVE + DELIVERY PROJECT · read the note",
       "bounding": [
         -5,
         659,
@@ -1844,7 +1845,7 @@
       "flags": {}
     },
     {
-      "title": "2 \u00b7 EIGHT NATIVE DELIVERABLES \u00b7 every path routed by the project",
+      "title": "2 · EIGHT NATIVE DELIVERABLES · every path routed by the project",
       "bounding": [
         1555,
         -48,

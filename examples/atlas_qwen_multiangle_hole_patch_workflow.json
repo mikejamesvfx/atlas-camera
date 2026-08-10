@@ -1,8 +1,8 @@
 {
   "id": "ba6cd30a-0b66-4cfd-921b-2d839bbf14c0",
   "revision": 0,
-  "last_node_id": 19,
-  "last_link_id": 27,
+  "last_node_id": 20,
+  "last_link_id": 28,
   "nodes": [
     {
       "id": 1,
@@ -411,7 +411,8 @@
         0,
         "off",
         2000,
-        0
+        8,
+        true
       ],
       "title": "2 · PRIMARY SOLVE & RELIEF GEOMETRY"
     },
@@ -576,7 +577,7 @@
         true,
         0.0,
         "off",
-        false
+        true
       ],
       "title": "3 · DERIVE RELIEF MESH & HOLE MASK ⛰️"
     },
@@ -969,7 +970,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            25
+            28
           ]
         }
       ],
@@ -1334,6 +1335,128 @@
         "image"
       ],
       "title": "THE RENDERED PATCH · generate it from patch_prompt, then load it here 🖼"
+    },
+    {
+      "id": 20,
+      "type": "AtlasRetopologizeLayer",
+      "pos": [
+        3900,
+        380
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 28
+        },
+        {
+          "localized_name": "layer",
+          "name": "layer",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "layer"
+          }
+        },
+        {
+          "localized_name": "method",
+          "name": "method",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "method"
+          }
+        },
+        {
+          "localized_name": "target_vertex_count",
+          "name": "target_vertex_count",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "target_vertex_count"
+          }
+        },
+        {
+          "localized_name": "smooth_iterations",
+          "name": "smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "crease_angle",
+          "name": "crease_angle",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "crease_angle"
+          }
+        },
+        {
+          "localized_name": "pure_quad",
+          "name": "pure_quad",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "pure_quad"
+          }
+        },
+        {
+          "localized_name": "boundary_smooth_iterations",
+          "name": "boundary_smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "boundary_smooth_iterations"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            25
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "*",
+        "off",
+        2000,
+        0,
+        30.0,
+        false,
+        8
+      ],
+      "title": "ROUND THE SILHOUETTE · boundary smooth ×8 🔷"
     }
   ],
   "links": [
@@ -1394,14 +1517,6 @@
       "IMAGE"
     ],
     [
-      25,
-      16,
-      0,
-      17,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       26,
       17,
       12,
@@ -1416,6 +1531,22 @@
       16,
       1,
       "IMAGE"
+    ],
+    [
+      28,
+      16,
+      0,
+      20,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      25,
+      20,
+      0,
+      17,
+      0,
+      "ATLAS_SOLVE"
     ]
   ],
   "groups": [

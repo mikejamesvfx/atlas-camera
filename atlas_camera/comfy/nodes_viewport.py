@@ -1259,7 +1259,20 @@ class AtlasInput:
                     "tooltip": "Taubin-relax every open boundary loop AFTER retopo — rounds "
                                "lattice-staircase silhouette jaggies; projective UVs regenerated "
                                "per layer camera. Works with retopo_method=off ('just round the "
-                               "silhouette'). 0 = off."}),
+                               "silhouette'). 0 = off. Pair with sub_quad_boundary: smoothing "
+                               "ROUNDS a staircase, the cut RELOCATES it (measured 5.67 -> 1.43px "
+                               "alone, 1.35px together)."}),
+                "sub_quad_boundary": ("BOOLEAN", {"default": False,
+                    "tooltip": "layers=0 relief mesh: cut a torn cell AT the depth cliff instead "
+                               "of deleting the whole cell. Tearing is per grid cell, so a "
+                               "silhouette turns only in whole-cell steps AND a cell of real "
+                               "surface is lost on both sides of every cliff - measured 5.67px "
+                               "mean boundary error at grid 128 on a 1024px plate (step 8px), "
+                               "WORSE than the 4px quantization bound. Reads the cliff out of the "
+                               "full-resolution depth and rebuilds both sides up to it, never "
+                               "joining them: 5.67 -> 1.43px, camera coverage 97.8 -> 100%, ~5% "
+                               "more vertices. Same thresholds, same cells torn - the tear is "
+                               "untouched. Ignored when layers>0 (bands build their own meshes)."}),
                 # Live mesh repair (interior hole-fill / boundary sawtooth) is no
                 # longer configured here — wire the standalone AtlasLiveMeshRepair
                 # 🔧 node onto this node's `solve` output instead. It repairs any
@@ -1290,7 +1303,8 @@ class AtlasInput:
               sky_sdxl_negative="building, tree, roof, person, vehicle, text, watermark, blurry",
               sky_sdxl_seed=0,
               retopo_method="off", retopo_target_vertex_count=2000,
-              boundary_smooth_iterations=0, raw_meta=None, **_extra):
+              boundary_smooth_iterations=0, sub_quad_boundary=False,
+              raw_meta=None, **_extra):
 
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
@@ -1442,9 +1456,12 @@ class AtlasInput:
                                 max_edge_factor=float(max_edge_factor),
                                 sky_heuristic=bool(sky_heuristic),
                                 normal_edge_deg=float(normal_edge_deg),
+                                sub_quad_boundary=bool(sub_quad_boundary),
                                 **exclude_kw)
                 solve_chain = relief.out(0)
-                notes.append(f"single relief mesh, grid {int(mesh_resolution)}")
+                notes.append(
+                    f"single relief mesh, grid {int(mesh_resolution)}"
+                    + (", sub-quad cliff cut" if sub_quad_boundary else ""))
             else:
                 flat = g.node("AtlasCleanPlateLayer", solve=solve_chain,
                               depth=depth.out(0), plate_image=image_ref,

@@ -53,7 +53,7 @@
         "example.png",
         "image"
       ],
-      "title": "1 \u00b7 SOURCE PLATE"
+      "title": "1 · SOURCE PLATE"
     },
     {
       "id": 2,
@@ -417,9 +417,10 @@
         0,
         "off",
         2000,
-        0
+        8,
+        true
       ],
-      "title": "2 \u00b7 SOLVE + RELIEF \u00b7 expand options here"
+      "title": "2 · SOLVE + RELIEF · expand options here"
     },
     {
       "id": 3,
@@ -537,7 +538,7 @@
         "Un-tone-mapped",
         1.0
       ],
-      "title": "OUTPUT DESK \u00b7 OCIO metadata"
+      "title": "OUTPUT DESK · OCIO metadata"
     },
     {
       "id": 4,
@@ -759,7 +760,7 @@
         1.0,
         96
       ],
-      "title": "3 \u00b7 VIEWPORT \u00b7 camera view + projection"
+      "title": "3 · VIEWPORT · camera view + projection"
     },
     {
       "id": 5,
@@ -824,7 +825,7 @@
         0,
         ""
       ],
-      "title": "LAYER PREVIEW \u00b7 matte over plate"
+      "title": "LAYER PREVIEW · matte over plate"
     },
     {
       "id": 6,
@@ -1023,7 +1024,7 @@
         true,
         true
       ],
-      "title": "TERMINAL QA \u00b7 disabled, needs a local VLM"
+      "title": "TERMINAL QA · disabled, needs a local VLM"
     },
     {
       "id": 7,
@@ -1078,7 +1079,7 @@
       "widgets_values": [
         "atlas_exports/atlas_input_quickstart_workflow/atlas_solve.json"
       ],
-      "title": "Solve JSON \u00b7 portable camera"
+      "title": "Solve JSON · portable camera"
     },
     {
       "id": 8,
@@ -1100,9 +1101,9 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "ATLAS INPUT QUICKSTART \u2014 the front door. One node, plate in, camera and geometry out.\n\n1. Queue once. Load Image starts on ComfyUI's bundled example.png so this runs with nothing to download.\n   For a REAL result, swap in your own photo \u2014 or grab the Atlas plate pack from mikejamesvfx.com. No images\n   ship in this repo, so every shipping workflow starts on the neutral placeholder by construction.\n2. Click Camera View for the recovered camera; click Project to inspect the photo projection.\n3. Orbit gently. Solve JSON lands in atlas_exports/ and carries the camera anywhere.\n\nWHY layers=0 AND sky_heuristic OFF\nlayers=0 builds ONE high-resolution relief mesh, which is the fastest honest answer for a first run. The outdoor sky heuristic is off because the bundled example.png classifies almost entirely as above-horizon far field, which would leave an empty export mesh. Turn it ON for real outdoor plates once you have checked the horizon mask.\n\nWHAT TO REACH FOR NEXT\n\u2022 atlas_quickstart_solve_project_export_workflow.json \u2014 the same result with every stage exposed and overridable.\n\u2022 atlas_export_fanout_workflow.json \u2014 Nuke, Maya, Blender, USD and a review package from one solve, routed into a delivery project tree.\n\u2022 atlas_layered_projection_workflow.json \u2014 the 2.5D layer stack a matte painter actually works in.\n\nOPTIONAL UPGRADES ON AtlasInput\n\u2022 layers 2-4: watertight depth-band projection layers instead of one mesh\n\u2022 use_vlm: image-specific prompts, geometry choices and band boundaries from a local VLM\n\u2022 sky / scope_prompts: native AtlasSAM3Mask when [sam3] is installed, with a semantic fallback\n\u2022 inpaint: the optional LaMa path, if comfyui-inpaint-nodes and big-lama.pt are present\n\nTERMINAL QA is wired but DISABLED. AtlasAssessOutput needs a local VLM (LM Studio or Ollama); set enabled=true once you have one running and it writes a headless verdict for agent-driven runs. Left off, the graph runs green on a fresh clone with no model downloads beyond depth.\n\nCOLOUR\nThe profile link carries OCIO-style metadata to the viewport and the DCC handoffs. The browser is a display preview only. Exported RGB stays associated with its colour metadata; alpha and mattes are data and are never display-transformed."
+        "ATLAS INPUT QUICKSTART — the front door. One node, plate in, camera and geometry out.\n\n1. Queue once. Load Image starts on ComfyUI's bundled example.png so this runs with nothing to download.\n   For a REAL result, swap in your own photo — or grab the Atlas plate pack from mikejamesvfx.com. No images\n   ship in this repo, so every shipping workflow starts on the neutral placeholder by construction.\n2. Click Camera View for the recovered camera; click Project to inspect the photo projection.\n3. Orbit gently. Solve JSON lands in atlas_exports/ and carries the camera anywhere.\n\nWHY layers=0 AND sky_heuristic OFF\nlayers=0 builds ONE high-resolution relief mesh, which is the fastest honest answer for a first run. The outdoor sky heuristic is off because the bundled example.png classifies almost entirely as above-horizon far field, which would leave an empty export mesh. Turn it ON for real outdoor plates once you have checked the horizon mask.\n\nWHAT TO REACH FOR NEXT\n• atlas_quickstart_solve_project_export_workflow.json — the same result with every stage exposed and overridable.\n• atlas_export_fanout_workflow.json — Nuke, Maya, Blender, USD and a review package from one solve, routed into a delivery project tree.\n• atlas_layered_projection_workflow.json — the 2.5D layer stack a matte painter actually works in.\n\nOPTIONAL UPGRADES ON AtlasInput\n• layers 2-4: watertight depth-band projection layers instead of one mesh\n• use_vlm: image-specific prompts, geometry choices and band boundaries from a local VLM\n• sky / scope_prompts: native AtlasSAM3Mask when [sam3] is installed, with a semantic fallback\n• inpaint: the optional LaMa path, if comfyui-inpaint-nodes and big-lama.pt are present\n\nTERMINAL QA is wired but DISABLED. AtlasAssessOutput needs a local VLM (LM Studio or Ollama); set enabled=true once you have one running and it writes a headless verdict for agent-driven runs. Left off, the graph runs green on a fresh clone with no model downloads beyond depth.\n\nCOLOUR\nThe profile link carries OCIO-style metadata to the viewport and the DCC handoffs. The browser is a display preview only. Exported RGB stays associated with its colour metadata; alpha and mattes are data and are never display-transformed."
       ],
-      "title": "READ ME \u00b7 what this graph is and where to go next"
+      "title": "READ ME · what this graph is and where to go next"
     }
   ],
   "links": [
@@ -1205,7 +1206,7 @@
   ],
   "groups": [
     {
-      "title": "1 \u00b7 LOAD \u2192 SOLVE \u2192 VIEWPORT \u00b7 read the note",
+      "title": "1 · LOAD → SOLVE → VIEWPORT · read the note",
       "bounding": [
         -5,
         -48,
@@ -1217,7 +1218,7 @@
       "flags": {}
     },
     {
-      "title": "2 \u00b7 INSPECT + EXPORT",
+      "title": "2 · INSPECT + EXPORT",
       "bounding": [
         1495,
         121,

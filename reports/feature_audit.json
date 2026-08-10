@@ -2201,7 +2201,7 @@
   "AtlasRetopologizeLayer": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": 0,
+   "example_workflows": 4,
    "dedicated_tests": 6,
    "tests": 8,
    "mcp_tools": 0,
@@ -2209,6 +2209,7 @@
    "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
