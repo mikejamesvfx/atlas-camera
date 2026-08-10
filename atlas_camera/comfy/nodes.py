@@ -15,7 +15,10 @@ here rather than per line, so a genuinely dead import elsewhere still shows up.
 from __future__ import annotations
 
 from atlas_camera.comfy.nodes_project import AtlasProject  # noqa: F401
-from atlas_camera.comfy.nodes_multiview import AtlasMultiViewSolve  # noqa: F401
+from atlas_camera.comfy.nodes_multiview import (  # noqa: F401
+    AtlasMultiViewSolve,
+    AtlasMultiViewSolveBurst,
+)
 
 from atlas_camera.comfy.viewport_payload import (  # noqa: F401
     _fit_long_edge,

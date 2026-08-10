@@ -28,7 +28,10 @@ from atlas_camera.comfy.nodes_completion import (
 )
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_project import AtlasProject
-from atlas_camera.comfy.nodes_multiview import AtlasMultiViewSolve
+from atlas_camera.comfy.nodes_multiview import (
+    AtlasMultiViewSolve,
+    AtlasMultiViewSolveBurst,
+)
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
     AtlasRegisterPlate,
@@ -230,6 +233,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasInput":                 AtlasInput,
     "AtlasProject":               AtlasProject,
     "AtlasMultiViewSolve":        AtlasMultiViewSolve,
+    "AtlasMultiViewSolveBurst":   AtlasMultiViewSolveBurst,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -330,6 +334,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasInput":                 "Atlas Input 🎬",
     "AtlasProject":               "Atlas Project 🎬",
     "AtlasMultiViewSolve":        "Atlas Multi-View RAW Solve 📷📷",
+    "AtlasMultiViewSolveBurst":   "Atlas Multi-View Burst Solve 📷🎞️",
 }
 
 # ---------------------------------------------------------------------------
@@ -475,7 +480,7 @@ _MENU_FOLDERS = {
     "Atlas/01 \u00b7 Input & Camera": (
         "AtlasProject",
         "AtlasInput", "AtlasLoadPlate", "AtlasLoadRAW", "AtlasRegisterPlate",
-        "AtlasMultiViewSolve",
+        "AtlasMultiViewSolve", "AtlasMultiViewSolveBurst",
         "AtlasAttachSourcePlate", "AtlasSolveFromImage",
         "AtlasLearnedSolveFromImage", "AtlasConstrainedSolve", "AtlasSplitEquirect",
         "AtlasEquirectMultiView", "AtlasUSDCameraLoader", "AtlasLoadSolveJSON",

@@ -30,6 +30,7 @@ import atlas_camera.comfy.nodes as nodes
 FACADE_PUBLIC = {
     "AtlasProject",
     "AtlasMultiViewSolve",
+    "AtlasMultiViewSolveBurst",
     # Added when the derived pin below caught them: eight registered nodes had
     # never been re-exported, and only a `>= 60` floor guarded that.
     "AtlasBlockoutMassing", "AtlasDisocclusionGuide",

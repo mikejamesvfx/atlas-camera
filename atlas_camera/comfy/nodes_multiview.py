@@ -530,4 +530,209 @@ class AtlasMultiViewSolve:
         )
 
 
-__all__ = ["AtlasMultiViewSolve"]
+#: Every capture container the burst loader accepts — RAW bodies plus
+#: camera-processed JPEG (the trusted-EXIF tier added 2026-08-10).
+_BURST_EXTENSIONS = (
+    ".raf", ".nef", ".nrw", ".cr2", ".cr3", ".crw", ".arw", ".srf", ".sr2",
+    ".dng", ".orf", ".rw2", ".pef", ".srw", ".rwl", ".3fr", ".fff", ".iiq",
+    ".x3f", ".jpg", ".jpeg",
+)
+
+
+class AtlasMultiViewSolveBurst:
+    """Recover one deterministic camera rig from a burst folder (2-16 frames).
+
+    Feeds every selected file through the same RAW/JPEG import and the same
+    registration engine as AtlasMultiViewSolve.  Beyond three frames the
+    solver switches to an anchor-star pair topology — every frame must share
+    overlap with the FIRST file in the folder (sorted by name), which is the
+    natural shape of a walking burst.  frame_stride thins dense bursts;
+    baseline_m, when set, is the measured distance between the first two
+    SELECTED frames.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING", "STRING", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("solve", "report", "registration_json", "match_overlays",
+                    "anchor_image")
+    FUNCTION = "solve"
+    CATEGORY = "Atlas"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "burst_dir": ("STRING", {"default": "CameraRaw/burst"}),
+            },
+            "optional": {
+                "frame_stride": ("INT", {"default": 1, "min": 1, "max": 16}),
+                "max_frames": ("INT", {"default": 8, "min": 2, "max": 16}),
+                "half_size": ("BOOLEAN", {"default": True}),
+                "capture_mode": (["auto", "translated", "rotation_only"], {"default": "auto"}),
+                "camera_height_m": ("FLOAT", {"default": 0.0, "min": 0.0, "step": 0.01}),
+                "match_quality": (["balanced", "conservative", "permissive", "salvage"], {"default": "balanced"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "learned_anchor_fallback": ("BOOLEAN", {"default": False}),
+                "baseline_m": ("FLOAT", {"default": 0.0, "min": 0.0, "step": 0.01}),
+                "learned_scale_fallback": ("BOOLEAN", {"default": False}),
+            },
+        }
+
+    @staticmethod
+    def _resolve_input_dir(burst_dir: str) -> Any:
+        from pathlib import Path
+        raw = str(burst_dir or "").strip()
+        path = Path(raw).expanduser()
+        if not raw or path.is_absolute() or path.is_dir():
+            return path
+        try:
+            import folder_paths  # ComfyUI runtime module; optional in tests.
+            return Path(folder_paths.get_input_directory()) / path
+        except (ImportError, AttributeError, TypeError):
+            return path
+
+    @classmethod
+    def _selected_files(cls, burst_dir: str, frame_stride: int, max_frames: int):
+        directory = cls._resolve_input_dir(burst_dir)
+        if not directory.is_dir():
+            raise RuntimeError(
+                f"AtlasMultiViewSolveBurst: burst_dir is not a folder: {directory}"
+            )
+        files = sorted(
+            item for item in directory.iterdir()
+            if item.is_file() and item.suffix.lower() in _BURST_EXTENSIONS
+        )
+        selected = files[:: max(1, int(frame_stride))][: max(2, int(max_frames))]
+        if len(selected) < 2:
+            raise RuntimeError(
+                "AtlasMultiViewSolveBurst: fewer than two capture files in "
+                f"{directory} after stride {frame_stride} "
+                f"({len(files)} candidates)."
+            )
+        return selected
+
+    @classmethod
+    def IS_CHANGED(
+        cls,
+        burst_dir: str = "CameraRaw/burst",
+        frame_stride: int = 1,
+        max_frames: int = 8,
+        half_size: bool = True,
+        capture_mode: str = "auto",
+        camera_height_m: float = 0.0,
+        match_quality: str = "balanced",
+        seed: int = 0,
+        learned_anchor_fallback: bool = False,
+        baseline_m: float = 0.0,
+        learned_scale_fallback: bool = False,
+    ) -> str:
+        try:
+            files = cls._selected_files(burst_dir, frame_stride, max_frames)
+            listing = [
+                (str(item), int(item.stat().st_mtime_ns), int(item.stat().st_size))
+                for item in files
+            ]
+        except Exception as exc:  # noqa: BLE001 — an unreadable dir must re-run.
+            listing = [("error", str(exc))]
+        payload = {
+            "files": listing,
+            "widgets": {
+                "burst_dir": str(burst_dir),
+                "frame_stride": int(frame_stride),
+                "max_frames": int(max_frames),
+                "half_size": bool(half_size),
+                "capture_mode": capture_mode,
+                "camera_height_m": float(camera_height_m),
+                "match_quality": match_quality,
+                "seed": int(seed),
+                "learned_anchor_fallback": bool(learned_anchor_fallback),
+                "baseline_m": float(baseline_m),
+                "learned_scale_fallback": bool(learned_scale_fallback),
+            },
+        }
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+    def solve(
+        self,
+        burst_dir: str = "CameraRaw/burst",
+        frame_stride: int = 1,
+        max_frames: int = 8,
+        half_size: bool = True,
+        capture_mode: str = "auto",
+        camera_height_m: float = 0.0,
+        match_quality: str = "balanced",
+        seed: int = 0,
+        learned_anchor_fallback: bool = False,
+        baseline_m: float = 0.0,
+        learned_scale_fallback: bool = False,
+    ):
+        np = _require_numpy()
+        from atlas_camera.raw.pipeline import import_raw
+
+        files = self._selected_files(burst_dir, frame_stride, max_frames)
+        frames = []
+        for item in files:
+            result = import_raw(str(item), half_size=bool(half_size))
+            frames.append(MultiViewFrame(
+                image=np.ascontiguousarray(result.display_srgb, dtype=np.float32),
+                raw_meta=result,
+                label=item.name,
+            ))
+
+        anchor_up_hint = None
+        anchor_up_hint_source = ""
+        if learned_anchor_fallback:
+            anchor_up_hint, anchor_up_hint_source = _learned_anchor_up_hint(
+                frames[0].image, np,
+            )
+        if learned_scale_fallback:
+            frames[0] = dataclass_replace(
+                frames[0], metric_depth=_learned_metric_depth(frames[0].image, np),
+            )
+
+        outcome = solve_multiview(
+            frames,
+            MultiViewSettings(
+                capture_mode=capture_mode,
+                camera_height_m=float(camera_height_m),
+                match_quality=match_quality,
+                seed=int(seed),
+                anchor_up_hint=anchor_up_hint,
+                anchor_up_hint_source=anchor_up_hint_source,
+                baseline_m=float(baseline_m),
+            ),
+        )
+        details = outcome.diagnostics.to_dict()
+        if outcome.solve is None:
+            code = outcome.diagnostics.outcome_code
+            summary = outcome.diagnostics.summary
+            debug_path = _write_failure_debug(details, outcome.overlays, np)
+            debug_hint = (
+                f"\nfailure diagnostics and overlays written to: {debug_path}"
+                if debug_path else ""
+            )
+            raise RuntimeError(
+                f"AtlasMultiViewSolveBurst [{code}]: {summary}\n"
+                f"registration diagnostics: {json.dumps(details, sort_keys=True)}"
+                f"{debug_hint}"
+            )
+
+        torch = _require_torch()
+        anchor_batch = torch.from_numpy(np.ascontiguousarray(
+            frames[0].image[None, ...], dtype=np.float32,
+        ))
+        report = (
+            f"{outcome.diagnostics.outcome_code}: {outcome.diagnostics.summary} "
+            f"({len(frames)} frames from {files[0].parent.name}/)"
+        )
+        return (
+            outcome.solve,
+            report,
+            json.dumps(details, sort_keys=True),
+            _overlay_batch(outcome.overlays, np, torch),
+            anchor_batch,
+        )
+
+
+__all__ = ["AtlasMultiViewSolve", "AtlasMultiViewSolveBurst"]

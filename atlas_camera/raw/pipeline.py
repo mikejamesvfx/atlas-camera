@@ -88,7 +88,16 @@ def import_raw(path: str, *, undistort: bool = True, half_size: bool = False,
 
     ``headroom`` scales the scene-linear master only (see ``decode_raw``); the
     display tensor the solver reads is unaffected.
+
+    Camera-processed JPEGs are accepted too (added 2026-08-10): the camera's
+    own engine already developed and lens-corrected the pixels, and JPEG EXIF
+    carries the same body/lens/focal evidence the multi-view validator gates
+    on. They route through :func:`_import_processed_jpeg` — a lower trust
+    tier, stamped ``metadata_source="jpeg_exif"`` and
+    ``undistort_status="camera_processed"`` so provenance stays honest.
     """
+    if str(path).lower().endswith((".jpg", ".jpeg")):
+        return _import_processed_jpeg(path, half_size=half_size)
     meta = read_raw_metadata(path)
     linear, display = decode_raw(path, half_size=half_size,
                                  white_balance=white_balance,
@@ -150,6 +159,82 @@ def import_raw(path: str, *, undistort: bool = True, half_size: bool = False,
         capture_datetime=getattr(meta, "capture_datetime", None),
         metadata_source=getattr(meta, "metadata_source", None),
         headroom=float(headroom),
+    )
+
+
+def _import_processed_jpeg(path: str, *, half_size: bool = False) -> RawImportResult:
+    """Import a camera-processed JPEG as trusted-EXIF capture evidence.
+
+    The camera's JPEG engine already applied tone mapping and (on modern
+    bodies) lens distortion correction, so no develop or lensfun pass runs
+    here: pixels are taken verbatim (EXIF orientation applied), display is
+    the file's sRGB, and linear is its exact sRGB-EOTF inversion.  headroom
+    is 1.0 — there are no highlights above display white in an 8-bit source.
+    """
+    try:
+        import numpy as np
+        from PIL import Image, ImageOps
+    except ImportError as exc:
+        raise RuntimeError(
+            "JPEG capture import requires Pillow + numpy. "
+            "Install with: pip install -e .[raw]") from exc
+
+    meta = read_raw_metadata(path)
+    if meta.metadata_source == "container":
+        meta.metadata_source = "jpeg_exif"
+
+    with Image.open(path) as handle:
+        oriented = ImageOps.exif_transpose(handle.convert("RGB"))
+        if half_size:
+            oriented = oriented.resize(
+                (max(1, oriented.width // 2), max(1, oriented.height // 2)),
+                Image.Resampling.LANCZOS,
+            )
+        display = np.asarray(oriented, dtype=np.float32) / 255.0
+    display = np.clip(display, 0.0, 1.0)
+    linear = np.where(
+        display <= 0.04045,
+        display / 12.92,
+        np.power((display + 0.055) / 1.055, 2.4),
+    ).astype(np.float32)
+    height, width = display.shape[:2]
+
+    meta_width = width * 2 if half_size else width
+    meta_height = height * 2 if half_size else height
+    sensor = resolve_sensor_size(meta, meta_width, meta_height)
+
+    warnings = list(meta.warnings) + list(sensor.warnings)
+    warnings.append(
+        "Camera-processed JPEG: pixels are the camera's own develop "
+        "(lens correction assumed applied in-body); a RAW original is the "
+        "higher trust tier."
+    )
+    return RawImportResult(
+        linear_rgb=linear,
+        display_srgb=display,
+        width=width,
+        height=height,
+        focal_length_mm=meta.focal_length_mm,
+        sensor_width_mm=sensor.sensor_width_mm,
+        sensor_height_mm=sensor.sensor_height_mm,
+        sensor_source=sensor.source,
+        camera_make=meta.camera_make,
+        camera_model=meta.camera_model,
+        lens_model=meta.lens_model,
+        undistort_applied=True,
+        undistort_status="camera_processed",
+        distortion={},
+        warnings=warnings,
+        source_path=str(path),
+        # exif_transpose already rotated the pixels: orientation is now
+        # normal, and reporting the ORIGINAL tag would trigger the
+        # multi-view sensor-axis swap on already-upright pixels.
+        orientation=1,
+        body_serial_number=getattr(meta, "body_serial_number", None),
+        lens_serial_number=getattr(meta, "lens_serial_number", None),
+        capture_datetime=getattr(meta, "capture_datetime", None),
+        metadata_source=meta.metadata_source,
+        headroom=1.0,
     )
 
 

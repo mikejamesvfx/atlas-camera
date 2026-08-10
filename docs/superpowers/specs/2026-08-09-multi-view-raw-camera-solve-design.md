@@ -11,7 +11,17 @@ The same solve may later receive Qwen Multiple-Angles LoRA views. Photographed v
 
 ## Capture Contract
 
-Version one accepts an ordered set of two or three photographs that:
+**2026-08-10 revision — trusted-EXIF and burst capture.** Camera-processed
+JPEGs are accepted alongside RAW: their EXIF carries the same body/lens/focal
+evidence, the camera's own engine already applied lens correction, and they
+import at a stamped lower trust tier (`metadata_source="jpeg_exif"`,
+`undistort_status="camera_processed"`). Sets may also be BURSTS of up to 16
+frames via `AtlasMultiViewSolveBurst`: beyond three frames the solver fits an
+anchor-star pair topology — (photo 1, i) pairs only — so every frame must
+share overlap with photo 1; the three-frame closure constraint is unchanged.
+
+Version one accepts an ordered set of two or three photographs (or an
+anchor-star burst, above) that:
 
 - show a static scene with substantial overlap;
 - come from the same camera body and lens at one focal length;

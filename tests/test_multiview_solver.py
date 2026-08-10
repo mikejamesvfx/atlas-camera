@@ -382,8 +382,8 @@ def test_validation_treats_case_distinct_serials_as_different_devices(
     }
 
 
-@pytest.mark.parametrize(("frame_count", "summary_text"), ((1, "two or three"), (4, "two or three")))
-def test_validation_requires_two_or_three_frames(frame_count: int, summary_text: str) -> None:
+@pytest.mark.parametrize(("frame_count", "summary_text"), ((1, "2 to 16"), (17, "2 to 16")))
+def test_validation_bounds_the_frame_count(frame_count: int, summary_text: str) -> None:
     diagnostics = validate_multiview_frames(
         [_frame(label=f"p{index}") for index in range(frame_count)],
         MultiViewSettings(),
@@ -880,3 +880,25 @@ def test_scale_unavailable_names_every_remedy(monkeypatch) -> None:
     assert out.diagnostics.outcome_code == "scale_unavailable"
     assert "baseline_m" in out.diagnostics.summary
     assert "depth" in out.diagnostics.summary
+
+
+def test_burst_of_four_frames_solves_with_anchor_star_pairs(monkeypatch) -> None:
+    _install_pipeline(monkeypatch)
+    frames = [_frame(label=f"f{i}") for i in range(4)]
+    out = solve_multiview(frames, MultiViewSettings(camera_height_m=1.43))
+
+    assert out.solve is not None
+    assert out.diagnostics.outcome_code == "translated"
+    # Anchor-star: exactly N-1 pair rows, all against photo 1.
+    pairs = [(pm["frame_a"], pm["frame_b"]) for pm in out.diagnostics.pair_metrics]
+    assert pairs == [(1, 2), (1, 3), (1, 4)]
+    assert len(out.solve.projection_sources) == 3
+    assert out.solve.debug_metadata["frame_count"] == 4
+
+
+def test_seventeen_frames_fail_validation() -> None:
+    frames = [_frame(label=f"f{i}") for i in range(17)]
+    out = solve_multiview(frames, MultiViewSettings(camera_height_m=1.43))
+    assert out.solve is None
+    assert out.diagnostics.outcome_code == "metadata_mismatch"
+    assert "2 to 16" in out.diagnostics.summary

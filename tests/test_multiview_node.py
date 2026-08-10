@@ -464,3 +464,45 @@ else:
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_burst_node_contract_and_widget_order():
+    cls = NODE_CLASS_MAPPINGS["AtlasMultiViewSolveBurst"]
+    assert NODE_DISPLAY_NAME_MAPPINGS["AtlasMultiViewSolveBurst"] == (
+        "Atlas Multi-View Burst Solve \U0001f4f7\U0001f39e️"
+    )
+    assert cls.RETURN_TYPES == ("ATLAS_SOLVE", "STRING", "STRING", "IMAGE", "IMAGE")
+    assert cls.RETURN_NAMES == (
+        "solve", "report", "registration_json", "match_overlays", "anchor_image",
+    )
+    spec = cls.INPUT_TYPES()
+    assert list(spec["required"]) == ["burst_dir"]
+    assert list(spec["optional"]) == [
+        "frame_stride", "max_frames", "half_size", "capture_mode",
+        "camera_height_m", "match_quality", "seed", "learned_anchor_fallback",
+        "baseline_m", "learned_scale_fallback",
+    ]
+
+
+def test_burst_node_selects_sorted_strided_capped_files(tmp_path):
+    cls = NODE_CLASS_MAPPINGS["AtlasMultiViewSolveBurst"]
+    for index in range(8):
+        (tmp_path / f"DSC{index:03d}.JPG").write_bytes(b"x")
+    (tmp_path / "notes.txt").write_bytes(b"x")
+    selected = cls._selected_files(str(tmp_path), 2, 3)
+    assert [item.name for item in selected] == ["DSC000.JPG", "DSC002.JPG", "DSC004.JPG"]
+
+    with pytest.raises(RuntimeError, match="fewer than two capture files"):
+        cls._selected_files(str(tmp_path), 16, 8)
+
+
+def test_burst_node_fingerprint_tracks_folder_and_widgets(tmp_path):
+    cls = NODE_CLASS_MAPPINGS["AtlasMultiViewSolveBurst"]
+    for index in range(3):
+        (tmp_path / f"DSC{index:03d}.JPG").write_bytes(b"x" * (index + 1))
+    first = cls.IS_CHANGED(burst_dir=str(tmp_path))
+    assert cls.IS_CHANGED(burst_dir=str(tmp_path)) == first
+    assert cls.IS_CHANGED(burst_dir=str(tmp_path), frame_stride=2) != first
+    assert cls.IS_CHANGED(burst_dir=str(tmp_path), baseline_m=0.9) != first
+    (tmp_path / "DSC003.JPG").write_bytes(b"xxxx")
+    assert cls.IS_CHANGED(burst_dir=str(tmp_path)) != first

@@ -130,10 +130,17 @@ def _check(
     return result
 
 
+#: Upper frame bound for one registration (burst support, 2026-08-10).  The
+#: anchor-star topology fits N-1 pairs, so cost grows linearly, but every
+#: frame still needs shared overlap with photo 1 — a bound keeps a runaway
+#: folder from becoming an hour-long queue item.
+_MAX_FRAMES = 16
+
+
 def _validation_checks(frames: Sequence[MultiViewFrame]) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
-    if len(frames) not in (2, 3):
-        return [_check("frame_count", 0, "2 or 3", len(frames))]
+    if not 2 <= len(frames) <= _MAX_FRAMES:
+        return [_check("frame_count", 0, f"2 to {_MAX_FRAMES}", len(frames))]
 
     for frame_index, frame in enumerate(frames):
         for field_name in ("focal_length_mm", "sensor_width_mm"):
@@ -253,7 +260,7 @@ def validate_multiview_frames(
         return None
     fields = ", ".join(dict.fromkeys(item["field"] for item in mismatches))
     summary = (
-        "multi-view solve requires two or three RAW frames"
+        f"multi-view solve requires 2 to {_MAX_FRAMES} frames"
         if any(item["field"] == "frame_count" for item in mismatches)
         else f"RAW metadata mismatch: {fields}"
     )
@@ -464,7 +471,17 @@ def _anchor_orientation_from_up(
 
 
 def _required_pairs(frame_count: int) -> tuple[tuple[int, int], ...]:
-    return tuple(combinations(range(frame_count), 2))
+    """Pair topology: full triangle up to 3 frames, anchor-star beyond.
+
+    Two and three frames keep every pairing (the 3-frame closure constraint
+    needs the full triangle).  A burst uses (0, i) only: N-1 pairs instead of
+    N(N-1)/2, and the rig composer already reads exactly the (0, i) poses.
+    Every frame must therefore share overlap with photo 1 — the documented
+    burst capture contract.
+    """
+    if frame_count <= 3:
+        return tuple(combinations(range(frame_count), 2))
+    return tuple((0, index) for index in range(1, frame_count))
 
 
 def _grid_cells(points: Any, mask: Any, width: int, height: int) -> int:

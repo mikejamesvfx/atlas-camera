@@ -29,15 +29,15 @@ relative to itself, so a worktree silently audits a different tree.
 
 ## Counts
 
-* standard: **91**
+* standard: **92**
 * experimental: **6**
 * legacy: **2**
-* total registered: **101**
+* total registered: **102**
 * standard nodes with no product evidence: **0**
 
 | Verdict | Nodes |
 |---|---:|
-| `KEEP_CORE` | 91 |
+| `KEEP_CORE` | 92 |
 | `KEEP_EXPERIMENTAL` | 6 |
 | `LEGACY_GATE` | 2 |
 | `IOS_GATE` | 2 |
@@ -130,6 +130,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasMogeNormals` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMoveBudget` | atlas_camera/comfy/nodes_completion.py | standard | 0 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasMultiViewSolve` | atlas_camera/comfy/nodes_multiview.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasMultiViewSolveBurst` | atlas_camera/comfy/nodes_multiview.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasOcclusionGraph` | atlas_camera/comfy/nodes_completion.py | standard | 1 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasOcclusionMask` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasOutpaintDepth` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
