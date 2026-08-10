@@ -812,4 +812,238 @@ class AtlasMultiViewSolveBurst:
         )
 
 
-__all__ = ["AtlasMultiViewSolve", "AtlasMultiViewSolveBurst"]
+def _photographed_patch_sources(solve: Any) -> list[Any]:
+    """The registered flanking photographs on a solve, anchor EXCLUDED.
+
+    The anchor is deliberately not a candidate. Every hole here IS a hole in the
+    anchor's own plate, so nominating the anchor would answer "patch it from the
+    photograph that has the hole" — and on a real depth tear the occluder that
+    made the hole is still standing in front of the fill planes anyway.
+    """
+    sources = list(getattr(solve, "projection_sources", None) or [])
+    return [
+        source for source in sources
+        if (source.metadata or {}).get("evidence_type") == "photographed"
+        and getattr(source, "camera", None) is not None
+    ]
+
+
+def _patch_plate_pixels(source: Any, np: Any) -> tuple[Any, str]:
+    """(H, W, 3) float32 pixels for one photographed source, plus provenance.
+
+    Prefers the durable float plate over the browser preview: `preview_b64` is a
+    JPEG thumbnailed to 1280 px long side, so a crop taken from it is both lossy
+    and at a different scale from the camera that was ranked. Returns
+    ``(None, reason)`` when neither is readable — a black patch that claims to be
+    photographic evidence is worse than an honest refusal.
+    """
+    plate_ref = getattr(source, "plate_ref", None)
+    image_path = getattr(plate_ref, "image_path", None) if plate_ref else None
+    if image_path and os.path.exists(str(image_path)):
+        try:
+            from atlas_camera.plate.oiio_io import read_plate
+
+            read = read_plate(str(image_path))
+            pixels = np.ascontiguousarray(read.pixels, dtype=np.float32)
+            if pixels.ndim == 3 and pixels.shape[2] >= 3:
+                return pixels[..., :3], f"float plate {os.path.basename(str(image_path))}"
+        except Exception as exc:  # OIIO missing, or an unreadable/moved plate
+            plate_error = f"{type(exc).__name__}: {exc}"
+        else:
+            plate_error = "plate had no RGB channels"
+    else:
+        plate_error = "no durable plate on disk"
+
+    b64 = (getattr(plate_ref, "preview_b64", None) if plate_ref else None) \
+        or getattr(source, "image_b64", None)
+    if b64:
+        try:
+            import base64
+            import io
+
+            from PIL import Image
+
+            raw = base64.b64decode(str(b64).split(",", 1)[-1])
+            pil = Image.open(io.BytesIO(raw)).convert("RGB")
+            pixels = np.asarray(pil, dtype=np.float32) / 255.0
+            return pixels, f"preview proxy {pil.width}x{pil.height} ({plate_error})"
+        except Exception as exc:
+            return None, f"{plate_error}; preview undecodable ({type(exc).__name__})"
+    return None, plate_error
+
+
+class AtlasSolveBurstPatchCrops:
+    """📷✂️ Which registered photograph sees into this hole — and where in it.
+
+    Answers the middle-anchor question: the anchor frame carries the shot, but the
+    frames either side of it in the burst stood somewhere else and photographed the
+    surfaces the anchor could not see. This node rasterizes the hole's fill planes
+    against every registered flanking camera, ranks them by revealed pixels, and
+    returns the exact crop out of the winning photograph's own plate.
+
+    The crop is REAL PHOTOGRAPHIC EVIDENCE, not a generated patch — which is why it
+    comes from that frame's `plate_ref` and its ROI is reported in that frame's
+    pixel space, never the anchor's.
+    """
+
+    RETURN_TYPES = ("IMAGE", "INT", "STRING", "STRING")
+    RETURN_NAMES = ("cropped_patch", "patch_frame_index", "crop_roi", "report")
+    FUNCTION = "solve_crops"
+    CATEGORY = "Atlas/multiview"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "hole_mask": ("MASK",),
+            },
+            "optional": {
+                "margin_px": ("INT", {"default": 16, "min": 0, "max": 256}),
+                "resolution": ("INT", {"default": 384, "min": 128, "max": 1536}),
+                "min_visible_pixels": ("INT", {"default": 8, "min": 1, "max": 10000}),
+            },
+        }
+
+    @staticmethod
+    def _empty(torch: Any, roi: str, message: str):
+        return (
+            torch.zeros((1, 64, 64, 3), dtype=torch.float32),
+            -1,
+            roi,
+            f"AtlasSolveBurstPatchCrops: {message}",
+        )
+
+    def solve_crops(
+        self,
+        solve,
+        hole_mask,
+        margin_px=16,
+        resolution=384,
+        min_visible_pixels=8,
+    ):
+        from atlas_camera.comfy.nodes import _relief_mesh_from_solve
+        from atlas_camera.core.view_solver import rank_burst_frames
+
+        np = _require_numpy()
+        torch = _require_torch()
+
+        intr = solve.camera.intrinsics
+        width = int(intr.image_width or 0)
+        height = int(intr.image_height or 0)
+        full_roi = f"0,0,{width},{height}"
+
+        mesh = _relief_mesh_from_solve(solve)
+        if mesh is None:
+            return self._empty(torch, full_roi, (
+                "no relief mesh on this solve — run AtlasDeriveReliefMesh upstream first."
+            ))
+
+        sources = _photographed_patch_sources(solve)
+        if not sources:
+            return self._empty(torch, full_roi, (
+                "this solve carries no registered flanking photographs. Patch crops need a "
+                "multi-view rig (AtlasMultiViewSolveBurst / AtlasMultiViewSolve) — a "
+                "single-image solve has only the camera that owns the hole."
+            ))
+
+        mask_np = self._hole_mask_array(hole_mask, width, height, np, torch)
+
+        scores = rank_burst_frames(
+            mesh,
+            mask_np,
+            source_camera=solve.camera,
+            burst_cameras=[source.camera for source in sources],
+            resolution=int(resolution),
+            margin_px=int(margin_px),
+            min_visible_pixels=int(min_visible_pixels),
+        )
+
+        def _label(score: Any) -> str:
+            source = sources[score.frame_index]
+            frame_index = (source.metadata or {}).get("frame_index", score.frame_index)
+            return f"{source.name} (frame {frame_index})"
+
+        if not scores or scores[0].visible_px == 0:
+            return self._empty(torch, full_roi, (
+                f"none of the {len(sources)} registered photograph(s) reveal these hole "
+                "planes. The occluded surface was never photographed from a second angle — "
+                "send it to a clean plate or a generated patch instead."
+            ))
+
+        best = scores[0]
+        best_source = sources[best.frame_index]
+        best_frame = int((best_source.metadata or {}).get("frame_index", best.frame_index))
+        u_min, v_min, u_max, v_max = best.crop_roi
+
+        pixels, provenance = _patch_plate_pixels(best_source, np)
+        if pixels is None:
+            return self._empty(torch, f"{u_min},{v_min},{u_max},{v_max}", (
+                f"{_label(best)} reveals {best.visible_px} px of hole geometry but its plate "
+                f"could not be read ({provenance}). Re-run the solve with write_plates on, or "
+                "keep the burst frames on disk."
+            ))
+
+        # The ROI is in the winning camera's own full-resolution pixel space. A preview
+        # proxy is a scaled copy of that space, so the box has to be scaled with it —
+        # cropping proxy pixels with full-res coordinates is how a patch silently
+        # becomes the wrong part of the right photograph.
+        cam_intr = best_source.camera.intrinsics
+        cam_w = int(cam_intr.image_width or pixels.shape[1])
+        cam_h = int(cam_intr.image_height or pixels.shape[0])
+        px_scale_x = pixels.shape[1] / max(cam_w, 1)
+        px_scale_y = pixels.shape[0] / max(cam_h, 1)
+        c_u0 = max(0, min(pixels.shape[1] - 1, int(round(u_min * px_scale_x))))
+        c_v0 = max(0, min(pixels.shape[0] - 1, int(round(v_min * px_scale_y))))
+        c_u1 = max(c_u0 + 1, min(pixels.shape[1], int(round(u_max * px_scale_x))))
+        c_v1 = max(c_v0 + 1, min(pixels.shape[0], int(round(v_max * px_scale_y))))
+
+        crop = np.ascontiguousarray(
+            pixels[c_v0:c_v1, c_u0:c_u1, :][None, ...], dtype=np.float32,
+        )
+
+        ranked = ", ".join(
+            f"{_label(score)} {score.visible_px}px" for score in scores[:5]
+        )
+        report = "\n".join([
+            f"AtlasSolveBurstPatchCrops: best = {_label(best)} — {best.visible_px} px of "
+            f"hole geometry across {best.islands_seen} island(s)",
+            f"crop {u_max - u_min}x{v_max - v_min} px at ({u_min}, {v_min}) in that frame; "
+            f"pixels from {provenance}",
+            f"ranked ({len(sources)} photographed source(s)): {ranked}",
+        ])
+
+        return (
+            torch.from_numpy(crop),
+            best_frame,
+            f"{u_min},{v_min},{u_max},{v_max}",
+            report,
+        )
+
+    @staticmethod
+    def _hole_mask_array(hole_mask: Any, width: int, height: int, np: Any, torch: Any):
+        """A ComfyUI MASK as a (height, width) bool array in the anchor's frame."""
+        if isinstance(hole_mask, torch.Tensor):
+            array = hole_mask.detach().cpu().numpy()
+        else:
+            array = np.asarray(hole_mask)
+        array = np.asarray(array, dtype=np.float32)
+        while array.ndim > 2:
+            array = array[0]
+        if array.ndim != 2:
+            raise RuntimeError(
+                f"AtlasSolveBurstPatchCrops: hole_mask must be 2D per batch item, got "
+                f"shape {tuple(np.shape(hole_mask))}."
+            )
+        selected = array > 0.5
+        if selected.shape != (height, width):
+            from PIL import Image
+
+            resized = Image.fromarray(selected.astype(np.uint8) * 255).resize(
+                (width, height), Image.NEAREST,
+            )
+            selected = np.asarray(resized) > 127
+        return selected
+
+
+__all__ = ["AtlasMultiViewSolve", "AtlasMultiViewSolveBurst", "AtlasSolveBurstPatchCrops"]

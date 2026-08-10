@@ -1,19 +1,20 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-08-09",
+ "generated_utc": "2026-08-10",
  "counts": {
-  "standard": 92,
+  "standard": 93,
   "experimental": 6,
   "legacy": 2,
   "ios": 2,
-  "total": 102,
-  "no_product_evidence": 0
+  "total": 103,
+  "no_product_evidence": 1
  },
  "verdict_counts": {
   "KEEP_CORE": 92,
   "KEEP_EXPERIMENTAL": 6,
   "LEGACY_GATE": 2,
-  "IOS_GATE": 2
+  "IOS_GATE": 2,
+  "HOLD_NEEDS_EVIDENCE": 1
  },
  "live_probe": {
   "host": "127.0.0.1:8188",
@@ -2482,6 +2483,30 @@
    "known_defect": null,
    "compatibility_risk": null,
    "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasSolveBurstPatchCrops": {
+   "module": "atlas_camera/comfy/nodes_multiview.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 0,
+   "tests": 2,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": false,
+   "evidence_kinds": [
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "HOLD_NEEDS_EVIDENCE",
    "evidence": [],
    "migration_action": null,
    "notes": null

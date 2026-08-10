@@ -31,6 +31,7 @@ from atlas_camera.comfy.nodes_project import AtlasProject
 from atlas_camera.comfy.nodes_multiview import (
     AtlasMultiViewSolve,
     AtlasMultiViewSolveBurst,
+    AtlasSolveBurstPatchCrops,
 )
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
@@ -234,6 +235,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasProject":               AtlasProject,
     "AtlasMultiViewSolve":        AtlasMultiViewSolve,
     "AtlasMultiViewSolveBurst":   AtlasMultiViewSolveBurst,
+    "AtlasSolveBurstPatchCrops":  AtlasSolveBurstPatchCrops,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -335,6 +337,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasProject":               "Atlas Project 🎬",
     "AtlasMultiViewSolve":        "Atlas Multi-View RAW Solve 📷📷",
     "AtlasMultiViewSolveBurst":   "Atlas Multi-View Burst Solve 📷🎞️",
+    "AtlasSolveBurstPatchCrops":  "Atlas Solve Burst Patch Crops 📷✂️",
 }
 
 # ---------------------------------------------------------------------------
@@ -510,7 +513,7 @@ _MENU_FOLDERS = {
     "Atlas/06 \u00b7 Patch & Repair": (
         "AtlasAddPatchView", "AtlasSolvePatchViews", "AtlasPlanarHolePatch",
         "AtlasPathGuidedHoleRepair", "AtlasOcclusionGraph", "AtlasLayerPlan",
-        "AtlasShootList", "AtlasDisocclusionGuide",
+        "AtlasShootList", "AtlasDisocclusionGuide", "AtlasSolveBurstPatchCrops",
     ),
     "Atlas/07 \u00b7 Clean Plate & Inpaint": (
         "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasLayerPreview",

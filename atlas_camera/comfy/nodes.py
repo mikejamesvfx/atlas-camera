@@ -18,6 +18,7 @@ from atlas_camera.comfy.nodes_project import AtlasProject  # noqa: F401
 from atlas_camera.comfy.nodes_multiview import (  # noqa: F401
     AtlasMultiViewSolve,
     AtlasMultiViewSolveBurst,
+    AtlasSolveBurstPatchCrops,
 )
 
 from atlas_camera.comfy.viewport_payload import (  # noqa: F401

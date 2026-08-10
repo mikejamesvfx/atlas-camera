@@ -254,3 +254,177 @@ def best_view_per_island(scores: Sequence[ViewScore]) -> dict[int, ViewScore]:
             if current is None or item.visible_px > current[0]:
                 best[item.island_id] = (item.visible_px, score)
     return {island_id: score for island_id, (_px, score) in best.items()}
+
+
+@dataclass(frozen=True)
+class BurstFrameScore:
+    """Visibility score and crop ROI for one already-registered camera.
+
+    ``crop_roi`` is ``(u_min, v_min, u_max, v_max)`` in THIS camera's own
+    full-resolution image space, not the source camera's. A consumer that crops
+    the source plate with it would fetch the wrong pixels — the whole point of
+    the ranking is that these cameras stand somewhere else.
+    """
+
+    frame_index: int
+    camera: Any
+    visible_px: int
+    islands_seen: int
+    crop_roi: tuple[int, int, int, int]
+    islands: tuple[IslandVisibility, ...] = field(default_factory=tuple)
+
+
+def rank_burst_frames(
+    mesh: Any,
+    hole_mask: Any,
+    *,
+    source_camera: Any,
+    burst_cameras: Sequence[Any],
+    resolution: int = 384,
+    margin_px: int = 16,
+    min_visible_pixels: int = 8,
+    config: PathHoleRepairConfig | None = None,
+    prebuilt: dict[str, Any] | None = None,
+) -> list[BurstFrameScore]:
+    """Rank ALREADY-SOLVED cameras by how much of the hole geometry each reveals.
+
+    The sibling of `rank_views`, and deliberately not a variant of it: `rank_views`
+    INVENTS candidate cameras by orbiting the source, so every candidate shares the
+    source's intrinsics. These cameras were RECOVERED from photographs — they carry
+    their own intrinsics, their own sensor size, and (after a portrait/landscape
+    mix) their own image dimensions, so the rasterizer is re-scaled per camera and
+    the ROI comes back in each camera's own pixel space.
+
+    Ties break on the camera's position in ``burst_cameras``, so a caller that
+    passed its preferred frames first keeps that preference.
+    """
+    np = _require_numpy()
+    cfg = config or PathHoleRepairConfig()
+
+    src_intr = source_camera.intrinsics
+    src_width = int(src_intr.image_width or 0)
+    src_height = int(src_intr.image_height or 0)
+    selected = np.asarray(hole_mask, dtype=bool)
+    if selected.shape != (src_height, src_width):
+        raise ValueError(
+            f"hole mask shape {selected.shape} does not match source camera "
+            f"image {(src_height, src_width)}"
+        )
+
+    burst_cameras = list(burst_cameras)
+    if not burst_cameras:
+        return []
+
+    built = prebuilt if prebuilt is not None else build_island_candidates(
+        mesh, selected, source_camera=source_camera, config=cfg)
+    candidate_mesh = built["candidate_mesh"]
+    candidate_faces = built["candidate_faces"]
+    face_ids = built["face_ids"]
+    component_by_id = built["component_by_id"]
+
+    if not len(candidate_faces):
+        return [
+            BurstFrameScore(
+                frame_index=idx,
+                camera=cam,
+                visible_px=0,
+                islands_seen=0,
+                crop_roi=(0, 0, src_width, src_height),
+            )
+            for idx, cam in enumerate(burst_cameras)
+        ]
+
+    floor = max(1, int(min_visible_pixels))
+    margin = max(0, int(margin_px))
+
+    scored: list[BurstFrameScore] = []
+    for idx, cam in enumerate(burst_cameras):
+        cam_intr = cam.intrinsics
+        cw = int(cam_intr.image_width or src_width)
+        ch = int(cam_intr.image_height or src_height)
+        c_scale = float(max(1, int(resolution))) / max(cw, ch, 1)
+        c_out_w = max(1, int(round(cw * c_scale)))
+        c_out_h = max(1, int(round(ch * c_scale)))
+
+        sx = c_out_w / max(cw, 1)
+        sy = c_out_h / max(ch, 1)
+        fx = float(cam_intr.fx_px or 1.0) * sx
+        fy = float(cam_intr.fy_px or cam_intr.fx_px or 1.0) * sy
+        cx = float(cam_intr.cx_px if cam_intr.cx_px is not None else cw / 2.0) * sx
+        cy = float(cam_intr.cy_px if cam_intr.cy_px is not None else ch / 2.0) * sy
+
+        view_matrix = cam.extrinsics.camera_view_matrix
+
+        z_buffer = np.full((c_out_h, c_out_w), np.inf, dtype=np.float64)
+        id_map = np.zeros((c_out_h, c_out_w), dtype=np.int32)
+
+        base_xy, base_z = _project_vertices(
+            mesh.vertices, view_matrix, fx, fy, cx, cy
+        )
+        _rasterize_triangles(
+            base_xy, base_z, mesh.faces,
+            np.zeros(len(mesh.faces), dtype=np.int32), z_buffer
+        )
+
+        cand_xy, cand_z = _project_vertices(
+            candidate_mesh.vertices, view_matrix, fx, fy, cx, cy
+        )
+        z_buffer *= 1.0 + 1.0e-6
+        _rasterize_triangles(
+            cand_xy, cand_z, candidate_faces, face_ids, z_buffer, id_map
+        )
+
+        seen = id_map[id_map > 0]
+        islands: list[IslandVisibility] = []
+        total = 0
+        crop_roi = (0, 0, cw, ch)
+
+        if seen.size:
+            kept_ids: list[int] = []
+            for island_id, count in zip(*np.unique(seen, return_counts=True)):
+                if int(count) < floor:
+                    continue
+                kept_ids.append(int(island_id))
+                islands.append(
+                    IslandVisibility(
+                        island_id=int(island_id),
+                        visible_px=int(count),
+                        island_cells=len(component_by_id.get(int(island_id), ())),
+                    )
+                )
+                total += int(count)
+
+            # The ROI must bound only the islands that SURVIVED the floor. Boxing
+            # every non-zero id instead lets a few sub-threshold speckle pixels on
+            # the far side of the frame inflate the crop to most of the plate — and
+            # a frame scored at visible_px = 0 would still hand back a confident
+            # looking box, which is exactly the "patch shows nothing" failure.
+            if kept_ids:
+                visible_mask = np.isin(id_map, np.asarray(kept_ids, dtype=np.int32))
+                ys, xs = np.nonzero(visible_mask)
+                if xs.size and ys.size:
+                    u_min = max(0, int(np.floor(xs.min() / sx)) - margin)
+                    v_min = max(0, int(np.floor(ys.min() / sy)) - margin)
+                    u_max = min(cw, int(np.ceil(xs.max() / sx)) + margin + 1)
+                    v_max = min(ch, int(np.ceil(ys.max() / sy)) + margin + 1)
+                    if u_max > u_min and v_max > v_min:
+                        crop_roi = (u_min, v_min, u_max, v_max)
+
+        islands.sort(key=lambda item: (-item.visible_px, item.island_id))
+        scored.append(
+            BurstFrameScore(
+                frame_index=idx,
+                camera=cam,
+                visible_px=total,
+                islands_seen=len(islands),
+                crop_roi=crop_roi,
+                islands=tuple(islands),
+            )
+        )
+
+    # Tie-break on frame_index, NOT id(camera): unlike rank_views' candidate views,
+    # the same camera object can legitimately appear twice in a burst (an anchor
+    # passed alongside itself), and an id-keyed map silently loses one of them.
+    scored.sort(key=lambda s: (-s.visible_px, -s.islands_seen, s.frame_index))
+    return scored
+
