@@ -330,6 +330,11 @@ Nodes & widgets
 Geometry & projection
 - Relief-mesh tears are load-bearing. Never fix a black tear by raising a
   global threshold — the fix is a deliberate layer (card/ground/sky/inpaint).
+- SILHOUETTES: soft layering in the VIEWPORT (`soft_visibility` — untorn mesh
+  + per-pixel A=exp(-beta|grad D|^2), no hole so no staircase at any grid, and
+  the lattice survives so hole-patch still works), tearing on EXPORT (a DCC has
+  no shader to fade with). A soft matte is MULTIPLIED, never thresholded. It
+  needs a behind-layer to reveal, or it is a hole with soft edges.
 - A tear is a TOPOLOGY decision, not a coverage hole. `sub_quad_boundary`
   (default off) cuts a torn cell at the cliff instead of deleting it whole —
   same grid, same thresholds, same cells torn, boundary 5.67→1.43px. The two
