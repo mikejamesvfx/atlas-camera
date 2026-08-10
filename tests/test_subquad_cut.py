@@ -18,6 +18,8 @@ free and would flatter every method including the one that does nothing.
 """
 from __future__ import annotations
 
+import pathlib
+
 import numpy as np
 import pytest
 
@@ -382,3 +384,26 @@ def test_the_qa_gate_sees_the_whole_quad_tear_ratio(cliff_depth):
     # ...and the honest figure travels with it, matching the uncut build.
     assert cut_meta["torn_fraction_whole_quad"] == pytest.approx(
         base_meta["torn_fraction"], abs=1e-9)
+
+
+def test_planar_hole_patch_metadata_stays_json_serializable(cliff_depth):
+    """The solve JSON is a contract; a manifest failure must never fail an export.
+
+    patch_planar_holes hands its caller a LIVE HoleField under report["hole_field"]
+    and deliberately snapshots the plain data into stats BEFORE adding it. The
+    node stored the live report in primitive metadata, defeating that and killing
+    AtlasExportReviewPackage with "Object of type HoleField is not JSON
+    serializable" — found on a real sh004 run, after every other node succeeded.
+    """
+    import json
+
+    from atlas_camera.core.schema import _json_ready
+
+    report = {"filled": 3, "rejected": {"frame": 2}, "hole_field": object()}
+    stored = {k: v for k, v in report.items() if k != "hole_field"}
+    assert "hole_field" not in stored
+    json.dumps(_json_ready(stored))
+
+    src = pathlib.Path("atlas_camera/comfy/nodes_geometry.py").read_text(encoding="utf-8")
+    assert 'metadata["planar_hole_patch"] = report' not in src, (
+        "the live report (with its HoleField) is back in primitive metadata")

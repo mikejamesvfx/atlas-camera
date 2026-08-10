@@ -1953,7 +1953,15 @@ class AtlasPlanarHolePatch:
             return (out, remaining_t, f"SKIPPED — {exc}", created_t)
 
         replacement = relief_mesh_primitive(patched, name=primitive.name)
-        replacement.metadata["planar_hole_patch"] = report
+        # `report` carries a LIVE HoleField under "hole_field" for the caller;
+        # primitive metadata is serialized into the solve JSON, so it takes the
+        # plain-data snapshot patch_planar_holes already made for exactly this
+        # (`stats["planar_hole_patch"]`, taken before the live object is added).
+        # Storing the live report defeated that precaution and killed
+        # AtlasExportReviewPackage with "Object of type HoleField is not JSON
+        # serializable" — a manifest failure must never fail an export.
+        replacement.metadata["planar_hole_patch"] = {
+            k: v for k, v in report.items() if k != "hole_field"}
         primitives[primitive_index] = replacement
         remaining_t = torch.from_numpy(remaining.astype(np.float32)).unsqueeze(0)
         created = np.logical_and(resolved, np.logical_not(remaining))

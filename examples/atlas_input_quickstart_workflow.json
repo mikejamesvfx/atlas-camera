@@ -1,8 +1,8 @@
 {
   "id": "1b2f3ca6-51b4-511a-948f-5eb82d480483",
   "revision": 1,
-  "last_node_id": 8,
-  "last_link_id": 12,
+  "last_node_id": 9,
+  "last_link_id": 13,
   "nodes": [
     {
       "id": 1,
@@ -815,7 +815,9 @@
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "links": []
+          "links": [
+            13
+          ]
         }
       ],
       "properties": {
@@ -1104,6 +1106,35 @@
         "ATLAS INPUT QUICKSTART — the front door. One node, plate in, camera and geometry out.\n\n1. Queue once. Load Image starts on ComfyUI's bundled example.png so this runs with nothing to download.\n   For a REAL result, swap in your own photo — or grab the Atlas plate pack from mikejamesvfx.com. No images\n   ship in this repo, so every shipping workflow starts on the neutral placeholder by construction.\n2. Click Camera View for the recovered camera; click Project to inspect the photo projection.\n3. Orbit gently. Solve JSON lands in atlas_exports/ and carries the camera anywhere.\n\nWHY layers=0 AND sky_heuristic OFF\nlayers=0 builds ONE high-resolution relief mesh, which is the fastest honest answer for a first run. The outdoor sky heuristic is off because the bundled example.png classifies almost entirely as above-horizon far field, which would leave an empty export mesh. Turn it ON for real outdoor plates once you have checked the horizon mask.\n\nWHAT TO REACH FOR NEXT\n• atlas_quickstart_solve_project_export_workflow.json — the same result with every stage exposed and overridable.\n• atlas_export_fanout_workflow.json — Nuke, Maya, Blender, USD and a review package from one solve, routed into a delivery project tree.\n• atlas_layered_projection_workflow.json — the 2.5D layer stack a matte painter actually works in.\n\nOPTIONAL UPGRADES ON AtlasInput\n• layers 2-4: watertight depth-band projection layers instead of one mesh\n• use_vlm: image-specific prompts, geometry choices and band boundaries from a local VLM\n• sky / scope_prompts: native AtlasSAM3Mask when [sam3] is installed, with a semantic fallback\n• inpaint: the optional LaMa path, if comfyui-inpaint-nodes and big-lama.pt are present\n\nTERMINAL QA is wired but DISABLED. AtlasAssessOutput needs a local VLM (LM Studio or Ollama); set enabled=true once you have one running and it writes a headless verdict for agent-driven runs. Left off, the graph runs green on a fresh clone with no model downloads beyond depth.\n\nCOLOUR\nThe profile link carries OCIO-style metadata to the viewport and the DCC handoffs. The browser is a display preview only. Exported RGB stays associated with its colour metadata; alpha and mattes are data and are never display-transformed."
       ],
       "title": "READ ME · what this graph is and where to go next"
+    },
+    {
+      "id": 9,
+      "type": "PreviewImage",
+      "pos": [
+        1960,
+        249
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 99,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 13
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "LAYER PREVIEW — without a sink this never rendered 🖼"
     }
   ],
   "links": [
@@ -1202,6 +1233,14 @@
       7,
       0,
       "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      5,
+      0,
+      9,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [

@@ -231,9 +231,21 @@ def recover_lattice(mesh: Any, width: int, height: int) -> dict[str, Any]:
         grid_coords[vertex_index] = (r, c)
         mapped += 1
     if mapped < max(3, int(0.95 * len(vertices))):
+        # Name the CAUSE, not one possible remedy. The old text said "run Atlas
+        # Planar Hole Patch before retopology", which is actively misleading
+        # inside Planar Hole Patch itself — it tells you to run the node that is
+        # already failing — and says nothing about the other way to get here.
+        # `sub_quad_boundary` places boundary vertices at FRACTIONAL pixels by
+        # design, so a cut mesh is legitimately off-lattice and no ordering
+        # rescues it: the two passes are mutually exclusive today (found live,
+        # sh004 2026-08-10, where both fg and bg silently skipped).
         raise LatticeError(
-            "mesh UVs are no longer a structured relief lattice; "
-            "run Atlas Planar Hole Patch before retopology"
+            f"mesh UVs are no longer a structured relief lattice "
+            f"({mapped}/{len(vertices)} vertices landed on grid nodes). Either a "
+            f"retopology already resampled it — run this pass BEFORE retopo — or "
+            f"it was built with sub_quad_boundary, whose sub-cell boundary "
+            f"vertices are off-lattice by construction and cannot be recovered; "
+            f"turn that off on the layer you want lattice-based repair on."
         )
 
     face_cells = np.full((len(faces), 2), -1, dtype=np.int64)

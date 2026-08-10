@@ -1,8 +1,8 @@
 {
   "id": "ff547cce-9b2b-5ca6-915a-c582c1ab14b5",
   "revision": 1,
-  "last_node_id": 18,
-  "last_link_id": 32,
+  "last_node_id": 19,
+  "last_link_id": 33,
   "nodes": [
     {
       "id": 1,
@@ -1469,7 +1469,9 @@
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "links": []
+          "links": [
+            33
+          ]
         }
       ],
       "properties": {
@@ -2143,6 +2145,35 @@
         8
       ],
       "title": "ROUND THE SILHOUETTE · boundary smooth ×8 🔷"
+    },
+    {
+      "id": 19,
+      "type": "PreviewImage",
+      "pos": [
+        3130,
+        1540
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 99,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 33
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "LAYER PREVIEW — without a sink this never rendered 🖼"
     }
   ],
   "links": [
@@ -2401,6 +2432,14 @@
       10,
       0,
       "ATLAS_SOLVE"
+    ],
+    [
+      33,
+      12,
+      0,
+      19,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [
