@@ -56,6 +56,26 @@ async function loadThree() {
 // ---------------------------------------------------------------------------
 const ATLAS_VIEWPORT_PREVIEW_MAX_LONG_EDGE = 1280;
 
+// The preview BACKBUFFER may exceed the logical preview size, because the canvas
+// is displayed CSS-scaled (`object-fit:contain`) — rendering 1:1 into it wastes
+// the display's real pixels and leaves every silhouette a screen pixel coarser
+// than it needs to be. This is supersampling for the DISPLAY only: it is
+// unrelated to the `resolution` widget, which sets node._atlasW/_atlasH, the
+// dimensions Render Proxy Passes and baked Camera Path frames actually use.
+// The two were conflated once and the supersample was wrongly refused as a
+// violation of "render resolution is governed solely by the resolution widget".
+//
+// Bounded rather than devicePixelRatio-driven: a 3x-DPR display would quadruple
+// the fill cost of a dense relief mesh for no visible gain past ~2x.
+const ATLAS_VIEWPORT_BACKBUFFER_MAX_LONG_EDGE = 2048;
+const ATLAS_VIEWPORT_BACKBUFFER_MAX_SCALE = 2;
+
+function atlasBackbufferScale(previewW, previewH) {
+  const longEdge = Math.max(previewW || 0, previewH || 0, 1);
+  return Math.max(1, Math.min(ATLAS_VIEWPORT_BACKBUFFER_MAX_SCALE,
+                              ATLAS_VIEWPORT_BACKBUFFER_MAX_LONG_EDGE / longEdge));
+}
+
 // Default node size for FRESHLY ADDED viewport nodes only (saved workflows
 // keep whatever size they stored — see the onConfigure tracker in
 // nodeCreated). LiteGraph's own computed default is a cramped ~270×438;
@@ -1619,6 +1639,9 @@ function buildNodeUI(node, containerEl) {
   let W = node._atlasW, H = node._atlasH;
   let previewSize = atlasViewportPreviewSize(W, H);
   let previewW = previewSize.width, previewH = previewSize.height;
+  // LOGICAL preview size stays what it was — reported to Python, used for
+  // node layout. Only the drawing buffer is supersampled.
+  let previewScale = atlasBackbufferScale(previewW, previewH);
   node._atlasPreviewW = previewW; node._atlasPreviewH = previewH;
 
   // Toolbar
@@ -1651,8 +1674,8 @@ function buildNodeUI(node, containerEl) {
   canvasWrap.style.cssText = "position:relative;width:100%;max-width:100%;align-self:stretch;flex:1;min-height:0;min-width:0;line-height:0;background:#111;overflow:hidden;";
 
   const canvas = document.createElement("canvas");
-  canvas.width = previewW;
-  canvas.height = previewH;
+  canvas.width = Math.round(previewW * previewScale);
+  canvas.height = Math.round(previewH * previewScale);
   // object-fit:contain letterboxes/pillarboxes the canvas's intrinsic
   // width/height (the capped preview backbuffer, with the same aspect a
   // ShotCam/source resolves to) within whatever box width:100%/height:100% gives it,
@@ -1720,7 +1743,8 @@ function buildNodeUI(node, containerEl) {
 
   // Three.js setup
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setSize(previewW, previewH, false);
+  renderer.setSize(Math.round(previewW * previewScale),
+                   Math.round(previewH * previewScale), false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   // Exposure only has a visible effect with a tone-mapping operator active.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -2881,7 +2905,7 @@ function buildNodeUI(node, containerEl) {
     const vertex = (i) => new THREE.Vector3()
       .fromBufferAttribute(pos, i).applyMatrix4(hit.object.matrixWorld);
     const tri = [vertex(hit.face.a), vertex(hit.face.b), vertex(hit.face.c)];
-    const tol = 2 * 12 / Math.max(canvas.height, 1);   // ~12 px on screen
+    const tol = 2 * 12 / Math.max(canvas.height / previewScale, 1); // ~12 px on SCREEN, not backbuffer
     let best = null, bestD = Infinity;
     for (let e = 0; e < 3; e += 1) {
       const cand = closestPointOnSegment(hit.point, tri[e], tri[(e + 1) % 3]);
@@ -3030,7 +3054,7 @@ function buildNodeUI(node, containerEl) {
   // findEditPointNear uses, so grabbing a gizmo feels like grabbing a handle.
   function pickGizmoAxis(mapped) {
     if (!editGizmo || !editGizmo.visible) return null;
-    const tol = 2 * 14 / Math.max(canvas.height, 1);
+    const tol = 2 * 14 / Math.max(canvas.height / previewScale, 1);
     let best = null, bestD = Infinity;
     for (const name of Object.keys(EDIT_AXES)) {
       const t = gizmoTipWorld(name);
@@ -3060,7 +3084,7 @@ function buildNodeUI(node, containerEl) {
   }
 
   function findEditPointNear(mapped) {
-    const tol = 2 * 14 / Math.max(canvas.height, 1);
+    const tol = 2 * 14 / Math.max(canvas.height / previewScale, 1);
     let best = null, bestD = Infinity;
     drawnPolygons.forEach((poly, pi) => {
       poly.points_world.forEach((q, vi) => {
@@ -3079,7 +3103,7 @@ function buildNodeUI(node, containerEl) {
   // Same-shape vertices are excluded: a weld inside one outline would leave a
   // duplicate point its own triangulation chokes on.
   function findWeldTarget(mapped) {
-    const tol = 2 * 14 / Math.max(canvas.height, 1);
+    const tol = 2 * 14 / Math.max(canvas.height / previewScale, 1);
     let best = null, bestD = Infinity;
     for (const poly of drawnPolygons) {
       if (editDrag && poly === editDrag.poly) continue;
@@ -3368,7 +3392,7 @@ function buildNodeUI(node, containerEl) {
     // a tolerance derived from the drawing buffer, so the hit radius is a
     // constant ~14 px on screen whatever the preview resolution.
     if (ev.ctrlKey || ev.metaKey) {
-      const tol = 2 * 14 / Math.max(canvas.height, 1);
+      const tol = 2 * 14 / Math.max(canvas.height / previewScale, 1);
       let best = -1, bestD = Infinity;
       for (let i = 0; i < drawPoints.length; i += 1) {
         const q = new THREE.Vector3(...drawPoints[i]).project(camera);
@@ -4326,7 +4350,7 @@ function buildNodeUI(node, containerEl) {
     // Ctrl-click removes the in-progress point under the cursor (same NDC
     // tolerance as ✏️ Draw).
     if (ev.ctrlKey || ev.metaKey) {
-      const tol = 2 * 14 / Math.max(canvas.height, 1);
+      const tol = 2 * 14 / Math.max(canvas.height / previewScale, 1);
       let best = -1, bestD = Infinity;
       for (let i = 0; i < quadPoints.length; i += 1) {
         const q = new THREE.Vector3(...quadPoints[i]).project(camera);
@@ -4466,7 +4490,7 @@ function buildNodeUI(node, containerEl) {
   // Nearest edge of ANY drawn shape to the cursor, in screen space (constant
   // ~14 px tolerance like every other pick). Spheres have no edges to pull.
   function nearestDrawnEdge(mapped) {
-    const tol = 2 * 14 / Math.max(canvas.height, 1);
+    const tol = 2 * 14 / Math.max(canvas.height / previewScale, 1);
     const EX_BOX_EDGES = [[0, 1], [1, 2], [2, 3], [3, 0],
                           [4, 5], [5, 6], [6, 7], [7, 4],
                           [0, 4], [1, 5], [2, 6], [3, 7]];
@@ -6619,9 +6643,11 @@ function buildNodeUI(node, containerEl) {
     node._atlasW = w; node._atlasH = h;
     previewSize = atlasViewportPreviewSize(w, h);
     previewW = previewSize.width; previewH = previewSize.height;
+    previewScale = atlasBackbufferScale(previewW, previewH);
     node._atlasPreviewW = previewW; node._atlasPreviewH = previewH;
-    canvas.width = previewW; canvas.height = previewH;
-    renderer.setSize(previewW, previewH, false);
+    canvas.width = Math.round(previewW * previewScale);
+    canvas.height = Math.round(previewH * previewScale);
+    renderer.setSize(canvas.width, canvas.height, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     snapNodeHeightToRenderAspect(w / h);

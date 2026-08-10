@@ -355,8 +355,10 @@ Frontend (atlas_blockout.js)
   (`onResize` / `onRemoved` / `onConfigure`); assignment orphans DOM on
   workflow switch.
 - No JS resize hooks for canvas sizing — CSS only (`height:100%` chain,
-  `min-width:0`, `object-fit:contain`); render resolution is governed solely
-  by the `resolution` widget.
+  `min-width:0`, `object-fit:contain`); OUTPUT resolution (`_atlasW/_atlasH`,
+  used by Render Proxy Passes and baked frames) is governed solely by the
+  `resolution` widget. The visible canvas is a SEPARATE backbuffer, capped at
+  1280 and supersampled to min(2x, 2048px) — display only, touches no output.
 - three.js comes ONLY from the vendored `web/lib/atlas-three.bundle.js`
   (rebuild via `npm run build:comfy-three` in `ui/`); no CDN fallback.
 - A raw ShaderMaterial gets NO automatic colourspace encode: the projection

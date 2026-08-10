@@ -125,3 +125,39 @@ def test_offscreen_render_targets_are_multisampled_except_the_measuring_probe():
     unsampled = [t for t in targets if "samples: 4" not in t]
     assert len(sampled) == 3, f"expected 3 multisampled targets, got {sampled}"
     assert len(unsampled) == 1 and "W, H" in unsampled[0]
+
+
+def test_the_preview_backbuffer_is_supersampled_and_bounded():
+    """The canvas is CSS-scaled, so rendering 1:1 into it wastes real pixels.
+
+    This is DISPLAY supersampling and is unrelated to the `resolution` widget,
+    which sets node._atlasW/_atlasH — the dimensions Render Proxy Passes and
+    baked Camera Path frames use. The two were conflated once and the
+    supersample was wrongly refused as a rule violation.
+    """
+    assert "ATLAS_VIEWPORT_BACKBUFFER_MAX_SCALE = 2" in SOURCE
+    assert "ATLAS_VIEWPORT_BACKBUFFER_MAX_LONG_EDGE = 2048" in SOURCE
+    # Bounded, so a dense relief mesh cannot be handed a 3x-DPR-sized buffer.
+    # Assert on the APIs, not the word — the comment explaining why DPR was
+    # rejected necessarily contains it.
+    assert "setPixelRatio" not in SOURCE
+    assert "window.devicePixelRatio" not in SOURCE
+    # The LOGICAL preview size must keep its meaning: it is reported to Python
+    # and drives node layout.
+    assert "node._atlasPreviewW = previewW; node._atlasPreviewH = previewH;" in SOURCE
+    assert "renderer.setSize(previewW, previewH, false)" not in SOURCE
+
+
+def test_click_tolerances_stay_in_screen_pixels_under_supersampling():
+    """`2 * px / canvas.height` converts a screen-pixel tolerance to NDC.
+
+    canvas.height is the BACKBUFFER, so supersampling it without dividing the
+    scale back out silently tightens every hit target by the supersample factor
+    — a 12px grab handle becoming a 6px one.
+    """
+    import re
+    bare = re.findall(r"2 \* \d+ / Math\.max\(canvas\.height, 1\)", SOURCE)
+    assert not bare, f"{len(bare)} tolerance(s) still divide by the raw backbuffer"
+    scaled = re.findall(r"2 \* \d+ / Math\.max\(canvas\.height / previewScale, 1\)",
+                        SOURCE)
+    assert len(scaled) == 7
