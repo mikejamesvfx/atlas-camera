@@ -57,7 +57,23 @@ def test_coverage_obeys_ocio_associated_alpha_rules():
         SOURCE.index("vec4 col = texture2D(uTexture, uv)") :
         SOURCE.index("gl_FragColor = vec4(outColor, finalAlpha)")
     ]
-    assert "texture2D(uTexture, uv +" not in color_output
+    # The ban on neighbour taps is about the PRIMARY surface: a fragment shader
+    # must never bleed adjacent RGB inward to fake coverage it does not have
+    # (the "expands coverage only over fragments that already exist" rule).
+    #
+    # The transition ribbon is the one carve-out, and it is a carve-out rather
+    # than an exception to the rule: it is dedicated geometry whose entire
+    # stated job is to carry the subject's edge colour OUTWARD, its coverage is
+    # real triangles rather than a bled matte, and its alpha comes from the
+    # per-vertex ribbon_t and not from anything sampled. Each column is frozen
+    # to a single texel, so without averaging across neighbouring columns the
+    # skirt is a fan of flat radial streaks. The taps are therefore allowed
+    # inside that branch and nowhere else, which is what this checks.
+    smudge = color_output.index("if (isRibbon && uRibbonSmudge > 0.0)")
+    smudge_end = color_output.index("// Relight normal", smudge)
+    outside_ribbon = color_output[:smudge] + color_output[smudge_end:]
+    assert "texture2D(uTexture, uv +" not in outside_ribbon
+    assert "texture2D(uTexture, uv -" not in outside_ribbon
     assert "atlasLinearToSRGB(coverage" not in SOURCE
 
 
@@ -135,9 +151,13 @@ def test_the_preview_backbuffer_is_supersampled_and_bounded():
     baked Camera Path frames use. The two were conflated once and the
     supersample was wrongly refused as a rule violation.
     """
-    assert "ATLAS_VIEWPORT_BACKBUFFER_MAX_SCALE = 2" in SOURCE
-    assert "ATLAS_VIEWPORT_BACKBUFFER_MAX_LONG_EDGE = 2048" in SOURCE
-    # Bounded, so a dense relief mesh cannot be handed a 3x-DPR-sized buffer.
+    # Raised from 2048/2x: that bound was set against a canvas displayed at
+    # roughly preview size and inverts on a big one — an 8K display stretches
+    # the canvas across more than 2048 device pixels, so the buffer becomes an
+    # UNDERsample. 3x from the 1280 logical preview reaches 3840, ~1:1 on 8K.
+    assert "ATLAS_VIEWPORT_BACKBUFFER_MAX_SCALE = 3" in SOURCE
+    assert "ATLAS_VIEWPORT_BACKBUFFER_MAX_LONG_EDGE = 3840" in SOURCE
+    # Bounded, so a dense relief mesh cannot be handed a raw-DPR-sized buffer.
     # Assert on the APIs, not the word — the comment explaining why DPR was
     # rejected necessarily contains it.
     assert "setPixelRatio" not in SOURCE

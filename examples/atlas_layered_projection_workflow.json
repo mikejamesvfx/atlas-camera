@@ -794,7 +794,13 @@
         true,
         true,
         false,
-        false
+        false,
+        false,
+        64.0,
+        0.2,
+        true,
+        2.0,
+        12.0
       ],
       "title": "6 · BASE RELIEF · tears are information"
     },
@@ -1126,7 +1132,13 @@
         true,
         false,
         false,
-        false
+        false,
+        false,
+        64.0,
+        0.2,
+        true,
+        2.0,
+        12.0
       ],
       "title": "7 · CLEAN PLATE LAYER · the mid band you paint on"
     },
@@ -2144,7 +2156,8 @@
         0,
         30.0,
         false,
-        8
+        8,
+        true
       ],
       "title": "ROUND THE SILHOUETTE · boundary smooth ×8 🔷"
     },

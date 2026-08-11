@@ -579,7 +579,13 @@
         "off",
         true,
         true,
-        false
+        false,
+        false,
+        64.0,
+        0.2,
+        true,
+        2.0,
+        12.0
       ],
       "title": "3 · DERIVE RELIEF MESH & HOLE MASK ⛰️"
     },
@@ -1456,7 +1462,8 @@
         0,
         30.0,
         false,
-        8
+        8,
+        true
       ],
       "title": "ROUND THE SILHOUETTE · boundary smooth ×8 🔷"
     }

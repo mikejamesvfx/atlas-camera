@@ -1269,6 +1269,10 @@ def serialize_proxy_geometry(
             # Per-vertex linear coverage risk for viewport-only soft tear edges.
             # Exporters never consume it; positions/faces/UVs remain unchanged.
             entry["edge_risk"] = md.get("edge_risk", [])
+            # Per-vertex transition-ribbon parameter. Lifted for the same reason
+            # as edge_risk: an array left in `metadata` is dropped by the scalar
+            # filter above.
+            entry["ribbon_t"] = md.get("ribbon_t", [])
             # Full-resolution silhouette matte (PNG data URI). Lifted to the top
             # level beside edge_risk because it is the same KIND of thing — a
             # viewport-only coverage field the geometry does not encode — and the
@@ -1299,6 +1303,25 @@ def relief_mesh_primitive(mesh: Any, *, name: str = "projection_relief_mesh") ->
     edge_risk_array = getattr(mesh, "edge_risk", None)
     edge_risk = (np.round(np.asarray(edge_risk_array).reshape(-1), 3).tolist()
                  if edge_risk_array is not None else [])
+    ribbon_t_array = getattr(mesh, "ribbon_t", None)
+    ribbon_t = (np.round(np.asarray(ribbon_t_array).reshape(-1), 4).tolist()
+                if ribbon_t_array is not None else [])
+    # Flat SCALARS, deliberately: `serialize_proxy_geometry` filters metadata to
+    # scalars, so a nested params dict would be silently dropped. These let a
+    # pass that moves the rim — retopology — re-derive the same skirt rather
+    # than inventing settings the artist never chose.
+    ribbon_info = (mesh.stats or {}).get("transition_ribbon") or {}
+    ribbon_params: dict[str, Any] = {}
+    if ribbon_t and "skipped" not in ribbon_info:
+        ribbon_params = {
+            "ribbon_px": float(ribbon_info.get("ribbon_px", 0.0)),
+            "ribbon_bend": float(ribbon_info.get("bend", 0.0)),
+            "ribbon_rings": int(ribbon_info.get("n_rings", 4)),
+            "ribbon_adaptive": bool(ribbon_info.get("adaptive", False)),
+            "ribbon_depth_slope": float(ribbon_info.get("depth_slope_max", 2.0)),
+            "ribbon_depth_edge_rel": float(ribbon_info.get("depth_edge_rel", 0.5)),
+            "ribbon_smudge_px": float(ribbon_info.get("smudge_px", 0.0)),
+        }
     return AtlasProxyPrimitive(
         name=name,
         primitive_type="mesh",
@@ -1325,5 +1348,10 @@ def relief_mesh_primitive(mesh: Any, *, name: str = "projection_relief_mesh") ->
             "faces": faces,
             "uvs": uvs,
             "edge_risk": edge_risk,
+            # Unlike edge_risk this is NOT viewport-only — it defines the fade
+            # baked into the exported ribbon's vertex colour, so viewport and
+            # DCC evaluate one curve. Empty when no ribbon was built.
+            "ribbon_t": ribbon_t,
+            **ribbon_params,
         },
     )

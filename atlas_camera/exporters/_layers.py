@@ -156,6 +156,14 @@ def mesh_from_primitive(prim):
         np.asarray(edge_risk_raw, dtype=np.float32).reshape(-1)
         if len(edge_risk_raw) == len(verts) else None
     )
+    # Unlike edge_risk, dropping this one is not cosmetic: ribbon_t is what the
+    # exporters turn into the skirt's vertex alpha and its own OBJ material, so
+    # a mesh that lost it on the round trip exports the ribbon as an opaque lip.
+    ribbon_t_raw = meta.get("ribbon_t") or []
+    ribbon_t = (
+        np.asarray(ribbon_t_raw, dtype=np.float32).reshape(-1)
+        if len(ribbon_t_raw) == len(verts) else None
+    )
     stats = {
         key: meta[key]
         for key in (
@@ -164,9 +172,18 @@ def mesh_from_primitive(prim):
         )
         if key in meta
     }
+    if ribbon_t is not None:
+        # The GLB bake reads the smudge width off stats, so a mesh rebuilt from
+        # a primitive has to carry it or exporting a LAYER silently produces an
+        # unsmudged skirt while the primary's is smudged.
+        stats["transition_ribbon"] = {
+            "smudge_px": float(meta.get("ribbon_smudge_px", 0.0) or 0.0),
+            "ribbon_px": float(meta.get("ribbon_px", 0.0) or 0.0),
+            "bend": float(meta.get("ribbon_bend", 0.0) or 0.0),
+        }
     return ReliefMesh(
         vertices=verts, faces=faces, uvs=uvs,
-        stats=stats, edge_risk=edge_risk,
+        stats=stats, edge_risk=edge_risk, ribbon_t=ribbon_t,
     )
 
 

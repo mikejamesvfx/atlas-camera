@@ -335,6 +335,16 @@ Geometry & projection
   the lattice survives so hole-patch still works), tearing on EXPORT (a DCC has
   no shader to fade with). A soft matte is MULTIPLIED, never thresholded. It
   needs a behind-layer to reveal, or it is a hole with soft edges.
+- A silhouette skirt is bounded in SCREEN pixels, offset in IMAGE space along
+  the rim's outward normal — NEVER extruded along the view ray. Under a pinhole
+  camera every point on a ray projects to the same pixel, so a ray extrusion has
+  exactly zero screen width and cannot converge on a pixel target.
+  `transition_ribbon` keeps the tear, shares no vertex with the foreground,
+  freezes UVs at the silhouette texel (edge-extend clamp, not a smear), and
+  carries its fade as per-vertex `ribbon_t` — the one non-viewport-only
+  silhouette field, so exporters bake it (`ribbon_alpha`, mirrored in JS).
+  `ribbon_bend` is a DWELL clamped at 0.5; past that the depth ramp turns back
+  toward the camera. Mutually exclusive with `soft_visibility`.
 - A tear is a TOPOLOGY decision, not a coverage hole. `sub_quad_boundary`
   (default off) cuts a torn cell at the cliff instead of deleting it whole —
   same grid, same thresholds, same cells torn, boundary 5.67→1.43px. The two
@@ -367,7 +377,9 @@ Frontend (atlas_blockout.js)
   `min-width:0`, `object-fit:contain`); OUTPUT resolution (`_atlasW/_atlasH`,
   used by Render Proxy Passes and baked frames) is governed solely by the
   `resolution` widget. The visible canvas is a SEPARATE backbuffer, capped at
-  1280 and supersampled to min(2x, 2048px) — display only, touches no output.
+  1280 logical and supersampled to min(3x, 3840px) — display only, touches no
+  output. The bound was 2x/2048 until an 8K display showed that a cap set
+  against a preview-sized canvas becomes an UNDERsample on a large one.
 - three.js comes ONLY from the vendored `web/lib/atlas-three.bundle.js`
   (rebuild via `npm run build:comfy-three` in `ui/`); no CDN fallback.
 - A raw ShaderMaterial gets NO automatic colourspace encode: the projection

@@ -381,6 +381,7 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
                     "faces": packed.faces,
                     "uvs": packed.uvs,
                     "edge_risk": [],
+                    "ribbon_t": [],
                 },
             ))
             lines.append('%s "%s": ok(sphere)' % (name, label))
@@ -418,6 +419,7 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
                     "faces": packed.faces,
                     "uvs": packed.uvs,
                     "edge_risk": [],
+                    "ribbon_t": [],
                 },
             ))
             lines.append('%s "%s": ok(box, 8 corners)' % (name, label))
@@ -465,6 +467,7 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
                 "faces": packed.faces,
                 "uvs": packed.uvs,
                 "edge_risk": [],
+                "ribbon_t": [],
             },
         ))
         lines.append('%s "%s": ok(%d points)' % (name, label, len(pts)))

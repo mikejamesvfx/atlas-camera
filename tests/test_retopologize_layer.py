@@ -153,13 +153,18 @@ def _uv_registration_error(solve):
     return float(np.abs(np.asarray(mesh.uvs, dtype=np.float64) - expected).max())
 
 
-def test_boundary_smooth_widget_is_appended_last():
-    """Widgets are positional in saved workflows — appends only, never inserts."""
+def test_widgets_stay_append_only():
+    """Widgets are positional in saved workflows — appends only, never inserts.
+
+    The list is written out in full rather than checked by length so that a
+    REORDER fails here too; a new widget is only allowed to extend the tail.
+    """
     from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
 
     assert list(AtlasRetopologizeLayer.INPUT_TYPES()["optional"]) == [
         "layer", "method", "target_vertex_count", "smooth_iterations",
         "crease_angle", "pure_quad", "boundary_smooth_iterations",
+        "rebuild_transition_ribbon",
     ]
 
 

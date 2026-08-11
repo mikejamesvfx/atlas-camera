@@ -466,6 +466,113 @@ def test_drawn_proxy_sources_mirror_python():
     assert js_sources == set(DRAWN_SOURCES)
 
 
+# --- Transition ribbon fade (atlas_blockout.js <-> transition_ribbon.py) -----
+
+
+def test_ribbon_fade_start_mirrors_python():
+    """Three consumers evaluate this one curve: the viewport fragment shader,
+    the GLB vertex-alpha bake, and the tests. A hand-slip here would ship a
+    skirt that fades in the viewport and stays opaque in Maya, or the reverse —
+    and the whole point of authoring ribbon_t on the geometry is that the two
+    cannot disagree.
+    """
+    from atlas_camera.core.transition_ribbon import RIBBON_FADE_START
+
+    src = _read("atlas_blockout.js")
+    found = re.search(r"const RIBBON_FADE_START = ([0-9.]+);", src)
+    assert found, "RIBBON_FADE_START missing from atlas_blockout.js"
+    assert float(found.group(1)) == pytest.approx(RIBBON_FADE_START)
+
+    # The shader must interpolate the constant, not a hardcoded literal that
+    # would silently stop tracking it.
+    assert "smoothstep(${RIBBON_FADE_START.toFixed(4)}, 1.0," in src
+    # Fully-faded ribbon fragments must not write depth (the material is
+    # depthWrite:true, so an invisible fragment would still occlude the
+    # inpainted band the skirt exists to reveal).
+    assert "if (coverage < 0.01) discard;" in src
+
+
+def test_every_projection_varying_is_declared_on_both_sides():
+    """A varying declared in the vertex shader and READ in the fragment shader
+    without being declared there fails to compile, three.js drops the material,
+    and 📽 Project renders NOTHING — the whole projection vanishes rather than
+    the one feature degrading. Shipped exactly that way with vAtlasRibbonT and
+    it was invisible to every Python test, because the break is in GLSL.
+    """
+    src = _read("atlas_blockout.js")
+    vert = re.search(r"const PROJECTION_VERTEX_SHADER = `(.*?)`;", src, re.DOTALL)
+    frag = re.search(r"const PROJECTION_FRAGMENT_SHADER = `(.*?)`;", src, re.DOTALL)
+    assert vert and frag, "projection shader sources not found"
+
+    declared = set(re.findall(r"varying\s+\w+\s+(\w+)\s*;", frag.group(1)))
+    used = {name for name in re.findall(r"\bv[A-Z]\w*", frag.group(1))}
+    vert_varyings = set(re.findall(r"varying\s+\w+\s+(\w+)\s*;", vert.group(1)))
+
+    missing = sorted((used & vert_varyings) - declared)
+    assert not missing, (
+        f"fragment shader reads {missing} without declaring them — this compiles "
+        f"to nothing and Project goes black")
+
+
+def test_ribbon_samples_the_frozen_silhouette_texel_not_its_projection():
+    """The viewport re-derives every texel by PROJECTING the vertex (vImagePx),
+    which throws the mesh's baked UVs away. For a skirt that is exactly wrong:
+    it lives outside the subject's outline, so its projected pixel is backdrop —
+    seen live as a white halo around a machine on a white plate. Freezing the UV
+    on the geometry only ever reached the exporters until this.
+    """
+    src = _read("atlas_blockout.js")
+    assert "vAtlasBakedUv = uv;" in src, "vertex shader must carry the baked uv"
+    assert "if (isRibbon) uv = vec2(vAtlasBakedUv.x, 1.0 - vAtlasBakedUv.y);" in src, (
+        "fragment shader must sample the frozen silhouette texel for the skirt")
+    # Exempt from the primary-depth shadow test: the skirt's uv is pinned to the
+    # rim, and it deliberately recedes behind it, so the test would delete it.
+    assert "uHasPrimaryDepth > 0.5 && !isRibbon" in src
+    # And it must not also take the topology feather (welded ring 0 inherits the
+    # rim's edge_risk of 1.0).
+    assert "isRibbon ? 0.0 : clamp(vAtlasEdgeRisk, 0.0, 1.0)" in src
+
+
+def test_ribbon_smudge_averages_along_the_rim_with_safe_derivatives():
+    """One frozen texel per column reads as a fan of flat radial streaks that
+    band against each other, so the skirt averages across neighbouring columns,
+    widening with ribbon_t.
+
+    The direction is the screen gradient of the baked UV — constant WITHIN a
+    column, so it already points along the rim. Those derivatives must be taken
+    in uniform control flow: inside the branch they are undefined for every
+    fragment that skips it, which is a class of bug that renders fine on one GPU
+    and garbage on another.
+    """
+    src = _read("atlas_blockout.js")
+    found = re.search(r"const RIBBON_SMUDGE_TEXELS = ([0-9.]+);", src)
+    assert found, "RIBBON_SMUDGE_TEXELS missing"
+    assert float(found.group(1)) > 0.0
+    assert "uniform float uRibbonSmudge;" in src
+    # Driven PER MESH from the value the relief-mesh node recorded, so the
+    # widget, the viewport and the GLB bake cannot drift apart; the constant is
+    # only the fallback for geometry built before the widget existed.
+    assert "options.ribbonSmudgePx" in src
+    assert "ribbonSmudgePx: primaryRibbonSmudge" in src
+    assert "ribbon_smudge_px" in src
+
+    body = src[src.index("void main() {", src.index("PROJECTION_FRAGMENT_SHADER")):]
+    gx = body.index("vec2 bakedGx = dFdx(vAtlasBakedUv);")
+    branch = body.index("if (isRibbon && uRibbonSmudge > 0.0)")
+    assert gx < branch, "derivatives must be taken before the ribbon branch"
+    assert "dFdx(vAtlasBakedUv)" not in body[branch:branch + 900]
+
+
+def test_ribbon_attribute_rides_the_same_path_as_edge_risk():
+    """A declared-but-unbound vertex attribute would fade arbitrary fragments of
+    an ordinary mesh, so the zero fallback and the chaining are the contract."""
+    src = _read("atlas_blockout.js")
+    assert "attribute float atlasRibbonT;" in src
+    assert "function attachAtlasRibbonT(geo, entry)" in src
+    # Chained off the edge_risk attacher so both existing call sites are covered.
+    assert "return attachAtlasRibbonT(geo, entry);" in src
+
+
 # --- 🎬 Cinematic rig-noise shake (atlas_blockout.js <-> camera_path.py) -----
 
 

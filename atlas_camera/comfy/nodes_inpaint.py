@@ -1000,6 +1000,46 @@ class AtlasCleanPlateLayer:
                                "sky/exclusion edge; depth cliffs need sub_quad_boundary."}),
                 "soft_visibility": ("BOOLEAN", {"default": False,
                     "tooltip": "SOFT LAYERING (SLIDE, ICCV 2021) - the viewport answer to sawtooth silhouettes. Instead of TEARING at a depth cliff and leaving a hole to feather, keep the surface continuous (it rubber-bands across the cliff) and fade those fragments with a per-pixel visibility A = exp(-beta*|grad disparity|^2) computed at PLATE resolution. No tear means no boundary to quantize, so there is no staircase at ANY grid - and the lattice stays intact, so planar hole patch and the CUDA repair keep working (unlike sub_quad_boundary, which this supersedes and disables). Measured on a diagonal cliff: fade to 0.039 over a 4px feather while smooth receding ground stays at 0.987. Needs something BEHIND to reveal (BG clean-plate / sky dome / clean_plate input) or the fade shows the backdrop. Export still tears - a DCC has no shader to fade with."}),
+                "transition_ribbon": ("BOOLEAN", {"default": False,
+                    "tooltip": "KEEP this band's tear and hang a bounded skirt off it, instead of "
+                               "soft_visibility's untorn rubber band whose fins run as far as the "
+                               "depth jump dictates. Separate topology grown from the open rim, "
+                               "stepping outward in IMAGE space so its apparent width is a fixed "
+                               "pixel count at any depth (a view-ray extrusion cannot do this - "
+                               "every point on a ray projects to the same pixel). UVs freeze at the "
+                               "silhouette texel, so it is an edge-extend CLAMP, which is what the "
+                               "seam doctrine asks of a layer that has bands behind it. Shares no "
+                               "vertex with the band surface. Mutually exclusive with "
+                               "soft_visibility."}),
+                "ribbon_px": ("FLOAT", {"default": 64.0, "min": 0.0, "max": 400.0, "step": 1.0,
+                    "tooltip": "Transition-ribbon width in SCREEN pixels of the plate, measured in "
+                               "the recovered camera; achieved width is reported back as "
+                               "stats.transition_ribbon.measured_px_p50/p95. Distinct from "
+                               "edge_extend_px, which smears TEXTURE outward on this band; this "
+                               "adds GEOMETRY carrying the frozen rim texel."}),
+                "ribbon_bend": ("FLOAT", {"default": -0.3, "min": -0.5, "max": 0.5, "step": 0.05,
+                    "tooltip": "Shape of the depth falloff toward the band behind. NEGATIVE curls "
+                               "away fast then levels off (the tight lip); 0 is linear; POSITIVE "
+                               "dwells at this band's depth then dives (a flange). Limited to "
+                               "+/-0.5, the range in which the ramp stays monotonic."}),
+                "ribbon_adaptive": ("BOOLEAN", {"default": False,
+                    "tooltip": "Scale ribbon_px by the size of the discontinuity relative to "
+                               "depth_edge_rel, clamped 0.5x-2x. DEFAULTS OFF: measured on a real "
+                               "exterior it was the only setting that broke width consistency "
+                               "(p95 85px for a requested 64) and clamped the most folds."}),
+                "ribbon_depth_slope": ("FLOAT", {"default": 2.0, "min": 0.25, "max": 8.0,
+                    "step": 0.25,
+                    "tooltip": "How far the skirt may recede toward the band behind, as a multiple "
+                               "of its own world width. Governs what an ORBIT sees; ribbon_px "
+                               "alone bounds only the recovered camera. Low (0.5-1) hugs this "
+                               "band's silhouette, high (4-8) reaches further back at the cost of "
+                               "long slabs off-axis."}),
+                "ribbon_smudge_px": ("FLOAT", {"default": 12.0, "min": 0.0, "max": 200.0,
+                    "step": 1.0,
+                    "tooltip": "Blur the skirt along this band's silhouette, in plate texels, "
+                               "ramped in from the rim. At 0 each column is one frozen texel and "
+                               "the skirt reads as flat radial streaks. Applies in the viewport "
+                               "and is baked into the exported GLB as vertex colour."}),
             },
         }
 
@@ -1011,7 +1051,10 @@ class AtlasCleanPlateLayer:
                   band_geometry="relief", geometry_override="", band_ref_mask=None,
                   band_override="", max_edge_factor=12.0, normal_edge_deg=0.0,
                   quad_coherence=True, sub_quad_boundary=False,
-                  silhouette_matte=False, soft_visibility=False):
+                  silhouette_matte=False, soft_visibility=False,
+                  transition_ribbon=False, ribbon_px=64.0, ribbon_bend=-0.3,
+                  ribbon_adaptive=False, ribbon_depth_slope=2.0,
+                  ribbon_smudge_px=12.0):
         from atlas_camera.core.band_geometry import (
             boundary_overhang_cells,
             flat_band_depth_field,
@@ -1135,7 +1178,16 @@ class AtlasCleanPlateLayer:
             # coupling); silhouette_matte is the same bargain, so it takes the
             # same floor rather than shipping an unmatted skirt.
             edge_overhang_cells=(max(overhang_cells, 2) if silhouette_matte
-                                 else overhang_cells))
+                                 else overhang_cells),
+            transition_ribbon=bool(transition_ribbon),
+            ribbon_px=float(ribbon_px), ribbon_bend=float(ribbon_bend),
+            ribbon_adaptive=bool(ribbon_adaptive),
+            ribbon_depth_slope=float(ribbon_depth_slope),
+            ribbon_smudge_px=float(ribbon_smudge_px))
+        ribbon_info = (mesh.stats or {}).get("transition_ribbon")
+        if ribbon_info and "skipped" in ribbon_info:
+            print(f"[Atlas] AtlasCleanPlateLayer '{name}': transition_ribbon skipped "
+                  f"— {ribbon_info['reason']}")
         relief_prim = relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")
         if getattr(mesh, "silhouette_alpha", None) is not None:
             encoded = _mask_to_b64_png(mesh.silhouette_alpha)

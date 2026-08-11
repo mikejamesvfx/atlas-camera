@@ -842,6 +842,88 @@ class AtlasDeriveReliefMesh:
                                "sub_quad_boundary's job."}),
                 "soft_visibility": ("BOOLEAN", {"default": False,
                     "tooltip": "SOFT LAYERING (SLIDE, ICCV 2021) - the viewport answer to sawtooth silhouettes. Instead of TEARING at a depth cliff and leaving a hole to feather, keep the surface continuous (it rubber-bands across the cliff) and fade those fragments with a per-pixel visibility A = exp(-beta*|grad disparity|^2) computed at PLATE resolution. No tear means no boundary to quantize, so there is no staircase at ANY grid - and the lattice stays intact, so planar hole patch and the CUDA repair keep working (unlike sub_quad_boundary, which this supersedes and disables). Measured on a diagonal cliff: fade to 0.039 over a 4px feather while smooth receding ground stays at 0.987. Needs something BEHIND to reveal (BG clean-plate / sky dome / clean_plate input) or the fade shows the backdrop. Export still tears - a DCC has no shader to fade with."}),
+                "transition_ribbon": ("BOOLEAN", {"default": False,
+                    "tooltip": "KEEP the tear and hang a bounded skirt off it. soft_visibility's "
+                               "alternative is to delete the tear, which lets every cliff cell "
+                               "stretch into a fin whose length is set by the depth jump and by "
+                               "nothing else (the long straight slabs seen off rooflines). This "
+                               "grows separate topology from the open rim: each rim vertex spawns "
+                               "its own column of vertices stepping outward in IMAGE space, so the "
+                               "skirt's apparent width is a fixed pixel count at ANY scene depth. "
+                               "Not an extrusion along the view ray - under a pinhole camera every "
+                               "point on a ray projects to the SAME pixel, so a ray extrusion has "
+                               "exactly zero screen width. UVs freeze at the silhouette texel, "
+                               "making this an edge-extend CLAMP with no stretch, and the fade "
+                               "rides the geometry as a per-vertex parameter, so the GLB export "
+                               "carries the same curve the viewport shows. Shares no vertex with "
+                               "the foreground - the tear survives topologically. Mutually "
+                               "exclusive with soft_visibility, which leaves no rim to hang off. "
+                               "Do NOT combine with sub_quad_boundary: measured on a real plate at "
+                               "grid 256 its fractional-pixel rim is 6x longer (49846 vs 8286 "
+                               "edges), so the skirt costs 5.8x the mesh (383k vs 66k vertices) "
+                               "for the SAME achieved width and folds worse (8% of quads dropped "
+                               "vs 1.5%). Needs a behind-layer to reveal, like any fade."}),
+                "ribbon_px": ("FLOAT", {"default": 64.0, "min": 0.0, "max": 400.0, "step": 1.0,
+                    "tooltip": "Transition-ribbon width in SCREEN pixels of the SOURCE PLATE, "
+                               "measured in the recovered camera. Constant apparent width is the "
+                               "point: near objects do not get thick skirts and far ones do not "
+                               "collapse to nothing. It is the single length control - the skirt's "
+                               "depth run is capped to a multiple of its own world width, so its "
+                               "3D length under orbit scales with this too (measured on a 7680px "
+                               "plate: 32px -> 0.10m median, 128px -> 0.40m). Scale it with the "
+                               "PLATE, not the screen: 40-64 suits a 2K plate, and the same "
+                               "apparent size on a 7680px plate needs ~150-240. Achieved width is "
+                               "measured back through the camera as "
+                               "stats.transition_ribbon.measured_px_p50/p95; world length is "
+                               "reported as world_len_p50_m/p95_m."}),
+                "ribbon_bend": ("FLOAT", {"default": -0.3, "min": -0.5, "max": 0.5, "step": 0.05,
+                    "tooltip": "Shape of the depth falloff, and the SIGN is the control. "
+                               "NEGATIVE curls away from camera fast and then levels off - the "
+                               "tight inward lip; -0.5 is the tightest. 0 is a straight linear "
+                               "ramp. POSITIVE dwells at silhouette depth and then dives, which "
+                               "reads as a flat flange sticking outward before it drops. Limited "
+                               "to +/-0.5 because the ramp is only monotonic in that range: "
+                               "outside it the skirt starts (or ends) moving back TOWARD the "
+                               "camera and folds through the surface it hangs off. To make the "
+                               "skirt SHORTER, lower ribbon_px - bend changes its shape, not its "
+                               "length."}),
+                "ribbon_adaptive": ("BOOLEAN", {"default": False,
+                    "tooltip": "Scale ribbon_px by how big the discontinuity actually is, relative "
+                               "to depth_edge_rel and clamped 0.5x-2x. DEFAULTS OFF, and the "
+                               "measurements are why: on a castle exterior it was the only setting "
+                               "that broke width consistency (p95 85px against a requested 64) and "
+                               "it produced the highest fold-clamp rate of any configuration "
+                               "(25.6% of columns, against 18-21% with it off). The idea is sound "
+                               "- big occlusions want more transition - but in practice it trades "
+                               "a predictable skirt for an uneven one. Turn it on only if you "
+                               "specifically want wide occlusions to get extra room and can accept "
+                               "the variance."}),
+                "ribbon_depth_slope": ("FLOAT", {"default": 2.0, "min": 0.25, "max": 8.0,
+                    "step": 0.25,
+                    "tooltip": "How far the skirt may RECEDE, as a multiple of its own world "
+                               "width. This is the second length control and the one that governs "
+                               "what an ORBIT sees: bounding ribbon_px alone bounds only the "
+                               "recovered camera's view, and the depth run used to reach the "
+                               "inferred background unchecked - measured on a 7680px plate, a ~1m "
+                               "wide skirt ran 15m deep, invisible head-on and an enormous tube "
+                               "off-axis. Low (0.5-1) is a thin flat membrane that hugs the "
+                               "silhouette; high (4-8) lets it reach further back toward real "
+                               "background at the cost of long slabs under orbit. 2.0 is the "
+                               "measured default. stats.transition_ribbon.world_len_p50_m reports "
+                               "what you actually got, and n_depth_capped how many columns the cap "
+                               "bit on."}),
+                "ribbon_smudge_px": ("FLOAT", {"default": 12.0, "min": 0.0, "max": 200.0,
+                    "step": 1.0,
+                    "tooltip": "Blur the skirt ALONG the silhouette, in source-plate texels, "
+                               "reached at its outer edge and ramped in from the rim. Each column "
+                               "is frozen to a single texel, so at 0 the skirt is a fan of flat "
+                               "radial streaks that band against each other; this averages across "
+                               "neighbouring columns so the subject's own edge colour bleeds "
+                               "outward smoothly instead. Plate-relative like ribbon_px - a 7680px "
+                               "plate wants more than a 2K one. Applies in the viewport AND is "
+                               "baked into the exported GLB as vertex colour on a separate ribbon "
+                               "material, so a DCC shows the same softening. 0 = off (hard "
+                               "edge-extend)."}),
             },
         }
 
@@ -853,7 +935,9 @@ class AtlasDeriveReliefMesh:
                max_edge_factor=12.0,
                sky_heuristic=True, normal_edge_deg=0.0, quad_coherence=True,
                sub_quad_boundary=False, silhouette_matte=False,
-               soft_visibility=False):
+               soft_visibility=False, transition_ribbon=False, ribbon_px=64.0,
+               ribbon_bend=-0.3, ribbon_adaptive=False, ribbon_depth_slope=2.0,
+               ribbon_smudge_px=12.0):
         torch = _require_torch()
         np = _require_numpy()
         if relief_quality in self._RELIEF_QUALITY_PRESETS:
@@ -901,6 +985,11 @@ class AtlasDeriveReliefMesh:
             # the two travel together (AtlasCleanPlateLayer's `2 if embed_matte
             # else 0`, applied to the primary layer at last).
             edge_overhang_cells=(2 if silhouette_matte else 0),
+            transition_ribbon=bool(transition_ribbon),
+            ribbon_px=float(ribbon_px), ribbon_bend=float(ribbon_bend),
+            ribbon_adaptive=bool(ribbon_adaptive),
+            ribbon_depth_slope=float(ribbon_depth_slope),
+            ribbon_smudge_px=float(ribbon_smudge_px),
         )
 
         stats = {
@@ -927,6 +1016,49 @@ class AtlasDeriveReliefMesh:
                       f"{cut_info['n_candidate_cells']} cliff cells and stopped at "
                       f"the budget — the rest stay whole-quad torn. Raise "
                       f"max_cut_cells or lower relief_grid.")
+        # The ribbon can decline to build, and a silent skip reads as "the
+        # feature did nothing useful" rather than "you asked for two mutually
+        # exclusive things" (gate doctrine).
+        if "transition_ribbon" in mesh.stats:
+            ribbon_info = mesh.stats["transition_ribbon"]
+            stats["relief_mesh"]["transition_ribbon"] = ribbon_info
+            if "skipped" in ribbon_info:
+                print(f"[Atlas] AtlasDeriveReliefMesh: transition_ribbon skipped — "
+                      f"{ribbon_info['reason']}")
+            else:
+                stats["relief_mesh"]["torn_fraction_whole_quad"] = mesh.stats[
+                    "torn_fraction_whole_quad"]
+                # Always report the achieved width. Without it there is no way
+                # to tell a skirt that is working from a base mesh whose own
+                # stretched shards look like one — which cost a live debugging
+                # session, because the two are indistinguishable by eye under
+                # orbit and only the ACHIEVED number separates them.
+                print(f"[Atlas] AtlasDeriveReliefMesh: transition_ribbon built "
+                      f"{ribbon_info['n_faces']} faces on "
+                      f"{ribbon_info['n_columns']} columns — requested "
+                      f"{ribbon_info['ribbon_px']:.0f}px, achieved p50 "
+                      f"{ribbon_info['measured_px_p50']:.1f}px / p95 "
+                      f"{ribbon_info['measured_px_p95']:.1f}px"
+                      + (" (adaptive)" if ribbon_info["adaptive"] else ""))
+                if ribbon_info["n_dropped_quads"]:
+                    print(f"[Atlas] AtlasDeriveReliefMesh: transition_ribbon dropped "
+                          f"{ribbon_info['n_dropped_quads']} folded quad(s) at concave "
+                          f"corners and narrowed {ribbon_info['n_width_clamped']} "
+                          f"column(s). Lower ribbon_px if the skirt looks ragged.")
+                if ribbon_info.get("columns_per_ribbon_width", 99.0) < 1.0:
+                    print(f"[Atlas] AtlasDeriveReliefMesh: ribbon_px "
+                          f"{ribbon_info['ribbon_px']:.0f} is NARROWER than the "
+                          f"rim's column spacing "
+                          f"({ribbon_info['column_spacing_px']:.0f}px), so the "
+                          f"skirt is a fringe of separate tongues rather than a "
+                          f"continuous band — raise ribbon_px above that, or "
+                          f"lower relief_grid to space the columns further apart.")
+                if ribbon_info["budget_truncated"]:
+                    print(f"[Atlas] AtlasDeriveReliefMesh: transition_ribbon hit its "
+                          f"{ribbon_info['n_columns']}-column budget — part of the "
+                          f"silhouette has NO skirt and still shows the bare tear. "
+                          f"Lower relief_grid/relief_quality (rim length scales with "
+                          f"it) or accept the partial skirt.")
         # An explicit exclude_mask REPLACES the sky heuristic (line above), and
         # nothing said so out loud: a mask wired with the wrong polarity meshes
         # the sky and still reports success. Record coverage so the polarity is
@@ -1204,6 +1336,108 @@ class AtlasLiveMeshRepair:
         return (solve_out,)
 
 
+def _strip_transition_ribbon(mesh, np) -> int:
+    """Drop the transition-ribbon skirt from a mesh in place; return faces removed.
+
+    A remesh treats every triangle as surface. The ribbon is not surface — it is
+    a skirt whose first ring is deliberately a SEPARATE vertex coincident with
+    the rim, and whose whole shape is derived from where that rim sits. Remeshing
+    it welds the two sheets back together and then moves the rim out from under
+    the skirt. Removing it returns a valid torn mesh, which is the honest input
+    for a retopology pass.
+    """
+    rt = getattr(mesh, "ribbon_t", None)
+    if rt is None:
+        return 0
+    values = np.asarray(rt).reshape(-1)
+    if len(values) != len(mesh.vertices) or not bool((values > 0.0).any()):
+        return 0
+    faces = np.asarray(mesh.faces)
+    keep = ~(values > 0.0)[faces].any(axis=1)
+    n_dropped = int((~keep).sum())
+    if not n_dropped:
+        mesh.ribbon_t = None
+        return 0
+    faces = faces[keep]
+    used, remap = np.unique(faces.reshape(-1), return_inverse=True)
+    mesh.faces = remap.reshape(-1, 3).astype(np.int32)
+    mesh.vertices = np.asarray(mesh.vertices)[used]
+    mesh.uvs = np.asarray(mesh.uvs)[used]
+    if getattr(mesh, "edge_risk", None) is not None:
+        risk = np.asarray(mesh.edge_risk).reshape(-1)
+        mesh.edge_risk = risk[used] if len(risk) == len(values) else None
+    mesh.ribbon_t = None
+    return n_dropped
+
+
+def _rebuild_transition_ribbon(mesh, camera, meta, np) -> int:
+    """Re-derive the skirt on a mesh whose rim has just moved. Returns faces added.
+
+    Replays the settings the relief-mesh node recorded on the primitive rather
+    than inventing new ones. No depth map exists here, so the behind-surface
+    probe is skipped and every column uses the tear-margin fallback — which the
+    measurements say is what 94-100% of them used anyway.
+    """
+    px = float(meta.get("ribbon_px", 0.0) or 0.0)
+    if px <= 0.0:
+        return 0
+    intr = getattr(camera, "intrinsics", None)
+    extr = getattr(camera, "extrinsics", None)
+    view = getattr(extr, "camera_view_matrix", None)
+    fx = float(getattr(intr, "fx_px", 0.0) or 0.0)
+    fy = float(getattr(intr, "fy_px", 0.0) or fx)
+    width = int(getattr(intr, "image_width", 0) or 0)
+    height = int(getattr(intr, "image_height", 0) or 0)
+    if view is None or fx <= 0 or fy <= 0 or width < 2 or height < 2:
+        return 0
+    cx = getattr(intr, "cx_px", None)
+    cy = getattr(intr, "cy_px", None)
+    cx = float(cx) if cx is not None else width / 2.0
+    cy = float(cy) if cy is not None else height / 2.0
+
+    from atlas_camera.core.transition_ribbon import (
+        build_transition_ribbon,
+        plain_unprojector,
+    )
+
+    result = build_transition_ribbon(
+        vertices=np.asarray(mesh.vertices, dtype=np.float64),
+        faces=np.asarray(mesh.faces, dtype=np.int64),
+        view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy, scale=1.0,
+        unproject=plain_unprojector(view, fx, fy, cx, cy),
+        depth_edge_rel=float(meta.get("ribbon_depth_edge_rel", 0.5) or 0.5),
+        image_width=width, image_height=height,
+        ribbon_px=px,
+        ribbon_rings=int(meta.get("ribbon_rings", 4) or 4),
+        ribbon_bend=float(meta.get("ribbon_bend", 0.0) or 0.0),
+        adaptive=bool(meta.get("ribbon_adaptive", False)),
+        depth_slope=float(meta.get("ribbon_depth_slope", 2.0) or 2.0),
+    )
+    if not len(result["faces"]):
+        return 0
+
+    n_before = len(mesh.vertices)
+    mesh.vertices = np.concatenate(
+        [np.asarray(mesh.vertices, dtype=np.float32),
+         result["positions"].astype(np.float32)], axis=0)
+    uvs = np.asarray(mesh.uvs, dtype=np.float32)
+    mesh.uvs = np.concatenate([uvs, uvs[result["source_index"]]], axis=0)
+    mesh.faces = np.concatenate(
+        [np.asarray(mesh.faces, dtype=np.int32),
+         result["faces"].astype(np.int32)], axis=0)
+    ribbon_t = np.zeros(len(mesh.vertices), dtype=np.float32)
+    ribbon_t[n_before:] = result["ribbon_t"].astype(np.float32)
+    mesh.ribbon_t = ribbon_t
+    if getattr(mesh, "edge_risk", None) is not None:
+        risk = np.asarray(mesh.edge_risk, dtype=np.float32).reshape(-1)
+        if len(risk) == n_before:
+            mesh.edge_risk = np.concatenate(
+                [risk, np.zeros(len(mesh.vertices) - n_before, dtype=np.float32)])
+        else:
+            mesh.edge_risk = None
+    return int(len(result["faces"]))
+
+
 class AtlasRetopologizeLayer:
     """🔷 Live retopology for ONE solve layer (or all) — before the viewport.
 
@@ -1270,12 +1504,25 @@ class AtlasRetopologizeLayer:
                                "layer camera has no usable intrinsics the pass is SKIPPED "
                                "(and said so in the report) rather than leaving UVs stale. "
                                "0 = off. Migrated from AtlasLiveMeshRepair's smooth_boundary."}),
+                "rebuild_transition_ribbon": ("BOOLEAN", {"default": True,
+                    "tooltip": "Re-derive the transition ribbon on the NEW rim after "
+                               "retopologizing. A skirt is generated from wherever the silhouette "
+                               "is, so a remesh invalidates it - and feeding it INTO the remesh is "
+                               "worse, because it welds the two sheets the tear exists to keep "
+                               "apart and moves the rim out from under the skirt (seen live as "
+                               "detached slabs with hard opaque rims). The skirt is therefore "
+                               "always stripped first; this rebuilds it. Settings are replayed "
+                               "from the ones the relief-mesh node recorded, so nothing is "
+                               "invented. The background PROBE cannot run here (no depth map), so "
+                               "every column uses the tear-margin fallback - which measured 94-100% "
+                               "of columns anyway. Off = leave the mesh torn and skirtless."}),
             },
         }
 
     def retopo(self, solve, layer="", method="decimate", target_vertex_count=2000,
                smooth_iterations=0, crease_angle=30.0, pure_quad=False,
-               boundary_smooth_iterations=0, **_extra):
+               boundary_smooth_iterations=0, rebuild_transition_ribbon=True,
+               **_extra):
         import copy
 
         import numpy as np
@@ -1305,6 +1552,17 @@ class AtlasRetopologizeLayer:
             if mesh is None:
                 lines.append(f"{name}: empty mesh — skipped")
                 return
+            # A transition ribbon is a rendering primitive, not surface: its
+            # ring 0 is coincident with the rim but a SEPARATE vertex, and the
+            # skirt is derived from wherever the rim happens to be. Feeding it
+            # to a remesh destroys both facts — smoothing welds the two sheets
+            # and moves the rim out from under the skirt, which is exactly the
+            # detached-slab result this was found by. Strip it, say so, and let
+            # the base surface retopologize on its own.
+            ribbon_faces_dropped = _strip_transition_ribbon(mesh, np)
+            if ribbon_faces_dropped:
+                meta["ribbon_t"] = []
+
             n_v0 = len(mesh.vertices)
             try:
                 report = _retopologize_layer_mesh(
@@ -1355,7 +1613,19 @@ class AtlasRetopologizeLayer:
                         f"usable intrinsics (fx={fx:g} fy={fy:g} {width}x{height}); "
                         "moving verts would leave projective UVs stale")
 
-            if not report.get("changed") and n_moved == 0:
+            rebuilt = 0
+            if ribbon_faces_dropped and rebuild_transition_ribbon:
+                rebuilt = _rebuild_transition_ribbon(mesh, camera, meta, np)
+            if ribbon_faces_dropped:
+                lines.append(
+                    f"{name}: transition ribbon stripped before retopo "
+                    f"({ribbon_faces_dropped} faces)"
+                    + (f", re-derived on the new rim ({rebuilt} faces)" if rebuilt
+                       else " and NOT rebuilt — the mesh is torn and skirtless"
+                            " (rebuild_transition_ribbon is off, or the layer"
+                            " camera has no usable intrinsics)"))
+
+            if not report.get("changed") and n_moved == 0 and not ribbon_faces_dropped:
                 lines.append(f"{name}: unchanged — {report.get('note', '')}")
                 return
             meta["vertices"] = np.round(
@@ -1367,6 +1637,20 @@ class AtlasRetopologizeLayer:
             meta["n_faces"] = int(len(mesh.faces))
             if len(mesh.vertices) != n_v0 and meta.get("edge_risk"):
                 meta["edge_risk"] = []  # indexes the OLD vertex order — consumed by the remesh
+            # ONE rule for ribbon_t: it mirrors the mesh, always. Writing the
+            # rebuilt array and separately invalidating a stale one is two rules
+            # whose ORDER decides the outcome — and the first version had them
+            # the wrong way round, so the invalidation wiped the skirt that had
+            # just been re-derived. Mirroring covers both cases: the array is
+            # whatever the mesh carries, or empty when the skirt was stripped
+            # and not rebuilt. A stale array must never survive — it fails the
+            # length guard downstream and zero-fills, which renders the skirt
+            # fully OPAQUE and exports it with no vertex alpha.
+            live_ribbon = getattr(mesh, "ribbon_t", None)
+            meta["ribbon_t"] = (
+                np.round(np.asarray(live_ribbon, dtype=np.float64).reshape(-1), 4).tolist()
+                if live_ribbon is not None and len(live_ribbon) == len(mesh.vertices)
+                else [])
             prim.metadata = meta
             lines.append(
                 f"{name}: {report.get('method')} "

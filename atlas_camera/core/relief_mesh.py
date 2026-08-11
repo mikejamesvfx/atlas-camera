@@ -123,6 +123,14 @@ class ReliefMesh:
     soft inward alpha feather, so deliberate silhouette tears do not rasterize
     as a hard saw-tooth edge. Exporters ignore it: geometry, UVs and DCC topology
     remain byte-for-byte unchanged.
+
+    ``ribbon_t`` (N,) float32 — 0 everywhere on the photographed surface, and 0
+    to 1 across a ``transition_ribbon`` skirt vertex's distance from the
+    silhouette it hangs off. Unlike ``edge_risk`` this is NOT viewport-only: the
+    ribbon is real geometry, so the exporters bake ``ribbon_alpha(ribbon_t)``
+    into GLB vertex colour and the value must survive every round trip. It is
+    authored once, when the ring is built, and never re-derived from position,
+    UV or depth — see `core.transition_ribbon`.
     """
 
     vertices: Any
@@ -133,6 +141,7 @@ class ReliefMesh:
     filled_mask: Any = None
     edge_risk: Any = None
     silhouette_alpha: Any = None
+    ribbon_t: Any = None
 
 
 def estimate_ground_scale(
@@ -301,6 +310,13 @@ def build_relief_mesh(
     silhouette_matte: bool = False,
     soft_visibility: bool = False,
     soft_visibility_beta: float = 0.0,
+    transition_ribbon: bool = False,
+    ribbon_px: float = 64.0,
+    ribbon_rings: int = 4,
+    ribbon_bend: float = 0.2,
+    ribbon_adaptive: bool = False,
+    ribbon_depth_slope: float = 2.0,
+    ribbon_smudge_px: float = 12.0,
 ) -> ReliefMesh:
 
     """Triangulate a forward-z depth map into a world-space relief mesh.
@@ -750,26 +766,39 @@ def build_relief_mesh(
             s_near = float(band_min_m) / fwd[near_bad]
             pts[near_bad] = cam + s_near[:, None] * (pts[near_bad] - cam)
 
-    def _unproject_px(u_px: float, v_px: float, depth_value: float):
-        """One fractional source pixel + depth -> the same world point the
-        lattice would land on. Every step above, in the same order, so a
-        sub-quad cut vertex can never drift from the lattice edge it joins."""
-        d_one = float(depth_value)
-        local = np.array([
-            (float(u_px) - cx) / fx * d_one,
-            -(float(v_px) - cy) / fy * d_one,
-            -d_one,
-        ], dtype=np.float64)
-        point = R_cw @ local + cam
+    def _unproject_px(u_px, v_px, depth_value):
+        """Fractional source pixel(s) + depth -> the world point(s) the lattice
+        would land on. Every step above, in the same order, so a sub-quad cut
+        vertex or a ribbon ring can never drift from the lattice edge it joins.
+
+        Shape-agnostic on purpose. `cut_torn_quads` calls it per crossing and
+        wants a (3,) back; the transition ribbon needs tens of thousands of
+        points and a per-point Python call is what forced a column budget on it
+        (measured: a real castle rim at grid 256 is ~15k columns, well past the
+        cap that budget imposed, so part of the silhouette silently got no
+        skirt). Broadcasting here keeps ONE copy of the ray math — the whole
+        reason this is passed in rather than re-derived — while letting the
+        bulk caller do it in a single vectorized pass.
+        """
+        out_shape = np.shape(u_px)
+        u = np.asarray(u_px, dtype=np.float64).reshape(-1)
+        v = np.asarray(v_px, dtype=np.float64).reshape(-1)
+        dd = np.asarray(depth_value, dtype=np.float64).reshape(-1)
+        local = np.stack([(u - cx) / fx * dd, -(v - cy) / fy * dd, -dd], axis=-1)
+        point = local @ R_cw.T + cam
         point = cam + float(scale) * (point - cam)
-        if floor_clamp is not None and cam[1] > floor_clamp and point[1] < floor_clamp:
-            s_fix = (cam[1] - floor_clamp) / max(cam[1] - point[1], 1e-9)
-            point = cam + s_fix * (point - cam)
+        if floor_clamp is not None and cam[1] > floor_clamp:
+            low = point[:, 1] < floor_clamp
+            if low.any():
+                s_fix = (cam[1] - floor_clamp) / np.maximum(cam[1] - point[low, 1], 1e-9)
+                point[low] = cam + s_fix[:, None] * (point[low] - cam)
         if band_min_m is not None:
-            fwd_one = -float((point - cam) @ R_cw[:, 2])
-            if 1e-6 < fwd_one < float(band_min_m):
-                point = cam + (float(band_min_m) / fwd_one) * (point - cam)
-        return point
+            fwd_one = -((point - cam) @ R_cw[:, 2])
+            near_one = (fwd_one > 1e-6) & (fwd_one < float(band_min_m))
+            if near_one.any():
+                s_near = float(band_min_m) / fwd_one[near_one]
+                point[near_one] = cam + s_near[:, None] * (point[near_one] - cam)
+        return point.reshape(out_shape + (3,))
 
     # UVs: each vertex is its own image pixel. OBJ vt origin is bottom-left.
     u_uv = cols.astype(np.float64) / max(width - 1, 1)
@@ -992,12 +1021,70 @@ def build_relief_mesh(
             np.ones(len(cut_positions), dtype=edge_risk_flat.dtype),
         ], axis=0)
 
+    ribbon_t_flat = np.zeros(len(verts), dtype=np.float32)
+
+    # Transition ribbon: a bounded edge-extension skirt on the open silhouette.
+    # Runs LAST and purely additively, after the sub-quad cut, because the rim it
+    # hangs off is whatever tearing actually left open — including the sub-quad
+    # cut's fractional-pixel boundary, which is the sharpest rim available and
+    # the one this pairs best with. torn_fraction, hole_mask, the stretch
+    # diagnostic and edge_risk are all computed from the lattice above and stay
+    # comparable with every historical measurement.
+    ribbon_info = None
+    if transition_ribbon and soft_visibility:
+        # Two answers to one question. Soft visibility deletes the tear and
+        # fades the resulting rubber band; the ribbon keeps the tear and fades a
+        # bounded skirt. Running both would skirt a rim that no longer exists.
+        # Say so rather than silently producing nothing (gate doctrine).
+        ribbon_info = {
+            "skipped": "soft_visibility",
+            "reason": (
+                "transition_ribbon needs a torn rim to hang off; soft_visibility "
+                "leaves the mesh untorn. Turn one of them off."
+            ),
+        }
+    elif transition_ribbon and len(faces):
+        from atlas_camera.core.transition_ribbon import build_transition_ribbon
+
+        ribbon = build_transition_ribbon(
+            vertices=verts, faces=faces, view_matrix=vm,
+            fx=fx, fy=fy, cx=cx, cy=cy, scale=float(scale),
+            depth_full=depth, valid_full=valid_full,
+            unproject=_unproject_px, depth_edge_rel=float(depth_edge_rel),
+            ribbon_px=float(ribbon_px), ribbon_rings=int(ribbon_rings),
+            ribbon_bend=float(ribbon_bend), adaptive=bool(ribbon_adaptive),
+            depth_slope=float(ribbon_depth_slope),
+            smudge_px=float(ribbon_smudge_px),
+        )
+        ribbon_info = ribbon["stats"]
+        if len(ribbon["faces"]):
+            verts = np.concatenate([verts, ribbon["positions"]], axis=0)
+            # Frozen UV: every ring inherits the rim vertex's own texel, so the
+            # skirt is an edge-extend CLAMP with zero stretch rather than a
+            # smear pulling background texture forward across the tear.
+            uvs_flat = np.concatenate(
+                [uvs_flat, uvs_flat[ribbon["source_index"]]], axis=0)
+            # The ribbon carries its own fade in ribbon_t; adding topology risk
+            # on top would fade it twice and open a gap at the rim it exists to
+            # cover.
+            edge_risk_flat = np.concatenate([
+                edge_risk_flat,
+                np.zeros(len(ribbon["positions"]), dtype=edge_risk_flat.dtype),
+            ], axis=0)
+            ribbon_t_flat = np.concatenate(
+                [ribbon_t_flat, ribbon["ribbon_t"].astype(np.float32)], axis=0)
+            faces = np.concatenate(
+                [faces, ribbon["faces"].astype(faces.dtype)], axis=0)
+
     # Compact to referenced vertices only (clean OBJ for DCC import).
     used, remap = np.unique(faces.reshape(-1), return_inverse=True)
     faces = remap.reshape(-1, 3).astype(np.int32)
     verts = verts[used].astype(np.float32)
     uvs_flat = uvs_flat[used].astype(np.float32)
     edge_risk = edge_risk_flat[used].astype(np.float32)
+    ribbon_t = (ribbon_t_flat[used].astype(np.float32)
+                if ribbon_info is not None and "skipped" not in ribbon_info
+                else None)
 
     n_quads = 2 * (nr - 1) * (nc - 1)
     stats = {
@@ -1031,10 +1118,23 @@ def build_relief_mesh(
         stats["sub_quad_cut"] = cut_info
         stats["torn_fraction_whole_quad"] = float(
             1.0 - (len(faces) - cut_info["n_new_faces"]) / max(n_quads, 1))
+    if ribbon_info is not None:
+        # Same deflation as the sub-quad cut: torn_fraction counts EMITTED faces
+        # against whole-quad slots, and the ribbon emits faces without occupying
+        # a quad slot. Report the lattice figure so the QA gates keep comparing
+        # like with like.
+        stats["transition_ribbon"] = ribbon_info
+        ribbon_faces = int(ribbon_info.get("n_faces", 0))
+        if ribbon_faces:
+            stats["torn_fraction_whole_quad"] = float(
+                1.0 - (len(faces) - ribbon_faces
+                       - (cut_info["n_new_faces"] if cut_info else 0))
+                / max(n_quads, 1))
 
     return ReliefMesh(vertices=verts, faces=faces, uvs=uvs_flat, stats=stats,
                       hole_mask=hole_mask, filled_mask=filled_mask_full,
-                      edge_risk=edge_risk, silhouette_alpha=silhouette_alpha)
+                      edge_risk=edge_risk, silhouette_alpha=silhouette_alpha,
+                      ribbon_t=ribbon_t)
 
 
 def build_sky_dome_mesh(

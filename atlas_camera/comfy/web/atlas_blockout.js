@@ -65,10 +65,19 @@ const ATLAS_VIEWPORT_PREVIEW_MAX_LONG_EDGE = 1280;
 // The two were conflated once and the supersample was wrongly refused as a
 // violation of "render resolution is governed solely by the resolution widget".
 //
-// Bounded rather than devicePixelRatio-driven: a 3x-DPR display would quadruple
-// the fill cost of a dense relief mesh for no visible gain past ~2x.
-const ATLAS_VIEWPORT_BACKBUFFER_MAX_LONG_EDGE = 2048;
-const ATLAS_VIEWPORT_BACKBUFFER_MAX_SCALE = 2;
+// Bounded rather than devicePixelRatio-driven: an unbounded DPR would quadruple
+// the fill cost of a dense relief mesh on a high-DPR laptop for no visible gain.
+//
+// Raised from 2048/2x (2026-08-11) because that bound was set against a canvas
+// displayed at roughly preview size, and it silently inverts on a big one: an
+// 8K display draws this canvas across far more than 2048 device pixels, so the
+// buffer stops being a SUPERsample and becomes an UNDERsample stretched to fit,
+// which is exactly when a silhouette looks worst. 3x from the 1280 logical
+// preview reaches 3840 — about 1:1 on an 8K panel — at 2.25x the fill of the
+// old cap. Still bounded, and still display-only: it cannot touch
+// node._atlasW/_atlasH, which is what Render Proxy Passes and baked frames use.
+const ATLAS_VIEWPORT_BACKBUFFER_MAX_LONG_EDGE = 3840;
+const ATLAS_VIEWPORT_BACKBUFFER_MAX_SCALE = 3;
 
 function atlasBackbufferScale(previewW, previewH) {
   const longEdge = Math.max(previewW || 0, previewH || 0, 1);
@@ -556,6 +565,24 @@ function createOrbitControls(camera, dom) {
 // preview orbit further, but guarantees black gaps the moment Project is on
 // and you orbit even slightly off the exact recovered viewpoint.
 // ---------------------------------------------------------------------------
+
+// Where the transition ribbon's fade begins, in ribbon_t. MIRRORS
+// atlas_camera/core/transition_ribbon.py RIBBON_FADE_START — the same curve is
+// baked into the exported GLB vertex alpha, so the viewport and a DCC show the
+// same skirt. Pinned by tests/test_frontend_mirrors.py. Starting above 0 keeps
+// the ribbon opaque where it meets the rim; a fade beginning AT the rim would
+// reintroduce the soft-edged hole the tear exists to avoid.
+const RIBBON_FADE_START = 0.15;
+
+// Along-rim averaging applied to the skirt, in SOURCE-PLATE texels, reached at
+// its outer edge and ramped in with ribbon_t. Each column is frozen to one
+// texel, so unsmudged the skirt is a fan of flat radial streaks that band
+// against each other; averaging across neighbouring columns bleeds the
+// subject's own edge colour outward instead. VIEWPORT-ONLY — a DCC samples the
+// same frozen UV and gets the unsmudged streak, so this softens the preview and
+// does not change exported appearance.
+const RIBBON_SMUDGE_TEXELS = 12.0;
+
 const PROJECTION_VERTEX_SHADER = `
   uniform mat4 uAtlasViewMatrix;
   uniform float uFx;
@@ -568,11 +595,22 @@ const PROJECTION_VERTEX_SHADER = `
   varying vec3 vWorldNormal;
   attribute float atlasEdgeRisk;
   varying float vAtlasEdgeRisk;
+  attribute float atlasRibbonT;
+  varying float vAtlasRibbonT;
+  varying vec2 vAtlasBakedUv;
   void main() {
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vWorldPos = worldPos.xyz;
     vWorldNormal = normalize(mat3(modelMatrix) * normal);
     vAtlasEdgeRisk = atlasEdgeRisk;
+    vAtlasRibbonT = atlasRibbonT;
+    // The mesh's BAKED uv, which for a transition-ribbon vertex is the frozen
+    // silhouette texel. Everything else here re-derives its texel by projecting
+    // the world position (vImagePx), and that is exactly wrong for a skirt: it
+    // extends outward in image space, so its projected pixel lands OUTSIDE the
+    // subject and it samples the backdrop. Frozen UVs were only ever reaching
+    // the exporters; the viewport threw them away.
+    vAtlasBakedUv = uv;
     vec4 cam = uAtlasViewMatrix * worldPos;
     vCamZ = cam.z;
     float depth = -cam.z;   // Atlas camera looks along -Z
@@ -606,6 +644,7 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform float uHasMatte;
   uniform float uMatteSoft;   // 1 = continuous visibility field, do not threshold
   uniform float uSoftStretch; // 0 = off; soft-layering smear fade strength
+  uniform float uRibbonSmudge; // texels of along-rim averaging at the skirt's outer edge
   uniform float uLayerDebug;
   uniform vec3 uLayerTint;
   uniform sampler2D uPatchMask;
@@ -663,6 +702,8 @@ const PROJECTION_FRAGMENT_SHADER = `
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
   varying float vAtlasEdgeRisk;
+  varying float vAtlasRibbonT;
+  varying vec2 vAtlasBakedUv;
   float atlasRelightTerm(vec3 lightPos, vec3 lightColor, float intensity, vec3 worldPos, vec3 worldNormal) {
     if (intensity <= 0.0) return 0.0;
     vec3 toLight = lightPos - worldPos;
@@ -731,13 +772,31 @@ const PROJECTION_FRAGMENT_SHADER = `
   void main() {
     if (vCamZ >= 0.0) discard;                    // behind the projector camera
     vec2 uv = vImagePx / uImageSize;
+    // A transition-ribbon fragment samples the SILHOUETTE texel it was frozen
+    // to, not the pixel it happens to project to. The skirt exists outside the
+    // subject's outline, so re-projecting drags in whatever is behind it —
+    // sky, backdrop, the white surround of a product plate — and paints the
+    // transition with it (seen live as a white halo around a machine). Reading
+    // the baked uv turns the skirt into what it was always specified to be: the
+    // subject's own edge colour, extended outward. The y flip is the OBJ
+    // bottom-left convention the mesh stores against this shader's top-left.
+    bool isRibbon = vAtlasRibbonT > 0.0;
+    // Taken here, in UNIFORM control flow: a derivative computed inside the
+    // branch below would be undefined for the fragments that skip it.
+    vec2 bakedGx = dFdx(vAtlasBakedUv);
+    vec2 bakedGy = dFdy(vAtlasBakedUv);
+    if (isRibbon) uv = vec2(vAtlasBakedUv.x, 1.0 - vAtlasBakedUv.y);
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
     float coverage = 1.0;
     float depthEdge = 0.0;
     vec2 texelDx = dFdx(uv) * uImageSize;
     vec2 texelDy = dFdy(uv) * uImageSize;
     float majorFootprint = max(length(texelDx), length(texelDy));
-    if (uOccludePrimary > 0.5 && uHasPrimaryDepth > 0.5) {
+    // A ribbon fragment is EXEMPT from the primary-depth shadow test. Its uv is
+    // pinned to the rim texel, so the stored depth it would read is the rim's —
+    // and the skirt deliberately recedes behind the rim, so the comparison says
+    // "occluded" for every fragment and deletes the whole skirt.
+    if (uOccludePrimary > 0.5 && uHasPrimaryDepth > 0.5 && !isRibbon) {
       float storedZ = atlasUnpackMetricDepth(uv);
       // Only trust a shadow comparison beside a REAL discontinuity in the
       // primary depth map.  A separately retopologized/exported mesh may have
@@ -812,6 +871,22 @@ const PROJECTION_FRAGMENT_SHADER = `
         coverage *= smoothstep(0.5 - matteFeather, 0.5 + matteFeather, matte);
       }
     }
+    // Transition ribbon: a bounded edge-extension skirt hanging off a torn
+    // silhouette. Its UV is FROZEN at the rim texel, so it has no texture
+    // derivative for the footprint term below to see and no depth gradient for
+    // a matte to see — the fade has to come from the per-vertex parameter the
+    // geometry was built with. Unconditional, like the matte: a skirt whose
+    // fade depends on a viewport toggle is just a visible slab with the toggle
+    // off. RIBBON_FADE_START mirrors core/transition_ribbon.py and is the same
+    // curve baked into the exported vertex alpha, so viewport and DCC agree.
+    if (vAtlasRibbonT > 0.0) {
+      coverage *= 1.0 - smoothstep(${RIBBON_FADE_START.toFixed(4)}, 1.0,
+                                   clamp(vAtlasRibbonT, 0.0, 1.0));
+      // Kill the faded tail EARLY. The material writes depth, so a ribbon
+      // fragment at 0.5% alpha is invisible yet still lays down an occluding
+      // depth value that hides the inpainted band the skirt exists to reveal.
+      if (coverage < 0.01) discard;
+    }
     // Soft layering keeps the mesh UNTORN, so a rubber-band triangle spanning a
     // depth cliff survives to be shaded. Its texel footprint explodes (one
     // screen pixel covers many source texels), which is an independent detector
@@ -830,7 +905,11 @@ const PROJECTION_FRAGMENT_SHADER = `
       // topology boundary into a several-pixel alpha roll-off even without a
       // primary depth texture (the reference workflow case). This erodes into
       // existing geometry only; it never invents pixels outside the mesh.
-      float topologyRisk = clamp(vAtlasEdgeRisk, 0.0, 1.0);
+      // Ribbon fragments carry their own fade (vAtlasRibbonT) and must not also
+      // take the topology feather: welding ring 0 onto the rim means they
+      // interpolate the rim's edge_risk of 1.0, which would erode the skirt
+      // inward from the very seam it exists to cover.
+      float topologyRisk = isRibbon ? 0.0 : clamp(vAtlasEdgeRisk, 0.0, 1.0);
       // Coverage dilation: at/near Camera View the source texel footprint is
       // compact, so keep the existing STRAIGHT RGB opaque farther toward the
       // true mesh edge before beginning the inward feather. This cancels the
@@ -871,6 +950,30 @@ const PROJECTION_FRAGMENT_SHADER = `
       discard;                                    // too grazing for this projector
     }
     vec4 col = texture2D(uTexture, uv);
+    // Smudge the skirt ALONG the silhouette, widening with distance from the
+    // rim. Each column is frozen to a single texel, so without this the skirt
+    // is a fan of hard radial streaks — one flat colour per column, banding
+    // against its neighbours. Averaging across neighbouring columns turns that
+    // into a smooth outward bleed of the subject's own edge colour.
+    //
+    // The direction is free: vAtlasBakedUv is CONSTANT within a column and
+    // changes only between columns, so its screen-space gradient already points
+    // along the rim. Derivatives are taken in uniform control flow above; taking
+    // them inside the branch would be undefined.
+    if (isRibbon && uRibbonSmudge > 0.0) {
+      vec2 along = vec2(bakedGx.x + bakedGy.x, -(bakedGx.y + bakedGy.y));
+      vec2 alongTexels = along * uImageSize;
+      float alongLen = length(alongTexels);
+      if (alongLen > 1e-6) {
+        vec2 stepUv = (alongTexels / alongLen)
+                    * (uRibbonSmudge * clamp(vAtlasRibbonT, 0.0, 1.0)) / uImageSize;
+        col = 0.2 * (texture2D(uTexture, uv - 2.0 * stepUv)
+                   + texture2D(uTexture, uv - stepUv)
+                   + col
+                   + texture2D(uTexture, uv + stepUv)
+                   + texture2D(uTexture, uv + 2.0 * stepUv));
+      }
+    }
     // Relight normal: the model's predicted WORLD normal (uNormalMap, already
     // aligned to the recovered frame — image-resolution, cleaner than the coarse
     // mesh normal) when present, else the geometry normal; then optionally
@@ -1026,6 +1129,13 @@ function makeProjectionMaterial(data, texture, opts) {
       uHasMatte: { value: options.matteTexture ? 1.0 : 0.0 },
       uMatteSoft: { value: options.matteSoft ? 1.0 : 0.0 },
       uSoftStretch: { value: options.matteSoft ? 1.0 : 0.0 },
+      // Per-mesh: the value the relief-mesh node recorded on the primitive, so
+      // the widget, the viewport and the GLB bake all read ONE number. Falls
+      // back to the constant for geometry built before it existed.
+      uRibbonSmudge: {
+        value: (options.ribbonSmudgePx === undefined || options.ribbonSmudgePx === null)
+          ? RIBBON_SMUDGE_TEXELS : Number(options.ribbonSmudgePx),
+      },
       uPrimaryDepth: { value: options.primaryDepthTexture || null },
       uHasPrimaryDepth: { value: options.primaryDepthTexture ? 1.0 : 0.0 },
       uPrimaryDepthSize: { value: new THREE.Vector2(
@@ -1178,6 +1288,20 @@ function attachAtlasEdgeRisk(geo, entry) {
     ? new Float32Array(source)
     : new Float32Array(count);
   geo.setAttribute("atlasEdgeRisk", new THREE.BufferAttribute(values, 1));
+  return attachAtlasRibbonT(geo, entry);
+}
+
+// Per-vertex transition-ribbon parameter, uploaded on the SAME path as
+// edge_risk. A zero-filled fallback is required, not merely tidy: the vertex
+// shader declares the attribute unconditionally, and a missing buffer leaves it
+// undefined, which would fade arbitrary fragments of an ordinary mesh.
+function attachAtlasRibbonT(geo, entry) {
+  const count = geo?.attributes?.position?.count || 0;
+  const source = entry?.ribbon_t;
+  const values = Array.isArray(source) && source.length === count
+    ? new Float32Array(source)
+    : new Float32Array(count);
+  geo.setAttribute("atlasRibbonT", new THREE.BufferAttribute(values, 1));
   return geo;
 }
 
@@ -1358,6 +1482,10 @@ function buildPatchSources(scene, data, onSourceReady) {
       const build = (matteTexture, matteSoft) => {
         const patchMat = makeProjectionMaterial(src, tex,
           { facingThreshold, priority: src.priority, matteTexture, matteSoft,
+            ribbonSmudgePx: (src.proxy_geometry || []).find(
+              (g) => g.type === "mesh"
+                && g.metadata?.ribbon_smudge_px !== undefined
+            )?.metadata?.ribbon_smudge_px,
             layerTint: new THREE.Color(
               LAYER_DEBUG_PALETTE[idx % LAYER_DEBUG_PALETTE.length]) });
         for (const m of meshes) {
@@ -7199,6 +7327,12 @@ function buildNodeUI(node, containerEl) {
       const primaryMatteB64 = primaryMatteEntry?.silhouette_matte_b64 || "";
       const primaryMatteSoft =
         primaryMatteEntry?.silhouette_matte_mode === "soft";
+      // The relief mesh records its own ribbon smudge width; read it from the
+      // relief entry rather than the matte entry, which only exists when a
+      // matte was requested.
+      const primaryReliefEntry = (data.proxy_geometry || []).find(
+        (e) => e.type === "mesh" && e.metadata?.source === "depth_relief_mesh");
+      const primaryRibbonSmudge = primaryReliefEntry?.metadata?.ribbon_smudge_px;
 
       const buildPrimaryMat = (dTex) => {
         loadProjectionTexture(data, (tex) => {
@@ -7207,6 +7341,7 @@ function buildNodeUI(node, containerEl) {
             projMaterial = makeProjectionMaterial(data, tex, {
               primaryDepthTexture: dTex, matteTexture,
               matteSoft: primaryMatteSoft,
+              ribbonSmudgePx: primaryRibbonSmudge,
             });
             if (projectionOn) applyProjection(true);
             if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
