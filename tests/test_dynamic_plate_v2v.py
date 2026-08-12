@@ -44,14 +44,20 @@ def shot(tmp_path):
             "out": tmp_path / "shot"}
 
 
-def test_cli_v2v_renders_camera_move_frames(shot, capsys):
+def test_cli_staged_create_then_render(shot, capsys):
+    """Staged-by-default: create prepares only; render is a separate pass."""
     rc = main(["create", "--image", str(shot["image"]),
                "--matte", str(shot["matte"]), "--solve", str(shot["solve"]),
-               "--out", str(shot["out"]), "--mode", "v2v",
-               "--dolly", "0.5,0.0,-0.5", "--frames", "8"])
+               "--out", str(shot["out"]), "--mode", "v2v"])
     out = capsys.readouterr().out
     assert rc == 0, out
     pkg = shot["out"] / "dynamic" / "WATER_0001"
+    assert not (pkg / "rendered").exists()   # create did NOT render
+
+    rc = main(["render", "--package", str(pkg),
+               "--dolly", "0.5,0.0,-0.5", "--frames", "8"])
+    out = capsys.readouterr().out
+    assert rc == 0, out
     frames = sorted((pkg / "rendered").glob("frame_*.png"))
     assert len(frames) == 8
     manifest = json.loads((pkg / "manifest.json").read_text())
@@ -62,12 +68,52 @@ def test_cli_v2v_renders_camera_move_frames(shot, capsys):
     assert float(np.abs(a - b).mean()) > 0.5
 
 
+def test_cli_render_gen_size_downscales(shot, capsys):
+    rc = main(["create", "--image", str(shot["image"]),
+               "--matte", str(shot["matte"]), "--solve", str(shot["solve"]),
+               "--out", str(shot["out"]), "--mode", "v2v"])
+    assert rc == 0
+    pkg = shot["out"] / "dynamic" / "WATER_0001"
+    rc = main(["render", "--package", str(pkg), "--frames", "3",
+               "--gen-width", "320", "--gen-height", "96"])
+    capsys.readouterr()
+    assert rc == 0
+    with Image.open(pkg / "rendered" / "frame_0000.png") as im:
+        assert im.size == (320, 96)
+
+
+def test_cli_v2v_inline_render_with_flag(shot, capsys):
+    rc = main(["create", "--image", str(shot["image"]),
+               "--matte", str(shot["matte"]), "--solve", str(shot["solve"]),
+               "--out", str(shot["out"]), "--mode", "v2v", "--render",
+               "--dolly", "0.5,0.0,-0.5", "--frames", "8"])
+    out = capsys.readouterr().out
+    assert rc == 0, out
+    pkg = shot["out"] / "dynamic" / "WATER_0001"
+    assert len(list((pkg / "rendered").glob("frame_*.png"))) == 8
+
+
 def test_cli_v2v_bad_dolly_errors(shot, capsys):
     rc = main(["create", "--image", str(shot["image"]),
                "--matte", str(shot["matte"]), "--solve", str(shot["solve"]),
-               "--out", str(shot["out"]), "--mode", "v2v", "--dolly", "oops"])
+               "--out", str(shot["out"]), "--mode", "v2v", "--render",
+               "--dolly", "oops"])
     out = capsys.readouterr().out
     assert rc == 1 and "--dolly" in out
+
+
+def test_cli_generate_stage_not_available(shot, capsys, monkeypatch):
+    monkeypatch.delenv("ATLAS_LTX_TEMPLATE", raising=False)
+    rc = main(["create", "--image", str(shot["image"]),
+               "--matte", str(shot["matte"]), "--solve", str(shot["solve"]),
+               "--out", str(shot["out"])])
+    assert rc == 0
+    pkg = shot["out"] / "dynamic" / "WATER_0001"
+    rc = main(["generate", "--package", str(pkg), "--generator", "ltx"])
+    out = capsys.readouterr().out
+    assert rc == 0, out
+    assert "status = not_available" in out
+    assert (pkg / "generated" / "generation_result.json").exists()
 
 
 API_TEMPLATE = {
