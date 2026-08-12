@@ -17,6 +17,7 @@ Host-agnostic core: stdlib always; numpy only inside the matte helpers via
 """
 from __future__ import annotations
 
+import copy
 import json
 import math
 
@@ -194,6 +195,182 @@ class ReceiverGeometry:
             up_axis=data.get("up_axis", "Y"),
             provenance=data.get("provenance", "derived_from_solve"),
         )
+
+
+# ---------------------------------------------------------------------------
+# Validation
+
+@dataclass(slots=True)
+class PlateValidationIssue:
+    severity: str  # "fail" | "warn"
+    code: str
+    message: str
+
+
+def _issue(code: str, message: str, *, severity: str = "fail",
+           ) -> PlateValidationIssue:
+    return PlateValidationIssue(severity=severity, code=code, message=message)
+
+
+def frame_sequence_report(frame_paths: Any, *, expected_count: int,
+                          expected_size: tuple[int, int] | None = None,
+                          ) -> list[PlateValidationIssue]:
+    """Check a generated frame sequence for completeness and consistency.
+
+    Dimension checks need Pillow; when it is absent they degrade to a warning
+    rather than blocking (the count/existence checks are always exact).
+    """
+    issues: list[PlateValidationIssue] = []
+    paths = [Path(p) for p in frame_paths]
+    if len(paths) != int(expected_count):
+        issues.append(_issue(
+            FRAME_SEQUENCE_INCOMPLETE,
+            f"Sequence has {len(paths)} frame paths but metadata expects "
+            f"{expected_count}"))
+    missing = [p.name for p in paths if not p.exists()]
+    if missing:
+        issues.append(_issue(
+            FRAME_SEQUENCE_INCOMPLETE,
+            f"{len(missing)} frame(s) missing on disk: {missing[:4]}"))
+    if expected_size is not None and paths and not missing:
+        try:
+            from PIL import Image
+        except ImportError:
+            issues.append(_issue(
+                "frame_dimensions_unverified",
+                "Pillow unavailable; frame dimensions not verified "
+                "(pip install -e .[image])", severity="warn"))
+        else:
+            bad = []
+            for p in paths:
+                with Image.open(p) as im:
+                    if tuple(im.size) != tuple(expected_size):
+                        bad.append(f"{p.name}={im.size[0]}x{im.size[1]}")
+            if bad:
+                issues.append(_issue(
+                    "frame_dimensions_mismatch",
+                    f"Frames differ from expected "
+                    f"{expected_size[0]}x{expected_size[1]}: {bad[:4]}"))
+    return issues
+
+
+def validate_dynamic_plate(plate: "DynamicPlate", *,
+                           package_dir: Any = None,
+                           matte_shape: Any = None,
+                           frame_paths: Any = None,
+                           ) -> list[PlateValidationIssue]:
+    """Validate a DynamicPlate (spec §30). Returns issues; empty = clean."""
+    issues: list[PlateValidationIssue] = []
+
+    if plate.semantic_type not in DYNAMIC_REGION_TYPES:
+        issues.append(_issue(REGION_INVALID,
+                             f"Unknown semantic type {plate.semantic_type!r}"))
+    if plate.source_width <= 0 or plate.source_height <= 0:
+        issues.append(_issue(REGION_INVALID, "Source image size missing"))
+    if package_dir is not None:
+        src = Path(package_dir) / plate.source_image
+        if plate.source_image and not src.exists() and not Path(
+                plate.source_image).exists():
+            issues.append(_issue(REGION_INVALID,
+                                 f"Source image not found: {plate.source_image}"))
+    roi = plate.source_roi
+    if roi is None:
+        issues.append(_issue(REGION_INVALID, "Plate has no source ROI"))
+    else:
+        if (roi.x < 0 or roi.y < 0
+                or roi.x + roi.width > plate.source_width
+                or roi.y + roi.height > plate.source_height):
+            issues.append(_issue(
+                REGION_INVALID,
+                f"ROI {roi.to_dict()} lies outside the "
+                f"{plate.source_width}x{plate.source_height} source"))
+    if matte_shape is not None:
+        try:
+            validate_matte_dimensions(matte_shape, plate.source_width,
+                                      plate.source_height)
+        except ValueError as exc:
+            issues.append(_issue(REGION_INVALID, str(exc)))
+
+    cam = plate.crop_camera
+    if cam is None:
+        issues.append(_issue(CAMERA_CROP_FAILURE, "Plate has no crop camera"))
+    else:
+        intr = cam.intrinsics
+        values = [intr.fx_px, intr.fy_px, intr.cx_px, intr.cy_px]
+        if any(v is None or not math.isfinite(float(v)) for v in values):
+            issues.append(_issue(CAMERA_CROP_FAILURE,
+                                 "Crop camera intrinsics are not finite"))
+        elif float(intr.fx_px) <= 0 or float(intr.fy_px) <= 0:
+            issues.append(_issue(CAMERA_CROP_FAILURE,
+                                 "Crop camera focal must be positive"))
+        ct = plate.crop_transform
+        expected_wh = None
+        if ct is not None:
+            expected_wh = (ct.output_width, ct.output_height)
+        elif roi is not None:
+            expected_wh = (roi.width, roi.height)
+        if expected_wh is not None and (
+                intr.image_width, intr.image_height) != expected_wh:
+            issues.append(_issue(
+                CAMERA_CROP_FAILURE,
+                f"Crop camera raster {intr.image_width}x{intr.image_height} "
+                f"does not match the crop output {expected_wh[0]}x{expected_wh[1]}"))
+        extr_values = [v for row in cam.extrinsics.camera_view_matrix for v in row]
+        if any(not math.isfinite(float(v)) for v in extr_values):
+            issues.append(_issue(CAMERA_CROP_FAILURE,
+                                 "Crop camera view matrix is not finite"))
+
+    if plate.receiver is None or (plate.receiver.primitive is None
+                                  and not plate.receiver.path):
+        issues.append(_issue(RECEIVER_GEOMETRY_UNAVAILABLE,
+                             "Plate has no receiver geometry"))
+    elif package_dir is not None and plate.receiver.path:
+        rec_path = Path(package_dir) / plate.receiver.path
+        if not rec_path.exists():
+            issues.append(_issue(RECEIVER_GEOMETRY_UNAVAILABLE,
+                                 f"Receiver geometry file missing: "
+                                 f"{plate.receiver.path}"))
+
+    if plate.frame_rate <= 0:
+        issues.append(_issue("frame_rate_invalid",
+                             f"Frame rate {plate.frame_rate} must be positive"))
+    if plate.frame_end < plate.frame_start:
+        issues.append(_issue("frame_range_invalid",
+                             f"frame_end {plate.frame_end} < frame_start "
+                             f"{plate.frame_start}"))
+    if not plate.status:
+        issues.append(_issue("status_missing",
+                             "Plate status must be explicit"))
+    if not plate.color_metadata:
+        issues.append(_issue("color_metadata_missing",
+                             "Color-space metadata is required",
+                             severity="warn"))
+    if frame_paths is not None:
+        issues.extend(frame_sequence_report(
+            frame_paths, expected_count=plate.frame_count))
+    return issues
+
+
+def crop_intrinsics_for_plate(camera: LatentCamera, roi: RegionROI,
+                              *, output_width: int | None = None,
+                              output_height: int | None = None,
+                              ) -> LatentCamera:
+    """Derive the crop camera: cropped (and optionally resized) intrinsics,
+    identical pose. The pose never changes — a crop is a window, not a move."""
+    from atlas_camera.core.camera_crop import crop_intrinsics, scale_intrinsics
+
+    intr = crop_intrinsics(camera.intrinsics, roi)
+    if output_width is not None and output_height is not None and (
+            int(output_width), int(output_height)) != (roi.width, roi.height):
+        intr = scale_intrinsics(intr, int(output_width), int(output_height))
+    return LatentCamera(
+        intrinsics=intr,
+        extrinsics=copy.deepcopy(camera.extrinsics),
+        name=f"{camera.name}_crop",
+        confidence=copy.deepcopy(camera.confidence),
+        focal_length_inferred=camera.focal_length_inferred,
+        seed=camera.seed,
+    )
 
 
 # ---------------------------------------------------------------------------
