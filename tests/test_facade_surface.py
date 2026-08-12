@@ -56,6 +56,7 @@ FACADE_PUBLIC = {
     "AtlasExportSolveJSON", "AtlasExportUSD", "AtlasExtractAnglePatch",
     "AtlasGravityOverride", "AtlasGravityCompass", "AtlasGroundDepthMap", "AtlasGroundMask",
     "AtlasHorizonMask", "AtlasImportAnglePatch", "AtlasInpaintCrop",
+    "AtlasLoadDynamicPlate",
     "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
     "AtlasLoadPlate", "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON",

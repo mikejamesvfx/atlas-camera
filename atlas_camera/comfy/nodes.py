@@ -117,6 +117,7 @@ from atlas_camera.comfy.nodes_completion import (
     AtlasShootList,
 )
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
+from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_solve import (
     AtlasLoadPlate,
     AtlasRegisterPlate,

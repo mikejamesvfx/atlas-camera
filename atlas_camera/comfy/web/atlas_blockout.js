@@ -1418,7 +1418,49 @@ function projectionGeometryEntries(src, data) {
 // mask) in userData._projMaterial, so applyProjection layers it over the
 // primary. Patch geometry is Python-owned (regenerated each execution), so —
 // like the derived group — Clear leaves it alone.
+// --- Dynamic-plate frame streams (AtlasLoadDynamicPlate) ------------------
+// A source whose payload carries `dynamic_plate: {key, frame_count, fps}`
+// plays its generated sequence in the viewport: frames stream lazily from
+// /atlas/dynamic_plate/{key}/{index} and swap into the projection material's
+// uTexture on the render ticker. Rebuilt alongside the materials on every
+// execution (buildPatchSources clears the list), so no state survives a
+// graph re-run — same lifecycle rule as every other projection uniform.
+const _dynamicPlateStreams = [];
+
+function syncDynamicPlateFrames(now) {
+  if (!_dynamicPlateStreams.length) return;
+  for (const stream of _dynamicPlateStreams) {
+    const index = Math.floor((now / 1000) * stream.fps) % stream.frameCount;
+    if (index === stream.lastIndex) continue;
+    let tex = stream.textures.get(index);
+    if (tex === undefined) {
+      stream.textures.set(index, null);  // in flight — never refetch
+      new THREE.TextureLoader().load(
+        `/atlas/dynamic_plate/${stream.key}/${index}`,
+        (loaded) => {
+          loaded.flipY = false;                // shader UV origin is top-left
+          loaded.colorSpace = THREE.SRGBColorSpace;
+          stream.textures.set(index, loaded);
+        },
+        undefined,
+        () => stream.textures.delete(index));  // transient failure: retry later
+      continue;                                // hold current frame meanwhile
+    }
+    if (tex === null) continue;                // still loading
+    stream.lastIndex = index;
+    for (const mat of stream.materials) {
+      if (mat.uniforms?.uTexture) mat.uniforms.uTexture.value = tex;
+    }
+  }
+}
+
 function buildPatchSources(scene, data, onSourceReady) {
+  // materials are about to be rebuilt — drop every stream with them (their
+  // cached textures belong to the outgoing material generation)
+  for (const stream of _dynamicPlateStreams) {
+    for (const tex of stream.textures.values()) tex?.dispose?.();
+  }
+  _dynamicPlateStreams.length = 0;
   const stale = [];
   scene.traverse((c) => { if (c.userData?.atlasPatchGroup) stale.push(c); });
   for (const g of stale) {
@@ -1496,6 +1538,17 @@ function buildPatchSources(scene, data, onSourceReady) {
             prev.dispose?.();
           }
           m.userData._projMaterial = patchMat;
+        }
+        const dyn = src.dynamic_plate;
+        if (dyn?.key && dyn.frame_count > 0) {
+          _dynamicPlateStreams.push({
+            key: dyn.key,
+            frameCount: dyn.frame_count,
+            fps: dyn.fps > 0 ? dyn.fps : 24,
+            materials: [patchMat],
+            textures: new Map(),
+            lastIndex: -1,
+          });
         }
         if (typeof onSourceReady === "function") onSourceReady();
       };
@@ -2207,6 +2260,7 @@ function buildNodeUI(node, containerEl) {
       }
     }
     syncProjectionLightUniforms();
+    syncDynamicPlateFrames(now);  // animated dynamic-plate projections
     updatePivotGizmo();   // track the orbit target + rescale to the scene
     updateEditGizmo();    // pin the ✎ translate gizmo to the edit selection
     // Deferred aspect snap: execution can finish while the node is scrolled

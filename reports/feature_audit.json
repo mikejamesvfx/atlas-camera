@@ -3,15 +3,15 @@
  "generated_utc": "2026-08-12",
  "counts": {
   "standard": 93,
-  "experimental": 6,
+  "experimental": 7,
   "legacy": 2,
   "ios": 2,
-  "total": 103,
+  "total": 104,
   "no_product_evidence": 0
  },
  "verdict_counts": {
   "KEEP_CORE": 93,
-  "KEEP_EXPERIMENTAL": 6,
+  "KEEP_EXPERIMENTAL": 7,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
  },
@@ -1691,6 +1691,31 @@
    ],
    "migration_action": "boundary smoothing migrated to AtlasRetopologizeLayer; rewire workflows to the hole-patch chain; gate the node",
    "notes": "Gating removes the only caller of repair_relief_mesh_grid_cuda and remove_stretched_faces. What is genuinely lost is the CUDA grid repair, the harmonic enclosed-hole cap and the post-hoc stretch cull applied downstream on an already-built solve. What survives: CPU hole-fill + sawtooth via apply_live_mesh_repair (still called by AtlasDeriveReliefMesh and AtlasDeriveProjectionGeometry) and apply_interior_hole_fill in the relief-mesh exporter."
+  },
+  "AtlasLoadDynamicPlate": {
+   "module": "atlas_camera/comfy/nodes_dynamic.py",
+   "tier": "experimental",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 4,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
   },
   "AtlasLoadPlate": {
    "module": "atlas_camera/comfy/nodes_solve.py",

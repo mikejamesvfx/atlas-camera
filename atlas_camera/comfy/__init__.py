@@ -115,6 +115,30 @@ try:
     # release: its only frontend callers — the viewport's OBJ scale-proxy
     # buttons — were removed 2026-07-09, and examples/models no longer ships.)
 
+    _ATLAS_DYNAMIC_ROUTE_PATH = "/atlas/dynamic_plate/{key}/{index}"
+    if not any(getattr(r, "path", None) == _ATLAS_DYNAMIC_ROUTE_PATH
+               for r in _routes):
+
+        @_routes.get(_ATLAS_DYNAMIC_ROUTE_PATH)
+        async def _atlas_get_dynamic_frame(request: aiohttp_web.Request) -> aiohttp_web.Response:
+            # Frames are served only for packages AtlasLoadDynamicPlate has
+            # registered (opaque tokens — never raw filesystem paths).
+            from atlas_camera.comfy.nodes_dynamic import registered_plate_dir
+
+            package_dir = registered_plate_dir(request.match_info["key"])
+            if package_dir is None:
+                return aiohttp_web.Response(status=404)
+            try:
+                index = int(request.match_info["index"])
+            except ValueError:
+                return aiohttp_web.Response(status=400)
+            frame = package_dir / "generated" / f"frame_{index:04d}.png"
+            if not frame.exists():
+                frame = package_dir / "source" / "crop.png"
+                if index != 0 or not frame.exists():
+                    return aiohttp_web.Response(status=404)
+            return aiohttp_web.FileResponse(frame)
+
 except Exception:
     # Running outside ComfyUI (tests, standalone import) — routes not needed.
     pass
