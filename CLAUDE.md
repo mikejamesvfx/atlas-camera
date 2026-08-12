@@ -407,6 +407,8 @@ Frontend (atlas_blockout.js)
 | Gates / VLM assess | docs/DESIGN_RULES.md (gates, AtlasAssessImage) + docs/dev/gate_state_table.md |
 | Example workflows | docs/NODE_CATALOG.md (example workflows) + the pin tests |
 
+| Dynamic plates (`core/dynamic_plate.py`, `dynamic/`, dynamic-plate exporters) | docs/DYNAMIC_PLATES.md |
+
 For the artist/TD view: docs/USER_GUIDE.md; ecosystem map:
 docs/ECOSYSTEM_GUIDE.md; camera moves: docs/CAMERA_MOVES.md.
 

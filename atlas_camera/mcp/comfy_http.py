@@ -373,7 +373,13 @@ def ui_to_api(ui: dict, oi: dict) -> dict:
                     f"node {sid} ({src['type']}) is MUTED but something "
                     "consumes its output")
             return sid, sslot
-        raise RuntimeError("dangling link")
+        # A Reroute/rail chain that dead-ends with no source (e.g. the
+        # LTX-2.5 template's optional GemmaAPITextEncode.ckpt_name fed by an
+        # unconnected Reroute) is DROPPED by the real frontend the same way a
+        # bypassed source is: the optional input reverts to its default, a
+        # required one fails /prompt validation. Match that instead of
+        # refusing to convert the whole workflow.
+        return None
 
     api = {}
     for n in ui["nodes"]:
