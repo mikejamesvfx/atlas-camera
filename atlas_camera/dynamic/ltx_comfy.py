@@ -42,6 +42,7 @@ from typing import Any
 
 from atlas_camera.dynamic.generators import (
     MODE_IMAGE_TO_VIDEO,
+    MODE_VIDEO_TO_VIDEO,
     RESULT_FAILED,
     RESULT_NOT_AVAILABLE,
     RESULT_OK,
@@ -215,17 +216,71 @@ class LTXComfyGenerator:
         with urllib.request.urlopen(url, timeout=120) as response:
             dest.write_bytes(response.read())
 
+    # ------------------------------------------------------------- v2v input
+
+    @staticmethod
+    def _encode_rendered_mp4(rendered_dir: Path, out_path: Path,
+                             fps: float) -> str | None:
+        """Encode rendered/frame_*.png to an H.264 MP4 for LoadVideo-style
+        template inputs. Returns an error string instead of raising; PyAV is
+        optional (``pip install av``)."""
+        frames = sorted(rendered_dir.glob("frame_*.png"))
+        if not frames:
+            return f"no rendered frames in {rendered_dir}"
+        try:
+            import av
+        except ImportError:
+            return ("video-to-video input encoding requires PyAV. Install "
+                    "with: pip install av")
+        try:
+            from PIL import Image
+        except ImportError:
+            return "video-to-video input encoding requires Pillow ([image])"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with av.open(str(out_path), "w") as container:
+            stream = container.add_stream(
+                "h264", rate=max(1, int(round(fps))))
+            with Image.open(frames[0]) as first:
+                stream.width, stream.height = first.size
+            stream.pix_fmt = "yuv420p"
+            for path in frames:
+                with Image.open(path) as im:
+                    frame = av.VideoFrame.from_image(im.convert("RGB"))
+                for packet in stream.encode(frame):
+                    container.mux(packet)
+            for packet in stream.encode():
+                container.mux(packet)
+        return None
+
+    def _apply_video_input(self, api: dict, video_name: str) -> list[str]:
+        """Point LoadVideo-style nodes at the uploaded rendered sequence."""
+        notes = []
+        for nid, node in api.items():
+            if not isinstance(node, dict):
+                continue
+            inputs = node.get("inputs", {})
+            ctype = node.get("class_type", "")
+            for key in ("video", "file"):
+                if key in inputs and isinstance(inputs[key], str) and (
+                        "Video" in ctype or "video" in key):
+                    inputs[key] = video_name
+                    notes.append(f"{nid}.{key}={video_name}")
+        return notes
+
     # -------------------------------------------------------------- generate
 
     def generate(self, plate: Any, package_dir: Any,
                  config: TemporalGenerationConfig) -> TemporalGenerationResult:
         ok, reason = self.available()
+        is_v2v = config.mode == MODE_VIDEO_TO_VIDEO
         base = TemporalGenerationResult(
             status=RESULT_NOT_AVAILABLE, generator=self.name,
-            method=MODE_IMAGE_TO_VIDEO, seed=config.seed,
+            method=config.mode or MODE_IMAGE_TO_VIDEO, seed=config.seed,
             source_roi=getattr(plate, "source_roi", None),
             crop_camera=getattr(plate, "crop_camera", None),
-            metadata={"camera_preservation": "unverified_i2v",
+            metadata={"camera_preservation": (
+                          "atlas_rendered_v2v" if is_v2v
+                          else "unverified_i2v"),
                       "generator_output_color_space": "sRGB",
                       "host": self.host,
                       "template": str(self.template_path or "")})
@@ -265,6 +320,22 @@ class LTXComfyGenerator:
                 config.height = config.height or roi.height
         overrides = self._apply_overrides(api, image_name=image_name,
                                           config=config)
+        if is_v2v:
+            rendered_dir = package_dir / "rendered"
+            video_path = package_dir / "rendered" / "atlas_rendered_input.mp4"
+            error = self._encode_rendered_mp4(rendered_dir, video_path,
+                                              config.fps)
+            if error:
+                base.status = RESULT_FAILED
+                base.warnings.append(error)
+                return base
+            try:
+                video_name = self._C.upload_image(str(video_path), self.host)
+            except Exception as exc:  # noqa: BLE001
+                base.status = RESULT_FAILED
+                base.warnings.append(f"rendered-video upload failed: {exc}")
+                return base
+            overrides += self._apply_video_input(api, video_name)
         base.metadata["overrides"] = overrides
 
         try:

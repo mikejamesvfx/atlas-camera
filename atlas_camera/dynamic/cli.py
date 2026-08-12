@@ -187,6 +187,41 @@ def cmd_create(args) -> int:
         plate, dynamic_dir, source_image_path=image_path, matte=matte)
     print(f"package: {result.package_dir}")
 
+    if args.mode == "v2v":
+        from atlas_camera.core.dynamic_plate_render import (
+            dolly_view_matrices,
+            render_crop_sequence,
+        )
+        try:
+            dolly = tuple(float(v) for v in args.dolly.split(","))
+            assert len(dolly) == 3
+        except (ValueError, AssertionError):
+            print(f"ERROR: --dolly must be 'dx,dy,dz', got {args.dolly!r}")
+            return 1
+        with Image.open(result.package_dir / "source" / "crop.png") as im:
+            crop_rgb = np.asarray(im.convert("RGB"))
+        views = dolly_view_matrices(crop_camera, offset=dolly,
+                                    frame_count=args.frames)
+        rendered_dir = result.package_dir / "rendered"
+        rendered_dir.mkdir(exist_ok=True)
+        for index, (rgb, alpha) in enumerate(
+                render_crop_sequence(plate, views, crop_rgb)):
+            # disocclusion at the frame edge falls back to the still crop so
+            # the generator sees plausible pixels, never black
+            mask = np.asarray(alpha)[..., None] > 0.5
+            frame = np.where(mask, np.asarray(rgb), crop_rgb).astype(np.uint8)
+            Image.fromarray(frame).save(rendered_dir / f"frame_{index:04d}.png")
+        plate.metadata["rendered_input"] = {
+            "mode": "v2v", "dolly_m": list(dolly),
+            "frame_count": args.frames,
+            "disocclusion_fill": "still_crop"}
+        print(f"rendered {args.frames} Atlas camera-move frames "
+              f"(dolly {dolly} m) -> {rendered_dir}")
+        # refresh the manifest so rendered_input metadata is on disk even
+        # when no generator runs
+        build_dynamic_plate_package(
+            plate, dynamic_dir, source_image_path=image_path, matte=matte)
+
     frame_paths = None
     if args.generator != "none":
         generator = resolve_generator(args.generator)
@@ -196,7 +231,8 @@ def cmd_create(args) -> int:
             generator.template_path = args.template
         config = TemporalGenerationConfig(
             prompt=args.prompt, seed=args.seed, fps=args.fps,
-            frame_count=args.frames)
+            frame_count=args.frames,
+            mode="video_to_video" if args.mode == "v2v" else "image_to_video")
         gen_result = generator.generate(plate, result.package_dir, config)
         print(f"generator {generator.name}: status = {gen_result.status}")
         for warning in gen_result.warnings:
@@ -289,6 +325,11 @@ def main(argv=None) -> int:
     create.add_argument("--host", default=None, help="ComfyUI host:port")
     create.add_argument("--template", default=None,
                         help="LTX ComfyUI workflow template JSON")
+    create.add_argument("--mode", default="i2v", choices=["i2v", "v2v"],
+                        help="v2v renders the crop along an Atlas dolly first "
+                             "so camera motion is geometrically correct")
+    create.add_argument("--dolly", default="0.4,0.0,-0.4",
+                        help="v2v world-space dolly 'dx,dy,dz' in metres")
     create.set_defaults(func=cmd_create)
 
     validate = sub.add_parser("validate", help="Validate a plate package")
