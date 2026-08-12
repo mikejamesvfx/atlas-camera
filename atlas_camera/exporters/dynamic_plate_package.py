@@ -142,6 +142,13 @@ def build_dynamic_plate_package(plate: DynamicPlate, output_dir: Any, *,
         plate.receiver.path = "geometry/receiver.obj"
         result.files["receiver"] = rec_path
 
+    result.files["manifest"] = write_plate_manifest(plate, package_dir)
+    return result
+
+
+def write_plate_manifest(plate: DynamicPlate, package_dir: Any) -> Path:
+    """(Re)write manifest.json — the staged CLI passes (render, generate)
+    update the manifest without rebuilding the whole package."""
     manifest = plate.to_dict()
     manifest["created_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
     try:
@@ -149,12 +156,11 @@ def build_dynamic_plate_package(plate: DynamicPlate, output_dir: Any, *,
     except Exception:  # pragma: no cover - defensive
         _atlas_version = "unknown"
     manifest["atlas_version"] = _atlas_version
-    manifest_path = package_dir / "manifest.json"
+    manifest_path = Path(package_dir) / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8")
-    result.files["manifest"] = manifest_path
-    return result
+    return manifest_path
 
 
 def load_dynamic_plate(package_dir: Any) -> DynamicPlate:

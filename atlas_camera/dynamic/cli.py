@@ -98,14 +98,131 @@ def _print_issues(issues) -> int:
     return fails
 
 
-def cmd_create(args) -> int:
+def _render_pass(plate, package_dir, *, dolly_str, frames, gen_width,
+                 gen_height) -> int:
+    """Stage 2: render the crop along the dolly (v2v generator input)."""
     import numpy as np
     from PIL import Image
 
+    from atlas_camera.core.dynamic_plate_render import (
+        dolly_view_matrices,
+        render_crop_sequence,
+    )
+    from atlas_camera.exporters.dynamic_plate_package import (
+        write_plate_manifest,
+    )
+
+    try:
+        dolly = tuple(float(v) for v in dolly_str.split(","))
+        assert len(dolly) == 3
+    except (ValueError, AssertionError):
+        print(f"ERROR: --dolly must be 'dx,dy,dz', got {dolly_str!r}")
+        return 1
+    crop_path = package_dir / "source" / "crop.png"
+    if not crop_path.exists():
+        print(f"ERROR: projection_setup_failure: {crop_path} missing "
+              f"(run create first)")
+        return 1
+    with Image.open(crop_path) as im:
+        crop_rgb = np.asarray(im.convert("RGB"))
+    views = dolly_view_matrices(plate.crop_camera, offset=dolly,
+                                frame_count=frames)
+    rendered_dir = package_dir / "rendered"
+    rendered_dir.mkdir(exist_ok=True)
+    for index, (rgb, alpha) in enumerate(
+            render_crop_sequence(plate, views, crop_rgb)):
+        # disocclusion at the frame edge falls back to the still crop so
+        # the generator sees plausible pixels, never black
+        mask = np.asarray(alpha)[..., None] > 0.5
+        frame = np.where(mask, np.asarray(rgb), crop_rgb).astype(np.uint8)
+        out_im = Image.fromarray(frame)
+        if gen_width and gen_height:
+            # generator runs at a reduced raster (same aspect): resize the
+            # rendered input so the whole v2v pass stays at gen res
+            out_im = out_im.resize((gen_width, gen_height), Image.LANCZOS)
+        out_im.save(rendered_dir / f"frame_{index:04d}.png")
+    plate.metadata["rendered_input"] = {
+        "mode": "v2v", "dolly_m": list(dolly), "frame_count": frames,
+        "gen_size": [gen_width, gen_height] if gen_width else None,
+        "disocclusion_fill": "still_crop"}
+    write_plate_manifest(plate, package_dir)
+    print(f"rendered {frames} Atlas camera-move frames "
+          f"(dolly {dolly} m) -> {rendered_dir}")
+    return 0
+
+
+def _generate_pass(plate, package_dir, args) -> tuple[int, list | None]:
+    """Stage 3: temporal generation over an existing package."""
     from atlas_camera.dynamic.generators import (
         TemporalGenerationConfig,
         resolve_generator,
     )
+    from atlas_camera.exporters.dynamic_plate_package import (
+        write_plate_manifest,
+    )
+
+    generator = resolve_generator(args.generator)
+    if args.host and hasattr(generator, "host"):
+        generator.host = args.host
+    if args.template and hasattr(generator, "template_path"):
+        generator.template_path = args.template
+    config = TemporalGenerationConfig(
+        prompt=args.prompt, seed=args.seed, fps=args.fps,
+        frame_count=args.frames,
+        width=getattr(args, "gen_width", None),
+        height=getattr(args, "gen_height", None),
+        mode="video_to_video" if args.mode == "v2v" else "image_to_video")
+    gen_result = generator.generate(plate, package_dir, config)
+    print(f"generator {generator.name}: status = {gen_result.status}")
+    for warning in gen_result.warnings:
+        print(f"  warning: {warning}")
+    (package_dir / "generated").mkdir(exist_ok=True)
+    (package_dir / "generated" / "generation_result.json").write_text(
+        json.dumps(gen_result.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    frame_paths = None
+    if gen_result.status == "ok":
+        plate.status = PLATE_STATUS_GENERATED
+        plate.frame_end = plate.frame_start + gen_result.frame_count - 1
+        frame_paths = gen_result.frame_paths
+    elif gen_result.status == GENERATOR_NOT_AVAILABLE:
+        plate.metadata["generator_status"] = GENERATOR_NOT_AVAILABLE
+    else:
+        plate.status = PLATE_STATUS_FAILED
+        plate.metadata["generator_status"] = gen_result.status
+    write_plate_manifest(plate, package_dir)
+    return (0 if gen_result.status != "failed" else 1), frame_paths
+
+
+def cmd_render(args) -> int:
+    from atlas_camera.exporters.dynamic_plate_package import load_dynamic_plate
+
+    package_dir = Path(args.package)
+    plate = load_dynamic_plate(package_dir)
+    return _render_pass(plate, package_dir, dolly_str=args.dolly,
+                        frames=args.frames, gen_width=args.gen_width,
+                        gen_height=args.gen_height)
+
+
+def cmd_generate(args) -> int:
+    from atlas_camera.exporters.dynamic_plate_package import load_dynamic_plate
+
+    package_dir = Path(args.package)
+    plate = load_dynamic_plate(package_dir)
+    plate.generator = args.generator
+    plate.prompt = args.prompt
+    plate.seed = args.seed
+    rc, frame_paths = _generate_pass(plate, package_dir, args)
+    issues = validate_dynamic_plate(plate, package_dir=package_dir,
+                                    frame_paths=frame_paths)
+    fails = _print_issues(issues)
+    return 1 if (rc or fails) else 0
+
+
+def cmd_create(args) -> int:
+    import numpy as np
+    from PIL import Image
+
     from atlas_camera.exporters.dynamic_plate_package import (
         build_dynamic_plate_package,
     )
@@ -187,71 +304,21 @@ def cmd_create(args) -> int:
         plate, dynamic_dir, source_image_path=image_path, matte=matte)
     print(f"package: {result.package_dir}")
 
-    if args.mode == "v2v":
-        from atlas_camera.core.dynamic_plate_render import (
-            dolly_view_matrices,
-            render_crop_sequence,
-        )
-        try:
-            dolly = tuple(float(v) for v in args.dolly.split(","))
-            assert len(dolly) == 3
-        except (ValueError, AssertionError):
-            print(f"ERROR: --dolly must be 'dx,dy,dz', got {args.dolly!r}")
-            return 1
-        with Image.open(result.package_dir / "source" / "crop.png") as im:
-            crop_rgb = np.asarray(im.convert("RGB"))
-        views = dolly_view_matrices(crop_camera, offset=dolly,
-                                    frame_count=args.frames)
-        rendered_dir = result.package_dir / "rendered"
-        rendered_dir.mkdir(exist_ok=True)
-        for index, (rgb, alpha) in enumerate(
-                render_crop_sequence(plate, views, crop_rgb)):
-            # disocclusion at the frame edge falls back to the still crop so
-            # the generator sees plausible pixels, never black
-            mask = np.asarray(alpha)[..., None] > 0.5
-            frame = np.where(mask, np.asarray(rgb), crop_rgb).astype(np.uint8)
-            Image.fromarray(frame).save(rendered_dir / f"frame_{index:04d}.png")
-        plate.metadata["rendered_input"] = {
-            "mode": "v2v", "dolly_m": list(dolly),
-            "frame_count": args.frames,
-            "disocclusion_fill": "still_crop"}
-        print(f"rendered {args.frames} Atlas camera-move frames "
-              f"(dolly {dolly} m) -> {rendered_dir}")
-        # refresh the manifest so rendered_input metadata is on disk even
-        # when no generator runs
-        build_dynamic_plate_package(
-            plate, dynamic_dir, source_image_path=image_path, matte=matte)
+    # STAGED BY DEFAULT: create only prepares the package (the crop camera
+    # makes later passes self-contained). --render / --generate opt back into
+    # running the follow-up stages inline.
+    if args.mode == "v2v" and (args.render or args.generator != "none"):
+        rc = _render_pass(plate, result.package_dir, dolly_str=args.dolly,
+                          frames=args.frames, gen_width=args.gen_width,
+                          gen_height=args.gen_height)
+        if rc:
+            return rc
 
     frame_paths = None
     if args.generator != "none":
-        generator = resolve_generator(args.generator)
-        if args.host and hasattr(generator, "host"):
-            generator.host = args.host
-        if args.template and hasattr(generator, "template_path"):
-            generator.template_path = args.template
-        config = TemporalGenerationConfig(
-            prompt=args.prompt, seed=args.seed, fps=args.fps,
-            frame_count=args.frames,
-            mode="video_to_video" if args.mode == "v2v" else "image_to_video")
-        gen_result = generator.generate(plate, result.package_dir, config)
-        print(f"generator {generator.name}: status = {gen_result.status}")
-        for warning in gen_result.warnings:
-            print(f"  warning: {warning}")
-        (result.package_dir / "generated" / "generation_result.json").write_text(
-            json.dumps(gen_result.to_dict(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8")
-        if gen_result.status == "ok":
-            plate.status = PLATE_STATUS_GENERATED
-            plate.frame_end = plate.frame_start + gen_result.frame_count - 1
-            frame_paths = gen_result.frame_paths
-        elif gen_result.status == GENERATOR_NOT_AVAILABLE:
-            plate.metadata["generator_status"] = GENERATOR_NOT_AVAILABLE
-        else:
-            plate.status = PLATE_STATUS_FAILED
-            plate.metadata["generator_status"] = gen_result.status
-        # refresh the manifest with the post-generation status
-        build_dynamic_plate_package(
-            plate, dynamic_dir, source_image_path=image_path, matte=matte)
+        rc, frame_paths = _generate_pass(plate, result.package_dir, args)
+        if rc:
+            return rc
 
     if args.blender:
         from atlas_camera.exporters.dynamic_plate_blender import (
@@ -330,7 +397,40 @@ def main(argv=None) -> int:
                              "so camera motion is geometrically correct")
     create.add_argument("--dolly", default="0.4,0.0,-0.4",
                         help="v2v world-space dolly 'dx,dy,dz' in metres")
+    create.add_argument("--gen-width", type=int, default=None,
+                        help="generator inference width (default: ROI width; "
+                             "keep the ROI aspect and the model's /32 grid)")
+    create.add_argument("--gen-height", type=int, default=None,
+                        help="generator inference height (default: ROI height)")
+    create.add_argument("--render", action="store_true",
+                        help="run the v2v render pass inline (staged "
+                             "'render' subcommand is the default workflow)")
     create.set_defaults(func=cmd_create)
+
+    render = sub.add_parser(
+        "render", help="Stage 2: render the crop along a dolly (v2v input)")
+    render.add_argument("--package", required=True)
+    render.add_argument("--dolly", default="0.4,0.0,-0.4")
+    render.add_argument("--frames", type=int, default=96)
+    render.add_argument("--gen-width", type=int, default=None)
+    render.add_argument("--gen-height", type=int, default=None)
+    render.set_defaults(func=cmd_render)
+
+    generate = sub.add_parser(
+        "generate", help="Stage 3: temporal generation over a package")
+    generate.add_argument("--package", required=True)
+    generate.add_argument("--generator", default="ltx",
+                          choices=["none", "ltx"])
+    generate.add_argument("--mode", default="i2v", choices=["i2v", "v2v"])
+    generate.add_argument("--fps", type=float, default=24.0)
+    generate.add_argument("--frames", type=int, default=96)
+    generate.add_argument("--seed", type=int, default=None)
+    generate.add_argument("--prompt", default=WATER_PROMPT_DEFAULT)
+    generate.add_argument("--host", default=None)
+    generate.add_argument("--template", default=None)
+    generate.add_argument("--gen-width", type=int, default=None)
+    generate.add_argument("--gen-height", type=int, default=None)
+    generate.set_defaults(func=cmd_generate)
 
     validate = sub.add_parser("validate", help="Validate a plate package")
     validate.add_argument("--package", required=True)
