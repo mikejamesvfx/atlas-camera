@@ -139,6 +139,9 @@ def _serialize_projection_sources(solve) -> list[dict[str, Any]]:
             "band_geometry": metadata.get("band_geometry"),
             "hidden_mask_b64": metadata.get("hidden_mask_b64") or "",
             "hidden_backend": metadata.get("hidden_backend") or "",
+            # AtlasLoadDynamicPlate: {key, frame_count, fps, ...} — the JS
+            # frame ticker streams frames from /atlas/dynamic_plate/{key}/{i}
+            "dynamic_plate": metadata.get("dynamic_plate"),
             "proxy_geometry": serialize_proxy_geometry(
                 AtlasProjectionScene(proxy_geometry=list(src.proxy_geometry)),
             ),
