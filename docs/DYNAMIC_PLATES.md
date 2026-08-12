@@ -1,0 +1,88 @@
+# Atlas Dynamic Plates v0.1
+
+**Atlas owns the shot. The video model makes the water move.**
+
+A `DynamicPlate` represents one time-varying region of a solved still (ocean,
+clouds, smoke, ...) as: a crop-adjusted camera derived from the solve + an
+artist/auto matte + known receiver geometry + an optional generated frame
+sequence. The temporal sequence is a texture projected through the FIXED crop
+camera onto the receiver; the artist's render camera moves independently. The
+camera move is **never** baked into the generated video.
+
+## Workflow
+
+```text
+source still ─ Atlas solve ─ matte (artist or SAM3 assist)
+    → matte bbox → overscan ROI → crop camera (fx'=fx, cx'=cx-roi.x, ...)
+    → receiver plane (ROI rays ∩ world plane)
+    → artifact package (dynamic/WATER_0001/...)
+    → temporal generator (LTX via ComfyUI, optional)
+    → Blender scene: projection camera (fixed) + render camera (free)
+```
+
+## CLI
+
+```bash
+python -m atlas_camera.dynamic create \
+    --image castle.png --matte ocean_mask.png --type water \
+    --solve atlas_solve.json --out shots/castle \
+    --generator ltx --template atlas_ltx25_frames_template.json \
+    --frames 97 --fps 24 --seed 42 --blender
+python -m atlas_camera.dynamic validate --package shots/castle/dynamic/WATER_0001
+```
+
+- No `--solve` → `atlas.recover` runs (`--method vanishing_points|learned`).
+- `--auto-matte "ocean, sea water"` uses the SAM3 assist when the `[sam3]`
+  stack is present; the artist `--matte` path never depends on it.
+- Generator missing/unreachable → the package still builds and reports
+  `generator status = not_available`. Exit code stays 0.
+
+## Package layout
+
+```text
+dynamic/WATER_0001/
+├── manifest.json            # DynamicPlate.to_dict() — the contract
+├── source/{crop,matte,context}.png
+├── camera/{source_camera,crop_camera}.json
+├── geometry/receiver.obj
+├── generated/frame_0000.png ...   # AUTHORITATIVE output
+└── preview/                       # derivative only
+```
+
+## Shipped v0.1 decisions and limits
+
+- **Input mode: image-to-video** (single cropped still). Video-to-video over
+  an Atlas-rendered crop sequence is the designed upgrade path (the camera
+  motion would then already be geometrically correct) — not implemented.
+- **Receiver: horizontal plane** at configurable height. Fine for distant
+  ocean + moderate moves; no spectral ocean / FLIP / displacement — temporal
+  appearance only.
+- **Camera preservation is unverified for i2v**: results carry
+  `metadata.camera_preservation = "unverified_i2v"`; the prompt preset locks
+  the camera, but a generator can still drift. Atlas registration is
+  unaffected — the plate projects through the solved crop camera regardless.
+- **Occlusion** comes from the reconstructed static scene via normal depth
+  testing in the DCC (the receiver sits behind foreground geometry); the 2D
+  matte only controls where content is generated.
+- **Color**: generated frames are treated as sRGB; `color_metadata` records
+  every hop. Nothing is labeled scene-linear unless it actually is.
+- Registered node packs, ComfyUI availability, and template node types are
+  probed at runtime (`LTXComfyGenerator.available()`); Atlas imports never
+  require torch/ComfyUI (`tests/test_dynamic_generators.py` pins this).
+
+## LTX template contract
+
+The adapter is template-driven (`--template` / `ATLAS_LTX_TEMPLATE`): any
+ComfyUI workflow JSON (UI or API format) that ends in **SaveImage** frames.
+Overridden inputs: `LoadImage.image` (the crop), `{PROMPT}` marker anywhere
+(else first `CLIPTextEncode`), `seed/noise_seed`, `length/frames/num_frames`,
+`fps/frame_rate`, `width/height` (default: the crop raster — pick overscan so
+the ROI lands on the model's multiple-of-32 grid; LTX also wants
+`frames % 8 == 1`). Site knobs: `config.extra["overrides"]`
+(`{"<nodeId>.<input>": value}`).
+
+## Registration guarantee (release gate)
+
+`tests/test_dynamic_plate_receiver.py` verifies numerically that
+full-image pixel → crop pixel → crop-camera ray → receiver intersection
+equals the original camera's ray intersection (1e-6), including crop+resize.
