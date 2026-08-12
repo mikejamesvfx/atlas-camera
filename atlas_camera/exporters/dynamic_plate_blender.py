@@ -73,12 +73,17 @@ def write_dynamic_plate_blender_script(plate: DynamicPlate,
         plate.source_camera.extrinsics.camera_world_matrix)
 
     # Pixel-space projection factors for the CROP camera raster:
-    # u = cx'/W' + (fx'/W') * cam_x / depth
+    #   u = cx'/W' + (fx'/W') * cam_x / depth
+    #   V = 1 - v_img/H' = (1 - cy'/H') + (fy'/H') * cam_y / depth
+    # Blender's image V origin is BOTTOM; through the TexCoord OBJECT output
+    # (camera-local space, y up) the top-down image row must be flipped into
+    # texture V explicitly — verified live in Blender 5.2 on the 4K seacliff
+    # plate (the un-flipped form projects the plate upside down).
     w, h = crop_intr.image_width, crop_intr.image_height
     scale_u = float(crop_intr.fx_px) / w
     scale_v = float(crop_intr.fy_px or crop_intr.fx_px) / h
     offset_u = float(crop_intr.cx_px) / w
-    offset_v = float(crop_intr.cy_px) / h
+    offset_v = 1.0 - float(crop_intr.cy_px) / h
 
     corners = _receiver_corners(plate)
     frame_count = plate.frame_count
@@ -141,7 +146,7 @@ def build_scene(package_dir=None):
 
     # --- Temporal projection material ---
     # u = {offset_u!r} + {scale_u!r} * cam_x / depth   (crop-camera pixels)
-    # v = {offset_v!r} - {scale_v!r} * cam_y / depth
+    # V = {offset_v!r} + {scale_v!r} * cam_y / depth   (bottom-origin texture V)
     mat = bpy.data.materials.new("atlas_dynamic_plate_mat")
     mat.use_nodes = True
     tree = mat.node_tree
@@ -184,7 +189,7 @@ def build_scene(package_dir=None):
 
     mul_v = nodes.new("ShaderNodeMath")
     mul_v.operation = "MULTIPLY"
-    mul_v.inputs[1].default_value = {-scale_v!r}  # image Y down, camera Y up
+    mul_v.inputs[1].default_value = {scale_v!r}  # V flip baked into offset_v
     links.new(div_y.outputs["Value"], mul_v.inputs[0])
 
     add_v = nodes.new("ShaderNodeMath")
