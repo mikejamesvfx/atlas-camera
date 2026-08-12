@@ -51,9 +51,18 @@ dynamic/WATER_0001/
 
 ## Shipped v0.1 decisions and limits
 
-- **Input mode: image-to-video** (single cropped still). Video-to-video over
-  an Atlas-rendered crop sequence is the designed upgrade path (the camera
-  motion would then already be geometrically correct) — not implemented.
+- **Input modes: image-to-video AND video-to-video.** `--mode v2v` renders
+  the crop along a world-space dolly FIRST (`core/dynamic_plate_render.py`:
+  per-frame plane homography `H_crop @ inv(H_render)`, verified against the
+  ray-chain ground truth), writes `rendered/frame_*.png`, and the adapter
+  encodes them to MP4 (PyAV, optional) for LoadVideo-style templates — the
+  input video already carries the geometrically correct camera motion, so
+  the generator only adds surface motion (`camera_preservation =
+  "atlas_rendered_v2v"`). Caveat: the plane homography is exact only for
+  pixels ON the receiver; non-plane content inside the crop (foreground
+  rocks/architecture) warps approximately — the matte confines generation to
+  the water, and the DCC composite uses static projection for everything
+  else. Disoccluded frame edges fall back to the still crop.
 - **Receiver: horizontal plane** at configurable height. Fine for distant
   ocean + moderate moves; no spectral ocean / FLIP / displacement — temporal
   appearance only.
