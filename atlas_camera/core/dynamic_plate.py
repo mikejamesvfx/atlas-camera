@@ -196,6 +196,134 @@ class ReceiverGeometry:
         )
 
 
+# ---------------------------------------------------------------------------
+# Receiver geometry (pure stdlib — no numpy needed for a horizontal plane)
+
+def pixel_ray_world(camera: LatentCamera, px: float, py: float,
+                    ) -> tuple[tuple[float, float, float],
+                               tuple[float, float, float]]:
+    """World-space (origin, unit direction) of a pixel's viewing ray.
+
+    Camera-frame direction is ``[(u-cx)/fx, -(v-cy)/fy, -1]`` (image origin
+    top-left, camera looks down -Z); rotated to world by the cam->world 4x4
+    (`camera_world_matrix` — always the full matrix, never the bare 3x3).
+    """
+    from atlas_camera.core.camera_spec import CameraSpec
+
+    spec = CameraSpec.from_intrinsics(camera.intrinsics)
+    if not spec.has_focal:
+        raise ValueError("pixel_ray_world needs a solved focal length")
+    d_cam = ((float(px) - spec.cx) / spec.fx,
+             -(float(py) - spec.cy) / spec.fy,
+             -1.0)
+    world = camera.extrinsics.camera_world_matrix
+    d_world = tuple(
+        world[i][0] * d_cam[0] + world[i][1] * d_cam[1] + world[i][2] * d_cam[2]
+        for i in range(3))
+    length = math.sqrt(sum(v * v for v in d_world)) or 1.0
+    direction = tuple(v / length for v in d_world)
+    origin = (float(world[0][3]), float(world[1][3]), float(world[2][3]))
+    return origin, direction  # type: ignore[return-value]
+
+
+def build_receiver_plane(camera_or_solve: Any, roi: RegionROI, *,
+                         plane_height: float = 0.0,
+                         max_distance: float = 500.0,
+                         margin: float = 1.1) -> ReceiverGeometry:
+    """A horizontal receiver plane sized to catch every ROI viewing ray.
+
+    v0.1 ocean model (spec §10): a plane at ``plane_height`` (world Y). ROI
+    edge/corner rays are intersected with the plane; rays that never reach it
+    (at/above the horizon) are clamped at ``max_distance`` along the ray and
+    dropped onto the plane, so a sky-clipping ROI stays bounded. ``margin``
+    grows the extents so projection has slack past the exact frustum edge.
+    """
+    camera = getattr(camera_or_solve, "camera", camera_or_solve)
+    origin_y = float(camera.extrinsics.camera_world_matrix[1][3])
+    if origin_y <= plane_height:
+        raise ValueError(
+            f"Camera height {origin_y:.3f} is at or below the receiver plane "
+            f"y={plane_height:.3f}; a water plane must sit below the camera")
+
+    xs = (roi.x, roi.x + roi.width / 2.0, roi.x + roi.width)
+    ys = (roi.y, roi.y + roi.height / 2.0, roi.y + roi.height)
+    hits: list[tuple[float, float]] = []
+    for py in ys:
+        for px in xs:
+            origin, direction = pixel_ray_world(camera, px, py)
+            dy = direction[1]
+            if dy < -1e-9:
+                t = (plane_height - origin[1]) / dy
+                t = min(t, max_distance)
+            else:
+                t = max_distance
+            hits.append((origin[0] + t * direction[0],
+                         origin[2] + t * direction[2]))
+    min_x = min(h[0] for h in hits)
+    max_x = max(h[0] for h in hits)
+    min_z = min(h[1] for h in hits)
+    max_z = max(h[1] for h in hits)
+    centre = ((min_x + max_x) / 2.0, plane_height, (min_z + max_z) / 2.0)
+    ex = max(1e-3, (max_x - min_x)) * float(margin)
+    ez = max(1e-3, (max_z - min_z)) * float(margin)
+    # THREE.PlaneGeometry frame (depth_geometry.plane_transform convention):
+    # local X=u=[1,0,0], local Y=v=[0,0,-1], normal n=[0,1,0].
+    transform = (
+        (1.0, 0.0, 0.0, centre[0]),
+        (0.0, 0.0, 1.0, centre[1]),
+        (0.0, -1.0, 0.0, centre[2]),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+    primitive = AtlasProxyPrimitive(
+        name="dynamic_plate_receiver",
+        primitive_type="plane",
+        transform_matrix=transform,
+        dimensions=(ex, ez, 0.0),
+        material="atlas_dynamic_plate",
+        metadata={
+            "role": "dynamic_plate_receiver",
+            "plane_height": float(plane_height),
+            "max_distance": float(max_distance),
+        },
+    )
+    return ReceiverGeometry(primitive=primitive)
+
+
+def write_plane_obj(receiver: ReceiverGeometry, path: Any) -> Path:
+    """Write the receiver plane as a single Y-up quad OBJ.
+
+    UVs are a plain 0..1 sheet — projective UVs are the DCC's job (the
+    projection camera is exported alongside; spec §12 keeps registration
+    camera-based, never arbitrarily UV-fitted).
+    """
+    prim = receiver.primitive
+    if prim is None or prim.primitive_type != "plane":
+        raise ValueError("write_plane_obj needs a plane primitive")
+    tf = prim.transform_matrix
+    u = (tf[0][0], tf[1][0], tf[2][0])
+    v = (tf[0][1], tf[1][1], tf[2][1])
+    c = (tf[0][3], tf[1][3], tf[2][3])
+    ex, ez, _ = prim.dimensions
+    hu, hv = ex / 2.0, ez / 2.0
+    corners = [
+        tuple(c[i] - u[i] * hu - v[i] * hv for i in range(3)),
+        tuple(c[i] + u[i] * hu - v[i] * hv for i in range(3)),
+        tuple(c[i] + u[i] * hu + v[i] * hv for i in range(3)),
+        tuple(c[i] - u[i] * hu + v[i] * hv for i in range(3)),
+    ]
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# Atlas dynamic-plate receiver plane (Y-up, metres)"]
+    for p in corners:
+        lines.append(f"v {p[0]:.6f} {p[1]:.6f} {p[2]:.6f}")
+    lines += ["vt 0 0", "vt 1 0", "vt 1 1", "vt 0 1",
+              "vn 0 1 0",
+              "f 1/1/1 2/2/1 3/3/1 4/4/1", ""]
+    out.write_text("\n".join(lines), encoding="utf-8")
+    receiver.path = out.name if receiver.path is None else receiver.path
+    return out
+
+
 @dataclass(slots=True)
 class DynamicPlate:
     """One dynamic region of a solved still (spec §3).
