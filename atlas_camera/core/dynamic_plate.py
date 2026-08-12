@@ -267,10 +267,14 @@ def validate_dynamic_plate(plate: "DynamicPlate", *,
                              f"Unknown semantic type {plate.semantic_type!r}"))
     if plate.source_width <= 0 or plate.source_height <= 0:
         issues.append(_issue(REGION_INVALID, "Source image size missing"))
-    if package_dir is not None:
-        src = Path(package_dir) / plate.source_image
-        if plate.source_image and not src.exists() and not Path(
-                plate.source_image).exists():
+    if package_dir is not None and plate.source_image:
+        pkg = Path(package_dir)
+        recorded = plate.metadata.get("source_image_path")
+        candidates = [pkg / plate.source_image, Path(plate.source_image),
+                      pkg / "source" / "crop.png"]
+        if recorded:
+            candidates.insert(0, Path(recorded))
+        if not any(p.exists() for p in candidates):
             issues.append(_issue(REGION_INVALID,
                                  f"Source image not found: {plate.source_image}"))
     roi = plate.source_roi

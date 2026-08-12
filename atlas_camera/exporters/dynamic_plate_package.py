@@ -113,6 +113,8 @@ def build_dynamic_plate_package(plate: DynamicPlate, output_dir: Any, *,
     Image.fromarray(crop_image_region(source, context_roi)).save(context_path)
     result.files["context"] = context_path
     plate.metadata.setdefault("context_roi", context_roi.to_dict())
+    plate.metadata.setdefault("source_image_path",
+                              str(Path(source_image_path).resolve()))
 
     if matte is not None:
         m = np.asarray(matte)
