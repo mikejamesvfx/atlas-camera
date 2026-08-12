@@ -267,7 +267,23 @@ class LTXComfyGenerator:
                                           config=config)
         base.metadata["overrides"] = overrides
 
-        run = self._C.queue_and_wait(api, self.host, timeout=self.timeout)
+        try:
+            run = self._C.queue_and_wait(api, self.host, timeout=self.timeout)
+        except urllib.error.HTTPError as exc:
+            # /prompt validation failures arrive as HTTP 400 with a JSON body
+            # naming the offending nodes — surface that, don't crash.
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", "replace")[:2000]
+            except Exception:  # noqa: BLE001
+                pass
+            base.status = RESULT_FAILED
+            base.warnings.append(f"ComfyUI rejected the workflow: {exc} {detail}")
+            return base
+        except Exception as exc:  # noqa: BLE001
+            base.status = RESULT_FAILED
+            base.warnings.append(f"generation transport error: {exc}")
+            return base
         if not run.get("completed"):
             base.status = RESULT_FAILED
             base.warnings.extend(run.get("errors") or ["generation failed"])
