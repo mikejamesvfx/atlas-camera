@@ -74,10 +74,10 @@ def _resolve_camera(args, image_width: int, image_height: int):
     if args.solve:
         solve = load_solve_json(args.solve)
         return solve.camera
-    print("no --solve given; recovering camera from the image "
-          "(atlas.recover)...")
+    print(f"no --solve given; recovering camera from the image "
+          f"(atlas.recover, method={args.method})...")
     import atlas
-    solve = atlas.recover(args.image)
+    solve = atlas.recover(args.image, method=args.method)
     return solve.camera
 
 
@@ -138,6 +138,10 @@ def cmd_create(args) -> int:
     print(f"inference ROI (overscan): {roi.to_dict()}")
 
     camera = _resolve_camera(args, image_width, image_height)
+    if camera.intrinsics.fx_px is None:
+        print("ERROR: camera_crop_failure: the solve carries no usable focal "
+              "length; supply a better --solve (or try --method learned)")
+        return 1
     from atlas_camera.core.camera_crop import CropTransform
 
     crop_camera = crop_intrinsics_for_plate(camera, roi)
@@ -265,6 +269,9 @@ def main(argv=None) -> int:
     create.add_argument("--type", default="water",
                         choices=sorted(DYNAMIC_REGION_TYPES))
     create.add_argument("--solve", help="atlas_solve.json (else recover)")
+    create.add_argument("--method", default="vanishing_points",
+                        choices=["vanishing_points", "learned"],
+                        help="atlas.recover method when no --solve is given")
     create.add_argument("--out", required=True, help="Shot output directory")
     create.add_argument("--generator", default="none",
                         choices=["none", "ltx"])

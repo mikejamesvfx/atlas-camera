@@ -130,14 +130,27 @@ class LTXComfyGenerator:
     def _apply_overrides(self, api: dict, *, image_name: str,
                          config: TemporalGenerationConfig) -> list[str]:
         notes: list[str] = []
-        text_nodes = [
-            (nid, node) for nid, node in api.items()
-            if isinstance(node, dict)
-            and node.get("class_type") == "CLIPTextEncode"]
-        marker_nodes = [
-            (nid, node) for nid, node in text_nodes
-            if _PROMPT_MARKER in str(node.get("inputs", {}).get("text", ""))]
-        prompt_targets = marker_nodes or text_nodes[:1]
+        # The prompt lands wherever the template put a {PROMPT} marker — any
+        # string input on any node (a CLIPTextEncode.text, a
+        # PrimitiveStringMultiline.value rail, ...). Templates without a
+        # marker fall back to the first CLIPTextEncode.
+        marker_found = False
+        for nid, node in api.items():
+            if not isinstance(node, dict):
+                continue
+            for key, value in node.get("inputs", {}).items():
+                if isinstance(value, str) and _PROMPT_MARKER in value:
+                    node["inputs"][key] = value.replace(
+                        _PROMPT_MARKER, config.prompt or "")
+                    notes.append(f"{nid}.{key}=<prompt>")
+                    marker_found = True
+        fallback_target = None
+        if config.prompt and not marker_found:
+            for nid, node in api.items():
+                if isinstance(node, dict) and \
+                        node.get("class_type") == "CLIPTextEncode":
+                    fallback_target = nid
+                    break
         for nid, node in api.items():
             if not isinstance(node, dict):
                 continue
@@ -146,7 +159,7 @@ class LTXComfyGenerator:
             if ctype == "LoadImage" and "image" in inputs:
                 inputs["image"] = image_name
                 notes.append(f"{nid}.image={image_name}")
-            if config.prompt and (nid, node) in prompt_targets:
+            if nid == fallback_target:
                 inputs["text"] = config.prompt
                 notes.append(f"{nid}.text=<prompt>")
             for key in _SEED_KEYS:
@@ -170,6 +183,13 @@ class LTXComfyGenerator:
                     isinstance(inputs["height"], (int, float)):
                 inputs["height"] = int(config.height)
                 notes.append(f"{nid}.height={config.height}")
+        # Site-specific knobs the generic pass cannot know (e.g. the LTX-2.5
+        # duration rail): config.extra["overrides"] = {"<nodeId>.<input>": v},
+        # same key form as comfy_http.apply_overrides.
+        extra = (config.extra or {}).get("overrides") or {}
+        if extra:
+            self._C.apply_overrides(api, dict(extra))
+            notes.extend(f"{k}={v}" for k, v in extra.items())
         return notes
 
     # -------------------------------------------------------------- download
@@ -234,6 +254,15 @@ class LTXComfyGenerator:
             base.warnings.append(f"crop upload failed: {exc}")
             return base
 
+        if config.width is None or config.height is None:
+            # None = native crop size (docstring contract): frames that match
+            # the crop raster keep the projection registration exact. Video
+            # models usually want multiples of 32 — choose the plate overscan
+            # so the ROI lands on one, or set explicit width/height.
+            roi = getattr(plate, "source_roi", None)
+            if roi is not None:
+                config.width = config.width or roi.width
+                config.height = config.height or roi.height
         overrides = self._apply_overrides(api, image_name=image_name,
                                           config=config)
         base.metadata["overrides"] = overrides
