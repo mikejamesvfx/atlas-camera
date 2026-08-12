@@ -82,6 +82,85 @@ def _require_numpy():
     return np
 
 
+# ---------------------------------------------------------------------------
+# Matte utilities (numpy-gated)
+
+def matte_bbox(matte: Any, *, threshold: float = 0.5) -> RegionROI | None:
+    """Tight bounding ROI of the matte's active pixels, or None when empty.
+
+    Accepts float mattes in [0, 1] or uint8 in [0, 255]; ``threshold`` is
+    always expressed in the [0, 1] domain.
+    """
+    np = _require_numpy()
+    m = np.asarray(matte)
+    if m.ndim == 3:
+        m = m[..., 0]
+    if m.dtype == np.uint8:
+        m = m.astype(np.float32) / 255.0
+    active = m > float(threshold)
+    if not bool(active.any()):
+        return None
+    rows = np.flatnonzero(active.any(axis=1))
+    cols = np.flatnonzero(active.any(axis=0))
+    y0, y1 = int(rows[0]), int(rows[-1])
+    x0, x1 = int(cols[0]), int(cols[-1])
+    return RegionROI(x=x0, y=y0, width=x1 - x0 + 1, height=y1 - y0 + 1)
+
+
+def validate_matte_dimensions(matte_shape: Any, image_width: int,
+                              image_height: int) -> None:
+    """Raise ValueError when the matte raster does not match the plate."""
+    shape = tuple(int(v) for v in matte_shape)
+    if len(shape) < 2:
+        raise ValueError(f"Matte shape {shape} is not a 2D raster")
+    h, w = shape[0], shape[1]
+    if (w, h) != (int(image_width), int(image_height)):
+        raise ValueError(
+            f"Matte is {w}x{h} but the source plate is "
+            f"{image_width}x{image_height}; they must match exactly")
+
+
+def feather_matte(matte: Any, radius_px: float) -> Any:
+    """Soften a matte edge: three separable box blurs ~ a gaussian.
+
+    A soft matte is MULTIPLIED downstream, never thresholded; feathering here
+    only widens support so the generator sees context past the hard boundary
+    (spec §14). Returns float32 in [0, 1].
+    """
+    np = _require_numpy()
+    m = np.asarray(matte)
+    if m.dtype == np.uint8:
+        m = m.astype(np.float32) / 255.0
+    m = m.astype(np.float32, copy=True)
+    radius = int(round(float(radius_px)))
+    if radius <= 0:
+        return m
+    # box kernel width per pass so three passes approximate sigma ~ radius/2
+    width = max(1, radius)
+
+    def _box(arr, axis):
+        # cumsum-based box filter (edge-padded), O(N) per axis — an 8K matte
+        # is the normal case, so no per-row python loops.
+        k = 2 * width + 1
+        pad = [(0, 0), (0, 0)]
+        pad[axis] = (width + 1, width)
+        padded = np.pad(arr, pad, mode="edge")
+        csum = np.cumsum(padded, axis=axis, dtype=np.float64)
+        hi = np.take(csum, np.arange(k, k + arr.shape[axis]), axis=axis)
+        lo = np.take(csum, np.arange(0, arr.shape[axis]), axis=axis)
+        return ((hi - lo) / k).astype(np.float32)
+
+    for _ in range(3):
+        m = _box(m, 1)
+        m = _box(m, 0)
+    return np.clip(m, 0.0, 1.0)
+
+
+def crop_image_region(image: Any, roi: RegionROI) -> Any:
+    """Slice an HxW or HxWxC array to the ROI."""
+    return image[roi.y:roi.y + roi.height, roi.x:roi.x + roi.width]
+
+
 @dataclass(slots=True)
 class ReceiverGeometry:
     """The known scene geometry that receives the temporal projection.
