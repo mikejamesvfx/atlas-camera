@@ -372,7 +372,6 @@ def cmd_occlusion_fill(args) -> int:
     import numpy as np
     from PIL import Image
 
-    from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
     from atlas_camera.core.io import load_solve_json
     from atlas_camera.dynamic.generators import (
         TemporalGenerationConfig,
@@ -388,22 +387,12 @@ def cmd_occlusion_fill(args) -> int:
     with Image.open(args.image) as im:
         source = np.asarray(im.convert("RGB"))
 
-    try:
-        d_az, d_el, d_dist = (float(v) for v in args.orbit.split(","))
-    except ValueError:
+    views, parsed = _orbit_views(solve, args.orbit, args.frames)
+    if views is None:
         print(f"ERROR: --orbit must be 'd_azimuth,d_elevation,distance_scale'"
               f", got {args.orbit!r}")
         return 1
-    pivot = ground_lookat_pivot(solve.camera.extrinsics)
-    views = []
-    denom = max(1, args.frames - 1)
-    for i in range(args.frames):
-        t = i / denom
-        extr = orbit_camera(solve.camera.extrinsics, pivot,
-                            d_azimuth_deg=d_az * t,
-                            d_elevation_deg=d_el * t,
-                            distance_scale=1.0 + (d_dist - 1.0) * t)
-        views.append(extr.camera_view_matrix)
+    d_az, d_el, d_dist = parsed
 
     out_dir = Path(args.out)
     frames = render_disocclusion_sequence(
@@ -462,6 +451,435 @@ def cmd_occlusion_fill(args) -> int:
           f"{out_dir / 'generated'}; patch re-entry: feed frame_{worst:04d} "
           f"+ mask/frame_{worst:04d}.png through AtlasAddPatchView with "
           f"exact_view_override from patch_exact.txt")
+    return 0
+
+
+def _orbit_views(solve, orbit: str, frames: int):
+    """Camera-move views from an 'd_az,d_el,dist_scale' spec (frame 0 = solved
+    pose). Returns (views, parsed) or (None, None) on a malformed spec."""
+    from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+
+    try:
+        d_az, d_el, d_dist = (float(v) for v in orbit.split(","))
+    except ValueError:
+        return None, None
+    pivot = ground_lookat_pivot(solve.camera.extrinsics)
+    views = []
+    frames = int(frames)
+    # ONE frame means the DESTINATION, not the origin. The solved pose has no
+    # disocclusion by construction, so a single-frame render at t=0 would ask
+    # the generator to repair nothing; the end of the move carries the whole
+    # move's holes, which is also why the crops union across time.
+    offsets = [1.0] if frames <= 1 else [i / float(frames - 1)
+                                         for i in range(frames)]
+    for t in offsets:
+        extr = orbit_camera(solve.camera.extrinsics, pivot,
+                            d_azimuth_deg=d_az * t,
+                            d_elevation_deg=d_el * t,
+                            distance_scale=1.0 + (d_dist - 1.0) * t)
+        views.append(extr.camera_view_matrix)
+    return views, (d_az, d_el, d_dist)
+
+
+def _artist_fill_regions(solve) -> list:
+    """Fill regions the artist drew in the Atlas viewport, if any.
+
+    Written by AtlasBlockoutViewport's ``fill_roi`` shapes — world-space
+    corners, already budgeted there, so a shot carries its own repair
+    selection instead of the pipeline ranking holes by area.
+    """
+    scene = getattr(solve, "projection_scene", None)
+    meta = getattr(scene, "debug_metadata", None) or {}
+    entry = meta.get("fill_rois") or {}
+    return list(entry.get("regions") or [])
+
+
+def cmd_hole_crop_fill(args) -> int:
+    """Track A, cropped: cluster the move's holes, fill each ROI at 1:1.
+
+    Disocclusion is SPARSE. Generating a whole frame to repair a fifth of it
+    spends most of the compute re-imagining pixels Atlas already has, dilutes
+    the conditioning (which is how the model escapes into inventing its own
+    scene), and forces an 8K plate through a 1024px raster. A crop is a shifted
+    principal point with a smaller raster, so cropping costs no new renderer
+    and native resolution comes free.
+    """
+    import json
+
+    import numpy as np
+    from PIL import Image
+
+    from atlas_camera.core.camera_crop import (
+        RegionROI,
+        hole_rois,
+        rois_from_world_regions,
+    )
+    from atlas_camera.core.camera_spec import CameraSpec
+    from atlas_camera.core.io import load_solve_json
+    from atlas_camera.core.projection_render import gather_scene_meshes
+    from atlas_camera.dynamic.generators import (
+        TemporalGenerationConfig,
+        resolve_generator,
+    )
+    from atlas_camera.dynamic.occlusion_fill import (
+        build_scene_textures,
+        crop_context_depth,
+        render_crop_sequence,
+        render_disocclusion_sequence,
+        write_sequences,
+    )
+
+    if (args.frames - 1) % 8:
+        print(f"ERROR: LTX wants 8n+1 frames (49, 97, ...), got {args.frames}")
+        return 1
+
+    solve = load_solve_json(args.solve)
+    with Image.open(args.image) as im:
+        source = np.asarray(im.convert("RGB"))
+    intr = solve.camera.intrinsics
+    plate_w, plate_h = int(intr.image_width), int(intr.image_height)
+
+    views, parsed = _orbit_views(solve, args.orbit, args.frames)
+    if views is None:
+        print(f"ERROR: --orbit must be 'd_azimuth,d_elevation,distance_scale'"
+              f", got {args.orbit!r}")
+        return 1
+    d_az, d_el, d_dist = parsed
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Survey pass: find WHERE the holes are cheaply. Rendering 8K x N frames
+    # only to threshold alpha would cost more than the fills themselves; the
+    # ROIs are then lifted back to plate resolution, which is conservative
+    # because the padding and the /64 snap both only ever grow the crop.
+    # UNDILATED for clustering. Dilation exists to give diffusion context past
+    # the exact tear, and it is applied to the per-ROI masks below — but at
+    # survey resolution a few pixels of growth BRIDGES separate tears, chaining
+    # compact clusters into one sprawling component whose bounding box covers
+    # the frame. Measured on DSC_2289: 4 px of survey dilation took the top-4
+    # ROI coverage from 23% to 124% of the plate. The context the crop needs
+    # comes from pad_frac, which grows the ROI without merging clusters.
+    survey = render_disocclusion_sequence(
+        solve, source, views, resolution=args.survey_resolution,
+        hole_dilate_px=0)
+    survey_masks = [mask for _guide, mask, _cov in survey]
+    survey_h, survey_w = survey_masks[0].shape[:2]
+    peak = max(cov for _g, _m, cov in survey)
+
+    # ARTIST SELECTION WINS. Regions drawn in the viewport are a judgement
+    # about which tears are worth inventing pixels for — automatic clustering
+    # ranks by area, which was only ever a stand-in for that judgement. When
+    # the artist has marked regions, cluster analysis still RUNS (its report is
+    # what tells them what they left unrepaired) but does not choose.
+    artist_regions = _artist_fill_regions(solve)
+    artist_rois = None
+    if artist_regions and not args.ignore_artist_rois:
+        spec = CameraSpec.from_intrinsics(intr)
+        picked = rois_from_world_regions(
+            artist_regions, views[-1], fx=spec.fx, fy=spec.fy,
+            cx=spec.cx, cy=spec.cy,
+            image_width=plate_w, image_height=plate_h,
+            pad_frac=args.pad_frac, snap=args.snap)
+        artist_rois = picked.rois
+        print(f"artist selection: {len(picked.rois)} viewport region(s) — "
+              f"automatic clustering reports only")
+        for drop in picked.dropped:
+            print(f"  DROPPED {drop['reason']}")
+
+    # Cluster WITHOUT the budget so the long-edge filter below chooses among
+    # every candidate; the budget is applied after, on what can actually be
+    # generated at 1:1.
+    lores = hole_rois(survey_masks, pad_frac=args.pad_frac,
+                      min_area_px=args.min_area_px, snap=1, max_rois=0)
+    sx, sy = plate_w / float(survey_w), plate_h / float(survey_h)
+    rois = []
+    for roi in lores.rois:
+        scaled = RegionROI(x=int(roi.x * sx), y=int(roi.y * sy),
+                           width=max(1, int(round(roi.width * sx))),
+                           height=max(1, int(round(roi.height * sy))))
+        plate_roi = scaled.clamped(plate_w, plate_h).snapped(
+            args.snap, image_width=plate_w, image_height=plate_h)
+        # A crop RENDERS at plate resolution for free, but it must also be
+        # GENERATED, and the model's raster budget is fixed (~0.6 MP/frame on
+        # LTX-2.5). A cluster larger than that cannot be filled at 1:1, so it
+        # is declined by name rather than quietly downscaled — downscaling is
+        # exactly the full-frame failure this pipeline exists to avoid.
+        limit = int(args.max_roi_long_edge)
+        if limit and max(plate_roi.width, plate_roi.height) > limit:
+            lores.dropped.append(
+                {**plate_roi.to_dict(),
+                 "area_px": plate_roi.area_px,
+                 "reason": f"long edge {max(plate_roi.width, plate_roi.height)}"
+                           f"px > max_roi_long_edge {limit} — a native 1:1 "
+                           f"fill would need the generator to downscale"})
+            continue
+        rois.append(plate_roi)
+    # Budget last: the largest fillable clusters win, the rest are logged.
+    rois.sort(key=lambda r: r.area_px, reverse=True)
+    if artist_rois is None and args.max_rois > 0 and len(rois) > args.max_rois:
+        for extra in rois[args.max_rois:]:
+            lores.dropped.append(
+                {**extra.to_dict(), "area_px": extra.area_px,
+                 "reason": f"beyond max_rois {args.max_rois} (ranked by area)"})
+        rois = rois[:args.max_rois]
+
+    auto_rois = list(rois)
+    if artist_rois is not None:
+        # The survey's numbers stay in the report — that is how the artist
+        # sees what they chose NOT to repair — but they no longer select.
+        rois = list(artist_rois)
+
+    generated_px = sum(r.area_px for r in rois) * args.frames
+    full_frame_px = plate_w * plate_h * args.frames
+    report = {
+        "plate": [plate_w, plate_h],
+        "frames": args.frames,
+        "orbit": {"d_azimuth_deg": d_az, "d_elevation_deg": d_el,
+                  "distance_scale": d_dist},
+        "peak_hole_frac": peak,
+        "survey_raster": [survey_w, survey_h],
+        "components_found": lores.component_count,
+        "selection": "artist" if artist_rois is not None else "automatic",
+        "rois": [r.to_dict() for r in rois],
+        "auto_candidate_rois": [r.to_dict() for r in auto_rois],
+        "dropped": lores.dropped,
+        "generated_px": generated_px,
+        "full_frame_px": full_frame_px,
+        "generated_vs_full_frame": (generated_px / float(full_frame_px)
+                                    if full_frame_px else 0.0),
+    }
+    (out_dir / "hole_crop_report.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8")
+
+    print(f"peak disocclusion {peak:.1%}; {lores.component_count} hole "
+          f"cluster(s) -> {len(rois)} ROI(s) at plate resolution")
+    for index, roi in enumerate(rois):
+        print(f"  roi {index}: {roi.width}x{roi.height} at "
+              f"({roi.x},{roi.y})")
+    # Silent truncation is forbidden: a dropped cluster still has holes in it,
+    # and small scattered ones usually want deterministic edge-extend.
+    for drop in lores.dropped:
+        print(f"  DROPPED cluster {drop['width']}x{drop['height']} at "
+              f"({drop['x']},{drop['y']}): {drop['reason']}")
+    if not rois:
+        print("no hole clusters survived the budget — nothing to fill")
+        return 0
+    ratio = report["generated_vs_full_frame"]
+    print(f"G1 pixel budget: {generated_px/1e6:.1f}M generated vs "
+          f"{full_frame_px/1e6:.1f}M full-frame ({ratio:.1%})")
+    if ratio > 0.7:
+        print("  WARNING: crops cover most of the frame — the hole-crop "
+              "premise does not hold for this plate/move")
+
+    # Gather the scene ONCE for every ROI (the meshes and textures do not
+    # depend on the crop).
+    meshes = gather_scene_meshes(solve, with_uvs=True)
+    textures = build_scene_textures(solve, source)
+    spec = CameraSpec.from_intrinsics(intr)
+    print(f"plate camera: fx={spec.fx:.1f}px — crops render 1:1, no "
+          f"long-edge normalisation")
+
+    generator = None
+    if args.generator != "none":
+        generator = resolve_generator(args.generator)
+        if args.host and hasattr(generator, "host"):
+            generator.host = args.host
+        if args.template and hasattr(generator, "template_path"):
+            generator.template_path = args.template
+
+    class _PseudoPlate:
+        source_roi = None
+        crop_camera = None
+
+    for index, roi in enumerate(rois):
+        roi_dir = out_dir / f"roi_{index:02d}"
+        roi_dir.mkdir(parents=True, exist_ok=True)
+        (roi_dir / "roi.json").write_text(json.dumps(roi.to_dict(), indent=2),
+                                          encoding="utf-8")
+        frames = render_crop_sequence(solve, source, views, roi,
+                                      hole_dilate_px=args.hole_dilate_px,
+                                      meshes=meshes, textures=textures)
+        # Depth-proportional generation raster. A crop always RENDERS at 1:1,
+        # but what it is worth GENERATING at scales with distance: plate detail
+        # per world-metre falls as 1/depth, so a far crop generated at 1/k and
+        # resampled back loses nothing that was recoverable. `depth_scale_ref`
+        # is the depth at which 1:1 is demanded; nearer crops are never scaled
+        # ABOVE 1:1 (there is no detail to invent), and the floor keeps a
+        # distant crop from collapsing below what the model can condition on.
+        gen_w, gen_h, scale = roi.width, roi.height, 1.0
+        depth_m = crop_context_depth(frames)
+        if args.depth_scale_ref > 0 and depth_m > 0:
+            scale = min(1.0, max(args.min_gen_scale,
+                                 args.depth_scale_ref / depth_m))
+        if args.max_gen_long_edge > 0:
+            longest = max(roi.width, roi.height) * scale
+            if longest > args.max_gen_long_edge:
+                scale *= args.max_gen_long_edge / longest
+        if scale < 1.0:
+            snap = max(32, int(args.snap))
+            gen_w = max(snap, int(round(roi.width * scale / snap)) * snap)
+            gen_h = max(snap, int(round(roi.height * scale / snap)) * snap)
+        worst = max(range(len(frames)), key=lambda i: frames[i][2])
+        if (gen_w, gen_h) != (roi.width, roi.height):
+            # Write at the GENERATION raster. The mask resamples NEAREST: a
+            # bilinear mask edge invents grey pixels that are neither "keep"
+            # nor "invent", and the inpaint preprocessor thresholds them into
+            # a ragged boundary.
+            resized = []
+            for guide, mask, cov, depth in frames:
+                g = np.asarray(Image.fromarray(guide).resize(
+                    (gen_w, gen_h), Image.LANCZOS))
+                m = np.asarray(Image.fromarray(mask, mode="L").resize(
+                    (gen_w, gen_h), Image.NEAREST))
+                resized.append((g, m, cov, depth))
+            frames = resized
+        guide_paths, _mask_paths = write_sequences(frames, roi_dir)
+        detail = ("1:1 native" if (gen_w, gen_h) == (roi.width, roi.height)
+                  else f"generated {gen_w}x{gen_h} "
+                       f"(1:{roi.width / float(gen_w):.2f}, depth-justified)")
+        print(f"roi {index}: {len(frames)} frames at {roi.width}x{roi.height}"
+              f", peak hole {frames[worst][2]:.1%} at frame {worst}"
+              f", context depth {depth_m:.1f}m -> {detail}")
+        if frames[worst][2] <= 0.0:
+            # An artist-drawn region with no tear in it is a mis-click, not a
+            # no-op to run anyway: generating there spends a fill re-inventing
+            # pixels the plate already has, and the budget is 2-3.
+            print("  WARNING: no disocclusion inside this region — nothing to "
+                  "repair here; the fill would only re-render real pixels")
+        report["rois"][index].update(
+            {"context_depth_m": depth_m, "gen_width": gen_w,
+             "gen_height": gen_h, "gen_scale": gen_w / float(roi.width),
+             "peak_hole_frac": frames[worst][2]})
+        (out_dir / "hole_crop_report.json").write_text(
+            json.dumps(report, indent=2), encoding="utf-8")
+        if generator is None:
+            continue
+        # A one-frame clip at 24 fps lasts 1/24 s and its silent AAC track
+        # rounds to ZERO samples, which kills the graph in VAEEncodeAudio
+        # ("cannot reshape tensor of 0 elements") — LTX's AV graphs require
+        # audio. Stretching the single frame to a full second keeps the track
+        # non-empty; frame_count is what the model actually reads.
+        enc_fps = 1.0 if len(frames) == 1 else args.fps
+        err = generator._encode_rendered_mp4(roi_dir / "guide",
+                                             roi_dir / "guide.mp4", enc_fps)
+        err = err or generator._encode_rendered_mp4(
+            roi_dir / "mask", roi_dir / "mask.mp4", enc_fps)
+        if err:
+            print(f"ERROR: {err}")
+            return 1
+        (roi_dir / "source").mkdir(exist_ok=True)
+        Image.open(guide_paths[0]).save(roi_dir / "source" / "crop.png")
+        config = TemporalGenerationConfig(
+            prompt=args.prompt, seed=args.seed, fps=args.fps,
+            frame_count=len(frames), width=gen_w, height=gen_h,
+            extra={"upload_markers": {
+                "{GUIDE_VIDEO}": roi_dir / "guide.mp4",
+                "{MASK_VIDEO}": roi_dir / "mask.mp4"}})
+        result = generator.generate(_PseudoPlate(), roi_dir, config)
+        print(f"  generator {generator.name}: status = {result.status}")
+        for warning in result.warnings:
+            print(f"    warning: {warning}")
+        if result.status != "ok":
+            return 0 if result.status == GENERATOR_NOT_AVAILABLE else 1
+
+    if generator is not None and len(views) == 1:
+        rc = _write_patch_view(args, out_dir, solve, source, views[0], rois,
+                               meshes, textures, report,
+                               (d_az, d_el, d_dist))
+        if rc:
+            return rc
+
+    print(f"report: {out_dir / 'hole_crop_report.json'}")
+    return 0
+
+
+def _write_patch_view(args, out_dir, solve, source, view, rois, meshes,
+                      textures, report, orbit) -> int:
+    """Composite the ROI fills into ONE full-frame plate at the move's end.
+
+    A single frame is all the generator should ever be asked for: the fill is a
+    static texture, and 49 near-identical frames spend the whole token budget
+    on temporal redundancy instead of resolution (LTX costs roughly
+    (W/32)(H/32) per latent frame, so one frame at 4096 wide costs about what
+    49 frames at 1024 do). The composited frame is written as a PATCH VIEW —
+    fed back through AtlasAddPatchView with the exact view override, it becomes
+    geometry-projected scene texture, so every frame of the move gets the
+    repair by projection rather than by generating it again.
+    """
+    import json
+
+    import numpy as np
+    from PIL import Image
+
+    from atlas_camera.core.camera_crop import (
+        composite_crops,
+        match_reference_colour,
+        neutralize_fill_cast,
+    )
+    from atlas_camera.dynamic.occlusion_fill import (
+        render_crop_sequence,
+        render_disocclusion_sequence,
+    )
+
+    d_az, d_el, d_dist = orbit
+    crops, masks, kept = [], [], []
+    for index, roi in enumerate(rois):
+        generated = sorted((out_dir / f"roi_{index:02d}" / "generated")
+                           .glob("frame_*.png"))
+        if not generated:
+            print(f"  roi {index}: no generated frame — skipped in composite")
+            continue
+        guide, mask, _cov, _depth = render_crop_sequence(
+            solve, source, [view], roi, hole_dilate_px=args.hole_dilate_px,
+            meshes=meshes, textures=textures)[0]
+        with Image.open(generated[-1]) as im:
+            fill = np.asarray(im.convert("RGB"))
+        if fill.shape[:2] != (roi.height, roi.width):
+            fill = np.asarray(Image.fromarray(fill).resize(
+                (roi.width, roi.height), Image.LANCZOS))
+        hole = mask > 127
+        # The plate is the reference for BOTH corrections: the generator
+        # returns the whole crop re-toned, and its cast can only be measured
+        # against real pixels.
+        fill = match_reference_colour(fill, guide, hole)
+        fill = neutralize_fill_cast(fill, hole, reference=guide,
+                                    band_px=args.cast_band_px)
+        crops.append(fill)
+        masks.append(hole)
+        kept.append(roi)
+    if not crops:
+        print("no generated fills to composite")
+        return 0
+
+    intr = solve.camera.intrinsics
+    base = render_disocclusion_sequence(
+        solve, source, [view], resolution=max(int(intr.image_width),
+                                              int(intr.image_height)),
+        hole_dilate_px=args.hole_dilate_px)[0][0]
+    patched = composite_crops(base, crops, kept, masks=masks,
+                              feather_px=args.feather_px)
+    patch_dir = out_dir / "patch"
+    patch_dir.mkdir(parents=True, exist_ok=True)
+    frame_path = patch_dir / "patch_view.png"
+    Image.fromarray(patched).save(frame_path)
+    # Re-entry sidecar: this IS the patch camera (same convention as
+    # cmd_occlusion_fill), so AtlasAddPatchView can place it without guessing.
+    (patch_dir / "patch_exact.txt").write_text(
+        f"azimuth_deg={d_az:.4f} elevation_deg={d_el:.4f} "
+        f"distance_scale={d_dist:.4f}\n", encoding="utf-8")
+    report["patch_view"] = {
+        "path": str(frame_path),
+        "rois_composited": len(crops),
+        "azimuth_deg": d_az, "elevation_deg": d_el,
+        "distance_scale": d_dist,
+    }
+    (out_dir / "hole_crop_report.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8")
+    print(f"patch view: {frame_path} ({len(crops)} ROI fill(s) composited)")
+    print("  feed it through AtlasAddPatchView with exact_view_override from "
+          "patch_exact.txt — the fill then projects onto the geometry and "
+          "every frame of the move gets it without another generation")
     return 0
 
 
@@ -588,6 +1006,68 @@ def main(argv=None) -> int:
                      help="also write filled frames as 32f EXR "
                           "(display-referred container)")
     occ.set_defaults(func=cmd_occlusion_fill)
+
+    hcf = sub.add_parser(
+        "hole-crop-fill",
+        help="Cluster the move's holes and fill each ROI at plate resolution")
+    hcf.add_argument("--solve", required=True,
+                     help="atlas_solve.json WITH scene geometry (relief mesh)")
+    hcf.add_argument("--image", required=True, help="Source plate image")
+    hcf.add_argument("--out", required=True)
+    hcf.add_argument("--orbit", default="12.0,0.0,1.0",
+                     help="'d_azimuth_deg,d_elevation_deg,distance_scale' "
+                          "final orbit (frame 0 = solved pose)")
+    hcf.add_argument("--frames", type=int, default=49,
+                     help="LTX wants 8n+1 (49, 97)")
+    hcf.add_argument("--fps", type=float, default=24.0)
+    hcf.add_argument("--survey-resolution", type=int, default=1024,
+                     help="long edge of the cheap pass that LOCATES holes; "
+                          "the fills themselves always run at plate "
+                          "resolution")
+    hcf.add_argument("--hole-dilate-px", type=int, default=8)
+    hcf.add_argument("--pad-frac", type=float, default=0.15,
+                     help="context margin around each hole cluster")
+    hcf.add_argument("--min-area-px", type=int, default=64,
+                     help="survey-raster hole area below which a cluster is "
+                          "dropped (and reported)")
+    hcf.add_argument("--max-rois", type=int, default=4,
+                     help="largest N clusters by area; the rest are dropped "
+                          "and LOGGED, never silently ignored")
+    hcf.add_argument("--ignore-artist-rois", action="store_true",
+                     help="ignore fill regions drawn in the Atlas viewport "
+                          "and select clusters automatically instead")
+    hcf.add_argument("--feather-px", type=int, default=6,
+                     help="composite blend width, ramped OUTSIDE the hole "
+                          "(inward would expose the inpaint sentinel)")
+    hcf.add_argument("--cast-band-px", type=int, default=48,
+                     help="annulus width used to measure the generator's "
+                          "colour cast against real plate pixels")
+    hcf.add_argument("--depth-scale-ref", type=float, default=0.0,
+                     help="metres at which a fill is generated 1:1; ROIs whose "
+                          "context sits FARTHER are generated proportionally "
+                          "smaller and resampled back, because plate detail "
+                          "per world-metre falls as 1/depth (0 = always 1:1)")
+    hcf.add_argument("--min-gen-scale", type=float, default=0.25,
+                     help="floor on the depth-derived generation scale")
+    hcf.add_argument("--max-gen-long-edge", type=int, default=0,
+                     help="hard cap on the GENERATION raster's long edge "
+                          "(the model's budget, not the renderer's); 0 = off")
+    hcf.add_argument("--max-roi-long-edge", type=int, default=0,
+                     help="decline clusters whose plate-resolution ROI is "
+                          "longer than this (0 = off). The generator's raster "
+                          "budget, not the renderer's, is what bounds a 1:1 "
+                          "fill; oversized clusters are LOGGED, not downscaled")
+    hcf.add_argument("--snap", type=int, default=64,
+                     help="model raster grid: /32 always, /64 when an adapter "
+                          "declares reference_downscale_factor 2.0")
+    hcf.add_argument("--seed", type=int, default=None)
+    hcf.add_argument("--prompt", default="",
+                     help="CONTENT only — naming camera motion makes the "
+                          "model obey the prompt and discard the guide")
+    hcf.add_argument("--generator", default="none", choices=["none", "ltx"])
+    hcf.add_argument("--host", default=None)
+    hcf.add_argument("--template", default=None)
+    hcf.set_defaults(func=cmd_hole_crop_fill)
 
     validate = sub.add_parser("validate", help="Validate a plate package")
     validate.add_argument("--package", required=True)

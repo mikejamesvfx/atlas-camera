@@ -65,6 +65,22 @@ def build_scene_textures(solve, source_image) -> dict:
     return textures
 
 
+def _dilate(np, mask, pad_px: int):
+    """Grow ``mask`` by ``pad_px`` 4-connected steps (diffusion wants context
+    past the exact tear — same doctrine as the node)."""
+    if int(pad_px) <= 0:
+        return mask
+    dil = mask.copy()
+    for _ in range(int(pad_px)):
+        grown = dil.copy()
+        grown[1:, :] |= dil[:-1, :]
+        grown[:-1, :] |= dil[1:, :]
+        grown[:, 1:] |= dil[:, :-1]
+        grown[:, :-1] |= dil[:, 1:]
+        dil = grown
+    return dil
+
+
 def render_disocclusion_sequence(solve, source_image, views, *,
                                  resolution: int = 1024,
                                  hole_dilate_px: int = 8):
@@ -94,24 +110,82 @@ def render_disocclusion_sequence(solve, source_image, views, *,
     for view in views:
         rgb, alpha, _stats = render_scene(meshes, textures, view,
                                           fx, fy, cx, cy, width, height)
-        hole = alpha <= 0.0
-        if hole_dilate_px > 0:
-            pad = int(hole_dilate_px)
-            dil = hole.copy()
-            for _ in range(pad):
-                grown = dil.copy()
-                grown[1:, :] |= dil[:-1, :]
-                grown[:-1, :] |= dil[1:, :]
-                grown[:, 1:] |= dil[:, :-1]
-                grown[:, :-1] |= dil[:, 1:]
-                dil = grown
-            hole = dil
+        hole = _dilate(np, alpha <= 0.0, hole_dilate_px)
         guide = rgb.astype(np.float32)
         guide[hole] = green
         out.append(((guide * 255).clip(0, 255).astype(np.uint8),
                     (hole.astype(np.uint8) * 255),
                     float(hole.mean())))
     return out
+
+
+def render_crop_sequence(solve, source_image, views, roi, *,
+                         hole_dilate_px: int = 8, meshes=None, textures=None):
+    """`render_disocclusion_sequence` for ONE ROI, at NATIVE resolution.
+
+    A camera-matrix crop is a shifted principal point with a smaller raster,
+    which is exactly what `crop_intrinsics` produces and exactly what
+    `render_scene` already consumes — so this is the same rasterizer, not a
+    new path, and the long-edge normalisation of the full-frame renderer is
+    simply not used. That is where native resolution comes from: the ROI's own
+    pixels are rendered 1:1 with the plate.
+
+    ``meshes``/``textures`` may be passed in so a multi-ROI run gathers the
+    scene once. Returns the same ``(guide, mask, hole_frac)`` triples.
+    """
+    np, _ = _require_deps()
+    from atlas_camera.core.camera_crop import crop_intrinsics
+
+    if meshes is None:
+        meshes = gather_scene_meshes(solve, with_uvs=True)
+    if not meshes:
+        raise ValueError(
+            "solve has no projectable meshes — run the Atlas scene build "
+            "(relief mesh / layers) before occlusion-fill")
+    if textures is None:
+        textures = build_scene_textures(solve, source_image)
+
+    intr = crop_intrinsics(solve.camera.intrinsics, roi)
+    spec = CameraSpec.from_intrinsics(intr)
+    green = np.asarray(LTX_INPAINT_GREEN, dtype=np.float32)
+    out = []
+    for view in views:
+        rgb, alpha, stats = render_scene(
+            meshes, textures, view, spec.fx, spec.fy, spec.cx, spec.cy,
+            roi.width, roi.height)
+        hole = _dilate(np, alpha <= 0.0, hole_dilate_px)
+        guide = rgb.astype(np.float32)
+        guide[hole] = green
+        out.append(((guide * 255).clip(0, 255).astype(np.uint8),
+                    (hole.astype(np.uint8) * 255),
+                    float(hole.mean()), stats.get("depth")))
+    return out
+
+
+def crop_context_depth(frames) -> float:
+    """Median scene depth (metres) of the CONTEXT around each frame's holes.
+
+    Resolution demand falls with distance: a facade 60 m away already projects
+    a fraction of the plate pixels per metre that one at 8 m does, so a distant
+    crop can be generated below 1:1 and resampled back with no real loss of
+    recoverable detail. The depth measured is the rendered surface AROUND the
+    hole (the hole itself has no depth — that is what makes it a hole), which
+    is the right proxy because a disocclusion is filled with the continuation
+    of its surroundings.
+
+    Returns 0.0 when nothing was rasterized.
+    """
+    np, _ = _require_deps()
+    samples = []
+    for frame in frames:
+        depth = frame[3] if len(frame) > 3 else None
+        if depth is None:
+            continue
+        d = np.asarray(depth, dtype=np.float64)
+        finite = d[np.isfinite(d)]
+        if finite.size:
+            samples.append(float(np.median(finite)))
+    return float(np.median(samples)) if samples else 0.0
 
 
 def write_sequences(frames, out_dir: Path) -> tuple[list[Path], list[Path]]:
@@ -122,7 +196,8 @@ def write_sequences(frames, out_dir: Path) -> tuple[list[Path], list[Path]]:
     guide_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
     guide_paths, mask_paths = [], []
-    for index, (guide, mask, _cov) in enumerate(frames):
+    for index, frame in enumerate(frames):
+        guide, mask = frame[0], frame[1]
         gp = guide_dir / f"frame_{index:04d}.png"
         mp = mask_dir / f"frame_{index:04d}.png"
         Image.fromarray(guide).save(gp)
