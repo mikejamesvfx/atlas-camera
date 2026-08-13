@@ -125,6 +125,17 @@ def _render_pass(plate, package_dir, *, dolly_str, frames, gen_width,
         return 1
     with Image.open(crop_path) as im:
         crop_rgb = np.asarray(im.convert("RGB"))
+    # The plane homography is only VALID for pixels on the receiver: static
+    # content (castle, cliffs) must stay static or the generator re-imagines
+    # its slide as geometry. Composite per frame: warped pixels inside the
+    # water matte, frame-0 crop outside (soft edge via the plate feather).
+    matte_path = package_dir / "source" / "matte.png"
+    water = None
+    if matte_path.exists():
+        from atlas_camera.core.dynamic_plate import feather_matte
+        with Image.open(matte_path) as im:
+            water = np.asarray(im.convert("L")).astype(np.float32) / 255.0
+        water = feather_matte(water, max(4.0, plate.matte_feather_px))[..., None]
     views = dolly_view_matrices(plate.crop_camera, offset=dolly,
                                 frame_count=frames)
     rendered_dir = package_dir / "rendered"
@@ -134,7 +145,10 @@ def _render_pass(plate, package_dir, *, dolly_str, frames, gen_width,
         # disocclusion at the frame edge falls back to the still crop so
         # the generator sees plausible pixels, never black
         mask = np.asarray(alpha)[..., None] > 0.5
-        frame = np.where(mask, np.asarray(rgb), crop_rgb).astype(np.uint8)
+        frame = np.where(mask, np.asarray(rgb), crop_rgb).astype(np.float32)
+        if water is not None:
+            frame = frame * water + crop_rgb.astype(np.float32) * (1.0 - water)
+        frame = frame.astype(np.uint8)
         out_im = Image.fromarray(frame)
         if gen_width and gen_height:
             # generator runs at a reduced raster (same aspect): resize the
@@ -144,6 +158,7 @@ def _render_pass(plate, package_dir, *, dolly_str, frames, gen_width,
     plate.metadata["rendered_input"] = {
         "mode": "v2v", "dolly_m": list(dolly), "frame_count": frames,
         "gen_size": [gen_width, gen_height] if gen_width else None,
+        "static_outside_matte": water is not None,
         "disocclusion_fill": "still_crop"}
     write_plate_manifest(plate, package_dir)
     print(f"rendered {frames} Atlas camera-move frames "
@@ -340,6 +355,104 @@ def cmd_create(args) -> int:
     return 0
 
 
+def cmd_occlusion_fill(args) -> int:
+    """Track A: render disocclusion guide+mask along a move, LTX-inpaint it."""
+    import numpy as np
+    from PIL import Image
+
+    from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+    from atlas_camera.core.io import load_solve_json
+    from atlas_camera.dynamic.generators import (
+        TemporalGenerationConfig,
+        resolve_generator,
+    )
+    from atlas_camera.dynamic.occlusion_fill import (
+        render_disocclusion_sequence,
+        write_exr_sequence,
+        write_sequences,
+    )
+
+    solve = load_solve_json(args.solve)
+    with Image.open(args.image) as im:
+        source = np.asarray(im.convert("RGB"))
+
+    try:
+        d_az, d_el, d_dist = (float(v) for v in args.orbit.split(","))
+    except ValueError:
+        print(f"ERROR: --orbit must be 'd_azimuth,d_elevation,distance_scale'"
+              f", got {args.orbit!r}")
+        return 1
+    pivot = ground_lookat_pivot(solve.camera.extrinsics)
+    views = []
+    denom = max(1, args.frames - 1)
+    for i in range(args.frames):
+        t = i / denom
+        extr = orbit_camera(solve.camera.extrinsics, pivot,
+                            d_azimuth_deg=d_az * t,
+                            d_elevation_deg=d_el * t,
+                            distance_scale=1.0 + (d_dist - 1.0) * t)
+        views.append(extr.camera_view_matrix)
+
+    out_dir = Path(args.out)
+    frames = render_disocclusion_sequence(
+        solve, source, views, resolution=args.resolution,
+        hole_dilate_px=args.hole_dilate_px)
+    guide_paths, mask_paths = write_sequences(frames, out_dir)
+    worst = max(range(len(frames)), key=lambda i: frames[i][2])
+    print(f"rendered {len(frames)} guide+mask frames; peak disocclusion "
+          f"{frames[worst][2]:.1%} at frame {worst}")
+    # patch re-entry sidecar: the final orbit IS the patch camera
+    (out_dir / "patch_exact.txt").write_text(
+        f"azimuth_deg={d_az:.4f} elevation_deg={d_el:.4f} "
+        f"distance_scale={d_dist:.4f}\n", encoding="utf-8")
+
+    if args.generator == "none":
+        print("generator none — guide/mask sequences ready for a manual "
+              "inpaint run")
+        return 0
+    generator = resolve_generator(args.generator)
+    if args.host and hasattr(generator, "host"):
+        generator.host = args.host
+    if args.template and hasattr(generator, "template_path"):
+        generator.template_path = args.template
+    gen = generator  # encode the two input videos next to the sequences
+    err = gen._encode_rendered_mp4(out_dir / "guide", out_dir / "guide.mp4",
+                                   args.fps)
+    err = err or gen._encode_rendered_mp4(out_dir / "mask",
+                                          out_dir / "mask.mp4", args.fps)
+    if err:
+        print(f"ERROR: {err}")
+        return 1
+    # generate() wants a package shape: use guide frame 0 as the still crop
+    (out_dir / "source").mkdir(exist_ok=True)
+    Image.open(guide_paths[0]).save(out_dir / "source" / "crop.png")
+
+    class _PseudoPlate:
+        source_roi = None
+        crop_camera = None
+
+    config = TemporalGenerationConfig(
+        prompt=args.prompt, seed=args.seed, fps=args.fps,
+        frame_count=len(frames),
+        extra={"upload_markers": {"{GUIDE_VIDEO}": out_dir / "guide.mp4",
+                                  "{MASK_VIDEO}": out_dir / "mask.mp4"}})
+    result = generator.generate(_PseudoPlate(), out_dir, config)
+    print(f"generator {generator.name}: status = {result.status}")
+    for warning in result.warnings:
+        print(f"  warning: {warning}")
+    if result.status != "ok":
+        return 0 if result.status == GENERATOR_NOT_AVAILABLE else 1
+    if args.exr:
+        written = write_exr_sequence(result.frame_paths, out_dir / "exr")
+        print(f"EXR wrap: {len(written)} frames (display-referred float "
+              f"container, NOT scene-linear)")
+    print(f"filled sequence: {len(result.frame_paths)} frames in "
+          f"{out_dir / 'generated'}; patch re-entry: feed frame_{worst:04d} "
+          f"+ mask/frame_{worst:04d}.png through AtlasAddPatchView with "
+          f"exact_view_override from patch_exact.txt")
+    return 0
+
+
 def cmd_validate(args) -> int:
     from atlas_camera.exporters.dynamic_plate_package import load_dynamic_plate
 
@@ -431,6 +544,30 @@ def main(argv=None) -> int:
     generate.add_argument("--gen-width", type=int, default=None)
     generate.add_argument("--gen-height", type=int, default=None)
     generate.set_defaults(func=cmd_generate)
+
+    occ = sub.add_parser(
+        "occlusion-fill",
+        help="Render disocclusion guide+mask along an orbit, LTX-inpaint it")
+    occ.add_argument("--solve", required=True,
+                     help="atlas_solve.json WITH scene geometry (relief mesh)")
+    occ.add_argument("--image", required=True, help="Source plate image")
+    occ.add_argument("--out", required=True)
+    occ.add_argument("--orbit", default="12.0,0.0,1.0",
+                     help="'d_azimuth_deg,d_elevation_deg,distance_scale' "
+                          "final orbit (frame 0 = solved pose)")
+    occ.add_argument("--frames", type=int, default=49)
+    occ.add_argument("--fps", type=float, default=24.0)
+    occ.add_argument("--resolution", type=int, default=1024)
+    occ.add_argument("--hole-dilate-px", type=int, default=8)
+    occ.add_argument("--seed", type=int, default=None)
+    occ.add_argument("--prompt", default="")
+    occ.add_argument("--generator", default="none", choices=["none", "ltx"])
+    occ.add_argument("--host", default=None)
+    occ.add_argument("--template", default=None)
+    occ.add_argument("--exr", action="store_true",
+                     help="also write filled frames as 32f EXR "
+                          "(display-referred container)")
+    occ.set_defaults(func=cmd_occlusion_fill)
 
     validate = sub.add_parser("validate", help="Validate a plate package")
     validate.add_argument("--package", required=True)
