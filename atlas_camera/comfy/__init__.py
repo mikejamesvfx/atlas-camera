@@ -132,10 +132,12 @@ try:
                 index = int(request.match_info["index"])
             except ValueError:
                 return aiohttp_web.Response(status=400)
-            frame = package_dir / "generated" / f"frame_{index:04d}.png"
+            want_matte = request.query.get("matte") == "1"
+            stem = "matte" if want_matte else "frame"
+            frame = package_dir / "generated" / f"{stem}_{index:04d}.png"
             if not frame.exists():
                 frame = package_dir / "source" / "crop.png"
-                if index != 0 or not frame.exists():
+                if want_matte or index != 0 or not frame.exists():
                     return aiohttp_web.Response(status=404)
             return aiohttp_web.FileResponse(frame)
 

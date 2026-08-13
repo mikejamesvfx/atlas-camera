@@ -228,6 +228,10 @@ def cmd_generate(args) -> int:
     plate.prompt = args.prompt
     plate.seed = args.seed
     rc, frame_paths = _generate_pass(plate, package_dir, args)
+    if not rc and frame_paths and getattr(args, "matte_mode", "none") == "chroma":
+        from atlas_camera.core.dynamic_plate import chroma_key_mattes
+        mattes = chroma_key_mattes(frame_paths, package_dir / "generated")
+        print(f"chroma-keyed {len(mattes)} matte(s)")
     issues = validate_dynamic_plate(plate, package_dir=package_dir,
                                     frame_paths=frame_paths)
     fails = _print_issues(issues)
@@ -283,9 +287,17 @@ def cmd_create(args) -> int:
           f"cx={ci.cx_px:.2f} cy={ci.cy_px:.2f}")
 
     try:
-        receiver = build_receiver_plane(camera, roi,
-                                        plane_height=args.plane_height,
-                                        max_distance=args.max_distance)
+        if args.card:
+            from atlas_camera.core.dynamic_plate import build_receiver_card
+            px, py, dist, width = (float(v) for v in args.card.split(","))
+            receiver = build_receiver_card(camera, anchor_px=(px, py),
+                                           distance_m=dist, width_m=width)
+            print(f"card receiver: anchor ({px:g},{py:g}) px, "
+                  f"{dist:g} m out, {width:g} m wide")
+        else:
+            receiver = build_receiver_plane(camera, roi,
+                                            plane_height=args.plane_height,
+                                            max_distance=args.max_distance)
     except ValueError as exc:
         print(f"ERROR: receiver_geometry_unavailable: {exc}")
         return 1
@@ -518,6 +530,10 @@ def main(argv=None) -> int:
     create.add_argument("--render", action="store_true",
                         help="run the v2v render pass inline (staged "
                              "'render' subcommand is the default workflow)")
+    create.add_argument("--card", default=None, metavar="PX,PY,DIST,WIDTH",
+                        help="OBJECT plate receiver: billboard card at "
+                             "DIST m along the ray through pixel (PX,PY), "
+                             "WIDTH m wide (use with --type actor)")
     create.set_defaults(func=cmd_create)
 
     render = sub.add_parser(
@@ -543,6 +559,10 @@ def main(argv=None) -> int:
     generate.add_argument("--template", default=None)
     generate.add_argument("--gen-width", type=int, default=None)
     generate.add_argument("--gen-height", type=int, default=None)
+    generate.add_argument("--matte-mode", default="none",
+                          choices=["none", "chroma"],
+                          help="chroma: key the backdrop into "
+                               "generated/matte_*.png (actor plates)")
     generate.set_defaults(func=cmd_generate)
 
     occ = sub.add_parser(

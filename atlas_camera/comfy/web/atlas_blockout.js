@@ -1447,9 +1447,28 @@ function syncDynamicPlateFrames(now) {
       continue;                                // hold current frame meanwhile
     }
     if (tex === null) continue;                // still loading
+    let matte = null;
+    if (stream.hasMattes) {
+      matte = stream.mattes.get(index);
+      if (matte === undefined) {
+        stream.mattes.set(index, null);
+        new THREE.TextureLoader().load(
+          `/atlas/dynamic_plate/${stream.key}/${index}?matte=1`,
+          (loaded) => {
+            loaded.flipY = false;
+            loaded.colorSpace = THREE.NoColorSpace;  // mattes are DATA
+            stream.mattes.set(index, loaded);
+          },
+          undefined,
+          () => stream.mattes.delete(index));
+        continue;                              // frame+matte swap together
+      }
+      if (matte === null) continue;
+    }
     stream.lastIndex = index;
     for (const mat of stream.materials) {
       if (mat.uniforms?.uTexture) mat.uniforms.uTexture.value = tex;
+      if (matte && mat.uniforms?.uMatte) mat.uniforms.uMatte.value = matte;
     }
   }
 }
@@ -1459,6 +1478,7 @@ function buildPatchSources(scene, data, onSourceReady) {
   // cached textures belong to the outgoing material generation)
   for (const stream of _dynamicPlateStreams) {
     for (const tex of stream.textures.values()) tex?.dispose?.();
+    for (const tex of (stream.mattes?.values?.() || [])) tex?.dispose?.();
   }
   _dynamicPlateStreams.length = 0;
   const stale = [];
@@ -1545,8 +1565,10 @@ function buildPatchSources(scene, data, onSourceReady) {
             key: dyn.key,
             frameCount: dyn.frame_count,
             fps: dyn.fps > 0 ? dyn.fps : 24,
+            hasMattes: !!dyn.has_mattes,
             materials: [patchMat],
             textures: new Map(),
+            mattes: new Map(),
             lastIndex: -1,
           });
         }
