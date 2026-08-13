@@ -111,10 +111,39 @@ def spec_items(oi, type_):
 
 
 def widget_inputs(oi, type_, values):
-    """Positional ``widgets_values`` → ``{input_name: literal}``."""
+    """Positional ``widgets_values`` → ``{input_name: literal}``.
+
+    ``COMFY_DYNAMICCOMBO_V3`` inputs (e.g. ResizeImageMaskNode.resize_type)
+    carry option-dependent SUB-widgets: the serialized values are the chosen
+    option key followed by that option's own widget values, which map to
+    namespaced inputs (``resize_type.longer_size``). Sub-inputs that are
+    links (IMAGE/MASK/MATCHTYPE) are skipped — they arrive as connections.
+    Found live 2026-08-13: without this, every dynamic-combo widget after the
+    option landed on the WRONG input (a lora template's five resize nodes
+    validated 'scale longer dimension' as a scale_method).
+    """
     out = {}
     vi = 0
     for k, spec in spec_items(oi, type_):
+        if spec[0] == "COMFY_DYNAMICCOMBO_V3":
+            if vi >= len(values):
+                break
+            option = values[vi]
+            out[k] = option
+            vi += 1
+            cfg = spec[1] if len(spec) > 1 and isinstance(spec[1], dict) else {}
+            chosen = next((o for o in cfg.get("options", [])
+                           if o.get("key") == option), None)
+            for sec in ("required", "optional"):
+                for sub, sub_spec in ((chosen or {}).get("inputs", {})
+                                      .get(sec, {}).items()):
+                    if not is_widget(sub_spec):
+                        continue
+                    if vi >= len(values):
+                        break
+                    out[f"{k}.{sub}"] = values[vi]
+                    vi += 1
+            continue
         if not is_widget(spec):
             continue
         if vi >= len(values):
