@@ -95,3 +95,25 @@ the ROI lands on the model's multiple-of-32 grid; LTX also wants
 `tests/test_dynamic_plate_receiver.py` verifies numerically that
 full-image pixel → crop pixel → crop-camera ray → receiver intersection
 equals the original camera's ray intersection (1e-6), including crop+resize.
+
+## v0.3 additions
+
+**Occlusion inpaint (Track A)** — `python -m atlas_camera.dynamic occlusion-fill
+--solve scene_solve.json --image plate.png --orbit "12,0,1" --frames 49
+--generator ltx --template atlas_ltx25_inpaint_v2v.json --out pkg`
+renders the solved scene along the orbit with LTX's chroma-green inpaint
+sentinel (same rasterizer as `AtlasDisocclusionGuide`), writes `guide/` +
+`mask/` sequences, and runs the LTX-2.5 inpaint IC-LoRA
+(`ltx23\ltx-2.3-22b-ic-lora-in-outpainting-0.9`) via the `{GUIDE_VIDEO}` /
+`{MASK_VIDEO}` upload markers. `patch_exact.txt` re-enters the peak-
+disocclusion frame through `AtlasAddPatchView(exact_view_override=...)`.
+`--exr` wraps filled frames as 32f EXR (display-referred container — NOT
+scene-linear; LTX-2.5 has no HDR path, the HDR IC-LoRA is 2.3-only).
+
+**Dynamic objects (Track B)** — `create --type actor --card "px,py,dist,width"`
+places a camera-facing billboard card at `dist` metres along the anchor
+pixel's ray (`build_receiver_card`); `generate --matte-mode chroma` keys the
+`ACTOR_PROMPT_DEFAULT` backdrop into `generated/matte_*.png`. The viewport
+node streams mattes alongside frames (`?matte=1` on the frame route,
+`uMatte` swapped in the same tick); `mask_b64` carries matte 0 for the
+headless renderer and exports.

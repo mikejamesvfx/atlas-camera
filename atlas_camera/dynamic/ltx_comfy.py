@@ -320,6 +320,26 @@ class LTXComfyGenerator:
                 config.height = config.height or roi.height
         overrides = self._apply_overrides(api, image_name=image_name,
                                           config=config)
+        # Named upload markers: config.extra["upload_markers"] maps a literal
+        # template marker (e.g. "{GUIDE_VIDEO}") to a local file; each file is
+        # uploaded and the marker replaced wherever it appears. This is how a
+        # multi-input template (inpaint: original + mask video) gets its
+        # inputs without the adapter guessing node roles.
+        for marker, local_path in ((config.extra or {}).get(
+                "upload_markers") or {}).items():
+            try:
+                uploaded = self._C.upload_image(str(local_path), self.host)
+            except Exception as exc:  # noqa: BLE001
+                base.status = RESULT_FAILED
+                base.warnings.append(f"upload failed for {marker}: {exc}")
+                return base
+            for node in api.values():
+                if not isinstance(node, dict):
+                    continue
+                for key, value in node.get("inputs", {}).items():
+                    if isinstance(value, str) and marker in value:
+                        node["inputs"][key] = value.replace(marker, uploaded)
+                        overrides.append(f"{marker}->{uploaded}")
         if is_v2v:
             rendered_dir = package_dir / "rendered"
             video_path = package_dir / "rendered" / "atlas_rendered_input.mp4"

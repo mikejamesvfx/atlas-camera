@@ -119,6 +119,7 @@ class AtlasLoadDynamicPlate:
                            "plane (rebuild with the dynamic CLI)")
 
         frames = sorted((pkg / "generated").glob("frame_*.png"))
+        mattes = sorted((pkg / "generated").glob("matte_*.png"))
         still = pkg / "source" / "crop.png"
         base_image = frames[0] if frames else still
         if not base_image.exists():
@@ -138,6 +139,7 @@ class AtlasLoadDynamicPlate:
             camera=copy.deepcopy(plate.crop_camera),
             name=f"dynamic_plate_{plate.plate_id.lower()}",
             image_b64=_image_data_uri(base_image),
+            mask_b64=_image_data_uri(mattes[0]) if mattes else None,
             proxy_geometry=[receiver_prim],
             priority=float(priority),
             metadata={
@@ -149,6 +151,7 @@ class AtlasLoadDynamicPlate:
                     "fps": fps,
                     "plate_id": plate.plate_id,
                     "semantic_type": plate.semantic_type,
+                    "has_mattes": len(mattes) == len(frames) and bool(mattes),
                 },
             },
         )

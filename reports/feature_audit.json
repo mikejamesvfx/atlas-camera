@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-08-12",
+ "generated_utc": "2026-08-13",
  "counts": {
   "standard": 93,
   "experimental": 7,
@@ -33,7 +33,7 @@
    "tests": 14,
    "mcp_tools": 0,
    "repo_tools": 2,
-   "docs": 9,
+   "docs": 10,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -881,7 +881,7 @@
    "tests": 4,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",

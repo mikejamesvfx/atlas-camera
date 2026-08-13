@@ -65,6 +65,14 @@ WATER_PROMPT_DEFAULT = (
     "swell; no camera movement; no alteration to static land or architecture"
 )
 
+# Editable default prompt for OBJECT (actor/generic) plates: subject on a
+# flat keyable backdrop, locked camera.
+ACTOR_PROMPT_DEFAULT = (
+    "a single subject centered on a flat solid uniform light-gray studio "
+    "backdrop, full body visible, natural motion; no camera movement; no "
+    "background scenery, no shadows on the backdrop edges"
+)
+
 _DEFAULT_PROVENANCE = {
     "source_region": "observed",
     "crop_camera": "derived_from_solve",
@@ -468,6 +476,76 @@ def build_receiver_plane(camera_or_solve: Any, roi: RegionROI, *,
         },
     )
     return ReceiverGeometry(primitive=primitive)
+
+
+def build_receiver_card(camera: LatentCamera, *, anchor_px: tuple[float, float],
+                        distance_m: float, width_m: float,
+                        height_m: float | None = None,
+                        ) -> ReceiverGeometry:
+    """A free-space billboard card for a dynamic OBJECT (dragon, actor...).
+
+    Placed ``distance_m`` along the viewing ray through ``anchor_px`` (the
+    artist points at where the subject flies), facing the camera: card axes
+    are the camera's right/up so the generated frames map onto it exactly as
+    shot. Aspect defaults to the eventual crop's — pass ``height_m`` to pin it.
+    """
+    origin, direction = pixel_ray_world(camera, *anchor_px)
+    centre = tuple(origin[i] + float(distance_m) * direction[i]
+                   for i in range(3))
+    world = camera.extrinsics.camera_world_matrix
+    u = (world[0][0], world[1][0], world[2][0])          # camera right
+    v = (world[0][1], world[1][1], world[2][1])          # camera up
+    n = (world[0][2], world[1][2], world[2][2])          # toward camera
+    height = float(height_m) if height_m else float(width_m) * 0.5
+    transform = (
+        (u[0], v[0], n[0], centre[0]),
+        (u[1], v[1], n[1], centre[1]),
+        (u[2], v[2], n[2], centre[2]),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+    primitive = AtlasProxyPrimitive(
+        name="dynamic_plate_card",
+        primitive_type="plane",
+        transform_matrix=transform,
+        dimensions=(float(width_m), height, 0.0),
+        material="atlas_dynamic_plate",
+        metadata={"role": "dynamic_plate_receiver", "kind": "card",
+                  "anchor_px": [float(anchor_px[0]), float(anchor_px[1])],
+                  "distance_m": float(distance_m)},
+    )
+    return ReceiverGeometry(kind="card", primitive=primitive)
+
+
+def chroma_key_mattes(frame_paths, out_dir: Any, *,
+                      threshold: float = 0.28, feather_px: float = 2.0,
+                      ) -> list[Path]:
+    """Alpha mattes for generated OBJECT frames by keying the backdrop.
+
+    LTX outputs no alpha; the actor preset shoots the subject on a flat
+    backdrop, whose color is auto-estimated from the frame border median.
+    Matte = normalized chroma distance from that backdrop, thresholded soft.
+    """
+    np = _require_numpy()
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("chroma keying requires Pillow ([image])") from exc
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for index, path in enumerate(frame_paths):
+        with Image.open(path) as im:
+            rgb = np.asarray(im.convert("RGB")).astype(np.float32) / 255.0
+        border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
+        backdrop = np.median(border, axis=0)
+        dist = np.linalg.norm(rgb - backdrop[None, None, :], axis=-1)
+        matte = np.clip((dist - threshold * 0.5) / max(threshold, 1e-6), 0, 1)
+        if feather_px > 0:
+            matte = feather_matte(matte, feather_px)
+        target = out / f"matte_{index:04d}.png"
+        Image.fromarray((matte * 255).astype(np.uint8), mode="L").save(target)
+        written.append(target)
+    return written
 
 
 def write_plane_obj(receiver: ReceiverGeometry, path: Any) -> Path:
