@@ -121,7 +121,16 @@ DRAWN_ROLE_SOURCE = "viewport_polygon"
 
 #: Shape kinds this build can turn into geometry. Anything else is
 #: reported rather than guessed at — see _apply_drawn_polygons.
-DRAWN_KINDS = ("polygon", "box", "sphere")
+#: ``fill_roi`` is the one kind that is NOT geometry: it marks a region the
+#: artist wants an occlusion fill generated for, and building a surface from
+#: it would patch the very hole it is pointing at.
+DRAWN_KINDS = ("polygon", "box", "sphere", "fill_roi")
+
+#: Artist-chosen fill regions are budgeted, not ranked. Generating a fill is
+#: an expensive, judgement-laden act — the artist picks the two or three tears
+#: that matter and vetoes the rest, which is the decision area-ranking was
+#: standing in for.
+FILL_ROI_BUDGET = 3
 
 #: metadata.source written by each drawn kind. One source of truth: the
 #: retopo union selects on it, and atlas_blockout.js mirrors it to decide
@@ -317,6 +326,7 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
 
     cam_pos = _camera_position(out)
     lines, made = [], 0
+    fill_rois: list[dict[str, Any]] = []
     mask = np.zeros((height, width), dtype=bool)
 
     for index, record in enumerate(records):
@@ -350,6 +360,24 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
             lines.append('"%s": skipped(unknown shape kind %r — this Atlas build '
                          'does not support it; restart ComfyUI if you just '
                          'updated)' % (label, kind))
+            continue
+
+        # A fill ROI is a MARKER, not a surface. It records where the artist
+        # wants occluded pixels generated; meshing it would fill the hole with
+        # geometry and there would be nothing left to generate. Corners are
+        # kept in WORLD space so the region stays anchored as the camera moves
+        # through the shot — one selection serves every frame.
+        if kind == "fill_roi":
+            corners = [tuple(float(v) for v in p[:3])
+                       for p in pts if p is not None and len(p) >= 3]
+            if len(corners) < 3:
+                lines.append('"%s": skipped(fill ROI needs at least 3 corners)'
+                             % label)
+                continue
+            fill_rois.append({"label": label, "points_world": corners,
+                              "established_from":
+                                  record.get("established_from") or {}})
+            lines.append('"%s": fill ROI (%d corners)' % (label, len(corners)))
             continue
 
         # A sphere is stored as two CONTROL points (centre + a point on the
@@ -480,8 +508,22 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
         out.projection_scene.debug_metadata["drawn_polygons"] = {
             "planes": made, "requested": len(records),
         }
-    header = ("AtlasBlockoutViewport: %d drawn plane(s) from %d outline(s)."
-              % (made, len(records)))
+    if fill_rois:
+        # Over budget is REPORTED, never silently trimmed: an artist who drew
+        # five regions must be told which two were ignored, or the fill reads
+        # as "covered everything" when it did not.
+        over = fill_rois[FILL_ROI_BUDGET:]
+        for extra in over:
+            lines.append('"%s": fill ROI DROPPED (budget %d)'
+                         % (extra["label"], FILL_ROI_BUDGET))
+        out.projection_scene.debug_metadata["fill_rois"] = {
+            "regions": fill_rois[:FILL_ROI_BUDGET],
+            "requested": len(fill_rois),
+            "budget": FILL_ROI_BUDGET,
+            "dropped": [extra["label"] for extra in over],
+        }
+    header = ("AtlasBlockoutViewport: %d drawn plane(s) and %d fill ROI(s) "
+              "from %d outline(s)." % (made, len(fill_rois), len(records)))
     return out, (mask if made else None), "\n".join([header, *lines])
 
 

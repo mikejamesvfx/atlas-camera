@@ -69,7 +69,7 @@ button's legacy onclick tints and wins). A **status chip** (`railStatus`,
 mutual-exclusion cross-calls still work) to refresh it. `metaHud` moved to
 left:66px/top:46px to clear the rail. Icon-only (full wording stays in
 each button's tooltip): **🪄 Wand**, **✏️ Draw**, **⬜ Quad**, **➬ Extrude**,
-**▣ Box**, **● Sphere** │ **✎ Edit**,
+**▣ Box**, **● Sphere** │ **▦ Fill ROI** │ **✎ Edit**,
 **🧲 Snap**, **🗑 Delete**, **🧹 Clear all** │ **✅ Apply**. A **chevron toggle** (`railToggleBtn`,
 `syncRailCollapsed`, 2026-08-07) sits at the TOP of the rail and folds the tools
 away; the buttons live in an inner `railTools` container so the toggle itself
@@ -184,6 +184,34 @@ preview. Enter or a third click finishes, Esc cancels.
 to geometry via `snapHitToEdge`, else it rests on the ground), then drag the
 radius freely. `sphereControlPoints()` returns `[centre, surface]`,
 stored as `kind:"sphere"`. Preview is three great-circle rings.
+
+**▦ Fill ROI (2026-08-13)** — the ONE tool here that makes no geometry. It marks
+a region the artist wants occluded pixels GENERATED for, consumed by the
+hole-crop occlusion fill (`dynamic/cli.py hole-crop-fill`, which reads
+`projection_scene.debug_metadata["fill_rois"]`). `kind:"fill_roi"` is in
+`DRAWN_KINDS` but `_apply_drawn_polygons` stores it as a region and `continue`s
+BEFORE every surface builder — meshing it would patch the very hole it points
+at, and there would be nothing left to generate.
+
+- **Two clicks, not four.** The artist is framing a region, not tracing a
+  surface: first click anchors (must hit geometry), second sets the opposite
+  corner. Corners are built in the CAMERA's right/up axes on a camera-facing
+  plane through the anchor (`fillRoiCorners`), so it looks like the screen
+  rectangle you dragged but its corners are WORLD points. That is what makes
+  one selection survive the whole move — the region stays pinned to the surface
+  it was drawn on, so every frame frames the same CONTENT, not the same pixels.
+  Mid-tear clicks (which hit nothing, because that is where the hole is) land
+  on the anchor's plane; camera-facing is always well-conditioned, unlike the
+  fitted plane that can blow ⬜ Quad up on a grazing ray.
+- **Budgeted at `FILL_ROI_BUDGET` (3), refused at the click.** Each region is a
+  separate generation. A 4th is REFUSED in the viewport with a message rather
+  than accepted and dropped later by a budget the artist never saw; the node
+  enforces the same number and `tests/test_frontend_mirrors.py` pins the two
+  together.
+- Drawn AMBER and crossed through, never green: a marker must not read as one
+  more surface about to be built. ➬ Extrude skips it for the same reason.
+- Backspace removes the last FILL region specifically, not whatever shape
+  happens to be last in `drawnPolygons`.
 
 ## Snap (`editSnap`, default ON)
 

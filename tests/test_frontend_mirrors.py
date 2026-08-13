@@ -816,3 +816,48 @@ def test_mesh_boundary_loops_split_closed_walks():
     assert "splitLoopAtRepeats" in body.group(1), (
         "meshBoundaryLoops does not call splitLoopAtRepeats — pinched rims "
         "will reach the backend as figure-8 loops and be skipped")
+
+
+# --------------------------------------------------- ▦ Fill ROI (marker kind)
+
+def test_fill_roi_budget_matches_python():
+    """The budget is enforced twice — in the viewport, where the artist can
+    act on it, and in the node, which is the authority. A JS number that
+    drifted from the Python one would offer a 4th region and then silently
+    drop it, which is exactly the silent-truncation failure the budget is
+    written to avoid."""
+    from atlas_camera.comfy.nodes_viewport import FILL_ROI_BUDGET
+
+    src = _read("atlas_blockout.js")
+    match = re.search(r"const FILL_ROI_BUDGET = (\d+);", src)
+    assert match, "FILL_ROI_BUDGET not found in atlas_blockout.js"
+    assert int(match.group(1)) == FILL_ROI_BUDGET, (
+        f"viewport budget {match.group(1)} != node budget {FILL_ROI_BUDGET}")
+
+
+def test_fill_roi_kind_is_accepted_by_the_node():
+    """The viewport commits kind:"fill_roi"; a build whose node does not list
+    it reports 'unknown shape kind' and the artist's selection vanishes."""
+    from atlas_camera.comfy.nodes_viewport import DRAWN_KINDS
+
+    src = _read("atlas_blockout.js")
+    assert 'kind: "fill_roi"' in src, "viewport never commits a fill_roi shape"
+    assert "fill_roi" in DRAWN_KINDS
+
+
+def test_fill_roi_is_not_built_as_geometry():
+    """A fill ROI marks pixels to GENERATE. Meshing it would patch the very
+    hole it points at, so the node must skip it before the surface builders."""
+    import inspect
+
+    from atlas_camera.comfy import nodes_viewport
+
+    body = inspect.getsource(nodes_viewport._apply_drawn_polygons)
+    marker = body.index('if kind == "fill_roi"')
+    # compare against the CALL sites, not the import block at the top
+    for builder in ("polygon_from_world_points(", "box_mesh_from_corners(",
+                    "sphere_mesh_from_control_points("):
+        assert marker < body.index(builder), (
+            f"fill_roi is handled after {builder} — a marker would be meshed")
+    tail = body[marker:marker + 900]
+    assert "continue" in tail, "the fill_roi branch falls through to a builder"

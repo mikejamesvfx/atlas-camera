@@ -2974,9 +2974,21 @@ function buildNodeUI(node, containerEl) {
         seg.renderOrder = 200000;
         seg.userData.atlasHelper = true;
         drawGroup.add(seg);
+      } else if (poly.kind === "fill_roi") {
+        // Amber, and crossed through: a fill region is a MARKER, and must not
+        // read as another green surface about to be built.
+        outline(poly.points_world, FILL_ROI_COLOR, true);
+        const p = poly.points_world;
+        if (p.length === 4) {
+          outline([p[0], p[2]], FILL_ROI_COLOR, false);
+          outline([p[1], p[3]], FILL_ROI_COLOR, false);
+        }
       } else {
         outline(poly.points_world, 0x7ddc86, true);
       }
+    }
+    if (fillRoiOn && fillRoiAnchor && fillRoiHover) {
+      outline(fillRoiCorners(fillRoiAnchor, fillRoiHover), FILL_ROI_COLOR, true);
     }
     if (boxOn && boxStage > 0) refreshBoxPreview();
     if (sphereOn && sphereStage === 1 && sphereRadius > 0) {
@@ -3767,6 +3779,37 @@ function buildNodeUI(node, containerEl) {
       }
       return;
     }
+    if (fillRoiOn) {
+      // Same contract as every other tool: Enter exits to orbit, Esc stays in
+      // the tool and discards the half-drawn region.
+      if (ev.key === "Enter") {
+        fillRoiBtn.onclick();
+        drawHud("▦ done — ✅ Apply hands the marked regions to the fill");
+        ev.preventDefault();
+      } else if (ev.key === "Escape") {
+        fillRoiAnchor = null;
+        fillRoiHover = null;
+        refreshDrawOverlay();
+        drawHud(fillRoiStatusLine());
+        ev.preventDefault();
+      } else if (ev.key === "Backspace" || ev.key === "Delete") {
+        // Backspace removes the last FILL region, never a neighbouring piece
+        // of geometry that happens to be last in the list.
+        const marks = fillRoiShapes();
+        if (fillRoiAnchor) {
+          fillRoiAnchor = null;
+          fillRoiHover = null;
+        } else if (marks.length) {
+          drawnPolygons.splice(drawnPolygons.indexOf(marks[marks.length - 1]), 1);
+          drawDirty = true;
+        }
+        refreshDrawOverlay();
+        updateRailStatus();
+        drawHud(fillRoiStatusLine());
+        ev.preventDefault();
+      }
+      return;
+    }
     if (extrudeOn) {
       if (ev.key === "Enter" || ev.key === "Escape") {
         extrudeBtn.onclick();
@@ -3905,6 +3948,8 @@ function buildNodeUI(node, containerEl) {
   canvas.addEventListener("pointermove", onBoxMove);
   canvas.addEventListener("click", onSphereClick);
   canvas.addEventListener("pointermove", onSphereMove);
+  canvas.addEventListener("click", onFillRoiClick);
+  canvas.addEventListener("pointermove", onFillRoiMove);
   canvas.addEventListener("keydown", onDrawKey);
   canvas.addEventListener("pointerdown", onEditPointerDown, true);
   canvas.addEventListener("pointermove", onEditPointerMove, true);
@@ -3967,6 +4012,7 @@ function buildNodeUI(node, containerEl) {
     if (drawOn && quadOn) quadBtn.onclick();
     if (drawOn && extrudeOn) extrudeBtn.onclick();
     if (drawOn && wandOn) wandBtn.onclick();
+    if (drawOn && fillRoiOn) fillRoiBtn.onclick();
     drawBtn.style.background = drawOn ? "#1a3a1a" : "#2a2a2a";
     drawBtn.style.color = drawOn ? "#8f8" : "#ddd";
     // Orbiting while drawing would fight the click; the artist turns the
@@ -4320,6 +4366,7 @@ function buildNodeUI(node, containerEl) {
       if (quadOn) quadBtn.onclick();
       if (extrudeOn) extrudeBtn.onclick();
       if (wandOn) wandBtn.onclick();
+      if (fillRoiOn) fillRoiBtn.onclick();
     }
     controls.setEnabled(!boxOn);
     canvas.style.cursor = boxOn ? "crosshair" : "grab";
@@ -4472,6 +4519,7 @@ function buildNodeUI(node, containerEl) {
       if (quadOn) quadBtn.onclick();
       if (extrudeOn) extrudeBtn.onclick();
       if (wandOn) wandBtn.onclick();
+      if (fillRoiOn) fillRoiBtn.onclick();
     }
     controls.setEnabled(!sphereOn);
     canvas.style.cursor = sphereOn ? "crosshair" : "grab";
@@ -4691,6 +4739,7 @@ function buildNodeUI(node, containerEl) {
       if (sphereOn) sphereBtn.onclick();
       if (extrudeOn) extrudeBtn.onclick();
       if (wandOn) wandBtn.onclick();
+      if (fillRoiOn) fillRoiBtn.onclick();
     }
     controls.setEnabled(!quadOn);
     canvas.style.cursor = quadOn ? "crosshair" : "grab";
@@ -4698,6 +4747,199 @@ function buildNodeUI(node, containerEl) {
     quadPrev = null;
     refreshDrawOverlay();
     drawHud(quadOn ? quadStatusLine() : "");
+  };
+
+  // ---------------------------------------------------------------------------
+  // ▦ Fill ROI — mark 2-3 tears worth GENERATING pixels for.
+  //
+  // The one tool here that does not make geometry. Every other shape fills a
+  // hole with a surface; this one says "invent the missing pixels HERE" and is
+  // consumed by the hole-crop occlusion fill, which crops to the marked region,
+  // renders it through its own crop camera and inpaints only what is torn.
+  // Meshing it would patch the very hole it points at, so `kind: "fill_roi"`
+  // is skipped by the geometry builder (nodes_viewport._apply_drawn_polygons)
+  // and stored as a region instead.
+  //
+  // TWO clicks, not four: the artist is framing a region, not tracing a
+  // surface, so the first click anchors and the second sets the opposite
+  // corner. The rectangle is built in the CAMERA's right/up axes on a
+  // camera-facing plane through the anchor — i.e. it looks like the screen
+  // rectangle you dragged, but its corners are WORLD points. That is what
+  // makes one selection survive the whole move: the region stays pinned to the
+  // surface it was drawn on, so every frame of the shot frames the same
+  // content instead of the same pixels.
+  //
+  // BUDGETED, not ranked. Generating a fill is expensive and judgement-laden;
+  // the artist picks the few tears that matter. A 4th region is REFUSED with a
+  // message rather than silently accepted and dropped later.
+  // ---------------------------------------------------------------------------
+  const FILL_ROI_BUDGET = 3;      // mirrors nodes_viewport.FILL_ROI_BUDGET
+  const FILL_ROI_COLOR = 0xffa53d;
+  let fillRoiOn = false;
+  let fillRoiAnchor = null;       // { point, right, up } while dragging out
+  let fillRoiHover = null;        // live opposite corner
+  let fillRoiCount = 0;
+
+  const fillRoiShapes = () => drawnPolygons.filter((p) => p.kind === "fill_roi");
+
+  function fillRoiStatusLine() {
+    const used = fillRoiShapes().length;
+    const left = FILL_ROI_BUDGET - used;
+    if (left <= 0) {
+      return `▦ budget spent (${used}/${FILL_ROI_BUDGET}) — 🗑 one to mark another`;
+    }
+    if (!fillRoiAnchor) {
+      return `▦ click one corner of the tear, then the opposite corner`
+        + ` · ${left} fill${left === 1 ? "" : "s"} left of ${FILL_ROI_BUDGET}`;
+    }
+    return "▦ click the opposite corner to commit · Esc discards";
+  }
+
+  // Rectangle corners in the camera's screen axes, on a camera-facing plane
+  // through the anchor. Camera-facing is always well-conditioned — no grazing
+  // plane can blow the region up the way a fitted plane can.
+  function fillRoiCorners(anchor, opposite) {
+    const d = [opposite[0] - anchor.point[0],
+               opposite[1] - anchor.point[1],
+               opposite[2] - anchor.point[2]];
+    const u = d[0] * anchor.right[0] + d[1] * anchor.right[1] + d[2] * anchor.right[2];
+    const v = d[0] * anchor.up[0] + d[1] * anchor.up[1] + d[2] * anchor.up[2];
+    const at = (su, sv) => [
+      anchor.point[0] + anchor.right[0] * su + anchor.up[0] * sv,
+      anchor.point[1] + anchor.right[1] * su + anchor.up[1] * sv,
+      anchor.point[2] + anchor.right[2] * su + anchor.up[2] * sv,
+    ];
+    return [at(0, 0), at(u, 0), at(u, v), at(0, v)];
+  }
+
+  function fillRoiLand(mapped) {
+    const ndc = new THREE.Vector2(mapped.x, mapped.y);
+    drawRaycaster.setFromCamera(ndc, camera);
+    const hits = drawRaycaster.intersectObjects(drawTargets(), false);
+    if (hits.length) {
+      const p = hits[0].point;
+      return [p.x, p.y, p.z];
+    }
+    // Mid-tear clicks hit nothing — that is exactly where the hole is — so
+    // land on the anchor's own camera-facing plane. Before an anchor exists
+    // there is nothing to be relative to, so the first click must hit geometry.
+    if (!fillRoiAnchor) return null;
+    const o = camera.getWorldPosition(new THREE.Vector3());
+    const d = drawRaycaster.ray.direction;
+    const n = fillRoiAnchor.normal;
+    const a = fillRoiAnchor.point;
+    return atlasIntersectRayWithPlane([o.x, o.y, o.z], [d.x, d.y, d.z], {
+      normal: n,
+      offset: n[0] * a[0] + n[1] * a[1] + n[2] * a[2],
+    });
+  }
+
+  function commitFillRoi(opposite) {
+    const pts = fillRoiCorners(fillRoiAnchor, opposite);
+    const span = Math.max(
+      quadDist3(pts[0], pts[1]), quadDist3(pts[1], pts[2]));
+    if (span < 1e-4) {
+      drawHud("▦ that region has no area — click further from the first corner");
+      return;
+    }
+    fillRoiCount += 1;
+    drawnPolygons.push({
+      id: `f${fillRoiCount}`,
+      label: `fill ${fillRoiCount}`,
+      enabled: true,
+      kind: "fill_roi",
+      points_world: pts,
+      established_from: { hits: 2, rule: "fill_roi_marker" },
+    });
+    fillRoiAnchor = null;
+    fillRoiHover = null;
+    drawDirty = true;
+    refreshDrawOverlay();
+    // The chip carries the live budget ("Fill 2/3"), and it is only rebuilt on
+    // rail clicks — without this it still read 0/3 after committing a region,
+    // so the artist could not see how much of the budget was left (found live
+    // in the browser, 2026-08-13).
+    updateRailStatus();
+    const used = fillRoiShapes().length;
+    drawHud(`▦ fill region ${used}/${FILL_ROI_BUDGET} marked — ✅ Apply hands it `
+      + "to the occlusion fill");
+  }
+
+  function onFillRoiClick(ev) {
+    if (!fillRoiOn) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) {
+      drawHud("▦ that click is in the letterbox bar, not the image");
+      return;
+    }
+    if (!fillRoiAnchor && fillRoiShapes().length >= FILL_ROI_BUDGET) {
+      // Refused HERE, where the artist can act on it — not accepted now and
+      // dropped later by a budget they never saw.
+      drawHud(`▦ ${FILL_ROI_BUDGET} fill regions already marked — 🗑 one first. `
+        + "Fills are budgeted because each one invents pixels.");
+      return;
+    }
+    const landed = fillRoiLand(mapped);
+    if (!landed) {
+      drawHud("▦ nothing hit — the FIRST corner must land on geometry so the "
+        + "region is anchored in the scene");
+      return;
+    }
+    if (!fillRoiAnchor) {
+      const fwd = camera.getWorldDirection(new THREE.Vector3());
+      const right = new THREE.Vector3();
+      const up = new THREE.Vector3();
+      camera.matrixWorld.extractBasis(right, up, new THREE.Vector3());
+      fillRoiAnchor = {
+        point: landed,
+        right: [right.x, right.y, right.z],
+        up: [up.x, up.y, up.z],
+        normal: [fwd.x, fwd.y, fwd.z],
+      };
+      fillRoiHover = null;
+      drawHud(fillRoiStatusLine());
+      return;
+    }
+    commitFillRoi(landed);
+  }
+
+  function onFillRoiMove(ev) {
+    if (!fillRoiOn || !fillRoiAnchor) return;
+    const mapped = mappedFromEvent(ev);
+    if (!mapped.inside) return;
+    const landed = fillRoiLand(mapped);
+    if (!landed) return;
+    fillRoiHover = landed;
+    refreshDrawOverlay();
+  }
+
+  const fillRoiBtn = document.createElement("button");
+  fillRoiBtn.textContent = "▦ Fill";
+  fillRoiBtn.title = "Mark a region for OCCLUSION FILL (generated pixels), not "
+    + "geometry: click one corner of the tear then the opposite corner. The "
+    + "region is anchored in world space, so it frames the same content in "
+    + "every frame of the camera move. Budgeted to "
+    + FILL_ROI_BUDGET + " regions — each one is a separate generation, so pick "
+    + "the tears that matter and let the rest edge-extend. ✅ Apply hands them "
+    + "to the fill; 🗑 removes one.";
+  fillRoiBtn.style.cssText = "padding:3px 8px;font-size:11px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px";
+  fillRoiBtn.onclick = () => {
+    fillRoiOn = !fillRoiOn;
+    if (fillRoiOn) {
+      if (drawOn) drawBtn.onclick();
+      if (editOn) editBtn.onclick();
+      if (boxOn) boxBtn.onclick();
+      if (sphereOn) sphereBtn.onclick();
+      if (extrudeOn) extrudeBtn.onclick();
+      if (wandOn) wandBtn.onclick();
+      if (quadOn) quadBtn.onclick();
+    }
+    controls.setEnabled(!fillRoiOn);
+    canvas.style.cursor = fillRoiOn ? "crosshair" : "grab";
+    fillRoiAnchor = null;
+    fillRoiHover = null;
+    refreshDrawOverlay();
+    drawHud(fillRoiOn ? fillRoiStatusLine() : "");
   };
 
   // ---------------------------------------------------------------------------
@@ -4734,6 +4976,9 @@ function buildNodeUI(node, containerEl) {
     let best = null, bestD = Infinity;
     for (const poly of drawnPolygons) {
       if (poly.kind === "sphere") continue;
+      // A fill ROI is a marker, not a surface — pulling geometry out of its
+      // edge would build the very thing the marker exists to avoid.
+      if (poly.kind === "fill_roi") continue;
       const pts = poly.points_world;
       const pairs = (poly.kind === "box" && pts.length === 8)
         ? EX_BOX_EDGES
@@ -4843,6 +5088,7 @@ function buildNodeUI(node, containerEl) {
       if (sphereOn) sphereBtn.onclick();
       if (quadOn) quadBtn.onclick();
       if (wandOn) wandBtn.onclick();
+      if (fillRoiOn) fillRoiBtn.onclick();
     }
     controls.setEnabled(!extrudeOn);
     canvas.style.cursor = extrudeOn ? "crosshair" : "grab";
@@ -5198,6 +5444,7 @@ function buildNodeUI(node, containerEl) {
       if (sphereOn) sphereBtn.onclick();
       if (quadOn) quadBtn.onclick();
       if (extrudeOn) extrudeBtn.onclick();
+      if (fillRoiOn) fillRoiBtn.onclick();
     }
     controls.setEnabled(!wandOn);
     canvas.style.cursor = wandOn ? "crosshair" : "grab";
@@ -5239,6 +5486,11 @@ function buildNodeUI(node, containerEl) {
     trashAll: railSvg('<path d="M7.5 7.5h13M13 7.5V5h4v2.5M9.5 7.5l1 12.5h8l1-12.5"/>'
       + '<path d="M1.5 7h4M1.5 11h4M1.5 15h4" opacity="0.75"/>'),
     apply: railSvg('<path d="M4.5 12.5l5.5 5.5L19.5 6.5"/>'),
+    // Fill ROI: a framed region with a generated-pixel hatch inside — a
+    // marked AREA, deliberately unlike the solid-surface icons around it.
+    fillRoi: railSvg('<rect x="3.5" y="5.5" width="17" height="13" rx="1"/>'
+      + '<path d="M7 15.5l4-4M11 15.5l4-4M15 15.5l2.5-2.5" opacity="0.75"/>'
+      + '<path d="M3.5 10.5h17" opacity="0.45"/>'),
     wand: railSvg('<path d="M4 20l9-9"/>'
       + '<path d="M15.5 3.5v4M13.5 5.5h4"/>'
       + '<path d="M20 9.5v3M18.5 11h3"/>'
@@ -5271,6 +5523,7 @@ function buildNodeUI(node, containerEl) {
   styleRailBtn(extrudeBtn, "extrude");
   styleRailBtn(boxBtn, "box");
   styleRailBtn(sphereBtn, "sphere");
+  styleRailBtn(fillRoiBtn, "fillRoi");
   styleRailBtn(editBtn, "edit");
   styleRailBtn(snapBtn, "snap");
   styleRailBtn(deleteBtn, "trash");
@@ -5289,7 +5542,11 @@ function buildNodeUI(node, containerEl) {
   // with its tools already hidden would read as a broken viewport.
   const railTools = document.createElement("div");
   railTools.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+  // ▦ Fill sits after its own separator: everything above BUILDS geometry,
+  // it alone marks pixels to generate, and grouping it with the surface tools
+  // would read as one more way to fill a hole with a plane.
   railTools.append(wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
+                   railSeparator(), fillRoiBtn,
                    railSeparator(),
                    editBtn, snapBtn, deleteBtn, clearAllBtn,
                    railSeparator(), drawApplyBtn);
@@ -5335,6 +5592,7 @@ function buildNodeUI(node, containerEl) {
       extrudeOn ? ["extrude", "Extrude"] :
       boxOn ? ["box", "Box"] :
       sphereOn ? ["sphere", "Sphere"] :
+      fillRoiOn ? ["fillRoi", `Fill ${fillRoiShapes().length}/${FILL_ROI_BUDGET}`] :
       editOn ? ["edit", "Edit"] : null;
     if (active) {
       railStatus.appendChild(chipIcon(active[0]));
@@ -5367,6 +5625,7 @@ function buildNodeUI(node, containerEl) {
     set(extrudeBtn, extrudeOn);
     set(boxBtn, boxOn);
     set(sphereBtn, sphereOn);
+    set(fillRoiBtn, fillRoiOn);
     set(editBtn, editOn);
     snapBtn.style.background = editSnap ? "#1e3a24" : "transparent";
     snapBtn.style.color = editSnap ? "#7dd87d" : "#c9c9d1";
@@ -5379,7 +5638,7 @@ function buildNodeUI(node, containerEl) {
   // and an arm that outlived the moment would turn the next 🧹 click into a
   // one-click wipe — exactly what the two-click gate exists to prevent.
   for (const b of [wandBtn, drawBtn, quadBtn, extrudeBtn, boxBtn, sphereBtn,
-                   editBtn, snapBtn]) {
+                   fillRoiBtn, editBtn, snapBtn]) {
     const orig = b.onclick;
     b.onclick = () => { disarmClearAll(); orig(); syncRailActive(); updateRailStatus(); };
   }
