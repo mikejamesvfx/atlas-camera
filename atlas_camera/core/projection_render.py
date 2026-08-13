@@ -346,17 +346,37 @@ def render_scene(
     alpha = np.zeros((height, width), dtype=np.float64)
     stats = {"meshes_rendered": 0, "meshes_skipped": [], "faces_rasterized": 0}
 
-    for label, verts, faces, uvs, tex_label, _meta in meshes:
+    # One float64 view per TEXTURE, not per mesh. Massing emits a primitive
+    # per building (75+ on a city plate) and they all sample the same plate,
+    # so converting inside the loop re-materialised an 8K texture (~870 MB in
+    # float64) once per box, per frame — the render was spending its time in
+    # dtype conversion, not rasterization.
+    prepared: dict[Any, tuple] = {}
+
+    def _prepare(tex_label):
+        cached = prepared.get(tex_label)
+        if cached is not None:
+            return cached
         tex = textures.get(tex_label)
-        if tex is None or uvs is None:
-            stats["meshes_skipped"].append(label)
-            continue
+        if tex is None:
+            prepared[tex_label] = None
+            return None
         tex = np.asarray(tex, dtype=np.float64)
         if tex.ndim == 2:
             tex = tex[..., None].repeat(3, axis=-1)
         th, tw = tex.shape[:2]
-        tex_rgb = tex[..., :3]
-        tex_a = tex[..., 3] if tex.shape[-1] >= 4 else np.ones((th, tw))
+        entry = (tex[..., :3],
+                 tex[..., 3] if tex.shape[-1] >= 4 else np.ones((th, tw)),
+                 th, tw)
+        prepared[tex_label] = entry
+        return entry
+
+    for label, verts, faces, uvs, tex_label, _meta in meshes:
+        entry = _prepare(tex_label) if uvs is not None else None
+        if entry is None:
+            stats["meshes_skipped"].append(label)
+            continue
+        tex_rgb, tex_a, th, tw = entry
 
         px, fwd = project_points(verts, view, fx, fy, cx, cy)
         inv_w = 1.0 / np.maximum(fwd, 1e-9)
