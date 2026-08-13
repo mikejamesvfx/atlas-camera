@@ -1516,13 +1516,27 @@ class AtlasRetopologizeLayer:
                                "invented. The background PROBE cannot run here (no depth map), so "
                                "every column uses the tear-margin fallback - which measured 94-100% "
                                "of columns anyway. Off = leave the mesh torn and skirtless."}),
+                # APPENDED LAST on purpose: widgets serialise POSITIONALLY into
+                # saved workflows, so inserting above would silently re-read
+                # every existing graph's values one slot across.
+                "merge_volume_primitives": ("BOOLEAN", {"default": False,
+                    "tooltip": "Fold solid volume primitives (AtlasBlockoutMassing boxes, "
+                               "proxy cylinders) into ONE mesh layer BEFORE retopologizing. "
+                               "Massing emits one primitive per building - 97 on a city plate - "
+                               "and the headless rasteriser loops per mesh, so a merge is both a "
+                               "large speedup and the thing that lets retopo touch massing at "
+                               "all (every method here operates on serialized MESHES). The "
+                               "merged layer keeps provenance=placeholder and the placeholder "
+                               "trust tier: merging is a topology operation, and no topology "
+                               "operation may promote a guess to a measurement. Off = massing "
+                               "boxes pass through untouched."}),
             },
         }
 
     def retopo(self, solve, layer="", method="decimate", target_vertex_count=2000,
                smooth_iterations=0, crease_angle=30.0, pure_quad=False,
                boundary_smooth_iterations=0, rebuild_transition_ribbon=True,
-               **_extra):
+               merge_volume_primitives=False, **_extra):
         import copy
 
         import numpy as np
@@ -1533,6 +1547,20 @@ class AtlasRetopologizeLayer:
         )
 
         solve_out = copy.deepcopy(solve)
+        merged_note = ""
+        if merge_volume_primitives:
+            # Must run BEFORE mesh selection below: massing arrives as box
+            # primitives, and every retopo method operates on serialized
+            # MESHES, so without this pass there is simply nothing for them
+            # to act on.
+            from atlas_camera.core.projection_render import (
+                merge_volume_primitives as _merge_volumes)
+            n_merged = _merge_volumes(solve_out)
+            merged_note = (
+                "merged %d volume primitive(s) into one placeholder mesh layer"
+                % n_merged if n_merged else
+                "merge_volume_primitives ON but the solve carries no box/"
+                "cylinder primitives - nothing to merge")
         sel = str(layer or "").strip()
         lines = []
 
@@ -1673,6 +1701,8 @@ class AtlasRetopologizeLayer:
                      for s in (getattr(solve_out, "projection_sources", None) or [])]
             lines.append(f"layer '{sel}' not found — available: "
                          f"{', '.join(names) if names else '(none)'}; solve passed through")
+        if merged_note:
+            lines.insert(0, merged_note)
         return (solve_out, "\n".join(lines) or "nothing to retopologize")
 
 

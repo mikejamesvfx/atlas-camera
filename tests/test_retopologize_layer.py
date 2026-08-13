@@ -165,6 +165,10 @@ def test_widgets_stay_append_only():
         "layer", "method", "target_vertex_count", "smooth_iterations",
         "crease_angle", "pure_quad", "boundary_smooth_iterations",
         "rebuild_transition_ribbon",
+        # Appended 2026-08-13 so retopo can reach AtlasBlockoutMassing output:
+        # massing arrives as BOX primitives and every method here operates on
+        # serialized meshes, so without a merge there is nothing to act on.
+        "merge_volume_primitives",
     ]
 
 

@@ -43,6 +43,175 @@ def _require_numpy():
     return np
 
 
+#: Solid proxy VOLUMES the viewport already draws as projectable geometry
+#: (`atlas_blockout.js` builds BoxGeometry / CylinderGeometry and stamps
+#: `atlasDerived = true`). Explicit ALLOWLIST, so a new primitive type cannot
+#: leak into the rasterizer by default.
+#:
+#: `plane` is deliberately EXCLUDED even though the viewport draws it. Planes
+#: in Atlas are COVERAGE CARDS — `projection_ground`, the projection backdrop,
+#: dynamic-plate receivers — whose whole job is to guarantee camera-view
+#: coverage. Rasterising them headless reports zero disocclusion everywhere,
+#: which does not widen anything; it just blinds AtlasDisocclusionGuide and the
+#: move-budget measurement to the holes they exist to find. Found by
+#: tests/test_disocclusion_guide.py, which went from 7 failures to green when
+#: planes came out.
+#:
+#: Guide affordances (`height_guide`, `axis_guide`) are absent for the simpler
+#: reason that UI furniture must never occlude a render.
+_TESSELLATED_PRIMITIVES = ("box", "cylinder")
+
+#: THREE.BoxGeometry is CENTRED on the origin, and `block_massing.box_transform`
+#: matches it — the transform carries `ground_y + 0.5 * height`, with
+#: `dimensions` as FULL extents. A unit cube spanning y in [0, 1] would float
+#: every mass half its own height above the ground.
+_UNIT_BOX_V = (
+    (-.5, -.5, -.5), (.5, -.5, -.5), (.5, -.5, .5), (-.5, -.5, .5),
+    (-.5, .5, -.5), (.5, .5, -.5), (.5, .5, .5), (-.5, .5, .5))
+_UNIT_BOX_F = (
+    (0, 2, 1), (0, 3, 2), (4, 5, 6), (4, 6, 7), (0, 1, 5), (0, 5, 4),
+    (1, 2, 6), (1, 6, 5), (2, 3, 7), (2, 7, 6), (3, 0, 4), (3, 4, 7))
+
+#: THREE.PlaneGeometry lies in XY, centred, facing +Z.
+_UNIT_PLANE_V = ((-.5, -.5, 0.), (.5, -.5, 0.), (.5, .5, 0.), (-.5, .5, 0.))
+_UNIT_PLANE_F = ((0, 1, 2), (0, 2, 3))
+
+_CYLINDER_SEGMENTS = 24
+
+
+def _unit_cylinder(np):
+    """Y-axis cylinder, unit diameter and height, centred — THREE's convention
+    (`CylinderGeometry(d0/2, d0/2, d1, 24)`)."""
+    n = _CYLINDER_SEGMENTS
+    ang = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+    x, z = 0.5 * np.cos(ang), 0.5 * np.sin(ang)
+    verts = [(0.0, -0.5, 0.0), (0.0, 0.5, 0.0)]
+    verts += [(float(x[i]), -0.5, float(z[i])) for i in range(n)]
+    verts += [(float(x[i]), 0.5, float(z[i])) for i in range(n)]
+    faces = []
+    for i in range(n):
+        j = (i + 1) % n
+        b0, b1, t0, t1 = 2 + i, 2 + j, 2 + n + i, 2 + n + j
+        faces += [(0, b1, b0), (1, t0, t1),          # caps
+                  (b0, b1, t1), (b0, t1, t0)]        # wall
+    return np.asarray(verts, dtype=np.float64), np.asarray(faces, dtype=np.int64)
+
+
+def tessellate_primitive(primitive: Any) -> tuple | None:
+    """Solid proxy primitive -> ``(vertices Nx3, faces Mx3)`` in WORLD space.
+
+    Returns ``None`` for anything not in ``_TESSELLATED_PRIMITIVES`` so guides
+    and unknown types are skipped rather than guessed at.
+    """
+    np = _require_numpy()
+    kind = getattr(primitive, "primitive_type", None)
+    if kind not in _TESSELLATED_PRIMITIVES:
+        return None
+    dims = np.asarray(getattr(primitive, "dimensions", (1.0, 1.0, 1.0)),
+                      dtype=np.float64).reshape(3)
+    if kind == "box":
+        v = np.asarray(_UNIT_BOX_V, dtype=np.float64) * dims[None, :]
+        f = np.asarray(_UNIT_BOX_F, dtype=np.int64)
+    elif kind == "plane":
+        v = np.asarray(_UNIT_PLANE_V, dtype=np.float64) * dims[None, :]
+        f = np.asarray(_UNIT_PLANE_F, dtype=np.int64)
+    else:
+        v, f = _unit_cylinder(np)
+        v = v * np.array([dims[0], dims[1], dims[0]], dtype=np.float64)[None, :]
+    matrix = np.asarray(getattr(primitive, "transform_matrix", None),
+                        dtype=np.float64)
+    if matrix.shape != (4, 4):
+        return None
+    # Column-vector convention (translation in column 3, as box_transform
+    # writes it): world = M @ p, which for row-stored points is p @ M.T.
+    hom = np.concatenate([v, np.ones((len(v), 1), dtype=np.float64)], axis=1)
+    return (hom @ matrix.T)[:, :3], f
+
+
+def merge_volume_primitives(solve: Any, *, name: str = "massing_mesh") -> int:
+    """Fold every solid volume primitive into ONE serialized mesh primitive.
+
+    Massing emits one primitive per building — 97 on a city plate — and
+    ``render_scene`` loops per mesh, so the rasterizer slows roughly in
+    proportion. Merging gives it a single mesh, and (the real reason this
+    exists) turns placeholder mass into a normal relief-mesh-shaped layer that
+    ``AtlasRetopologizeLayer`` can decimate/remesh like any other.
+
+    TRUST IS PRESERVED. The merged primitive keeps ``provenance="placeholder"``
+    and the placeholder trust tier: merging is a topology operation, and no
+    topology operation may promote a guess to a measurement.
+
+    Returns the number of primitives merged (0 = nothing to do, solve
+    untouched).
+    """
+    np = _require_numpy()
+    from atlas_camera.core.schema import AtlasProxyPrimitive
+
+    scene = getattr(solve, "projection_scene", None)
+    prims = list(getattr(scene, "proxy_geometry", None) or []) if scene else []
+    volumes = [p for p in prims
+               if getattr(p, "primitive_type", None) in _TESSELLATED_PRIMITIVES]
+    if not volumes:
+        return 0
+
+    verts_all, faces_all, offset = [], [], 0
+    for p in volumes:
+        tess = tessellate_primitive(p)
+        if tess is None:
+            continue
+        v, f = tess
+        verts_all.append(v)
+        faces_all.append(f + offset)
+        offset += len(v)
+    if not verts_all:
+        return 0
+    verts = np.concatenate(verts_all, axis=0)
+    faces = np.concatenate(faces_all, axis=0)
+
+    camera = getattr(solve, "camera", None)
+    uvs = (_projective_uvs(np, verts, camera) if camera is not None
+           else np.zeros((len(verts), 2)))
+
+    # Placeholder-ness survives the merge, and is recorded as a count so a
+    # consumer can still say "97 guesses" rather than "one mesh".
+    merged = AtlasProxyPrimitive(
+        name=name,
+        primitive_type="mesh",
+        material="atlas_projection_proxy",
+        metadata={
+            "role": (volumes[0].metadata or {}).get("role", "projection_proxy"),
+            "source": "merged_volume_primitives",
+            "provenance": "placeholder",
+            "trust": "placeholder",
+            "merged_primitive_count": len(volumes),
+            "vertices": np.round(verts.reshape(-1), 3).tolist(),
+            "faces": faces.reshape(-1).tolist(),
+            "uvs": np.round(uvs.reshape(-1), 4).tolist(),
+        },
+    )
+    keep = [p for p in prims
+            if getattr(p, "primitive_type", None) not in _TESSELLATED_PRIMITIVES]
+    scene.proxy_geometry = keep + [merged]
+    return len(volumes)
+
+
+def _projective_uvs(np, verts, camera) -> Any:
+    """Per-vertex UVs from the solve camera — what the VIEWPORT does when it
+    projects the primary plate onto derived geometry.
+
+    V is BOTTOM-ORIGIN, matching the serialized-mesh convention `render_scene`
+    documents and `relief_mesh_primitive`'s own baked UVs.
+    """
+    from atlas_camera.core.camera_spec import CameraSpec
+    spec = CameraSpec.from_intrinsics(camera.intrinsics)
+    w = float(camera.intrinsics.image_width)
+    h = float(camera.intrinsics.image_height)
+    px, _forward = project_points(
+        verts, camera.extrinsics.camera_view_matrix,
+        spec.fx, spec.fy, spec.cx, spec.cy)
+    return np.stack([px[:, 0] / w, 1.0 - px[:, 1] / h], axis=1)
+
+
 def gather_scene_meshes(solve: Any, *, with_uvs: bool = False) -> list:
     """Every serialized mesh on the solve as numpy arrays.
 
@@ -54,9 +223,31 @@ def gather_scene_meshes(solve: Any, *, with_uvs: bool = False) -> list:
     np = _require_numpy()
     out = []
 
+    camera = getattr(solve, "camera", None)
+
     def add(primitives, prefix, tex_label):
         for primitive in primitives or []:
-            if getattr(primitive, "primitive_type", None) != "mesh":
+            kind = getattr(primitive, "primitive_type", None)
+            if kind != "mesh":
+                # Solid proxies (massing boxes, receiver planes, cylinders) are
+                # real occluders the VIEWPORT already draws, but this renderer
+                # skipped them entirely — so AtlasDisocclusionGuide, the
+                # occlusion-fill path and every move-budget measurement were
+                # blind to placeholder mass. Tessellate them so headless
+                # matches the viewport.
+                tess = tessellate_primitive(primitive)
+                if tess is None or camera is None:
+                    continue
+                verts, tris = tess
+                label = f"{prefix}{getattr(primitive, 'name', kind)}"
+                meta = dict(getattr(primitive, "metadata", None) or {})
+                meta["tessellated_from"] = kind
+                if with_uvs:
+                    out.append((label, verts, tris,
+                                _projective_uvs(np, verts, camera),
+                                tex_label, meta))
+                else:
+                    out.append((label, verts, tris, meta))
                 continue
             meta = getattr(primitive, "metadata", None) or {}
             vertices = meta.get("vertices") or []
@@ -231,4 +422,11 @@ def render_scene(
             stats["faces_rasterized"] += 1
         stats["meshes_rendered"] += 1
 
+    # The z-buffer is already exact here and comes from the SAME depth test
+    # that chose every colour, so a depth pass taken from it is guaranteed
+    # consistent with the RGB pass — which is what a depth-conditioned
+    # generator needs (Atlas can hand a model measured scene depth instead of
+    # the monocular guess every other consumer feeds one). +inf where nothing
+    # was rasterized; callers decide how to encode holes.
+    stats["depth"] = zbuf
     return rgb.astype(np.float32), alpha.astype(np.float32), stats
