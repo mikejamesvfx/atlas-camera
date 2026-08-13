@@ -243,12 +243,30 @@ class LTXComfyGenerator:
             with Image.open(frames[0]) as first:
                 stream.width, stream.height = first.size
             stream.pix_fmt = "yuv420p"
+            # Silent audio track: LTX AV graphs (inpaint's frozen-audio path)
+            # hard-require an audio stream on LoadVideo inputs.
+            audio = container.add_stream("aac", rate=48000)
+            import numpy as _np
+            samples_total = int(48000 * len(frames) / max(fps, 1))
+            chunk = 1024
             for path in frames:
                 with Image.open(path) as im:
                     frame = av.VideoFrame.from_image(im.convert("RGB"))
                 for packet in stream.encode(frame):
                     container.mux(packet)
+            done = 0
+            while done < samples_total:
+                n = min(chunk, samples_total - done)
+                buf = _np.zeros((2, n), dtype=_np.float32)
+                aframe = av.AudioFrame.from_ndarray(buf, format="fltp",
+                                                    layout="stereo")
+                aframe.sample_rate = 48000
+                for packet in audio.encode(aframe):
+                    container.mux(packet)
+                done += n
             for packet in stream.encode():
+                container.mux(packet)
+            for packet in audio.encode():
                 container.mux(packet)
         return None
 
