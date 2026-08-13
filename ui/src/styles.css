@@ -1,6 +1,60 @@
 :root {
-  color: #1a1714;
-  background: #f5f2ed;
+  /* ================================================================
+     ATLAS CAMERA — DESIGN TOKENS
+     Canonical palette + rules: docs/ios_app_DESIGN_BRIEF.md
+     Rulings (2026-08-13): signal red = DANGER ONLY · one amber = #eaa03a
+     ================================================================ */
+
+  /* Brand */
+  --atlas-amber: #eaa03a;                   /* THE accent: actions, active, confident, focus, highlight */
+  --amber-glow: rgba(234, 160, 58, 0.55);   /* hover ring on dark panels */
+  --ochre: #b87300;                         /* amber's darker partner — advisory / warnings */
+  --ochre-deep: #8b6400;                    /* pressed advisory */
+
+  /* Grounds & surfaces — warm, never pure #000 */
+  --ground-deep: #171411;
+  --ground: #1a1714;                        /* darkest text on light; dark surfaces */
+  --stage: #2a2420;
+  --stage-deep: #1f1a17;
+  --surface: #e8e4dd;                       /* secondary warm panel (light) */
+  --bone: #f5f2ed;                          /* page bg (light) / primary text on dark */
+  --pale: #d4cfc8;                          /* dividers, secondary surface */
+  --white: #ffffff;
+
+  /* Neutral text */
+  --graphite: #6b6560;                      /* secondary text, rules */
+  --ash: #a09890;                           /* tertiary text, labels */
+  --muted: #88827b;                         /* "weak" confidence state */
+
+  /* Signal — DANGER ONLY (errors, refusals). Never a primary/positive accent. */
+  --signal-red: #d42b2b;
+
+  /* Spatial diagram reds — NOT a UI danger signal. Kept red because X-axis red is a
+     universal 3D-gizmo convention (Maya/Blender/Unreal). Flip these to go zero-red-outside-errors. */
+  --axis-x: #d42b2b;                        /* gizmo X */
+  --diagram-red: #d42b2b;                   /* right vanishing-point guide, horizon */
+  --axis-y: #5a8f62;                        /* gizmo Y */
+  --axis-z: #557da3;                        /* gizmo Z */
+  --scale-guide: #57b07a;                   /* metric scale guide line */
+
+  /* Cool reading panel — OFF-BRIEF (no cool greys). Candidate to warm toward --surface. */
+  --panel-reading: #e2e8e4;
+  --panel-reading-edge: #c8d4cf;
+
+  /* Type & shape */
+  --font-ui: Inter, "Helvetica Neue", Arial, sans-serif;
+  --font-data: "JetBrains Mono", Consolas, monospace;
+  --font-display: Georgia, "Times New Roman", serif;   /* wordmark — serif flagged in audit */
+  --radius: 2px;
+
+  /* NOTE: remaining rgba() below are intentional alpha tints of --bone (245,242,237)
+     and --ground-deep (23,20,17) on dark panels; the empty-state placeholder SVG keeps a
+     local illustration palette. Tokenize with color-mix() in a follow-up if desired. */
+}
+
+:root {
+  color: var(--ground);
+  background: var(--bone);
   font-family: Inter, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   letter-spacing: 0;
@@ -26,7 +80,7 @@ select {
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 2px solid #d42b2b;
+  outline: 2px solid var(--atlas-amber);
   outline-offset: 2px;
 }
 
@@ -35,8 +89,8 @@ select:focus-visible {
   grid-template-rows: 56px minmax(0, 1fr);
   height: 100vh;
   min-height: 100vh;
-  background: #f5f2ed;
-  color: #1a1714;
+  background: var(--bone);
+  color: var(--ground);
   overflow: hidden;
 }
 
@@ -45,8 +99,8 @@ select:focus-visible {
   align-items: center;
   gap: 24px;
   padding: 0 32px;
-  border-bottom: 1px solid #d4cfc8;
-  background: #f5f2ed;
+  border-bottom: 1px solid var(--pale);
+  background: var(--bone);
 }
 
 .wordmark {
@@ -63,7 +117,7 @@ select:focus-visible {
 }
 
 .wordmark strong {
-  color: #a09890;
+  color: var(--ash);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -76,7 +130,7 @@ select:focus-visible {
   gap: 7px;
   min-width: 0;
   flex: 1;
-  color: #6b6560;
+  color: var(--graphite);
   font: 600 10px "JetBrains Mono", Consolas, monospace;
 }
 
@@ -91,7 +145,7 @@ select:focus-visible {
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: #d4cfc8;
+  background: var(--pale);
   flex: 0 0 auto;
 }
 
@@ -101,9 +155,9 @@ select:focus-visible {
   gap: 10px;
   min-width: max-content;
   padding: 6px 12px;
-  border: 1px solid #d4cfc8;
-  border-radius: 2px;
-  color: #6b6560;
+  border: 1px solid var(--pale);
+  border-radius: var(--radius);
+  color: var(--graphite);
 }
 
 .confidence-badge b,
@@ -126,7 +180,7 @@ select:focus-visible {
 .confidence-badge em {
   max-width: 220px;
   overflow: hidden;
-  color: #a09890;
+  color: var(--ash);
   font-size: 9px;
   font-style: normal;
   text-overflow: ellipsis;
@@ -135,17 +189,17 @@ select:focus-visible {
 
 .confidence-badge.confident,
 .confident {
-  color: #d42b2b;
+  color: var(--atlas-amber);
 }
 
 .confidence-badge.uncertain,
 .uncertain {
-  color: #b87300;
+  color: var(--ochre);
 }
 
 .confidence-badge.weak,
 .weak {
-  color: #88827b;
+  color: var(--muted);
 }
 
 .recovery-body {
@@ -161,7 +215,7 @@ select:focus-visible {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid #d4cfc8;
+  border-right: 1px solid var(--pale);
 }
 
 .stage-wrap {
@@ -170,7 +224,7 @@ select:focus-visible {
   min-height: 0;
   padding: 24px;
   overflow: hidden;
-  background: #e8e4dd;
+  background: var(--surface);
 }
 
 .stage-frame {
@@ -181,7 +235,7 @@ select:focus-visible {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #2a2420;
+  background: var(--stage);
   box-shadow: inset 0 0 0 1px rgba(26, 23, 20, 0.16);
 }
 
@@ -191,7 +245,7 @@ select:focus-visible {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #171411;
+  background: var(--ground-deep);
 }
 
 .viewport3d-panel {
@@ -202,8 +256,8 @@ select:focus-visible {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #171411;
-  color: #f5f2ed;
+  background: var(--ground-deep);
+  color: var(--bone);
 }
 
 .viewport3d-toolbar {
@@ -247,7 +301,7 @@ select:focus-visible {
 .viewport3d-proxy-strip button,
 .proxy-actions button {
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -262,8 +316,8 @@ select:focus-visible {
 
 .viewport3d-modes button.active,
 .viewport3d-modes button:hover {
-  background: #f5f2ed;
-  color: #1a1714;
+  background: var(--bone);
+  color: var(--ground);
 }
 
 .viewport3d-toggle {
@@ -277,7 +331,7 @@ select:focus-visible {
 .viewport3d-toggle.active,
 .viewport3d-toggle:hover {
   border-color: rgba(245, 242, 237, 0.22);
-  color: #f0c66b;
+  color: var(--atlas-amber);
 }
 
 .viewport3d-mount {
@@ -363,7 +417,7 @@ select:focus-visible {
   min-height: 26px;
   padding: 0 9px;
   border: 1px solid rgba(245, 242, 237, 0.16);
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: rgba(245, 242, 237, 0.04);
   color: rgba(245, 242, 237, 0.68);
   cursor: pointer;
@@ -371,8 +425,8 @@ select:focus-visible {
 }
 
 .viewport3d-actionbar button:hover:not(:disabled) {
-  border-color: rgba(240, 198, 107, 0.55);
-  color: #f0c66b;
+  border-color: var(--amber-glow);
+  color: var(--atlas-amber);
 }
 
 .viewport3d-actionbar button:disabled {
@@ -397,8 +451,8 @@ select:focus-visible {
 
 .viewport3d-proxy-strip button.active,
 .viewport3d-proxy-strip button:hover {
-  border-color: rgba(240, 198, 107, 0.55);
-  color: #f0c66b;
+  border-color: var(--amber-glow);
+  color: var(--atlas-amber);
 }
 
 .lineup-guide-overlay {
@@ -432,7 +486,7 @@ select:focus-visible {
   width: min(85%, calc((100vh - 220px) * 1.5111));
   max-height: calc((100vh - 220px) * 0.85);
   overflow: hidden;
-  background: #1f1a17;
+  background: var(--stage-deep);
   cursor: crosshair;
 }
 
@@ -526,17 +580,17 @@ select:focus-visible {
 
 .xyz-grid-axis.x line,
 .xyz-grid-axis.x .axis-vanishing-point {
-  stroke: #d42b2b;
+  stroke: var(--axis-x);
 }
 
 .xyz-grid-axis.y line,
 .xyz-grid-axis.y .axis-vanishing-point {
-  stroke: #5a8f62;
+  stroke: var(--axis-y);
 }
 
 .xyz-grid-axis.z line,
 .xyz-grid-axis.z .axis-vanishing-point {
-  stroke: #557da3;
+  stroke: var(--axis-z);
 }
 
 .axis-vanishing-point {
@@ -554,30 +608,30 @@ select:focus-visible {
 }
 
 .guide-line.left {
-  stroke: #f5f2ed;
+  stroke: var(--bone);
 }
 
 .guide-line.right {
-  stroke: #d42b2b;
+  stroke: var(--diagram-red);
 }
 
 .guide-line.vertical {
-  stroke: #f0c66b;
+  stroke: var(--atlas-amber);
 }
 
 .guide-line.scale {
-  stroke: #57b07a;
+  stroke: var(--scale-guide);
   stroke-dasharray: 8 6;
 }
 
 .horizon-line {
-  stroke: #d42b2b;
+  stroke: var(--diagram-red);
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
 
 .annotation-pin {
-  color: #f5f2ed;
+  color: var(--bone);
   opacity: 0.86;
 }
 
@@ -589,7 +643,7 @@ select:focus-visible {
 }
 
 .annotation-pin circle {
-  fill: #2a2420;
+  fill: var(--stage);
   stroke: currentColor;
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
@@ -612,7 +666,7 @@ select:focus-visible {
 }
 
 .annotation-pin.highlight {
-  color: #d42b2b;
+  color: var(--atlas-amber);
 }
 
 .operation-strip,
@@ -622,8 +676,8 @@ select:focus-visible {
   gap: 8px;
   min-width: 0;
   padding: 8px 16px;
-  border-top: 1px solid #d4cfc8;
-  background: #f5f2ed;
+  border-top: 1px solid var(--pale);
+  background: var(--bone);
 }
 
 .operation-strip {
@@ -633,7 +687,7 @@ select:focus-visible {
 .status-strip {
   min-height: 44px;
   overflow-x: auto;
-  color: #6b6560;
+  color: var(--graphite);
   white-space: nowrap;
 }
 
@@ -641,7 +695,7 @@ select:focus-visible {
   display: inline-flex;
   gap: 4px;
   padding-right: 8px;
-  border-right: 1px solid #d4cfc8;
+  border-right: 1px solid var(--pale);
 }
 
 .tool-button,
@@ -651,10 +705,10 @@ select:focus-visible {
   justify-content: center;
   gap: 7px;
   min-height: 32px;
-  border: 1px solid #d4cfc8;
-  border-radius: 2px;
+  border: 1px solid var(--pale);
+  border-radius: var(--radius);
   background: transparent;
-  color: #6b6560;
+  color: var(--graphite);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
@@ -671,9 +725,9 @@ select:focus-visible {
 .tool-button.active,
 .tool-button:hover:not(:disabled),
 .action-button:hover:not(:disabled) {
-  border-color: #1a1714;
-  background: #1a1714;
-  color: #f5f2ed;
+  border-color: var(--ground);
+  background: var(--ground);
+  color: var(--bone);
 }
 
 .tool-button:disabled,
@@ -688,17 +742,17 @@ select:focus-visible {
 }
 
 .action-button.primary {
-  border-color: #d42b2b;
-  background: #d42b2b;
-  color: #ffffff;
+  border-color: var(--atlas-amber);
+  background: var(--atlas-amber);
+  color: var(--ground);
 }
 
 .action-button.technical {
-  color: #1a1714;
+  color: var(--ground);
 }
 
 .action-button.advisory {
-  color: #8b6400;
+  color: var(--ochre-deep);
 }
 
 .file-action {
@@ -722,9 +776,9 @@ select:focus-visible {
   max-width: 460px;
   min-height: 32px;
   padding: 0 9px;
-  border: 1px solid #d4cfc8;
-  border-radius: 2px;
-  color: #6b6560;
+  border: 1px solid var(--pale);
+  border-radius: var(--radius);
+  color: var(--graphite);
 }
 
 .project-input input,
@@ -736,16 +790,16 @@ select,
   min-height: 32px;
   border: 0;
   background: transparent;
-  color: #1a1714;
+  color: var(--ground);
 }
 
 .search-input,
 select,
 .llm-controls input {
   padding: 0 9px;
-  border: 1px solid #d4cfc8;
-  border-radius: 2px;
-  background: #f5f2ed;
+  border: 1px solid var(--pale);
+  border-radius: var(--radius);
+  background: var(--bone);
 }
 
 .search-input,
@@ -759,7 +813,7 @@ select {
   height: 100%;
   padding: 24px;
   overflow-y: auto;
-  background: #f5f2ed;
+  background: var(--bone);
 }
 
 .spec-section {
@@ -773,7 +827,7 @@ select {
 }
 
 .section-header span {
-  color: #a09890;
+  color: var(--ash);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -783,7 +837,7 @@ select {
 .section-header i {
   display: block;
   height: 1px;
-  background: #1a1714;
+  background: var(--ground);
 }
 
 .spec-row {
@@ -792,7 +846,7 @@ select {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid #d4cfc8;
+  border-bottom: 1px solid var(--pale);
 }
 
 .spec-row.last {
@@ -804,27 +858,27 @@ select {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  color: #6b6560;
+  color: var(--graphite);
   font-size: 11px;
 }
 
 .spec-row b.confident,
 .quality-legend b.confident {
-  background: #d42b2b;
+  background: var(--atlas-amber);
 }
 
 .spec-row b.uncertain,
 .quality-legend b.uncertain {
-  background: #b87300;
+  background: var(--ochre);
 }
 
 .spec-row b.weak,
 .quality-legend b.weak {
-  background: #88827b;
+  background: var(--muted);
 }
 
 .spec-row strong {
-  color: #1a1714;
+  color: var(--ground);
   font: 700 12px "JetBrains Mono", Consolas, monospace;
   overflow-wrap: anywhere;
   text-align: right;
@@ -836,7 +890,7 @@ select {
   align-items: center;
   gap: 8px;
   min-height: 42px;
-  color: #a09890;
+  color: var(--ash);
   font-size: 12px;
 }
 
@@ -847,8 +901,8 @@ select {
 
 .vp-table th {
   padding: 0 0 7px;
-  border-bottom: 1px solid #d4cfc8;
-  color: #a09890;
+  border-bottom: 1px solid var(--pale);
+  color: var(--ash);
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -863,13 +917,13 @@ select {
 
 .vp-table td {
   padding: 8px 0;
-  color: #6b6560;
+  color: var(--graphite);
   font: 700 10px "JetBrains Mono", Consolas, monospace;
   text-align: right;
 }
 
 .vp-table td:first-child {
-  color: #1a1714;
+  color: var(--ground);
   font-family: Georgia, "Times New Roman", serif;
   font-size: 13px;
   font-style: italic;
@@ -878,7 +932,7 @@ select {
 .vp-table td span {
   display: inline-flex;
   padding: 2px 5px;
-  background: #e8e4dd;
+  background: var(--surface);
 }
 
 .matrix-readout {
@@ -889,14 +943,14 @@ select {
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  border: 1px solid #d4cfc8;
-  background: #d4cfc8;
+  border: 1px solid var(--pale);
+  background: var(--pale);
 }
 
 .matrix-readout td {
   padding: 5px 4px;
-  background: #f5f2ed;
-  color: #6b6560;
+  background: var(--bone);
+  color: var(--graphite);
   font: 700 9px "JetBrains Mono", Consolas, monospace;
   text-align: right;
   white-space: nowrap;
@@ -905,7 +959,7 @@ select {
 .matrix-readout td:nth-child(1),
 .matrix-readout tr:nth-child(2) td:nth-child(2),
 .matrix-readout tr:nth-child(3) td:nth-child(3) {
-  color: #d42b2b;
+  color: var(--atlas-amber);
 }
 
 .matrix-readout.compact td {
@@ -926,21 +980,21 @@ select {
   gap: 10px;
   margin-bottom: 14px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #d4cfc8;
+  border-bottom: 1px solid var(--pale);
 }
 
 .image-reading-panel .guidance-summary {
-  border-color: #c8d4cf;
-  background: #e2e8e4;
+  border-color: var(--panel-reading-edge);
+  background: var(--panel-reading);
 }
 
 .analysis-mode {
   width: fit-content;
   max-width: 100%;
   padding: 4px 7px;
-  border: 1px solid #d4cfc8;
-  background: #e8e4dd;
-  color: #6b6560;
+  border: 1px solid var(--pale);
+  background: var(--surface);
+  color: var(--graphite);
   font: 700 10px "JetBrains Mono", Consolas, monospace;
   overflow-wrap: anywhere;
 }
@@ -951,7 +1005,7 @@ select {
   gap: 2px 7px;
   align-items: center;
   padding: 8px 0;
-  border-bottom: 1px solid #d4cfc8;
+  border-bottom: 1px solid var(--pale);
 }
 
 .readiness-item svg {
@@ -959,20 +1013,20 @@ select {
 }
 
 .readiness-item.ok svg {
-  color: #d42b2b;
+  color: var(--atlas-amber);
 }
 
 .readiness-item.needs_input svg {
-  color: #b87300;
+  color: var(--ochre);
 }
 
 .readiness-item span {
-  color: #1a1714;
+  color: var(--ground);
   font-size: 12px;
 }
 
 .readiness-item strong {
-  color: #a09890;
+  color: var(--ash);
   font: 700 10px "JetBrains Mono", Consolas, monospace;
   overflow-wrap: anywhere;
 }
@@ -990,7 +1044,7 @@ select {
 .llm-controls label {
   display: grid;
   gap: 4px;
-  color: #a09890;
+  color: var(--ash);
   font-size: 10px;
 }
 
@@ -1004,15 +1058,15 @@ select {
 .proxy-actions button {
   min-height: 28px;
   padding: 0 8px;
-  border-color: #d4cfc8;
-  color: #6b6560;
+  border-color: var(--pale);
+  color: var(--graphite);
   font-size: 10px;
 }
 
 .proxy-actions button:hover:not(:disabled) {
-  border-color: #1a1714;
-  background: #1a1714;
-  color: #f5f2ed;
+  border-color: var(--ground);
+  background: var(--ground);
+  color: var(--bone);
 }
 
 .proxy-actions button:disabled {
@@ -1025,14 +1079,14 @@ select {
   gap: 8px;
   margin-bottom: 10px;
   padding: 10px;
-  border: 1px solid #d4cfc8;
-  background: #e8e4dd;
+  border: 1px solid var(--pale);
+  background: var(--surface);
 }
 
 .proxy-inspector label {
   display: grid;
   gap: 4px;
-  color: #a09890;
+  color: var(--ash);
   font-size: 10px;
 }
 
@@ -1040,10 +1094,10 @@ select {
   min-width: 0;
   min-height: 28px;
   padding: 0 8px;
-  border: 1px solid #d4cfc8;
-  border-radius: 2px;
-  background: #f5f2ed;
-  color: #1a1714;
+  border: 1px solid var(--pale);
+  border-radius: var(--radius);
+  background: var(--bone);
+  color: var(--ground);
 }
 
 .vector-input {
@@ -1072,9 +1126,9 @@ select {
 
 .provider-status {
   padding: 8px 9px;
-  border: 1px solid #d4cfc8;
-  background: #e8e4dd;
-  color: #6b6560;
+  border: 1px solid var(--pale);
+  background: var(--surface);
+  color: var(--graphite);
   font: 700 10px "JetBrains Mono", Consolas, monospace;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -1084,20 +1138,20 @@ select {
   display: grid;
   gap: 6px;
   padding: 10px;
-  border: 1px solid #d4cfc8;
-  background: #e8e4dd;
+  border: 1px solid var(--pale);
+  background: var(--surface);
 }
 
 .guidance-summary span,
 .guidance-list > span,
 .cue-list > span {
-  color: #8b6400;
+  color: var(--ochre-deep);
   font: 700 10px "JetBrains Mono", Consolas, monospace;
 }
 
 .guidance-summary p {
   margin: 0;
-  color: #1a1714;
+  color: var(--ground);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -1105,11 +1159,11 @@ select {
 .guidance-list ul {
   margin: 0;
   padding-left: 18px;
-  color: #6b6560;
+  color: var(--graphite);
 }
 
 .guidance-list.warning ul {
-  color: #b87300;
+  color: var(--ochre);
 }
 
 .guidance-list li {
@@ -1124,22 +1178,22 @@ select {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 2px 8px;
   padding: 8px 0;
-  border-bottom: 1px solid #d4cfc8;
+  border-bottom: 1px solid var(--pale);
 }
 
 .cue-item strong {
-  color: #1a1714;
+  color: var(--ground);
   font-size: 12px;
 }
 
 .cue-item span {
-  color: #d42b2b;
+  color: var(--atlas-amber);
   font: 700 10px "JetBrains Mono", Consolas, monospace;
 }
 
 .cue-item em {
   grid-column: 1 / -1;
-  color: #a09890;
+  color: var(--ash);
   font-style: normal;
   overflow-wrap: anywhere;
 }
@@ -1147,7 +1201,7 @@ select {
 .cue-item p {
   grid-column: 1 / -1;
   margin: 0;
-  color: #6b6560;
+  color: var(--graphite);
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -1156,8 +1210,8 @@ select {
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #d4cfc8;
-  background: #e8e4dd;
+  border: 1px solid var(--pale);
+  background: var(--surface);
 }
 
 .quality-card > div:first-child {
@@ -1168,7 +1222,7 @@ select {
 }
 
 .quality-card span {
-  color: #a09890;
+  color: var(--ash);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1176,7 +1230,7 @@ select {
 }
 
 .quality-card strong {
-  color: #d42b2b;
+  color: var(--atlas-amber);
   font: 700 18px "JetBrains Mono", Consolas, monospace;
 }
 
@@ -1189,7 +1243,7 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #6b6560;
+  color: var(--graphite);
   font-size: 10px;
   font-weight: 400;
   letter-spacing: 0;
@@ -1200,13 +1254,13 @@ select {
   display: inline-grid;
   gap: 2px;
   min-width: 72px;
-  color: #a09890;
+  color: var(--ash);
   font-size: 10px;
   white-space: nowrap;
 }
 
 .metric strong {
-  color: #1a1714;
+  color: var(--ground);
   font: 700 11px "JetBrains Mono", Consolas, monospace;
   overflow-wrap: anywhere;
 }
@@ -1220,7 +1274,7 @@ select {
 .warnings {
   margin: 0;
   padding-left: 18px;
-  color: #b87300;
+  color: var(--ochre);
 }
 
 .warnings li {
@@ -1229,7 +1283,7 @@ select {
 }
 
 .error-text {
-  color: #d42b2b;
+  color: var(--signal-red);
 }
 
 @media (max-width: 1120px) {
@@ -1261,7 +1315,7 @@ select {
   }
 
   .spec-drawer {
-    border-top: 1px solid #d4cfc8;
+    border-top: 1px solid var(--pale);
   }
 }
 

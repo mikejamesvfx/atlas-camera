@@ -130,3 +130,17 @@ tests/golden/_failures/
 
 # AtlasMultiViewSolve failure diagnostics land under the runtime CWD.
 atlas_debug/
+
+# ---- Design & brand material — kept locally, never published ----------
+# The repo publishes to the ComfyUI Registry; brand/design docs and concept
+# art are not app code and must not ship. DELIBERATELY still tracked (do NOT
+# add here): assets/atlas_camera_icon.png (force-kept above) and
+# assets/atlas_camera_icon.svg — the LIVE registry icon (pyproject `Icon`
+# serves it via jsDelivr @main; untracking it 404s the Registry listing).
+docs/brand/
+docs/DESIGN_RULES.md
+docs/ios_app_DESIGN_BRIEF.md
+docs/ios_app_CLAUDE.md
+docs/IOS_APP_BOOTSTRAP.md
+assets/atlas_camera_mark.svg
+assets/user-guide-designs/
