@@ -118,7 +118,8 @@ from atlas_camera.comfy.nodes_completion import (
 )
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
-from atlas_camera.comfy.nodes_fill import (AtlasCompositeCrop,
+from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
+                                           AtlasCompositeCrop,
                                            AtlasCropROI,
                                            AtlasInterpassGate,
                                            AtlasMembraneComposite,

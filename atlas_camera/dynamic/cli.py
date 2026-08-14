@@ -526,6 +526,7 @@ def cmd_hole_crop_fill(args) -> int:
         crop_context_depth,
         render_crop_sequence,
         render_disocclusion_sequence,
+        survey_hole_rois,
         write_sequences,
     )
 
@@ -549,23 +550,14 @@ def cmd_hole_crop_fill(args) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Survey pass: find WHERE the holes are cheaply. Rendering 8K x N frames
-    # only to threshold alpha would cost more than the fills themselves; the
-    # ROIs are then lifted back to plate resolution, which is conservative
-    # because the padding and the /64 snap both only ever grow the crop.
-    # UNDILATED for clustering. Dilation exists to give diffusion context past
-    # the exact tear, and it is applied to the per-ROI masks below — but at
-    # survey resolution a few pixels of growth BRIDGES separate tears, chaining
-    # compact clusters into one sprawling component whose bounding box covers
-    # the frame. Measured on DSC_2289: 4 px of survey dilation took the top-4
-    # ROI coverage from 23% to 124% of the plate. The context the crop needs
-    # comes from pad_frac, which grows the ROI without merging clusters.
-    survey = render_disocclusion_sequence(
-        solve, source, views, resolution=args.survey_resolution,
-        hole_dilate_px=0)
-    survey_masks = [mask for _guide, mask, _cov in survey]
-    survey_h, survey_w = survey_masks[0].shape[:2]
-    peak = max(cov for _g, _m, cov in survey)
+    # Survey pass: find WHERE the holes are cheaply. The recipe (undilated
+    # survey, cluster, lift to plate res, snap, area-sort — and WHY it must be
+    # undilated) lives in `occlusion_fill.survey_hole_rois`, shared with
+    # AtlasCropROI's auto mode so the CLI and the node cannot drift. Policy
+    # (artist-wins, oversize decline/tiled, max_rois budget) stays HERE.
+    sorted_rois, lores, survey_masks, peak = survey_hole_rois(
+        solve, source, views, survey_resolution=args.survey_resolution,
+        pad_frac=args.pad_frac, min_area_px=args.min_area_px, snap=args.snap)
 
     # ARTIST SELECTION WINS. Regions drawn in the viewport are a judgement
     # about which tears are worth inventing pixels for — automatic clustering
@@ -587,19 +579,10 @@ def cmd_hole_crop_fill(args) -> int:
         for drop in picked.dropped:
             print(f"  DROPPED {drop['reason']}")
 
-    # Cluster WITHOUT the budget so the long-edge filter below chooses among
-    # every candidate; the budget is applied after, on what can actually be
-    # generated at 1:1.
-    lores = hole_rois(survey_masks, pad_frac=args.pad_frac,
-                      min_area_px=args.min_area_px, snap=1, max_rois=0)
-    sx, sy = plate_w / float(survey_w), plate_h / float(survey_h)
+    # Long-edge filter over EVERY candidate (the helper applied no budget);
+    # the budget is applied after, on what can actually be generated at 1:1.
     rois = []
-    for roi in lores.rois:
-        scaled = RegionROI(x=int(roi.x * sx), y=int(roi.y * sy),
-                           width=max(1, int(round(roi.width * sx))),
-                           height=max(1, int(round(roi.height * sy))))
-        plate_roi = scaled.clamped(plate_w, plate_h).snapped(
-            args.snap, image_width=plate_w, image_height=plate_h)
+    for plate_roi in sorted_rois:
         # A crop RENDERS at plate resolution for free, but it must also be
         # GENERATED, and the model's raster budget is fixed (~0.6 MP/frame on
         # LTX-2.5). A cluster larger than that cannot be filled at 1:1 in one

@@ -376,3 +376,129 @@ def sample_camera_path_fov_deg(path: AtlasCameraPath) -> list[float] | None:
             _catmull_rom_1d(padded[seg], padded[seg + 1], padded[seg + 2], padded[seg + 3], eased_t)
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# One-click move presets, server-side. Mirrors atlas_blockout.js
+# applyMovePreset / computePresetEndPose (hand-sync duplication, pinned by
+# tests/test_frontend_mirrors.py — same doctrine as SCENE_TYPE_PRESETS).
+# APPEND-ONLY: the move names serialize into saved workflows via the
+# AtlasCameraMovePreset combo.
+#
+# ONE DELIBERATE DIVERGENCE, required for exactness: the PIVOT. The viewport
+# arcs orbit the median-depth mesh centre (+ the artist's 🎯 offset); this
+# builder orbits ``ground_lookat_pivot`` — the same pivot AtlasAddPatchView
+# uses to reconstruct a pose from an ``exact_view_override`` orbit delta. That
+# is what makes the emitted delta EXACT by construction: the end pose IS
+# ``orbit_camera(extrinsics, ground_lookat_pivot(extrinsics), *delta)``,
+# byte-reproducible through the patch re-entry path with no baked frame.
+# The ground pivot also lies ON the recovered central view ray, which is why
+# the dolly moves reduce to a pure ``distance_scale`` (the viewport needs its
+# own on-axis target construction only because its mesh-centre pivot can sit
+# off-axis).
+# ---------------------------------------------------------------------------
+PRESET_MOVE_ANGLE_DEG = 15.0   # JS MOVE_ANGLE_DEG
+PRESET_DOLLY_FRAC = 0.2        # JS MOVE_DOLLY_FRAC
+PRESET_PUSH_IN_FRAC = 0.35     # JS PUSH_IN_FRAC
+PRESET_ARC_DOLLY_FRAC = 0.15   # JS ARC_DOLLY_FRAC
+PRESET_FRAME_COUNT = 100       # JS PATH_FRAME_COUNT
+PRESET_FPS = 24.0              # JS PATH_FPS
+PRESET_MOVES = ("orbit_left", "orbit_right", "pan_left", "pan_right",
+                "dolly_in", "arc_left", "arc_right", "push_in", "vertigo")
+
+
+def build_preset_camera_path(
+    extrinsics: AtlasExtrinsics,
+    move: str,
+    *,
+    angle_deg: float = PRESET_MOVE_ANGLE_DEG,
+    frame_count: int = PRESET_FRAME_COUNT,
+    fps: float = PRESET_FPS,
+    easing: str = "ease_in_out",
+    fov_deg: float | None = None,
+) -> tuple[AtlasCameraPath, tuple[float, float, float]]:
+    """Build a one-click move as an ``AtlasCameraPath``, plus its END delta.
+
+    Returns ``(path, (d_azimuth_deg, d_elevation_deg, distance_scale))`` where
+    the delta reproduces the path's FINAL pose via
+    ``orbit_camera(extrinsics, ground_lookat_pivot(extrinsics), *delta)`` —
+    the exact contract ``AtlasAddPatchView.exact_view_override`` consumes.
+    Pan moves swivel in place (the target moves, not the eye), which no orbit
+    delta can express — they return the zero delta ``(0, 0, 1)`` and the
+    caller should warn that patch re-entry lands at the recovered pose.
+
+    Sign convention (verified against the JS rotation algebra): the JS orbit
+    rotates the pivot->eye offset by ``a = radians(angle) * (-1 if left)``
+    as ``(x cos a + z sin a, y, -x sin a + z cos a)``; ``orbit_camera`` stores
+    azimuth as ``atan2(x, z)`` and adds its delta, which expands to the SAME
+    expression — so ``d_azimuth_deg`` equals the JS ``a`` in degrees with no
+    sign flip. ``fov_deg`` (the solved vertical fov) is only needed by
+    ``vertigo``; omitted, vertigo raises.
+    """
+    from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+    from atlas_camera.core.schema import AtlasCameraKeyframe
+
+    if move not in PRESET_MOVES:
+        raise ValueError(f"unknown move {move!r} — one of {PRESET_MOVES}")
+    frame_count = max(2, int(frame_count))
+    last = frame_count - 1
+    eye = tuple(float(v) for v in extrinsics.camera_position)
+    pivot = ground_lookat_pivot(extrinsics)
+    sign = -1.0 if move.endswith("_left") else 1.0
+
+    def pose_at(delta):
+        moved = orbit_camera(extrinsics, pivot, d_azimuth_deg=delta[0],
+                             d_elevation_deg=delta[1], distance_scale=delta[2])
+        return tuple(float(v) for v in moved.camera_position)
+
+    def kf(frame, position, target, ease, fov=None):
+        return AtlasCameraKeyframe(frame_index=frame, position=position,
+                                   target=target, up=(0.0, 1.0, 0.0),
+                                   fov_deg=fov, easing=ease)
+
+    if move in ("arc_left", "arc_right"):
+        mid_delta = (sign * angle_deg / 2.0, 0.0,
+                     1.0 - PRESET_ARC_DOLLY_FRAC / 2.0)
+        end_delta = (sign * angle_deg, 0.0, 1.0 - PRESET_ARC_DOLLY_FRAC)
+        # THREE keyframes (0 / 60% / last) so the Catmull-Rom genuinely curves
+        # through the combined orbit+dolly instead of cutting the chord.
+        keyframes = [
+            kf(0, eye, pivot, easing),
+            kf(int(round(last * 0.6)), pose_at(mid_delta), pivot, "linear"),
+            kf(last, pose_at(end_delta), pivot, "linear"),
+        ]
+    elif move in ("orbit_left", "orbit_right"):
+        end_delta = (sign * angle_deg, 0.0, 1.0)
+        keyframes = [kf(0, eye, pivot, easing),
+                     kf(last, pose_at(end_delta), pivot, "linear")]
+    elif move in ("pan_left", "pan_right"):
+        # Swivel in place: rotate the eye->pivot ray about world +Y. Same
+        # rotation algebra as the JS, applied to the TARGET offset.
+        end_delta = (0.0, 0.0, 1.0)     # not expressible as an orbit delta
+        a = math.radians(angle_deg) * sign
+        off = (pivot[0] - eye[0], pivot[1] - eye[1], pivot[2] - eye[2])
+        rotated = (off[0] * math.cos(a) + off[2] * math.sin(a), off[1],
+                   -off[0] * math.sin(a) + off[2] * math.cos(a))
+        new_target = (eye[0] + rotated[0], eye[1] + rotated[1],
+                      eye[2] + rotated[2])
+        keyframes = [kf(0, eye, pivot, easing),
+                     kf(last, eye, new_target, "linear")]
+    else:                               # dolly_in / push_in / vertigo
+        frac = {"dolly_in": PRESET_DOLLY_FRAC, "push_in": PRESET_PUSH_IN_FRAC,
+                "vertigo": PRESET_DOLLY_FRAC}[move]
+        end_delta = (0.0, 0.0, 1.0 - frac)
+        fov0 = fov1 = None
+        if move == "vertigo":
+            if fov_deg is None:
+                raise ValueError("vertigo needs the solved vertical fov_deg "
+                                 "to key the counter-zoom")
+            fov0 = float(fov_deg)
+            fov1 = math.degrees(2.0 * math.atan(
+                math.tan(math.radians(fov0) / 2.0) / (1.0 - frac)))
+        keyframes = [kf(0, eye, pivot, easing, fov0),
+                     kf(last, pose_at(end_delta), pivot, "linear", fov1)]
+
+    path = AtlasCameraPath(keyframes=keyframes, fps=float(fps),
+                           frame_count=frame_count)
+    return path, (float(end_delta[0]), float(end_delta[1]),
+                  float(end_delta[2]))

@@ -62,6 +62,7 @@ FACADE_PUBLIC = {
     "AtlasPathFrameIndex",
     "AtlasCropROI",
     "AtlasCompositeCrop",
+    "AtlasCameraMovePreset",
     "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
     "AtlasLoadPlate", "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON",

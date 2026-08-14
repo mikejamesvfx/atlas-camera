@@ -28,7 +28,8 @@ from atlas_camera.comfy.nodes_completion import (
 )
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
-from atlas_camera.comfy.nodes_fill import (AtlasCompositeCrop,
+from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
+                                           AtlasCompositeCrop,
                                            AtlasCropROI,
                                            AtlasInterpassGate,
                                            AtlasMembraneComposite,
@@ -382,6 +383,7 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasPathFrameIndex": AtlasPathFrameIndex,
     "AtlasCropROI": AtlasCropROI,
     "AtlasCompositeCrop": AtlasCompositeCrop,
+    "AtlasCameraMovePreset": AtlasCameraMovePreset,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -397,6 +399,7 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasPathFrameIndex": "Atlas Path Frame Index 🔢🔬 (experimental)",
     "AtlasCropROI": "Atlas Crop ROI ✂️🔬 (experimental)",
     "AtlasCompositeCrop": "Atlas Composite Crop 📌🔬 (experimental)",
+    "AtlasCameraMovePreset": "Atlas Camera Move Preset 🎬🔬 (experimental)",
 }
 
 
@@ -562,7 +565,7 @@ _MENU_FOLDERS = {
         "AtlasRefineOcclusionSeams", "AtlasLiveMeshRepair", "AtlasGroundMask",
         "AtlasLoadRecord3D", "AtlasStreamRecord3D", "AtlasLoadDynamicPlate",
         "AtlasInterpassGate", "AtlasMembraneComposite", "AtlasPathFrameIndex",
-        "AtlasCropROI", "AtlasCompositeCrop",
+        "AtlasCropROI", "AtlasCompositeCrop", "AtlasCameraMovePreset",
     ),
 }
 

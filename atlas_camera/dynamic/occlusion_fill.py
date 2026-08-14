@@ -228,3 +228,48 @@ def write_exr_sequence(frame_paths, out_dir: Path) -> list[Path]:
         cv2.imwrite(str(target), arr[..., ::-1])  # BGR for OpenCV
         written.append(target)
     return written
+
+
+def survey_hole_rois(solve, source_image, views, *, survey_resolution=1024,
+                     pad_frac=0.10, min_area_px=64, snap=64):
+    """THE hole-clustering recipe, shared so CLI and nodes cannot drift.
+
+    Survey the views' disocclusion holes at a cheap raster, cluster them
+    UNDILATED (survey-res dilation bridges separate tears — measured on
+    DSC_2289: 4 px took top-4 ROI coverage from 23% to 124% of the plate),
+    lift the ROIs to plate resolution, clamp, snap, and sort by area
+    descending. Padding and the snap only ever GROW a crop, so the lift is
+    conservative.
+
+    Returns ``(rois, roi_set, survey_masks, peak_hole_frac)`` where ``rois``
+    is the area-sorted plate-resolution list and ``roi_set`` carries the
+    survey-resolution components + dropped entries for reporting. Policy —
+    artist-wins, oversize decline/tiled, the max_rois budget — deliberately
+    stays with the caller (`dynamic/cli.py`); AtlasCropROI's auto mode simply
+    indexes this list by rank.
+    """
+    np, _ = _require_deps()
+    from atlas_camera.core.camera_crop import RegionROI, hole_rois
+
+    intr = solve.camera.intrinsics
+    plate_w, plate_h = int(intr.image_width), int(intr.image_height)
+    survey = render_disocclusion_sequence(
+        solve, source_image, views, resolution=int(survey_resolution),
+        hole_dilate_px=0)
+    survey_masks = [mask for _guide, mask, _cov in survey]
+    survey_h, survey_w = survey_masks[0].shape[:2]
+    peak = max(cov for _g, _m, cov in survey)
+
+    roi_set = hole_rois(survey_masks, pad_frac=float(pad_frac),
+                        min_area_px=int(min_area_px), snap=1, max_rois=0)
+    sx = plate_w / float(survey_w)
+    sy = plate_h / float(survey_h)
+    rois = []
+    for roi in roi_set.rois:
+        scaled = RegionROI(x=int(roi.x * sx), y=int(roi.y * sy),
+                           width=max(1, int(round(roi.width * sx))),
+                           height=max(1, int(round(roi.height * sy))))
+        rois.append(scaled.clamped(plate_w, plate_h).snapped(
+            int(snap), image_width=plate_w, image_height=plate_h))
+    rois.sort(key=lambda r: r.area_px, reverse=True)
+    return rois, roi_set, survey_masks, float(peak)

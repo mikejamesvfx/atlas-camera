@@ -861,3 +861,69 @@ def test_fill_roi_is_not_built_as_geometry():
             f"fill_roi is handled after {builder} — a marker would be meshed")
     tail = body[marker:marker + 900]
     assert "continue" in tail, "the fill_roi branch falls through to a builder"
+
+
+# --- one-click move presets (atlas_blockout.js <-> camera_path.py) -----------
+
+
+def test_move_preset_constants_mirror_js():
+    """build_preset_camera_path hand-syncs the viewport's move constants and
+    kind strings; both sides are append-only (they serialize into workflows)."""
+    import re
+
+    from atlas_camera.core import camera_path as cp
+
+    src = _read("atlas_blockout.js")
+    def js_const(name):
+        m = re.search(rf"const {name} = ([\d.]+)", src)
+        assert m, f"{name} not found in atlas_blockout.js"
+        return float(m.group(1))
+
+    assert cp.PRESET_MOVE_ANGLE_DEG == js_const("MOVE_ANGLE_DEG")
+    assert cp.PRESET_DOLLY_FRAC == js_const("MOVE_DOLLY_FRAC")
+    assert cp.PRESET_PUSH_IN_FRAC == js_const("PUSH_IN_FRAC")
+    assert cp.PRESET_ARC_DOLLY_FRAC == js_const("ARC_DOLLY_FRAC")
+
+    moves_block = re.search(r"const MOVES = \[(.*?)\n  \];", src, re.S)
+    assert moves_block, "MOVES list not found in atlas_blockout.js"
+    js_kinds = re.findall(r'\[\"([a-z_]+)\"', moves_block.group(1))
+    assert tuple(js_kinds) == cp.PRESET_MOVES
+
+
+def test_move_preset_orbit_matches_js_rotation_algebra():
+    """The sign convention is pinned NUMERICALLY: port computePresetEndPose's
+    Y-rotation and assert the Python end pose reproduces it for both arcs."""
+    import math
+
+    from atlas_camera.core.camera_math import (
+        ground_lookat_pivot,
+        look_at_view_matrix,
+    )
+    from atlas_camera.core.camera_path import (
+        build_preset_camera_path,
+        sample_camera_path,
+    )
+    from atlas_camera.core.schema import AtlasExtrinsics
+
+    eye = (0.4, 1.7, 0.3)
+    view, world, rot3 = look_at_view_matrix(eye, (2.0, 0.4, -9.0))
+    extr = AtlasExtrinsics(camera_position=eye, camera_rotation_matrix=rot3,
+                           camera_world_matrix=world,
+                           camera_view_matrix=view)
+    pivot = ground_lookat_pivot(extr)
+
+    for move, sign in (("arc_left", -1.0), ("arc_right", 1.0)):
+        path, delta = build_preset_camera_path(extr, move, angle_deg=15.0)
+        end = sample_camera_path(path)[-1].camera_position
+        # JS: a = radians(angle) * (-1 if left); offset rotated about world +Y
+        # as (x cos a + z sin a, y, -x sin a + z cos a), then lerped toward
+        # the fixed target by ARC_DOLLY_FRAC (== uniform offset scale).
+        a = math.radians(15.0) * sign
+        off = (eye[0] - pivot[0], eye[1] - pivot[1], eye[2] - pivot[2])
+        rot = (off[0] * math.cos(a) + off[2] * math.sin(a), off[1],
+               -off[0] * math.sin(a) + off[2] * math.cos(a))
+        k = 1.0 - 0.15
+        expected = (pivot[0] + rot[0] * k, pivot[1] + rot[1] * k,
+                    pivot[2] + rot[2] * k)
+        assert max(abs(x - y) for x, y in zip(end, expected)) < 1e-9, move
+        assert delta[0] == sign * 15.0 and delta[2] == 0.85

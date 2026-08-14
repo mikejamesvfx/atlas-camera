@@ -316,11 +316,27 @@ class AtlasCropROI:
                     "tooltip": "Generation raster cap; the crop is scaled "
                                "down (aspect kept, /16) when its native long "
                                "edge exceeds this."}),
+                # APPENDED 2026-08-14 (positional widget contract): auto mode.
+                "roi_source": (["artist", "auto_largest"], {
+                    "default": "artist",
+                    "tooltip": "artist: the viewport's drawn Fill ROIs (the "
+                               "default; artist selection wins). auto_largest: "
+                               "survey the end frame's disocclusion holes and "
+                               "take the roi_slot-th LARGEST cluster — the "
+                               "holes the viewport wand cannot fix. Same "
+                               "clustering recipe as the CLI "
+                               "(survey_hole_rois), so the two cannot drift."}),
+                "min_area_px": ("INT", {
+                    "default": 1024, "min": 1, "max": 1 << 20,
+                    "tooltip": "auto_largest only: clusters smaller than this "
+                               "(survey-resolution px) are ignored — the wand "
+                               "or a band layer handles those."}),
             },
         }
 
     def crop(self, solve, source_image, camera_path=None, roi_slot=1,
-             pad_frac=0.10, snap=64, hole_dilate_px=4, max_gen_long_edge=1280):
+             pad_frac=0.10, snap=64, hole_dilate_px=4, max_gen_long_edge=1280,
+             roi_source="artist", min_area_px=1024):
         from PIL import Image as PILImage
 
         from atlas_camera.core.camera_crop import rois_from_world_regions
@@ -336,13 +352,6 @@ class AtlasCropROI:
             return (g, m, 64, 64, {"empty": True},
                     f"AtlasCropROI slot {roi_slot}: {reason}")
 
-        scene = getattr(solve, "projection_scene", None)
-        meta = getattr(scene, "debug_metadata", None) or {}
-        regions = list((meta.get("fill_rois") or {}).get("regions") or [])
-        if roi_slot > len(regions):
-            return empty(f"no artist region (only {len(regions)} drawn) — "
-                         f"no-op branch")
-
         intr = solve.camera.intrinsics
         spec = CameraSpec.from_intrinsics(intr)
         width = int(intr.image_width)
@@ -356,21 +365,42 @@ class AtlasCropROI:
         if view is None:
             view = solve.camera.extrinsics.camera_view_matrix
 
-        picked = rois_from_world_regions(
-            [regions[roi_slot - 1]], view, fx=spec.fx, fy=spec.fy,
-            cx=spec.cx, cy=spec.cy, image_width=width, image_height=height,
-            pad_frac=float(pad_frac), snap=int(snap))
-        if not picked.rois:
-            reason = (picked.dropped[0]["reason"] if picked.dropped
-                      else "region did not project into this view")
-            return empty(reason)
-        roi = picked.rois[0]
-
         src = source_image.detach().cpu().numpy()[0]
         src = np.clip(src * 255.0, 0, 255).astype(np.uint8)
         if src.shape[:2] != (height, width):
             src = np.asarray(PILImage.fromarray(src).resize(
                 (width, height), PILImage.LANCZOS))
+
+        if roi_source == "auto_largest":
+            from atlas_camera.dynamic.occlusion_fill import survey_hole_rois
+            auto_rois, roi_set, _masks, peak = survey_hole_rois(
+                solve, src, [view], survey_resolution=1024,
+                pad_frac=float(pad_frac), min_area_px=int(min_area_px),
+                snap=int(snap))
+            if roi_slot > len(auto_rois):
+                return empty(f"auto_largest found only {len(auto_rois)} "
+                             f"cluster(s) >= {min_area_px}px — no-op branch")
+            roi = auto_rois[roi_slot - 1]
+            source_note = (f"auto rank {roi_slot}/{len(auto_rois)} "
+                           f"(peak hole {peak:.1%})")
+        else:
+            scene = getattr(solve, "projection_scene", None)
+            meta = getattr(scene, "debug_metadata", None) or {}
+            regions = list((meta.get("fill_rois") or {}).get("regions") or [])
+            if roi_slot > len(regions):
+                return empty(f"no artist region (only {len(regions)} drawn) "
+                             f"— no-op branch")
+            picked = rois_from_world_regions(
+                [regions[roi_slot - 1]], view, fx=spec.fx, fy=spec.fy,
+                cx=spec.cx, cy=spec.cy, image_width=width,
+                image_height=height, pad_frac=float(pad_frac),
+                snap=int(snap))
+            if not picked.rois:
+                reason = (picked.dropped[0]["reason"] if picked.dropped
+                          else "region did not project into this view")
+                return empty(reason)
+            roi = picked.rois[0]
+            source_note = f"artist slot {roi_slot}"
         guide, mask, cov, _depth = render_crop_sequence(
             solve, src, [view], roi, hole_dilate_px=int(hole_dilate_px))[0]
 
@@ -387,7 +417,7 @@ class AtlasCropROI:
         handle = {"empty": False, "x": roi.x, "y": roi.y,
                   "width": roi.width, "height": roi.height,
                   "gen_w": gen_w, "gen_h": gen_h}
-        report = (f"AtlasCropROI slot {roi_slot}: {roi.width}x{roi.height} "
+        report = (f"AtlasCropROI ({source_note}): {roi.width}x{roi.height} "
                   f"at ({roi.x},{roi.y}), hole {cov:.1%}, generation raster "
                   f"{gen_w}x{gen_h}"
                   + (" (1:1 native)" if scale >= 1.0
@@ -451,3 +481,79 @@ class AtlasCompositeCrop:
         frame[y:y + h, x:x + w] = f
         out = torch.from_numpy(frame.astype(np.float32) / 255.0).unsqueeze(0)
         return (out, f"AtlasCompositeCrop: pasted {w}x{h} at ({x},{y}).")
+
+
+class AtlasCameraMovePreset:
+    """🎬 The viewport's one-click moves as a NODE — path + exact end pose.
+
+    Mirrors the viewport's move buttons (`applyMovePreset` in
+    atlas_blockout.js; constants pinned by tests/test_frontend_mirrors.py) so
+    the standard shot recipe — arc left, arc right — can run WITHOUT anyone
+    opening the viewport. That is what makes the auto-fill graph automatic:
+    preset path in, holes surveyed at its end frame, WAN fills the big ones,
+    the artist opens the viewport afterwards to tweak.
+
+    ONE DELIBERATE DIVERGENCE (documented in `build_preset_camera_path`): the
+    pivot is `ground_lookat_pivot`, not the viewport's mesh-centre pivot —
+    because that is the pivot `AtlasAddPatchView` orbits when it consumes an
+    `exact_view_override`. The `exact_view` output is therefore EXACT by
+    construction: wire it straight into patch re-entry and the filled end
+    frame projects back from the identical pose, no 'Bake Repair Frame'
+    click required. Pan moves swivel in place and have no orbit-delta
+    representation — they emit the zero delta and say so in the report.
+    """
+
+    RETURN_TYPES = ("ATLAS_CAMERA_PATH", "STRING", "STRING")
+    RETURN_NAMES = ("camera_path", "exact_view", "report")
+    FUNCTION = "build"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        from atlas_camera.core.camera_path import PRESET_MOVES
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE", {}),
+                "move": (list(PRESET_MOVES), {
+                    "default": "arc_left",
+                    "tooltip": "Same moves as the viewport buttons. Values "
+                               "are append-only (they serialize into saved "
+                               "workflows)."}),
+            },
+            "optional": {
+                "angle_deg": ("FLOAT", {
+                    "default": 15.0, "min": 1.0, "max": 90.0, "step": 0.5,
+                    "tooltip": "Orbit/arc/pan angle. 15 matches the viewport "
+                               "buttons."}),
+                "frames": ("INT", {"default": 100, "min": 2, "max": 1000}),
+                "easing": (["ease_in_out", "ease_in", "ease_out", "linear"], {
+                    "default": "ease_in_out"}),
+            },
+        }
+
+    def build(self, solve, move, angle_deg=15.0, frames=100,
+              easing="ease_in_out"):
+        import math
+
+        from atlas_camera.core.camera_path import build_preset_camera_path
+
+        fov_deg = None
+        intr = solve.camera.intrinsics
+        if getattr(intr, "fy_px", None) and getattr(intr, "image_height", None):
+            fov_deg = math.degrees(2.0 * math.atan(
+                float(intr.image_height) / (2.0 * float(intr.fy_px))))
+        path, delta = build_preset_camera_path(
+            solve.camera.extrinsics, move, angle_deg=float(angle_deg),
+            frame_count=int(frames), easing=easing, fov_deg=fov_deg)
+        exact = (f"azimuth_deg={delta[0]:.4f} elevation_deg={delta[1]:.4f} "
+                 f"distance_scale={delta[2]:.4f}")
+        report = (f"AtlasCameraMovePreset: {move} — {len(path.keyframes)} "
+                  f"keyframes, {path.frame_count} frames @ {path.fps:g} fps, "
+                  f"angle {angle_deg:g} deg.\nexact_view '{exact}' reproduces "
+                  f"the END pose via AtlasAddPatchView (ground-ray pivot — "
+                  f"deliberately not the viewport's mesh-centre pivot).")
+        if move.startswith("pan_"):
+            report += ("\nNOTE: pan swivels in place — no orbit delta can "
+                       "express it, so exact_view is the ZERO delta and "
+                       "patch re-entry lands at the recovered pose.")
+        return (path, exact, report)

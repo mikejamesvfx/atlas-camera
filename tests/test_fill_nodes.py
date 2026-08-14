@@ -260,3 +260,65 @@ def test_composite_crop_refuses_a_rect_off_the_frame():
     got = (out[0].numpy() * 255).astype(np.uint8)
     assert np.array_equal(got, frame)
     assert "does not fit" in report
+
+
+# ------------------------------------------------------ move preset + auto ROI
+
+def test_move_preset_exact_view_round_trips_through_the_patch_parser():
+    """The whole point of the node: its exact_view string, fed through the
+    SAME parser + orbit reconstruction AtlasAddPatchView uses, must land on
+    the path's final pose exactly — no baked frame required."""
+    from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
+    from atlas_camera.comfy.view_prompts import _parse_exact_view
+    from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+    from atlas_camera.core.camera_path import sample_camera_path
+
+    solve = _wall_solve_with_region()
+    path, exact, report = AtlasCameraMovePreset().build(solve, "arc_left")
+    delta = _parse_exact_view(exact)
+    assert delta is not None
+    end = sample_camera_path(path)[-1].camera_position
+    extr = solve.camera.extrinsics
+    rec = orbit_camera(extr, ground_lookat_pivot(extr), d_azimuth_deg=delta[0],
+                       d_elevation_deg=delta[1],
+                       distance_scale=delta[2]).camera_position
+    assert max(abs(a - b) for a, b in zip(end, rec)) < 1e-4   # 4-decimal string
+    assert len(path.keyframes) == 3 and path.frame_count == 100
+    assert "ground-ray pivot" in report
+
+
+def test_move_preset_pan_emits_the_zero_delta_and_warns():
+    from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
+
+    solve = _wall_solve_with_region()
+    path, exact, report = AtlasCameraMovePreset().build(solve, "pan_left")
+    assert exact == ("azimuth_deg=0.0000 elevation_deg=0.0000 "
+                     "distance_scale=1.0000")
+    assert "pan swivels in place" in report
+    assert len(path.keyframes) == 2
+
+
+def test_crop_roi_auto_largest_ranks_holes_by_area():
+    """Orbit the wall solve so real disocclusion opens, then let auto mode
+    pick clusters: rank 1 exists, an absurd rank no-ops, and artist mode on
+    the same inputs still requires drawn regions (regression pin)."""
+    from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset, AtlasCropROI
+
+    solve = _wall_solve_with_region()
+    source = np.full((96, 128, 3), 120, np.uint8)
+    path, _exact, _r = AtlasCameraMovePreset().build(solve, "arc_left",
+                                                     angle_deg=35.0)
+    guide, mask, gw, gh, crop, report = AtlasCropROI().crop(
+        solve, _img(source), camera_path=path, roi_slot=1, snap=16,
+        roi_source="auto_largest", min_area_px=16)
+    assert not crop["empty"], report
+    assert "auto rank 1/" in report
+    assert float(mask.sum()) > 0.0
+    *_rest, crop9, report9 = AtlasCropROI().crop(
+        solve, _img(source), camera_path=path, roi_slot=3, snap=16,
+        roi_source="auto_largest", min_area_px=1 << 19)
+    assert crop9["empty"] and "no-op" in report9
+    # artist default unchanged: slot beyond drawn regions still no-ops
+    *_a, crop_a, report_a = AtlasCropROI().crop(
+        solve, _img(source), camera_path=path, roi_slot=2)
+    assert crop_a["empty"] and "no artist region" in report_a
