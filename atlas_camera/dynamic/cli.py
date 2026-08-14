@@ -602,18 +602,31 @@ def cmd_hole_crop_fill(args) -> int:
             args.snap, image_width=plate_w, image_height=plate_h)
         # A crop RENDERS at plate resolution for free, but it must also be
         # GENERATED, and the model's raster budget is fixed (~0.6 MP/frame on
-        # LTX-2.5). A cluster larger than that cannot be filled at 1:1, so it
-        # is declined by name rather than quietly downscaled — downscaling is
-        # exactly the full-frame failure this pipeline exists to avoid.
+        # LTX-2.5). A cluster larger than that cannot be filled at 1:1 in one
+        # pass, so by default it is declined by name rather than quietly
+        # downscaled — downscaling is exactly the full-frame failure this
+        # pipeline exists to avoid. `--oversize tiled` keeps it instead:
+        # LTXVTiledSampler fills at NATIVE raster in spatial tiles (measured
+        # 2026-08-14: a 1088x4928 strip with a 26% hole passed the seam gate
+        # at 1.38 with registration intact; the fill runs soft) — it needs a
+        # tiled template (--template atlas_ltx25_inpaint_tiled_v2v.json class)
+        # and requires the pack's STGGuiderAdvanced, not CFGGuider.
         limit = int(args.max_roi_long_edge)
         if limit and max(plate_roi.width, plate_roi.height) > limit:
-            lores.dropped.append(
-                {**plate_roi.to_dict(),
-                 "area_px": plate_roi.area_px,
-                 "reason": f"long edge {max(plate_roi.width, plate_roi.height)}"
-                           f"px > max_roi_long_edge {limit} — a native 1:1 "
-                           f"fill would need the generator to downscale"})
-            continue
+            if args.oversize == "tiled":
+                print(f"  oversize cluster {plate_roi.width}x"
+                      f"{plate_roi.height} kept for TILED generation "
+                      f"(needs a tiled --template)")
+            else:
+                lores.dropped.append(
+                    {**plate_roi.to_dict(),
+                     "area_px": plate_roi.area_px,
+                     "reason": f"long edge "
+                               f"{max(plate_roi.width, plate_roi.height)}px "
+                               f"> max_roi_long_edge {limit} — a native 1:1 "
+                               f"fill would need the generator to downscale "
+                               f"(--oversize tiled to fill it anyway)"})
+                continue
         rois.append(plate_roi)
     # Budget last: the largest fillable clusters win, the rest are logged.
     rois.sort(key=lambda r: r.area_px, reverse=True)
@@ -709,10 +722,14 @@ def cmd_hole_crop_fill(args) -> int:
         # distant crop from collapsing below what the model can condition on.
         gen_w, gen_h, scale = roi.width, roi.height, 1.0
         depth_m = crop_context_depth(frames)
-        if args.depth_scale_ref > 0 and depth_m > 0:
+        # A tiled oversize ROI generates at NATIVE raster by definition — the
+        # tiles are what fit the model budget, so no depth scaling applies.
+        tiled_roi = (args.oversize == "tiled" and args.max_roi_long_edge > 0
+                     and max(roi.width, roi.height) > args.max_roi_long_edge)
+        if not tiled_roi and args.depth_scale_ref > 0 and depth_m > 0:
             scale = min(1.0, max(args.min_gen_scale,
                                  args.depth_scale_ref / depth_m))
-        if args.max_gen_long_edge > 0:
+        if not tiled_roi and args.max_gen_long_edge > 0:
             longest = max(roi.width, roi.height) * scale
             if longest > args.max_gen_long_edge:
                 scale *= args.max_gen_long_edge / longest
@@ -815,6 +832,7 @@ def _write_patch_view(args, out_dir, solve, source, view, rois, meshes,
     from atlas_camera.core.camera_crop import (
         composite_crops,
         match_reference_colour,
+        membrane_blend,
         neutralize_fill_cast,
     )
     from atlas_camera.dynamic.occlusion_fill import (
@@ -839,12 +857,16 @@ def _write_patch_view(args, out_dir, solve, source, view, rois, meshes,
             fill = np.asarray(Image.fromarray(fill).resize(
                 (roi.width, roi.height), Image.LANCZOS))
         hole = mask > 127
-        # The plate is the reference for BOTH corrections: the generator
-        # returns the whole crop re-toned, and its cast can only be measured
-        # against real pixels.
+        # The plate is the reference for ALL THREE corrections: the generator
+        # returns the whole crop re-toned (colour pair), and its content does
+        # not continue the plate's at the rim (membrane). Measured 2026-08-14:
+        # no generation-side arm moved the rim gradient below 2x the plate's
+        # own statistics; the membrane took it to ~1.0 with fill texture
+        # preserved.
         fill = match_reference_colour(fill, guide, hole)
         fill = neutralize_fill_cast(fill, hole, reference=guide,
                                     band_px=args.cast_band_px)
+        fill = membrane_blend(fill, guide, hole)
         crops.append(fill)
         masks.append(hole)
         kept.append(roi)
@@ -1052,6 +1074,11 @@ def main(argv=None) -> int:
     hcf.add_argument("--max-gen-long-edge", type=int, default=0,
                      help="hard cap on the GENERATION raster's long edge "
                           "(the model's budget, not the renderer's); 0 = off")
+    hcf.add_argument("--oversize", default="decline",
+                     choices=["decline", "tiled"],
+                     help="what to do with clusters past --max-roi-long-edge: "
+                          "decline by name (default) or keep them for tiled "
+                          "native generation (pass a tiled template)")
     hcf.add_argument("--max-roi-long-edge", type=int, default=0,
                      help="decline clusters whose plate-resolution ROI is "
                           "longer than this (0 = off). The generator's raster "
