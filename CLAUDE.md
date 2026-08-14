@@ -153,7 +153,7 @@ atlas_camera.exporters  � Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  � Atlas JSON, USD camera, and Record3D (.r3d ARKit
                           capture) loaders
 
-atlas_camera.comfy      � ComfyUI node library (93 standard + 7 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
+atlas_camera.comfy      � ComfyUI node library (93 standard + 13 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
 
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
 
@@ -201,7 +201,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ## ComfyUI integration — see docs/NODE_CATALOG.md
 
-The full node catalog (93 standard + 7 experimental + 2 legacy + 2 iOS = 104
+The full node catalog (93 standard + 13 experimental + 2 legacy + 2 iOS = 110
 registered), `comfy/` module layout,
 setup/symlink instructions, double-import guard, `atlas_blockout.js` frontend
 reference, `/atlas/camera_data` endpoint, and the example-workflow catalog all
@@ -214,7 +214,7 @@ Quick facts that must never drift (details in the catalog):
   code. `tests/test_facade_surface.py` pins all facade names.
 - Registered node keys + display names are a saved-workflow contract
   (`tests/test_comfy_node_registry.py` pins the surface; currently 93 standard
-  + 7 experimental + 2 legacy + 2 iOS).
+  + 13 experimental + 2 legacy + 2 iOS).
 - `comfy/__init__.py` loads twice at startup — route registration sits behind
   a double-import guard; keep it there.
 - Shipping example workflows are pinned by `tests/test_example_workflows.py`
@@ -432,3 +432,25 @@ Rules:
 
 - `.graphifyignore` keeps the vendored `atlas-three.bundle.js` out of the graph (analysis only — the file still ships and the viewport still imports it; it was a 947-edge god node of minified internals). When an ignore rule newly excludes a file that still exists, `graphify update` fail-closes and keeps the old nodes — purge with `graphify update . --force`.
 
+
+
+## gstack
+
+
+
+Use the `/browse` skill from gstack for ALL web browsing. Never use `mcp__claude-in-chrome__*` tools.
+
+
+
+Available gstack skills:
+
+`/office-hours`, `/plan-ceo-review`, `/plan-eng-review`, `/plan-design-review`, `/design-consultation`,
+`/review`, `/ship`, `/land-and-deploy`, `/canary`, `/benchmark`, `/browse`, `/qa`, `/qa-only`,
+`/design-review`, `/setup-browser-cookies`, `/setup-deploy`, `/retro`, `/investigate`,
+`/document-release`, `/codex`, `/cso`, `/autoplan`, `/careful`, `/freeze`, `/guard`, `/unfreeze`,
+`/gstack-upgrade`
+
+
+
+Install: `git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup`
+(Windows install uses file copies — re-run `./setup` after every `git pull`.)
