@@ -761,9 +761,16 @@ def cmd_hole_crop_fill(args) -> int:
         if frames[worst][2] <= 0.0:
             # An artist-drawn region with no tear in it is a mis-click, not a
             # no-op to run anyway: generating there spends a fill re-inventing
-            # pixels the plate already has, and the budget is 2-3.
+            # pixels the plate already has, and the budget is 2-3. Skip
+            # GENERATION for it entirely — both engines would only re-render
+            # real pixels, and the empty mask crashed the inter-pass gate
+            # before this guard existed.
             print("  WARNING: no disocclusion inside this region — nothing to "
-                  "repair here; the fill would only re-render real pixels")
+                  "repair here; skipping generation for this ROI")
+            report["rois"][index]["engine"] = "skipped-empty"
+            (out_dir / "hole_crop_report.json").write_text(
+                json.dumps(report, indent=2), encoding="utf-8")
+            continue
         report["rois"][index].update(
             {"context_depth_m": depth_m, "gen_width": gen_w,
              "gen_height": gen_h, "gen_scale": gen_w / float(roi.width),
@@ -772,6 +779,48 @@ def cmd_hole_crop_fill(args) -> int:
             json.dumps(report, indent=2), encoding="utf-8")
         if generator is None:
             continue
+        # ENGINE ROUTING. An artist-selected ROI is the artist saying "this
+        # hole matters" — structure must survive scrutiny there, and the
+        # measured winner for structure-critical fills is the two-pass
+        # WAN(structure) -> gate -> SDXL(texture) recipe. Automatic slivers
+        # keep the one-pass LTX default. The inter-pass gate falls back to
+        # one-pass rather than letting a texture model launder a broken
+        # structure into confident fiction.
+        route_two_pass = (args.engine == "two-pass" or
+                          (args.engine == "auto" and artist_rois is not None))
+        if route_two_pass and len(frames) == 1:
+            from atlas_camera.dynamic.two_pass import run_two_pass_fill
+
+            guide0, mask0 = frames[0][0], frames[0][1]
+            tp = run_two_pass_fill(
+                lambda: resolve_generator("ltx"), roi_dir / "two_pass",
+                guide0, mask0,
+                wan_template=args.wan_template,
+                sdxl_template=args.sdxl_template,
+                prompt=args.prompt, seed=args.seed or 7,
+                host=args.host or "127.0.0.1:8188")
+            report["rois"][index]["engine"] = "two-pass"
+            report["rois"][index]["two_pass_status"] = tp.get("status")
+            if tp.get("gate"):
+                report["rois"][index]["interpass_gate"] = tp["gate"]
+            if tp.get("status") == "ok":
+                gen_dir = roi_dir / "generated"
+                gen_dir.mkdir(exist_ok=True)
+                Image.fromarray(tp["fill"]).save(gen_dir / "frame_0000.png")
+                print(f"  two-pass ok (gate g2={tp['gate']['g2']:.3f}, "
+                      f"shift={tp['gate']['shift_px']:.1f}px)")
+                (out_dir / "hole_crop_report.json").write_text(
+                    json.dumps(report, indent=2), encoding="utf-8")
+                continue
+            reasons = (tp.get("gate") or {}).get("reasons") or \
+                tp.get("problems") or [tp.get("status")]
+            print(f"  two-pass fell back to one-pass LTX: {reasons}")
+            report["rois"][index]["engine"] = "ltx-fallback"
+            (out_dir / "hole_crop_report.json").write_text(
+                json.dumps(report, indent=2), encoding="utf-8")
+        elif route_two_pass:
+            print("  two-pass needs a single-frame run (--frames 1); "
+                  "using one-pass LTX for this multi-frame request")
         # A one-frame clip at 24 fps lasts 1/24 s and its silent AAC track
         # rounds to ZERO samples, which kills the graph in VAEEncodeAudio
         # ("cannot reshape tensor of 0 elements") — LTX's AV graphs require
@@ -1058,6 +1107,23 @@ def main(argv=None) -> int:
     hcf.add_argument("--ignore-artist-rois", action="store_true",
                      help="ignore fill regions drawn in the Atlas viewport "
                           "and select clusters automatically instead")
+    hcf.add_argument("--engine", default="auto",
+                     choices=["auto", "ltx", "two-pass"],
+                     help="fill engine: auto routes ARTIST-selected ROIs "
+                          "through the two-pass WAN(structure)->gate->"
+                          "SDXL(texture) recipe and automatic slivers through "
+                          "one-pass LTX; a failed inter-pass gate always "
+                          "falls back to one-pass")
+    hcf.add_argument("--wan-template",
+                     default=r"C:\Users\miike\comfyui-agent-kit-data"
+                             r"\workflow_templates\atlas_wan21_vace_fill.json",
+                     help="pass-1 structure template (WanVaceToVideo graph)")
+    hcf.add_argument("--sdxl-template",
+                     default=r"C:\Users\miike\comfyui-agent-kit-data"
+                             r"\workflow_templates"
+                             r"\atlas_sdxl_retexture_fill.json",
+                     help="pass-2 texture template (SetLatentNoiseMask "
+                          "img2img graph)")
     hcf.add_argument("--feather-px", type=int, default=6,
                      help="composite blend width, ramped OUTSIDE the hole "
                           "(inward would expose the inpaint sentinel)")
