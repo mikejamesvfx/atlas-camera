@@ -107,3 +107,27 @@ def test_membrane_composite_empty_hole_returns_reference():
     got = (out[0].numpy() * 255).astype(np.uint8)
     assert np.array_equal(got, ref)
     assert "empty hole" in report
+
+
+def test_path_frame_index_computes_window_and_last():
+    from atlas_camera.comfy.nodes_fill import AtlasPathFrameIndex
+    from atlas_camera.core.camera_path import AtlasCameraPath
+
+    # no path: solved-pose single frame
+    count, last, start, report = AtlasPathFrameIndex().index(None)
+    assert (count, last, start) == (1, 0, 0)
+    assert "solved pose" in report
+
+    # a real 30-frame path must agree with the guide's sampler
+    from atlas_camera.core.camera_path import sample_camera_path
+    path = AtlasCameraPath(frame_count=30, keyframes=[])
+    n = len(sample_camera_path(path))
+    count, last, start, report = AtlasPathFrameIndex().index(path, window=5)
+    assert count == max(n, 1) or (n == 0 and count == 1)
+    if n:
+        assert last == n - 1 and start == max(0, n - 5)
+
+    # non-4k+1 window is warned, not refused
+    if n:
+        *_ignore, report = AtlasPathFrameIndex().index(path, window=6)
+        assert "4k+1" in report

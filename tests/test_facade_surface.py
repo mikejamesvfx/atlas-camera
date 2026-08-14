@@ -59,6 +59,7 @@ FACADE_PUBLIC = {
     "AtlasLoadDynamicPlate",
     "AtlasInterpassGate",
     "AtlasMembraneComposite",
+    "AtlasPathFrameIndex",
     "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
     "AtlasLoadPlate", "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON",

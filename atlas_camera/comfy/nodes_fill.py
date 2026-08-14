@@ -64,6 +64,62 @@ def _fit(np, rgb, height, width):
                                                      PILImage.LANCZOS))
 
 
+class AtlasPathFrameIndex:
+    """🔢 Frame indices for a camera path — computed, never hand-typed.
+
+    The in-graph two-pass fill selects "the last N frames of the move" and
+    "the move's final frame" with ImageFromBatch nodes. Typing those indices
+    is a hand-sync against the path's frame count, and it failed on first
+    contact: a 30-frame arc rendered with the indices still set for a 5-frame
+    default, so the "repair frame" was frame 4 of the move's beginning.
+
+    Uses the SAME sampler as AtlasDisocclusionGuide (`sample_camera_path`),
+    so the count always agrees with the guide batch this node indexes into.
+    """
+
+    RETURN_TYPES = ("INT", "INT", "INT", "STRING")
+    RETURN_NAMES = ("frame_count", "last_index", "window_start", "report")
+    FUNCTION = "index"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "camera_path": ("ATLAS_CAMERA_PATH", {
+                    "tooltip": "The move (the viewport's camera_path "
+                               "output)."}),
+            },
+            "optional": {
+                "window": ("INT", {
+                    "default": 5, "min": 1, "max": 97,
+                    "tooltip": "Trailing window length (the WAN pass wants "
+                               "4k+1: 5, 9, ...). window_start = "
+                               "frame_count - window, clamped to 0."}),
+            },
+        }
+
+    def index(self, camera_path, window=5):
+        from atlas_camera.core.camera_path import sample_camera_path
+
+        sampled = sample_camera_path(camera_path) if camera_path is not None \
+            else []
+        count = len(sampled)
+        if count == 0:
+            return (1, 0, 0,
+                    "AtlasPathFrameIndex: no path (or an empty one) — the "
+                    "guide renders 1 frame at the solved pose; indices 0.")
+        last = count - 1
+        start = max(0, count - int(window))
+        report = (f"AtlasPathFrameIndex: {count} frames — window "
+                  f"[{start}..{last}] (len {min(int(window), count)}), "
+                  f"final frame {last}.")
+        if int(window) % 4 != 1:
+            report += (f" NOTE: window {int(window)} is not 4k+1 — WAN VACE "
+                       f"wants 5, 9, 13, ...")
+        return (count, last, start, report)
+
+
 class AtlasInterpassGate:
     """🚦 Score a structure fill; pass the GUIDE through on failure.
 

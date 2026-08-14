@@ -29,7 +29,8 @@ from atlas_camera.comfy.nodes_completion import (
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_fill import (AtlasInterpassGate,
-                                           AtlasMembraneComposite)
+                                           AtlasMembraneComposite,
+                                           AtlasPathFrameIndex)
 from atlas_camera.comfy.nodes_project import AtlasProject
 from atlas_camera.comfy.nodes_multiview import (
     AtlasMultiViewSolve,
@@ -376,6 +377,7 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasLoadDynamicPlate": AtlasLoadDynamicPlate,
     "AtlasInterpassGate": AtlasInterpassGate,
     "AtlasMembraneComposite": AtlasMembraneComposite,
+    "AtlasPathFrameIndex": AtlasPathFrameIndex,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -388,6 +390,7 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasLoadDynamicPlate": "Atlas Load Dynamic Plate 🌊🔬 (experimental)",
     "AtlasInterpassGate": "Atlas Interpass Gate 🚦🔬 (experimental)",
     "AtlasMembraneComposite": "Atlas Membrane Composite 🩹🔬 (experimental)",
+    "AtlasPathFrameIndex": "Atlas Path Frame Index 🔢🔬 (experimental)",
 }
 
 
@@ -552,7 +555,7 @@ _MENU_FOLDERS = {
         "AtlasImportAnglePatch", "AtlasMaskedSurfaceReconstruct",
         "AtlasRefineOcclusionSeams", "AtlasLiveMeshRepair", "AtlasGroundMask",
         "AtlasLoadRecord3D", "AtlasStreamRecord3D", "AtlasLoadDynamicPlate",
-        "AtlasInterpassGate", "AtlasMembraneComposite",
+        "AtlasInterpassGate", "AtlasMembraneComposite", "AtlasPathFrameIndex",
     ),
 }
 

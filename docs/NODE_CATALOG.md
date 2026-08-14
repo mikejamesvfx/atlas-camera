@@ -14,9 +14,9 @@
 
 
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 106
+The former 9,110-line `nodes.py` was split into responsibility modules; the 107
 
-node classes (93 standard + 9 experimental + 2 legacy + 2 iOS) now live in the
+node classes (93 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -234,7 +234,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (93 standard + 9 experimental + 2 legacy + 2 iOS = 106 registered)
+### Node catalog (93 standard + 10 experimental + 2 legacy + 2 iOS = 107 registered)
 
 
 
@@ -288,6 +288,7 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 | `AtlasExtractAnglePatch` 🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | solve (ATLAS_SOLVE), plate_image (IMAGE), matte (MASK), patch_exact (STRING), output_dir (STRING), ±depth, ±normal, ±name, ±padding_px, ±colorspace | patch_image (IMAGE), patch_matte (MASK), manifest_path (STRING), patch_package (ATLAS_PATCH) | Photoshop hand-off (out). Writes a Photoshop-friendly patch package from an extracted viewport angle: the plate, matte, and a manifest for one `patch_exact` view, so a painter can retouch that angle in a DCC and bring it back via `AtlasImportAnglePatch`. `patch_package` carries the pose for the round trip |
 
 | `AtlasImportAnglePatch` 🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | patch_package (ATLAS_PATCH), ±edited_image, ±edited_matte | patch_image (IMAGE), patch_matte (MASK), patch_exact (STRING), patch_package (ATLAS_PATCH) | Photoshop hand-off (in). Loads an edited angle patch back from the DCC, pastes it into the FULL frame, and re-exposes the exact pose (`patch_exact`) for reprojection: the return leg of `AtlasExtractAnglePatch` |
+| `AtlasPathFrameIndex` 🔢🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | camera_path (ATLAS_CAMERA_PATH), ±window | frame_count (INT), last_index (INT), window_start (INT), report (STRING) | Computed frame indices for a camera path — uses the SAME `sample_camera_path` as AtlasDisocclusionGuide so the count always agrees with the guide batch. Feeds ImageFromBatch batch_index inputs in the in-graph two-pass so 'last N frames' and 'final frame' are never hand-typed (a 30-frame arc against hand-typed 5-frame indices repaired frame 4 — found live). Warns when window is not 4k+1. No path -> 1/0/0 |
 | `AtlasInterpassGate` 🚦🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | fill (IMAGE), guide (IMAGE), mask (MASK), ±max_shift_px | fill (IMAGE), ok (BOOLEAN), report (STRING) | The two-pass engine's inter-pass gate as a node: scores a structure fill BEFORE it is re-textured (G2 vs the edge-extend smear, global phase-correlation shift over the unmasked area, sentinel-bleed fraction — each check encodes a live failure, docs/dev/occlusion_arms_2026-08-14). Self-fallback: on FAIL the untouched guide passes through, so a downstream texture pass re-touches nothing — a texture model must never launder a broken structure into confident fiction. Low-raster fills are Lanczos-fit to the guide before scoring |
 | `AtlasMembraneComposite` 🩹🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | fill (IMAGE), reference (IMAGE), mask (MASK), ±cast_band_px, ±colour_correct | image (IMAGE), report (STRING) | The CLI engine's full correction stack in one node: plate-referenced colour pair (gain/offset match + chroma-only cast neutralisation from a ring of REAL pixels), the harmonic offset membrane (rim gradient 2.2x -> ~1.0 of the plate's own statistics, measured after every generation-side seam fix failed), then the masked composite of hole pixels into the reference. Empty holes return the reference unchanged |
 | `AtlasLoadDynamicPlate` 🌊🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | solve (ATLAS_SOLVE), package_dir (STRING), ±priority, ±fps_override | ATLAS_SOLVE, report (STRING) | Loads a Dynamic Plates artifact package (`python -m atlas_camera.dynamic`, docs/DYNAMIC_PLATES.md) and appends its receiver plane + temporal water projection as a `ProjectionSource`: the plate's FIXED crop camera stays the projector while the viewport camera moves. Generated frames stream to the frontend per-frame over `/atlas/dynamic_plate/{key}/{index}` (opaque registry token, never a raw path) and play on the render ticker; with no generated frames yet it projects the still crop. Content-fingerprints the package manifest so edits re-execute (gate doctrine) |
