@@ -142,3 +142,42 @@ def test_gather_scene_meshes_uv_variant_and_wrapper_parity():
     legacy = _mesh_arrays(solve)
     assert len(legacy) == 1 and legacy[0][0] == "m"
     assert np.array_equal(legacy[0][1], v) and np.array_equal(legacy[0][2], f)
+
+
+def test_gather_scene_meshes_honours_a_per_primitive_texture_override():
+    """A fill-derived patch mesh lives in the PRIMARY scene but carries its
+    own generated texture. Without metadata["texture"] winning over the
+    container label, the patch silently rendered with the primary plate
+    (found live by the G4 driver, 2026-08-14)."""
+    from atlas_camera.core.schema import (
+        AtlasProjectionScene, AtlasProxyPrimitive, AtlasSolve, LatentCamera,
+        AtlasIntrinsics,
+    )
+    verts = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    base = {"vertices": verts, "faces": [0, 1, 2],
+            "uvs": [0.0, 0.0, 1.0, 0.0, 0.0, 1.0]}
+    plain = AtlasProxyPrimitive(name="scene", primitive_type="mesh",
+                                metadata=dict(base))
+    patch = AtlasProxyPrimitive(name="patch", primitive_type="mesh",
+                                metadata={**base, "texture": "fill_patch"})
+    solve = AtlasSolve(camera=LatentCamera(
+        intrinsics=AtlasIntrinsics(image_width=8, image_height=8)))
+    solve.projection_scene = AtlasProjectionScene(
+        proxy_geometry=[plain, patch])
+    labels = {m[0]: m[4] for m in gather_scene_meshes(solve, with_uvs=True)}
+    assert labels["scene"] == "primary"        # container label untouched
+    assert labels["patch"] == "fill_patch"     # override wins
+    # and the override renders with ITS texture, not the primary's
+    red = np.zeros((8, 8, 3)); red[..., 0] = 1.0
+    green = np.zeros((8, 8, 3)); green[..., 1] = 1.0
+    meshes = [m for m in gather_scene_meshes(solve, with_uvs=True)
+              if m[0] == "patch"]
+    quad = _quad_mesh(z=-5.0)
+    patch_mesh = ("patch", quad[1], quad[2], quad[3], "fill_patch", {})
+    rgb, alpha, _ = render_scene([patch_mesh],
+                                 {"primary": red, "fill_patch": green},
+                                 _view(), FX, FY, CX, CY, W, H)
+    lit = alpha > 0
+    assert lit.any()
+    assert float(rgb[lit][:, 1].mean()) > 0.9  # green (its own texture)
+    assert float(rgb[lit][:, 0].mean()) < 0.1  # not the primary red

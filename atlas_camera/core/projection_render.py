@@ -219,6 +219,12 @@ def gather_scene_meshes(solve: Any, *, with_uvs: bool = False) -> list:
     ``with_uvs=True``, ``(label, vertices, faces, uvs Nx2 | None, texture_label,
     metadata)`` where ``texture_label`` is ``"primary"`` for the primary
     scene's meshes and the source's name for patch/clean-plate layers.
+
+    A primitive may override its container's texture with
+    ``metadata["texture"]`` — a fill-derived patch mesh lives in the primary
+    scene but carries its own generated texture, and without the override it
+    silently rendered with the primary plate (found 2026-08-14 by the G4
+    driver: harmless for hole-fraction alpha, wrong for every RGB render).
     """
     np = _require_numpy()
     out = []
@@ -245,7 +251,7 @@ def gather_scene_meshes(solve: Any, *, with_uvs: bool = False) -> list:
                 if with_uvs:
                     out.append((label, verts, tris,
                                 _projective_uvs(np, verts, camera),
-                                tex_label, meta))
+                                str(meta.get("texture") or tex_label), meta))
                 else:
                     out.append((label, verts, tris, meta))
                 continue
@@ -261,7 +267,8 @@ def gather_scene_meshes(solve: Any, *, with_uvs: bool = False) -> list:
                 raw_uv = meta.get("uvs") or []
                 uvs = (np.asarray(raw_uv, dtype=np.float64).reshape(-1, 2)
                        if len(raw_uv) >= 2 * len(verts) else None)
-                out.append((label, verts, tris, uvs, tex_label, meta))
+                out.append((label, verts, tris, uvs,
+                            str(meta.get("texture") or tex_label), meta))
             else:
                 out.append((label, verts, tris, meta))
 
