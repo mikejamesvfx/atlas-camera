@@ -223,7 +223,7 @@ def test_crop_roi_unused_slot_is_an_empty_no_op():
     assert crop["empty"] and "no-op" in report
     assert float(mask.sum()) == 0.0
     frame = _plate()
-    out, preport = AtlasCompositeCrop().paste(_img(frame), guide, crop)
+    out, preport, _pm = AtlasCompositeCrop().paste(_img(frame), guide, crop)
     got = (out[0].numpy() * 255).astype(np.uint8)
     assert np.array_equal(got, frame)
     assert "unchanged" in preport
@@ -236,7 +236,7 @@ def test_composite_crop_pastes_exactly_and_resizes_a_capped_fill():
     crop = {"empty": False, "x": 16, "y": 8, "width": 32, "height": 24,
             "gen_w": 16, "gen_h": 16}
     fill = np.full((24, 32, 3), 250, np.uint8)
-    out, report = AtlasCompositeCrop().paste(_img(frame), _img(fill), crop)
+    out, report, pm = AtlasCompositeCrop().paste(_img(frame), _img(fill), crop)
     got = (out[0].numpy() * 255).round().astype(np.uint8)
     assert np.array_equal(got[8:32, 16:48], fill)
     # outside the rect: untouched
@@ -244,7 +244,7 @@ def test_composite_crop_pastes_exactly_and_resizes_a_capped_fill():
     assert np.array_equal(untouched, frame)
     # a low-raster (capped) fill is resized to the native rect
     small = np.full((16, 16, 3), 250, np.uint8)
-    out2, _ = AtlasCompositeCrop().paste(_img(frame), _img(small), crop)
+    out2, *_rest2 = AtlasCompositeCrop().paste(_img(frame), _img(small), crop)
     got2 = (out2[0].numpy() * 255).round().astype(np.uint8)
     assert np.array_equal(got2[8:32, 16:48], fill)
 
@@ -255,8 +255,9 @@ def test_composite_crop_refuses_a_rect_off_the_frame():
     frame = _plate()
     crop = {"empty": False, "x": 90, "y": 90, "width": 32, "height": 24,
             "gen_w": 32, "gen_h": 24}
-    out, report = AtlasCompositeCrop().paste(
+    out, report, pm = AtlasCompositeCrop().paste(
         _img(frame), _img(np.zeros((24, 32, 3), np.uint8)), crop)
+    assert float(pm.sum()) == 0.0
     got = (out[0].numpy() * 255).astype(np.uint8)
     assert np.array_equal(got, frame)
     assert "does not fit" in report
@@ -322,3 +323,107 @@ def test_crop_roi_auto_largest_ranks_holes_by_area():
     *_a, crop_a, report_a = AtlasCropROI().crop(
         solve, _img(source), camera_path=path, roi_slot=2)
     assert crop_a["empty"] and "no artist region" in report_a
+
+
+def test_auto_mode_never_ranks_sky_class_holes():
+    """THE sky failsafe. The wall fixture's surround (no geometry — the sky
+    class) is a hole from the SOLVED pose too, so move-revealed subtraction
+    must keep it out of the ranking entirely: without the failsafe it would
+    dwarf every real disocclusion cluster and rank first (the measured G5
+    failure). What survives must be revealed by the move."""
+    import numpy as np2
+
+    from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
+    from atlas_camera.dynamic.occlusion_fill import survey_hole_rois
+    from atlas_camera.core.camera_path import sample_camera_path
+
+    solve = _wall_solve_with_region()
+    source = np2.full((96, 128, 3), 120, np2.uint8)
+    path, _e, _r = AtlasCameraMovePreset().build(solve, "arc_left",
+                                                 angle_deg=35.0)
+    view = sample_camera_path(path)[-1].camera_view_matrix
+
+    naive, *_n = survey_hole_rois(solve, source, [view],
+                                  survey_resolution=128, min_area_px=16,
+                                  snap=8)
+    safe, *_s = survey_hole_rois(solve, source, [view],
+                                 survey_resolution=128, min_area_px=16,
+                                 snap=8, move_revealed_only=True)
+    assert naive, "fixture must produce clusters at all"
+    # the never-covered surround dominates the naive ranking
+    assert naive[0].area_px > sum(r.area_px for r in safe),         "naive rank 1 should be the huge never-covered region"
+    # everything the failsafe kept is genuinely move-revealed: none of it was
+    # a hole at the solved pose
+    from atlas_camera.dynamic.occlusion_fill import (
+        render_disocclusion_sequence,
+    )
+    base_mask = render_disocclusion_sequence(
+        solve, source, [solve.camera.extrinsics.camera_view_matrix],
+        resolution=128, hole_dilate_px=0)[0][1] > 127
+    end_mask = render_disocclusion_sequence(
+        solve, source, [view], resolution=128, hole_dilate_px=0)[0][1] > 127
+    revealed = end_mask & ~base_mask
+    for roi in safe:
+        # survey res == plate res here (128), so coords map 1:1
+        window = revealed[roi.y:roi.y + roi.height, roi.x:roi.x + roi.width]
+        assert window.any(), "kept cluster contains no move-revealed pixels"
+
+
+def test_auto_mode_exclude_mask_removes_a_region_from_ranking():
+    import numpy as np2
+
+    from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset, AtlasCropROI
+
+    solve = _wall_solve_with_region()
+    source = np2.full((96, 128, 3), 120, np2.uint8)
+    path, _e, _r = AtlasCameraMovePreset().build(solve, "arc_left",
+                                                 angle_deg=35.0)
+    # find rank 1 normally, then exclude exactly that rect — rank 1 must move
+    g, m, gw, gh, crop1, rep1 = AtlasCropROI().crop(
+        solve, _img(source), camera_path=path, roi_slot=1, snap=16,
+        roi_source="auto_largest", min_area_px=16)
+    assert not crop1["empty"], rep1
+    ex = np2.zeros((96, 128), np2.float32)
+    ex[crop1["y"]:crop1["y"] + crop1["height"],
+       crop1["x"]:crop1["x"] + crop1["width"]] = 1.0
+    *_o, crop2, rep2 = AtlasCropROI().crop(
+        solve, _img(source), camera_path=path, roi_slot=1, snap=16,
+        roi_source="auto_largest", min_area_px=16,
+        exclude_mask=torch.from_numpy(ex))
+    assert "exclude_mask applied" in rep2
+    if not crop2["empty"]:
+        assert (crop2["x"], crop2["y"], crop2["width"], crop2["height"]) !=             (crop1["x"], crop1["y"], crop1["width"], crop1["height"])
+
+
+def test_composite_crop_pasted_mask_accumulates_hole_pixels_only():
+    """Patch re-entry contract: pasted_mask carries EXACTLY the filled hole
+    pixels at plate coordinates, unioned across a chain of pastes."""
+    from atlas_camera.comfy.nodes_fill import AtlasCompositeCrop
+
+    frame = _plate()
+    crop = {"empty": False, "x": 16, "y": 8, "width": 32, "height": 24,
+            "gen_w": 32, "gen_h": 24}
+    fill = np.full((24, 32, 3), 250, np.uint8)
+    hole = np.zeros((24, 32), np.float32)
+    hole[4:12, 6:20] = 1.0
+    out, report, pm = AtlasCompositeCrop().paste(
+        _img(frame), _img(fill), crop, mask=torch.from_numpy(hole))
+    got = pm[0].numpy()
+    assert got.shape == (96, 96)
+    expected = np.zeros((96, 96), np.float32)
+    expected[8 + 4:8 + 12, 16 + 6:16 + 20] = 1.0
+    assert np.array_equal(got, expected)
+    assert "hole pixels only" in report
+    # chain: a second paste unions with prior_mask
+    crop2 = {"empty": False, "x": 48, "y": 48, "width": 16, "height": 16,
+             "gen_w": 16, "gen_h": 16}
+    _o2, _r2, pm2 = AtlasCompositeCrop().paste(
+        _img(frame), _img(np.full((16, 16, 3), 9, np.uint8)), crop2,
+        prior_mask=pm)
+    got2 = pm2[0].numpy()
+    assert got2[8 + 4, 16 + 6] == 1.0          # prior survives
+    assert got2[48:64, 48:64].all()            # whole new rect (no mask given)
+    # empty crop passes prior through
+    _o3, _r3, pm3 = AtlasCompositeCrop().paste(
+        _img(frame), _img(frame), {"empty": True}, prior_mask=pm2)
+    assert np.array_equal(pm3[0].numpy(), got2)

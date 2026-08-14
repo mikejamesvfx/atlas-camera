@@ -331,12 +331,22 @@ class AtlasCropROI:
                     "tooltip": "auto_largest only: clusters smaller than this "
                                "(survey-resolution px) are ignored — the wand "
                                "or a band layer handles those."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "auto_largest only: region already carried by "
+                               "something other than geometry (SkyDome, "
+                               "matte). Subtracted before clustering so a "
+                               "generator is never aimed at it. Auto mode "
+                               "ALSO always subtracts the solved pose's own "
+                               "holes (sky is not disocclusion — nothing was "
+                               "ever occluding it), so this input is for "
+                               "regions the baseline test cannot know "
+                               "about."}),
             },
         }
 
     def crop(self, solve, source_image, camera_path=None, roi_slot=1,
              pad_frac=0.10, snap=64, hole_dilate_px=4, max_gen_long_edge=1280,
-             roi_source="artist", min_area_px=1024):
+             roi_source="artist", min_area_px=1024, exclude_mask=None):
         from PIL import Image as PILImage
 
         from atlas_camera.core.camera_crop import rois_from_world_regions
@@ -373,16 +383,28 @@ class AtlasCropROI:
 
         if roi_source == "auto_largest":
             from atlas_camera.dynamic.occlusion_fill import survey_hole_rois
+            exclude = None
+            if exclude_mask is not None:
+                exclude = _mask_to_bool(np, torch, exclude_mask, height,
+                                        width)
+            # move_revealed_only is the SKY FAILSAFE and always on for auto
+            # selection: sky is a hole from the solved pose too, so it is
+            # never move-revealed disocclusion and never ranks.
             auto_rois, roi_set, _masks, peak = survey_hole_rois(
                 solve, src, [view], survey_resolution=1024,
                 pad_frac=float(pad_frac), min_area_px=int(min_area_px),
-                snap=int(snap))
+                snap=int(snap), exclude_mask=exclude,
+                move_revealed_only=True)
             if roi_slot > len(auto_rois):
                 return empty(f"auto_largest found only {len(auto_rois)} "
-                             f"cluster(s) >= {min_area_px}px — no-op branch")
+                             f"move-revealed cluster(s) >= {min_area_px}px — "
+                             f"no-op branch")
             roi = auto_rois[roi_slot - 1]
-            source_note = (f"auto rank {roi_slot}/{len(auto_rois)} "
-                           f"(peak hole {peak:.1%})")
+            source_note = (f"auto rank {roi_slot}/{len(auto_rois)}, "
+                           f"move-revealed only"
+                           + (", exclude_mask applied" if exclude is not None
+                              else "")
+                           + f" (peak hole {peak:.1%})")
         else:
             scene = getattr(solve, "projection_scene", None)
             meta = getattr(scene, "debug_metadata", None) or {}
@@ -439,8 +461,8 @@ class AtlasCompositeCrop:
     frame -> paste(slot 1) -> paste(slot 2) -> paste(slot 3).
     """
 
-    RETURN_TYPES = ("IMAGE", "STRING")
-    RETURN_NAMES = ("image", "report")
+    RETURN_TYPES = ("IMAGE", "STRING", "MASK")
+    RETURN_NAMES = ("image", "report", "pasted_mask")
     FUNCTION = "paste"
     CATEGORY = "Atlas/advanced"
 
@@ -453,16 +475,41 @@ class AtlasCompositeCrop:
                 "fill": ("IMAGE", {"tooltip": "The corrected crop fill."}),
                 "crop": ("ATLAS_CROP", {}),
             },
+            "optional": {
+                "mask": ("MASK", {
+                    "tooltip": "The crop's HOLE mask (AtlasCropROI's mask "
+                               "output). When wired, pasted_mask accumulates "
+                               "exactly the filled hole pixels at plate "
+                               "coordinates — the matte patch re-entry needs "
+                               "so a repaired frame contributes only its "
+                               "fills. Without it the whole crop rect "
+                               "accumulates."}),
+                "prior_mask": ("MASK", {
+                    "tooltip": "The previous slot's pasted_mask; unioned in, "
+                               "so a chain of pastes emits one matte."}),
+            },
         }
 
-    def paste(self, image, fill, crop):
+    def paste(self, image, fill, crop, mask=None, prior_mask=None):
         from PIL import Image as PILImage
 
         np = _require_numpy()
         torch = _require_torch()
+
+        def out_mask(height, width, hole_rect=None):
+            acc = np.zeros((height, width), dtype=np.float32)
+            if prior_mask is not None:
+                prior = _mask_to_bool(np, torch, prior_mask, height, width)
+                acc[prior] = 1.0
+            if hole_rect is not None:
+                y, x, hole = hole_rect
+                acc[y:y + hole.shape[0], x:x + hole.shape[1]][hole] = 1.0
+            return torch.from_numpy(acc).unsqueeze(0)
+
         if not isinstance(crop, dict) or crop.get("empty", True):
+            h, w = int(image.shape[1]), int(image.shape[2])
             return (image, "AtlasCompositeCrop: empty crop — frame returned "
-                           "unchanged (unused slot).")
+                           "unchanged (unused slot).", out_mask(h, w))
         frame = image.detach().cpu().numpy()[0]
         frame = np.clip(frame * 255.0, 0, 255).astype(np.uint8).copy()
         height, width = frame.shape[:2]
@@ -472,15 +519,22 @@ class AtlasCompositeCrop:
             return (image,
                     f"AtlasCompositeCrop: crop rect ({x},{y},{w},{h}) does "
                     f"not fit the {width}x{height} frame — frame returned "
-                    f"unchanged.")
+                    f"unchanged.", out_mask(height, width))
         f = fill.detach().cpu().numpy()[0]
         f = np.clip(f * 255.0, 0, 255).astype(np.uint8)
         if f.shape[:2] != (h, w):
             f = np.asarray(PILImage.fromarray(f).resize(
                 (w, h), PILImage.LANCZOS))
         frame[y:y + h, x:x + w] = f
+        if mask is not None:
+            hole = _mask_to_bool(np, torch, mask, h, w)
+        else:
+            hole = np.ones((h, w), dtype=bool)
         out = torch.from_numpy(frame.astype(np.float32) / 255.0).unsqueeze(0)
-        return (out, f"AtlasCompositeCrop: pasted {w}x{h} at ({x},{y}).")
+        return (out, f"AtlasCompositeCrop: pasted {w}x{h} at ({x},{y}), "
+                     f"pasted_mask carries "
+                     f"{'hole pixels only' if mask is not None else 'the whole rect'}.",
+                out_mask(height, width, (y, x, hole)))
 
 
 class AtlasCameraMovePreset:

@@ -3815,6 +3815,14 @@ class AtlasAddPatchView:
                                "overlap registration) — for patches revealing genuinely NEW "
                                "terrain no existing geometry covers. Auto-falls back to "
                                "own_depth when the solve carries no geometry to reuse."}),
+                "patch_mask": ("MASK", {
+                    "tooltip": "Optional REGION-OF-INTEREST matte in the patch image's own "
+                               "frame: the patch only ever paints INSIDE it (ANDed with the "
+                               "unseen matte, both sides sharing unseen_dilate_px of overlap). "
+                               "The occlusion-fill loop wires the FILLED hole pixels here so a "
+                               "repaired end frame contributes exactly its fills — not a "
+                               "second full-frame copy of the scene, and never the sentinel "
+                               "still marking holes that were NOT filled."}),
             },
         }
 
@@ -3829,7 +3837,8 @@ class AtlasAddPatchView:
                   relief_grid=96, priority=1.0, plate_ref=None, device="auto",
                   patch_view_override="", exact_view_override="",
                   mask_unseen_only=True, unseen_dilate_px=16,
-                  primary_depth=None, exclude_mask=None, geometry_source="reuse_scene"):
+                  primary_depth=None, exclude_mask=None, geometry_source="reuse_scene",
+                  patch_mask=None):
         exact_delta = None
         if exact_view_override and exact_view_override.strip():
             exact_delta = _parse_exact_view(exact_view_override)
@@ -3920,6 +3929,19 @@ class AtlasAddPatchView:
         patch_horizon_y = horizon_row_from_extrinsics(patch_extr, fy=pfy, cy=pcy)
 
         np = _require_numpy()
+        # Optional ROI matte in the patch frame: the fill loop passes the
+        # pasted hole pixels so the patch paints ONLY its fills.
+        patch_hole = None
+        if patch_mask is not None:
+            pm = (patch_mask.detach().cpu().numpy()
+                  if hasattr(patch_mask, "detach") else np.asarray(patch_mask))
+            while pm.ndim > 2:
+                pm = pm.max(axis=0)
+            if pm.shape != (patch_h, patch_w):
+                yi = (np.arange(patch_h) * (pm.shape[0] / patch_h)).astype(int)
+                xi = (np.arange(patch_w) * (pm.shape[1] / patch_w)).astype(int)
+                pm = pm[yi.clip(0, pm.shape[0] - 1)][:, xi.clip(0, pm.shape[1] - 1)]
+            patch_hole = pm > 0.5
         from atlas_camera.core.depth_geometry import (
             back_project_normals,
             primary_camera_validity_mask,
@@ -4015,8 +4037,13 @@ class AtlasAddPatchView:
                 unseen = ~coverage
                 if resolved_exclude is not None:
                     unseen &= ~resolved_exclude  # never paint sky onto geometry
+                matte = dilate(unseen, int(unseen_dilate_px))
+                if patch_hole is not None:
+                    matte &= dilate(patch_hole, int(unseen_dilate_px))
+                mask_b64 = _mask_to_b64_png(matte) or None
+            if mask_b64 is None and patch_hole is not None:
                 mask_b64 = _mask_to_b64_png(
-                    dilate(unseen, int(unseen_dilate_px))) or None
+                    dilate(patch_hole, int(unseen_dilate_px))) or None
             return self._finish_patch(
                 solve, patch_image, patch_intr, patch_extr, patch_geom, mesh,
                 mask_b64, plate_ref, name, priority,
@@ -4091,7 +4118,12 @@ class AtlasAddPatchView:
                 rt = np.zeros_like(unseen)
                 rt[:, 1:] = unseen[:, :-1]
                 unseen = unseen | up | dn | lf | rt
+            if patch_hole is not None:
+                unseen &= dilate(patch_hole, int(unseen_dilate_px))
             mask_b64 = _mask_to_b64_png(unseen) or None
+        if mask_b64 is None and patch_hole is not None:
+            mask_b64 = _mask_to_b64_png(
+                dilate(patch_hole, int(unseen_dilate_px))) or None
 
         return self._finish_patch(
             solve, patch_image, patch_intr, patch_extr, patch_geom, mesh,

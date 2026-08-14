@@ -231,7 +231,8 @@ def write_exr_sequence(frame_paths, out_dir: Path) -> list[Path]:
 
 
 def survey_hole_rois(solve, source_image, views, *, survey_resolution=1024,
-                     pad_frac=0.10, min_area_px=64, snap=64):
+                     pad_frac=0.10, min_area_px=64, snap=64,
+                     exclude_mask=None, move_revealed_only=False):
     """THE hole-clustering recipe, shared so CLI and nodes cannot drift.
 
     Survey the views' disocclusion holes at a cheap raster, cluster them
@@ -240,6 +241,22 @@ def survey_hole_rois(solve, source_image, views, *, survey_resolution=1024,
     lift the ROIs to plate resolution, clamp, snap, and sort by area
     descending. Padding and the snap only ever GROW a crop, so the lift is
     conservative.
+
+    Two sky failsafes, both subtractive (they can only ever REMOVE candidate
+    pixels, never invent them):
+
+    - ``exclude_mask``: a plate-frame region already carried by something
+      other than geometry (a SkyDome, a matte) — resized nearest to the
+      survey raster and subtracted before clustering. Same doctrine as
+      AtlasDisocclusionGuide's input of the same name.
+    - ``move_revealed_only``: subtract the SOLVED pose's own hole mask from
+      every survey frame first. Sky (and any never-derived geometry) is a
+      hole from the original camera too — it is NOT disocclusion, because
+      nothing was ever occluding it. Real disocclusion is by definition
+      revealed BY the move, so it survives the subtraction. This is the
+      guide node's documented move-revealed / never-covered split applied to
+      SELECTION: the G5 field run measured what happens without it — the
+      auto-ROI ranked a sky cluster first and aimed a generator at it.
 
     Returns ``(rois, roi_set, survey_masks, peak_hole_frac)`` where ``rois``
     is the area-sorted plate-resolution list and ``roi_set`` carries the
@@ -259,6 +276,25 @@ def survey_hole_rois(solve, source_image, views, *, survey_resolution=1024,
     survey_masks = [mask for _guide, mask, _cov in survey]
     survey_h, survey_w = survey_masks[0].shape[:2]
     peak = max(cov for _g, _m, cov in survey)
+
+    drop = np.zeros((survey_h, survey_w), dtype=bool)
+    if move_revealed_only:
+        baseline = render_disocclusion_sequence(
+            solve, source_image,
+            [solve.camera.extrinsics.camera_view_matrix],
+            resolution=int(survey_resolution), hole_dilate_px=0)
+        drop |= baseline[0][1] > 127
+    if exclude_mask is not None:
+        m = np.asarray(exclude_mask)
+        if m.shape != (survey_h, survey_w):
+            # Nearest-neighbour index remap — a mask must not be blurred into
+            # fractional values that then need a second threshold.
+            yi = (np.arange(survey_h) * (m.shape[0] / survey_h)).astype(int)
+            xi = (np.arange(survey_w) * (m.shape[1] / survey_w)).astype(int)
+            m = m[yi.clip(0, m.shape[0] - 1)][:, xi.clip(0, m.shape[1] - 1)]
+        drop |= m > (127 if m.dtype.kind in "ui" else 0.5)
+    if drop.any():
+        survey_masks = [np.where(drop, 0, mask) for mask in survey_masks]
 
     roi_set = hole_rois(survey_masks, pad_frac=float(pad_frac),
                         min_area_px=int(min_area_px), snap=1, max_rois=0)
