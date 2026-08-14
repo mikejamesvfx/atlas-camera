@@ -57,6 +57,8 @@ FACADE_PUBLIC = {
     "AtlasGravityOverride", "AtlasGravityCompass", "AtlasGroundDepthMap", "AtlasGroundMask",
     "AtlasHorizonMask", "AtlasImportAnglePatch", "AtlasInpaintCrop",
     "AtlasLoadDynamicPlate",
+    "AtlasInterpassGate",
+    "AtlasMembraneComposite",
     "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
     "AtlasLoadPlate", "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON",

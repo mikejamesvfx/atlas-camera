@@ -67,6 +67,7 @@ EXPERIMENTAL_KEYS = {
     "AtlasCompleteDepth",
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
     "AtlasLoadDynamicPlate",
+    "AtlasInterpassGate", "AtlasMembraneComposite",
 }
 
 # iOS / Record3D capture tier — gated behind ATLAS_IOS, held out of the v1
@@ -95,7 +96,7 @@ def test_normal_registry_keys_exact():
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 7
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 9
 
 
 def test_display_name_mapping_covers_registry():
@@ -171,7 +172,8 @@ def test_representative_public_class_imports():
     # Experimental classes are importable as symbols even when gated out.
     from atlas_camera.comfy.nodes import (  # noqa: F401
         AtlasExtractAnglePatch, AtlasImportAnglePatch,
-        AtlasLoadDynamicPlate,
+        AtlasLoadDynamicPlate, AtlasInterpassGate,
+        AtlasMembraneComposite,
     )
 
 

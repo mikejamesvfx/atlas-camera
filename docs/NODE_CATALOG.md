@@ -14,9 +14,9 @@
 
 
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 104
+The former 9,110-line `nodes.py` was split into responsibility modules; the 106
 
-node classes (93 standard + 7 experimental + 2 legacy + 2 iOS) now live in the
+node classes (93 standard + 9 experimental + 2 legacy + 2 iOS) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -133,6 +133,9 @@ module.
 
   exporters.
 
+- `nodes_fill.py` — in-graph two-pass fill: `AtlasInterpassGate` 🚦🔬 +
+  `AtlasMembraneComposite` 🩹🔬 (the CLI engine's gate and correction
+  stack as workflow nodes).
 - `nodes_dynamic.py` — Dynamic Plates: `AtlasLoadDynamicPlate` 🌊🔬 (loads an
   artifact package as an animated projection layer; owns the opaque-token
   registry behind the `/atlas/dynamic_plate/{key}/{index}` frame route).
@@ -231,7 +234,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (93 standard + 7 experimental + 2 legacy + 2 iOS = 104 registered)
+### Node catalog (93 standard + 9 experimental + 2 legacy + 2 iOS = 106 registered)
 
 
 
@@ -285,6 +288,8 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 | `AtlasExtractAnglePatch` 🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | solve (ATLAS_SOLVE), plate_image (IMAGE), matte (MASK), patch_exact (STRING), output_dir (STRING), ±depth, ±normal, ±name, ±padding_px, ±colorspace | patch_image (IMAGE), patch_matte (MASK), manifest_path (STRING), patch_package (ATLAS_PATCH) | Photoshop hand-off (out). Writes a Photoshop-friendly patch package from an extracted viewport angle: the plate, matte, and a manifest for one `patch_exact` view, so a painter can retouch that angle in a DCC and bring it back via `AtlasImportAnglePatch`. `patch_package` carries the pose for the round trip |
 
 | `AtlasImportAnglePatch` 🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | patch_package (ATLAS_PATCH), ±edited_image, ±edited_matte | patch_image (IMAGE), patch_matte (MASK), patch_exact (STRING), patch_package (ATLAS_PATCH) | Photoshop hand-off (in). Loads an edited angle patch back from the DCC, pastes it into the FULL frame, and re-exposes the exact pose (`patch_exact`) for reprojection: the return leg of `AtlasExtractAnglePatch` |
+| `AtlasInterpassGate` 🚦🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | fill (IMAGE), guide (IMAGE), mask (MASK), ±max_shift_px | fill (IMAGE), ok (BOOLEAN), report (STRING) | The two-pass engine's inter-pass gate as a node: scores a structure fill BEFORE it is re-textured (G2 vs the edge-extend smear, global phase-correlation shift over the unmasked area, sentinel-bleed fraction — each check encodes a live failure, docs/dev/occlusion_arms_2026-08-14). Self-fallback: on FAIL the untouched guide passes through, so a downstream texture pass re-touches nothing — a texture model must never launder a broken structure into confident fiction. Low-raster fills are Lanczos-fit to the guide before scoring |
+| `AtlasMembraneComposite` 🩹🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | fill (IMAGE), reference (IMAGE), mask (MASK), ±cast_band_px, ±colour_correct | image (IMAGE), report (STRING) | The CLI engine's full correction stack in one node: plate-referenced colour pair (gain/offset match + chroma-only cast neutralisation from a ring of REAL pixels), the harmonic offset membrane (rim gradient 2.2x -> ~1.0 of the plate's own statistics, measured after every generation-side seam fix failed), then the masked composite of hole pixels into the reference. Empty holes return the reference unchanged |
 | `AtlasLoadDynamicPlate` 🌊🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | solve (ATLAS_SOLVE), package_dir (STRING), ±priority, ±fps_override | ATLAS_SOLVE, report (STRING) | Loads a Dynamic Plates artifact package (`python -m atlas_camera.dynamic`, docs/DYNAMIC_PLATES.md) and appends its receiver plane + temporal water projection as a `ProjectionSource`: the plate's FIXED crop camera stays the projector while the viewport camera moves. Generated frames stream to the frontend per-frame over `/atlas/dynamic_plate/{key}/{index}` (opaque registry token, never a raw path) and play on the render ticker; with no generated frames yet it projects the still crop. Content-fingerprints the package manifest so edits re-execute (gate doctrine) |
 
 | `AtlasOcclusionMask` | ATLAS_SOLVE, target_image (IMAGE), ±patch_azimuth_view, ±patch_elevation_view, ±patch_distance, ±source_azimuth_view, ±source_elevation_view, ±flip_azimuth, ±depth_model, ±device, ±angle_threshold, ±dilate_px, ±soft_edge_px, ±power | occlusion_mask, coverage_mask (both MASK) | Phase 1 (frustum/frame/facing-angle) mask of where the PRIMARY camera's projection is invalid at a target/patch view's surface — white = primary can't cover it, so a patch should fill it there. Places its target camera identically to `AtlasAddPatchView` (same named-view widgets, same `_named_view_orbit_delta` helper — never independently recompute the orbit) so the mask lines up with that node's later patch geometry for the same image. Pure backend/numpy (`depth_geometry.primary_camera_validity_mask`), no browser round-trip, runs headlessly. Intended pipeline: `Solve → AtlasOcclusionMask → ImageCompositeMasked (primary projection + target_image) → AtlasAddPatchView`. Does not yet detect true depth-shadow occlusion (an object hidden behind nearer geometry from the primary's view but still inside its frame/angle limits) — see `docs/dev/atlas_occlusion_mask_implementation_plan.md` for that Phase 2 design. Needs `[neural]` |
