@@ -1882,11 +1882,22 @@ class AtlasDisocclusionGuide:
                                "with no geometry behind it reads as a permanent hole, "
                                "so the guide tells the model to invent a sky that is "
                                "already being handled."}),
+                "last_n": ("INT", {
+                    "default": 0, "min": 0, "max": 4096,
+                    "tooltip": "Render only the move's LAST N frames (0 = every "
+                               "frame). The single-frame fill doctrine only ever "
+                               "consumes the END of the move (its holes are a "
+                               "superset of every earlier frame's), so rendering "
+                               "a 100-frame arc to use 1-5 frames is pure waste "
+                               "— last_n=1 (final frame) or 5 (a WAN 4k+1 "
+                               "window) cuts render time and memory by the "
+                               "path length. Batch indices become RELATIVE to "
+                               "the window: final frame = last_n-1."}),
             },
         }
 
     def guide(self, solve, source_image, camera_path=None, sentinel="magenta",
-              hole_dilate_px=0, resolution=1024, exclude_mask=None):
+              hole_dilate_px=0, resolution=1024, exclude_mask=None, last_n=0):
         from atlas_camera.comfy.headless_evidence import (
             _decode_mask, _decode_rgba, _fit_long_edge, _tensor_rgba,
         )
@@ -1931,6 +1942,11 @@ class AtlasDisocclusionGuide:
             textures[name] = rgba
 
         views, view_source = self._views(solve, camera_path)
+        total_views = len(views)
+        if int(last_n) > 0 and total_views > int(last_n):
+            views = views[-int(last_n):]
+            view_source += (f", last {len(views)} of {total_views} frames "
+                            f"(last_n)")
         colour = np.asarray(self.SENTINELS.get(sentinel, (1.0, 0.0, 1.0)),
                             dtype=np.float64)
 

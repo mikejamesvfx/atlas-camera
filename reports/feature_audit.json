@@ -3,15 +3,15 @@
  "generated_utc": "2026-08-14",
  "counts": {
   "standard": 93,
-  "experimental": 10,
+  "experimental": 12,
   "legacy": 2,
   "ios": 2,
-  "total": 107,
+  "total": 109,
   "no_product_evidence": 0
  },
  "verdict_counts": {
   "KEEP_CORE": 93,
-  "KEEP_EXPERIMENTAL": 10,
+  "KEEP_EXPERIMENTAL": 12,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
  },
@@ -215,8 +215,8 @@
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": 8,
-   "dedicated_tests": 17,
-   "tests": 19,
+   "dedicated_tests": 18,
+   "tests": 20,
    "mcp_tools": 0,
    "repo_tools": 14,
    "docs": 6,
@@ -345,6 +345,31 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasCompositeCrop": {
+   "module": "atlas_camera/comfy/nodes_fill.py",
+   "tier": "experimental",
+   "example_workflows": 0,
+   "dedicated_tests": 2,
+   "tests": 5,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasConstrainedSolve": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
@@ -371,6 +396,31 @@
     "dedicated node-layer contract test added 2026-07-27 (tests/test_node_layer_contracts.py): output arity/order against RETURN_TYPES, routed values, and the documented fail-soft or error path"
    ],
    "migration_action": "none; keep",
+   "notes": null
+  },
+  "AtlasCropROI": {
+   "module": "atlas_camera/comfy/nodes_fill.py",
+   "tier": "experimental",
+   "example_workflows": 0,
+   "dedicated_tests": 2,
+   "tests": 5,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
+   "evidence": [],
+   "migration_action": null,
    "notes": null
   },
   "AtlasDeband": {

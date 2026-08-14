@@ -68,7 +68,7 @@ EXPERIMENTAL_KEYS = {
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
     "AtlasLoadDynamicPlate",
     "AtlasInterpassGate", "AtlasMembraneComposite",
-    "AtlasPathFrameIndex",
+    "AtlasPathFrameIndex", "AtlasCropROI", "AtlasCompositeCrop",
 }
 
 # iOS / Record3D capture tier — gated behind ATLAS_IOS, held out of the v1
@@ -97,7 +97,7 @@ def test_normal_registry_keys_exact():
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 10
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 12
 
 
 def test_display_name_mapping_covers_registry():
@@ -175,6 +175,7 @@ def test_representative_public_class_imports():
         AtlasExtractAnglePatch, AtlasImportAnglePatch,
         AtlasLoadDynamicPlate, AtlasInterpassGate,
         AtlasMembraneComposite, AtlasPathFrameIndex,
+        AtlasCropROI, AtlasCompositeCrop,
     )
 
 

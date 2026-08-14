@@ -30,15 +30,15 @@ relative to itself, so a worktree silently audits a different tree.
 ## Counts
 
 * standard: **93**
-* experimental: **10**
+* experimental: **12**
 * legacy: **2**
-* total registered: **107**
+* total registered: **109**
 * standard nodes with no product evidence: **0**
 
 | Verdict | Nodes |
 |---|---:|
 | `KEEP_CORE` | 93 |
-| `KEEP_EXPERIMENTAL` | 10 |
+| `KEEP_EXPERIMENTAL` | 12 |
 | `LEGACY_GATE` | 2 |
 | `IOS_GATE` | 2 |
 
@@ -66,12 +66,14 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasAssessOutput` | atlas_camera/comfy/nodes_qa.py | standard | 1 | 2 | not_attempted | not_attempted | 2 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAttachSourcePlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasBlockoutMassing` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 6 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasBlockoutViewport` | atlas_camera/comfy/nodes_viewport.py | standard | 8 | 17 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasBlockoutViewport` | atlas_camera/comfy/nodes_viewport.py | standard | 8 | 18 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
 | `AtlasBoundedBand` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasCleanPlateLayer` | atlas_camera/comfy/nodes_inpaint.py | standard | 1 | 11 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasCleanPlateStack` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasCompleteDepth` | atlas_camera/comfy/nodes_completion.py | experimental | 0 | 1 | not_attempted | not_attempted | 1 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasCompositeCrop` | atlas_camera/comfy/nodes_fill.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasConstrainedSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasCropROI` | atlas_camera/comfy/nodes_fill.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasDeband` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDebugReport` | atlas_camera/comfy/nodes_viewport.py | standard | 1 | 4 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDecomposeCamera` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |

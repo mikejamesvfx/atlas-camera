@@ -130,6 +130,28 @@ class TestUncoveredIsNotDisocclusion:
 
 
 class TestCameraPath:
+    def test_last_n_renders_only_the_tail_of_the_move(self):
+        """The single-frame fill doctrine consumes only the END of the move,
+        so last_n must render exactly the tail — same frames, same pixels —
+        instead of the whole path."""
+        full_g, full_m, _ = GUIDE().guide(_solve(), _img(),
+                                          camera_path=_path(frames=8))
+        tail_g, tail_m, report = GUIDE().guide(_solve(), _img(),
+                                               camera_path=_path(frames=8),
+                                               last_n=2)
+        assert tail_g.shape[0] == 2
+        assert np.allclose(tail_g.numpy(), full_g.numpy()[-2:])
+        assert np.allclose(tail_m.numpy(), full_m.numpy()[-2:])
+        assert "last 2 of 8" in report
+
+    def test_last_n_zero_or_oversized_is_the_identity(self):
+        g0, _, r0 = GUIDE().guide(_solve(), _img(), camera_path=_path(frames=3),
+                                  last_n=0)
+        g9, _, r9 = GUIDE().guide(_solve(), _img(), camera_path=_path(frames=3),
+                                  last_n=99)
+        assert g0.shape[0] == 3 and g9.shape[0] == 3
+        assert "last_n" not in r0 and "last_n" not in r9
+
     def test_a_path_produces_one_frame_per_sample(self):
         guide, mask, report = GUIDE().guide(_solve(), _img(), camera_path=_path(frames=5),
                                             resolution=256)
@@ -267,10 +289,18 @@ class TestExcludeMask:
         b = GUIDE().guide(_solve(), _img(), exclude_mask=None, resolution=256)[1]
         assert torch.equal(a, b)
 
-    def test_exclude_mask_is_the_LAST_optional_input(self):
-        """Appended, never inserted — positional widget order is a saved-workflow
-        contract, and this node already shipped once without it."""
-        assert list(GUIDE.INPUT_TYPES()["optional"])[-1] == "exclude_mask"
+    def test_optional_widget_order_is_a_saved_workflow_contract(self):
+        """Appended, never inserted — positional widgets_values order is a
+        saved-workflow contract, and this node already shipped once without
+        exclude_mask. exclude_mask is link-only (no widget slot), so the pinned
+        contract is the WIDGET-bearing order; last_n was appended 2026-08-14."""
+        opts = GUIDE.INPUT_TYPES()["optional"]
+        widget_order = [k for k, v in opts.items()
+                        if not (isinstance(v[0], str) and v[0] == "MASK")
+                        and v[0] != "ATLAS_CAMERA_PATH"]
+        assert widget_order == ["sentinel", "hole_dilate_px", "resolution",
+                                "last_n"]
+        assert list(opts)[-1] == "last_n"
 
 
 class TestAgreesWithTheEstablishedRenderer:

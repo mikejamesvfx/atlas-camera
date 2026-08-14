@@ -261,3 +261,193 @@ class AtlasMembraneComposite:
                   f"({float(hole.mean()):.1%} of frame), colour pair "
                   f"{'on' if colour_correct else 'OFF'}, membrane applied.")
         return (_uint8_to_img(np, torch, out), report)
+
+
+class AtlasCropROI:
+    """✂️ One artist ▦ Fill ROI as a generation-ready crop, with its camera.
+
+    The CLI's crop economy, in-graph: a camera-matrix crop is a shifted
+    principal point with a smaller raster (`crop_intrinsics`), so the ROI
+    renders 1:1 with the plate through the same rasterizer — no whole-frame
+    generation, no wasted pixels. The variable-ROI-count problem that kept
+    this in a CLI disappears under the artist budget: three slots, three
+    static branches, and an unused slot degrades to a no-op end to end (the
+    gate passes its guide through, AtlasCompositeCrop returns its input).
+
+    Outputs are GENERATION-READY: guide + mask at an aspect-preserving,
+    /16-snapped raster no longer than ``max_gen_long_edge``, plus that raster
+    as INTs to wire straight into WanVaceToVideo's width/height (whose bare
+    int widgets would otherwise hard-code one raster for every crop). The
+    ATLAS_CROP handle carries the native rect for the exact paste-back.
+    """
+
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "ATLAS_CROP", "STRING")
+    RETURN_NAMES = ("guide", "mask", "gen_width", "gen_height", "crop",
+                    "report")
+    FUNCTION = "crop"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE", {}),
+                "source_image": ("IMAGE", {}),
+            },
+            "optional": {
+                "camera_path": ("ATLAS_CAMERA_PATH", {
+                    "tooltip": "The move; the crop renders its FINAL frame "
+                               "(whose holes are a superset of every earlier "
+                               "frame's). No path = the solved pose."}),
+                "roi_slot": ("INT", {
+                    "default": 1, "min": 1, "max": 3,
+                    "tooltip": "Which artist ▦ Fill ROI (budget 3). An "
+                               "unused slot emits an empty crop that every "
+                               "downstream node treats as a no-op."}),
+                "pad_frac": ("FLOAT", {
+                    "default": 0.10, "min": 0.0, "max": 0.5, "step": 0.01}),
+                "snap": ("INT", {
+                    "default": 64, "min": 8, "max": 128,
+                    "tooltip": "ROI grid snap (/64 covers every adapter)."}),
+                "hole_dilate_px": ("INT", {
+                    "default": 4, "min": 0, "max": 64}),
+                "max_gen_long_edge": ("INT", {
+                    "default": 1280, "min": 256, "max": 4096,
+                    "tooltip": "Generation raster cap; the crop is scaled "
+                               "down (aspect kept, /16) when its native long "
+                               "edge exceeds this."}),
+            },
+        }
+
+    def crop(self, solve, source_image, camera_path=None, roi_slot=1,
+             pad_frac=0.10, snap=64, hole_dilate_px=4, max_gen_long_edge=1280):
+        from PIL import Image as PILImage
+
+        from atlas_camera.core.camera_crop import rois_from_world_regions
+        from atlas_camera.core.camera_spec import CameraSpec
+        from atlas_camera.dynamic.occlusion_fill import render_crop_sequence
+
+        np = _require_numpy()
+        torch = _require_torch()
+
+        def empty(reason):
+            g = torch.zeros(1, 64, 64, 3)
+            m = torch.zeros(1, 64, 64)
+            return (g, m, 64, 64, {"empty": True},
+                    f"AtlasCropROI slot {roi_slot}: {reason}")
+
+        scene = getattr(solve, "projection_scene", None)
+        meta = getattr(scene, "debug_metadata", None) or {}
+        regions = list((meta.get("fill_rois") or {}).get("regions") or [])
+        if roi_slot > len(regions):
+            return empty(f"no artist region (only {len(regions)} drawn) — "
+                         f"no-op branch")
+
+        intr = solve.camera.intrinsics
+        spec = CameraSpec.from_intrinsics(intr)
+        width = int(intr.image_width)
+        height = int(intr.image_height)
+        view = None
+        if camera_path is not None:
+            from atlas_camera.core.camera_path import sample_camera_path
+            sampled = sample_camera_path(camera_path)
+            if sampled:
+                view = sampled[-1].camera_view_matrix
+        if view is None:
+            view = solve.camera.extrinsics.camera_view_matrix
+
+        picked = rois_from_world_regions(
+            [regions[roi_slot - 1]], view, fx=spec.fx, fy=spec.fy,
+            cx=spec.cx, cy=spec.cy, image_width=width, image_height=height,
+            pad_frac=float(pad_frac), snap=int(snap))
+        if not picked.rois:
+            reason = (picked.dropped[0]["reason"] if picked.dropped
+                      else "region did not project into this view")
+            return empty(reason)
+        roi = picked.rois[0]
+
+        src = source_image.detach().cpu().numpy()[0]
+        src = np.clip(src * 255.0, 0, 255).astype(np.uint8)
+        if src.shape[:2] != (height, width):
+            src = np.asarray(PILImage.fromarray(src).resize(
+                (width, height), PILImage.LANCZOS))
+        guide, mask, cov, _depth = render_crop_sequence(
+            solve, src, [view], roi, hole_dilate_px=int(hole_dilate_px))[0]
+
+        scale = min(1.0, float(max_gen_long_edge)
+                    / max(roi.width, roi.height))
+        gen_w = max(16, int(round(roi.width * scale / 16)) * 16)
+        gen_h = max(16, int(round(roi.height * scale / 16)) * 16)
+        if (gen_w, gen_h) != (roi.width, roi.height):
+            guide = np.asarray(PILImage.fromarray(guide).resize(
+                (gen_w, gen_h), PILImage.LANCZOS))
+            mask = np.asarray(PILImage.fromarray(mask, mode="L").resize(
+                (gen_w, gen_h), PILImage.NEAREST))
+
+        handle = {"empty": False, "x": roi.x, "y": roi.y,
+                  "width": roi.width, "height": roi.height,
+                  "gen_w": gen_w, "gen_h": gen_h}
+        report = (f"AtlasCropROI slot {roi_slot}: {roi.width}x{roi.height} "
+                  f"at ({roi.x},{roi.y}), hole {cov:.1%}, generation raster "
+                  f"{gen_w}x{gen_h}"
+                  + (" (1:1 native)" if scale >= 1.0
+                     else f" (capped from native, 1:{roi.width / gen_w:.2f})"))
+        g = torch.from_numpy(guide.astype(np.float32) / 255.0).unsqueeze(0)
+        m = torch.from_numpy((mask > 127).astype(np.float32)).unsqueeze(0)
+        return (g, m, gen_w, gen_h, handle, report)
+
+
+class AtlasCompositeCrop:
+    """📌 Paste a corrected crop fill back into the full frame, exactly.
+
+    The inverse of AtlasCropROI: the fill (already gated, colour-corrected
+    and membrane-blended at the crop raster, so every non-hole pixel equals
+    the frame's own pixels) is resized to the crop's NATIVE rect and pasted
+    at its coordinates. Outside the crop the frame is untouched; an empty
+    crop handle returns the frame unchanged, which is what lets unused
+    artist slots ride the same graph as no-ops. Chain one per slot:
+    frame -> paste(slot 1) -> paste(slot 2) -> paste(slot 3).
+    """
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "report")
+    FUNCTION = "paste"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE", {"tooltip": "The full frame (or the "
+                                    "previous slot's paste)."}),
+                "fill": ("IMAGE", {"tooltip": "The corrected crop fill."}),
+                "crop": ("ATLAS_CROP", {}),
+            },
+        }
+
+    def paste(self, image, fill, crop):
+        from PIL import Image as PILImage
+
+        np = _require_numpy()
+        torch = _require_torch()
+        if not isinstance(crop, dict) or crop.get("empty", True):
+            return (image, "AtlasCompositeCrop: empty crop — frame returned "
+                           "unchanged (unused slot).")
+        frame = image.detach().cpu().numpy()[0]
+        frame = np.clip(frame * 255.0, 0, 255).astype(np.uint8).copy()
+        height, width = frame.shape[:2]
+        x, y = int(crop["x"]), int(crop["y"])
+        w, h = int(crop["width"]), int(crop["height"])
+        if x < 0 or y < 0 or x + w > width or y + h > height:
+            return (image,
+                    f"AtlasCompositeCrop: crop rect ({x},{y},{w},{h}) does "
+                    f"not fit the {width}x{height} frame — frame returned "
+                    f"unchanged.")
+        f = fill.detach().cpu().numpy()[0]
+        f = np.clip(f * 255.0, 0, 255).astype(np.uint8)
+        if f.shape[:2] != (h, w):
+            f = np.asarray(PILImage.fromarray(f).resize(
+                (w, h), PILImage.LANCZOS))
+        frame[y:y + h, x:x + w] = f
+        out = torch.from_numpy(frame.astype(np.float32) / 255.0).unsqueeze(0)
+        return (out, f"AtlasCompositeCrop: pasted {w}x{h} at ({x},{y}).")
