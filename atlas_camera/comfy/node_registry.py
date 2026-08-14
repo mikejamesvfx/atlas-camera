@@ -367,6 +367,20 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasShootList"] = "Atlas Shoot List 📸"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasMoveBudget"] = "Atlas Move Budget 📐"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasLayerPlan"] = "Atlas Layer Plan 🥞"
 
+# Promoted from the experimental tier 2026-08-14 (two-pass occlusion-fill
+# engine, field-tested): keys byte-identical; display names drop only the
+# '(experimental)' gate tag.
+NODE_CLASS_MAPPINGS["AtlasInterpassGate"] = AtlasInterpassGate
+NODE_CLASS_MAPPINGS["AtlasMembraneComposite"] = AtlasMembraneComposite
+NODE_CLASS_MAPPINGS["AtlasCropROI"] = AtlasCropROI
+NODE_CLASS_MAPPINGS["AtlasCompositeCrop"] = AtlasCompositeCrop
+NODE_CLASS_MAPPINGS["AtlasCameraMovePreset"] = AtlasCameraMovePreset
+NODE_DISPLAY_NAME_MAPPINGS["AtlasInterpassGate"] = "Atlas Interpass Gate 🚦"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasMembraneComposite"] = "Atlas Membrane Composite 🩹"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasCropROI"] = "Atlas Crop ROI ✂️"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasCompositeCrop"] = "Atlas Composite Crop 📌"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 🎬"
+
 
 ATLAS_EXPERIMENTAL_DEFAULT = "0"
 
@@ -378,12 +392,7 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
     "AtlasLoadDynamicPlate": AtlasLoadDynamicPlate,
-    "AtlasInterpassGate": AtlasInterpassGate,
-    "AtlasMembraneComposite": AtlasMembraneComposite,
     "AtlasPathFrameIndex": AtlasPathFrameIndex,
-    "AtlasCropROI": AtlasCropROI,
-    "AtlasCompositeCrop": AtlasCompositeCrop,
-    "AtlasCameraMovePreset": AtlasCameraMovePreset,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -394,12 +403,7 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
     "AtlasLoadDynamicPlate": "Atlas Load Dynamic Plate 🌊🔬 (experimental)",
-    "AtlasInterpassGate": "Atlas Interpass Gate 🚦🔬 (experimental)",
-    "AtlasMembraneComposite": "Atlas Membrane Composite 🩹🔬 (experimental)",
     "AtlasPathFrameIndex": "Atlas Path Frame Index 🔢🔬 (experimental)",
-    "AtlasCropROI": "Atlas Crop ROI ✂️🔬 (experimental)",
-    "AtlasCompositeCrop": "Atlas Composite Crop 📌🔬 (experimental)",
-    "AtlasCameraMovePreset": "Atlas Camera Move Preset 🎬🔬 (experimental)",
 }
 
 

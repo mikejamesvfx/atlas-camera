@@ -153,7 +153,7 @@ atlas_camera.exporters  � Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  � Atlas JSON, USD camera, and Record3D (.r3d ARKit
                           capture) loaders
 
-atlas_camera.comfy      � ComfyUI node library (93 standard + 13 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
+atlas_camera.comfy      � ComfyUI node library (98 standard + 8 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
 
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
 
@@ -201,7 +201,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ## ComfyUI integration — see docs/NODE_CATALOG.md
 
-The full node catalog (93 standard + 13 experimental + 2 legacy + 2 iOS = 110
+The full node catalog (98 standard + 8 experimental + 2 legacy + 2 iOS = 110
 registered), `comfy/` module layout,
 setup/symlink instructions, double-import guard, `atlas_blockout.js` frontend
 reference, `/atlas/camera_data` endpoint, and the example-workflow catalog all
@@ -213,8 +213,8 @@ Quick facts that must never drift (details in the catalog):
   `nodes_*` responsibility modules; import from the specific module in new
   code. `tests/test_facade_surface.py` pins all facade names.
 - Registered node keys + display names are a saved-workflow contract
-  (`tests/test_comfy_node_registry.py` pins the surface; currently 93 standard
-  + 13 experimental + 2 legacy + 2 iOS).
+  (`tests/test_comfy_node_registry.py` pins the surface; currently 98 standard
+  + 8 experimental + 2 legacy + 2 iOS).
 - `comfy/__init__.py` loads twice at startup — route registration sits behind
   a double-import guard; keep it there.
 - Shipping example workflows are pinned by `tests/test_example_workflows.py`

@@ -58,6 +58,9 @@ NORMAL_KEYS = {
     "AtlasSolveGate", "AtlasOutpaintDepth", "AtlasShootList",
     "AtlasUSDCameraLoader", "AtlasVLMScaleCues",
     "AtlasVPVisualization", "AtlasViewportControls",
+    # Promoted from the experimental tier 2026-08-14 (two-pass fill engine):
+    "AtlasInterpassGate", "AtlasMembraneComposite", "AtlasCropROI",
+    "AtlasCompositeCrop", "AtlasCameraMovePreset",
 }
 
 EXPERIMENTAL_KEYS = {
@@ -67,9 +70,7 @@ EXPERIMENTAL_KEYS = {
     "AtlasCompleteDepth",
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
     "AtlasLoadDynamicPlate",
-    "AtlasInterpassGate", "AtlasMembraneComposite",
-    "AtlasPathFrameIndex", "AtlasCropROI", "AtlasCompositeCrop",
-    "AtlasCameraMovePreset",
+    "AtlasPathFrameIndex",
 }
 
 # iOS / Record3D capture tier — gated behind ATLAS_IOS, held out of the v1
@@ -93,12 +94,12 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 93
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 98
 
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 13
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 8
 
 
 def test_display_name_mapping_covers_registry():
