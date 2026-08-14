@@ -8,6 +8,21 @@
 
 ## Deferred engineering backlog
 
+- **Fixer render repair (2026-08-14).** `atlas_camera/inference/fixer_render_fix.py`
+  shells out to NVIDIA Fixer in a Docker container (`docker/fixer/Dockerfile`)
+  to repair projected-render artifacts, and `tools/generate_fixer_training_pairs.py`
+  builds fine-tune pairs from baked orbits. The `AtlasRenderFix` node that drove
+  it was deregistered 2026-08-03 and its wrapper deleted 2026-08-14, so the
+  backend now has **no product consumer** — only its own test imports it. Kept
+  deliberately: the container recipe and the pair-generation tool are the
+  research trail, and INSTALL.md already tells users the node is gone.
+  Do **not** treat this as dead code to sweep. If taken up again, the open
+  question is not the model but the surface: it was Docker-only (the
+  cosmos/transformer_engine stack has no native Windows build), which is why
+  the node was removed from a pack whose selling point is that nothing needs
+  Docker, a cloned research repo, or Blender. Re-landing it means either
+  solving that, or accepting it as an explicitly opt-in extra.
+
 - **Measured depth calibration (2026-07-29).**
   `atlas_camera/core/depth_calibration.py` fits a two-or-three coefficient
   correction from a monocular depth estimate onto MEASURED depth

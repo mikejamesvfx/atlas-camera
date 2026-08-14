@@ -574,6 +574,11 @@ _MENU_FOLDERS = {
     # Every gated tier lands here: experimental, legacy, and iOS. They only
     # appear in the menu when their flag registers them, but carry the folder
     # regardless so they land in the right place when enabled.
+    # Nodes PROMOTED out of a gated tier keep this folder deliberately —
+    # promotion changes whether a node is registered by default, not how
+    # advanced it is, and moving it would relocate a menu entry that saved
+    # workflows and muscle memory already point at. So this tuple is
+    # "advanced OR gated", not "gated only".
     "Atlas/advanced": (
         "AtlasCompleteDepth", "AtlasBlockoutMassing", "AtlasExtractAnglePatch",
         "AtlasImportAnglePatch", "AtlasMaskedSurfaceReconstruct",

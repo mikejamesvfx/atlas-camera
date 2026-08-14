@@ -3,6 +3,61 @@
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
 full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
 
+## 0.8.3 — unreleased (branch cut 2026-08-14)
+
+> Stacks on top of the unshipped 0.8.2 below: neither has been published, so a
+> release carries both sets of notes. 0.8.2 is a pure menu/README pass and its
+> "no node was added, removed, renamed or rewired" holds for what it described.
+> The node-surface changes are all here.
+
+Registry goes **93 → 100 standard**, total stays **110**. Every key is
+byte-identical, so saved graphs still load; what changed is which nodes are
+registered without a flag.
+
+### Seven nodes promoted out of the experimental gate
+
+- The **two-pass occlusion-fill engine** — `AtlasInterpassGate`,
+  `AtlasMembraneComposite`, `AtlasCropROI`, `AtlasCompositeCrop`,
+  `AtlasCameraMovePreset` — field-tested and mutually dependent, so they ship
+  as a set.
+- **`AtlasPathFrameIndex`** serves that same engine: it computes the batch
+  indices the in-graph fill would otherwise have hand-typed. Gated, a default
+  install rebuilt the bug it exists to prevent — a 30-frame arc run against
+  indices left at the 5-frame default repaired frame 4 of the move's beginning.
+- **`AtlasLoadDynamicPlate`** was the only gated part of Dynamic Plates. The
+  producer (`python -m atlas_camera.dynamic`) was never behind a flag, so the
+  expensive generation half ran freely while merely *viewing* the result needed
+  `ATLAS_EXPERIMENTAL=1`.
+
+Display names drop only the `(experimental)` tag. Promoted nodes keep their
+`Atlas/advanced` menu folder — promotion changes whether a node registers by
+default, not how advanced it is.
+
+### Removed
+
+- `AtlasRenderFix` and `AtlasBlenderOrganicFill` — deregistered on 2026-08-03,
+  the classes remained as 370 lines of node wrapper unreachable from ComfyUI.
+  Their backends (`inference/fixer_render_fix.py`, `blender/organic_fill.py`)
+  are untouched and still tested.
+- `core/fill_policy.py` — routed a hole to the organic or planar fill family.
+  Its only caller for its whole life was `AtlasBlenderOrganicFill`, so the
+  organic route left the product when that node was deregistered. The doctrine
+  it encoded is kept in `docs/DESIGN_RULES.md`; the two-pass fill is the live
+  path.
+- Ten `tools/build_*_workflow.py` generators whose output workflows all left
+  `examples/` in the 0.8.1 trim.
+
+### Documentation
+
+- **`docs/DESIGN_RULES.md` and `docs/IOS_APP_BOOTSTRAP.md` are tracked again.**
+  A brand/design gitignore rule swept both in on the word DESIGN; the first is
+  the engineering reference CLAUDE.md's routing index points at, and the second
+  is pinned as must-be-tracked by a test that had been red since.
+- README and `docs/DYNAMIC_PLATES.md` now describe Dynamic Plates and reference
+  each other — the capability was previously invisible from the front door.
+- The `[lotus2]` depth backend has an install path in INSTALL.md.
+- New `tools/README.md` records which developer scripts are load-bearing.
+
 ## 0.8.2 — unreleased (branch cut 2026-08-03)
 
 > Written but not shipped: `pyproject.toml` still declares **0.8.1**, so
