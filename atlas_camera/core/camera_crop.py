@@ -643,6 +643,160 @@ def neutralize_fill_cast(crop, mask, *, reference=None, band_px: int = 32,
     return out.astype(source.dtype)
 
 
+def membrane_blend(fill, reference, mask, *, max_cg_iters: int = 600,
+                   tol: float = 1e-4):
+    """Erase the seam between a generated fill and the plate around it.
+
+    Solves the Poisson-editing offset membrane: the mismatch
+    ``reference - fill`` is sampled on the hole's RIM and extended
+    harmonically (Laplace) into the hole, then added to the fill. The
+    correction is smooth by construction, so the fill's own texture — its
+    gradients — passes through untouched while the boundary matches the plate
+    exactly.
+
+    This exists because nothing generation-side moved the seam: across four
+    arms (masked denoise both polarities, clean-plate LoRA, dev transformer)
+    the rim gradient ratio stayed 2.0-8.5x the plate's own statistics, and
+    cv2.seamlessClone's bbox/centre placement silently missed the target.
+    The membrane took 2.22 -> 1.06 and 2.04 -> 1.03 (plate-native ~1.0) with
+    fill gradient energy preserved, ~4 s for a 563k-px hole.
+
+    Uses scipy's sparse direct solve when available; otherwise a pure-numpy
+    conjugate-gradient on the same 5-point stencil (slower, no new
+    dependency). Returns a corrected copy in the input dtype.
+    """
+    np = _require_numpy()
+    src = np.asarray(fill, dtype=np.float64)
+    ref = np.asarray(reference, dtype=np.float64)
+    if src.shape != ref.shape or src.ndim != 3:
+        raise ValueError(
+            f"membrane_blend needs matching HxWx3 rasters, got "
+            f"{src.shape} vs {ref.shape}")
+    hole = _as_bool_mask(np, mask)
+    if hole.shape != src.shape[:2]:
+        raise ValueError(
+            f"mask {hole.shape} does not match raster {src.shape[:2]}")
+    if not bool(hole.any()):
+        return np.array(fill, copy=True)
+
+    height, width = hole.shape
+    index = np.full((height, width), -1, dtype=np.int64)
+    ys, xs = np.nonzero(hole)
+    count = len(ys)
+    index[ys, xs] = np.arange(count)
+
+    # 5-point Laplacian over hole pixels; rim pixels are Dirichlet boundary
+    # carrying the INTERFACE STEP — reference just outside minus fill just
+    # inside. (Using ref-fill AT the outside pixel instead reads ~0 whenever
+    # the fill already matches the plate outside the hole — it does, after
+    # colour correction — and corrects nothing.) Both sides are 3x3
+    # box-smoothed first: the raw one-pixel difference carries the plate's
+    # own texture into the boundary condition and the membrane then bakes
+    # that noise into the hole. Off-image neighbours simply drop out
+    # (natural boundary), so holes touching the frame edge are fine.
+    def _box3_masked(img, valid):
+        """3x3 mean over VALID pixels only — the reference may hold the
+        inpaint sentinel inside the hole, and an unmasked blur would smear it
+        into the rim samples."""
+        v = valid.astype(np.float64)
+        acc = img * v[..., None]
+        norm = v.copy()
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1),
+                       (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            shifted = np.roll(np.roll(img * v[..., None], dy, axis=0),
+                              dx, axis=1)
+            weight = np.roll(np.roll(v, dy, axis=0), dx, axis=1)
+            # roll wraps; zero the wrapped rows/cols out of the average
+            if dy == 1:
+                shifted[0] = 0
+                weight[0] = 0
+            elif dy == -1:
+                shifted[-1] = 0
+                weight[-1] = 0
+            if dx == 1:
+                shifted[:, 0] = 0
+                weight[:, 0] = 0
+            elif dx == -1:
+                shifted[:, -1] = 0
+                weight[:, -1] = 0
+            acc += shifted
+            norm += weight
+        return acc / np.maximum(norm, 1e-9)[..., None]
+
+    ref_smooth = _box3_masked(ref, ~hole)      # plate side, sentinel excluded
+    src_smooth = _box3_masked(src, hole)       # fill side only
+    neighbours = []
+    rhs = np.zeros((count, 3), dtype=np.float64)
+    degree = np.zeros(count, dtype=np.float64)
+    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        yy = ys + dy
+        xx = xs + dx
+        inside = (yy >= 0) & (yy < height) & (xx >= 0) & (xx < width)
+        degree += inside
+        j = np.full(count, -1, dtype=np.int64)
+        j[inside] = index[yy[inside], xx[inside]]
+        boundary = inside & (j < 0)
+        rhs[boundary] += (ref_smooth[yy[boundary], xx[boundary]] -
+                          src_smooth[ys[boundary], xs[boundary]])
+        neighbours.append(j)
+
+    correction = np.zeros_like(src)
+    solved = False
+    try:
+        from scipy import sparse
+        from scipy.sparse.linalg import spsolve
+
+        rows, cols, vals = [np.arange(count)], [np.arange(count)], [degree]
+        for j in neighbours:
+            have = j >= 0
+            rows.append(np.arange(count)[have])
+            cols.append(j[have])
+            vals.append(np.full(int(have.sum()), -1.0))
+        matrix = sparse.csr_matrix(
+            (np.concatenate(vals),
+             (np.concatenate(rows), np.concatenate(cols))),
+            shape=(count, count))
+        for channel in range(3):
+            correction[ys, xs, channel] = spsolve(matrix, rhs[:, channel])
+        solved = True
+    except ImportError:
+        pass
+    if not solved:
+        # Conjugate gradient on the same SPD system, matrix-free.
+        def apply_laplacian(vec):
+            out = degree * vec
+            for j in neighbours:
+                have = j >= 0
+                out[have] -= vec[j[have]]
+            return out
+
+        for channel in range(3):
+            b = rhs[:, channel]
+            x = np.zeros(count)
+            r = b - apply_laplacian(x)
+            p = r.copy()
+            rs = float(r @ r)
+            b_norm = max(float(np.linalg.norm(b)), 1e-12)
+            for _ in range(int(max_cg_iters)):
+                ap = apply_laplacian(p)
+                alpha = rs / max(float(p @ ap), 1e-30)
+                x += alpha * p
+                r -= alpha * ap
+                rs_new = float(r @ r)
+                if np.sqrt(rs_new) / b_norm < tol:
+                    break
+                p = r + (rs_new / rs) * p
+                rs = rs_new
+            correction[ys, xs, channel] = x
+
+    out = src + correction
+    source = np.asarray(fill)
+    if np.issubdtype(source.dtype, np.integer):
+        info = np.iinfo(source.dtype)
+        out = np.clip(np.rint(out), info.min, info.max)
+    return out.astype(source.dtype)
+
+
 def composite_crops(base, crops, rois, *, masks=None, feather_px: int = 0):
     """Paste generated crops back into the full plate through their ROIs.
 

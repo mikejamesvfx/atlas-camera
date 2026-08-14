@@ -408,6 +408,75 @@ def test_cast_neutralizer_declines_without_a_ring():
     assert np.array_equal(neutralize_fill_cast(img, mask), img)
 
 
+def test_membrane_blend_erases_a_constant_offset_seam():
+    """A fill that is the plate shifted by a constant must come back equal to
+    the plate: the rim mismatch is constant, its harmonic extension is that
+    constant everywhere."""
+    from atlas_camera.core.camera_crop import membrane_blend
+
+    # Photographic-plate stand-in: smooth ramp + mild texture. (Not iid noise
+    # at full amplitude — boundary sampling under iid noise is irreducibly
+    # ~sigma, which no real plate exhibits.)
+    rng = np.random.default_rng(3)
+    yy, xx = np.mgrid[0:48, 0:64]
+    lum = (80 + yy * 1.2 + xx * 0.8 +
+           rng.integers(-5, 6, size=(48, 64))).astype(np.int16)
+    plate = np.stack([lum + 3, lum, lum - 3], axis=-1)
+    plate = np.clip(plate, 0, 255).astype(np.uint8)
+    mask = np.zeros((48, 64), dtype=bool)
+    mask[12:36, 16:48] = True
+    fill = plate.copy()
+    fill[mask] = np.clip(plate[mask].astype(int) - 30, 0, 255).astype(np.uint8)
+    out = membrane_blend(fill, plate, mask)
+    assert np.abs(out[mask].astype(int) - plate[mask].astype(int)).mean() < 2.5
+    assert np.array_equal(out[~mask], fill[~mask])   # only the hole corrected
+
+
+def test_membrane_blend_preserves_fill_texture():
+    """The correction is harmonic (smooth): the fill's own high-frequency
+    content must survive — only the offset field changes."""
+    from atlas_camera.core.camera_crop import membrane_blend
+
+    rng = np.random.default_rng(4)
+    plate = np.full((48, 64, 3), 120, dtype=np.uint8)
+    mask = np.zeros((48, 64), dtype=bool)
+    mask[12:36, 16:48] = True
+    fill = plate.copy()
+    texture = rng.integers(80, 160, size=(int(mask.sum()), 3))
+    fill[mask] = texture.astype(np.uint8)
+    out = membrane_blend(fill, plate, mask)
+    # interior second differences (texture) preserved within rounding
+    inner = np.zeros_like(mask)
+    inner[14:34, 18:46] = True
+    d_fill = np.diff(fill[14:34, 18:46, 0].astype(int), axis=1)
+    d_out = np.diff(out[14:34, 18:46, 0].astype(int), axis=1)
+    assert np.abs(d_fill - d_out).mean() < 2.0
+
+
+def test_membrane_blend_handles_frame_edge_holes_and_empty_masks():
+    from atlas_camera.core.camera_crop import membrane_blend
+
+    plate = np.full((32, 32, 3), 100, dtype=np.uint8)
+    fill = plate.copy()
+    edge = np.zeros((32, 32), dtype=bool)
+    edge[0:8, 0:32] = True                     # touches three frame edges
+    fill[edge] = 40
+    out = membrane_blend(fill, plate, edge)
+    assert out.shape == plate.shape
+    assert np.abs(out[edge].astype(int) - 100).mean() < 2.0
+    empty = membrane_blend(fill, plate, np.zeros((32, 32), bool))
+    assert np.array_equal(empty, fill)
+
+
+def test_membrane_blend_rejects_mismatched_rasters():
+    from atlas_camera.core.camera_crop import membrane_blend
+
+    with pytest.raises(ValueError, match="matching HxWx3"):
+        membrane_blend(np.zeros((8, 8, 3), np.uint8),
+                       np.zeros((4, 4, 3), np.uint8),
+                       np.zeros((8, 8), bool))
+
+
 def test_composite_float_plate_keeps_dtype():
     base = np.zeros((16, 16, 3), dtype=np.float32)
     roi = RegionROI(x=0, y=0, width=16, height=16)
