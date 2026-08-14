@@ -29,16 +29,16 @@ relative to itself, so a worktree silently audits a different tree.
 
 ## Counts
 
-* standard: **99**
-* experimental: **7**
+* standard: **100**
+* experimental: **6**
 * legacy: **2**
 * total registered: **110**
 * standard nodes with no product evidence: **0**
 
 | Verdict | Nodes |
 |---|---:|
-| `KEEP_CORE` | 99 |
-| `KEEP_EXPERIMENTAL` | 7 |
+| `KEEP_CORE` | 100 |
+| `KEEP_EXPERIMENTAL` | 6 |
 | `LEGACY_GATE` | 2 |
 | `IOS_GATE` | 2 |
 
@@ -140,7 +140,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasOcclusionGraph` | atlas_camera/comfy/nodes_completion.py | standard | 1 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasOcclusionMask` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasOutpaintDepth` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasPathFrameIndex` | atlas_camera/comfy/nodes_fill.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasPathFrameIndex` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasPathGuidedHoleRepair` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasPlanarHolePatch` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasProject` | atlas_camera/comfy/nodes_project.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |

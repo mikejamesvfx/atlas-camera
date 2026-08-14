@@ -63,6 +63,8 @@ NORMAL_KEYS = {
     "AtlasCompositeCrop", "AtlasCameraMovePreset",
     # Promoted 2026-08-14 (Dynamic Plates: the CLI half was never gated):
     "AtlasLoadDynamicPlate",
+    # Promoted 2026-08-14 (serves the standard two-pass fill engine):
+    "AtlasPathFrameIndex",
 }
 
 EXPERIMENTAL_KEYS = {
@@ -71,7 +73,6 @@ EXPERIMENTAL_KEYS = {
     "AtlasRefineOcclusionSeams",
     "AtlasCompleteDepth",
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
-    "AtlasPathFrameIndex",
 }
 
 # iOS / Record3D capture tier — gated behind ATLAS_IOS, held out of the v1
@@ -95,12 +96,12 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 99
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 100
 
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 7
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 6
 
 
 def test_display_name_mapping_covers_registry():

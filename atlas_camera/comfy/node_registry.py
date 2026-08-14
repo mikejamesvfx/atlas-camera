@@ -389,6 +389,13 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 
 NODE_CLASS_MAPPINGS["AtlasLoadDynamicPlate"] = AtlasLoadDynamicPlate
 NODE_DISPLAY_NAME_MAPPINGS["AtlasLoadDynamicPlate"] = "Atlas Load Dynamic Plate 🌊"
 
+# Promoted from the experimental tier 2026-08-14: db5c27d promoted the two-pass
+# fill engine but left this behind, and it exists only to serve that engine --
+# it computes the batch indices the in-graph fill would otherwise hand-type,
+# the failure it was written for. Gated, a default install rebuilds that bug.
+NODE_CLASS_MAPPINGS["AtlasPathFrameIndex"] = AtlasPathFrameIndex
+NODE_DISPLAY_NAME_MAPPINGS["AtlasPathFrameIndex"] = "Atlas Path Frame Index 🔢"
+
 
 ATLAS_EXPERIMENTAL_DEFAULT = "0"
 
@@ -399,7 +406,6 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasBlockoutMassing": AtlasBlockoutMassing,
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
-    "AtlasPathFrameIndex": AtlasPathFrameIndex,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -409,7 +415,6 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasBlockoutMassing": "Atlas Blockout Massing 🧱🔬 (experimental)",
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
-    "AtlasPathFrameIndex": "Atlas Path Frame Index 🔢🔬 (experimental)",
 }
 
 

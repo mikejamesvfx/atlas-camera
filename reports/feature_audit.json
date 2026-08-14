@@ -2,16 +2,16 @@
  "schema_version": 1,
  "generated_utc": "2026-08-14",
  "counts": {
-  "standard": 99,
-  "experimental": 7,
+  "standard": 100,
+  "experimental": 6,
   "legacy": 2,
   "ios": 2,
   "total": 110,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 99,
-  "KEEP_EXPERIMENTAL": 7,
+  "KEEP_CORE": 100,
+  "KEEP_EXPERIMENTAL": 6,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
  },
@@ -2193,10 +2193,10 @@
   },
   "AtlasPathFrameIndex": {
    "module": "atlas_camera/comfy/nodes_fill.py",
-   "tier": "experimental",
+   "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 2,
-   "tests": 5,
+   "dedicated_tests": 1,
+   "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 0,
    "docs": 1,
@@ -2211,7 +2211,7 @@
    "overlapping_replacement": null,
    "known_defect": null,
    "compatibility_risk": null,
-   "verdict": "KEEP_EXPERIMENTAL",
+   "verdict": "KEEP_CORE",
    "evidence": [],
    "migration_action": null,
    "notes": null

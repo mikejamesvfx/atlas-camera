@@ -91,7 +91,7 @@ def test_experimental_nodes_flagged():
                             "AtlasRefineOcclusionSeams",
                             "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
                                                         "AtlasCompleteDepth", "AtlasBlockoutMassing",
-                            "AtlasPathFrameIndex"}
+                            }
 
 
 def test_audit_is_read_only(tmp_path):
