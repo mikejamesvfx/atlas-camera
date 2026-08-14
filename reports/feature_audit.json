@@ -2,16 +2,16 @@
  "schema_version": 1,
  "generated_utc": "2026-08-14",
  "counts": {
-  "standard": 98,
-  "experimental": 8,
+  "standard": 99,
+  "experimental": 7,
   "legacy": 2,
   "ios": 2,
   "total": 110,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 98,
-  "KEEP_EXPERIMENTAL": 8,
+  "KEEP_CORE": 99,
+  "KEEP_EXPERIMENTAL": 7,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
  },
@@ -1794,13 +1794,13 @@
   },
   "AtlasLoadDynamicPlate": {
    "module": "atlas_camera/comfy/nodes_dynamic.py",
-   "tier": "experimental",
+   "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 2,
-   "tests": 5,
+   "dedicated_tests": 1,
+   "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 1,
+   "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -1812,7 +1812,7 @@
    "overlapping_replacement": null,
    "known_defect": null,
    "compatibility_risk": null,
-   "verdict": "KEEP_EXPERIMENTAL",
+   "verdict": "KEEP_CORE",
    "evidence": [],
    "migration_action": null,
    "notes": null

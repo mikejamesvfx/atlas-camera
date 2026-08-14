@@ -381,6 +381,14 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasCropROI"] = "Atlas Crop ROI ✂️"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCompositeCrop"] = "Atlas Composite Crop 📌"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 🎬"
 
+# Promoted from the experimental tier 2026-08-14 (Dynamic Plates): the CLI half
+# (`python -m atlas_camera.dynamic`) was never gated, so gating only the VIEWER
+# left the cheap reversible step behind a flag while the expensive generation
+# step ran freely. Key byte-identical; display name drops only the
+# '(experimental)' gate tag.
+NODE_CLASS_MAPPINGS["AtlasLoadDynamicPlate"] = AtlasLoadDynamicPlate
+NODE_DISPLAY_NAME_MAPPINGS["AtlasLoadDynamicPlate"] = "Atlas Load Dynamic Plate 🌊"
+
 
 ATLAS_EXPERIMENTAL_DEFAULT = "0"
 
@@ -391,7 +399,6 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasBlockoutMassing": AtlasBlockoutMassing,
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
-    "AtlasLoadDynamicPlate": AtlasLoadDynamicPlate,
     "AtlasPathFrameIndex": AtlasPathFrameIndex,
 }
 
@@ -402,7 +409,6 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasBlockoutMassing": "Atlas Blockout Massing 🧱🔬 (experimental)",
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
-    "AtlasLoadDynamicPlate": "Atlas Load Dynamic Plate 🌊🔬 (experimental)",
     "AtlasPathFrameIndex": "Atlas Path Frame Index 🔢🔬 (experimental)",
 }
 

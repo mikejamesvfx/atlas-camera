@@ -20,7 +20,7 @@ def test_audit_covers_every_registered_node():
     kinds, names = audit.registered_nodes()
     data = audit.audit()
     assert set(data) == names            # exactly the registered set, nothing invented
-    assert len(names) == 110    # 98 standard + 8 experimental + 2 legacy + 2 iOS
+    assert len(names) == 110    # 99 standard + 7 experimental + 2 legacy + 2 iOS
     for name, rec in data.items():
         assert rec["kind"] in ("standard", "experimental", "legacy", "ios")
         assert rec["status"] in ("referenced", "registered_only")
@@ -90,8 +90,7 @@ def test_experimental_nodes_flagged():
     assert experimental == {"AtlasMaskedSurfaceReconstruct",
                             "AtlasRefineOcclusionSeams",
                             "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
-                            "AtlasLoadDynamicPlate",
-                            "AtlasCompleteDepth", "AtlasBlockoutMassing",
+                                                        "AtlasCompleteDepth", "AtlasBlockoutMassing",
                             "AtlasPathFrameIndex"}
 
 
