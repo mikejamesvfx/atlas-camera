@@ -288,8 +288,25 @@ def resolve_sensor_size(meta: RawMetadata, image_width_px: int,
     from atlas_camera.reference_data.camera_registry import find_camera_body
     body = find_camera_body(meta.camera_make, meta.camera_model)
     if body is not None:
-        return SensorResolution(body.sensor_width_mm, body.sensor_height_mm,
-                                "camera_db", warnings)
+        sw, sh = body.sensor_width_mm, body.sensor_height_mm
+        # ORIENT to the image. The registry stores a body's PHYSICAL dimensions
+        # (an X-H2 is 23.5 x 15.6 whichever way it is held), but every consumer
+        # divides `sensor_width_mm` by the IMAGE width to get fx — so a portrait
+        # frame needs the short edge as its "width". Found live 2026-08-15 on a
+        # portrait X-H2 plate: unoriented gave fx 4120 px against a measured
+        # 6207 px, a 34% error, silently. The other tiers below derive from
+        # image_width_px already and so are image-relative by construction;
+        # only this one carries the body's own orientation.
+        if sw and sh and image_width_px > 0 and image_height_px > 0:
+            image_is_portrait = image_height_px > image_width_px
+            sensor_is_portrait = sh > sw
+            if image_is_portrait != sensor_is_portrait:
+                sw, sh = sh, sw
+                warnings.append(
+                    f"Sensor dimensions transposed to match a "
+                    f"{'portrait' if image_is_portrait else 'landscape'} frame "
+                    f"({sw:.1f}x{sh:.1f}mm).")
+        return SensorResolution(sw, sh, "camera_db", warnings)
     if meta.camera_model:
         warnings.append(
             f"Camera model '{meta.camera_model}' not in camera_bodies.json — "

@@ -80,6 +80,8 @@ from atlas_camera.comfy.node_helpers import (
     _DISTANCE_VIEWS,
     _parse_view_prompt,
     _parse_exact_view,
+    _parse_exact_pivot,
+    _format_exact_view,
     _named_view_orbit_delta,
     _format_hole_fill_report,
     _solve_with_relief_mesh,
@@ -118,6 +120,7 @@ from atlas_camera.comfy.nodes_completion import (
 )
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
+from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume  # noqa: F401
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasCompositeCrop,
                                            AtlasCropROI,

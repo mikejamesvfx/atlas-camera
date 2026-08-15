@@ -1300,7 +1300,8 @@
       },
       "widgets_values": [
         "atlas_exports/nuke_qwen_patch",
-        ""
+        "",
+        true
       ],
       "title": "18 · EXPORT NUKE PROJECTION SCENE 📤"
     },

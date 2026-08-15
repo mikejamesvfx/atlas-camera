@@ -242,5 +242,9 @@ include = ["atlas", "atlas.*", "atlas_camera", "atlas_camera.*"]
 "atlas_camera.comfy" = ["web/*.js", "web/lib/*.js"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# research/ carries the VolFill evaluation harness. Its mapping tests prove
+# canonical -> Atlas-world correctness, which every number in
+# docs/research/FLASH3D_VOLFILL_ATLAS_EVALUATION.md rests on — so they run
+# in CI like anything else. They need no GPU and no model weights.
+testpaths = ["tests", "research/volfill/tests"]
 pythonpath = ["."]

@@ -1,0 +1,9 @@
+# Everything heavy or third-party stays out of git.
+.venv/
+repos/
+out/
+checkpoints/
+*.npz
+*.ply
+*.pth
+__pycache__/

@@ -31,6 +31,7 @@ from atlas_camera.comfy.node_helpers import (
     _image_tensor_to_pil,
     _mask_to_b64_png,
     _named_view_orbit_delta,
+    _parse_exact_pivot,
     _parse_exact_view,
     _parse_view_prompt,
     _pil_to_image_tensor,
@@ -1569,7 +1570,16 @@ class AtlasRetopologizeLayer:
         # that is the trade of remeshing rather than welding, and the report
         # names every primitive it touched so a changed drawn plane is visible.
         from atlas_camera.comfy.nodes_viewport import DRAWN_SOURCES
-        retopo_sources = ("depth_relief_mesh", *DRAWN_SOURCES)
+        # Hidden-geometry VOLUMES join the allowlist too (experimental tier).
+        # A marching-cubes isosurface is the case retopo is most needed for: it
+        # arrives as dense irregular triangles with a staircase at the voxel
+        # scale, so the useful pipeline is to extract at FULL field resolution
+        # and let quadric decimation reduce it here — which preserves curvature
+        # far better than coarsening the grid before extraction ever could.
+        # Feed it single-sided (AtlasLoadHiddenVolume's `double_sided` off):
+        # remeshers choke on coincident opposite windings.
+        from atlas_camera.comfy.nodes_hidden_volume import HIDDEN_VOLUME_SOURCE
+        retopo_sources = ("depth_relief_mesh", HIDDEN_VOLUME_SOURCE, *DRAWN_SOURCES)
 
         def _do(prim, camera, scope):
             meta = prim.metadata or {}
@@ -3767,7 +3777,10 @@ class AtlasAddPatchView:
                 "exact_view_override": ("STRING", {"forceInput": True,
                     "tooltip": "Optional: wire AtlasBlockoutViewport's patch_exact output here "
                                "('azimuth_deg=.. elevation_deg=.. distance_scale=..' — 📐's RAW "
-                               "measured orbit, before named-view snapping). When connected it "
+                               "measured orbit, before named-view snapping — or "
+                               "AtlasCameraMovePreset's exact_view, which appends "
+                               "'pivot=x,y,z' so its scene-depth pivot is reproduced instead of "
+                               "the default ground-ray pivot). When connected it "
                                "WINS over patch_view_override AND the dropdowns, and "
                                "flip_azimuth is ignored (the raw delta is already in "
                                "orbit_camera's own convention). This is the render-conditioned "
@@ -3840,8 +3853,10 @@ class AtlasAddPatchView:
                   primary_depth=None, exclude_mask=None, geometry_source="reuse_scene",
                   patch_mask=None):
         exact_delta = None
+        exact_pivot = None
         if exact_view_override and exact_view_override.strip():
             exact_delta = _parse_exact_view(exact_view_override)
+            exact_pivot = _parse_exact_pivot(exact_view_override)
             if exact_delta is None:
                 raise ValueError(
                     f"exact_view_override {exact_view_override!r} does not parse as "
@@ -3894,9 +3909,15 @@ class AtlasAddPatchView:
                 source_azimuth_view, source_elevation_view, flip_azimuth,
             )
 
-        # Patch camera: orbit the recovered camera around the scene pivot (the
-        # point it looks at) so the patch shares the primary's world frame.
-        pivot = ground_lookat_pivot(extr)
+        # Patch camera: orbit the recovered camera around the scene pivot so
+        # the patch shares the primary's world frame. WHICH pivot is part of
+        # the delta's contract: an orbit delta is meaningless without it, and a
+        # delta measured about one pivot reproduces a different pose about
+        # another. `exact_view_override` may carry it (`pivot=x,y,z`, what
+        # AtlasCameraMovePreset emits for its scene-depth pivot); everything
+        # else — every viewport-authored angle, every saved workflow — measured
+        # against the payload's `orbit_pivot`, which IS ground_lookat_pivot.
+        pivot = exact_pivot if exact_pivot is not None else ground_lookat_pivot(extr)
         patch_extr = orbit_camera(
             extr, pivot,
             d_azimuth_deg=float(d_azimuth),
@@ -4077,13 +4098,33 @@ class AtlasAddPatchView:
                 horizon_y=patch_horizon_y,
             )
 
+        # `patch_mask` bounds the GEOMETRY, not just the paint. Without this the
+        # own_depth path built a relief mesh over the WHOLE patch frame: a
+        # second full copy of the scene laid over geometry the primary already
+        # carries, plus a sky sheet wherever the sky heuristic was disabled by
+        # an exclude_mask. And because a patch mesh is only ever painted by its
+        # OWN source (the viewport gives it one projection material, matted by
+        # mask_b64 — the primary never paints patch geometry), everything
+        # outside the fill rendered as bare grey-green under 'Project' and
+        # vanished under it. All three symptoms were one defect, found live
+        # 2026-08-15: the mesh has no business existing outside the hole it was
+        # generated to fill. Same dilation as the matte, so mesh and paint end
+        # at the same rim with the same overlap.
+        mesh_exclude = resolved_exclude
+        if patch_hole is not None:
+            outside = ~dilate(patch_hole, int(unseen_dilate_px))
+            mesh_exclude = (outside if mesh_exclude is None
+                            else (mesh_exclude | outside))
         mesh = build_relief_mesh(
             depth_map, view_matrix=patch_extr.camera_view_matrix,
             fx=pfx, fy=pfy, cx=pcx, cy=pcy,
             horizon_y=patch_horizon_y,
             grid_long_edge=int(relief_grid),
             scale=scale,
-            exclude_mask=resolved_exclude,
+            exclude_mask=mesh_exclude,
+            # The heuristic is keyed on the ARTIST's exclude mask, not the hole
+            # trim: a patch_hole-only trim leaves the sky heuristic on, which is
+            # what should carry any sky still inside the fill region.
             apply_sky_heuristic=resolved_exclude is None,
         )
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
@@ -4311,8 +4352,10 @@ class AtlasOcclusionMask:
                  occlusion_mode="simple", primary_depth=None, depth_bias=0.05,
                  patch_view_override="", exact_view_override=""):
         exact_delta = None
+        exact_pivot = None
         if exact_view_override and exact_view_override.strip():
             exact_delta = _parse_exact_view(exact_view_override)
+            exact_pivot = _parse_exact_pivot(exact_view_override)
             if exact_delta is None:
                 raise ValueError(
                     f"exact_view_override {exact_view_override!r} does not parse as "
@@ -4357,7 +4400,10 @@ class AtlasOcclusionMask:
                 patch_azimuth_view, patch_elevation_view, patch_distance,
                 source_azimuth_view, source_elevation_view, flip_azimuth,
             )
-        pivot = ground_lookat_pivot(extr)
+        # Same pivot contract as AtlasAddPatchView — these two nodes MUST place
+        # the target camera identically (that is why the parsers are shared),
+        # so an exact-view string carrying `pivot=` is honoured here too.
+        pivot = exact_pivot if exact_pivot is not None else ground_lookat_pivot(extr)
         target_extr = orbit_camera(
             extr, pivot,
             d_azimuth_deg=d_azimuth, d_elevation_deg=d_elevation,

@@ -1286,7 +1286,8 @@
       },
       "widgets_values": [
         "nuke",
-        ""
+        "",
+        true
       ],
       "title": "Nuke · .nk + build script"
     },

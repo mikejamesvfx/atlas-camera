@@ -382,6 +382,8 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasCompositeCrop"] = "Atlas Composite Crop 📌"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 🎬"
 
 
+from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume
+
 ATLAS_EXPERIMENTAL_DEFAULT = "0"
 
 EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
@@ -393,6 +395,7 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
     "AtlasLoadDynamicPlate": AtlasLoadDynamicPlate,
     "AtlasPathFrameIndex": AtlasPathFrameIndex,
+    "AtlasLoadHiddenVolume": AtlasLoadHiddenVolume,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -404,6 +407,7 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
     "AtlasLoadDynamicPlate": "Atlas Load Dynamic Plate 🌊🔬 (experimental)",
     "AtlasPathFrameIndex": "Atlas Path Frame Index 🔢🔬 (experimental)",
+    "AtlasLoadHiddenVolume": "Atlas Load Hidden Volume 🧊 🔬 (experimental)",
 }
 
 
@@ -570,6 +574,7 @@ _MENU_FOLDERS = {
         "AtlasLoadRecord3D", "AtlasStreamRecord3D", "AtlasLoadDynamicPlate",
         "AtlasInterpassGate", "AtlasMembraneComposite", "AtlasPathFrameIndex",
         "AtlasCropROI", "AtlasCompositeCrop", "AtlasCameraMovePreset",
+        "AtlasLoadHiddenVolume",
     ),
 }
 

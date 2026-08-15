@@ -485,11 +485,23 @@ class AtlasExportNuke:
                 "output_profile": ("ATLAS_OUTPUT_PROFILE", {
                     "tooltip": "Optional OCIO-style output/profile metadata for Read/colorspace annotations."}),
                 "project": ("ATLAS_PROJECT", {"tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's nuke/ lane and supersedes output_dir."}),
+                # APPENDED LAST — widgets_values is positional.
+                "raw_meta": ("ATLAS_RAW_META", {"tooltip":
+                    "Optional AtlasLoadRAW result. When the plate was UNDISTORTED "
+                    "on import, this lets the export write the redistort ST map "
+                    "that puts the render back onto the original distorted plate. "
+                    "Without it the export is one-way: everything downstream is "
+                    "rectilinear and nothing can return to camera space."}),
+                "write_redistort_stmap": ("BOOLEAN", {"default": True, "tooltip":
+                    "Write redistort_stmap.exr beside the script when raw_meta "
+                    "shows the plate was undistorted. Float32 by necessity — half "
+                    "float resolves UV to ~0.0005, which is 2.5 px of error on a "
+                    "5K plate. Expect ~200 MB at full resolution."}),
             },
         }
 
     def export(self, solve, output_dir, relief_mesh_obj_path="", output_profile=None,
-               project=None):
+               project=None, raw_meta=None, write_redistort_stmap=True):
         output_dir = _project_routed_dir(project, output_dir, "nuke")
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)
@@ -503,11 +515,44 @@ class AtlasExportNuke:
         # to absolute so the generated script/scene stays portable.
         mesh_path = str(Path(relief_mesh_obj_path).resolve()) if relief_mesh_obj_path else None
         write_nuke_projection_script(solve, py_dest, relief_mesh_obj_path=mesh_path)
+
+        # REDISTORT: undistorting on import is a one-way door without the
+        # inverse. Atlas straightens the plate so the solve and every derived
+        # mesh live in rectilinear space; the comp has to land back on the
+        # ORIGINAL distorted plate, so the render must be re-distorted. Writing
+        # the map here — beside the script that consumes it — is the only point
+        # in the pipeline that knows both the lens profile and the delivery dir.
+        stmap_note = ""
+        stmap_entries: list = []
+        if raw_meta is not None and write_redistort_stmap:
+            try:
+                from atlas_camera.raw.redistort import (
+                    redistort_stmap_for_import, write_stmap_exr)
+                stmap, info = redistort_stmap_for_import(raw_meta)
+                if stmap is None:
+                    stmap_note = (
+                        f"\nredistort ST map: skipped ({info.get('reason')})")
+                else:
+                    dest = out / "redistort_stmap.exr"
+                    write_stmap_exr(stmap, str(dest))
+                    stmap_entries.append(("redistort_stmap", str(dest)))
+                    stmap_note = (
+                        f"\nredistort ST map: {dest.name} "
+                        f"({info['width']}x{info['height']}, residual "
+                        f"{info['inversion_residual_px']:.4f}px, "
+                        f"{info['outside_fraction']*100:.1f}% outside frame)"
+                        f"\n  Nuke: Read(render) -> STMap(uv = Read({dest.name})) "
+                        f"-> distorted plate space")
+            except Exception as exc:      # never fail an export for a sidecar
+                stmap_note = (
+                    f"\nredistort ST map: FAILED ({type(exc).__name__}: {exc})")
         write_nuke_native_script(solve, nk_dest, relief_mesh_obj_path=mesh_path)
         _write_export_manifest(solve, out,
                                [("nuke_script", str(py_dest)),
-                                ("nuke_scene", str(nk_dest))],
+                                ("nuke_scene", str(nk_dest))] + stmap_entries,
                                "AtlasExportNuke")
+        if stmap_note:
+            print(f"[AtlasExportNuke]{stmap_note}")
         return (str(py_dest), str(nk_dest))
 
 

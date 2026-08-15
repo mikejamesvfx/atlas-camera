@@ -1,0 +1,96 @@
+{
+  "_comment": "Atlas evaluation plate set for the VolFill investigation. Categories follow the brief. 'truth' marks plates with real photographed hidden-geometry truth via the G5 rig (sh001, measured 14.6 m baseline). Paths are machine-local by necessity (source plates are not in the repo); regenerate with the same categories on another box.",
+  "scratchpad": "C:/Users/miike/AppData/Local/Temp/claude/C--Users-miike-Desktop-AtlasCamera-Claude/95656247-c586-4fdf-91ef-055be69d66cc/scratchpad",
+  "comfy_input": "C:/Users/miike/Desktop/ComfyUI_V102_4/ComfyUI/input",
+  "portable_input": "C:/Users/miike/Desktop/ComfyUI_windows_portable/ComfyUI/input",
+  "plates": [
+    {
+      "name": "sh001_street",
+      "path": "{scratchpad}/DSCF3915.png",
+      "categories": ["architectural", "building_behind_building", "doorway", "street_scene"],
+      "truth": {
+        "kind": "photograph",
+        "frame2": "{scratchpad}/DSCF3916.png",
+        "solve": "{scratchpad}/sh001_rig.json",
+        "builder": "docs/dev/occlusion_arms_2026-08-14/g5_build.py",
+        "note": "14.6 m measured baseline, registration verified 0.1 px. The one plate with real hidden truth."
+      },
+      "expect": "deep exterior — resolution gate should bite hard here"
+    },
+    {
+      "name": "dsc2289_street",
+      "path": "{scratchpad}/DSC_2289_full.png",
+      "categories": ["architectural", "street_scene", "roofline", "wall_corner_behind_foreground"],
+      "truth": {"kind": "none"},
+      "expect": "the existing occlusion-slate fixture; ~200 m extent, ~78 cm voxels"
+    },
+    {
+      "name": "cathedral_nave",
+      "path": "{comfy_input}/atlas_cathedral_nave.png",
+      "categories": ["interior", "doorway", "wall_corner_behind_foreground", "repeated_pattern"],
+      "truth": {"kind": "none"},
+      "expect": "shallow interior — the regime VolFill was trained for; columns are ideal occluders"
+    },
+    {
+      "name": "scifi_hangar",
+      "path": "{comfy_input}/atlas_scifi_hangar.png",
+      "categories": ["interior", "large_missing_region", "low_texture"],
+      "truth": {"kind": "none"},
+      "expect": "interior, big volume — tests the interior/exterior boundary"
+    },
+    {
+      "name": "jungleruins",
+      "path": "examples/images/jungleruins.png",
+      "categories": ["vegetation_boundary", "thin_occluder", "natural"],
+      "truth": {"kind": "none"},
+      "expect": "the known-hard foliage case; fragmented predictions historically shred the relief mesh"
+    },
+    {
+      "name": "templecity",
+      "path": "examples/images/atlas_00022_templecity.png",
+      "categories": ["architectural", "building_behind_building", "repeated_pattern"],
+      "truth": {"kind": "none"},
+      "expect": "AI plate; known to solve to assumed_default scale — depth scale registration is the thing to watch"
+    },
+    {
+      "name": "newyork_birdseye",
+      "path": "examples/images/newyork_Birdseye.png",
+      "categories": ["oblique_projection", "roofline", "architectural"],
+      "truth": {"kind": "none"},
+      "expect": "extreme obliquity + very deep; worst case for an isotropic bbox"
+    },
+    {
+      "name": "coastal_alley",
+      "path": "examples/images/coastal_alley_for_vlm.png",
+      "categories": ["wall_corner_behind_foreground", "doorway", "architectural"],
+      "truth": {"kind": "none"},
+      "expect": "alley walls are a clean amodal-completion target"
+    },
+    {
+      "name": "oceancastle",
+      "path": "examples/images/oceancastle.jpg",
+      "categories": ["rocks_cliffs", "natural", "ground_plane"],
+      "truth": {"kind": "none"},
+      "expect": "natural geometry; no man-made priors to lean on"
+    },
+    {
+      "name": "portal",
+      "path": "examples/images/atlas_00024_portal.png",
+      "categories": ["doorway", "large_foreground_prop", "object_intersecting_object"],
+      "truth": {"kind": "none"},
+      "expect": "a portal is the archetypal 'what is behind it' test"
+    },
+    {
+      "name": "golden_corridor",
+      "path": "tests/golden/corridor.png",
+      "categories": ["low_texture", "interior", "synthetic_known_geometry"],
+      "truth": {"kind": "synthetic", "note": "Atlas golden fixture — geometry is known by construction"},
+      "expect": "low texture + known geometry; isolates whether failures are appearance- or geometry-driven"
+    }
+  ],
+  "coverage_gaps": [
+    "partly-hidden car — no suitable plate found in the available sets",
+    "furniture — nearest is golden_corridor / cathedral_nave, neither is actually furniture",
+    "Blender-rendered labelled-visibility scenes (VISIBLE/OCCLUDED/OUT_OF_FRUSTUM/UNSUPPORTED) not yet generated"
+  ]
+}
