@@ -1,9 +1,11 @@
 """The Atlas Camera MCP server (v1) — stdio, thin, HTTP-only.
 
 Exposes a running ComfyUI (with the Atlas node pack) to any MCP-capable
-assistant. Design: docs/dev/archive/atlas_mcp_server_plan.md — every tool is an
-operation the 2026-07 verification sessions actually performed. This process
-never imports torch/numpy; ComfyUI stays the execution engine.
+assistant. Usage and the tool/resource surface: docs/MCP_SERVER.md. Every tool
+is an operation the 2026-07 verification sessions actually performed; the
+original design note lives only in the maintainer's local `docs/dev/` tree,
+which is gitignored and absent from a clone. This process never imports
+torch/numpy; ComfyUI stays the execution engine.
 
 Run:      python -m atlas_camera.mcp
 Config:   COMFY_HOST   (default 127.0.0.1:8188)
@@ -479,7 +481,9 @@ _PATH_REPAIR = """\
 Atlas path-guided relief repair (agent/headless playbook):
 
 WORKFLOW:
-  Use examples/atlas_path_guided_hole_repair_workflow.json. Pass 1 fills
+  Build the two-pass graph; the repo ships no path-repair example (the
+  showcase graphs left in the 0.8.1 trim — they need downloaded plates and
+  are distributed from the website). Pass 1 fills
   conservative enclosed islands. AtlasPathGuidedHoleRepair samples the full
   parametric camera_path at frame_offset_from_end, removes exclude_mask
   (normally background + sky), and maps visible moved-angle islands back to
