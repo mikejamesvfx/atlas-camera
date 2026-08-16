@@ -457,3 +457,21 @@ def test_report_says_when_the_mask_catches_nothing(tmp_path):
     _, report, _ = AtlasLoadHiddenVolume().load(
         _solve(), d, emit="combined", restrict_mask=mask, on_divergence="mark")
     assert "catches NONE" in report or "fill SKIPPED" in report
+
+
+def test_raymarch_says_double_sided_was_ignored(tmp_path):
+    """A widget that does nothing must SAY it does nothing.
+
+    `double_sided` defaults True and raymarch is the default extraction, so out
+    of the box the widget is inert. The gate doctrine wants a visible
+    explanation for a silent skip — a tooltip is documentation, the report is
+    the explanation.
+    """
+    d = _two_slab_volume(tmp_path)
+    _, report, _ = AtlasLoadHiddenVolume().load(
+        _solve(), d, emit="layers", double_sided=True, on_divergence="mark")
+    assert "double_sided ignored" in report
+
+    _, off, _ = AtlasLoadHiddenVolume().load(
+        _solve(), d, emit="layers", double_sided=False, on_divergence="mark")
+    assert "double_sided ignored" not in off

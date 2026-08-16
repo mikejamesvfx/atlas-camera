@@ -30,13 +30,20 @@ Derive nodes replace prior PROXY_ROLE geometry; anything additive appends and
 WHY A SEPARATE NODE, AND WHY EXPERIMENTAL
 Atlas already owns the hidden-geometry consumer path
 (``core/hidden_geometry.py``), but that path eats LAYERED RAYS — a per-pixel
-front-to-back depth stack — while this eats a VOLUME. Converting one to the
-other properly means ray-marching the field along Atlas camera rays; until that
-adapter is measured, this node exists only to get the geometry in front of an
-artist's eye. It is gated behind ``ATLAS_EXPERIMENTAL`` so the standard install's
-node menu is unchanged.
+front-to-back depth stack — while this eats a VOLUME. The ``raymarch``
+extraction above IS that adapter, and it is measured, so that is no longer the
+reason for the gate.
 
-The volume directory is whatever ``research/volfill/run_volfill.py`` wrote:
+What keeps it experimental is the INPUT: it reads a truncated distance field
+produced by a research predictor, not by anything the pack ships or installs,
+and the divergence gate exists because the prediction can rewrite the plate
+rather than complete it. Promote it when a producer ships and the gate stops
+firing on real plates — not merely because the adapter works.
+
+The volume directory is whatever ``research/volfill/run_volfill.py`` wrote
+(that tree is in the git checkout only — ``.comfyignore`` keeps the research
+harness out of the published pack, so a Registry install supplies the directory
+some other way):
 ``pred_tudf_*.npz`` (keys ``tudf``, ``visible_tudf``) plus ``metadata.json``
 (``bbox_min``, ``extent_xyz``). Nothing about the format is VolFill-specific
 beyond those key names.
@@ -372,7 +379,7 @@ class AtlasLoadHiddenVolume:
                 show, name, max_invented_fraction, on_divergence,
                 inspect_invented_fraction, min_surface_coverage, reject_sky,
                 emit, clear_rel, fill_gaps, depth, restrict_mask,
-                invert_restrict_mask)
+                invert_restrict_mask, double_sided_set=bool(double_sided))
 
         # DECIMATE THE VOLUME, NEVER THE FACE LIST.
         #
@@ -571,7 +578,10 @@ class AtlasLoadHiddenVolume:
                        min_surface_coverage=0.02, reject_sky=True,
                        emit="combined", clear_rel=0.15, fill_gaps=True,
                        depth=None, restrict_mask=None,
-                       invert_restrict_mask=False):
+                       invert_restrict_mask=False,
+                       # keyword-only in practice: appended last so the
+                       # positional call sites above keep their meaning
+                       double_sided_set=False):
         """Ray-march extraction: one relief surface per marched layer.
 
         Marching the ray rather than the shell pairs each entry/exit into the
@@ -792,6 +802,12 @@ class AtlasLoadHiddenVolume:
                f"(stricter; reported, not gated)\n" if n_ray_both else "")
             +
             f"  single-sided, midpoint-paired (no double-wall bias); appended"
+            # A widget that does nothing must SAY it does nothing: the gate
+            # doctrine wants a visible explanation for every silent skip, and
+            # double_sided defaults True while raymarch is the default path.
+            + ("\n  double_sided ignored: raymarch pairs the shell walls into "
+               "midpoints, so the output is already single-sided and oriented"
+               if double_sided_set else "")
         )
         return (out, report)
 
