@@ -866,8 +866,12 @@ class AtlasDepthLayerMask:
     Requires `relief_grid`/`depth_edge_rel` matching whatever
     `AtlasCleanPlateLayer` will use downstream for the two to agree.
     """
-    RETURN_TYPES = ("MASK", "MASK", "MASK")
-    RETURN_NAMES = ("layer_mask", "occlusion_mask", "hole_mask")
+    # `report` APPENDED 2026-08-17. The no-focal guard returned three all-ZERO
+    # masks and nothing else: hole_mask claimed no holes, occlusion_mask
+    # claimed nothing occluded, and layer_mask made the band vanish from the
+    # stack. Appended last, so existing slots keep their index.
+    RETURN_TYPES = ("MASK", "MASK", "MASK", "STRING")
+    RETURN_NAMES = ("layer_mask", "occlusion_mask", "hole_mask", "report")
     FUNCTION = "generate"
     CATEGORY = "Atlas/advanced"
 
@@ -964,9 +968,17 @@ class AtlasDepthLayerMask:
 
         setup = _metric_depth_and_validity(solve, depth, exclude_mask=exclude_mask)
         if setup is None:
+            # layer/occlusion ZERO is honest — this band selects nothing and
+            # nothing is occluded. hole_mask is ONES: no geometry was measured,
+            # so nothing is covered. Zeros there would claim a flawless layer,
+            # which is what AtlasPlanarHolePatch and the inpaint router read.
             h, w = int(depth.image_height), int(depth.image_width)
             zero = torch.zeros(1, h, w, dtype=torch.float32)
-            return (zero, zero.clone(), zero.clone())
+            return (zero, zero.clone(), torch.ones(1, h, w, dtype=torch.float32),
+                    "SKIPPED — no metric depth (needs a solved focal length): no "
+                    "band was measured, so layer_mask and occlusion_mask are "
+                    "empty and hole_mask is all-ONES. Wire a solve carrying fx "
+                    "(AtlasSolveFromImage / AtlasLearnedSolveFromImage).")
         metric, valid = setup.metric, setup.valid
 
         override = _parse_band_override(band_override)
@@ -1008,7 +1020,10 @@ class AtlasDepthLayerMask:
         layer_t = torch.from_numpy(layer_mask.astype(np.float32)).unsqueeze(0)
         occ_t = torch.from_numpy(occlusion_mask.astype(np.float32)).unsqueeze(0)
         hole_t = torch.from_numpy(hole_mask_arr).unsqueeze(0)
-        return (layer_t, occ_t, hole_t)
+        return (layer_t, occ_t, hole_t,
+                f"AtlasDepthLayerMask: layer {float(layer_t.mean()) * 100:.1f}% "
+                f"of frame, occlusion {float(occ_t.mean()) * 100:.1f}%, "
+                f"holes {float(hole_t.mean()) * 100:.1f}%")
 
 
 class AtlasOutpaintDepth:

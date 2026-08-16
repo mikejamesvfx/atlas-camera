@@ -112,7 +112,8 @@ def _plate_image():
 # --- registration -----------------------------------------------------------
 
 def test_nodes_registered():
-    assert NODE_CLASS_MAPPINGS["AtlasDepthLayerMask"].RETURN_TYPES == ("MASK", "MASK", "MASK")
+    assert NODE_CLASS_MAPPINGS["AtlasDepthLayerMask"].RETURN_TYPES == (
+        "MASK", "MASK", "MASK", "STRING")   # report appended 2026-08-17
     # `report` appended 2026-08-17; existing slots keep their index.
     for _layer in ("AtlasCleanPlateLayer", "AtlasSkyDomeLayer"):
         assert NODE_CLASS_MAPPINGS[_layer].RETURN_TYPES == (
@@ -130,7 +131,7 @@ def test_layer_mask_selects_background_band_only():
     # feather_px=0 to test the raw (unfeathered) band logic in isolation —
     # feathering deliberately grows occlusion_mask past the band edge, so it's
     # tested separately below.
-    layer_mask, occlusion_mask, _hole = AtlasDepthLayerMask().generate(
+    layer_mask, occlusion_mask, _hole, _rep = AtlasDepthLayerMask().generate(
         solve, depth, near_m=5.0, far_m=12.0, feather_px=0)
 
     layer_np = layer_mask[0].numpy()
@@ -146,15 +147,15 @@ def test_layer_mask_selects_background_band_only():
 def test_feather_px_grows_occlusion_mask():
     solve = _solve()
     depth = _depth_result(_occluder_depth())
-    _layer0, occ0, _hole0 = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0, feather_px=0)
-    _layer4, occ4, _hole4 = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0, feather_px=4)
+    _layer0, occ0, _hole0, _rep = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0, feather_px=0)
+    _layer4, occ4, _hole4, _rep = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0, feather_px=4)
     assert float(occ4.sum()) >= float(occ0.sum())
 
 
 def test_occlusion_mask_only_marks_nearer_than_near_edge():
     solve = _solve()
     depth = _depth_result(_occluder_depth())
-    _layer, occlusion_mask, _hole = AtlasDepthLayerMask().generate(
+    _layer, occlusion_mask, _hole, _rep = AtlasDepthLayerMask().generate(
         solve, depth, near_m=5.0, far_m=12.0, feather_px=0)
     occ_np = occlusion_mask[0].numpy()
 
@@ -182,7 +183,7 @@ def test_percentile_fallback_matches_manual_percentile():
              & ~detect_sky_mask(depth_map, horizon_y=H * 0.45))
     expected_far = float(np.percentile(metric[valid], 50.0))
 
-    layer_mask, _occ, _hole = AtlasDepthLayerMask().generate(
+    layer_mask, _occ, _hole, _rep = AtlasDepthLayerMask().generate(
         solve, depth, near_m=0.0, far_m=0.0, near_pct=0.0, far_pct=0.5)
     layer_np = layer_mask[0].numpy()
     selected = metric[valid & (layer_np.astype(bool))]
@@ -196,7 +197,7 @@ def test_feather_does_not_wrap_around_image_borders():
     # bleed onto the opposite (top) edge via a wrapping dilation.
     solve = _solve()
     depth = _depth_result(_occluder_depth())
-    _layer, occlusion_mask, _hole = AtlasDepthLayerMask().generate(
+    _layer, occlusion_mask, _hole, _rep = AtlasDepthLayerMask().generate(
         solve, depth, near_m=5.0, far_m=12.0, feather_px=4)
     occ_np = occlusion_mask[0].numpy()
 
@@ -204,18 +205,27 @@ def test_feather_does_not_wrap_around_image_borders():
     assert not occ_np[0, :].any()          # top edge must NOT have wrapped in
 
 
-def test_no_focal_length_returns_zero_masks():
+def test_no_focal_length_says_so_and_marks_everything_uncovered():
+    """This asserted hole_mask.sum() == 0.0 — it pinned the lie.
+
+    layer/occlusion zero is honest: no band was selected, nothing occluded.
+    hole_mask zero is NOT: it claims full coverage, which is what a flawless
+    layer returns, so AtlasPlanarHolePatch and the inpaint router could not
+    tell a failed run from a perfect one.
+    """
     intr = AtlasIntrinsics(image_width=W, image_height=H)  # no fx_px
     solve = AtlasSolve(camera=LatentCamera(intrinsics=intr))
     depth = _depth_result(_occluder_depth())
 
-    layer_mask, occlusion_mask, hole_mask = AtlasDepthLayerMask().generate(solve, depth)
+    layer_mask, occlusion_mask, hole_mask, report = AtlasDepthLayerMask().generate(
+        solve, depth)
     assert layer_mask.shape == (1, H, W)
     assert occlusion_mask.shape == (1, H, W)
     assert hole_mask.shape == (1, H, W)
     assert float(layer_mask.sum()) == 0.0
     assert float(occlusion_mask.sum()) == 0.0
-    assert float(hole_mask.sum()) == 0.0
+    assert float(hole_mask.min()) == 1.0, "nothing measured, so nothing covered"
+    assert "SKIPPED" in report and "focal" in report
 
 
 def test_exclude_mask_removes_pixel_from_layer_and_marks_hole():
@@ -227,7 +237,7 @@ def test_exclude_mask_removes_pixel_from_layer_and_marks_hole():
     exclude = torch.zeros(1, H, W, dtype=torch.float32)
     exclude[0, 180, 20] = 1.0  # normally inside the [5,12]m band (far ground)
 
-    layer_mask, occlusion_mask, hole_mask = AtlasDepthLayerMask().generate(
+    layer_mask, occlusion_mask, hole_mask, _rep = AtlasDepthLayerMask().generate(
         solve, depth, near_m=5.0, far_m=12.0, feather_px=0,
         compute_hole_mask=True, relief_grid=64, exclude_mask=exclude)
 
@@ -242,8 +252,10 @@ def test_exclude_mask_none_is_backward_compatible():
     baseline = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0, feather_px=0)
     explicit_none = AtlasDepthLayerMask().generate(
         solve, depth, near_m=5.0, far_m=12.0, feather_px=0, exclude_mask=None)
-    for a, b in zip(baseline, explicit_none):
+    # the trailing element is the report STRING, not a tensor
+    for a, b in zip(baseline[:3], explicit_none[:3]):
         assert torch.equal(a, b)
+    assert baseline[3] == explicit_none[3]
 
 
 # --- AtlasCleanPlateLayer -----------------------------------------------------
@@ -312,7 +324,7 @@ def test_mask_band_and_clean_plate_mesh_stay_in_lockstep():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    layer_mask, _occ, _hole = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0)
+    layer_mask, _occ, _hole, _rep = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0)
     out, _hole_mask, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
 
@@ -363,7 +375,7 @@ def test_fill_occluded_keeps_mask_node_in_lockstep():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    _l, _o, hole_mask_node = AtlasDepthLayerMask().generate(
+    _l, _o, hole_mask_node, _rep = AtlasDepthLayerMask().generate(
         solve, depth, near_m=5.0, far_m=12.0, feather_px=0,
         compute_hole_mask=True, relief_grid=32, fill_occluded=True)
     _out, hole_layer_node, _ext, _rep = AtlasCleanPlateLayer().add_layer(
@@ -1211,7 +1223,7 @@ def test_band_override_wins_and_stays_watertight():
         _parse_band_override("near_pct=0.8 far_pct=0.2")
 
     # AtlasDepthLayerMask takes the same string -> same band as the layer.
-    lm, occ, _h = AtlasDepthLayerMask().generate(
+    lm, occ, _h, _rep = AtlasDepthLayerMask().generate(
         solve, depth, near_m=99.0, far_m=100.0,
         band_override="near_pct=0.000 far_pct=0.400")
     assert float(lm.sum()) > 0
