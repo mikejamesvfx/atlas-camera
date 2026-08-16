@@ -166,3 +166,42 @@ def test_learned_depth_prior_is_measured_with_spread_driven_confidence():
     assert sh.confidence == pytest.approx(1.0 - 2.36 / 14.8, abs=1e-6)
     assert "learned depth prior" in sh.detail
     assert "363" in sh.detail
+
+
+# --- source coverage: a stamped provenance this module does not know is NOT
+# --- the same thing as no provenance at all ---------------------------------
+
+def test_face_reference_is_measured_not_unknown():
+    """AtlasFaceScaleReference rescales the camera from a face of known size
+    and stamps scale_source='face_reference' (trust_tier 1.5_face_reference).
+
+    It used to fall through to UNKNOWN / "No metric-scale provenance recorded",
+    which is false — provenance WAS recorded. The consequences were wired
+    everywhere: review_package printed "safe to export: NO — verify before
+    delivery", the viewport payload carried safe_to_export=false, and the
+    solver report showed its NOT VERIFIED block for a measured solve.
+    """
+    sh = scale_health(_solve(
+        height=1.72, scale_source="face_reference",
+        face_scale={"consistency": 0.82, "camera_height_sd_m": 0.11}))
+    assert sh.status == SCALE_STATUS_MEASURED
+    assert sh.safe_to_export is True
+    assert sh.confidence == pytest.approx(0.82)
+    assert "face" in sh.detail.lower() and "1.5" in sh.detail
+
+
+def test_an_unrecognised_source_says_it_is_unrecognised():
+    """The fall-through must not claim nothing was recorded — that is what hid
+    face_reference. A future tier should be diagnosable from the message."""
+    sh = scale_health(_solve(scale_source="some_future_tier"))
+    assert sh.status == SCALE_STATUS_UNKNOWN
+    assert sh.safe_to_export is False
+    assert "some_future_tier" in sh.detail
+    assert "Unrecognised" in sh.detail
+
+
+def test_a_solve_with_no_source_still_says_none_recorded():
+    sh = scale_health(_solve())
+    assert sh.status == SCALE_STATUS_UNKNOWN
+    assert sh.scale_source is None
+    assert "No metric-scale provenance" in sh.detail

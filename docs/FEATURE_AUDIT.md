@@ -112,7 +112,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasExportSolveJSON` | atlas_camera/comfy/nodes_export.py | standard | 4 | 1 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportUSD` | atlas_camera/comfy/nodes_export.py | standard | 1 | 0 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExtractAnglePatch` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasFaceScaleReference` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
+| `AtlasFaceScaleReference` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasGrade` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasGravityCompass` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasGravityOverride` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 1 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |

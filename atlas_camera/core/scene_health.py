@@ -158,6 +158,24 @@ def _scale_health_inner(solve: Any) -> ScaleHealth:
             "20-30% absolute-scale uncertainty; a measured baseline or "
             "reference beats it.")
 
+    if source == "face_reference":
+        # AtlasFaceScaleReference stamps this after rescaling the camera from a
+        # face of known size, and records trust_tier "1.5_face_reference" — a
+        # real measurement, weaker than a rigid reference object because human
+        # stature varies. Before this branch existed it fell through to
+        # UNKNOWN/"no provenance recorded", so a measured solve was reported as
+        # untrustworthy: review_package printed "safe to export: NO", and the
+        # solver report showed its NOT VERIFIED block.
+        face = meta.get("face_scale") if isinstance(meta.get("face_scale"), dict) else {}
+        conf = float(face.get("consistency", 0.0) or 0.0)
+        sd = face.get("camera_height_sd_m")
+        spread = f", ±{float(sd):.2f} m anthropometric spread" if sd else ""
+        return ScaleHealth(
+            SCALE_STATUS_MEASURED, source, conf, height, True,
+            f"Camera height measured from a face of known size "
+            f"(consistency {conf:.2f}{spread}). Tier 1.5: weaker than a rigid "
+            "reference object, since stature varies between people.")
+
     if source == "manual_override":
         return ScaleHealth(
             SCALE_STATUS_MANUAL, source, 1.0, height, True,
@@ -173,9 +191,19 @@ def _scale_health_inner(solve: Any) -> ScaleHealth:
             SCALE_STATUS_ASSUMED, source, _ASSUMED_CONFIDENCE, height, False,
             detail)
 
+    # Two different situations, and saying "none recorded" for both is how a
+    # measured solve got reported as untrustworthy for months: face_reference
+    # WAS stamped, this function just did not know the value. Name it, so the
+    # next unhandled source is diagnosable instead of silently downgraded.
+    if isinstance(source, str) and source:
+        return ScaleHealth(
+            SCALE_STATUS_UNKNOWN, source, None, height, False,
+            f"Unrecognised scale_source {source!r}: the solve DOES record "
+            "provenance, but core.scene_health has no rule for this value, so "
+            "it cannot be trusted as measured. Add a branch there rather than "
+            "changing what the solver stamps.")
     return ScaleHealth(
-        SCALE_STATUS_UNKNOWN, source if isinstance(source, str) else None,
-        None, height, False,
+        SCALE_STATUS_UNKNOWN, None, None, height, False,
         "No metric-scale provenance recorded on this solve.")
 
 
