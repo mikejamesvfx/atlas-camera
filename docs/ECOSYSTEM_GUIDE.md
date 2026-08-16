@@ -83,110 +83,203 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (68 standard + 4 experimental nodes)
+## 2. The Node Catalog (102 standard + 10 experimental + 2 legacy + 2 iOS = 116 registered)
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
-actually wire them in.
+actually wire them in. The subsections below **are** the Add-Node menu folders:
+they mirror `_MENU_FOLDERS` in `atlas_camera/comfy/node_registry.py`, the one
+place that decides which folder a node sits in, so this list and the menu
+cannot drift apart. `tests/test_doc_references.py` holds the counts in the
+heading to the live registry.
 
-> Count refreshed 2026-07-12. The tables below predate the newest additions —
-> the shared-depth layer nodes (`AtlasDepthMap`, `AtlasCleanPlateLayer`,
-> `AtlasDepthLayerMask`, `AtlasSkyDomeLayer`), `AtlasAssessImage`,
-> `AtlasPredictHiddenGeometry` 🔬, the staged-master support nodes
-> (`AtlasSolveGate` ✅, `AtlasScopeMask` 🎯, `AtlasSemanticMask` 🧩,
-> `AtlasInpaintCrop`/`AtlasInpaintStitch` ✂, `AtlasDebugReport` 🔍,
-> `AtlasLayerPreview` 🎨), and the one-node entry point `AtlasInput` 🎬 —
-> which are covered in the dated addenda at the end of this guide and, in
-> full, in CLAUDE.md's catalog.
+This is the ecosystem map — every node, one line each, in wiring order. For a
+node's actual inputs, outputs and behaviour, [docs/NODE_CATALOG.md](NODE_CATALOG.md)
+is canonical and goes far deeper on each row.
 
-### Solve
+🔬 = experimental (`ATLAS_EXPERIMENTAL=1`) · 🕰 = legacy (`ATLAS_LEGACY_NODES=1`)
+· 📱 = iOS capture (`ATLAS_IOS=1`). All three gated tiers share the
+`Atlas/advanced` menu folder.
+
+### 01 · Input & Camera
 
 | Node | What it does |
 |---|---|
-| `AtlasLearnedSolveFromImage` | **Recommended default.** GeoCalib neural prior predicts focal length + gravity direction directly from image content. Robust on AI-generated images (27/33 usable on a test set, vs. 18/33 for VP solving) and reports genuine, meaningful confidence. |
-| `AtlasSolveFromImage` | Classical vanishing-point solve — detects and triangulates converging line families. Best on real photographs with clean architectural lines; fragile on AI imagery (locally-plausible-but-globally-inconsistent perspective breaks the RANSAC fit) and reports a constant, uninformative 0.75 confidence regardless of fit quality. |
+| `AtlasProject` | Sets the delivery project once: routes every export into `<root>/<project>/<shot>/…` and pins the colour lane, Standard (sRGB, 8-bit) or VFX (ACEScg, float). |
+| `AtlasInput` 🎬 | The one-node entry point — load, solve, and derive in a single node. Where a new graph starts. |
+| `AtlasLoadPlate` | Colour-managed float plate reader (OpenImageIO): EXR/DPX/TIFF/PNG/JPEG through OCIO, with a built-in ACES config so ACEScg/ACEScct work with nothing else installed. Atlas's own replacement for a third-party OCIORead. |
+| `AtlasLoadRAW` | 📷 Camera RAW (NEF/CR2/CR3/RAF/ARW) — one rawpy demosaic → display tensor + scene-linear EXR sidecar, EXIF + `camera_bodies.json` sensor lookup → measured intrinsics. Replaces the ACR round-trip. |
+| `AtlasRegisterPlate` | Registers a source/patch/clean plate as a durable `ATLAS_PLATE_REF`: original path, browser preview, colorspace, bit depth, role, proxy flag, optional LUT metadata. The float-safe bridge from ComfyUI preview tensors to final EXR plate files. |
 | `AtlasMultiViewSolve` | Deterministic calibrated rig from two or three ordered `AtlasLoadRAW` photographs. Photo 1 anchors the world frame; a lateral translated baseline plus measured lens-centre height provides the metric path. Rotation in place recovers orientation only. Generated/Qwen views are rejected as registration evidence and belong downstream in `AtlasAddPatchView`. |
+| `AtlasMultiViewSolveBurst` | 📷🎞 The folder-input twin: registers a whole burst (2–16 frames) from a directory, with pair topology, match overlays and a learned-anchor fallback. |
+| `AtlasAttachSourcePlate` | Attaches a registered plate ref to a solve so viewport/export nodes can keep using browser previews while Nuke/Maya/review/OBJ exporters prefer the original plate path for final projection. |
+| `AtlasSolveFromImage` | Classical vanishing-point solve — detects and triangulates converging line families. Best on real photographs with clean architectural lines; fragile on AI imagery (locally-plausible-but-globally-inconsistent perspective breaks the RANSAC fit) and reports a constant, uninformative 0.75 confidence regardless of fit quality. |
+| `AtlasLearnedSolveFromImage` | **Recommended single-image default.** GeoCalib neural prior predicts focal length + gravity direction directly from image content. Robust on AI-generated images (27/33 usable on a test set, vs. 18/33 for VP solving) and reports genuine, meaningful confidence. |
 | `AtlasConstrainedSolve` | Artist-guided solve from explicit line/scale constraints JSON. |
+| `AtlasSplitEquirect` | 🌐 Cuts a 360° equirectangular panorama into N perspective crops, each already a valid Atlas pinhole camera. |
+| `AtlasEquirectMultiView` | Panorama in, MULTI-CAMERA solve out — the whole ring in one node, where `AtlasSplitEquirect` hands you one crop to wire yourself. |
+| `AtlasUSDCameraLoader` | Load a camera back out of a `.usda`. |
 | `AtlasLoadSolveJSON` | Reload a previously exported solve. |
+| `AtlasDecomposeCamera` | Unpacks a camera into `fx/fy/cx/cy`, world position, focal_mm, FOV. |
+| `AtlasDecomposeSolve` | Unpacks a solve into `camera`, `confidence`, `source_method`, image dims, raw JSON, `horizon_angle_deg`. |
 
-### Scale (tiered — see USER_GUIDE.md Part 1 for the full mental model)
+### 02 · Orient & Scale (tiered — see USER_GUIDE.md Part 1 for the full mental model)
 
 | Node | Tier | What it does |
 |---|---|---|
+| `AtlasGravityCompass` | orientation | 🧭 Flagship direct-manipulation orientation control. A local Three.js compass renders world-down in camera space; drag vertically/horizontally for absolute pitch/roll, or drag the colour-coded X/Y/Z heading ring to rotate the horizontal world grid. |
+| `AtlasGravityOverride` | orientation | Low-level absolute numeric pitch/roll/heading override. Camera position preserved; the rigid matrix family and horizon are recomputed. |
+| `AtlasRollTrim` | orientation | 🎚 The roll counterpart of the scale dial: rotates the camera about its own VIEW AXIS, so position and view direction are invariant and framing is preserved. Levels a solve by eye when GeoCalib's gravity drifts a few degrees. |
 | `AtlasReferenceScaleSolve` | 1 (highest) | Measures camera height from one known-size object's pixel bounding box (person, door, car, shipping container, building story, …). A real single-view geometric measurement, not an inference. |
+| `AtlasFaceScaleReference` | 1 | 🙂 Metric camera height from a person's FACE — the scale reference that survives a crop. `AtlasReferenceScaleSolve` stays the stronger anchor whenever the feet are visible. |
 | `AtlasVLMScaleCues` | 1, auto-suggest | A local vision-LLM (Ollama / LM Studio / llama.cpp) proposes candidate reference objects and their bboxes automatically. **Never auto-applied** — see below. |
 | `AtlasApplyScaleReferences` | 1, gate | Applies `AtlasVLMScaleCues`' suggestions to a solve — but **only when `confirm=true`**. With `confirm=false` (default) it just records candidates for review. This mirrors the project's whole-codebase rule: propose, never silently apply. |
 | *(built into)* `AtlasLearnedSolveFromImage`, `height_mode=measure_from_depth` | 2 | Depth Anything V2 fits a ground plane below the horizon and reads camera height off it. Medium reliability — AI-image depth is often not perfectly ground-plane-consistent. |
 | *(built into)* `AtlasLearnedSolveFromImage`, `height_mode=assume` | 3 (fallback) | Plain assumed eye-height (`camera_height_m`, default 1.6m), always flagged as an assumption. |
 | `AtlasScaleOverride` 📐 | manual dial | The artist's scale override, after any solve. Scale ∝ camera height, so it rescales the whole solve by a `scale` multiplier (10.0 = the "1:10" case for an elevated vista the assumed 1.6 m under-scaled) or to an absolute `camera_height_m`. Every downstream metric follows (geometry, cutoffs, DCC cameras); the projection/view is unchanged. |
 
-### Derive geometry
+### 03 · Depth
+
+Estimate depth **once** and share it, so every branch agrees on metric scale.
 
 | Node | What it does |
 |---|---|
-| `AtlasDeriveProjectionGeometry` | Builds the receiving surfaces for projection: a depth **relief mesh** (default, handles arbitrary/organic shapes), fitted **primitives** (`azimuth_walls` / `ransac_planes` / `room_cuboid` / `vertical_extrusion` — see §3.3), or `both`. The `scene_type` widget (`manual`/`organic`/`indoor`/`outdoor`) is a one-choice convenience preset over `geometry_mode`+`primitive_method`+`depth_model` — it never adds new solving behavior. |
-| `AtlasAddPatchView` | Adds an AI-generated novel-view "patch" to fill areas the primary camera couldn't see. See §3.4 — this is the most involved node in the pack. |
-| `AtlasDepthAnything` | Standalone monocular depth (Depth Anything V2), metric or relative — mostly useful for inspection/diagnostics. |
-
-### Composable derive & merge (mix strategies per scene region)
-
-An alternative to `AtlasDeriveProjectionGeometry`'s single `scene_type` preset:
-estimate depth once and derive each region with the strategy that fits it, then
-combine explicitly.
-
-| Node | What it does |
-|---|---|
-| `AtlasDepthMap` | Shared metric depth estimate (`ATLAS_DEPTH_MAP`) — run **once**, feed the derive nodes below so they agree on metric scale. Distinct from `AtlasDepthAnything` (a lossy preview IMAGE). |
-| `AtlasDeriveReliefMesh` · `AtlasDeriveWalls` · `AtlasDeriveTowersSpires` · `AtlasDeriveRoofsFacades` · `AtlasDeriveInteriorRoom` | Per-strategy derive nodes (relief mesh · azimuth walls · vertical-extrusion towers/spires · RANSAC roofs/facades · Manhattan room cuboid). Each consumes a shared `AtlasDepthMap`. |
-| `AtlasMergeGeometry` | **Nuke-Merge-node equivalent** — combines two derived solves' proxy geometry (e.g. foreground walls + background relief mesh). `solve_a`'s camera wins; chain instances for 3+-way. Optional `shot_cam` rides along onto the merged solve. |
-| `AtlasOcclusionMask` | Frustum / frame / facing-angle validity mask used by multi-angle patch projection (§3.4). |
-
-### Shot format
-
-| Node | What it does |
-|---|---|
-| `AtlasDefineShotCam` | A project-level render/output camera format (sensor W×H mm + lens mm + long-edge resolution) — like a Nuke/Resolve project setting. Intrinsics-only, no position. Wire into `AtlasMergeGeometry` (attaches to the merged solve) or directly into `AtlasBlockoutViewport` so the render/export conforms to one shot format instead of each photo's own aspect. |
-| `AtlasRegisterPlate` | Registers a source/patch/clean plate as a durable `ATLAS_PLATE_REF`: original path, browser preview, colorspace, bit depth, role, proxy flag, optional LUT metadata. This is the float-safe bridge from ComfyUI preview tensors to final EXR/high-bit-depth plate files. |
-| `AtlasAttachSourcePlate` | Attaches a registered plate ref to a solve so viewport/export nodes can keep using browser previews while Nuke/Maya/review/OBJ exporters prefer the original plate path for final projection. |
-| `AtlasViewportControls` / Atlas Output Desk | Optional companion/output node. Output 0 remains the legacy detached-controls link; output 1 is `ATLAS_OUTPUT_PROFILE` with OCIO-style intent (config, working/output colorspace, display/view, display trim; the schema still carries look/LUT/exposure/gamma at neutral defaults — the widgets were removed 2026-07-10 as redundant). |
-
-### Inpaint layers (2.5D clean-plate parallax — see §3.5)
-
-| Node | What it does |
-|---|---|
-| `AtlasDepthLayerMask` | One metric depth band → `(layer_mask, occlusion_mask)`. `occlusion_mask` feeds an external inpaint graph (`INPAINT_ExpandMask` → `INPAINT_InpaintWithModel`) to build that band's clean plate. |
-| `AtlasCleanPlateLayer` | Inpainted clean plate + the same depth band → appends a `ProjectionSource` (camera = primary, unchanged; mesh clipped to the band). Chain one per layer. |
-| `AtlasBoundedBand` 📏 | Measures a foreground subject's own metric depth extent `W` (P5–P95) from its mask and emits ONE `band_split` cutoff at `near + 2·W`. Feed it into both a foreground layer (`band_side=foreground` → relief clipped, no runaway extrusion) and the background card (`band_side=background` → pushed back behind it). One measured boundary, both layers. |
-| `AtlasDepthBandSplit` | One authoritative fg/bg depth boundary (log-depth position or metres) shared by every band node — wire into `band_split` with `band_side` so the layers can't drift apart. |
-
-### Decompose / analyze
-
-| Node | What it does |
-|---|---|
-| `AtlasDecomposeSolve` | Unpacks a solve into `camera`, `confidence`, `source_method`, image dims, raw JSON, `horizon_angle_deg`. |
-| `AtlasDecomposeCamera` | Unpacks a camera into `fx/fy/cx/cy`, world position, focal_mm, FOV. |
+| `AtlasDepthAnything` | Standalone monocular depth (Depth Anything V2), metric or relative, as a lossy preview IMAGE — for inspection/diagnostics. |
+| `AtlasDepthMap` | Shared metric depth estimate (`ATLAS_DEPTH_MAP`) — run **once**, feed everything below so the derive nodes agree on metric scale. The one to wire. |
+| `AtlasMogeNormals` | 🧭 Predicted surface normals from MoGe, decoupled from the depth source: runs a MoGe `*-normal` model purely for its per-pixel normals and discards its depth. Wire between `AtlasDepthMap` and the layer nodes. |
+| `AtlasDepthDetailEnhance` | 🔬 Embosses the normal map's high-frequency shape onto the shared depth (Frankot-Chellappa integration, pure-numpy FFT), high-passed so the metric base can never tilt or re-scale. |
+| `AtlasDepthCombine` | ➕ Combines two shared depth maps — `high_freq_detail` grafts one's fine structure onto the other's metric far-field (the "MoGe detail on V2 exterior" case), plus `min`/`max`/`masked`. |
 | `AtlasGroundDepthMap` | Metric ground-plane depth visualization + ground mask. |
-| `AtlasGroundMask` | 🕰 LEGACY (needs `ATLAS_LEGACY_NODES=1`) — binary ground/sky mask, bit-identical to `AtlasGroundDepthMap` output 1. Use that instead. |
-| `AtlasHorizonMask` | Binary above/below-horizon mask, with feathering. |
+| `AtlasDepthBandSplit` | One authoritative fg/bg depth boundary (log-depth position or metres) shared by every band node — wire into `band_split` with `band_side` so the layers can't drift apart. |
+| `AtlasBoundedBand` 📏 | Measures a foreground subject's own metric depth extent `W` (P5–P95) from its mask and emits ONE `band_split` cutoff at `near + 2·W`. Feed it into both a foreground layer (`band_side=foreground` → relief clipped, no runaway extrusion) and the background card (`band_side=background` → pushed back behind it). One measured boundary, both layers. |
+| `AtlasDepthLayerMask` | One metric depth band → `(layer_mask, occlusion_mask)`. `occlusion_mask` feeds an inpaint graph to build that band's clean plate. |
+| `AtlasDepthOutlierMask` | 🛡 Local median + robust-MAD outlier detector — turns isolated monocular-depth hallucinations into EXPLICIT holes instead of letting one bad pixel become a frame-spanning stretched shard. |
+| `AtlasOutpaintDepth` | Extends a depth map to match an OUTPAINTED plate: re-estimates on the widened image and feathers the new outer ring into the original. |
+
+### 04 · Masks
+
+| Node | What it does |
+|---|---|
+| `AtlasHorizonMask` | Binary above/below-horizon mask, with feathering (1 = sky). |
+| `AtlasSemanticMask` | 🧩 Named-class semantic mask via SegFormer/ADE20K — a promptless, deterministic alternative to text prompts: 150 fixed scene classes, mask = union of matched classes. |
+| `AtlasInstanceMask` | 🎭 Instance selection from an `(N,H,W)` stack — one building/object at a time, for per-instance inpainting. |
+| `AtlasSAM3Mask` | 🪄 Native SAM3 concept mask via `transformers` (`[sam3]` extra) — no `triton`, so CUDA, CPU and Mac (MPS) alike. The preferred segmenter in `AtlasInput`'s sky/scope cascade. |
+| `AtlasScopeMask` | 🎯 Per-band scope exclude (`sky ∪ NOT(grow(segment))`) with SELF-DISARMING fallbacks, so a scope row stays permanently wired and simply disarms when the layer is absent. |
+| `AtlasOcclusionMask` | Frustum / frame / facing-angle validity mask used by multi-angle patch projection (§3.3). |
+
+### 05 · Geometry
+
+`AtlasDeriveProjectionGeometry` is the one-preset path; the per-strategy derive
+nodes below are the composable alternative — estimate depth once, derive each
+region with the strategy that fits it, then combine explicitly.
+
+| Node | What it does |
+|---|---|
+| `AtlasDeriveProjectionGeometry` | Builds the receiving surfaces for projection: a depth **relief mesh** (default, handles arbitrary/organic shapes), fitted **primitives** (`azimuth_walls` / `ransac_planes` / `room_cuboid` / `vertical_extrusion` — see §3.1), or `both`. The `scene_type` widget (`manual`/`organic`/`indoor`/`outdoor`) is a one-choice convenience preset over `geometry_mode`+`primitive_method`+`depth_model` — it never adds new solving behavior. |
+| `AtlasDeriveReliefMesh` | One job: continuous depth-following relief mesh + backdrop. Fits its own ground scale rather than borrowing it from a primitive-fitting pass. `sub_quad_boundary` cuts a torn cell AT the depth cliff instead of deleting it whole. |
+| `AtlasDeriveWalls` · `AtlasDeriveTowersSpires` · `AtlasDeriveRoofsFacades` · `AtlasDeriveInteriorRoom` | The other per-strategy derive nodes (azimuth walls · vertical-extrusion towers/spires · RANSAC roofs/facades · Manhattan room cuboid). Each consumes a shared `AtlasDepthMap`. |
+| `AtlasMergeGeometry` | **Nuke-Merge-node equivalent** — combines two derived solves' proxy geometry (e.g. foreground walls + background relief mesh). `solve_a`'s camera wins; chain instances for 3+-way. Optional `shot_cam` rides along onto the merged solve. |
+| `AtlasRetopologizeLayer` | 🔷 LIVE retopology for one layer's relief mesh (or all) before the viewport — the same passes the Maya/Nuke layer exporters use, and the ONLY node permitted to retopologize the live projection mesh. |
+| `AtlasDefineShotCam` | A project-level render/output camera format (sensor W×H mm + lens mm + long-edge resolution) — like a Nuke/Resolve project setting. Intrinsics-only, no position. Wire into `AtlasMergeGeometry` or directly into `AtlasBlockoutViewport` so the render/export conforms to one shot format instead of each photo's own aspect. |
+
+### 06 · Patch & Repair
+
+| Node | What it does |
+|---|---|
+| `AtlasAddPatchView` | Adds an AI-generated novel-view "patch" to fill areas the primary camera couldn't see. See §3.3 — this is the most involved node in the pack. |
+| `AtlasSolvePatchViews` | ⌖ MEASURES which orbit angles actually see a hole (visibility, plane fit, normal tolerance) and returns a ranked view plan instead of guessing an angle. |
+| `AtlasPlanarHolePatch` | ◩ Normal-guided planar completion for selected relief holes — fills the flat ones geometrically and hands the rest on as `remaining_holes`. |
+| `AtlasPathGuidedHoleRepair` | 🎥 Converts a camera path into repair evidence: which islands a move actually exposes, and the angle preview for them. |
+| `AtlasOcclusionGraph` 🕸 | Decomposes the scene into surface/object/ground/backdrop nodes plus one `occludes` edge per silhouette tear, and assigns each a permitted `completion_policy`. Rides the exported solve JSON. |
+| `AtlasLayerPlan` | Turns the occlusion graph into a clean-plate layer manifest — the foreground/background concept lists the layer nodes consume. |
+| `AtlasShootList` | Turns the occlusion graph into a SHOOTING BRIEF: the angles a shot needs so the disocclusions the solve can't fill get photographed. |
+| `AtlasDisocclusionGuide` | 🟣 Renders a move through the same z-buffered rasterizer as `AtlasStereoRender` and paints every unprojected pixel a sentinel colour — the guide + hole-mask batch a two-pass fill consumes. |
+| `AtlasSolveBurstPatchCrops` | 📷✂ The PHOTOGRAPHED counterpart to `AtlasSolvePatchViews`: ranks the flanking frames a multi-view rig already registered and returns real pixels, not invented views. |
+
+### 07 · Clean Plate & Inpaint (2.5D parallax — see §3.5)
+
+| Node | What it does |
+|---|---|
+| `AtlasCleanPlateLayer` | Inpainted clean plate + the same depth band → appends a `ProjectionSource` (camera = primary, unchanged; mesh clipped to the band). Chain one per layer. |
+| `AtlasCleanPlateStack` | 🧽 Up to FOUR artist-painted clean plates + alphas in one node — the multi-slot injection port for a Photoshop round-trip. |
+| `AtlasPlateLayer` 🎞 | ANY plate on ANY geometry, as a projection layer — the Nuke move. Selects proxy primitives by source and/or name prefix. |
+| `AtlasLayerPreview` | 🎨 Cut-out layer preview: plate pixels inside the layer's matte, that layer's debug colour everywhere else — one image showing what a layer projects AND which layer it is. |
+| `AtlasSkyDomeLayer` | ☁ The classic DMP sky separation: a real segmentation drives a flat constant-forward-Z card at `radius_m` (the `projection_backdrop` convention — not a literal sphere). |
+| `AtlasInpaintCrop` | ✂ THE quality lever: crops a padded box around the inpaint mask so the inpaint model's fixed internal resolution is spent on the hole's neighbourhood, not the whole frame. |
+| `AtlasInpaintStitch` | ✂ Pastes the inpainted crop back, resizing mismatched crops; wire `mask` + `feather_px` for generative inpainters that re-render the whole crop. |
+| `AtlasSDXLInpaint` | ✨ Native SDXL inpaint adapter — expands to ComfyUI's stock checkpoint → `InpaintModelConditioning` → KSampler → VAEDecode path. |
+| `AtlasSegmentedSDXLInpaint` | Per-instance crop-and-stitch SDXL inpaint — avoids one giant crop inventing a single connected mega-structure across separate buildings. |
+
+### 08 · Look & Render
+
+| Node | What it does |
+|---|---|
+| `AtlasBlockoutViewport` | The live Three.js viewport: 📷 Camera View, 📽 Project (matte-painting mode), ☀ Exposure, 📊 VP/horizon/ground diagram, ℹ camera HUD, 🎥 camera-path authoring, the draw tools, and proxy/LDR render passes (shaded/depth/normal/mask). Optional `shot_cam` conforms the render to a shot format. See USER_GUIDE.md Parts 2–4. |
+| `AtlasViewportControls` | Atlas Output Desk — moves the viewport toolbar/panels onto its own node and emits `ATLAS_OUTPUT_PROFILE` with OCIO-style intent (config, working/output colorspace, display/view, display trim) for DCC handoff. |
 | `AtlasVPVisualization` | Overlays detected vanishing points + horizon on the source image. **Empty on the learned/GeoCalib solve path** — it doesn't compute VPs at all, by design. |
+| `AtlasStereoRender` | 👓 Geometry-true stereo pair rendered headlessly from the layered projection scene (sbs / sbs_half / anaglyph / separate). |
+| `AtlasMoveBudget` 📐 | How far the camera can move before a tear opens: rasterizes candidate cameras with a real z-buffer and measures sealed-minus-covered pixels. |
+| `AtlasDebugReport` 🔍 | OUTPUT_NODE full-stack diagnostic of the layered scene — camera summary, per-layer geometry/verts/band range/matte coverage, scope statuses, red flags. Read this first when a run looks wrong. |
+| `AtlasGrade` | 🎨 Nuke-style lift/gamma/gain/saturation grade in scene-linear — for matching an AI patch or clean plate to the source before projection. Float-safe. |
+| `AtlasDeband` | 🎚 Model-free debanding for 8-bit-born plates (AI images/JPEGs) before projection or sky dome. Gradient-gated, so only quantization plateaus are smoothed. |
+| `AtlasDefocus` | 🌫 Depth-driven defocus from the SHARED metric depth map — focus is a distance in METRES against the same `ATLAS_DEPTH_MAP` the geometry uses, not a painted mask. |
+| `AtlasApplyLUT` | 🌈 Applies a Resolve/Iridas `.cube` LUT (1D or 3D) with a native parser — no OpenColorIO dependency. Pairs with `AtlasRegisterPlate`'s recorded `lut_path`. |
 
-### Viewport (interactive, browser-side)
+### 09 · QA & Gates
 
 | Node | What it does |
 |---|---|
-| `AtlasBlockoutViewport` | The live Three.js viewport: 📷 Camera View, 📽 Project (matte-painting mode), ☀ Exposure, 📊 VP/horizon/ground diagram, ℹ camera HUD, 🎥 camera-path authoring, and proxy/LDR render passes (shaded/depth/normal/mask). Optional `shot_cam` input conforms the render to a shot format. See USER_GUIDE.md Parts 2–4 for the concepts. |
-| `AtlasViewportControls` | Atlas Output Desk — moves the viewport toolbar/panels onto its own node and emits `ATLAS_OUTPUT_PROFILE` metadata for display-inferred preview and DCC/OCIO handoff. |
+| `AtlasAssessImage` | VLM assessment of the SOURCE image before solving — scene type, scale cues, what will be hard. |
+| `AtlasAssessOutput` | 🧪 Terminal VLM + deterministic scene-health review of the RENDER, for agentic/headless runs. |
+| `AtlasSolveGate` | ✅ Solve-confirm checkpoint and primary home of the 🧭 Orientation Compass. Wire `preview_solve →` cheap diagnostics and `solve →` the heavy stack, so an unconfirmed solve never costs a depth pass. |
+| `AtlasSceneHealthGate` | 🩺 The ACKNOWLEDGEMENT gate before the exporters: runs the same red-flag engine `AtlasDebugReport` renders and holds the solve on warn/fail until the artist acknowledges. Verdicts come only from `core.scene_health`. |
 
-### Export
+### 10 · Export
 
 | Node | What it does |
 |---|---|
-| `AtlasExportSolveJSON` | Raw solve JSON. |
-| `AtlasExportReliefMesh` | OBJ+MTL+texture and/or self-contained GLB, projection baked into UVs — imports pre-projected into Maya/Nuke/ZBrush/Blender with zero setup. |
-| `AtlasExportBlender` / `AtlasExportNuke` / `AtlasExportUSD` | DCC scene-builder scripts / USD camera. |
-| `AtlasExportCameraPathUSD` | Exports the viewport's authored camera-path keyframes as an animated USD camera. |
+| `AtlasExportNuke` | Nuke scene-builder script for the primary projection. |
+| `AtlasExportNukeLayers` | 🎞 EVERY `ProjectionSource` as ONE native `.nk`: per-layer Read + Camera2 (that layer's OWN camera — patches orbit, outpainted skies widen) + Project3D2 + ReadGeo2, merged into one ScanlineRender from the primary camera. |
+| `AtlasExportMayaLayers` | 🧊 The Maya twin: one `.ma` with per-layer projector cameras as native nodes plus an on-open scriptNode that imports the OBJs and builds the projection networks. |
 | `AtlasExportMayaReviewScene` | Maya scene + image card; wire in `AtlasExportReliefMesh`'s `obj_path` to include the real relief mesh instead of placeholder proxies. |
+| `AtlasExportBlender` / `AtlasExportUSD` | Blender scene-builder script / USD camera. |
+| `AtlasExportCameraPathUSD` | Exports the viewport's authored camera-path keyframes as an animated USD camera. |
+| `AtlasExportReliefMesh` | OBJ+MTL+texture and/or self-contained GLB, projection baked into UVs — imports pre-projected into Maya/Nuke/ZBrush/Blender with zero setup. |
+| `AtlasExportPlateEXR` | File-to-file OCIO plate conversion — the ACEScg EXR handoff, resolving the target space by OCIO role/alias. |
 | `AtlasExportReviewPackage` | Full bundle (report + all DCC scripts) for handing off to another artist. |
-| `AtlasUSDCameraLoader` | Load a camera back out of a `.usda`. |
+| `AtlasExportSolveJSON` | Raw solve JSON. |
+
+### advanced (gated tiers + the specialist nodes)
+
+Everything gated lands in this one menu folder. A node promoted out of a gated
+tier **keeps** the folder deliberately — promotion changes whether it registers
+by default, not how advanced it is, and moving it would relocate a menu entry
+saved workflows already point at. So the ungated rows below are "advanced", not
+"experimental".
+
+| Node | Gate | What it does |
+|---|---|---|
+| `AtlasCompleteDepth` | 🔬 | Fills depth holes **before** the relief mesh is built, so no tear exists to repair afterwards. Three tiers, best first, each pixel tagged. |
+| `AtlasBlockoutMassing` | 🔬 | Grid-aligned placeholder building mass for ground the plate never saw — blockout boxes on a street grid. |
+| `AtlasExtractAnglePatch` | 🔬 | Photoshop hand-off (out): writes a Photoshop-friendly patch package from an exact pose. |
+| `AtlasImportAnglePatch` | 🔬 | Photoshop hand-off (in): loads the edited patch back, pastes it into the full frame, and re-exposes the exact pose for reprojection. |
+| `AtlasMaskedSurfaceReconstruct` | 🔬 | Pure-NumPy reconstruction for when a mask identifies a missing region but no usable topology survives. |
+| `AtlasRefineOcclusionSeams` | 🔬 | Pure-NumPy seam refinement along occlusion chains. |
+| `AtlasLoadHiddenVolume` | 🧊🔬 | Loads an externally-predicted hidden-geometry volume, with an invented-fraction guard so a hallucinated solid cannot enter the scene unannounced. |
+| `AtlasBlenderMassing` | 🧱🔬 | Sends the MoGe MEASUREMENT (sky-free cloud, ground, planes at MoGe scale) to a headless Blender ≥ 4.2 for massing, and appends only its own meshes. |
+| `AtlasBlenderImportMeshes` | 📥🔬 | Generic mesh import from a Blender exchange folder (`out_meshes.npz`), with projective UVs regenerated on import and a seed-fingerprint refusal. |
+| `AtlasAgentHandoff` | 🤝🔬 | Pause the graph, brief an external agent, resume — blocking, token-guarded, `mode` + `ATLAS_AGENT_MODE` override. No model or MCP client inside ComfyUI. |
+| `AtlasLiveMeshRepair` | 🕰 | LEGACY — use `AtlasPlanarHolePatch(layer='*')` → `AtlasRetopologizeLayer(boundary_smooth_iterations)`. |
+| `AtlasGroundMask` | 🕰 | LEGACY — binary ground/sky mask, bit-identical to `AtlasGroundDepthMap` output 1. Use that instead. |
+| `AtlasLoadRecord3D` | 📱 | Record3D `.r3d` iPhone/iPad capture — the only solve source whose numbers are MEASURED rather than inferred: Apple factory intrinsics + gravity-aligned ARKit pose in metres + LiDAR depth. |
+| `AtlasStreamRecord3D` | 📲 | The streaming twin — a live USB frame instead of a file. |
+| `AtlasLoadDynamicPlate` | 🌊 | Loads a Dynamic Plates package and appends its receiver plane + temporal water projection: the plate's FIXED crop camera stays the projector while the viewport camera moves. See docs/DYNAMIC_PLATES.md. |
+| `AtlasInterpassGate` | 🚦 | Scores a structure fill BEFORE it is re-textured (G2 vs the edge-extend smear, phase-correlation shift, sentinel bleed) — each check encodes a live failure. |
+| `AtlasMembraneComposite` | 🩹 | The correction stack in one node: plate-referenced colour match from a ring of REAL pixels, then a harmonic offset membrane that flattens the rim gradient. |
+| `AtlasPathFrameIndex` | 🔢 | Computed frame indices for a camera path, from the same sampler `AtlasDisocclusionGuide` uses — so "last N frames" always agrees with the guide batch. |
+| `AtlasCropROI` | ✂️ | One artist-drawn Fill ROI as a generation-ready crop with its own camera. |
+| `AtlasCompositeCrop` | 📌 | The inverse: resizes the corrected fill to its native rect and pastes it back; outside the crop the frame is untouched. |
+| `AtlasCameraMovePreset` | 🎬 | The viewport's one-click moves as a node (orbit/pan/dolly/arc/push/vertigo), emitting a camera path. |
+| `AtlasCropSourcePhoto` | 📷✂️ | The pristine PHOTO crop of a Fill ROI at the generation raster — what a subject-centric novel-view model wants, instead of a whole 36 MP plate. |
 
 ---
 
