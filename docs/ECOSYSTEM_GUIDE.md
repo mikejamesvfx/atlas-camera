@@ -522,9 +522,85 @@ pipeline completed cleanly, producing all outputs: solve JSON, Blender
 
 ---
 
-## 5. VFX color-managed output — ComfyUI-OCIO integration (new)
+## 5. Camera RAW and colour-managed output
 
-### Why
+Atlas owns this path end to end now. It did not always: this section used to
+open by telling you to `git clone ComfyUI-OCIO` and `pip install opencolorio`,
+because at the time there was no other way to get a float plate through
+ComfyUI. That is no longer true, and the third-party pack has moved to the
+bottom of this section where it still earns its place.
+
+### 5.0 Camera RAW: the solve stops guessing
+
+Every other input to Atlas gives the solver an *inferred* focal length — from
+vanishing points, or from GeoCalib's learned prior. A camera RAW gives it a
+**measured** one.
+
+`AtlasLoadRAW` 📷 (needs `[raw]`) reads NEF / CR2 / CR3 / RAF / ARW through a
+single `rawpy` demosaic and replaces the Adobe Camera Raw round trip:
+
+| output | what it carries |
+|---|---|
+| `image` | the display tensor the graph solves and previews from |
+| `plate_ref` | `ATLAS_PLATE_REF` pointing at the scene-linear EXR sidecar |
+| `raw_meta` | `ATLAS_RAW_META` — EXIF, sensor lookup, the distortion model |
+| `focal_length_mm` · `sensor_width_mm` | measured intrinsics, straight into the solve |
+
+Four things about it are load-bearing:
+
+**One demosaic, two outputs, geometrically identical by construction.** The
+display tensor and the EXR sidecar come out of the same decode, so the solve
+you compute on the preview is valid for the plate the DCC receives. Two
+separate decodes would not guarantee that.
+
+**The sidecar is tagged `Linear Rec.709 (sRGB)`, never ACEScg.** rawpy's output
+is camera-native demosaiced RGB in a Rec.709 primaries container; calling it
+ACEScg at that point would be a lie that survives all the way into comp.
+Converting to ACEScg is `AtlasExportPlateEXR`'s job, downstream, where a real
+colour transform happens.
+
+**`headroom` (default 6.0) matches `rawtoaces --headroom`.** It scales the
+scene-linear EXR so diffuse white lands near 1.0, and is stamped on the file as
+`atlas:headroom`. The display and solve tensors are deliberately unaffected —
+scaling them would move nothing geometric and would break the preview.
+
+**Distortion is handled honestly rather than hidden.** Optional lensfun
+undistort (`[raw-lens]`) straightens the plate so the solve sees real straight
+lines, and `AtlasExportNuke` writes a `redistort_stmap.exr` beside the script
+from `raw_meta` so comp can put the distortion back over the render. Solve on
+straight lines, deliver on the real lens. When lensfun has no profile for the
+body/lens pair the node degrades with an explicit status rather than silently
+skipping.
+
+### 5.1 The native colour path
+
+Atlas's float I/O is OpenImageIO-backed and carries OIIO's **built-in ACES
+config**, so ACEScg / ACEScct / ACES2065-1 resolve with nothing else installed
+and no `$OCIO` to configure (`$OCIO` is honoured when set). Install `[oiio]`.
+
+| Node | Job |
+|---|---|
+| `AtlasLoadPlate` | float reader — EXR/DPX/TIFF/PNG/JPEG in, OCIO-converted |
+| `AtlasRegisterPlate` | records path, colourspace, bit depth, role, LUT into `ATLAS_PLATE_REF` |
+| `AtlasAttachSourcePlate` | carries that reference on the solve, for the exporters |
+| `AtlasExportPlateEXR` | file-to-file ACEScg EXR handoff, target resolved by OCIO role |
+| `AtlasApplyLUT` | Resolve/Iridas `.cube` (1D or 3D), native parser, no OCIO dependency |
+
+Why OpenImageIO and not OpenCV: OpenCV's EXR codec is disabled at runtime by
+default, absent from the opencv-python 5.x wheels entirely, and shipped by
+three distributions that overwrite each other as transitive dependencies of
+unrelated node packs. OpenImageIO is the VFX-industry library and does not
+have that failure mode.
+
+The whole shoot-to-comp chain:
+
+```
+AtlasLoadRAW ─┬─ image ────→ solve (measured focal + sensor) ─→ derive ─→ viewport
+              ├─ plate_ref ─→ AtlasAttachSourcePlate ─→ AtlasExportPlateEXR ─→ ACEScg EXR
+              └─ raw_meta ──→ AtlasExportNuke ─→ nuke script + redistort_stmap.exr
+```
+
+### 5.2 Why the two image paths stay separate
 
 Atlas has two deliberately separate image paths:
 
@@ -543,17 +619,31 @@ original float plate to survive into Nuke/Maya/Resolve. Atlas exporters now
 prefer file-backed plate refs when available, while falling back to preview
 textures only when no durable plate path exists.
 
-ComfyUI itself still has no color management — it holds every `IMAGE` tensor
-as plain gamma-encoded sRGB in `0..1` (this is documented as ComfyUI-OCIO's
-own stated assumption). Atlas treats those tensors as preview/editorial data
-unless a plate ref says otherwise.
+ComfyUI itself still has no colour management — it holds every `IMAGE` tensor
+as plain gamma-encoded sRGB in `0..1`. Atlas treats those tensors as
+preview/editorial data unless a plate ref says otherwise. That is the whole
+reason the plate-ref mechanism exists: it is the side channel that carries what
+the tensor cannot.
+
+### 5.3 Optional: ComfyUI-OCIO
+
+**Not required.** `[oiio]` covers reading, writing and converting float plates,
+and `AtlasApplyLUT` covers `.cube` files. Reach for the third-party pack only
+for the three things Atlas deliberately does not do.
 
 [ComfyUI-OCIO](https://github.com/SlavaSexton/ComfyUI-OCIO) (by Slava Sexton)
-adds eight Nuke-style OpenColorIO nodes on top of ComfyUI's plain sRGB
-working space, backed by OpenColorIO's built-in ACES studio config (~55
-colorspaces, including ARRI/RED/Sony camera spaces).
+adds eight Nuke-style OpenColorIO nodes on top of ComfyUI's plain sRGB working
+space, backed by OpenColorIO's built-in ACES **studio** config — ~55
+colorspaces including ARRI/RED/Sony camera spaces.
 
-### Install
+Worth installing when you need:
+
+- **video export** — ProRes / DNxHR / h264 / hevc out of ComfyUI;
+- **the full studio config** — a camera vendor space Atlas's built-in ACES
+  config does not carry;
+- **in-graph colour ops** — `OCIODisplay`, `OCIOCDLTransform`,
+  `OCIOLookTransform` on an `IMAGE` tensor mid-graph, rather than at the file
+  boundary where Atlas works.
 
 ```bash
 cd ComfyUI/custom_nodes
@@ -562,14 +652,12 @@ pip install opencolorio    # opencv-python-headless / tifffile / Pillow / numpy
                             # are typically already present from other packs
 ```
 
-Set `OPENCV_IO_ENABLE_OPENEXR=1` in the environment **before** ComfyUI starts
-(OpenCV reads this at library-init time, not per-call — setting it after
-`import cv2` has already happened does nothing). Confirmed working this
-session: OpenColorIO 2.5.2, node pack import time 0.5s, no errors.
-
-Video export (ProRes/DNxHR/h264/hevc) additionally needs a *full* ffmpeg build
-on `PATH` — check with `ffmpeg -version`. Stills and sequences (EXR/TIFF/PNG/JPEG)
-need nothing beyond the pip install above.
+Set `OPENCV_IO_ENABLE_OPENEXR=1` in the environment **before** ComfyUI starts —
+OpenCV reads it at library-init time, not per-call, so setting it after
+`import cv2` has already run does nothing. Video export additionally needs a
+*full* ffmpeg build on `PATH`; stills and sequences need nothing beyond the pip
+install. (Atlas's own loaders use OpenImageIO and rawpy and are unaffected by
+either.)
 
 ### The eight nodes
 
@@ -643,13 +731,13 @@ For a full Nuke/Maya round-trip beyond just writing files, wire an
 needs a *linear* `IMAGE` tensor for further ComfyUI-side compositing, rather
 than only writing to disk.
 
-The repository now includes one portable RAW multi-view graph,
-`atlas_multiview_raw_qwen_workflow.json`, using input-relative placeholder
-paths. It demonstrates `AtlasLoadRAW` ×3 → `AtlasMultiViewSolve` → viewport,
-report, and match-overlay review, with a bypassed downstream Qwen patch slot
-through `AtlasAddPatchView`. Other asset-dependent OCIO/RAW bundles remain
-separate. Atlas's loaders use OpenImageIO/rawpy rather than an OpenCV EXR
-dependency.
+`examples/atlas_multiview_raw_qwen_workflow.json` is the shipping RAW graph,
+using input-relative placeholder paths: `AtlasLoadRAW` ×3 →
+`AtlasMultiViewSolve` → viewport, report and match-overlay review, with a
+bypassed downstream Qwen patch slot through `AtlasAddPatchView`. The
+asset-dependent OCIO and RAW showcase bundles were removed from the repo in the
+0.8.1 trim — they need a float plate and a camera RAW that cannot ship — and are
+distributed from the project website instead.
 
 ---
 
