@@ -98,8 +98,11 @@ class AtlasDeriveProjectionGeometry:
     covers that pixel. A zero mask when ``geometry_mode="primitives"``, since
     no relief mesh is built to have holes in that mode.
     """
-    RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
-    RETURN_NAMES = ("solve", "hole_mask")
+    # `report` APPENDED 2026-08-17: the no-focal path returned a solve and a
+    # mask with nothing saying a mesh was never built. Appended last, so both
+    # existing outputs keep their index and saved graphs keep their wires.
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "STRING")
+    RETURN_NAMES = ("solve", "hole_mask", "report")
     FUNCTION = "derive"
     CATEGORY = "Atlas/advanced"
 
@@ -281,8 +284,14 @@ class AtlasDeriveProjectionGeometry:
             os.unlink(tmp)
 
         if fx <= 0:
-            zero = torch.zeros(1, int(image.shape[1]), int(image.shape[2]), dtype=torch.float32)
-            return (solve, zero)
+            # ONES, not zeros. hole_mask is "where will Project show black",
+            # so an all-zero mask asserts FULL COVERAGE — the same answer a
+            # perfect mesh gives. A derive that never ran must not be
+            # indistinguishable from the best possible success downstream
+            # (AtlasPlanarHolePatch reads this, as does the inpaint router).
+            uncovered = torch.ones(1, int(image.shape[1]), int(image.shape[2]),
+                                   dtype=torch.float32)
+            return (solve, uncovered, "SKIPPED — " + _NO_FOCAL_REPORT)
         cx = intr.cx_px if intr.cx_px is not None else width / 2.0
         cy = intr.cy_px if intr.cy_px is not None else height / 2.0
         resolved_exclude = _resolve_exclude_mask(exclude_mask, height, width)
@@ -373,7 +382,8 @@ class AtlasDeriveProjectionGeometry:
             "derive_node": "AtlasDeriveProjectionGeometry",
         })
         hole_t = torch.from_numpy(hole_mask_arr).unsqueeze(0)
-        return (out, hole_t)
+        return (out, hole_t, _derive_report("AtlasDeriveProjectionGeometry",
+                                            out, hole_t))
 
 
 
@@ -633,8 +643,11 @@ class AtlasDeriveReliefMesh:
     no triangle covers that pixel (sky/invalid/silhouette tear). This is the
     literal "where will Project show black" signal, not a heuristic.
     """
-    RETURN_TYPES = ("ATLAS_SOLVE", "MASK")
-    RETURN_NAMES = ("solve", "hole_mask")
+    # `report` APPENDED 2026-08-17: the no-focal path returned a solve and a
+    # mask with nothing saying a mesh was never built. Appended last, so both
+    # existing outputs keep their index and saved graphs keep their wires.
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "STRING")
+    RETURN_NAMES = ("solve", "hole_mask", "report")
     FUNCTION = "derive"
     CATEGORY = "Atlas"
 
@@ -835,8 +848,10 @@ class AtlasDeriveReliefMesh:
 
         params = _solve_camera_params(solve, depth)
         if params is None:
+            # ONES — see the note in AtlasDeriveProjectionGeometry.
             h, w = int(depth.image_height), int(depth.image_width)
-            return (solve, torch.zeros(1, h, w, dtype=torch.float32))
+            return (solve, torch.ones(1, h, w, dtype=torch.float32),
+                    "SKIPPED — " + _NO_FOCAL_REPORT)
         width, height, fx, fy, cx, cy = params
         depth_map = _depth_map_for_solve(depth, width, height)
         horizon_y = _horizon_y_from_solve(solve)
@@ -994,7 +1009,7 @@ class AtlasDeriveReliefMesh:
             "derive_node": "AtlasDeriveReliefMesh",
         })
         hole_t = torch.from_numpy(mesh.hole_mask.astype(np.float32)).unsqueeze(0)
-        return (out, hole_t)
+        return (out, hole_t, _derive_report("AtlasDeriveReliefMesh", out, hole_t))
 
 
 class AtlasLiveMeshRepair:
@@ -3208,6 +3223,33 @@ class AtlasPathGuidedHoleRepair:
             repair_t, preview, visible_t,
             str(result["report"]) + preview_note,
         )
+
+
+_NO_FOCAL_REPORT = (
+    "no usable focal length on the solve, so NO geometry was derived and the "
+    "solve passed through unchanged. hole_mask is all-ONES: every pixel is "
+    "uncovered, because nothing was built. Wire a solve that carries fx "
+    "(AtlasSolveFromImage / AtlasLearnedSolveFromImage), or set one with "
+    "AtlasScaleOverride."
+)
+
+
+def _derive_report(node_name: str, out, hole_t) -> str:
+    """What a derive node produced, so a SKIP cannot look like a success.
+
+    The no-focal path used to return an all-ZERO hole mask, which is the same
+    answer a perfect mesh gives — a derive that never ran was indistinguishable
+    downstream from the best possible one.
+    """
+    prims = list(getattr(getattr(out, "projection_scene", None),
+                         "proxy_geometry", None) or [])
+    try:
+        covered = 1.0 - float(hole_t.mean())
+    except Exception:  # noqa: BLE001 — a report must never fail a derive
+        covered = float("nan")
+    return (f"{node_name}: {len(prims)} PROXY_ROLE primitive(s); "
+            f"projection covers {covered * 100:.1f}% of the frame "
+            f"(hole_mask is the uncovered remainder)")
 
 
 def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,

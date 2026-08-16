@@ -106,14 +106,19 @@ def test_all_five_nodes_registered():
         assert NODE_CLASS_MAPPINGS[name].RETURN_TYPES == ("ATLAS_SOLVE", "STRING")
         assert NODE_CLASS_MAPPINGS[name].RETURN_NAMES == ("solve", "report")
     assert "AtlasDeriveReliefMesh" in NODE_CLASS_MAPPINGS
-    assert NODE_CLASS_MAPPINGS["AtlasDeriveReliefMesh"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK")
+    # Same append, 2026-08-17: the relief pair were left behind when the four
+    # above grew a report, and their no-focal path returned an all-ZERO
+    # hole_mask — full coverage, the answer a PERFECT mesh gives.
+    for name in ("AtlasDeriveReliefMesh", "AtlasDeriveProjectionGeometry"):
+        assert NODE_CLASS_MAPPINGS[name].RETURN_TYPES == ("ATLAS_SOLVE", "MASK", "STRING")
+        assert NODE_CLASS_MAPPINGS[name].RETURN_NAMES == ("solve", "hole_mask", "report")
 
 
 def test_relief_mesh_produces_mesh_and_backdrop():
     pytest.importorskip("torch")  # hole_mask output tensor needs torch
     solve = _solve()
     depth = _depth_result(_room_depth())
-    out, hole_mask = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
+    out, hole_mask, _rep = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
 
     names = _proxy_names(out)
     assert "projection_relief_mesh" in names
@@ -126,7 +131,7 @@ def test_relief_quality_overrides_relief_grid():
     pytest.importorskip("torch")  # hole_mask output tensor needs torch
     solve = _solve()
     depth = _depth_result(_room_depth())
-    out, _hole_mask = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32, relief_quality="low")
+    out, _hole_mask, _rep = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32, relief_quality="low")
     assert out.projection_scene.debug_metadata["proxy_derivation"]["relief_grid"] == 64
 
 
@@ -227,7 +232,7 @@ def test_exclude_mask_records_coverage_and_sky_suppression(capsys):
 
     band = torch.zeros(1, h, w, dtype=torch.float32)
     band[:, : h // 2, :] = 1.0
-    out, _ = AtlasDeriveReliefMesh().derive(
+    out, _, _rep = AtlasDeriveReliefMesh().derive(
         solve, depth, relief_grid=32, exclude_mask=band, sky_heuristic=True)
     debug = out.projection_scene.debug_metadata["proxy_derivation"]
     stats = debug["exclude_mask"]
@@ -236,7 +241,7 @@ def test_exclude_mask_records_coverage_and_sky_suppression(capsys):
     assert "REPLACES the internal sky heuristic" in capsys.readouterr().out
 
     # sky_heuristic already off: the mask replaces nothing, so no console noise.
-    out_off, _ = AtlasDeriveReliefMesh().derive(
+    out_off, _, _rep = AtlasDeriveReliefMesh().derive(
         solve, depth, relief_grid=32, exclude_mask=band, sky_heuristic=False)
     off = out_off.projection_scene.debug_metadata[
         "proxy_derivation"]["exclude_mask"]
@@ -245,7 +250,7 @@ def test_exclude_mask_records_coverage_and_sky_suppression(capsys):
 
     # No mask wired: the block is absent entirely, so "unwired" stays
     # distinguishable from "wired but empty".
-    plain, _ = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
+    plain, _, _rep = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
     assert "exclude_mask" not in plain.projection_scene.debug_metadata[
         "proxy_derivation"]
 
@@ -254,7 +259,7 @@ def test_live_hole_fill_disabled_by_default():
     pytest.importorskip("torch")
     solve = _solve()
     depth = _depth_result(_room_depth())
-    out, _ = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
+    out, _, _rep = AtlasDeriveReliefMesh().derive(solve, depth, relief_grid=32)
     meta = out.projection_scene.debug_metadata["proxy_derivation"]["relief_mesh"]
     assert "live_hole_fill" not in meta
 
@@ -385,3 +390,29 @@ def test_no_usable_focal_reports_instead_of_silently_passing_through():
     out, report = AtlasDeriveWalls().derive(solve, _depth_result(_room_depth()))
     assert out is solve
     assert "SKIPPED" in report and "focal" in report
+
+
+def test_relief_derive_without_focal_says_so_and_marks_everything_uncovered():
+    """A derive that never ran must not look like a perfect one.
+
+    hole_mask is "where will Project show black". All-ZERO asserts full
+    coverage — exactly what a flawless mesh returns — so the old no-focal
+    guard was indistinguishable downstream from the best possible success:
+    AtlasPlanarHolePatch saw nothing to patch, the inpaint router saw no tears.
+    """
+    pytest.importorskip("torch")
+    solve = _solve()
+    solve.camera.intrinsics.fx_px = 0.0
+    out, holes, report = AtlasDeriveReliefMesh().derive(
+        solve, _depth_result(_room_depth()))
+    assert out is solve
+    assert "SKIPPED" in report and "focal" in report
+    assert float(holes.min()) == 1.0, "every pixel must read as uncovered"
+
+
+def test_relief_derive_reports_coverage_on_the_happy_path():
+    pytest.importorskip("torch")
+    out, holes, report = AtlasDeriveReliefMesh().derive(
+        _solve(), _depth_result(_room_depth()))
+    assert "AtlasDeriveReliefMesh" in report and "covers" in report
+    assert out is not None

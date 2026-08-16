@@ -369,7 +369,7 @@ def _relief_solve(make_atlas_solve, width=64, height=48):
         image_width=width, image_height=height,
         near=float(depth.min()), far=float(depth.max()))
     inst, fn, _cls = _node("AtlasDeriveReliefMesh")
-    out, _hole = fn(inst, solve, depth_result, relief_grid=32)
+    out, _hole, _report = fn(inst, solve, depth_result, relief_grid=32)
     return out
 
 
