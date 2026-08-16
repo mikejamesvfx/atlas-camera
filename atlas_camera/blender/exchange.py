@@ -120,6 +120,36 @@ SEED_JSON = "seed.json"
 OUT_MESHES_NPZ = "out_meshes.npz"
 OUT_MESHES_JSON = "out_meshes.json"
 
+#: Format identity of the exchange directory, independent of the SOLVE
+#: identity that `solve_seed_fingerprint` covers. The two catch different
+#: failures: the fingerprint refuses a seed built from a different camera,
+#: this refuses a seed written by a pack that laid the files out differently.
+#: The round trip is explicitly allowed to span sessions and the directory
+#: lives in a shot's `blender/` lane, so an exchange written weeks ago is a
+#: normal input — and a silent misread of one is exactly the failure
+#: `MIN_BLENDER` refuses on the Blender side.
+#:
+#: Bump when a key changes meaning, moves, or disappears. Adding an OPTIONAL
+#: key readers already tolerate is not a bump.
+EXCHANGE_VERSION = 1
+EXCHANGE_VERSION_KEY = "atlas_exchange_version"
+
+
+def check_exchange_version(seed: dict[str, Any], *, where: str = "seed.json") -> None:
+    """Raise unless `seed` carries a format version this build understands.
+
+    A seed with NO version predates versioning (pre-2026-08-17) — refused with
+    the same message, because that is precisely the layout drift this guards.
+    """
+    got = seed.get(EXCHANGE_VERSION_KEY)
+    if got == EXCHANGE_VERSION:
+        return
+    raise RuntimeError(
+        f"{where}: exchange format version {got!r}, this build writes and reads "
+        f"{EXCHANGE_VERSION}. Re-run the massing node to rewrite the exchange "
+        "directory; do not hand-edit it."
+    )
+
 
 def _check_mesh(verts: Any, faces: Any, *, label: str) -> None:
     """Shape/finite/index checks shared by every reader. Raises RuntimeError."""
@@ -220,6 +250,7 @@ def write_scene_seed(exchange_dir: str | Path, *, camera: dict[str, Any],
             "image_width": int(camera["image_width"]),
             "image_height": int(camera["image_height"]),
         },
+        EXCHANGE_VERSION_KEY: EXCHANGE_VERSION,
         "primitives": prim_json,
         "drawn_shapes": shapes_json,
         "n_cloud_points": n_cloud,
@@ -245,6 +276,17 @@ def read_meshes(exchange_dir: str | Path) -> dict[str, Any]:
         raise RuntimeError(
             f"no {src.name} in {base} — the recipe (or the in-Blender export "
             "script) wrote nothing. Check report.json / error.json.")
+    # The meshes came out of a scene this build seeded, so the seed's format
+    # version covers them. Checked here rather than only at write time because
+    # a shot's blender/ lane can hold an exchange dir from an older pack.
+    seed_path = base / SEED_JSON
+    if seed_path.is_file():
+        try:
+            seed_head = json.loads(seed_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            seed_head = {}
+        if isinstance(seed_head, dict):
+            check_exchange_version(seed_head, where=str(seed_path))
     info: dict[str, Any] = {}
     meta_path = base / OUT_MESHES_JSON
     if meta_path.is_file():

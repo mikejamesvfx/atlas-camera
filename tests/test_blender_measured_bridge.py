@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -17,7 +18,8 @@ np = pytest.importorskip("numpy")
 from atlas_camera.blender import (  # noqa: E402
     blender_to_atlas, build_blender_command, read_meshes, write_scene_seed,
 )
-from atlas_camera.blender.exchange import OUT_MESHES_JSON, OUT_MESHES_NPZ, SEED_JSON, SEED_NPZ  # noqa: E402
+from atlas_camera.blender.exchange import (  # noqa: E402
+    EXCHANGE_VERSION, OUT_MESHES_JSON, OUT_MESHES_NPZ, SEED_JSON, SEED_NPZ)
 from atlas_camera.blender.measured import (  # noqa: E402
     MASSING_SOURCE, meshes_to_primitives, seed_from_solve, solve_seed_fingerprint,
 )
@@ -244,8 +246,11 @@ class TestNodes:
         from atlas_camera.comfy.nodes_geometry import AtlasBlenderImportMeshes
         v, f = _box()
         _write_out(tmp_path, [("box", v, f, {})])
+        # current FORMAT, stale SOLVE — the two guards are separate, and this
+        # test is about the fingerprint one
         (tmp_path / SEED_JSON).write_text(json.dumps(
-            {"params": {"solve_fingerprint": "deadbeefdeadbeef"}}), encoding="utf-8")
+            {"atlas_exchange_version": EXCHANGE_VERSION,
+             "params": {"solve_fingerprint": "deadbeefdeadbeef"}}), encoding="utf-8")
         s = _solve()
         out, report = AtlasBlenderImportMeshes().import_meshes(s, exchange_dir=str(tmp_path))
         assert report.startswith("REFUSED") and len(out.projection_scene.proxy_geometry) == 1
@@ -523,3 +528,59 @@ def test_massing_node_imports_only_its_own_meshes(tmp_path, monkeypatch):
     names = [p.name for p in out.projection_scene.proxy_geometry]
     assert "massing_ground_plane" in names and not any("agent_water" in n for n in names)
     assert "1 preserved non-massing mesh(es) left" in report
+
+
+# --- exchange FORMAT identity, separate from SOLVE identity ---------------
+# solve_seed_fingerprint refuses a seed built from a different camera.
+# EXCHANGE_VERSION refuses a seed laid out by a different pack. The round trip
+# is allowed to span sessions and the exchange dir lives in a shot's blender/
+# lane, so a directory written weeks ago is a normal input — and a silent
+# misread of one is the failure MIN_BLENDER refuses on the Blender side.
+
+def test_seed_carries_the_exchange_version(tmp_path):
+    from atlas_camera.blender.exchange import write_scene_seed
+    from atlas_camera.blender.measured import camera_params
+    write_scene_seed(tmp_path, camera=camera_params(_solve()), primitives=[])
+    seed = json.loads((tmp_path / SEED_JSON).read_text(encoding="utf-8"))
+    assert seed["atlas_exchange_version"] == EXCHANGE_VERSION
+
+
+def test_read_meshes_refuses_an_unversioned_exchange(tmp_path):
+    """A seed with no version predates versioning — exactly the drift case."""
+    from atlas_camera.blender.exchange import read_meshes
+    v, f = _box()
+    _write_out(tmp_path, [("box", v, f, {})])
+    (tmp_path / SEED_JSON).write_text(json.dumps({"params": {}}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="exchange format version"):
+        read_meshes(tmp_path)
+
+
+def test_read_meshes_refuses_a_future_exchange(tmp_path):
+    from atlas_camera.blender.exchange import read_meshes
+    v, f = _box()
+    _write_out(tmp_path, [("box", v, f, {})])
+    (tmp_path / SEED_JSON).write_text(
+        json.dumps({"atlas_exchange_version": EXCHANGE_VERSION + 1}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="exchange format version"):
+        read_meshes(tmp_path)
+
+
+def test_the_blender_side_mirror_matches(tmp_path):
+    """`recipes/_atlas_scene.py` runs inside Blender and cannot import
+    atlas_camera, so it mirrors the constant. Pin them together."""
+    import re
+    src = (Path(__file__).resolve().parents[1]
+           / "atlas_camera" / "blender" / "recipes" / "_atlas_scene.py"
+           ).read_text(encoding="utf-8")
+    m = re.search(r"^EXCHANGE_VERSION\s*=\s*(\d+)", src, re.M)
+    assert m, "recipes/_atlas_scene.py lost its EXCHANGE_VERSION mirror"
+    assert int(m.group(1)) == EXCHANGE_VERSION
+
+
+def test_recipes_never_prepend_to_sys_path():
+    """Inside Blender, sys.path.insert(0, recipe_dir) would let a recipe
+    filename shadow a stdlib module for the whole process."""
+    rd = Path(__file__).resolve().parents[1] / "atlas_camera" / "blender" / "recipes"
+    offenders = [p.name for p in rd.glob("*.py")
+                 if "sys.path.insert(0" in p.read_text(encoding="utf-8")]
+    assert not offenders, f"use sys.path.append in: {', '.join(offenders)}"

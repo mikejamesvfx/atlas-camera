@@ -113,8 +113,10 @@ class TestNode:
         exdir = tmp_path / "ex"; exdir.mkdir()
         s = _solve()
         from atlas_camera.blender.measured import solve_seed_fingerprint
+        from atlas_camera.blender.exchange import EXCHANGE_VERSION
         (exdir / "seed.json").write_text(json.dumps(
-            {"params": {"solve_fingerprint": solve_seed_fingerprint(s), "ground_y_m": 0.0,
+            {"atlas_exchange_version": EXCHANGE_VERSION,
+             "params": {"solve_fingerprint": solve_seed_fingerprint(s), "ground_y_m": 0.0,
                         "measured": {"camera_height_m": 1.6}}}), encoding="utf-8")
         blend = exdir / "scene.blend"; blend.write_bytes(b"BLENDER")
         v, f = _box()

@@ -27,7 +27,11 @@ Runs inside Blender's interpreter. Never imported by Atlas — it imports bpy.
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# APPEND, never insert(0): this runs inside Blender's interpreter, and
+# prepending would let a recipe filename shadow a stdlib or site-packages
+# module for the whole process. `_atlas_scene` is the only name we need
+# from here, and appending still finds it.
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import bpy  # noqa: E402
 import numpy as np  # noqa: E402

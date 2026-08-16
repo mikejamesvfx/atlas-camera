@@ -90,10 +90,25 @@ def camera_from_seed(cam):
     return obj
 
 
+#: MIRRORS atlas_camera.blender.exchange.EXCHANGE_VERSION — the recipes run
+#: inside Blender and cannot import atlas_camera. Pinned by
+#: tests/test_blender_measured_bridge.py so the two cannot drift.
+EXCHANGE_VERSION = 1
+
+
 def load_seed(ex):
     """Returns (seed_json, prims, cloud) — cloud is (N,3) Blender-space or None."""
     with open(f"{ex}/seed.json", encoding="utf-8") as fh:
         seed = json.load(fh)
+    # Format identity, checked HERE too: this runs inside Blender, where the
+    # exchange dir is the only contract with the pack that wrote it, and a
+    # stale lane from an older pack must refuse rather than be misread.
+    got = seed.get("atlas_exchange_version")
+    if got != EXCHANGE_VERSION:
+        raise RuntimeError(
+            "seed.json: exchange format version %r, this recipe reads %d. "
+            "Re-run the massing node to rewrite the exchange directory."
+            % (got, EXCHANGE_VERSION))
     prims = []
     cloud = None
     with np.load(f"{ex}/seed.npz") as data:
