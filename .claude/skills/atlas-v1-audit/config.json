@@ -1,0 +1,84 @@
+{
+  "_comment": "Atlas-specific audit knowledge. Every entry here is a JUDGEMENT the scanners cannot make from evidence alone; each carries the reason it was made. Adding a path to silence a finding you have not understood defeats the audit.",
+
+  "exclude_dirs": [
+    ".git", "node_modules", "__pycache__", ".pytest_cache", ".pytest_tmp",
+    ".ruff_cache", ".mypy_cache", "build", "dist", "coverage",
+    ".v1-audit", "graphify-out", ".venv", "venv", "atlas_debug"
+  ],
+
+  "_generated_globs": "Vendored or machine-written: real files that ship, but reviewing them line by line is pointless. atlas-three.bundle.js is the vendored three.js build (rebuild via `npm run build:comfy-three` in ui/), and .graphifyignore already keeps it out of the knowledge graph for the same reason.",
+  "generated_globs": [
+    "**/atlas-three.bundle.js",
+    "**/*.min.js"
+  ],
+
+  "_provenance_docs": "Dated records. They name files that were later removed and counts that were correct when written; that is the record doing its job. docs/DESIGN_RULES.md cites 'found live' evidence by path for every rule, so it is provenance throughout.",
+  "provenance_docs": [
+    "CHANGELOG.md",
+    "docs/DESIGN_RULES.md"
+  ],
+  "provenance_doc_prefixes": [
+    "docs/superpowers/"
+  ],
+
+  "_foreign_path_prefixes": "Paths in ANOTHER project's tree, named to say where a behaviour was mirrored from. Correct as written, can never resolve here.",
+  "foreign_path_prefixes": [
+    "output_dir/",
+    "passes/",
+    "cursor/"
+  ],
+
+  "_local_only_prefixes": "Gitignored by design (CLAUDE.md): they do not survive a clone and are excluded from the published Registry archive. The scanners ask `git check-ignore` rather than trusting this list, so it is documentation of intent, not the mechanism.",
+  "local_only_prefixes": [
+    "docs/dev/",
+    "docs/artifacts/",
+    "atlas_debug/"
+  ],
+
+  "_known_absent_symbols": "Named in docs and/or implemented in the tree, deliberately NOT in NODE_CLASS_MAPPINGS. A test pins AtlasPredictHiddenGeometry out of the mappings (off-menu research path). AtlasRenderFix and AtlasBlenderOrganicFill were deregistered and their wrappers deleted 2026-08-14; INSTALL.md and docs/ROADMAP.md name them to say they are GONE, which is correct prose about an absent thing.",
+  "known_absent_symbols": [
+    "AtlasPredictHiddenGeometry",
+    "AtlasRenderFix",
+    "AtlasBlenderOrganicFill",
+    "AtlasLoadImageSolveCamera",
+    "AtlasMegaPipeline",
+    "AtlasPitchTrim",
+    "AtlasCamera",
+    "AtlasSolve",
+    "AtlasIntrinsics",
+    "AtlasExtrinsics",
+    "AtlasHorizon",
+    "AtlasVanishingPoint",
+    "AtlasProjectionScene",
+    "AtlasProxyPrimitive",
+    "AtlasPlateRef",
+    "AtlasAddPlanePolygon",
+    "AtlasBlenderBoundaryFill",
+    "AtlasShotCam",
+    "AtlasDerive",
+    "AtlasBlockout"
+  ],
+
+  "_entry_point_dirs": "A script here is invoked by a HUMAN or by CI, so its importer count proves nothing. Findings against these are reported separately and never reach CERTAIN.",
+  "entry_point_dirs": [
+    "tools",
+    "scripts"
+  ],
+
+  "_dynamic_loading_markers": "A directory containing any of these reaches its own modules without an import statement. Every file under such a directory is capped below CERTAIN.",
+  "dynamic_loading_markers": [
+    "NODE_CLASS_MAPPINGS",
+    "importlib",
+    "pkgutil",
+    "__import__",
+    "entry_points",
+    "globals()[",
+    "WEB_DIRECTORY"
+  ],
+
+  "_protected_categories": "Categories whose confidence is capped below CERTAIN regardless of evidence. A fixture is discovered by pytest, a DCC script is executed by Maya/Nuke/Blender out-of-process, a setup file is read by pip — none of which leaves a reference this scanner can see.",
+  "protected_categories": [
+    "TEST", "DCC", "MODEL_ADAPTER", "SETUP", "CI", "CONFIG", "ASSET"
+  ]
+}
