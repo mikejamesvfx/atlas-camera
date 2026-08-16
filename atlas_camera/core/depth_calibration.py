@@ -23,10 +23,18 @@ the far tail is where the mismatch lives and where the fit has fewest samples.
 because a genuinely metric sensor (ARKit, a stereo rig) really is affine in
 depth, and forcing it through a reciprocal only adds noise.
 
-STATUS: prototype. The machinery and its tests are real; the COEFFICIENTS are
-not — fitting them needs real captures, and the synthetic tests here only prove
-that a known distortion is recovered. Do not ship fitted numbers taken from
-ray-cast fixtures.
+STATUS: prototype, DELIBERATELY UNWIRED. The machinery and its tests are real;
+the COEFFICIENTS are not — fitting them needs real captures, and the synthetic
+tests here only prove that a known distortion is recovered. Do not ship fitted
+numbers taken from ray-cast fixtures.
+
+No product code path calls this module, on purpose: it landed 2026-07-29, a
+week before the Record3D/LiDAR capture nodes that would feed it, and the last
+mile (a store for fitted coefficients keyed by model and scene type, then
+selection and application in the depth chain) is not built. That last mile,
+the capture set it needs, and the reason a LiDAR capture is NOT the case that
+justifies it, are written up under "Deferred engineering backlog" in
+docs/ROADMAP.md. Read that before wiring, deleting, or re-deriving any of it.
 """
 from __future__ import annotations
 

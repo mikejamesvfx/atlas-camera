@@ -391,6 +391,21 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 
 NODE_CLASS_MAPPINGS["AtlasCropSourcePhoto"] = AtlasCropSourcePhoto
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCropSourcePhoto"] = "Atlas Crop Source Photo 📷✂️"
 
+# Promoted from the experimental tier 2026-08-14 (Dynamic Plates): the CLI half
+# (`python -m atlas_camera.dynamic`) was never gated, so gating only the VIEWER
+# left the cheap reversible step behind a flag while the expensive generation
+# step ran freely. Key byte-identical; display name drops only the
+# '(experimental)' gate tag.
+NODE_CLASS_MAPPINGS["AtlasLoadDynamicPlate"] = AtlasLoadDynamicPlate
+NODE_DISPLAY_NAME_MAPPINGS["AtlasLoadDynamicPlate"] = "Atlas Load Dynamic Plate 🌊"
+
+# Promoted from the experimental tier 2026-08-14: db5c27d promoted the two-pass
+# fill engine but left this behind, and it exists only to serve that engine --
+# it computes the batch indices the in-graph fill would otherwise hand-type,
+# the failure it was written for. Gated, a default install rebuilds that bug.
+NODE_CLASS_MAPPINGS["AtlasPathFrameIndex"] = AtlasPathFrameIndex
+NODE_DISPLAY_NAME_MAPPINGS["AtlasPathFrameIndex"] = "Atlas Path Frame Index 🔢"
+
 
 from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume
 from atlas_camera.comfy.nodes_agent import AtlasAgentHandoff
@@ -404,8 +419,6 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasBlockoutMassing": AtlasBlockoutMassing,
     "AtlasExtractAnglePatch": AtlasExtractAnglePatch,
     "AtlasImportAnglePatch": AtlasImportAnglePatch,
-    "AtlasLoadDynamicPlate": AtlasLoadDynamicPlate,
-    "AtlasPathFrameIndex": AtlasPathFrameIndex,
     "AtlasLoadHiddenVolume": AtlasLoadHiddenVolume,
     "AtlasBlenderMassing": AtlasBlenderMassing,
     "AtlasBlenderImportMeshes": AtlasBlenderImportMeshes,
@@ -419,8 +432,6 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasBlockoutMassing": "Atlas Blockout Massing 🧱🔬 (experimental)",
     "AtlasExtractAnglePatch": "Atlas Extract Angle Patch 🔬 → Photoshop",
     "AtlasImportAnglePatch": "Atlas Import Angle Patch 🔬 ← Photoshop",
-    "AtlasLoadDynamicPlate": "Atlas Load Dynamic Plate 🌊🔬 (experimental)",
-    "AtlasPathFrameIndex": "Atlas Path Frame Index 🔢🔬 (experimental)",
     "AtlasLoadHiddenVolume": "Atlas Load Hidden Volume 🧊 🔬 (experimental)",
     "AtlasBlenderMassing": "Atlas Blender Massing 🧱🔬 (experimental, needs Blender)",
     "AtlasBlenderImportMeshes": "Atlas Blender Import Meshes 📥🔬 (experimental)",
@@ -584,6 +595,11 @@ _MENU_FOLDERS = {
     # Every gated tier lands here: experimental, legacy, and iOS. They only
     # appear in the menu when their flag registers them, but carry the folder
     # regardless so they land in the right place when enabled.
+    # Nodes PROMOTED out of a gated tier keep this folder deliberately —
+    # promotion changes whether a node is registered by default, not how
+    # advanced it is, and moving it would relocate a menu entry that saved
+    # workflows and muscle memory already point at. So this tuple is
+    # "advanced OR gated", not "gated only".
     "Atlas/advanced": (
         "AtlasCompleteDepth", "AtlasBlockoutMassing", "AtlasExtractAnglePatch",
         "AtlasImportAnglePatch", "AtlasMaskedSurfaceReconstruct",

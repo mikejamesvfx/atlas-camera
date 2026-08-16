@@ -1,6 +1,6 @@
 """Shipping a gate-hidden experimental node in a workflow is a PINNED choice.
 
-Experimental nodes (AtlasPredictHiddenGeometry, AtlasRenderFix, the angle-patch
+Experimental nodes (AtlasBlockoutMassing, AtlasCompleteDepth, the angle-patch
 pair) are hidden unless ``ATLAS_EXPERIMENTAL=1``. A workflow that uses one loads
 with a red/missing node on a DEFAULT install — a Mac reviewer hit exactly this on
 the SAM3-port debug graph and could not tell whether the port was broken.

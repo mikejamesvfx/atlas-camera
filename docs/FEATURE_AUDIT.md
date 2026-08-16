@@ -29,19 +29,18 @@ relative to itself, so a worktree silently audits a different tree.
 
 ## Counts
 
-* standard: **100**
-* experimental: **12**
+* standard: **102**
+* experimental: **10**
 * legacy: **2**
 * total registered: **116**
-* standard nodes with no product evidence: **1**
+* standard nodes with no product evidence: **0**
 
 | Verdict | Nodes |
 |---|---:|
-| `KEEP_CORE` | 99 |
-| `KEEP_EXPERIMENTAL` | 12 |
+| `KEEP_CORE` | 102 |
+| `KEEP_EXPERIMENTAL` | 10 |
 | `LEGACY_GATE` | 2 |
 | `IOS_GATE` | 2 |
-| `HOLD_NEEDS_EVIDENCE` | 1 |
 
 ## Verdict legend
 
@@ -60,122 +59,122 @@ relative to itself, so a worktree silently audits a different tree.
 
 | Name | Module | Tier | Workflows | Dedicated tests | Live exec | Meaningful output | MCP | Docs | Overlapping replacement | Known defect | Compat risk | Verdict | Migration action |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `AtlasAddPatchView` | atlas_camera/comfy/nodes_geometry.py | standard | 2 | 13 | not_attempted | not_attempted | 0 | 8 | — | — | — | **KEEP_CORE** | — |
-| `AtlasAgentHandoff` | atlas_camera/comfy/nodes_agent.py | experimental | 0 | 1 | not_attempted | not_attempted | 1 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasAddPatchView` | atlas_camera/comfy/nodes_geometry.py | standard | 3 | 14 | not_attempted | not_attempted | 0 | 10 | — | — | — | **KEEP_CORE** | — |
+| `AtlasAgentHandoff` | atlas_camera/comfy/nodes_agent.py | experimental | 1 | 2 | not_attempted | not_attempted | 1 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasApplyLUT` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasApplyScaleReferences` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 3 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasAssessImage` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 6 | not_attempted | not_attempted | 1 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasApplyScaleReferences` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 3 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasAssessImage` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 6 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAssessOutput` | atlas_camera/comfy/nodes_qa.py | standard | 1 | 2 | not_attempted | not_attempted | 2 | 3 | — | — | — | **KEEP_CORE** | — |
-| `AtlasAttachSourcePlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
-| `AtlasBlenderImportMeshes` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasBlenderMassing` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasAttachSourcePlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasBlenderImportMeshes` | atlas_camera/comfy/nodes_geometry.py | experimental | 1 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasBlenderMassing` | atlas_camera/comfy/nodes_geometry.py | experimental | 1 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasBlockoutMassing` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 6 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasBlockoutViewport` | atlas_camera/comfy/nodes_viewport.py | standard | 8 | 18 | not_attempted | not_attempted | 1 | 6 | — | — | — | **KEEP_CORE** | — |
-| `AtlasBoundedBand` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasCameraMovePreset` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasCleanPlateLayer` | atlas_camera/comfy/nodes_inpaint.py | standard | 1 | 11 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasBlockoutViewport` | atlas_camera/comfy/nodes_viewport.py | standard | 11 | 18 | not_attempted | not_attempted | 1 | 7 | — | — | — | **KEEP_CORE** | — |
+| `AtlasBoundedBand` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasCameraMovePreset` | atlas_camera/comfy/nodes_fill.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasCleanPlateLayer` | atlas_camera/comfy/nodes_inpaint.py | standard | 2 | 11 | not_attempted | not_attempted | 1 | 6 | — | — | — | **KEEP_CORE** | — |
 | `AtlasCleanPlateStack` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasCompleteDepth` | atlas_camera/comfy/nodes_completion.py | experimental | 0 | 1 | not_attempted | not_attempted | 1 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasCompositeCrop` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
+| `AtlasCompleteDepth` | atlas_camera/comfy/nodes_completion.py | experimental | 0 | 2 | not_attempted | not_attempted | 1 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasCompositeCrop` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasConstrainedSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasCropROI` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasCropSourcePhoto` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
+| `AtlasCropROI` | atlas_camera/comfy/nodes_fill.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasCropSourcePhoto` | atlas_camera/comfy/nodes_fill.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDeband` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasDebugReport` | atlas_camera/comfy/nodes_viewport.py | standard | 1 | 4 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
-| `AtlasDecomposeCamera` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasDecomposeSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasDefineShotCam` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDebugReport` | atlas_camera/comfy/nodes_viewport.py | standard | 2 | 4 | not_attempted | not_attempted | 1 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDecomposeCamera` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasDecomposeSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasDefineShotCam` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDefocus` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasDepthAnything` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 2 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasDepthBandSplit` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDepthAnything` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasDepthBandSplit` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDepthCombine` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDepthDetailEnhance` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasDepthLayerMask` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 4 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasDepthMap` | atlas_camera/comfy/nodes_depth.py | standard | 3 | 3 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasDepthOutlierMask` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDepthLayerMask` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 4 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDepthMap` | atlas_camera/comfy/nodes_depth.py | standard | 6 | 3 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDepthOutlierMask` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDeriveInteriorRoom` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
-| `AtlasDeriveProjectionGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 5 | not_attempted | not_attempted | 0 | 4 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
-| `AtlasDeriveReliefMesh` | atlas_camera/comfy/nodes_geometry.py | standard | 4 | 13 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDeriveProjectionGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 5 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
+| `AtlasDeriveReliefMesh` | atlas_camera/comfy/nodes_geometry.py | standard | 4 | 13 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasDeriveRoofsFacades` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
 | `AtlasDeriveTowersSpires` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 2 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
-| `AtlasDeriveWalls` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 5 | not_attempted | not_attempted | 0 | 2 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
-| `AtlasDisocclusionGuide` | atlas_camera/comfy/nodes_viewport.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasDeriveWalls` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 5 | not_attempted | not_attempted | 0 | 3 | — | FIXED 2026-07-27. Previously emitted a projection_backdrop plane even with no valid depth — hardcoded 60 m, invented extents, no way to explain it because th… | — | **KEEP_CORE** | — |
+| `AtlasDisocclusionGuide` | atlas_camera/comfy/nodes_viewport.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasEquirectMultiView` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasExportBlender` | atlas_camera/comfy/nodes_export.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportCameraPathUSD` | atlas_camera/comfy/nodes_export.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportCameraPathUSD` | atlas_camera/comfy/nodes_export.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportMayaLayers` | atlas_camera/comfy/nodes_export.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 3 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportMayaReviewScene` | atlas_camera/comfy/nodes_export.py | standard | 1 | 0 | not_attempted | not_attempted | 1 | 3 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportNuke` | atlas_camera/comfy/nodes_export.py | standard | 2 | 2 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportMayaReviewScene` | atlas_camera/comfy/nodes_export.py | standard | 1 | 0 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportNuke` | atlas_camera/comfy/nodes_export.py | standard | 3 | 2 | not_attempted | not_attempted | 1 | 6 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportNukeLayers` | atlas_camera/comfy/nodes_export.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportPlateEXR` | atlas_camera/comfy/nodes_export.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportReliefMesh` | atlas_camera/comfy/nodes_export.py | standard | 1 | 5 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportReliefMesh` | atlas_camera/comfy/nodes_export.py | standard | 1 | 5 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExportReviewPackage` | atlas_camera/comfy/nodes_export.py | standard | 1 | 2 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportSolveJSON` | atlas_camera/comfy/nodes_export.py | standard | 4 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasExportUSD` | atlas_camera/comfy/nodes_export.py | standard | 1 | 0 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportSolveJSON` | atlas_camera/comfy/nodes_export.py | standard | 4 | 1 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasExportUSD` | atlas_camera/comfy/nodes_export.py | standard | 1 | 0 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasExtractAnglePatch` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasFaceScaleReference` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasGrade` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasGravityCompass` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasGravityCompass` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasGravityOverride` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 1 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasGroundDepthMap` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasGroundDepthMap` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasGroundMask` | atlas_camera/comfy/nodes_depth.py | legacy | 0 | 2 | ok | ok | 0 | 2 | AtlasGroundDepthMap, output 1 (ground_mask) | — | low — in no shipping workflow, no test, no MCP consumer | **LEGACY_GATE** | rewire consumers to AtlasGroundDepthMap slot 1; gate the node |
-| `AtlasHorizonMask` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 1 | ok | ok | 0 | 3 | — | FIXED 2026-07-27, found by writing this cycle's coverage. The node returned the GROUND as sky — the exact inverse of its docstring and of its 'Sky Mask' disp… | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasHorizonMask` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 1 | ok | ok | 0 | 4 | — | FIXED 2026-07-27, found by writing this cycle's coverage. The node returned the GROUND as sky — the exact inverse of its docstring and of its 'Sky Mask' disp… | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasImportAnglePatch` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasInpaintCrop` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasInpaintStitch` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasInput` | atlas_camera/comfy/nodes_viewport.py | standard | 3 | 5 | not_attempted | not_attempted | 0 | 8 | — | — | — | **KEEP_CORE** | — |
+| `AtlasInpaintCrop` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasInpaintStitch` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasInput` | atlas_camera/comfy/nodes_viewport.py | standard | 6 | 5 | not_attempted | not_attempted | 0 | 9 | — | — | — | **KEEP_CORE** | — |
 | `AtlasInstanceMask` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasInterpassGate` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
+| `AtlasInterpassGate` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasLayerPlan` | atlas_camera/comfy/nodes_completion.py | standard | 1 | 1 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasLayerPreview` | atlas_camera/comfy/nodes_viewport.py | standard | 2 | 1 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
-| `AtlasLearnedSolveFromImage` | atlas_camera/comfy/nodes_solve.py | standard | 2 | 3 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasLearnedSolveFromImage` | atlas_camera/comfy/nodes_solve.py | standard | 2 | 3 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasLiveMeshRepair` | atlas_camera/comfy/nodes_geometry.py | legacy | 0 | 6 | not_attempted | not_attempted | 0 | 1 | AtlasPlanarHolePatch (per named layer) -> AtlasRetopologizeLayer(boundary_smooth_iterations) | CPU sawtooth path could emit non-manifold geometry and hang the pivot walk (fixed 2026-07-27 in core/mesh_repair.py, since the same code is reachable from tw… | medium — present in 3 shipping workflows, all of which are migrated in the same cycle; saved user graphs still resolve with ATLAS_LEGACY_NODES=1 for one migr… | **LEGACY_GATE** | boundary smoothing migrated to AtlasRetopologizeLayer; rewire workflows to the hole-patch chain; gate the node |
-| `AtlasLoadDynamicPlate` | atlas_camera/comfy/nodes_dynamic.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasLoadDynamicPlate` | atlas_camera/comfy/nodes_dynamic.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasLoadHiddenVolume` | atlas_camera/comfy/nodes_hidden_volume.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasLoadPlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 1 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasLoadRAW` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 6 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasLoadRAW` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 6 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
 | `AtlasLoadRecord3D` | — | ios | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **IOS_GATE** | — |
 | `AtlasLoadSolveJSON` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 0 | ok | ok | 1 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasMaskedSurfaceReconstruct` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasMaskedSurfaceReconstruct` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasMembraneComposite` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasMergeGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasMergeGeometry` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMogeNormals` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMoveBudget` | atlas_camera/comfy/nodes_completion.py | standard | 0 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
-| `AtlasMultiViewSolve` | atlas_camera/comfy/nodes_multiview.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasMultiViewSolve` | atlas_camera/comfy/nodes_multiview.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMultiViewSolveBurst` | atlas_camera/comfy/nodes_multiview.py | standard | 2 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasOcclusionGraph` | atlas_camera/comfy/nodes_completion.py | standard | 1 | 4 | not_attempted | not_attempted | 1 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
-| `AtlasOcclusionMask` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasOcclusionMask` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasOutpaintDepth` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasPathFrameIndex` | atlas_camera/comfy/nodes_fill.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasPathGuidedHoleRepair` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 3 | — | — | — | **KEEP_CORE** | — |
-| `AtlasPlanarHolePatch` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasPlateLayer` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 0 | not_attempted | not_attempted | 0 | 1 | — | — | — | **HOLD_NEEDS_EVIDENCE** | — |
-| `AtlasProject` | atlas_camera/comfy/nodes_project.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasReferenceScaleSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 1 | 6 | — | — | — | **KEEP_CORE** | — |
-| `AtlasRefineOcclusionSeams` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_EXPERIMENTAL** | — |
-| `AtlasRegisterPlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
-| `AtlasRetopologizeLayer` | atlas_camera/comfy/nodes_geometry.py | standard | 4 | 8 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasPathFrameIndex` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
+| `AtlasPathGuidedHoleRepair` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasPlanarHolePatch` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 4 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasPlateLayer` | atlas_camera/comfy/nodes_inpaint.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasProject` | atlas_camera/comfy/nodes_project.py | standard | 1 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
+| `AtlasReferenceScaleSolve` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 1 | 7 | — | — | — | **KEEP_CORE** | — |
+| `AtlasRefineOcclusionSeams` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasRegisterPlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 7 | — | — | — | **KEEP_CORE** | — |
+| `AtlasRetopologizeLayer` | atlas_camera/comfy/nodes_geometry.py | standard | 5 | 8 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasRollTrim` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasSAM3Mask` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 3 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasSDXLInpaint` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasSAM3Mask` | atlas_camera/comfy/nodes_inpaint.py | standard | 1 | 3 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasSDXLInpaint` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasScaleOverride` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 1 | 5 | — | — | — | **KEEP_CORE** | — |
-| `AtlasSceneHealthGate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasScopeMask` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasSegmentedSDXLInpaint` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 1 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasSemanticMask` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasSceneHealthGate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasScopeMask` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
+| `AtlasSegmentedSDXLInpaint` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 1 | ok | ok | 0 | 5 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
+| `AtlasSemanticMask` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 3 | not_attempted | not_attempted | 0 | 7 | — | — | — | **KEEP_CORE** | — |
 | `AtlasShootList` | atlas_camera/comfy/nodes_completion.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
-| `AtlasSkyDomeLayer` | atlas_camera/comfy/nodes_inpaint.py | standard | 1 | 4 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasSkyDomeLayer` | atlas_camera/comfy/nodes_inpaint.py | standard | 1 | 4 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasSolveBurstPatchCrops` | atlas_camera/comfy/nodes_multiview.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasSolveFromImage` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 0 | ok | ok | 1 | 4 | — | — | — | **KEEP_CORE** | — |
-| `AtlasSolveGate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 4 | not_attempted | not_attempted | 2 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasSolveGate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 4 | not_attempted | not_attempted | 2 | 5 | — | — | — | **KEEP_CORE** | — |
 | `AtlasSolvePatchViews` | atlas_camera/comfy/nodes_geometry.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
-| `AtlasSplitEquirect` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
+| `AtlasSplitEquirect` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasStereoRender` | atlas_camera/comfy/nodes_viewport.py | standard | 0 | 3 | ok | ok | 0 | 1 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasStreamRecord3D` | — | ios | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **IOS_GATE** | — |
 | `AtlasUSDCameraLoader` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasVLMScaleCues` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_CORE** | — |
+| `AtlasVLMScaleCues` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasVPVisualization` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasViewportControls` | atlas_camera/comfy/nodes_viewport.py | standard | 4 | 1 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
+| `AtlasViewportControls` | atlas_camera/comfy/nodes_viewport.py | standard | 7 | 1 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
 
 ## Appendix — nodes held rather than cut
 
@@ -183,7 +182,6 @@ Each of these executes correctly and returns meaningful output; what
 it lacks is a consumer. That is a reason to find evidence or schedule
 deprecation, not a reason to delete.
 
-* **`AtlasPlateLayer`** — 
 
 ## Appendix — capabilities REMOVED, not replaced
 

@@ -8,6 +8,48 @@
 
 ## Deferred engineering backlog
 
+- **Fixer render repair (2026-08-14).** `atlas_camera/inference/fixer_render_fix.py`
+  shells out to NVIDIA Fixer in a Docker container (`docker/fixer/Dockerfile`)
+  to repair projected-render artifacts, and `tools/generate_fixer_training_pairs.py`
+  builds fine-tune pairs from baked orbits. The `AtlasRenderFix` node that drove
+  it was deregistered 2026-08-03 and its wrapper deleted 2026-08-14, so the
+  backend now has **no product consumer** — only its own test imports it. Kept
+  deliberately: the container recipe and the pair-generation tool are the
+  research trail, and INSTALL.md already tells users the node is gone.
+  Do **not** treat this as dead code to sweep. If taken up again, the open
+  question is not the model but the surface: it was Docker-only (the
+  cosmos/transformer_engine stack has no native Windows build), which is why
+  the node was removed from a pack whose selling point is that nothing needs
+  Docker, a cloned research repo, or Blender. Re-landing it means either
+  solving that, or accepting it as an explicitly opt-in extra.
+
+- **Measured depth calibration (2026-07-29).**
+  `atlas_camera/core/depth_calibration.py` fits a two-or-three coefficient
+  correction from a monocular depth estimate onto MEASURED depth
+  (`fit_depth_correction`, `choose_correction`, `apply_depth_correction`,
+  `DepthCorrection` with dict round-trip). It is **implemented, tested and
+  deliberately unwired** — no product code path calls it, and that is the
+  current intent, not an oversight.
+  It landed a week before its data source: the Record3D/LiDAR capture nodes
+  arrived 2026-08-05, so nothing ever looped back to connect them. Its own
+  docstring carries the blocker — the machinery is real but the COEFFICIENTS
+  are not, and fitting them needs real captures. **Do not ship numbers fitted
+  from the ray-cast fixtures**; those tests only prove a known distortion is
+  recovered.
+  Do **not** pursue it as "make Record3D captures more accurate" — a LiDAR
+  capture already carries measured metric depth, so there is nothing to
+  correct. The case that justifies it is **transfer**: fit on captures where
+  truth is available, then apply to an ordinary photograph where it is not.
+  That is the assumed-1.6 m failure on wide exteriors and AI-generated
+  cityscapes, which measure out roughly ten times too small. If taken up,
+  sequence it: (1) shoot a capture set spanning the scene types that fail,
+  (2) persist fitted coefficients keyed by `(model_id, scene_type)` — the
+  serialization already exists, the store does not, (3) select and apply them
+  in the depth chain, behind the same confirm-to-adopt discipline as the other
+  scale tiers, (4) only then consider a node surface.
+  Fitting in disparity rather than depth is already decided and pinned by
+  `test_fitting_in_the_wrong_space_leaves_far_field_error`; do not relitigate it.
+
 - **ONNX Runtime depth backend (2026-07-13).** `tools/export_depth_v2_onnx.py`
   already exports Depth Anything V2 to ONNX with a torch-vs-onnxruntime parity
   gate (fp32; fp16 is only a downstream TensorRT/OpenVINO suggestion in the

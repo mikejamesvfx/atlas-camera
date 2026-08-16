@@ -63,6 +63,10 @@ NORMAL_KEYS = {
     "AtlasCompositeCrop", "AtlasCameraMovePreset",
     # 2026-08-16: photo crop for the Qwen ROI loop.
     "AtlasCropSourcePhoto",
+    # Promoted 2026-08-14 (Dynamic Plates: the CLI half was never gated):
+    "AtlasLoadDynamicPlate",
+    # Promoted 2026-08-14 (serves the standard two-pass fill engine):
+    "AtlasPathFrameIndex",
 }
 
 EXPERIMENTAL_KEYS = {
@@ -71,8 +75,6 @@ EXPERIMENTAL_KEYS = {
     "AtlasRefineOcclusionSeams",
     "AtlasCompleteDepth",
     "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
-    "AtlasLoadDynamicPlate",
-    "AtlasPathFrameIndex",
     # Research bridge for the VolFill hidden-geometry evaluation (2026-08-15):
     # meshes an external amodal VOLUME into the solve so the viewport can show
     # it. Experimental-tier because the volume->layered-rays adapter that would
@@ -106,12 +108,12 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 100
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 102
 
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 12
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 10
 
 
 def test_display_name_mapping_covers_registry():

@@ -110,6 +110,14 @@ camera moves and patches, plate finishing, export fan-out, occlusion analysis,
 and an agentic variant with a terminal VLM/solve report for headless
 automation. Point any of their `LoadImage` nodes at a photograph of your own.
 
+**Dynamic Plates** turn one time-varying region of the solved still — ocean,
+cloud, smoke — into an animated projection layer. Atlas owns the shot; a video
+model only makes the region move. The plate's crop camera stays fixed as the
+projector, so the camera move is never baked into the generated footage. Build a
+plate with `python -m atlas_camera.dynamic`, then load it into the viewport with
+`Atlas Load Dynamic Plate` 🌊 — see
+**[docs/DYNAMIC_PLATES.md](docs/DYNAMIC_PLATES.md)**.
+
 Experimental nodes stay hidden unless you set `ATLAS_EXPERIMENTAL=1` before
 launching ComfyUI. Nothing in the pack needs Docker, a Blender install, or a
 user-cloned research model.
@@ -120,6 +128,7 @@ user-cloned research model.
 - [Technical brief](docs/TECH_AND_DIFFERENTIATION.md) — camera solve + projection vs mesh generation
 - [User guide](docs/USER_GUIDE.md) · [Node catalog](docs/NODE_CATALOG.md) · [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md)
 - [Camera moves & marketing renders](docs/CAMERA_MOVES.md) — single photo → Nuke dolly
+- [Dynamic Plates](docs/DYNAMIC_PLATES.md) — animated regions of a solved still (LTX generation optional)
 - [DCC exports](docs/DCC_EXPORTS.md) · [Third-party & licenses](THIRD_PARTY.md)
 - **MCP server** — `pip install atlas-camera[mcp]` then `python -m atlas_camera.mcp`: drive Atlas from any MCP-capable assistant — [usage guide](docs/MCP_SERVER.md). A repo checkout auto-registers it for Claude Code via `.mcp.json`
 - [Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md)

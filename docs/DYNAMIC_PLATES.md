@@ -37,6 +37,25 @@ python -m atlas_camera.dynamic validate --package shots/castle/dynamic/WATER_000
 - Generator missing/unreachable → the package still builds and reports
   `generator status = not_available`. Exit code stays 0.
 
+## Viewport — seeing the plate in ComfyUI
+
+The CLI above is the *producer*; **`Atlas Load Dynamic Plate` 🌊**
+(`AtlasLoadDynamicPlate`, `nodes_dynamic.py`) is the *consumer*. Give it the
+solve and the package directory the CLI wrote and it appends the receiver plane
+plus the temporal projection to the solve as a `ProjectionSource`: the plate's
+FIXED crop camera stays the projector while the viewport camera moves freely.
+Generated frames stream to the frontend per-frame and play on the render ticker;
+with no generated frames yet it projects the still crop.
+
+```text
+python -m atlas_camera.dynamic create ...   →  dynamic/WATER_0001/
+                                            →  AtlasLoadDynamicPlate → Atlas Viewport 🧊
+```
+
+The node is in the **standard** tier as of 2026-08-14 — no `ATLAS_EXPERIMENTAL`
+flag is needed. Full input/output row in
+[docs/NODE_CATALOG.md](NODE_CATALOG.md).
+
 ## Package layout
 
 ```text

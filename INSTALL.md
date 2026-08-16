@@ -284,6 +284,21 @@ heavy export deps (`gsplat`/`open3d`/`pycolmap`/...) - Atlas stubs them. Model w
 download from Hugging Face on first use. A GPU (cuda) is recommended: DA3's inference
 autocasts to bf16/fp16 by device type.
 
+## Optional Lotus-2 Depth Backend
+
+Lotus-2 is a diffusion depth backend selectable in the `depth_model` combo
+(matched on the `lotus-2` token, so the earlier SD-based `lotus-depth-*` family
+does not route here). Its base model, `black-forest-labs/FLUX.1-dev`, is **gated
+on Hugging Face and non-commercial** — Atlas therefore never auto-installs it or
+auto-downloads the weights. Accept the model licence on Hugging Face first, then:
+
+```powershell
+pip install -e ".[lotus2]"
+```
+
+For exterior work `Depth Anything V2 Metric Outdoor` remains the default
+recommendation, and MoGe-2 below is the light-dependency, MIT-licensed option.
+
 ## Optional MoGe-2 Depth Backend
 
 MoGe-2 (Microsoft, **MIT-licensed**) is a light-dependency alternative to DA3 in

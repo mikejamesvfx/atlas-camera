@@ -27,5 +27,7 @@ workflow's special overlay — 📊 solve diagram, 🩻 X-ray provenance, 📏 b
 box, 🎨 layer debug, ℹ HUD), the nodes on stage, per-plate retune knobs, the
 run-verified result, and requirements.
 
-Workflows themselves: `examples/showcase/`. Findings log:
-`examples/showcase/README.md`.
+The showcase workflows themselves are **not in this repository** — they were
+removed in the 0.8.1 trim (2026-07-21) because each needs downloaded plates,
+and they are distributed from the website alongside the live pages above. The
+repo ships the three quickstart `example.png` pairs in `examples/` instead.
