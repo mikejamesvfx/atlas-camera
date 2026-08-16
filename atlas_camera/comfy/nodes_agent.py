@@ -76,9 +76,12 @@ class AtlasAgentHandoff:
                     "tooltip": "Comma list the agent is told it may use: " + ", ".join(_TOOL_CHOICES)}),
                 "blender_path": ("STRING", {"default": "",
                     "tooltip": "For auto_import's export_meshes.py run. Empty = ATLAS_BLENDER_PATH/PATH."}),
-                "timeout_s": ("INT", {"default": 1800, "min": 10, "max": 86400,
+                "timeout_s": ("INT", {"default": 300, "min": 10, "max": 86400,
                     "tooltip": "How long the graph waits for a resume. The queue is blocked "
-                               "meanwhile — that IS the pause."}),
+                               "meanwhile — that IS the pause. ComfyUI runs one prompt at a "
+                               "time, so this stalls EVERY queued job, not just this graph; "
+                               "the 5-minute default keeps an absent agent from reading as a "
+                               "dead server. Raise it for a long modelling session."}),
                 "on_timeout": (["continue", "fail"], {"default": "continue"}),
                 "auto_import": ("BOOLEAN", {"default": True,
                     "tooltip": "On resume with a blend_file (or when scene.blend exists in "
@@ -139,7 +142,7 @@ class AtlasAgentHandoff:
 
     def handoff(self, solve, task, exchange_dir="", depth=None, snapshot_node_id="",
                 tools_allowed="blender_mcp, blender_headless, atlas_mcp", blender_path="",
-                timeout_s=1800, on_timeout="continue", auto_import=True,
+                timeout_s=300, on_timeout="continue", auto_import=True,
                 expect_fingerprint=True, min_y_m=-0.05, poll_s=1.0, project=None,
                 mode="wait", paint_with="clean_plate", unique_id=None):
         import copy
