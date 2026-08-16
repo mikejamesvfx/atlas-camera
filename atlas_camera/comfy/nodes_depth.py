@@ -149,12 +149,22 @@ class AtlasDepthMap:
                     "tooltip": "MoGe ONLY. Tile overlap as a fraction of tile size. More overlap "
                                "= wider blend and more tiles (slower). Only used when "
                                "moge_tile_side > 0."}),
+                # APPENDED 2026-08-16 (positional widgets_values rule). INERT by
+                # default. Lights up the scene-health focal cross-check on MoGe.
+                "moge_report_free_focal": ("BOOLEAN", {"default": False,
+                    "tooltip": "MoGe ONLY. When a solve is wired, MoGe is FED the solve's focal, "
+                               "so its own intrinsics just echo it. This runs a second, fov-free "
+                               "pass (depth discarded, cheaper resolution level) and records "
+                               "MoGe's INDEPENDENT focal so the 🩺 debug report can flag a "
+                               "focal_mismatch (band 0.75-1.33). ~+30% time. sh001 example: solve "
+                               "6207 px vs MoGe 5278 px — invisible without this."}),
             },
         }
 
     def estimate(self, image, depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
                  device="auto", solve=None, moge_resolution_level=9, moge_max_side=0,
-                 moge_checkpoint_path="", moge_tile_side=0, moge_tile_overlap=0.25):
+                 moge_checkpoint_path="", moge_tile_side=0, moge_tile_overlap=0.25,
+                 moge_report_free_focal=False):
         from atlas_camera.inference.depth_estimator import estimate_depth
         tmp = _save_image_tensor_to_tmp(image)
         try:
@@ -165,7 +175,8 @@ class AtlasDepthMap:
                                     max_side=int(moge_max_side),
                                     checkpoint_path=str(moge_checkpoint_path or ""),
                                     tile_side=int(moge_tile_side),
-                                    tile_overlap=float(moge_tile_overlap))
+                                    tile_overlap=float(moge_tile_overlap),
+                                    report_free_focal=bool(moge_report_free_focal))
         finally:
             os.unlink(tmp)
         return (result,)

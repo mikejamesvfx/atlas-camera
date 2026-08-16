@@ -65,6 +65,10 @@ DEFAULT_METRIC_OUTDOOR = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-
 #: detail for speed and MUST stay opt-in, or every existing graph silently
 #: changes quality.
 MOGE_RESOLUTION_LEVEL_DEFAULT = 9
+# Resolution level for the optional fov-free SECOND pass that only harvests
+# MoGe's predicted intrinsics (report_free_focal). The focal head is stable
+# well below full token budget; 6 keeps the extra pass cheap.
+MOGE_FREE_FOCAL_RESOLUTION_LEVEL = 6
 
 # Depth Anything 3 model ids (opt-in backend — see module docstring).
 DA3_METRIC_MODEL = "depth-anything/DA3METRIC-LARGE"
@@ -305,6 +309,17 @@ class DepthResult:
     # normals_to_world). None otherwise. Deliberately NOT in summary()/metadata
     # (which must stay JSON-safe); it's a heavy array like `depth`.
     normal: Any = None
+    # The model's native metric POINTMAP (HxWx3 float32) when it predicts one
+    # (MoGe: `out["points"]`), in the MODEL's camera frame — OpenCV axes, +X
+    # right, +Y down, +Z forward, so `points[..., 2] == depth`. NaN where the
+    # validity mask is False. MoGe derives depth AND intrinsics FROM this map,
+    # so it is the more primitive output and costs nothing to keep. Consumers
+    # (patch-camera registration, scale registration against an external
+    # metric predictor) convert with `core.depth_geometry.opencv_points_to_
+    # atlas_cam` — Atlas never re-derives its own camera XYZ from it. Heavy
+    # array, so like `normal` it is excluded from summary()/metadata. Additive
+    # field: the depth contract is unchanged.
+    points: Any = None
 
     def summary(self) -> dict[str, Any]:
         """JSON-safe summary (no heavy array) for the depth LatentComponent."""
@@ -807,6 +822,7 @@ def _estimate_depth_moge(
     checkpoint_path: str = "",
     tile_side: int = 0,
     tile_overlap: float = 0.25,
+    report_free_focal: bool = False,
 ) -> DepthResult:
     """MoGe-2 inference path: metric forward-Z depth from the point map.
 
@@ -830,6 +846,16 @@ def _estimate_depth_moge(
     one — but the tensor itself is not free: a 7680x4512 plate is ~415 MB of
     float32 on the device before MoGe touches it. 0 disables. Outputs are always
     returned at SOURCE resolution regardless, so nothing downstream can tell.
+
+    Intrinsics provenance. MoGe returns ``out["intrinsics"]`` (a NORMALIZED 3x3:
+    fx in image widths, cx in image widths). When we fed ``fov_x`` the matrix is
+    just an echo of the solve, so it is recorded as ``intrinsics_source=
+    "echo_of_solve"`` and ``core.scene_health`` must NOT read it as agreement.
+    ``report_free_focal`` runs a SECOND, fov-free pass (depth discarded, at a
+    reduced resolution level) and records ``predicted_focal_px_free`` — the only
+    value that is an independent estimate when a solve focal was supplied.
+    Measured 2026-08-15 on sh001 (metric-solved, 6207 px): the free pass predicts
+    5278 px, a 15% disagreement that was invisible before this field existed.
     """
     import math
     import numpy as np
@@ -893,6 +919,7 @@ def _estimate_depth_moge(
         metadata["max_side"] = cap
     if checkpoint_path:
         metadata["checkpoint_path"] = str(checkpoint_path)
+    mask = None
     if "mask" in out:
         # NEAREST, and applied AFTER the depth resize. Bilinear on a boolean
         # would invent fractional validity, and masking before the resize would
@@ -900,6 +927,52 @@ def _estimate_depth_moge(
         mask = _to_source(out["mask"].detach().float(), "nearest").cpu().numpy() > 0.5
         depth = np.where(mask, depth, np.nan)
         metadata["valid_fraction"] = float(mask.mean())
+
+    # ---- native pointmap + predicted intrinsics ---------------------------
+    # Kept as provenance/registration inputs only. Depth stays the contract.
+    predicted_points = None
+    if "points" in out:
+        pts_t = out["points"].detach().float()
+        if pts_t.dim() == 4:                          # (B,H,W,3)
+            pts_t = pts_t[0]
+        if pts_t.dim() == 3 and pts_t.shape[0] == 3 and pts_t.shape[-1] != 3:
+            pts_t = pts_t.permute(1, 2, 0)            # (3,H,W) -> (H,W,3)
+        pts_t = _to_source(pts_t, "bilinear")
+        predicted_points = np.asarray(pts_t.cpu().numpy(), dtype=np.float32)
+        if mask is not None:
+            predicted_points = np.where(mask[..., None], predicted_points, np.nan)
+        metadata["has_pointmap"] = True
+    intr_t = out.get("intrinsics") if hasattr(out, "get") else None
+    if intr_t is not None:
+        k = np.asarray(intr_t.detach().float().cpu().numpy(), dtype=np.float64)
+        if k.ndim == 3:
+            k = k[0]
+        if k.shape == (3, 3):
+            # Normalized intrinsics: fx, cx in image WIDTHS; fy, cy in HEIGHTS.
+            metadata["predicted_focal_px"] = round(float(k[0, 0]) * width, 2)
+            metadata["predicted_fy_px"] = round(float(k[1, 1]) * height, 2)
+            metadata["predicted_cx_px"] = round(float(k[0, 2]) * width, 2)
+            metadata["predicted_cy_px"] = round(float(k[1, 2]) * height, 2)
+            metadata["intrinsics_source"] = (
+                "echo_of_solve" if fov_x is not None else "moge_fov_head")
+    if report_free_focal and fov_x is not None:
+        # An INDEPENDENT focal: re-run with no fov hint. Depth is discarded; a
+        # lower resolution level keeps the cost well under a full pass.
+        free_level = max(0, min(level, MOGE_FREE_FOCAL_RESOLUTION_LEVEL))
+        with torch.inference_mode():
+            free_out = model.infer(tensor, fov_x=None, resolution_level=free_level)
+        free_k = free_out.get("intrinsics") if hasattr(free_out, "get") else None
+        if free_k is not None:
+            fk = np.asarray(free_k.detach().float().cpu().numpy(), dtype=np.float64)
+            if fk.ndim == 3:
+                fk = fk[0]
+            if fk.shape == (3, 3):
+                metadata["predicted_focal_px_free"] = round(float(fk[0, 0]) * width, 2)
+                metadata["free_focal_resolution_level"] = free_level
+        del free_out
+    elif report_free_focal and "predicted_focal_px" in metadata:
+        # No solve focal was fed, so the first pass WAS the free pass.
+        metadata["predicted_focal_px_free"] = metadata["predicted_focal_px"]
     predicted_normal = None
     if "normal" in out:
         # Predicted per-pixel surface normals in the MODEL's camera frame — kept
@@ -970,6 +1043,13 @@ def _estimate_depth_moge(
             "feather_px": ramp,
             "anchored_to": "global_pass",
         }
+        if predicted_points is not None:
+            # The tiled depth is an affine-fitted composite; the global-pass
+            # pointmap no longer agrees with it pixel-for-pixel, and per-tile
+            # pointmaps live in per-tile camera frames. Drop rather than lie.
+            predicted_points = None
+            metadata["has_pointmap"] = False
+            metadata["points_dropped_reason"] = "tiled"
 
     depth, metadata = _record_and_clamp_negative(depth, metadata)
     valid = np.isfinite(depth)
@@ -985,6 +1065,7 @@ def _estimate_depth_moge(
         far=far,
         metadata=metadata,
         normal=predicted_normal,
+        points=predicted_points,
     )
 
 
@@ -999,6 +1080,7 @@ def estimate_depth(
     tile_side: int = 0,
     tile_overlap: float = 0.25,
     checkpoint_path: str = "",
+    report_free_focal: bool = False,
 ) -> DepthResult:
     """Predict a depth map for a single image (Depth Anything V2 / V3, or MoGe-2).
 
@@ -1031,7 +1113,8 @@ def estimate_depth(
     # possible failure for a quality/speed dial.
     moge_key = (
         (int(resolution_level), int(max_side or 0), str(checkpoint_path or ""),
-         int(tile_side or 0), round(float(tile_overlap), 4))
+         int(tile_side or 0), round(float(tile_overlap), 4),
+         bool(report_free_focal))
         if _is_moge_model(model_id) else None
     )
     # Lotus-2 resolves its clone from checkpoint_path, so that must join the key
@@ -1055,6 +1138,7 @@ def estimate_depth(
             resolution_level=resolution_level, max_side=max_side,
             tile_side=tile_side, tile_overlap=tile_overlap,
             checkpoint_path=checkpoint_path,
+            report_free_focal=bool(report_free_focal),
         )
     elif _is_depth_pro_model(model_id):
         result = _estimate_depth_depth_pro(image_path, model_id=model_id, device=device)

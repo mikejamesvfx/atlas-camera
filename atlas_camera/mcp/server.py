@@ -55,7 +55,8 @@ _CAPABILITIES = {
         "atlas_health", "atlas_validate_workflow", "atlas_run_workflow",
         "atlas_solve_image", "atlas_read_debug_report",
         "atlas_read_output_assessment", "atlas_inspect_viewport",
-        "atlas_export_scene", "atlas_node_catalog",
+        "atlas_export_scene", "atlas_node_catalog", "atlas_viewport_snapshot",
+        "atlas_agent_brief", "atlas_agent_resume",
     ],
     "dcc_exporters": ["nuke", "maya", "blender", "usd", "obj", "glb"],
     # The one deliberately browser-bound operation — ⏺ Bake runs in the
@@ -268,7 +269,68 @@ def atlas_inspect_viewport(node_id: int) -> str:
         "render_wh": [d.get("target_width"), d.get("target_height")],
         "primary_geometry": prims,
         "layers": layers,
+        # Automatic end-of-run snapshots (📽 on/off from the recovered
+        # camera, long edge 1280): file paths under <output>/atlas_viewport/.
+        # Present once the browser has executed this node at least once since
+        # the server started; atlas_viewport_snapshot reads the durable sidecar.
+        "viewport_snapshot": d.get("viewport_snapshot"),
     }, indent=1)
+
+
+@mcp.tool()
+def atlas_agent_brief(node_id: str, output_dir: str = "") -> str:
+    """Read the BRIEF an AtlasAgentHandoff node published when it paused the
+    graph: task text, exchange dir (seed.json / scene.blend), viewport snapshot
+    PNGs to look at, measured scene numbers, allowed tools, and the token you
+    must echo when resuming. The graph is WAITING on you (see `deadline`).
+    Read the snapshots with your image tool; operate Blender through the
+    blender MCP on `scene_blend` (model under the `atlas_out` collection, save)
+    or headless; then call atlas_agent_resume."""
+    from atlas_camera.comfy.agent_handoff import read_brief
+    out = output_dir or os.path.join(os.environ.get("COMFY_DIR", ""), "output")
+    brief = read_brief(node_id, root=out)
+    if brief is None:
+        return json.dumps({"error": f"no brief for node {node_id} under {out}/atlas_agent - "
+                                    "is the graph paused at an AtlasAgentHandoff node? "
+                                    "(check output_dir/COMFY_DIR)"})
+    return json.dumps(brief, indent=1, default=str)
+
+
+@mcp.tool()
+def atlas_agent_resume(node_id: str, token: str, reply: str, status: str = "done",
+                       blend_file: str = "", notes: str = "", output_dir: str = "") -> str:
+    """Release a paused AtlasAgentHandoff node. `token` comes from the brief;
+    `status` done|skip|fail; `reply` is shown in the node's report and stored on
+    the solve; `blend_file` = the .blend you saved (empty = the brief's
+    scene_blend) - with auto_import the node exports its `atlas_out` meshes and
+    appends them to the solve. This tool only writes resume.json; ComfyUI does
+    the work (the MCP server never executes)."""
+    from atlas_camera.comfy.agent_handoff import write_resume
+    out = output_dir or os.path.join(os.environ.get("COMFY_DIR", ""), "output")
+    try:
+        rec = write_resume(node_id, {"token": token, "status": status, "reply": reply,
+                                     "blend_file": blend_file, "notes": notes}, root=out)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+    return json.dumps(rec, indent=1, default=str)
+
+
+@mcp.tool()
+def atlas_viewport_snapshot(node_id: int, output_dir: str = "") -> str:
+    """The latest automatic viewport snapshot for a node: the two PNG paths
+    (`projected` = 📽 Project ON, `geometry` = OFF), size, timestamp, and the
+    solve fingerprint they were rendered against. Written by the browser after
+    every execution of AtlasBlockoutViewport (recovered camera, long edge 1280)
+    into <ComfyUI output>/atlas_viewport/. `output_dir` overrides the default
+    <COMFY_DIR>/output. Read the PNGs with your image tool to SEE the run."""
+    from atlas_camera.comfy.viewport_snapshot import read_snapshot_record
+    out = output_dir or os.path.join(os.environ.get("COMFY_DIR", ""), "output")
+    rec = read_snapshot_record(node_id, output_dir=out)
+    if rec is None:
+        return json.dumps({"error": f"no snapshot sidecar for node {node_id} under {out} — "
+                                    "the viewport must have executed in a BROWSER tab "
+                                    "(the frontend renders the frames); check output_dir/COMFY_DIR"})
+    return json.dumps(rec, indent=1)
 
 
 @mcp.tool()

@@ -121,9 +121,11 @@ from atlas_camera.comfy.nodes_completion import (
 from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume  # noqa: F401
+from atlas_camera.comfy.nodes_agent import AtlasAgentHandoff  # noqa: F401
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasCompositeCrop,
                                            AtlasCropROI,
+                                           AtlasCropSourcePhoto,
                                            AtlasInterpassGate,
                                            AtlasMembraneComposite,
                                            AtlasPathFrameIndex)
@@ -196,6 +198,8 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasOcclusionMask,
     AtlasSolvePatchViews,
     AtlasBlockoutMassing,
+    AtlasBlenderImportMeshes,
+    AtlasBlenderMassing,
 )
 from atlas_camera.comfy.nodes_inpaint import (
     AtlasScopeMask,
@@ -207,6 +211,7 @@ from atlas_camera.comfy.nodes_inpaint import (
     AtlasInstanceMask,
     AtlasSegmentedSDXLInpaint,
     AtlasCleanPlateLayer,
+    AtlasPlateLayer,
     AtlasCleanPlateStack,
     AtlasSkyDomeLayer,
 )

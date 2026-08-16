@@ -1,19 +1,20 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-08-14",
+ "generated_utc": "2026-08-16",
  "counts": {
-  "standard": 98,
-  "experimental": 8,
+  "standard": 100,
+  "experimental": 12,
   "legacy": 2,
   "ios": 2,
-  "total": 110,
-  "no_product_evidence": 0
+  "total": 116,
+  "no_product_evidence": 1
  },
  "verdict_counts": {
-  "KEEP_CORE": 98,
-  "KEEP_EXPERIMENTAL": 8,
+  "KEEP_CORE": 99,
+  "KEEP_EXPERIMENTAL": 12,
   "LEGACY_GATE": 2,
-  "IOS_GATE": 2
+  "IOS_GATE": 2,
+  "HOLD_NEEDS_EVIDENCE": 1
  },
  "live_probe": {
   "host": "127.0.0.1:8188",
@@ -48,6 +49,32 @@
    "known_defect": null,
    "compatibility_risk": null,
    "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasAgentHandoff": {
+   "module": "atlas_camera/comfy/nodes_agent.py",
+   "tier": "experimental",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 4,
+   "mcp_tools": 1,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "mcp",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
    "evidence": [],
    "migration_action": null,
    "notes": null
@@ -186,6 +213,56 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasBlenderImportMeshes": {
+   "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "experimental",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 4,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasBlenderMassing": {
+   "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "experimental",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 4,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasBlockoutMassing": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "experimental",
@@ -194,7 +271,7 @@
    "tests": 9,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 1,
+   "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -217,13 +294,14 @@
    "example_workflows": 8,
    "dedicated_tests": 18,
    "tests": 20,
-   "mcp_tools": 0,
+   "mcp_tools": 1,
    "repo_tools": 14,
    "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "mcp",
     "repo_tool",
     "docs"
    ],
@@ -269,8 +347,8 @@
    "module": "atlas_camera/comfy/nodes_fill.py",
    "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 1,
-   "tests": 3,
+   "dedicated_tests": 2,
+   "tests": 4,
    "mcp_tools": 0,
    "repo_tools": 0,
    "docs": 1,
@@ -424,6 +502,31 @@
    "notes": null
   },
   "AtlasCropROI": {
+   "module": "atlas_camera/comfy/nodes_fill.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasCropSourcePhoto": {
    "module": "atlas_camera/comfy/nodes_fill.py",
    "tier": "standard",
    "example_workflows": 0,
@@ -1114,11 +1217,11 @@
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
    "example_workflows": 2,
-   "dedicated_tests": 1,
-   "tests": 3,
+   "dedicated_tests": 2,
+   "tests": 4,
    "mcp_tools": 1,
    "repo_tools": 2,
-   "docs": 4,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1817,6 +1920,31 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasLoadHiddenVolume": {
+   "module": "atlas_camera/comfy/nodes_hidden_volume.py",
+   "tier": "experimental",
+   "example_workflows": 0,
+   "dedicated_tests": 2,
+   "tests": 5,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 2,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_EXPERIMENTAL",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasLoadPlate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
@@ -1854,7 +1982,7 @@
    "tests": 8,
    "mcp_tools": 0,
    "repo_tools": 2,
-   "docs": 4,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -2269,6 +2397,30 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasPlateLayer": {
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 0,
+   "tests": 2,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": false,
+   "evidence_kinds": [
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasProject": {
    "module": "atlas_camera/comfy/nodes_project.py",
    "tier": "standard",
@@ -2382,7 +2534,7 @@
    "tests": 10,
    "mcp_tools": 0,
    "repo_tools": 3,
-   "docs": 1,
+   "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",

@@ -319,6 +319,12 @@ To run the V2-vs-DA3 accuracy comparison yourself, see
 ## Experimental: relief repair (`ATLAS_EXPERIMENTAL=1`)
 > **Gated nodes:** these register only when `ATLAS_EXPERIMENTAL=1` is set before launching ComfyUI; the default hides them so the node menu stays universal.
 
+> **Blender bridge (2026-08-16):** `AtlasBlenderMassing` 🧱🔬 / `AtlasBlenderImportMeshes` 📥🔬 and
+> `examples/atlas_blender_measured_primitives_workflow.json` also live behind `ATLAS_EXPERIMENTAL=1` and need a
+> **Blender ≥ 4.2** install (`ATLAS_BLENDER_PATH`, `PATH`, or the platform install dirs; the widget accepts a
+> quoted "Copy as path" string). Wire a MoGe `AtlasDepthMap` into `depth` for the measured seed (sky-free
+> metric point cloud + ground/camera height/planes at MoGe scale); the round trip is a couple of seconds.
+
 `AtlasMaskedSurfaceReconstruct` 🔬 completes a relief hole that a mask
 identifies but that has no usable topology boundary: it cuts the selected
 cells plus a small collar, holds the collar depths fixed, solves a harmonic

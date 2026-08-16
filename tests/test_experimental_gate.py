@@ -19,7 +19,8 @@ def test_experimental_dicts_cover_exactly_the_experimental_nodes():
         "AtlasExtractAnglePatch", "AtlasImportAnglePatch",
         "AtlasLoadDynamicPlate",
         "AtlasCompleteDepth", "AtlasBlockoutMassing",
-        "AtlasPathFrameIndex", "AtlasLoadHiddenVolume"}
+        "AtlasPathFrameIndex", "AtlasLoadHiddenVolume",
+        "AtlasBlenderMassing", "AtlasBlenderImportMeshes", "AtlasAgentHandoff"}
     assert set(nodes.EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS) == set(
         nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
     for name in nodes.EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS.values():

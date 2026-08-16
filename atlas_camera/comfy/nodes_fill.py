@@ -336,11 +336,13 @@ class AtlasCropROI:
                                "something other than geometry (SkyDome, "
                                "matte). Subtracted before clustering so a "
                                "generator is never aimed at it. Auto mode "
-                               "ALSO always subtracts the solved pose's own "
-                               "holes (sky is not disocclusion — nothing was "
-                               "ever occluding it), so this input is for "
-                               "regions the baseline test cannot know "
-                               "about."}),
+                               "ALSO always drops what the move did not "
+                               "reveal — holes whose ray at infinity lands on "
+                               "a hole in the plate (sky: nothing was ever "
+                               "occluding it) or outside the plate frame "
+                               "entirely (never looked at — that is "
+                               "outpainting). This input is for regions those "
+                               "geometric tests cannot know about."}),
             },
         }
 
@@ -388,22 +390,22 @@ class AtlasCropROI:
                 exclude = _mask_to_bool(np, torch, exclude_mask, height,
                                         width)
             # move_revealed_only is the SKY FAILSAFE and always on for auto
-            # selection: sky is a hole from the solved pose too, so it is
-            # never move-revealed disocclusion and never ranks.
+            # selection: sky is a hole from the solved pose too, and anything
+            # outside the plate's frame was never looked at — neither is
+            # disocclusion, so neither ever ranks.
             auto_rois, roi_set, _masks, peak = survey_hole_rois(
                 solve, src, [view], survey_resolution=1024,
                 pad_frac=float(pad_frac), min_area_px=int(min_area_px),
                 snap=int(snap), exclude_mask=exclude,
                 move_revealed_only=True)
+            excl_note = (", exclude_mask applied" if exclude is not None else "")
             if roi_slot > len(auto_rois):
                 return empty(f"auto_largest found only {len(auto_rois)} "
-                             f"move-revealed cluster(s) >= {min_area_px}px — "
-                             f"no-op branch")
+                             f"move-revealed cluster(s) >= {min_area_px}px"
+                             f"{excl_note} — no-op branch")
             roi = auto_rois[roi_slot - 1]
             source_note = (f"auto rank {roi_slot}/{len(auto_rois)}, "
-                           f"move-revealed only"
-                           + (", exclude_mask applied" if exclude is not None
-                              else "")
+                           f"move-revealed only" + excl_note
                            + f" (peak hole {peak:.1%})")
         else:
             scene = getattr(solve, "projection_scene", None)
@@ -426,6 +428,57 @@ class AtlasCropROI:
         guide, mask, cov, _depth = render_crop_sequence(
             solve, src, [view], roi, hole_dilate_px=int(hole_dilate_px))[0]
 
+        # SELECTION and the CROP MASK must apply the same test. Ranking a
+        # cluster with sky excluded and then emitting the rect's full hole mask
+        # puts the sky straight back: the ROI is a RECTANGLE, so a legitimate
+        # cluster's padded rect can contain sky the ranking already rejected.
+        # Measured live 2026-08-15 — the arc-left patch came back with a
+        # sky-textured sheet above the roofline, because that sky was inside
+        # the winning rect, got generated, got pasted, and therefore rode the
+        # pasted_mask into AtlasAddPatchView as geometry to build.
+        # Auto mode only: an artist who drew a region gets what they drew.
+        sky_note = ""
+        if roi_source == "auto_largest":
+            from atlas_camera.core.camera_crop import crop_intrinsics
+            from atlas_camera.dynamic.occlusion_fill import (
+                not_disocclusion_mask,
+                plate_hole_survey,
+                reproject_at_infinity,
+            )
+            c_intr = crop_intrinsics(intr, roi)
+            c_spec = CameraSpec.from_intrinsics(c_intr)
+            plate = plate_hole_survey(solve, src, resolution=1024)
+            cam = dict(view=view, fx=c_spec.fx, fy=c_spec.fy, cx=c_spec.cx,
+                       cy=c_spec.cy, width=roi.width, height=roi.height)
+            drop = not_disocclusion_mask(plate, **cam)
+            before = int((mask > 127).sum())
+            mask = np.where(drop, 0, mask)
+            removed = before - int((mask > 127).sum())
+            if removed:
+                # Those pixels keep the sentinel otherwise — the membrane
+                # composite only touches the hole, so a dropped pixel would
+                # ride the saved end frame as chroma green. Sky IS at infinity,
+                # so the plate sampled through the same mapping is its real
+                # content for this camera; only genuinely off-plate pixels
+                # (nothing was ever photographed there) keep the sentinel.
+                r = reproject_at_infinity(plate, **cam)
+                # r's coordinates are in the SURVEY raster; `src` is the plate
+                # at full resolution (width/height here are the plate's).
+                sx = width / float(r["plate_width"])
+                sy = height / float(r["plate_height"])
+                px = np.clip((r["u"] * sx).astype(np.int64), 0, width - 1)
+                py = np.clip((r["v"] * sy).astype(np.int64), 0, height - 1)
+                paint = drop & r["inside"]
+                guide = guide.copy()
+                guide[paint] = src[py[paint], px[paint]]
+                sky_note = (f", {removed:,} px ({removed / max(before, 1):.0%} "
+                            f"of the hole) dropped as not-disocclusion "
+                            f"(sky/off-plate); {int(paint.sum()):,} of them "
+                            f"resampled from the plate at infinity")
+            if not (mask > 127).any():
+                return empty(f"every hole pixel in the rank-{roi_slot} rect is "
+                             f"sky or off-plate — no-op branch")
+
         scale = min(1.0, float(max_gen_long_edge)
                     / max(roi.width, roi.height))
         gen_w = max(16, int(round(roi.width * scale / 16)) * 16)
@@ -443,7 +496,8 @@ class AtlasCropROI:
                   f"at ({roi.x},{roi.y}), hole {cov:.1%}, generation raster "
                   f"{gen_w}x{gen_h}"
                   + (" (1:1 native)" if scale >= 1.0
-                     else f" (capped from native, 1:{roi.width / gen_w:.2f})"))
+                     else f" (capped from native, 1:{roi.width / gen_w:.2f})")
+                  + sky_note)
         g = torch.from_numpy(guide.astype(np.float32) / 255.0).unsqueeze(0)
         m = torch.from_numpy((mask > 127).astype(np.float32)).unsqueeze(0)
         return (g, m, gen_w, gen_h, handle, report)
@@ -537,6 +591,108 @@ class AtlasCompositeCrop:
                 out_mask(height, width, (y, x, hole)))
 
 
+class AtlasCropSourcePhoto:
+    """📷✂️ The pristine PHOTO crop of a Fill ROI, at the generation raster —
+    the input a subject-centric novel-view model wants.
+
+    The Qwen-Image-Edit-2511 Multiple-Angles LoRA (96 absolute poses, trained
+    on Gaussian-splat renders of ONE clear subject) works best, fastest and at
+    real detail when it is handed the region of interest, not a whole 36 MP
+    plate: diffusion resolution is capped and a full frame spends the pixel
+    budget on everything but the hole. `AtlasCropROI` already picks the ROI
+    (artist or auto hole cluster) and defines its crop rect + generation
+    raster; its `guide` output is a RENDER through the geometry (holes marked)
+    for inpainting. This node crops the untouched source photo through the
+    SAME handle so the two agree pixel-for-pixel:
+
+        AtlasCropROI ──crop──> AtlasCropSourcePhoto ──source_crop──> Qwen
+        Multiple-Angles ──novel view──> AtlasAddPatchView
+        (camera_source=register_to_primary, primary_image=full plate)
+
+    The registration step MEASURES the crop's novel-view camera against the
+    full primary (SIFT + MoGe pointmap + RANSAC similarity), so the crop needs
+    no bookkeeping about where it came from — the pixels say. An empty crop
+    handle (unused slot) returns a 64x64 black no-op like the rest of the
+    crop family.
+    """
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT", "STRING")
+    RETURN_NAMES = ("source_crop", "gen_width", "gen_height", "report")
+    FUNCTION = "crop_photo"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "source_image": ("IMAGE", {"tooltip": "The full plate (same image "
+                                                       "AtlasCropROI was given)."}),
+                "crop": ("ATLAS_CROP", {"tooltip": "AtlasCropROI's crop handle."}),
+            },
+            "optional": {
+                "pad_frac": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                    "tooltip": "EXTRA context around the ROI rect (fraction of the rect "
+                               "size, clamped to the plate) — a subject-centric model "
+                               "wants the subject with some surroundings. 0 = the exact "
+                               "ROI rect. The output raster keeps the crop's aspect."}),
+                "square": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Expand the rect to a square (centred, clamped to the "
+                               "plate) — many novel-view LoRAs were trained square."}),
+            },
+        }
+
+    def crop_photo(self, source_image, crop, pad_frac=0.0, square=False):
+        from PIL import Image as PILImage
+        np = _require_numpy()
+        torch = _require_torch()
+
+        if not isinstance(crop, dict) or crop.get("empty", True):
+            return (torch.zeros(1, 64, 64, 3), 64, 64,
+                    "AtlasCropSourcePhoto: empty crop — no-op branch")
+        src = source_image.detach().cpu().numpy()[0]
+        src = np.clip(src * 255.0, 0, 255).astype(np.uint8)
+        H, W = src.shape[:2]
+        x, y = int(crop["x"]), int(crop["y"])
+        w, h = int(crop["width"]), int(crop["height"])
+        gen_w, gen_h = int(crop.get("gen_w", w)), int(crop.get("gen_h", h))
+        # Optional context + square, clamped to the plate.
+        px, py = int(round(w * float(pad_frac))), int(round(h * float(pad_frac)))
+        x0, y0, x1, y1 = x - px, y - py, x + w + px, y + h + py
+        if square:
+            side = max(x1 - x0, y1 - y0)
+            cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+            x0, x1 = int(round(cx - side / 2.0)), int(round(cx + side / 2.0))
+            y0, y1 = int(round(cy - side / 2.0)), int(round(cy + side / 2.0))
+        x0, y0 = max(0, x0), max(0, y0)
+        x1, y1 = min(W, x1), min(H, y1)
+        if x1 - x0 < 8 or y1 - y0 < 8:
+            return (torch.zeros(1, 64, 64, 3), 64, 64,
+                    f"AtlasCropSourcePhoto: rect ({x0},{y0})-({x1},{y1}) is degenerate "
+                    "against the plate — no-op branch")
+        patch = src[y0:y1, x0:x1]
+        # Keep the crop family's generation raster when the rect is unchanged;
+        # otherwise scale by the same long-edge ratio and snap to /16.
+        if (x0, y0, x1 - x0, y1 - y0) == (x, y, w, h):
+            out_w, out_h = gen_w, gen_h
+        else:
+            ratio = gen_w / float(w) if w else 1.0
+            out_w = max(16, int(round((x1 - x0) * ratio / 16)) * 16)
+            out_h = max(16, int(round((y1 - y0) * ratio / 16)) * 16)
+        if (out_w, out_h) != (x1 - x0, y1 - y0):
+            patch = np.asarray(PILImage.fromarray(patch).resize(
+                (out_w, out_h), PILImage.LANCZOS))
+        t = torch.from_numpy(patch.astype(np.float32) / 255.0).unsqueeze(0)
+        return (t, out_w, out_h,
+                f"AtlasCropSourcePhoto: photo crop ({x0},{y0}) {x1 - x0}x{y1 - y0} -> "
+                f"{out_w}x{out_h}"
+                + (f", pad {pad_frac:.2f}" if pad_frac else "")
+                + (", square" if square else "")
+                + " — feed to the novel-view model; register the result with "
+                  "AtlasAddPatchView camera_source=register_to_primary.")
+
+
 class AtlasCameraMovePreset:
     """🎬 The viewport's one-click moves as a NODE — path + exact end pose.
 
@@ -547,14 +703,24 @@ class AtlasCameraMovePreset:
     preset path in, holes surveyed at its end frame, WAN fills the big ones,
     the artist opens the viewport afterwards to tweak.
 
-    ONE DELIBERATE DIVERGENCE (documented in `build_preset_camera_path`): the
-    pivot is `ground_lookat_pivot`, not the viewport's mesh-centre pivot —
-    because that is the pivot `AtlasAddPatchView` orbits when it consumes an
-    `exact_view_override`. The `exact_view` output is therefore EXACT by
-    construction: wire it straight into patch re-entry and the filled end
-    frame projects back from the identical pose, no 'Bake Repair Frame'
+    The pivot is the viewport's: `scene_median_depth_pivot` — the central view
+    ray at the scene's median vertex depth. It shipped (2026-08-14) orbiting
+    `ground_lookat_pivot` instead, because that was the only pivot
+    `AtlasAddPatchView` could reproduce from an `exact_view_override`. On a
+    near-level camera the ground ray lands far past the subject (~43 m on the
+    ghost-town street against the viewport's ~9.8 m), and orbit travel is
+    `2·R·sin(angle/2)` — so the arcs swung the eye ~4x further than the ⤴/⤵
+    buttons do and opened four times the disocclusion. The pivot now travels
+    WITH the delta (`pivot=x,y,z` in the exact-view string), so exactness costs
+    no radius: wire `exact_view` straight into patch re-entry and the filled
+    end frame projects back from the identical pose, no 'Bake Repair Frame'
     click required. Pan moves swivel in place and have no orbit-delta
     representation — they emit the zero delta and say so in the report.
+
+    `angle_deg` defaults to 12, not the viewport buttons' 15: the automated
+    recipe fills what it opens, and 12° at the scene pivot is the artist-set
+    budget for one arc (2026-08-15). Raise it for more parallax, at the cost of
+    bigger holes for the generator.
     """
 
     RETURN_TYPES = ("ATLAS_CAMERA_PATH", "STRING", "STRING")
@@ -576,36 +742,48 @@ class AtlasCameraMovePreset:
             },
             "optional": {
                 "angle_deg": ("FLOAT", {
-                    "default": 15.0, "min": 1.0, "max": 90.0, "step": 0.5,
-                    "tooltip": "Orbit/arc/pan angle. 15 matches the viewport "
-                               "buttons."}),
+                    "default": 12.0, "min": 1.0, "max": 90.0, "step": 0.5,
+                    "tooltip": "Orbit/arc/pan angle about the scene pivot. 12 "
+                               "is the automated recipe's fill budget; the "
+                               "viewport buttons use 15."}),
                 "frames": ("INT", {"default": 100, "min": 2, "max": 1000}),
                 "easing": (["ease_in_out", "ease_in", "ease_out", "linear"], {
                     "default": "ease_in_out"}),
             },
         }
 
-    def build(self, solve, move, angle_deg=15.0, frames=100,
+    def build(self, solve, move, angle_deg=12.0, frames=100,
               easing="ease_in_out"):
         import math
 
-        from atlas_camera.core.camera_path import build_preset_camera_path
+        from atlas_camera.core.camera_path import (
+            build_preset_camera_path,
+            scene_median_depth_pivot,
+        )
+        from atlas_camera.comfy.view_prompts import _format_exact_view
 
         fov_deg = None
         intr = solve.camera.intrinsics
         if getattr(intr, "fy_px", None) and getattr(intr, "image_height", None):
             fov_deg = math.degrees(2.0 * math.atan(
                 float(intr.image_height) / (2.0 * float(intr.fy_px))))
+        pivot = scene_median_depth_pivot(solve)
+        eye = solve.camera.extrinsics.camera_position
+        radius = math.dist(tuple(float(v) for v in eye), pivot)
         path, delta = build_preset_camera_path(
             solve.camera.extrinsics, move, angle_deg=float(angle_deg),
-            frame_count=int(frames), easing=easing, fov_deg=fov_deg)
-        exact = (f"azimuth_deg={delta[0]:.4f} elevation_deg={delta[1]:.4f} "
-                 f"distance_scale={delta[2]:.4f}")
+            frame_count=int(frames), easing=easing, fov_deg=fov_deg,
+            pivot=pivot)
+        exact = _format_exact_view(delta, pivot)
+        travel = 2.0 * radius * math.sin(math.radians(float(angle_deg)) / 2.0)
         report = (f"AtlasCameraMovePreset: {move} — {len(path.keyframes)} "
                   f"keyframes, {path.frame_count} frames @ {path.fps:g} fps, "
-                  f"angle {angle_deg:g} deg.\nexact_view '{exact}' reproduces "
-                  f"the END pose via AtlasAddPatchView (ground-ray pivot — "
-                  f"deliberately not the viewport's mesh-centre pivot).")
+                  f"angle {angle_deg:g} deg.\n"
+                  f"Scene pivot {pivot[0]:.2f},{pivot[1]:.2f},{pivot[2]:.2f} "
+                  f"(radius {radius:.2f} m) — the viewport's own median-depth "
+                  f"pivot; eye travels {travel:.2f} m.\nexact_view '{exact}' "
+                  f"reproduces the END pose via AtlasAddPatchView (the "
+                  f"pivot= term is what makes that exact off the ground ray).")
         if move.startswith("pan_"):
             report += ("\nNOTE: pan swivels in place — no orbit delta can "
                        "express it, so exact_view is the ZERO delta and "

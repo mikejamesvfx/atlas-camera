@@ -697,6 +697,19 @@ const PROJECTION_FRAGMENT_SHADER = `
   uniform float uDbgCx;
   uniform float uDbgCy;
   uniform vec2 uDbgImageSize;
+  // Projector camera, re-declared here: the projected pixel is computed PER
+  // FRAGMENT from the world position (below), not interpolated from the vertex
+  // shader. Interpolating vImagePx across a triangle is only right when the
+  // triangle is tiny (the relief mesh); on a big face — a 60 m imported ground
+  // plane, an extruded facade, a massing box — the projective mapping is not
+  // linear in the face, so the photo sheared into streaks (found live
+  // 2026-08-16 with Blender-imported primitives). Per-fragment projection is
+  // exact for any face size and any vertex behind the camera.
+  uniform mat4 uAtlasViewMatrix;
+  uniform float uFx;
+  uniform float uFy;
+  uniform float uCx;
+  uniform float uCy;
   varying vec2 vImagePx;
   varying float vCamZ;
   varying vec3 vWorldPos;
@@ -770,8 +783,13 @@ const PROJECTION_FRAGMENT_SHADER = `
     return abs(sampleZ - centerZ) / max(min(sampleZ, centerZ), 0.001);
   }
   void main() {
-    if (vCamZ >= 0.0) discard;                    // behind the projector camera
-    vec2 uv = vImagePx / uImageSize;
+    vec4 fragCam = uAtlasViewMatrix * vec4(vWorldPos, 1.0);
+    float fragCamZ = fragCam.z;
+    if (fragCamZ >= -1e-5) discard;               // behind the projector camera
+    float fragDepth = -fragCamZ;
+    vec2 fragImagePx = vec2(uCx + uFx * fragCam.x / fragDepth,
+                            uCy - uFy * fragCam.y / fragDepth);
+    vec2 uv = fragImagePx / uImageSize;
     // A transition-ribbon fragment samples the SILHOUETTE texel it was frozen
     // to, not the pixel it happens to project to. The skirt exists outside the
     // subject's outline, so re-projecting drags in whatever is behind it —
@@ -837,7 +855,7 @@ const PROJECTION_FRAGMENT_SHADER = `
         // always leaves half of the rubber sheet. Compare the absolute relative
         // mismatch, still gated to real multi-scale depth discontinuities, and
         // resolve it through derivative-filtered linear coverage.
-        float relativeDepthMismatch = abs(-vCamZ - storedZ) / max(storedZ, 0.001);
+        float relativeDepthMismatch = abs(fragDepth - storedZ) / max(storedZ, 0.001);
         float compareFeather = max(
           uOccludeFeather, 1.5 * fwidth(relativeDepthMismatch));
         float depthMismatch = smoothstep(
@@ -1366,7 +1384,11 @@ function buildDerivedProxies(scene, data) {
     mesh.userData.atlasDrawn = DRAWN_PROXY_SOURCES.has(e.metadata?.source);
     // solve_b geometry from AtlasMergeGeometry is the clean-background layer
     // of a layered solve — with a clean_plate connected it projects THAT.
-    mesh.userData.atlasCleanSource = e.metadata?.merged_from === "solve_b";
+    // ...and any primitive that SAYS it belongs to the clean-background layer
+    // (`paint_with: "clean_plate"` — Blender-imported occluded surfaces such as
+    // the water plane and hillside behind a foreground object, 2026-08-16).
+    mesh.userData.atlasCleanSource = e.metadata?.merged_from === "solve_b"
+      || e.metadata?.paint_with === "clean_plate";
     mesh.name = e.name || "derived_proxy";
     // Sentinel above any patch renderOrder (see priorityToRenderOrder) — the
     // primary is implicitly highest priority per ProjectionSource's contract,
@@ -7085,6 +7107,96 @@ function buildNodeUI(node, containerEl) {
   };
   toolbar.appendChild(renderBtn);
 
+  // ---------------------------------------------------------------------
+  // Automatic end-of-run snapshots (2026-08-16). After every execution of
+  // this node, render the scene FROM THE RECOVERED CAMERA (📷 Camera View
+  // pose — never the artist's orbit) at long-edge 1280, once with 📽 Project
+  // ON and once OFF, and POST both to /atlas/viewport_snapshot. Agents that
+  // drive ComfyUI over the API otherwise get numbers, never pixels. This is
+  // review-only: display and output resolutions are untouched, the live
+  // camera and the projection toggle are restored, and nothing is re-queued.
+  // ---------------------------------------------------------------------
+  const ATLAS_SNAPSHOT_LONG_EDGE = 1280;
+  let _snapshotInFlight = null;
+  let _snapshotDoneAt = 0;
+  async function captureViewportSnapshots(reason = "executed") {
+    if (_snapshotInFlight) return _snapshotInFlight;
+    // node.onExecuted and the api-level "executed" listener both fire for one
+    // run; the second arrival within a couple of seconds is the same run.
+    if (Date.now() - _snapshotDoneAt < 2500) return node._atlasLastSnapshot || null;
+    _snapshotInFlight = (async () => {
+      try {
+        if (!THREE || !recoveredData || !recoveredData.view_matrix) return null;
+        // The projection material arrives after async texture loads; give it a
+        // bounded wait so the "projected" frame is not the grey mesh.
+        const t0 = performance.now();
+        while (!projMaterial && performance.now() - t0 < 12000) {
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        await new Promise((r) => requestAnimationFrame(r));
+        if (!renderer || !scene) return null;
+        const aspect = (W > 0 && H > 0) ? W / H : 1;
+        const sw = aspect >= 1 ? ATLAS_SNAPSHOT_LONG_EDGE : Math.max(16, Math.round(ATLAS_SNAPSHOT_LONG_EDGE * aspect));
+        const sh = aspect >= 1 ? Math.max(16, Math.round(ATLAS_SNAPSHOT_LONG_EDGE / aspect)) : ATLAS_SNAPSHOT_LONG_EDGE;
+        const snapCam = camera.clone();
+        applyRecoveredCamera(snapCam, recoveredData);
+        snapCam.aspect = sw / sh;
+        snapCam.updateProjectionMatrix();
+
+        // Hide draw-tool helpers and gizmos — same objects the render/export
+        // passes skip.
+        const hidden = [];
+        scene.traverse((c) => {
+          if ((c.userData?.atlasHelper || c === pivotGizmo) && c.visible) {
+            hidden.push(c); c.visible = false;
+          }
+        });
+        const wasOn = projectionOn;
+        let projected = null, geometry = null;
+        try {
+          if (projMaterial) {
+            applyProjection(true);
+            projected = atlasRenderSceneToBase64(renderer, scene, snapCam, sw, sh);
+          }
+          applyProjection(false);
+          geometry = atlasRenderSceneToBase64(renderer, scene, snapCam, sw, sh);
+        } finally {
+          applyProjection(wasOn && !!projMaterial);
+          for (const c of hidden) c.visible = true;
+        }
+        if (!projected && !geometry) return null;
+        const body = {
+          node_id: String(node.id),
+          width: sw, height: sh, reason,
+          solve_fingerprint: recoveredData.solve_fingerprint || "",
+          workflow_name: app?.graph?.extra?.workflow_name || app?.graph?.extra?.name || "",
+        };
+        if (projected) body.projected_b64 = projected;
+        if (geometry) body.geometry_b64 = geometry;
+        const resp = await api.fetchApi("/atlas/viewport_snapshot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+          console.warn("[Atlas] viewport snapshot not saved:", resp.status, await resp.text());
+          return null;
+        }
+        const rec = await resp.json();
+        node._atlasLastSnapshot = rec;
+        _snapshotDoneAt = Date.now();
+        return rec;
+      } catch (error) {
+        console.warn("[Atlas] viewport snapshot failed:", error);
+        return null;
+      } finally {
+        _snapshotInFlight = null;
+      }
+    })();
+    return _snapshotInFlight;
+  }
+  node._atlasCaptureSnapshots = captureViewportSnapshots;
+
   // Assemble. The DOM widget's normal flow must remain canvas-only: ComfyUI's
   // DOMWidget layout currently reports minWidth:0, so putting toolbar/pathPanel
   // beside the canvas in flex flow can collapse the widget width on relayout.
@@ -7538,6 +7650,7 @@ function buildNodeUI(node, containerEl) {
   // Return setter so caller can apply camera and background image
   return {
     mountControls,
+    captureSnapshots: captureViewportSnapshots,
     applyCamera(data) {
       applyRecoveredView(data);
     },
@@ -8094,7 +8207,7 @@ app.registerExtension({
 
     // On node execution complete: apply recovered camera + source image +
     // derived projection proxies.
-    const refreshFromSolve = async () => {
+    const refreshFromSolve = async (opts = {}) => {
       const cameraData = await fetchCameraData(String(node.id));
       if (!cameraData) return;
       ui?.applyCamera(cameraData);
@@ -8103,8 +8216,13 @@ app.registerExtension({
       }
       ui?.setProxies(cameraData);
       ui?.setDiagnostics(cameraData);
+      // Automatic end-of-run snapshot (📽 on/off from the recovered camera,
+      // long edge 1280) — only for real executions, not the page-reload
+      // restore below, and single-flight so the two "executed" hooks firing
+      // for one run produce one pair of files.
+      if (opts.snapshot) ui?.captureSnapshots?.("executed");
     };
-    node.onExecuted = refreshFromSolve;
+    node.onExecuted = () => refreshFromSolve({ snapshot: true });
 
     // Restore from the SERVER's payload cache on creation: after a page
     // reload (or when ComfyUI serves this node from its execution cache and
@@ -8121,7 +8239,7 @@ app.registerExtension({
     const onApiExecuted = (event) => {
       const d = event?.detail;
       const executedId = d?.node ?? d?.display_node;
-      if (String(executedId) === String(node.id)) refreshFromSolve();
+      if (String(executedId) === String(node.id)) refreshFromSolve({ snapshot: true });
     };
     api.addEventListener("executed", onApiExecuted);
 

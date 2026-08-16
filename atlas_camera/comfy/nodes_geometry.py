@@ -21,6 +21,7 @@ from atlas_camera.core.patch_registration import (
     splat_coverage,
 )
 from atlas_camera.comfy.node_helpers import (
+    _project_routed_dir,
     LIVE_FILL_WIDGETS,
     _AZIMUTH_VIEWS,
     _DEPTH_MODEL_CHOICES,
@@ -1976,6 +1977,488 @@ class AtlasBlenderOrganicFill:
         return (solve_out, "\n".join(lines) or "nothing to fill")
 
 
+def _blender_exchange_dir(exchange_dir: str, *, tag: str, project=None,
+                          create: bool = True):
+    """Resolve the exchange folder.
+
+    Precedence: a delivery PROJECT (the shot's blender/ lane + the exchange_dir
+    basename, default 'massing') > the widget path > a fresh temp dir. With
+    ``create=False`` (the import node) an empty widget and no project returns
+    None instead of inventing a folder.
+    """
+    import tempfile
+    from pathlib import Path
+    s = str(exchange_dir or "").strip()
+    if project is not None:
+        lane = Path(_project_routed_dir(project, s or "", "blender"))
+        leaf = Path(s).name if s else "massing"
+        p = lane / (leaf or "massing")
+        if create:
+            p.mkdir(parents=True, exist_ok=True)
+        return p
+    if s:
+        p = Path(s).expanduser()
+        if create:
+            p.mkdir(parents=True, exist_ok=True)
+        return p
+    if not create:
+        return None
+    return Path(tempfile.mkdtemp(prefix=f"atlas_blender_{tag}_"))
+
+
+def _measured_floor(params: dict, min_y_m: float) -> float:
+    """The import's below-ground floor: the widget value above the measured
+    ground, but never above the MEASURED cloud minimum minus 1 m — water,
+    beaches and quarries sit BELOW the camera's ground plane (found live
+    2026-08-16: a coastal plate's water/hillside surfaces were all rejected)."""
+    ground_y = float((params or {}).get("ground_y_m") or 0.0)
+    floor = float(min_y_m) + ground_y
+    meas = (params or {}).get("measured") or {}
+    bb = meas.get("bbox_min")
+    try:
+        if bb is not None:
+            floor = min(floor, float(bb[1]) - 1.0)
+    except (TypeError, ValueError, IndexError):
+        pass
+    return floor
+
+
+def _append_blender_meshes(solve_out, meshes, *, source, name_prefix, min_y_m,
+                           max_radius_m, extra_tags, lines, paint_with="source_photo"):
+    """Shared tail of both Blender import paths: gate, UV, APPEND, report."""
+    from atlas_camera.blender.measured import meshes_to_primitives
+    # Dedupe: the same exchange folder's mesh already on the solve (massing →
+    # agent handoff → import all read the same out_meshes.npz) is skipped, not
+    # appended twice under a different prefix (found live 2026-08-16).
+    exdir_tag = str((extra_tags or {}).get("exchange_dir") or "")
+    have = set()
+    for prim in solve_out.projection_scene.proxy_geometry:
+        m = getattr(prim, "metadata", None) or {}
+        if m.get("exchange_dir") and m.get("blender_mesh_name"):
+            have.add((str(m["exchange_dir"]), str(m["blender_mesh_name"])))
+    fresh, dupes = [], []
+    for m in meshes:
+        key = (exdir_tag, str(m.get("name") or ""))
+        (dupes if key in have else fresh).append(m)
+    for m in dupes:
+        lines.append(f"= {m.get('name')}: already imported from this exchange folder — skipped")
+    # per-mesh tags are stored with a `blender_` prefix by meshes_to_primitives
+    tagged = [{**m, "mesh_name": str(m.get("name") or "")} for m in fresh]
+    accepted, rejected = meshes_to_primitives(
+        solve_out, tagged, source=source, name_prefix=name_prefix,
+        min_y_m=float(min_y_m), max_radius_m=float(max_radius_m),
+        extra_tags=extra_tags, paint_with=str(paint_with or "source_photo"))
+    scene = solve_out.projection_scene
+    for prim in accepted:
+        scene.proxy_geometry.append(prim)
+        lines.append(f"+ {prim.name}: {prim.metadata['n_vertices']} verts, "
+                     f"{prim.metadata['n_faces']} faces (projective UVs regenerated; "
+                     f"paints {prim.metadata.get('paint_with')})")
+    for r in rejected:
+        lines.append(f"- {r['name']}: REJECTED — {r['reason']}")
+    return accepted, rejected
+
+
+class AtlasBlenderImportMeshes:
+    """📥 Bring meshes modelled in Blender back into the solve as measured proxies.
+
+    Reads an exchange folder (`out_meshes.npz` + `out_meshes.json`) — written by
+    the massing recipe, or by `export_meshes.py` run on a .blend the artist
+    edited — and APPENDS each mesh as a PROXY_ROLE `mesh` primitive with
+    projective UVs regenerated for the recovered camera. Appends, never
+    clobbers: an imported primitive is an addition (like a viewport-drawn
+    plane); `AtlasMergeGeometry` remains the one combiner and
+    `AtlasRetopologizeLayer` still works on the result.
+
+    `blend_file`: point at an edited .blend and this node runs Blender headless
+    on it first (`export_meshes.py`) to refresh the exchange folder — the GUI
+    round-trip in one widget. Empty = just read what is already there.
+
+    Gates (per mesh, reject-and-report, never raise): finite, indexed, non-empty,
+    not below ground (`min_y_m`), inside `max_radius_m` of the camera (0 = off).
+    A seed fingerprint that does not match THIS solve is refused unless
+    `expect_fingerprint` is off — meshes built against a different camera would
+    land in the wrong place silently otherwise.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "import_meshes"
+    CATEGORY = "Atlas Camera/Experimental"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "exchange_dir": ("STRING", {
+                    "default": "",
+                    "tooltip": "Folder holding out_meshes.npz (+ seed.json). "
+                               "AtlasBlenderMassing's `exchange_dir` output "
+                               "plugs straight in."}),
+            },
+            "optional": {
+                "blend_file": ("STRING", {
+                    "default": "",
+                    "tooltip": "Optional edited .blend. When set, Blender runs "
+                               "headless on it (export_meshes.py) to refresh "
+                               "the exchange folder before importing. Meshes "
+                               "under the `atlas_out` collection are exported; "
+                               "`atlas_reference` never is."}),
+                "blender_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Blender executable (only needed with blend_file). "
+                               "Empty = ATLAS_BLENDER_PATH, PATH, platform dirs."}),
+                "name_prefix": ("STRING", {"default": "blender"}),
+                "expect_fingerprint": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Refuse meshes whose seed was built from a "
+                               "different solve (camera/primitive roster). Turn "
+                               "off only for a .blend authored without a seed."}),
+                "min_y_m": ("FLOAT", {"default": -0.05, "min": -100.0, "max": 100.0,
+                                      "step": 0.01,
+                    "tooltip": "Reject a mesh whose lowest vertex is below this "
+                               "world Y (ground is Y=0)."}),
+                "max_radius_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0,
+                                           "step": 1.0,
+                    "tooltip": "Reject a mesh extending farther than this from "
+                               "the camera. 0 = no limit."}),
+                "timeout_s": ("INT", {"default": 300, "min": 30, "max": 7200}),
+                # APPENDED 2026-08-16: delivery project routing (the blender/ lane).
+                "project": ("ATLAS_PROJECT", {
+                    "tooltip": "Optional delivery project from AtlasProject — the exchange folder "
+                               "is <project>/<shot>/blender/<exchange_dir basename> (or "
+                               ".../blender/massing when exchange_dir is empty); supersedes an "
+                               "absolute exchange_dir. Wire the SAME project into AtlasBlenderMassing."}),
+                # APPENDED 2026-08-16: which projector paints the imported meshes.
+                "paint_with": (["source_photo", "clean_plate"], {
+                    "default": "source_photo",
+                    "tooltip": "source_photo: the primary plate (facades the photo shows). "
+                               "clean_plate: the viewport's clean_plate input — for OCCLUDED "
+                               "surfaces (water/hill behind a foreground object). A Blender "
+                               "custom property atlas_paint on a mesh overrides per mesh."}),
+            },
+        }
+
+    @classmethod
+    def IS_CHANGED(cls, solve, exchange_dir="", blend_file="", **kwargs):
+        # The exchange folder is an external input; re-run when its meshes or
+        # the .blend change on disk. Falls back to "always" if unreadable.
+        import os
+        from pathlib import Path
+        sig = []
+        for name in (Path(str(exchange_dir or "")) / "out_meshes.npz",
+                     Path(str(blend_file or "")) if blend_file else None):
+            try:
+                if name is not None and name.is_file():
+                    st = os.stat(name)
+                    sig.append((str(name), st.st_mtime_ns, st.st_size))
+            except OSError:
+                sig.append((str(name), "?"))
+        return repr(sig) if sig else float("nan")
+
+    def import_meshes(self, solve, exchange_dir="", blend_file="", blender_path="",
+                      name_prefix="blender", expect_fingerprint=True, min_y_m=-0.05,
+                      max_radius_m=0.0, timeout_s=300, project=None, paint_with="source_photo"):
+        import copy
+        import json
+        from pathlib import Path
+
+        from atlas_camera.blender import read_meshes, run_recipe
+        from atlas_camera.blender.exchange import SEED_JSON
+        from atlas_camera.blender.measured import IMPORT_SOURCE, solve_seed_fingerprint
+
+        solve_out = copy.deepcopy(solve)
+        lines: list[str] = []
+        ex = str(exchange_dir or "").strip()
+        exdir = _blender_exchange_dir(ex, tag="import", project=project, create=False)
+        if exdir is None:
+            return (solve_out, "exchange_dir is empty — nothing imported; solve passed through")
+
+        if str(blend_file or "").strip():
+            try:
+                rep = run_recipe("export_meshes.py", exdir, blender_path=str(blender_path),
+                                 timeout_s=int(timeout_s), blend_file=str(blend_file))
+                lines.append(f"export_meshes.py: {rep.get('meshes_out', '?')} meshes "
+                             f"({rep.get('selection_rule', '?')}) from "
+                             f"{Path(str(blend_file)).name} via Blender "
+                             f"{rep.get('blender_version', '?')}")
+            except RuntimeError as exc:
+                return (solve_out, f"export_meshes.py FAILED — {exc}\nsolve passed through")
+
+        # Staleness: the seed records which solve it was built from.
+        seed_fp = None
+        seed_path = exdir / SEED_JSON
+        if seed_path.is_file():
+            try:
+                seed_fp = ((json.loads(seed_path.read_text(encoding="utf-8"))
+                            .get("params") or {}).get("solve_fingerprint"))
+            except Exception:  # noqa: BLE001
+                seed_fp = None
+        cur_fp = solve_seed_fingerprint(solve_out)
+        if seed_fp and seed_fp != cur_fp:
+            msg = (f"seed fingerprint {seed_fp} != current solve {cur_fp}: the "
+                   "meshes were built against a DIFFERENT solve/camera")
+            if expect_fingerprint:
+                return (solve_out, f"REFUSED — {msg}. Re-run AtlasBlenderMassing "
+                                   "for this solve, or turn expect_fingerprint off "
+                                   "if the geometry really is in this world.")
+            lines.append(f"warning: {msg} (imported anyway)")
+        elif seed_fp is None:
+            lines.append("no seed.json — fingerprint check skipped (freehand .blend)")
+
+        try:
+            got = read_meshes(exdir)
+        except RuntimeError as exc:
+            return (solve_out, f"import FAILED — {exc}\nsolve passed through")
+        for r in got.get("rejected") or []:
+            lines.append(f"- {r['name']}: REJECTED at read — {r['reason']}")
+        seed_params = {}
+        if seed_path.is_file():
+            try:
+                seed_params = json.loads(seed_path.read_text(encoding="utf-8")).get("params") or {}
+            except Exception:  # noqa: BLE001
+                seed_params = {}
+        accepted, _ = _append_blender_meshes(
+            solve_out, got["meshes"], source=IMPORT_SOURCE,
+            name_prefix=str(name_prefix or "blender"),
+            min_y_m=_measured_floor(seed_params, min_y_m),
+            max_radius_m=max_radius_m,
+            extra_tags={"exchange_dir": str(exdir),
+                        "seed_fingerprint": seed_fp or "",
+                        "blender_version": str((got.get("info") or {})
+                                               .get("blender_version", ""))},
+            lines=lines, paint_with=paint_with)
+        solve_out.projection_scene.debug_metadata["blender_import"] = {
+            "exchange_dir": str(exdir), "accepted": len(accepted),
+            "rejected": len(got.get("rejected") or []) + (len(got["meshes"]) - len(accepted)),
+            "seed_fingerprint": seed_fp or "", "current_fingerprint": cur_fp,
+        }
+        head = (f"Blender import from {exdir}: {len(accepted)} mesh(es) appended "
+                f"as PROXY_ROLE '{IMPORT_SOURCE}' — run AtlasRetopologizeLayer or "
+                f"AtlasMergeGeometry downstream as usual.")
+        return (solve_out, "\n".join([head, *lines]))
+
+
+class AtlasBlenderMassing:
+    """🧱 Measured primitives via headless Blender: ground plane, footprint
+    extrusions, facade slabs, massing boxes — assembled in the metric world of
+    the solve and brought back as PROXY_ROLE geometry.
+
+    What goes to Blender (the SEED): the recovered camera (RAW-measured focal
+    when the plate came through AtlasLoadRAW), every existing proxy primitive
+    tessellated as hidden reference, and the measured quantities the solve
+    carries. What comes back: `ground_plane` at Y=0; each viewport-drawn FLAT
+    polygon extruded up by `default_height_m` (or its own height tag); each
+    viewport-drawn VERTICAL polygon thickened AWAY from the camera into a
+    `wall_thickness_m` slab, its drawn face left exactly on the photo; block-
+    massing boxes as volumes. The whole scene is saved as `scene.blend` so the
+    artist (or a Blender-MCP agent) can model further and hand meshes back
+    through AtlasBlenderImportMeshes.
+
+    Doctrine unchanged: `numpy CLOSES, Blender PLACES` — here Blender HOSTS the
+    assembly and the .blend, the extrusion arithmetic is deterministic numpy
+    inside the recipe. Imported meshes get projective UVs for the recovered
+    camera on the way in, so `AtlasRetopologizeLayer` and every exporter treat
+    them like any relief mesh. Appends, never clobbers.
+
+    `run_recipe=false` writes only the seed (for a GUI-first session) and
+    returns the exchange folder.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING", "STRING")
+    RETURN_NAMES = ("solve", "report", "exchange_dir")
+    FUNCTION = "massing"
+    CATEGORY = "Atlas Camera/Experimental"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+            },
+            "optional": {
+                "blender_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Blender executable. Empty = ATLAS_BLENDER_PATH, "
+                               "then PATH, then the platform install dirs."}),
+                "exchange_dir": ("STRING", {
+                    "default": "",
+                    "tooltip": "Folder for seed/out files and scene.blend. Empty "
+                               "= a fresh temp folder (path is returned)."}),
+                "default_height_m": ("FLOAT", {"default": 3.0, "min": 0.1, "max": 500.0,
+                                               "step": 0.1,
+                    "tooltip": "Extrusion height for a drawn footprint that "
+                               "carries no height of its own."}),
+                "wall_thickness_m": ("FLOAT", {"default": 0.3, "min": 0.01, "max": 20.0,
+                                               "step": 0.01,
+                    "tooltip": "Slab thickness for a drawn VERTICAL polygon "
+                               "(facade). Thickened away from the camera."}),
+                "ground_extent_m": ("FLOAT", {"default": 60.0, "min": 0.0, "max": 5000.0,
+                                              "step": 1.0,
+                    "tooltip": "Side of the square ground plane at Y=0 under "
+                               "the camera. 0 = no ground plane."}),
+                # Combo values APPEND-ONLY: measured_planes / all added 2026-08-16.
+                "footprint_source": (["both", "drawn_polygons", "massing_boxes",
+                                      "measured_planes", "all"],
+                                     {"default": "both",
+                    "tooltip": "both = drawn polygons + massing boxes. measured_planes = each "
+                               "MEASURED vertical plane (RANSAC on the MoGe cloud) becomes an "
+                               "oriented facade slab — correctly rotated starting geometry. "
+                               "all = everything."}),
+                "run_recipe": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Off = write the seed only (open scene.blend "
+                               "yourself later); nothing is imported."}),
+                "save_blend": ("BOOLEAN", {"default": True}),
+                "min_y_m": ("FLOAT", {"default": -0.05, "min": -100.0, "max": 100.0,
+                                      "step": 0.01}),
+                "timeout_s": ("INT", {"default": 300, "min": 30, "max": 7200}),
+                # APPENDED 2026-08-16 (positional widget contract): the MEASURED
+                # seed. MoGe's metric pointmap (sky excluded) is what Blender
+                # models against — not the relief mesh at the solve's scale.
+                "depth": ("ATLAS_DEPTH_MAP", {
+                    "tooltip": "AtlasDepthMap on a MoGe model (carries the metric POINTMAP). "
+                               "When wired: sky-free point cloud + measured ground / camera "
+                               "height / extents / dominant planes go to Blender at MoGe's "
+                               "scale; the relief mesh stays home. Without it the seed falls "
+                               "back to tessellated proxies (relief mesh included)."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Sky (or anything not scene) in the SOURCE frame — REPLACES "
+                               "the internal sky heuristic for the measurement."}),
+                "cloud_max_points": ("INT", {"default": 200000, "min": 1000, "max": 5000000,
+                                             "step": 1000,
+                    "tooltip": "Subsample budget for the point cloud sent to Blender."}),
+                "include_relief_reference": ("BOOLEAN", {"default": False,
+                    "tooltip": "Also ship the relief mesh / derived proxies as hidden "
+                               "reference (megabytes; usually not needed with the cloud)."}),
+                # APPENDED 2026-08-16: delivery project routing (the blender/ lane).
+                "project": ("ATLAS_PROJECT", {
+                    "tooltip": "Optional delivery project from AtlasProject — the exchange folder "
+                               "(seed, scene.blend, out_meshes) lands in <project>/<shot>/blender/"
+                               "<exchange_dir basename> (default 'massing'); supersedes an absolute "
+                               "exchange_dir. The exchange_dir OUTPUT carries the resolved path."}),
+                # APPENDED 2026-08-16: which projector paints the returned meshes.
+                "paint_with": (["source_photo", "clean_plate"], {
+                    "default": "source_photo",
+                    "tooltip": "source_photo (facades/volumes the photo shows) or clean_plate "
+                               "(occluded surfaces — the viewport's clean_plate input paints "
+                               "them). Per-mesh Blender property atlas_paint overrides."}),
+            },
+        }
+
+    def massing(self, solve, blender_path="", exchange_dir="", default_height_m=3.0,
+                wall_thickness_m=0.3, ground_extent_m=60.0, footprint_source="both",
+                run_recipe=True, save_blend=True, min_y_m=-0.05, timeout_s=300,
+                depth=None, exclude_mask=None, cloud_max_points=200000,
+                include_relief_reference=False, project=None, paint_with="source_photo"):
+        import copy
+
+        from atlas_camera.blender import read_meshes, write_scene_seed
+        from atlas_camera.blender import run_recipe as _run
+        from atlas_camera.blender.measured import MASSING_SOURCE, seed_from_solve
+
+        solve_out = copy.deepcopy(solve)
+        lines: list[str] = []
+        exdir = _blender_exchange_dir(exchange_dir, tag="massing", project=project)
+        ex_np = None
+        if exclude_mask is not None:
+            pts = getattr(depth, "points", None)
+            if pts is not None:
+                ex_np = _resolve_exclude_mask(exclude_mask, int(pts.shape[0]), int(pts.shape[1]))
+        try:
+            seed = seed_from_solve(
+                solve_out, depth_result=depth, exclude_mask=ex_np,
+                include_relief=(True if bool(include_relief_reference) else None),
+                max_points=int(cloud_max_points))
+        except ValueError as exc:
+            return (solve_out, f"SKIPPED — {exc}", str(exdir))
+        ground_y = float(seed.get("ground_y") or 0.0)
+        params = {
+            "default_height_m": float(default_height_m),
+            "wall_thickness_m": float(wall_thickness_m),
+            "ground_extent_m": float(ground_extent_m),
+            "ground_plane": float(ground_extent_m) > 0,
+            "ground_y_m": ground_y,
+            "footprint_source": str(footprint_source),
+            "save_blend": bool(save_blend),
+            "solve_fingerprint": seed["fingerprint"],
+            "measured": seed["measured"],
+        }
+        write_scene_seed(exdir, camera=seed["camera"], primitives=seed["primitives"],
+                         drawn_shapes=seed["drawn_shapes"], params=params,
+                         cloud=seed.get("cloud"))
+        n_ref = len(seed["primitives"])
+        n_drawn = sum(1 for p in seed["primitives"] if p.get("source") == "viewport_polygon")
+        n_boxes = sum(1 for p in seed["primitives"] if p.get("source") == "block_massing")
+        n_planes = sum(1 for p in seed["primitives"] if p.get("source") == "measured_plane")
+        m = seed["measured"]
+        if m.get("seed_mode") == "measured_pointmap":
+            relief_note = "included" if include_relief_reference else "left home"
+            lines.append(
+                f"seed (MEASURED, {m.get('depth_model')}): {m.get('n_cloud_points')} sky-free "
+                f"points of {m.get('n_cloud_candidates')} (sky {m.get('sky_fraction', 0):.0%} via "
+                f"{m.get('sky_source')}); camera height {m.get('camera_height_m')} m "
+                f"(ground conf {m.get('ground_confidence', 0):.2f}) -> ground at Y={ground_y:.2f}; "
+                f"extent {['%.1f' % e for e in m.get('extent_m', [])]} m; median depth "
+                f"{m.get('median_depth_m')} m; {n_planes} measured planes; {n_drawn} drawn "
+                f"polygons, {n_boxes} massing boxes; relief {relief_note}")
+        else:
+            lines.append(f"seed (relief reference; wire a MoGe AtlasDepthMap for the measured "
+                         f"seed): camera fx {seed['camera']['fx']:.0f} px, {n_ref} reference "
+                         f"primitives ({n_drawn} drawn polygons, {n_boxes} massing boxes); "
+                         f"measured: {seed['measured']}")
+        if not run_recipe:
+            return (solve_out, "\n".join(["seed written only (run_recipe=false); "
+                                          f"exchange folder: {exdir}", *lines]), str(exdir))
+        try:
+            rep = _run("massing.py", exdir, blender_path=str(blender_path),
+                       timeout_s=int(timeout_s))
+        except RuntimeError as exc:
+            # Blender missing / too old / recipe failed: never kill the graph.
+            return (solve_out, "\n".join([f"massing.py FAILED — {exc}", *lines,
+                                          "solve passed through"]), str(exdir))
+        lines.append(f"massing.py (Blender {rep.get('blender_version', '?')}): "
+                     f"ground_plane={rep.get('ground_plane')} footprints={rep.get('footprints')} "
+                     f"facades={rep.get('facades')} boxes={rep.get('massing_boxes')} "
+                     f"skipped_polygons={rep.get('skipped_polygons')}"
+                     + (f"; scene.blend saved in {exdir}" if save_blend else ""))
+        try:
+            got = read_meshes(exdir)
+        except RuntimeError as exc:
+            return (solve_out, "\n".join([f"read back FAILED — {exc}", *lines,
+                                          "solve passed through"]), str(exdir))
+        for r in got.get("rejected") or []:
+            lines.append(f"- {r['name']}: REJECTED at read — {r['reason']}")
+        # Only the recipe's OWN meshes come in here. Preserved agent/artist
+        # objects ride out_meshes.npz too (so nothing is lost on a re-run) but
+        # they belong to AtlasAgentHandoff / AtlasBlenderImportMeshes, whose
+        # paint_with applies (found live 2026-08-16: massing imported the
+        # agent's water plane as source_photo and the handoff then deduped it).
+        own = [m for m in got["meshes"] if str(m.get("source") or "") == "blender_massing"]
+        left = len(got["meshes"]) - len(own)
+        if left:
+            lines.append(f"({left} preserved non-massing mesh(es) left for the handoff/import node)")
+        accepted, _ = _append_blender_meshes(
+            solve_out, own, source=MASSING_SOURCE, name_prefix="massing",
+            min_y_m=_measured_floor(params, min_y_m), max_radius_m=0.0,
+            extra_tags={"exchange_dir": str(exdir),
+                        "seed_fingerprint": seed["fingerprint"],
+                        "blender_version": str(rep.get("blender_version", ""))},
+            lines=lines, paint_with=paint_with)
+        solve_out.projection_scene.debug_metadata["blender_massing"] = {
+            "exchange_dir": str(exdir), "accepted": len(accepted),
+            "seed_fingerprint": seed["fingerprint"],
+            "footprints": rep.get("footprints"), "facades": rep.get("facades"),
+            "massing_boxes": rep.get("massing_boxes"),
+        }
+        head = (f"Blender massing: {len(accepted)} measured primitive(s) appended as "
+                f"PROXY_ROLE '{MASSING_SOURCE}'. Downstream: AtlasRetopologizeLayer / "
+                f"AtlasMergeGeometry as usual; edit {exdir / 'scene.blend'} and re-import "
+                f"with AtlasBlenderImportMeshes.")
+        return (solve_out, "\n".join([head, *lines]), str(exdir))
+
+
 class AtlasPlanarHolePatch:
     """Fit conservative local planes into selected relief-mesh holes.
 
@@ -3836,6 +4319,42 @@ class AtlasAddPatchView:
                                "repaired end frame contributes exactly its fills — not a "
                                "second full-frame copy of the scene, and never the sentinel "
                                "still marking holes that were NOT filled."}),
+                # APPENDED 2026-08-16 (positional widgets_values rule): MEASURE the
+                # patch camera instead of trusting the declared orbit. Default
+                # keeps every saved graph byte-identical.
+                "camera_source": (["declared_orbit", "register_to_primary"], {
+                    "default": "declared_orbit",
+                    "tooltip": "declared_orbit: place the patch by the named-view difference "
+                               "(the LoRA angle you asked for; flip_azimuth by eye). "
+                               "register_to_primary: MEASURE the patch camera — MoGe pointmap "
+                               "on the patch + SIFT matches to the primary photo -> RANSAC "
+                               "similarity (s,R,t) against the primary's metric depth. Needs "
+                               "primary_depth (metric) and the primary image. Resolves "
+                               "flip_azimuth automatically and reports inliers / residual / "
+                               "deviation from the declared orbit. Falls back to the declared "
+                               "orbit (with the numbers) when the gates fail. Generated pixels "
+                               "register TO the measured world; the primary never moves. The pose "
+                               "inherits primary_depth's SCALE (metric when that is; always "
+                               "consistent with the geometry the patch projects onto)."}),
+                "primary_image": ("IMAGE", {
+                    "tooltip": "The SOURCE photo (same image the solve came from), for feature "
+                               "matching in register_to_primary. If not wired the node tries "
+                               "solve.image_path."}),
+                "registration_min_inliers": ("INT", {"default": 40, "min": 6, "max": 5000,
+                    "tooltip": "Reject the measured camera below this many RANSAC inliers."}),
+                "registration_max_residual_m": ("FLOAT", {"default": 0.35, "min": 0.01,
+                                                          "max": 50.0, "step": 0.01,
+                    "tooltip": "RANSAC inlier threshold AND accept ceiling on the 3D RMS "
+                               "residual, in metres of the primary's world."}),
+                "registration_max_deviation_deg": ("FLOAT", {"default": 25.0, "min": 0.0,
+                                                             "max": 180.0, "step": 1.0,
+                    "tooltip": "Reject when the measured camera's forward axis deviates more "
+                               "than this from the closest declared orbit (flip or no flip). "
+                               "Catches a LoRA that ignored the requested angle."}),
+                "auto_flip_azimuth": ("BOOLEAN", {"default": True,
+                    "tooltip": "register_to_primary: accept whichever handedness (flip on/off) "
+                               "the measurement lands on and record it. Off = a closer FLIPPED "
+                               "pose counts as a disagreement with your flip_azimuth."}),
             },
         }
 
@@ -3851,7 +4370,9 @@ class AtlasAddPatchView:
                   patch_view_override="", exact_view_override="",
                   mask_unseen_only=True, unseen_dilate_px=16,
                   primary_depth=None, exclude_mask=None, geometry_source="reuse_scene",
-                  patch_mask=None):
+                  patch_mask=None, camera_source="declared_orbit", primary_image=None,
+                  registration_min_inliers=40, registration_max_residual_m=0.35,
+                  registration_max_deviation_deg=25.0, auto_flip_azimuth=True):
         exact_delta = None
         exact_pivot = None
         if exact_view_override and exact_view_override.strip():
@@ -3995,20 +4516,6 @@ class AtlasAddPatchView:
                 geometry_source = "own_depth"
                 fallback_reason = "no scene geometry to reuse"
 
-        depth_map = None
-        if geometry_source == "own_depth":
-            # Depth -> relief geometry in the patch camera's frame.
-            tmp = _save_image_tensor_to_tmp(patch_image)
-            try:
-                result = estimate_depth(tmp, model_id=depth_model,
-                                        device=None if device == "auto" else device,
-                                        focal_px=pfx)  # patch-image pixels
-            finally:
-                os.unlink(tmp)
-            depth_map = result.depth
-            if depth_map.shape != (patch_h, patch_w):
-                depth_map = _resize_depth(depth_map, patch_w, patch_h)
-
         # --- Patch scale: REGISTER against the primary's metric world when the
         # shared primary depth is available; ground-fit is only the fallback.
         # An independent estimate_ground_scale on an AI-generated novel view is
@@ -4028,6 +4535,42 @@ class AtlasAddPatchView:
                 fx=fx, fy=fy, cx=cx, cy=cy,
                 horizon_y=_horizon_y_from_solve(solve))
             primary_metric_map = np.asarray(p_map, dtype=np.float64) * float(p_scale)
+
+        # --- MEASURE the patch camera (register_to_primary). The declared orbit
+        # is the hypothesis; MoGe's pointmap on the patch + SIFT matches to the
+        # primary + RANSAC Umeyama give the pose that the pixels actually
+        # support. Generated -> measured only: `extr` (the primary) is never
+        # touched. On any refusal the declared orbit stands and the numbers
+        # ride along in the source metadata.
+        registration_meta: dict[str, Any] = {"camera_source": str(camera_source)}
+        if camera_source == "register_to_primary":
+            (patch_extr, patch_intr, pfx, pfy, pcx, pcy, patch_horizon_y,
+             registration_meta) = self._register_patch_camera(
+                solve, patch_image, primary_image, primary_metric_map,
+                patch_extr, patch_intr, pfx, pfy, pcx, pcy, patch_horizon_y,
+                exact_delta=exact_delta,
+                declared_views=(patch_azimuth_view, patch_elevation_view, patch_distance,
+                                source_azimuth_view, source_elevation_view),
+                pivot=pivot, depth_model=depth_model, device=device,
+                min_inliers=int(registration_min_inliers),
+                max_residual_m=float(registration_max_residual_m),
+                max_deviation_deg=float(registration_max_deviation_deg),
+                auto_flip=bool(auto_flip_azimuth),
+                registration_meta=registration_meta)
+
+        depth_map = None
+        if geometry_source == "own_depth":
+            # Depth -> relief geometry in the patch camera's frame.
+            tmp = _save_image_tensor_to_tmp(patch_image)
+            try:
+                result = estimate_depth(tmp, model_id=depth_model,
+                                        device=None if device == "auto" else device,
+                                        focal_px=pfx)  # patch-image pixels
+            finally:
+                os.unlink(tmp)
+            depth_map = result.depth
+            if depth_map.shape != (patch_h, patch_w):
+                depth_map = _resize_depth(depth_map, patch_w, patch_h)
 
         if geometry_source == "reuse_scene":
             patch_geom = reused_geom
@@ -4072,7 +4615,7 @@ class AtlasAddPatchView:
                 patch_azimuth_view, patch_elevation_view, patch_distance,
                 source_azimuth_view, flip_azimuth, pivot, depth_model,
                 scale_source, scale, fallback_reason, exact_view_override,
-                exact_delta)
+                exact_delta, registration_meta=registration_meta)
 
         scale = None
         scale_source = "ground_fit"
@@ -4173,7 +4716,164 @@ class AtlasAddPatchView:
             patch_azimuth_view, patch_elevation_view, patch_distance,
             source_azimuth_view, flip_azimuth, pivot, depth_model,
             scale_source, scale, fallback_reason, exact_view_override,
-            exact_delta)
+            exact_delta, registration_meta=registration_meta)
+
+    def _register_patch_camera(self, solve, patch_image, primary_image, primary_metric_map,
+                               patch_extr, patch_intr, pfx, pfy, pcx, pcy, patch_horizon_y,
+                               *, exact_delta, declared_views, pivot, depth_model, device,
+                               min_inliers, max_residual_m, max_deviation_deg, auto_flip,
+                               registration_meta):
+        """register_to_primary: measure the patch camera; fall back with reasons.
+
+        Returns the (possibly replaced) camera pieces plus the metadata dict.
+        Every early exit records `registration_fallback_reason` and keeps the
+        declared orbit — a refusal must never kill the graph.
+        """
+        from atlas_camera.core.camera_math import (
+            horizon_row_from_extrinsics, orbit_camera,
+        )
+        from atlas_camera.core.depth_geometry import back_project_normals
+        from atlas_camera.core.patch_camera_registration import (
+            RegistrationConfig, register_patch_camera,
+        )
+        from atlas_camera.core.schema import AtlasExtrinsics, AtlasIntrinsics
+        from atlas_camera.inference.depth_estimator import estimate_depth, _is_moge_model
+
+        np = _require_numpy()
+        meta = dict(registration_meta)
+        meta["registration_accepted"] = False
+
+        def _bail(reason):
+            meta["registration_fallback_reason"] = reason
+            return (patch_extr, patch_intr, pfx, pfy, pcx, pcy, patch_horizon_y, meta)
+
+        if primary_metric_map is None:
+            return _bail("primary_depth not wired (a metric primary depth is required)")
+
+        # Primary image: the wired tensor, else the solve's own image path.
+        prim_np = None
+        if primary_image is not None:
+            try:
+                prim_np = np.asarray(_image_tensor_to_pil(primary_image).convert("RGB"))
+            except Exception as exc:  # noqa: BLE001
+                return _bail(f"primary_image unreadable ({exc})")
+        else:
+            path = getattr(solve, "image_path", None)
+            if path and os.path.isfile(str(path)):
+                try:
+                    from PIL import Image
+                    prim_np = np.asarray(Image.open(str(path)).convert("RGB"))
+                except Exception as exc:  # noqa: BLE001
+                    return _bail(f"solve.image_path unreadable ({exc})")
+        if prim_np is None:
+            return _bail("no primary image (wire primary_image, or a solve with image_path)")
+        intr = solve.camera.intrinsics
+        extr = solve.camera.extrinsics
+        p_w, p_h = int(intr.image_width), int(intr.image_height)
+        if prim_np.shape[1] != p_w or prim_np.shape[0] != p_h:
+            from PIL import Image
+            prim_np = np.asarray(Image.fromarray(prim_np).resize((p_w, p_h), Image.BILINEAR))
+        try:
+            patch_np = np.asarray(_image_tensor_to_pil(patch_image).convert("RGB"))
+        except Exception as exc:  # noqa: BLE001
+            return _bail(f"patch_image unreadable ({exc})")
+        patch_h, patch_w = patch_np.shape[:2]
+
+        # MoGe pointmap on the patch — FREE fov (the patch's own focal is
+        # unknown; MoGe's estimate is the best available and is recorded).
+        moge_id = depth_model if _is_moge_model(depth_model) else "Ruicheng/moge-2-vitl-normal"
+        tmp = _save_image_tensor_to_tmp(patch_image)
+        try:
+            res = estimate_depth(tmp, model_id=moge_id,
+                                 device=None if device == "auto" else device,
+                                 focal_px=None)
+        except Exception as exc:  # noqa: BLE001
+            return _bail(f"MoGe pointmap failed ({exc})")
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        pts = getattr(res, "points", None)
+        if pts is None:
+            return _bail(f"{moge_id} returned no pointmap")
+        pts = np.asarray(pts, dtype=np.float64)
+        if pts.shape[:2] != (patch_h, patch_w):
+            # Resize the pointmap by nearest sampling to the patch frame.
+            yi = (np.arange(patch_h) * (pts.shape[0] / patch_h)).astype(int).clip(0, pts.shape[0] - 1)
+            xi = (np.arange(patch_w) * (pts.shape[1] / patch_w)).astype(int).clip(0, pts.shape[1] - 1)
+            pts = pts[yi][:, xi]
+        rm = res.metadata or {}
+        K = {"fx": float(rm.get("predicted_focal_px") or pfx),
+             "fy": float(rm.get("predicted_fy_px") or rm.get("predicted_focal_px") or pfy),
+             "cx": float(rm.get("predicted_cx_px") or pcx),
+             "cy": float(rm.get("predicted_cy_px") or pcy)}
+        meta["patch_focal_px_predicted"] = round(K["fx"], 2)
+        meta["patch_focal_px_declared"] = round(float(pfx), 2)
+        meta["registration_depth_model"] = moge_id
+
+        # Primary world points from the METRIC primary depth (Atlas camera).
+        fx = float(intr.fx_px); fy = float(intr.fy_px or fx)
+        cx = float(intr.cx_px if intr.cx_px is not None else p_w / 2.0)
+        cy = float(intr.cy_px if intr.cy_px is not None else p_h / 2.0)
+        bp = back_project_normals(primary_metric_map, view_matrix=extr.camera_view_matrix,
+                                  fx=fx, fy=fy, cx=cx, cy=cy)
+        world = np.where(bp.valid_depth[..., None], bp.pts_world, np.nan)
+
+        # Declared hypotheses: both handednesses when the orbit came from named
+        # views; the single exact pose otherwise.
+        declared = {}
+        if exact_delta is not None:
+            declared["declared"] = patch_extr.camera_view_matrix
+        else:
+            az, el, dist, s_az, s_el = declared_views
+            for key, flip in (("noflip", False), ("flip", True)):
+                try:
+                    da, de, ds = _named_view_orbit_delta(az, el, dist, s_az, s_el, flip)
+                    declared[key] = orbit_camera(
+                        extr, pivot, d_azimuth_deg=float(da),
+                        d_elevation_deg=float(de), distance_scale=float(ds)).camera_view_matrix
+                except Exception:  # noqa: BLE001
+                    continue
+
+        cfg = RegistrationConfig(min_inliers=int(min_inliers),
+                                 max_residual_m=float(max_residual_m),
+                                 max_deviation_deg=float(max_deviation_deg),
+                                 auto_flip=bool(auto_flip))
+        try:
+            reg = register_patch_camera(
+                patch_image=patch_np, primary_image=prim_np, patch_points_cam=pts,
+                primary_points_world=world, patch_intrinsics=K,
+                declared_view_matrices=declared, config=cfg)
+        except Exception as exc:  # noqa: BLE001
+            return _bail(f"registration failed ({exc})")
+        meta.update(reg.summary())
+        if not reg.accepted:
+            return _bail(reg.reason)
+
+        # Accepted: replace the patch camera with the MEASURED one.
+        view = np.asarray(reg.view_matrix, dtype=np.float64)
+        world_m = np.linalg.inv(view)
+        rot3 = tuple(tuple(float(x) for x in row) for row in world_m[:3, :3])
+        new_extr = AtlasExtrinsics(
+            camera_position=tuple(float(x) for x in world_m[:3, 3]),
+            camera_rotation_matrix=rot3,  # type: ignore[arg-type]
+            camera_world_matrix=tuple(tuple(float(x) for x in row) for row in world_m),
+            camera_view_matrix=tuple(tuple(float(x) for x in row) for row in view),
+            coordinate_system="right_handed",
+            up_axis="Y",
+            projection_convention=("Atlas pinhole camera (patch view REGISTERED to the "
+                                   "primary's metric world), image origin top-left."),
+        )
+        new_intr = AtlasIntrinsics(
+            image_width=int(patch_w), image_height=int(patch_h),
+            focal_length_mm=patch_intr.focal_length_mm,
+            sensor_width_mm=patch_intr.sensor_width_mm,
+            fx_px=K["fx"], fy_px=K["fy"], cx_px=K["cx"], cy_px=K["cy"],
+            lens_model=patch_intr.lens_model,
+        )
+        new_h = horizon_row_from_extrinsics(new_extr, fy=K["fy"], cy=K["cy"])
+        return (new_extr, new_intr, K["fx"], K["fy"], K["cx"], K["cy"], new_h, meta)
 
     def _finish_patch(self, solve, patch_image, patch_intr, patch_extr,
                       patch_geom, mesh, mask_b64, plate_ref, name, priority,
@@ -4181,7 +4881,8 @@ class AtlasAddPatchView:
                       patch_azimuth_view, patch_elevation_view, patch_distance,
                       source_azimuth_view, flip_azimuth, pivot, depth_model,
                       scale_source, scale, fallback_reason,
-                      exact_view_override="", exact_delta=None):
+                      exact_view_override="", exact_delta=None,
+                      registration_meta=None):
         from atlas_camera.core.schema import AtlasPlateRef, LatentCamera, ProjectionSource
 
         # Encode the novel view as a JPEG data-URI (viewport texture).
@@ -4215,6 +4916,12 @@ class AtlasAddPatchView:
         }
         if fallback_reason:
             metadata["geometry_fallback"] = fallback_reason
+        if registration_meta:
+            # Flat scalars only (camera_source, registration_* numbers,
+            # flip_azimuth_resolved, patch_focal_px_*) — see
+            # core.patch_camera_registration.PatchCameraRegistration.summary.
+            metadata.update({k: v for k, v in registration_meta.items()
+                             if isinstance(v, (str, int, float, bool)) or v is None})
 
         source = ProjectionSource(
             camera=LatentCamera(intrinsics=patch_intr, extrinsics=patch_extr, name=name),

@@ -401,7 +401,8 @@
         0,
         "",
         0,
-        0.25
+        0.25,
+        false
       ],
       "title": "4 · DEPTH · shared metric scale"
     },

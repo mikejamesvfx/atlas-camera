@@ -64,6 +64,8 @@ from atlas_camera.comfy.view_prompts import (  # noqa: F401
     _named_view_orbit_delta,
     _parse_view_prompt,
     _parse_exact_view,
+    _parse_exact_pivot,
+    _format_exact_view,
 )
 from atlas_camera.comfy.node_reports import (  # noqa: F401
     _IDENTITY_COMMENT_PREFIX,
@@ -1070,6 +1072,8 @@ __all__ = [
     '_DISTANCE_VIEWS',
     '_parse_view_prompt',
     '_parse_exact_view',
+    '_parse_exact_pivot',
+    '_format_exact_view',
     '_named_view_orbit_delta',
     '_format_hole_fill_report',
     '_solve_with_relief_mesh',

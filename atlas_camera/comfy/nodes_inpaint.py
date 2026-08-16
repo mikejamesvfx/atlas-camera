@@ -36,6 +36,25 @@ from atlas_camera.comfy.node_helpers import (
 
 
 
+class _RegisteredPlateDepth:
+    """A DepthResult-shaped view of a clean plate's depth, scale-registered to
+    the primary (see AtlasCleanPlateLayer.plate_depth). Only the fields the
+    inpaint-layer path reads: depth, image size, is_metric, model_id, metadata."""
+
+    def __init__(self, depth, plate_result, primary_result):
+        import numpy as np
+        self.depth = depth
+        self.image_height, self.image_width = int(depth.shape[0]), int(depth.shape[1])
+        self.is_metric = bool(getattr(primary_result, "is_metric", True))
+        self.model_id = f"{getattr(plate_result, 'model_id', 'plate')}+registered"
+        self.metadata = dict(getattr(plate_result, "metadata", None) or {})
+        self.metadata["registered_to"] = str(getattr(primary_result, "model_id", ""))
+        self.near = float(np.nanmin(depth)) if np.isfinite(depth).any() else 0.0
+        self.far = float(np.nanmax(depth)) if np.isfinite(depth).any() else 0.0
+        self.normal = None
+        self.points = None
+
+
 class AtlasScopeMask:
     """🎯 Per-band scope exclude builder — `sky ∪ NOT(grow(segment))`, with
     SELF-DISARMING fallbacks so a scope row can stay permanently active.
@@ -1040,6 +1059,22 @@ class AtlasCleanPlateLayer:
                                "ramped in from the rim. At 0 each column is one frozen texel and "
                                "the skirt reads as flat radial streaks. Applies in the viewport "
                                "and is baked into the exported GLB as vertex colour."}),
+                # APPENDED 2026-08-16: geometry from the CLEAN PLATE's own depth,
+                # scale-registered to the primary — the occluded terrain behind a
+                # foreground object, from a same-camera clean plate, with no
+                # second solve (link inputs — no widgets_values slot).
+                "plate_depth": ("ATLAS_DEPTH_MAP", {
+                    "tooltip": "AtlasDepthMap run on plate_image (MoGe, same solve wired). When "
+                               "connected, THIS layer's mesh is built from the clean plate's depth "
+                               "instead of `depth`: the terrain behind the foreground object comes "
+                               "from the plate that actually sees it. Its scale is registered to "
+                               "`depth` by median ratio over the mutually visible pixels (outside "
+                               "object_mask); the report carries scale + rel_mad. Same camera, so "
+                               "no second solve and nothing to line up."}),
+                "object_mask": ("MASK", {
+                    "tooltip": "The foreground object (white) in the SOURCE frame — excluded from "
+                               "the scale registration (its depth differs between the plates by "
+                               "definition). Recommended when the object is large."}),
             },
         }
 
@@ -1054,7 +1089,7 @@ class AtlasCleanPlateLayer:
                   silhouette_matte=False, soft_visibility=False,
                   transition_ribbon=False, ribbon_px=64.0, ribbon_bend=-0.3,
                   ribbon_adaptive=False, ribbon_depth_slope=2.0,
-                  ribbon_smudge_px=12.0):
+                  ribbon_smudge_px=12.0, plate_depth=None, object_mask=None):
         from atlas_camera.core.band_geometry import (
             boundary_overhang_cells,
             flat_band_depth_field,
@@ -1070,6 +1105,41 @@ class AtlasCleanPlateLayer:
 
         torch = _require_torch()
         np = _require_numpy()
+
+        # --- geometry from the CLEAN PLATE's depth, registered to the primary ---
+        # `depth` (the source photo's) still anchors the world scale; the plate
+        # depth is brought onto it by ONE median ratio over pixels both plates
+        # see the same (everything but the object), then used as this layer's
+        # depth. Registration reuses core.hidden_geometry.register_layers_to_depth.
+        plate_registration = None
+        if plate_depth is not None:
+            from atlas_camera.core.hidden_geometry import register_layers_to_depth
+            from atlas_camera.core.depth_geometry import (
+                _depth_map_for_solve as _dm, _solve_camera_params,
+            )
+            params0 = _solve_camera_params(solve, depth)
+            if params0 is not None:
+                w0, h0 = int(params0[0]), int(params0[1])
+                prim = np.asarray(_dm(depth, w0, h0), dtype=np.float64)
+                plat = np.asarray(_dm(plate_depth, w0, h0), dtype=np.float64)
+                obj = _resolve_exclude_mask(object_mask, h0, w0)
+                vis = np.isfinite(prim) & np.isfinite(plat) & (prim > 1e-4) & (plat > 1e-4)
+                if obj is not None:
+                    vis &= ~obj
+                s_reg, rel_mad, _valid = register_layers_to_depth(
+                    np.where(vis, plat, np.nan)[..., None], np.where(vis, prim, np.nan))
+                if not np.isfinite(rel_mad):
+                    s_reg = 1.0
+                plate_reg = (plat * float(s_reg)).astype(np.float32)
+                depth = _RegisteredPlateDepth(plate_reg, plate_depth, depth)
+                plate_registration = {
+                    "plate_depth_scale": round(float(s_reg), 5),
+                    "plate_depth_rel_mad": (round(float(rel_mad), 4)
+                                            if np.isfinite(rel_mad) else -1.0),
+                    "plate_depth_registered_px": int(vis.sum()),
+                    "plate_depth_object_masked": obj is not None,
+                    "plate_depth_model": str(getattr(plate_depth, "model_id", "")),
+                }
 
         setup = _metric_depth_and_validity(solve, depth, exclude_mask=exclude_mask)
         if setup is None:
@@ -1274,6 +1344,8 @@ class AtlasCleanPlateLayer:
             metadata={
                 "projection_mode": "clean_plate",
                 "source": "inpaint_layer",
+                **(plate_registration or {}),
+                "geometry_depth": "plate_depth" if plate_registration else "primary_depth",
                 "band_geometry": geometry,
                 "near_m": None if near <= 0 else float(near),
                 "far_m": None if far == float("inf") else float(far),
@@ -1512,6 +1584,155 @@ class AtlasCleanPlateStack:
                           f"priority={self._PRIORITIES[i - 1]:g} edge_extend={smear}"
                           + ("  (nearest: clean cut)" if i == nearest_i else ""))
         return (cur, "\n".join(report))
+
+
+class AtlasPlateLayer:
+    """🎞 ANY plate on ANY geometry, as a projection layer — the Nuke move.
+
+    `AtlasCleanPlateLayer` builds its own depth-band mesh; this node takes the
+    geometry you already have — Blender-imported occluded surfaces (water,
+    hillside), viewport-drawn planes, a merged solve_b, anything PROXY_ROLE —
+    selected by `geometry_filter` from THIS solve or from `geometry_from`, and
+    appends a `ProjectionSource` that projects `plate_image` onto it from the
+    PRIMARY camera (`projection_mode=clean_plate`: no facing discard, no
+    primary-depth cull — it is meant to show exactly where the foreground
+    occludes). Chain one per plate: unlimited plates, each on the geometry you
+    say, priority decides overlaps. `AtlasMergeGeometry` stays geometry-only.
+
+    `move_from_primary` (default on) removes the selected primitives from the
+    primary scene so the source photo no longer paints them — otherwise the
+    same surface would be painted twice and the primary (implicitly highest
+    priority) would win. Never raises on an empty selection: it reports and
+    passes the solve through (a silent branch skip is what the gate doctrine
+    forbids).
+    """
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "add_layer"
+    CATEGORY = "Atlas"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "plate_image": ("IMAGE", {"tooltip": "The plate to project — a clean plate, an "
+                                                     "inpaint, a matte painting — in the PRIMARY "
+                                                     "camera's frame."}),
+            },
+            "optional": {
+                "geometry_from": ("ATLAS_SOLVE", {
+                    "tooltip": "Take the geometry from THIS solve instead of `solve` (e.g. the "
+                               "AtlasBlenderMassing / AtlasAgentHandoff / AtlasMergeGeometry "
+                               "output). Empty = `solve` itself."}),
+                "geometry_filter": ("STRING", {
+                    "default": "blender_import, blender_massing, viewport_polygon",
+                    "tooltip": "Comma list of primitive SOURCES (blender_import, blender_massing, "
+                               "viewport_polygon, depth_relief_mesh, block_massing, ...) and/or "
+                               "NAME prefixes (agent_, massing_, drawn_plane_) to put on this "
+                               "layer. '*' = every PROXY_ROLE primitive."}),
+                "name": ("STRING", {"default": "clean_plate_layer"}),
+                "priority": ("FLOAT", {"default": 5.0, "min": 0.0, "max": 100.0, "step": 1.0,
+                    "tooltip": "Higher wins where layers overlap; the primary is implicitly highest."}),
+                "move_from_primary": ("BOOLEAN", {"default": True,
+                    "tooltip": "Remove the selected primitives from the primary scene so only "
+                               "this plate paints them. Off = leave copies in both (the primary "
+                               "photo wins where it can see)."}),
+                "mask": ("MASK", {"tooltip": "Optional per-pixel matte in the plate's frame "
+                                              "(white = paint)."}),
+                "plate_ref": ("ATLAS_PLATE_REF", {"tooltip": "Optional plate reference for the "
+                                                             "exporters (colour management)."}),
+            },
+        }
+
+    def add_layer(self, solve, plate_image, geometry_from=None,
+                  geometry_filter="blender_import, blender_massing, viewport_polygon",
+                  name="clean_plate_layer", priority=5.0, move_from_primary=True,
+                  mask=None, plate_ref=None):
+        from atlas_camera.core.proxy_geometry import PROXY_ROLE
+        from atlas_camera.core.schema import AtlasPlateRef, LatentCamera, ProjectionSource
+
+        out = copy.deepcopy(solve)
+        src_solve = geometry_from if geometry_from is not None else out
+        tokens = [t.strip() for t in str(geometry_filter or "").split(",") if t.strip()]
+        take_all = "*" in tokens
+
+        def _match(prim):
+            meta = getattr(prim, "metadata", None) or {}
+            if meta.get("role") != PROXY_ROLE:
+                return False
+            if take_all:
+                return True
+            src = str(meta.get("source") or "")
+            nm = str(getattr(prim, "name", "") or "")
+            return any(t == src or nm.startswith(t) for t in tokens)
+
+        pool = list(getattr(getattr(src_solve, "projection_scene", None), "proxy_geometry", None) or [])
+        picked = [p for p in pool if _match(p)]
+        if not picked:
+            return (out, f"AtlasPlateLayer '{name}': no PROXY_ROLE primitive matches "
+                         f"geometry_filter={geometry_filter!r} in "
+                         f"{'geometry_from' if geometry_from is not None else 'solve'} "
+                         f"({len(pool)} candidates) — solve passed through")
+        geom = [copy.deepcopy(p) for p in picked]
+        for p in geom:
+            p.metadata = dict(p.metadata or {})
+            p.metadata["plate_layer"] = str(name)
+        removed = 0
+        if move_from_primary:
+            names = {id(p) for p in picked}
+            scene = out.projection_scene
+            before = len(scene.proxy_geometry)
+            # match by (name, source) so a geometry_from copy still removes the
+            # primary's own copy of the same primitive
+            keys = {(getattr(p, "name", ""), (p.metadata or {}).get("source")) for p in picked}
+            scene.proxy_geometry = [p for p in scene.proxy_geometry
+                                    if (getattr(p, "name", ""), (p.metadata or {}).get("source")) not in keys]
+            removed = before - len(scene.proxy_geometry)
+
+        image_b64 = ""
+        try:
+            pil = _image_tensor_to_pil(plate_image).convert("RGB")
+            buf = io.BytesIO()
+            pil.save(buf, format="JPEG", quality=90)
+            image_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+        except Exception:  # noqa: BLE001
+            image_b64 = ""
+        mask_b64 = None
+        if mask is not None:
+            try:
+                h = int(getattr(plate_image, "shape", [0, 0, 0])[1]); w = int(plate_image.shape[2])
+                m = _resolve_exclude_mask(mask, h, w)
+                mask_b64 = _mask_to_b64_png(m) or None
+            except Exception:  # noqa: BLE001
+                mask_b64 = None
+
+        cam = out.camera
+        source = ProjectionSource(
+            camera=LatentCamera(intrinsics=copy.deepcopy(cam.intrinsics),
+                                extrinsics=copy.deepcopy(cam.extrinsics), name=str(name)),
+            name=str(name),
+            image_b64=image_b64,
+            mask_b64=mask_b64,
+            plate_ref=(plate_ref if isinstance(plate_ref, AtlasPlateRef)
+                       else (AtlasPlateRef.from_dict(plate_ref) if plate_ref else None)),
+            proxy_geometry=geom,
+            priority=float(priority),
+            metadata={
+                "projection_mode": "clean_plate",
+                "source": "plate_layer",
+                "evidence_type": "clean_plate",
+                "geometry_filter": str(geometry_filter),
+                "geometry_from": "geometry_from" if geometry_from is not None else "solve",
+                "n_primitives": len(geom),
+                "moved_from_primary": int(removed),
+                "n_vertices": int(sum(int((p.metadata or {}).get("n_vertices") or 0) for p in geom)),
+            },
+        )
+        out.projection_sources.append(source)
+        return (out, f"AtlasPlateLayer '{name}': {len(geom)} primitive(s) on this plate "
+                     f"({', '.join(sorted({str((p.metadata or {}).get('source')) for p in geom}))}); "
+                     f"{removed} removed from the primary scene; priority {float(priority):g}")
 
 
 class AtlasSkyDomeLayer:

@@ -43,7 +43,12 @@ EXPERIMENTAL = set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
 # loads RED on a default install — the failure mode this pin exists to surface.
 # Keep the set: an empty pin still fails loudly the moment a shipping workflow
 # reaches for an experimental node again.
-WORKFLOWS_USING_EXPERIMENTAL: set[str] = set()
+WORKFLOWS_USING_EXPERIMENTAL: set[str] = {
+    # 2026-08-16: the Blender measured-primitives bridge. Its two nodes need an
+    # external Blender >= 4.2 install, so they stay experimental-tier; the
+    # workflow's Note and INSTALL.md say ATLAS_EXPERIMENTAL=1 (+ ATLAS_BLENDER_PATH).
+    "atlas_blender_measured_primitives_workflow.json",
+}
 
 
 def _actual() -> set[str]:

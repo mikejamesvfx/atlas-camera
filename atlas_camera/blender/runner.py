@@ -5,7 +5,7 @@ existing answer to "shell out to a big external tool", and copying its shape
 means the error taxonomy, the log tail and the tests all transfer.
 
 WHY THIS IS NOT IN THE MCP SERVER. `mcp/server.py:5-6` states the server never
-executes — no subprocess, no numpy, ComfyUI stays the engine. A ComfyUI node
+executes â€” no subprocess, no numpy, ComfyUI stays the engine. A ComfyUI node
 calls this instead, and the agent drives that through the existing
 `atlas_run_workflow`. The MCP server's property stays intact.
 """
@@ -70,14 +70,21 @@ def _version_key(path: Path) -> tuple:
 def resolve_blender_exe(blender_path: str = "") -> Path:
     """Locate Blender: explicit arg > env var > PATH > platform install dirs.
 
-    Same precedence and same tone as `resolve_fixer_root` — the error names the
+    Same precedence and same tone as `resolve_fixer_root` â€” the error names the
     widget, the env var, the download, AND every location actually probed, so a
     user is never left guessing where it looked.
     """
     explicit = (blender_path or "").strip() or os.environ.get(
         BLENDER_PATH_ENV, "").strip()
     if explicit:
+        # A path pasted from Explorer's "Copy as path" arrives wrapped in
+        # quotes; a directory means "the install folder" (found live).
+        explicit = explicit.strip().strip('"').strip("'")
         p = Path(explicit).expanduser()
+        if p.is_dir():
+            cand = p / ("blender.exe" if sys.platform.startswith("win") else "blender")
+            if cand.is_file():
+                p = cand
         if p.is_file():
             return p
         raise RuntimeError(
@@ -141,39 +148,52 @@ def recipes_dir() -> Path:
     return Path(__file__).resolve().parent / "recipes"
 
 
-def build_blender_command(exe: Path, recipe: Path, exchange_dir: Path) -> list[str]:
+def build_blender_command(exe: Path, recipe: Path, exchange_dir: Path,
+                          blend_file: Path | None = None) -> list[str]:
     """argv for a headless recipe run.
+
+    ``blend_file`` (optional, appended 2026-08-16) opens an existing .blend
+    BEFORE running the recipe — the GUI round-trip: an artist (or a Blender-MCP
+    agent) edits the scene the massing recipe saved, and `export_meshes.py`
+    runs headless on that file to hand the meshes back. Blender's argv order
+    is positional: the file must precede `--background --python`.
 
     `--factory-startup` is not optional: without it a user's addons and
     preferences are an unversioned input to a supposedly deterministic
     construction.
 
-    The bare `--` matters — Blender consumes everything before it, and omitting
+    The bare `--` matters â€” Blender consumes everything before it, and omitting
     it is the classic silent failure where the recipe never sees its arguments.
 
     NOT included: `--noaudio`. It is not a valid flag in Blender 5.2 (verified
-    live — Blender treats it as a filename and reports "Cannot read file").
+    live â€” Blender treats it as a filename and reports "Cannot read file").
     """
-    return [str(exe), "--background", "--factory-startup",
-            "--python", str(recipe), "--", "--exchange", str(exchange_dir)]
+    head = [str(exe)]
+    if blend_file is not None:
+        head.append(str(blend_file))
+    return head + ["--background", "--factory-startup",
+                   "--python", str(recipe), "--", "--exchange", str(exchange_dir)]
 
 
 def run_recipe(recipe_name: str, exchange_dir: Path, *, blender_path: str = "",
-               timeout_s: int = 300) -> dict[str, Any]:
+               timeout_s: int = 300, blend_file: str | Path = "") -> dict[str, Any]:
     """Run `recipes/<recipe_name>` headless against `exchange_dir`.
 
     Every failure is raised with something quotable in it. The rule copied from
     `run_fixer_on_dir`: Blender is extremely verbose on stdout, so never surface
-    the whole log — tail it.
+    the whole log â€” tail it.
     """
     exe, ver = require_blender(blender_path)
     recipe = recipes_dir() / recipe_name
     if not recipe.is_file():
-        raise RuntimeError(f"recipe not found: {recipe} (packaging problem — "
+        raise RuntimeError(f"recipe not found: {recipe} (packaging problem â€” "
                            "recipes/ ships as package data)")
     exchange_dir = Path(exchange_dir)
     exchange_dir.mkdir(parents=True, exist_ok=True)
-    cmd = build_blender_command(exe, recipe, exchange_dir)
+    blend = Path(blend_file) if str(blend_file or "").strip() else None
+    if blend is not None and not blend.is_file():
+        raise RuntimeError(f"blend_file does not exist: {blend}")
+    cmd = build_blender_command(exe, recipe, exchange_dir, blend_file=blend)
 
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
@@ -181,13 +201,13 @@ def run_recipe(recipe_name: str, exchange_dir: Path, *, blender_path: str = "",
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
             f"Blender recipe {recipe_name} exceeded timeout_s={timeout_s}. "
-            "The usual cause is voxel_size_m being too small — doubling it cuts "
+            "The usual cause is voxel_size_m being too small â€” doubling it cuts "
             "the cost roughly 8x."
         ) from exc
 
     err_path = exchange_dir / "error.json"
     if err_path.is_file():
-        # The recipe's OWN traceback and stage, which is what a reader needs —
+        # The recipe's OWN traceback and stage, which is what a reader needs â€”
         # not Blender's startup banner.
         try:
             err = json.loads(err_path.read_text(encoding="utf-8"))

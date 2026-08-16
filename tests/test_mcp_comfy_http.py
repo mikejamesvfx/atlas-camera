@@ -352,9 +352,10 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
     # was being assembled, 4 at the v1 cut (2026-08-07), 5 after the
     # deterministic RAW multi-view workflow (2026-08-09), and 8 after the burst
     # solve / photographed hole patch / measured multi-angle patch trio
-    # (2026-08-10). Bump as each new workflow lands so a silent disappearance
-    # still fails loudly.
-    assert checked == 8
+    # (2026-08-10), 10 after the Qwen-ROI registered patch + Blender measured
+    # primitives pair (2026-08-16), 11 with the clean-plate depth layer. Bump as each new workflow lands so a silent
+    # disappearance still fails loudly.
+    assert checked == 11
 
 
 def test_frontend_only_rgthree_nodes_are_virtual():

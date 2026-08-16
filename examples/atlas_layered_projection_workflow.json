@@ -310,7 +310,8 @@
         0,
         "",
         0,
-        0.25
+        0.25,
+        false
       ],
       "title": "3 · DEPTH · shared by every layer"
     },

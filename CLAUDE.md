@@ -153,7 +153,7 @@ atlas_camera.exporters  � Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  � Atlas JSON, USD camera, and Record3D (.r3d ARKit
                           capture) loaders
 
-atlas_camera.comfy      � ComfyUI node library (98 standard + 9 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
+atlas_camera.comfy      � ComfyUI node library (100 standard + 12 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
 
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
 
@@ -201,7 +201,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ## ComfyUI integration — see docs/NODE_CATALOG.md
 
-The full node catalog (98 standard + 9 experimental + 2 legacy + 2 iOS = 111
+The full node catalog (100 standard + 12 experimental + 2 legacy + 2 iOS = 116
 registered), `comfy/` module layout,
 setup/symlink instructions, double-import guard, `atlas_blockout.js` frontend
 reference, `/atlas/camera_data` endpoint, and the example-workflow catalog all
@@ -213,8 +213,8 @@ Quick facts that must never drift (details in the catalog):
   `nodes_*` responsibility modules; import from the specific module in new
   code. `tests/test_facade_surface.py` pins all facade names.
 - Registered node keys + display names are a saved-workflow contract
-  (`tests/test_comfy_node_registry.py` pins the surface; currently 98 standard
-  + 9 experimental + 2 legacy + 2 iOS).
+  (`tests/test_comfy_node_registry.py` pins the surface; currently 100 standard
+  + 12 experimental + 2 legacy + 2 iOS).
 - `comfy/__init__.py` loads twice at startup — route registration sits behind
   a double-import guard; keep it there.
 - Shipping example workflows are pinned by `tests/test_example_workflows.py`
@@ -328,6 +328,22 @@ Nodes & widgets
   `AtlasMergeGeometry` is the one explicit combiner.
 
 Geometry & projection
+- Blender bridge: the seed is the MoGe MEASUREMENT (sky-free cloud, ground,
+  planes at MoGe scale), never the relief mesh; NPZ with NO UVs across the
+  pipe, projective UVs regenerated on import; massing appends only its OWN
+  meshes; a re-run preserves `atlas_out` for the SAME seed fingerprint only.
+- A plate is a LAYER (`AtlasPlateLayer` / `AtlasCleanPlateLayer`), never a
+  node property; a same-camera clean plate is never solved — it contributes
+  DEPTH (`plate_depth`, one median-ratio scale, `rel_mad` reported).
+- Patch cameras: `register_to_primary` measures a generated view's camera
+  against the primary's world (generated→measured only; primary never moves;
+  pose inherits `primary_depth`'s scale). A strong match that disagrees with
+  the declared orbit is a WARNING — the measurement wins.
+- The projection shader re-projects PER FRAGMENT (`vWorldPos` through the
+  projector); never interpolate the source pixel from the vertex shader.
+- Agent in the graph = `AtlasAgentHandoff` (pause/brief/resume, blocking,
+  token-guarded, `mode` + `ATLAS_AGENT_MODE` override); no model or MCP client
+  inside ComfyUI.
 - Relief-mesh tears are load-bearing. Never fix a black tear by raising a
   global threshold — the fix is a deliberate layer (card/ground/sky/inpaint).
 - SILHOUETTES: soft layering in the VIEWPORT (`soft_visibility` — untorn mesh
@@ -408,6 +424,9 @@ Frontend (atlas_blockout.js)
 | Example workflows | docs/NODE_CATALOG.md (example workflows) + the pin tests |
 
 | Dynamic plates (`core/dynamic_plate.py`, `dynamic/`, dynamic-plate exporters) | docs/DYNAMIC_PLATES.md |
+| Blender bridge (`blender/`, `AtlasBlenderMassing`/`ImportMeshes`), agent handoff (`comfy/nodes_agent.py`, `agent_handoff.py`) | docs/AGENT_HANDOFF.md + docs/NODE_CATALOG.md rows |
+| Patch-camera registration (`core/patch_camera_registration.py`, `AtlasAddPatchView camera_source`) | docs/DESIGN_RULES.md (registration is generated→measured only) |
+| Plate layers (`AtlasPlateLayer`, `AtlasCleanPlateLayer.plate_depth`), viewport snapshots (`comfy/viewport_snapshot.py`) | docs/NODE_CATALOG.md (rows + endpoint section) |
 
 For the artist/TD view: docs/USER_GUIDE.md; ecosystem map:
 docs/ECOSYSTEM_GUIDE.md; camera moves: docs/CAMERA_MOVES.md.

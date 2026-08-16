@@ -312,6 +312,63 @@ def test_exclude_mask_removes_patch_sky_geometry(monkeypatch):
     assert n_verts(masked) < n_verts(plain)
 
 
+def test_patch_mask_bounds_the_geometry_not_only_the_paint(monkeypatch):
+    """own_depth built a relief mesh over the WHOLE patch frame: a second copy
+    of the scene laid over geometry the primary already carries, sky included,
+    and — since a patch mesh is only ever painted by its own matted source —
+    invisible under 'Project' and bare green without it (found live
+    2026-08-15). The mesh must stop where the fill stops."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
+    hole = torch.zeros(1, 512, 512, dtype=torch.float32)
+    hole[0, 200:280, 200:280] = 1.0        # one small fill, ~2.4% of the frame
+
+    def n_verts(s):
+        mesh = next(p for p in s.projection_sources[0].proxy_geometry
+                    if p.primitive_type == "mesh")
+        return mesh.metadata["n_vertices"]
+
+    (whole,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view",
+        geometry_source="own_depth", relief_grid=48, unseen_dilate_px=0)
+    (trimmed,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, patch_azimuth_view="front-right quarter view",
+        geometry_source="own_depth", relief_grid=48, unseen_dilate_px=0,
+        patch_mask=hole)
+    assert n_verts(trimmed) < n_verts(whole) / 4
+
+
+def test_exact_view_pivot_term_moves_the_patch_camera(monkeypatch):
+    """The pivot travels WITH the delta. An orbit delta measured about the
+    scene pivot reconstructs a different pose about the ground pivot — which is
+    what swung AtlasCameraMovePreset's arcs wide before the term existed."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    patch_img = torch.rand(1, 256, 256, 3, dtype=torch.float32)
+    exact = "azimuth_deg=12.0000 elevation_deg=0.0000 distance_scale=1.0000"
+
+    (default_pivot,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, exact_view_override=exact, relief_grid=32)
+    (carried,) = AtlasAddPatchView().add_patch(
+        solve, patch_img, exact_view_override=exact + " pivot=0.0,0.0,4.0",
+        relief_grid=32)
+
+    def pose(s):
+        return s.projection_sources[0].camera.extrinsics.camera_position
+
+    assert pose(default_pivot) != pose(carried)
+    assert carried.projection_sources[0].metadata["pivot"] == [0.0, 0.0, 4.0]
+
+
 def _solve_with_geometry():
     """Primary solve carrying one PROXY_ROLE primitive (a stand-in for the
     scene's derived/band geometry)."""

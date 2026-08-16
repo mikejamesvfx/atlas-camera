@@ -102,6 +102,48 @@ def _parse_exact_view(text):
     return (float(vals["azimuth_deg"]), float(vals["elevation_deg"]),
             float(vals["distance_scale"]))
 
+
+_PIVOT_RE = re.compile(
+    r"pivot\s*=\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*,\s*"
+    r"(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*,\s*"
+    r"(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)")
+
+
+def _parse_exact_pivot(text):
+    """Parse the OPTIONAL ``pivot=x,y,z`` term of an exact-view string.
+
+    An orbit delta means nothing without the pivot it was measured about, and
+    for most of this codebase's life that pivot was an unstated constant:
+    ``ground_lookat_pivot``, assumed identically by the viewport payload's
+    ``orbit_pivot``, by 📐 Extract Angle, and by AtlasAddPatchView. That worked
+    while the only producer was the viewport. AtlasCameraMovePreset broke it —
+    a move built about the SCENE pivot (median vertex depth, what the ⤴/⤵
+    buttons orbit) cannot be reproduced about the ground pivot, which sits far
+    past the subject on a near-level camera and swung the arcs ~4x too wide
+    (measured live 2026-08-15, ghost-town street).
+
+    So the pivot travels WITH the delta. Absent (every viewport-authored
+    string, every saved workflow) the consumer keeps the ground-pivot default
+    — this term is append-only, exactly like a widget.
+
+    Returns ``(x, y, z)`` or ``None``.
+    """
+    m = _PIVOT_RE.search(text or "")
+    return (float(m.group(1)), float(m.group(2)), float(m.group(3))) if m else None
+
+
+def _format_exact_view(delta, pivot=None):
+    """The exact-view string every producer emits — one formatter so the
+    ``pivot=`` term cannot drift between them."""
+    text = (f"azimuth_deg={float(delta[0]):.4f} "
+            f"elevation_deg={float(delta[1]):.4f} "
+            f"distance_scale={float(delta[2]):.4f}")
+    if pivot is not None:
+        text += (f" pivot={float(pivot[0]):.6f},{float(pivot[1]):.6f},"
+                 f"{float(pivot[2]):.6f}")
+    return text
+
+
 __all__ = [
     "_AZIMUTH_VIEWS",
     "_ELEVATION_VIEWS",
@@ -109,4 +151,6 @@ __all__ = [
     "_named_view_orbit_delta",
     "_parse_view_prompt",
     "_parse_exact_view",
+    "_parse_exact_pivot",
+    "_format_exact_view",
 ]

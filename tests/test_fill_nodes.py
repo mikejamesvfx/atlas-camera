@@ -173,6 +173,56 @@ def _wall_solve_with_region():
                                                         "regions": [region]}}))
 
 
+def _tilted_street_solve():
+    """The pivot case: a camera at eye height tilted slightly DOWN, geometry at
+    ~10 m — the ordinary street shot. Its ground ray meets Y=0 tens of metres
+    out, far past the scene, which is exactly why the two pivots diverge and
+    why the ground one made the arcs swing wide."""
+    from atlas_camera.core.camera_math import look_at_view_matrix
+    from atlas_camera.core.schema import AtlasExtrinsics
+
+    solve = _wall_solve_with_region()
+    view, world, rot3 = look_at_view_matrix((0.0, 1.6, 0.0),
+                                            (0.0, 1.24, -9.78))
+    solve.camera.extrinsics = AtlasExtrinsics(
+        camera_position=(0.0, 1.6, 0.0), camera_rotation_matrix=rot3,
+        camera_world_matrix=world, camera_view_matrix=view)
+    return solve
+
+
+def _wall_solve_with_occluder():
+    """`_wall_solve_with_region` + a near pillar, so the scene has REAL
+    disocclusion: wall the plate camera cannot see because the pillar stands in
+    front of it, revealed by a move.
+
+    The plain wall fixture has none — its only holes are the surround, which
+    the camera never looked at (outpainting, not disocclusion). Auto ROI
+    selection is precisely the thing that must tell those apart, so it needs a
+    fixture that contains both.
+    """
+    from atlas_camera.core.schema import AtlasProxyPrimitive
+
+    def quad(name, x0, x1, z):
+        return AtlasProxyPrimitive(
+            name=name, primitive_type="mesh",
+            metadata={"vertices": [x0, -2.0, z, x1, -2.0, z,
+                                   x1, 6.0, z, x0, 6.0, z],
+                      "faces": [0, 1, 2, 0, 2, 3],
+                      "uvs": [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]})
+
+    solve = _wall_solve_with_region()
+    # The wall is TORN where the pillar hides it — a relief mesh has no
+    # geometry behind an occluder, which is what makes a hole a disocclusion
+    # rather than a coverage gap. The pillar (x ±0.8 at z=-4, eye at z=0)
+    # shadows exactly x ±2 on the wall at z=-10, so from the plate camera the
+    # tear is invisible and the frame has no hole there; a move opens it.
+    scene = solve.projection_scene
+    scene.proxy_geometry = [quad("wall_left", -6.0, -2.0, -10.0),
+                            quad("wall_right", 2.0, 6.0, -10.0),
+                            quad("pillar", -0.8, 0.8, -4.0)]
+    return solve
+
+
 def test_crop_roi_renders_the_artist_region_at_native_raster():
     from atlas_camera.comfy.nodes_fill import AtlasCropROI
 
@@ -270,22 +320,54 @@ def test_move_preset_exact_view_round_trips_through_the_patch_parser():
     SAME parser + orbit reconstruction AtlasAddPatchView uses, must land on
     the path's final pose exactly — no baked frame required."""
     from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
-    from atlas_camera.comfy.view_prompts import _parse_exact_view
+    from atlas_camera.comfy.view_prompts import _parse_exact_pivot, _parse_exact_view
     from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
     from atlas_camera.core.camera_path import sample_camera_path
 
-    solve = _wall_solve_with_region()
+    solve = _tilted_street_solve()
     path, exact, report = AtlasCameraMovePreset().build(solve, "arc_left")
     delta = _parse_exact_view(exact)
+    pivot = _parse_exact_pivot(exact)
     assert delta is not None
-    end = sample_camera_path(path)[-1].camera_position
+    # The pivot is CARRIED, and it is the scene's, not the ground ray's — a
+    # near-level camera's ground pivot sits far past the subject and swings the
+    # arc several times too wide (the 2026-08-15 field report).
+    assert pivot is not None
     extr = solve.camera.extrinsics
-    rec = orbit_camera(extr, ground_lookat_pivot(extr), d_azimuth_deg=delta[0],
+    ground = ground_lookat_pivot(extr)
+    assert max(abs(a - b) for a, b in zip(pivot, ground)) > 1.0
+    end = sample_camera_path(path)[-1].camera_position
+    rec = orbit_camera(extr, pivot, d_azimuth_deg=delta[0],
                        d_elevation_deg=delta[1],
                        distance_scale=delta[2]).camera_position
     assert max(abs(a - b) for a, b in zip(end, rec)) < 1e-4   # 4-decimal string
     assert len(path.keyframes) == 3 and path.frame_count == 100
-    assert "ground-ray pivot" in report
+    assert "Scene pivot" in report
+
+
+def test_move_preset_pivot_travels_into_the_patch_view_reconstruction():
+    """End to end on the contract: the pose AtlasAddPatchView reconstructs from
+    the preset's exact_view IS the path's end pose. Reconstructing about the
+    default ground pivot instead — what shipped first — lands metres away."""
+    from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
+    from atlas_camera.comfy.view_prompts import _parse_exact_pivot, _parse_exact_view
+    from atlas_camera.core.camera_math import ground_lookat_pivot, orbit_camera
+    from atlas_camera.core.camera_path import sample_camera_path
+
+    solve = _tilted_street_solve()
+    path, exact, _report = AtlasCameraMovePreset().build(solve, "arc_right",
+                                                         angle_deg=12.0)
+    extr = solve.camera.extrinsics
+    delta = _parse_exact_view(exact)
+    end = sample_camera_path(path)[-1].camera_position
+    carried = orbit_camera(extr, _parse_exact_pivot(exact), d_azimuth_deg=delta[0],
+                           d_elevation_deg=delta[1],
+                           distance_scale=delta[2]).camera_position
+    assumed = orbit_camera(extr, ground_lookat_pivot(extr), d_azimuth_deg=delta[0],
+                           d_elevation_deg=delta[1],
+                           distance_scale=delta[2]).camera_position
+    assert max(abs(a - b) for a, b in zip(end, carried)) < 1e-4
+    assert max(abs(a - b) for a, b in zip(end, assumed)) > 1.0
 
 
 def test_move_preset_pan_emits_the_zero_delta_and_warns():
@@ -293,8 +375,8 @@ def test_move_preset_pan_emits_the_zero_delta_and_warns():
 
     solve = _wall_solve_with_region()
     path, exact, report = AtlasCameraMovePreset().build(solve, "pan_left")
-    assert exact == ("azimuth_deg=0.0000 elevation_deg=0.0000 "
-                     "distance_scale=1.0000")
+    assert exact.startswith("azimuth_deg=0.0000 elevation_deg=0.0000 "
+                            "distance_scale=1.0000")
     assert "pan swivels in place" in report
     assert len(path.keyframes) == 2
 
@@ -305,7 +387,7 @@ def test_crop_roi_auto_largest_ranks_holes_by_area():
     the same inputs still requires drawn regions (regression pin)."""
     from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset, AtlasCropROI
 
-    solve = _wall_solve_with_region()
+    solve = _wall_solve_with_occluder()
     source = np.full((96, 128, 3), 120, np.uint8)
     path, _exact, _r = AtlasCameraMovePreset().build(solve, "arc_left",
                                                      angle_deg=35.0)
@@ -337,7 +419,7 @@ def test_auto_mode_never_ranks_sky_class_holes():
     from atlas_camera.dynamic.occlusion_fill import survey_hole_rois
     from atlas_camera.core.camera_path import sample_camera_path
 
-    solve = _wall_solve_with_region()
+    solve = _wall_solve_with_occluder()
     source = np2.full((96, 128, 3), 120, np2.uint8)
     path, _e, _r = AtlasCameraMovePreset().build(solve, "arc_left",
                                                  angle_deg=35.0)
@@ -374,7 +456,7 @@ def test_auto_mode_exclude_mask_removes_a_region_from_ranking():
 
     from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset, AtlasCropROI
 
-    solve = _wall_solve_with_region()
+    solve = _wall_solve_with_occluder()
     source = np2.full((96, 128, 3), 120, np2.uint8)
     path, _e, _r = AtlasCameraMovePreset().build(solve, "arc_left",
                                                  angle_deg=35.0)
@@ -427,3 +509,110 @@ def test_composite_crop_pasted_mask_accumulates_hole_pixels_only():
     _o3, _r3, pm3 = AtlasCompositeCrop().paste(
         _img(frame), _img(frame), {"empty": True}, prior_mask=pm2)
     assert np.array_equal(pm3[0].numpy(), got2)
+
+
+def test_auto_crop_mask_never_asks_the_generator_for_sky():
+    """SELECTION and the CROP MASK must apply the same test. The ROI is a
+    RECT: a legitimate cluster's padded rect can contain sky the ranking
+    already rejected, and the emitted mask used to hand that sky straight to
+    the generator — which pasted it, which rode pasted_mask into
+    AtlasAddPatchView as geometry to build (measured live 2026-08-15: a
+    sky-textured sheet above the roofline). Auto mode only."""
+    import numpy as np2
+
+    from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset, AtlasCropROI
+    from atlas_camera.core.camera_crop import crop_intrinsics
+    from atlas_camera.core.camera_spec import CameraSpec
+    from atlas_camera.core.camera_path import sample_camera_path
+    from atlas_camera.dynamic.occlusion_fill import (
+        not_disocclusion_mask,
+        plate_hole_survey,
+    )
+    from atlas_camera.core.camera_crop import RegionROI
+
+    solve = _wall_solve_with_occluder()
+    source = np2.full((96, 128, 3), 120, np2.uint8)
+    path, _e, _r = AtlasCameraMovePreset().build(solve, "arc_left",
+                                                 angle_deg=35.0)
+    view = sample_camera_path(path)[-1].camera_view_matrix
+
+    *_o, crop, report = AtlasCropROI().crop(
+        solve, _img(source), camera_path=path, roi_slot=1, snap=16,
+        roi_source="auto_largest", min_area_px=16)
+    assert not crop["empty"], report
+    mask = _o[1][0].numpy()                       # _o = (guide, mask, w, h)
+
+    roi = RegionROI(x=crop["x"], y=crop["y"], width=crop["width"],
+                    height=crop["height"])
+    spec = CameraSpec.from_intrinsics(crop_intrinsics(solve.camera.intrinsics,
+                                                      roi))
+    plate = plate_hole_survey(solve, source, resolution=1024)
+    drop = not_disocclusion_mask(plate, view=view, fx=spec.fx, fy=spec.fy,
+                                 cx=spec.cx, cy=spec.cy,
+                                 width=roi.width, height=roi.height)
+    if mask.shape != drop.shape:                 # generation raster was capped
+        import numpy as _np
+        yi = (_np.arange(mask.shape[0]) * (drop.shape[0] / mask.shape[0])).astype(int)
+        xi = (_np.arange(mask.shape[1]) * (drop.shape[1] / mask.shape[1])).astype(int)
+        drop = drop[yi.clip(0, drop.shape[0] - 1)][:, xi.clip(0, drop.shape[1] - 1)]
+    assert not (mask > 0.5)[drop].any(), \
+        "auto crop mask still asks the generator to fill non-disocclusion"
+    assert mask.sum() > 0, "the whole mask was dropped — fixture has no fill"
+
+
+def test_artist_crop_mask_is_left_alone():
+    """Artist-wins: a drawn region is a judgement, not a ranking, so the
+    not-disocclusion trim must not touch it."""
+    import numpy as np2
+
+    from atlas_camera.comfy.nodes_fill import AtlasCropROI
+
+    solve = _wall_solve_with_region()
+    source = np2.full((96, 128, 3), 120, np2.uint8)
+    _g, _m, _w, _h, crop, report = AtlasCropROI().crop(
+        solve, _img(source), roi_slot=1, snap=16)
+    assert not crop["empty"], report
+    assert "dropped as not-disocclusion" not in report
+
+
+# ---------------------------------------------------------------------------
+# AtlasCropSourcePhoto — the pristine photo crop for the Qwen ROI loop (2026-08-16)
+
+def test_crop_source_photo_is_the_untouched_plate_window():
+    from atlas_camera.comfy.nodes_fill import AtlasCropROI, AtlasCropSourcePhoto
+
+    solve = _wall_solve_with_region()
+    source = np.zeros((96, 128, 3), np.uint8)
+    source[..., 0] = np.arange(128, dtype=np.uint8)[None, :]
+    source[..., 1] = np.arange(96, dtype=np.uint8)[:, None]
+    _g, _m, gw, gh, crop, _r = AtlasCropROI().crop(
+        solve, _img(source), roi_slot=1, snap=16, pad_frac=0.0,
+        hole_dilate_px=0, max_gen_long_edge=4096)
+    photo, w, h, report = AtlasCropSourcePhoto().crop_photo(_img(source), crop)
+    assert (w, h) == (gw, gh)
+    got = (photo[0].numpy() * 255).round().astype(np.uint8)
+    x, y = crop["x"], crop["y"]
+    assert np.array_equal(got, source[y:y + crop["height"], x:x + crop["width"]])
+    assert "register_to_primary" in report
+
+
+def test_crop_source_photo_pads_and_squares_within_the_plate():
+    from atlas_camera.comfy.nodes_fill import AtlasCropROI, AtlasCropSourcePhoto
+
+    solve = _wall_solve_with_region()
+    source = np.full((96, 128, 3), 77, np.uint8)
+    _g, _m, gw, gh, crop, _r = AtlasCropROI().crop(
+        solve, _img(source), roi_slot=1, snap=16, pad_frac=0.0,
+        hole_dilate_px=0, max_gen_long_edge=4096)
+    photo, w, h, report = AtlasCropSourcePhoto().crop_photo(
+        _img(source), crop, pad_frac=0.5, square=True)
+    assert w % 16 == 0 and h % 16 == 0
+    assert "square" in report and "pad 0.50" in report
+    assert photo.shape[1:3] == (h, w)
+
+
+def test_crop_source_photo_empty_handle_is_a_noop():
+    from atlas_camera.comfy.nodes_fill import AtlasCropSourcePhoto
+    photo, w, h, report = AtlasCropSourcePhoto().crop_photo(
+        _img(np.zeros((32, 32, 3), np.uint8)), {"empty": True})
+    assert (w, h) == (64, 64) and "no-op" in report

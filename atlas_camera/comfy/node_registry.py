@@ -31,6 +31,7 @@ from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasCompositeCrop,
                                            AtlasCropROI,
+                                           AtlasCropSourcePhoto,
                                            AtlasInterpassGate,
                                            AtlasMembraneComposite,
                                            AtlasPathFrameIndex)
@@ -104,6 +105,8 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasMergeGeometry,
     AtlasDefineShotCam,
     AtlasBlockoutMassing,
+    AtlasBlenderImportMeshes,
+    AtlasBlenderMassing,
     AtlasExtractAnglePatch,
     AtlasImportAnglePatch,
     AtlasSolvePatchViews,
@@ -121,6 +124,7 @@ from atlas_camera.comfy.nodes_inpaint import (
     AtlasSegmentedSDXLInpaint,
     AtlasCleanPlateLayer,
     AtlasCleanPlateStack,
+    AtlasPlateLayer,
     AtlasSkyDomeLayer,
 )
 from atlas_camera.comfy.nodes_export import (
@@ -226,6 +230,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasDepthLayerMask":        AtlasDepthLayerMask,
     "AtlasCleanPlateLayer":       AtlasCleanPlateLayer,
     "AtlasCleanPlateStack":       AtlasCleanPlateStack,
+    "AtlasPlateLayer":            AtlasPlateLayer,
     "AtlasSkyDomeLayer":          AtlasSkyDomeLayer,
     "AtlasInpaintCrop":           AtlasInpaintCrop,
     "AtlasInpaintStitch":         AtlasInpaintStitch,
@@ -328,6 +333,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDepthLayerMask":        "Atlas Depth Layer Mask 🎭",
     "AtlasCleanPlateLayer":       "Atlas Clean Plate Layer 🖼",
     "AtlasCleanPlateStack":       "Atlas Clean Plate Stack 🧽 (up to 4 plates + alphas)",
+    "AtlasPlateLayer":            "Atlas Plate Layer 🎞 (any plate on any geometry)",
     "AtlasSkyDomeLayer":          "Atlas Sky Dome Layer ☁",
     "AtlasInpaintCrop":           "Atlas Inpaint Crop ✂",
     "AtlasInpaintStitch":         "Atlas Inpaint Stitch ✂",
@@ -380,9 +386,14 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasMembraneComposite"] = "Atlas Membrane Composite
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCropROI"] = "Atlas Crop ROI ✂️"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCompositeCrop"] = "Atlas Composite Crop 📌"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 🎬"
+# 2026-08-16: pristine photo crop for subject-centric novel-view models (the
+# Qwen ROI loop); pairs with AtlasCropROI's handle.
+NODE_CLASS_MAPPINGS["AtlasCropSourcePhoto"] = AtlasCropSourcePhoto
+NODE_DISPLAY_NAME_MAPPINGS["AtlasCropSourcePhoto"] = "Atlas Crop Source Photo 📷✂️"
 
 
 from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume
+from atlas_camera.comfy.nodes_agent import AtlasAgentHandoff
 
 ATLAS_EXPERIMENTAL_DEFAULT = "0"
 
@@ -396,6 +407,9 @@ EXPERIMENTAL_NODE_CLASS_MAPPINGS = {
     "AtlasLoadDynamicPlate": AtlasLoadDynamicPlate,
     "AtlasPathFrameIndex": AtlasPathFrameIndex,
     "AtlasLoadHiddenVolume": AtlasLoadHiddenVolume,
+    "AtlasBlenderMassing": AtlasBlenderMassing,
+    "AtlasBlenderImportMeshes": AtlasBlenderImportMeshes,
+    "AtlasAgentHandoff": AtlasAgentHandoff,
 }
 
 EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -408,6 +422,9 @@ EXPERIMENTAL_NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasLoadDynamicPlate": "Atlas Load Dynamic Plate 🌊🔬 (experimental)",
     "AtlasPathFrameIndex": "Atlas Path Frame Index 🔢🔬 (experimental)",
     "AtlasLoadHiddenVolume": "Atlas Load Hidden Volume 🧊 🔬 (experimental)",
+    "AtlasBlenderMassing": "Atlas Blender Massing 🧱🔬 (experimental, needs Blender)",
+    "AtlasBlenderImportMeshes": "Atlas Blender Import Meshes 📥🔬 (experimental)",
+    "AtlasAgentHandoff": "Atlas Agent Handoff 🤝🔬 (experimental)",
 }
 
 
@@ -545,7 +562,7 @@ _MENU_FOLDERS = {
         "AtlasShootList", "AtlasDisocclusionGuide", "AtlasSolveBurstPatchCrops",
     ),
     "Atlas/07 \u00b7 Clean Plate & Inpaint": (
-        "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasLayerPreview",
+        "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasPlateLayer", "AtlasLayerPreview",
         "AtlasSkyDomeLayer", "AtlasInpaintCrop", "AtlasInpaintStitch",
         "AtlasSDXLInpaint", "AtlasSegmentedSDXLInpaint",
     ),
@@ -574,7 +591,9 @@ _MENU_FOLDERS = {
         "AtlasLoadRecord3D", "AtlasStreamRecord3D", "AtlasLoadDynamicPlate",
         "AtlasInterpassGate", "AtlasMembraneComposite", "AtlasPathFrameIndex",
         "AtlasCropROI", "AtlasCompositeCrop", "AtlasCameraMovePreset",
-        "AtlasLoadHiddenVolume",
+        "AtlasCropSourcePhoto",
+        "AtlasLoadHiddenVolume", "AtlasBlenderMassing", "AtlasBlenderImportMeshes",
+        "AtlasAgentHandoff",
     ),
 }
 

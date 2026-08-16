@@ -78,14 +78,17 @@ def test_examples_directory_has_ui_workflows():
     return once it is benchmark-green.
     """
     names = sorted(n for n, _ in _WORKFLOWS)
-    assert names == ["atlas_burst_multiview_solve_workflow.json",
+    assert names == ["atlas_blender_measured_primitives_workflow.json",
+                     "atlas_burst_multiview_solve_workflow.json",
                      "atlas_burst_photographed_hole_patch_workflow.json",
+                     "atlas_cleanplate_depth_layer_workflow.json",
                      "atlas_export_fanout_workflow.json",
                      "atlas_input_quickstart_workflow.json",
                      "atlas_layered_projection_workflow.json",
                      "atlas_multiview_raw_qwen_workflow.json",
                      "atlas_quickstart_solve_project_export_workflow.json",
-                     "atlas_qwen_multiangle_hole_patch_workflow.json"]
+                     "atlas_qwen_multiangle_hole_patch_workflow.json",
+                     "atlas_qwen_roi_registered_patch_workflow.json"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])
@@ -243,6 +246,9 @@ def test_multiview_raw_workflow_preserves_positional_widget_order():
             "source_azimuth_view", "source_elevation_view", "flip_azimuth", "name",
             "depth_model", "relief_grid", "priority", "device", "mask_unseen_only",
             "unseen_dilate_px", "geometry_source",
+            # APPENDED 2026-08-16: measured patch camera (register_to_primary).
+            "camera_source", "registration_min_inliers", "registration_max_residual_m",
+            "registration_max_deviation_deg", "auto_flip_azimuth",
         ],
         "AtlasBlockoutViewport": [
             "resolution", "client_data", "preview_expand", "drawn_fill_px",

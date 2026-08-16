@@ -1332,3 +1332,34 @@ def test_clean_plate_layer_no_normal_map_without_predicted_normals():
     out, _h, _e = AtlasCleanPlateLayer().add_layer(
         solve, depth, _plate_image(), near_m=5.0, far_m=12.0, relief_grid=32)
     assert out.projection_sources[-1].normal_map_b64 is None
+
+
+def test_clean_plate_layer_uses_registered_plate_depth_when_wired():
+    """plate_depth: the layer's mesh comes from the CLEAN plate's depth, scale-
+    registered to the primary over pixels outside object_mask (2026-08-16)."""
+    solve = _solve()
+    prim = _occluder_depth()
+    depth = _depth_result(prim)
+    # the clean plate's depth: same terrain at 0.5x scale (a monocular offset),
+    # and the occluder region replaced by far background
+    plate_map = (prim * 0.5).astype(np.float32)
+    obj = np.zeros((H, W), bool); obj[H // 3:2 * H // 3, W // 3:2 * W // 3] = True
+    plate_map[obj] = float(np.nanmax(prim)) * 0.5
+    plate_depth = _depth_result(plate_map)
+    obj_mask = torch.from_numpy(obj.astype(np.float32))[None]
+
+    out, _hole, _ext = AtlasCleanPlateLayer().add_layer(
+        solve, depth, _plate_image(), near_pct=0.0, far_pct=1.0, name="cp", relief_grid=32,
+        plate_depth=plate_depth, object_mask=obj_mask)
+    src = out.projection_sources[0]
+    m = src.metadata
+    assert m["geometry_depth"] == "plate_depth"
+    assert m["plate_depth_scale"] == pytest.approx(2.0, rel=1e-3)     # 0.5x undone
+    assert m["plate_depth_rel_mad"] == pytest.approx(0.0, abs=1e-6)
+    assert m["plate_depth_object_masked"] is True
+    assert m["plate_depth_registered_px"] > 0
+    assert src.proxy_geometry
+    # without plate_depth the metadata says so
+    out2, _, _ = AtlasCleanPlateLayer().add_layer(
+        solve, depth, _plate_image(), near_pct=0.0, far_pct=1.0, name="cp2", relief_grid=32)
+    assert out2.projection_sources[0].metadata["geometry_depth"] == "primary_depth"

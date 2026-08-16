@@ -385,17 +385,30 @@ def sample_camera_path_fov_deg(path: AtlasCameraPath) -> list[float] | None:
 # APPEND-ONLY: the move names serialize into saved workflows via the
 # AtlasCameraMovePreset combo.
 #
-# ONE DELIBERATE DIVERGENCE, required for exactness: the PIVOT. The viewport
-# arcs orbit the median-depth mesh centre (+ the artist's 🎯 offset); this
-# builder orbits ``ground_lookat_pivot`` — the same pivot AtlasAddPatchView
-# uses to reconstruct a pose from an ``exact_view_override`` orbit delta. That
-# is what makes the emitted delta EXACT by construction: the end pose IS
-# ``orbit_camera(extrinsics, ground_lookat_pivot(extrinsics), *delta)``,
-# byte-reproducible through the patch re-entry path with no baked frame.
-# The ground pivot also lies ON the recovered central view ray, which is why
-# the dolly moves reduce to a pure ``distance_scale`` (the viewport needs its
-# own on-axis target construction only because its mesh-centre pivot can sit
-# off-axis).
+# THE PIVOT IS A PARAMETER, NOT A CONSTANT (revised 2026-08-15). It used to
+# be hardwired to ``ground_lookat_pivot`` because that is the pivot
+# AtlasAddPatchView reconstructs an ``exact_view_override`` delta about, so a
+# ground pivot was the only one the delta could reproduce. That bought
+# exactness and cost the MOVE: the ground pivot is where the view ray meets
+# Y=0, which for a near-level camera is far past the subject (measured live on
+# the ghost-town street solve: ~43 m against the viewport's ~9.8 m median-depth
+# pivot). Orbit translation is ``2·R·sin(angle/2)``, so the same 15° swung the
+# eye 11.2 m instead of 2.6 m — the arcs the artist got were nothing like the
+# arcs the ⤴/⤵ buttons give, and the disocclusion they opened was 4x what the
+# fill chain was sized for.
+#
+# The fix is to carry the pivot IN the exact-view string (``pivot=x,y,z``,
+# parsed by ``comfy.view_prompts._parse_exact_pivot``) instead of assuming it,
+# so any pivot stays exactly reproducible. ``scene_median_depth_pivot`` below
+# mirrors the viewport's own choice; ``ground_lookat_pivot`` remains the
+# default when no scene geometry exists and the legacy default for every
+# consumer that receives no pivot (viewport-extracted angles still measure
+# against the payload's ``orbit_pivot``, which IS the ground pivot).
+#
+# Both pivots lie ON the recovered central view ray, which is why the dolly
+# moves reduce to a pure ``distance_scale`` (the viewport needs its own
+# on-axis target construction only because its mesh-centre pivot can carry the
+# artist's 🎯 offset and so sit off-axis).
 # ---------------------------------------------------------------------------
 PRESET_MOVE_ANGLE_DEG = 15.0   # JS MOVE_ANGLE_DEG
 PRESET_DOLLY_FRAC = 0.2        # JS MOVE_DOLLY_FRAC
@@ -416,13 +429,17 @@ def build_preset_camera_path(
     fps: float = PRESET_FPS,
     easing: str = "ease_in_out",
     fov_deg: float | None = None,
+    pivot: _Vec3 | None = None,
 ) -> tuple[AtlasCameraPath, tuple[float, float, float]]:
     """Build a one-click move as an ``AtlasCameraPath``, plus its END delta.
 
     Returns ``(path, (d_azimuth_deg, d_elevation_deg, distance_scale))`` where
     the delta reproduces the path's FINAL pose via
-    ``orbit_camera(extrinsics, ground_lookat_pivot(extrinsics), *delta)`` —
-    the exact contract ``AtlasAddPatchView.exact_view_override`` consumes.
+    ``orbit_camera(extrinsics, pivot, *delta)`` — the exact contract
+    ``AtlasAddPatchView.exact_view_override`` consumes. ``pivot`` defaults to
+    ``ground_lookat_pivot(extrinsics)``; pass ``scene_median_depth_pivot`` (what
+    AtlasCameraMovePreset does) for the viewport's own arc radius, and emit the
+    pivot alongside the delta so the re-entry can reproduce it.
     Pan moves swivel in place (the target moves, not the eye), which no orbit
     delta can express — they return the zero delta ``(0, 0, 1)`` and the
     caller should warn that patch re-entry lands at the recovered pose.
@@ -443,7 +460,8 @@ def build_preset_camera_path(
     frame_count = max(2, int(frame_count))
     last = frame_count - 1
     eye = tuple(float(v) for v in extrinsics.camera_position)
-    pivot = ground_lookat_pivot(extrinsics)
+    pivot = (tuple(float(v) for v in pivot) if pivot is not None
+             else ground_lookat_pivot(extrinsics))
     sign = -1.0 if move.endswith("_left") else 1.0
 
     def pose_at(delta):
@@ -502,3 +520,83 @@ def build_preset_camera_path(
                            frame_count=frame_count)
     return path, (float(end_delta[0]), float(end_delta[1]),
                   float(end_delta[2]))
+
+
+# Cap on vertices sampled per primitive, mirroring the JS stride
+# (`Math.floor(pos.count / 800)`) — the median of a uniform sample of a
+# uniformly-sampled relief grid is the median of the whole grid.
+_PIVOT_SAMPLES_PER_MESH = 800
+
+
+def scene_median_depth_pivot(
+    solve,
+    *,
+    fallback_distance: float | None = None,
+) -> _Vec3:
+    """The orbit pivot the VIEWPORT uses: the central view ray at the scene's
+    median vertex depth. Server-side mirror of ``atlas_blockout.js``'s
+    ``computeGeometryPivot`` (+ its ``groundPointInView`` fallback).
+
+    Median vertex depth, not a bounding-box centre: a Box3 centre is
+    ``(min+max)/2``, dominated by the tails of a full-scene relief mesh that
+    spans near foreground to far clip plus fill/outpaint skirts, which parks
+    the pivot deep behind the subject (artist-reported 2026-07-09, same
+    reasoning recorded in the JS). Relief grids sample the IMAGE uniformly, so
+    the median vertex depth is the depth of the middle of the visible surface
+    area — "the middle of what the photo shows".
+
+    Falls back — exactly as the viewport does — to the ground point along the
+    view ray with the travel CLAMPED to ``fallback_distance`` (the JS
+    ``Math.min(-p.y / dir.y, lookAheadDist)``). That clamp is the whole reason
+    the viewport never suffered the far-ground-pivot problem: a near-level
+    camera's true ground intersection is tens of metres out and the viewport
+    simply refuses to orbit that far. ``fallback_distance`` defaults to the
+    scene's own depth scale where one is known — the backdrop's ``distance_m``
+    times 1.5, exactly the JS ``scene_depth_m * 1.5`` — else 30.
+
+    Pure Python, no numpy — this module's dependency-free style.
+    """
+    extr = solve.camera.extrinsics
+    eye = tuple(float(v) for v in extr.camera_position)
+    world = extr.camera_world_matrix
+    fwd = (-float(world[0][2]), -float(world[1][2]), -float(world[2][2]))
+    norm = math.sqrt(fwd[0] ** 2 + fwd[1] ** 2 + fwd[2] ** 2) or 1.0
+    fwd = (fwd[0] / norm, fwd[1] / norm, fwd[2] / norm)
+
+    scene = getattr(solve, "projection_scene", None)
+    prims = list(getattr(scene, "proxy_geometry", None) or [])
+    if fallback_distance is None:
+        backdrop = next((p for p in prims
+                         if p.name == "projection_backdrop"), None)
+        depth_m = (backdrop.metadata or {}).get("distance_m") if backdrop else None
+        fallback_distance = float(depth_m) * 1.5 if depth_m else 30.0
+
+    depths: list[float] = []
+    for prim in prims:
+        if prim.primitive_type != "mesh" or prim.name == "projection_backdrop":
+            continue
+        verts = (prim.metadata or {}).get("vertices") or []
+        n = len(verts) // 3
+        if not n:
+            continue
+        m = prim.transform_matrix
+        stride = max(1, n // _PIVOT_SAMPLES_PER_MESH)
+        for i in range(0, n, stride):
+            vx, vy, vz = verts[3 * i], verts[3 * i + 1], verts[3 * i + 2]
+            # Row-major 4x4, same convention as every other transform here.
+            wx = m[0][0] * vx + m[0][1] * vy + m[0][2] * vz + m[0][3]
+            wy = m[1][0] * vx + m[1][1] * vy + m[1][2] * vz + m[1][3]
+            wz = m[2][0] * vx + m[2][1] * vy + m[2][2] * vz + m[2][3]
+            d = ((wx - eye[0]) * fwd[0] + (wy - eye[1]) * fwd[1]
+                 + (wz - eye[2]) * fwd[2])
+            if d > 0.0 and math.isfinite(d):
+                depths.append(d)
+
+    if depths:
+        depths.sort()
+        t = depths[len(depths) // 2]
+    elif fwd[1] < -1e-3:
+        t = min(-eye[1] / fwd[1], float(fallback_distance))
+    else:
+        t = float(fallback_distance)
+    return (eye[0] + t * fwd[0], eye[1] + t * fwd[1], eye[2] + t * fwd[2])

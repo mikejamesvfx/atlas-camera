@@ -141,6 +141,61 @@ try:
                     return aiohttp_web.Response(status=404)
             return aiohttp_web.FileResponse(frame)
 
+    # Automatic end-of-run viewport snapshots (2026-08-16): the frontend POSTs
+    # two PNGs (📽 on / off, recovered camera, long edge 1280) after every
+    # viewport execution; they land under <output>/atlas_viewport/ and their
+    # paths ride the camera_data payload so agents can find them via MCP.
+    _ATLAS_SNAPSHOT_ROUTE_PATH = "/atlas/viewport_snapshot"
+    if not any(getattr(r, "path", None) == _ATLAS_SNAPSHOT_ROUTE_PATH
+               for r in _routes):
+
+        @_routes.post(_ATLAS_SNAPSHOT_ROUTE_PATH)
+        async def _atlas_post_viewport_snapshot(request: aiohttp_web.Request) -> aiohttp_web.Response:
+            from atlas_camera.comfy.viewport_snapshot import (
+                attach_snapshot_to_cache, save_viewport_snapshot,
+            )
+            try:
+                import folder_paths  # type: ignore[import]
+                out_dir = folder_paths.get_output_directory()
+            except Exception:  # noqa: BLE001
+                out_dir = "output"
+            try:
+                payload = await request.json()
+                record = save_viewport_snapshot(payload, output_dir=out_dir)
+            except ValueError as exc:
+                return aiohttp_web.json_response({"error": str(exc)}, status=400)
+            except Exception as exc:  # noqa: BLE001
+                return aiohttp_web.json_response({"error": str(exc)}, status=500)
+            attach_snapshot_to_cache(_ATLAS_BLOCKOUT_CACHE, record)
+            return aiohttp_web.json_response(record)
+
+    # Agent handoff (2026-08-16): AtlasAgentHandoff pauses a graph and waits
+    # for resume.json; these routes let any agent read the brief and resume
+    # over HTTP (the MCP tools write the same files).
+    _ATLAS_AGENT_BRIEF_ROUTE = "/atlas/agent/brief/{node_id}"
+    _ATLAS_AGENT_RESUME_ROUTE = "/atlas/agent/resume/{node_id}"
+    if not any(getattr(r, "path", None) == _ATLAS_AGENT_BRIEF_ROUTE for r in _routes):
+
+        @_routes.get(_ATLAS_AGENT_BRIEF_ROUTE)
+        async def _atlas_get_agent_brief(request: aiohttp_web.Request) -> aiohttp_web.Response:
+            from atlas_camera.comfy.agent_handoff import read_brief
+            brief = read_brief(request.match_info["node_id"])
+            if brief is None:
+                return aiohttp_web.json_response({"error": "no brief for this node"}, status=404)
+            return aiohttp_web.json_response(brief)
+
+        @_routes.post(_ATLAS_AGENT_RESUME_ROUTE)
+        async def _atlas_post_agent_resume(request: aiohttp_web.Request) -> aiohttp_web.Response:
+            from atlas_camera.comfy.agent_handoff import write_resume
+            try:
+                payload = await request.json()
+                rec = write_resume(request.match_info["node_id"], payload)
+            except ValueError as exc:
+                return aiohttp_web.json_response({"error": str(exc)}, status=400)
+            except Exception as exc:  # noqa: BLE001
+                return aiohttp_web.json_response({"error": str(exc)}, status=500)
+            return aiohttp_web.json_response(rec)
+
 except Exception:
     # Running outside ComfyUI (tests, standalone import) — routes not needed.
     pass

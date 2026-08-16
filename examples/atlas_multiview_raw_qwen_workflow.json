@@ -151,7 +151,7 @@
         "Linear Rec.709 (sRGB)",
         6.0
       ],
-      "title": "PHOTO 1 \u00b7 deterministic anchor \u00b7 measured lens height"
+      "title": "PHOTO 1 · deterministic anchor · measured lens height"
     },
     {
       "id": "2bc4dd9e-1a6e-4e33-905b-5ec42b7dc002",
@@ -299,7 +299,7 @@
         "Linear Rec.709 (sRGB)",
         6.0
       ],
-      "title": "PHOTO 2 \u00b7 lateral move \u00b7 about 70% overlap"
+      "title": "PHOTO 2 · lateral move · about 70% overlap"
     },
     {
       "id": "3cd5eeaf-2b7f-4f44-a16c-6fd53c8ed003",
@@ -447,7 +447,7 @@
         "Linear Rec.709 (sRGB)",
         6.0
       ],
-      "title": "PHOTO 3 \u00b7 optional \u00b7 disconnect all 3 wires for a 2-photo solve"
+      "title": "PHOTO 3 · optional · disconnect all 3 wires for a 2-photo solve"
     },
     {
       "id": "4de6ffb0-3c80-4055-b27d-70e64d9fe004",
@@ -621,7 +621,7 @@
         false,
         "auto"
       ],
-      "title": "DETERMINISTIC REGISTRATION \u00b7 balanced default \u00b7 permissive only after overlap review"
+      "title": "DETERMINISTIC REGISTRATION · balanced default · permissive only after overlap review"
     },
     {
       "id": "5ef700c1-4d91-4166-838e-81f75eaff005",
@@ -669,7 +669,7 @@
         "example.png",
         "image"
       ],
-      "title": "OPTIONAL QWEN-GENERATED PATCH \u00b7 downstream evidence only"
+      "title": "OPTIONAL QWEN-GENERATED PATCH · downstream evidence only"
     },
     {
       "id": "6f0811d2-5ea2-4277-949f-92086fb0a006",
@@ -837,6 +837,46 @@
           "widget": {
             "name": "geometry_source"
           }
+        },
+        {
+          "name": "camera_source",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "camera_source"
+          }
+        },
+        {
+          "name": "registration_min_inliers",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "registration_min_inliers"
+          }
+        },
+        {
+          "name": "registration_max_residual_m",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "registration_max_residual_m"
+          }
+        },
+        {
+          "name": "registration_max_deviation_deg",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "registration_max_deviation_deg"
+          }
+        },
+        {
+          "name": "auto_flip_azimuth",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "auto_flip_azimuth"
+          }
         }
       ],
       "outputs": [
@@ -866,9 +906,14 @@
         "auto",
         true,
         16,
-        "reuse_scene"
+        "reuse_scene",
+        "declared_orbit",
+        40,
+        0.35,
+        25.0,
+        true
       ],
-      "title": "OPTIONAL PATCH \u00b7 BYPASSED \u00b7 enable only after supplying Qwen image"
+      "title": "OPTIONAL PATCH · BYPASSED · enable only after supplying Qwen image"
     },
     {
       "id": "7a1922e3-6fb3-4388-a5a0-a31970c1b007",
@@ -1056,7 +1101,7 @@
         1.0,
         96
       ],
-      "title": "REGISTERED MULTI-VIEW \u00b7 photo 1 projection and camera rig"
+      "title": "REGISTERED MULTI-VIEW · photo 1 projection and camera rig"
     },
     {
       "id": "8b2a33f4-70c4-4499-b6b1-b42a81d2c008",
@@ -1169,7 +1214,7 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": [],
-      "title": "PAIR MATCH OVERLAYS \u00b7 photographed evidence"
+      "title": "PAIR MATCH OVERLAYS · photographed evidence"
     }
   ],
   "links": [
@@ -1297,7 +1342,7 @@
   "groups": [
     {
       "id": 1,
-      "title": "1 \u00b7 PHOTOGRAPHED CAPTURE \u00b7 static scene \u00b7 same camera/lens/settings \u00b7 fixed focus/zoom/orientation",
+      "title": "1 · PHOTOGRAPHED CAPTURE · static scene · same camera/lens/settings · fixed focus/zoom/orientation",
       "bounding": [
         10,
         0,
@@ -1309,7 +1354,7 @@
     },
     {
       "id": 2,
-      "title": "2 \u00b7 DETERMINISTIC SOLVE \u00b7 measured inputs only \u00b7 photo 1 is anchor",
+      "title": "2 · DETERMINISTIC SOLVE · measured inputs only · photo 1 is anchor",
       "bounding": [
         560,
         1230,
@@ -1321,7 +1366,7 @@
     },
     {
       "id": 3,
-      "title": "3 \u00b7 OPTIONAL GENERATED EVIDENCE \u00b7 NEVER wire into registration",
+      "title": "3 · OPTIONAL GENERATED EVIDENCE · NEVER wire into registration",
       "bounding": [
         560,
         0,
@@ -1333,7 +1378,7 @@
     },
     {
       "id": 4,
-      "title": "4 \u00b7 REGISTERED VIEWPORT + SCENE / DEBUG REPORT",
+      "title": "4 · REGISTERED VIEWPORT + SCENE / DEBUG REPORT",
       "bounding": [
         1660,
         0,
@@ -1345,7 +1390,7 @@
     },
     {
       "id": 5,
-      "title": "5 \u00b7 PAIR MATCH OVERLAYS \u00b7 PHOTOGRAPHED EVIDENCE",
+      "title": "5 · PAIR MATCH OVERLAYS · PHOTOGRAPHED EVIDENCE",
       "bounding": [
         1100,
         1230,

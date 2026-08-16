@@ -102,3 +102,180 @@ def read_result(exchange_dir: str | Path) -> dict[str, Any]:
 
     return {"vertices": blender_to_atlas(verts), "faces": faces,
             "snapped": snapped}
+
+
+# ---------------------------------------------------------------------------
+# Scene seed (Atlas -> Blender) and multi-mesh result (Blender -> Atlas)
+# ---------------------------------------------------------------------------
+# The measured-primitives bridge (2026-08-16). A SEED is everything Blender
+# needs to model against the metric solve: the recovered camera, every existing
+# proxy primitive tessellated (reference only), the viewport-drawn shapes, and
+# the measured quantities. Meshes come BACK as `out_meshes.npz`, several per
+# run, no UVs — Atlas regenerates projective UVs for the recovered camera on
+# import, so glTF-vs-OBJ UV-origin hazards never enter the pipe (same reasoning
+# as `write_exchange` above).
+
+SEED_NPZ = "seed.npz"
+SEED_JSON = "seed.json"
+OUT_MESHES_NPZ = "out_meshes.npz"
+OUT_MESHES_JSON = "out_meshes.json"
+
+
+def _check_mesh(verts: Any, faces: Any, *, label: str) -> None:
+    """Shape/finite/index checks shared by every reader. Raises RuntimeError."""
+    np = _require_numpy()
+    if verts.ndim != 2 or verts.shape[1] != 3:
+        raise RuntimeError(f"{label}: vertices must be (N,3); got {verts.shape}")
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise RuntimeError(f"{label}: faces must be (M,3) triangles; got {faces.shape}")
+    if not len(faces):
+        raise RuntimeError(f"{label}: 0 faces")
+    if not np.isfinite(verts).all():
+        raise RuntimeError(
+            f"{label}: {int((~np.isfinite(verts)).any(axis=1).sum())} "
+            "non-finite vertices; refusing to write them into the solve.")
+    if faces.max() >= len(verts) or faces.min() < 0:
+        raise RuntimeError(
+            f"{label}: face indices out of range [{faces.min()}, {faces.max()}] "
+            f"for {len(verts)} vertices")
+
+
+def write_scene_seed(exchange_dir: str | Path, *, camera: dict[str, Any],
+                     primitives: list[dict[str, Any]],
+                     drawn_shapes: list[dict[str, Any]] | None = None,
+                     params: dict[str, Any] | None = None,
+                     cloud: Any = None) -> Path:
+    """Write `seed.npz` + `seed.json`. Everything arrives in ATLAS space.
+
+    ``camera``: ``{"view_matrix": 4x4 world->cam (row-major), "fx", "fy",
+    "cx", "cy", "image_width", "image_height"}``. Converted here to a Blender
+    world matrix (Z-up) so the recipe places a camera object with no axis
+    knowledge of its own.
+
+    ``primitives``: ``[{"name", "source", "vertices": (N,3), "faces": (M,3),
+    ...scalar tags}]`` — tessellated in world space by the caller (use
+    ``core.primitive_mesh.tessellate_primitive``). Arrays land in the NPZ as
+    ``prim_{i}_vertices`` / ``prim_{i}_faces``; the tags land in JSON.
+
+    ``drawn_shapes``: the viewport records ``{id, label, kind, points_world}``,
+    converted to Blender axes in JSON (they are small).
+
+    ``cloud``: optional (N,3) Atlas-world metric points (the sky-free MoGe
+    measurement) → ``cloud_points`` in the NPZ, Blender axes; the recipe
+    builds a vertex-only object from it for snapping/reference.
+    """
+    np = _require_numpy()
+    out = Path(exchange_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    vm = np.asarray(camera["view_matrix"], dtype=np.float64).reshape(4, 4)
+    c2w = np.linalg.inv(vm)
+    T = np.asarray(((1, 0, 0), (0, 0, -1), (0, 1, 0)), dtype=np.float64)
+    # Atlas camera looks down its own -Z with +Y up. Blender's camera object
+    # ALSO looks down its local -Z with +Y up, so the camera-local frame needs
+    # no change: only the WORLD frame rotates by T. matrix_world = T . c2w.
+    T4 = np.eye(4)
+    T4[:3, :3] = T
+    matrix_world = T4 @ c2w
+
+    arrays: dict[str, Any] = {}
+    prim_json: list[dict[str, Any]] = []
+    for i, prim in enumerate(primitives or []):
+        v = np.asarray(prim["vertices"], dtype=np.float64).reshape(-1, 3)
+        f = np.asarray(prim["faces"], dtype=np.int64).reshape(-1, 3)
+        arrays[f"prim_{i}_vertices"] = atlas_to_blender(v)
+        arrays[f"prim_{i}_faces"] = f.astype(np.int32)
+        tags = {k: val for k, val in prim.items()
+                if k not in ("vertices", "faces")
+                and (val is None or isinstance(val, (str, int, float, bool)))}
+        tags["index"] = i
+        tags["n_vertices"] = int(len(v))
+        tags["n_faces"] = int(len(f))
+        prim_json.append(tags)
+    n_cloud = 0
+    if cloud is not None:
+        c = np.asarray(cloud, dtype=np.float64).reshape(-1, 3)
+        c = c[np.isfinite(c).all(axis=1)]
+        n_cloud = int(len(c))
+        arrays["cloud_points"] = atlas_to_blender(c).astype(np.float32)
+    if not arrays:
+        # np.savez with no arrays still writes a valid (empty) archive.
+        arrays["_empty"] = np.zeros((0,), dtype=np.float64)
+    np.savez(out / SEED_NPZ, **arrays)
+
+    shapes_json: list[dict[str, Any]] = []
+    for rec in (drawn_shapes or []):
+        pts = np.asarray(rec.get("points_world") or [], dtype=np.float64).reshape(-1, 3)
+        shapes_json.append({
+            "id": rec.get("id"), "label": rec.get("label"),
+            "kind": rec.get("kind"), "enabled": bool(rec.get("enabled", True)),
+            "points_blender": atlas_to_blender(pts).tolist() if len(pts) else [],
+        })
+
+    seed = {
+        "camera": {
+            "matrix_world_blender": matrix_world.tolist(),
+            "fx": float(camera["fx"]), "fy": float(camera["fy"]),
+            "cx": float(camera["cx"]), "cy": float(camera["cy"]),
+            "image_width": int(camera["image_width"]),
+            "image_height": int(camera["image_height"]),
+        },
+        "primitives": prim_json,
+        "drawn_shapes": shapes_json,
+        "n_cloud_points": n_cloud,
+        "params": dict(params or {}),
+        "axes": "Blender Z-up; T rows (1,0,0),(0,0,-1),(0,1,0) applied to Atlas Y-up",
+    }
+    (out / SEED_JSON).write_text(json.dumps(seed, indent=1), encoding="utf-8")
+    return out
+
+
+def read_meshes(exchange_dir: str | Path) -> dict[str, Any]:
+    """Read `out_meshes.npz` (+ `out_meshes.json`) back into ATLAS space.
+
+    Returns ``{"meshes": [{"name", "vertices", "faces", **tags}], "info": {...}}``.
+    Malformed archives raise; a mesh that individually fails the checks is
+    returned under ``"rejected"`` with its reason so the node can report rather
+    than silently drop it.
+    """
+    np = _require_numpy()
+    base = Path(exchange_dir)
+    src = base / OUT_MESHES_NPZ
+    if not src.is_file():
+        raise RuntimeError(
+            f"no {src.name} in {base} — the recipe (or the in-Blender export "
+            "script) wrote nothing. Check report.json / error.json.")
+    info: dict[str, Any] = {}
+    meta_path = base / OUT_MESHES_JSON
+    if meta_path.is_file():
+        try:
+            info = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            info = {}
+    tags_by_index = {int(m.get("index", i)): m
+                     for i, m in enumerate(info.get("meshes") or [])}
+
+    meshes: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    with np.load(src) as data:
+        keys = set(data.keys())
+        indices = sorted({int(k.split("_")[1]) for k in keys
+                          if k.startswith("mesh_") and k.endswith("_vertices")})
+        for i in indices:
+            vk, fk = f"mesh_{i}_vertices", f"mesh_{i}_faces"
+            tags = dict(tags_by_index.get(i, {}))
+            name = str(tags.pop("name", None) or f"blender_mesh_{i:02d}")
+            if fk not in keys:
+                rejected.append({"name": name, "reason": f"missing {fk}"})
+                continue
+            verts = np.asarray(data[vk], dtype=np.float64).reshape(-1, 3)
+            faces = np.asarray(data[fk], dtype=np.int64).reshape(-1, 3)
+            try:
+                _check_mesh(verts, faces, label=name)
+            except RuntimeError as exc:
+                rejected.append({"name": name, "reason": str(exc)})
+                continue
+            tags.pop("index", None)
+            meshes.append({"name": name, "vertices": blender_to_atlas(verts),
+                           "faces": faces, **tags})
+    return {"meshes": meshes, "rejected": rejected, "info": info}

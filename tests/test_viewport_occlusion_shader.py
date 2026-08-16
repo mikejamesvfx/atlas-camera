@@ -21,7 +21,7 @@ def test_occlusion_is_edge_gated_and_derivative_filtered_not_a_hard_cut():
     assert "float relativeDepthJump" in SOURCE
     assert "depthEdge = smoothstep(0.015, 0.08, relativeDepthJump)" in SOURCE
     assert "float depthProbeRadius = clamp" in SOURCE
-    assert "float relativeDepthMismatch = abs(-vCamZ - storedZ)" in SOURCE
+    assert "float relativeDepthMismatch = abs(fragDepth - storedZ)" in SOURCE
     assert "fwidth(relativeDepthMismatch)" in SOURCE
     assert "coverage *= 1.0 - depthEdge * depthMismatch" in SOURCE
     assert "if (-vCamZ > storedZ + uOccludeBias) discard" not in SOURCE

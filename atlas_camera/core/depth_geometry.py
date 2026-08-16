@@ -108,6 +108,37 @@ def back_project_normals(
     )
 
 
+def opencv_points_to_atlas_cam(points: Any) -> Any:
+    """Map a model-native pointmap (OpenCV camera axes) into Atlas's camera frame.
+
+    Depth backends that predict a pointmap (MoGe ``out["points"]``) use OpenCV
+    axes: +X right, +Y DOWN, +Z FORWARD. Atlas's camera frame — the one
+    ``back_project_normals`` builds — is +X right, +Y UP, −Z forward
+    (``x=(u-cx)/fx*d, y=-(v-cy)/fy*d, z=-d``). The map is ``diag(1,-1,-1)``:
+    det +1, a rotation, so handedness is preserved. Same mapping the VolFill
+    adapter proved (``research/volfill/tudf_to_atlas.py``). Works on any
+    ``(...,3)`` array; NaNs pass through.
+    """
+    np = _require_numpy()
+    p = np.asarray(points, dtype=np.float64)
+    out = p.copy()
+    out[..., 1] = -p[..., 1]
+    out[..., 2] = -p[..., 2]
+    return out
+
+
+def opencv_points_to_world(points: Any, *, view_matrix: Any) -> Any:
+    """OpenCV-frame pointmap -> Atlas WORLD via the 4x4 view matrix.
+
+    ``view_matrix`` is world->camera (row-major 4x4, the end-to-end convention);
+    cam->world is its inverse — never rebuilt from a 3x3 (transpose ambiguity).
+    """
+    np = _require_numpy()
+    cam = opencv_points_to_atlas_cam(points)
+    c2w = np.linalg.inv(np.asarray(view_matrix, dtype=np.float64))
+    return cam @ c2w[:3, :3].T + c2w[:3, 3]
+
+
 def primary_camera_validity_mask(
     pts_world: Any,
     valid_depth: Any,

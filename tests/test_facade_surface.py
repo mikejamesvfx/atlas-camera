@@ -34,7 +34,9 @@ FACADE_PUBLIC = {
     "AtlasSolveBurstPatchCrops",
     # Added when the derived pin below caught them: eight registered nodes had
     # never been re-exported, and only a `>= 60` floor guarded that.
-    "AtlasBlockoutMassing", "AtlasDisocclusionGuide",
+    "AtlasBlockoutMassing", "AtlasBlenderMassing", "AtlasBlenderImportMeshes",
+    "AtlasAgentHandoff",
+    "AtlasDisocclusionGuide",
     "AtlasExportPlateEXR", "AtlasOutpaintDepth", "AtlasShootList",
     "AtlasSolvePatchViews", "AtlasStreamRecord3D",
     "ATLAS_EXPERIMENTAL_DEFAULT", "ATLAS_LEGACY_DEFAULT", "ATLAS_IOS_DEFAULT",
@@ -43,7 +45,7 @@ FACADE_PUBLIC = {
     "LEGACY_REPLACEMENTS", "AtlasAddPatchView", "AtlasApplyScaleReferences",
     "AtlasAssessImage", "AtlasAssessOutput", "AtlasAttachSourcePlate", "AtlasBlockoutViewport",
     "AtlasCompleteDepth", "AtlasLayerPlan", "AtlasMoveBudget", "AtlasOcclusionGraph",
-    "AtlasBoundedBand", "AtlasCleanPlateLayer", "AtlasCleanPlateStack",
+    "AtlasBoundedBand", "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasPlateLayer",
     "AtlasApplyLUT", "AtlasDefocus", "AtlasGrade",
     "AtlasConstrainedSolve", "AtlasDeband", "AtlasDebugReport", "AtlasDecomposeCamera",
     "AtlasDecomposeSolve", "AtlasDefineShotCam", "AtlasDepthAnything",
@@ -63,6 +65,7 @@ FACADE_PUBLIC = {
     "AtlasPathFrameIndex",
     "AtlasCropROI",
     "AtlasCompositeCrop",
+    "AtlasCropSourcePhoto",
     "AtlasCameraMovePreset",
     "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",

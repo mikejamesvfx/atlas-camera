@@ -999,7 +999,12 @@
         "auto",
         true,
         16,
-        "reuse_scene"
+        "reuse_scene",
+        "declared_orbit",
+        40,
+        0.35,
+        25.0,
+        true
       ],
       "title": "16 · CONSTRUCTED PATCH CAMERA & GEOMETRY REUSE 🩹"
     },

@@ -192,6 +192,7 @@ _FLAG_SEVERITY = {
     "camera_below_ground": "fail",
     "zero_vertex_layer": "fail",
     "near_empty_matte": "warn",
+    "patch_registration_refused": "warn",
     "band_gap": "warn",
     "band_overlap": "warn",
     "scope_fallback": "warn",
@@ -367,6 +368,24 @@ def evaluate_scene_health(
             "has_extend_mask": bool(getattr(src, "extend_mask_b64", None)),
             "scale_source": meta.get("scale_source"),
         }
+        # Measured patch camera (AtlasAddPatchView camera_source=register_to_
+        # primary, 2026-08-16): the registration numbers are the whole story
+        # of whether a generated view landed — surface them, and flag a
+        # refusal so it cannot pass as a quietly-declared orbit.
+        if meta.get("camera_source"):
+            for k in ("camera_source", "registration_accepted", "registration_reason",
+                      "registration_n_matches", "registration_n_inliers", "registration_rms_m",
+                      "registration_reproj_rms_px", "registration_deviation_deg",
+                      "registration_scale", "flip_azimuth_resolved", "patch_focal_px_predicted",
+                      "patch_focal_px_declared", "registration_fallback_reason"):
+                if k in meta:
+                    entry[k] = meta[k]
+            if meta.get("camera_source") == "register_to_primary" and not meta.get("registration_accepted"):
+                flags.append(_flag(
+                    "patch_registration_refused",
+                    f"layer '{src.name}': register_to_primary was requested but the measured "
+                    f"camera was refused ({meta.get('registration_fallback_reason') or meta.get('registration_reason') or 'unknown'}) — "
+                    "the DECLARED orbit was used; check inliers/residual before trusting the patch"))
         sources.append(entry)
         if n_verts == 0:
             flags.append(_flag(
@@ -454,7 +473,17 @@ def evaluate_scene_health(
         # backend only records its predicted focal as provenance; the
         # agree/disagree verdict is made HERE and nowhere else.
         try:
-            pred = (depth.metadata or {}).get("predicted_focal_px")
+            meta = depth.metadata or {}
+            # MoGe records intrinsics on every run, but when the solve's focal
+            # was FED to it (focal_source == "solve") that matrix is an echo of
+            # the solve, not an estimate — comparing it would always "agree".
+            # Only a fov-free pass (`predicted_focal_px_free`) is independent
+            # in that case. DepthPro/free-fov MoGe populate the plain key.
+            pred = meta.get("predicted_focal_px_free")
+            if not pred and meta.get("focal_source") != "solve":
+                pred = meta.get("predicted_focal_px")
+            if meta.get("focal_source"):
+                depth_info["focal_source"] = meta.get("focal_source")
             if pred and intr.fx_px and depth.image_width:
                 # Rescale the prediction from the depth image's pixel scale to
                 # the solve's, then compare like-for-like.

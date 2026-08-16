@@ -30,7 +30,7 @@ NORMAL_KEYS = {
     "AtlasMoveBudget",
     "AtlasOcclusionGraph",
     "AtlasAttachSourcePlate", "AtlasBlockoutViewport", "AtlasBoundedBand",
-    "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasConstrainedSolve",
+    "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasPlateLayer", "AtlasConstrainedSolve",
     "AtlasDeband", "AtlasDisocclusionGuide", "AtlasSolvePatchViews",
     "AtlasApplyLUT", "AtlasDefocus", "AtlasGrade",
     "AtlasDebugReport", "AtlasDecomposeCamera", "AtlasDecomposeSolve",
@@ -61,6 +61,8 @@ NORMAL_KEYS = {
     # Promoted from the experimental tier 2026-08-14 (two-pass fill engine):
     "AtlasInterpassGate", "AtlasMembraneComposite", "AtlasCropROI",
     "AtlasCompositeCrop", "AtlasCameraMovePreset",
+    # 2026-08-16: photo crop for the Qwen ROI loop.
+    "AtlasCropSourcePhoto",
 }
 
 EXPERIMENTAL_KEYS = {
@@ -76,6 +78,11 @@ EXPERIMENTAL_KEYS = {
     # it. Experimental-tier because the volume->layered-rays adapter that would
     # feed core/hidden_geometry.py is not measured yet.
     "AtlasLoadHiddenVolume",
+    # Measured-primitives Blender bridge (2026-08-16): headless massing +
+    # mesh import. Experimental: needs an external Blender install.
+    "AtlasBlenderMassing", "AtlasBlenderImportMeshes",
+    # 2026-08-16: pause/brief/resume contract for an external agent.
+    "AtlasAgentHandoff",
 }
 
 # iOS / Record3D capture tier — gated behind ATLAS_IOS, held out of the v1
@@ -99,12 +106,12 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 98
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 100
 
 
 def test_experimental_registry_keys_exact():
     assert set(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == EXPERIMENTAL_KEYS
-    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 9
+    assert len(nodes.EXPERIMENTAL_NODE_CLASS_MAPPINGS) == 12
 
 
 def test_display_name_mapping_covers_registry():

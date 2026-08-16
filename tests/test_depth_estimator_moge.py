@@ -88,7 +88,7 @@ def test_moge_cache_key_fragments_on_the_cost_knobs(monkeypatch, tmp_path):
 
     def fake_moge(image_path, *, model_id, device, focal_px,
                   resolution_level=9, max_side=0, checkpoint_path="",
-                  tile_side=0, tile_overlap=0.25):
+                  tile_side=0, tile_overlap=0.25, report_free_focal=False):
         # Deliberately STRICT (no **kwargs): a stub that swallows unknown
         # arguments hides a caller passing the wrong name, which is exactly how
         # the focal_length_mm/focal_length_mm_hint mix-up got through earlier.
