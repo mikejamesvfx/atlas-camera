@@ -66,7 +66,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasAssessImage` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 6 | not_attempted | not_attempted | 1 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAssessOutput` | atlas_camera/comfy/nodes_qa.py | standard | 1 | 2 | not_attempted | not_attempted | 2 | 3 | — | — | — | **KEEP_CORE** | — |
 | `AtlasAttachSourcePlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
-| `AtlasBlenderImportMeshes` | atlas_camera/comfy/nodes_geometry.py | experimental | 1 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
+| `AtlasBlenderImportMeshes` | atlas_camera/comfy/nodes_geometry.py | experimental | 1 | 3 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasBlenderMassing` | atlas_camera/comfy/nodes_geometry.py | experimental | 1 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasBlockoutMassing` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 6 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasBlockoutViewport` | atlas_camera/comfy/nodes_viewport.py | standard | 11 | 18 | not_attempted | not_attempted | 1 | 7 | — | — | — | **KEEP_CORE** | — |

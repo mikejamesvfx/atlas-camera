@@ -75,3 +75,37 @@ def test_two_layers_two_plates():
     out, _ = AtlasPlateLayer().add_layer(out, p2, geometry_filter="drawn_plane_", name="wall_plate", priority=7)
     assert [x.name for x in out.projection_sources] == ["water_plate", "wall_plate"]
     assert out.projection_sources[1].priority == 7.0
+
+
+def test_moving_a_drawn_plane_changes_the_blender_seed_fingerprint():
+    """CROSS-MODULE: solve_seed_fingerprint hashes the primary primitive
+    roster, so AtlasPlateLayer(move_from_primary=True) on a DRAWN plane
+    invalidates a Blender seed built earlier in the graph. Blender-sourced
+    meshes are already exempt, which is why the water/hillside case is safe.
+
+    Pinned because the refusal surfaces at AtlasBlenderImportMeshes and reads
+    as if the massing node were at fault; both refusal messages now name this.
+    """
+    from atlas_camera.blender.measured import solve_seed_fingerprint
+
+    before = solve_seed_fingerprint(_with_geo())
+    plate = torch.rand(1, 60, 80, 3)
+
+    only_blender, _ = AtlasPlateLayer().add_layer(
+        _with_geo(), plate, geometry_filter="agent_water", name="w")
+    assert solve_seed_fingerprint(only_blender) == before,         "a Blender-sourced mesh is exempt — the round-trip must stay valid"
+
+    with_drawn, _ = AtlasPlateLayer().add_layer(
+        _with_geo(), plate, geometry_filter="drawn_plane_01", name="d")
+    assert solve_seed_fingerprint(with_drawn) != before,         "a drawn plane is part of the seeded roster — moving it IS a change"
+
+
+def test_both_refusals_name_the_plate_layer_cause():
+    """The message is the fix: without it the artist re-runs massing forever."""
+    import inspect
+    from atlas_camera.comfy import nodes_agent, nodes_geometry
+
+    for mod in (nodes_geometry, nodes_agent):
+        src = inspect.getsource(mod)
+        assert "move_from_primary" in src, (
+            f"{mod.__name__} lost the stale-seed hint naming AtlasPlateLayer")

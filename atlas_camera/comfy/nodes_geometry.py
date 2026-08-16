@@ -1825,9 +1825,20 @@ class AtlasBlenderImportMeshes:
             msg = (f"seed fingerprint {seed_fp} != current solve {cur_fp}: the "
                    "meshes were built against a DIFFERENT solve/camera")
             if expect_fingerprint:
+                # Name the non-obvious cause. The fingerprint covers the primary
+                # PRIMITIVE ROSTER, so any node that removes a primitive between
+                # the massing and the import changes it — AtlasPlateLayer with
+                # move_from_primary on is the one that does this by default.
+                # Blender-sourced meshes are already excluded, so only a
+                # viewport-drawn plane (or a derive re-run) actually trips it,
+                # and the refusal otherwise reads as if massing were at fault.
                 return (solve_out, f"REFUSED — {msg}. Re-run AtlasBlenderMassing "
                                    "for this solve, or turn expect_fingerprint off "
-                                   "if the geometry really is in this world.")
+                                   "if the geometry really is in this world. If "
+                                   "nothing about the camera changed, look for a "
+                                   "node between the two that MOVED geometry out "
+                                   "of the primary scene — AtlasPlateLayer's "
+                                   "move_from_primary does that to drawn planes.")
             lines.append(f"warning: {msg} (imported anyway)")
         elif seed_fp is None:
             lines.append("no seed.json — fingerprint check skipped (freehand .blend)")

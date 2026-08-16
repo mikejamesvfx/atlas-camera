@@ -260,7 +260,12 @@ class AtlasAgentHandoff:
                 seed_fp = params.get("solve_fingerprint")
                 cur_fp = brief["solve_fingerprint"]
                 if expect_fingerprint and seed_fp and seed_fp != cur_fp:
-                    lines.append(f"REFUSED import: seed fingerprint {seed_fp} != current {cur_fp}")
+                    lines.append(
+                        f"REFUSED import: seed fingerprint {seed_fp} != current {cur_fp}. "
+                        "If the camera did not change, a node between the brief and "
+                        "here moved geometry out of the primary scene — "
+                        "AtlasPlateLayer's move_from_primary does that to drawn "
+                        "planes (Blender-sourced meshes are already exempt).")
                     return (solve_out, reply, brief_path, "\n".join(lines))
                 from atlas_camera.comfy.nodes_geometry import (
                     _append_blender_meshes, _measured_floor,
