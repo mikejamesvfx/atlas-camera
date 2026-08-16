@@ -68,6 +68,13 @@ MIN_VALID_DEPTH = 1e-3
 
 MODELS = ("affine_disparity", "affine", "scale")
 
+#: Serialized-form version. The store keyed by (model_id, scene_type) that this
+#: feeds is step (2) in docs/ROADMAP.md and does not exist yet — which is the
+#: cheapest possible moment to have a version, since there are no unversioned
+#: files on disk to guess about later. Bump when a field changes meaning;
+#: adding an optional field with a safe default does not need it.
+SCHEMA_VERSION = 1
+
 
 def _require_numpy() -> Any:
     try:
@@ -126,7 +133,8 @@ class DepthCorrection:
         return (hi / lo) if lo > 0 else 0.0
 
     def to_dict(self) -> dict:
-        return {"model": self.model, "a": self.a, "b": self.b,
+        return {"schema_version": SCHEMA_VERSION,
+                "model": self.model, "a": self.a, "b": self.b,
                 "n_samples": self.n_samples, "mae_before": self.mae_before,
                 "mae_after": self.mae_after,
                 "predicted_range": list(self.predicted_range),
@@ -135,11 +143,31 @@ class DepthCorrection:
 
     @classmethod
     def from_dict(cls, d: dict) -> "DepthCorrection":
+        """Rebuild a stored correction, refusing anything it cannot honour.
+
+        The store this feeds does not exist yet, which is exactly why the
+        version goes in now: adding one to a format that is already on disk
+        means guessing what the unversioned files were.
+        """
+        version = int(d.get("schema_version", 1))
+        if version > SCHEMA_VERSION:
+            raise ValueError(
+                f"correction schema_version {version} is newer than this build "
+                f"understands ({SCHEMA_VERSION}) — upgrade atlas_camera rather "
+                "than reading it with the wrong field meanings")
+
+        model = str(d["model"])
+        if model not in MODELS:
+            raise ValueError(
+                f"unknown correction model {model!r}, expected one of {MODELS}. "
+                "Refusing at load rather than at apply, where the failure would "
+                "surface with no idea which stored coefficient produced it")
+
         def _range(key):
             v = d.get(key)
             return (float(v[0]), float(v[1])) if v else (0.0, 0.0)
 
-        return cls(model=str(d["model"]), a=float(d["a"]), b=float(d["b"]),
+        return cls(model=model, a=float(d["a"]), b=float(d["b"]),
                    n_samples=int(d.get("n_samples", 0)),
                    mae_before=float(d.get("mae_before", 0.0)),
                    mae_after=float(d.get("mae_after", 0.0)),
@@ -200,7 +228,20 @@ def _valid_pair(predicted, measured, mask, np):
     ok = (np.isfinite(p) & np.isfinite(m)
           & (p > MIN_VALID_DEPTH) & (m > MIN_VALID_DEPTH))
     if mask is not None:
-        ok &= np.asarray(mask).ravel().astype(bool)
+        # Shape, not size. `predicted` and `measured` get a shape check and the
+        # mask did not, so a (32,128) mask against a (64,64) depth map was
+        # ACCEPTED — both ravel to 4096, and the mask then selected entirely
+        # the wrong pixels with no error and no report. A wrong-SIZE mask was
+        # no better: it surfaced as raw numpy broadcast text rather than as the
+        # actionable message the other two arguments get.
+        mask_arr = np.asarray(mask)
+        predicted_shape = np.asarray(predicted).shape
+        if mask_arr.shape != predicted_shape:
+            raise ValueError(
+                f"mask {mask_arr.shape} must have the same shape as predicted "
+                f"{predicted_shape} — a mask that merely has the same number of "
+                "elements selects the wrong pixels silently")
+        ok &= mask_arr.ravel().astype(bool)
     return p[ok], m[ok]
 
 
@@ -336,29 +377,106 @@ def fit_depth_correction(predicted, measured, *, mask=None,
     return corr
 
 
+#: A model must beat a simpler one by this RELATIVE margin on held-out data to
+#: be worth its extra parameter. Measured 2026-08-17: on a pure-scale ground
+#: truth with 5% noise the three candidates landed within 1.1% of each other
+#: in-sample and `min()` picked `affine_disparity` — the wrong model, on a
+#: difference far smaller than the noise that produced it.
+SELECTION_MARGIN = 0.05
+
+#: Tie-break order, simplest first. `scale` has one parameter and the least
+#: room to invent structure. Between the two two-parameter models,
+#: `affine_disparity` comes first because the far-field measurement pinned by
+#: `test_fitting_in_the_wrong_space_leaves_far_field_error` justifies it as the
+#: prior — applied ONLY when the data cannot separate them, never over data
+#: that can.
+SELECTION_PREFERENCE = ("scale", "affine_disparity", "affine")
+
+
 def choose_correction(predicted, measured, *, mask=None) -> DepthCorrection:
-    """Fit every model and return whichever actually helps most.
+    """Fit every model and return the one that earns its parameters.
 
     Deliberately not "always use disparity": which space fits best depends on
     the sensor and the scene, and asserting a preference the data does not
-    support is how a plausible-looking correction makes things worse. The
-    chosen model and both error figures ride along so the decision is auditable.
+    support is how a plausible-looking correction makes things worse.
+
+    Selection runs on HELD-OUT samples, not on the fit's own residual. In-sample
+    error always favours the more flexible model, and measured on a pure-scale
+    pair with 5% noise it picked `affine_disparity` over the true `scale` model
+    on a 1.1% margin — a difference smaller than the noise, and one the
+    in-sample ranking did not survive a holdout split to defend. The split is a
+    deterministic stride-2 interleave rather than a contiguous cut: depth
+    samples arrive spatially ordered, so a contiguous half would train on near
+    and test on far and measure extrapolation instead of model fit.
+
+    The winner is then REFITTED on all samples — the holdout exists to choose a
+    model, not to throw away half the data that determines its coefficients.
     """
     np = _require_numpy()
-    results = []
-    for m in MODELS:
+
+    # Validate the pair ONCE, here, so a caller's shape error surfaces with the
+    # message that says what to do about it. The per-model loop below used to
+    # swallow every exception, which turned "predicted (4096,) and measured
+    # (1024,) must be the same shape — resample the LiDAR depth first" into
+    # "no correction model could be fitted to this pair".
+    p, m = _valid_pair(predicted, measured, mask, np)
+    n = int(p.size)
+
+    holdout = n >= 2 * MIN_SAMPLES
+    if holdout:
+        train_p, train_m = p[0::2], m[0::2]
+        test_p, test_m = p[1::2], m[1::2]
+    else:
+        # Not enough to split. Fall back to in-sample selection and say so —
+        # the alternative is refusing to choose at all, which is worse.
+        train_p, train_m = p, m
+        test_p, test_m = p, m
+
+    scores: dict[str, float] = {}
+    for name in MODELS:
         try:
-            results.append(fit_depth_correction(predicted, measured, mask=mask, model=m))
-        except Exception:  # noqa: BLE001 - a model that cannot fit is not a failure
+            trial = fit_depth_correction(train_p, train_m, model=name)
+        except ValueError:
+            # This model could not be fitted to this data — not a failure of
+            # the call. A shape error can no longer reach here; it was raised
+            # above, before the loop.
             continue
-    if not results:
-        raise ValueError("no correction model could be fitted to this pair")
-    best = min(results, key=lambda c: c.mae_after)
-    best.metadata["candidates"] = {
-        c.model: round(c.mae_after, 6) for c in results}
-    if best.improvement <= 0:
-        best.metadata["warning"] = (
+        predicted_test, _ = apply_depth_correction(test_p, trial)
+        ok = np.isfinite(predicted_test)
+        scores[name] = (float(np.median(np.abs(predicted_test[ok] - test_m[ok])))
+                        if ok.any() else float("inf"))
+
+    if not scores:
+        raise ValueError(
+            f"no correction model could be fitted to these {n} valid samples")
+
+    best_score = min(scores.values())
+    # Take the simplest candidate that is within the margin of the best, rather
+    # than the nominal winner. Everything inside the margin is a tie.
+    chosen = min(scores, key=lambda k: scores[k])
+    for name in SELECTION_PREFERENCE:
+        if name in scores and scores[name] <= best_score * (1.0 + SELECTION_MARGIN):
+            chosen = name
+            break
+
+    corr = fit_depth_correction(predicted, measured, mask=mask, model=chosen)
+    corr.metadata["candidates"] = {k: round(v, 6) for k, v in scores.items()}
+    corr.metadata["selection"] = (
+        f"chosen on {'held-out' if holdout else 'in-sample'} median error with a "
+        f"{SELECTION_MARGIN:.0%} margin, simplest-first among ties")
+    if not holdout:
+        corr.metadata["selection_warning"] = (
+            f"only {n} valid samples — too few to hold out {MIN_SAMPLES} and "
+            "still fit on the rest, so the model was chosen on the error it was "
+            "fitted to. Treat the choice as provisional.")
+    if chosen != min(scores, key=lambda k: scores[k]):
+        corr.metadata["selection_tie"] = (
+            f"{min(scores, key=lambda k: scores[k])!r} scored marginally better "
+            f"({best_score:.6g} vs {scores[chosen]:.6g}) but is not simpler; the "
+            "difference is inside the margin and is not evidence")
+    if corr.improvement <= 0:
+        corr.metadata["warning"] = (
             "no candidate reduced the error — the estimate is probably not "
             "affine-related to the measurement, and applying this would be "
             "cosmetic at best")
-    return best
+    return corr

@@ -58,14 +58,21 @@
   RANGE shows it); and because a plausible correction voided 76% of a valid
   frame and returned it as a bare array, which reads downstream as "no depth
   here" rather than "the correction failed here". Both are pinned by
-  regression tests. **Still open from the same review**, and cheaper to fix
-  before there are callers: `choose_correction` selects on in-sample error with
-  no significance margin (measured picking `affine_disparity` over the true
-  `scale` model on a 1.1% margin, and the in-sample ranking did not survive a
-  holdout split); its blanket `except Exception` converts a caller's shape
-  error into "no correction model could be fitted"; mask shape is unvalidated,
-  so a `(32,128)` mask against a `(64,64)` depth is silently accepted; and the
-  serialized form has no `schema_version`, which step (2) will want on day one.
+  regression tests. The remaining four from the same review landed the same
+  day, all while the module still had no callers to migrate: selection now runs
+  on a **held-out** stride-2 split with a 5% margin and a simplest-first
+  tie-break, then refits the winner on every sample (it was picking
+  `affine_disparity` over the true `scale` model on a 1.1% in-sample margin —
+  smaller than the noise that produced it); `choose_correction` validates the
+  pair once up front so a caller's shape error keeps its "resample the LiDAR
+  depth first" message instead of becoming "no correction model could be
+  fitted"; a mask must now match `predicted`'s SHAPE, not merely its size, so
+  the `(32,128)`-against-`(64,64)` case that silently selected the wrong pixels
+  is refused; and the serialized form carries `SCHEMA_VERSION`, rejects a
+  future version rather than reading fields with the wrong meanings, and
+  refuses an unknown `model` at load instead of at apply. Step (2) — the store
+  keyed by `(model_id, scene_type)` — can therefore be built against a
+  versioned format from its first write.
 
 - **ONNX Runtime depth backend (2026-07-13).** `tools/export_depth_v2_onnx.py`
   already exports Depth Anything V2 to ONNX with a torch-vs-onnxruntime parity

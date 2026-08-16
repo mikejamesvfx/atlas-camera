@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from atlas_camera.core.depth_calibration import (
+    SCHEMA_VERSION,
     DepthCorrection,
     apply_depth_correction,
     choose_correction,
@@ -262,6 +263,111 @@ def test_on_extrapolation_rejects_an_unknown_mode():
                         predicted_range=(1.0, 2.0))
     with pytest.raises(ValueError, match="on_extrapolation"):
         apply_depth_correction(np.ones((4, 4)) * 1.5, c, on_extrapolation="clamp")
+
+
+# --------------------------------------------------- selection discipline
+
+
+def test_selection_does_not_buy_a_parameter_with_noise():
+    """The measured failure, as a regression.
+
+    On a pure-scale ground truth with 5% noise the three candidates landed
+    within 1.1% of each other IN-SAMPLE and `min()` picked `affine_disparity` —
+    the wrong model, on a difference smaller than the noise that produced it.
+    Held-out scoring plus a margin picks the model that actually generated the
+    data.
+    """
+    rng = np.random.default_rng(0)
+    truth = np.linspace(1.5, 30.0, 4096)
+    predicted = truth / 2.5 * rng.normal(1.0, 0.05, 4096)
+
+    c = choose_correction(predicted, truth)
+    assert c.model == "scale", c.metadata["candidates"]
+    assert "held-out" in c.metadata["selection"]
+
+
+def test_a_real_disparity_distortion_still_wins_on_its_merits():
+    """The margin must not become 'always prefer the simplest'."""
+    truth = _truth(near=1.5, far=60.0)
+    predicted = 1.0 / (0.7 * (1.0 / truth) + 0.01)
+    c = choose_correction(predicted, truth)
+    assert c.model == "affine_disparity"
+    scores = c.metadata["candidates"]
+    assert scores["affine_disparity"] < scores["scale"] * 0.5
+
+
+def test_too_few_samples_to_hold_out_says_the_choice_is_provisional():
+    truth = np.linspace(2.0, 20.0, 300)          # >= MIN_SAMPLES, < 2x
+    c = choose_correction(truth / 2.0, truth)
+    assert "in-sample" in c.metadata["selection"]
+    assert "provisional" in c.metadata["selection_warning"]
+
+
+def test_the_winner_is_refitted_on_every_sample():
+    """The holdout chooses a model; it must not halve the data behind it."""
+    truth = _truth()
+    c = choose_correction(truth / 2.0, truth)
+    assert c.n_samples == truth.size
+
+
+def test_choose_keeps_the_actionable_shape_error():
+    """A caller's mistake must not arrive as a modelling mystery.
+
+    The blanket `except Exception` turned "resample the LiDAR depth first" into
+    "no correction model could be fitted to this pair".
+    """
+    with pytest.raises(ValueError, match="resample"):
+        choose_correction(np.ones((64, 64)), np.ones((32, 32)))
+
+
+# ------------------------------------------------------------- mask contract
+
+
+def test_a_same_size_differently_shaped_mask_is_refused():
+    """(32,128) against (64,64) both ravel to 4096 — and selected the wrong
+    pixels silently."""
+    truth = _truth()
+    with pytest.raises(ValueError, match="same shape as predicted"):
+        fit_depth_correction(truth / 2.0, truth,
+                             mask=np.ones((32, 128), dtype=bool), model="scale")
+
+
+def test_a_wrong_size_mask_says_what_is_wrong():
+    truth = _truth()
+    with pytest.raises(ValueError, match="same shape as predicted"):
+        fit_depth_correction(truth / 2.0, truth,
+                             mask=np.ones(100, dtype=bool), model="scale")
+
+
+# ---------------------------------------------------------- persisted form
+
+
+def test_the_serialized_form_carries_a_schema_version():
+    truth = _truth()
+    c = fit_depth_correction(truth / 2.0, truth, model="scale")
+    assert c.to_dict()["schema_version"] == SCHEMA_VERSION
+
+
+def test_a_future_schema_version_is_refused_not_guessed_at():
+    truth = _truth()
+    d = fit_depth_correction(truth / 2.0, truth, model="scale").to_dict()
+    with pytest.raises(ValueError, match="newer than this build"):
+        DepthCorrection.from_dict({**d, "schema_version": SCHEMA_VERSION + 1})
+
+
+def test_an_unversioned_dict_still_loads():
+    """Nothing has been written yet, but refusing legacy on day one is rude."""
+    truth = _truth()
+    d = fit_depth_correction(truth / 2.0, truth, model="scale").to_dict()
+    d.pop("schema_version")
+    assert DepthCorrection.from_dict(d).model == "scale"
+
+
+def test_an_unknown_model_is_refused_at_load_not_at_apply():
+    truth = _truth()
+    d = fit_depth_correction(truth / 2.0, truth, model="scale").to_dict()
+    with pytest.raises(ValueError, match="unknown correction model"):
+        DepthCorrection.from_dict({**d, "model": "quadratic"})
 
 
 def test_improvement_is_reported_honestly():
