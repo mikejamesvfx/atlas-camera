@@ -175,3 +175,66 @@ def test_mode_switch_skips_or_imports_without_pausing(monkeypatch, tmp_path):
     out, reply, brief_path, report = AtlasAgentHandoff().handoff(
         s, "x", timeout_s=600, unique_id="m3", mode="wait")
     assert "ATLAS_AGENT_MODE" in report
+
+
+# --- resume blend_file is a trust boundary -------------------------------
+# A resume can arrive over the unauthenticated POST /atlas/agent/resume route,
+# and the brief route serves the token, so the token is a staleness guard and
+# not authorization. blend_file is the one field that turns a JSON reply into
+# a Blender subprocess, so the PATH is what has to be constrained.
+
+def test_blend_file_outside_the_exchange_is_refused(tmp_path):
+    root = tmp_path / "comfy_output"          # stands in for ComfyUI's output tree
+    exchange = root / "exchange"
+    exchange.mkdir(parents=True)
+    outside = tmp_path / "elsewhere"          # NOT under any allowed root
+    outside.mkdir()
+    intruder = outside / "payload.blend"
+    intruder.write_bytes(b"x")
+
+    path, reason = AH.resolve_blend_file(
+        str(intruder), "n1", exchange_dir=exchange, root=root)
+    assert path is None
+    assert "outside the allowed roots" in reason
+
+
+def test_blend_file_inside_the_exchange_is_accepted(tmp_path):
+    root = tmp_path / "comfy_output"
+    exchange = root / "exchange"
+    exchange.mkdir(parents=True)
+    good = exchange / "scene.blend"
+    good.write_bytes(b"x")
+
+    path, reason = AH.resolve_blend_file(
+        str(good), "n1", exchange_dir=exchange, root=root)
+    assert path == good.resolve() and reason == ""
+
+
+def test_blend_file_traversal_out_of_the_exchange_is_refused(tmp_path):
+    root = tmp_path / "comfy_output"
+    exchange = root / "exchange"
+    exchange.mkdir(parents=True)
+    secret = tmp_path / "secret.blend"        # one level above the output tree
+    secret.write_bytes(b"x")
+
+    path, reason = AH.resolve_blend_file(
+        str(exchange / ".." / ".." / "secret.blend"), "n1",
+        exchange_dir=exchange, root=root)
+    assert path is None and "outside the allowed roots" in reason
+
+
+def test_blend_file_must_be_a_blend(tmp_path):
+    root = tmp_path / "comfy_output"
+    exchange = root / "exchange"
+    exchange.mkdir(parents=True)
+    other = exchange / "notes.txt"
+    other.write_text("x", encoding="utf-8")
+
+    path, reason = AH.resolve_blend_file(
+        str(other), "n1", exchange_dir=exchange, root=root)
+    assert path is None and "not a .blend" in reason
+
+
+def test_blank_blend_file_is_not_an_error(tmp_path):
+    path, reason = AH.resolve_blend_file("", "n1", root=tmp_path)
+    assert path is None and reason == ""

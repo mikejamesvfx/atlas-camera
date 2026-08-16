@@ -18,6 +18,10 @@
 # log. Read only by tools/ and tests/, both already excluded — it was shipping
 # to end users purely because nothing had named it.
 /reports/
+# Volumetric-fill research harness: sweeps, truth-eval scenes, diagnostic
+# renders. Same reasoning as /reports/ — nothing named it, so ~2.9k lines of
+# experiment tooling was going out with the pack.
+/research/
 # Standalone React/Vite workbench. The three.js bundle it builds is already
 # committed under atlas_camera/comfy/web/lib/ and ships with the pack.
 /ui/

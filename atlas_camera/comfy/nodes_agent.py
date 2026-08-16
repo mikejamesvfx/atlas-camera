@@ -232,9 +232,16 @@ class AtlasAgentHandoff:
         # done → optional import of the agent's Blender work.
         n_added = 0
         if auto_import:
-            blend = str(rec.get("blend_file") or "").strip() or brief["scene_blend"]
             imp_dir = exdir if exdir is not None else AH.agent_dir(node_id) / "exchange"
             imp_dir.mkdir(parents=True, exist_ok=True)
+            # A resume can arrive over the unauthenticated HTTP route, and
+            # blend_file is the field that turns it into a Blender subprocess.
+            # Constrain it to the exchange the brief published before acting.
+            claimed, refusal = AH.resolve_blend_file(
+                rec.get("blend_file"), node_id, exchange_dir=exdir)
+            if refusal:
+                lines.append(refusal)
+            blend = str(claimed) if claimed is not None else brief["scene_blend"]
             try:
                 if blend and os.path.isfile(blend):
                     from atlas_camera.blender import run_recipe

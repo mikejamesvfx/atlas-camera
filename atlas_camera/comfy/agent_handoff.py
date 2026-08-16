@@ -56,6 +56,72 @@ def agent_dir(node_id: Any, *, root: str | Path | None = None) -> Path:
         else output_root() / AGENT_DIRNAME / (safe or "unknown")
 
 
+def allowed_blend_roots(node_id: Any, *, exchange_dir: str | Path | None = None,
+                        root: str | Path | None = None) -> list[Path]:
+    """Directories a resume's ``blend_file`` is allowed to name.
+
+    The exchange dir the brief published, this node's own agent dir, and
+    ComfyUI's output and input trees. Everything the legitimate flow writes
+    lands in one of these.
+    """
+    roots: list[Path] = []
+    if exchange_dir:
+        roots.append(Path(exchange_dir))
+    roots.append(agent_dir(node_id, root=root))
+    roots.append(output_root() if root is None else Path(root))
+    try:
+        import folder_paths  # type: ignore[import]
+        roots.append(Path(folder_paths.get_input_directory()))
+    except Exception:  # noqa: BLE001
+        pass
+    out: list[Path] = []
+    for r in roots:
+        try:
+            rp = r.resolve()
+        except OSError:
+            continue
+        if rp not in out:
+            out.append(rp)
+    return out
+
+
+def resolve_blend_file(raw: Any, node_id: Any, *,
+                       exchange_dir: str | Path | None = None,
+                       root: str | Path | None = None) -> tuple[Path | None, str]:
+    """Validate a resume's ``blend_file`` before anything acts on it.
+
+    ``blend_file`` is the one resume field that turns a JSON reply into
+    filesystem access and a Blender subprocess, and a resume can arrive over
+    the unauthenticated ``POST /atlas/agent/resume/{node_id}`` route. The
+    brief's token is a STALENESS guard, not authorization — the brief (token
+    included) is readable over the equally unauthenticated brief route — so
+    the path itself has to be constrained here.
+
+    Returns ``(path, reason)``. ``path`` is None when there is nothing to do or
+    the value is refused; ``reason`` is empty when the field was simply blank,
+    otherwise a report-ready explanation.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None, ""
+    try:
+        cand = Path(text).resolve()
+    except OSError as exc:
+        return None, f"blend_file refused: unresolvable path ({exc})"
+    if cand.suffix.lower() != ".blend":
+        return None, f"blend_file refused: not a .blend ({cand.name})"
+    roots = allowed_blend_roots(node_id, exchange_dir=exchange_dir, root=root)
+    if not any(cand == r or r in cand.parents for r in roots):
+        return None, (
+            f"blend_file refused: {cand} is outside the allowed roots "
+            + ", ".join(str(r) for r in roots)
+            + " — a resume may only name a .blend the exchange produced"
+        )
+    if not cand.is_file():
+        return None, f"blend_file refused: no such file ({cand})"
+    return cand, ""
+
+
 def write_brief(node_id: Any, brief: dict[str, Any], *, root: str | Path | None = None,
                 now: float | None = None) -> dict[str, Any]:
     """Write brief.json (+ history copy) and CLEAR any previous resume.json.
