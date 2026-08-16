@@ -113,8 +113,12 @@ def _plate_image():
 
 def test_nodes_registered():
     assert NODE_CLASS_MAPPINGS["AtlasDepthLayerMask"].RETURN_TYPES == ("MASK", "MASK", "MASK")
-    assert NODE_CLASS_MAPPINGS["AtlasCleanPlateLayer"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK", "MASK")
-    assert NODE_CLASS_MAPPINGS["AtlasSkyDomeLayer"].RETURN_TYPES == ("ATLAS_SOLVE", "MASK", "MASK")
+    # `report` appended 2026-08-17; existing slots keep their index.
+    for _layer in ("AtlasCleanPlateLayer", "AtlasSkyDomeLayer"):
+        assert NODE_CLASS_MAPPINGS[_layer].RETURN_TYPES == (
+            "ATLAS_SOLVE", "MASK", "MASK", "STRING")
+        assert NODE_CLASS_MAPPINGS[_layer].RETURN_NAMES == (
+            "solve", "hole_mask", "extend_mask", "report")
 
 
 # --- AtlasDepthLayerMask -----------------------------------------------------
@@ -249,7 +253,7 @@ def test_clean_plate_layer_appends_one_source_with_unchanged_camera():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out, _hole_mask, _ext = AtlasCleanPlateLayer().add_layer(
+    out, _hole_mask, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, name="bg", priority=0.0, relief_grid=32)
 
     assert len(solve.projection_sources) == 0        # input untouched
@@ -273,23 +277,31 @@ def test_clean_plate_layer_round_trips_through_solve_dict():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out, _hole_mask, _ext = AtlasCleanPlateLayer().add_layer(solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
+    out, _hole_mask, _ext, _rep = AtlasCleanPlateLayer().add_layer(solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
     reloaded = AtlasSolve.from_dict(out.to_dict())
 
     assert len(reloaded.projection_sources) == 1
     assert reloaded.projection_sources[0].metadata.get("projection_mode") == "clean_plate"
 
 
-def test_clean_plate_layer_passes_through_when_primary_has_no_focal():
+def test_clean_plate_layer_says_so_when_primary_has_no_focal():
+    """This used to assert hole_mask.sum() == 0 — it PINNED the lie.
+
+    An all-zero hole_mask means "no holes anywhere", which is what a flawless
+    layer returns, so a node that built nothing was indistinguishable from the
+    best possible one for every downstream consumer (AtlasPlanarHolePatch reads
+    this mask; so does the inpaint router).
+    """
     intr = AtlasIntrinsics(image_width=W, image_height=H)
     solve = AtlasSolve(camera=LatentCamera(intrinsics=intr))
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out, hole_mask, _ext = AtlasCleanPlateLayer().add_layer(solve, depth, plate)
+    out, hole_mask, _ext, report = AtlasCleanPlateLayer().add_layer(solve, depth, plate)
     assert out is solve
     assert len(out.projection_sources) == 0
-    assert float(hole_mask.sum()) == 0.0
+    assert float(hole_mask.min()) == 1.0, "nothing was built, so nothing is covered"
+    assert "SKIPPED" in report and "focal" in report
 
 
 def test_mask_band_and_clean_plate_mesh_stay_in_lockstep():
@@ -301,7 +313,7 @@ def test_mask_band_and_clean_plate_mesh_stay_in_lockstep():
     plate = _plate_image()
 
     layer_mask, _occ, _hole = AtlasDepthLayerMask().generate(solve, depth, near_m=5.0, far_m=12.0)
-    out, _hole_mask, _ext = AtlasCleanPlateLayer().add_layer(
+    out, _hole_mask, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
 
     src = out.projection_sources[0]
@@ -325,9 +337,9 @@ def test_fill_occluded_covers_the_occluder_footprint():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out_base, hole_base, _ext = AtlasCleanPlateLayer().add_layer(
+    out_base, hole_base, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
-    out_fill, hole_fill, _ext = AtlasCleanPlateLayer().add_layer(
+    out_fill, hole_fill, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
         fill_occluded=True)
 
@@ -354,7 +366,7 @@ def test_fill_occluded_keeps_mask_node_in_lockstep():
     _l, _o, hole_mask_node = AtlasDepthLayerMask().generate(
         solve, depth, near_m=5.0, far_m=12.0, feather_px=0,
         compute_hole_mask=True, relief_grid=32, fill_occluded=True)
-    _out, hole_layer_node, _ext = AtlasCleanPlateLayer().add_layer(
+    _out, hole_layer_node, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
         fill_occluded=True)
     assert torch.equal(hole_mask_node, hole_layer_node)
@@ -376,7 +388,7 @@ def test_sky_dome_layer_appends_source_with_unchanged_camera():
     sky_mask = _sky_mask_tensor(depth_map)
     plate = _plate_image()
 
-    out, hole_mask, _ext = AtlasSkyDomeLayer().add_layer(
+    out, hole_mask, _ext, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, radius_m=300.0, relief_grid=32, name="sky")
 
     assert len(solve.projection_sources) == 0        # input untouched
@@ -400,7 +412,7 @@ def test_sky_dome_layer_mesh_is_flat_card_at_radius():
     sky_mask = _sky_mask_tensor(depth_map)
     plate = _plate_image()
 
-    out, _hole_mask, _ext = AtlasSkyDomeLayer().add_layer(
+    out, _hole_mask, _ext, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, radius_m=300.0, relief_grid=32)
 
     src = out.projection_sources[0]
@@ -419,7 +431,7 @@ def test_sky_dome_layer_empty_mask_passes_through_unchanged():
     empty_mask = torch.zeros(1, H, W, dtype=torch.float32)
     plate = _plate_image()
 
-    out, hole_mask, _ext = AtlasSkyDomeLayer().add_layer(solve, depth, empty_mask, plate)
+    out, hole_mask, _ext, _rep = AtlasSkyDomeLayer().add_layer(solve, depth, empty_mask, plate)
     assert out is solve
     assert len(out.projection_sources) == 0
     assert float(hole_mask.sum()) == 0.0
@@ -433,7 +445,7 @@ def test_sky_dome_layer_passes_through_when_primary_has_no_focal():
     sky_mask = _sky_mask_tensor(depth_map)
     plate = _plate_image()
 
-    out, hole_mask, _ext = AtlasSkyDomeLayer().add_layer(solve, depth, sky_mask, plate)
+    out, hole_mask, _ext, _rep = AtlasSkyDomeLayer().add_layer(solve, depth, sky_mask, plate)
     assert out is solve
     assert len(out.projection_sources) == 0
 
@@ -461,9 +473,9 @@ def test_sky_dome_edge_extend_smears_plate_and_dilates_matte():
     def _decode(b64):
         return np.asarray(Image.open(io.BytesIO(base64.b64decode(b64.split(",", 1)[1]))))
 
-    out_off, _, _ext = AtlasSkyDomeLayer().add_layer(
+    out_off, _, _ext, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, relief_grid=32, edge_extend_px=0)
-    out_on, _, _ext = AtlasSkyDomeLayer().add_layer(
+    out_on, _, _ext, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, relief_grid=32, edge_extend_px=32)
 
     matte_off = _decode(out_off.projection_sources[0].mask_b64)
@@ -502,7 +514,7 @@ def test_sky_dome_frame_outpaint_widens_the_source_camera():
     plate = _plate_image()
     PAD = 32
 
-    out, hole, _ext = AtlasSkyDomeLayer().add_layer(
+    out, hole, _ext, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, relief_grid=32,
         edge_extend_px=0, frame_outpaint_px=PAD)
     src = out.projection_sources[0]
@@ -543,7 +555,7 @@ def test_sky_dome_embeds_its_segmentation_as_edge_matte():
     sky_mask = _sky_mask_tensor(depth_map)
     plate = _plate_image()
 
-    out, _, _ext = AtlasSkyDomeLayer().add_layer(solve, depth, sky_mask, plate, relief_grid=32)
+    out, _, _ext, _rep = AtlasSkyDomeLayer().add_layer(solve, depth, sky_mask, plate, relief_grid=32)
     src = out.projection_sources[0]
     assert src.mask_b64 and src.mask_b64.startswith("data:image/png;base64,")
     # Round-trips through solve JSON.
@@ -556,11 +568,11 @@ def test_clean_plate_embed_matte_is_opt_in():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out_off, _, _ext = AtlasCleanPlateLayer().add_layer(
+    out_off, _, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
     assert out_off.projection_sources[0].mask_b64 is None
 
-    out_on, _, _ext = AtlasCleanPlateLayer().add_layer(
+    out_on, _, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32, embed_matte=True)
     matte_b64 = out_on.projection_sources[0].mask_b64
     assert matte_b64 and matte_b64.startswith("data:image/png;base64,")
@@ -580,7 +592,7 @@ def test_clean_plate_matte_includes_filled_footprint_when_fill_occluded():
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
 
-    out, _, _ext = AtlasCleanPlateLayer().add_layer(
+    out, _, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
         embed_matte=True, fill_occluded=True)
     import base64
@@ -598,7 +610,7 @@ def test_blockout_payload_carries_mask_b64():
     solve = _solve()
     depth_map = _occluder_depth()
     depth = _depth_result(depth_map)
-    out, _, _ext = AtlasSkyDomeLayer().add_layer(
+    out, _, _ext, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, _sky_mask_tensor(depth_map), _plate_image(), relief_grid=32)
 
     image = torch.rand(1, H, W, 3, dtype=torch.float32)
@@ -612,7 +624,7 @@ def test_serialization_includes_projection_mode_for_clean_plate():
     solve = _solve()
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
-    out, _hole_mask, _ext = AtlasCleanPlateLayer().add_layer(solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
+    out, _hole_mask, _ext, _rep = AtlasCleanPlateLayer().add_layer(solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32)
 
     image = torch.rand(1, H, W, 3, dtype=torch.float32)
     payload = _extract_blockout_camera(out, image, target_width=W, target_height=H)
@@ -648,7 +660,7 @@ def test_clean_plate_edge_extend_smears_colors_and_reports_mask():
     plate = torch.zeros(1, H, W, 3, dtype=torch.float32)
     plate[..., 0] = 1.0
 
-    out, _hole, ext = AtlasCleanPlateLayer().add_layer(
+    out, _hole, ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
         edge_extend_px=24)
 
@@ -682,7 +694,7 @@ def test_clean_plate_edge_extend_off_by_default():
     solve = _solve()
     depth = _depth_result(_occluder_depth())
     plate = torch.rand(1, H, W, 3, dtype=torch.float32)
-    out, _hole, ext = AtlasCleanPlateLayer().add_layer(
+    out, _hole, ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32,
         embed_matte=True)
     src = out.projection_sources[0]
@@ -703,7 +715,7 @@ def test_sky_dome_extend_mask_covers_extension_and_outpaint_ring():
     sky = torch.zeros(1, H, W, dtype=torch.float32)
     sky[0, :H // 3, :] = 1.0
 
-    out, _hole, ext = AtlasSkyDomeLayer().add_layer(
+    out, _hole, ext, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky, plate, relief_grid=32,
         edge_extend_px=16, frame_outpaint_px=32)
     src = out.projection_sources[0]
@@ -728,10 +740,10 @@ def test_layers_collector_writes_extend_matte(tmp_path):
     plate = torch.rand(1, H, W, 3, dtype=torch.float32)
     sky = torch.zeros(1, H, W, dtype=torch.float32)
     sky[0, :H // 3, :] = 1.0
-    out, _h, _e = AtlasSkyDomeLayer().add_layer(
+    out, _h, _e, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky, plate, relief_grid=32, name="sky",
         edge_extend_px=16, frame_outpaint_px=0)
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         out, depth, plate, near_m=5.0, far_m=12.0, relief_grid=32, name="bg",
         edge_extend_px=24)
 
@@ -761,7 +773,7 @@ def test_clean_plate_frame_outpaint_widens_camera_and_mesh():
     plate = torch.rand(1, H, W, 3, dtype=torch.float32)
     P = 32
 
-    out, hole, ext = AtlasCleanPlateLayer().add_layer(
+    out, hole, ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=40.0, relief_grid=32,
         frame_outpaint_px=P)
 
@@ -800,7 +812,7 @@ def test_clean_plate_frame_outpaint_composes_with_edge_extend():
     solve = _solve()
     depth = _depth_result(_occluder_depth())
     plate = torch.rand(1, H, W, 3, dtype=torch.float32)
-    out, _hole, ext = AtlasCleanPlateLayer().add_layer(
+    out, _hole, ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=5.0, far_m=40.0, relief_grid=32,
         frame_outpaint_px=32, edge_extend_px=16)
     src = out.projection_sources[0]
@@ -902,10 +914,10 @@ def test_band_split_partitions_fg_bg_exactly():
     solve = _solve()
     depth = _depth_result(_occluder_depth())
     plate = _plate_image()
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, name="bg", relief_grid=32,
         band_side="background", band_split=split)
-    out, _h2, _e2 = AtlasCleanPlateLayer().add_layer(
+    out, _h2, _e2, _rep = AtlasCleanPlateLayer().add_layer(
         out, depth, plate, name="fg", relief_grid=32,
         band_side="foreground", band_split=split)
     bgs = next(s for s in out.projection_sources if s.name == "bg")
@@ -928,7 +940,7 @@ def test_band_geometry_card_is_fronto_parallel_plane():
     forward depth — zero tearing/noise by construction. (Below-ground card
     extent is floor-clamped along the ray, same rule as relief meshes.)"""
     solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=8.0, far_m=12.0, band_geometry="card")
     v, meta = _layer_verts(out)
     assert meta["band_geometry"] == "card"
@@ -943,7 +955,7 @@ def test_band_geometry_ground_lands_on_y0_plane():
     vertex on the ground plane regardless of depth noise, capped at the
     band's far edge so wall-like pixels don't run out to the horizon."""
     solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=0.0, far_m=5.0, band_geometry="ground")
     v, meta = _layer_verts(out)
     assert meta["band_geometry"] == "ground"
@@ -954,7 +966,7 @@ def test_band_geometry_ground_lands_on_y0_plane():
 
 def test_band_geometry_relief_default_unchanged():
     solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=8.0, far_m=12.0)
     v, meta = _layer_verts(out)
     assert meta["band_geometry"] == "relief"
@@ -963,12 +975,12 @@ def test_band_geometry_relief_default_unchanged():
 
 def test_geometry_override_wins_and_garbage_errors():
     solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=8.0, far_m=12.0,
         band_geometry="relief", geometry_override="card")
     assert out.projection_sources[-1].metadata["band_geometry"] == "card"
     # "" falls through to the combo; unknown values error loudly
-    out2, _h2, _e2 = AtlasCleanPlateLayer().add_layer(
+    out2, _h2, _e2, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=8.0, far_m=12.0,
         band_geometry="ground", geometry_override="")
     assert out2.projection_sources[-1].metadata["band_geometry"] == "ground"
@@ -986,7 +998,7 @@ def test_sky_card_distance_m_places_card_and_radius_becomes_size():
     plate = _plate_image()
 
     # Legacy: distance_m=0 -> radius_m IS the distance (unchanged behavior).
-    out, _h, _e = AtlasSkyDomeLayer().add_layer(
+    out, _h, _e, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, radius_m=300.0, frame_outpaint_px=0)
     src = out.projection_sources[-1]
     v = np.array(src.proxy_geometry[0].metadata["vertices"], dtype=float).reshape(-1, 3)
@@ -997,7 +1009,7 @@ def test_sky_card_distance_m_places_card_and_radius_becomes_size():
     # distance_m places the card; radius_m = minimum half-extent (SIZE).
     # Natural half-width at 50m on this fixture: 50 * 128/250 = 25.6m — a
     # 40m radius needs extra outpaint, which must actually deliver >= 40m.
-    out2, _h2, _e2 = AtlasSkyDomeLayer().add_layer(
+    out2, _h2, _e2, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, radius_m=40.0, distance_m=50.0,
         frame_outpaint_px=0)
     src2 = out2.projection_sources[-1]
@@ -1011,7 +1023,7 @@ def test_sky_card_distance_m_places_card_and_radius_becomes_size():
     assert src2.camera.intrinsics.image_width > solve.camera.intrinsics.image_width
 
     # A size the frustum already covers adds no padding (never shrinks).
-    out3, _h3, _e3 = AtlasSkyDomeLayer().add_layer(
+    out3, _h3, _e3, _rep = AtlasSkyDomeLayer().add_layer(
         solve, depth, sky_mask, plate, radius_m=10.0, distance_m=50.0,
         frame_outpaint_px=0)
     assert out3.projection_sources[-1].metadata["size_pad_px"] == 0
@@ -1132,7 +1144,7 @@ def test_band_ref_mask_removes_scope_induced_band_drift():
     def far_edge(exclude, band_ref):
         # far_pct deliberately NOT 0.5: 0.5 is the geometric mean, which this
         # analytic fixture keeps coincidentally invariant across populations.
-        out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
             solve, depth, _plate_image(), near_pct=0.0, far_pct=0.3,
             exclude_mask=exclude, band_ref_mask=band_ref, name="t")
         return out.projection_sources[-1].metadata["far_m"]
@@ -1178,7 +1190,7 @@ def test_band_override_wins_and_stays_watertight():
     solve, depth, plate = _solve(), _depth_result(_occluder_depth()), _plate_image()
 
     def edges(**kw):
-        out, _h, _e = AtlasCleanPlateLayer().add_layer(
+        out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
             solve, depth, plate, near_m=99.0, far_m=100.0, name="t", **kw)
         m = out.projection_sources[-1].metadata
         return m["near_m"], m["far_m"]
@@ -1320,7 +1332,7 @@ def test_clean_plate_layer_embeds_aligned_normal_map_when_present():
     nrm = rng.normal(size=(H, W, 3)).astype(np.float32)
     nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
     depth.normal = nrm                                   # simulate MoGe's per-pixel normals
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, _plate_image(), near_m=5.0, far_m=12.0, relief_grid=32)
     src = out.projection_sources[-1]
     assert src.normal_map_b64 and src.normal_map_b64.startswith("data:image/png;base64,")
@@ -1329,7 +1341,7 @@ def test_clean_plate_layer_embeds_aligned_normal_map_when_present():
 def test_clean_plate_layer_no_normal_map_without_predicted_normals():
     solve = _solve()
     depth = _depth_result(_occluder_depth())      # DepthResult.normal defaults to None
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, _plate_image(), near_m=5.0, far_m=12.0, relief_grid=32)
     assert out.projection_sources[-1].normal_map_b64 is None
 
@@ -1348,7 +1360,7 @@ def test_clean_plate_layer_uses_registered_plate_depth_when_wired():
     plate_depth = _depth_result(plate_map)
     obj_mask = torch.from_numpy(obj.astype(np.float32))[None]
 
-    out, _hole, _ext = AtlasCleanPlateLayer().add_layer(
+    out, _hole, _ext, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, _plate_image(), near_pct=0.0, far_pct=1.0, name="cp", relief_grid=32,
         plate_depth=plate_depth, object_mask=obj_mask)
     src = out.projection_sources[0]
@@ -1360,6 +1372,21 @@ def test_clean_plate_layer_uses_registered_plate_depth_when_wired():
     assert m["plate_depth_registered_px"] > 0
     assert src.proxy_geometry
     # without plate_depth the metadata says so
-    out2, _, _ = AtlasCleanPlateLayer().add_layer(
+    out2, _, _, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, _plate_image(), near_pct=0.0, far_pct=1.0, name="cp2", relief_grid=32)
     assert out2.projection_sources[0].metadata["geometry_depth"] == "primary_depth"
+
+
+def test_sky_dome_without_a_mask_is_a_no_op_that_says_so():
+    """Distinct from the no-focal guard: nothing was occluded, so ZEROS are the
+    honest answer here — but a sky card that quietly does not exist is
+    otherwise discovered three nodes downstream."""
+    solve = _solve()
+    depth = _depth_result(_occluder_depth())
+    plate = _plate_image()
+
+    out, hole_mask, _ext, report = AtlasSkyDomeLayer().add_layer(
+        solve, depth, None, plate)
+    assert out is solve
+    assert float(hole_mask.sum()) == 0.0, "no occlusion means no uncovered pixels"
+    assert "SKIPPED" in report and "sky mask" in report

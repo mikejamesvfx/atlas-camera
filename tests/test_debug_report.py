@@ -27,10 +27,10 @@ def _layered_solve():
     # A "healthy" stack includes VERIFIED scale since the P0 trust tier —
     # without provenance the (deliberate) scale_unverified flag fires.
     solve.debug_metadata["scale_source"] = "manual_override"
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         solve, depth, plate, near_m=8.0, far_m=12.0, name="band_bg",
         priority=5, embed_matte=True)
-    out, _h, _e = AtlasCleanPlateLayer().add_layer(
+    out, _h, _e, _rep = AtlasCleanPlateLayer().add_layer(
         out, depth, plate, near_m=0.0, far_m=5.0, name="band_fg",
         priority=15, band_geometry="ground", embed_matte=True)
     return out, depth

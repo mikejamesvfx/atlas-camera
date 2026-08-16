@@ -55,6 +55,31 @@ class _RegisteredPlateDepth:
         self.points = None
 
 
+_NO_FOCAL_LAYER_REPORT = (
+    "no usable focal length on the solve, so NO layer was built and the solve "
+    "passed through unchanged. hole_mask is all-ONES: every pixel is "
+    "uncovered, because nothing was added. Wire a solve that carries fx "
+    "(AtlasSolveFromImage / AtlasLearnedSolveFromImage)."
+)
+
+
+def _layer_report(node_name, out, hole_t, ext_t) -> str:
+    """What a layer node added, so a SKIP cannot pass for a success.
+
+    The guards above used to return two all-ZERO masks and nothing else, and
+    an all-zero hole_mask is what a FLAWLESS layer produces — downstream
+    (AtlasPlanarHolePatch, the inpaint router) could not tell the two apart.
+    """
+    n = len(list(getattr(out, "projection_sources", None) or []))
+    try:
+        holes = float(hole_t.mean()) * 100.0
+        extend = float(ext_t.mean()) * 100.0
+    except Exception:  # noqa: BLE001 — a report must never fail a layer
+        holes = extend = float("nan")
+    return (f"{node_name}: {n} projection source(s) on the solve; "
+            f"hole_mask {holes:.1f}% of frame, extend_mask {extend:.1f}%")
+
+
 class AtlasScopeMask:
     """🎯 Per-band scope exclude builder — `sky ∪ NOT(grow(segment))`, with
     SELF-DISARMING fallbacks so a scope row can stay permanently active.
@@ -814,8 +839,13 @@ class AtlasCleanPlateLayer:
     `plate_image`, so it can't drive the inpaint step itself. For that, see
     `AtlasDepthLayerMask`'s own optional `compute_hole_mask`.
     """
-    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK")
-    RETURN_NAMES = ("solve", "hole_mask", "extend_mask")
+    # `report` APPENDED 2026-08-17 (the CleanPlateLayer freeze was lifted
+    # 2026-08-10 for exactly this: appending preserves the positional
+    # contract). The no-focal guard returned two all-ZERO masks and nothing
+    # else, and an all-zero hole_mask asserts FULL COVERAGE — the answer a
+    # perfect layer gives. Existing slots keep their index.
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK", "STRING")
+    RETURN_NAMES = ("solve", "hole_mask", "extend_mask", "report")
     FUNCTION = "add_layer"
     CATEGORY = "Atlas"
 
@@ -1143,9 +1173,12 @@ class AtlasCleanPlateLayer:
 
         setup = _metric_depth_and_validity(solve, depth, exclude_mask=exclude_mask)
         if setup is None:
+            # ONES on hole_mask: nothing was built, so nothing is covered.
+            # Zeros would claim a flawless layer (see the RETURN_NAMES note).
             h, w = int(depth.image_height), int(depth.image_width)
+            uncovered = torch.ones(1, h, w, dtype=torch.float32)
             blank = torch.zeros(1, h, w, dtype=torch.float32)
-            return (solve, blank, blank)
+            return (solve, uncovered, blank, "SKIPPED — " + _NO_FOCAL_LAYER_REPORT)
         # An extension needs a matte edge to extend past.
         if edge_extend_px and int(edge_extend_px) > 0:
             embed_matte = True
@@ -1455,7 +1488,8 @@ class AtlasCleanPlateLayer:
             ext_t = torch.from_numpy(extend_region.astype(np.float32)).unsqueeze(0)
         else:
             ext_t = torch.zeros(1, Hp, Wp, dtype=torch.float32)
-        return (out, hole_t, ext_t)
+        return (out, hole_t, ext_t,
+                _layer_report("AtlasCleanPlateLayer", out, hole_t, ext_t))
 
 
 class AtlasCleanPlateStack:
@@ -1778,8 +1812,13 @@ class AtlasSkyDomeLayer:
     `sky_mask`'s own boundary didn't survive onto the grid (QA signal, not
     something to feed back into inpainting).
     """
-    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK")
-    RETURN_NAMES = ("solve", "hole_mask", "extend_mask")
+    # `report` APPENDED 2026-08-17 (the CleanPlateLayer freeze was lifted
+    # 2026-08-10 for exactly this: appending preserves the positional
+    # contract). The no-focal guard returned two all-ZERO masks and nothing
+    # else, and an all-zero hole_mask asserts FULL COVERAGE — the answer a
+    # perfect layer gives. Existing slots keep their index.
+    RETURN_TYPES = ("ATLAS_SOLVE", "MASK", "MASK", "STRING")
+    RETURN_NAMES = ("solve", "hole_mask", "extend_mask", "report")
     FUNCTION = "add_layer"
     CATEGORY = "Atlas/advanced"
 
@@ -1865,8 +1904,9 @@ class AtlasSkyDomeLayer:
         setup = _metric_depth_and_validity(solve, depth)
         if setup is None:
             h, w = int(depth.image_height), int(depth.image_width)
+            uncovered = torch.ones(1, h, w, dtype=torch.float32)
             blank = torch.zeros(1, h, w, dtype=torch.float32)
-            return (solve, blank, blank)
+            return (solve, uncovered, blank, "SKIPPED — " + _NO_FOCAL_LAYER_REPORT)
 
         mask_arr = _resolve_exclude_mask(sky_mask, setup.height, setup.width)
         if mask_arr is not None:
@@ -1875,8 +1915,15 @@ class AtlasSkyDomeLayer:
             # row and doesn't cover above the skyline.
             mask_arr = _flood_mask_to_frame_borders(mask_arr)
         if mask_arr is None or not mask_arr.any():
+            # A genuine no-op, unlike the guard above: nothing was occluded, so
+            # nothing is uncovered and ZEROS are the honest answer. It still has
+            # to SAY so — a sky card that quietly does not exist is discovered
+            # three nodes downstream.
             blank = torch.zeros(1, setup.height, setup.width, dtype=torch.float32)
-            return (solve, blank, blank)
+            return (solve, blank, blank,
+                    "SKIPPED — no sky mask wired, or the mask is empty. No sky "
+                    "card was added and the solve passed through unchanged. "
+                    "Wire AtlasSAM3Mask / AtlasHorizonMask into sky_mask.")
 
         # Everything below works at PLATE resolution in ONE padded pixel space:
         # frame outpaint (pad the canvas, shift cx/cy - the sky source gets
@@ -2008,4 +2055,5 @@ class AtlasSkyDomeLayer:
         # exported plate's pixels, unlike hole_mask which previews against the
         # source photo).
         ext_t = torch.from_numpy(extend_region.astype(np.float32)).unsqueeze(0)
-        return (out, hole_t, ext_t)
+        return (out, hole_t, ext_t,
+                _layer_report("AtlasSkyDomeLayer", out, hole_t, ext_t))
