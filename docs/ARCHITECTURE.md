@@ -10,14 +10,28 @@ with a small `atlas` facade for the vision-facing API.
   vanishing-point utilities, projection scene helpers, and recovery entry
   points. `LatentCamera` and `LatentScene` are the primary schema classes;
   `AtlasCamera` and `AtlasSolve` remain stable compatibility aliases.
+- `atlas_camera.plate`: colour-managed float plate I/O and pixel ops
+  (OpenImageIO; EXR/DPX read+write with OCIO conversion). Host-agnostic.
+- `atlas_camera.raw`: camera RAW decode, metadata, undistort (rawpy, lensfun,
+  EXIF→intrinsics). Host-agnostic.
 - `atlas_camera.exporters`: Maya, Blender, Nuke, USD, and review package output.
-- `atlas_camera.importers`: Atlas JSON and USD camera loading.
+- `atlas_camera.importers`: Atlas JSON, USD camera, and Record3D loading.
 - `atlas_camera.comfy`: ComfyUI node wrappers around the core.
+- `atlas_camera.blender`: the headless Blender bridge — exchange format and the
+  `recipes/` scripts Blender runs out-of-process.
+- `atlas_camera.dynamic`: Dynamic Plates (temporal projection packages).
+- `atlas_camera.mcp`: optional stdio MCP server exposing a running ComfyUI.
+- `atlas_camera.datasets`: benchmark dataset loaders (COLMAP, DTU, ETH3D) for
+  accuracy evaluation — not part of the node runtime.
 - `atlas_camera.reference_data`: local curated scale-reference registry.
 - `atlas_camera.inference`: optional local multimodal provider helpers and
   future object-detector interfaces.
 - `atlas_camera.ui`: optional FastAPI project service for image-backed local
   UI sessions.
+
+Dependency direction is one-way: `comfy/` may import anything; nothing outside
+`comfy/` may import it. `core`, `plate` and `raw` load with zero ComfyUI
+modules, which is what makes their math unit-testable without a ComfyUI install.
 - `ui/`: optional React/Vite workbench. It owns interactive presentation state
   such as 2D guide drawing, 3D viewport display options, and proxy-object
   editing. It must call backend endpoints and should not reimplement the
@@ -125,8 +139,8 @@ artist or pipeline confirmation.
 As of 2026-07-13 the layer hosts several model families behind guarded imports:
 GeoCalib (learned camera prior), monocular depth — **Depth Anything V2**
 (`V2-Metric-Outdoor` is the default on `main`; Apache, transformers-only),
-**MoGe-2** (MIT, interior specialist), and **Depth Anything 3** (default on the
-`experimental-da3-default` branch; its canonical depth is converted to metres
+**MoGe-2** (MIT, interior specialist), and **Depth Anything 3** (selectable but
+never the default; its canonical depth is converted to metres
 with the *solved* focal) — and the experimental layered-ray backends
 (LaRI, World Tracing — user-cloned, research-only; see THIRD_PARTY.md). Each
 wrapper returns torch-free dataclasses so torch never leaks into

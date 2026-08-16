@@ -25,7 +25,7 @@ for authoritative license text; the notes below are a map, not legal advice.
 | `[neural]` | torch, GeoCalib, Depth-Anything-V2 (via transformers) | BSD-3 / Apache-2.0 / Apache-2.0 | **default** learned solve + depth; SegFormer (`AtlasSemanticMask`) rides transformers |
 | `[sam3]` | transformers (SAM3 model classes) | Apache-2.0 (transformers); `facebook/sam3` weights **Meta SAM-License-1.0**, gated on Hugging Face | preferred sky/scope segmenter in `AtlasInput`'s cascade, no `triton`; commercial use permitted, military/ITAR use carved out — one-time `hf auth login` after requesting access, see INSTALL.md |
 | `[moge]` | MoGe-2 (`Ruicheng/MoGe`) | **MIT** | interior-specialist depth |
-| `[neural-da3]` | Depth Anything 3 | see upstream (GitHub-only) | selectable depth; default only on `experimental-da3-default` branch. `DA3NESTED-GIANT` weights are **CC BY-NC-ND (non-commercial)** |
+| `[neural-da3]` | Depth Anything 3 | see upstream (GitHub-only) | selectable depth; never the default. `DA3NESTED-GIANT` weights are **CC BY-NC-ND (non-commercial)** |
 
 Commercial-friendly by default: the shipping depth default (V2-Metric) and the
 whole `[neural]` tier are permissive (Apache/BSD/MIT).
