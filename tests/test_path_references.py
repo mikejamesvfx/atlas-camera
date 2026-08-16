@@ -1,19 +1,22 @@
-"""Every repo path an MCP string promises to an agent must actually resolve.
+"""Every repo path a string literal promises must actually resolve.
 
-The MCP server's resources are agent-facing playbooks: an assistant reads
-`atlas://path-repair` and follows step 1. When step 1 named
-`examples/atlas_path_guided_hole_repair_workflow.json`, which the 0.8.1 trim
-had removed, the agent's documented entry point was a dead file — and nothing
-caught it, because a path inside a Python string is invisible to both the test
-suite and to Markdown link checkers.
+Started as an MCP-only check: `atlas://path-repair` opened with "Use
+examples/atlas_path_guided_hole_repair_workflow.json", which the 0.8.1 trim had
+removed, so an agent's documented entry point was a dead file. A path inside a
+Python string is invisible to the test suite and to Markdown link checkers
+alike, which is why it survived.
 
-This is the cheap check that closes that gap: scan the mcp package's string
-literals for repo-relative paths and assert each one exists.
+Widened 2026-08-17 to the whole package after the same defect turned up in
+AtlasInput's docstring — the front-door node the README opens with — pointing
+users at examples/atlas_camera_staged_master_workflow.json, also removed by
+that trim. The MCP-specific assertions below still apply to agent-facing
+resource text; the package-wide one is the general net.
 """
 from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -109,4 +112,66 @@ def test_agent_facing_resources_do_not_cite_local_only_docs():
     assert not offenders, (
         "Agent-facing resource text cites a gitignored local-only doc:\n  "
         + "\n  ".join(offenders)
+    )
+
+
+# --- package-wide -----------------------------------------------------------
+
+PKG = REPO / "atlas_camera"
+
+#: Paths in ANOTHER project's tree, named to say where a behaviour was
+#: mirrored from. They are correct as written and can never resolve here.
+FOREIGN_REFERENCES = {
+    # wt_hidden_geometry mirrors the World-Tracing repo's own entry point.
+    "examples/infer_scene.py",
+}
+
+PKG_PATH_RE = re.compile(r"\b(?:examples|docs|tools|research)/[\w./-]+\.(?:json|md|py)\b")
+
+
+def _string_literals(py_file: Path):
+    try:
+        tree = ast.parse(py_file.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            yield node.value, node.lineno
+
+
+def _gitignored(paths):
+    """Ask git, NUL-delimited. Text mode translates the separator to CRLF on
+    Windows and git then reads the \r as part of the path, reporting every
+    entry as not-ignored — the exact bug this repo's audit helper hit."""
+    paths = sorted(paths)
+    if not paths:
+        return set()
+    payload = b"\0".join(p.encode("utf-8") for p in paths) + b"\0"
+    try:
+        cp = subprocess.run(["git", "check-ignore", "-z", "--stdin"],
+                            cwd=str(REPO), input=payload, capture_output=True)
+    except (OSError, FileNotFoundError):  # pragma: no cover - git always present in CI
+        return set()
+    return {p for p in cp.stdout.decode("utf-8", "replace").split("\0") if p}
+
+
+def test_no_package_string_names_a_repo_path_that_is_gone():
+    """docs/dev/ and docs/artifacts/ are gitignored BY DESIGN (CLAUDE.md): a
+    runtime lookup into them is fine. Everything else must resolve."""
+    found = {}
+    for py in sorted(PKG.rglob("*.py")):
+        for text, lineno in _string_literals(py):
+            for rel in PKG_PATH_RE.findall(text):
+                if rel in FOREIGN_REFERENCES or (REPO / rel).is_file():
+                    continue
+                found.setdefault(rel, []).append(
+                    f"{py.relative_to(REPO).as_posix()}:{lineno}")
+
+    for rel in _gitignored(found):
+        found.pop(rel, None)
+
+    assert not found, (
+        "package strings name repo paths that do not exist:\n  "
+        + "\n  ".join(f"{rel}  <- {', '.join(sites)}" for rel, sites in sorted(found.items()))
+        + "\nEither restore the file or rewrite the text to stop naming it."
     )

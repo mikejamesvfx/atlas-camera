@@ -1175,8 +1175,11 @@ class AtlasInput:
     When you outgrow the fast wrapper, the staged master is the production
     evolution of this idea: five native ComfyUI subgraphs, explicit solve
     gates and masks, four cropped SDXL clean plates, per-layer previews, and
-    DCC outputs.  It deliberately has no Set/Get rails or shared LaMa chain —
-    see examples/atlas_camera_staged_master_workflow.json.
+    DCC outputs.  It deliberately has no Set/Get rails or shared LaMa chain.
+    It is NOT in this repository — it needs downloaded plates, so the 0.8.1
+    trim moved it and the rest of the showcase set to the website. The
+    workflows that DO ship are in `examples/`; start from
+    `atlas_input_quickstart_workflow.json`, which is this node.
     """
     RETURN_TYPES = ("ATLAS_SOLVE", "IMAGE", "ATLAS_DEPTH_MAP", "MASK", "STRING")
     RETURN_NAMES = ("solve", "image", "depth", "sky_mask", "report")
