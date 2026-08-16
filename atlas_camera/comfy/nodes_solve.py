@@ -740,7 +740,14 @@ class AtlasLoadRAW:
 
 class AtlasSolveFromImage:
     """Solve camera from a ComfyUI IMAGE tensor (no file path needed)."""
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    # `report` APPENDED 2026-08-17. A solver returning only the solve said
+    # nothing about the SCALE TIER, and an `assumed` scale is a structurally
+    # valid solve that exports cleanly and is wrong — roughly 10x too small on
+    # wide exteriors. The only signal was a health gate the artist had to know
+    # to wire, and one shipped quickstart did not. Appended last: slot 0 is
+    # unchanged, so saved graphs and AtlasInput's expansion keep their wires.
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
     FUNCTION = "solve"
     CATEGORY = "Atlas/advanced"
 
@@ -779,7 +786,7 @@ class AtlasSolveFromImage:
             solve = solve_still_image(tmp, intrinsics_hint=hints or None,
                                       detect_vanishing_points=detect_vanishing_points)
             _stamp_raw_provenance(solve, raw_meta)
-            return (solve,)
+            return (solve, _solve_summary(solve, node_name="AtlasSolveFromImage"))
         finally:
             os.unlink(tmp)
 
@@ -824,7 +831,14 @@ class AtlasLearnedSolveFromImage:
     it does not depend on clean straight edges converging to consistent VPs.
     Requires the [neural] extra (torch + geocalib) in ComfyUI's venv.
     """
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    # `report` APPENDED 2026-08-17. A solver returning only the solve said
+    # nothing about the SCALE TIER, and an `assumed` scale is a structurally
+    # valid solve that exports cleanly and is wrong — roughly 10x too small on
+    # wide exteriors. The only signal was a health gate the artist had to know
+    # to wire, and one shipped quickstart did not. Appended last: slot 0 is
+    # unchanged, so saved graphs and AtlasInput's expansion keep their wires.
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
     FUNCTION = "solve"
     CATEGORY = "Atlas"
 
@@ -886,7 +900,8 @@ class AtlasLearnedSolveFromImage:
                 device=None if device == "auto" else device,
             )
             _stamp_raw_provenance(solve, raw_meta)
-            return (solve,)
+            return (solve,
+                    _solve_summary(solve, node_name="AtlasLearnedSolveFromImage"))
         finally:
             os.unlink(tmp)
 

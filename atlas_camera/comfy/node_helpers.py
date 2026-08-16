@@ -70,6 +70,7 @@ from atlas_camera.comfy.view_prompts import (  # noqa: F401
 from atlas_camera.comfy.node_reports import (  # noqa: F401
     _IDENTITY_COMMENT_PREFIX,
     _scale_summary_suffix,
+    _solve_summary,
     _health_summary_suffix,
     _write_export_manifest,
     _format_hole_fill_report,
@@ -1033,6 +1034,7 @@ __all__ = [
     '_save_image_tensor_to_tmp',
     '_resolve_raw_hints',
     '_scale_summary_suffix',
+    '_solve_summary',
     '_IDENTITY_COMMENT_PREFIX',
     '_write_export_manifest',
     '_health_summary_suffix',

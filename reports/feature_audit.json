@@ -2665,7 +2665,7 @@
   "AtlasSceneHealthGate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": 0,
+   "example_workflows": 1,
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
@@ -2673,6 +2673,7 @@
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "docs"
    ],

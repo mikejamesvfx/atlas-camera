@@ -31,6 +31,48 @@ def _scale_summary_suffix(solve) -> str:
     if sh.safe_to_export:
         return ""
     return f" | ⚠ scale {sh.status.upper()} — not verified"
+def _solve_summary(solve, *, node_name: str) -> str:
+    """What a solver recovered, and how much of it is MEASURED.
+
+    The tier is read from core.scene_health, never re-derived here — that is
+    the rule the single-source-of-truth doctrine protects. The reason a solver
+    needs to say it at all: an `assumed` scale is a structurally valid solve
+    that exports cleanly and is wrong, and on wide exteriors or AI-generated
+    cityscapes the assumed 1.6 m eye height measures out about TEN TIMES too
+    small. Without this the only signal was a health gate the artist had to
+    know to wire.
+    """
+    from atlas_camera.core.scene_health import scale_health
+
+    intr = getattr(getattr(solve, "camera", None), "intrinsics", None)
+    fx = getattr(intr, "fx_px", None)
+    w = getattr(intr, "image_width", None)
+    h = getattr(intr, "image_height", None)
+    bits = [node_name + ":"]
+    if fx:
+        bits.append(f"fx {float(fx):.1f}px")
+    if w and h:
+        bits.append(f"{int(w)}x{int(h)}")
+
+    sh = scale_health(solve)
+    if sh.camera_height_m is not None:
+        bits.append(f"camera height {float(sh.camera_height_m):.2f}m")
+    tier = f"scale {sh.status.upper()}"
+    if sh.scale_source:
+        tier += f" ({sh.scale_source})"
+    if sh.confidence is not None:
+        tier += f", confidence {float(sh.confidence):.2f}"
+    bits.append(tier)
+    line = " ".join(bits)
+    if not sh.safe_to_export:
+        line += ("\n  ** NOT VERIFIED — " + (sh.detail or "no measured scale reference")
+                 + ". Everything downstream inherits this scale: wire "
+                 "AtlasSceneHealthGate, or give it a real reference "
+                 "(AtlasApplyScaleReferences / AtlasFaceScaleReference / "
+                 "AtlasScaleOverride). **")
+    return line
+
+
 def _health_summary_suffix(solve) -> str:
     """Export-summary marker when a scene-health stamp records warn/fail.
 
@@ -66,7 +108,7 @@ def _write_export_manifest(
         )
         pairs = [(k, str(p)) for k, p in kind_paths if p]
         if not pairs:
-            return
+            return ""
         write_project_manifest(
             solve, output_dir,
             artifacts=[ManifestArtifact(k, p, exporter) for k, p in pairs],
@@ -128,6 +170,7 @@ def _format_hole_fill_report(enabled, n_filled, filled, faces_added, loops_left,
 __all__ = [
     "_IDENTITY_COMMENT_PREFIX",
     "_scale_summary_suffix",
+    "_solve_summary",
     "_health_summary_suffix",
     "_write_export_manifest",
     "_format_hole_fill_report",

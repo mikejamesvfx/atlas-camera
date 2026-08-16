@@ -1,8 +1,8 @@
 {
   "id": "07a2ce62-8289-56cd-86db-740e798798d9",
   "revision": 1,
-  "last_node_id": 10,
-  "last_link_id": 13,
+  "last_node_id": 11,
+  "last_link_id": 15,
   "nodes": [
     {
       "id": 1,
@@ -38,7 +38,8 @@
           "links": [
             1,
             3,
-            8
+            8,
+            15
           ]
         },
         {
@@ -55,7 +56,7 @@
         "example.png",
         "image"
       ],
-      "title": "1 · SOURCE PLATE"
+      "title": "1 \u00b7 SOURCE PLATE"
     },
     {
       "id": 2,
@@ -178,7 +179,7 @@
         "auto",
         0.0
       ],
-      "title": "2 · CAMERA · learned metric prior"
+      "title": "2 \u00b7 CAMERA \u00b7 learned metric prior"
     },
     {
       "id": 3,
@@ -279,7 +280,7 @@
         false,
         0.0
       ],
-      "title": "3 · GRAVITY COMPASS · read, or override"
+      "title": "3 \u00b7 GRAVITY COMPASS \u00b7 read, or override"
     },
     {
       "id": 4,
@@ -404,7 +405,7 @@
         0.25,
         false
       ],
-      "title": "4 · DEPTH · shared metric scale"
+      "title": "4 \u00b7 DEPTH \u00b7 shared metric scale"
     },
     {
       "id": 5,
@@ -555,7 +556,7 @@
         2.0,
         12.0
       ],
-      "title": "5 · RELIEF MESH · torn at silhouettes"
+      "title": "5 \u00b7 RELIEF MESH \u00b7 torn at silhouettes"
     },
     {
       "id": 6,
@@ -673,7 +674,7 @@
         "Un-tone-mapped",
         1.0
       ],
-      "title": "OUTPUT DESK · OCIO metadata"
+      "title": "OUTPUT DESK \u00b7 OCIO metadata"
     },
     {
       "id": 7,
@@ -893,7 +894,7 @@
         1.0,
         96
       ],
-      "title": "6 · VIEWPORT · identical result, every stage visible"
+      "title": "6 \u00b7 VIEWPORT \u00b7 identical result, every stage visible"
     },
     {
       "id": 8,
@@ -948,7 +949,7 @@
       "widgets_values": [
         "atlas_exports/atlas_quickstart_solve_project_export_workflow/atlas_solve.json"
       ],
-      "title": "Solve JSON · portable camera"
+      "title": "Solve JSON \u00b7 portable camera"
     },
     {
       "id": 9,
@@ -970,9 +971,9 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "SOLVE STAGES — the front door taken apart, so you can take over a stage.\n\natlas_input_quickstart_workflow.json produces this same result from one node. This graph is that node opened up: every stage is a node you can inspect, swap or override.\n\nTHE CHAIN\n1. AtlasLearnedSolveFromImage — the camera. GeoCalib's learned prior gives focal length, pitch and roll from a single frame. This is a METRIC pinhole camera with a real focal length in mm, not a pose guess.\n2. AtlasGravityCompass — the beat a plain depth solve gets wrong. On a steep down-angle (a birds-eye plate shows this best) the compass reports and can override pitch, roll and heading. Leave apply_override off to read the solve; turn it on to correct it.\n3. AtlasDepthMap — monocular metric depth, shared downstream so every branch agrees on scale. Exterior plates take the V2 Metric Outdoor model; interiors take MoGe.\n4. AtlasDeriveReliefMesh — depth becomes a triangulated mesh, torn at silhouettes, with the camera projection baked into the UVs. The tears are deliberate: a tear is honest missing information, and the fix is a layer, never a raised threshold.\n5. AtlasBlockoutViewport — the recovered camera and the projection, live.\n\nWHAT TO OVERRIDE FIRST\n• height_mode / camera_height_m on the solve. The solver assumes a standing eye height by default; type a real camera height and the whole scene rescales. The solver assumes, you correct.\n• focal_length_mm, if you know the lens. A measured value always beats a learned one.\n• depth_model, if the plate is interior — MoGe reads rooms far better than the outdoor metric model.\n• relief_grid and depth_edge_rel on the mesh, to trade density against silhouette fidelity.\n\nRESOLUTION\nThe solver is resolution-independent and has been validated past 8k. The viewport renders up to 8k."
+        "SOLVE STAGES \u2014 the front door taken apart, so you can take over a stage.\n\natlas_input_quickstart_workflow.json produces this same result from one node. This graph is that node opened up: every stage is a node you can inspect, swap or override.\n\nTHE CHAIN\n1. AtlasLearnedSolveFromImage \u2014 the camera. GeoCalib's learned prior gives focal length, pitch and roll from a single frame. This is a METRIC pinhole camera with a real focal length in mm, not a pose guess.\n2. AtlasGravityCompass \u2014 the beat a plain depth solve gets wrong. On a steep down-angle (a birds-eye plate shows this best) the compass reports and can override pitch, roll and heading. Leave apply_override off to read the solve; turn it on to correct it.\n3. AtlasDepthMap \u2014 monocular metric depth, shared downstream so every branch agrees on scale. Exterior plates take the V2 Metric Outdoor model; interiors take MoGe.\n4. AtlasDeriveReliefMesh \u2014 depth becomes a triangulated mesh, torn at silhouettes, with the camera projection baked into the UVs. The tears are deliberate: a tear is honest missing information, and the fix is a layer, never a raised threshold.\n5. AtlasBlockoutViewport \u2014 the recovered camera and the projection, live.\n\nWHAT TO OVERRIDE FIRST\n\u2022 height_mode / camera_height_m on the solve. The solver assumes a standing eye height by default; type a real camera height and the whole scene rescales. The solver assumes, you correct.\n\u2022 focal_length_mm, if you know the lens. A measured value always beats a learned one.\n\u2022 depth_model, if the plate is interior \u2014 MoGe reads rooms far better than the outdoor metric model.\n\u2022 relief_grid and depth_edge_rel on the mesh, to trade density against silhouette fidelity.\n\nRESOLUTION\nThe solver is resolution-independent and has been validated past 8k. The viewport renders up to 8k."
       ],
-      "title": "READ ME · which stage to take over first"
+      "title": "READ ME \u00b7 which stage to take over first"
     },
     {
       "id": 10,
@@ -1073,7 +1074,7 @@
           "type": "ATLAS_SOLVE",
           "links": [
             7,
-            12
+            14
           ]
         },
         {
@@ -1097,7 +1098,58 @@
         true,
         false
       ],
-      "title": "ROUND THE SILHOUETTE · boundary smooth ×8 🔷"
+      "title": "ROUND THE SILHOUETTE \u00b7 boundary smooth \u00d78 \ud83d\udd37"
+    },
+    {
+      "id": 11,
+      "type": "AtlasSceneHealthGate",
+      "pos": [
+        3200,
+        -180
+      ],
+      "size": [
+        340,
+        130
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 14
+        },
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSceneHealthGate"
+      },
+      "widgets_values": [
+        true,
+        false,
+        ""
+      ]
     }
   ],
   "links": [
@@ -1199,16 +1251,32 @@
     ],
     [
       12,
-      10,
+      11,
       0,
       8,
       0,
       "ATLAS_SOLVE"
+    ],
+    [
+      14,
+      10,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      15,
+      1,
+      0,
+      11,
+      1,
+      "IMAGE"
     ]
   ],
   "groups": [
     {
-      "title": "1 · THE EXPLICIT CHAIN · camera → compass → depth → mesh",
+      "title": "1 \u00b7 THE EXPLICIT CHAIN \u00b7 camera \u2192 compass \u2192 depth \u2192 mesh",
       "bounding": [
         -5,
         -7,
@@ -1220,7 +1288,7 @@
       "flags": {}
     },
     {
-      "title": "2 · RESULT · same as the front door, now overridable",
+      "title": "2 \u00b7 RESULT \u00b7 same as the front door, now overridable",
       "bounding": [
         -5,
         -48,
