@@ -96,7 +96,17 @@ def invert_remap(coords: Any, *, iterations: int = 12,
         # frame and drag the guess for its neighbours through the bilinear tap.
         np.clip(guess[..., 0], -w, 2 * w, out=guess[..., 0])
         np.clip(guess[..., 1], -h, 2 * h, out=guess[..., 1])
-        if float(np.abs(err).max()) < tolerance:
+        # Judge convergence over the SOLVABLE set, for the same reason the
+        # residual is returned per-pixel. A scalar max over every pixel can
+        # never fall below tolerance on a real lens — the corner pixels with
+        # no in-frame answer hold it up forever — so that test never fires,
+        # `tolerance` does nothing, and the loop always burns its full budget
+        # (measured: still 1.9 px after 12 iterations while the median was
+        # 2e-5 px). A pixel whose guess has wandered outside the frame is one
+        # of the unsolvable ones; the rest are what convergence means here.
+        inside = ((guess[..., 0] >= 0) & (guess[..., 0] <= w - 1) &
+                  (guess[..., 1] >= 0) & (guess[..., 1] <= h - 1))
+        if inside.any() and float(np.abs(err[inside]).max()) < tolerance:
             break
     residual = np.hypot(err[..., 0], err[..., 1])
     return guess, residual
@@ -238,13 +248,26 @@ def write_stmap_exr(stmap: Any, path: str) -> str:
 
     h, w, c = arr.shape
     spec = oiio.ImageSpec(w, h, c, "float")
+    # LOSSLESS on purpose. plate.write_exr defaults to dwab for imagery;
+    # a DCT codec on coordinate channels reintroduces exactly the error
+    # float32 was chosen to avoid. Do not "standardise" this to dwab.
     spec.attribute("compression", "zip")
     spec.attribute("atlas:content", "redistort_stmap")
     spec.attribute("atlas:origin", "bottom-left")
     out = oiio.ImageOutput.create(path)
     if out is None:  # pragma: no cover
         raise RuntimeError(f"OpenImageIO cannot write {path}")
-    out.open(path, spec)
-    out.write_image(arr)
-    out.close()
+    # Check every return, as plate/oiio_io.py does: OIIO reports failure with
+    # False + geterror(), never an exception. An unchecked write returns this
+    # path as a success, and a missing or truncated ST map is not discovered
+    # at render time — it is discovered in comp, when the render will not land
+    # back on the original plate.
+    if not out.open(path, spec):
+        raise RuntimeError(f"Could not open {path} for writing: {out.geterror()}")
+    if not out.write_image(arr):
+        err = out.geterror()
+        out.close()
+        raise RuntimeError(f"Could not write ST map {path}: {err}")
+    if not out.close():
+        raise RuntimeError(f"Could not finalize {path}: {out.geterror()}")
     return path

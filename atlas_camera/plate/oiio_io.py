@@ -297,7 +297,7 @@ def read_plate(path: str, *, input_colorspace: str = "auto",
 
 
 def write_exr(path: str, pixels: Any, *, bit_depth: str = "half",
-              compression: str = "zip", source_colorspace: str | None = None,
+              compression: str = "auto", source_colorspace: str | None = None,
               output_colorspace: str | None = None,
               extra_attribs: dict | None = None) -> str:
     """Write an EXR, converting colour if asked, and TAG what it contains.
@@ -309,6 +309,22 @@ def write_exr(path: str, pixels: Any, *, bit_depth: str = "half",
 
     ``bit_depth`` is 'half' (16-bit float, the VFX default — half the size and
     ample for imagery) or 'float' (32-bit, for data passes needing full range).
+
+    ``compression`` defaults to **auto**, which reads the intent already
+    encoded in ``bit_depth``:
+
+      half  -> **dwab**, the lossy DCT codec modern VFX ships plates with:
+               roughly 2-4x smaller than zip and visually lossless on
+               continuous-tone imagery. That is what 'half' means here.
+      float -> **zip**, lossless. 'float' is this module's marker for a DATA
+               pass, and a DCT codec on channels that are numbers rather than
+               colour — an ST map, depth, a matte read as a mask, normals —
+               is the same class of error as storing them in half float, which
+               ``raw/redistort`` rejected for a measured 2.5 px.
+
+    Pass an explicit codec ('dwab', 'dwaa', 'zip', 'piz', 'none') to override.
+    A float-precision COLOUR plate is the one case auto gets conservative
+    about; say ``compression="dwab"`` if the size matters more than exactness.
     """
     oiio = _require_oiio()
     from OpenImageIO import ImageBuf, ImageBufAlgo, ImageSpec
@@ -347,6 +363,9 @@ def write_exr(path: str, pixels: Any, *, bit_depth: str = "half",
             tagged = conv_out
 
     spec = ImageSpec(w, h, c, bit_depth)
+    if compression == "auto":
+        # bit_depth already carries the imagery/data distinction — see above.
+        compression = "dwab" if str(bit_depth).lower() == "half" else "zip"
     spec.attribute("compression", compression)
     if tagged:
         spec.attribute("oiio:ColorSpace", tagged)

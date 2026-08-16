@@ -153,3 +153,33 @@ def test_associated_alpha_is_handled_correctly(tmp_path):
         assert plate.alpha is not None
         assert np.allclose(plate.alpha, alpha, atol=1e-6), (
             "OCIO must not transform or otherwise alter alpha", alpha)
+
+
+def test_auto_compression_is_lossy_for_imagery_lossless_for_data(tmp_path):
+    """`bit_depth` already encodes the intent: half = imagery, float = data.
+
+    dwab is 2-4x smaller than zip and visually lossless on continuous tone,
+    which is what a plate wants. It is a DCT codec, so on channels that are
+    NUMBERS (ST map, depth, matte, normals) it is the same class of error as
+    half float — and `float` is this module's marker for exactly that.
+    """
+    oiio = pytest.importorskip("OpenImageIO")
+    img = _ramp()
+
+    plate = write_exr(str(tmp_path / "plate.exr"), img, bit_depth="half")
+    data = write_exr(str(tmp_path / "data.exr"), img, bit_depth="float")
+
+    def codec(path):
+        src = oiio.ImageInput.open(path)
+        try:
+            return src.spec().getattribute("compression")
+        finally:
+            src.close()
+
+    assert codec(plate) == "dwab", "an imagery plate should ship compressed"
+    assert codec(data).startswith("zip"), "a data pass must stay lossless"
+
+    # explicit always wins over auto
+    forced = write_exr(str(tmp_path / "forced.exr"), img,
+                       bit_depth="half", compression="zip")
+    assert codec(forced).startswith("zip")
