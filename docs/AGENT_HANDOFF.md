@@ -47,7 +47,7 @@ Three ways to send it (all write the same file):
 - **file**: write `resume.json` next to the brief
 
 With `auto_import` (default on) and `status=done`, the node runs
-`blender/recipes/export_meshes.py` headless on `blend_file` (or the brief's
+`atlas_camera/blender/recipes/export_meshes.py` headless on `blend_file` (or the brief's
 `scene_blend`), reads the `atlas_out` meshes back, refuses a seed built for a
 different solve (`expect_fingerprint`), and appends them as PROXY_ROLE
 `blender_import` primitives with projective UVs regenerated for the recovered

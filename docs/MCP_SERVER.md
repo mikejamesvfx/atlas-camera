@@ -162,8 +162,9 @@ doctrine travels with the tools:
 
 ```
 1. atlas_health
-     → {"ok": true, "atlas_nodes": 72, "experimental_registered": true, ...}
-        (68 standard + 4 experimental when ATLAS_EXPERIMENTAL=1; 68 without)
+     → {"ok": true, "atlas_nodes": 112, "experimental_registered": true, ...}
+        (102 standard + 10 experimental when ATLAS_EXPERIMENTAL=1; 102 without.
+         ATLAS_LEGACY_NODES and ATLAS_IOS add 2 each on top.)
 
 2. read atlas://calibration        (agent now knows the doctrine)
 

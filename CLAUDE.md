@@ -424,12 +424,16 @@ Frontend (atlas_blockout.js)
 | Example workflows | docs/NODE_CATALOG.md (example workflows) + the pin tests |
 
 | Dynamic plates (`core/dynamic_plate.py`, `dynamic/`, dynamic-plate exporters) | docs/DYNAMIC_PLATES.md |
-| Blender bridge (`blender/`, `AtlasBlenderMassing`/`ImportMeshes`), agent handoff (`comfy/nodes_agent.py`, `agent_handoff.py`) | docs/AGENT_HANDOFF.md + docs/NODE_CATALOG.md rows |
+| Blender bridge (`atlas_camera/blender/`, `AtlasBlenderMassing`/`ImportMeshes`), agent handoff (`comfy/nodes_agent.py`, `agent_handoff.py`) | docs/AGENT_HANDOFF.md + docs/NODE_CATALOG.md rows |
 | Patch-camera registration (`core/patch_camera_registration.py`, `AtlasAddPatchView camera_source`) | docs/DESIGN_RULES.md (registration is generated→measured only) |
 | Plate layers (`AtlasPlateLayer`, `AtlasCleanPlateLayer.plate_depth`), viewport snapshots (`comfy/viewport_snapshot.py`) | docs/NODE_CATALOG.md (rows + endpoint section) |
+| Viewport DRAW tools (draw/box/sphere, snap, edit, Apply) in `atlas_blockout.js` | VIEWPORT_DRAW_CONTEXT.md — hand this over before tweaking them |
+| Package layering / adapter boundary / `LatentScene` component slots | docs/ARCHITECTURE.md |
+| The `ui/` React workbench + `atlas_camera.ui` FastAPI service | docs/UI_WORKBENCH.md |
 
 For the artist/TD view: docs/USER_GUIDE.md; ecosystem map:
-docs/ECOSYSTEM_GUIDE.md; camera moves: docs/CAMERA_MOVES.md.
+docs/ECOSYSTEM_GUIDE.md; camera moves: docs/CAMERA_MOVES.md; the original
+north-star statement (vintage, kept deliberately): docs/PROJECT_VISION.md.
 
 ## graphify
 
