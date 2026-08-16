@@ -69,7 +69,7 @@ def test_declared_orbit_default_records_source_and_nothing_else(monkeypatch):
     _patch_estimate_depth(monkeypatch)
     solve, _, _ = _synthetic_primary()
     img = torch.rand(1, 512, 512, 3)
-    (out,) = AtlasAddPatchView().add_patch(solve, img, patch_azimuth_view="right side view",
+    out, _report = AtlasAddPatchView().add_patch(solve, img, patch_azimuth_view="right side view",
                                            relief_grid=48)
     meta = out.projection_sources[0].metadata
     assert meta["camera_source"] == "declared_orbit"
@@ -80,9 +80,9 @@ def test_register_without_primary_depth_falls_back_with_reason(monkeypatch):
     _fake_moge(monkeypatch)
     solve, pivot, eye = _synthetic_primary()
     img = torch.rand(1, 512, 512, 3)
-    (declared,) = AtlasAddPatchView().add_patch(
+    declared, _report = AtlasAddPatchView().add_patch(
         solve, img, patch_azimuth_view="right side view", relief_grid=48)
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, img, patch_azimuth_view="right side view", relief_grid=48,
         camera_source="register_to_primary", primary_image=torch.rand(1, 512, 512, 3))
     src = out.projection_sources[0]
@@ -119,7 +119,7 @@ def test_accepted_registration_replaces_patch_camera_not_primary(monkeypatch):
 
     img = torch.rand(1, 512, 512, 3)
     prim_view_before = solve.camera.extrinsics.camera_view_matrix
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, img, patch_azimuth_view="right side view", relief_grid=48,
         camera_source="register_to_primary", primary_image=torch.rand(1, 512, 512, 3),
         primary_depth=_fake_primary_depth())
@@ -149,9 +149,9 @@ def test_rejected_registration_keeps_declared_orbit_and_reports(monkeypatch):
     monkeypatch.setattr(pcr, "register_patch_camera", fake_register)
     solve, pivot, eye = _synthetic_primary()
     img = torch.rand(1, 512, 512, 3)
-    (declared,) = AtlasAddPatchView().add_patch(
+    declared, _report = AtlasAddPatchView().add_patch(
         solve, img, patch_azimuth_view="right side view", relief_grid=48)
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, img, patch_azimuth_view="right side view", relief_grid=48,
         camera_source="register_to_primary", primary_image=torch.rand(1, 512, 512, 3),
         primary_depth=_fake_primary_depth())
@@ -167,8 +167,37 @@ def test_no_pointmap_from_backend_falls_back(monkeypatch):
     _fake_moge(monkeypatch, with_points=False)
     solve, _, _ = _synthetic_primary()
     img = torch.rand(1, 512, 512, 3)
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, img, patch_azimuth_view="right side view", relief_grid=48,
         camera_source="register_to_primary", primary_image=torch.rand(1, 512, 512, 3),
         primary_depth=_fake_primary_depth())
     assert "no pointmap" in out.projection_sources[0].metadata["registration_fallback_reason"]
+
+
+# --- the report is the point: a refusal must be visible AT THE NODE --------
+
+def test_report_names_a_mis_wire_rather_than_hiding_it(monkeypatch):
+    """Choosing register_to_primary and forgetting primary_depth is a WIRING
+    mistake, not a measurement outcome. Before the report output it degraded
+    to the declared orbit with nothing visible unless a health node was wired.
+    """
+    _fake_moge(monkeypatch)
+    solve, _pivot, _eye = _synthetic_primary()
+    img = torch.rand(1, 512, 512, 3)
+    _out, report = AtlasAddPatchView().add_patch(
+        solve, img, patch_azimuth_view="right side view", relief_grid=48,
+        camera_source="register_to_primary",
+        primary_image=torch.rand(1, 512, 512, 3))
+    assert "REGISTRATION REFUSED" in report
+    assert "primary_depth" in report
+    assert "DECLARED" in report
+
+
+def test_declared_orbit_report_says_no_measurement_was_attempted(monkeypatch):
+    _fake_moge(monkeypatch)
+    solve, _pivot, _eye = _synthetic_primary()
+    img = torch.rand(1, 512, 512, 3)
+    _out, report = AtlasAddPatchView().add_patch(
+        solve, img, patch_azimuth_view="right side view", relief_grid=48)
+    assert "no measurement was attempted" in report
+    assert "REFUSED" not in report

@@ -203,7 +203,7 @@ def test_mixed_evidence_layers_preserve_cameras_and_geometry_provenance(tmp_path
         "solve_debug_metadata": copy.deepcopy(solve.debug_metadata),
     }
     patch_image = torch.rand(1, H, W, 3, dtype=torch.float32)
-    (with_qwen,) = AtlasAddPatchView()._finish_patch(
+    with_qwen, _report = AtlasAddPatchView()._finish_patch(
         solve, patch_image,
         generated_template.camera.intrinsics,
         generated_template.camera.extrinsics,

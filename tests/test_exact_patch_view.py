@@ -147,7 +147,7 @@ def test_add_patch_exact_override_places_camera_at_raw_delta(monkeypatch):
 
     solve = _solve(width=512, height=512, fx=500.0)
     patch_image = torch.rand(1, 512, 512, 3)
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, patch_image,
         patch_azimuth_view="back view",  # dropdowns must lose to exact
         patch_view_override="<sks> right side view eye-level shot medium shot",

@@ -20,7 +20,11 @@ from atlas_camera.comfy.nodes import (
 def test_node_registered_and_returns_solve():
     assert NODE_CLASS_MAPPINGS["AtlasAddPatchView"] is AtlasAddPatchView
     assert "AtlasAddPatchView" in NODE_DISPLAY_NAME_MAPPINGS
-    assert AtlasAddPatchView.RETURN_TYPES == ("ATLAS_SOLVE",)
+    # `report` appended 2026-08-17. ATLAS_SOLVE stays at index 0 so saved
+    # graphs keep their wire; the report is what makes a registration refusal
+    # visible at the node instead of only through scene_health.
+    assert AtlasAddPatchView.RETURN_TYPES == ("ATLAS_SOLVE", "STRING")
+    assert AtlasAddPatchView.RETURN_NAMES == ("solve", "report")
 
 
 def test_input_widgets_expose_named_view_controls():
@@ -99,7 +103,7 @@ def test_add_patch_orbits_camera_and_appends_source(monkeypatch):
     patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
 
     # Source = front view, patch = right side view (90° absolute) → +90° orbit.
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, patch_img,
         patch_azimuth_view="right side view", patch_elevation_view="eye-level shot",
         source_azimuth_view="front view", name="patch_right", relief_grid=48,
@@ -129,7 +133,7 @@ def test_qwen_patch_is_explicitly_generated(monkeypatch):
     solve, _pivot, _eye = _synthetic_primary()
     patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
 
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="right side view",
         geometry_source="own_depth", relief_grid=48,
     )
@@ -145,7 +149,7 @@ def test_add_patch_does_not_mutate_input_solve(monkeypatch):
     solve, _pivot, _eye = _synthetic_primary()
     patch_img = torch.rand(1, 256, 384, 3, dtype=torch.float32)
 
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="left side view", name="patch_left", relief_grid=48,
     )
 
@@ -166,7 +170,7 @@ def test_add_patch_passes_through_when_primary_has_no_focal(monkeypatch):
     solve = AtlasSolve(camera=LatentCamera(intrinsics=intr))
     patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
 
-    (out,) = AtlasAddPatchView().add_patch(solve, patch_img)
+    out, _report = AtlasAddPatchView().add_patch(solve, patch_img)
     assert out is solve
     assert len(out.projection_sources) == 0
 
@@ -192,10 +196,10 @@ def test_unseen_matte_embedded_and_scales_with_orbit(monkeypatch):
     solve, _pivot, _eye = _synthetic_primary()
     patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
 
-    (same,) = AtlasAddPatchView().add_patch(
+    same, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front view",
         source_azimuth_view="front view", relief_grid=48, unseen_dilate_px=0)
-    (back,) = AtlasAddPatchView().add_patch(
+    back, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="back view",
         source_azimuth_view="front view", relief_grid=48, unseen_dilate_px=0)
 
@@ -219,16 +223,16 @@ def test_unseen_matte_dilation_and_opt_out(monkeypatch):
     solve, _pivot, _eye = _synthetic_primary()
     patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
 
-    (d0,) = AtlasAddPatchView().add_patch(
+    d0, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         relief_grid=48, unseen_dilate_px=0)
-    (d16,) = AtlasAddPatchView().add_patch(
+    d16, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         relief_grid=48, unseen_dilate_px=16)
     assert _decode_matte(d16.projection_sources[0].mask_b64).sum() \
         >= _decode_matte(d0.projection_sources[0].mask_b64).sum()
 
-    (off,) = AtlasAddPatchView().add_patch(
+    off, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         relief_grid=48, mask_unseen_only=False)
     assert off.projection_sources[0].mask_b64 is None
@@ -274,7 +278,7 @@ def test_scale_registers_against_primary_overlap(monkeypatch):
                              near=5.0, far=30.0)
     patch_img = torch.rand(1, h, w, 3, dtype=torch.float32)
 
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front view",
         source_azimuth_view="front view", relief_grid=48,
         primary_depth=primary_dr, unseen_dilate_px=0)
@@ -298,10 +302,10 @@ def test_exclude_mask_removes_patch_sky_geometry(monkeypatch):
     sky = torch.zeros(1, 512, 512, dtype=torch.float32)
     sky[0, :200, :] = 1.0  # top 200 rows are "sky"
 
-    (plain,) = AtlasAddPatchView().add_patch(
+    plain, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         relief_grid=48)
-    (masked,) = AtlasAddPatchView().add_patch(
+    masked, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         relief_grid=48, exclude_mask=sky)
 
@@ -333,10 +337,10 @@ def test_patch_mask_bounds_the_geometry_not_only_the_paint(monkeypatch):
                     if p.primitive_type == "mesh")
         return mesh.metadata["n_vertices"]
 
-    (whole,) = AtlasAddPatchView().add_patch(
+    whole, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         geometry_source="own_depth", relief_grid=48, unseen_dilate_px=0)
-    (trimmed,) = AtlasAddPatchView().add_patch(
+    trimmed, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         geometry_source="own_depth", relief_grid=48, unseen_dilate_px=0,
         patch_mask=hole)
@@ -356,9 +360,9 @@ def test_exact_view_pivot_term_moves_the_patch_camera(monkeypatch):
     patch_img = torch.rand(1, 256, 256, 3, dtype=torch.float32)
     exact = "azimuth_deg=12.0000 elevation_deg=0.0000 distance_scale=1.0000"
 
-    (default_pivot,) = AtlasAddPatchView().add_patch(
+    default_pivot, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, exact_view_override=exact, relief_grid=32)
-    (carried,) = AtlasAddPatchView().add_patch(
+    carried, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, exact_view_override=exact + " pivot=0.0,0.0,4.0",
         relief_grid=32)
 
@@ -399,7 +403,7 @@ def test_reuse_scene_projects_onto_existing_geometry_without_depth(monkeypatch):
 
     solve, _pivot, _eye = _solve_with_geometry()
     patch_img = torch.rand(1, 256, 256, 3, dtype=torch.float32)
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view")
 
     src = out.projection_sources[0]
@@ -419,7 +423,7 @@ def test_reuse_scene_falls_back_to_own_depth_without_geometry(monkeypatch):
 
     solve, _pivot, _eye = _synthetic_primary()  # no geometry anywhere
     patch_img = torch.rand(1, 512, 512, 3, dtype=torch.float32)
-    (out,) = AtlasAddPatchView().add_patch(
+    out, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front-right quarter view",
         relief_grid=48)
     src = out.projection_sources[0]
@@ -452,10 +456,10 @@ def test_reuse_scene_splat_matte_scales_with_orbit(monkeypatch):
                              image_width=w, image_height=h, near=5.0, far=30.0)
     patch_img = torch.rand(1, h, w, 3, dtype=torch.float32)
 
-    (same,) = AtlasAddPatchView().add_patch(
+    same, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="front view",
         primary_depth=primary_dr, unseen_dilate_px=0)
-    (back,) = AtlasAddPatchView().add_patch(
+    back, _report = AtlasAddPatchView().add_patch(
         solve, patch_img, patch_azimuth_view="back view",
         primary_depth=primary_dr, unseen_dilate_px=0)
 

@@ -3210,6 +3210,44 @@ class AtlasPathGuidedHoleRepair:
         )
 
 
+def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,
+                       d_azimuth, d_elevation) -> str:
+    """What AtlasAddPatchView actually did, in the artist's own report.
+
+    The registration numbers already ride the ProjectionSource metadata and
+    scene_health surfaces them — but a REFUSAL is a silent branch skip at the
+    node, and one of its ten reasons ("primary_depth not wired") is a wiring
+    mistake rather than a measurement outcome. Discovering a mis-wire only by
+    adding a health node is the gap this closes.
+    """
+    lines = [f"patch '{name}': orbit {float(d_azimuth):+.1f}deg az, "
+             f"{float(d_elevation):+.1f}deg el"]
+    src = str(metadata.get("camera_source") or "declared_orbit")
+    if src == "register_to_primary":
+        if metadata.get("registration_accepted"):
+            lines.append(
+                "camera MEASURED against the primary: "
+                f"{metadata.get('registration_n_inliers', '?')} inliers, "
+                f"rms {metadata.get('registration_rms_m', '?')} m, "
+                f"deviation {metadata.get('registration_deviation_deg', '?')}deg, "
+                f"scale {metadata.get('registration_scale', '?')}")
+            if metadata.get("registration_reason"):
+                lines.append(f"  {metadata['registration_reason']}")
+        else:
+            # The whole point of the node was measurement and it did not happen.
+            lines.append(
+                "REGISTRATION REFUSED — the patch is placed at the DECLARED "
+                f"orbit, not a measured one: "
+                f"{metadata.get('registration_fallback_reason') or metadata.get('registration_reason') or 'no reason recorded'}")
+    else:
+        lines.append("camera from the declared orbit (camera_source="
+                     f"{src}); no measurement was attempted")
+    if scale_source:
+        lines.append(f"scale {float(scale):.4f} from {scale_source}"
+                     + (f" (fallback: {fallback_reason})" if fallback_reason else ""))
+    return "\n".join(lines)
+
+
 def _derive_proxy_geometry(solve, depth, backdrop, *, extract, metadata):
     """The shared derive body: resolve the camera, hand the depth map to one
     extractor, clobber PROXY_ROLE geometry, apply the backdrop mode.
@@ -3835,7 +3873,13 @@ class AtlasAddPatchView:
     view maps directly. ``flip_azimuth`` swaps left/right if the recovered
     camera's handedness comes out mirrored (a one-click calibration fix).
     """
-    RETURN_TYPES = ("ATLAS_SOLVE",)
+    # `report` APPENDED 2026-08-17. Ten registration fallbacks were recorded in
+    # metadata and surfaced only through scene_health, so a mis-wire (choosing
+    # register_to_primary and forgetting primary_depth) silently degraded to the
+    # declared orbit with nothing visible at the node. Appended last: output
+    # links resolve by index, so saved graphs keep their ATLAS_SOLVE wire.
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
     FUNCTION = "add_patch"
     CATEGORY = "Atlas/advanced"
 
@@ -4050,7 +4094,9 @@ class AtlasAddPatchView:
         fy = intr.fy_px or fx
         if fx <= 0 or p_w <= 0:
             # No focal / dims on the primary — can't place a patch; pass through.
-            return (solve,)
+            return (solve, "SKIPPED — the primary camera has no focal length or "
+                           "image dimensions, so a patch camera cannot be placed. "
+                           "Solve passed through unchanged.")
         cx = intr.cx_px if intr.cx_px is not None else p_w / 2.0
         cy = intr.cy_px if intr.cy_px is not None else p_h / 2.0
 
@@ -4575,7 +4621,8 @@ class AtlasAddPatchView:
 
         out = copy.deepcopy(solve)
         out.projection_sources.append(source)
-        return (out,)
+        return (out, _patch_view_report(name, metadata, scale_source, scale,
+                                        fallback_reason, d_azimuth, d_elevation))
 
 
 class AtlasOcclusionMask:
