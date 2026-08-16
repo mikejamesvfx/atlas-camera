@@ -112,6 +112,22 @@ def ransac_similarity(src: Any, dst: Any, *, threshold_m: float, iters: int = 60
         # Degenerate (collinear) sample: skip.
         if np.linalg.norm(np.cross(tri[1] - tri[0], tri[2] - tri[0])) < 1e-12:
             continue
+        # COPLANAR consensus sets are NOT degenerate for scale — 3D<->3D
+        # similarity fixes it from in-plane distances, verified on a synthetic
+        # facade (200 points on z=0, true scale recovered to 4 decimals). The
+        # planar degeneracy is a MIRROR: a patch pointmap reflected about the
+        # facade plane fits with the same scale, the same RMS, the same inlier
+        # count, and a PROPER rotation (det +1), so Umeyama's reflection
+        # handling cannot flag it and nothing in this function will.
+        #
+        # What catches it is `RegistrationConfig.max_deviation_deg`: a camera
+        # on the wrong side of the facade lands far from every declared orbit
+        # pose. That protection is INCIDENTAL — the gate is aimed at a
+        # generator ignoring the requested angle, not at a mirrored pointmap —
+        # so relaxing it removes a guard nobody wrote on purpose. No physical
+        # trigger is known: MoGe regresses metric points, and the
+        # concave/convex inversion that would cause this belongs to
+        # shape-from-shading, not a pointmap regressor.
         try:
             s, R, t = umeyama_similarity(tri, b[idx], with_scale=with_scale)
         except (ValueError, np.linalg.LinAlgError):
@@ -155,6 +171,9 @@ class RegistrationConfig:
     match_quality: str = "permissive"     # QUALITY_PROFILES key; AI views match thinly
     min_inliers: int = 40
     max_residual_m: float = 0.35
+    # Also the only thing standing between a mirrored planar pointmap and an
+    # accepted camera on the wrong side of the facade — see the MIRROR note in
+    # `ransac_similarity`. Read that before loosening this.
     max_deviation_deg: float = 25.0
     far_depth_factor: float = 3.0         # drop patch points beyond factor*median depth
     ransac_iters: int = 800

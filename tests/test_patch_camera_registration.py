@@ -211,3 +211,48 @@ def test_rejects_when_there_is_nothing_to_match(scene):
         patch_points_cam=_opencv_pointmap(scene["dep_q"]),
         primary_points_world=scene["world_p"], patch_intrinsics=K)
     assert not reg.accepted and reg.n_inliers == 0
+
+
+# --- planar consensus sets: what IS and IS NOT degenerate ------------------
+# Atlas patches facades, so a near-planar inlier set is the common case, not a
+# corner case. These pin both halves of the MIRROR note in ransac_similarity.
+
+def _planar_pair(s_true=1.7, theta=0.6, noise=0.002, n=200, seed=0):
+    rng = np.random.default_rng(seed)
+    src = np.column_stack([rng.uniform(-5, 5, n), rng.uniform(0, 8, n), np.zeros(n)])
+    R = np.array([[math.cos(theta), 0.0, math.sin(theta)],
+                  [0.0, 1.0, 0.0],
+                  [-math.sin(theta), 0.0, math.cos(theta)]])
+    dst = s_true * src @ R.T + np.array([2.0, 0.5, -30.0])
+    return src, dst + rng.normal(scale=noise, size=dst.shape)
+
+
+def test_coplanar_correspondences_do_not_lose_scale():
+    """The degeneracy people expect here does NOT exist: 3D<->3D similarity
+    fixes scale from in-plane distances, so a facade registers cleanly."""
+    src, dst = _planar_pair(s_true=1.7)
+    fit = ransac_similarity(src, dst, threshold_m=0.05, min_inliers=12, seed=0)
+    assert fit is not None
+    assert fit.scale == pytest.approx(1.7, rel=1e-3)
+    assert fit.n_inliers == len(src)
+
+
+def test_a_mirrored_planar_pointmap_is_indistinguishable_here():
+    """CHARACTERIZATION, not a wish: a patch pointmap reflected about the
+    facade plane fits with the same scale, RMS and inlier count, via a PROPER
+    rotation — so Umeyama's reflection handling cannot flag it and neither can
+    this function. `RegistrationConfig.max_deviation_deg` is what refuses it
+    downstream. If this test ever starts failing, the fit gained the ability
+    to tell them apart and the MIRROR note should be revised.
+    """
+    src, dst = _planar_pair()
+    mirrored = src.copy()
+    mirrored[:, 2] *= -1.0
+
+    direct = ransac_similarity(src, dst, threshold_m=0.05, min_inliers=12, seed=0)
+    mirror = ransac_similarity(mirrored, dst, threshold_m=0.05, min_inliers=12, seed=0)
+    assert direct is not None and mirror is not None
+    assert mirror.scale == pytest.approx(direct.scale, rel=1e-6)
+    assert mirror.rms_m == pytest.approx(direct.rms_m, rel=1e-6)
+    assert mirror.n_inliers == direct.n_inliers
+    assert np.linalg.det(mirror.rotation) == pytest.approx(1.0, abs=1e-6)
