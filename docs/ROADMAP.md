@@ -49,6 +49,23 @@
   scale tiers, (4) only then consider a node surface.
   Fitting in disparity rather than depth is already decided and pinned by
   `test_fitting_in_the_wrong_space_leaves_far_field_error`; do not relitigate it.
+  **Two acceptance criteria landed 2026-08-17, before step (3) can be built**,
+  both from measured failures rather than review opinion. A fit now records the
+  `predicted_range` it saw and `apply_depth_correction` returns a
+  `CorrectionReport` — because a 400-sample fit off one wall at 1.00–1.30 m
+  reported 98.4% improvement and 0.0074 m residual, then missed by 67% at
+  50–250 m, and `MIN_SAMPLES` cannot see that (400 clears it easily; only the
+  RANGE shows it); and because a plausible correction voided 76% of a valid
+  frame and returned it as a bare array, which reads downstream as "no depth
+  here" rather than "the correction failed here". Both are pinned by
+  regression tests. **Still open from the same review**, and cheaper to fix
+  before there are callers: `choose_correction` selects on in-sample error with
+  no significance margin (measured picking `affine_disparity` over the true
+  `scale` model on a 1.1% margin, and the in-sample ranking did not survive a
+  holdout split); its blanket `except Exception` converts a caller's shape
+  error into "no correction model could be fitted"; mask shape is unvalidated,
+  so a `(32,128)` mask against a `(64,64)` depth is silently accepted; and the
+  serialized form has no `schema_version`, which step (2) will want on day one.
 
 - **ONNX Runtime depth backend (2026-07-13).** `tools/export_depth_v2_onnx.py`
   already exports Depth Anything V2 to ONNX with a torch-vs-onnxruntime parity
