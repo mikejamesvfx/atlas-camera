@@ -27,6 +27,20 @@ from atlas_camera.comfy.node_helpers import (
 )
 
 
+def _with_manifest_note(result: tuple, note: str):
+    """Return `result`, surfacing a manifest note on the node when there is one.
+
+    ComfyUI renders `{"ui": {"text": [...]}}` on an OUTPUT_NODE, which is how
+    AtlasExportReliefMesh already shows its report. Using it here means an
+    export whose atlas_project.json was skipped SAYS so where the artist is
+    looking, without adding an output slot — the returned tuple is unchanged,
+    so every saved graph keeps its wires.
+    """
+    if not note:
+        return result
+    return {"ui": {"text": [note]}, "result": result}
+
+
 # Moved to node_helpers 2026-08-07 so AtlasLoadRAW (nodes_solve) can route its
 # developed EXR into the same tree without nodes_solve importing nodes_export.
 # Re-exported here because every call site in this module reads as local.
@@ -80,9 +94,9 @@ class AtlasExportSolveJSON:
             name = Path(str(output_path)).name or "atlas_solve.json"
             output_path = str(project.subdir("solves", create=True) / name)
         dest = str(save_solve_json(solve, output_path))
-        _write_export_manifest(solve, Path(dest).parent or Path("."),
-                               [("solve_json", dest)], "AtlasExportSolveJSON")
-        return (dest,)
+        note = _write_export_manifest(solve, Path(dest).parent or Path("."),
+                                      [("solve_json", dest)], "AtlasExportSolveJSON")
+        return _with_manifest_note((dest,), note)
 
 
 class AtlasExportMayaReviewScene:
@@ -371,9 +385,11 @@ class AtlasExportReliefMesh:
             )["obj"]
         if format in ("both", "glb"):
             glb_path = export_relief_mesh_glb(mesh, output_dir, texture=texture)["glb"]
-        _write_export_manifest(solve, output_dir,
-                               [("relief_obj", obj_path), ("relief_glb", glb_path)],
-                               "AtlasExportReliefMesh")
+        note = _write_export_manifest(solve, output_dir,
+                                      [("relief_obj", obj_path), ("relief_glb", glb_path)],
+                                      "AtlasExportReliefMesh")
+        if note:
+            report = f"{report}\n{note}"
         return {"ui": {"text": [report]},
                 "result": (obj_path, glb_path, preview_solve, report)}
 
@@ -405,9 +421,9 @@ class AtlasExportUSD:
         out.mkdir(parents=True, exist_ok=True)
         dest = out / "camera.usda"
         USDExporter().export_camera(solve, dest)
-        _write_export_manifest(solve, out, [("usd_camera", str(dest))],
-                               "AtlasExportUSD")
-        return (str(dest),)
+        note = _write_export_manifest(solve, out, [("usd_camera", str(dest))],
+                                      "AtlasExportUSD")
+        return _with_manifest_note((str(dest),), note)
 
 
 class AtlasExportBlender:
@@ -440,9 +456,9 @@ class AtlasExportBlender:
         out.mkdir(parents=True, exist_ok=True)
         dest = out / "build_scene.py"
         write_blender_scene_script(solve, dest)
-        _write_export_manifest(solve, out, [("blender_script", str(dest))],
-                               "AtlasExportBlender")
-        return (str(dest),)
+        note = _write_export_manifest(solve, out, [("blender_script", str(dest))],
+                                      "AtlasExportBlender")
+        return _with_manifest_note((str(dest),), note)
 
 
 class AtlasExportNuke:
@@ -547,13 +563,13 @@ class AtlasExportNuke:
                 stmap_note = (
                     f"\nredistort ST map: FAILED ({type(exc).__name__}: {exc})")
         write_nuke_native_script(solve, nk_dest, relief_mesh_obj_path=mesh_path)
-        _write_export_manifest(solve, out,
-                               [("nuke_script", str(py_dest)),
-                                ("nuke_scene", str(nk_dest))] + stmap_entries,
-                               "AtlasExportNuke")
+        note = _write_export_manifest(solve, out,
+                                      [("nuke_script", str(py_dest)),
+                                       ("nuke_scene", str(nk_dest))] + stmap_entries,
+                                      "AtlasExportNuke")
         if stmap_note:
             print(f"[AtlasExportNuke]{stmap_note}")
-        return (str(py_dest), str(nk_dest))
+        return _with_manifest_note((str(py_dest), str(nk_dest)), note)
 
 
 class AtlasExportNukeLayers:
@@ -636,11 +652,11 @@ class AtlasExportNukeLayers:
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
         summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
-        _write_export_manifest(solve, output_dir,
-                               [("nuke_scene", result["nk_path"])],
-                               "AtlasExportNukeLayers",
-                               extra={"projection_layers": result["layer_provenance"]})
-        return (result["nk_path"], summary)
+        note = _write_export_manifest(solve, output_dir,
+                                      [("nuke_scene", result["nk_path"])],
+                                      "AtlasExportNukeLayers",
+                                      extra={"projection_layers": result["layer_provenance"]})
+        return (result["nk_path"], f"{summary}\n{note}" if note else summary)
 
 
 class AtlasExportMayaLayers:
@@ -716,11 +732,11 @@ class AtlasExportMayaLayers:
         if result["skipped"]:
             summary += f" | skipped: {'; '.join(result['skipped'])}"
         summary += _scale_summary_suffix(solve) + _health_summary_suffix(solve)
-        _write_export_manifest(solve, output_dir,
-                               [("maya_scene", result["ma_path"])],
-                               "AtlasExportMayaLayers",
-                               extra={"projection_layers": result["layer_provenance"]})
-        return (result["ma_path"], summary)
+        note = _write_export_manifest(solve, output_dir,
+                                      [("maya_scene", result["ma_path"])],
+                                      "AtlasExportMayaLayers",
+                                      extra={"projection_layers": result["layer_provenance"]})
+        return (result["ma_path"], f"{summary}\n{note}" if note else summary)
 
 
 # ---------------------------------------------------------------------------

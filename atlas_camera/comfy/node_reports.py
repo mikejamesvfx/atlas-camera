@@ -45,12 +45,18 @@ def _health_summary_suffix(solve) -> str:
     return f" | 🩺 health: {str(stamp['level']).upper()} ({n} flag(s) {ack})"
 def _write_export_manifest(
     solve, output_dir, kind_paths, exporter: str, *, extra=None,
-) -> None:
+) -> str:
     """Write/merge atlas_project.json beside an export + embed the identity
     hash as a leading comment in text artifacts that tolerate one (.nk/.py/.ma).
 
     A manifest failure must NEVER fail the export — everything degrades to a
     log line. Called with [(kind, path), ...]; empty paths are skipped.
+
+    Returns "" on success, else a one-line note for the caller's REPORT. The
+    log line alone was not enough: atlas_project.json is the P0 trust artifact
+    (scale_health, the confidence vector, export provenance), so an export that
+    ships without one looks exactly like a complete delivery — and a headless
+    or agent-driven run never sees ComfyUI's console at all.
     """
     try:
         from atlas_camera.exporters.manifest import (
@@ -67,6 +73,7 @@ def _write_export_manifest(
             extra=extra,
         )
         ident = manifest_identity_hash(solve)
+        unstamped = []
         for _, p in pairs:
             prefix = _IDENTITY_COMMENT_PREFIX.get(Path(p).suffix.lower())
             if not prefix or not Path(p).is_file():
@@ -78,9 +85,16 @@ def _write_export_manifest(
                     text = text.split("\n", 1)[-1]
                 Path(p).write_text(f"{marker}{ident}\n{text}", encoding="utf-8")
             except (OSError, UnicodeDecodeError):
-                continue
+                # An artifact with no identity header is indistinguishable from
+                # a stamped one, so NAME it rather than only skipping.
+                unstamped.append(Path(p).name)
+        if unstamped:
+            return ("atlas_project_identity header could not be embedded in: "
+                    + ", ".join(unstamped))
+        return ""
     except Exception as exc:  # noqa: BLE001
         logging.warning("atlas_project.json manifest skipped: %s", exc)
+        return f"atlas_project.json manifest SKIPPED: {exc}"
 def _format_hole_fill_report(enabled, n_filled, filled, faces_added, loops_left,
                              max_hole_edges, near_m, far_m):
     """Human-readable summary of an interior hole fill, for the export node.
