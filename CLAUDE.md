@@ -430,6 +430,7 @@ Frontend (atlas_blockout.js)
 | Viewport DRAW tools (draw/box/sphere, snap, edit, Apply) in `atlas_blockout.js` | VIEWPORT_DRAW_CONTEXT.md — hand this over before tweaking them |
 | Package layering / adapter boundary / `LatentScene` component slots | docs/ARCHITECTURE.md |
 | The `ui/` React workbench + `atlas_camera.ui` FastAPI service | docs/UI_WORKBENCH.md |
+| "Is this a bug?" in ComfyUI — blank blockout passes, black depth map, empty VP overlay | docs/COMFY_WORKFLOW.md (the four non-bugs) |
 
 For the artist/TD view: docs/USER_GUIDE.md; ecosystem map:
 docs/ECOSYSTEM_GUIDE.md; camera moves: docs/CAMERA_MOVES.md; the original

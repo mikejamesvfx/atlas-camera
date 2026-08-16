@@ -650,7 +650,7 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 4,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -1119,7 +1119,7 @@
    "tests": 3,
    "mcp_tools": 1,
    "repo_tools": 3,
-   "docs": 4,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1147,7 +1147,7 @@
    "tests": 4,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 5,
+   "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1228,7 +1228,7 @@
    "tests": 4,
    "mcp_tools": 1,
    "repo_tools": 3,
-   "docs": 6,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1309,7 +1309,7 @@
    "tests": 7,
    "mcp_tools": 0,
    "repo_tools": 2,
-   "docs": 6,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1336,7 +1336,7 @@
    "tests": 4,
    "mcp_tools": 1,
    "repo_tools": 1,
-   "docs": 4,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1364,7 +1364,7 @@
    "tests": 3,
    "mcp_tools": 1,
    "repo_tools": 3,
-   "docs": 5,
+   "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1392,7 +1392,7 @@
    "tests": 2,
    "mcp_tools": 1,
    "repo_tools": 3,
-   "docs": 5,
+   "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1608,7 +1608,7 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 4,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1851,7 +1851,7 @@
    "tests": 5,
    "mcp_tools": 1,
    "repo_tools": 2,
-   "docs": 5,
+   "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -2354,7 +2354,7 @@
    "tests": 3,
    "mcp_tools": 1,
    "repo_tools": 0,
-   "docs": 5,
+   "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -2460,7 +2460,7 @@
    "tests": 4,
    "mcp_tools": 1,
    "repo_tools": 0,
-   "docs": 7,
+   "docs": 8,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -2644,7 +2644,7 @@
    "tests": 4,
    "mcp_tools": 1,
    "repo_tools": 0,
-   "docs": 5,
+   "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -3094,7 +3094,7 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 3,
-   "docs": 5,
+   "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
