@@ -614,6 +614,11 @@ class LatentScene:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LatentScene":
+        # The stamp written by to_dict is finally read. A missing version is
+        # accepted (files predate the check); a different MAJOR raises.
+        from atlas_camera.core.base import check_schema_version
+        check_schema_version(data.get("schema_version"),
+                             expected=cls.schema_version, where="solve JSON")
         camera_data = dict(data["camera"])
         if "confidence" not in camera_data and data.get("confidence_detail"):
             camera_data["confidence"] = data["confidence_detail"]

@@ -648,6 +648,13 @@ class DynamicPlate:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DynamicPlate":
+        # A package lives on disk in a shot lane, so one written by an older
+        # build is a normal input — and v0.1 says outright that other semantic
+        # types are still placeholders, so a 0.x bump is coming.
+        from atlas_camera.core.base import check_schema_version
+        check_schema_version(data.get("schema_version"),
+                             expected=cls.schema_version,
+                             where="dynamic plate manifest")
         src_cam = data.get("source_camera")
         crop_cam = data.get("crop_camera")
         plate = cls(
