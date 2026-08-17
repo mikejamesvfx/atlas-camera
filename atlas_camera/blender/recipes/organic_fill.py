@@ -19,7 +19,6 @@ import traceback
 
 _T0 = time.time()
 
-import bmesh  # noqa: E402
 import bpy  # noqa: E402
 import numpy as np  # noqa: E402
 from mathutils.bvhtree import BVHTree  # noqa: E402

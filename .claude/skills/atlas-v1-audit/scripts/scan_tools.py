@@ -212,8 +212,15 @@ def build(root: Path, cfg: dict, package: str) -> dict:
         status["ruff"] = "NOT_AVAILABLE"
     else:
         status["ruff"] = "AVAILABLE"
+        # ERA001 ("commented-out code") is deliberately NOT selected. Both hits
+        # on this repo were prose: a `# Experimental (research-only)` section
+        # header in the registry, and the projection formula
+        # `# u = offset_u + scale_u * (cam_x / -cam_z)` documenting the two
+        # lines directly beneath it. The rule cannot tell explanation from
+        # leftovers, and 2/2 false positives would mask a real F401/F841
+        # regression behind noise nobody reads.
         rc, out, _ = _run(
-            [exe, "check", package, "--select", "F401,F811,F841,ERA001",
+            [exe, "check", package, "--select", "F401,F811,F841",
              "--output-format", "json", "--no-cache"], root)
         parsed, note = _parse_json(out)
         if parsed is None:

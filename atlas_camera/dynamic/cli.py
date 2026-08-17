@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 
 from pathlib import Path
 
@@ -239,7 +238,6 @@ def cmd_generate(args) -> int:
 
 
 def cmd_create(args) -> int:
-    import numpy as np
     from PIL import Image
 
     from atlas_camera.exporters.dynamic_plate_package import (
@@ -510,8 +508,6 @@ def cmd_hole_crop_fill(args) -> int:
     from PIL import Image
 
     from atlas_camera.core.camera_crop import (
-        RegionROI,
-        hole_rois,
         rois_from_world_regions,
     )
     from atlas_camera.core.camera_spec import CameraSpec
@@ -525,7 +521,6 @@ def cmd_hole_crop_fill(args) -> int:
         build_scene_textures,
         crop_context_depth,
         render_crop_sequence,
-        render_disocclusion_sequence,
         survey_hole_rois,
         write_sequences,
     )

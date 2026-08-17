@@ -146,7 +146,6 @@ class AtlasAgentHandoff:
                 expect_fingerprint=True, min_y_m=-0.05, poll_s=1.0, project=None,
                 mode="wait", paint_with="clean_plate", unique_id=None):
         import copy
-        from pathlib import Path
 
         from atlas_camera.blender.measured import IMPORT_SOURCE, solve_seed_fingerprint
         from atlas_camera.comfy.nodes_geometry import _blender_exchange_dir

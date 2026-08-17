@@ -203,7 +203,6 @@ def cut_torn_quads(
             """Append one sheet's polygon; True when it produced triangles."""
             loop: list[int] = []
             for k in range(4):
-                nxt = (k + 1) % 4
                 if near[k] == want_near:
                     loop.append(corner_idx[k])
                 cross = crossings[k]

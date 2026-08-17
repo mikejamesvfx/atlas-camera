@@ -21,7 +21,6 @@ import copy
 import uuid
 
 from pathlib import Path
-from typing import Any
 
 from atlas_camera.core.schema import ProjectionSource
 

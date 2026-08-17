@@ -63,7 +63,7 @@ def band_membership(valid, metric, near, far, *, fill_mask=None, exclude_mask=No
     diffusion-filled — minus ``exclude_mask`` when one is supplied, because
     excluded (sky) regions are never filled.
     """
-    np = _require_numpy()
+    _require_numpy()
     # NOTE: the membership expression's operator precedence is preserved
     # exactly as it ran inside AtlasCleanPlateLayer — do not "simplify".
     band_region = valid & (metric >= near)

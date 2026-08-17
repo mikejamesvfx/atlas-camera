@@ -543,7 +543,7 @@ class AtlasInpaintStitch:
         }
 
     def stitch(self, original_image, inpainted_crop, crop_region, mask=None, feather_px=0):
-        torch = _require_torch()
+        _require_torch()
         import torch.nn.functional as F
 
         x0, y0, x1, y1 = (int(crop_region[k]) for k in ("x0", "y0", "x1", "y1"))
@@ -1554,7 +1554,7 @@ class AtlasCleanPlateStack:
               name_4="foreground", geometry_4="relief",
               grow_px=12, edge_extend_px=24, relief_grid=384,
               depth_edge_rel=1.5, mattes_are_transparency=False):
-        torch = _require_torch()
+        _require_torch()
         import torch.nn.functional as F
 
         slots = {
@@ -1714,7 +1714,6 @@ class AtlasPlateLayer:
             p.metadata["plate_layer"] = str(name)
         removed = 0
         if move_from_primary:
-            names = {id(p) for p in picked}
             scene = out.projection_scene
             before = len(scene.proxy_geometry)
             # match by (name, source) so a geometry_from copy still removes the
