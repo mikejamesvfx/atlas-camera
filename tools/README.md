@@ -29,6 +29,7 @@ check its git history before assuming either way.
 | `tear_sweep.py` | Runs every combination of tear knobs over the ray-cast fixtures, scores each against known occlusion edges, prints the Pareto front. The measured curve behind the tearing defaults. |
 | `validate_review_package.py` | Checks a written review package against the format contract before it is handed to a client or a DCC. |
 | `add_debug_tail.py` | Converts a workflow that ends in `AtlasBlockoutViewport` (renders in the browser via three.js) into one that also writes files, so it can be run headlessly. |
+| `smoke_hero_workflows.py` | **Release acceptance.** Queues each hero workflow against a live server and asserts the artifacts it should have written are on disk and non-trivial. `--validate-only` checks the graphs against `/object_info` without queueing. Needs `COMFY_DIR`. This is the only check that exercises what CI structurally cannot — a real queue with real models — and it exists because Hero 02's first real run found a `NameError` in **both** solver nodes that 3150 green tests had missed for a day. |
 
 ## Solvers and capture
 
