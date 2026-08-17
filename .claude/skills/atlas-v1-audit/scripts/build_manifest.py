@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -23,8 +24,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 
 
+#: `WEB_DIRECTORY = "./web"` — ComfyUI serves EVERY .js under the named
+#: directory. The declaration lives in the package `__init__.py`, one level
+#: above the files it governs, so a per-directory marker scan never sees it and
+#: four live frontend extensions read as unreferenced.
+WEB_DIRECTORY_RE = re.compile(r"""WEB_DIRECTORY\s*=\s*["']([^"']+)["']""")
+
+
 def _dynamic_dirs(root: Path, inventory: dict, cfg: dict) -> set[str]:
-    """Directories whose own files reach each other without an import."""
+    """Directories whose files are reached without an import statement.
+
+    Two ways that happens, and the second is the one that bit: a directory
+    whose OWN files carry a dynamic-loading marker, and a directory NAMED by a
+    marker declared somewhere else.
+    """
     markers = cfg["dynamic_loading_markers"]
     out: set[str] = set()
     for rel, info in inventory.items():
@@ -36,6 +49,13 @@ def _dynamic_dirs(root: Path, inventory: dict, cfg: dict) -> set[str]:
             continue
         if any(m in text for m in markers):
             out.add(info["dir"])
+        for declared in WEB_DIRECTORY_RE.findall(text):
+            # resolve relative to the DECLARING file's directory
+            target = (root / info["dir"] / declared).resolve()
+            try:
+                out.add(target.relative_to(root).as_posix())
+            except ValueError:  # pragma: no cover - escapes the repo
+                continue
     return out
 
 
@@ -215,8 +235,15 @@ def write_markdown(root: Path, manifest: dict) -> None:
         _table(["confidence", "count"],
                [[k, v] for k, v in sorted(manifest["confidences"].items())]),
         "\n## Static-analysis tools\n",
-        _table(["tool", "status"],
-               [[k, v] for k, v in sorted(tools["status"].items())]),
+        _table(["tool", "status", "note"],
+               [[k, v, (tools.get("notes", {}).get(k) or "—")[:120]]
+                for k, v in sorted(tools["status"].items())]),
+        ("\n**A tool that could not be read is NOT a clean result.** "
+         "`PARSE_FAILED` means its output was unparseable and its findings are "
+         "unknown; `AVAILABLE_PARTIAL` means it ran but warned first, so its "
+         "report is incomplete. Only `AVAILABLE` with no note means nothing "
+         "was found.\n"
+         if any(v != "AVAILABLE" for v in tools["status"].values()) else ""),
         "\n## High-risk areas\n",
         f"- **{workflows['counts']['broken']}** workflow(s) reference node types "
         "that are not registered (see `workflow-audit.md`).\n"
@@ -441,7 +468,9 @@ def write_markdown(root: Path, manifest: dict) -> None:
     # dependency-audit.md
     common.write_doc(root, "dependency-audit.md", "".join([
         "# Dependency audit\n\n",
-        _table(["tool", "status"], [[k, v] for k, v in sorted(tools["status"].items())]),
+        _table(["tool", "status", "note"],
+               [[k, v, (tools.get("notes", {}).get(k) or "—")[:200]]
+                for k, v in sorted(tools["status"].items())]),
         "\n" + tools["install_hint"] + "\n\n",
         "## deptry\n\n```json\n",
         json.dumps(tools["findings"].get("deptry", []), indent=1)[:8000],

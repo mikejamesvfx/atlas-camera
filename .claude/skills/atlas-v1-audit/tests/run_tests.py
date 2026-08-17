@@ -161,8 +161,8 @@ DEAD_DOC = """\
 
 The pack ships 99 standard nodes.
 
-See examples/fixture_gone.json for the demo, and fixpkg/nodes_core.py for
-the implementation.
+See examples/fixture_gone.json for the demo. The implementation lives in
+fixpkg/nodes_core.py.
 """
 
 PROVENANCE_DOC = """\
@@ -198,7 +198,12 @@ def build_fixture(root: Path) -> None:
     (root / "docs").mkdir()
     (root / "tools").mkdir()
 
-    (root / "fixpkg" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "fixpkg" / "web").mkdir()
+    (root / "fixpkg" / "__init__.py").write_text(
+        'WEB_DIRECTORY = "./web"\n', encoding="utf-8")
+    # No file imports this; ComfyUI serves it because of WEB_DIRECTORY above.
+    (root / "fixpkg" / "web" / "panel.js").write_text(
+        "export const panel = 1;\n", encoding="utf-8")
     (root / "fixpkg" / "node_registry.py").write_text(REGISTRY, encoding="utf-8")
     (root / "fixpkg" / "nodes_core.py").write_text(NODES_CORE, encoding="utf-8")
     (root / "fixpkg" / "nodes_extra.py").write_text(NODES_EXTRA, encoding="utf-8")
@@ -389,6 +394,55 @@ def main() -> int:
                       <= set(r["evidence"]) for r in disposition.values()))
             check("every row carries a reason",
                   all(r["reason"] for r in disposition.values()))
+
+            # --- scanner regressions (found by running the audit for real) ----
+            check("REGRESSION: a path ending a sentence still counts",
+                  "docs/GUIDE.md" in refs["fixpkg/nodes_core.py"]["referrers"],
+                  "the trailing full stop was tokenized into the path")
+            # The verdict was ALREADY non-CERTAIN without this fix, because a
+            # file with no static-analysis hit tops out at MEDIUM anyway — so
+            # asserting the verdict proves nothing. What the fix changes is the
+            # REASON, which is the part a human acts on: "nothing references
+            # this" invites deletion, "ComfyUI serves this directory" does not.
+            panel = disposition["fixpkg/web/panel.js"]
+            check("REGRESSION: a WEB_DIRECTORY-served file says WHY it is kept",
+                  "dynamically" in (panel["ceiling_reason"] or ""),
+                  f"reason was {panel['ceiling_reason']!r} — the declaration "
+                  "sits in the package __init__, one level above the files it "
+                  "governs, so a per-directory marker scan never sees it")
+            check("REGRESSION: web/ asset is never a delete candidate",
+                  panel["disposition"] != "DELETE_CANDIDATE",
+                  panel["disposition"])
+
+            # --- a tool that did not run is not a clean result ----------------
+            import scan_tools
+
+            ok, note = scan_tools._parse_json('{"issues": []}')
+            check("clean JSON parses with no note", ok == {"issues": []} and not note)
+
+            ok, note = scan_tools._parse_json('ERROR: no vite\n{"issues": [1]}')
+            check("REGRESSION: a warning preamble does not become zero findings",
+                  ok == {"issues": [1]} and note == "ERROR: no vite",
+                  f"got {ok!r} note={note!r} — knip prints ERROR lines before "
+                  "its JSON, and a bare json.loads turned a real report into []")
+
+            ok, note = scan_tools._parse_json("not json at all")
+            check("unparseable output returns None, never an empty list",
+                  ok is None and note,
+                  "an empty list would read downstream as 'the tool found nothing'")
+
+            ok, note = scan_tools._parse_json("")
+            check("genuinely empty output is an empty result", ok == [] and not note)
+
+            check("a launch failure has its own return code",
+                  scan_tools.RC_LAUNCH_FAILED < 0)
+            rc, out, err = scan_tools._run(["definitely-not-a-real-binary-xyz"], root)
+            check("REGRESSION: an unlaunchable tool reports rc<0 and an error",
+                  rc == scan_tools.RC_LAUNCH_FAILED and err and not out,
+                  f"rc={rc} err={err!r} — npx is a .cmd shim on Windows, so "
+                  "shutil.which finds it and CreateProcess cannot run it")
+            check("_launchable returns None for an absent binary",
+                  scan_tools._launchable("definitely-not-a-real-binary-xyz") is None)
 
             # --- read-only contract -------------------------------------------
             status = subprocess.run(["git", "status", "--porcelain"], cwd=root,

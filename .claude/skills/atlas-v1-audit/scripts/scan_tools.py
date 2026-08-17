@@ -51,18 +51,74 @@ def _resolve(root: Path, tool: str) -> str | None:
     return shutil.which(tool)
 
 
+#: A launch that never happened. Distinct from "ran and found nothing".
+RC_LAUNCH_FAILED = -1
+
+
+def _launchable(name: str) -> list[str] | None:
+    """argv prefix for a possibly-shimmed executable, or None if absent.
+
+    On Windows `npx` is `npx.cmd`. `shutil.which` finds it — so an availability
+    check passes — but `CreateProcess` cannot execute a `.cmd` directly, so the
+    call raises `WinError 2` and the tool never runs. That combination is how
+    knip reported AVAILABLE and zero findings for an entire session: found,
+    never launched, and the failure swallowed into an empty string.
+    """
+    resolved = shutil.which(name)
+    if not resolved:
+        return None
+    if os.name == "nt" and Path(resolved).suffix.lower() in (".cmd", ".bat"):
+        return ["cmd", "/c", resolved]
+    return [resolved]
+
+
 def _run(cmd: list[str], root: Path) -> tuple[int, str, str]:
     try:
         cp = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True,
                             timeout=TIMEOUT_S)
         return cp.returncode, cp.stdout, cp.stderr
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return -1, "", str(exc)
+        return RC_LAUNCH_FAILED, "", f"{type(exc).__name__}: {exc}"
+
+
+def _parse_json(text: str):
+    """Parse a tool's JSON output. Returns ``(value, error_text)``.
+
+    Tools print human warnings to stdout BEFORE their JSON — knip emits
+    `ERROR: Error loading vite.config.ts` when a devDependency is absent, then
+    the report. An earlier revision did `json.loads(out)` inside a bare
+    `except json.JSONDecodeError: findings[tool] = []`, so that preamble turned
+    a real report into ZERO findings and the audit published a clean JS/TS bill
+    of health it had never actually read.
+
+    An empty result must therefore mean "the tool found nothing", never "the
+    tool could not be understood" — the two are reported separately, because a
+    scanner that silently degrades is the exact defect this audit exists to
+    find in other people's code.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return [], None
+    try:
+        return json.loads(stripped), None
+    except json.JSONDecodeError:
+        pass
+    # Retry from the first structural character, skipping any preamble.
+    for i, ch in enumerate(stripped):
+        if ch in "[{":
+            try:
+                return json.loads(stripped[i:]), stripped[:i].strip() or None
+            except json.JSONDecodeError:
+                break
+    return None, stripped[:500]
 
 
 def build(root: Path, cfg: dict, package: str) -> dict:
     status: dict[str, str] = {}
     findings: dict[str, list] = {}
+    #: Why a tool's result is partial or unreadable. Empty findings plus an
+    #: empty note is the ONLY combination that means "clean".
+    notes: dict[str, str] = {}
 
     status["git"] = "AVAILABLE" if shutil.which("git") else "NOT_AVAILABLE"
     status["graphify"] = "AVAILABLE" if shutil.which("graphify") else "NOT_AVAILABLE"
@@ -92,9 +148,17 @@ def build(root: Path, cfg: dict, package: str) -> dict:
         report = common.out_dir(root) / "raw" / "_deptry.json"
         _run([exe, ".", "--json-output", str(report)], root)
         try:
-            findings["deptry"] = json.loads(report.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            parsed, note = _parse_json(report.read_text(encoding="utf-8"))
+        except OSError as exc:
+            parsed, note = None, str(exc)
+        if parsed is None:
+            status["deptry"] = "PARSE_FAILED"
+            notes["deptry"] = note
             findings["deptry"] = []
+        else:
+            findings["deptry"] = parsed
+            if note:
+                notes["deptry"] = note
 
     # --- ruff: unused imports and dead constructs ----------------------------
     exe = _resolve(root, "ruff")
@@ -105,24 +169,44 @@ def build(root: Path, cfg: dict, package: str) -> dict:
         rc, out, _ = _run(
             [exe, "check", package, "--select", "F401,F811,F841,ERA001",
              "--output-format", "json", "--no-cache"], root)
-        try:
-            findings["ruff"] = json.loads(out) if out.strip() else []
-        except json.JSONDecodeError:
+        parsed, note = _parse_json(out)
+        if parsed is None:
+            status["ruff"] = "PARSE_FAILED"
+            notes["ruff"] = note
             findings["ruff"] = []
+        else:
+            findings["ruff"] = parsed
+            if note:
+                notes["ruff"] = note
 
     # --- knip: unused JS/TS files, exports, dependencies ---------------------
     ui = root / "ui"
+    npx = _launchable("npx")
     if not (ui / "package.json").is_file():
         status["knip"] = "SKIPPED"
-    elif not shutil.which("npx"):
+    elif npx is None:
         status["knip"] = "NOT_AVAILABLE"
     else:
-        status["knip"] = "AVAILABLE"
-        rc, out, _ = _run(["npx", "--yes", "knip", "--reporter", "json"], ui)
-        try:
-            findings["knip"] = json.loads(out) if out.strip() else []
-        except json.JSONDecodeError:
-            findings["knip"] = []
+        findings["knip"] = []
+        rc, out, err = _run([*npx, "--yes", "knip", "--reporter", "json"], ui)
+        parsed, note = _parse_json(out)
+        if rc == RC_LAUNCH_FAILED:
+            # The tool did not run AT ALL. Never a clean result.
+            status["knip"] = "LAUNCH_FAILED"
+            notes["knip"] = err.strip()[:500]
+        elif parsed is None:
+            # It ran but its output could not be read. Also never clean —
+            # saying "0 findings" here is how this phase published a JS/TS bill
+            # of health it had never actually parsed.
+            status["knip"] = "PARSE_FAILED"
+            notes["knip"] = note or err.strip()[:500]
+        else:
+            findings["knip"] = parsed
+            # knip warns before its JSON when it cannot resolve a
+            # devDependency, which makes the report PARTIAL rather than clean.
+            status["knip"] = "AVAILABLE_PARTIAL" if note else "AVAILABLE"
+            if note:
+                notes["knip"] = note
 
     # Which project files any tool named at all. This is the ONLY thing the
     # manifest consumes from this phase — a boolean per file, never a verdict.
@@ -139,6 +223,7 @@ def build(root: Path, cfg: dict, package: str) -> dict:
 
     return {
         "status": status,
+        "notes": notes,
         "findings": findings,
         "flagged_paths": sorted(flagged),
         "install_hint": (

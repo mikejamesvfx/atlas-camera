@@ -112,13 +112,23 @@ def build(root: Path, cfg: dict) -> dict:
     for rel, text in corpus.items():
         raw = TOKEN_RE.findall(text.replace("\\", "/"))
         tokens = set(raw)
-        # a path token also answers to each of its trailing segments, so
-        # "atlas_camera/core/solver.py" is found by "core/solver.py" too
         for token in raw:
-            if "/" in token:
-                parts = token.split("/")
-                for i in range(1, len(parts)):
-                    tokens.add("/".join(parts[i:]))
+            # TRAILING PUNCTUATION. `[\w./-]+` swallows the full stop that ends
+            # a sentence, so prose naming "docs/PROJECT_VISION.md." tokenizes
+            # WITH the period and never matches the handle. That made a doc
+            # linked from CLAUDE.md read as orphaned, and under-counted
+            # references across every document that ends a sentence with a
+            # path — which prose does constantly.
+            trimmed = token.rstrip("./-,;:")
+            if trimmed and trimmed != token:
+                tokens.add(trimmed)
+            # a path token also answers to each of its trailing segments, so
+            # "atlas_camera/core/solver.py" is found by "core/solver.py" too
+            for candidate in {token, trimmed}:
+                if "/" in candidate:
+                    parts = candidate.split("/")
+                    for i in range(1, len(parts)):
+                        tokens.add("/".join(parts[i:]))
         tokenized[rel] = tokens
 
     # Display names carry spaces and emoji, so they are never tokens. They are
