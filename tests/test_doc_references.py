@@ -62,6 +62,14 @@ COUNT_RE = re.compile(
     r"(\d+)\s+(standard|experimental|legacy|iOS|registered)\b"
 )
 
+#: A BARE registry count, with the noun in the JSON key instead of after the
+#: number. `atlas_health` reports `"atlas_nodes": N`, and docs quote its output
+#: verbatim — which COUNT_RE cannot see, because there is no "N standard" to
+#: match. That gap let `docs/MCP_SERVER.md` carry a stale 112 through a
+#: registry change on 2026-08-17; the line directly below it was caught and
+#: fixed, and this one was not.
+BARE_COUNT_RE = re.compile(r'"atlas_nodes"\s*:\s*(\d+)')
+
 
 def _tracked_markdown() -> list[str]:
     out = subprocess.run(
@@ -110,6 +118,28 @@ def _registry_counts() -> dict[str, int]:
     return counts
 
 
+def _reachable_totals(counts: dict[str, int]) -> set[int]:
+    """Every registry size a running server could legitimately report.
+
+    `atlas_health`'s `atlas_nodes` is whatever the server actually registered,
+    which depends on which of ATLAS_EXPERIMENTAL / ATLAS_LEGACY_NODES /
+    ATLAS_IOS were set when it launched. There is no single right answer, so
+    asserting one would force every doc to assume the same gate configuration.
+
+    What IS assertable: the number must be the standard tier plus some SUBSET
+    of the gated tiers. A stale count almost never lands on one of those sums —
+    the 112 this check was added for is standard(104) + 8, and no subset sums
+    to 8.
+    """
+    from itertools import combinations
+    gated = [counts["experimental"], counts["legacy"], counts["ios"]]
+    totals = set()
+    for size in range(len(gated) + 1):
+        for combo in combinations(gated, size):
+            totals.add(counts["standard"] + sum(combo))
+    return totals
+
+
 def test_the_scan_has_docs_to_read():
     """Guards the test itself: a rename must not turn this into a no-op."""
     docs = [d for d in _tracked_markdown() if not _is_provenance(d)]
@@ -144,6 +174,28 @@ def test_no_live_doc_names_a_repo_path_that_is_gone():
     )
 
 
+def test_reachable_totals_track_the_gates_not_a_fixed_number():
+    """The 112 that slipped through, as a regression on the RULE.
+
+    It was correct when written — 102 standard + 10 experimental — and became
+    wrong the moment two standard nodes were added. A check hardcoded to one
+    total would have had to pick a gate configuration and would have been wrong
+    for every doc that assumed a different one.
+    """
+    before = {"standard": 102, "experimental": 10, "legacy": 2, "ios": 2}
+    after = {"standard": 104, "experimental": 10, "legacy": 2, "ios": 2}
+
+    assert 112 in _reachable_totals(before), "112 was legitimate at 102 standard"
+    assert 112 not in _reachable_totals(after), "and is not at 104"
+    assert 114 in _reachable_totals(after)
+
+    # standard alone, and standard plus every gate, are always reachable
+    for counts in (before, after):
+        totals = _reachable_totals(counts)
+        assert counts["standard"] in totals
+        assert sum(counts.values()) in totals
+
+
 def test_no_live_doc_miscounts_the_node_registry():
     actual = _registry_counts()
     wrong: list[str] = []
@@ -154,6 +206,7 @@ def test_no_live_doc_miscounts_the_node_registry():
             text = (REPO / rel).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):  # pragma: no cover
             continue
+        reachable = _reachable_totals(actual)
         for line_no, line in enumerate(text.splitlines(), start=1):
             for number, tier in COUNT_RE.findall(line):
                 key = tier.lower()
@@ -162,6 +215,14 @@ def test_no_live_doc_miscounts_the_node_registry():
                 wrong.append(
                     f"{rel}:{line_no} claims {number} {tier}, "
                     f"registry has {actual[key]}"
+                )
+            for number in BARE_COUNT_RE.findall(line):
+                if int(number) in reachable:
+                    continue
+                wrong.append(
+                    f"{rel}:{line_no} quotes atlas_health reporting "
+                    f"atlas_nodes={number}, which no gate combination can "
+                    f"produce (reachable: {sorted(reachable)})"
                 )
     assert not wrong, (
         "live docs state node counts the registry disagrees with:\n  "
