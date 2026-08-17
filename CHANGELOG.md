@@ -42,14 +42,14 @@ default, not how advanced it is.
 - `core/fill_policy.py` — routed a hole to the organic or planar fill family.
   Its only caller for its whole life was `AtlasBlenderOrganicFill`, so the
   organic route left the product when that node was deregistered. The doctrine
-  it encoded is kept in `docs/DESIGN_RULES.md`; the two-pass fill is the live
+  it encoded is kept in `docs/development/design-rules.md`; the two-pass fill is the live
   path.
 - Ten `tools/build_*_workflow.py` generators whose output workflows all left
   `examples/` in the 0.8.1 trim.
 
 ### Documentation
 
-- **`docs/DESIGN_RULES.md` and `docs/IOS_APP_BOOTSTRAP.md` are tracked again.**
+- **`docs/development/design-rules.md` and `docs/IOS_APP_BOOTSTRAP.md` are tracked again.**
   A brand/design gitignore rule swept both in on the word DESIGN; the first is
   the engineering reference CLAUDE.md's routing index points at, and the second
   is pinned as must-be-tracked by a test that had been red since.
@@ -618,7 +618,7 @@ claim-by-claim verification).
 - **New guide** [`docs/CAMERA_MOVES.md`](docs/CAMERA_MOVES.md) — single photo →
   Nuke dolly with X-ray hidden-geometry fill (the marketing pipeline), incl.
   per-scene depth/sky settings and a performance/RAM note.
-- **New** [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md) — license-boundary map
+- **New** [`THIRD_PARTY.md`](THIRD_PARTY.md) — license-boundary map
   (Atlas MIT; extras Apache/BSD/MIT; GPL inpaint graph-level; research tier).
 - Full doc audit: propagated the DA3→V2 default reversal to README + all guides,
   fixed stale node/workflow counts, repaired the broken THIRD_PARTY link.

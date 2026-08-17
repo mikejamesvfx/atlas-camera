@@ -13,14 +13,12 @@
     "**/*.min.js"
   ],
 
-  "_provenance_docs": "Dated records. They name files that were later removed and counts that were correct when written; that is the record doing its job. docs/DESIGN_RULES.md cites 'found live' evidence by path for every rule, so it is provenance throughout.",
+  "_provenance_docs": "Dated records. They name files that were later removed and counts that were correct when written; that is the record doing its job. docs/development/design-rules.md cites 'found live' evidence by path for every rule, so it is provenance throughout.",
   "provenance_docs": [
     "CHANGELOG.md",
-    "docs/DESIGN_RULES.md"
+    "docs/development/design-rules.md"
   ],
-  "provenance_doc_prefixes": [
-    "docs/superpowers/"
-  ],
+  "provenance_doc_prefixes": [],
 
   "_foreign_path_prefixes": "Paths in ANOTHER project's tree, named to say where a behaviour was mirrored from. Correct as written, can never resolve here.",
   "foreign_path_prefixes": [

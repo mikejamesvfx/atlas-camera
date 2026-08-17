@@ -122,10 +122,10 @@ On a healthy tree the CERTAIN set is empty. That is the expected result.
   hooked-up from abandoned prototype — the audit cannot, and does not guess.
 - "Registered but demonstrated by no workflow" is a **documentation and
   example-coverage gap**, not a deletion list.
-- Provenance is not drift. `CHANGELOG.md`, `docs/DESIGN_RULES.md` and the dated
-  `docs/superpowers/` plans name files that were later removed and counts that
-  were right when written; `config.json` exempts them, and "fixing" them
-  destroys the evidence the design rules are cited from.
+- Provenance is not drift. `CHANGELOG.md` and `docs/development/design-rules.md`
+  name files that were later removed and counts that were right when written;
+  `config.json` exempts them, and "fixing" them destroys the evidence the
+  design rules are cited from.
 - Workflow duplicate clusters compare **node graphs**, never filenames.
 
 ## config.json

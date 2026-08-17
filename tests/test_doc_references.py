@@ -12,10 +12,9 @@ caught by hand — and that skill is gone, so the check has to live here.
 
 **Provenance is not drift.** A dated entry that names a file the repo later
 removed, or a node count that was correct when it was written, is the record
-doing its job — CLAUDE.md says so of `docs/DESIGN_RULES.md`, and `CHANGELOG.md`
-and the dated `docs/superpowers/` plans and specs work the same way. Those docs
-are exempt from both assertions below. Everything else is a live claim and is
-held to it.
+doing its job — CLAUDE.md says so of `docs/development/design-rules.md`, and `CHANGELOG.md`
+works the same way. Those two are exempt from both assertions below.
+Everything else is a live claim and is held to it.
 """
 from __future__ import annotations
 
@@ -33,9 +32,11 @@ REPO = Path(__file__).resolve().parents[1]
 #: because it is a dated record, never because it is inconvenient to update.
 PROVENANCE_DOCS = {
     "CHANGELOG.md",
-    "docs/DESIGN_RULES.md",
+    "docs/development/design-rules.md",
 }
-PROVENANCE_PREFIXES = ("docs/superpowers/",)
+#: Empty since the v1 cleanup removed the dated plans tree. Kept as the
+#: mechanism: a future dated-record directory joins here, not PROVENANCE_DOCS.
+PROVENANCE_PREFIXES: tuple[str, ...] = ()
 
 #: Same extension set as the package-wide check in `test_path_references.py`:
 #: the families a doc actually promises. Images and source files a reader is
@@ -170,7 +171,7 @@ def test_no_live_doc_names_a_repo_path_that_is_gone():
         + "\n  ".join(f"{p}  <- {', '.join(sites)}"
                       for p, sites in sorted(found.items()))
         + "\nEither restore the file, correct the path, or — if the mention is "
-          "a historical record — move it into a dated docs/superpowers/ entry."
+          "a historical record — it belongs in CHANGELOG.md, not a live doc."
     )
 
 

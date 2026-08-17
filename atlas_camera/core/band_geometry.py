@@ -5,7 +5,7 @@ camera/geometry arithmetic behind a band layer lives in host-agnostic core
 and is unit-testable without constructing a ComfyUI node. Pure numpy — no
 torch, no ComfyUI, no DCC conversions.
 
-The doctrine these functions implement (docs/DESIGN_RULES.md, "Per-band
+The doctrine these functions implement (docs/development/design-rules.md, "Per-band
 geometry types"): the flat modes substitute the depth FIELD fed to
 ``relief_mesh.build_relief_mesh``; **band membership still comes from the REAL
 depth (which pixels belong to this layer); geometry only changes WHERE those

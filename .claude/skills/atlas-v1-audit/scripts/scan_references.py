@@ -114,11 +114,11 @@ def build(root: Path, cfg: dict) -> dict:
         tokens = set(raw)
         for token in raw:
             # TRAILING PUNCTUATION. `[\w./-]+` swallows the full stop that ends
-            # a sentence, so prose naming "docs/PROJECT_VISION.md." tokenizes
-            # WITH the period and never matches the handle. That made a doc
-            # linked from CLAUDE.md read as orphaned, and under-counted
-            # references across every document that ends a sentence with a
-            # path — which prose does constantly.
+            # a sentence, so prose naming "docs/USER_GUIDE.md." tokenizes WITH
+            # the period and never matches the handle. That made a doc linked
+            # from CLAUDE.md read as orphaned, and under-counted references
+            # across every document that ends a sentence with a path — which
+            # prose does constantly.
             trimmed = token.rstrip("./-,;:")
             if trimmed and trimmed != token:
                 tokens.add(trimmed)
