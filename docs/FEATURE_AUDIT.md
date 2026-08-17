@@ -135,7 +135,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasLoadHiddenVolume` | atlas_camera/comfy/nodes_hidden_volume.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasLoadPlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 2 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasLoadRAW` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 6 | not_attempted | not_attempted | 0 | 5 | — | — | — | **KEEP_CORE** | — |
-| `AtlasLoadRecord3D` | — | ios | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **IOS_GATE** | — |
+| `AtlasLoadRecord3D` | — | ios | 0 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **IOS_GATE** | — |
 | `AtlasLoadSolveJSON` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 0 | ok | ok | 1 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasMaskedSurfaceReconstruct` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasMembraneComposite` | atlas_camera/comfy/nodes_fill.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
@@ -172,7 +172,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasSolvePatchViews` | atlas_camera/comfy/nodes_geometry.py | standard | 1 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasSplitEquirect` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 3 | — | — | low — new this cycle, nothing to migrate | **KEEP_CORE** | none; keep |
 | `AtlasStereoRender` | atlas_camera/comfy/nodes_viewport.py | standard | 0 | 3 | ok | ok | 0 | 2 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
-| `AtlasStreamRecord3D` | — | ios | 0 | 1 | not_attempted | not_attempted | 0 | 2 | — | — | — | **IOS_GATE** | — |
+| `AtlasStreamRecord3D` | — | ios | 0 | 1 | not_attempted | not_attempted | 0 | 3 | — | — | — | **IOS_GATE** | — |
 | `AtlasUSDCameraLoader` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasVLMScaleCues` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasVPVisualization` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 3 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |

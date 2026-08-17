@@ -2065,7 +2065,7 @@
    "tests": 5,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -3038,7 +3038,7 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
