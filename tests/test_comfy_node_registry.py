@@ -37,6 +37,7 @@ NORMAL_KEYS = {
     "AtlasDefineShotCam", "AtlasDepthAnything", "AtlasDepthBandSplit",
     "AtlasDepthCombine", "AtlasDepthDetailEnhance",
     "AtlasDepthLayerMask", "AtlasDepthMap", "AtlasDepthOutlierMask",
+    "AtlasFitDepthCalibration", "AtlasApplyDepthCalibration",
     "AtlasDeriveInteriorRoom", "AtlasDeriveProjectionGeometry",
     "AtlasDeriveReliefMesh", "AtlasDeriveRoofsFacades", "AtlasDeriveTowersSpires",
     "AtlasDeriveWalls", "AtlasExportBlender", "AtlasExportCameraPathUSD",
@@ -108,7 +109,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 102
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 104
 
 
 def test_experimental_registry_keys_exact():

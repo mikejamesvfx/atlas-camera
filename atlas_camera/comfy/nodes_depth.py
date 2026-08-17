@@ -1246,3 +1246,250 @@ class AtlasOutpaintDepth:
                 "widened but nothing downstream knows it — wire the solve in.")
 
         return (out, ring, "\n".join(lines), widened_solve)
+
+
+# ---------------------------------------------------------------------------
+# Depth calibration — fit a model's characteristic error against MEASURED
+# depth, store it per (model_id, scene_type), and apply it later to a plate
+# where no measurement exists. Steps (2) and (4) of docs/ROADMAP.md.
+#
+# Nothing here applies automatically. `AtlasDepthMap` is untouched, so every
+# existing graph behaves exactly as before; a calibration only ever reaches the
+# depth chain because an artist wired `AtlasApplyDepthCalibration` into it.
+# That is deliberate — `ATLAS_DEPTH_MAP` is consumed by nine node modules, and
+# a stored coefficient silently rescaling shared depth would move geometry,
+# bands, exports and the viewport at once, from a file the graph never names.
+
+
+class AtlasFitDepthCalibration:
+    """📐 Fit a depth model's error against MEASURED depth, and optionally store it.
+
+    Wire `measured` from a real measurement — `AtlasLoadRecord3D` 📱 is the
+    intended source, since an ARKit/LiDAR capture carries per-pixel metric
+    truth — and `predicted` from `AtlasDepthMap` running the model you want to
+    correct, on the SAME frame at the same resolution.
+
+    The point is NOT to make the LiDAR capture better; it already carries
+    measured metric depth and there is nothing to correct. The point is
+    TRANSFER: learn how a model misreads a kind of scene where truth happens
+    to be available, then apply that on an ordinary photograph where it is not.
+
+    `save` is OFF by default. Fit, read the report, and only then decide —
+    propose, never silently apply.
+    """
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("correction_json", "report")
+    FUNCTION = "fit"
+    CATEGORY = "Atlas"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        from atlas_camera.core.depth_calibration import MODELS
+        from atlas_camera.core.depth_calibration_store import SCENE_TYPES
+        return {
+            "required": {
+                "measured": ("ATLAS_DEPTH_MAP", {"tooltip":
+                    "MEASURED depth — the truth side. AtlasLoadRecord3D's depth "
+                    "output (ARKit/LiDAR, metres). Must be the same frame and "
+                    "resolution as `predicted`."}),
+                "predicted": ("ATLAS_DEPTH_MAP", {"tooltip":
+                    "The model estimate to correct — AtlasDepthMap running the "
+                    "model you want calibrated. Its model_id becomes half the "
+                    "store key."}),
+            },
+            "optional": {
+                "scene_type": (list(SCENE_TYPES), {"default": "outdoor",
+                    "tooltip": "The other half of the store key. A correction is "
+                               "only valid for the kind of scene it was fitted on; "
+                               "lookup is an EXACT match and never falls back."}),
+                "model": (["auto", *MODELS], {"default": "auto",
+                    "tooltip": "'auto' fits all three and picks on HELD-OUT error "
+                               "with a 5% margin, simplest-first among ties. Pick "
+                               "one explicitly only if you know the sensor."}),
+                "mask": ("MASK", {"tooltip":
+                    "Restrict the fit to these pixels. Use the capture's "
+                    "confidence_mask to drop low-confidence LiDAR returns."}),
+                "store_path": ("STRING", {"default": "atlas_depth_calibration.json",
+                    "tooltip": "Where the calibration store lives. Relative paths "
+                               "resolve against ComfyUI's working directory."}),
+                "save": ("BOOLEAN", {"default": False,
+                    "tooltip": "OFF by default. Fit and read the report first; turn "
+                               "this on only once it looks right. Overwrites any "
+                               "existing entry for this (model, scene_type)."}),
+                "note": ("STRING", {"default": "",
+                    "tooltip": "Free text stored beside the coefficients — which "
+                               "capture, which lens, which day. You will want it."}),
+            },
+        }
+
+    def fit(self, measured, predicted, scene_type="outdoor", model="auto",
+            mask=None, store_path="atlas_depth_calibration.json", save=False,
+            note=""):
+        import json as _json
+
+        from atlas_camera.core.depth_calibration import (
+            choose_correction, fit_depth_correction)
+        from atlas_camera.core.depth_calibration_store import CalibrationStore
+        np = _require_numpy()
+
+        lines = ["\U0001F4D0 Depth calibration fit"]
+        model_id = getattr(predicted, "model_id", "") or "unknown"
+        lines.append(f"  estimate: {model_id}")
+        lines.append(f"  measured: {getattr(measured, 'model_id', '') or 'unknown'}"
+                     f" (is_metric={getattr(measured, 'is_metric', None)})")
+
+        if not getattr(measured, "is_metric", False):
+            lines.append(
+                "  ! the measured side is NOT flagged metric. A correction onto a "
+                "relative depth map learns that map's arbitrary scale, not the "
+                "world's — this is almost certainly the wrong input.")
+
+        m_arr = np.asarray(measured.depth, dtype=np.float64)
+        p_arr = np.asarray(predicted.depth, dtype=np.float64)
+        if m_arr.shape != p_arr.shape:
+            return ("", "\n".join(lines) + (
+                f"\n  REFUSED: measured {m_arr.shape} and predicted {p_arr.shape} "
+                "are different resolutions. Resample one onto the other — a fit "
+                "across mismatched rasters correlates unrelated pixels."))
+
+        mask_arr = None
+        if mask is not None:
+            mask_arr = np.asarray(
+                mask.squeeze().cpu().numpy() if hasattr(mask, "cpu") else mask)
+            if mask_arr.shape != p_arr.shape:
+                return ("", "\n".join(lines) + (
+                    f"\n  REFUSED: mask {mask_arr.shape} does not match the depth "
+                    f"{p_arr.shape}."))
+
+        try:
+            if model == "auto":
+                corr = choose_correction(p_arr, m_arr, mask=mask_arr)
+            else:
+                corr = fit_depth_correction(p_arr, m_arr, mask=mask_arr, model=model)
+        except ValueError as exc:
+            return ("", "\n".join(lines) + f"\n  REFUSED: {exc}")
+
+        lo, hi = corr.predicted_range
+        lines.append(f"  model:    {corr.model} (a={corr.a:.6f} b={corr.b:.6f})")
+        lines.append(f"  samples:  {corr.n_samples}, predictions spanning "
+                     f"{lo:.2f}-{hi:.2f} m ({corr.dynamic_range:.1f}x)")
+        lines.append(f"  error:    {corr.mae_before:.4f} -> {corr.mae_after:.4f} m "
+                     f"median ({corr.improvement:.0%} removed)")
+        if "candidates" in corr.metadata:
+            lines.append(f"  candidates: {corr.metadata['candidates']}")
+        for key in ("selection", "selection_tie", "selection_warning",
+                    "narrow_fit", "warning"):
+            if key in corr.metadata:
+                lines.append(f"  {key}: {corr.metadata[key]}")
+
+        if corr.improvement <= 0:
+            lines.append(
+                "  ! this correction does not reduce the error. Storing it would "
+                "make the depth chain slower and no better.")
+
+        if save:
+            store = CalibrationStore.load(store_path)
+            existing = store.lookup(model_id, scene_type)
+            store.put(model_id, scene_type, corr, note=note)
+            written = store.save(store_path)
+            lines.append(
+                f"  SAVED to {written} under ({model_id}, {scene_type})"
+                + ("  [replaced an existing entry]" if existing else ""))
+        else:
+            lines.append(
+                "  not saved (save=False). Turn `save` on to store this under "
+                f"({model_id}, {scene_type}).")
+
+        return (_json.dumps(corr.to_dict(), indent=1), "\n".join(lines))
+
+
+class AtlasApplyDepthCalibration:
+    """📐 Apply a stored calibration to a depth map. Reports when it does not.
+
+    Looks up (`depth.model_id`, `scene_type`) in the store. An EXACT match or
+    nothing — a near-miss fallback is how a coefficient fitted on a 1.2 m
+    interior wall ends up rescaling a 200 m exterior.
+
+    A miss is a passthrough and SAYS SO. A silent branch-skip that returns the
+    input unchanged is indistinguishable from a calibration that had no effect,
+    and the artist needs to know which of those happened.
+    """
+
+    RETURN_TYPES = ("ATLAS_DEPTH_MAP", "STRING")
+    RETURN_NAMES = ("depth", "report")
+    FUNCTION = "apply"
+    CATEGORY = "Atlas"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        from atlas_camera.core.depth_calibration_store import SCENE_TYPES
+        return {
+            "required": {"depth": ("ATLAS_DEPTH_MAP",)},
+            "optional": {
+                "scene_type": (list(SCENE_TYPES), {"default": "outdoor",
+                    "tooltip": "Must match the scene_type the correction was fitted "
+                               "and stored under. Lookup is exact."}),
+                "store_path": ("STRING", {"default": "atlas_depth_calibration.json",
+                    "tooltip": "The calibration store written by "
+                               "AtlasFitDepthCalibration."}),
+                "enabled": ("BOOLEAN", {"default": True,
+                    "tooltip": "Off = passthrough, stated in the report. Use it to "
+                               "A/B a calibration without rewiring."}),
+                "on_extrapolation": (["report", "nan"], {"default": "report",
+                    "tooltip": "'report' applies everywhere and says how far outside "
+                               "the fitted range it went. 'nan' voids out-of-range "
+                               "samples instead — never a clamp, which would return "
+                               "confident depth the fit has no evidence for."}),
+            },
+        }
+
+    def apply(self, depth, scene_type="outdoor",
+              store_path="atlas_depth_calibration.json", enabled=True,
+              on_extrapolation="report"):
+        from atlas_camera.core.depth_calibration import apply_depth_correction
+        from atlas_camera.core.depth_calibration_store import CalibrationStore
+
+        model_id = getattr(depth, "model_id", "") or "unknown"
+        lines = ["\U0001F4D0 Depth calibration"]
+
+        if not enabled:
+            return (depth, "\n".join(lines) + "\n  disabled — depth passed through "
+                    "unchanged, no calibration was looked up.")
+
+        try:
+            store = CalibrationStore.load(store_path)
+        except (OSError, ValueError) as exc:
+            return (depth, "\n".join(lines) + (
+                f"\n  store at {store_path} could not be read ({exc}). Depth passed "
+                "through UNCALIBRATED."))
+
+        corr = store.lookup(model_id, scene_type)
+        if corr is None:
+            return (depth, "\n".join(lines) + "\n" + (
+                f"  no calibration for ({model_id}, {scene_type}).\n"
+                f"  store: {store_path} — {store.describe()}\n"
+                "  Depth passed through UNCALIBRATED. Fit one with "
+                "AtlasFitDepthCalibration against a measured capture."))
+
+        corrected, report = apply_depth_correction(
+            depth.depth, corr, on_extrapolation=on_extrapolation)
+
+        out = copy.copy(depth)
+        out.depth = corrected
+        out.metadata = dict(getattr(depth, "metadata", {}) or {})
+        out.metadata["depth_calibration"] = {
+            "model_id": model_id, "scene_type": scene_type,
+            "correction": corr.to_dict(), "application": report.to_dict(),
+        }
+
+        lo, hi = corr.predicted_range
+        lines.append(f"  applied ({model_id}, {scene_type}): {corr.model} "
+                     f"a={corr.a:.6f} b={corr.b:.6f}")
+        lines.append(f"  fitted on {corr.n_samples} samples spanning "
+                     f"{lo:.2f}-{hi:.2f} m, improvement {corr.improvement:.0%}")
+        lines.append(f"  {report}")
+        note = store.note_for(model_id, scene_type)
+        if note:
+            lines.append(f"  note: {note}")
+        return (out, "\n".join(lines))

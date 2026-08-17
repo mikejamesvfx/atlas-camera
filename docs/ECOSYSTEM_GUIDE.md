@@ -83,7 +83,7 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (102 standard + 10 experimental + 2 legacy + 2 iOS = 116 registered)
+## 2. The Node Catalog (104 standard + 10 experimental + 2 legacy + 2 iOS = 118 registered)
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in. The subsections below **are** the Add-Node menu folders:
@@ -154,6 +154,8 @@ Estimate depth **once** and share it, so every branch agrees on metric scale.
 | `AtlasDepthLayerMask` | One metric depth band → `(layer_mask, occlusion_mask)`. `occlusion_mask` feeds an inpaint graph to build that band's clean plate. |
 | `AtlasDepthOutlierMask` | 🛡 Local median + robust-MAD outlier detector — turns isolated monocular-depth hallucinations into EXPLICIT holes instead of letting one bad pixel become a frame-spanning stretched shard. |
 | `AtlasOutpaintDepth` | Extends a depth map to match an OUTPAINTED plate: re-estimates on the widened image and feathers the new outer ring into the original. |
+| `AtlasFitDepthCalibration` 📐 | Fits how a depth model misreads a kind of scene, against MEASURED depth from an `AtlasLoadRecord3D` 📱 capture, and stores it under `(model_id, scene_type)`. TRANSFER, not capture improvement: learn the error where truth exists, apply it where it does not. `save` is off by default. |
+| `AtlasApplyDepthCalibration` 📐 | Applies a stored calibration to a depth map. Exact `(model_id, scene_type)` match or nothing — and a miss is a passthrough that says so. Nothing auto-applies; `AtlasDepthMap` is unchanged, so an existing graph behaves exactly as before. |
 
 ### 04 · Masks
 
