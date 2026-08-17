@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -113,6 +114,51 @@ def _parse_json(text: str):
     return None, stripped[:500]
 
 
+#: `unused method 'run'`, `unused attribute 'CATEGORY'`, …
+VULTURE_NAME_RE = re.compile(r"unused \w+ '([^']+)'")
+
+
+def _apply_suppressions(findings: dict, cfg: dict) -> tuple[dict, dict]:
+    """Drop the configured classes of false positive, counting what went.
+
+    Returns ``(findings, suppressed)``. Nothing is dropped without being
+    counted — the audit's own "no silent caps" rule applies to itself, and a
+    suppression list nobody can see the size of is how a scanner quietly stops
+    scanning.
+    """
+    sa = cfg.get("static_analysis", {})
+    suppressed: dict[str, int] = {}
+
+    ignore_names = set(sa.get("vulture", {}).get("ignore_names", []))
+    if ignore_names and findings.get("vulture"):
+        kept = []
+        for row in findings["vulture"]:
+            match = VULTURE_NAME_RE.search(row.get("message", ""))
+            if match and match.group(1) in ignore_names:
+                suppressed["vulture"] = suppressed.get("vulture", 0) + 1
+                continue
+            kept.append(row)
+        findings["vulture"] = kept
+
+    dep = sa.get("deptry", {})
+    ignore_modules = set(dep.get("host_provided", [])) | set(
+        dep.get("optional_extra", [])) | set(dep.get("research_or_sibling", []))
+    ignore_codes = set(dep.get("ignore_codes", []))
+    rows = findings.get("deptry")
+    if (ignore_modules or ignore_codes) and isinstance(rows, list):
+        kept = []
+        for row in rows:
+            module = row.get("module")
+            code = (row.get("error") or {}).get("code")
+            if module in ignore_modules or code in ignore_codes:
+                suppressed["deptry"] = suppressed.get("deptry", 0) + 1
+                continue
+            kept.append(row)
+        findings["deptry"] = kept
+
+    return findings, suppressed
+
+
 def build(root: Path, cfg: dict, package: str) -> dict:
     status: dict[str, str] = {}
     findings: dict[str, list] = {}
@@ -208,6 +254,13 @@ def build(root: Path, cfg: dict, package: str) -> dict:
             if note:
                 notes["knip"] = note
 
+    # --- configured suppressions --------------------------------------------
+    # Applied AFTER the tools run, never by narrowing what they were asked to
+    # look at, so the suppressed count is always knowable. Reported next to the
+    # survivors: a suppression list that grows silently is indistinguishable
+    # from a codebase that got cleaner.
+    findings, suppressed = _apply_suppressions(findings, cfg)
+
     # Which project files any tool named at all. This is the ONLY thing the
     # manifest consumes from this phase — a boolean per file, never a verdict.
     flagged: set[str] = set()
@@ -224,6 +277,7 @@ def build(root: Path, cfg: dict, package: str) -> dict:
     return {
         "status": status,
         "notes": notes,
+        "suppressed": suppressed,
         "findings": findings,
         "flagged_paths": sorted(flagged),
         "install_hint": (

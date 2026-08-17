@@ -472,6 +472,17 @@ def write_markdown(root: Path, manifest: dict) -> None:
                [[k, v, (tools.get("notes", {}).get(k) or "—")[:200]]
                 for k, v in sorted(tools["status"].items())]),
         "\n" + tools["install_hint"] + "\n\n",
+        ("## Suppressed by config\n\n"
+         + _table(["tool", "findings dropped"],
+                  [[k, v] for k, v in sorted(tools.get("suppressed", {}).items())])
+         + "\nThese are the KINDS of false positive documented under "
+           "`static_analysis` in the skill's `config.json`, each with the reason "
+           "it is one — ComfyUI/Blender host modules deptry cannot resolve, "
+           "optional extras behind guarded imports, and the node-contract "
+           "attributes the ComfyUI host reads by name. The count is printed so a "
+           "growing suppression list stays visible: a scanner that quietly stops "
+           "scanning looks exactly like a codebase that got cleaner.\n\n"
+         if tools.get("suppressed") else ""),
         "## deptry\n\n```json\n",
         json.dumps(tools["findings"].get("deptry", []), indent=1)[:8000],
         "\n```\n\n## knip\n\n```json\n",

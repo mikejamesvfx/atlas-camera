@@ -444,6 +444,36 @@ def main() -> int:
             check("_launchable returns None for an absent binary",
                   scan_tools._launchable("definitely-not-a-real-binary-xyz") is None)
 
+            # --- suppressions are applied AND counted -------------------------
+            sample = {
+                "vulture": [
+                    {"path": "a.py", "message": "unused attribute 'CATEGORY'"},
+                    {"path": "a.py", "message": "unused variable 'real_leftover'"},
+                ],
+                "deptry": [
+                    {"module": "bpy", "error": {"code": "DEP001"}},
+                    {"module": "pillow", "error": {"code": "DEP002"}},
+                    {"module": "genuinely_missing", "error": {"code": "DEP001"}},
+                ],
+            }
+            cfg = {"static_analysis": {
+                "vulture": {"ignore_names": ["CATEGORY"]},
+                "deptry": {"host_provided": ["bpy"], "ignore_codes": ["DEP002"]},
+            }}
+            kept, dropped = scan_tools._apply_suppressions(sample, cfg)
+            check("a node-contract attribute is suppressed",
+                  [r["message"] for r in kept["vulture"]]
+                  == ["unused variable 'real_leftover'"])
+            check("a host-provided module and an ignored code are suppressed",
+                  [r["module"] for r in kept["deptry"]] == ["genuinely_missing"])
+            check("REGRESSION: what was dropped is COUNTED, never silent",
+                  dropped == {"vulture": 1, "deptry": 2}, str(dropped))
+
+            empty, none_dropped = scan_tools._apply_suppressions(
+                {"vulture": [], "deptry": []}, cfg)
+            check("nothing to suppress reports no suppressions",
+                  none_dropped == {}, str(none_dropped))
+
             # --- read-only contract -------------------------------------------
             status = subprocess.run(["git", "status", "--porcelain"], cwd=root,
                                     capture_output=True, text=True).stdout
