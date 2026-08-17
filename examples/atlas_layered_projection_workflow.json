@@ -9,7 +9,7 @@
       "type": "LoadImage",
       "pos": [
         40,
-        511
+        894
       ],
       "size": [
         360,
@@ -40,8 +40,8 @@
             2,
             12,
             18,
-            22,
-            25
+            23,
+            27
           ]
         },
         {
@@ -58,14 +58,14 @@
         "example.png",
         "image"
       ],
-      "title": "1 · SOURCE PLATE"
+      "title": "1 \u00b7 SOURCE PLATE"
     },
     {
       "id": 2,
       "type": "AtlasLearnedSolveFromImage",
       "pos": [
         1040,
-        712
+        1055
       ],
       "size": [
         440,
@@ -161,8 +161,8 @@
       ],
       "outputs": [
         {
-          "localized_name": "ATLAS_SOLVE",
-          "name": "ATLAS_SOLVE",
+          "localized_name": "solve",
+          "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
             3,
@@ -170,6 +170,12 @@
             5,
             8
           ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
         }
       ],
       "properties": {
@@ -184,18 +190,18 @@
         "auto",
         0.0
       ],
-      "title": "2 · CAMERA"
+      "title": "2 \u00b7 CAMERA"
     },
     {
       "id": 3,
       "type": "AtlasDepthMap",
       "pos": [
         1600,
-        485
+        798
       ],
       "size": [
         440,
-        490
+        544
       ],
       "flags": {},
       "order": 2,
@@ -283,6 +289,16 @@
           "widget": {
             "name": "moge_tile_overlap"
           }
+        },
+        {
+          "localized_name": "moge_report_free_focal",
+          "name": "moge_report_free_focal",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "moge_report_free_focal"
+          }
         }
       ],
       "outputs": [
@@ -295,8 +311,8 @@
             9,
             11,
             16,
-            20,
-            26
+            21,
+            28
           ]
         }
       ],
@@ -313,14 +329,14 @@
         0.25,
         false
       ],
-      "title": "3 · DEPTH · shared by every layer"
+      "title": "3 \u00b7 DEPTH \u00b7 shared by every layer"
     },
     {
       "id": 4,
       "type": "AtlasDepthBandSplit",
       "pos": [
         40,
-        1013
+        1396
       ],
       "size": [
         400,
@@ -369,14 +385,14 @@
         0.55,
         0.0
       ],
-      "title": "4 · BAND SPLIT · the near/far cut"
+      "title": "4 \u00b7 BAND SPLIT \u00b7 the near/far cut"
     },
     {
       "id": 5,
       "type": "AtlasDepthLayerMask",
       "pos": [
         2160,
-        925
+        1380
       ],
       "size": [
         430,
@@ -547,7 +563,7 @@
           "type": "MASK",
           "links": [
             13,
-            23
+            24
           ]
         },
         {
@@ -560,6 +576,12 @@
           "localized_name": "hole_mask",
           "name": "hole_mask",
           "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
           "links": []
         }
       ],
@@ -580,14 +602,14 @@
         "",
         true
       ],
-      "title": "5 · LAYER MATTE · the band, as a matte"
+      "title": "5 \u00b7 LAYER MATTE \u00b7 the band, as a matte"
     },
     {
       "id": 6,
       "type": "AtlasHorizonMask",
       "pos": [
         1600,
-        1045
+        1412
       ],
       "size": [
         400,
@@ -652,18 +674,18 @@
         1024,
         8
       ],
-      "title": "SKY MASK · pure geometry, zero deps"
+      "title": "SKY MASK \u00b7 pure geometry, zero deps"
     },
     {
       "id": 7,
       "type": "AtlasDeriveReliefMesh",
       "pos": [
         2160,
-        317
+        286
       ],
       "size": [
         430,
-        538
+        1024
       ],
       "flags": {},
       "order": 6,
@@ -764,6 +786,96 @@
           "widget": {
             "name": "quad_coherence"
           }
+        },
+        {
+          "localized_name": "sub_quad_boundary",
+          "name": "sub_quad_boundary",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sub_quad_boundary"
+          }
+        },
+        {
+          "localized_name": "silhouette_matte",
+          "name": "silhouette_matte",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "silhouette_matte"
+          }
+        },
+        {
+          "localized_name": "soft_visibility",
+          "name": "soft_visibility",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "soft_visibility"
+          }
+        },
+        {
+          "localized_name": "transition_ribbon",
+          "name": "transition_ribbon",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "transition_ribbon"
+          }
+        },
+        {
+          "localized_name": "ribbon_px",
+          "name": "ribbon_px",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_px"
+          }
+        },
+        {
+          "localized_name": "ribbon_bend",
+          "name": "ribbon_bend",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_bend"
+          }
+        },
+        {
+          "localized_name": "ribbon_adaptive",
+          "name": "ribbon_adaptive",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_adaptive"
+          }
+        },
+        {
+          "localized_name": "ribbon_depth_slope",
+          "name": "ribbon_depth_slope",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_depth_slope"
+          }
+        },
+        {
+          "localized_name": "ribbon_smudge_px",
+          "name": "ribbon_smudge_px",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_smudge_px"
+          }
         }
       ],
       "outputs": [
@@ -780,6 +892,12 @@
           "name": "hole_mask",
           "type": "MASK",
           "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
         }
       ],
       "properties": {
@@ -793,17 +911,17 @@
         false,
         0.0,
         true,
-        true,
+        false,
         false,
         false,
         false,
         64.0,
-        0.2,
-        true,
+        -0.3,
+        false,
         2.0,
         12.0
       ],
-      "title": "6 · BASE RELIEF · tears are information"
+      "title": "6 \u00b7 BASE RELIEF \u00b7 tears are information"
     },
     {
       "id": 8,
@@ -814,7 +932,7 @@
       ],
       "size": [
         440,
-        1390
+        1924
       ],
       "flags": {},
       "order": 7,
@@ -1082,6 +1200,110 @@
           "widget": {
             "name": "quad_coherence"
           }
+        },
+        {
+          "localized_name": "sub_quad_boundary",
+          "name": "sub_quad_boundary",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sub_quad_boundary"
+          }
+        },
+        {
+          "localized_name": "silhouette_matte",
+          "name": "silhouette_matte",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "silhouette_matte"
+          }
+        },
+        {
+          "localized_name": "soft_visibility",
+          "name": "soft_visibility",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "soft_visibility"
+          }
+        },
+        {
+          "localized_name": "transition_ribbon",
+          "name": "transition_ribbon",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "transition_ribbon"
+          }
+        },
+        {
+          "localized_name": "ribbon_px",
+          "name": "ribbon_px",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_px"
+          }
+        },
+        {
+          "localized_name": "ribbon_bend",
+          "name": "ribbon_bend",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_bend"
+          }
+        },
+        {
+          "localized_name": "ribbon_adaptive",
+          "name": "ribbon_adaptive",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_adaptive"
+          }
+        },
+        {
+          "localized_name": "ribbon_depth_slope",
+          "name": "ribbon_depth_slope",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_depth_slope"
+          }
+        },
+        {
+          "localized_name": "ribbon_smudge_px",
+          "name": "ribbon_smudge_px",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_smudge_px"
+          }
+        },
+        {
+          "localized_name": "plate_depth",
+          "name": "plate_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "object_mask",
+          "name": "object_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
         }
       ],
       "outputs": [
@@ -1103,6 +1325,12 @@
           "localized_name": "extend_mask",
           "name": "extend_mask",
           "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
           "links": []
         }
       ],
@@ -1136,19 +1364,19 @@
         false,
         false,
         64.0,
-        0.2,
-        true,
+        -0.3,
+        false,
         2.0,
         12.0
       ],
-      "title": "7 · CLEAN PLATE LAYER · the mid band you paint on"
+      "title": "7 \u00b7 CLEAN PLATE LAYER \u00b7 the mid band you paint on"
     },
     {
       "id": 9,
       "type": "AtlasSkyDomeLayer",
       "pos": [
         3270,
-        696
+        1050
       ],
       "size": [
         430,
@@ -1266,7 +1494,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            32
+            19
           ]
         },
         {
@@ -1279,6 +1507,12 @@
           "localized_name": "extend_mask",
           "name": "extend_mask",
           "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
           "links": []
         }
       ],
@@ -1294,18 +1528,18 @@
         64,
         0.0
       ],
-      "title": "8 · SKY DOME · farthest, priority -10"
+      "title": "8 \u00b7 SKY DOME \u00b7 farthest, priority -10"
     },
     {
       "id": 10,
-      "type": "AtlasOcclusionGraph",
+      "type": "AtlasRetopologizeLayer",
       "pos": [
         3820,
-        921
+        1102
       ],
       "size": [
-        400,
-        112
+        430,
+        574
       ],
       "flags": {},
       "order": 9,
@@ -1318,10 +1552,154 @@
           "link": 19
         },
         {
+          "localized_name": "layer",
+          "name": "layer",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "layer"
+          }
+        },
+        {
+          "localized_name": "method",
+          "name": "method",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "method"
+          }
+        },
+        {
+          "localized_name": "target_vertex_count",
+          "name": "target_vertex_count",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "target_vertex_count"
+          }
+        },
+        {
+          "localized_name": "smooth_iterations",
+          "name": "smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "crease_angle",
+          "name": "crease_angle",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "crease_angle"
+          }
+        },
+        {
+          "localized_name": "pure_quad",
+          "name": "pure_quad",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "pure_quad"
+          }
+        },
+        {
+          "localized_name": "boundary_smooth_iterations",
+          "name": "boundary_smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "boundary_smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "rebuild_transition_ribbon",
+          "name": "rebuild_transition_ribbon",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "rebuild_transition_ribbon"
+          }
+        },
+        {
+          "localized_name": "merge_volume_primitives",
+          "name": "merge_volume_primitives",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "merge_volume_primitives"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            20
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "*",
+        "off",
+        2000,
+        0,
+        30.0,
+        false,
+        8,
+        true,
+        false
+      ],
+      "title": "ROUND THE SILHOUETTE \u00b7 boundary smooth \u00d78 \ud83d\udd37"
+    },
+    {
+      "id": 11,
+      "type": "AtlasOcclusionGraph",
+      "pos": [
+        4370,
+        1333
+      ],
+      "size": [
+        400,
+        112
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 20
+        },
+        {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 20,
+          "link": 21,
           "shape": 7
         }
       ],
@@ -1331,7 +1709,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            21
+            22
           ]
         },
         {
@@ -1345,28 +1723,28 @@
         "Node name for S&R": "AtlasOcclusionGraph"
       },
       "widgets_values": [],
-      "title": "9 · OCCLUSION GRAPH · who hides whom"
+      "title": "9 \u00b7 OCCLUSION GRAPH \u00b7 who hides whom"
     },
     {
-      "id": 11,
+      "id": 12,
       "type": "AtlasLayerPlan",
       "pos": [
-        4340,
-        882
+        4890,
+        1294
       ],
       "size": [
         430,
         190
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 21
+          "link": 22
         },
         {
           "localized_name": "include_unoccluded",
@@ -1399,9 +1777,9 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            24,
-            29,
-            30
+            26,
+            31,
+            32
           ]
         },
         {
@@ -1429,34 +1807,34 @@
       "widgets_values": [
         false
       ],
-      "title": "10 · LAYER PLAN · read this before exporting"
+      "title": "10 \u00b7 LAYER PLAN \u00b7 read this before exporting"
     },
     {
-      "id": 12,
+      "id": 13,
       "type": "AtlasLayerPreview",
       "pos": [
         2710,
-        1500
+        2034
       ],
       "size": [
         400,
         300
       ],
       "flags": {},
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 22
+          "link": 23
         },
         {
           "localized_name": "mask",
           "name": "mask",
           "type": "MASK",
-          "link": 23
+          "link": 24
         },
         {
           "localized_name": "layer_index",
@@ -1485,7 +1863,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            33
+            25
           ]
         }
       ],
@@ -1496,21 +1874,57 @@
         0,
         ""
       ],
-      "title": "LAYER PREVIEW · the matte over the plate"
+      "title": "LAYER PREVIEW \u00b7 the matte over the plate"
     },
     {
-      "id": 13,
+      "id": 14,
+      "type": "PreviewImage",
+      "pos": [
+        3270,
+        1682
+      ],
+      "size": [
+        320,
+        348
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 25
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "LAYER PREVIEW \u2014 without a sink this never rendered \ud83d\uddbc"
+    },
+    {
+      "id": 15,
       "type": "AtlasViewportControls",
       "pos": [
         40,
-        1255
+        1638
       ],
       "size": [
         440,
         442
       ],
       "flags": {},
-      "order": 12,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -1590,7 +2004,7 @@
           "name": "controls",
           "type": "ATLAS_VIEWPORT_LINK",
           "links": [
-            27
+            29
           ]
         },
         {
@@ -1598,8 +2012,8 @@
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
           "links": [
-            28,
-            31
+            30,
+            33
           ]
         }
       ],
@@ -1615,34 +2029,34 @@
         "ACES 2.0 SDR-video",
         1.0
       ],
-      "title": "OUTPUT DESK · OCIO metadata"
+      "title": "OUTPUT DESK \u00b7 OCIO metadata"
     },
     {
-      "id": 14,
+      "id": 16,
       "type": "AtlasBlockoutViewport",
       "pos": [
-        4890,
-        588
+        5440,
+        1000
       ],
       "size": [
         900,
         680
       ],
       "flags": {},
-      "order": 13,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 24
+          "link": 26
         },
         {
           "localized_name": "source_image",
           "name": "source_image",
           "type": "IMAGE",
-          "link": 25
+          "link": 27
         },
         {
           "localized_name": "resolution",
@@ -1668,7 +2082,7 @@
           "localized_name": "primary_depth",
           "name": "primary_depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 26,
+          "link": 28,
           "shape": 7
         },
         {
@@ -1685,7 +2099,7 @@
           "localized_name": "controls",
           "name": "controls",
           "type": "ATLAS_VIEWPORT_LINK",
-          "link": 27,
+          "link": 29,
           "shape": 7
         },
         {
@@ -1699,7 +2113,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 28,
+          "link": 30,
           "shape": 7
         },
         {
@@ -1835,28 +2249,28 @@
         1.0,
         96
       ],
-      "title": "11 · VIEWPORT · orbit for the parallax"
+      "title": "11 \u00b7 VIEWPORT \u00b7 orbit for the parallax"
     },
     {
-      "id": 15,
+      "id": 17,
       "type": "AtlasExportSolveJSON",
       "pos": [
-        4890,
-        352
+        5440,
+        764
       ],
       "size": [
         390,
         166
       ],
       "flags": {},
-      "order": 14,
+      "order": 16,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 29
+          "link": 31
         },
         {
           "localized_name": "output_path",
@@ -1890,28 +2304,28 @@
       "widgets_values": [
         "atlas_exports/atlas_layered_projection_workflow/atlas_solve.json"
       ],
-      "title": "Solve JSON · the whole stack"
+      "title": "Solve JSON \u00b7 the whole stack"
     },
     {
-      "id": 16,
+      "id": 18,
       "type": "AtlasExportNukeLayers",
       "pos": [
-        4890,
-        1338
+        5440,
+        1750
       ],
       "size": [
         430,
         460
       ],
       "flags": {},
-      "order": 15,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 30
+          "link": 32
         },
         {
           "localized_name": "output_dir",
@@ -1927,7 +2341,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 31,
+          "link": 33,
           "shape": 7
         },
         {
@@ -2013,21 +2427,21 @@
         30.0,
         false
       ],
-      "title": "Nuke Layers · per-band cameras, plates, mattes"
+      "title": "Nuke Layers \u00b7 per-band cameras, plates, mattes"
     },
     {
-      "id": 17,
+      "id": 19,
       "type": "Note",
       "pos": [
         40,
-        1767
+        2150
       ],
       "size": [
         880,
         660
       ],
       "flags": {},
-      "order": 16,
+      "order": 18,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -2035,162 +2449,9 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "LAYERED PROJECTION — one plate becomes an ordered, controllable 2.5D stack.\n\nThis is the workflow a matte painter opens. A single relief mesh is one surface; a layered stack is separate surfaces at separate depths, each with its own plate, its own matte and its own priority, which is what gives you real parallax on a move and a layer you can paint on in isolation.\n\nTHE STACK, FAR TO NEAR\n1. AtlasDepthBandSplit — the near/far cut, as a fraction of the depth range. Everything downstream addresses a band by name rather than by hand-typed metres.\n2. AtlasDepthLayerMask — that band as an actual matte, feathered, with its occlusion and hole masks.\n3. AtlasDeriveReliefMesh — the base surface. Its tears are load-bearing information about what the camera could not see.\n4. AtlasCleanPlateLayer — the mid band as its own layer, carrying its own plate. This is the layer you paint on, and the one that holds parallax when the camera moves.\n5. AtlasSkyDomeLayer — the far field on a dome behind everything. Priority is negative so it sits farthest back: band priorities are FARTHEST-highest.\n6. AtlasOcclusionGraph — works out which layer hides which, so the stack composites in the right order.\n7. AtlasLayerPlan — the readable summary of the finished stack. Read its report before exporting.\n\nSEAM DOCTRINE\nEdge-extend smear lives on the layers BEHIND. The frontmost band keeps a clean cut. If a seam shows, raise edge_extend_px on the layer behind it, never on the one in front.\n\nWHY THIS GRAPH USES AtlasHorizonMask FOR THE SKY\nAtlasSkyDomeLayer requires a sky mask. The better source is a segmenter, but AtlasSAM3Mask needs the [sam3] extra and a Hugging Face token for a gated repo. The horizon mask is pure solve geometry and needs nothing, so this example runs on a fresh clone. On a real plate, swap in AtlasSAM3Mask with the prompt \"sky\", or AtlasInput's own sky output, and the dome will follow the actual skyline instead of the horizon line.\n\nAtlasBoundedBand is absent for the same reason: its foreground_mask is required and only a segmenter produces one. Add it once you have segmentation, and it will bound the band to a real object instead of a depth percentile.\n\nWHAT TO TUNE FIRST\n• split on the band split — the single most useful dial in this graph.\n• near_pct / far_pct on the clean plate layer, to widen or narrow the mid band.\n• radius_m on the sky dome, if the horizon parallaxes wrongly on a move.\n• feather_px on the layer mask, if a matte edge reads hard."
+        "LAYERED PROJECTION \u2014 one plate becomes an ordered, controllable 2.5D stack.\n\nThis is the workflow a matte painter opens. A single relief mesh is one surface; a layered stack is separate surfaces at separate depths, each with its own plate, its own matte and its own priority, which is what gives you real parallax on a move and a layer you can paint on in isolation.\n\nTHE STACK, FAR TO NEAR\n1. AtlasDepthBandSplit \u2014 the near/far cut, as a fraction of the depth range. Everything downstream addresses a band by name rather than by hand-typed metres.\n2. AtlasDepthLayerMask \u2014 that band as an actual matte, feathered, with its occlusion and hole masks.\n3. AtlasDeriveReliefMesh \u2014 the base surface. Its tears are load-bearing information about what the camera could not see.\n4. AtlasCleanPlateLayer \u2014 the mid band as its own layer, carrying its own plate. This is the layer you paint on, and the one that holds parallax when the camera moves.\n5. AtlasSkyDomeLayer \u2014 the far field on a dome behind everything. Priority is negative so it sits farthest back: band priorities are FARTHEST-highest.\n6. AtlasOcclusionGraph \u2014 works out which layer hides which, so the stack composites in the right order.\n7. AtlasLayerPlan \u2014 the readable summary of the finished stack. Read its report before exporting.\n\nSEAM DOCTRINE\nEdge-extend smear lives on the layers BEHIND. The frontmost band keeps a clean cut. If a seam shows, raise edge_extend_px on the layer behind it, never on the one in front.\n\nWHY THIS GRAPH USES AtlasHorizonMask FOR THE SKY\nAtlasSkyDomeLayer requires a sky mask. The better source is a segmenter, but AtlasSAM3Mask needs the [sam3] extra and a Hugging Face token for a gated repo. The horizon mask is pure solve geometry and needs nothing, so this example runs on a fresh clone. On a real plate, swap in AtlasSAM3Mask with the prompt \"sky\", or AtlasInput's own sky output, and the dome will follow the actual skyline instead of the horizon line.\n\nAtlasBoundedBand is absent for the same reason: its foreground_mask is required and only a segmenter produces one. Add it once you have segmentation, and it will bound the band to a real object instead of a depth percentile.\n\nWHAT TO TUNE FIRST\n\u2022 split on the band split \u2014 the single most useful dial in this graph.\n\u2022 near_pct / far_pct on the clean plate layer, to widen or narrow the mid band.\n\u2022 radius_m on the sky dome, if the horizon parallaxes wrongly on a move.\n\u2022 feather_px on the layer mask, if a matte edge reads hard."
       ],
-      "title": "READ ME · the stack, the seam doctrine, what to tune"
-    },
-    {
-      "id": 18,
-      "type": "AtlasRetopologizeLayer",
-      "pos": [
-        3730,
-        1036
-      ],
-      "size": [
-        400,
-        200
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "solve",
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 32
-        },
-        {
-          "localized_name": "layer",
-          "name": "layer",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "layer"
-          }
-        },
-        {
-          "localized_name": "method",
-          "name": "method",
-          "type": "COMBO",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "method"
-          }
-        },
-        {
-          "localized_name": "target_vertex_count",
-          "name": "target_vertex_count",
-          "type": "INT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "target_vertex_count"
-          }
-        },
-        {
-          "localized_name": "smooth_iterations",
-          "name": "smooth_iterations",
-          "type": "INT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "smooth_iterations"
-          }
-        },
-        {
-          "localized_name": "crease_angle",
-          "name": "crease_angle",
-          "type": "FLOAT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "crease_angle"
-          }
-        },
-        {
-          "localized_name": "pure_quad",
-          "name": "pure_quad",
-          "type": "BOOLEAN",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "pure_quad"
-          }
-        },
-        {
-          "localized_name": "boundary_smooth_iterations",
-          "name": "boundary_smooth_iterations",
-          "type": "INT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "boundary_smooth_iterations"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "solve",
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "links": [
-            19
-          ]
-        },
-        {
-          "localized_name": "report",
-          "name": "report",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasRetopologizeLayer"
-      },
-      "widgets_values": [
-        "*",
-        "off",
-        2000,
-        0,
-        30.0,
-        false,
-        8,
-        true,
-        false
-      ],
-      "title": "ROUND THE SILHOUETTE · boundary smooth ×8 🔷"
-    },
-    {
-      "id": 19,
-      "type": "PreviewImage",
-      "pos": [
-        3130,
-        1540
-      ],
-      "size": [
-        320,
-        300
-      ],
-      "flags": {},
-      "order": 99,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "images",
-          "name": "images",
-          "type": "IMAGE",
-          "link": 33
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "Node name for S&R": "PreviewImage"
-      },
-      "widgets_values": [],
-      "title": "LAYER PREVIEW — without a sink this never rendered 🖼"
+      "title": "READ ME \u00b7 the stack, the seam doctrine, what to tune"
     }
   ],
   "links": [
@@ -2339,15 +2600,15 @@
       "IMAGE"
     ],
     [
-      20,
-      3,
+      19,
+      9,
       0,
       10,
-      1,
-      "ATLAS_DEPTH_MAP"
+      0,
+      "ATLAS_SOLVE"
     ],
     [
-      21,
+      20,
       10,
       0,
       11,
@@ -2355,130 +2616,130 @@
       "ATLAS_SOLVE"
     ],
     [
-      22,
+      21,
+      3,
+      0,
+      11,
       1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      22,
+      11,
       0,
       12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      23,
+      1,
+      0,
+      13,
       0,
       "IMAGE"
     ],
     [
-      23,
+      24,
       5,
       0,
-      12,
+      13,
       1,
       "MASK"
     ],
     [
-      24,
-      11,
-      0,
-      14,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       25,
-      1,
+      13,
       0,
       14,
-      1,
+      0,
       "IMAGE"
     ],
     [
       26,
+      12,
+      0,
+      16,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      27,
+      1,
+      0,
+      16,
+      1,
+      "IMAGE"
+    ],
+    [
+      28,
       3,
       0,
-      14,
+      16,
       4,
       "ATLAS_DEPTH_MAP"
     ],
     [
-      27,
-      13,
+      29,
+      15,
       0,
-      14,
+      16,
       6,
       "ATLAS_VIEWPORT_LINK"
     ],
     [
-      28,
-      13,
+      30,
+      15,
       1,
-      14,
+      16,
       8,
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      29,
-      11,
-      0,
-      15,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      30,
-      11,
-      0,
-      16,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       31,
-      13,
-      1,
-      16,
-      2,
-      "ATLAS_OUTPUT_PROFILE"
+      12,
+      0,
+      17,
+      0,
+      "ATLAS_SOLVE"
     ],
     [
       32,
-      9,
+      12,
       0,
       18,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      19,
-      18,
-      0,
-      10,
       0,
       "ATLAS_SOLVE"
     ],
     [
       33,
-      12,
-      0,
-      19,
-      0,
-      "IMAGE"
+      15,
+      1,
+      18,
+      2,
+      "ATLAS_OUTPUT_PROFILE"
     ]
   ],
   "groups": [
     {
-      "title": "1 · BUILD THE STACK · far to near",
+      "title": "1 \u00b7 BUILD THE STACK \u00b7 far to near",
       "bounding": [
         -5,
         -48,
-        4820,
-        1850
+        5370,
+        2305
       ],
       "color": "#35536b",
       "font_size": 24,
       "flags": {}
     },
     {
-      "title": "2 · INSPECT + DELIVER",
+      "title": "2 \u00b7 INSPECT + DELIVER",
       "bounding": [
         -5,
-        264,
-        5840,
-        2208
+        676,
+        6390,
+        2179
       ],
       "color": "#375c4a",
       "font_size": 24,

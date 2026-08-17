@@ -225,6 +225,12 @@ def build_quickstart(object_info: dict, layout) -> dict:
         "layer_index": 0,
         "color_hex": "",
     }, size=(400, 300))
+    # AtlasLayerPreview emits an IMAGE and nothing consumed it, so the
+    # preview never rendered. A sink is not decoration here.
+    layer_preview_sink = graph.node(
+        "PreviewImage",
+        title="LAYER PREVIEW — without a sink this never rendered 🖼",
+        size=(320, 300))
     assess = graph.node("AtlasAssessOutput", title="TERMINAL QA · disabled, needs a local VLM", values={
         "enabled": False,
         "provider": "lmstudio",
@@ -248,6 +254,7 @@ def build_quickstart(object_info: dict, layout) -> dict:
     graph.connect(controls, "output_profile", viewport, "output_profile")
     graph.connect(atlas_input, "image", layer_preview, "image")
     graph.connect(atlas_input, "sky_mask", layer_preview, "mask")
+    graph.connect(layer_preview, "image", layer_preview_sink, "images")
     graph.connect(viewport, "shaded", assess, "camera_view")
     graph.connect(atlas_input, "solve", assess, "solve")
     graph.connect(atlas_input, "image", assess, "source_image")
@@ -257,7 +264,8 @@ def build_quickstart(object_info: dict, layout) -> dict:
     groups = [
         ("1 · LOAD → SOLVE → VIEWPORT · read the note", "#35536b",
          [load, atlas_input, controls, viewport, note]),
-        ("2 · INSPECT + EXPORT", "#375c4a", [layer_preview, solve_json, assess]),
+        ("2 · INSPECT + EXPORT", "#375c4a",
+         [layer_preview, layer_preview_sink, solve_json, assess]),
     ]
     return _finish(graph, slug, groups, layout,
                    "The front door. One node from plate to camera and relief mesh.")
@@ -323,6 +331,22 @@ def build_stages(object_info: dict, layout) -> dict:
         "normal_edge_deg": 0.0,
         "quad_coherence": True,
     }, size=(430, 320))
+    retopo = graph.node("AtlasRetopologizeLayer", title="ROUND THE SILHOUETTE · boundary smooth ×8 🔷", values={
+        "layer": "",
+        "method": "off",
+        "target_vertex_count": 2000,
+        "smooth_iterations": 0,
+        "crease_angle": 30.0,
+        "pure_quad": False,
+        "boundary_smooth_iterations": 8,
+        "rebuild_transition_ribbon": True,
+        "merge_volume_primitives": False,
+    }, size=(430, 340))
+    gate = graph.node("AtlasSceneHealthGate", values={
+        "pass_through_on_pass": True,
+        "proceed": False,
+        "approved_for": "",
+    }, size=(430, 300))
     controls = _controls(graph, vfx=False)
     viewport = graph.node("AtlasBlockoutViewport", title="6 · VIEWPORT · identical result, every stage visible", values={
         "resolution": 1280,
@@ -335,23 +359,27 @@ def build_stages(object_info: dict, layout) -> dict:
     note = _note(graph, STAGES_NOTE, "READ ME · which stage to take over first")
 
     graph.connect(load, "IMAGE", solve, "image")
-    graph.connect(solve, "ATLAS_SOLVE", compass, "solve")
+    graph.connect(solve, "solve", compass, "solve")
     graph.connect(load, "IMAGE", depth, "image")
     graph.connect(compass, "solve", depth, "solve")
     graph.connect(compass, "solve", relief, "solve")
     graph.connect(depth, "depth", relief, "depth")
-    graph.connect(relief, "solve", viewport, "solve")
+    graph.connect(relief, "solve", retopo, "solve")
+    graph.connect(retopo, "solve", viewport, "solve")
     graph.connect(load, "IMAGE", viewport, "source_image")
     graph.connect(depth, "depth", viewport, "primary_depth")
     graph.connect(controls, "controls", viewport, "controls")
     graph.connect(controls, "output_profile", viewport, "output_profile")
-    graph.connect(relief, "solve", solve_json, "solve")
+    # Gate 4 sits between the scene and the exporter, as it does everywhere.
+    graph.connect(retopo, "solve", gate, "solve")
+    graph.connect(load, "IMAGE", gate, "source_image")
+    graph.connect(gate, "solve", solve_json, "solve")
 
     groups = [
         ("1 · THE EXPLICIT CHAIN · camera → compass → depth → mesh", "#35536b",
-         [load, solve, compass, depth, relief, controls]),
+         [load, solve, compass, depth, relief, retopo, controls]),
         ("2 · RESULT · same as the front door, now overridable", "#375c4a",
-         [viewport, note, solve_json]),
+         [gate, viewport, note, solve_json]),
     ]
     return _finish(graph, slug, groups, layout,
                    "The front door taken apart: every solve stage exposed and overridable.")
@@ -605,6 +633,19 @@ def build_layered(object_info: dict, layout) -> dict:
         "frame_outpaint_px": 64,
         "distance_m": 0.0,
     }, size=(430, 380))
+    # layer="*" — every layer in the stack, not just the primary. The
+    # layered graph is the one place a stack exists to retopologize.
+    retopo = graph.node("AtlasRetopologizeLayer", title="ROUND THE SILHOUETTE · boundary smooth ×8 🔷", values={
+        "layer": "*",
+        "method": "off",
+        "target_vertex_count": 2000,
+        "smooth_iterations": 0,
+        "crease_angle": 30.0,
+        "pure_quad": False,
+        "boundary_smooth_iterations": 8,
+        "rebuild_transition_ribbon": True,
+        "merge_volume_primitives": False,
+    }, size=(430, 340))
     occlusion = graph.node("AtlasOcclusionGraph", title="9 · OCCLUSION GRAPH · who hides whom", size=(400, 110))
     plan = graph.node("AtlasLayerPlan", title="10 · LAYER PLAN · read this before exporting", values={
         "include_unoccluded": False,
@@ -613,6 +654,12 @@ def build_layered(object_info: dict, layout) -> dict:
         "layer_index": 0,
         "color_hex": "",
     }, size=(400, 300))
+    # AtlasLayerPreview emits an IMAGE and nothing consumed it, so the
+    # preview never rendered. A sink is not decoration here.
+    layer_preview_sink = graph.node(
+        "PreviewImage",
+        title="LAYER PREVIEW — without a sink this never rendered 🖼",
+        size=(320, 300))
     controls = _controls(graph, vfx=True)
     viewport = graph.node("AtlasBlockoutViewport", title="11 · VIEWPORT · orbit for the parallax", values={
         "resolution": 1280,
@@ -631,14 +678,14 @@ def build_layered(object_info: dict, layout) -> dict:
 
     graph.connect(load, "IMAGE", solve, "image")
     graph.connect(load, "IMAGE", depth, "image")
-    graph.connect(solve, "ATLAS_SOLVE", depth, "solve")
-    graph.connect(solve, "ATLAS_SOLVE", horizon, "solve")
+    graph.connect(solve, "solve", depth, "solve")
+    graph.connect(solve, "solve", horizon, "solve")
 
-    graph.connect(solve, "ATLAS_SOLVE", layer_mask, "solve")
+    graph.connect(solve, "solve", layer_mask, "solve")
     graph.connect(depth, "depth", layer_mask, "depth")
     graph.connect(band, "band_split", layer_mask, "band_split")
 
-    graph.connect(solve, "ATLAS_SOLVE", relief, "solve")
+    graph.connect(solve, "solve", relief, "solve")
     graph.connect(depth, "depth", relief, "depth")
 
     graph.connect(relief, "solve", cleanplate, "solve")
@@ -652,12 +699,14 @@ def build_layered(object_info: dict, layout) -> dict:
     graph.connect(horizon, "MASK", skydome, "sky_mask")
     graph.connect(load, "IMAGE", skydome, "plate_image")
 
-    graph.connect(skydome, "solve", occlusion, "solve")
+    graph.connect(skydome, "solve", retopo, "solve")
+    graph.connect(retopo, "solve", occlusion, "solve")
     graph.connect(depth, "depth", occlusion, "depth")
     graph.connect(occlusion, "solve", plan, "solve")
 
     graph.connect(load, "IMAGE", layer_preview, "image")
     graph.connect(layer_mask, "layer_mask", layer_preview, "mask")
+    graph.connect(layer_preview, "image", layer_preview_sink, "images")
 
     graph.connect(plan, "solve", viewport, "solve")
     graph.connect(load, "IMAGE", viewport, "source_image")
@@ -672,9 +721,10 @@ def build_layered(object_info: dict, layout) -> dict:
     groups = [
         ("1 · BUILD THE STACK · far to near", "#35536b",
          [load, solve, depth, band, horizon, layer_mask, relief, cleanplate,
-          skydome, occlusion, plan, controls]),
+          skydome, retopo, occlusion, plan, controls]),
         ("2 · INSPECT + DELIVER", "#375c4a",
-         [layer_preview, viewport, note, solve_json, nuke_layers]),
+         [layer_preview, layer_preview_sink, viewport, note, solve_json,
+          nuke_layers]),
     ]
     return _finish(graph, slug, groups, layout,
                    "One plate as an ordered 2.5D layer stack: band, clean plate, sky dome.")
@@ -844,22 +894,58 @@ BUILDERS = {
 }
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1:8188")
     parser.add_argument("--only", default="", help="build a single slug")
+    parser.add_argument(
+        "--check", action="store_true",
+        help="compare each builder's output against the committed JSON and "
+             "exit non-zero on drift, writing nothing")
     args = parser.parse_args()
     object_info = _fetch_object_info(args.host)
     layout = _load_layout_module()
+    drifted: list[str] = []
+
     for slug, builder in BUILDERS.items():
         if args.only and args.only not in slug:
             continue
         workflow = builder(object_info, layout)
         output = EXAMPLES / f"{slug}.json"
+
+        if args.check:
+            # Node TYPES, not bytes. Positions and link ids move with the
+            # layout pass and a byte comparison would cry drift on every run;
+            # a node appearing or vanishing is the thing that actually matters.
+            if not output.is_file():
+                drifted.append(f"{slug}: no committed file")
+                continue
+            committed = json.loads(output.read_text(encoding="utf-8"))
+            was = sorted(n["type"] for n in committed["nodes"])
+            now = sorted(n["type"] for n in workflow["nodes"])
+            if was != now:
+                only_committed = sorted(set(was) - set(now))
+                only_builder = sorted(set(now) - set(was))
+                drifted.append(
+                    f"{slug}: committed-only={only_committed} "
+                    f"builder-only={only_builder}")
+            else:
+                print(f"ok    {slug}")
+            continue
+
         output.write_text(json.dumps(workflow, indent=2) + "\n", encoding="utf-8")
         print(f"wrote {output}")
         print(f"  {layout.inspect(workflow)['summary']}")
 
+    if drifted:
+        print("\nDRIFT — the builder and the committed workflow disagree:")
+        for line in drifted:
+            print("  " + line)
+        print("\nRegenerating would CHANGE the shipped file. Fix the builder to "
+              "match, or regenerate deliberately and review the diff.")
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
