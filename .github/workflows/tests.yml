@@ -22,10 +22,19 @@ jobs:
       # numpy/opencv/pytest; [ui,image] cover the FastAPI backend tests
       # (httpx2 is starlette's TestClient transport). Torch-dependent tests
       # skip via importorskip, so this exercises the deterministic core,
-      # node plumbing, and every exporter on both OSes per push —
-      # verified against a fresh torch-less venv before this workflow
-      # was committed (316 passed / 77 skipped).
-      - run: pip install -e ".[dev,ui,image]" httpx2
+      # node plumbing, and every exporter on both OSes per push.
+      #
+      # [mcp] and [raw] are NOT optional here. Four tests import their modules
+      # at collection time rather than behind an importorskip —
+      # test_agent_handoff::test_routes_and_mcp_wired imports
+      # atlas_camera.mcp.server, and the three test_jpeg_capture_import cases
+      # import atlas_camera.raw.pipeline — so without the extras they ERROR
+      # rather than skip. main was red on exactly those four for weeks, which
+      # trains everyone to read a red run as normal. The CI environment must
+      # represent the suite it claims to run; the alternative fixes (skip
+      # marks, conditional imports) would hide real regressions in the RAW and
+      # MCP paths, both of which are v1 surface.
+      - run: pip install -e ".[dev,ui,image,mcp,raw]" httpx2
       - run: python -m pytest -q
       # Clean-env node-pack load: the registry + all six responsibility modules
       # must import and register on a torch-less install (node classes import
