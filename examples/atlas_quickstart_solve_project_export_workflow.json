@@ -9,7 +9,7 @@
       "type": "LoadImage",
       "pos": [
         40,
-        81
+        253
       ],
       "size": [
         360,
@@ -38,8 +38,8 @@
           "links": [
             1,
             3,
-            8,
-            15
+            9,
+            14
           ]
         },
         {
@@ -63,7 +63,7 @@
       "type": "AtlasLearnedSolveFromImage",
       "pos": [
         980,
-        186
+        383
       ],
       "size": [
         440,
@@ -159,12 +159,18 @@
       ],
       "outputs": [
         {
-          "localized_name": "ATLAS_SOLVE",
-          "name": "ATLAS_SOLVE",
+          "localized_name": "solve",
+          "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
             2
           ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
         }
       ],
       "properties": {
@@ -186,7 +192,7 @@
       "type": "AtlasGravityCompass",
       "pos": [
         1540,
-        252
+        449
       ],
       "size": [
         430,
@@ -287,11 +293,11 @@
       "type": "AtlasDepthMap",
       "pos": [
         2090,
-        248
+        432
       ],
       "size": [
         440,
-        490
+        544
       ],
       "flags": {},
       "order": 3,
@@ -379,6 +385,16 @@
           "widget": {
             "name": "moge_tile_overlap"
           }
+        },
+        {
+          "localized_name": "moge_report_free_focal",
+          "name": "moge_report_free_focal",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "moge_report_free_focal"
+          }
         }
       ],
       "outputs": [
@@ -388,7 +404,7 @@
           "type": "ATLAS_DEPTH_MAP",
           "links": [
             6,
-            9
+            10
           ]
         }
       ],
@@ -412,11 +428,11 @@
       "type": "AtlasDeriveReliefMesh",
       "pos": [
         2650,
-        100
+        40
       ],
       "size": [
         430,
-        538
+        1024
       ],
       "flags": {},
       "order": 4,
@@ -517,6 +533,96 @@
           "widget": {
             "name": "quad_coherence"
           }
+        },
+        {
+          "localized_name": "sub_quad_boundary",
+          "name": "sub_quad_boundary",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sub_quad_boundary"
+          }
+        },
+        {
+          "localized_name": "silhouette_matte",
+          "name": "silhouette_matte",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "silhouette_matte"
+          }
+        },
+        {
+          "localized_name": "soft_visibility",
+          "name": "soft_visibility",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "soft_visibility"
+          }
+        },
+        {
+          "localized_name": "transition_ribbon",
+          "name": "transition_ribbon",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "transition_ribbon"
+          }
+        },
+        {
+          "localized_name": "ribbon_px",
+          "name": "ribbon_px",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_px"
+          }
+        },
+        {
+          "localized_name": "ribbon_bend",
+          "name": "ribbon_bend",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_bend"
+          }
+        },
+        {
+          "localized_name": "ribbon_adaptive",
+          "name": "ribbon_adaptive",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_adaptive"
+          }
+        },
+        {
+          "localized_name": "ribbon_depth_slope",
+          "name": "ribbon_depth_slope",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_depth_slope"
+          }
+        },
+        {
+          "localized_name": "ribbon_smudge_px",
+          "name": "ribbon_smudge_px",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_smudge_px"
+          }
         }
       ],
       "outputs": [
@@ -525,13 +631,19 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            13
+            7
           ]
         },
         {
           "localized_name": "hole_mask",
           "name": "hole_mask",
           "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
           "links": []
         }
       ],
@@ -546,13 +658,13 @@
         false,
         0.0,
         true,
-        true,
+        false,
         false,
         false,
         false,
         64.0,
-        0.2,
-        true,
+        -0.3,
+        false,
         2.0,
         12.0
       ],
@@ -560,17 +672,280 @@
     },
     {
       "id": 6,
+      "type": "AtlasRetopologizeLayer",
+      "pos": [
+        3200,
+        265
+      ],
+      "size": [
+        430,
+        574
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 7
+        },
+        {
+          "localized_name": "layer",
+          "name": "layer",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "layer"
+          }
+        },
+        {
+          "localized_name": "method",
+          "name": "method",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "method"
+          }
+        },
+        {
+          "localized_name": "target_vertex_count",
+          "name": "target_vertex_count",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "target_vertex_count"
+          }
+        },
+        {
+          "localized_name": "smooth_iterations",
+          "name": "smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "crease_angle",
+          "name": "crease_angle",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "crease_angle"
+          }
+        },
+        {
+          "localized_name": "pure_quad",
+          "name": "pure_quad",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "pure_quad"
+          }
+        },
+        {
+          "localized_name": "boundary_smooth_iterations",
+          "name": "boundary_smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "boundary_smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "rebuild_transition_ribbon",
+          "name": "rebuild_transition_ribbon",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "rebuild_transition_ribbon"
+          }
+        },
+        {
+          "localized_name": "merge_volume_primitives",
+          "name": "merge_volume_primitives",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "merge_volume_primitives"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            8,
+            13
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasRetopologizeLayer"
+      },
+      "widgets_values": [
+        "",
+        "off",
+        2000,
+        0,
+        30.0,
+        false,
+        8,
+        true,
+        false
+      ],
+      "title": "ROUND THE SILHOUETTE \u00b7 boundary smooth \u00d78 \ud83d\udd37"
+    },
+    {
+      "id": 7,
+      "type": "AtlasSceneHealthGate",
+      "pos": [
+        3750,
+        52
+      ],
+      "size": [
+        430,
+        394
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 13
+        },
+        {
+          "localized_name": "source_image",
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 14
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "status_1",
+          "name": "status_1",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "status_2",
+          "name": "status_2",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "status_3",
+          "name": "status_3",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "status_4",
+          "name": "status_4",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "pass_through_on_pass",
+          "name": "pass_through_on_pass",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "pass_through_on_pass"
+          }
+        },
+        {
+          "localized_name": "proceed",
+          "name": "proceed",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "proceed"
+          }
+        },
+        {
+          "localized_name": "approved_for",
+          "name": "approved_for",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "approved_for"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            15
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasSceneHealthGate"
+      },
+      "widgets_values": [
+        true,
+        false,
+        ""
+      ]
+    },
+    {
+      "id": 8,
       "type": "AtlasViewportControls",
       "pos": [
         40,
-        583
+        755
       ],
       "size": [
         440,
         442
       ],
       "flags": {},
-      "order": 5,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -650,7 +1025,7 @@
           "name": "controls",
           "type": "ATLAS_VIEWPORT_LINK",
           "links": [
-            10
+            11
           ]
         },
         {
@@ -658,7 +1033,7 @@
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
           "links": [
-            11
+            12
           ]
         }
       ],
@@ -677,31 +1052,31 @@
       "title": "OUTPUT DESK \u00b7 OCIO metadata"
     },
     {
-      "id": 7,
+      "id": 9,
       "type": "AtlasBlockoutViewport",
       "pos": [
-        3200,
-        276
+        3750,
+        516
       ],
       "size": [
         900,
         680
       ],
       "flags": {},
-      "order": 6,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 7
+          "link": 8
         },
         {
           "localized_name": "source_image",
           "name": "source_image",
           "type": "IMAGE",
-          "link": 8
+          "link": 9
         },
         {
           "localized_name": "resolution",
@@ -727,7 +1102,7 @@
           "localized_name": "primary_depth",
           "name": "primary_depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 9,
+          "link": 10,
           "shape": 7
         },
         {
@@ -744,7 +1119,7 @@
           "localized_name": "controls",
           "name": "controls",
           "type": "ATLAS_VIEWPORT_LINK",
-          "link": 10,
+          "link": 11,
           "shape": 7
         },
         {
@@ -758,7 +1133,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 11,
+          "link": 12,
           "shape": 7
         },
         {
@@ -897,25 +1272,25 @@
       "title": "6 \u00b7 VIEWPORT \u00b7 identical result, every stage visible"
     },
     {
-      "id": 8,
+      "id": 10,
       "type": "AtlasExportSolveJSON",
       "pos": [
-        3200,
-        40
+        4770,
+        166
       ],
       "size": [
         390,
         166
       ],
       "flags": {},
-      "order": 7,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 12
+          "link": 15
         },
         {
           "localized_name": "output_path",
@@ -952,18 +1327,18 @@
       "title": "Solve JSON \u00b7 portable camera"
     },
     {
-      "id": 9,
+      "id": 11,
       "type": "Note",
       "pos": [
         40,
-        1095
+        1267
       ],
       "size": [
         820,
         520
       ],
       "flags": {},
-      "order": 8,
+      "order": 10,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -974,182 +1349,6 @@
         "SOLVE STAGES \u2014 the front door taken apart, so you can take over a stage.\n\natlas_input_quickstart_workflow.json produces this same result from one node. This graph is that node opened up: every stage is a node you can inspect, swap or override.\n\nTHE CHAIN\n1. AtlasLearnedSolveFromImage \u2014 the camera. GeoCalib's learned prior gives focal length, pitch and roll from a single frame. This is a METRIC pinhole camera with a real focal length in mm, not a pose guess.\n2. AtlasGravityCompass \u2014 the beat a plain depth solve gets wrong. On a steep down-angle (a birds-eye plate shows this best) the compass reports and can override pitch, roll and heading. Leave apply_override off to read the solve; turn it on to correct it.\n3. AtlasDepthMap \u2014 monocular metric depth, shared downstream so every branch agrees on scale. Exterior plates take the V2 Metric Outdoor model; interiors take MoGe.\n4. AtlasDeriveReliefMesh \u2014 depth becomes a triangulated mesh, torn at silhouettes, with the camera projection baked into the UVs. The tears are deliberate: a tear is honest missing information, and the fix is a layer, never a raised threshold.\n5. AtlasBlockoutViewport \u2014 the recovered camera and the projection, live.\n\nWHAT TO OVERRIDE FIRST\n\u2022 height_mode / camera_height_m on the solve. The solver assumes a standing eye height by default; type a real camera height and the whole scene rescales. The solver assumes, you correct.\n\u2022 focal_length_mm, if you know the lens. A measured value always beats a learned one.\n\u2022 depth_model, if the plate is interior \u2014 MoGe reads rooms far better than the outdoor metric model.\n\u2022 relief_grid and depth_edge_rel on the mesh, to trade density against silhouette fidelity.\n\nRESOLUTION\nThe solver is resolution-independent and has been validated past 8k. The viewport renders up to 8k."
       ],
       "title": "READ ME \u00b7 which stage to take over first"
-    },
-    {
-      "id": 10,
-      "type": "AtlasRetopologizeLayer",
-      "pos": [
-        3110,
-        440
-      ],
-      "size": [
-        400,
-        200
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "solve",
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 13
-        },
-        {
-          "localized_name": "layer",
-          "name": "layer",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "layer"
-          }
-        },
-        {
-          "localized_name": "method",
-          "name": "method",
-          "type": "COMBO",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "method"
-          }
-        },
-        {
-          "localized_name": "target_vertex_count",
-          "name": "target_vertex_count",
-          "type": "INT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "target_vertex_count"
-          }
-        },
-        {
-          "localized_name": "smooth_iterations",
-          "name": "smooth_iterations",
-          "type": "INT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "smooth_iterations"
-          }
-        },
-        {
-          "localized_name": "crease_angle",
-          "name": "crease_angle",
-          "type": "FLOAT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "crease_angle"
-          }
-        },
-        {
-          "localized_name": "pure_quad",
-          "name": "pure_quad",
-          "type": "BOOLEAN",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "pure_quad"
-          }
-        },
-        {
-          "localized_name": "boundary_smooth_iterations",
-          "name": "boundary_smooth_iterations",
-          "type": "INT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "boundary_smooth_iterations"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "solve",
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "links": [
-            7,
-            14
-          ]
-        },
-        {
-          "localized_name": "report",
-          "name": "report",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasRetopologizeLayer"
-      },
-      "widgets_values": [
-        "",
-        "off",
-        2000,
-        0,
-        30.0,
-        false,
-        8,
-        true,
-        false
-      ],
-      "title": "ROUND THE SILHOUETTE \u00b7 boundary smooth \u00d78 \ud83d\udd37"
-    },
-    {
-      "id": 11,
-      "type": "AtlasSceneHealthGate",
-      "pos": [
-        3200,
-        -180
-      ],
-      "size": [
-        340,
-        130
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 14
-        },
-        {
-          "name": "source_image",
-          "type": "IMAGE",
-          "link": 15
-        }
-      ],
-      "outputs": [
-        {
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "links": [
-            12
-          ],
-          "slot_index": 0
-        },
-        {
-          "name": "report",
-          "type": "STRING",
-          "links": [],
-          "slot_index": 1
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasSceneHealthGate"
-      },
-      "widgets_values": [
-        true,
-        false,
-        ""
-      ]
     }
   ],
   "links": [
@@ -1202,76 +1401,76 @@
       "ATLAS_DEPTH_MAP"
     ],
     [
+      7,
+      5,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
       8,
+      6,
+      0,
+      9,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      9,
       1,
       0,
-      7,
+      9,
       1,
       "IMAGE"
     ],
     [
-      9,
+      10,
       4,
       0,
-      7,
+      9,
       4,
       "ATLAS_DEPTH_MAP"
     ],
     [
-      10,
-      6,
+      11,
+      8,
       0,
-      7,
+      9,
       6,
       "ATLAS_VIEWPORT_LINK"
     ],
     [
-      11,
-      6,
+      12,
+      8,
       1,
-      7,
+      9,
       8,
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
       13,
-      5,
-      0,
-      10,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      7,
-      10,
+      6,
       0,
       7,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      12,
-      11,
-      0,
-      8,
       0,
       "ATLAS_SOLVE"
     ],
     [
       14,
-      10,
+      1,
       0,
-      11,
-      0,
-      "ATLAS_SOLVE"
+      7,
+      1,
+      "IMAGE"
     ],
     [
       15,
-      1,
+      7,
       0,
-      11,
-      1,
-      "IMAGE"
+      10,
+      0,
+      "ATLAS_SOLVE"
     ]
   ],
   "groups": [
@@ -1279,9 +1478,9 @@
       "title": "1 \u00b7 THE EXPLICIT CHAIN \u00b7 camera \u2192 compass \u2192 depth \u2192 mesh",
       "bounding": [
         -5,
-        -7,
-        3130,
-        1077
+        -48,
+        3680,
+        1290
       ],
       "color": "#35536b",
       "font_size": 24,
@@ -1291,9 +1490,9 @@
       "title": "2 \u00b7 RESULT \u00b7 same as the front door, now overridable",
       "bounding": [
         -5,
-        -48,
-        4150,
-        1708
+        -36,
+        5210,
+        1868
       ],
       "color": "#375c4a",
       "font_size": 24,

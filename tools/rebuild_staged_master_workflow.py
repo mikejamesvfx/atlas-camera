@@ -125,14 +125,35 @@ class Graph:
         return node
 
     @staticmethod
-    def _input_slot(node: dict, name: str) -> int:
-        return next(i for i, item in enumerate(node.get("inputs") or [])
-                    if item["name"] == name)
+    def _slot(node: dict, name: str, kind: str) -> int:
+        """Resolve a slot by NAME, and say so when it is not there.
 
-    @staticmethod
-    def _output_slot(node: dict, name: str) -> int:
-        return next(i for i, item in enumerate(node.get("outputs") or [])
-                    if item["name"] == name)
+        Both lookups used to be a bare `next(...)`, so a wrong name surfaced as
+        `StopIteration` with no node, no name and no list of what WAS
+        available. That is how `graph.connect(solve, "ATLAS_SOLVE", ...)` — an
+        output referenced by TYPE rather than name — went unfixed once
+        AtlasLearnedSolveFromImage gained `RETURN_NAMES = ("solve", "report")`:
+        the two builders using that form stopped running, and the workflows
+        they own drifted for weeks because regenerating them raised a traceback
+        nobody could read.
+        """
+        items = node.get(kind) or []
+        for i, item in enumerate(items):
+            if item["name"] == name:
+                return i
+        raise KeyError(
+            f"{node.get('type', '?')} has no {kind[:-1]} named {name!r} — "
+            f"available: {[item['name'] for item in items]}. "
+            "Slots resolve by NAME; a RETURN_TYPES entry like 'ATLAS_SOLVE' is "
+            "not a name when the node declares RETURN_NAMES.")
+
+    @classmethod
+    def _input_slot(cls, node: dict, name: str) -> int:
+        return cls._slot(node, name, "inputs")
+
+    @classmethod
+    def _output_slot(cls, node: dict, name: str) -> int:
+        return cls._slot(node, name, "outputs")
 
     def connect(self, source: dict, source_name: str, target: dict,
                 target_name: str, type_name: str | None = None) -> int:
