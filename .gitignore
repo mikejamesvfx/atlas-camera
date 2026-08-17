@@ -164,3 +164,17 @@ assets/atlas_camera_mark.svg
 assets/user-guide-designs/
 .gstack/
 .v1-audit/
+
+# Local research probe data and API-format workflow exports. Both carry
+# ABSOLUTE machine paths — probe_plates.json points at a Temp scratchpad — and
+# both sat untracked-but-unignored, one `git add -A` away from a commit.
+# tests/test_shipping_workflow_paths.py forbids absolute paths in SHIPPING
+# workflows; nothing guards research/, so the ignore is the guard.
+research/volfill/probe_plates.json
+research/*_api.json
+research/blender/
+
+# Video field-guide production material (AFG-*): scripts, storyboards, shot
+# lists, prompt packs. Content production, not app code — the same reason
+# docs/brand/ is ignored above.
+atlas_field_guides/
