@@ -63,6 +63,10 @@ WORKFLOW_IDS = {
     "atlas_quickstart_solve_project_export_workflow": "07a2ce62-8289-56cd-86db-740e798798d9",
     "atlas_export_fanout_workflow": "abcf0898-2667-533f-a424-46fadd40dce5",
     "atlas_layered_projection_workflow": "ff547cce-9b2b-5ca6-915a-c582c1ab14b5",
+    # Hero 02. New file, so no id to carry over — uuid5 of the slug under the
+    # DNS namespace, which is reproducible if it ever needs regenerating.
+    "atlas_hero_02_photo_to_editable_scene_workflow":
+        "77ce20a3-ab7f-56c7-afa5-ce91642e5373",
 }
 
 # Exterior plates: the metric outdoor model is the doctrine choice for these
@@ -676,11 +680,167 @@ def build_layered(object_info: dict, layout) -> dict:
                    "One plate as an ordered 2.5D layer stack: band, clean plate, sky dome.")
 
 
+
+# ---------------------------------------------------------------------------
+# 5 · HERO 02 — one photograph becomes an editable DCC scene
+# ---------------------------------------------------------------------------
+
+HERO02_NOTE = """HERO 02 — ONE PHOTOGRAPH BECOMES AN EDITABLE 3D SCENE.
+
+This is the Atlas model in one graph: a photograph goes in, a camera-aware
+projection scene comes out, and it lands in Blender for you to keep working on.
+
+WHAT THIS IS NOT
+Atlas does not reconstruct a perfect hidden world from one photograph, and this
+graph does not pretend to. What you get is a USABLE EDITABLE STARTING SCENE:
+the camera is recovered, the visible surfaces carry the photograph projected
+through it, and everything the camera could not see is yours to build. Geometry
+cleanup, depth adjustment, occlusion repair and modelling in the DCC are the
+expected next step, not evidence that something failed.
+
+THE STAGES
+1 · PHOTOGRAPH — starts on ComfyUI's bundled example.png so this runs with
+    nothing to download. Swap in your own photo for a real result.
+2 · CAMERA — the learned prior (GeoCalib) reads focal length and gravity from
+    image content. Robust on ordinary photographs and on AI imagery, and it
+    reports honest confidence.
+3 · DEPTH — one shared metric depth estimate. Every stage downstream reads THIS
+    map, so they cannot disagree about scale.
+4 · PROJECTION GEOMETRY — a relief mesh that follows the depth and TEARS at
+    silhouettes. The tears are deliberate: a surface that stretched across them
+    would smear the plate.
+5 · SCENE HEALTH — the acknowledgement gate. It runs the same red-flag engine
+    the debug report uses and holds the solve until you accept what it says.
+6 · VIEWPORT — look through the recovered camera, then orbit off it. From the
+    recovered viewpoint the plate reassembles exactly; the further you move,
+    the more you see what the photograph never recorded.
+7 · BLENDER — the geometry as OBJ+MTL with the projection baked into the UVs,
+    plus a build_scene.py that assembles camera and mesh. Run the script in
+    Blender and continue there.
+
+MEASURED vs INFERRED — worth knowing before you trust a number
+• INFERRED: focal length, gravity and camera height all come from a learned
+  prior reading one image. There is no measurement in a single photograph.
+• INFERRED: depth, and therefore the shape of the relief mesh.
+• MEASURED: nothing here, and that is the honest answer for one photograph.
+  If you shoot the plate yourself, AtlasLoadRAW gives EXIF focal and a sensor
+  lookup, which IS measured — and a measured focal always beats a learned one.
+  Scale references (AtlasReferenceScaleSolve) turn an assumed camera height
+  into a measured one.
+Scene health reports which tier the scale came from. Read it.
+
+KNOWN LIMITATIONS
+• One photograph cannot see behind anything. Occluded regions arrive as tears
+  or as backdrop, never as recovered geometry.
+• Camera height defaults to an assumed 1.6 m. On an elevated or wide vista that
+  is often badly wrong — scene health will say so.
+• The viewport render is a browser preview, not a final render.
+• IN BLENDER, IMPORT THE OBJ FOR TEXTURE. build_scene.py builds the camera, the
+  relief mesh and a projection material with correct UVs, but it can only bind
+  the plate image when the solve carries a file-backed plate reference — this
+  graph feeds the image as a tensor from LoadImage, so that material lands
+  UNTEXTURED (grey), which is not an error. atlas_relief_mesh.obj beside it
+  carries its own .mtl and diffuse PNG and imports fully textured. Verified in
+  Blender 2026-08-17: script → camera + 122k-poly mesh; OBJ → same mesh with
+  the 768px projection bound. Add AtlasRegisterPlate → AtlasAttachSourcePlate
+  ahead of the solve if you want the script itself textured.
+
+WHERE TO GO NEXT
+• atlas_export_fanout_workflow.json — the same solve into Nuke, Maya, USD and a
+  review package instead of one DCC.
+• atlas_layered_projection_workflow.json — the 2.5D layer stack, when one mesh
+  is not enough and you need clean plates behind the foreground."""
+
+
+def build_hero02(object_info: dict, layout) -> dict:
+    """Hero 02: photograph in, editable Blender scene out.
+
+    Deliberately ONE DCC. The fan-out workflow already answers "what do I get
+    in every DCC"; this one answers "what does Atlas actually do", and a second
+    exporter would only dilute that. Blender because it is free, so a reviewer
+    can follow the whole story without a licence.
+
+    The gate sits between the geometry and the exporters because that is its
+    documented job — an acknowledgement before anything leaves for a DCC, not a
+    checkpoint in the middle of the solve.
+    """
+    slug = "atlas_hero_02_photo_to_editable_scene_workflow"
+    graph = Graph(object_info)
+
+    load = graph.node("LoadImage", title="1 · YOUR PHOTOGRAPH", values={
+        "image": "example.png", "image_upload": "image",
+    }, size=(360, 310))
+    solve = graph.node("AtlasLearnedSolveFromImage", title="2 · CAMERA · learned prior", values={
+        "height_mode": "assume",
+        "camera_height_m": 1.6,
+        "depth_model": OUTDOOR_DEPTH,
+        "sensor_width_mm": 36.0,
+        "device": "auto",
+        "focal_length_mm": 0.0,
+    }, size=(440, 340))
+    depth = graph.node("AtlasDepthMap", title="3 · DEPTH · one shared metric scale", values={
+        "depth_model": OUTDOOR_DEPTH,
+        "device": "auto",
+    }, size=(440, 300))
+    relief = graph.node("AtlasDeriveReliefMesh", title="4 · PROJECTION GEOMETRY · torn at silhouettes", values={
+        "relief_grid": 256,
+        "relief_quality": "custom",
+        "depth_edge_rel": 0.5,
+        "sky_heuristic": False,
+    }, size=(430, 320))
+    gate = graph.node("AtlasSceneHealthGate", title="5 · SCENE HEALTH · acknowledge before export", values={
+        "pass_through_on_pass": True,
+    }, size=(430, 300))
+    controls = _controls(graph, vfx=False)
+    viewport = graph.node("AtlasBlockoutViewport", title="6 · VIEWPORT · look through the recovered camera", values={
+        "resolution": 1280,
+        "client_data": "",
+        "preview_expand": 1.0,
+    }, size=(900, 680))
+    mesh = graph.node("AtlasExportReliefMesh", title="7a · GEOMETRY · OBJ+MTL, projection baked into the UVs", values={
+        "output_dir": f"atlas_exports/{slug}",
+        "format": "obj",
+    }, size=(430, 320))
+    blender = graph.node("AtlasExportBlender", title="7b · BLENDER · run build_scene.py and keep working", values={
+        "output_dir": f"atlas_exports/{slug}",
+    }, size=(400, 160))
+    note = _note(graph, HERO02_NOTE, "READ ME · what this is, and what it is not")
+
+    graph.connect(load, "IMAGE", solve, "image")
+    graph.connect(load, "IMAGE", depth, "image")
+    graph.connect(solve, "solve", depth, "solve")
+    graph.connect(solve, "solve", relief, "solve")
+    graph.connect(depth, "depth", relief, "depth")
+    # the gate stands between the geometry and everything that leaves for a DCC
+    graph.connect(relief, "solve", gate, "solve")
+    graph.connect(load, "IMAGE", gate, "source_image")
+    graph.connect(depth, "depth", gate, "depth")
+    graph.connect(gate, "solve", viewport, "solve")
+    graph.connect(load, "IMAGE", viewport, "source_image")
+    graph.connect(depth, "depth", viewport, "primary_depth")
+    graph.connect(controls, "controls", viewport, "controls")
+    graph.connect(controls, "output_profile", viewport, "output_profile")
+    graph.connect(gate, "solve", mesh, "solve")
+    graph.connect(load, "IMAGE", mesh, "image")
+    graph.connect(gate, "solve", blender, "solve")
+
+    groups = [
+        ("1 · PHOTOGRAPH → CAMERA → GEOMETRY", "#35536b",
+         [load, solve, depth, relief, controls]),
+        ("2 · CHECK IT", "#6b5a35", [gate, viewport, note]),
+        ("3 · HAND IT TO BLENDER · this is where the artist takes over", "#375c4a",
+         [mesh, blender]),
+    ]
+    return _finish(graph, slug, groups, layout,
+                   "One photograph becomes a camera-aware editable scene, handed to Blender.")
+
+
 BUILDERS = {
     "atlas_input_quickstart_workflow": build_quickstart,
     "atlas_quickstart_solve_project_export_workflow": build_stages,
     "atlas_export_fanout_workflow": build_fanout,
     "atlas_layered_projection_workflow": build_layered,
+    "atlas_hero_02_photo_to_editable_scene_workflow": build_hero02,
 }
 
 

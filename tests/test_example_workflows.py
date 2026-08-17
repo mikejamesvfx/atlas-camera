@@ -83,6 +83,7 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_burst_photographed_hole_patch_workflow.json",
                      "atlas_cleanplate_depth_layer_workflow.json",
                      "atlas_export_fanout_workflow.json",
+                     "atlas_hero_02_photo_to_editable_scene_workflow.json",
                      "atlas_input_quickstart_workflow.json",
                      "atlas_layered_projection_workflow.json",
                      "atlas_multiview_raw_qwen_workflow.json",

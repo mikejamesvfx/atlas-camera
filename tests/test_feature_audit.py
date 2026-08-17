@@ -161,11 +161,18 @@ def test_artifacts_are_regenerated_from_current_evidence():
     committed = json.loads(
         (REPO / "reports" / "feature_audit.json").read_text(encoding="utf-8"))
     assert committed["nodes"] == fresh["nodes"], (
-        "reports/feature_audit.json is stale — run tools/build_feature_audit.py")
+        "reports/feature_audit.json is stale — run "
+        "`PYTHONPATH=. python tools/build_feature_audit.py`.\n"
+        "ORDERING TRAP: audit_node_usage.py scans git-TRACKED files only, so "
+        "regenerate AFTER `git add`, and after the LAST doc edit — doc "
+        "mentions are evidence too. Regenerating first is why this fails in "
+        "CI while passing locally.")
     md = (REPO / "docs" / "FEATURE_AUDIT.md").read_text(encoding="utf-8")
     assert _without_generated_stamp(md) == \
         _without_generated_stamp(builder.render_markdown(fresh)), (
-        "docs/FEATURE_AUDIT.md is stale — run tools/build_feature_audit.py")
+        "docs/FEATURE_AUDIT.md is stale — run "
+        "`PYTHONPATH=. python tools/build_feature_audit.py` (see the ordering "
+        "trap in the assertion above)")
 
 
 def test_a_date_rollover_alone_does_not_fail_the_staleness_check():
