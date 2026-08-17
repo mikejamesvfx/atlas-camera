@@ -2509,12 +2509,13 @@
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 1,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 7,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
     "mcp",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "ok",
@@ -2560,7 +2561,7 @@
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2719,12 +2720,13 @@
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",

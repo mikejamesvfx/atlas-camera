@@ -35,6 +35,7 @@ from atlas_camera.comfy.node_helpers import (
     _require_torch,
     _resolve_raw_hints,
     _save_image_tensor_to_tmp,
+    _solve_summary,
     _stamp_raw_provenance,
 )
 from atlas_camera.comfy.nodes_viewport import AtlasDebugReport
