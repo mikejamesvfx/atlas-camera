@@ -25,7 +25,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from atlas_camera.dynamic.fill_metrics import (
     G2_MIN_EDGE_EXTEND_DIFF,
@@ -106,7 +105,6 @@ def interpass_gate(fill, guide, hole) -> InterpassVerdict:
     try:
         import cv2
 
-        keep = ~mask
         gl = np.asarray(_grey(np, guide), dtype=np.float32)
         fl = np.asarray(_grey(np, fill), dtype=np.float32)
         # neutralize the hole so only shared content votes
@@ -238,7 +236,10 @@ def run_two_pass_fill(generator_factory, roi_dir, guide, mask, *,
     if problems:
         return {"status": "invalid_wan_template", "problems": problems}
     gen_w, gen_h = wan_generation_raster(wan_tmpl)
-    sdxl_tmpl = load_template_guarded(sdxl_template)
+    # Validate the SDXL template NOW. Pass 2 loads it again, and a
+    # mangled model path found only after the expensive WAN pass
+    # wastes the whole run.
+    load_template_guarded(sdxl_template)
 
     # ---- pass 1: WAN structure
     result1 = _run_template(generator_factory, roi_dir / "pass1", wan_template,

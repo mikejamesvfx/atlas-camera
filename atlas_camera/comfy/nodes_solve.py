@@ -2308,8 +2308,8 @@ class AtlasLoadRecord3D:
              min_confidence="medium"):
         from atlas_camera.importers.record3d import Record3DCapture
 
-        np = _require_numpy()
-        torch = _require_torch()
+        _require_numpy()
+        _require_torch()
 
         path = str(capture_path or "").strip()
         if not path:

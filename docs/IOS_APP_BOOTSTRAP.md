@@ -1,5 +1,17 @@
 # Bootstrapping the Atlas iPhone app on the Mac
 
+> **Status: FUTURE (v2). Not part of the supported v1 API.**
+>
+> The iOS capture app is not a v1 deliverable. Its two ComfyUI nodes
+> (`AtlasLoadRecord3D` 📱, `AtlasStreamRecord3D` 📲) ship behind the `ATLAS_IOS`
+> gate and are unregistered by default, and the app itself lives in its own
+> repository — see "Two decisions made up front" below.
+>
+> This file is tracked rather than kept in the gitignored `docs/dev/` tree for
+> one concrete reason: it is the capture contract the Mac needs from a fresh
+> clone, and `tests/test_shoot_list.py` pins that. That pin is about surviving a
+> clone, **not** a statement that iOS is in v1 scope.
+
 Getting the code onto the MacBook and building the first milestone. Written on
 the Windows box, meant to be read on the Mac.
 

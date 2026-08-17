@@ -13,7 +13,7 @@ at the bottom):
 
 - [docs/NODE_CATALOG.md](docs/NODE_CATALOG.md) -- full node catalog, `comfy/`
   module layout, `atlas_blockout.js` frontend reference, example workflows.
-- [docs/DESIGN_RULES.md](docs/DESIGN_RULES.md) -- every design rule's full
+- [docs/development/design-rules.md](docs/development/design-rules.md) -- every design rule's full
   write-up with its "found live" provenance. Update THERE, not here.
 
 For the artist/TD-facing explanation of camera recovery, matte-painting
@@ -23,7 +23,7 @@ For the single-photo -> Nuke camera-move / X-ray marketing pipeline, see
 [docs/CAMERA_MOVES.md](docs/CAMERA_MOVES.md).
 
 **`docs/dev/` and `docs/artifacts/` are local-only** (gitignored, and excluded
-from the published Registry archive). docs/DESIGN_RULES.md cites them as
+from the published Registry archive). docs/development/design-rules.md cites them as
 provenance -- those paths resolve in a working checkout that has them on disk,
 not in a fresh clone. The published tree carries the user-facing docs only.
 
@@ -153,7 +153,7 @@ atlas_camera.exporters  � Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  � Atlas JSON, USD camera, and Record3D (.r3d ARKit
                           capture) loaders
 
-atlas_camera.comfy      � ComfyUI node library (102 standard + 10 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
+atlas_camera.comfy      � ComfyUI node library (104 standard + 10 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
 
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
 
@@ -201,7 +201,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ## ComfyUI integration — see docs/NODE_CATALOG.md
 
-The full node catalog (102 standard + 10 experimental + 2 legacy + 2 iOS = 116
+The full node catalog (104 standard + 10 experimental + 2 legacy + 2 iOS = 118
 registered), `comfy/` module layout,
 setup/symlink instructions, double-import guard, `atlas_blockout.js` frontend
 reference, `/atlas/camera_data` endpoint, and the example-workflow catalog all
@@ -213,7 +213,7 @@ Quick facts that must never drift (details in the catalog):
   `nodes_*` responsibility modules; import from the specific module in new
   code. `tests/test_facade_surface.py` pins all facade names.
 - Registered node keys + display names are a saved-workflow contract
-  (`tests/test_comfy_node_registry.py` pins the surface; currently 102 standard
+  (`tests/test_comfy_node_registry.py` pins the surface; currently 104 standard
   + 10 experimental + 2 legacy + 2 iOS).
 - `comfy/__init__.py` loads twice at startup — route registration sits behind
   a double-import guard; keep it there.
@@ -295,7 +295,7 @@ The FastAPI backend (`atlas_camera/ui/api.py`) manages project state in a per-se
 
 
 
-## Hard rules (never violate — full write-ups in docs/DESIGN_RULES.md)
+## Hard rules (never violate — full write-ups in docs/development/design-rules.md)
 
 Layering & data
 - `comfy/` may import anything; NOTHING outside `comfy/` imports it. `core` /
@@ -413,20 +413,24 @@ Frontend (atlas_blockout.js)
 |---|---|
 | Any node's inputs/outputs/behaviour | docs/NODE_CATALOG.md (its table row) |
 | `atlas_camera/comfy/` module structure | docs/NODE_CATALOG.md (module layout) |
-| `atlas_blockout.js` / viewport UI | docs/NODE_CATALOG.md (frontend extension) + docs/DESIGN_RULES.md (viewport bullets) |
-| Relief mesh / tearing / repair | docs/DESIGN_RULES.md (tearing, outlier tier, mesh_repair) |
-| Bands / clean plates / inpaint layers | docs/DESIGN_RULES.md (inpaint layers, bounded band, seam doctrine) |
-| Depth models / sky mask | docs/DESIGN_RULES.md (DA3/MoGe/V2, sky-aware depth) |
-| Patches / occlusion / camera path | docs/DESIGN_RULES.md (multi-angle patch, camera path) |
-| Exporters (Nuke/Maya/USD/EXR) | docs/DESIGN_RULES.md (Nuke topology, layer exports, manifest) |
-| RAW / OCIO / plates | docs/DESIGN_RULES.md (RAW import, P0 trust tier) + `atlas_camera/plate/oiio_io.py` docstrings |
-| Gates / VLM assess | docs/DESIGN_RULES.md (gates, AtlasAssessImage) + docs/dev/gate_state_table.md |
+| `atlas_blockout.js` / viewport UI | docs/NODE_CATALOG.md (frontend extension) + docs/development/design-rules.md (viewport bullets) |
+| Relief mesh / tearing / repair | docs/development/design-rules.md (tearing, outlier tier, mesh_repair) |
+| Bands / clean plates / inpaint layers | docs/development/design-rules.md (inpaint layers, bounded band, seam doctrine) |
+| Depth models / sky mask | docs/development/design-rules.md (DA3/MoGe/V2, sky-aware depth) |
+| Patches / occlusion / camera path | docs/development/design-rules.md (multi-angle patch, camera path) |
+| Exporters (Nuke/Maya/USD/EXR) | docs/development/design-rules.md (Nuke topology, layer exports, manifest) |
+| RAW / OCIO / plates | docs/development/design-rules.md (RAW import, P0 trust tier) + `atlas_camera/plate/oiio_io.py` docstrings |
+| Gates / VLM assess | docs/development/design-rules.md (gates, AtlasAssessImage) + docs/dev/gate_state_table.md |
 | Example workflows | docs/NODE_CATALOG.md (example workflows) + the pin tests |
 
 | Dynamic plates (`core/dynamic_plate.py`, `dynamic/`, dynamic-plate exporters) | docs/DYNAMIC_PLATES.md |
-| Blender bridge (`blender/`, `AtlasBlenderMassing`/`ImportMeshes`), agent handoff (`comfy/nodes_agent.py`, `agent_handoff.py`) | docs/AGENT_HANDOFF.md + docs/NODE_CATALOG.md rows |
-| Patch-camera registration (`core/patch_camera_registration.py`, `AtlasAddPatchView camera_source`) | docs/DESIGN_RULES.md (registration is generated→measured only) |
+| Blender bridge (`atlas_camera/blender/`, `AtlasBlenderMassing`/`ImportMeshes`), agent handoff (`comfy/nodes_agent.py`, `agent_handoff.py`) | docs/AGENT_HANDOFF.md + docs/NODE_CATALOG.md rows |
+| Patch-camera registration (`core/patch_camera_registration.py`, `AtlasAddPatchView camera_source`) | docs/development/design-rules.md (registration is generated→measured only) |
 | Plate layers (`AtlasPlateLayer`, `AtlasCleanPlateLayer.plate_depth`), viewport snapshots (`comfy/viewport_snapshot.py`) | docs/NODE_CATALOG.md (rows + endpoint section) |
+| Viewport DRAW tools (draw/box/sphere, snap, edit, Apply) in `atlas_blockout.js` | docs/development/viewport-draw-tools.md — hand this over before tweaking them |
+| Package layering / adapter boundary / `LatentScene` component slots | docs/development/architecture.md |
+| The `ui/` React workbench + `atlas_camera.ui` FastAPI service | docs/UI_WORKBENCH.md |
+| "Is this a bug?" in ComfyUI — blank blockout passes, black depth map, empty VP overlay | docs/COMFY_WORKFLOW.md (the four non-bugs) |
 
 For the artist/TD view: docs/USER_GUIDE.md; ecosystem map:
 docs/ECOSYSTEM_GUIDE.md; camera moves: docs/CAMERA_MOVES.md.

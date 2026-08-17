@@ -145,7 +145,14 @@ raw-lens = [
 # exposing a running ComfyUI to MCP-capable assistants. Stdlib + the mcp SDK
 # only; never imports torch/numpy (ComfyUI stays the execution engine).
 mcp = [
-    "mcp>=1.2",
+    # Upper bound is load-bearing, not caution. `mcp>=1.2` resolved to 2.0.0 on
+    # 2026-08-17 and `mcp.server.fastmcp` — the only symbol server.py imports —
+    # is not there, so `pip install atlas-camera[mcp]` produced an MCP server
+    # that could not start. It went unnoticed because the machine that
+    # developed it had 1.27.1 pinned by an earlier install, and CI did not
+    # install the extra at all. Raise the bound only after checking where
+    # FastMCP lives in the newer SDK.
+    "mcp>=1.2,<2",
 ]
 # Record3D `.r3d` iPhone/iPad capture import (AtlasLoadRecord3D 📱): measured
 # ARKit intrinsics + gravity-aligned metric pose + LiDAR sceneDepth.

@@ -18,7 +18,6 @@ Layering: dynamic/ may import core, never comfy. Needs numpy
 """
 from __future__ import annotations
 
-from typing import Any
 
 from atlas_camera.dynamic.occlusion_fill import _dilate, _require_deps
 

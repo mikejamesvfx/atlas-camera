@@ -10,7 +10,7 @@ prepend a re-arm sentence, pick ComfyUI's ExecutionBlocker, wrap the
 to drift. This module owns the HOW; a node declares only WHAT it gates (what
 it fingerprints, and what its re-arm sentence says).
 
-The doctrine it encodes (docs/DESIGN_RULES.md, "gates"):
+The doctrine it encodes (docs/development/design-rules.md, "gates"):
 
 * Gate widgets PERSIST in a saved workflow, so an approval must be scoped to
   WHAT was approved, not to the click — hence the fingerprint. Without it a

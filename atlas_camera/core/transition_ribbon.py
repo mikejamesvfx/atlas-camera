@@ -268,7 +268,6 @@ def build_transition_ribbon(
         | (welded_faces[:, 1] == welded_faces[:, 2])
         | (welded_faces[:, 0] == welded_faces[:, 2])
     )
-    n_welded = int(len(verts) - len(weld_first))
 
     rim_edges, rim_opposite = _open_rim(welded_faces[~degenerate_face], np)
     if not len(rim_edges):
@@ -573,7 +572,6 @@ def build_transition_ribbon(
     emit_positions = positions[:, keep_rings, :]
 
     # Two triangles per surviving quad.
-    kk = np.arange(rings)[None, :]
     ia0 = ring_index[ea][:, :-1]
     ib0 = ring_index[eb][:, :-1]
     ia1 = ring_index[ea][:, 1:]

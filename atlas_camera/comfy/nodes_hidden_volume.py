@@ -83,7 +83,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from atlas_camera.comfy.node_helpers import _require_numpy
 from atlas_camera.core.proxy_geometry import PROXY_ROLE

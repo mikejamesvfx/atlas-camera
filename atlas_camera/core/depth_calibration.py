@@ -23,6 +23,23 @@ the far tail is where the mismatch lives and where the fit has fewest samples.
 because a genuinely metric sensor (ARKit, a stereo rig) really is affine in
 depth, and forcing it through a reciprocal only adds noise.
 
+A FIT IS ONLY VALID OVER THE RANGE IT SAW
+-----------------------------------------
+The argument above cuts both ways and the sample count does not capture it.
+``MIN_SAMPLES`` counts PIXELS, and 400 adjacent pixels of one wall are one
+surface at one depth, not 400 independent constraints. Measured on a synthetic
+pair (2026-08-17): 400 samples spanning 1.00–1.30 m, fitted with 1% noise,
+reported ``improvement=98.4%`` and ``mae_after=0.0074`` — an excellent-looking
+correction. Applied at 50–250 m the same coefficients were out by a median of
+**100.1 m, 67% of true depth**.
+
+So every ``DepthCorrection`` records ``predicted_range``, and every application
+reports how much of the incoming depth falls outside it. Extrapolation is not
+forbidden — a mild overshoot is usually fine and refusing it outright would
+make the correction useless at frame edges — but it is never silent, and
+``on_extrapolation="nan"`` voids the out-of-range samples when the caller wants
+the hard guarantee.
+
 STATUS: prototype, DELIBERATELY UNWIRED. The machinery and its tests are real;
 the COEFFICIENTS are not — fitting them needs real captures, and the synthetic
 tests here only prove that a known distortion is recovered. Do not ship fitted
@@ -51,6 +68,13 @@ MIN_VALID_DEPTH = 1e-3
 
 MODELS = ("affine_disparity", "affine", "scale")
 
+#: Serialized-form version. The store keyed by (model_id, scene_type) that this
+#: feeds is step (2) in docs/ROADMAP.md and does not exist yet — which is the
+#: cheapest possible moment to have a version, since there are no unversioned
+#: files on disk to guess about later. Bump when a field changes meaning;
+#: adding an optional field with a safe default does not need it.
+SCHEMA_VERSION = 1
+
 
 def _require_numpy() -> Any:
     try:
@@ -73,6 +97,16 @@ class DepthCorrection:
     #: knowing about — and it is invisible if only the final number is shown.
     mae_before: float = 0.0
     mae_after: float = 0.0
+    #: (min, max) of the PREDICTED depths the fit saw, in metres. This is the
+    #: range `apply_depth_correction` is entitled to; anything beyond it is
+    #: extrapolation. It is the predicted side rather than the measured side
+    #: because apply() is handed a model estimate, not ground truth.
+    #: (0.0, 0.0) means UNKNOWN — a correction deserialized from before ranges
+    #: were recorded — and is reported as such rather than treated as valid.
+    predicted_range: tuple = (0.0, 0.0)
+    #: (min, max) of the MEASURED depths, for provenance only. Answers "what
+    #: kind of capture was this fitted on" when reading a stored coefficient.
+    measured_range: tuple = (0.0, 0.0)
     metadata: dict = field(default_factory=dict)
 
     @property
@@ -82,18 +116,106 @@ class DepthCorrection:
             return 0.0
         return (self.mae_before - self.mae_after) / self.mae_before
 
+    @property
+    def has_range(self) -> bool:
+        lo, hi = self.predicted_range
+        return hi > lo > 0
+
+    @property
+    def dynamic_range(self) -> float:
+        """max/min of the fitted predictions. 1.0 = every sample at one depth.
+
+        Reported rather than gated on: there is no threshold that separates a
+        safe fit from an unsafe one without knowing where it will be applied,
+        which is exactly what `apply_depth_correction` does know.
+        """
+        lo, hi = self.predicted_range
+        return (hi / lo) if lo > 0 else 0.0
+
     def to_dict(self) -> dict:
-        return {"model": self.model, "a": self.a, "b": self.b,
+        return {"schema_version": SCHEMA_VERSION,
+                "model": self.model, "a": self.a, "b": self.b,
                 "n_samples": self.n_samples, "mae_before": self.mae_before,
-                "mae_after": self.mae_after, "metadata": dict(self.metadata)}
+                "mae_after": self.mae_after,
+                "predicted_range": list(self.predicted_range),
+                "measured_range": list(self.measured_range),
+                "metadata": dict(self.metadata)}
 
     @classmethod
     def from_dict(cls, d: dict) -> "DepthCorrection":
-        return cls(model=str(d["model"]), a=float(d["a"]), b=float(d["b"]),
+        """Rebuild a stored correction, refusing anything it cannot honour.
+
+        The store this feeds does not exist yet, which is exactly why the
+        version goes in now: adding one to a format that is already on disk
+        means guessing what the unversioned files were.
+        """
+        version = int(d.get("schema_version", 1))
+        if version > SCHEMA_VERSION:
+            raise ValueError(
+                f"correction schema_version {version} is newer than this build "
+                f"understands ({SCHEMA_VERSION}) — upgrade atlas_camera rather "
+                "than reading it with the wrong field meanings")
+
+        model = str(d["model"])
+        if model not in MODELS:
+            raise ValueError(
+                f"unknown correction model {model!r}, expected one of {MODELS}. "
+                "Refusing at load rather than at apply, where the failure would "
+                "surface with no idea which stored coefficient produced it")
+
+        def _range(key):
+            v = d.get(key)
+            return (float(v[0]), float(v[1])) if v else (0.0, 0.0)
+
+        return cls(model=model, a=float(d["a"]), b=float(d["b"]),
                    n_samples=int(d.get("n_samples", 0)),
                    mae_before=float(d.get("mae_before", 0.0)),
                    mae_after=float(d.get("mae_after", 0.0)),
+                   predicted_range=_range("predicted_range"),
+                   measured_range=_range("measured_range"),
                    metadata=dict(d.get("metadata") or {}))
+
+
+@dataclass
+class CorrectionReport:
+    """What applying a correction actually did to a depth map.
+
+    `apply_depth_correction` used to return a bare array. Measured on a
+    synthetic pair (2026-08-17), a plausible-looking correction turned 76% of a
+    fully-valid frame into NaN and said nothing — and an all-NaN region is
+    indistinguishable downstream from a region the depth model simply had no
+    opinion about. Every node in this repo returns a report for the same
+    reason; a core helper that degrades silently is the same defect one layer
+    down.
+    """
+
+    n_input_valid: int = 0
+    n_output_valid: int = 0
+    #: Fraction of valid input samples the correction destroyed.
+    lost_fraction: float = 0.0
+    #: Fraction of valid input samples outside the fit's `predicted_range`.
+    extrapolated_fraction: float = 0.0
+    #: How far outside, as a multiple of the fitted bound. 1.0 = at the edge.
+    extrapolation_ratio: float = 1.0
+    warnings: list = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.warnings
+
+    def to_dict(self) -> dict:
+        return {"n_input_valid": self.n_input_valid,
+                "n_output_valid": self.n_output_valid,
+                "lost_fraction": self.lost_fraction,
+                "extrapolated_fraction": self.extrapolated_fraction,
+                "extrapolation_ratio": self.extrapolation_ratio,
+                "warnings": list(self.warnings)}
+
+    def __str__(self) -> str:
+        head = (f"{self.n_output_valid}/{self.n_input_valid} samples corrected"
+                f" ({self.lost_fraction:.1%} lost,"
+                f" {self.extrapolated_fraction:.1%} extrapolated)")
+        return head + ("" if self.ok else "\n  ! " + "\n  ! ".join(self.warnings))
 
 
 def _valid_pair(predicted, measured, mask, np):
@@ -106,16 +228,76 @@ def _valid_pair(predicted, measured, mask, np):
     ok = (np.isfinite(p) & np.isfinite(m)
           & (p > MIN_VALID_DEPTH) & (m > MIN_VALID_DEPTH))
     if mask is not None:
-        ok &= np.asarray(mask).ravel().astype(bool)
+        # Shape, not size. `predicted` and `measured` get a shape check and the
+        # mask did not, so a (32,128) mask against a (64,64) depth map was
+        # ACCEPTED — both ravel to 4096, and the mask then selected entirely
+        # the wrong pixels with no error and no report. A wrong-SIZE mask was
+        # no better: it surfaced as raw numpy broadcast text rather than as the
+        # actionable message the other two arguments get.
+        mask_arr = np.asarray(mask)
+        predicted_shape = np.asarray(predicted).shape
+        if mask_arr.shape != predicted_shape:
+            raise ValueError(
+                f"mask {mask_arr.shape} must have the same shape as predicted "
+                f"{predicted_shape} — a mask that merely has the same number of "
+                "elements selects the wrong pixels silently")
+        ok &= mask_arr.ravel().astype(bool)
     return p[ok], m[ok]
 
 
-def apply_depth_correction(depth, correction: "DepthCorrection"):
-    """Apply a fitted correction. Invalid samples stay invalid."""
+#: A correction is entitled to its fitted range. Beyond this multiple of it,
+#: say so loudly: the measured failure was 192x outside and 67% wrong.
+EXTRAPOLATION_WARN_RATIO = 2.0
+
+#: Losing more than this fraction of valid samples is a defect, not a detail.
+LOST_WARN_FRACTION = 0.05
+
+
+def apply_depth_correction(depth, correction: "DepthCorrection", *,
+                           on_extrapolation: str = "report"):
+    """Apply a fitted correction. Returns ``(corrected, CorrectionReport)``.
+
+    Invalid samples stay invalid. ``on_extrapolation`` is ``"report"`` (default
+    — apply everywhere, say what happened) or ``"nan"`` (void samples outside
+    the fit's range). It is never a silent clamp: clamping would return
+    confident depth values the fit has no evidence for, which is the failure
+    this reporting exists to surface.
+    """
     np = _require_numpy()
+    if on_extrapolation not in ("report", "nan"):
+        raise ValueError(
+            f"on_extrapolation must be 'report' or 'nan', got {on_extrapolation!r}")
+
     d = np.asarray(depth, dtype=np.float64)
     ok = np.isfinite(d) & (d > MIN_VALID_DEPTH)
     out = np.full(d.shape, np.nan, dtype=np.float64)
+    report = CorrectionReport(n_input_valid=int(ok.sum()))
+
+    # --- extrapolation, measured before anything is applied ------------------
+    lo, hi = correction.predicted_range
+    outside = np.zeros(d.shape, dtype=bool)
+    if correction.has_range:
+        outside = ok & ((d < lo) | (d > hi))
+        if report.n_input_valid:
+            report.extrapolated_fraction = float(outside.sum()) / report.n_input_valid
+        if outside.any():
+            vals = d[outside]
+            report.extrapolation_ratio = float(max(
+                (vals.max() / hi) if vals.max() > hi else 1.0,
+                (lo / vals.min()) if 0 < vals.min() < lo else 1.0))
+        if report.extrapolation_ratio >= EXTRAPOLATION_WARN_RATIO:
+            report.warnings.append(
+                f"{report.extrapolated_fraction:.0%} of samples are outside the "
+                f"fitted range {lo:.2f}–{hi:.2f} m, by up to "
+                f"{report.extrapolation_ratio:.0f}x. The coefficients carry no "
+                f"evidence there; a low mae_after says nothing about it.")
+    elif report.n_input_valid:
+        report.warnings.append(
+            "this correction records no fitted range, so extrapolation cannot "
+            "be checked — refit it, or treat the result as unverified")
+
+    if on_extrapolation == "nan":
+        ok = ok & ~outside
 
     if correction.model == "scale":
         out[ok] = d[ok] * correction.a
@@ -124,18 +306,28 @@ def apply_depth_correction(depth, correction: "DepthCorrection"):
     elif correction.model == "affine_disparity":
         # Fitted as  1/measured = a * (1/pred) + b, so invert to get depth back.
         disp = correction.a / d[ok] + correction.b
-        good = disp > 1e-9
-        idx = np.where(ok)
         vals = np.full(disp.shape, np.nan)
+        good = disp > 1e-9
         vals[good] = 1.0 / disp[good]
-        out[idx] = vals
+        out[ok] = vals
     else:
         raise ValueError(f"unknown correction model {correction.model!r}")
 
     # A correction must never turn depth negative — that is a sign flip, not a
     # rescale, and it would put geometry behind the camera.
     out[np.isfinite(out) & (out <= 0)] = np.nan
-    return out.astype(np.float32)
+
+    report.n_output_valid = int(np.isfinite(out).sum())
+    if report.n_input_valid:
+        report.lost_fraction = 1.0 - report.n_output_valid / report.n_input_valid
+    if report.lost_fraction > LOST_WARN_FRACTION:
+        report.warnings.append(
+            f"{report.lost_fraction:.0%} of valid samples did not survive the "
+            f"correction ({report.n_input_valid} in, {report.n_output_valid} "
+            f"out). An all-NaN region reads downstream as 'no depth here', not "
+            f"as 'the correction failed here'.")
+
+    return out.astype(np.float32), report
 
 
 def fit_depth_correction(predicted, measured, *, mask=None,
@@ -162,37 +354,129 @@ def fit_depth_correction(predicted, measured, *, mask=None,
     else:  # affine_disparity
         a, b = (float(v) for v in np.polyfit(1.0 / p, 1.0 / m, 1))
 
-    corr = DepthCorrection(model=model, a=a, b=b, n_samples=n,
-                           mae_before=mae_before)
-    fitted = apply_depth_correction(p, corr)
+    corr = DepthCorrection(
+        model=model, a=a, b=b, n_samples=n, mae_before=mae_before,
+        # Recorded BEFORE the self-application below, so the fit is not
+        # reported as extrapolating against its own data.
+        predicted_range=(float(p.min()), float(p.max())),
+        measured_range=(float(m.min()), float(m.max())),
+    )
+    fitted, _ = apply_depth_correction(p, corr)
     ok = np.isfinite(fitted)
     corr.mae_after = float(np.median(np.abs(fitted[ok] - m[ok]))) if ok.any() else float("inf")
+
+    # A narrow fit is not refused — there is no threshold that separates safe
+    # from unsafe without knowing where it will be applied, and apply() is what
+    # knows that. It is recorded so a stored coefficient carries the caveat.
+    if corr.dynamic_range < 2.0:
+        corr.metadata["narrow_fit"] = (
+            f"predictions span only {corr.predicted_range[0]:.2f}–"
+            f"{corr.predicted_range[1]:.2f} m ({corr.dynamic_range:.2f}x). "
+            "Two coefficients fitted over one depth are barely constrained; "
+            "expect this to extrapolate badly.")
     return corr
 
 
+#: A model must beat a simpler one by this RELATIVE margin on held-out data to
+#: be worth its extra parameter. Measured 2026-08-17: on a pure-scale ground
+#: truth with 5% noise the three candidates landed within 1.1% of each other
+#: in-sample and `min()` picked `affine_disparity` — the wrong model, on a
+#: difference far smaller than the noise that produced it.
+SELECTION_MARGIN = 0.05
+
+#: Tie-break order, simplest first. `scale` has one parameter and the least
+#: room to invent structure. Between the two two-parameter models,
+#: `affine_disparity` comes first because the far-field measurement pinned by
+#: `test_fitting_in_the_wrong_space_leaves_far_field_error` justifies it as the
+#: prior — applied ONLY when the data cannot separate them, never over data
+#: that can.
+SELECTION_PREFERENCE = ("scale", "affine_disparity", "affine")
+
+
 def choose_correction(predicted, measured, *, mask=None) -> DepthCorrection:
-    """Fit every model and return whichever actually helps most.
+    """Fit every model and return the one that earns its parameters.
 
     Deliberately not "always use disparity": which space fits best depends on
     the sensor and the scene, and asserting a preference the data does not
-    support is how a plausible-looking correction makes things worse. The
-    chosen model and both error figures ride along so the decision is auditable.
+    support is how a plausible-looking correction makes things worse.
+
+    Selection runs on HELD-OUT samples, not on the fit's own residual. In-sample
+    error always favours the more flexible model, and measured on a pure-scale
+    pair with 5% noise it picked `affine_disparity` over the true `scale` model
+    on a 1.1% margin — a difference smaller than the noise, and one the
+    in-sample ranking did not survive a holdout split to defend. The split is a
+    deterministic stride-2 interleave rather than a contiguous cut: depth
+    samples arrive spatially ordered, so a contiguous half would train on near
+    and test on far and measure extrapolation instead of model fit.
+
+    The winner is then REFITTED on all samples — the holdout exists to choose a
+    model, not to throw away half the data that determines its coefficients.
     """
     np = _require_numpy()
-    results = []
-    for m in MODELS:
+
+    # Validate the pair ONCE, here, so a caller's shape error surfaces with the
+    # message that says what to do about it. The per-model loop below used to
+    # swallow every exception, which turned "predicted (4096,) and measured
+    # (1024,) must be the same shape — resample the LiDAR depth first" into
+    # "no correction model could be fitted to this pair".
+    p, m = _valid_pair(predicted, measured, mask, np)
+    n = int(p.size)
+
+    holdout = n >= 2 * MIN_SAMPLES
+    if holdout:
+        train_p, train_m = p[0::2], m[0::2]
+        test_p, test_m = p[1::2], m[1::2]
+    else:
+        # Not enough to split. Fall back to in-sample selection and say so —
+        # the alternative is refusing to choose at all, which is worse.
+        train_p, train_m = p, m
+        test_p, test_m = p, m
+
+    scores: dict[str, float] = {}
+    for name in MODELS:
         try:
-            results.append(fit_depth_correction(predicted, measured, mask=mask, model=m))
-        except Exception:  # noqa: BLE001 - a model that cannot fit is not a failure
+            trial = fit_depth_correction(train_p, train_m, model=name)
+        except ValueError:
+            # This model could not be fitted to this data — not a failure of
+            # the call. A shape error can no longer reach here; it was raised
+            # above, before the loop.
             continue
-    if not results:
-        raise ValueError("no correction model could be fitted to this pair")
-    best = min(results, key=lambda c: c.mae_after)
-    best.metadata["candidates"] = {
-        c.model: round(c.mae_after, 6) for c in results}
-    if best.improvement <= 0:
-        best.metadata["warning"] = (
+        predicted_test, _ = apply_depth_correction(test_p, trial)
+        ok = np.isfinite(predicted_test)
+        scores[name] = (float(np.median(np.abs(predicted_test[ok] - test_m[ok])))
+                        if ok.any() else float("inf"))
+
+    if not scores:
+        raise ValueError(
+            f"no correction model could be fitted to these {n} valid samples")
+
+    best_score = min(scores.values())
+    # Take the simplest candidate that is within the margin of the best, rather
+    # than the nominal winner. Everything inside the margin is a tie.
+    chosen = min(scores, key=lambda k: scores[k])
+    for name in SELECTION_PREFERENCE:
+        if name in scores and scores[name] <= best_score * (1.0 + SELECTION_MARGIN):
+            chosen = name
+            break
+
+    corr = fit_depth_correction(predicted, measured, mask=mask, model=chosen)
+    corr.metadata["candidates"] = {k: round(v, 6) for k, v in scores.items()}
+    corr.metadata["selection"] = (
+        f"chosen on {'held-out' if holdout else 'in-sample'} median error with a "
+        f"{SELECTION_MARGIN:.0%} margin, simplest-first among ties")
+    if not holdout:
+        corr.metadata["selection_warning"] = (
+            f"only {n} valid samples — too few to hold out {MIN_SAMPLES} and "
+            "still fit on the rest, so the model was chosen on the error it was "
+            "fitted to. Treat the choice as provisional.")
+    if chosen != min(scores, key=lambda k: scores[k]):
+        corr.metadata["selection_tie"] = (
+            f"{min(scores, key=lambda k: scores[k])!r} scored marginally better "
+            f"({best_score:.6g} vs {scores[chosen]:.6g}) but is not simpler; the "
+            "difference is inside the margin and is not evidence")
+    if corr.improvement <= 0:
+        corr.metadata["warning"] = (
             "no candidate reduced the error — the estimate is probably not "
             "affine-related to the measurement, and applying this would be "
             "cosmetic at best")
-    return best
+    return corr

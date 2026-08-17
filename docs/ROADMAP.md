@@ -23,32 +23,68 @@
   Docker, a cloned research repo, or Blender. Re-landing it means either
   solving that, or accepting it as an explicitly opt-in extra.
 
-- **Measured depth calibration (2026-07-29).**
+- **Measured depth calibration (2026-07-29, WIRED 2026-08-17).**
   `atlas_camera/core/depth_calibration.py` fits a two-or-three coefficient
-  correction from a monocular depth estimate onto MEASURED depth
-  (`fit_depth_correction`, `choose_correction`, `apply_depth_correction`,
-  `DepthCorrection` with dict round-trip). It is **implemented, tested and
-  deliberately unwired** — no product code path calls it, and that is the
-  current intent, not an oversight.
-  It landed a week before its data source: the Record3D/LiDAR capture nodes
-  arrived 2026-08-05, so nothing ever looped back to connect them. Its own
-  docstring carries the blocker — the machinery is real but the COEFFICIENTS
-  are not, and fitting them needs real captures. **Do not ship numbers fitted
-  from the ray-cast fixtures**; those tests only prove a known distortion is
-  recovered.
+  correction from a monocular depth estimate onto MEASURED depth, and
+  `core/depth_calibration_store.py` persists one per `(model_id, scene_type)`.
+  Two nodes reach it: `AtlasFitDepthCalibration` 📐 (measured + predicted depth
+  → fitted correction, `save` off by default) and `AtlasApplyDepthCalibration`
+  📐 (store lookup → corrected depth).
+  **Nothing auto-applies.** `AtlasDepthMap` is untouched, so every existing
+  graph behaves exactly as before; a calibration reaches the depth chain only
+  because an artist wired the apply node. That is deliberate —
+  `ATLAS_DEPTH_MAP` feeds nine node modules, and a stored coefficient silently
+  rescaling shared depth would move geometry, bands, exports and the viewport
+  at once, from a file the graph never names. Pinned by
+  `test_atlas_depth_map_did_not_grow_a_calibration_input`.
+  The remaining blocker is step (1) and it is a SHOOTING task, not an
+  engineering one: the machinery is real but the COEFFICIENTS are not, and an
+  empty store is the correct state of a fresh clone. **Do not ship numbers
+  fitted from the ray-cast fixtures**; those tests only prove a known
+  distortion is recovered.
   Do **not** pursue it as "make Record3D captures more accurate" — a LiDAR
   capture already carries measured metric depth, so there is nothing to
   correct. The case that justifies it is **transfer**: fit on captures where
   truth is available, then apply to an ordinary photograph where it is not.
   That is the assumed-1.6 m failure on wide exteriors and AI-generated
-  cityscapes, which measure out roughly ten times too small. If taken up,
-  sequence it: (1) shoot a capture set spanning the scene types that fail,
-  (2) persist fitted coefficients keyed by `(model_id, scene_type)` — the
-  serialization already exists, the store does not, (3) select and apply them
-  in the depth chain, behind the same confirm-to-adopt discipline as the other
-  scale tiers, (4) only then consider a node surface.
+  cityscapes, which measure out roughly ten times too small. The sequence was:
+  (1) shoot a capture set spanning the scene types that fail — **STILL OPEN,
+  and the only remaining blocker**; (2) persist fitted coefficients keyed by
+  `(model_id, scene_type)` — **done**, `core/depth_calibration_store.py`, exact
+  lookup with no fallback, because a near-miss is how an interior coefficient
+  rescales an exterior; (3) select and apply in the depth chain behind
+  confirm-to-adopt — **done as an EXPLICIT node** rather than an automatic
+  step, which is the confirm-to-adopt discipline expressed as wiring: the
+  artist adds the node or no calibration is applied; (4) a node surface —
+  **done**, and taken with (3) rather than after it, since without a fit node
+  there is no way to produce a coefficient in the first place and step (1)
+  would have nothing to write into.
   Fitting in disparity rather than depth is already decided and pinned by
   `test_fitting_in_the_wrong_space_leaves_far_field_error`; do not relitigate it.
+  **Two acceptance criteria landed 2026-08-17, before step (3) can be built**,
+  both from measured failures rather than review opinion. A fit now records the
+  `predicted_range` it saw and `apply_depth_correction` returns a
+  `CorrectionReport` — because a 400-sample fit off one wall at 1.00–1.30 m
+  reported 98.4% improvement and 0.0074 m residual, then missed by 67% at
+  50–250 m, and `MIN_SAMPLES` cannot see that (400 clears it easily; only the
+  RANGE shows it); and because a plausible correction voided 76% of a valid
+  frame and returned it as a bare array, which reads downstream as "no depth
+  here" rather than "the correction failed here". Both are pinned by
+  regression tests. The remaining four from the same review landed the same
+  day, all while the module still had no callers to migrate: selection now runs
+  on a **held-out** stride-2 split with a 5% margin and a simplest-first
+  tie-break, then refits the winner on every sample (it was picking
+  `affine_disparity` over the true `scale` model on a 1.1% in-sample margin —
+  smaller than the noise that produced it); `choose_correction` validates the
+  pair once up front so a caller's shape error keeps its "resample the LiDAR
+  depth first" message instead of becoming "no correction model could be
+  fitted"; a mask must now match `predicted`'s SHAPE, not merely its size, so
+  the `(32,128)`-against-`(64,64)` case that silently selected the wrong pixels
+  is refused; and the serialized form carries `SCHEMA_VERSION`, rejects a
+  future version rather than reading fields with the wrong meanings, and
+  refuses an unknown `model` at load instead of at apply. Step (2) — the store
+  keyed by `(model_id, scene_type)` — can therefore be built against a
+  versioned format from its first write.
 
 - **ONNX Runtime depth backend (2026-07-13).** `tools/export_depth_v2_onnx.py`
   already exports Depth Anything V2 to ONNX with a torch-vs-onnxruntime parity

@@ -72,6 +72,45 @@ their working colourspace (ACEScg) and bit depth (EXR 16/32-bit float), the
 projection path stays floating-point, and it hands off to OpenColorIO, Nuke,
 Maya and Resolve. Render format is a project-level camera up to **8192 px**.
 
+## Shoot it yourself: camera RAW → ACEScg
+
+One photograph is still the input — but when that photograph is a **camera RAW**
+off your own body, the solve stops guessing and starts measuring.
+
+```
+AtlasLoadRAW → solve (measured focal + sensor) → … → AtlasExportPlateEXR → Nuke
+```
+
+`AtlasLoadRAW` 📷 reads NEF / CR2 / CR3 / RAF / ARW through a single `rawpy`
+demosaic and replaces the Adobe Camera Raw round trip entirely:
+
+- **measured intrinsics, not inferred.** EXIF plus a curated sensor registry
+  gives real focal length and sensor width, so the solve starts from the
+  physical lens instead of a learned prior's estimate.
+- **one demosaic, two outputs.** A display tensor for the graph and a
+  scene-linear EXR sidecar, geometrically identical by construction — the
+  sidecar is what the DCC gets, so nothing downstream inherits an 8-bit
+  preview.
+- **lens distortion handled honestly.** Optional lensfun undistort straightens
+  the plate for the solve, and the Nuke export writes a `redistort_stmap.exr`
+  beside the script so comp can put the distortion back over the render. Solve
+  on straight lines, deliver on the real lens.
+
+The colour path is Atlas's own, backed by OpenImageIO's built-in ACES config —
+no `$OCIO` to configure and no third-party colour pack required.
+`AtlasLoadPlate` reads EXR/DPX/TIFF as float, `AtlasExportPlateEXR` writes the
+ACEScg handoff resolving the target space by OCIO role, and `AtlasApplyLUT`
+applies a Resolve/Iridas `.cube` with a native parser. Install with `[oiio]`
+and `[raw]`; see **[docs/DCC_EXPORTS.md](docs/DCC_EXPORTS.md)** and the
+colour-managed section of the
+**[ecosystem guide](docs/ECOSYSTEM_GUIDE.md)**.
+
+Two or three frames instead of one? `AtlasMultiViewSolve` and
+`AtlasMultiViewSolveBurst` register a short handheld burst into a calibrated
+rig — the only path that yields a *measured* metric baseline rather than an
+inferred one. Single-photo stays the front door; this is the upgrade when you
+control the shoot.
+
 ## Install tiers
 
 The dependency contract has three tiers: the **schema, solve JSON and DCC
@@ -105,10 +144,11 @@ For how the pieces fit together, see the
 **[ecosystem guide](docs/ECOSYSTEM_GUIDE.md)**.
 
 Ten more workflows ship alongside the quickstart in
-[`examples/`](examples/) — metric scale from references, layered projection,
-camera moves and patches, plate finishing, export fan-out, occlusion analysis,
-and an agentic variant with a terminal VLM/solve report for headless
-automation. Point any of their `LoadImage` nodes at a photograph of your own.
+[`examples/`](examples/): the layered 2.5D projection stack, a same-camera
+clean plate, multi-angle and ROI-registered patch repair, camera moves, export
+fan-out across every DCC, burst multi-view solving, photographed hole patches
+from burst frames, a RAW + multi-view + patch chain, and the Blender massing
+bridge. Point any of their `LoadImage` nodes at a photograph of your own.
 
 **Dynamic Plates** turn one time-varying region of the solved still — ocean,
 cloud, smoke — into an animated projection layer. Atlas owns the shot; a video
@@ -119,8 +159,10 @@ plate with `python -m atlas_camera.dynamic`, then load it into the viewport with
 **[docs/DYNAMIC_PLATES.md](docs/DYNAMIC_PLATES.md)**.
 
 Experimental nodes stay hidden unless you set `ATLAS_EXPERIMENTAL=1` before
-launching ComfyUI. Nothing in the pack needs Docker, a Blender install, or a
-user-cloned research model.
+launching ComfyUI (`ATLAS_LEGACY_NODES` and `ATLAS_IOS` gate the other two
+tiers). Nothing in the default pack needs Docker or a user-cloned research
+model. The experimental Blender bridge drives a headless **Blender ≥ 4.2** for
+massing and mesh import — it is gated, and everything else works without it.
 
 ## Documentation
 
@@ -129,7 +171,8 @@ user-cloned research model.
 - [User guide](docs/USER_GUIDE.md) · [Node catalog](docs/NODE_CATALOG.md) · [Ecosystem guide](docs/ECOSYSTEM_GUIDE.md)
 - [Camera moves & marketing renders](docs/CAMERA_MOVES.md) — single photo → Nuke dolly
 - [Dynamic Plates](docs/DYNAMIC_PLATES.md) — animated regions of a solved still (LTX generation optional)
-- [DCC exports](docs/DCC_EXPORTS.md) · [Third-party & licenses](THIRD_PARTY.md)
+- [DCC exports](docs/DCC_EXPORTS.md) — camera RAW → ACEScg EXR, the redistort STMap, per-layer Nuke/Maya scenes
+- [Third-party & licenses](THIRD_PARTY.md)
 - **MCP server** — `pip install atlas-camera[mcp]` then `python -m atlas_camera.mcp`: drive Atlas from any MCP-capable assistant — [usage guide](docs/MCP_SERVER.md). A repo checkout auto-registers it for Claude Code via `.mcp.json`
 - [Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md)
 

@@ -520,8 +520,8 @@ exterior in a 4-scene A/B. Pick per shot:
 - **Interior / enclosed → V2-Metric-Indoor or MoGe-2** (`Ruicheng/moge-*`,
   MIT, `[moge]` extra — the interior specialist; it culls sky, so it's poor
   outdoors).
-- **DA3** (`DA3METRIC-LARGE`) stays a selectable choice and is the default on
-  the `experimental-da3-default` branch. It emits *canonical* depth converted
+- **DA3** (`DA3METRIC-LARGE`) stays a selectable choice and is the default
+  nowhere. It emits *canonical* depth converted
   to metres with the **solved focal**, and on some scenes tears less than V2 —
   but it needs the GitHub-only `[neural-da3]` extra, so it's not the shipping
   default. Every model is selectable in every depth combo.

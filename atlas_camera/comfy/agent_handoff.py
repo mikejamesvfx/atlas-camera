@@ -27,7 +27,6 @@ token, so an old reply can never release a new pause.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import time
 import uuid

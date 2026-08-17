@@ -176,6 +176,8 @@ from atlas_camera.comfy.nodes_depth import (
     AtlasHorizonMask,
     AtlasVPVisualization,
     AtlasOutpaintDepth,
+    AtlasFitDepthCalibration,
+    AtlasApplyDepthCalibration,
 )
 from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveProjectionGeometry,

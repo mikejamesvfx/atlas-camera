@@ -1,66 +1,108 @@
 # Third-Party Notices & License Boundaries
 
-Atlas Camera itself is **MIT** (see LICENSE). Nothing below is vendored into
-this repository — every third-party model or package is installed or cloned by
-the user, and the nodes that depend on one fail soft with an informative error
-when it's absent. This page is the honest map of what each optional capability
-pulls in and what its terms allow.
+Atlas Camera itself is **MIT** (© 2026 Miike James Burns — see LICENSE), and the
+core package (`atlas_camera.core`) has **zero required runtime dependencies**.
+Every model, vision, USD, UI and research capability is an *optional* extra or an
+*external* ComfyUI node pack, guarded by a `try/except` with an install hint.
 
-## Summary table
+**The boundary principle:** nothing below is vendored into this repository or
+linked into the package. Python extras are ordinary optional dependencies;
+ComfyUI node packs are combined only at the *graph* level (a workflow wiring
+nodes together is composition, not linking); research models are **user-cloned**
+upstream repos that Atlas points at via a path or env var. So a GPL or
+non-commercial third-party piece does not change Atlas's own MIT terms — but if
+*you* ship or sell work made with one, its terms apply to you. Check upstream for
+authoritative license text; the notes below are a map, not legal advice.
 
-| Dependency | License | How it's obtained | Used by | Commercial use |
-|---|---|---|---|---|
-| GeoCalib | Apache 2.0 | `pip install` from GitHub (`[neural]` docs) | Learned camera solve | ✅ |
-| Depth Anything V2 | Apache 2.0 (small/base weights; large is CC BY-NC 4.0 — check the variant you install) | HuggingFace via transformers | Depth estimation (legacy default) | ✅ small/base · ⚠ large |
-| Depth Anything 3 (`DA3METRIC-LARGE`) | Apache 2.0 | user-installed `depth_anything_3` package (`--no-deps`, see INSTALL.md) | **Default** depth backend | ✅ |
-| LaRI | **No upstream license** (all rights reserved by default) | user clones github.com/ruili3/lari → `lari_path`/`ATLAS_LARI_PATH` | `AtlasPredictHiddenGeometry` (lari-scene) — **REMOVED, not registered** | ❌ research only |
-| World Tracing (WT-DiT r69l) | **CC BY-NC-ND 4.0**, checkpoint HF-gated | user clones repo + requests checkpoint access → `wt_path`/`ATLAS_WT_PATH` | `AtlasPredictHiddenGeometry` (world-tracing-scene) — **REMOVED, not registered** | ❌ non-commercial |
-| SAM 3 (via ComfyUI-RMBG) | per Meta's SAM license / pack's terms | ComfyUI Manager | Sky + foreground mattes in the hero workflows | check pack |
-| SegFormer ADE20K (b0/b2/b4) | transformers implementation Apache-2.0; **weights** published by NVIDIA on Hugging Face under NVIDIA's SegFormer model license (see the model card) | auto-download via `[neural]` transformers | `AtlasSemanticMask` 🧩 (named-class masks; 🎯 scope fallback) | **check the weights' terms before commercial use** |
-| comfyui-inpaint-nodes (LaMa/MAT) | **GPL-3.0** | ComfyUI Manager | X-ray clean plates, inpaint-layer track | graph-level only — see boundary below |
-| big-lama.pt weights | Apache 2.0 (LaMa) | pack's model download | same | ✅ |
-| ComfyUI-OCIO | per pack | ComfyUI Manager | ACEScg full-float examples | check pack |
-| Qwen-Image-Edit-2511 + Multiple-Angles LoRA | per model card | user-installed models | Master-DMP patch generation | check card |
-| VideoCombinePlus (+ ffmpeg) | per pack / LGPL-GPL ffmpeg build | ComfyUI Manager | Hero dolly bakes | check pack |
-| three.js r185 | MIT | **vendored** (`atlas_camera/comfy/web/lib/atlas-three.bundle.js`, built from `ui/`'s pinned dependency) | Blockout viewport | ✅ |
+## Optional Python extras (`pip install atlas-camera[...]`)
 
-## The two research-only backends, stated plainly
+| Extra | Brings | License (upstream) | Notes |
+|---|---|---|---|
+| `[vision]` | numpy, opencv-python | BSD / Apache-2.0 | geometric solve |
+| `[image]` | Pillow | HPND (permissive) | image I/O |
+| `[ui]` | FastAPI, uvicorn, Pillow | MIT / BSD | optional workbench backend |
+| `[usd]` | usd-core | Apache-2.0 (modified, Pixar) | USD export |
+| `[oiio]` | OpenImageIO | Apache-2.0 | float plate I/O, built-in ACES config |
+| `[raw]` | rawpy, exifread, Pillow, opencv-python | MIT / BSD / HPND / Apache-2.0 | camera RAW decode + EXIF intrinsics |
+| `[raw-lens]` | lensfunpy | LGPL-3.0 (lensfun database) | optional lens undistort |
+| `[neural]` | torch, GeoCalib, Depth-Anything-V2 (via transformers) | BSD-3 / Apache-2.0 / Apache-2.0 | **default** learned solve + depth; SegFormer (`AtlasSemanticMask`) rides transformers |
+| `[sam3]` | transformers (SAM3 model classes) | Apache-2.0 (transformers); `facebook/sam3` weights **Meta SAM-License-1.0**, gated on Hugging Face | preferred sky/scope segmenter in `AtlasInput`'s cascade, no `triton`; commercial use permitted, military/ITAR use carved out — one-time `hf auth login` after requesting access, see INSTALL.md |
+| `[moge]` | MoGe-2 (`Ruicheng/MoGe`) | **MIT** | interior-specialist depth |
+| `[neural-da3]` | Depth Anything 3 | see upstream (GitHub-only) | selectable depth; **never the default**. `DA3NESTED-GIANT` weights are **CC BY-NC-ND (non-commercial)** |
+| `[record3d]` | Record3D `.r3d` import | see upstream | iPhone/iPad LiDAR capture (gated behind `ATLAS_IOS`) |
+| `[mcp]` | mcp SDK | MIT | optional stdio MCP server |
 
-The **hidden-geometry track was removed before beta 0.8.** `AtlasPredictHiddenGeometry`
-is no longer registered in any tier, so neither backend below is reachable from
-ComfyUI. Their helper modules remain in source (`inference/lari_hidden_geometry.py`,
-`inference/wt_hidden_geometry.py`) and neither ever vendored upstream code or
-weights, so nothing restrictive was or is redistributed. Recorded here because
-the constraints apply again the moment the node is re-registered:
+Commercial-friendly by default: the shipping depth default (`V2-Metric-Outdoor`)
+and the whole `[neural]` tier are permissive (Apache / BSD / MIT).
+
+## ComfyUI node packs (external, graph-level — user-installed)
+
+| Pack | Provides | License | Commercial note |
+|---|---|---|---|
+| [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG) | `SAM3Segment` (still used directly by `AtlasSegmentedSDXLInpaint` for per-instance separation; no longer part of `AtlasInput`'s own sky/scope cascade, which now prefers native `AtlasSAM3Mask`) | see upstream | needs `triton` (CUDA-only) — see INSTALL.md |
+| [comfyui-inpaint-nodes](https://github.com/Acly/comfyui-inpaint-nodes) | LaMa / MAT clean plates | **GPL-3.0** | graph-level use only; never linked into Atlas |
+| [LanPaint](https://github.com/scraed/LanPaint) | generative inpaint tier | see upstream | optional hard-disocclusion tier |
+| ComfyUI-OCIO | Nuke-style OCIO nodes | see upstream | optional — Atlas owns its own float path via `[oiio]` |
+| KJNodes, rgthree-comfy, ComfyUI-Custom-Scripts, VideoCombinePlus | rails / UI / video | see upstream | staged-master + dolly demos |
+| Qwen-Image-Edit-2511 + Multiple-Angles LoRA | multi-angle patch generation | see model card | check the model + LoRA terms |
+| big-lama.pt weights | LaMa inpaint weights | Apache-2.0 | ✅ |
+| three.js r185 | Blockout viewport | MIT | **vendored** (`atlas_camera/comfy/web/lib/atlas-three.bundle.js`, built from `ui/`'s pinned dependency) |
+
+## Research / non-commercial tier (user-cloned, NOT vendored)
+
+These are **not installed by Atlas** — you clone the upstream repo and point a
+path or env var at it. They are gated behind `ATLAS_EXPERIMENTAL=1`.
+
+| Model | Role | License | ⚠ Commercial |
+|---|---|---|---|
+| [LaRI](https://github.com/ruili3/lari) (`ruili3/LaRI` weights) | X-ray hidden geometry | **NO license upstream (all rights reserved)** | research/eval only until upstream licenses it |
+| World Tracing (`haoz19/...` weights) | X-ray hidden geometry | checkpoint **CC BY-NC-ND 4.0** (HF-gated) | **non-commercial** |
+| [NVIDIA Fixer](https://github.com/nv-tlabs/Fixer) | render repair | repo Apache-2.0; weights **NVIDIA Open Model License** | commercial OK |
+| `triton-windows` | enables `SAM3Segment` on Windows/NVIDIA | MIT | — |
+
+### The two research-only backends, stated plainly
+
+The **hidden-geometry track was removed before beta 0.8.**
+`AtlasPredictHiddenGeometry` is no longer registered in any tier, so neither
+backend below is reachable from ComfyUI. Their helper modules remain in source
+(`inference/lari_hidden_geometry.py`, `inference/wt_hidden_geometry.py`) and
+neither ever vendored upstream code or weights, so nothing restrictive was or is
+redistributed. Recorded here because the constraints apply again the moment the
+node is re-registered:
 
 - **LaRI** ships with no license file, which legally defaults to
   all-rights-reserved — stricter than any non-commercial license. Atlas never
-  vendors or redistributes its code or weights; the node requires the user's
-  own clone and warns in its report output. If the track matures, the right
-  move is asking the authors for a license (issue planned).
+  vendors or redistributes its code or weights; the node requires the user's own
+  clone and warns in its report output. If the track matures, the right move is
+  asking the authors for a license.
 - **World Tracing**'s scene checkpoint is gated on HuggingFace and licensed
   CC BY-NC-ND 4.0: non-commercial, no derivatives of the weights. The same
   user-clone pattern applies.
 
-Everything else in Atlas — the solve, geometry derivation, layer stack,
-viewport, and the whole professional/OCIO output path — carries **no
-non-commercial dependency**. With the hidden-geometry node de-registered, the
-only licence choice left to the user is which Depth Anything V2 variant they
-install: small/base are Apache 2.0, **large** is CC BY-NC 4.0.
-
 ## The GPL boundary
 
-Masking/inpainting is never implemented inside `atlas_camera`. GPL-licensed
-ComfyUI packs (comfyui-inpaint-nodes) participate only as **separate nodes
-wired into a graph** — graph-level composition, not linking — so Atlas's MIT
-license is unaffected. This boundary is deliberate and documented in
-INSTALL.md's "Optional Inpaint Integration"; keep it: any future inpaint
-capability belongs in the graph, not in this package.
+Masking and inpainting are never implemented inside `atlas_camera`. GPL-licensed
+ComfyUI packs (comfyui-inpaint-nodes) participate only as **separate nodes wired
+into a graph** — graph-level composition, not linking — so Atlas's MIT license is
+unaffected. This boundary is deliberate and documented in INSTALL.md's "Optional
+Inpaint Integration"; keep it. Any future inpaint capability belongs in the
+graph, not in this package.
 
 ## Weights are not code
 
 Model weights downloaded at runtime (HuggingFace, pack model folders) are
-governed by their own model cards/licenses regardless of the wrapper code's
+governed by their own model cards and licenses regardless of the wrapper code's
 license. When in doubt about a deployment, check the **weights'** terms — the
-table above lists them where known, but model cards change; the card is
+tables above list them where known, but model cards change and the card is
 authoritative.
+
+## Bottom line for shippers
+
+- **Atlas + the default pipeline** (MIT + Apache/BSD/MIT extras) — clean for
+  commercial work.
+- **Avoid for commercial output**: World Tracing (CC BY-NC-ND), LaRI (no
+  license), `DA3NESTED-GIANT` (CC BY-NC-ND), and Depth Anything V2's **large**
+  weights (CC BY-NC 4.0 — small/base are Apache 2.0). These are
+  experimental/eval tiers.
+- **GPL (inpaint)** is graph-level composition, not linking — it does not
+  relicense Atlas, but the LaMa/MAT node's own terms govern its use.

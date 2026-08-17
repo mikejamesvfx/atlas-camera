@@ -5,7 +5,7 @@ camera/geometry arithmetic behind a band layer lives in host-agnostic core
 and is unit-testable without constructing a ComfyUI node. Pure numpy — no
 torch, no ComfyUI, no DCC conversions.
 
-The doctrine these functions implement (docs/DESIGN_RULES.md, "Per-band
+The doctrine these functions implement (docs/development/design-rules.md, "Per-band
 geometry types"): the flat modes substitute the depth FIELD fed to
 ``relief_mesh.build_relief_mesh``; **band membership still comes from the REAL
 depth (which pixels belong to this layer); geometry only changes WHERE those
@@ -63,7 +63,7 @@ def band_membership(valid, metric, near, far, *, fill_mask=None, exclude_mask=No
     diffusion-filled — minus ``exclude_mask`` when one is supplied, because
     excluded (sky) regions are never filled.
     """
-    np = _require_numpy()
+    _require_numpy()
     # NOTE: the membership expression's operator precedence is preserved
     # exactly as it ran inside AtlasCleanPlateLayer — do not "simplify".
     band_region = valid & (metric >= near)

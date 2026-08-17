@@ -17,8 +17,18 @@ ui/node_modules/
 ui/dist/
 
 .serena/
-.claude/
 .agents/
+
+# .claude/ is local agent state and stays ignored — EXCEPT the project's own
+# audit skill. It lived here untracked, and on 2026-08-16 it was gone from
+# every checkout with no stash and no history to recover it from; only its
+# generated output survived. A tool the repo depends on cannot live somewhere
+# git does not look. Git cannot re-include a path whose parent is excluded, so
+# each level is opened explicitly rather than ignoring `.claude/` wholesale.
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/atlas-v1-audit/
 
 test_scenes/
 validation_output/
@@ -137,7 +147,7 @@ atlas_debug/
 # add here): assets/atlas_camera_icon.png (force-kept above) and
 # assets/atlas_camera_icon.svg — the LIVE registry icon (pyproject `Icon`
 # serves it via jsDelivr @main; untracking it 404s the Registry listing).
-# NOT here: docs/DESIGN_RULES.md. It matches on the word DESIGN but is an
+# NOT here: docs/development/design-rules.md. It matches on the word DESIGN but is an
 # engineering reference, not brand material — CLAUDE.md's routing index calls
 # it one of the two "tracked docs" and four docs link to it. It was swept in
 # here by 634beb8 and untracked for a day; a fresh clone followed a dead link

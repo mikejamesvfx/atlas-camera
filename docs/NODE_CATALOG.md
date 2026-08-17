@@ -14,9 +14,9 @@
 
 
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 116
+The former 9,110-line `nodes.py` was split into responsibility modules; the 118
 
-node classes (102 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
+node classes (104 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -243,7 +243,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (102 standard + 10 experimental + 2 legacy + 2 iOS = 116 registered)
+### Node catalog (104 standard + 10 experimental + 2 legacy + 2 iOS = 118 registered)
 
 
 
@@ -441,6 +441,8 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 | `AtlasSceneHealthGate` | solve (ATLAS_SOLVE), source_image (IMAGE), ±depth (ATLAS_DEPTH_MAP), ±status_1..4, ±pass_through_on_pass, ±proceed, ±approved_for | solve (ATLAS_SOLVE, GATED), report | 🩺 Gate 4 — the ACKNOWLEDGEMENT gate before the exporters: runs `core.scene_health.evaluate_scene_health` (the same red-flag engine `AtlasDebugReport` renders) and holds the solve on warn/fail until ✅ Acknowledge & Continue (`web/atlas_scene_health_gate.js`; SolveGate mechanics — fingerprint identity, ships closed, RE-ARMED). `pass_through_on_pass` (default ON) = clean scenes flow with zero clicks. EVERY execution stamps `debug_metadata["scene_health"]` (report + acknowledged + evaluated_at) — override a warning, never lose it: the stamp rides exporter summaries, review report.md, and atlas_project.json. Full scenario matrix: gate_state_table.md Gate 4 |
 
 | `AtlasDepthOutlierMask` | depth (ATLAS_DEPTH_MAP), ±rel_threshold, ±mad_threshold, ±dilate_px | mask (MASK), report | 🛡 Local 3×3-median + robust-MAD depth-outlier detector — turns isolated monocular-depth hallucinations into EXPLICIT holes (OR-ed into `exclude_mask`/`outlier_mask` on the relief nodes) instead of letting one bad pixel become a frame-spanning stretched shard. From the outlier/stretched-edge tier (see that design rule) |
+| `AtlasFitDepthCalibration` 📐 | measured (ATLAS_DEPTH_MAP), predicted (ATLAS_DEPTH_MAP), ±scene_type, ±model (auto/affine_disparity/affine/scale), ±mask (MASK), ±store_path, ±save (False), ±note | correction_json (STRING), report (STRING) | Fits a depth model's characteristic error against MEASURED depth and optionally stores it under `(model_id, scene_type)` (`core/depth_calibration_store.py`). Wire `measured` from `AtlasLoadRecord3D` 📱 — an ARKit/LiDAR capture is the one input carrying per-pixel metric truth — and `predicted` from `AtlasDepthMap` on the SAME frame. The point is not to improve the capture (it is already measured) but TRANSFER: learn the error where truth exists, apply it on a plate where it does not. `save` is OFF by default — fit, read the report, then decide. `auto` picks on HELD-OUT error with a 5% margin, simplest-first among ties. Refuses mismatched resolutions and flags a non-metric truth side. Needs `[record3d]` for the capture side only. |
+| `AtlasApplyDepthCalibration` 📐 | depth (ATLAS_DEPTH_MAP), ±scene_type, ±store_path, ±enabled (True), ±on_extrapolation (report/nan) | depth (ATLAS_DEPTH_MAP), report (STRING) | Looks up `(depth.model_id, scene_type)` in the store and applies it. The lookup is EXACT and never falls back — a near-miss is how a coefficient fitted on a 1.2 m interior wall rescales a 200 m exterior. A miss is a passthrough that SAYS SO, listing what the store does hold; a silent passthrough is indistinguishable from a correction that had no effect. Reports how far outside the fitted range it went; `on_extrapolation=nan` voids those samples rather than clamping, which would return confident depth the fit has no evidence for. Records the correction and the application report in `depth.metadata['depth_calibration']`. **Nothing auto-applies** — `AtlasDepthMap` is untouched. |
 
 | `AtlasSDXLInpaint` | image (IMAGE), mask (MASK), checkpoint, prompts, sampler params | image (IMAGE), report | ✨ Native SDXL inpaint adapter — expands to ComfyUI's stock CheckpointLoader → CLIPTextEncode → `InpaintModelConditioning` → KSampler → VAEDecode (the conditioning path matters: plain VAE-encode produced flat gray fills). Pairs with ✂ AtlasInpaintCrop/Stitch |
 

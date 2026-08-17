@@ -66,7 +66,7 @@ WORKFLOW_IDS = {
 }
 
 # Exterior plates: the metric outdoor model is the doctrine choice for these
-# (docs/DESIGN_RULES.md, depth model doctrine).  Interiors would take MoGe.
+# (docs/development/design-rules.md, depth model doctrine).  Interiors would take MoGe.
 OUTDOOR_DEPTH = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
 
 

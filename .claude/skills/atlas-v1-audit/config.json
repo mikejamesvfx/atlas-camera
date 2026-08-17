@@ -1,0 +1,133 @@
+{
+  "_comment": "Atlas-specific audit knowledge. Every entry here is a JUDGEMENT the scanners cannot make from evidence alone; each carries the reason it was made. Adding a path to silence a finding you have not understood defeats the audit.",
+
+  "exclude_dirs": [
+    ".git", "node_modules", "__pycache__", ".pytest_cache", ".pytest_tmp",
+    ".ruff_cache", ".mypy_cache", "build", "dist", "coverage",
+    ".v1-audit", "graphify-out", ".venv", "venv", "atlas_debug"
+  ],
+
+  "_generated_globs": "Vendored or machine-written: real files that ship, but reviewing them line by line is pointless. atlas-three.bundle.js is the vendored three.js build (rebuild via `npm run build:comfy-three` in ui/), and .graphifyignore already keeps it out of the knowledge graph for the same reason.",
+  "generated_globs": [
+    "**/atlas-three.bundle.js",
+    "**/*.min.js"
+  ],
+
+  "_provenance_docs": "Dated records. They name files that were later removed and counts that were correct when written; that is the record doing its job. docs/development/design-rules.md cites 'found live' evidence by path for every rule, so it is provenance throughout.",
+  "provenance_docs": [
+    "CHANGELOG.md",
+    "docs/development/design-rules.md"
+  ],
+  "provenance_doc_prefixes": [],
+
+  "_foreign_path_prefixes": "Paths in ANOTHER project's tree, named to say where a behaviour was mirrored from. Correct as written, can never resolve here.",
+  "foreign_path_prefixes": [
+    "output_dir/",
+    "passes/",
+    "cursor/"
+  ],
+
+  "_local_only_prefixes": "Gitignored by design (CLAUDE.md): they do not survive a clone and are excluded from the published Registry archive. The scanners ask `git check-ignore` rather than trusting this list, so it is documentation of intent, not the mechanism.",
+  "local_only_prefixes": [
+    "docs/dev/",
+    "docs/artifacts/",
+    "atlas_debug/"
+  ],
+
+  "_known_absent_symbols": "Named in docs and/or implemented in the tree, deliberately NOT in NODE_CLASS_MAPPINGS. A test pins AtlasPredictHiddenGeometry out of the mappings (off-menu research path). AtlasRenderFix and AtlasBlenderOrganicFill were deregistered and their wrappers deleted 2026-08-14; INSTALL.md and docs/ROADMAP.md name them to say they are GONE, which is correct prose about an absent thing.",
+  "known_absent_symbols": [
+    "AtlasPredictHiddenGeometry",
+    "AtlasRenderFix",
+    "AtlasBlenderOrganicFill",
+    "AtlasLoadImageSolveCamera",
+    "AtlasMegaPipeline",
+    "AtlasPitchTrim",
+    "AtlasCamera",
+    "AtlasSolve",
+    "AtlasIntrinsics",
+    "AtlasExtrinsics",
+    "AtlasHorizon",
+    "AtlasVanishingPoint",
+    "AtlasProjectionScene",
+    "AtlasProxyPrimitive",
+    "AtlasPlateRef",
+    "AtlasAddPlanePolygon",
+    "AtlasBlenderBoundaryFill",
+    "AtlasShotCam",
+    "AtlasDerive",
+    "AtlasBlockout"
+  ],
+
+  "_entry_point_dirs": "A script here is invoked by a HUMAN or by CI, so its importer count proves nothing. Findings against these are reported separately and never reach CERTAIN.",
+  "entry_point_dirs": [
+    "tools",
+    "scripts"
+  ],
+
+  "_dynamic_loading_markers": "A directory containing any of these reaches its own modules without an import statement. Every file under such a directory is capped below CERTAIN.",
+  "dynamic_loading_markers": [
+    "NODE_CLASS_MAPPINGS",
+    "importlib",
+    "pkgutil",
+    "__import__",
+    "entry_points",
+    "globals()[",
+    "WEB_DIRECTORY"
+  ],
+
+  "_protected_categories": "Categories whose confidence is capped below CERTAIN regardless of evidence. A fixture is discovered by pytest, a DCC script is executed by Maya/Nuke/Blender out-of-process, a setup file is read by pip — none of which leaves a reference this scanner can see.",
+  "protected_categories": [
+    "TEST", "DCC", "MODEL_ADAPTER", "SETUP", "CI", "CONFIG", "ASSET"
+  ],
+
+  "_static_analysis": "Per-tool suppressions. Every entry is a KIND of false positive with the reason it is one — not a list of findings that were inconvenient. Counts of what was suppressed are reported alongside what survived, so a growing suppression list is visible rather than silent. If a finding is wrong for a reason NOT listed here, fix the scanner instead of extending this.",
+  "static_analysis": {
+    "vulture": {
+      "_ignore_names": "The ComfyUI node contract. The host reads these BY NAME off each class — no code in this repo ever references them, which is the exact dynamic-reachability blind spot the whole audit exists to compensate for. Measured 2026-08-17: 607 of 871 vulture findings were these seven names (CATEGORY 120, RETURN_TYPES 119, FUNCTION 119, INPUT_TYPES 119, RETURN_NAMES 107, OUTPUT_NODE 15, IS_CHANGED 8). Raising --min-confidence instead would be the wrong lever: 868 of 871 sit at 60% and only 2 at 100%, so any threshold that removes this noise removes everything else with it.",
+      "ignore_names": [
+        "INPUT_TYPES",
+        "RETURN_TYPES",
+        "RETURN_NAMES",
+        "FUNCTION",
+        "CATEGORY",
+        "OUTPUT_NODE",
+        "IS_CHANGED",
+        "VALIDATE_INPUTS",
+        "DESCRIPTION",
+        "DEPRECATED",
+        "EXPERIMENTAL",
+        "fingerprint_inputs",
+        "validate_inputs",
+        "check_lazy_status"
+      ],
+      "min_confidence": 60
+    },
+
+    "deptry": {
+      "_host_provided": "Supplied by the process Atlas runs INSIDE — ComfyUI, Blender, Maya, Nuke. Atlas can never declare these as dependencies because pip cannot install them; they exist only once the host is running.",
+      "host_provided": [
+        "comfy", "comfy_execution", "server", "folder_paths", "nodes",
+        "bpy", "mathutils", "bmesh", "maya", "nuke", "aiohttp"
+      ],
+
+      "_optional_extra": "Declared in an optional extra and imported behind a guard. DEP001 fires because they are absent from the REQUIRED dependency set — which is the documented design: the core package has zero required runtime dependencies and every heavy import raises an informative ImportError instead. deptry does not model guarded imports, so this is a limitation of the tool, not a finding about the code.",
+      "optional_extra": [
+        "PIL", "cv2", "OpenImageIO", "pxr", "skimage", "liblzfse", "av",
+        "onnx", "onnxruntime", "huggingface_hub", "transformer_engine",
+        "pyinstantmeshes", "fast_simplification", "kornia"
+      ],
+
+      "_research_or_sibling": "User-cloned research repos (never vendored, see THIRD_PARTY.md) and sibling-module imports inside script directories that put their own folder on sys.path. Neither is resolvable from pyproject.toml by construction.",
+      "research_or_sibling": [
+        "wt", "src", "third_party", "tudf_to_atlas", "volfill",
+        "g5_geometric_truth", "golden_scenes", "build_example_workflow",
+        "rebuild_staged_master_workflow", "port_sam3segment_to_atlas",
+        "build_v1_shipping_workflows", "infer", "pipeline", "_atlas_scene",
+        "common", "scan_tools"
+      ],
+
+      "_ignore_codes": "DEP002 is 'declared but not used'. Every hit is an optional extra consumed behind a guarded import, so deptry cannot see the use — the same blind spot as optional_extra above, from the other direction.",
+      "ignore_codes": ["DEP002"]
+    }
+  }
+}

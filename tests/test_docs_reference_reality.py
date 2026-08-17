@@ -32,9 +32,14 @@ _SHIPPED_DOC_DIRS = ("docs",)
 #: citations resolve in a working checkout rather than a fresh clone. Rewriting
 #: those to name surviving files would falsify the record of where a rule came
 #: from, which is the one thing that document is for.
-_PROVENANCE_DOCS = {"CHANGELOG.md", "DESIGN_RULES.md"}
+#: Matched by BASENAME, so the v1 cleanup's rename of `docs/DESIGN_RULES.md`
+#: to `docs/development/design-rules.md` silently dropped it out of the
+#: exclusion and failed this test on five provenance citations.
+_PROVENANCE_DOCS = {"CHANGELOG.md", "design-rules.md"}
 _EXCLUDED_DOCS = {"CHANGELOG.md"}
-_EXCLUDED_DIRS = {"dev", "artifacts", "superpowers", "showcase_pdfs"}
+# `dev` and `artifacts` are gitignored local-only trees. The `superpowers`
+# plans and `showcase_pdfs` directories were removed in the v1 cleanup.
+_EXCLUDED_DIRS = {"dev", "artifacts"}
 
 _WORKFLOW_RE = re.compile(r"(atlas[A-Za-z0-9_]*workflow[A-Za-z0-9_]*)\.json")
 
