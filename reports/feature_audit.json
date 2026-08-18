@@ -1,18 +1,19 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-08-17",
+ "generated_utc": "2026-08-18",
  "counts": {
-  "standard": 104,
+  "standard": 105,
   "experimental": 10,
   "legacy": 2,
   "ios": 2,
-  "total": 118,
-  "no_product_evidence": 0
+  "total": 119,
+  "no_product_evidence": 1
  },
  "verdict_counts": {
   "KEEP_CORE": 104,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
+  "HOLD_NEEDS_EVIDENCE": 1,
   "IOS_GATE": 2
  },
  "live_probe": {
@@ -1648,6 +1649,30 @@
     "measured live 2026-07-27 across 5 camera configurations (default, fx=150, elevated eye, raised target, 640x480): bit-identical every time, and varying near/far 1/50 vs 5/500 does not change the mask (reports/live_probe_baseline.json, F2)"
    ],
    "migration_action": "rewire consumers to AtlasGroundDepthMap slot 1; gate the node",
+   "notes": null
+  },
+  "AtlasGroundPlane": {
+   "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 0,
+   "tests": 2,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": false,
+   "evidence_kinds": [
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "evidence": [],
+   "migration_action": null,
    "notes": null
   },
   "AtlasHorizonMask": {

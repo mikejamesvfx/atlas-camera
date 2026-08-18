@@ -104,6 +104,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
     AtlasDeriveInteriorRoom,
+    AtlasGroundPlane,
     AtlasMergeGeometry,
     AtlasDefineShotCam,
     AtlasBlockoutMassing,
@@ -224,6 +225,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasDeriveRoofsFacades":    AtlasDeriveRoofsFacades,
     "AtlasDeriveInteriorRoom":    AtlasDeriveInteriorRoom,
     "AtlasMergeGeometry":         AtlasMergeGeometry,
+    "AtlasGroundPlane":           AtlasGroundPlane,
     # Track 6 — shot format
     "AtlasDefineShotCam":         AtlasDefineShotCam,
     # Track 7 — inpaint layers
@@ -329,6 +331,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDeriveRoofsFacades":    "Atlas Derive Roofs & Facades 🏛",
     "AtlasDeriveInteriorRoom":    "Atlas Derive Interior Room 🛋",
     "AtlasMergeGeometry":         "Atlas Merge Geometry 🔀",
+    "AtlasGroundPlane":           "Atlas Ground Plane 🟫",
     # Track 6 — shot format
     "AtlasDefineShotCam":         "Atlas Define Shot Cam 🎬",
     # Track 7 — inpaint layers
@@ -572,7 +575,7 @@ _MENU_FOLDERS = {
         "AtlasDeriveProjectionGeometry", "AtlasDeriveReliefMesh", "AtlasDeriveWalls",
         "AtlasDeriveTowersSpires", "AtlasDeriveRoofsFacades",
         "AtlasDeriveInteriorRoom", "AtlasMergeGeometry", "AtlasRetopologizeLayer",
-        "AtlasDefineShotCam",
+        "AtlasDefineShotCam", "AtlasGroundPlane",
     ),
     "Atlas/06 \u00b7 Patch & Repair": (
         "AtlasAddPatchView", "AtlasSolvePatchViews", "AtlasPlanarHolePatch",

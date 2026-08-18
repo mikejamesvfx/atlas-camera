@@ -14,9 +14,9 @@
 
 
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 118
+The former 9,110-line `nodes.py` was split into responsibility modules; the 119
 
-node classes (104 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
+node classes (105 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -243,7 +243,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (104 standard + 10 experimental + 2 legacy + 2 iOS = 118 registered)
+### Node catalog (105 standard + 10 experimental + 2 legacy + 2 iOS = 119 registered)
 
 
 
@@ -396,6 +396,7 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 | `AtlasCompleteDepth` 🩹 🔬 **EXPERIMENTAL** (set `ATLAS_EXPERIMENTAL=1`) | ATLAS_SOLVE, depth (ATLAS_DEPTH_MAP), ±holes (MASK), ±use_diffusion, ±use_normals, ±diffusion_iterations | ATLAS_DEPTH_MAP, hidden_mask (MASK), report (STRING) | Fills depth holes **before** the relief mesh is built, so no tear exists to repair afterwards. Three tiers, best first, each pixel tagged: **ray-plane** (exact intersection of the pixel's own ray with a graph-fitted plane — not an interpolation), **tangent** (first-order continuation from predicted normals), **diffusion** (last resort, evidence-free, labelled). Connect an `AtlasOcclusionGraph` solve for the exact tier and to carry its refusals — a `policy=none` node contributes no plane, so the tear it guards stays open. Measured depth is never overwritten; `hidden_mask` marks every synthesized pixel and the report gives a trust-weighted confidence. **Demoted to experimental 2026-07-25:** the fill is exact for the plane but butts against measured depth at the hole rim, so re-meshing tears along every seam — measured live at 302k px closed vs 222k px of NEW rim tears, with the move budget getting WORSE on both test plates. Needs rim blending; the clean-plate layer path avoids the seam entirely and is the intended fix |
 | `AtlasMergeGeometry` | solve_a (ATLAS_SOLVE), solve_b (ATLAS_SOLVE), ±shot_cam (ATLAS_SHOT_CAM) | ATLAS_SOLVE | Explicit Nuke-Merge-node equivalent — combines two independently-derived solves' geometry (e.g. `AtlasDeriveWalls` foreground + `AtlasDeriveReliefMesh` background). `solve_a`'s camera wins; dedupes the always-emitted `projection_backdrop` plane. Chain multiple instances for 3+-way combination. `shot_cam`, if connected, is attached onto the merged solve (`out.shot_cam`) — pure attachment, never mutates `solve_a`'s camera — so a project format defined once flows downstream to `AtlasBlockoutViewport` without rewiring. See "Composable geometry derivation" and "ShotCam" below |
 
+| `AtlasGroundPlane` 🟫 | solve (ATLAS_SOLVE), ±width_m (40), ±depth_m (40), ±offset_x (0), ±offset_y (0), ±offset_z (0), ±tilt_deg (0), ±roll_deg (0), ±anchor (solve_ground_centre, world_origin), ±name (artist_ground) | ATLAS_SOLVE, report | An artist-PLACED ground, for when the measured one is wrong. Emits one PROXY_ROLE `plane` primitive sized `width_m` × `depth_m` in world XZ, positioned by the three offsets from `anchor` (`solve_ground_centre` = directly beneath the recovered camera on Y=0, so it lands in frame; `world_origin` = plain 0,0,0), with `offset_y` as its HEIGHT. `tilt_deg` (about world X, far edge lifts/drops) and `roll_deg` (about world Z, banks left/right) turn the PRIMITIVE's own `transform_matrix` — **never the world**, because world +Y IS the solve's gravity (`solver._rotation_from_up_vector`) and rotating it would lean every facade; a tilted ground exports to a DCC as one rotated object. APPENDS, never clobbers — wire into `AtlasMergeGeometry` alongside your derived geometry and the viewport projects onto it, `AtlasRetopologizeLayer` retopologises it, and every exporter writes it. Tagged `provenance="artist_placed"` / `trust="placeholder"` so nothing downstream promotes a placement to a measurement. Names are auto-suffixed on collision (merge de-dupes only the backdrop). Built 2026-08-18 out of the gravity-locked ground experiment, which measured that the plane FIT was fine (normal 1.8° from gravity, ±0.03 m residual inside 40 m) and the 48% error was cross-model SCALE disagreement — see `docs/development/gravity-locked-ground-experiment.md` |
 | `AtlasDefineShotCam` | ±sensor_width_mm, ±sensor_height_mm, ±focal_length_mm, ±resolution | ATLAS_SHOT_CAM | Defines a project-level render/output camera format (sensor mm × 2 + lens mm + long-edge resolution) — like a Nuke/Resolve project format setting. Intrinsics-only, no position. Wire into `AtlasMergeGeometry` (attach) or directly into `AtlasBlockoutViewport` (a direct wire always wins over an inherited one). See "ShotCam" below |
 
 | `AtlasDepthBandSplit` | ±split, ±split_m | band_split | One authoritative fg/bg depth boundary, shared by every band node so they can't drift apart. Emits a single `band_split` (a fraction via `split`, or an absolute metric distance via `split_m`) that the bounded-band and layer nodes consume instead of each re-deciding where foreground ends |

@@ -192,6 +192,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
     AtlasDeriveInteriorRoom,
+    AtlasGroundPlane,
     AtlasMergeGeometry,
     AtlasDefineShotCam,
     AtlasExtractAnglePatch,

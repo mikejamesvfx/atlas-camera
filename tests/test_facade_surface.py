@@ -73,6 +73,7 @@ FACADE_PUBLIC = {
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
     "AtlasLoadPlate", "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON",
     "AtlasDepthCombine", "AtlasDepthDetailEnhance",
+    "AtlasGroundPlane",
     "AtlasMergeGeometry", "AtlasMogeNormals", "AtlasOcclusionMask",
     "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
     "AtlasMaskedSurfaceReconstruct",

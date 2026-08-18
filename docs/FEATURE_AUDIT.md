@@ -1,6 +1,6 @@
 # Atlas Camera — feature audit
 
-Generated 2026-08-17 by `tools/build_feature_audit.py`.
+Generated 2026-08-18 by `tools/build_feature_audit.py`.
 Machine-gathered evidence from `tools/audit_node_usage.py`; judgements from 
 `tools/feature_audit_verdicts.py`. Regenerate with 
 `python tools/build_feature_audit.py` (`--check` verifies freshness).
@@ -29,11 +29,11 @@ relative to itself, so a worktree silently audits a different tree.
 
 ## Counts
 
-* standard: **104**
+* standard: **105**
 * experimental: **10**
 * legacy: **2**
-* total registered: **118**
-* standard nodes with no product evidence: **0**
+* total registered: **119**
+* standard nodes with no product evidence: **1**
 
 | Verdict | Nodes |
 |---|---:|
@@ -41,6 +41,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `KEEP_EXPERIMENTAL` | 10 |
 | `LEGACY_GATE` | 2 |
 | `IOS_GATE` | 2 |
+| `HOLD_NEEDS_EVIDENCE` | 1 |
 
 ## Verdict legend
 
@@ -120,6 +121,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasGravityOverride` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | ok | ok | 0 | 2 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasGroundDepthMap` | atlas_camera/comfy/nodes_depth.py | standard | 0 | 1 | ok | ok | 0 | 4 | — | — | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasGroundMask` | atlas_camera/comfy/nodes_depth.py | legacy | 0 | 2 | ok | ok | 0 | 2 | AtlasGroundDepthMap, output 1 (ground_mask) | — | low — in no shipping workflow, no test, no MCP consumer | **LEGACY_GATE** | rewire consumers to AtlasGroundDepthMap slot 1; gate the node |
+| `AtlasGroundPlane` | atlas_camera/comfy/nodes_geometry.py | standard | 0 | 0 | not_attempted | not_attempted | 0 | 1 | — | — | — | **HOLD_NEEDS_EVIDENCE** | — |
 | `AtlasHorizonMask` | atlas_camera/comfy/nodes_depth.py | standard | 1 | 1 | ok | ok | 0 | 3 | — | FIXED 2026-07-27, found by writing this cycle's coverage. The node returned the GROUND as sky — the exact inverse of its docstring and of its 'Sky Mask' disp… | low — nothing depended on it before either | **KEEP_CORE** | none; keep |
 | `AtlasImportAnglePatch` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 2 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasInpaintCrop` | atlas_camera/comfy/nodes_inpaint.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
@@ -184,6 +186,7 @@ Each of these executes correctly and returns meaningful output; what
 it lacks is a consumer. That is a reason to find evidence or schedule
 deprecation, not a reason to delete.
 
+* **`AtlasGroundPlane`** — 
 
 ## Appendix — capabilities REMOVED, not replaced
 

@@ -5452,3 +5452,140 @@ class AtlasBlockoutMassing:
                   "appended %d box primitives alongside %d existing (measured "
                   "geometry untouched); %s" % (len(prims) - start, start, mask_note)]
         return (out, "\n".join(report))
+
+
+class AtlasGroundPlane:
+    """Place a ground plane by hand, at a size and orientation you choose.
+
+    Every other ground in Atlas is derived from a depth map and inherits that
+    depth map's errors. The 2026-08-18 gravity-locked ground experiment
+    measured where those errors come from on a real street plate, and the
+    answer was not the plane fit: the fitted plane tracked the observed road to
+    +/-0.03 m inside 40 m and its normal sat 1.8 degrees from gravity. The
+    error that mattered was 48% of SCALE, from two depth models disagreeing
+    about camera height. When the measurement is what is wrong, the useful
+    control is a ground the artist places directly. See
+    ``docs/development/gravity-locked-ground-experiment.md``.
+
+    The plane is a normal ``projection_proxy`` primitive, so it flows through
+    the paths that already exist: wire it into ``AtlasMergeGeometry`` alongside
+    your derived geometry, and the viewport projects the plate onto it,
+    ``AtlasRetopologizeLayer`` can retopologise it, and every exporter writes
+    it out.
+
+    Two things it deliberately does NOT do.
+
+    It never rotates the world. World +Y IS the solve's gravity, so ``tilt_deg``
+    and ``roll_deg`` turn this primitive's own transform; the plane arrives in a
+    DCC as one rotated object while every facade stays plumb. A ground that
+    rotated the world would lean the whole scene.
+
+    It never claims to be measured. The primitive carries
+    ``provenance="artist_placed"`` and ``trust="placeholder"``, so nothing
+    downstream can promote a placement into evidence.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "place"
+    CATEGORY = "Atlas/05 · Geometry"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+            },
+            "optional": {
+                "width_m": ("FLOAT", {
+                    "default": 40.0, "min": 0.01, "max": 100000.0, "step": 1.0,
+                    "tooltip": "Extent along world X, in metres."}),
+                "depth_m": ("FLOAT", {
+                    "default": 40.0, "min": 0.01, "max": 100000.0, "step": 1.0,
+                    "tooltip": "Extent along world Z, in metres."}),
+                "offset_x": ("FLOAT", {
+                    "default": 0.0, "min": -100000.0, "max": 100000.0, "step": 0.1,
+                    "tooltip": "Shift along world X from the anchor."}),
+                "offset_y": ("FLOAT", {
+                    "default": 0.0, "min": -100000.0, "max": 100000.0, "step": 0.01,
+                    "tooltip": "HEIGHT. Raises or lowers the plane. 0 sits it on "
+                               "Y=0, which is where a scaled solve puts the ground. "
+                               "Nudge this when the plate says the road is higher or "
+                               "lower than the depth model measured it."}),
+                "offset_z": ("FLOAT", {
+                    "default": 0.0, "min": -100000.0, "max": 100000.0, "step": 0.1,
+                    "tooltip": "Shift along world Z from the anchor. Negative pushes "
+                               "the plane away from a camera facing world -Z."}),
+                "tilt_deg": ("FLOAT", {
+                    "default": 0.0, "min": -89.0, "max": 89.0, "step": 0.1,
+                    "tooltip": "Rotate about world X: the far edge lifts or drops. "
+                               "Turns THIS PLANE only, never the world."}),
+                "roll_deg": ("FLOAT", {
+                    "default": 0.0, "min": -89.0, "max": 89.0, "step": 0.1,
+                    "tooltip": "Rotate about world Z: the plane banks left or right. "
+                               "Turns THIS PLANE only, never the world."}),
+                "anchor": (["solve_ground_centre", "world_origin"], {
+                    "default": "solve_ground_centre",
+                    "tooltip": "Where the offsets are measured from. "
+                               "solve_ground_centre puts the plane directly beneath "
+                               "the recovered camera on Y=0, so it lands in frame; "
+                               "world_origin is plain (0, 0, 0)."}),
+                "name": ("STRING", {
+                    "default": "artist_ground", "multiline": False,
+                    "tooltip": "Primitive name. AtlasMergeGeometry does not "
+                               "de-duplicate names, so give each ground its own if "
+                               "you place more than one; a clash on the same solve "
+                               "is auto-suffixed."}),
+            },
+        }
+
+    def place(self, solve, width_m=40.0, depth_m=40.0, offset_x=0.0,
+              offset_y=0.0, offset_z=0.0, tilt_deg=0.0, roll_deg=0.0,
+              anchor="solve_ground_centre", name="artist_ground"):
+        import copy
+
+        from atlas_camera.core.ground_plane import (
+            build_ground_plane_primitive,
+            solve_ground_centre,
+        )
+
+        out = copy.deepcopy(solve)
+        scene = out.projection_scene
+        prims = list(getattr(scene, "proxy_geometry", None) or [])
+
+        centre = ((0.0, 0.0, 0.0) if anchor == "world_origin"
+                  else solve_ground_centre(out))
+
+        # Merge has no general name de-duplication (only the backdrop is
+        # special-cased), so two grounds sharing a name would be
+        # indistinguishable downstream. Suffix rather than silently collide.
+        base = (name or "artist_ground").strip() or "artist_ground"
+        taken = {p.name for p in prims}
+        final = base
+        suffix = 2
+        while final in taken:
+            final = "%s_%02d" % (base, suffix)
+            suffix += 1
+
+        prim = build_ground_plane_primitive(
+            width_m=width_m, depth_m=depth_m,
+            offset_x=offset_x, offset_y=offset_y, offset_z=offset_z,
+            tilt_deg=tilt_deg, roll_deg=roll_deg,
+            centre=centre, name=final,
+            extra_metadata={"anchor": anchor},
+        )
+        prims.append(prim)
+        scene.proxy_geometry = prims
+
+        c = prim.metadata["centre"]
+        report = [
+            "ground plane '%s': %.2f x %.2f m at (%.3f, %.3f, %.3f)"
+            % (final, prim.dimensions[0], prim.dimensions[1], c[0], c[1], c[2]),
+            "anchor=%s tilt=%.2f deg roll=%.2f deg (primitive transform only — "
+            "world gravity untouched)" % (anchor, tilt_deg, roll_deg),
+            "tagged provenance=artist_placed trust=placeholder — support "
+            "geometry, not a measurement",
+            "appended alongside %d existing primitive(s); merge with "
+            "AtlasMergeGeometry before the viewport" % (len(prims) - 1),
+        ]
+        return (out, "\n".join(report))
