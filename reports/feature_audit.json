@@ -7,13 +7,12 @@
   "legacy": 2,
   "ios": 2,
   "total": 119,
-  "no_product_evidence": 1
+  "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 104,
+  "KEEP_CORE": 105,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
-  "HOLD_NEEDS_EVIDENCE": 1,
   "IOS_GATE": 2
  },
  "live_probe": {
@@ -887,7 +886,7 @@
    "tests": 6,
    "mcp_tools": 1,
    "repo_tools": 3,
-   "docs": 6,
+   "docs": 7,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1655,13 +1654,14 @@
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 0,
-   "tests": 2,
+   "dedicated_tests": 1,
+   "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 0,
    "docs": 1,
-   "product_evidence": false,
+   "product_evidence": true,
    "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -1670,7 +1670,7 @@
    "overlapping_replacement": null,
    "known_defect": null,
    "compatibility_risk": null,
-   "verdict": "HOLD_NEEDS_EVIDENCE",
+   "verdict": "KEEP_CORE",
    "evidence": [],
    "migration_action": null,
    "notes": null
@@ -1925,8 +1925,8 @@
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 1,
-   "repo_tools": 2,
-   "docs": 6,
+   "repo_tools": 3,
+   "docs": 7,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -2062,7 +2062,7 @@
    "dedicated_tests": 6,
    "tests": 8,
    "mcp_tools": 0,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2187,8 +2187,8 @@
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 3,
-   "tests": 5,
+   "dedicated_tests": 4,
+   "tests": 6,
    "mcp_tools": 0,
    "repo_tools": 0,
    "docs": 3,

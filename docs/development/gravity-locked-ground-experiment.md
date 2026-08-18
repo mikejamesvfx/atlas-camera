@@ -300,7 +300,7 @@ Proposed, in priority order:
      actually matters;
    - near-field ROI and an `exclude_mask` input, both cheap and both real;
    - `provenance="inferred"` / `trust` tags, reusing the keys already flowing
-     end-to-end (`nodes_geometry.py:5436`, forwarded at `blender/measured.py:185`).
+     end-to-end (`nodes_geometry.py:5436`, forwarded at `atlas_camera/blender/measured.py:185`).
 3. **Prefer a reference object when one is visible.** It settled this plate in
    one measurement and it is already implemented.
 
