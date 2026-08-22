@@ -83,3 +83,33 @@ def test_export_blender_routes_into_blender_lane(tmp_path, make_atlas_solve):
     assert dest.parent == tmp_path / "proj" / "sh010" / "blender"
     assert dest.is_file()
     assert not (tmp_path / "ignored_dir").exists()
+
+
+def test_export_scene_package_routes_into_scenes_lane(tmp_path, make_atlas_solve):
+    """The .atlas package needs a lane of its own, and it must EXIST.
+
+    `subdir` raises on a name that is not in SHOT_SUBDIRS, deliberately, to
+    catch an exporter typo before it scatters files somewhere odd — so a node
+    that routes to a lane nobody declared does not misfile, it fails outright.
+    AtlasExportScenePackage asked for "scenes" while the tuple ended at
+    "review", and every project-connected export raised
+    `unknown shot subfolder 'scenes'` at execution time. Found live in ComfyUI.
+    """
+    from atlas_camera.comfy.nodes_export import AtlasExportScenePackage
+    from atlas_camera.core.project import build_project
+
+    proj = build_project(str(tmp_path), "proj", "sh010", "standard")
+    (package_dir,) = AtlasExportScenePackage().export(
+        make_atlas_solve(), str(tmp_path / "ignored_dir"), "street_001", project=proj
+    )
+    dest = Path(package_dir)
+    assert dest.parent == tmp_path / "proj" / "sh010" / "scenes"
+    assert dest.is_dir()
+    assert not (tmp_path / "ignored_dir").exists()
+
+
+def test_ensure_tree_creates_the_scenes_lane(tmp_path):
+    from atlas_camera.core.project import build_project
+
+    shot_dir = build_project(str(tmp_path), "proj", "sh010", "standard").ensure_tree()
+    assert (shot_dir / "scenes").is_dir()
