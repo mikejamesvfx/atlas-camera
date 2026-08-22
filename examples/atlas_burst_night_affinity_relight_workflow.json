@@ -1,0 +1,1548 @@
+{
+  "id": "d93f5a08-1e76-5c42-8bd5-3a0e6fc19b74",
+  "revision": 1,
+  "last_node_id": 7,
+  "last_link_id": 12,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AtlasLoadPlate",
+      "pos": [
+        40,
+        828
+      ],
+      "size": [
+        460,
+        280
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "file_path",
+          "name": "file_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "file_path"
+          }
+        },
+        {
+          "localized_name": "input_colorspace",
+          "name": "input_colorspace",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "input_colorspace"
+          }
+        },
+        {
+          "localized_name": "output_colorspace",
+          "name": "output_colorspace",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_colorspace"
+          }
+        },
+        {
+          "localized_name": "raw_data",
+          "name": "raw_data",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "raw_data"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            4,
+            7
+          ]
+        },
+        {
+          "localized_name": "alpha",
+          "name": "alpha",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "plate_ref",
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "links": [
+            5
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasLoadPlate"
+      },
+      "widgets_values": [
+        "atlas_showcase/night/night_168.JPG",
+        "auto",
+        "sRGB - Display",
+        false
+      ],
+      "title": "NIGHT PLATE \u00b7 JPEG, 1/100s ISO 3200, 53mm"
+    },
+    {
+      "id": 2,
+      "type": "AtlasInput",
+      "pos": [
+        1060,
+        217
+      ],
+      "size": [
+        460,
+        1570
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "localized_name": "layers",
+          "name": "layers",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "layers"
+          }
+        },
+        {
+          "localized_name": "mesh",
+          "name": "mesh",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "mesh"
+          }
+        },
+        {
+          "localized_name": "mesh_resolution",
+          "name": "mesh_resolution",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "mesh_resolution"
+          }
+        },
+        {
+          "localized_name": "use_vlm",
+          "name": "use_vlm",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "use_vlm"
+          }
+        },
+        {
+          "localized_name": "vlm_provider",
+          "name": "vlm_provider",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "vlm_provider"
+          }
+        },
+        {
+          "localized_name": "vlm_model",
+          "name": "vlm_model",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "vlm_model"
+          }
+        },
+        {
+          "localized_name": "sky",
+          "name": "sky",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky"
+          }
+        },
+        {
+          "localized_name": "sky_prompt",
+          "name": "sky_prompt",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_prompt"
+          }
+        },
+        {
+          "localized_name": "scope_prompts",
+          "name": "scope_prompts",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "scope_prompts"
+          }
+        },
+        {
+          "localized_name": "inpaint",
+          "name": "inpaint",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "inpaint"
+          }
+        },
+        {
+          "localized_name": "upscale_model",
+          "name": "upscale_model",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "upscale_model"
+          }
+        },
+        {
+          "localized_name": "edge_extend_px",
+          "name": "edge_extend_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "edge_extend_px"
+          }
+        },
+        {
+          "localized_name": "max_edge_factor",
+          "name": "max_edge_factor",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "max_edge_factor"
+          }
+        },
+        {
+          "localized_name": "sky_heuristic",
+          "name": "sky_heuristic",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_heuristic"
+          }
+        },
+        {
+          "localized_name": "normal_edge_deg",
+          "name": "normal_edge_deg",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "normal_edge_deg"
+          }
+        },
+        {
+          "localized_name": "depth_model",
+          "name": "depth_model",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "depth_model"
+          }
+        },
+        {
+          "localized_name": "vlm_scope",
+          "name": "vlm_scope",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "vlm_scope"
+          }
+        },
+        {
+          "localized_name": "sky_inpaint_mode",
+          "name": "sky_inpaint_mode",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_inpaint_mode"
+          }
+        },
+        {
+          "localized_name": "sky_lama_grow_px",
+          "name": "sky_lama_grow_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_lama_grow_px"
+          }
+        },
+        {
+          "localized_name": "sky_sdxl_checkpoint",
+          "name": "sky_sdxl_checkpoint",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_sdxl_checkpoint"
+          }
+        },
+        {
+          "localized_name": "sky_sdxl_positive",
+          "name": "sky_sdxl_positive",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_sdxl_positive"
+          }
+        },
+        {
+          "localized_name": "sky_sdxl_negative",
+          "name": "sky_sdxl_negative",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_sdxl_negative"
+          }
+        },
+        {
+          "localized_name": "sky_sdxl_seed",
+          "name": "sky_sdxl_seed",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sky_sdxl_seed"
+          }
+        },
+        {
+          "localized_name": "retopo_method",
+          "name": "retopo_method",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_method"
+          }
+        },
+        {
+          "localized_name": "retopo_target_vertex_count",
+          "name": "retopo_target_vertex_count",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "retopo_target_vertex_count"
+          }
+        },
+        {
+          "localized_name": "boundary_smooth_iterations",
+          "name": "boundary_smooth_iterations",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "boundary_smooth_iterations"
+          }
+        },
+        {
+          "localized_name": "sub_quad_boundary",
+          "name": "sub_quad_boundary",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sub_quad_boundary"
+          }
+        },
+        {
+          "localized_name": "raw_meta",
+          "name": "raw_meta",
+          "type": "ATLAS_RAW_META",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "links": [
+            3,
+            8,
+            12
+          ]
+        },
+        {
+          "localized_name": "sky_mask",
+          "name": "sky_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasInput"
+      },
+      "widgets_values": [
+        1,
+        "relief",
+        512,
+        false,
+        "lmstudio",
+        "",
+        false,
+        "sky",
+        "",
+        false,
+        "",
+        24,
+        12.0,
+        false,
+        0.0,
+        "Ruicheng/moge-2-vitl-normal",
+        true,
+        "lama",
+        32,
+        "SDXL/sd_xl_base_1.0.safetensors",
+        "clear seamless sky, high detail, no buildings, no trees, no roofs",
+        "building, tree, roof, person, vehicle, text, watermark, blurry",
+        0,
+        "off",
+        2000,
+        0,
+        true
+      ],
+      "title": "SOLVE \u00b7 NO raw_meta \u2014 sensor is ESTIMATED"
+    },
+    {
+      "id": 3,
+      "type": "AtlasCleanPlateLayer",
+      "pos": [
+        1640,
+        40
+      ],
+      "size": [
+        460,
+        1924
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 2
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 3
+        },
+        {
+          "localized_name": "plate_image",
+          "name": "plate_image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "localized_name": "near_m",
+          "name": "near_m",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "near_m"
+          }
+        },
+        {
+          "localized_name": "far_m",
+          "name": "far_m",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "far_m"
+          }
+        },
+        {
+          "localized_name": "near_pct",
+          "name": "near_pct",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "near_pct"
+          }
+        },
+        {
+          "localized_name": "far_pct",
+          "name": "far_pct",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "far_pct"
+          }
+        },
+        {
+          "localized_name": "name",
+          "name": "name",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "name"
+          }
+        },
+        {
+          "localized_name": "priority",
+          "name": "priority",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "priority"
+          }
+        },
+        {
+          "localized_name": "plate_ref",
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": 5,
+          "shape": 7
+        },
+        {
+          "localized_name": "relief_grid",
+          "name": "relief_grid",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "relief_grid"
+          }
+        },
+        {
+          "localized_name": "depth_edge_rel",
+          "name": "depth_edge_rel",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "depth_edge_rel"
+          }
+        },
+        {
+          "localized_name": "exclude_mask",
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "fill_occluded",
+          "name": "fill_occluded",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "fill_occluded"
+          }
+        },
+        {
+          "localized_name": "embed_matte",
+          "name": "embed_matte",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "embed_matte"
+          }
+        },
+        {
+          "localized_name": "layer_matte",
+          "name": "layer_matte",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "edge_extend_px",
+          "name": "edge_extend_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "edge_extend_px"
+          }
+        },
+        {
+          "localized_name": "skirt_bevel",
+          "name": "skirt_bevel",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "skirt_bevel"
+          }
+        },
+        {
+          "localized_name": "frame_outpaint_px",
+          "name": "frame_outpaint_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "frame_outpaint_px"
+          }
+        },
+        {
+          "localized_name": "exclude_choke_cells",
+          "name": "exclude_choke_cells",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "exclude_choke_cells"
+          }
+        },
+        {
+          "localized_name": "band_side",
+          "name": "band_side",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "band_side"
+          }
+        },
+        {
+          "localized_name": "band_split",
+          "name": "band_split",
+          "type": "ATLAS_BAND_SPLIT",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "band_geometry",
+          "name": "band_geometry",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "band_geometry"
+          }
+        },
+        {
+          "localized_name": "geometry_override",
+          "name": "geometry_override",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "geometry_override"
+          }
+        },
+        {
+          "localized_name": "band_ref_mask",
+          "name": "band_ref_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "band_override",
+          "name": "band_override",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "band_override"
+          }
+        },
+        {
+          "localized_name": "max_edge_factor",
+          "name": "max_edge_factor",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "max_edge_factor"
+          }
+        },
+        {
+          "localized_name": "normal_edge_deg",
+          "name": "normal_edge_deg",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "normal_edge_deg"
+          }
+        },
+        {
+          "localized_name": "quad_coherence",
+          "name": "quad_coherence",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "quad_coherence"
+          }
+        },
+        {
+          "localized_name": "sub_quad_boundary",
+          "name": "sub_quad_boundary",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sub_quad_boundary"
+          }
+        },
+        {
+          "localized_name": "silhouette_matte",
+          "name": "silhouette_matte",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "silhouette_matte"
+          }
+        },
+        {
+          "localized_name": "soft_visibility",
+          "name": "soft_visibility",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "soft_visibility"
+          }
+        },
+        {
+          "localized_name": "transition_ribbon",
+          "name": "transition_ribbon",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "transition_ribbon"
+          }
+        },
+        {
+          "localized_name": "ribbon_px",
+          "name": "ribbon_px",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_px"
+          }
+        },
+        {
+          "localized_name": "ribbon_bend",
+          "name": "ribbon_bend",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_bend"
+          }
+        },
+        {
+          "localized_name": "ribbon_adaptive",
+          "name": "ribbon_adaptive",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_adaptive"
+          }
+        },
+        {
+          "localized_name": "ribbon_depth_slope",
+          "name": "ribbon_depth_slope",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_depth_slope"
+          }
+        },
+        {
+          "localized_name": "ribbon_smudge_px",
+          "name": "ribbon_smudge_px",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ribbon_smudge_px"
+          }
+        },
+        {
+          "localized_name": "plate_depth",
+          "name": "plate_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "object_mask",
+          "name": "object_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            6,
+            11
+          ]
+        },
+        {
+          "localized_name": "hole_mask",
+          "name": "hole_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "extend_mask",
+          "name": "extend_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasCleanPlateLayer"
+      },
+      "widgets_values": [
+        0.8,
+        60.0,
+        0.0,
+        0.5,
+        "alley",
+        4.0,
+        160,
+        1.5,
+        true,
+        false,
+        32,
+        0.0,
+        0,
+        2,
+        "manual",
+        "relief",
+        "",
+        "",
+        12.0,
+        0.0,
+        true,
+        true,
+        false,
+        false,
+        false,
+        64.0,
+        -0.3,
+        false,
+        2.0,
+        12.0
+      ],
+      "title": "LAYER \u00b7 alley relief"
+    },
+    {
+      "id": 4,
+      "type": "AtlasViewportControls",
+      "pos": [
+        40,
+        1178
+      ],
+      "size": [
+        440,
+        442
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "config_label",
+          "name": "config_label",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "config_label"
+          }
+        },
+        {
+          "localized_name": "config_path",
+          "name": "config_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "config_path"
+          }
+        },
+        {
+          "localized_name": "working_colorspace",
+          "name": "working_colorspace",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "working_colorspace"
+          }
+        },
+        {
+          "localized_name": "output_colorspace",
+          "name": "output_colorspace",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_colorspace"
+          }
+        },
+        {
+          "localized_name": "display",
+          "name": "display",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "display"
+          }
+        },
+        {
+          "localized_name": "view",
+          "name": "view",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "view"
+          }
+        },
+        {
+          "localized_name": "display_trim",
+          "name": "display_trim",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "display_trim"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "controls",
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "links": [
+            9
+          ]
+        },
+        {
+          "localized_name": "output_profile",
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasViewportControls"
+      },
+      "widgets_values": [
+        "sRGB / Standard",
+        "",
+        "sRGB",
+        "sRGB - Texture",
+        "sRGB - Display",
+        "Un-tone-mapped",
+        1.0
+      ],
+      "title": "OUTPUT DESK \u00b7 OCIO metadata"
+    },
+    {
+      "id": 5,
+      "type": "AtlasBlockoutViewport",
+      "pos": [
+        2220,
+        884
+      ],
+      "size": [
+        1100,
+        900
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 6
+        },
+        {
+          "localized_name": "source_image",
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "localized_name": "resolution",
+          "name": "resolution",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "resolution"
+          }
+        },
+        {
+          "localized_name": "client_data",
+          "name": "client_data",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "client_data"
+          }
+        },
+        {
+          "localized_name": "primary_depth",
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 8,
+          "shape": 7
+        },
+        {
+          "localized_name": "preview_expand",
+          "name": "preview_expand",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "preview_expand"
+          }
+        },
+        {
+          "localized_name": "controls",
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": 9,
+          "shape": 7
+        },
+        {
+          "localized_name": "shot_cam",
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "output_profile",
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": 10,
+          "shape": 7
+        },
+        {
+          "localized_name": "debug_matte",
+          "name": "debug_matte",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "patch_mask",
+          "name": "patch_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "drawn_fill_px",
+          "name": "drawn_fill_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "drawn_fill_px"
+          }
+        },
+        {
+          "localized_name": "clean_plate",
+          "name": "clean_plate",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "shaded",
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "path_frames",
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "camera_path",
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": []
+        },
+        {
+          "localized_name": "patch_azimuth_view",
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_elevation_view",
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_distance",
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_prompt",
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_exact",
+          "name": "patch_exact",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_render_mask",
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "localized_name": "drawn_mask",
+          "name": "drawn_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "draw_report",
+          "name": "draw_report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        1024,
+        "",
+        1.0,
+        96
+      ],
+      "title": "VIEWPORT \u00b7 push down the alley"
+    },
+    {
+      "id": 6,
+      "type": "AtlasDebugReport",
+      "pos": [
+        2220,
+        528
+      ],
+      "size": [
+        460,
+        286
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 11
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 12,
+          "shape": 7
+        },
+        {
+          "localized_name": "file_path",
+          "name": "file_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "file_path"
+          }
+        },
+        {
+          "localized_name": "status_1",
+          "name": "status_1",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "status_2",
+          "name": "status_2",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "status_3",
+          "name": "status_3",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "status_4",
+          "name": "status_4",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "vlm_report",
+          "name": "vlm_report",
+          "type": "STRING",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "json_path",
+          "name": "json_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasDebugReport"
+      },
+      "widgets_values": [
+        "atlas_debug/affinity_showcase_night.json"
+      ],
+      "title": "REPORT \u00b7 read this, not the picture"
+    },
+    {
+      "id": 7,
+      "type": "Note",
+      "pos": [
+        40,
+        1690
+      ],
+      "size": [
+        900,
+        1100
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "NIGHT PLATE \u2014 low light, no RAW, no parallax, and the report saying so.\n\nWHAT THIS IS\nOne frame from a twelve-frame handheld burst: 1/100s, ISO 3200, 53mm, shot at dusk. It is included because\nit is where this pipeline is WEAKEST, not where it looks best. Three things are missing at once, and the\ngraph is honest about all three.\n\n1 \u00b7 NO PARALLAX \u2014 measured, not assumed\nThe obvious move is to feed all twelve frames to AtlasMultiViewSolveBurst and register a rig. That was tried\nagainst this exact folder. It refused, twice, and both refusals were correct:\n\n    [degenerate_geometry]   Photo 1 needs two clear orthogonal architectural vanishing points.\n                            Sparse correspondence cannot safely guess world-up.\n    [ambiguous_motion_model] neither motion model passed checks;\n                            essential(inliers=101, cells=8, error_px=0.30, angle_deg=0.359666)\n\nangle_deg 0.36 is the answer. Twelve frames in three seconds of hand tremor is an EXPOSURE burst, not a\nbaseline. There is no parallax to triangulate, so there is no rig \u2014 and the engine says so instead of\nreturning a confident wrong one. A burst is not a multi-view set just because it has many frames.\nMove LATERALLY if you want a rig.\n\nlearned_anchor_fallback / learned_scale_fallback exist for the first failure and were enough to clear it.\nThey are OFF by default on purpose: switching them on is a decision to accept a LEARNED quantity where a\nmeasured one was wanted, and that decision should be visible in the graph.\n\n2 \u00b7 NO raw_meta \u2014 the solve estimates the sensor\nThese are JPEGs. There is no RAW alongside them, so nothing pins the intrinsics and the solver falls back to\nassuming a full-frame sensor. That is exactly the gap atlas_raw_affinity_cleanplate_workflow closes: on the\nboiler plate the same fallback reported 26.8mm / confidence 0.877 where the RAF's measured 23.5mm sensor\ngave 20.6mm / confidence 0.94. Shoot RAW.\n\n3 \u00b7 NO SKY, NO HORIZON \u2014 so MoGe, not the metric outdoor model\nDepth model doctrine sends exteriors to V2-Metric-Outdoor, but that model anchors on sky and horizon and a\nnight alley has neither. MoGe is the choice here. Doctrine is a default, not a rule to follow off a cliff.\n\nTHE AFFINITY LEG FOR NIGHT PLATES\nGenerative fill on a night plate regenerates the LIGHTING, not just the geometry: practicals move, colour\ntemperature drifts, wet-asphalt reflections get reinvented. Confine harder than you would by day:\n\n    python tools/paint_confine_plate.py --original <exr> --edited <affinity exr>         --mask <mask>.png --out <confined>.exr --out-mask <authorised>.png         --drop-px 200 --dilate-px 24 --feather-px 16\n\nA wider feather buys a smoother join in a noisy plate; it also enlarges the authorised region, and the\nauthorised mask this tool writes already accounts for that. Hand THAT mask to the scorer, never the raw\nobject mask \u2014 a feather is spill unless the authorised mask includes it."
+      ],
+      "title": "READ ME \u00b7 the weakest case, on purpose"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      3,
+      2,
+      2,
+      3,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      4,
+      1,
+      0,
+      3,
+      2,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      2,
+      3,
+      9,
+      "ATLAS_PLATE_REF"
+    ],
+    [
+      6,
+      3,
+      0,
+      5,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      7,
+      1,
+      0,
+      5,
+      1,
+      "IMAGE"
+    ],
+    [
+      8,
+      2,
+      2,
+      5,
+      4,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      9,
+      4,
+      0,
+      5,
+      6,
+      "ATLAS_VIEWPORT_LINK"
+    ],
+    [
+      10,
+      4,
+      1,
+      5,
+      8,
+      "ATLAS_OUTPUT_PROFILE"
+    ],
+    [
+      11,
+      3,
+      0,
+      6,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      12,
+      2,
+      2,
+      6,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ]
+  ],
+  "groups": [
+    {
+      "title": "NIGHT PLATE \u00b7 no RAW",
+      "bounding": [
+        -5,
+        129,
+        1570,
+        1703
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "LAYER",
+      "bounding": [
+        1595,
+        -48,
+        550,
+        2057
+      ],
+      "color": "#8A3F3F",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "VIEWPORT \u00b7 colour desk",
+      "bounding": [
+        -5,
+        440,
+        3370,
+        1389
+      ],
+      "color": "#446e3f",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "READ ME",
+      "bounding": [
+        -5,
+        1602,
+        990,
+        1233
+      ],
+      "color": "#653",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.58,
+      "offset": [
+        35,
+        85
+      ]
+    },
+    "frontendVersion": "1.25.11",
+    "workflowRendererVersion": "LG",
+    "atlas_shipping_set": "v1",
+    "atlas_notes": "Night plate: no parallax, no raw_meta, and the report saying so."
+  },
+  "version": 0.4
+}

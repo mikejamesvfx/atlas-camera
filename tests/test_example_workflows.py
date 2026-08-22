@@ -80,6 +80,7 @@ def test_examples_directory_has_ui_workflows():
     names = sorted(n for n, _ in _WORKFLOWS)
     assert names == ["atlas_blender_measured_primitives_workflow.json",
                      "atlas_burst_multiview_solve_workflow.json",
+                     "atlas_burst_night_affinity_relight_workflow.json",
                      "atlas_burst_photographed_hole_patch_workflow.json",
                      "atlas_cleanplate_depth_layer_workflow.json",
                      "atlas_export_fanout_workflow.json",
@@ -89,7 +90,10 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_multiview_raw_qwen_workflow.json",
                      "atlas_quickstart_solve_project_export_workflow.json",
                      "atlas_qwen_multiangle_hole_patch_workflow.json",
-                     "atlas_qwen_roi_registered_patch_workflow.json"]
+                     "atlas_qwen_roi_registered_patch_workflow.json",
+                     "atlas_raw_affinity_cleanplate_workflow.json",
+                     "atlas_raw_multiview_affinity_patch_workflow.json",
+                     "atlas_raw_street_affinity_declutter_workflow.json"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])
