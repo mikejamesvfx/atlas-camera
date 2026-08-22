@@ -342,6 +342,25 @@ def test_a_plate_that_has_expired_is_complained_about(tmp_path):
     assert any("was named but is not" in complaint for complaint in result.complaints)
 
 
+def test_a_plate_that_was_never_given_is_complained_about_too(tmp_path):
+    """Absent and expired are both silent to the artist unless both are said.
+
+    The complaint used to fire only when a path was NAMED and missing; supplying
+    nothing returned early with no note at all. So a package could be written
+    with no plate, no geometry and nothing on the node to explain why the scene
+    it opens is inert — the exact failure the node's own comment forbids.
+    Found live: a real export produced 6 planes, no imagery, no geometry, and a
+    clean node.
+    """
+
+    result = write_atlas_package(
+        solve_with(wall(), image_path=None), tmp_path / "street.atlas"
+    )
+
+    assert any("no plate" in complaint for complaint in result.complaints)
+    assert any("no geometry" in complaint for complaint in result.complaints)
+
+
 def test_the_relief_mesh_is_observed_not_created(tmp_path):
     mesh = tmp_path / "relief.glb"
     mesh.write_bytes(b"glTF")

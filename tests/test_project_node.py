@@ -99,9 +99,12 @@ def test_export_scene_package_routes_into_scenes_lane(tmp_path, make_atlas_solve
     from atlas_camera.core.project import build_project
 
     proj = build_project(str(tmp_path), "proj", "sh010", "standard")
-    (package_dir,) = AtlasExportScenePackage().export(
+    outcome = AtlasExportScenePackage().export(
         make_atlas_solve(), str(tmp_path / "ignored_dir"), "street_001", project=proj
     )
+    # A solve with no plate and no mesh carries complaints, and complaints come
+    # back as the UI form rather than a bare tuple.
+    (package_dir,) = outcome["result"] if isinstance(outcome, dict) else outcome
     dest = Path(package_dir)
     assert dest.parent == tmp_path / "proj" / "sh010" / "scenes"
     assert dest.is_dir()

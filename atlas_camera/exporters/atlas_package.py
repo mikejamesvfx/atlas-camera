@@ -145,6 +145,14 @@ def _adopt_plate(
 ) -> str | None:
     candidate = override or getattr(solve, "image_path", None)
     if not candidate:
+        # ABSENT is as load-bearing as EXPIRED and just as invisible: a package
+        # with no plate opens as an inert scene, and without a note the artist
+        # has nothing to read but the silence.
+        complaints.append(
+            "no plate was given and the solve names none, so the package has "
+            "no plate; nothing in the editor can project or be measured "
+            "against it. Connect plate_path."
+        )
         return None
 
     source = Path(str(candidate))
@@ -171,6 +179,11 @@ def _adopt_geometry(
     files: dict[str, Path],
 ) -> str | None:
     if not candidate:
+        complaints.append(
+            "no geometry was given, so the package carries a camera and planes "
+            "but nothing to edit. Connect relief_mesh_path from "
+            "AtlasExportReliefMesh."
+        )
         return None
     source = Path(str(candidate))
     if not source.is_file():
