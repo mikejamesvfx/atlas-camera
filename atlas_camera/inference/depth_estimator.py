@@ -778,6 +778,60 @@ def _require_moge() -> Any:
     return MoGeModel
 
 
+_XFORMERS_DISPATCH_PROBED: dict[str, bool] = {}
+
+
+def _disable_xformers_if_undispatchable(device: str) -> bool:
+    """Fall back to standard attention when xFormers has no kernel for this GPU.
+
+    DINOv2 guards xFormers on IMPORTABILITY (``try: from xformers.ops import
+    ...``), but importability is not dispatchability: on a GPU newer than the
+    installed wheel's kernels — Blackwell/sm_120 was the case that surfaced this
+    — the import succeeds and ``memory_efficient_attention`` then raises
+    ``NotImplementedError: No operator found`` mid-forward, which reads as a
+    broken model rather than a missing kernel.
+
+    So probe the real call once per device and, if it cannot dispatch, set
+    ``XFORMERS_DISABLED`` (which DINOv2 honours) before MoGe is imported. When
+    MoGe is ALREADY imported the env var has been read, so flip the module flags
+    too. Returns True when xFormers was turned off.
+    """
+
+    cached = _XFORMERS_DISPATCH_PROBED.get(device)
+    if cached is not None:
+        return cached
+
+    disabled = False
+    if str(device).startswith("cuda"):
+        try:
+            import torch
+            from xformers.ops import memory_efficient_attention
+        except Exception:  # noqa: BLE001 - absent xformers already falls back
+            _XFORMERS_DISPATCH_PROBED[device] = False
+            return False
+        try:
+            probe = torch.zeros((1, 4, 1, 8), dtype=torch.float16, device=device)
+            memory_efficient_attention(probe, probe, probe)
+        except NotImplementedError:
+            os.environ["XFORMERS_DISABLED"] = "1"
+            disabled = True
+        except Exception:  # noqa: BLE001 - any other failure is not ours to judge
+            disabled = False
+
+    if disabled:
+        for name in (
+            "moge.model.dinov2.layers.attention",
+            "moge.model.dinov2.layers.block",
+            "moge.model.dinov2.layers.swiglu_ffn",
+        ):
+            module = sys.modules.get(name)
+            if module is not None and getattr(module, "XFORMERS_AVAILABLE", False):
+                module.XFORMERS_AVAILABLE = False
+
+    _XFORMERS_DISPATCH_PROBED[device] = disabled
+    return disabled
+
+
 def _get_moge_model(model_id: str, device: str, checkpoint_path: str = ""):
     """Load (and cache) a MoGe model, optionally from a LOCAL checkpoint.
 
@@ -794,6 +848,8 @@ def _get_moge_model(model_id: str, device: str, checkpoint_path: str = ""):
     cached = _MOGE_MODEL_CACHE.get(key)
     if cached is not None:
         return cached
+    # Must run BEFORE the import: DINOv2 reads XFORMERS_DISABLED at module load.
+    _disable_xformers_if_undispatchable(device)
     MoGeModel = _require_moge()
     source = model_id
     if checkpoint_path:

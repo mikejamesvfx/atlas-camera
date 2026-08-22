@@ -152,6 +152,11 @@ def blender_point_from_atlas(x: float, y: float, z: float) -> tuple[float, float
     return (float(x), -float(z), float(y))
 
 
+def atlas_point_from_blender(x: float, y: float, z: float) -> tuple[float, float, float]:
+    """Blender Z-up point -> Atlas Y-up: ``(x, y, z) -> (x, z, -y)``."""
+    return (float(x), float(z), -float(y))
+
+
 def blender_matrix_from_atlas(matrix: Matrix4Like) -> list[list[float]]:
     """Atlas Y-up world matrix -> Blender Z-up: ``M_blender = T @ M_atlas``.
 
@@ -165,5 +170,20 @@ def blender_matrix_from_atlas(matrix: Matrix4Like) -> list[list[float]]:
         [matrix[0][0], matrix[0][1], matrix[0][2], matrix[0][3]],
         [-matrix[2][0], -matrix[2][1], -matrix[2][2], -matrix[2][3]],
         [matrix[1][0], matrix[1][1], matrix[1][2], matrix[1][3]],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+
+
+def atlas_matrix_from_blender(matrix: Matrix4Like) -> list[list[float]]:
+    """Blender Z-up world matrix -> Atlas Y-up: ``M_atlas = T^-1 @ M_blender``.
+
+    This is the exact inverse of :func:`blender_matrix_from_atlas`. It belongs
+    at this adapter boundary so imported Blender truth never leaks Z-up values
+    into Atlas World evaluation.
+    """
+    return [
+        [matrix[0][0], matrix[0][1], matrix[0][2], matrix[0][3]],
+        [matrix[2][0], matrix[2][1], matrix[2][2], matrix[2][3]],
+        [-matrix[1][0], -matrix[1][1], -matrix[1][2], -matrix[1][3]],
         [0.0, 0.0, 0.0, 1.0],
     ]

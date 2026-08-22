@@ -70,8 +70,15 @@ def summarize_viewport_layer(source: dict) -> dict:
     verts = sum(len(p.get("vertices") or []) for p in geometry) // 3
     metadata = [p.get("metadata") or {} for p in geometry]
     filled_cells = sum(int(m.get("n_filled_cells") or 0) for m in metadata)
-    torn = [float(m["torn_fraction"]) for m in metadata
-            if m.get("torn_fraction") is not None]
+    # Prefer the whole-quad figure, exactly as the QA gate does
+    # (nodes_qa._layer_metrics). `torn_fraction` counts EMITTED faces against
+    # whole-quad slots, and a sub-quad cut emits faces from PARTIAL quads — so
+    # with `sub_quad_boundary` on the count can exceed the slot count and the
+    # "fraction" goes NEGATIVE. A boiler cleanplate layer reported -0.0932,
+    # which is not a fraction of anything. The whole-quad figure is the one
+    # that stays comparable across the cut setting.
+    torn = [float(m.get("torn_fraction_whole_quad", m["torn_fraction"]))
+            for m in metadata if m.get("torn_fraction") is not None]
     stretch = [float(m["stretch_ratio_p95"]) for m in metadata
                if m.get("stretch_ratio_p95") is not None]
     return {
