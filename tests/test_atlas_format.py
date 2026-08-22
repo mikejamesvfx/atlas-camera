@@ -361,6 +361,42 @@ def test_a_plate_that_was_never_given_is_complained_about_too(tmp_path):
     assert any("no geometry" in complaint for complaint in result.complaints)
 
 
+def test_the_solve_is_written_even_when_no_solve_path_is_given(tmp_path):
+    """`atlas/` is advertised as the solve this package was produced from.
+
+    It was filled only when the caller handed over a PATH, and the ComfyUI node
+    has no such input — so every real package shipped that lane empty while the
+    producer held the solve in memory the whole time. A package that cannot show
+    the solve it came from cannot be audited, which is most of the point.
+    """
+
+    result = write_atlas_package(
+        solve_with(wall()), tmp_path / "street.atlas", scene_id="street_001"
+    )
+
+    written = result.package_dir / "atlas" / "atlas_solve.json"
+    assert written.is_file(), "the solve is in hand; the lane must not ship empty"
+
+    document = json.loads(result.document.read_text(encoding="utf-8"))
+    assert document["source"]["solve"] == "atlas/atlas_solve.json"
+
+
+def test_a_supplied_solve_path_still_wins(tmp_path):
+    """An explicit path is adopted as-is — the producer must not overwrite the
+    file the caller nominated with its own re-serialisation."""
+
+    nominated = tmp_path / "from_disk.json"
+    nominated.write_text(solve_with(wall()).to_json(indent=2), encoding="utf-8")
+
+    result = write_atlas_package(
+        solve_with(wall()), tmp_path / "street.atlas", solve_path=str(nominated)
+    )
+
+    document = json.loads(result.document.read_text(encoding="utf-8"))
+    assert document["source"]["solve"] == "atlas/from_disk.json"
+    assert not (result.package_dir / "atlas" / "atlas_solve.json").exists()
+
+
 def test_the_relief_mesh_is_observed_not_created(tmp_path):
     mesh = tmp_path / "relief.glb"
     mesh.write_bytes(b"glTF")

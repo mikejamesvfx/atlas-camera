@@ -1,15 +1,15 @@
 {
   "id": "99f2f654-6a3c-5853-b6d6-adc33295a89f",
   "revision": 1,
-  "last_node_id": 12,
-  "last_link_id": 21,
+  "last_node_id": 13,
+  "last_link_id": 23,
   "nodes": [
     {
       "id": 1,
       "type": "AtlasProject",
       "pos": [
         40,
-        418
+        415
       ],
       "size": [
         400,
@@ -76,8 +76,8 @@
           "name": "project",
           "type": "ATLAS_PROJECT",
           "links": [
-            18,
-            20
+            20,
+            22
           ]
         }
       ],
@@ -98,7 +98,7 @@
       "type": "LoadImage",
       "pos": [
         40,
-        822
+        819
       ],
       "size": [
         360,
@@ -127,9 +127,9 @@
           "links": [
             1,
             2,
-            9,
-            12,
-            17
+            11,
+            14,
+            19
           ]
         },
         {
@@ -153,7 +153,7 @@
       "type": "AtlasLearnedSolveFromImage",
       "pos": [
         980,
-        773
+        758
       ],
       "size": [
         440,
@@ -283,7 +283,7 @@
       "type": "AtlasDepthMap",
       "pos": [
         1540,
-        823
+        792
       ],
       "size": [
         440,
@@ -395,8 +395,9 @@
           "links": [
             5,
             7,
-            10,
-            13
+            9,
+            12,
+            15
           ]
         }
       ],
@@ -664,14 +665,14 @@
     },
     {
       "id": 6,
-      "type": "AtlasOcclusionGraph",
+      "type": "AtlasDeriveWalls",
       "pos": [
         2650,
-        871
+        738
       ],
       "size": [
         430,
-        140
+        406
       ],
       "flags": {},
       "order": 5,
@@ -687,8 +688,64 @@
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 7,
+          "link": 7
+        },
+        {
+          "localized_name": "max_walls",
+          "name": "max_walls",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "max_walls"
+          }
+        },
+        {
+          "localized_name": "max_objects",
+          "name": "max_objects",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "max_objects"
+          }
+        },
+        {
+          "localized_name": "distance_modes",
+          "name": "distance_modes",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "distance_modes"
+          }
+        },
+        {
+          "localized_name": "exclude_mask",
+          "name": "exclude_mask",
+          "type": "MASK",
+          "link": null,
           "shape": 7
+        },
+        {
+          "localized_name": "ground_anchor",
+          "name": "ground_anchor",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "ground_anchor"
+          }
+        },
+        {
+          "localized_name": "backdrop",
+          "name": "backdrop",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "backdrop"
+          }
         }
       ],
       "outputs": [
@@ -708,21 +765,27 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "AtlasOcclusionGraph"
+        "Node name for S&R": "AtlasDeriveWalls"
       },
-      "widgets_values": [],
-      "title": "5 \u00b7 OCCLUSION GRAPH \u00b7 this is what CLASSIFIES the planes"
+      "widgets_values": [
+        4,
+        0,
+        1,
+        true,
+        "measured_only"
+      ],
+      "title": "5 \u00b7 PLANES \u00b7 RANSAC walls, ground-anchored"
     },
     {
       "id": 7,
-      "type": "AtlasSceneHealthGate",
+      "type": "AtlasOcclusionGraph",
       "pos": [
         3200,
-        744
+        871
       ],
       "size": [
         430,
-        394
+        140
       ],
       "flags": {},
       "order": 6,
@@ -735,16 +798,67 @@
           "link": 8
         },
         {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 9,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            10
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasOcclusionGraph"
+      },
+      "widgets_values": [],
+      "title": "6 \u00b7 OCCLUSION GRAPH \u00b7 this is what CLASSIFIES the planes"
+    },
+    {
+      "id": 8,
+      "type": "AtlasSceneHealthGate",
+      "pos": [
+        3750,
+        744
+      ],
+      "size": [
+        430,
+        394
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 10
+        },
+        {
           "localized_name": "source_image",
           "name": "source_image",
           "type": "IMAGE",
-          "link": 9
+          "link": 11
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 10,
+          "link": 12,
           "shape": 7
         },
         {
@@ -812,9 +926,9 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            11,
-            16,
-            19
+            13,
+            18,
+            21
           ]
         },
         {
@@ -832,21 +946,21 @@
         false,
         ""
       ],
-      "title": "6 \u00b7 SCENE HEALTH \u00b7 acknowledge before export"
+      "title": "7 \u00b7 SCENE HEALTH \u00b7 acknowledge before export"
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "AtlasViewportControls",
       "pos": [
         40,
-        1324
+        1321
       ],
       "size": [
         440,
         442
       ],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -926,7 +1040,7 @@
           "name": "controls",
           "type": "ATLAS_VIEWPORT_LINK",
           "links": [
-            14
+            16
           ]
         },
         {
@@ -934,7 +1048,7 @@
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
           "links": [
-            15
+            17
           ]
         }
       ],
@@ -953,10 +1067,10 @@
       "title": "OUTPUT DESK \u00b7 OCIO metadata"
     },
     {
-      "id": 9,
+      "id": 10,
       "type": "AtlasBlockoutViewport",
       "pos": [
-        3750,
+        4300,
         1218
       ],
       "size": [
@@ -964,20 +1078,20 @@
         680
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 11
+          "link": 13
         },
         {
           "localized_name": "source_image",
           "name": "source_image",
           "type": "IMAGE",
-          "link": 12
+          "link": 14
         },
         {
           "localized_name": "resolution",
@@ -1003,7 +1117,7 @@
           "localized_name": "primary_depth",
           "name": "primary_depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 13,
+          "link": 15,
           "shape": 7
         },
         {
@@ -1020,7 +1134,7 @@
           "localized_name": "controls",
           "name": "controls",
           "type": "ATLAS_VIEWPORT_LINK",
-          "link": 14,
+          "link": 16,
           "shape": 7
         },
         {
@@ -1034,7 +1148,7 @@
           "localized_name": "output_profile",
           "name": "output_profile",
           "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 15,
+          "link": 17,
           "shape": 7
         },
         {
@@ -1170,13 +1284,13 @@
         1.0,
         96
       ],
-      "title": "7 \u00b7 VIEWPORT \u00b7 look through the recovered camera"
+      "title": "8 \u00b7 VIEWPORT \u00b7 look through the recovered camera"
     },
     {
-      "id": 10,
+      "id": 11,
       "type": "AtlasExportReliefMesh",
       "pos": [
-        3750,
+        4300,
         40
       ],
       "size": [
@@ -1184,20 +1298,20 @@
         1108
       ],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 16
+          "link": 18
         },
         {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 17
+          "link": 19
         },
         {
           "localized_name": "output_dir",
@@ -1383,7 +1497,7 @@
           "localized_name": "project",
           "name": "project",
           "type": "ATLAS_PROJECT",
-          "link": 18,
+          "link": 20,
           "shape": 7
         }
       ],
@@ -1399,7 +1513,7 @@
           "name": "glb_path",
           "type": "STRING",
           "links": [
-            21
+            23
           ]
         },
         {
@@ -1438,13 +1552,13 @@
         30.0,
         false
       ],
-      "title": "8a \u00b7 GEOMETRY \u00b7 GLB, self-contained, texture embedded"
+      "title": "9a \u00b7 GEOMETRY \u00b7 GLB, self-contained, texture embedded"
     },
     {
-      "id": 11,
+      "id": 12,
       "type": "AtlasExportScenePackage",
       "pos": [
-        4770,
+        5320,
         480
       ],
       "size": [
@@ -1452,14 +1566,14 @@
         382
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 19
+          "link": 21
         },
         {
           "localized_name": "output_dir",
@@ -1495,7 +1609,7 @@
           "localized_name": "relief_mesh_path",
           "name": "relief_mesh_path",
           "type": "STRING",
-          "link": 21,
+          "link": 23,
           "shape": 7,
           "widget": {
             "name": "relief_mesh_path"
@@ -1515,7 +1629,7 @@
           "localized_name": "project",
           "name": "project",
           "type": "ATLAS_PROJECT",
-          "link": 20,
+          "link": 22,
           "shape": 7
         }
       ],
@@ -1537,21 +1651,21 @@
         "",
         "obs_001"
       ],
-      "title": "8b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back"
+      "title": "9b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back"
     },
     {
-      "id": 12,
+      "id": 13,
       "type": "Note",
       "pos": [
         40,
-        1836
+        1833
       ],
       "size": [
         820,
         520
       ],
       "flags": {},
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -1559,7 +1673,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "PHOTOGRAPH -> .atlas SCENE PACKAGE \u2014 the format Atlas Scene opens.\n\nEvery other export hands one DCC a camera and the conversation ends there. This hands over the whole\nscene, and it is meant to come BACK edited \u2014 so the package carries what a REVIEWER needs to judge it\n(which plane licensed a construction, what the fit was worth, what the solve said about its own scale),\nnot only what a renderer needs to draw it.\n\nTHREE INPUTS, AND WHY EACH IS WIRED\n\n1. AtlasOcclusionGraph is not decoration. Plane classification is READ from the occlusion graph, which\n   already decides it. Without this node upstream every plane arrives unclassified and therefore\n   licenses completion_policy \"none\" \u2014 the editor will refuse to extrude on any of them, which is the\n   correct outcome for a surface nobody has vouched for, and a baffling one if you did not know why.\n   This is the single most common reason a package opens inert.\n\n2. AtlasExportReliefMesh writes GLB and its glb_path feeds relief_mesh_path. GLB rather than OBJ because\n   the package should be self-contained: the writer embeds its texture and needs no sidecar MTL. Without\n   geometry the package has a camera and planes and nothing to edit.\n\n3. plate_path is given EXPLICITLY, as a path relative to ComfyUI's working directory. It has to be:\n   AtlasLearnedSolveFromImage solves from a temporary file and deletes it, so the solve's own image_path\n   names something already gone by the time the exporter runs. Point this at your own plate when you\n   swap the photograph.\n\nThe node COMPLAINS on its face for each of these that is missing, naming the input to connect. An\nexport that quietly drops the plate produces a scene whose dead features nobody can explain.\n\nWHERE IT LANDS\nAtlasProject routes the package into <project_root>/<project>/<shot>/scenes/<scene_id>.atlas \u2014 the\nscenes lane, alongside plates/, solves/, nuke/, maya/ and the rest. Inside:\n  scene.json   the document, validated against the format's own checklist BEFORE it is written\n  atlas/       the solve, kept as produced\n  imagery/     the plate\n  geometry/    the relief mesh\n  mattes/      per-layer mattes as FILES with digests, decoded out of the JSON\n  history/     the ledger, opened by the export itself\n\nSCALE\nThe package records the solve's scale verdict verbatim, including whether it is safe to export. A single\nphotograph has an inherent scale ambiguity; if this reads assumed_default, reach for AtlasScaleOverride\nor a scale reference before anyone builds on it."
+        "PHOTOGRAPH -> .atlas SCENE PACKAGE \u2014 the format Atlas Scene opens.\n\nEvery other export hands one DCC a camera and the conversation ends there. This hands over the whole\nscene, and it is meant to come BACK edited \u2014 so the package carries what a REVIEWER needs to judge it\n(which plane licensed a construction, what the fit was worth, what the solve said about its own scale),\nnot only what a renderer needs to draw it.\n\nTHREE INPUTS, AND WHY EACH IS WIRED\n\n1. AtlasOcclusionGraph is not decoration. Plane classification is READ from the occlusion graph, which\n   already decides it. Without this node upstream every plane arrives unclassified and therefore\n   licenses completion_policy \"none\" \u2014 the editor will refuse to extrude on any of them, which is the\n   correct outcome for a surface nobody has vouched for, and a baffling one if you did not know why.\n   This is the single most common reason a package opens inert.\n\n   AtlasDeriveWalls feeds it, and the ORDER of those two is load-bearing. Derive nodes clobber prior\n   PROXY_ROLE geometry by design, so wall extraction sits between the relief mesh and the occlusion\n   graph. Run it the other way round and it removes the planes the graph has just classified. Without\n   it the package carries exactly one plane \u2014 the relief mesh's backdrop \u2014 which validates, classifies\n   and gives an editor almost nothing to work with.\n\n2. AtlasExportReliefMesh writes GLB and its glb_path feeds relief_mesh_path. GLB rather than OBJ because\n   the package should be self-contained: the writer embeds its texture and needs no sidecar MTL. Without\n   geometry the package has a camera and planes and nothing to edit.\n\n3. plate_path is given EXPLICITLY, as a path relative to ComfyUI's working directory. It has to be:\n   AtlasLearnedSolveFromImage solves from a temporary file and deletes it, so the solve's own image_path\n   names something already gone by the time the exporter runs. Point this at your own plate when you\n   swap the photograph.\n\nThe node COMPLAINS on its face for each of these that is missing, naming the input to connect. An\nexport that quietly drops the plate produces a scene whose dead features nobody can explain.\n\nWHERE IT LANDS\nAtlasProject routes the package into <project_root>/<project>/<shot>/scenes/<scene_id>.atlas \u2014 the\nscenes lane, alongside plates/, solves/, nuke/, maya/ and the rest. Inside:\n  scene.json   the document, validated against the format's own checklist BEFORE it is written\n  atlas/       the solve, kept as produced\n  imagery/     the plate\n  geometry/    the relief mesh\n  mattes/      per-layer mattes as FILES with digests, decoded out of the JSON\n  history/     the ledger, opened by the export itself\n\nSCALE\nThe package records the solve's scale verdict verbatim, including whether it is safe to export. A single\nphotograph has an inherent scale ambiguity; if this reads assumed_default, reach for AtlasScaleOverride\nor a scale reference before anyone builds on it."
       ],
       "title": "READ ME \u00b7 why the occlusion graph is not optional"
     }
@@ -1631,116 +1745,132 @@
     ],
     [
       9,
-      2,
-      0,
-      7,
-      1,
-      "IMAGE"
-    ],
-    [
-      10,
       4,
       0,
       7,
-      2,
+      1,
       "ATLAS_DEPTH_MAP"
     ],
     [
-      11,
+      10,
       7,
       0,
-      9,
+      8,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      12,
+      11,
       2,
       0,
-      9,
+      8,
       1,
       "IMAGE"
     ],
     [
-      13,
+      12,
       4,
       0,
-      9,
+      8,
+      2,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      13,
+      8,
+      0,
+      10,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      14,
+      2,
+      0,
+      10,
+      1,
+      "IMAGE"
+    ],
+    [
+      15,
+      4,
+      0,
+      10,
       4,
       "ATLAS_DEPTH_MAP"
     ],
     [
-      14,
-      8,
-      0,
+      16,
       9,
+      0,
+      10,
       6,
       "ATLAS_VIEWPORT_LINK"
     ],
     [
-      15,
-      8,
-      1,
+      17,
       9,
+      1,
+      10,
       8,
       "ATLAS_OUTPUT_PROFILE"
     ],
     [
-      16,
-      7,
+      18,
+      8,
       0,
-      10,
+      11,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      17,
+      19,
       2,
       0,
-      10,
+      11,
       1,
       "IMAGE"
     ],
     [
-      18,
-      1,
-      0,
-      10,
-      20,
-      "ATLAS_PROJECT"
-    ],
-    [
-      19,
-      7,
-      0,
-      11,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
       20,
       1,
       0,
       11,
-      6,
+      20,
       "ATLAS_PROJECT"
     ],
     [
       21,
-      10,
+      8,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      22,
       1,
+      0,
+      12,
+      6,
+      "ATLAS_PROJECT"
+    ],
+    [
+      23,
       11,
+      1,
+      12,
       4,
       "STRING"
     ]
   ],
   "groups": [
     {
-      "title": "1 \u00b7 PHOTOGRAPH \u2192 CAMERA \u2192 GEOMETRY \u2192 CLASSIFICATION",
+      "title": "1 \u00b7 PHOTOGRAPH \u2192 CAMERA \u2192 GEOMETRY \u2192 PLANES \u2192 CLASSIFICATION",
       "bounding": [
         -5,
-        330,
-        3130,
+        327,
+        3680,
         1481
       ],
       "color": "#35536b",
@@ -1752,8 +1882,8 @@
       "bounding": [
         -5,
         656,
-        4700,
-        1745
+        5250,
+        1742
       ],
       "color": "#6b5a35",
       "font_size": 24,
@@ -1762,7 +1892,7 @@
     {
       "title": "3 \u00b7 WRITE THE SCENE \u00b7 this is what Atlas Scene opens",
       "bounding": [
-        3705,
+        4255,
         -48,
         1570,
         1241

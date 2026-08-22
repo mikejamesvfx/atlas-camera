@@ -1086,15 +1086,17 @@
   "AtlasDeriveWalls": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": 0,
+   "example_workflows": 1,
    "dedicated_tests": 5,
    "tests": 7,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",

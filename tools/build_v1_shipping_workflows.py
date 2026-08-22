@@ -904,6 +904,12 @@ THREE INPUTS, AND WHY EACH IS WIRED
    correct outcome for a surface nobody has vouched for, and a baffling one if you did not know why.
    This is the single most common reason a package opens inert.
 
+   AtlasDeriveWalls feeds it, and the ORDER of those two is load-bearing. Derive nodes clobber prior
+   PROXY_ROLE geometry by design, so wall extraction sits between the relief mesh and the occlusion
+   graph. Run it the other way round and it removes the planes the graph has just classified. Without
+   it the package carries exactly one plane — the relief mesh's backdrop — which validates, classifies
+   and gives an editor almost nothing to work with.
+
 2. AtlasExportReliefMesh writes GLB and its glb_path feeds relief_mesh_path. GLB rather than OBJ because
    the package should be self-contained: the writer embeds its texture and needs no sidecar MTL. Without
    geometry the package has a camera and planes and nothing to edit.
@@ -975,24 +981,34 @@ def build_scene_package(object_info: dict, layout) -> dict:
         "depth_edge_rel": 0.5,
         "sky_heuristic": False,
     }, size=(430, 320))
+    walls = graph.node("AtlasDeriveWalls", title="5 \u00b7 PLANES \u00b7 RANSAC walls, ground-anchored", values={
+        "max_walls": 4,
+        "max_objects": 0,
+        "distance_modes": 1,
+        # Wall distance from the ray through the base pixel x the analytic Y=0
+        # ground, which is pure geometry and immune to monocular depth's
+        # scale+shift error. On a ground-based plate that is the better anchor.
+        "ground_anchor": True,
+        "backdrop": "measured_only",
+    }, size=(430, 260))
     occlusion = graph.node(
         "AtlasOcclusionGraph",
-        title="5 \u00b7 OCCLUSION GRAPH \u00b7 this is what CLASSIFIES the planes",
+        title="6 \u00b7 OCCLUSION GRAPH \u00b7 this is what CLASSIFIES the planes",
         size=(430, 140))
-    gate = graph.node("AtlasSceneHealthGate", title="6 \u00b7 SCENE HEALTH \u00b7 acknowledge before export", values={
+    gate = graph.node("AtlasSceneHealthGate", title="7 \u00b7 SCENE HEALTH \u00b7 acknowledge before export", values={
         "pass_through_on_pass": True,
     }, size=(430, 300))
     controls = _controls(graph, vfx=False)
-    viewport = graph.node("AtlasBlockoutViewport", title="7 \u00b7 VIEWPORT \u00b7 look through the recovered camera", values={
+    viewport = graph.node("AtlasBlockoutViewport", title="8 \u00b7 VIEWPORT \u00b7 look through the recovered camera", values={
         "resolution": 1280,
         "client_data": "",
         "preview_expand": 1.0,
     }, size=(900, 680))
-    mesh = graph.node("AtlasExportReliefMesh", title="8a \u00b7 GEOMETRY \u00b7 GLB, self-contained, texture embedded", values={
+    mesh = graph.node("AtlasExportReliefMesh", title="9a \u00b7 GEOMETRY \u00b7 GLB, self-contained, texture embedded", values={
         "output_dir": "atlas_exports/" + slug,
         "format": "glb",
     }, size=(430, 320))
-    package = graph.node("AtlasExportScenePackage", title="8b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back", values={
+    package = graph.node("AtlasExportScenePackage", title="9b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back", values={
         "output_dir": "atlas_exports/" + slug,
         "scene_id": "street_001",
         "plate_path": "input/example.png",
@@ -1005,9 +1021,15 @@ def build_scene_package(object_info: dict, layout) -> dict:
     graph.connect(solve, "solve", depth, "solve")
     graph.connect(solve, "solve", relief, "solve")
     graph.connect(depth, "depth", relief, "depth")
+    # Order is load-bearing. Derive nodes CLOBBER prior PROXY_ROLE geometry by
+    # design, so wall extraction sits BETWEEN the relief mesh and the occlusion
+    # graph: run it after classification and it would take out the planes the
+    # graph had just classified.
+    graph.connect(relief, "solve", walls, "solve")
+    graph.connect(depth, "depth", walls, "depth")
     # Classification BEFORE the gate: the package reads its completion policies
     # from what this node decided, and it decides nothing without being run.
-    graph.connect(relief, "solve", occlusion, "solve")
+    graph.connect(walls, "solve", occlusion, "solve")
     graph.connect(depth, "depth", occlusion, "depth")
     graph.connect(occlusion, "solve", gate, "solve")
     graph.connect(load, "IMAGE", gate, "source_image")
@@ -1026,8 +1048,8 @@ def build_scene_package(object_info: dict, layout) -> dict:
     graph.connect(mesh, "glb_path", package, "relief_mesh_path")
 
     groups = [
-        ("1 \u00b7 PHOTOGRAPH \u2192 CAMERA \u2192 GEOMETRY \u2192 CLASSIFICATION", "#35536b",
-         [project, load, solve, depth, relief, occlusion, controls]),
+        ("1 \u00b7 PHOTOGRAPH \u2192 CAMERA \u2192 GEOMETRY \u2192 PLANES \u2192 CLASSIFICATION", "#35536b",
+         [project, load, solve, depth, relief, walls, occlusion, controls]),
         ("2 \u00b7 CHECK IT", "#6b5a35", [gate, viewport, note]),
         ("3 \u00b7 WRITE THE SCENE \u00b7 this is what Atlas Scene opens", "#375c4a",
          [mesh, package]),

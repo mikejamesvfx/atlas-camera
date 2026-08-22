@@ -96,7 +96,7 @@ def write_atlas_package(
 
     relative_plate = _adopt_plate(package, solve, plate_path, complaints, files)
     relative_geometry = _adopt_geometry(package, geometry_path, complaints, files)
-    relative_solve = _adopt_solve(package, solve_path, files)
+    relative_solve = _adopt_solve(package, solve, solve_path, files)
 
     entities = (
         [_entity_document(entity_id, relative_geometry, observation_id)]
@@ -198,17 +198,41 @@ def _adopt_geometry(
 
 
 def _adopt_solve(
-    package: Path, candidate: str | Path | None, files: dict[str, Path]
+    package: Path, solve: Any, candidate: str | Path | None, files: dict[str, Path]
 ) -> str | None:
-    if not candidate:
+    """The solve this package was produced from, always.
+
+    A nominated path is adopted as-is, because the caller's file may carry more
+    than a re-serialisation would (a hand-edited solve, a specific revision) and
+    overwriting it would silently substitute the producer's opinion for theirs.
+
+    With no path, the solve is WRITTEN from the object in hand rather than the
+    lane being left empty. It was empty in every real package: the ComfyUI node
+    has no solve-path input, so `atlas/` — advertised in the layout as "the
+    solve this package was produced from" — shipped as an empty directory while
+    the producer held the solve the whole time. A package that cannot show the
+    solve it came from cannot be audited, and auditability is most of the point.
+    """
+
+    if candidate:
+        source = Path(str(candidate))
+        if source.is_file():
+            relative = f"{ATLAS_DIR}/{source.name}"
+            destination = package / relative
+            if source.resolve() != destination.resolve():
+                shutil.copy2(source, destination)
+            files["solve"] = destination
+            return relative
+
+    try:
+        from atlas_camera.core.io import save_solve_json
+
+        relative = f"{ATLAS_DIR}/atlas_solve.json"
+        destination = save_solve_json(solve, package / relative)
+    except Exception:  # noqa: BLE001 - a solve that will not serialise must not
+        # take the package down with it; the document is still complete without
+        # it and the reader treats a missing `source.solve` as unknown.
         return None
-    source = Path(str(candidate))
-    if not source.is_file():
-        return None
-    relative = f"{ATLAS_DIR}/{source.name}"
-    destination = package / relative
-    if source.resolve() != destination.resolve():
-        shutil.copy2(source, destination)
     files["solve"] = destination
     return relative
 
