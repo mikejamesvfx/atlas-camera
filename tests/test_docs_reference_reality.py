@@ -35,7 +35,13 @@ _SHIPPED_DOC_DIRS = ("docs",)
 #: Matched by BASENAME, so the v1 cleanup's rename of `docs/DESIGN_RULES.md`
 #: to `docs/development/design-rules.md` silently dropped it out of the
 #: exclusion and failed this test on five provenance citations.
-_PROVENANCE_DOCS = {"CHANGELOG.md", "design-rules.md"}
+#: The gravity-locked ground report joins them: it names the ComfyUI
+#: graph it MEASURED as evidence for where the error came from. That
+#: graph is a working file carrying a local project root, so it is not
+#: shipped, and rewriting the citation to a surviving example would
+#: falsify what was actually measured.
+_PROVENANCE_DOCS = {"CHANGELOG.md", "design-rules.md",
+                    "gravity-locked-ground-experiment.md"}
 _EXCLUDED_DOCS = {"CHANGELOG.md"}
 # `dev` and `artifacts` are gitignored local-only trees. The `superpowers`
 # plans and `showcase_pdfs` directories were removed in the v1 cleanup.

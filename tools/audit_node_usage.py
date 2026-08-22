@@ -33,6 +33,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
+# See build_feature_audit.py: as a script sys.path[0] is tools/, so a bare
+# `import atlas_camera` can resolve to a different installed checkout.
+import sys
+
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
 # Tests that name EVERY registered node by construction — registry pins,
 # façade pins, this tool's own contract test, and the widget-drift sweep.
 # A hit in one of these proves the node is REGISTERED, which we already know

@@ -192,6 +192,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
     AtlasDeriveInteriorRoom,
+    AtlasGroundPlane,
     AtlasMergeGeometry,
     AtlasDefineShotCam,
     AtlasExtractAnglePatch,
@@ -211,6 +212,7 @@ from atlas_camera.comfy.nodes_inpaint import (
     AtlasInpaintStitch,
     AtlasSDXLInpaint,
     AtlasInstanceMask,
+    AtlasCardMask,
     AtlasSegmentedSDXLInpaint,
     AtlasCleanPlateLayer,
     AtlasPlateLayer,
@@ -219,6 +221,7 @@ from atlas_camera.comfy.nodes_inpaint import (
 )
 from atlas_camera.comfy.nodes_export import (
     AtlasExportReviewPackage,
+    AtlasExportScenePackage,
     AtlasExportSolveJSON,
     AtlasExportMayaReviewScene,
     AtlasExportReliefMesh,
@@ -229,6 +232,13 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportMayaLayers,
     AtlasExportCameraPathUSD,
     AtlasExportPlateEXR,
+)
+from atlas_camera.comfy.nodes_world_plate import (
+    AtlasOpenRealPlate,
+    AtlasReadLockedPlatePlan,
+    AtlasRecordPlateAttempt,
+    AtlasExportPlateHandoff,
+    AtlasRealPlateToScene,
 )
 
 from atlas_camera.comfy.node_registry import (

@@ -11,6 +11,7 @@ from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.io import save_solve_json
 from atlas_camera.exporters.blender_exporter import write_blender_scene_script
 from atlas_camera.exporters.nuke_exporter import write_nuke_native_script, write_nuke_projection_script
+from atlas_camera.exporters.atlas_package import write_atlas_package
 from atlas_camera.exporters.review_package import build_review_package
 
 from atlas_camera.comfy.node_helpers import (
@@ -45,6 +46,85 @@ def _with_manifest_note(result: tuple, note: str):
 # developed EXR into the same tree without nodes_solve importing nodes_export.
 # Re-exported here because every call site in this module reads as local.
 from atlas_camera.comfy.node_helpers import _project_routed_dir  # noqa: E402,F401
+
+
+class AtlasExportScenePackage:
+    """Write the solve as a `.atlas` package — the scene Atlas Scene opens.
+
+    Not another DCC export. The others hand a camera to Maya or Nuke and the
+    conversation ends there; this hands over the whole scene, and it is meant to
+    come BACK edited. That is why the package carries what a reviewer needs to
+    judge it — which plane licensed a construction, what the fit was worth, what
+    the solve said about its own scale — rather than only what a renderer needs
+    to draw it.
+
+    Two things it deliberately will not do. It never invents a completion
+    policy: a plane the occlusion graph has not classified licenses `none`, and
+    the editor will refuse to extrude on it, which is the correct outcome for a
+    surface nobody has vouched for. Run AtlasOcclusionGraph upstream of this to
+    classify them. And it never writes a document that fails the format's own
+    checklist — a package that reaches an artist and is then refused by the
+    editor is worse than an export that stops here and says why.
+    """
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("package_dir",)
+    FUNCTION = "export"
+    CATEGORY = "Atlas"
+    OUTPUT_NODE = True  # terminal write-to-disk node
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "output_dir": ("STRING", {"default": "atlas_scenes"}),
+                "scene_id": ("STRING", {"default": "street_001"}),
+            },
+            "optional": {
+                "plate_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Overrides the solve's own image_path, which names wherever the plate was when the solve ran and is routinely a temp file that has since gone.",
+                }),
+                "relief_mesh_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "The GLB from AtlasExportReliefMesh. Without it the package has a camera and planes but no geometry to edit.",
+                }),
+                "observation_id": ("STRING", {
+                    "default": "",
+                    "tooltip": "Which photograph this is. Part of every plane's identity, so the same wall shot twice stays two pieces of evidence.",
+                }),
+                "project": ("ATLAS_PROJECT", {
+                    "tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's scenes/ lane and supersedes output_dir.",
+                }),
+            },
+        }
+
+    def export(self, solve, output_dir, scene_id, plate_path="", relief_mesh_path="",
+               observation_id="", project=None):
+        output_dir = _project_routed_dir(project, output_dir, "scenes")
+        name = (scene_id or "scene").strip() or "scene"
+        package = Path(output_dir) / f"{name}.atlas"
+
+        mesh = (relief_mesh_path or "").strip()
+        if not mesh:
+            # The solve may already carry one from AtlasExportReliefMesh.
+            mesh = str(_relief_mesh_from_solve(solve) or "")
+
+        result = write_atlas_package(
+            solve,
+            package,
+            scene_id=name,
+            plate_path=(plate_path or "").strip() or None,
+            geometry_path=mesh or None,
+            observation_id=(observation_id or "").strip() or None,
+        )
+
+        # What could not be done, on the node, where the artist is looking. An
+        # export that quietly drops the plate produces a scene whose dead
+        # features nobody can explain.
+        note = "\n".join(result.complaints)
+        return _with_manifest_note((str(result.package_dir),), note)
 
 
 class AtlasExportReviewPackage:

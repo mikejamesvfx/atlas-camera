@@ -23,6 +23,15 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
+# Run as a script, sys.path[0] is tools/, NOT the repo root — so a bare
+# `import atlas_camera` resolves to whatever copy is installed (on a dev box
+# that is usually the ComfyUI custom_nodes checkout) and this tool silently
+# audits a DIFFERENT tree than the one it lives in.
+import sys
+
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
 
 def _load(name: str):
     spec = importlib.util.spec_from_file_location(name, REPO / "tools" / f"{name}.py")

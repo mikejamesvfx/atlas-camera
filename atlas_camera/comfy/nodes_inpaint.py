@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import copy
 import io
+import json
 
 from atlas_camera.comfy.node_helpers import (
     _BAND_GEOMETRY_CHOICES,
@@ -729,6 +730,87 @@ class AtlasInstanceMask:
             out.zero_()
             return out, f"instance {idx}: rejected ({coverage:.3%} coverage)"
         return out, f"instance {idx}: {coverage:.3%} coverage"
+
+
+class AtlasCardMask:
+    """One roundtripped card's full-frame alpha as a MASK, plus its depth band.
+
+    Bridges ``AtlasRealPlateToScene`` to the per-object layer nodes: the card's
+    ``mask_b64`` (already in primary-frame pixels) becomes the ``object_mask``
+    /``layer_matte`` for ``AtlasCleanPlateLayer``, and the card's MEASURED
+    ``camera_distance_m`` becomes the layer's ``[near_m, far_m]`` band. Pure
+    decode + arithmetic — no plate read, no depth read, nothing recouples to a
+    frozen episode side-car.
+    """
+
+    RETURN_TYPES = ("MASK", "FLOAT", "FLOAT", "STRING")
+    RETURN_NAMES = ("mask", "near_m", "far_m", "report")
+    FUNCTION = "extract"
+    CATEGORY = "Atlas/11 · Evidence Plate"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "solve": ("ATLAS_SOLVE",),
+            # STRING, not combo: card names are per-episode dynamic, and the
+            # backend rejects STRING->combo links anyway (patch_view_override
+            # pattern). An unknown name errors loudly listing the cards.
+            "card": ("STRING", {"default": "", "multiline": False,
+                "tooltip": "Card to extract: its ProjectionSource name "
+                           "(e.g. CARD_CAR) or its concept (e.g. car)."}),
+        }, "optional": {
+            "band_margin_m": ("FLOAT", {"default": 3.0, "min": 0.0, "max": 100.0,
+                "step": 0.1,
+                "tooltip": "Half-width of the depth band around the card's "
+                           "measured camera distance."}),
+            "invert": ("BOOLEAN", {"default": False,
+                "tooltip": "Emit 1-alpha (the exclusion form) directly."}),
+        }}
+
+    def extract(self, solve, card, band_margin_m=3.0, invert=False):
+        from atlas_camera.core.matte_codec import decode_matte_png
+
+        torch = _require_torch()
+        wanted = (card or "").strip()
+        if not wanted:
+            raise ValueError("card must name a roundtripped card source")
+        cards = [
+            src for src in (getattr(solve, "projection_sources", None) or [])
+            if (getattr(src, "metadata", None) or {}).get("evidence_type") == "observed_card"
+        ]
+        match = next(
+            (src for src in cards
+             if src.name == wanted or (src.metadata or {}).get("concept") == wanted),
+            None)
+        if match is None:
+            names = ", ".join(
+                f"{src.name} ({(src.metadata or {}).get('concept', '?')})"
+                for src in cards) or "none"
+            raise ValueError(
+                f"card {wanted!r} is not a roundtripped card source on this "
+                f"solve. Available cards: {names}")
+        if not getattr(match, "mask_b64", ""):
+            raise ValueError(f"card {match.name} carries no mask_b64 alpha")
+        alpha = decode_matte_png(match.mask_b64)  # (H, W) float32 in [0, 1]
+        if invert:
+            alpha = 1.0 - alpha
+        mask = torch.from_numpy(alpha).float().clamp(0, 1).unsqueeze(0)
+        distance = float((match.metadata or {}).get("camera_distance_m", 0.0))
+        margin = max(0.0, float(band_margin_m))
+        near_m = max(0.0, distance - margin)
+        far_m = distance + margin
+        coverage_px = int((alpha > 0.5).sum())
+        report = json.dumps({
+            "card": match.name,
+            "concept": (match.metadata or {}).get("concept"),
+            "camera_distance_m": round(distance, 4),
+            "near_m": round(near_m, 4),
+            "far_m": round(far_m, 4),
+            "inverted": bool(invert),
+            "coverage_px": coverage_px,
+            "mask_shape": [int(alpha.shape[0]), int(alpha.shape[1])],
+        }, sort_keys=True)
+        return mask, near_m, far_m, report
 
 
 class AtlasSegmentedSDXLInpaint:

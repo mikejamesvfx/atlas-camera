@@ -30,7 +30,13 @@ COLOUR_MODES = (MODE_STANDARD, MODE_VFX)
 
 # DCC-aware subfolders under a shot. Each exporter writes into its own, with
 # paths the DCC can resolve (a Nuke script beside the plates it reads, etc.).
-SHOT_SUBDIRS = ("plates", "solves", "nuke", "maya", "usd", "blender", "geo", "review")
+# APPEND-ONLY: a delivery tree that already exists on disk keeps every lane
+# it has, and `subdir` raises on a name not listed here, so a new output
+# kind must be declared BEFORE the node that writes it ships. "scenes"
+# holds `.atlas` packages — a whole editable scene rather than one DCC's
+# view of it, which is why it is not filed under geo or review.
+SHOT_SUBDIRS = ("plates", "solves", "nuke", "maya", "usd", "blender", "geo",
+                "review", "scenes")
 
 _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 

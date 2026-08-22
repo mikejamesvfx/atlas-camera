@@ -104,6 +104,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
     AtlasDeriveInteriorRoom,
+    AtlasGroundPlane,
     AtlasMergeGeometry,
     AtlasDefineShotCam,
     AtlasBlockoutMassing,
@@ -123,6 +124,7 @@ from atlas_camera.comfy.nodes_inpaint import (
     AtlasInpaintStitch,
     AtlasSDXLInpaint,
     AtlasInstanceMask,
+    AtlasCardMask,
     AtlasSegmentedSDXLInpaint,
     AtlasCleanPlateLayer,
     AtlasCleanPlateStack,
@@ -130,6 +132,7 @@ from atlas_camera.comfy.nodes_inpaint import (
     AtlasSkyDomeLayer,
 )
 from atlas_camera.comfy.nodes_export import (
+    AtlasExportScenePackage,
     AtlasExportReviewPackage,
     AtlasExportSolveJSON,
     AtlasExportMayaReviewScene,
@@ -142,6 +145,13 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportCameraPathUSD,
     AtlasExportPlateEXR,
 )
+from atlas_camera.comfy.nodes_world_plate import (
+    AtlasOpenRealPlate,
+    AtlasReadLockedPlatePlan,
+    AtlasRecordPlateAttempt,
+    AtlasExportPlateHandoff,
+    AtlasRealPlateToScene,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +160,7 @@ from atlas_camera.comfy.nodes_export import (
 
 NODE_CLASS_MAPPINGS = {
     # Existing
+    "AtlasExportScenePackage":    AtlasExportScenePackage,
     "AtlasExportReviewPackage":   AtlasExportReviewPackage,
     "AtlasExportSolveJSON":       AtlasExportSolveJSON,
     "AtlasExportMayaReviewScene": AtlasExportMayaReviewScene,
@@ -224,6 +235,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasDeriveRoofsFacades":    AtlasDeriveRoofsFacades,
     "AtlasDeriveInteriorRoom":    AtlasDeriveInteriorRoom,
     "AtlasMergeGeometry":         AtlasMergeGeometry,
+    "AtlasGroundPlane":           AtlasGroundPlane,
     # Track 6 — shot format
     "AtlasDefineShotCam":         AtlasDefineShotCam,
     # Track 7 — inpaint layers
@@ -252,10 +264,18 @@ NODE_CLASS_MAPPINGS = {
     "AtlasMultiViewSolve":        AtlasMultiViewSolve,
     "AtlasMultiViewSolveBurst":   AtlasMultiViewSolveBurst,
     "AtlasSolveBurstPatchCrops":  AtlasSolveBurstPatchCrops,
+    "AtlasCardMask":              AtlasCardMask,
+    # Evidence-first World -> Comfy handoff. These keys are append-only.
+    "AtlasOpenRealPlate":         AtlasOpenRealPlate,
+    "AtlasReadLockedPlatePlan":   AtlasReadLockedPlatePlan,
+    "AtlasRecordPlateAttempt":    AtlasRecordPlateAttempt,
+    "AtlasExportPlateHandoff":    AtlasExportPlateHandoff,
+    "AtlasRealPlateToScene":      AtlasRealPlateToScene,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     # Existing
+    "AtlasExportScenePackage":    "Atlas Export Scene Package (.atlas)",
     "AtlasExportReviewPackage":   "Atlas Export Review Package",
     "AtlasExportSolveJSON":       "Atlas Export Solve JSON",
     "AtlasExportMayaReviewScene": "Atlas Export Maya Review Scene",
@@ -329,6 +349,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDeriveRoofsFacades":    "Atlas Derive Roofs & Facades 🏛",
     "AtlasDeriveInteriorRoom":    "Atlas Derive Interior Room 🛋",
     "AtlasMergeGeometry":         "Atlas Merge Geometry 🔀",
+    "AtlasGroundPlane":           "Atlas Ground Plane 🟫",
     # Track 6 — shot format
     "AtlasDefineShotCam":         "Atlas Define Shot Cam 🎬",
     # Track 7 — inpaint layers
@@ -357,6 +378,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasMultiViewSolve":        "Atlas Multi-View RAW Solve 📷📷",
     "AtlasMultiViewSolveBurst":   "Atlas Multi-View Burst Solve 📷🎞️",
     "AtlasSolveBurstPatchCrops":  "Atlas Solve Burst Patch Crops 📷✂️",
+    "AtlasCardMask":              "Atlas Card Mask 🃏",
+    "AtlasOpenRealPlate":         "Atlas Open Real Plate 📓",
+    "AtlasReadLockedPlatePlan":   "Atlas Read Locked Plate Plan 🔒",
+    "AtlasRecordPlateAttempt":    "Atlas Record Plate Attempt 🧾",
+    "AtlasExportPlateHandoff":    "Atlas Export Plate Handoff 📤",
+    "AtlasRealPlateToScene":      "Atlas Real Plate To Scene 🔁",
 }
 
 # ---------------------------------------------------------------------------
@@ -572,7 +599,7 @@ _MENU_FOLDERS = {
         "AtlasDeriveProjectionGeometry", "AtlasDeriveReliefMesh", "AtlasDeriveWalls",
         "AtlasDeriveTowersSpires", "AtlasDeriveRoofsFacades",
         "AtlasDeriveInteriorRoom", "AtlasMergeGeometry", "AtlasRetopologizeLayer",
-        "AtlasDefineShotCam",
+        "AtlasDefineShotCam", "AtlasGroundPlane",
     ),
     "Atlas/06 \u00b7 Patch & Repair": (
         "AtlasAddPatchView", "AtlasSolvePatchViews", "AtlasPlanarHolePatch",
@@ -598,6 +625,11 @@ _MENU_FOLDERS = {
         "AtlasExportMayaReviewScene", "AtlasExportBlender", "AtlasExportUSD",
         "AtlasExportCameraPathUSD", "AtlasExportReliefMesh", "AtlasExportPlateEXR",
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
+        "AtlasExportScenePackage", "AtlasExportPlateHandoff",
+    ),
+    "Atlas/11 · Evidence Plate": (
+        "AtlasOpenRealPlate", "AtlasReadLockedPlatePlan", "AtlasRecordPlateAttempt",
+        "AtlasRealPlateToScene", "AtlasCardMask",
     ),
     # Every gated tier lands here: experimental, legacy, and iOS. They only
     # appear in the menu when their flag registers them, but carry the folder

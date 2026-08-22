@@ -65,6 +65,75 @@ def test_summarize_viewport_layer_exposes_hidden_support_qa():
     assert summary["matte"] is True
 
 
+def test_census_torn_fraction_prefers_the_whole_quad_figure():
+    """With `sub_quad_boundary` on, a cut quad emits faces from PARTIAL quads,
+    so `torn_fraction` (= 1 - emitted_faces / whole_quad_slots) can exceed 1
+    face per slot and go NEGATIVE — a live boiler cleanplate layer reported
+    -0.0932. The QA gate already prefers `torn_fraction_whole_quad`
+    (nodes_qa._layer_metrics); the census must agree, or the two disagree
+    about the same mesh."""
+    source = {
+        "name": "cleanplate_bg", "priority": 8.0, "near_m": 1.5, "far_m": 120.0,
+        "band_geometry": "relief", "mask_b64": "png", "normal_map_b64": "",
+        "hidden_mask_b64": "",
+        "proxy_geometry": [
+            {"vertices": [0.0] * 9,
+             "metadata": {"torn_fraction": -0.0932,
+                          "torn_fraction_whole_quad": 0.41,
+                          "stretch_ratio_p95": 2.0}},
+        ],
+    }
+
+    assert C.summarize_viewport_layer(source)["torn_fraction_max"] == pytest.approx(0.41)
+
+
+def test_census_torn_fraction_falls_back_when_no_cut_ran():
+    """No sub-quad cut means no whole-quad key, and the plain figure is then
+    already the whole-quad one — the fallback must not report None."""
+    source = {
+        "name": "band_1", "priority": 0.0, "near_m": None, "far_m": None,
+        "band_geometry": "relief", "mask_b64": "", "normal_map_b64": "",
+        "hidden_mask_b64": "",
+        "proxy_geometry": [
+            {"vertices": [0.0] * 9, "metadata": {"torn_fraction": 0.2034}},
+        ],
+    }
+
+    assert C.summarize_viewport_layer(source)["torn_fraction_max"] == pytest.approx(0.2034)
+
+
+def test_relief_primitive_carries_n_filled_cells_into_the_census():
+    """Producer-shaped, not hand-authored: relief_mesh_primitive must copy
+    n_filled_cells from mesh.stats into PRIMITIVE metadata — that is where
+    summarize_viewport_layer sums it from. Before 2026-08-21 the key lived
+    only on the ProjectionSource, so the census read 0 for every layer."""
+    np = pytest.importorskip("numpy")
+    from types import SimpleNamespace
+
+    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+
+    mesh = SimpleNamespace(
+        vertices=np.zeros((3, 3), dtype=np.float64),
+        faces=np.asarray([[0, 1, 2]], dtype=np.int64),
+        uvs=np.zeros((3, 2), dtype=np.float64),
+        stats={"n_filled_cells": 7, "torn_fraction": 0.1},
+    )
+    prim = relief_mesh_primitive(mesh)
+    assert prim.metadata["n_filled_cells"] == 7
+
+    source = {
+        "name": "clean", "priority": 1.0, "near_m": 2.0, "far_m": 60.0,
+        "band_geometry": "relief", "mask_b64": "", "normal_map_b64": "",
+        "hidden_mask_b64": "",
+        "proxy_geometry": [
+            {"vertices": prim.metadata["vertices"],
+             "metadata": {k: v for k, v in prim.metadata.items()
+                          if not isinstance(v, list)}},
+        ],
+    }
+    assert C.summarize_viewport_layer(source)["n_filled_cells"] == 7
+
+
 def _out(name, type_, links=None):
     return {"name": name, "type": type_, "links": links if links is not None else [], "slot_index": 0}
 
@@ -353,10 +422,13 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
     # deterministic RAW multi-view workflow (2026-08-09), and 8 after the burst
     # solve / photographed hole patch / measured multi-angle patch trio
     # (2026-08-10), 10 after the Qwen-ROI registered patch + Blender measured
-    # primitives pair (2026-08-16), 11 with the clean-plate depth layer, and 12
-    # with Hero 02 (2026-08-17). Bump as each new workflow lands so a silent
-    # disappearance still fails loudly.
-    assert checked == 12
+    # primitives pair (2026-08-16), 11 with the clean-plate depth layer, 12
+    # with Hero 02 (2026-08-17), and 16 with the Affinity-bridge showcase set
+    # (2026-08-21: RAW cleanplate, multi-view painted patch, street declutter,
+    # night burst), and 17 with the photograph -> .atlas scene package
+    # (2026-08-22). Bump as each new workflow lands so a silent disappearance
+    # still fails loudly.
+    assert checked == 17
 
 
 def test_frontend_only_rgthree_nodes_are_virtual():

@@ -77,6 +77,20 @@ def _fit_long_edge(width: int, height: int, long_edge: int, multiple: int = 8) -
     def _round(v: float) -> int:
         return max(multiple, int(round(v / multiple)) * multiple)
     return _round(width * scale), _round(height * scale)
+
+def _active_ocio_identity() -> dict:
+    """The live OCIO config's identity, or {} when OpenImageIO is absent.
+
+    Never raises: a colour-provenance line must not be able to fail a payload.
+    """
+    try:
+        from atlas_camera.plate.oiio_io import config_identity
+
+        return config_identity()
+    except Exception:                       # noqa: BLE001 - [oiio] optional
+        return {}
+
+
 def _plate_ref_to_dict(plate_ref) -> dict[str, Any] | None:
     if plate_ref is None:
         return None
@@ -293,6 +307,12 @@ solve, source_image, target_width: int, target_height: int,
         "scale_health": {"status": sh.status,
                          "safe_to_export": sh.safe_to_export,
                          "detail": sh.detail},
+        # WHICH OCIO config produced every colourspace name in this payload.
+        # Atlas ships no config: it resolves through OpenImageIO, honouring
+        # $OCIO when set and otherwise the built-in ACES config. A colourspace
+        # name without a config is not a contract, and `output_profile`'s
+        # config_path is DCC metadata that does NOT select this one.
+        "ocio": _active_ocio_identity(),
     }
 
     primary_depth_b64, primary_depth_width, primary_depth_height = _pack_primary_depth(
