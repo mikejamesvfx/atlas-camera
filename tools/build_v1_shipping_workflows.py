@@ -67,6 +67,10 @@ WORKFLOW_IDS = {
     # DNS namespace, which is reproducible if it ever needs regenerating.
     "atlas_hero_02_photo_to_editable_scene_workflow":
         "77ce20a3-ab7f-56c7-afa5-ce91642e5373",
+    # The .atlas producer. Same rule: uuid5 of the slug under the DNS
+    # namespace, so it is reproducible if it ever needs regenerating.
+    "atlas_photo_to_atlas_scene_workflow":
+        "99f2f654-6a3c-5853-b6d6-adc33295a89f",
 }
 
 # Exterior plates: the metric outdoor model is the doctrine choice for these
@@ -885,12 +889,160 @@ def build_hero02(object_info: dict, layout) -> dict:
                    "One photograph becomes a camera-aware editable scene, handed to Blender.")
 
 
+SCENE_PACKAGE_NOTE = """PHOTOGRAPH -> .atlas SCENE PACKAGE — the format Atlas Scene opens.
+
+Every other export hands one DCC a camera and the conversation ends there. This hands over the whole
+scene, and it is meant to come BACK edited — so the package carries what a REVIEWER needs to judge it
+(which plane licensed a construction, what the fit was worth, what the solve said about its own scale),
+not only what a renderer needs to draw it.
+
+THREE INPUTS, AND WHY EACH IS WIRED
+
+1. AtlasOcclusionGraph is not decoration. Plane classification is READ from the occlusion graph, which
+   already decides it. Without this node upstream every plane arrives unclassified and therefore
+   licenses completion_policy "none" — the editor will refuse to extrude on any of them, which is the
+   correct outcome for a surface nobody has vouched for, and a baffling one if you did not know why.
+   This is the single most common reason a package opens inert.
+
+2. AtlasExportReliefMesh writes GLB and its glb_path feeds relief_mesh_path. GLB rather than OBJ because
+   the package should be self-contained: the writer embeds its texture and needs no sidecar MTL. Without
+   geometry the package has a camera and planes and nothing to edit.
+
+3. plate_path is given EXPLICITLY, as a path relative to ComfyUI's working directory. It has to be:
+   AtlasLearnedSolveFromImage solves from a temporary file and deletes it, so the solve's own image_path
+   names something already gone by the time the exporter runs. Point this at your own plate when you
+   swap the photograph.
+
+The node COMPLAINS on its face for each of these that is missing, naming the input to connect. An
+export that quietly drops the plate produces a scene whose dead features nobody can explain.
+
+WHERE IT LANDS
+AtlasProject routes the package into <project_root>/<project>/<shot>/scenes/<scene_id>.atlas — the
+scenes lane, alongside plates/, solves/, nuke/, maya/ and the rest. Inside:
+  scene.json   the document, validated against the format's own checklist BEFORE it is written
+  atlas/       the solve, kept as produced
+  imagery/     the plate
+  geometry/    the relief mesh
+  mattes/      per-layer mattes as FILES with digests, decoded out of the JSON
+  history/     the ledger, opened by the export itself
+
+SCALE
+The package records the solve's scale verdict verbatim, including whether it is safe to export. A single
+photograph has an inherent scale ambiguity; if this reads assumed_default, reach for AtlasScaleOverride
+or a scale reference before anyone builds on it."""
+
+
+def build_scene_package(object_info: dict, layout) -> dict:
+    """Photograph in, `.atlas` package out — the scene Atlas Scene opens.
+
+    The occlusion graph is the load-bearing node here and the one a hand-wired
+    graph leaves out. `AtlasExportScenePackage` reads plane classification from
+    it, and an unclassified plane licenses `none`, so a package built without it
+    validates, opens, and does nothing — which is exactly what a real run
+    produced before this workflow existed.
+    """
+    slug = "atlas_photo_to_atlas_scene_workflow"
+    graph = Graph(object_info)
+
+    project = graph.node("AtlasProject", title="0 \u00b7 DELIVERY PROJECT \u00b7 where everything lands", values={
+        "project": "atlas_scene_demo",
+        "shot": "sh010",
+        "colour_mode": "Standard (sRGB)",
+        # Empty means ComfyUI's own output folder, which is the one path that
+        # resolves on any machine — a shipping workflow must carry no absolute
+        # path (tests/test_shipping_workflow_paths.py).
+        "project_root": "",
+        "create_tree": True,
+    }, size=(400, 220))
+    load = graph.node("LoadImage", title="1 \u00b7 YOUR PHOTOGRAPH", values={
+        "image": "example.png", "image_upload": "image",
+    }, size=(360, 310))
+    solve = graph.node("AtlasLearnedSolveFromImage", title="2 \u00b7 CAMERA \u00b7 learned prior", values={
+        "height_mode": "assume",
+        "camera_height_m": 1.6,
+        "depth_model": OUTDOOR_DEPTH,
+        "sensor_width_mm": 36.0,
+        "device": "auto",
+        "focal_length_mm": 0.0,
+    }, size=(440, 340))
+    depth = graph.node("AtlasDepthMap", title="3 \u00b7 DEPTH \u00b7 one shared metric scale", values={
+        "depth_model": OUTDOOR_DEPTH,
+        "device": "auto",
+    }, size=(440, 300))
+    relief = graph.node("AtlasDeriveReliefMesh", title="4 \u00b7 PROJECTION GEOMETRY \u00b7 torn at silhouettes", values={
+        "relief_grid": 256,
+        "relief_quality": "custom",
+        "depth_edge_rel": 0.5,
+        "sky_heuristic": False,
+    }, size=(430, 320))
+    occlusion = graph.node(
+        "AtlasOcclusionGraph",
+        title="5 \u00b7 OCCLUSION GRAPH \u00b7 this is what CLASSIFIES the planes",
+        size=(430, 140))
+    gate = graph.node("AtlasSceneHealthGate", title="6 \u00b7 SCENE HEALTH \u00b7 acknowledge before export", values={
+        "pass_through_on_pass": True,
+    }, size=(430, 300))
+    controls = _controls(graph, vfx=False)
+    viewport = graph.node("AtlasBlockoutViewport", title="7 \u00b7 VIEWPORT \u00b7 look through the recovered camera", values={
+        "resolution": 1280,
+        "client_data": "",
+        "preview_expand": 1.0,
+    }, size=(900, 680))
+    mesh = graph.node("AtlasExportReliefMesh", title="8a \u00b7 GEOMETRY \u00b7 GLB, self-contained, texture embedded", values={
+        "output_dir": "atlas_exports/" + slug,
+        "format": "glb",
+    }, size=(430, 320))
+    package = graph.node("AtlasExportScenePackage", title="8b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back", values={
+        "output_dir": "atlas_exports/" + slug,
+        "scene_id": "street_001",
+        "plate_path": "input/example.png",
+        "observation_id": "obs_001",
+    }, size=(460, 240))
+    note = _note(graph, SCENE_PACKAGE_NOTE, "READ ME \u00b7 why the occlusion graph is not optional")
+
+    graph.connect(load, "IMAGE", solve, "image")
+    graph.connect(load, "IMAGE", depth, "image")
+    graph.connect(solve, "solve", depth, "solve")
+    graph.connect(solve, "solve", relief, "solve")
+    graph.connect(depth, "depth", relief, "depth")
+    # Classification BEFORE the gate: the package reads its completion policies
+    # from what this node decided, and it decides nothing without being run.
+    graph.connect(relief, "solve", occlusion, "solve")
+    graph.connect(depth, "depth", occlusion, "depth")
+    graph.connect(occlusion, "solve", gate, "solve")
+    graph.connect(load, "IMAGE", gate, "source_image")
+    graph.connect(depth, "depth", gate, "depth")
+    graph.connect(gate, "solve", viewport, "solve")
+    graph.connect(load, "IMAGE", viewport, "source_image")
+    graph.connect(depth, "depth", viewport, "primary_depth")
+    graph.connect(controls, "controls", viewport, "controls")
+    graph.connect(controls, "output_profile", viewport, "output_profile")
+    graph.connect(gate, "solve", mesh, "solve")
+    graph.connect(load, "IMAGE", mesh, "image")
+    graph.connect(project, "project", mesh, "project")
+    graph.connect(gate, "solve", package, "solve")
+    graph.connect(project, "project", package, "project")
+    # The mesh the package carries is the one just written, not one it makes.
+    graph.connect(mesh, "glb_path", package, "relief_mesh_path")
+
+    groups = [
+        ("1 \u00b7 PHOTOGRAPH \u2192 CAMERA \u2192 GEOMETRY \u2192 CLASSIFICATION", "#35536b",
+         [project, load, solve, depth, relief, occlusion, controls]),
+        ("2 \u00b7 CHECK IT", "#6b5a35", [gate, viewport, note]),
+        ("3 \u00b7 WRITE THE SCENE \u00b7 this is what Atlas Scene opens", "#375c4a",
+         [mesh, package]),
+    ]
+    return _finish(graph, slug, groups, layout,
+                   "One photograph becomes a .atlas package: camera, classified planes, plate, mesh and ledger.")
+
+
 BUILDERS = {
     "atlas_input_quickstart_workflow": build_quickstart,
     "atlas_quickstart_solve_project_export_workflow": build_stages,
     "atlas_export_fanout_workflow": build_fanout,
     "atlas_layered_projection_workflow": build_layered,
     "atlas_hero_02_photo_to_editable_scene_workflow": build_hero02,
+    "atlas_photo_to_atlas_scene_workflow": build_scene_package,
 }
 
 

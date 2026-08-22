@@ -425,9 +425,10 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
     # primitives pair (2026-08-16), 11 with the clean-plate depth layer, 12
     # with Hero 02 (2026-08-17), and 16 with the Affinity-bridge showcase set
     # (2026-08-21: RAW cleanplate, multi-view painted patch, street declutter,
-    # night burst). Bump as each new workflow lands so a silent disappearance
+    # night burst), and 17 with the photograph -> .atlas scene package
+    # (2026-08-22). Bump as each new workflow lands so a silent disappearance
     # still fails loudly.
-    assert checked == 16
+    assert checked == 17
 
 
 def test_frontend_only_rgthree_nodes_are_virtual():
