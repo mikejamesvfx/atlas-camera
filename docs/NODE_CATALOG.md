@@ -14,9 +14,9 @@
 
 
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 120
+The former 9,110-line `nodes.py` was split into responsibility modules; the 121
 
-node classes (106 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
+node classes (107 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -243,7 +243,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (106 standard + 10 experimental + 2 legacy + 2 iOS = 120 registered)
+### Node catalog (107 standard + 10 experimental + 2 legacy + 2 iOS = 121 registered)
 
 
 
@@ -449,6 +449,7 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 | `AtlasSDXLInpaint` | image (IMAGE), mask (MASK), checkpoint, prompts, sampler params | image (IMAGE), report | ✨ Native SDXL inpaint adapter — expands to ComfyUI's stock CheckpointLoader → CLIPTextEncode → `InpaintModelConditioning` → KSampler → VAEDecode (the conditioning path matters: plain VAE-encode produced flat gray fills). Pairs with ✂ AtlasInpaintCrop/Stitch |
 
 | `AtlasInstanceMask` | mask (MASK, an `(N,H,W)` instance stack), instance_index, ±restrict_mask, ±min_coverage | mask (MASK), report | 🎭 SAM3 instance selection — one building/object instance mask at a time, for per-instance inpainting. Feed it `AtlasSAM3Mask` at `output_mode="separate"` (native, no triton) or the third-party `SAM3Segment` at `output_mode=Separate`; the node only ever indexes `m[idx]` on the stack, so it is source-agnostic by construction. Note the two sources ORDER instances differently — Atlas sorts largest-first for stability, SAM3Segment by score — so re-check the index when switching |
+| `AtlasCardMask` 🃏 | solve (ATLAS_SOLVE), card (STRING — a card source name e.g. `CARD_CAR`, or its concept e.g. `car`), ±band_margin_m (FLOAT, default 3.0), ±invert (BOOLEAN) | mask (MASK), near_m (FLOAT), far_m (FLOAT), report (STRING) | Bridges `AtlasRealPlateToScene` to the per-object layer nodes (the Cafe-decompose path: car/building as masked relief, signs as cards). Decodes one roundtripped card's full-frame `mask_b64` alpha into a MASK ready for `AtlasCleanPlateLayer.object_mask`/`layer_matte`, and turns the card's MEASURED `camera_distance_m` into a `[near_m, far_m]` band (`± band_margin_m`, clamped ≥ 0). `card` is a STRING, not a combo — card names are per-episode dynamic and the backend rejects STRING→combo links (patch_view_override pattern); an unknown name errors loudly listing every card source with its concept. `invert` emits `1-alpha` directly (the `exclude_mask` form). Pure decode + arithmetic: no plate read, no depth read, nothing recouples to a frozen episode side-car. Only sources with `evidence_type: "observed_card"` are visible to it — planes have alphas too but their pixel ownership is the plane's own job. |
 
 | `AtlasSegmentedSDXLInpaint` | image, paint matte, prompt, SDXL params | image (IMAGE), report | � Per-instance crop-and-stitch SDXL inpaint: SAM3-separated instances ∩ the LaRI paint matte, each inpainted in its own crop then stitched sequentially — avoids one giant crop inventing a single connected mega-structure across buildings (live-verified on the D810 NYC plate). **Prefers the native `AtlasSAM3Mask` (`separate`) whenever `_native_sam3_available()`** — the same cascade `AtlasInput.segment()` uses — falling back to the third-party `SAM3Segment` (and its `triton` requirement, i.e. CUDA-only) otherwise. Mind the slot difference between the two: `AtlasSAM3Mask`'s mask is slot 0, `SAM3Segment`'s is slot 1. The report names which path ran |
 

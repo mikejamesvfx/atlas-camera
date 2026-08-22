@@ -814,7 +814,9 @@ _BOUNDED_BAND_NOOP_M = 1.0e6
 # (the 🎨 Layers legend) — keep both in sync by hand, the accepted-duplication
 # pattern. Index = position in projection_sources; -1 = the primary teal.
 _LAYER_DEBUG_PRIMARY_HEX = "2fd6c3"
-_LAYER_DEBUG_PALETTE_HEX = ("ff6a3d", "3d8bff", "ffd23d", "c95aff", "6aff5a", "ff5aa8")
+_LAYER_DEBUG_PALETTE_HEX = ("ff6a3d", "3d8bff", "ffd23d", "c95aff", "6aff5a",
+                            "ff5aa8", "ff2f5a", "4b2fd6", "d6ff2f", "7a4b2a",
+                            "9aa7b5", "2f7a3d")
 
 # Named output slot indices for AtlasAssessImage's 16 output ports
 _ASSESS_OUTPUT_SLOTS = {

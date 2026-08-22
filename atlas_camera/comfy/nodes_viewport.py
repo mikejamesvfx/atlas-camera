@@ -70,7 +70,14 @@ class AtlasViewportControls:
             "required": {},
             "optional": {
                 "config_label": ("STRING", {"default": "ACES 2.0 / Studio"}),
-                "config_path": ("STRING", {"default": ""}),
+                "config_path": ("STRING", {"default": "", "tooltip":
+                    "DCC-HANDOFF METADATA ONLY. This does NOT select the OCIO "
+                    "config Atlas converts with, and typing a path here changes "
+                    "nothing about any conversion. Atlas resolves through "
+                    "OpenImageIO: $OCIO when set, otherwise the built-in ACES "
+                    "config. Set $OCIO to change that. The live config is named "
+                    "in AtlasDebugReport, which also flags a disagreement with "
+                    "this field."}),
                 "working_colorspace": ("STRING", {"default": "ACEScg"}),
                 "output_colorspace": ("STRING", {"default": "ACES - ACEScg"}),
                 "display": ("STRING", {"default": "sRGB - Display"}),
@@ -115,6 +122,63 @@ class AtlasViewportControls:
             preview_only=True,
             metadata={"source": "AtlasViewportControls"},
         ))
+
+
+def active_ocio_identity() -> dict:
+    """Which OCIO config Atlas is ACTUALLY resolving against, right now.
+
+    Atlas ships no config of its own. There is exactly one place a config is
+    constructed (``plate/oiio_io.py``, ``oiio.ColorConfig()`` with no path), so
+    OIIO's own resolution order governs: ``$OCIO`` when set, otherwise OIIO's
+    built-in ACES config. Never Blender's bundled config — nothing in Atlas
+    reads it.
+
+    Returns an empty dict when OpenImageIO is absent, which is a legitimate
+    state (the core package has no required dependencies), not an error.
+    """
+    try:
+        from atlas_camera.plate.oiio_io import config_identity
+    except Exception:                       # noqa: BLE001 - [oiio] not installed
+        return {}
+    try:
+        return config_identity()
+    except Exception:                       # noqa: BLE001 - never fail a report
+        return {}
+
+
+def _active_ocio_lines(output_profile) -> tuple[str, str]:
+    """One report line naming the live config, plus a drift flag if warranted.
+
+    The drift flag exists because ``AtlasViewportControls.config_path`` LOOKS
+    like it selects a config and does not — it is DCC-handoff metadata and is
+    never wired to the resolver. A user who types a path there and sees no
+    contradiction would reasonably believe their config is in force. If it
+    disagrees with the config actually being used, say so.
+    """
+    identity = active_ocio_identity()
+    if not identity.get("available"):
+        return ("ocio     unavailable (no OpenImageIO; colour conversion off)", "")
+
+    where = identity.get("config_path") or "built-in (ocio://default)"
+    line = (f"ocio    {identity.get('config_name') or '(unnamed)'}  "
+            f"{identity.get('n_colorspaces', 0)} spaces / "
+            f"{identity.get('n_displays', 0)} displays  ·  {where}")
+    digest = identity.get("config_sha256") or ""
+    if digest:
+        line += f"  sha256 {digest[:12]}"
+
+    declared = str(getattr(output_profile, "config_path", "") or "").strip()
+    flag = ""
+    if declared:
+        active_path = identity.get("config_path") or ""
+        if os.path.normcase(os.path.normpath(declared)) != os.path.normcase(
+                os.path.normpath(active_path or "\0")):
+            flag = (
+                f"output profile declares config_path {declared!r}, but Atlas "
+                f"resolved against {where}. That field is DCC-handoff METADATA "
+                f"and does NOT select the config Atlas converts with — set "
+                f"$OCIO to change that.")
+    return (line, flag)
 
 
 DRAWN_ROLE_SOURCE = "viewport_polygon"
@@ -1058,6 +1122,9 @@ class AtlasDebugReport:
                 for g in (getattr(solve.projection_scene, "proxy_geometry", None) or [])],
             "scope_status": statuses,
             "vlm_report": vlm_report or None,
+            # A colourspace NAME means something only relative to a config, so
+            # the JSON records which one was in force.
+            "ocio": active_ocio_identity(),
             "flags": flags,
         }
         path = os.path.abspath(file_path or "atlas_debug/master_debug.json")
@@ -1073,6 +1140,17 @@ class AtlasDebugReport:
         lines.append(f"camera  {camera['image_wh'][0]}x{camera['image_wh'][1]}  "
                      f"{camera['focal_mm'] or '?'}mm  height {cam_y if cam_y is not None else '?'}m  "
                      f"conf {camera['confidence']}")
+        # Name the OCIO config that is ACTUALLY in force. Atlas ships no config
+        # of its own: it resolves through OIIO, which honours $OCIO and
+        # otherwise uses the built-in ACES config. Every colourspace name in
+        # this report means something only relative to that config, so a report
+        # that does not name it is under-specified.
+        ocio_line, ocio_flag = _active_ocio_lines(
+            getattr(solve, "output_profile", None))
+        if ocio_line:
+            lines.append(ocio_line)
+        if ocio_flag:
+            flags.append(ocio_flag)
         lines.append("")
         lines.append("LAYERS (name / geometry / band / verts / matte)")
         for s in sources:

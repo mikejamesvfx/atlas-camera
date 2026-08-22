@@ -2,15 +2,15 @@
  "schema_version": 1,
  "generated_utc": "2026-08-22",
  "counts": {
-  "standard": 106,
+  "standard": 107,
   "experimental": 10,
   "legacy": 2,
   "ios": 2,
-  "total": 120,
+  "total": 121,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 106,
+  "KEEP_CORE": 107,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
@@ -28,11 +28,11 @@
   "AtlasAddPatchView": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": 3,
+   "example_workflows": 4,
    "dedicated_tests": 14,
    "tests": 16,
    "mcp_tools": 0,
-   "repo_tools": 1,
+   "repo_tools": 2,
    "docs": 7,
    "product_evidence": true,
    "evidence_kinds": [
@@ -321,11 +321,11 @@
   "AtlasBlockoutViewport": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": 12,
+   "example_workflows": 16,
    "dedicated_tests": 18,
    "tests": 20,
    "mcp_tools": 1,
-   "repo_tools": 7,
+   "repo_tools": 8,
    "docs": 8,
    "product_evidence": true,
    "evidence_kinds": [
@@ -400,14 +400,39 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasCardMask": {
+   "module": "atlas_camera/comfy/nodes_inpaint.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasCleanPlateLayer": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": 2,
+   "example_workflows": 5,
    "dedicated_tests": 11,
    "tests": 13,
    "mcp_tools": 1,
-   "repo_tools": 3,
+   "repo_tools": 4,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -614,11 +639,11 @@
   "AtlasDebugReport": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": 2,
+   "example_workflows": 6,
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 1,
-   "repo_tools": 2,
+   "repo_tools": 3,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -881,11 +906,11 @@
   "AtlasDepthMap": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": 7,
+   "example_workflows": 10,
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 1,
-   "repo_tools": 3,
+   "repo_tools": 4,
    "docs": 7,
    "product_evidence": true,
    "evidence_kinds": [
@@ -1469,7 +1494,7 @@
    "tests": 5,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -1738,7 +1763,7 @@
    "tests": 5,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -1810,11 +1835,11 @@
   "AtlasInput": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": 6,
+   "example_workflows": 9,
    "dedicated_tests": 6,
    "tests": 8,
    "mcp_tools": 0,
-   "repo_tools": 4,
+   "repo_tools": 5,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2054,14 +2079,15 @@
   "AtlasLoadPlate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": 0,
-   "dedicated_tests": 2,
-   "tests": 4,
+   "example_workflows": 3,
+   "dedicated_tests": 4,
+   "tests": 6,
    "mcp_tools": 0,
-   "repo_tools": 1,
-   "docs": 2,
+   "repo_tools": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "repo_tool",
     "docs"
@@ -2083,11 +2109,11 @@
   "AtlasLoadRAW": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": 1,
-   "dedicated_tests": 6,
-   "tests": 8,
+   "example_workflows": 4,
+   "dedicated_tests": 9,
+   "tests": 11,
    "mcp_tools": 0,
-   "repo_tools": 3,
+   "repo_tools": 4,
    "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
@@ -2291,16 +2317,17 @@
   "AtlasMultiViewSolve": {
    "module": "atlas_camera/comfy/nodes_multiview.py",
    "tier": "standard",
-   "example_workflows": 1,
+   "example_workflows": 2,
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2321,12 +2348,13 @@
    "dedicated_tests": 1,
    "tests": 3,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -2686,11 +2714,11 @@
   "AtlasSAM3Mask": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
-   "example_workflows": 1,
+   "example_workflows": 3,
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 1,
-   "repo_tools": 5,
+   "repo_tools": 6,
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
@@ -3191,9 +3219,9 @@
   "AtlasViewportControls": {
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
-   "example_workflows": 8,
-   "dedicated_tests": 1,
-   "tests": 3,
+   "example_workflows": 12,
+   "dedicated_tests": 2,
+   "tests": 4,
    "mcp_tools": 0,
    "repo_tools": 3,
    "docs": 5,

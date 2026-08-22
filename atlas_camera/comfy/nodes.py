@@ -212,6 +212,7 @@ from atlas_camera.comfy.nodes_inpaint import (
     AtlasInpaintStitch,
     AtlasSDXLInpaint,
     AtlasInstanceMask,
+    AtlasCardMask,
     AtlasSegmentedSDXLInpaint,
     AtlasCleanPlateLayer,
     AtlasPlateLayer,

@@ -70,7 +70,7 @@ FACADE_PUBLIC = {
     "AtlasCompositeCrop",
     "AtlasCropSourcePhoto",
     "AtlasCameraMovePreset",
-    "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
+    "AtlasCardMask", "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",
     "AtlasLoadPlate", "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasLoadRecord3D", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON",
     "AtlasDepthCombine", "AtlasDepthDetailEnhance",

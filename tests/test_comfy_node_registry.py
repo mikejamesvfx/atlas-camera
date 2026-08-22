@@ -48,7 +48,8 @@ NORMAL_KEYS = {
     "AtlasExportSolveJSON", "AtlasExportUSD", "AtlasGravityOverride",
     "AtlasGravityCompass",
     "AtlasGroundDepthMap", "AtlasHorizonMask",
-    "AtlasInpaintCrop", "AtlasInpaintStitch", "AtlasInput", "AtlasInstanceMask",
+    "AtlasCardMask", "AtlasInpaintCrop", "AtlasInpaintStitch", "AtlasInput",
+    "AtlasInstanceMask",
     "AtlasLayerPreview", "AtlasLearnedSolveFromImage",     "AtlasFaceScaleReference", "AtlasLoadRAW", "AtlasSplitEquirect", "AtlasEquirectMultiView", "AtlasLoadSolveJSON", "AtlasMergeGeometry", "AtlasGroundPlane", "AtlasMogeNormals",
     "AtlasOcclusionMask", "AtlasPathGuidedHoleRepair", "AtlasPlanarHolePatch",
     "AtlasReferenceScaleSolve",
@@ -110,7 +111,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 106
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 107
 
 
 def test_experimental_registry_keys_exact():
@@ -296,14 +297,15 @@ def test_every_node_sits_in_a_numbered_pipeline_folder():
              if getattr(cls, "CATEGORY", None) != reg.MENU_CATEGORY[key]}
     assert not wrong, f"classes whose CATEGORY != MENU_CATEGORY: {wrong}"
 
-    # Folders are exactly the ten numbered pipeline stages plus the gated
+    # Folders are exactly the eleven numbered pipeline stages plus the gated
     # bucket, and each one holds at least one node (no empty menu entries).
     allowed = {
         "Atlas/01 \u00b7 Input & Camera", "Atlas/02 \u00b7 Orient & Scale",
         "Atlas/03 \u00b7 Depth", "Atlas/04 \u00b7 Masks",
         "Atlas/05 \u00b7 Geometry", "Atlas/06 \u00b7 Patch & Repair",
         "Atlas/07 \u00b7 Clean Plate & Inpaint", "Atlas/08 \u00b7 Look & Render",
-        "Atlas/09 \u00b7 QA & Gates", "Atlas/10 \u00b7 Export", "Atlas/advanced"}
+        "Atlas/09 \u00b7 QA & Gates", "Atlas/10 \u00b7 Export",
+        "Atlas/11 \u00b7 Evidence Plate", "Atlas/advanced"}
     used = set(reg.MENU_CATEGORY.values())
     assert used == allowed, {"unexpected": sorted(used - allowed),
                              "empty": sorted(allowed - used)}

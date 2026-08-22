@@ -1101,6 +1101,18 @@ const LAYER_DEBUG_PALETTE = [
   0xc95aff, // violet
   0x6aff5a, // green
   0xff5aa8, // pink
+  // --- appended 2026-08-21 -------------------------------------------------
+  // Six was not enough: the DSC_2552 roundtrip emits 11 ProjectionSources
+  // (eight planes plus three cards) and the legend wrapped, so CARD_CAR and
+  // projection_plane_02 were both yellow and the 🎨 legend could not be read
+  // against the render. APPEND ONLY — an existing scene's layer keeps the
+  // colour it had, exactly like a combo value.
+  0xff2f5a, // crimson
+  0x4b2fd6, // indigo
+  0xd6ff2f, // chartreuse
+  0x7a4b2a, // brown
+  0x9aa7b5, // steel
+  0x2f7a3d, // forest
 ];
 
 const PATCH_PRIORITY_CEILING = 100; // matches nodes.py AtlasAddPatchView widget max
@@ -1332,6 +1344,41 @@ const DRAWN_PROXY_SOURCES = new Set([
   "viewport_polygon", "viewport_box", "viewport_sphere",
 ]);
 
+// --- 🎨 layer visibility (viewport-only) -----------------------------------
+// Per-viewport hide/solo state behind the legend rows. Keyed by stable layer
+// NAME, never index: "__primary__" for the base-mesh + backdrop group, and
+// ProjectionSource.name for every patch group. Lives on scene.userData so it
+// survives the per-execution group/material rebuild — buildDerivedProxies and
+// buildPatchSources reapply it right after recreating their groups. Display
+// state ONLY: nothing here is serialized and nothing gates execution or
+// export. If this state ever does gate execution, the gate doctrine applies —
+// content fingerprint + a visible skip explanation (docs/dev/gate_state_table.md).
+const LAYER_PRIMARY_KEY = "__primary__";
+
+function sceneLayerViz(scene) {
+  if (!scene.userData.atlasLayerViz) scene.userData.atlasLayerViz = new Map();
+  return scene.userData.atlasLayerViz;
+}
+
+function applyLayerVisibility(scene) {
+  const viz = sceneLayerViz(scene);
+  let anySolo = false;
+  for (const st of viz.values()) if (st.solo) { anySolo = true; break; }
+  const visibleFor = (key) => {
+    const st = viz.get(key);
+    if (st?.solo) return true;   // solo beats hidden
+    if (anySolo) return false;   // any solo hides every non-solo layer
+    return !st?.hidden;
+  };
+  const derived = scene.getObjectByName("atlas_derived_proxies");
+  if (derived) derived.visible = visibleFor(LAYER_PRIMARY_KEY);
+  scene.traverse((c) => {
+    if (c.userData?.atlasPatchGroup) {
+      c.visible = visibleFor(c.userData.sourceName || c.name);
+    }
+  });
+}
+
 function buildDerivedProxies(scene, data) {
   const old = scene.getObjectByName("atlas_derived_proxies");
   if (old) {
@@ -1397,6 +1444,7 @@ function buildDerivedProxies(scene, data) {
     group.add(mesh);
   }
   scene.add(group);
+  applyLayerVisibility(scene); // fresh group defaults to visible — reapply hide/solo
   return group;
 }
 
@@ -1555,7 +1603,18 @@ function buildPatchSources(scene, data, onSourceReady) {
     // Load this patch's novel view and build its projection material. Patches
     // only paint surfaces they see reasonably head-on (facingThreshold > 0), so
     // grazing/occluded areas fall through to the primary or other patches.
-    loadTextureFromB64(src.image_b64, (tex) => {
+    // A source with GEOMETRY but no image of its own is not a novel view — it
+    // is a surface that projects the PRIMARY plate, cut by its own mask. The
+    // roundtripped RANSAC planes are exactly that. Without this fallback they
+    // never received a projection material at all: they kept the plain olive
+    // MeshStandardMaterial above, fell into the primary pass, and so could
+    // never take their palette colour. Reported live 2026-08-21 as "the layer
+    // index doesn't correlate for the planes" — nine legend rows, six of them
+    // rendering as primary teal.
+    const withSourceTexture = (cb) => (
+      src.image_b64 ? loadTextureFromB64(src.image_b64, cb)
+                    : loadProjectionTexture(data, cb));
+    withSourceTexture((tex) => {
       // Clean-plate layers (AtlasCleanPlateLayer) are same-camera plates, not
       // novel angles — they must paint head-on AND grazing surfaces, exactly
       // like the primary (facingThreshold -1 = never facing-discards), relying
@@ -1613,6 +1672,7 @@ function buildPatchSources(scene, data, onSourceReady) {
         (matteTexture) => build(matteTexture, bandSoft));
     });
   });
+  applyLayerVisibility(scene); // groups exist synchronously — reapply hide/solo
 }
 
 // ---------------------------------------------------------------------------
@@ -2564,24 +2624,58 @@ function buildNodeUI(node, containerEl) {
   const layerLegend = document.createElement("div");
   layerLegend.style.cssText = "position:absolute;left:6px;bottom:6px;padding:6px 8px;" +
     "background:rgba(10,10,14,0.78);color:#cde;font:10px/1.6 monospace;" +
-    "border-radius:4px;pointer-events:none;display:none;z-index:7;";
+    "border-radius:4px;pointer-events:auto;display:none;z-index:7;";
   canvasWrap.appendChild(layerLegend);
   function refreshLayerLegend() {
     const hex = (c) => "#" + c.toString(16).padStart(6, "0");
-    const rows = [[hex(LAYER_DEBUG_PRIMARY), "base mesh + backdrop (primary)"]];
+    const viz = sceneLayerViz(scene);
+    // [color, label, vizKey] — vizKey null = display-only row (no scene group
+    // of its own to toggle: the planar-hole overlay lives in the shader).
+    const rows = [[hex(LAYER_DEBUG_PRIMARY), "base mesh + backdrop (primary)",
+                   LAYER_PRIMARY_KEY]];
     if (recoveredData?.patch_mask_b64) {
-      rows.push([hex(PLANAR_PATCH_DEBUG), "generated planar hole islands"]);
+      rows.push([hex(PLANAR_PATCH_DEBUG), "generated planar hole islands", null]);
     }
     (recoveredData?.projection_sources || []).forEach((s, i) => {
       rows.push([hex(LAYER_DEBUG_PALETTE[i % LAYER_DEBUG_PALETTE.length]),
-                 `${s.name || `layer ${i}`} · ${projectionEvidenceLabel(s.evidence_type)}`]);
+                 `${s.name || `layer ${i}`} · ${projectionEvidenceLabel(s.evidence_type)}`,
+                 s.name || null]);
     });
-    layerLegend.replaceChildren(...rows.map(([c, label]) => {
+    layerLegend.replaceChildren(...rows.map(([c, label, key]) => {
       const row = document.createElement("div");
       const sw = document.createElement("span");
       sw.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:2px;` +
         `background:${c};margin-right:6px;vertical-align:middle;`;
-      row.append(sw, document.createTextNode(label));
+      const text = document.createElement("span");
+      text.textContent = label;
+      row.append(sw, text);
+      if (!key) return row;
+      const st = viz.get(key) || { hidden: false, solo: false };
+      if (st.hidden && !st.solo) {
+        row.style.opacity = "0.45";
+        text.style.textDecoration = "line-through";
+      }
+      const mkBtn = (txt, on, title, toggle) => {
+        const b = document.createElement("button");
+        b.textContent = txt;
+        b.title = title;
+        b.style.cssText = "margin-left:6px;padding:0 4px;font:10px monospace;cursor:pointer;" +
+          `background:${on ? "#2a3a1a" : "#20202a"};color:${on ? "#cfa" : "#89a"};` +
+          "border:1px solid #444;border-radius:2px;vertical-align:middle;";
+        b.onclick = (ev) => {
+          ev.stopPropagation();
+          toggle();
+          viz.set(key, st);
+          applyLayerVisibility(scene);
+          refreshLayerLegend();
+        };
+        return b;
+      };
+      row.append(
+        mkBtn("👁", !st.hidden, "Show/hide this layer (viewport only)",
+          () => { st.hidden = !st.hidden; }),
+        mkBtn("S", !!st.solo, "Solo this layer (viewport only)",
+          () => { st.solo = !st.solo; }));
       return row;
     }));
   }

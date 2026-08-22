@@ -124,6 +124,7 @@ from atlas_camera.comfy.nodes_inpaint import (
     AtlasInpaintStitch,
     AtlasSDXLInpaint,
     AtlasInstanceMask,
+    AtlasCardMask,
     AtlasSegmentedSDXLInpaint,
     AtlasCleanPlateLayer,
     AtlasCleanPlateStack,
@@ -256,6 +257,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasMultiViewSolve":        AtlasMultiViewSolve,
     "AtlasMultiViewSolveBurst":   AtlasMultiViewSolveBurst,
     "AtlasSolveBurstPatchCrops":  AtlasSolveBurstPatchCrops,
+    "AtlasCardMask":              AtlasCardMask,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -363,6 +365,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasMultiViewSolve":        "Atlas Multi-View RAW Solve 📷📷",
     "AtlasMultiViewSolveBurst":   "Atlas Multi-View Burst Solve 📷🎞️",
     "AtlasSolveBurstPatchCrops":  "Atlas Solve Burst Patch Crops 📷✂️",
+    "AtlasCardMask":              "Atlas Card Mask 🃏",
 }
 
 # ---------------------------------------------------------------------------
@@ -605,6 +608,9 @@ _MENU_FOLDERS = {
         "AtlasExportCameraPathUSD", "AtlasExportReliefMesh", "AtlasExportPlateEXR",
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
         "AtlasExportScenePackage",
+    ),
+    "Atlas/11 · Evidence Plate": (
+        "AtlasCardMask",
     ),
     # Every gated tier lands here: experimental, legacy, and iOS. They only
     # appear in the menu when their flag registers them, but carry the folder
