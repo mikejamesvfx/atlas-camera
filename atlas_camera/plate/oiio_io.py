@@ -23,6 +23,14 @@ DEFAULT_DISPLAY_COLORSPACE = "sRGB - Display"
 #: What ComfyUI itself expects on an IMAGE tensor: display-referred 0-1 sRGB.
 COMFY_WORKING_COLORSPACE = "sRGB - Display"
 
+#: Atlas's own colourspace tag. OIIO drops the standard ``oiio:ColorSpace``
+#: attribute on write whenever the active OCIO config cannot supply a
+#: ``colorInteropID`` for the space — true of older studio configs such as
+#: fn-nuke_cg v1.0.0 / OCIO v2.1 — so a plate written under one carried NO
+#: colourspace at all. This attribute is written unconditionally and read as a
+#: fallback, so a plate always self-describes regardless of config.
+ATLAS_COLORSPACE_ATTR = "atlas:ColorSpace"
+
 
 @dataclass
 class PlateRead:
@@ -160,6 +168,79 @@ _SPACE_ALIASES = {
 }
 
 
+def _config_resolve(cfg, name: str) -> str:
+    """`ColorConfig.resolve(name)` where available, else the name unchanged.
+
+    OIIO gained `resolve` (alias -> canonical name) after the versions Atlas
+    also supports, and it returns its input untouched for an unknown name, so
+    callers must still check the result against the config's own space list.
+    """
+    resolver = getattr(cfg, "resolve", None)
+    if resolver is None:
+        return name
+    try:
+        return resolver(name) or name
+    except Exception:                  # noqa: BLE001 - binding differences degrade
+        return name
+
+
+def _display_names(cfg) -> set:
+    """The config's DISPLAY names, which are not colourspaces to OIIO's count."""
+    try:
+        names = cfg.getDisplayNames()
+    except Exception:                  # noqa: BLE001 - older bindings
+        try:
+            names = [cfg.getDisplayNameByIndex(i)
+                     for i in range(cfg.getNumDisplays())]
+        except Exception:              # noqa: BLE001
+            return set()
+    return {str(n) for n in (names or ())}
+
+
+def _config_name(cfg) -> str:
+    """`configname` is a METHOD on the OIIO binding, not a property — reading it
+    as an attribute yields a bound-method repr, which then lands in a manifest
+    as the config's "name"."""
+    attr = getattr(cfg, "configname", None)
+    if attr is None:
+        return ""
+    try:
+        return str(attr() if callable(attr) else attr)
+    except Exception:                  # noqa: BLE001 - binding differences
+        return ""
+
+
+def config_identity() -> dict:
+    """Identify the ACTIVE OCIO config: name, file path, sha256, space count.
+
+    A colourspace NAME is not a contract — a plate tagged `ACEScg` under two
+    different configs is two different plates. The paint bridges record this
+    dict in their manifests so a score produced against one config is never
+    silently compared with a score produced against another, and so a claim
+    that two applications shared a config can be checked rather than trusted.
+    """
+    if not oiio_available():
+        return {"available": False, "config_name": "", "config_path": "",
+                "config_sha256": "", "n_colorspaces": 0, "n_displays": 0}
+    cfg = ColorConfigCache.get()
+    path = os.environ.get("OCIO", "")
+    digest = ""
+    if path and os.path.isfile(path):
+        import hashlib
+        with open(path, "rb") as handle:
+            digest = hashlib.sha256(handle.read()).hexdigest()
+    return {
+        "available": True,
+        "config_name": _config_name(cfg),
+        # Empty path means OIIO's built-in config (ocio://default), which has
+        # no file to hash — an empty sha256 is the honest answer, not a bug.
+        "config_path": path,
+        "config_sha256": digest,
+        "n_colorspaces": len(list_colorspaces()),
+        "n_displays": len(_display_names(cfg)),
+    }
+
+
 def resolve_colorspace(name: str) -> str:
     """Map an Atlas colourspace request to a name that EXISTS in the ACTIVE OCIO
     config, so a conversion works whether the user is on OIIO's built-in ACES
@@ -191,6 +272,19 @@ def resolve_colorspace(name: str) -> str:
         return name
 
     cfg = ColorConfigCache.get()
+
+    # 1b. The config's OWN alias table. `list_colorspaces` enumerates canonical
+    # names only, so a config that carries a name as an ALIAS looks absent here
+    # even though OCIO resolves it perfectly. Found live: a plate tagged
+    # `lin_rec709_scene` (the built-in config's canonical name) read fine under
+    # the built-in config and raised under fn-nuke_cg, which carries that same
+    # space as `Linear Rec.709 (sRGB)` with `lin_rec709_scene` among its
+    # aliases. `resolve()` returns the input unchanged for a name the config
+    # does not know, so the `in known` test below is what makes it safe.
+    resolved_alias = _config_resolve(cfg, name)
+    if resolved_alias and resolved_alias != name and resolved_alias in known:
+        return resolved_alias
+
     for role in (name, _SPACE_ROLES.get(name, "")):   # 2. role resolution
         if not role:
             continue
@@ -204,6 +298,17 @@ def resolve_colorspace(name: str) -> str:
     for cand in _SPACE_ALIASES.get(name, ()):         # 3. cross-config aliases
         if cand in known:
             return cand
+
+    # 4. A DISPLAY colourspace. OCIO v2 configs may declare display-referred
+    # spaces in their own block, and OIIO's `getNumColorSpaces()` enumeration
+    # does not include them — so `sRGB - Display` reads as "missing" from a
+    # config that in fact converts to it correctly (0.18 ACEScg -> 0.46135
+    # under fn-nuke_cg, matching the value recorded in plate/__init__.py).
+    # That matters because `sRGB - Display` is COMFY_WORKING_COLORSPACE, the
+    # default output of every read_plate: without this step, pointing $OCIO at
+    # such a config makes essentially every plate read raise.
+    if name in _display_names(cfg):
+        return name
 
     raise RuntimeError(
         f"Colourspace {name!r} is not in the active OCIO config, and no role or "
@@ -242,12 +347,26 @@ def read_plate(path: str, *, input_colorspace: str = "auto",
     buf = ImageBuf(str(path))
     if buf.has_error:
         raise RuntimeError(f"Could not read {path}: {buf.geterror()}")
-    buf.read()
+    # Decode to FLOAT, not the file's native type. ImageBufAlgo.colorconvert
+    # works in the buffer's own precision, so a half EXR — which is most of
+    # them, since AtlasLoadRAW writes half sidecars and write_exr defaults to
+    # half — had its colour conversion performed in HALF. Measured on a real
+    # plate: a Rec.709 -> ACES2065-1 -> Rec.709 round trip came back with
+    # max abs error 0.00292969 at native precision and 0.00000107 forced to
+    # float. That is a 2700x difference, and it silently set the noise floor
+    # for every colour-managed handoff: a Photoshop round trip measured 2.9e-3
+    # end to end, of which Photoshop itself contributed 1.2e-7.
+    buf.read(0, 0, True, oiio.FLOAT)
     if buf.has_error:
         raise RuntimeError(f"Could not decode {path}: {buf.geterror()}")
 
     spec = buf.spec()
-    declared = spec.getattribute("oiio:ColorSpace")
+    # Prefer the standard tag when it survived; fall back to Atlas's own, which
+    # is written unconditionally because OIIO drops the standard one under a
+    # config with no colorInteropID for the space. A file written by another
+    # application therefore still wins on the standard tag.
+    declared = (spec.getattribute("oiio:ColorSpace")
+                or spec.getattribute(ATLAS_COLORSPACE_ATTR))
     resolved_in = (declared if declared else
                    (auto_colorspace_for_path(path) if input_colorspace == "auto"
                     else input_colorspace))
@@ -290,7 +409,11 @@ def read_plate(path: str, *, input_colorspace: str = "auto",
         pixels=rgb, alpha=alpha,
         width=spec.width, height=spec.height, nchannels=spec.nchannels,
         file_format=os.path.splitext(str(path))[1].lstrip(".").lower(),
-        file_bit_depth=str(spec.format),
+        # The ON-DISK format, from the NATIVE spec. `spec().format` is the
+        # buffer's format, which is float since the read is forced to float for
+        # conversion precision — reporting that would tell a caller a half
+        # plate is float, and AtlasLoadPlate derives `is_proxy` from it.
+        file_bit_depth=str(buf.nativespec().format),
         input_colorspace=resolved_in, output_colorspace=resolved_out,
         channel_names=names, metadata=meta,
     )
@@ -369,6 +492,19 @@ def write_exr(path: str, pixels: Any, *, bit_depth: str = "half",
     spec.attribute("compression", compression)
     if tagged:
         spec.attribute("oiio:ColorSpace", tagged)
+        # OIIO only PERSISTS oiio:ColorSpace when the active config can supply a
+        # `colorInteropID` for the space. OIIO's built-in config does; an older
+        # studio config (fn-nuke_cg v1.0.0 / OCIO v2.1) does not, and OIIO then
+        # silently drops the tag — writing an EXR with no colourspace at all.
+        # That is silent data loss with a nasty tail: read_plate on 'auto' falls
+        # back to guessing from the extension, so a RAW sidecar (Rec.709-linear)
+        # comes back read as ACEScg and the colour is quietly wrong, which is
+        # exactly the failure docs/USER_GUIDE.md warns about.
+        #
+        # So Atlas writes its OWN tag as well. It is under our control, it
+        # survives any config, and read_plate prefers oiio:ColorSpace when
+        # present so a file written by anything else still wins.
+        spec.attribute(ATLAS_COLORSPACE_ATTR, tagged)
     spec.attribute("Software", "Atlas Camera")
     for key, value in (extra_attribs or {}).items():
         try:
