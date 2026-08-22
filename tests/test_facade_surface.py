@@ -57,6 +57,7 @@ FACADE_PUBLIC = {
     "AtlasDeriveWalls", "AtlasExportBlender", "AtlasExportCameraPathUSD",
     "AtlasExportMayaLayers", "AtlasExportMayaReviewScene", "AtlasExportNuke",
     "AtlasExportNukeLayers", "AtlasExportReliefMesh", "AtlasExportReviewPackage",
+    "AtlasExportScenePackage",
     "AtlasExportSolveJSON", "AtlasExportUSD", "AtlasExtractAnglePatch",
     "AtlasGravityOverride", "AtlasGravityCompass", "AtlasGroundDepthMap", "AtlasGroundMask",
     "AtlasHorizonMask", "AtlasImportAnglePatch", "AtlasInpaintCrop",

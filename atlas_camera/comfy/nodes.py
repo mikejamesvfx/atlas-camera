@@ -220,6 +220,7 @@ from atlas_camera.comfy.nodes_inpaint import (
 )
 from atlas_camera.comfy.nodes_export import (
     AtlasExportReviewPackage,
+    AtlasExportScenePackage,
     AtlasExportSolveJSON,
     AtlasExportMayaReviewScene,
     AtlasExportReliefMesh,

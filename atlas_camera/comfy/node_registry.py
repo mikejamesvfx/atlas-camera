@@ -131,6 +131,7 @@ from atlas_camera.comfy.nodes_inpaint import (
     AtlasSkyDomeLayer,
 )
 from atlas_camera.comfy.nodes_export import (
+    AtlasExportScenePackage,
     AtlasExportReviewPackage,
     AtlasExportSolveJSON,
     AtlasExportMayaReviewScene,
@@ -151,6 +152,7 @@ from atlas_camera.comfy.nodes_export import (
 
 NODE_CLASS_MAPPINGS = {
     # Existing
+    "AtlasExportScenePackage":    AtlasExportScenePackage,
     "AtlasExportReviewPackage":   AtlasExportReviewPackage,
     "AtlasExportSolveJSON":       AtlasExportSolveJSON,
     "AtlasExportMayaReviewScene": AtlasExportMayaReviewScene,
@@ -258,6 +260,7 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     # Existing
+    "AtlasExportScenePackage":    "Atlas Export Scene Package (.atlas)",
     "AtlasExportReviewPackage":   "Atlas Export Review Package",
     "AtlasExportSolveJSON":       "Atlas Export Solve JSON",
     "AtlasExportMayaReviewScene": "Atlas Export Maya Review Scene",
@@ -601,6 +604,7 @@ _MENU_FOLDERS = {
         "AtlasExportMayaReviewScene", "AtlasExportBlender", "AtlasExportUSD",
         "AtlasExportCameraPathUSD", "AtlasExportReliefMesh", "AtlasExportPlateEXR",
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
+        "AtlasExportScenePackage",
     ),
     # Every gated tier lands here: experimental, legacy, and iOS. They only
     # appear in the menu when their flag registers them, but carry the folder
