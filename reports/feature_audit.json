@@ -2,15 +2,15 @@
  "schema_version": 1,
  "generated_utc": "2026-08-22",
  "counts": {
-  "standard": 112,
+  "standard": 113,
   "experimental": 10,
   "legacy": 2,
   "ios": 2,
-  "total": 126,
+  "total": 127,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 112,
+  "KEEP_CORE": 113,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
@@ -906,7 +906,7 @@
   "AtlasDepthMap": {
    "module": "atlas_camera/comfy/nodes_depth.py",
    "tier": "standard",
-   "example_workflows": 11,
+   "example_workflows": 13,
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 1,
@@ -1009,7 +1009,7 @@
   "AtlasDeriveReliefMesh": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": 6,
+   "example_workflows": 8,
    "dedicated_tests": 13,
    "tests": 15,
    "mcp_tools": 0,
@@ -1086,7 +1086,7 @@
   "AtlasDeriveWalls": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
-   "example_workflows": 1,
+   "example_workflows": 3,
    "dedicated_tests": 5,
    "tests": 7,
    "mcp_tools": 0,
@@ -1331,15 +1331,17 @@
   "AtlasExportPlateEXR": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": 0,
+   "example_workflows": 1,
    "dedicated_tests": 3,
    "tests": 5,
    "mcp_tools": 0,
-   "repo_tools": 0,
+   "repo_tools": 1,
    "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
+    "repo_tool",
     "docs"
    ],
    "live_execution": "not_attempted",
@@ -1383,7 +1385,7 @@
   "AtlasExportReliefMesh": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": 3,
+   "example_workflows": 5,
    "dedicated_tests": 5,
    "tests": 7,
    "mcp_tools": 0,
@@ -1438,7 +1440,7 @@
   "AtlasExportScenePackage": {
    "module": "atlas_camera/comfy/nodes_export.py",
    "tier": "standard",
-   "example_workflows": 1,
+   "example_workflows": 3,
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
@@ -2004,7 +2006,7 @@
   "AtlasLearnedSolveFromImage": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": 4,
+   "example_workflows": 6,
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 1,
@@ -2142,7 +2144,7 @@
   "AtlasLoadRAW": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": 4,
+   "example_workflows": 5,
    "dedicated_tests": 9,
    "tests": 11,
    "mcp_tools": 0,
@@ -2404,7 +2406,7 @@
   "AtlasOcclusionGraph": {
    "module": "atlas_camera/comfy/nodes_completion.py",
    "tier": "standard",
-   "example_workflows": 2,
+   "example_workflows": 4,
    "dedicated_tests": 4,
    "tests": 6,
    "mcp_tools": 1,
@@ -2586,6 +2588,33 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasPlaneMattes": {
+   "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "standard",
+   "example_workflows": 3,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 1,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "workflow",
+    "dedicated_test",
+    "repo_tool",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasPlateLayer": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
@@ -2616,7 +2645,7 @@
   "AtlasProject": {
    "module": "atlas_camera/comfy/nodes_project.py",
    "tier": "standard",
-   "example_workflows": 2,
+   "example_workflows": 4,
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,
@@ -2722,7 +2751,7 @@
   "AtlasReferenceScaleSolve": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": 0,
+   "example_workflows": 1,
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 1,
@@ -2730,6 +2759,7 @@
    "docs": 7,
    "product_evidence": true,
    "evidence_kinds": [
+    "workflow",
     "dedicated_test",
     "mcp",
     "repo_tool",
@@ -2935,7 +2965,7 @@
   "AtlasSceneHealthGate": {
    "module": "atlas_camera/comfy/nodes_solve.py",
    "tier": "standard",
-   "example_workflows": 3,
+   "example_workflows": 5,
    "dedicated_tests": 2,
    "tests": 4,
    "mcp_tools": 0,

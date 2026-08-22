@@ -71,6 +71,10 @@ WORKFLOW_IDS = {
     # namespace, so it is reproducible if it ever needs regenerating.
     "atlas_photo_to_atlas_scene_workflow":
         "99f2f654-6a3c-5853-b6d6-adc33295a89f",
+    "atlas_scene_measured_scale_workflow":
+        "6bc1bbd4-17a9-53ef-af07-dddedf13b810",
+    "atlas_raw_to_atlas_scene_workflow":
+        "3be16ed9-2d86-5ff9-969e-7473db874fd4",
 }
 
 # Exterior plates: the metric outdoor model is the doctrine choice for these
@@ -904,7 +908,10 @@ THREE INPUTS, AND WHY EACH IS WIRED
    correct outcome for a surface nobody has vouched for, and a baffling one if you did not know why.
    This is the single most common reason a package opens inert.
 
-   AtlasDeriveWalls feeds it, and the ORDER of those two is load-bearing. Derive nodes clobber prior
+   AtlasPlaneMattes sits between the two, and without it the package carries planes and ZERO
+   layers: a plane record says a surface exists and cannot say which pixels are on it, so there
+   is no matte to attach and the editor opens showing the relief mesh alone. AtlasDeriveWalls
+   feeds that, and the ORDER of these is load-bearing. Derive nodes clobber prior
    PROXY_ROLE geometry by design, so wall extraction sits between the relief mesh and the occlusion
    graph. Run it the other way round and it removes the planes the graph has just classified. Without
    it the package carries exactly one plane — the relief mesh's backdrop — which validates, classifies
@@ -991,24 +998,28 @@ def build_scene_package(object_info: dict, layout) -> dict:
         "ground_anchor": True,
         "backdrop": "measured_only",
     }, size=(430, 260))
+    plane_mattes = graph.node("AtlasPlaneMattes", title="6 \u00b7 PLANE MATTES \u00b7 which pixels each plane owns", values={
+        "tolerance_m": 0.0,
+        "min_coverage_px": 64,
+    }, size=(430, 200))
     occlusion = graph.node(
         "AtlasOcclusionGraph",
-        title="6 \u00b7 OCCLUSION GRAPH \u00b7 this is what CLASSIFIES the planes",
+        title="7 \u00b7 OCCLUSION GRAPH \u00b7 this is what CLASSIFIES the planes",
         size=(430, 140))
-    gate = graph.node("AtlasSceneHealthGate", title="7 \u00b7 SCENE HEALTH \u00b7 acknowledge before export", values={
+    gate = graph.node("AtlasSceneHealthGate", title="8 \u00b7 SCENE HEALTH \u00b7 acknowledge before export", values={
         "pass_through_on_pass": True,
     }, size=(430, 300))
     controls = _controls(graph, vfx=False)
-    viewport = graph.node("AtlasBlockoutViewport", title="8 \u00b7 VIEWPORT \u00b7 look through the recovered camera", values={
+    viewport = graph.node("AtlasBlockoutViewport", title="9 \u00b7 VIEWPORT \u00b7 look through the recovered camera", values={
         "resolution": 1280,
         "client_data": "",
         "preview_expand": 1.0,
     }, size=(900, 680))
-    mesh = graph.node("AtlasExportReliefMesh", title="9a \u00b7 GEOMETRY \u00b7 GLB, self-contained, texture embedded", values={
+    mesh = graph.node("AtlasExportReliefMesh", title="10a \u00b7 GEOMETRY \u00b7 GLB, self-contained, texture embedded", values={
         "output_dir": "atlas_exports/" + slug,
         "format": "glb",
     }, size=(430, 320))
-    package = graph.node("AtlasExportScenePackage", title="9b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back", values={
+    package = graph.node("AtlasExportScenePackage", title="10b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back", values={
         "output_dir": "atlas_exports/" + slug,
         "scene_id": "street_001",
         "plate_path": "input/example.png",
@@ -1029,7 +1040,13 @@ def build_scene_package(object_info: dict, layout) -> dict:
     graph.connect(depth, "depth", walls, "depth")
     # Classification BEFORE the gate: the package reads its completion policies
     # from what this node decided, and it decides nothing without being run.
-    graph.connect(walls, "solve", occlusion, "solve")
+    # A plane record cannot say which pixels are on it, so without this the
+    # package carries planes and ZERO layers and the editor shows the relief
+    # mesh alone. Between the derive and the graph, because the graph reasons
+    # about surfaces and the exporter writes one matte file per layer.
+    graph.connect(walls, "solve", plane_mattes, "solve")
+    graph.connect(depth, "depth", plane_mattes, "depth")
+    graph.connect(plane_mattes, "solve", occlusion, "solve")
     graph.connect(depth, "depth", occlusion, "depth")
     graph.connect(occlusion, "solve", gate, "solve")
     graph.connect(load, "IMAGE", gate, "source_image")
@@ -1049,13 +1066,258 @@ def build_scene_package(object_info: dict, layout) -> dict:
 
     groups = [
         ("1 \u00b7 PHOTOGRAPH \u2192 CAMERA \u2192 GEOMETRY \u2192 PLANES \u2192 CLASSIFICATION", "#35536b",
-         [project, load, solve, depth, relief, walls, occlusion, controls]),
+         [project, load, solve, depth, relief, walls, plane_mattes, occlusion, controls]),
         ("2 \u00b7 CHECK IT", "#6b5a35", [gate, viewport, note]),
         ("3 \u00b7 WRITE THE SCENE \u00b7 this is what Atlas Scene opens", "#375c4a",
          [mesh, package]),
     ]
     return _finish(graph, slug, groups, layout,
                    "One photograph becomes a .atlas package: camera, classified planes, plate, mesh and ledger.")
+
+
+SCALE_NOTE = """MEASURED SCALE -> .atlas — the difference between a scene and a scene you can build on.
+
+A single photograph has an inherent SCALE ambiguity. With no ground plane fitted and no known-size
+object, the solve falls back to an assumed ~1.6 m eye height and says so: scale_source
+`assumed_default`, confidence 0.15, safe_to_export FALSE. The health gate then stops every export and
+makes you acknowledge it. That is the gate working — a distance nobody measured is not a measurement,
+and a `.atlas` package records that verdict verbatim for whoever opens it next.
+
+This graph is the base .atlas workflow with the fix wired in.
+
+WHY AtlasReferenceScaleSolve ARRIVES BYPASSED (Ctrl+M to enable)
+It measures camera height from ONE known-size object you box on the plate — tier-1 evidence, above
+depth (tier-2) and the assumption (tier-3). It cannot ship enabled, because ComfyUI's bundled
+example.png is a child's crayon drawing: a `person_175cm` box over that figure would mint a confident
+measurement of a cartoon, and a fabricated confidence defeats the floor precisely when it is
+protecting something. Bypassed, the solve passes through untouched and the graph still runs.
+
+TO USE IT, on your own plate:
+  1. Ctrl+M on the node to enable it.
+  2. Pick the reference that matches something visible — person_175cm, door_210cm, sedan_car,
+     shipping_container_20ft, and so on.
+  3. Box it: bbox_y1 is the object's BASE (where it meets the ground), bbox_y0 its top.
+  4. On a plate with buildings, storey_count is usually the better lever — count the storeys.
+
+The alternative is AtlasScaleOverride, which SETS the height as an artist decision. That is honest
+too, and reads `manual` rather than `measured` — it just does not pretend to be evidence.
+
+WHERE IT GOES IN THE CHAIN
+Before the depth and geometry nodes, never after. Everything downstream — the relief mesh, the wall
+planes, the per-plane mattes — is built in metres, so rescaling afterwards would leave a package whose
+geometry and camera disagree about what a metre is."""
+
+
+def build_scene_measured_scale(object_info: dict, layout) -> dict:
+    """The .atlas chain with the scale ambiguity actually addressed."""
+
+    slug = "atlas_scene_measured_scale_workflow"
+    graph = Graph(object_info)
+
+    project = graph.node("AtlasProject", title="0 \u00b7 DELIVERY PROJECT", values={
+        "project": "atlas_scene_demo", "shot": "sh020",
+        "colour_mode": "Standard (sRGB)", "project_root": "", "create_tree": True,
+    }, size=(400, 220))
+    load = graph.node("LoadImage", title="1 \u00b7 YOUR PHOTOGRAPH", values={
+        "image": "example.png", "image_upload": "image",
+    }, size=(360, 310))
+    solve = graph.node("AtlasLearnedSolveFromImage", title="2 \u00b7 CAMERA \u00b7 learned prior", values={
+        "height_mode": "assume", "camera_height_m": 1.6, "depth_model": OUTDOOR_DEPTH,
+        "sensor_width_mm": 36.0, "device": "auto", "focal_length_mm": 0.0,
+    }, size=(440, 340))
+    # BYPASS (mode 4), not mute: the solve must still reach everything downstream.
+    # A muted inline node breaks the chain; a bypassed one passes its input on.
+    scale = graph.node("AtlasReferenceScaleSolve", title="3 \u00b7 MEASURED SCALE \u00b7 Ctrl+M to enable, then box a known object", values={
+        "reference_id": "person_175cm",
+        "bbox_x0": 0.0, "bbox_y0": 0.0, "bbox_x1": 100.0, "bbox_y1": 400.0,
+        "height_override_m": 0.0, "storey_count": 0, "storey_height_m": 3.0,
+    }, size=(430, 320), mode=4)
+    depth = graph.node("AtlasDepthMap", title="4 \u00b7 DEPTH \u00b7 one shared metric scale", values={
+        "depth_model": OUTDOOR_DEPTH, "device": "auto",
+    }, size=(440, 300))
+    relief = graph.node("AtlasDeriveReliefMesh", title="5 \u00b7 PROJECTION GEOMETRY", values={
+        "relief_grid": 256, "relief_quality": "custom", "depth_edge_rel": 0.5,
+        "sky_heuristic": False,
+    }, size=(430, 320))
+    walls = graph.node("AtlasDeriveWalls", title="6 \u00b7 PLANES \u00b7 RANSAC walls, ground-anchored", values={
+        "max_walls": 4, "max_objects": 0, "distance_modes": 1,
+        "ground_anchor": True, "backdrop": "measured_only",
+    }, size=(430, 260))
+    plane_mattes = graph.node("AtlasPlaneMattes", title="7 \u00b7 PLANE MATTES", values={
+        "tolerance_m": 0.0, "min_coverage_px": 64,
+    }, size=(430, 200))
+    occlusion = graph.node("AtlasOcclusionGraph", title="8 \u00b7 OCCLUSION GRAPH \u00b7 classifies the planes",
+                           size=(430, 140))
+    gate = graph.node("AtlasSceneHealthGate", title="9 \u00b7 SCENE HEALTH \u00b7 with a measured scale this PASSES", values={
+        "pass_through_on_pass": True,
+    }, size=(430, 300))
+    mesh = graph.node("AtlasExportReliefMesh", title="10a \u00b7 GEOMETRY \u00b7 GLB", values={
+        "output_dir": "atlas_exports/" + slug, "format": "glb",
+    }, size=(430, 320))
+    package = graph.node("AtlasExportScenePackage", title="10b \u00b7 .atlas PACKAGE", values={
+        "output_dir": "atlas_exports/" + slug, "scene_id": "measured_001",
+        "plate_path": "input/example.png", "observation_id": "obs_001",
+    }, size=(460, 240))
+    note = _note(graph, SCALE_NOTE, "READ ME \u00b7 why your package says safe_to_export: false")
+
+    graph.connect(load, "IMAGE", solve, "image")
+    graph.connect(solve, "solve", scale, "solve")
+    # Scale FIRST: everything downstream is built in metres, so rescaling after
+    # the geometry would leave a package whose camera and geometry disagree
+    # about what a metre is.
+    graph.connect(scale, "solve", depth, "solve")
+    graph.connect(load, "IMAGE", depth, "image")
+    graph.connect(scale, "solve", relief, "solve")
+    graph.connect(depth, "depth", relief, "depth")
+    graph.connect(relief, "solve", walls, "solve")
+    graph.connect(depth, "depth", walls, "depth")
+    graph.connect(walls, "solve", plane_mattes, "solve")
+    graph.connect(depth, "depth", plane_mattes, "depth")
+    graph.connect(plane_mattes, "solve", occlusion, "solve")
+    graph.connect(depth, "depth", occlusion, "depth")
+    graph.connect(occlusion, "solve", gate, "solve")
+    graph.connect(load, "IMAGE", gate, "source_image")
+    graph.connect(depth, "depth", gate, "depth")
+    graph.connect(gate, "solve", mesh, "solve")
+    graph.connect(load, "IMAGE", mesh, "image")
+    graph.connect(project, "project", mesh, "project")
+    graph.connect(gate, "solve", package, "solve")
+    graph.connect(project, "project", package, "project")
+    graph.connect(mesh, "glb_path", package, "relief_mesh_path")
+
+    groups = [
+        ("1 \u00b7 CAMERA \u2192 SCALE \u2192 GEOMETRY", "#35536b",
+         [project, load, solve, scale, depth, relief, walls, plane_mattes, occlusion]),
+        ("2 \u00b7 CHECK IT", "#6b5a35", [gate, note]),
+        ("3 \u00b7 WRITE THE SCENE", "#375c4a", [mesh, package]),
+    ]
+    return _finish(graph, slug, groups, layout,
+                   "The .atlas chain with the scale ambiguity measured rather than assumed.")
+
+
+RAW_NOTE = """CAMERA RAW -> .atlas — the package carries a float plate, not an 8-bit preview.
+
+The other .atlas workflows put the PNG they solved from into imagery/. That is fine for a blockout and
+wrong for finishing: an 8-bit display-referred file has already had its highlights clipped and a
+transfer curve baked in, and nothing downstream can get them back.
+
+THE CHAIN
+AtlasLoadRAW demosaics the RAW, writes a scene-linear EXR sidecar, and hands on BOTH the plate_ref and
+the EXIF focal/sensor — which go into the solve, so the camera is recovered with the lens the
+photograph was actually taken on instead of a predicted focal.
+
+AtlasExportPlateEXR then converts that sidecar to ACEScg and writes it into the project's plates/
+lane, and its exr_path is what the package adopts. So imagery/ holds a half-float ACEScg EXR, and
+scene.json names the colourspace it is in.
+
+WHY THE CONVERSION IS WORTH A NODE
+Colour conversion runs at the buffer's own precision, and a half EXR converted in half carries a
+measured max abs error of 0.00292969 on a Rec.709 -> ACES2065-1 -> Rec.709 round trip, against
+0.00000107 at float — 2700x. That was the noise floor under every colour-managed handoff until the
+read was forced to float. A plate that arrives in an editor is worth getting right once.
+
+BEFORE IT RUNS
+file_path is a PLACEHOLDER, relative to ComfyUI's input directory, because no RAW ships in this repo.
+Point it at your own .NEF/.CR2/.CR3/.RAF/.ARW/.DNG. Needs the [raw] extra (rawpy) and [oiio]
+(OpenImageIO) — without them the nodes say which one is missing rather than half-working.
+
+SCALE STILL APPLIES
+A RAW plate is not a measured plate. The scale verdict will still read assumed_default unless you give
+it a reference — see atlas_scene_measured_scale_workflow."""
+
+
+def build_raw_to_atlas_scene(object_info: dict, layout) -> dict:
+    """RAW in, colour-managed `.atlas` out — imagery/ carries a float ACEScg EXR."""
+
+    slug = "atlas_raw_to_atlas_scene_workflow"
+    graph = Graph(object_info)
+
+    project = graph.node("AtlasProject", title="0 \u00b7 DELIVERY PROJECT \u00b7 VFX colour", values={
+        "project": "atlas_scene_demo", "shot": "sh030",
+        "colour_mode": "VFX (ACEScg / float)", "project_root": "", "create_tree": True,
+    }, size=(400, 220))
+    raw = graph.node("AtlasLoadRAW", title="1 \u00b7 YOUR RAW \u00b7 set file_path (no RAW ships in this repo)", values={
+        "file_path": "atlas_raw/photo_01.RAF",
+        "undistort": True, "half_size": False, "white_balance": "camera",
+        "exposure_ev": 0.0, "write_exr": True,
+        "output_dir": "atlas_exports/" + slug,
+        "colorspace": "Linear Rec.709 (sRGB)", "headroom": 6.0,
+    }, size=(460, 400))
+    solve = graph.node("AtlasLearnedSolveFromImage", title="2 \u00b7 CAMERA \u00b7 EXIF focal, not a predicted one", values={
+        "height_mode": "assume", "camera_height_m": 1.6, "depth_model": OUTDOOR_DEPTH,
+        "sensor_width_mm": 36.0, "device": "auto", "focal_length_mm": 0.0,
+    }, size=(440, 340))
+    plate = graph.node("AtlasExportPlateEXR", title="3 \u00b7 PLATE \u00b7 ACEScg half-float into the project's plates/ lane", values={
+        "output_colorspace": "ACEScg", "output_dir": "atlas_exports/" + slug,
+        "bit_depth": "half", "file_name": "",
+    }, size=(430, 260))
+    depth = graph.node("AtlasDepthMap", title="4 \u00b7 DEPTH", values={
+        "depth_model": OUTDOOR_DEPTH, "device": "auto",
+    }, size=(440, 300))
+    relief = graph.node("AtlasDeriveReliefMesh", title="5 \u00b7 PROJECTION GEOMETRY", values={
+        "relief_grid": 256, "relief_quality": "custom", "depth_edge_rel": 0.5,
+        "sky_heuristic": False,
+    }, size=(430, 320))
+    walls = graph.node("AtlasDeriveWalls", title="6 \u00b7 PLANES", values={
+        "max_walls": 4, "max_objects": 0, "distance_modes": 1,
+        "ground_anchor": True, "backdrop": "measured_only",
+    }, size=(430, 260))
+    plane_mattes = graph.node("AtlasPlaneMattes", title="7 \u00b7 PLANE MATTES", values={
+        "tolerance_m": 0.0, "min_coverage_px": 64,
+    }, size=(430, 200))
+    occlusion = graph.node("AtlasOcclusionGraph", title="8 \u00b7 OCCLUSION GRAPH", size=(430, 140))
+    gate = graph.node("AtlasSceneHealthGate", title="9 \u00b7 SCENE HEALTH", values={
+        "pass_through_on_pass": True,
+    }, size=(430, 300))
+    mesh = graph.node("AtlasExportReliefMesh", title="10a \u00b7 GEOMETRY \u00b7 GLB", values={
+        "output_dir": "atlas_exports/" + slug, "format": "glb",
+    }, size=(430, 320))
+    package = graph.node("AtlasExportScenePackage", title="10b \u00b7 .atlas PACKAGE \u00b7 plate_path comes from the EXR", values={
+        "output_dir": "atlas_exports/" + slug, "scene_id": "raw_001",
+        "plate_path": "", "observation_id": "obs_001",
+    }, size=(460, 240))
+    note = _note(graph, RAW_NOTE, "READ ME \u00b7 a float plate, and what it costs to skip one")
+
+    graph.connect(project, "project", raw, "project")
+    graph.connect(raw, "image", solve, "image")
+    # The EXIF focal and sensor ride the raw_meta wire, so the solve uses the
+    # lens the photograph was taken on rather than a predicted focal.
+    graph.connect(raw, "raw_meta", solve, "raw_meta")
+    graph.connect(raw, "plate_ref", plate, "plate_ref")
+    graph.connect(project, "project", plate, "project")
+    graph.connect(raw, "image", depth, "image")
+    graph.connect(solve, "solve", depth, "solve")
+    graph.connect(solve, "solve", relief, "solve")
+    graph.connect(depth, "depth", relief, "depth")
+    graph.connect(relief, "solve", walls, "solve")
+    graph.connect(depth, "depth", walls, "depth")
+    graph.connect(walls, "solve", plane_mattes, "solve")
+    graph.connect(depth, "depth", plane_mattes, "depth")
+    graph.connect(plane_mattes, "solve", occlusion, "solve")
+    graph.connect(depth, "depth", occlusion, "depth")
+    graph.connect(occlusion, "solve", gate, "solve")
+    graph.connect(raw, "image", gate, "source_image")
+    graph.connect(depth, "depth", gate, "depth")
+    graph.connect(gate, "solve", mesh, "solve")
+    graph.connect(raw, "image", mesh, "image")
+    graph.connect(project, "project", mesh, "project")
+    graph.connect(gate, "solve", package, "solve")
+    graph.connect(project, "project", package, "project")
+    graph.connect(mesh, "glb_path", package, "relief_mesh_path")
+    # The ACEScg EXR is the plate the package adopts, not the 8-bit preview the
+    # solve happened to look at.
+    graph.connect(plate, "exr_path", package, "plate_path")
+
+    groups = [
+        ("1 \u00b7 RAW \u2192 CAMERA \u2192 FLOAT PLATE", "#35536b",
+         [project, raw, solve, plate]),
+        ("2 \u00b7 GEOMETRY \u2192 PLANES \u2192 CLASSIFICATION", "#4a3f6b",
+         [depth, relief, walls, plane_mattes, occlusion]),
+        ("3 \u00b7 CHECK IT", "#6b5a35", [gate, note]),
+        ("4 \u00b7 WRITE THE SCENE", "#375c4a", [mesh, package]),
+    ]
+    return _finish(graph, slug, groups, layout,
+                   "A camera RAW becomes a .atlas package whose imagery/ is a float ACEScg EXR.")
 
 
 BUILDERS = {
@@ -1065,6 +1327,8 @@ BUILDERS = {
     "atlas_layered_projection_workflow": build_layered,
     "atlas_hero_02_photo_to_editable_scene_workflow": build_hero02,
     "atlas_photo_to_atlas_scene_workflow": build_scene_package,
+    "atlas_scene_measured_scale_workflow": build_scene_measured_scale,
+    "atlas_raw_to_atlas_scene_workflow": build_raw_to_atlas_scene,
 }
 
 

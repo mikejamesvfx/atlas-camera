@@ -3387,6 +3387,156 @@ class AtlasDeriveWalls:
         })
 
 
+#: Sources this node owns. A re-queue replaces these and nothing else: a patch
+#: view or a clean plate is another node's evidence, and dropping it because it
+#: happened to be in the same list would delete work nobody asked to delete.
+PLANE_MATTE_SOURCE_KIND = "plane_matte"
+
+
+class AtlasPlaneMattes:
+    """Per-plane mattes — what turns a fitted plane into a projection LAYER.
+
+    `plane_extraction` keeps only the inlier COUNT, so a plane record says a
+    surface exists and cannot say which pixels are on it. Project the plate
+    through such a plane and it receives everything behind it too: the
+    photograph smeared across a few flat rectangles instead of cropped to the
+    objects those rectangles stand for. `core.plane_masks` was written to fix
+    exactly that and had no caller in this package — the maths shipped, the
+    wiring did not, and a `.atlas` package came out with planes and zero layers.
+
+    THE LOAD-BEARING PROPERTY IS EXCLUSIVITY. Assignment is nearest-wins with an
+    explicit unassigned label, because two planes both claiming a pixel put the
+    same photograph on two surfaces at different depths, which an orbit shows as
+    a doubled, sliding ghost.
+
+    Each surviving plane becomes a ProjectionSource that shares the PRIMARY
+    camera, carries that plane as its own geometry, and declares
+    `projection_mode: clean_plate` — it has no image of its own, so it projects
+    the primary plate, and the default patch facing threshold would drop a
+    ground plane out of its own projection almost everywhere.
+
+    Run it AFTER the plane producer (AtlasDeriveWalls and friends) and before
+    anything that consumes layers — the occlusion graph, the viewport, or
+    AtlasExportScenePackage, which writes one matte file per layer.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "mattes"
+    CATEGORY = "Atlas"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "depth": ("ATLAS_DEPTH_MAP",),
+            },
+            "optional": {
+                "tolerance_m": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 100.0, "step": 0.01,
+                    "tooltip": "How far off a plane a point may sit and still count as "
+                               "on it. 0 = AUTO, which scales the tolerance with the "
+                               "plane's DEPTH — a fixed metric slab is either too tight "
+                               "for a far wall or too loose for a near one."}),
+                "min_coverage_px": ("INT", {
+                    "default": 64, "min": 0, "max": 1000000,
+                    "tooltip": "A plane explaining fewer pixels than this gets no layer. "
+                               "A layer with a nearly empty matte mattes nothing and "
+                               "still costs the editor a row."}),
+            },
+        }
+
+    def mattes(self, solve, depth, tolerance_m=0.0, min_coverage_px=64):
+        from atlas_camera.core.depth_geometry import back_project_normals
+        from atlas_camera.core.plane_masks import (
+            plane_frames_from_primitives, plane_pixel_masks,
+        )
+        from atlas_camera.core.schema import ProjectionSource
+
+        params = _solve_camera_params(solve, depth)
+        if params is None:
+            return (solve, "SKIPPED — solve has no usable focal (fx <= 0); "
+                           "no mattes computed")
+        width, height, fx, fy, cx, cy = params
+
+        primitives = list(
+            getattr(getattr(solve, "projection_scene", None), "proxy_geometry", None)
+            or [])
+        planes = [prim for prim in primitives
+                  if getattr(prim, "primitive_type", None) == "plane"]
+        if not planes:
+            return (solve, "SKIPPED — this solve carries no plane primitives, so "
+                           "there is nothing to matte. Run AtlasDeriveWalls (or "
+                           "another derive node) upstream.")
+
+        frames = plane_frames_from_primitives(planes)
+        projection = back_project_normals(
+            _depth_map_for_solve(depth, width, height),
+            view_matrix=solve.camera.extrinsics.camera_view_matrix,
+            fx=fx, fy=fy, cx=cx, cy=cy)
+
+        masks, report = plane_pixel_masks(
+            projection.pts_world, frames,
+            camera_position=projection.cam_pos,
+            valid=projection.valid_depth,
+            tolerance_m=(float(tolerance_m) or None))
+
+        import numpy as np
+
+        cam = np.asarray(projection.cam_pos, dtype=np.float64)
+        kept: list = []
+        skipped: list[str] = []
+        for index, (frame, mask) in enumerate(zip(frames, masks)):
+            covered = int(np.count_nonzero(mask))
+            if covered < int(min_coverage_px):
+                skipped.append(f"{frame.name} ({covered}px)")
+                continue
+            distance = float(np.linalg.norm(
+                np.asarray(frame.centre, dtype=np.float64) - cam))
+            kept.append(ProjectionSource(
+                camera=solve.camera,
+                name=str(frame.name),
+                image_b64=None,
+                proxy_geometry=[planes[index]],
+                # Seam doctrine: band priorities are FARTHEST-highest, so the
+                # near surface draws over the far one instead of under it.
+                priority=distance,
+                mask_b64=_mask_to_b64_png(mask),
+                metadata={
+                    "atlas_source_kind": PLANE_MATTE_SOURCE_KIND,
+                    "evidence_type": "plane_matte",
+                    "projection_mode": "clean_plate",
+                    "plane_name": str(frame.name),
+                    "coverage_px": covered,
+                    "distance_m": distance,
+                },
+            ))
+
+        # Deep-copied: a node returns a NEW solve rather than mutating the one
+        # upstream still holds, which is what makes a re-queue of the upstream
+        # branch reproducible. The surviving sources are taken from the COPY, so
+        # nothing downstream ends up holding the caller's own objects.
+        out = copy.deepcopy(solve)
+        existing = [source for source in (getattr(out, "projection_sources", None) or [])
+                    if (getattr(source, "metadata", None) or {}).get(
+                        "atlas_source_kind") != PLANE_MATTE_SOURCE_KIND]
+        out.projection_sources = existing + kept
+
+        lines = [f"{len(kept)} plane layer(s) from {len(frames)} plane(s); "
+                 f"{report['assigned_px']} px assigned "
+                 f"({report['assigned_fraction_of_valid']:.1%} of measurable)"]
+        if report.get("contested_px"):
+            lines.append(
+                f"⚠ {report['contested_px']} px were in range for MORE THAN ONE "
+                "plane — resolved nearest-wins. A scene where most pixels are "
+                "contested has planes that are duplicates of each other.")
+        if skipped:
+            lines.append("did not explain enough to earn a layer: "
+                         + ", ".join(skipped))
+        return (out, "\n".join(lines))
+
+
 class AtlasDeriveTowersSpires:
     """Vertical wall planes extruded to the real image-space silhouette top
     (vertical_extrusion) — one job, reaches towers/spires/sloped roofs that

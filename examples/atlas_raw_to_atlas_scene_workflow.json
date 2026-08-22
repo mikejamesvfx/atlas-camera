@@ -1,7 +1,7 @@
 {
-  "id": "99f2f654-6a3c-5853-b6d6-adc33295a89f",
+  "id": "3be16ed9-2d86-5ff9-969e-7473db874fd4",
   "revision": 1,
-  "last_node_id": 14,
+  "last_node_id": 13,
   "last_link_id": 25,
   "nodes": [
     {
@@ -9,7 +9,7 @@
       "type": "AtlasProject",
       "pos": [
         40,
-        414
+        436
       ],
       "size": [
         400,
@@ -76,8 +76,10 @@
           "name": "project",
           "type": "ATLAS_PROJECT",
           "links": [
-            22,
-            24
+            1,
+            5,
+            21,
+            23
           ]
         }
       ],
@@ -86,74 +88,195 @@
       },
       "widgets_values": [
         "atlas_scene_demo",
-        "sh010",
-        "Standard (sRGB)",
+        "sh030",
+        "VFX (ACEScg / float)",
         "",
         true
       ],
-      "title": "0 \u00b7 DELIVERY PROJECT \u00b7 where everything lands"
+      "title": "0 \u00b7 DELIVERY PROJECT \u00b7 VFX colour"
     },
     {
       "id": 2,
-      "type": "LoadImage",
+      "type": "AtlasLoadRAW",
       "pos": [
-        40,
-        818
+        980,
+        267
       ],
       "size": [
-        360,
-        432
+        460,
+        574
       ],
       "flags": {},
       "order": 1,
       "mode": 0,
       "inputs": [
         {
-          "localized_name": "image",
-          "name": "image",
+          "localized_name": "file_path",
+          "name": "file_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "file_path"
+          }
+        },
+        {
+          "localized_name": "undistort",
+          "name": "undistort",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "undistort"
+          }
+        },
+        {
+          "localized_name": "half_size",
+          "name": "half_size",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "half_size"
+          }
+        },
+        {
+          "localized_name": "white_balance",
+          "name": "white_balance",
           "type": "COMBO",
           "link": null,
           "shape": 7,
           "widget": {
-            "name": "image"
+            "name": "white_balance"
           }
+        },
+        {
+          "localized_name": "exposure_ev",
+          "name": "exposure_ev",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "exposure_ev"
+          }
+        },
+        {
+          "localized_name": "write_exr",
+          "name": "write_exr",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "write_exr"
+          }
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "colorspace",
+          "name": "colorspace",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "colorspace"
+          }
+        },
+        {
+          "localized_name": "headroom",
+          "name": "headroom",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "headroom"
+          }
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 1,
+          "shape": 7
         }
       ],
       "outputs": [
         {
-          "localized_name": "IMAGE",
-          "name": "IMAGE",
+          "localized_name": "image",
+          "name": "image",
           "type": "IMAGE",
           "links": [
-            1,
             2,
-            13,
-            16,
-            21
+            6,
+            17,
+            20
           ]
         },
         {
-          "localized_name": "MASK",
-          "name": "MASK",
-          "type": "MASK",
+          "localized_name": "plate_ref",
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "links": [
+            4
+          ]
+        },
+        {
+          "localized_name": "raw_meta",
+          "name": "raw_meta",
+          "type": "ATLAS_RAW_META",
+          "links": [
+            3
+          ]
+        },
+        {
+          "localized_name": "focal_length_mm",
+          "name": "focal_length_mm",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "localized_name": "sensor_width_mm",
+          "name": "sensor_width_mm",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
           "links": []
         }
       ],
       "properties": {
-        "Node name for S&R": "LoadImage"
+        "Node name for S&R": "AtlasLoadRAW"
       },
       "widgets_values": [
-        "example.png",
-        "image"
+        "atlas_raw/photo_01.RAF",
+        true,
+        false,
+        "camera",
+        0.0,
+        true,
+        "atlas_exports/atlas_raw_to_atlas_scene_workflow",
+        "Linear Rec.709 (sRGB)",
+        6.0
       ],
-      "title": "1 \u00b7 YOUR PHOTOGRAPH"
+      "title": "1 \u00b7 YOUR RAW \u00b7 set file_path (no RAW ships in this repo)"
     },
     {
       "id": 3,
       "type": "AtlasLearnedSolveFromImage",
       "pos": [
-        980,
-        747
+        1560,
+        110
       ],
       "size": [
         440,
@@ -167,7 +290,7 @@
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 1
+          "link": 2
         },
         {
           "localized_name": "height_mode",
@@ -243,7 +366,7 @@
           "localized_name": "raw_meta",
           "name": "raw_meta",
           "type": "ATLAS_RAW_META",
-          "link": null,
+          "link": 3,
           "shape": 7
         }
       ],
@@ -253,8 +376,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            3,
-            4
+            7,
+            8
           ]
         },
         {
@@ -276,28 +399,130 @@
         "auto",
         0.0
       ],
-      "title": "2 \u00b7 CAMERA \u00b7 learned prior"
+      "title": "2 \u00b7 CAMERA \u00b7 EXIF focal, not a predicted one"
     },
     {
       "id": 4,
-      "type": "AtlasDepthMap",
+      "type": "AtlasExportPlateEXR",
       "pos": [
-        1540,
-        772
+        1560,
+        670
       ],
       "size": [
-        440,
-        544
+        430,
+        328
       ],
       "flags": {},
       "order": 3,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "plate_ref",
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "link": 4
+        },
+        {
+          "localized_name": "output_colorspace",
+          "name": "output_colorspace",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_colorspace"
+          }
+        },
+        {
+          "localized_name": "output_dir",
+          "name": "output_dir",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_dir"
+          }
+        },
+        {
+          "localized_name": "bit_depth",
+          "name": "bit_depth",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "bit_depth"
+          }
+        },
+        {
+          "localized_name": "file_name",
+          "name": "file_name",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "file_name"
+          }
+        },
+        {
+          "localized_name": "project",
+          "name": "project",
+          "type": "ATLAS_PROJECT",
+          "link": 5,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "exr_path",
+          "name": "exr_path",
+          "type": "STRING",
+          "links": [
+            25
+          ]
+        },
+        {
+          "localized_name": "plate_ref",
+          "name": "plate_ref",
+          "type": "ATLAS_PLATE_REF",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasExportPlateEXR"
+      },
+      "widgets_values": [
+        "ACEScg",
+        "atlas_exports/atlas_raw_to_atlas_scene_workflow",
+        "half",
+        ""
+      ],
+      "title": "3 \u00b7 PLATE \u00b7 ACEScg half-float into the project's plates/ lane"
+    },
+    {
+      "id": 5,
+      "type": "AtlasDepthMap",
+      "pos": [
+        2120,
+        322
+      ],
+      "size": [
+        440,
+        544
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 2
+          "link": 6
         },
         {
           "localized_name": "depth_model",
@@ -323,7 +548,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 3,
+          "link": 7,
           "shape": 7
         },
         {
@@ -393,12 +618,11 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            5,
-            7,
             9,
             11,
-            14,
-            17
+            13,
+            15,
+            18
           ]
         }
       ],
@@ -415,34 +639,34 @@
         0.25,
         false
       ],
-      "title": "3 \u00b7 DEPTH \u00b7 one shared metric scale"
+      "title": "4 \u00b7 DEPTH"
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "AtlasDeriveReliefMesh",
       "pos": [
-        2100,
-        429
+        2680,
+        82
       ],
       "size": [
         430,
         1024
       ],
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 4
+          "link": 8
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 5
+          "link": 9
         },
         {
           "localized_name": "relief_grid",
@@ -625,7 +849,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            6
+            10
           ]
         },
         {
@@ -662,34 +886,34 @@
         2.0,
         12.0
       ],
-      "title": "4 \u00b7 PROJECTION GEOMETRY \u00b7 torn at silhouettes"
+      "title": "5 \u00b7 PROJECTION GEOMETRY"
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "AtlasDeriveWalls",
       "pos": [
-        2650,
-        738
+        3230,
+        391
       ],
       "size": [
         430,
         406
       ],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 6
+          "link": 10
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 7
+          "link": 11
         },
         {
           "localized_name": "max_walls",
@@ -755,7 +979,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            8
+            12
           ]
         },
         {
@@ -775,34 +999,34 @@
         true,
         "measured_only"
       ],
-      "title": "5 \u00b7 PLANES \u00b7 RANSAC walls, ground-anchored"
+      "title": "6 \u00b7 PLANES"
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "AtlasPlaneMattes",
       "pos": [
-        3200,
-        831
+        3780,
+        484
       ],
       "size": [
         430,
         220
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 8
+          "link": 12
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 9
+          "link": 13
         },
         {
           "localized_name": "tolerance_m",
@@ -831,7 +1055,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            10
+            14
           ]
         },
         {
@@ -848,34 +1072,34 @@
         0.0,
         64
       ],
-      "title": "6 \u00b7 PLANE MATTES \u00b7 which pixels each plane owns"
+      "title": "7 \u00b7 PLANE MATTES"
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "AtlasOcclusionGraph",
       "pos": [
-        3750,
-        871
+        4330,
+        524
       ],
       "size": [
         430,
         140
       ],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 10
+          "link": 14
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 11,
+          "link": 15,
           "shape": 7
         }
       ],
@@ -885,7 +1109,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            12
+            16
           ]
         },
         {
@@ -899,40 +1123,40 @@
         "Node name for S&R": "AtlasOcclusionGraph"
       },
       "widgets_values": [],
-      "title": "7 \u00b7 OCCLUSION GRAPH \u00b7 this is what CLASSIFIES the planes"
+      "title": "8 \u00b7 OCCLUSION GRAPH"
     },
     {
-      "id": 9,
+      "id": 10,
       "type": "AtlasSceneHealthGate",
       "pos": [
-        4300,
-        744
+        4880,
+        397
       ],
       "size": [
         430,
         394
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 12
+          "link": 16
         },
         {
           "localized_name": "source_image",
           "name": "source_image",
           "type": "IMAGE",
-          "link": 13
+          "link": 17
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 14,
+          "link": 18,
           "shape": 7
         },
         {
@@ -1000,9 +1224,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            15,
-            20,
-            23
+            19,
+            22
           ]
         },
         {
@@ -1020,136 +1243,18 @@
         false,
         ""
       ],
-      "title": "8 \u00b7 SCENE HEALTH \u00b7 acknowledge before export"
-    },
-    {
-      "id": 10,
-      "type": "AtlasViewportControls",
-      "pos": [
-        40,
-        1320
-      ],
-      "size": [
-        440,
-        442
-      ],
-      "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "config_label",
-          "name": "config_label",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "config_label"
-          }
-        },
-        {
-          "localized_name": "config_path",
-          "name": "config_path",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "config_path"
-          }
-        },
-        {
-          "localized_name": "working_colorspace",
-          "name": "working_colorspace",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "working_colorspace"
-          }
-        },
-        {
-          "localized_name": "output_colorspace",
-          "name": "output_colorspace",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "output_colorspace"
-          }
-        },
-        {
-          "localized_name": "display",
-          "name": "display",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "display"
-          }
-        },
-        {
-          "localized_name": "view",
-          "name": "view",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "view"
-          }
-        },
-        {
-          "localized_name": "display_trim",
-          "name": "display_trim",
-          "type": "FLOAT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "display_trim"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "controls",
-          "name": "controls",
-          "type": "ATLAS_VIEWPORT_LINK",
-          "links": [
-            18
-          ]
-        },
-        {
-          "localized_name": "output_profile",
-          "name": "output_profile",
-          "type": "ATLAS_OUTPUT_PROFILE",
-          "links": [
-            19
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasViewportControls"
-      },
-      "widgets_values": [
-        "sRGB / Standard",
-        "",
-        "sRGB",
-        "sRGB - Texture",
-        "sRGB - Display",
-        "Un-tone-mapped",
-        1.0
-      ],
-      "title": "OUTPUT DESK \u00b7 OCIO metadata"
+      "title": "9 \u00b7 SCENE HEALTH"
     },
     {
       "id": 11,
-      "type": "AtlasBlockoutViewport",
+      "type": "AtlasExportReliefMesh",
       "pos": [
-        4850,
-        1218
+        5430,
+        40
       ],
       "size": [
-        900,
-        680
+        430,
+        1108
       ],
       "flags": {},
       "order": 10,
@@ -1159,233 +1264,13 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 15
-        },
-        {
-          "localized_name": "source_image",
-          "name": "source_image",
-          "type": "IMAGE",
-          "link": 16
-        },
-        {
-          "localized_name": "resolution",
-          "name": "resolution",
-          "type": "INT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "resolution"
-          }
-        },
-        {
-          "localized_name": "client_data",
-          "name": "client_data",
-          "type": "STRING",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "client_data"
-          }
-        },
-        {
-          "localized_name": "primary_depth",
-          "name": "primary_depth",
-          "type": "ATLAS_DEPTH_MAP",
-          "link": 17,
-          "shape": 7
-        },
-        {
-          "localized_name": "preview_expand",
-          "name": "preview_expand",
-          "type": "FLOAT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "preview_expand"
-          }
-        },
-        {
-          "localized_name": "controls",
-          "name": "controls",
-          "type": "ATLAS_VIEWPORT_LINK",
-          "link": 18,
-          "shape": 7
-        },
-        {
-          "localized_name": "shot_cam",
-          "name": "shot_cam",
-          "type": "ATLAS_SHOT_CAM",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "localized_name": "output_profile",
-          "name": "output_profile",
-          "type": "ATLAS_OUTPUT_PROFILE",
-          "link": 19,
-          "shape": 7
-        },
-        {
-          "localized_name": "debug_matte",
-          "name": "debug_matte",
-          "type": "MASK",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "localized_name": "patch_mask",
-          "name": "patch_mask",
-          "type": "MASK",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "localized_name": "drawn_fill_px",
-          "name": "drawn_fill_px",
-          "type": "INT",
-          "link": null,
-          "shape": 7,
-          "widget": {
-            "name": "drawn_fill_px"
-          }
-        },
-        {
-          "localized_name": "clean_plate",
-          "name": "clean_plate",
-          "type": "IMAGE",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "shaded",
-          "name": "shaded",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "localized_name": "depth",
-          "name": "depth",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "localized_name": "normal",
-          "name": "normal",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "localized_name": "path_frames",
-          "name": "path_frames",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "localized_name": "camera_path",
-          "name": "camera_path",
-          "type": "ATLAS_CAMERA_PATH",
-          "links": []
-        },
-        {
-          "localized_name": "patch_azimuth_view",
-          "name": "patch_azimuth_view",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "localized_name": "patch_elevation_view",
-          "name": "patch_elevation_view",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "localized_name": "patch_distance",
-          "name": "patch_distance",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "localized_name": "patch_prompt",
-          "name": "patch_prompt",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "localized_name": "patch_exact",
-          "name": "patch_exact",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "localized_name": "patch_render_mask",
-          "name": "patch_render_mask",
-          "type": "MASK",
-          "links": []
-        },
-        {
-          "localized_name": "solve",
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "links": []
-        },
-        {
-          "localized_name": "drawn_mask",
-          "name": "drawn_mask",
-          "type": "MASK",
-          "links": []
-        },
-        {
-          "localized_name": "draw_report",
-          "name": "draw_report",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AtlasBlockoutViewport"
-      },
-      "widgets_values": [
-        1280,
-        "",
-        1.0,
-        96
-      ],
-      "title": "9 \u00b7 VIEWPORT \u00b7 look through the recovered camera"
-    },
-    {
-      "id": 12,
-      "type": "AtlasExportReliefMesh",
-      "pos": [
-        4850,
-        40
-      ],
-      "size": [
-        430,
-        1108
-      ],
-      "flags": {},
-      "order": 11,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "solve",
-          "name": "solve",
-          "type": "ATLAS_SOLVE",
-          "link": 20
+          "link": 19
         },
         {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 21
+          "link": 20
         },
         {
           "localized_name": "output_dir",
@@ -1571,7 +1456,7 @@
           "localized_name": "project",
           "name": "project",
           "type": "ATLAS_PROJECT",
-          "link": 22,
+          "link": 21,
           "shape": 7
         }
       ],
@@ -1587,7 +1472,7 @@
           "name": "glb_path",
           "type": "STRING",
           "links": [
-            25
+            24
           ]
         },
         {
@@ -1607,7 +1492,7 @@
         "Node name for S&R": "AtlasExportReliefMesh"
       },
       "widgets_values": [
-        "atlas_exports/atlas_photo_to_atlas_scene_workflow",
+        "atlas_exports/atlas_raw_to_atlas_scene_workflow",
         128,
         0.5,
         "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
@@ -1626,28 +1511,28 @@
         30.0,
         false
       ],
-      "title": "10a \u00b7 GEOMETRY \u00b7 GLB, self-contained, texture embedded"
+      "title": "10a \u00b7 GEOMETRY \u00b7 GLB"
     },
     {
-      "id": 13,
+      "id": 12,
       "type": "AtlasExportScenePackage",
       "pos": [
-        5870,
-        480
+        5980,
+        403
       ],
       "size": [
         460,
         382
       ],
       "flags": {},
-      "order": 12,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 23
+          "link": 22
         },
         {
           "localized_name": "output_dir",
@@ -1673,7 +1558,7 @@
           "localized_name": "plate_path",
           "name": "plate_path",
           "type": "STRING",
-          "link": null,
+          "link": 25,
           "shape": 7,
           "widget": {
             "name": "plate_path"
@@ -1683,7 +1568,7 @@
           "localized_name": "relief_mesh_path",
           "name": "relief_mesh_path",
           "type": "STRING",
-          "link": 25,
+          "link": 24,
           "shape": 7,
           "widget": {
             "name": "relief_mesh_path"
@@ -1703,7 +1588,7 @@
           "localized_name": "project",
           "name": "project",
           "type": "ATLAS_PROJECT",
-          "link": 24,
+          "link": 23,
           "shape": 7
         }
       ],
@@ -1719,27 +1604,27 @@
         "Node name for S&R": "AtlasExportScenePackage"
       },
       "widgets_values": [
-        "atlas_exports/atlas_photo_to_atlas_scene_workflow",
-        "street_001",
-        "input/example.png",
+        "atlas_exports/atlas_raw_to_atlas_scene_workflow",
+        "raw_001",
+        "",
         "",
         "obs_001"
       ],
-      "title": "10b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back"
+      "title": "10b \u00b7 .atlas PACKAGE \u00b7 plate_path comes from the EXR"
     },
     {
-      "id": 14,
+      "id": 13,
       "type": "Note",
       "pos": [
         40,
-        1832
+        840
       ],
       "size": [
         820,
         520
       ],
       "flags": {},
-      "order": 13,
+      "order": 12,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -1747,14 +1632,22 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "PHOTOGRAPH -> .atlas SCENE PACKAGE \u2014 the format Atlas Scene opens.\n\nEvery other export hands one DCC a camera and the conversation ends there. This hands over the whole\nscene, and it is meant to come BACK edited \u2014 so the package carries what a REVIEWER needs to judge it\n(which plane licensed a construction, what the fit was worth, what the solve said about its own scale),\nnot only what a renderer needs to draw it.\n\nTHREE INPUTS, AND WHY EACH IS WIRED\n\n1. AtlasOcclusionGraph is not decoration. Plane classification is READ from the occlusion graph, which\n   already decides it. Without this node upstream every plane arrives unclassified and therefore\n   licenses completion_policy \"none\" \u2014 the editor will refuse to extrude on any of them, which is the\n   correct outcome for a surface nobody has vouched for, and a baffling one if you did not know why.\n   This is the single most common reason a package opens inert.\n\n   AtlasPlaneMattes sits between the two, and without it the package carries planes and ZERO\n   layers: a plane record says a surface exists and cannot say which pixels are on it, so there\n   is no matte to attach and the editor opens showing the relief mesh alone. AtlasDeriveWalls\n   feeds that, and the ORDER of these is load-bearing. Derive nodes clobber prior\n   PROXY_ROLE geometry by design, so wall extraction sits between the relief mesh and the occlusion\n   graph. Run it the other way round and it removes the planes the graph has just classified. Without\n   it the package carries exactly one plane \u2014 the relief mesh's backdrop \u2014 which validates, classifies\n   and gives an editor almost nothing to work with.\n\n2. AtlasExportReliefMesh writes GLB and its glb_path feeds relief_mesh_path. GLB rather than OBJ because\n   the package should be self-contained: the writer embeds its texture and needs no sidecar MTL. Without\n   geometry the package has a camera and planes and nothing to edit.\n\n3. plate_path is given EXPLICITLY, as a path relative to ComfyUI's working directory. It has to be:\n   AtlasLearnedSolveFromImage solves from a temporary file and deletes it, so the solve's own image_path\n   names something already gone by the time the exporter runs. Point this at your own plate when you\n   swap the photograph.\n\nThe node COMPLAINS on its face for each of these that is missing, naming the input to connect. An\nexport that quietly drops the plate produces a scene whose dead features nobody can explain.\n\nWHERE IT LANDS\nAtlasProject routes the package into <project_root>/<project>/<shot>/scenes/<scene_id>.atlas \u2014 the\nscenes lane, alongside plates/, solves/, nuke/, maya/ and the rest. Inside:\n  scene.json   the document, validated against the format's own checklist BEFORE it is written\n  atlas/       the solve, kept as produced\n  imagery/     the plate\n  geometry/    the relief mesh\n  mattes/      per-layer mattes as FILES with digests, decoded out of the JSON\n  history/     the ledger, opened by the export itself\n\nSCALE\nThe package records the solve's scale verdict verbatim, including whether it is safe to export. A single\nphotograph has an inherent scale ambiguity; if this reads assumed_default, reach for AtlasScaleOverride\nor a scale reference before anyone builds on it."
+        "CAMERA RAW -> .atlas \u2014 the package carries a float plate, not an 8-bit preview.\n\nThe other .atlas workflows put the PNG they solved from into imagery/. That is fine for a blockout and\nwrong for finishing: an 8-bit display-referred file has already had its highlights clipped and a\ntransfer curve baked in, and nothing downstream can get them back.\n\nTHE CHAIN\nAtlasLoadRAW demosaics the RAW, writes a scene-linear EXR sidecar, and hands on BOTH the plate_ref and\nthe EXIF focal/sensor \u2014 which go into the solve, so the camera is recovered with the lens the\nphotograph was actually taken on instead of a predicted focal.\n\nAtlasExportPlateEXR then converts that sidecar to ACEScg and writes it into the project's plates/\nlane, and its exr_path is what the package adopts. So imagery/ holds a half-float ACEScg EXR, and\nscene.json names the colourspace it is in.\n\nWHY THE CONVERSION IS WORTH A NODE\nColour conversion runs at the buffer's own precision, and a half EXR converted in half carries a\nmeasured max abs error of 0.00292969 on a Rec.709 -> ACES2065-1 -> Rec.709 round trip, against\n0.00000107 at float \u2014 2700x. That was the noise floor under every colour-managed handoff until the\nread was forced to float. A plate that arrives in an editor is worth getting right once.\n\nBEFORE IT RUNS\nfile_path is a PLACEHOLDER, relative to ComfyUI's input directory, because no RAW ships in this repo.\nPoint it at your own .NEF/.CR2/.CR3/.RAF/.ARW/.DNG. Needs the [raw] extra (rawpy) and [oiio]\n(OpenImageIO) \u2014 without them the nodes say which one is missing rather than half-working.\n\nSCALE STILL APPLIES\nA RAW plate is not a measured plate. The scale verdict will still read assumed_default unless you give\nit a reference \u2014 see atlas_scene_measured_scale_workflow."
       ],
-      "title": "READ ME \u00b7 why the occlusion graph is not optional"
+      "title": "READ ME \u00b7 a float plate, and what it costs to skip one"
     }
   ],
   "links": [
     [
       1,
+      1,
+      0,
+      2,
+      9,
+      "ATLAS_PROJECT"
+    ],
+    [
+      2,
       2,
       0,
       3,
@@ -1762,87 +1655,95 @@
       "IMAGE"
     ],
     [
+      3,
       2,
       2,
-      0,
-      4,
-      0,
-      "IMAGE"
-    ],
-    [
       3,
-      3,
-      0,
-      4,
-      3,
-      "ATLAS_SOLVE"
+      8,
+      "ATLAS_RAW_META"
     ],
     [
       4,
-      3,
-      0,
-      5,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      5,
+      2,
+      1,
       4,
       0,
+      "ATLAS_PLATE_REF"
+    ],
+    [
       5,
       1,
-      "ATLAS_DEPTH_MAP"
+      0,
+      4,
+      5,
+      "ATLAS_PROJECT"
     ],
     [
       6,
+      2,
+      0,
       5,
       0,
-      6,
-      0,
-      "ATLAS_SOLVE"
+      "IMAGE"
     ],
     [
       7,
-      4,
+      3,
       0,
-      6,
-      1,
-      "ATLAS_DEPTH_MAP"
+      5,
+      3,
+      "ATLAS_SOLVE"
     ],
     [
       8,
-      6,
+      3,
       0,
-      7,
+      6,
       0,
       "ATLAS_SOLVE"
     ],
     [
       9,
-      4,
+      5,
       0,
-      7,
+      6,
       1,
       "ATLAS_DEPTH_MAP"
     ],
     [
       10,
-      7,
+      6,
       0,
-      8,
+      7,
       0,
       "ATLAS_SOLVE"
     ],
     [
       11,
-      4,
+      5,
       0,
-      8,
+      7,
       1,
       "ATLAS_DEPTH_MAP"
     ],
     [
       12,
+      7,
+      0,
+      8,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      13,
+      5,
+      0,
+      8,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      14,
       8,
       0,
       9,
@@ -1850,141 +1751,137 @@
       "ATLAS_SOLVE"
     ],
     [
-      13,
-      2,
+      15,
+      5,
       0,
       9,
       1,
-      "IMAGE"
-    ],
-    [
-      14,
-      4,
-      0,
-      9,
-      2,
       "ATLAS_DEPTH_MAP"
     ],
     [
-      15,
+      16,
       9,
       0,
-      11,
+      10,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      16,
+      17,
       2,
       0,
-      11,
+      10,
       1,
       "IMAGE"
     ],
     [
-      17,
-      4,
-      0,
-      11,
-      4,
-      "ATLAS_DEPTH_MAP"
-    ],
-    [
       18,
-      10,
+      5,
       0,
-      11,
-      6,
-      "ATLAS_VIEWPORT_LINK"
+      10,
+      2,
+      "ATLAS_DEPTH_MAP"
     ],
     [
       19,
       10,
-      1,
-      11,
-      8,
-      "ATLAS_OUTPUT_PROFILE"
-    ],
-    [
-      20,
-      9,
       0,
-      12,
+      11,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      21,
+      20,
       2,
       0,
-      12,
+      11,
       1,
       "IMAGE"
     ],
     [
-      22,
+      21,
       1,
       0,
-      12,
+      11,
       20,
       "ATLAS_PROJECT"
     ],
     [
-      23,
-      9,
+      22,
+      10,
       0,
-      13,
+      12,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      24,
+      23,
       1,
       0,
-      13,
+      12,
       6,
       "ATLAS_PROJECT"
     ],
     [
-      25,
-      12,
+      24,
+      11,
       1,
-      13,
+      12,
       4,
+      "STRING"
+    ],
+    [
+      25,
+      4,
+      0,
+      12,
+      3,
       "STRING"
     ]
   ],
   "groups": [
     {
-      "title": "1 \u00b7 PHOTOGRAPH \u2192 CAMERA \u2192 GEOMETRY \u2192 PLANES \u2192 CLASSIFICATION",
+      "title": "1 \u00b7 RAW \u2192 CAMERA \u2192 FLOAT PLATE",
       "bounding": [
         -5,
-        326,
-        4230,
-        1481
+        22,
+        2050,
+        1021
       ],
       "color": "#35536b",
       "font_size": 24,
       "flags": {}
     },
     {
-      "title": "2 \u00b7 CHECK IT",
+      "title": "2 \u00b7 GEOMETRY \u2192 PLANES \u2192 CLASSIFICATION",
+      "bounding": [
+        2075,
+        -6,
+        2730,
+        1157
+      ],
+      "color": "#4a3f6b",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "3 \u00b7 CHECK IT",
       "bounding": [
         -5,
-        656,
-        5800,
-        1741
+        309,
+        5360,
+        1096
       ],
       "color": "#6b5a35",
       "font_size": 24,
       "flags": {}
     },
     {
-      "title": "3 \u00b7 WRITE THE SCENE \u00b7 this is what Atlas Scene opens",
+      "title": "4 \u00b7 WRITE THE SCENE",
       "bounding": [
-        4805,
+        5385,
         -48,
-        1570,
+        1100,
         1241
       ],
       "color": "#375c4a",
@@ -2004,7 +1901,7 @@
     "frontendVersion": "1.25.11",
     "workflowRendererVersion": "LG",
     "atlas_shipping_set": "v1",
-    "atlas_notes": "One photograph becomes a .atlas package: camera, classified planes, plate, mesh and ledger."
+    "atlas_notes": "A camera RAW becomes a .atlas package whose imagery/ is a float ACEScg EXR."
   },
   "version": 0.4
 }

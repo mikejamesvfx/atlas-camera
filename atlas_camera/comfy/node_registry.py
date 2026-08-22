@@ -101,6 +101,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasRefineOcclusionSeams,
     AtlasPathGuidedHoleRepair,
     AtlasDeriveWalls,
+    AtlasPlaneMattes,
     AtlasDeriveTowersSpires,
     AtlasDeriveRoofsFacades,
     AtlasDeriveInteriorRoom,
@@ -265,6 +266,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasMultiViewSolveBurst":   AtlasMultiViewSolveBurst,
     "AtlasSolveBurstPatchCrops":  AtlasSolveBurstPatchCrops,
     "AtlasCardMask":              AtlasCardMask,
+    "AtlasPlaneMattes":           AtlasPlaneMattes,
     # Evidence-first World -> Comfy handoff. These keys are append-only.
     "AtlasOpenRealPlate":         AtlasOpenRealPlate,
     "AtlasReadLockedPlatePlan":   AtlasReadLockedPlatePlan,
@@ -379,6 +381,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasMultiViewSolveBurst":   "Atlas Multi-View Burst Solve 📷🎞️",
     "AtlasSolveBurstPatchCrops":  "Atlas Solve Burst Patch Crops 📷✂️",
     "AtlasCardMask":              "Atlas Card Mask 🃏",
+    "AtlasPlaneMattes":           "Atlas Plane Mattes 🧩",
     "AtlasOpenRealPlate":         "Atlas Open Real Plate 📓",
     "AtlasReadLockedPlatePlan":   "Atlas Read Locked Plate Plan 🔒",
     "AtlasRecordPlateAttempt":    "Atlas Record Plate Attempt 🧾",
@@ -596,7 +599,7 @@ _MENU_FOLDERS = {
         "AtlasSAM3Mask", "AtlasScopeMask", "AtlasOcclusionMask",
     ),
     "Atlas/05 \u00b7 Geometry": (
-        "AtlasDeriveProjectionGeometry", "AtlasDeriveReliefMesh", "AtlasDeriveWalls",
+        "AtlasDeriveProjectionGeometry", "AtlasDeriveReliefMesh", "AtlasDeriveWalls", "AtlasPlaneMattes",
         "AtlasDeriveTowersSpires", "AtlasDeriveRoofsFacades",
         "AtlasDeriveInteriorRoom", "AtlasMergeGeometry", "AtlasRetopologizeLayer",
         "AtlasDefineShotCam", "AtlasGroundPlane",

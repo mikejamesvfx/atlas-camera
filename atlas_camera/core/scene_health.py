@@ -284,6 +284,11 @@ class HealthReport:
         }
 
 
+#: Primitive types that are analytic surfaces rather than meshes. They have
+#: no vertices by construction, so mesh-shaped checks must not judge them.
+_ANALYTIC_PRIMITIVES = frozenset({"plane", "box", "cylinder"})
+
+
 def _flag(code: str, message: str, layer: str | None = None) -> HealthFlag:
     return HealthFlag(_FLAG_SEVERITY.get(code, "warn"), code, message, layer)
 
@@ -368,6 +373,14 @@ def evaluate_scene_health(
             source_geometry = list(solve.projection_scene.proxy_geometry or [])
         n_verts = sum(int((g.metadata or {}).get("n_vertices") or 0)
                       for g in source_geometry)
+        # An ANALYTIC surface — plane, box, cylinder — carries no vertex count
+        # because it has no mesh, and asking a mesh question of one reads its
+        # honest answer as a defect. AtlasPlaneMattes produces exactly this
+        # shape: a layer whose geometry is the plane it mattes. Found live, as
+        # four correct plane layers failing the gate with ZERO vertices.
+        analytic_only = bool(source_geometry) and all(
+            getattr(g, "primitive_type", None) in _ANALYTIC_PRIMITIVES
+            for g in source_geometry)
         n_faces = sum(int((g.metadata or {}).get("n_faces") or 0)
                       for g in source_geometry)
         cov = matte_coverage_fn(getattr(src, "mask_b64", None)) \
@@ -415,7 +428,7 @@ def evaluate_scene_health(
                     f"camera was refused ({meta.get('registration_fallback_reason') or meta.get('registration_reason') or 'unknown'}) — "
                     "the DECLARED orbit was used; check inliers/residual before trusting the patch"))
         sources.append(entry)
-        if n_verts == 0:
+        if n_verts == 0 and not analytic_only:
             flags.append(_flag(
                 "zero_vertex_layer",
                 f"{src.name}: ZERO vertices — this layer contributes no "

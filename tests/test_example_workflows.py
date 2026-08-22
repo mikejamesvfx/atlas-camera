@@ -94,7 +94,9 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_qwen_roi_registered_patch_workflow.json",
                      "atlas_raw_affinity_cleanplate_workflow.json",
                      "atlas_raw_multiview_affinity_patch_workflow.json",
-                     "atlas_raw_street_affinity_declutter_workflow.json"]
+                     "atlas_raw_street_affinity_declutter_workflow.json",
+                     "atlas_raw_to_atlas_scene_workflow.json",
+                     "atlas_scene_measured_scale_workflow.json"]
 
 
 @pytest.mark.parametrize("name,wf", _WORKFLOWS, ids=[n for n, _ in _WORKFLOWS])
