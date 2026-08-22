@@ -31,7 +31,7 @@ from typing import Any, Sequence
 from atlas_camera.format.identity import plane_from_transform, plane_id_for
 from atlas_camera.format.version import SCHEMA_VERSION
 
-#: Atlas canonical space, spelled as `atlas.world.schema.WorldCamera` spells it.
+#: Atlas canonical space, spelled as `atlas_world.schema.WorldCamera` spells it.
 COORDINATE_SYSTEM = "right_handed_y_up_camera_to_world"
 
 #: What a solver produced. The editor's own output is `USER_CREATED` or

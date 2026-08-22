@@ -233,6 +233,13 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportCameraPathUSD,
     AtlasExportPlateEXR,
 )
+from atlas_camera.comfy.nodes_world_plate import (
+    AtlasOpenRealPlate,
+    AtlasReadLockedPlatePlan,
+    AtlasRecordPlateAttempt,
+    AtlasExportPlateHandoff,
+    AtlasRealPlateToScene,
+)
 
 from atlas_camera.comfy.node_registry import (
     NODE_CLASS_MAPPINGS,

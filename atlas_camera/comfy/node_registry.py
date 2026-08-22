@@ -145,6 +145,13 @@ from atlas_camera.comfy.nodes_export import (
     AtlasExportCameraPathUSD,
     AtlasExportPlateEXR,
 )
+from atlas_camera.comfy.nodes_world_plate import (
+    AtlasOpenRealPlate,
+    AtlasReadLockedPlatePlan,
+    AtlasRecordPlateAttempt,
+    AtlasExportPlateHandoff,
+    AtlasRealPlateToScene,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +265,12 @@ NODE_CLASS_MAPPINGS = {
     "AtlasMultiViewSolveBurst":   AtlasMultiViewSolveBurst,
     "AtlasSolveBurstPatchCrops":  AtlasSolveBurstPatchCrops,
     "AtlasCardMask":              AtlasCardMask,
+    # Evidence-first World -> Comfy handoff. These keys are append-only.
+    "AtlasOpenRealPlate":         AtlasOpenRealPlate,
+    "AtlasReadLockedPlatePlan":   AtlasReadLockedPlatePlan,
+    "AtlasRecordPlateAttempt":    AtlasRecordPlateAttempt,
+    "AtlasExportPlateHandoff":    AtlasExportPlateHandoff,
+    "AtlasRealPlateToScene":      AtlasRealPlateToScene,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -366,6 +379,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasMultiViewSolveBurst":   "Atlas Multi-View Burst Solve 📷🎞️",
     "AtlasSolveBurstPatchCrops":  "Atlas Solve Burst Patch Crops 📷✂️",
     "AtlasCardMask":              "Atlas Card Mask 🃏",
+    "AtlasOpenRealPlate":         "Atlas Open Real Plate 📓",
+    "AtlasReadLockedPlatePlan":   "Atlas Read Locked Plate Plan 🔒",
+    "AtlasRecordPlateAttempt":    "Atlas Record Plate Attempt 🧾",
+    "AtlasExportPlateHandoff":    "Atlas Export Plate Handoff 📤",
+    "AtlasRealPlateToScene":      "Atlas Real Plate To Scene 🔁",
 }
 
 # ---------------------------------------------------------------------------
@@ -607,10 +625,11 @@ _MENU_FOLDERS = {
         "AtlasExportMayaReviewScene", "AtlasExportBlender", "AtlasExportUSD",
         "AtlasExportCameraPathUSD", "AtlasExportReliefMesh", "AtlasExportPlateEXR",
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
-        "AtlasExportScenePackage",
+        "AtlasExportScenePackage", "AtlasExportPlateHandoff",
     ),
     "Atlas/11 · Evidence Plate": (
-        "AtlasCardMask",
+        "AtlasOpenRealPlate", "AtlasReadLockedPlatePlan", "AtlasRecordPlateAttempt",
+        "AtlasRealPlateToScene", "AtlasCardMask",
     ),
     # Every gated tier lands here: experimental, legacy, and iOS. They only
     # appear in the menu when their flag registers them, but carry the folder

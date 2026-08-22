@@ -1,0 +1,230 @@
+{
+  "1": {
+    "class_type": "AtlasOpenRealPlate",
+    "inputs": {
+      "episode": "episodes/DSC_2245.json"
+    }
+  },
+  "11": {
+    "class_type": "AtlasOpenRealPlate",
+    "inputs": {
+      "episode": "episodes/DSC_2552.json"
+    }
+  },
+  "12": {
+    "class_type": "AtlasReadLockedPlatePlan",
+    "inputs": {
+      "plan": "plans/DSC_2552.locked.json",
+      "plate": [
+        "11",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "AtlasSAM3Mask",
+    "inputs": {
+      "concepts": "signs",
+      "confidence_threshold": 0.5,
+      "device": "auto",
+      "image": [
+        "19",
+        0
+      ],
+      "max_instances": 0,
+      "output_mode": "merged"
+    }
+  },
+  "14": {
+    "class_type": "AtlasInpaintCrop",
+    "inputs": {
+      "context_pad_px": 128,
+      "image": [
+        "19",
+        0
+      ],
+      "mask": [
+        "13",
+        0
+      ]
+    }
+  },
+  "15": {
+    "class_type": "AtlasSDXLInpaint",
+    "inputs": {
+      "cfg": 5.5,
+      "checkpoint": "SDXL/sd_xl_base_1.0.safetensors",
+      "denoise": 0.85,
+      "grow_mask_by": 8,
+      "image": [
+        "14",
+        0
+      ],
+      "mask": [
+        "14",
+        1
+      ],
+      "max_side": 1024,
+      "negative_prompt": "blurry, warped",
+      "positive_prompt": "coherent architecture",
+      "preserve_perspective": true,
+      "seed": 0,
+      "steps": 30
+    }
+  },
+  "16": {
+    "class_type": "AtlasInpaintStitch",
+    "inputs": {
+      "crop_region": [
+        "14",
+        2
+      ],
+      "inpainted_crop": [
+        "15",
+        0
+      ],
+      "original_image": [
+        "19",
+        0
+      ]
+    }
+  },
+  "17": {
+    "class_type": "AtlasRecordPlateAttempt",
+    "inputs": {
+      "locked_plan": [
+        "12",
+        0
+      ],
+      "plate": [
+        "11",
+        0
+      ],
+      "result": "result/DSC_2552_attempt.json"
+    }
+  },
+  "18": {
+    "class_type": "AtlasExportPlateHandoff",
+    "inputs": {
+      "export": "exports/DSC_2552.nuke.json",
+      "plate": [
+        "17",
+        0
+      ]
+    }
+  },
+  "19": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "prototypes/DSC_2552.png"
+    }
+  },
+  "2": {
+    "class_type": "AtlasReadLockedPlatePlan",
+    "inputs": {
+      "plan": "plans/DSC_2245.locked.json",
+      "plate": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "AtlasSAM3Mask",
+    "inputs": {
+      "concepts": "car",
+      "confidence_threshold": 0.5,
+      "device": "auto",
+      "image": [
+        "9",
+        0
+      ],
+      "max_instances": 0,
+      "output_mode": "merged"
+    }
+  },
+  "4": {
+    "class_type": "AtlasInpaintCrop",
+    "inputs": {
+      "context_pad_px": 128,
+      "image": [
+        "9",
+        0
+      ],
+      "mask": [
+        "3",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "AtlasSDXLInpaint",
+    "inputs": {
+      "cfg": 5.5,
+      "checkpoint": "SDXL/sd_xl_base_1.0.safetensors",
+      "denoise": 0.85,
+      "grow_mask_by": 8,
+      "image": [
+        "4",
+        0
+      ],
+      "mask": [
+        "4",
+        1
+      ],
+      "max_side": 1024,
+      "negative_prompt": "blurry, warped",
+      "positive_prompt": "coherent architecture",
+      "preserve_perspective": true,
+      "seed": 0,
+      "steps": 30
+    }
+  },
+  "6": {
+    "class_type": "AtlasInpaintStitch",
+    "inputs": {
+      "crop_region": [
+        "4",
+        2
+      ],
+      "inpainted_crop": [
+        "5",
+        0
+      ],
+      "original_image": [
+        "9",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "AtlasRecordPlateAttempt",
+    "inputs": {
+      "locked_plan": [
+        "2",
+        0
+      ],
+      "plate": [
+        "1",
+        0
+      ],
+      "result": "result/DSC_2245_attempt.json"
+    }
+  },
+  "8": {
+    "class_type": "AtlasExportPlateHandoff",
+    "inputs": {
+      "export": "exports/DSC_2245.nuke.json",
+      "plate": [
+        "7",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "prototypes/DSC_2245.png"
+    }
+  }
+}

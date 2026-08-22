@@ -24,6 +24,8 @@ NORMAL_KEYS = {
     "AtlasMultiViewSolve",
     "AtlasMultiViewSolveBurst",
     "AtlasSolveBurstPatchCrops",
+    "AtlasOpenRealPlate", "AtlasReadLockedPlatePlan", "AtlasRecordPlateAttempt",
+    "AtlasExportPlateHandoff", "AtlasRealPlateToScene",
     "AtlasAddPatchView", "AtlasApplyScaleReferences", "AtlasAssessImage",
     "AtlasAssessOutput",
     "AtlasLayerPlan",
@@ -111,7 +113,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 107
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 112
 
 
 def test_experimental_registry_keys_exact():

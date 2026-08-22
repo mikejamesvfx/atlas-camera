@@ -83,7 +83,7 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (107 standard + 10 experimental + 2 legacy + 2 iOS = 121 registered)
+## 2. The Node Catalog (112 standard + 10 experimental + 2 legacy + 2 iOS = 126 registered)
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in. The subsections below **are** the Add-Node menu folders:

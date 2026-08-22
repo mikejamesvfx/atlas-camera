@@ -1,0 +1,1123 @@
+{
+  "config": {},
+  "extra": {
+    "atlas_shipping_set": "v0.3-world-plate-prototype",
+    "non_shipping": true
+  },
+  "groups": [],
+  "last_link_id": 26,
+  "last_node_id": 19,
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "ATLAS_REAL_PLATE"
+    ],
+    [
+      2,
+      1,
+      0,
+      7,
+      0,
+      "ATLAS_REAL_PLATE"
+    ],
+    [
+      3,
+      2,
+      0,
+      7,
+      1,
+      "STRING"
+    ],
+    [
+      4,
+      9,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      9,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      9,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      3,
+      0,
+      4,
+      1,
+      "MASK"
+    ],
+    [
+      8,
+      3,
+      0,
+      6,
+      3,
+      "MASK"
+    ],
+    [
+      9,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      4,
+      1,
+      5,
+      1,
+      "MASK"
+    ],
+    [
+      11,
+      5,
+      0,
+      6,
+      1,
+      "IMAGE"
+    ],
+    [
+      12,
+      4,
+      2,
+      6,
+      2,
+      "ATLAS_CROP_REGION"
+    ],
+    [
+      13,
+      7,
+      0,
+      8,
+      0,
+      "ATLAS_REAL_PLATE"
+    ],
+    [
+      14,
+      11,
+      0,
+      12,
+      0,
+      "ATLAS_REAL_PLATE"
+    ],
+    [
+      15,
+      11,
+      0,
+      17,
+      0,
+      "ATLAS_REAL_PLATE"
+    ],
+    [
+      16,
+      12,
+      0,
+      17,
+      1,
+      "STRING"
+    ],
+    [
+      17,
+      19,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      19,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      19,
+      0,
+      16,
+      0,
+      "IMAGE"
+    ],
+    [
+      20,
+      13,
+      0,
+      14,
+      1,
+      "MASK"
+    ],
+    [
+      21,
+      13,
+      0,
+      16,
+      3,
+      "MASK"
+    ],
+    [
+      22,
+      14,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      23,
+      14,
+      1,
+      15,
+      1,
+      "MASK"
+    ],
+    [
+      24,
+      15,
+      0,
+      16,
+      1,
+      "IMAGE"
+    ],
+    [
+      25,
+      14,
+      2,
+      16,
+      2,
+      "ATLAS_CROP_REGION"
+    ],
+    [
+      26,
+      17,
+      0,
+      18,
+      0,
+      "ATLAS_REAL_PLATE"
+    ]
+  ],
+  "nodes": [
+    {
+      "flags": {},
+      "id": 1,
+      "inputs": [],
+      "mode": 0,
+      "order": 1,
+      "outputs": [
+        {
+          "links": [
+            1,
+            2
+          ],
+          "name": "plate",
+          "slot_index": 0,
+          "type": "ATLAS_REAL_PLATE"
+        },
+        {
+          "links": [],
+          "name": "episode_json",
+          "slot_index": 1,
+          "type": "STRING"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 2,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        0,
+        0
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasOpenRealPlate",
+      "widgets_values": [
+        "episodes/DSC_2245.json"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 2,
+      "inputs": [
+        {
+          "link": 1,
+          "name": "plate",
+          "type": "ATLAS_REAL_PLATE"
+        }
+      ],
+      "mode": 0,
+      "order": 2,
+      "outputs": [
+        {
+          "links": [
+            3
+          ],
+          "name": "locked_plan_json",
+          "slot_index": 0,
+          "type": "STRING"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 1,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        300,
+        0
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasReadLockedPlatePlan",
+      "widgets_values": [
+        "plans/DSC_2245.locked.json"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 3,
+      "inputs": [
+        {
+          "link": 4,
+          "name": "image",
+          "type": "IMAGE"
+        }
+      ],
+      "mode": 0,
+      "order": 3,
+      "outputs": [
+        {
+          "links": [
+            7,
+            8
+          ],
+          "name": "mask",
+          "slot_index": 0,
+          "type": "MASK"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 1,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        600,
+        0
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasSAM3Mask",
+      "widgets_values": [
+        "car",
+        0.5,
+        "auto",
+        "merged",
+        0
+      ]
+    },
+    {
+      "flags": {},
+      "id": 4,
+      "inputs": [
+        {
+          "link": 5,
+          "name": "image",
+          "type": "IMAGE"
+        },
+        {
+          "link": 7,
+          "name": "mask",
+          "type": "MASK"
+        }
+      ],
+      "mode": 0,
+      "order": 4,
+      "outputs": [
+        {
+          "links": [
+            9
+          ],
+          "name": "cropped_image",
+          "slot_index": 0,
+          "type": "IMAGE"
+        },
+        {
+          "links": [
+            10
+          ],
+          "name": "cropped_mask",
+          "slot_index": 1,
+          "type": "MASK"
+        },
+        {
+          "links": [
+            12
+          ],
+          "name": "crop_region",
+          "slot_index": 2,
+          "type": "ATLAS_CROP_REGION"
+        }
+      ],
+      "pos": [
+        900,
+        0
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasInpaintCrop",
+      "widgets_values": [
+        128
+      ]
+    },
+    {
+      "flags": {},
+      "id": 5,
+      "inputs": [
+        {
+          "link": 9,
+          "name": "image",
+          "type": "IMAGE"
+        },
+        {
+          "link": 10,
+          "name": "mask",
+          "type": "MASK"
+        }
+      ],
+      "mode": 0,
+      "order": 5,
+      "outputs": [
+        {
+          "links": [
+            11
+          ],
+          "name": "image",
+          "slot_index": 0,
+          "type": "IMAGE"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 1,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        1200,
+        0
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasSDXLInpaint",
+      "widgets_values": [
+        "SDXL/sd_xl_base_1.0.safetensors",
+        "coherent architecture",
+        "blurry, warped",
+        0,
+        0,
+        30,
+        5.5,
+        0.85,
+        8,
+        1024,
+        true
+      ]
+    },
+    {
+      "flags": {},
+      "id": 6,
+      "inputs": [
+        {
+          "link": 6,
+          "name": "original_image",
+          "type": "IMAGE"
+        },
+        {
+          "link": 11,
+          "name": "inpainted_crop",
+          "type": "IMAGE"
+        },
+        {
+          "link": 12,
+          "name": "crop_region",
+          "type": "ATLAS_CROP_REGION"
+        },
+        {
+          "link": 8,
+          "name": "mask",
+          "type": "MASK"
+        }
+      ],
+      "mode": 0,
+      "order": 6,
+      "outputs": [
+        {
+          "links": [],
+          "name": "image",
+          "slot_index": 0,
+          "type": "IMAGE"
+        }
+      ],
+      "pos": [
+        1500,
+        0
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasInpaintStitch",
+      "widgets_values": [
+        0
+      ]
+    },
+    {
+      "flags": {},
+      "id": 7,
+      "inputs": [
+        {
+          "link": 2,
+          "name": "plate",
+          "type": "ATLAS_REAL_PLATE"
+        },
+        {
+          "link": 3,
+          "name": "locked_plan",
+          "type": "STRING"
+        }
+      ],
+      "mode": 0,
+      "order": 7,
+      "outputs": [
+        {
+          "links": [
+            13
+          ],
+          "name": "plate",
+          "slot_index": 0,
+          "type": "ATLAS_REAL_PLATE"
+        },
+        {
+          "links": [],
+          "name": "result_json",
+          "slot_index": 1,
+          "type": "STRING"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 2,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        1800,
+        0
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasRecordPlateAttempt",
+      "widgets_values": [
+        "result/DSC_2245_attempt.json"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 8,
+      "inputs": [
+        {
+          "link": 13,
+          "name": "plate",
+          "type": "ATLAS_REAL_PLATE"
+        }
+      ],
+      "mode": 0,
+      "order": 8,
+      "outputs": [
+        {
+          "links": [],
+          "name": "plate",
+          "slot_index": 0,
+          "type": "ATLAS_REAL_PLATE"
+        },
+        {
+          "links": [],
+          "name": "export_json",
+          "slot_index": 1,
+          "type": "STRING"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 2,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        2100,
+        0
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasExportPlateHandoff",
+      "widgets_values": [
+        "exports/DSC_2245.nuke.json"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 9,
+      "inputs": [],
+      "mode": 0,
+      "order": 9,
+      "outputs": [
+        {
+          "links": [
+            4,
+            5,
+            6
+          ],
+          "name": "IMAGE",
+          "slot_index": 0,
+          "type": "IMAGE"
+        },
+        {
+          "links": [],
+          "name": "MASK",
+          "slot_index": 1,
+          "type": "MASK"
+        }
+      ],
+      "pos": [
+        600,
+        260
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2245"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "LoadImage",
+      "widgets_values": [
+        "prototypes/DSC_2245.png"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 11,
+      "inputs": [],
+      "mode": 0,
+      "order": 11,
+      "outputs": [
+        {
+          "links": [
+            14,
+            15
+          ],
+          "name": "plate",
+          "slot_index": 0,
+          "type": "ATLAS_REAL_PLATE"
+        },
+        {
+          "links": [],
+          "name": "episode_json",
+          "slot_index": 1,
+          "type": "STRING"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 2,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        0,
+        400
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasOpenRealPlate",
+      "widgets_values": [
+        "episodes/DSC_2552.json"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 12,
+      "inputs": [
+        {
+          "link": 14,
+          "name": "plate",
+          "type": "ATLAS_REAL_PLATE"
+        }
+      ],
+      "mode": 0,
+      "order": 12,
+      "outputs": [
+        {
+          "links": [
+            16
+          ],
+          "name": "locked_plan_json",
+          "slot_index": 0,
+          "type": "STRING"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 1,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        300,
+        400
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasReadLockedPlatePlan",
+      "widgets_values": [
+        "plans/DSC_2552.locked.json"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 13,
+      "inputs": [
+        {
+          "link": 17,
+          "name": "image",
+          "type": "IMAGE"
+        }
+      ],
+      "mode": 0,
+      "order": 13,
+      "outputs": [
+        {
+          "links": [
+            20,
+            21
+          ],
+          "name": "mask",
+          "slot_index": 0,
+          "type": "MASK"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 1,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        600,
+        400
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasSAM3Mask",
+      "widgets_values": [
+        "signs",
+        0.5,
+        "auto",
+        "merged",
+        0
+      ]
+    },
+    {
+      "flags": {},
+      "id": 14,
+      "inputs": [
+        {
+          "link": 18,
+          "name": "image",
+          "type": "IMAGE"
+        },
+        {
+          "link": 20,
+          "name": "mask",
+          "type": "MASK"
+        }
+      ],
+      "mode": 0,
+      "order": 14,
+      "outputs": [
+        {
+          "links": [
+            22
+          ],
+          "name": "cropped_image",
+          "slot_index": 0,
+          "type": "IMAGE"
+        },
+        {
+          "links": [
+            23
+          ],
+          "name": "cropped_mask",
+          "slot_index": 1,
+          "type": "MASK"
+        },
+        {
+          "links": [
+            25
+          ],
+          "name": "crop_region",
+          "slot_index": 2,
+          "type": "ATLAS_CROP_REGION"
+        }
+      ],
+      "pos": [
+        900,
+        400
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasInpaintCrop",
+      "widgets_values": [
+        128
+      ]
+    },
+    {
+      "flags": {},
+      "id": 15,
+      "inputs": [
+        {
+          "link": 22,
+          "name": "image",
+          "type": "IMAGE"
+        },
+        {
+          "link": 23,
+          "name": "mask",
+          "type": "MASK"
+        }
+      ],
+      "mode": 0,
+      "order": 15,
+      "outputs": [
+        {
+          "links": [
+            24
+          ],
+          "name": "image",
+          "slot_index": 0,
+          "type": "IMAGE"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 1,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        1200,
+        400
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasSDXLInpaint",
+      "widgets_values": [
+        "SDXL/sd_xl_base_1.0.safetensors",
+        "coherent architecture",
+        "blurry, warped",
+        0,
+        0,
+        30,
+        5.5,
+        0.85,
+        8,
+        1024,
+        true
+      ]
+    },
+    {
+      "flags": {},
+      "id": 16,
+      "inputs": [
+        {
+          "link": 19,
+          "name": "original_image",
+          "type": "IMAGE"
+        },
+        {
+          "link": 24,
+          "name": "inpainted_crop",
+          "type": "IMAGE"
+        },
+        {
+          "link": 25,
+          "name": "crop_region",
+          "type": "ATLAS_CROP_REGION"
+        },
+        {
+          "link": 21,
+          "name": "mask",
+          "type": "MASK"
+        }
+      ],
+      "mode": 0,
+      "order": 16,
+      "outputs": [
+        {
+          "links": [],
+          "name": "image",
+          "slot_index": 0,
+          "type": "IMAGE"
+        }
+      ],
+      "pos": [
+        1500,
+        400
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasInpaintStitch",
+      "widgets_values": [
+        0
+      ]
+    },
+    {
+      "flags": {},
+      "id": 17,
+      "inputs": [
+        {
+          "link": 15,
+          "name": "plate",
+          "type": "ATLAS_REAL_PLATE"
+        },
+        {
+          "link": 16,
+          "name": "locked_plan",
+          "type": "STRING"
+        }
+      ],
+      "mode": 0,
+      "order": 17,
+      "outputs": [
+        {
+          "links": [
+            26
+          ],
+          "name": "plate",
+          "slot_index": 0,
+          "type": "ATLAS_REAL_PLATE"
+        },
+        {
+          "links": [],
+          "name": "result_json",
+          "slot_index": 1,
+          "type": "STRING"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 2,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        1800,
+        400
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasRecordPlateAttempt",
+      "widgets_values": [
+        "result/DSC_2552_attempt.json"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 18,
+      "inputs": [
+        {
+          "link": 26,
+          "name": "plate",
+          "type": "ATLAS_REAL_PLATE"
+        }
+      ],
+      "mode": 0,
+      "order": 18,
+      "outputs": [
+        {
+          "links": [],
+          "name": "plate",
+          "slot_index": 0,
+          "type": "ATLAS_REAL_PLATE"
+        },
+        {
+          "links": [],
+          "name": "export_json",
+          "slot_index": 1,
+          "type": "STRING"
+        },
+        {
+          "links": [],
+          "name": "report",
+          "slot_index": 2,
+          "type": "STRING"
+        }
+      ],
+      "pos": [
+        2100,
+        400
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "AtlasExportPlateHandoff",
+      "widgets_values": [
+        "exports/DSC_2552.nuke.json"
+      ]
+    },
+    {
+      "flags": {},
+      "id": 19,
+      "inputs": [],
+      "mode": 0,
+      "order": 19,
+      "outputs": [
+        {
+          "links": [
+            17,
+            18,
+            19
+          ],
+          "name": "IMAGE",
+          "slot_index": 0,
+          "type": "IMAGE"
+        },
+        {
+          "links": [],
+          "name": "MASK",
+          "slot_index": 1,
+          "type": "MASK"
+        }
+      ],
+      "pos": [
+        600,
+        660
+      ],
+      "properties": {
+        "prototype_shot": "DSC_2552"
+      },
+      "size": [
+        260,
+        180
+      ],
+      "type": "LoadImage",
+      "widgets_values": [
+        "prototypes/DSC_2552.png"
+      ]
+    }
+  ],
+  "version": 0.4
+}
