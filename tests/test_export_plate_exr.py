@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from atlas_camera.core.schema import AtlasPlateRef
+from atlas_camera.plate.oiio_io import ATLAS_COLORSPACE_ATTR
 
 
 def _oiio():
@@ -46,7 +47,14 @@ def test_export_plate_exr_converts_and_tags(tmp_path):
     # OIIO canonicalizes the tag to the config's internal name for ACEScg
     # (ACES 2.0 built-in config: 'lin_ap1_scene'); either spelling identifies
     # linear AP1 and resolves back through the same config in a DCC.
-    tag = buf.spec().get_string_attribute("oiio:ColorSpace")
+    # Read the tag the way read_plate does: OIIO only PERSISTS oiio:ColorSpace
+    # when the active config can supply a colorInteropID for the space, so under
+    # a studio config (fn-nuke_cg v1.0.0) it writes nothing and only Atlas's own
+    # attribute survives. Asserting on the standard tag alone made this fail
+    # under $OCIO while the file was in fact correctly tagged.
+    spec = buf.spec()
+    tag = (spec.get_string_attribute("oiio:ColorSpace")
+           or spec.get_string_attribute(ATLAS_COLORSPACE_ATTR))
     assert tag in ("ACEScg", "lin_ap1_scene", "lin_ap1"), tag
     out_px = buf.get_pixels(oiio.FLOAT)[..., :3]
     # Rec.709 -> ACEScg is a real primaries change: pixels must move but stay finite.

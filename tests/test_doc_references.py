@@ -34,9 +34,17 @@ PROVENANCE_DOCS = {
     "CHANGELOG.md",
     "docs/development/design-rules.md",
 }
-#: Empty since the v1 cleanup removed the dated plans tree. Kept as the
-#: mechanism: a future dated-record directory joins here, not PROVENANCE_DOCS.
-PROVENANCE_PREFIXES: tuple[str, ...] = ()
+#: Dated-record directories. A file here states what was TRUE or INTENDED on
+#: the date in its name, so it deliberately names files that were planned and
+#: never built, or built and later removed — "fixing" those paths would rewrite
+#: the record. The v1 cleanup emptied this and kept the mechanism for exactly
+#: this case; `docs/superpowers/` is the dated tree coming back (plans record an
+#: intent on a date, specs record a design on a date). Live docs — the guides,
+#: the catalog, the design rules' own claims — stay held to their paths.
+PROVENANCE_PREFIXES: tuple[str, ...] = (
+    "docs/superpowers/plans/",
+    "docs/superpowers/specs/",
+)
 
 #: Same extension set as the package-wide check in `test_path_references.py`:
 #: the families a doc actually promises. Images and source files a reader is

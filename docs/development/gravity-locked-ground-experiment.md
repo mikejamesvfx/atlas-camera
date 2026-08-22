@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-18
 **Plate:** `DSC_2245.NEF` — NIKON D810, 24 mm prime, 7380×4928, EXIF focal, `undistort=applied`. Eye-level NYC street: road filling the lower half, a parked Nissan Rogue with clean tyre contacts, a sedan, pedestrians, kerb line.
-**Graph under test:** `research/atlas_hero_02_photo_to_editable_scene_workflow_ground.json`
+**Graph under test:** the `atlas_hero_02` photo-to-editable-scene ground graph (authored against the atlas-camera checkout; not tracked here)
 **Instruments:** `atlas_camera/core/ground_consensus.py`, `tests/test_ground_consensus.py`, `tools/ground_consensus_probe.py`
 **Raw measurements:** `docs/dev/ground_consensus/report.json` (gitignored)
 

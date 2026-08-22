@@ -420,6 +420,7 @@ Frontend (atlas_blockout.js)
 | Patches / occlusion / camera path | docs/development/design-rules.md (multi-angle patch, camera path) |
 | Exporters (Nuke/Maya/USD/EXR) | docs/development/design-rules.md (Nuke topology, layer exports, manifest) |
 | RAW / OCIO / plates | docs/development/design-rules.md (RAW import, P0 trust tier) + `atlas_camera/plate/oiio_io.py` docstrings |
+| External paint bridges (`atlas_camera/paint/`, `tools/paint_*`, Affinity / Photoshop) | docs/development/paint-bridges.md + reports/paint_bridge_provenance.md |
 | Gates / VLM assess | docs/development/design-rules.md (gates, AtlasAssessImage) + docs/dev/gate_state_table.md |
 | Example workflows | docs/NODE_CATALOG.md (example workflows) + the pin tests |
 
