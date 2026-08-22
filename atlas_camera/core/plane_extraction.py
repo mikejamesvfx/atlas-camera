@@ -56,9 +56,30 @@ class PlaneRansacConfig:
     azimuth_bins: int = 36               # 10° cells
     elevation_bins: int = 18             # 10° cells, covers -90..90 deg
     angular_tolerance_deg: float = 12.0  # normal-to-peak tolerance for RANSAC subset
+    #: Two planes closer than this in normal AND within the offset threshold
+    #: are the same surface found twice. Deliberately WIDER than
+    #: ``angular_tolerance_deg``: that one selects a RANSAC subset, this one
+    #: recognises a duplicate, and reusing a single constant for both jobs is
+    #: what let a wall be emitted twice 16.6 degrees apart on DSC_2552. The
+    #: measured gap on that scene between duplicate pairs (0.9, 14.1, 14.5,
+    #: 16.6 deg) and real corners (78.6, 84.3, 87.0, 89.3, 89.9 deg) is wide
+    #: and empty, and the offset test is the real guard either way.
+    duplicate_angle_deg: float = 20.0
     min_plane_inliers: int = 1200
     min_plane_size_m: float = 0.6
-    extent_percentiles: tuple[float, float] = (2.0, 98.0)
+    #: Robust extent of a plane's inliers along its own (u, v) axes. Widened
+    #: from (2.0, 98.0) on 2026-08-21: at 2/98 a plane discards 4% of the very
+    #: pixels it was fitted to, and those pixels then belong to NO plane —
+    #: measured on DSC_2552, 31.4% of all unassigned pixels were on a plane's
+    #: surface but outside its rectangle. Sweep on that scene, coverage of
+    #: valid depth against contested pixels:
+    #:     (2.0, 98.0)  72.5%   7,308      (0.5, 99.5)  80.2%  20,347
+    #:     (1.0, 99.0)  77.4%  11,944      (0.1, 99.9)  83.4%  34,667
+    #: 1/99 is the knee — 946 extra contested pixels per point of coverage,
+    #: against 3,001 at 0.5/99.5. Contest is not an error (assignment is
+    #: nearest-wins and exclusive), but a wider quad is real geometry poking
+    #: past the surface it stands for, so the trade is bought deliberately.
+    extent_percentiles: tuple[float, float] = (1.0, 99.0)
     backdrop_depth_percentile: float = 96.0
     backdrop_margin: float = 1.35
     ground_padding: float = 1.1
@@ -118,6 +139,11 @@ def extract_planes_ransac(
         scaled_depth[bp.valid_depth], cfg.backdrop_depth_percentile
     )) if bp.valid_depth.any() else 60.0
 
+    # Planes the duplicate guard measures against but that the peak loop does
+    # not own — currently just the ground.
+    reference_planes: list[dict[str, Any]] = []
+    suppressed_dupes: list[dict[str, Any]] = []
+
     # -- Ground primitive (identical construction to proxy_geometry.py) --------
     if gf.inliers >= 300:
         gx = pts_world[..., 0][gf.ground_inlier]
@@ -138,6 +164,13 @@ def extract_planes_ransac(
             metadata={"role": PROXY_ROLE, "source": "ransac_plane_extraction",
                       "inliers": gf.inliers, "depth_scale_applied": scale},
         ))
+        # The ground is fitted BEFORE the orientation-peak loop and was never
+        # visible to that loop's duplicate guard, so a ground the horizontal
+        # primitive cannot represent — any road with a gradient or a camber —
+        # came back as a second, near-horizontal "wall". Seed the guard with
+        # it: `n_g` is the plane's normal and it passes through Y=0, so its
+        # offset along that normal is exactly zero.
+        reference_planes.append({"n": n_g, "d": 0.0, "name": "projection_ground"})
 
     # -- Remaining pool: non-ground, in-front-of-backdrop, valid-normal pixels -
     n_pixels = height * width
@@ -258,13 +291,32 @@ def extract_planes_ransac(
                 b0, b1 = np.percentile(b_coord, [p_lo, p_hi])
                 w_m, h_m = float(a1 - a0), float(b1 - b0)
 
-                # Duplicate-offset guard: same orientation, no new distinct
-                # surface found this iteration → stop (avoid infinite loop).
-                is_dup = any(
-                    abs(d_off - p["d"]) < max(0.3, 0.05 * med_depth)
-                    and float(np.dot(n_mean, p["n"])) > tol_cos
-                    for p in planes
-                )
+                # Duplicate-offset guard: same surface, already found → drop
+                # this candidate (and, for a peak-loop repeat, stop: no new
+                # distinct surface this iteration, so continuing would loop).
+                offset_tol = max(0.3, 0.05 * med_depth)
+                dup_cos = math.cos(math.radians(cfg.duplicate_angle_deg))
+                dup_of = None
+                for candidate in reference_planes + planes:
+                    dot = abs(float(np.dot(n_mean, candidate["n"])))
+                    if abs(d_off - candidate["d"]) < offset_tol and dot > dup_cos:
+                        dup_of = candidate
+                        break
+                is_dup = dup_of is not None
+                if is_dup:
+                    suppressed_dupes.append({
+                        # Identity, not equality: these dicts hold numpy arrays,
+                        # so list.index() raises on the ambiguous truth value.
+                        # The peak-loop planes are named only AFTER the sort by
+                        # inlier count, so the label here is a discovery-order
+                        # one and says so.
+                        "duplicate_of": str(dup_of.get("name") or
+                                            f"peak_candidate_{next((i for i, q in enumerate(planes) if q is dup_of), -1)}"),
+                        "angle_deg": float(math.degrees(math.acos(
+                            min(1.0, abs(float(np.dot(n_mean, dup_of["n"]))))))),
+                        "offset_m": float(abs(d_off - dup_of["d"])),
+                        "inliers": int(inl_local.sum()),
+                    })
                 claimed[inl_idx] = True  # always remove, even if rejected below
 
                 if w_m < cfg.min_plane_size_m or h_m < cfg.min_plane_size_m or is_dup:
@@ -297,6 +349,10 @@ def extract_planes_ransac(
                       "depth_scale_applied": scale},
         ))
     stats["planes"] = len(planes)
+    # Reported, never silent: the peak loop finding the ground again is the
+    # extractor noticing its own ground primitive is a poor fit for this scene,
+    # and that is a measurement worth keeping.
+    stats["suppressed_duplicates"] = suppressed_dupes
 
     prims.append(build_backdrop_primitive(
         bp=bp, scaled_depth=scaled_depth, valid_depth=bp.valid_depth,

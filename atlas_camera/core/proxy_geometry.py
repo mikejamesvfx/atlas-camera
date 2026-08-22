@@ -1344,6 +1344,11 @@ def relief_mesh_primitive(mesh: Any, *, name: str = "projection_relief_mesh") ->
             "quad_coherence": bool((mesh.stats or {}).get("quad_coherence", False)),
             "stretch_ratio_p95": float((mesh.stats or {}).get("stretch_ratio_p95", 0.0)),
             "stretch_fraction_gt12": float((mesh.stats or {}).get("stretch_fraction_gt12", 0.0)),
+            # The MCP viewport census sums this from PRIMITIVE metadata
+            # (mcp/comfy_http.summarize_viewport_layer); before 2026-08-21 it
+            # lived only on the ProjectionSource, so the census read 0 for
+            # every layer regardless of what fill_occluded synthesized.
+            "n_filled_cells": int((mesh.stats or {}).get("n_filled_cells", 0)),
             "vertices": verts,
             "faces": faces,
             "uvs": uvs,
