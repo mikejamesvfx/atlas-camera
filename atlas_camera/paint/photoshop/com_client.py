@@ -33,6 +33,7 @@ tests that need no Photoshop.
 from __future__ import annotations
 
 import json
+import ntpath
 import os
 import time
 from pathlib import Path
@@ -81,7 +82,10 @@ def _normalise(path: str) -> str:
     if text.startswith("/") and len(text) > 2 and text[2] in "/\\":
         # "/c/Program Files/..." -> "c:/Program Files/..."
         text = f"{text[1]}:{text[2:]}"
-    return os.path.normcase(os.path.normpath(text))
+    # This is always a WINDOWS application path, even when its tests run on a
+    # Linux CI host. ``os.path`` adopts the runner's semantics and therefore
+    # leaves backslashes, drive-letter case and forward slashes incomparable.
+    return ntpath.normcase(ntpath.normpath(text))
 
 
 class PhotoshopClient:
