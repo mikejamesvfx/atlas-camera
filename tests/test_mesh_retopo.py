@@ -20,6 +20,7 @@ import sys
 from types import SimpleNamespace
 
 from atlas_camera.core.mesh_retopo import (
+    _discard_degenerate_triangles,
     _triangulate_quads,
     apply_retopo,
     regenerate_projective_uvs,
@@ -230,6 +231,38 @@ def test_triangulate_quads_degenerate_rows_single_tri():
     np.testing.assert_array_equal(out, expected)
 
 
+def test_triangulate_quads_discards_repeated_index_triangles():
+    """Native quad output can repeat a/b/c, not only the fourth index."""
+    f = np.array([
+        [0, 0, 1, 2],  # first split triangle collapses; second is valid
+        [3, 4, 5, 6],  # ordinary quad remains two valid triangles
+    ], dtype=np.int64)
+
+    out = _triangulate_quads(f)
+
+    np.testing.assert_array_equal(
+        out,
+        np.array([[3, 4, 5], [0, 1, 2], [3, 5, 6]], dtype=np.int64),
+    )
+    assert np.all(out[:, 0] != out[:, 1])
+    assert np.all(out[:, 1] != out[:, 2])
+    assert np.all(out[:, 2] != out[:, 0])
+
+
+def test_discard_degenerate_triangles_removes_zero_area_output():
+    vertices = np.array([
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [2.0, 0.0, 0.0],  # distinct indices but collinear with 0/1
+        [0.0, 1.0, 0.0],
+    ])
+    faces = np.array([[0, 1, 2], [0, 1, 3]], dtype=np.int64)
+
+    out = _discard_degenerate_triangles(vertices, faces)
+
+    np.testing.assert_array_equal(out, np.array([[0, 1, 3]], dtype=np.int64))
+
+
 def test_triangulate_quads_mixed():
     # One real quad + one degenerate → 2 + 1 = 3 triangles.
     f = np.array([[0, 1, 2, 3], [4, 5, 6, 4]], dtype=np.int64)
@@ -245,7 +278,10 @@ def test_triangulate_quads_bad_shape():
 def test_retopo_quad_owns_contiguous_buffers_and_retries_transient(monkeypatch):
     """The Windows binding's transient invalid-buffer error gets one retry,
     and native code never receives a view into ComfyUI's cached mesh."""
-    vertices = np.arange(18, dtype=np.float32).reshape(6, 3)
+    vertices = np.array([
+        [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [0.0, 1.0, 1.0],
+    ], dtype=np.float32)
     faces = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int32)
     vertices_before = vertices.copy()
     faces_before = faces.copy()

@@ -174,7 +174,36 @@ def _triangulate_quads(faces: np.ndarray) -> np.ndarray:
     # Degenerate rows: keep tri1, drop tri2 (its d is invalid).
     tri2_mask = ~degenerate
     tris = np.concatenate([tri1, tri2[tri2_mask]], axis=0)
-    return tris.astype(np.int64)
+    # Some native quad-dominant rows repeat a/b/c rather than only ``d``.
+    # Filter the generated triangles themselves so no collapsed triangle can
+    # escape into an export regardless of which quad encoding produced it.
+    valid = (
+        (tris[:, 0] != tris[:, 1])
+        & (tris[:, 1] != tris[:, 2])
+        & (tris[:, 2] != tris[:, 0])
+    )
+    return tris[valid].astype(np.int64)
+
+
+def _discard_degenerate_triangles(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Return only indexed triangles with non-zero world-space area.
+
+    Native remeshers can return distinct vertex indices that occupy a straight
+    line.  They are just as invalid for downstream topology as an explicitly
+    repeated index, but can only be identified after their positions exist.
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+    if not len(f):
+        return f
+    unique = (
+        (f[:, 0] != f[:, 1])
+        & (f[:, 1] != f[:, 2])
+        & (f[:, 2] != f[:, 0])
+    )
+    cross = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]])
+    non_zero_area = np.einsum("ij,ij->i", cross, cross) > 0.0
+    return f[unique & non_zero_area]
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +291,7 @@ def retopo_quad(
         v, f = _owned_buffers()
         out_v, out_f = pyinstantmeshes.remesh(v, f, **kwargs)
     out_v = np.asarray(out_v, dtype=np.float64)
-    out_faces = _triangulate_quads(np.asarray(out_f))
+    out_faces = _discard_degenerate_triangles(out_v, _triangulate_quads(np.asarray(out_f)))
     return out_v, out_faces
 
 
