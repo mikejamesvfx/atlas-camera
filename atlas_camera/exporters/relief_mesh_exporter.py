@@ -17,6 +17,43 @@ from typing import Any
 from atlas_camera.core.relief_mesh import ReliefMesh
 
 
+def _topology_safe_faces(vertices: Any, faces: Any) -> Any:
+    """Return exportable triangles without collapsed or duplicate half-edges.
+
+    Atlas Scene's repair walk intentionally rejects a duplicate *directed* edge:
+    there is no unambiguous face fan to pivot through.  A bad reconstruction
+    should not make the whole packaged scene unopenable, though.  Preserve the
+    first valid triangle in source order and omit only a later triangle that
+    repeats one of its half-edges.  This is a read-only export guard; it never
+    changes the in-memory solve mesh or silently creates a replacement face.
+    """
+    import numpy as np
+
+    positions = np.asarray(vertices, dtype=np.float64)
+    triangles = np.asarray(faces, dtype=np.int64)
+    if triangles.ndim != 2 or triangles.shape[1] != 3:
+        raise ValueError("relief mesh faces must be an N x 3 triangle array")
+
+    retained: list[tuple[int, int, int]] = []
+    directed: set[tuple[int, int]] = set()
+    for a, b, c in triangles.tolist():
+        if (
+            a < 0 or b < 0 or c < 0
+            or a >= len(positions) or b >= len(positions) or c >= len(positions)
+            or a == b or b == c or c == a
+        ):
+            continue
+        normal = np.cross(positions[b] - positions[a], positions[c] - positions[a])
+        if not np.isfinite(normal).all() or float(np.dot(normal, normal)) <= 1e-24:
+            continue
+        edges = ((a, b), (b, c), (c, a))
+        if any(edge in directed for edge in edges):
+            continue
+        retained.append((a, b, c))
+        directed.update(edges)
+    return np.asarray(retained, dtype=np.uint32).reshape(-1, 3)
+
+
 def _ribbon_vertex_flags(mesh: ReliefMesh) -> Any:
     """``ribbon_t > 0`` per vertex, or None when the mesh carries no ribbon.
 
@@ -294,7 +331,7 @@ def export_relief_mesh_glb(
     glb_path = out / f"{name}.glb"
 
     verts = np.asarray(mesh.vertices, dtype=np.float32)
-    faces = np.asarray(mesh.faces, dtype=np.uint32)
+    faces = _topology_safe_faces(mesh.vertices, mesh.faces)
     uvs = np.asarray(mesh.uvs, dtype=np.float32).copy()
     uvs[:, 1] = 1.0 - uvs[:, 1]  # OBJ bottom-left → glTF top-left
 

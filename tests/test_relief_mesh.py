@@ -15,6 +15,7 @@ from atlas_camera.core.relief_mesh import (
     estimate_ground_scale,
 )
 from atlas_camera.exporters.relief_mesh_exporter import (
+    _topology_safe_faces,
     export_relief_mesh,
     export_relief_mesh_glb,
 )
@@ -371,6 +372,25 @@ def test_relief_mesh_rides_the_proxy_payload():
     assert max(entry["edge_risk"]) == 1.0
     assert max(entry["faces"]) < len(mesh.vertices)
     json.dumps(payload)  # JSON-safe
+
+
+def test_export_face_sanitizer_removes_duplicate_directed_edges():
+    import numpy as np
+
+    vertices = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [2, 1, 0]],
+        dtype=np.float32,
+    )
+    # The second triangle repeats directed edge 1 -> 2.  The fourth is
+    # consistently wound and must survive; filtering an entire connected area
+    # merely because one face is bad would create a much larger repair tear.
+    faces = np.array([[0, 1, 2], [3, 1, 2], [1, 3, 2], [0, 3, 4]], dtype=np.int32)
+
+    cleaned = _topology_safe_faces(vertices, faces)
+
+    assert cleaned.tolist() == [[0, 1, 2], [1, 3, 2], [0, 3, 4]]
+    directed = [edge for a, b, c in cleaned.tolist() for edge in ((a, b), (b, c), (c, a))]
+    assert len(directed) == len(set(directed))
 
 
 def test_glb_export_is_valid_gltf2(tmp_path):
