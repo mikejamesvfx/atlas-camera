@@ -1247,32 +1247,40 @@ def build_raw_to_atlas_scene(object_info: dict, layout) -> dict:
         "height_mode": "assume", "camera_height_m": 1.6, "depth_model": OUTDOOR_DEPTH,
         "sensor_width_mm": 36.0, "device": "auto", "focal_length_mm": 0.0,
     }, size=(440, 340))
-    plate = graph.node("AtlasExportPlateEXR", title="3 \u00b7 PLATE \u00b7 ACEScg half-float into the project's plates/ lane", values={
+    compass = graph.node("AtlasGravityCompass", title="3 \u00b7 REVIEW CAMERA \u00b7 tweak gravity before geometry", values={
+        "apply_override": False, "pitch_deg": 0.0, "roll_deg": 0.0,
+        "heading_override": False, "heading_deg": 0.0,
+    }, size=(440, 360))
+    plate = graph.node("AtlasExportPlateEXR", title="4 \u00b7 PLATE \u00b7 ACEScg half-float into the project's plates/ lane", values={
         "output_colorspace": "ACEScg", "output_dir": "atlas_exports/" + slug,
         "bit_depth": "half", "file_name": "",
     }, size=(430, 260))
-    depth = graph.node("AtlasDepthMap", title="4 \u00b7 DEPTH", values={
+    depth = graph.node("AtlasDepthMap", title="5 \u00b7 DEPTH", values={
         "depth_model": OUTDOOR_DEPTH, "device": "auto",
     }, size=(440, 300))
-    relief = graph.node("AtlasDeriveReliefMesh", title="5 \u00b7 PROJECTION GEOMETRY", values={
+    relief = graph.node("AtlasDeriveReliefMesh", title="6 \u00b7 PROJECTION GEOMETRY", values={
         "relief_grid": 256, "relief_quality": "custom", "depth_edge_rel": 0.5,
         "sky_heuristic": False,
     }, size=(430, 320))
-    walls = graph.node("AtlasDeriveWalls", title="6 \u00b7 PLANES", values={
+    viewport = graph.node("AtlasBlockoutViewport", title="7 \u00b7 REVIEW RELIEF \u00b7 orbit before export", values={
+        "resolution": 1024, "client_data": "", "preview_expand": 1.0,
+        "drawn_fill_px": 96,
+    }, size=(900, 680))
+    walls = graph.node("AtlasDeriveWalls", title="8 \u00b7 PLANES", values={
         "max_walls": 4, "max_objects": 0, "distance_modes": 1,
         "ground_anchor": True, "backdrop": "measured_only",
     }, size=(430, 260))
-    plane_mattes = graph.node("AtlasPlaneMattes", title="7 \u00b7 PLANE MATTES", values={
+    plane_mattes = graph.node("AtlasPlaneMattes", title="9 \u00b7 PLANE MATTES", values={
         "tolerance_m": 0.0, "min_coverage_px": 64,
     }, size=(430, 200))
-    occlusion = graph.node("AtlasOcclusionGraph", title="8 \u00b7 OCCLUSION GRAPH", size=(430, 140))
-    gate = graph.node("AtlasSceneHealthGate", title="9 \u00b7 SCENE HEALTH", values={
+    occlusion = graph.node("AtlasOcclusionGraph", title="10 \u00b7 OCCLUSION GRAPH", size=(430, 140))
+    gate = graph.node("AtlasSceneHealthGate", title="11 \u00b7 SCENE HEALTH", values={
         "pass_through_on_pass": True,
     }, size=(430, 300))
-    mesh = graph.node("AtlasExportReliefMesh", title="10a \u00b7 GEOMETRY \u00b7 GLB", values={
+    mesh = graph.node("AtlasExportReliefMesh", title="12a \u00b7 GEOMETRY \u00b7 GLB", values={
         "output_dir": "atlas_exports/" + slug, "format": "glb",
     }, size=(430, 320))
-    package = graph.node("AtlasExportScenePackage", title="10b \u00b7 .atlas PACKAGE \u00b7 plate_path comes from the EXR", values={
+    package = graph.node("AtlasExportScenePackage", title="12b \u00b7 .atlas PACKAGE \u00b7 plate_path comes from the EXR", values={
         "output_dir": "atlas_exports/" + slug, "scene_id": "raw_001",
         "plate_path": "", "observation_id": "obs_001",
     }, size=(460, 240))
@@ -1283,12 +1291,16 @@ def build_raw_to_atlas_scene(object_info: dict, layout) -> dict:
     # The EXIF focal and sensor ride the raw_meta wire, so the solve uses the
     # lens the photograph was taken on rather than a predicted focal.
     graph.connect(raw, "raw_meta", solve, "raw_meta")
+    graph.connect(solve, "solve", compass, "solve")
     graph.connect(raw, "plate_ref", plate, "plate_ref")
     graph.connect(project, "project", plate, "project")
     graph.connect(raw, "image", depth, "image")
-    graph.connect(solve, "solve", depth, "solve")
-    graph.connect(solve, "solve", relief, "solve")
+    graph.connect(compass, "solve", depth, "solve")
+    graph.connect(compass, "solve", relief, "solve")
     graph.connect(depth, "depth", relief, "depth")
+    graph.connect(relief, "solve", viewport, "solve")
+    graph.connect(raw, "image", viewport, "source_image")
+    graph.connect(depth, "depth", viewport, "primary_depth")
     graph.connect(relief, "solve", walls, "solve")
     graph.connect(depth, "depth", walls, "depth")
     graph.connect(walls, "solve", plane_mattes, "solve")
@@ -1310,10 +1322,10 @@ def build_raw_to_atlas_scene(object_info: dict, layout) -> dict:
 
     groups = [
         ("1 \u00b7 RAW \u2192 CAMERA \u2192 FLOAT PLATE", "#35536b",
-         [project, raw, solve, plate]),
+         [project, raw, solve, compass, plate]),
         ("2 \u00b7 GEOMETRY \u2192 PLANES \u2192 CLASSIFICATION", "#4a3f6b",
          [depth, relief, walls, plane_mattes, occlusion]),
-        ("3 \u00b7 CHECK IT", "#6b5a35", [gate, note]),
+        ("3 \u00b7 CHECK IT", "#6b5a35", [viewport, gate, note]),
         ("4 \u00b7 WRITE THE SCENE", "#375c4a", [mesh, package]),
     ]
     return _finish(graph, slug, groups, layout,

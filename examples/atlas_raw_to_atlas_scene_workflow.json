@@ -1,15 +1,15 @@
 {
   "id": "3be16ed9-2d86-5ff9-969e-7473db874fd4",
   "revision": 1,
-  "last_node_id": 13,
-  "last_link_id": 25,
+  "last_node_id": 15,
+  "last_link_id": 29,
   "nodes": [
     {
       "id": 1,
       "type": "AtlasProject",
       "pos": [
         40,
-        436
+        623
       ],
       "size": [
         400,
@@ -77,9 +77,9 @@
           "type": "ATLAS_PROJECT",
           "links": [
             1,
-            5,
-            21,
-            23
+            6,
+            25,
+            27
           ]
         }
       ],
@@ -100,7 +100,7 @@
       "type": "AtlasLoadRAW",
       "pos": [
         980,
-        267
+        371
       ],
       "size": [
         460,
@@ -215,9 +215,10 @@
           "type": "IMAGE",
           "links": [
             2,
-            6,
-            17,
-            20
+            7,
+            12,
+            21,
+            24
           ]
         },
         {
@@ -225,7 +226,7 @@
           "name": "plate_ref",
           "type": "ATLAS_PLATE_REF",
           "links": [
-            4
+            5
           ]
         },
         {
@@ -276,7 +277,7 @@
       "type": "AtlasLearnedSolveFromImage",
       "pos": [
         1560,
-        110
+        251
       ],
       "size": [
         440,
@@ -376,8 +377,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            7,
-            8
+            4
           ]
         },
         {
@@ -403,24 +403,125 @@
     },
     {
       "id": 4,
-      "type": "AtlasExportPlateEXR",
+      "type": "AtlasGravityCompass",
       "pos": [
-        1560,
-        670
+        2120,
+        526
       ],
       "size": [
-        430,
-        328
+        440,
+        360
       ],
       "flags": {},
       "order": 3,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 4
+        },
+        {
+          "localized_name": "apply_override",
+          "name": "apply_override",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "apply_override"
+          }
+        },
+        {
+          "localized_name": "pitch_deg",
+          "name": "pitch_deg",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "pitch_deg"
+          }
+        },
+        {
+          "localized_name": "roll_deg",
+          "name": "roll_deg",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "roll_deg"
+          }
+        },
+        {
+          "localized_name": "heading_override",
+          "name": "heading_override",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "heading_override"
+          }
+        },
+        {
+          "localized_name": "heading_deg",
+          "name": "heading_deg",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "heading_deg"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": [
+            8,
+            9
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasGravityCompass"
+      },
+      "widgets_values": [
+        false,
+        0.0,
+        0.0,
+        false,
+        0.0
+      ],
+      "title": "3 \u00b7 REVIEW CAMERA \u00b7 tweak gravity before geometry"
+    },
+    {
+      "id": 5,
+      "type": "AtlasExportPlateEXR",
+      "pos": [
+        1560,
+        811
+      ],
+      "size": [
+        430,
+        328
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
           "localized_name": "plate_ref",
           "name": "plate_ref",
           "type": "ATLAS_PLATE_REF",
-          "link": 4
+          "link": 5
         },
         {
           "localized_name": "output_colorspace",
@@ -466,7 +567,7 @@
           "localized_name": "project",
           "name": "project",
           "type": "ATLAS_PROJECT",
-          "link": 5,
+          "link": 6,
           "shape": 7
         }
       ],
@@ -476,7 +577,7 @@
           "name": "exr_path",
           "type": "STRING",
           "links": [
-            25
+            29
           ]
         },
         {
@@ -501,28 +602,28 @@
         "half",
         ""
       ],
-      "title": "3 \u00b7 PLATE \u00b7 ACEScg half-float into the project's plates/ lane"
+      "title": "4 \u00b7 PLATE \u00b7 ACEScg half-float into the project's plates/ lane"
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "AtlasDepthMap",
       "pos": [
-        2120,
-        322
+        2680,
+        454
       ],
       "size": [
         440,
         544
       ],
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 6
+          "link": 7
         },
         {
           "localized_name": "depth_model",
@@ -548,7 +649,7 @@
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 7,
+          "link": 8,
           "shape": 7
         },
         {
@@ -618,11 +719,12 @@
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
           "links": [
-            9,
-            11,
+            10,
             13,
             15,
-            18
+            17,
+            19,
+            22
           ]
         }
       ],
@@ -639,34 +741,34 @@
         0.25,
         false
       ],
-      "title": "4 \u00b7 DEPTH"
+      "title": "5 \u00b7 DEPTH"
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "AtlasDeriveReliefMesh",
       "pos": [
-        2680,
-        82
+        3240,
+        174
       ],
       "size": [
         430,
         1024
       ],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 8
+          "link": 9
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 9
+          "link": 10
         },
         {
           "localized_name": "relief_grid",
@@ -849,7 +951,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            10
+            11,
+            14
           ]
         },
         {
@@ -886,34 +989,254 @@
         2.0,
         12.0
       ],
-      "title": "5 \u00b7 PROJECTION GEOMETRY"
+      "title": "6 \u00b7 PROJECTION GEOMETRY"
     },
     {
-      "id": 7,
-      "type": "AtlasDeriveWalls",
+      "id": 8,
+      "type": "AtlasBlockoutViewport",
       "pos": [
-        3230,
-        391
+        3790,
+        40
       ],
       "size": [
-        430,
-        406
+        900,
+        680
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 10
+          "link": 11
+        },
+        {
+          "localized_name": "source_image",
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 12
+        },
+        {
+          "localized_name": "resolution",
+          "name": "resolution",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "resolution"
+          }
+        },
+        {
+          "localized_name": "client_data",
+          "name": "client_data",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "client_data"
+          }
+        },
+        {
+          "localized_name": "primary_depth",
+          "name": "primary_depth",
+          "type": "ATLAS_DEPTH_MAP",
+          "link": 13,
+          "shape": 7
+        },
+        {
+          "localized_name": "preview_expand",
+          "name": "preview_expand",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "preview_expand"
+          }
+        },
+        {
+          "localized_name": "controls",
+          "name": "controls",
+          "type": "ATLAS_VIEWPORT_LINK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "shot_cam",
+          "name": "shot_cam",
+          "type": "ATLAS_SHOT_CAM",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "output_profile",
+          "name": "output_profile",
+          "type": "ATLAS_OUTPUT_PROFILE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "debug_matte",
+          "name": "debug_matte",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "patch_mask",
+          "name": "patch_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "drawn_fill_px",
+          "name": "drawn_fill_px",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "drawn_fill_px"
+          }
+        },
+        {
+          "localized_name": "clean_plate",
+          "name": "clean_plate",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "shaded",
+          "name": "shaded",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "path_frames",
+          "name": "path_frames",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "localized_name": "camera_path",
+          "name": "camera_path",
+          "type": "ATLAS_CAMERA_PATH",
+          "links": []
+        },
+        {
+          "localized_name": "patch_azimuth_view",
+          "name": "patch_azimuth_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_elevation_view",
+          "name": "patch_elevation_view",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_distance",
+          "name": "patch_distance",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_prompt",
+          "name": "patch_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_exact",
+          "name": "patch_exact",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "localized_name": "patch_render_mask",
+          "name": "patch_render_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "links": []
+        },
+        {
+          "localized_name": "drawn_mask",
+          "name": "drawn_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "draw_report",
+          "name": "draw_report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AtlasBlockoutViewport"
+      },
+      "widgets_values": [
+        1024,
+        "",
+        1.0,
+        96
+      ],
+      "title": "7 \u00b7 REVIEW RELIEF \u00b7 orbit before export"
+    },
+    {
+      "id": 9,
+      "type": "AtlasDeriveWalls",
+      "pos": [
+        3790,
+        790
+      ],
+      "size": [
+        430,
+        406
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "solve",
+          "name": "solve",
+          "type": "ATLAS_SOLVE",
+          "link": 14
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 11
+          "link": 15
         },
         {
           "localized_name": "max_walls",
@@ -979,7 +1302,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            12
+            16
           ]
         },
         {
@@ -999,34 +1322,34 @@
         true,
         "measured_only"
       ],
-      "title": "6 \u00b7 PLANES"
+      "title": "8 \u00b7 PLANES"
     },
     {
-      "id": 8,
+      "id": 10,
       "type": "AtlasPlaneMattes",
       "pos": [
-        3780,
-        484
+        4810,
+        655
       ],
       "size": [
         430,
         220
       ],
       "flags": {},
-      "order": 7,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 12
+          "link": 16
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 13
+          "link": 17
         },
         {
           "localized_name": "tolerance_m",
@@ -1055,7 +1378,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            14
+            18
           ]
         },
         {
@@ -1072,34 +1395,34 @@
         0.0,
         64
       ],
-      "title": "7 \u00b7 PLANE MATTES"
+      "title": "9 \u00b7 PLANE MATTES"
     },
     {
-      "id": 9,
+      "id": 11,
       "type": "AtlasOcclusionGraph",
       "pos": [
-        4330,
-        524
+        5360,
+        695
       ],
       "size": [
         430,
         140
       ],
       "flags": {},
-      "order": 8,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 14
+          "link": 18
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 15,
+          "link": 19,
           "shape": 7
         }
       ],
@@ -1109,7 +1432,7 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            16
+            20
           ]
         },
         {
@@ -1123,40 +1446,40 @@
         "Node name for S&R": "AtlasOcclusionGraph"
       },
       "widgets_values": [],
-      "title": "8 \u00b7 OCCLUSION GRAPH"
+      "title": "10 \u00b7 OCCLUSION GRAPH"
     },
     {
-      "id": 10,
+      "id": 12,
       "type": "AtlasSceneHealthGate",
       "pos": [
-        4880,
-        397
+        5910,
+        568
       ],
       "size": [
         430,
         394
       ],
       "flags": {},
-      "order": 9,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 16
+          "link": 20
         },
         {
           "localized_name": "source_image",
           "name": "source_image",
           "type": "IMAGE",
-          "link": 17
+          "link": 21
         },
         {
           "localized_name": "depth",
           "name": "depth",
           "type": "ATLAS_DEPTH_MAP",
-          "link": 18,
+          "link": 22,
           "shape": 7
         },
         {
@@ -1224,8 +1547,8 @@
           "name": "solve",
           "type": "ATLAS_SOLVE",
           "links": [
-            19,
-            22
+            23,
+            26
           ]
         },
         {
@@ -1243,34 +1566,34 @@
         false,
         ""
       ],
-      "title": "9 \u00b7 SCENE HEALTH"
+      "title": "11 \u00b7 SCENE HEALTH"
     },
     {
-      "id": 11,
+      "id": 13,
       "type": "AtlasExportReliefMesh",
       "pos": [
-        5430,
-        40
+        6460,
+        211
       ],
       "size": [
         430,
         1108
       ],
       "flags": {},
-      "order": 10,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 19
+          "link": 23
         },
         {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 20
+          "link": 24
         },
         {
           "localized_name": "output_dir",
@@ -1456,7 +1779,7 @@
           "localized_name": "project",
           "name": "project",
           "type": "ATLAS_PROJECT",
-          "link": 21,
+          "link": 25,
           "shape": 7
         }
       ],
@@ -1472,7 +1795,7 @@
           "name": "glb_path",
           "type": "STRING",
           "links": [
-            24
+            28
           ]
         },
         {
@@ -1511,28 +1834,28 @@
         30.0,
         false
       ],
-      "title": "10a \u00b7 GEOMETRY \u00b7 GLB"
+      "title": "12a \u00b7 GEOMETRY \u00b7 GLB"
     },
     {
-      "id": 12,
+      "id": 14,
       "type": "AtlasExportScenePackage",
       "pos": [
-        5980,
-        403
+        7010,
+        574
       ],
       "size": [
         460,
         382
       ],
       "flags": {},
-      "order": 11,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "solve",
           "name": "solve",
           "type": "ATLAS_SOLVE",
-          "link": 22
+          "link": 26
         },
         {
           "localized_name": "output_dir",
@@ -1558,7 +1881,7 @@
           "localized_name": "plate_path",
           "name": "plate_path",
           "type": "STRING",
-          "link": 25,
+          "link": 29,
           "shape": 7,
           "widget": {
             "name": "plate_path"
@@ -1568,7 +1891,7 @@
           "localized_name": "relief_mesh_path",
           "name": "relief_mesh_path",
           "type": "STRING",
-          "link": 24,
+          "link": 28,
           "shape": 7,
           "widget": {
             "name": "relief_mesh_path"
@@ -1588,7 +1911,7 @@
           "localized_name": "project",
           "name": "project",
           "type": "ATLAS_PROJECT",
-          "link": 23,
+          "link": 27,
           "shape": 7
         }
       ],
@@ -1610,21 +1933,21 @@
         "",
         "obs_001"
       ],
-      "title": "10b \u00b7 .atlas PACKAGE \u00b7 plate_path comes from the EXR"
+      "title": "12b \u00b7 .atlas PACKAGE \u00b7 plate_path comes from the EXR"
     },
     {
-      "id": 13,
+      "id": 15,
       "type": "Note",
       "pos": [
         40,
-        840
+        1027
       ],
       "size": [
         820,
         520
       ],
       "flags": {},
-      "order": 12,
+      "order": 14,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -1664,70 +1987,62 @@
     ],
     [
       4,
+      3,
+      0,
+      4,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      5,
       2,
       1,
-      4,
+      5,
       0,
       "ATLAS_PLATE_REF"
     ],
     [
-      5,
+      6,
       1,
       0,
-      4,
+      5,
       5,
       "ATLAS_PROJECT"
     ],
     [
-      6,
+      7,
       2,
       0,
-      5,
+      6,
       0,
       "IMAGE"
     ],
     [
-      7,
-      3,
-      0,
-      5,
-      3,
-      "ATLAS_SOLVE"
-    ],
-    [
       8,
-      3,
+      4,
       0,
       6,
-      0,
+      3,
       "ATLAS_SOLVE"
     ],
     [
       9,
-      5,
+      4,
       0,
-      6,
-      1,
-      "ATLAS_DEPTH_MAP"
+      7,
+      0,
+      "ATLAS_SOLVE"
     ],
     [
       10,
       6,
       0,
       7,
-      0,
-      "ATLAS_SOLVE"
-    ],
-    [
-      11,
-      5,
-      0,
-      7,
       1,
       "ATLAS_DEPTH_MAP"
     ],
     [
-      12,
+      11,
       7,
       0,
       8,
@@ -1735,16 +2050,24 @@
       "ATLAS_SOLVE"
     ],
     [
-      13,
-      5,
+      12,
+      2,
       0,
       8,
       1,
+      "IMAGE"
+    ],
+    [
+      13,
+      6,
+      0,
+      8,
+      4,
       "ATLAS_DEPTH_MAP"
     ],
     [
       14,
-      8,
+      7,
       0,
       9,
       0,
@@ -1752,7 +2075,7 @@
     ],
     [
       15,
-      5,
+      6,
       0,
       9,
       1,
@@ -1768,73 +2091,105 @@
     ],
     [
       17,
-      2,
+      6,
       0,
       10,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      18,
+      10,
+      0,
+      11,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      19,
+      6,
+      0,
+      11,
+      1,
+      "ATLAS_DEPTH_MAP"
+    ],
+    [
+      20,
+      11,
+      0,
+      12,
+      0,
+      "ATLAS_SOLVE"
+    ],
+    [
+      21,
+      2,
+      0,
+      12,
       1,
       "IMAGE"
     ],
     [
-      18,
-      5,
+      22,
+      6,
       0,
-      10,
+      12,
       2,
       "ATLAS_DEPTH_MAP"
     ],
     [
-      19,
-      10,
+      23,
+      12,
       0,
-      11,
+      13,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      20,
+      24,
       2,
       0,
-      11,
+      13,
       1,
       "IMAGE"
     ],
     [
-      21,
+      25,
       1,
       0,
-      11,
+      13,
       20,
       "ATLAS_PROJECT"
     ],
     [
-      22,
-      10,
-      0,
+      26,
       12,
+      0,
+      14,
       0,
       "ATLAS_SOLVE"
     ],
     [
-      23,
+      27,
       1,
       0,
-      12,
+      14,
       6,
       "ATLAS_PROJECT"
     ],
     [
-      24,
-      11,
+      28,
+      13,
       1,
-      12,
+      14,
       4,
       "STRING"
     ],
     [
-      25,
-      4,
+      29,
+      5,
       0,
-      12,
+      14,
       3,
       "STRING"
     ]
@@ -1844,8 +2199,8 @@
       "title": "1 \u00b7 RAW \u2192 CAMERA \u2192 FLOAT PLATE",
       "bounding": [
         -5,
-        22,
-        2050,
+        163,
+        2610,
         1021
       ],
       "color": "#35536b",
@@ -1855,9 +2210,9 @@
     {
       "title": "2 \u00b7 GEOMETRY \u2192 PLANES \u2192 CLASSIFICATION",
       "bounding": [
-        2075,
-        -6,
-        2730,
+        2635,
+        86,
+        3200,
         1157
       ],
       "color": "#4a3f6b",
@@ -1868,9 +2223,9 @@
       "title": "3 \u00b7 CHECK IT",
       "bounding": [
         -5,
-        309,
-        5360,
-        1096
+        -48,
+        6390,
+        1640
       ],
       "color": "#6b5a35",
       "font_size": 24,
@@ -1879,8 +2234,8 @@
     {
       "title": "4 \u00b7 WRITE THE SCENE",
       "bounding": [
-        5385,
-        -48,
+        6415,
+        123,
         1100,
         1241
       ],

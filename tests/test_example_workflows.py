@@ -54,6 +54,40 @@ def _ui_workflows():
 _WORKFLOWS = _ui_workflows()
 
 
+def test_raw_atlas_scene_workflow_reviews_the_solve_before_geometry_and_export():
+    """The artist must see and adjust gravity before derived world data exists."""
+
+    path = os.path.join(EXAMPLES_DIR, "atlas_raw_to_atlas_scene_workflow.json")
+    workflow = json.load(open(path, encoding="utf-8"))
+    nodes = {node["id"]: node for node in workflow["nodes"]}
+    by_type = {node["type"]: node for node in workflow["nodes"]}
+
+    learned = by_type["AtlasLearnedSolveFromImage"]
+    compass = by_type["AtlasGravityCompass"]
+    viewport = by_type["AtlasBlockoutViewport"]
+
+    learned_targets = {
+        nodes[link[3]]["type"]
+        for link in workflow["links"]
+        if link[1] == learned["id"] and link[2] == 0
+    }
+    assert learned_targets == {"AtlasGravityCompass"}
+
+    reviewed_targets = {
+        nodes[link[3]]["type"]
+        for link in workflow["links"]
+        if link[1] == compass["id"] and link[2] == 0
+    }
+    assert {"AtlasDepthMap", "AtlasDeriveReliefMesh"} <= reviewed_targets
+
+    viewport_sources = {
+        nodes[link[1]]["type"]
+        for link in workflow["links"]
+        if link[3] == viewport["id"]
+    }
+    assert {"AtlasDeriveReliefMesh", "AtlasLoadRAW", "AtlasDepthMap"} <= viewport_sources
+
+
 def test_examples_directory_has_ui_workflows():
     """The shipped catalogue, pinned by NAME so neither a deletion nor an
     unreviewed addition can pass unnoticed. Review = add the name here.
