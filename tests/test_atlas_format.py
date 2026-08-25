@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,7 @@ from atlas_camera.core.schema import (
     LatentCamera,
     ProjectionSource,
 )
-from atlas_camera.exporters.atlas_package import write_atlas_package
+from atlas_camera.exporters.atlas_package import write_atlas_archive, write_atlas_package
 from atlas_camera.format import (
     SCHEMA_VERSION,
     FormatError,
@@ -459,6 +460,28 @@ def test_a_document_that_would_not_validate_is_never_written(tmp_path):
     assert not (tmp_path / "s.atlas" / "scene.json").exists()
 
 
+def test_the_artist_facing_writer_produces_one_portable_file(tmp_path):
+    plate = tmp_path / "source.png"
+    plate.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
+    mesh = tmp_path / "relief.glb"
+    mesh.write_bytes(b"glTF")
+
+    result = write_atlas_archive(
+        solve_with(wall(), image_path=str(plate)),
+        tmp_path / "street.atlas",
+        scene_id="street_001",
+        geometry_path=mesh,
+    )
+
+    assert result.package_path.is_file()
+    with zipfile.ZipFile(result.package_path) as archive:
+        assert archive.read("imagery/source.png") == plate.read_bytes()
+        assert archive.read("geometry/relief.glb") == mesh.read_bytes()
+        document = json.loads(archive.read("scene.json"))
+    assert document["camera"]["plate_path"] == "imagery/source.png"
+    assert result.complaints == []
+
+
 # -- the node ----------------------------------------------------------------
 
 
@@ -481,7 +504,9 @@ def test_the_export_node_writes_a_package_an_editor_can_open(tmp_path):
     )
 
     package = Path(outcome["result"][0] if isinstance(outcome, dict) else outcome[0])
-    document = json.loads((package / "scene.json").read_text(encoding="utf-8"))
+    assert package.is_file()
+    with zipfile.ZipFile(package) as archive:
+        document = json.loads(archive.read("scene.json"))
     assert package.name == "street_001.atlas"
     assert document["camera"]["plate_path"] == "imagery/source.png"
     assert document["entities"][0]["geometry"]["path"] == "geometry/relief.glb"

@@ -1,8 +1,9 @@
 """`atlas.format` — the `.atlas` scene package, shared by every producer.
 
-**What this is.** A `.atlas` package is a directory with `scene.json` at its
-root and the files that document points at beside it. Atlas Camera writes one;
-Atlas Scene opens, edits and writes one back. This package owns the parts both
+**What this is.** A `.atlas` package is a ZIP64 file containing `scene.json`
+and the files that document points at. The compatibility writer still exposes
+the same tree as a directory; the artist-facing writer packs it into one file.
+Atlas Camera writes one; Atlas Scene opens, edits and writes one back. This package owns the parts both
 sides must agree on — the schema, its version, the digests, and validation — so
 that agreement lives in one place instead of being re-derived on each side and
 drifting.
@@ -29,6 +30,13 @@ them; where this package is silent, they still apply:
 """
 
 from atlas_camera.format.digest import digest_bytes, digest_json
+from atlas_camera.format.container import (
+    ATLAS_MIMETYPE,
+    ContainerError,
+    inspect_archive,
+    pack_archive,
+    unpack_archive,
+)
 from atlas_camera.format.document import (
     camera_document,
     plane_documents,
@@ -53,8 +61,10 @@ from atlas_camera.format.version import (
 )
 
 __all__ = [
+    "ATLAS_MIMETYPE",
     "ATLAS_DIR",
     "FormatError",
+    "ContainerError",
     "GEOMETRY_DIR",
     "HISTORY_DIR",
     "IMAGERY_DIR",
@@ -74,4 +84,7 @@ __all__ = [
     "plane_id_for",
     "scene_document",
     "validate_document",
+    "inspect_archive",
+    "pack_archive",
+    "unpack_archive",
 ]

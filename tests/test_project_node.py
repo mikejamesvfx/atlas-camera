@@ -104,10 +104,10 @@ def test_export_scene_package_routes_into_scenes_lane(tmp_path, make_atlas_solve
     )
     # A solve with no plate and no mesh carries complaints, and complaints come
     # back as the UI form rather than a bare tuple.
-    (package_dir,) = outcome["result"] if isinstance(outcome, dict) else outcome
-    dest = Path(package_dir)
+    (package_path,) = outcome["result"] if isinstance(outcome, dict) else outcome
+    dest = Path(package_path)
     assert dest.parent == tmp_path / "proj" / "sh010" / "scenes"
-    assert dest.is_dir()
+    assert dest.is_file()
     assert not (tmp_path / "ignored_dir").exists()
 
 

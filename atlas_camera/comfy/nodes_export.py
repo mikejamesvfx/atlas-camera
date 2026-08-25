@@ -11,7 +11,7 @@ from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.io import save_solve_json
 from atlas_camera.exporters.blender_exporter import write_blender_scene_script
 from atlas_camera.exporters.nuke_exporter import write_nuke_native_script, write_nuke_projection_script
-from atlas_camera.exporters.atlas_package import write_atlas_package
+from atlas_camera.exporters.atlas_package import write_atlas_archive
 from atlas_camera.exporters.review_package import build_review_package
 
 from atlas_camera.comfy.node_helpers import (
@@ -111,7 +111,7 @@ class AtlasExportScenePackage:
             # The solve may already carry one from AtlasExportReliefMesh.
             mesh = str(_relief_mesh_from_solve(solve) or "")
 
-        result = write_atlas_package(
+        result = write_atlas_archive(
             solve,
             package,
             scene_id=name,
@@ -124,7 +124,7 @@ class AtlasExportScenePackage:
         # export that quietly drops the plate produces a scene whose dead
         # features nobody can explain.
         note = "\n".join(result.complaints)
-        return _with_manifest_note((str(result.package_dir),), note)
+        return _with_manifest_note((str(result.package_path),), note)
 
 
 class AtlasExportReviewPackage:

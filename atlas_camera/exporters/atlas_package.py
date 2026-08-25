@@ -28,6 +28,7 @@ from __future__ import annotations
 import base64
 import json
 import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
@@ -43,6 +44,7 @@ from atlas_camera.format import (
     scene_document,
     validate_document,
 )
+from atlas_camera.format.container import pack_archive
 from atlas_camera.format.document import utc_now
 from atlas_camera.format.layout import PACKAGE_DIRS
 
@@ -65,6 +67,70 @@ class PackageResult:
             "files": {key: str(value) for key, value in self.files.items()},
             "complaints": list(self.complaints),
         }
+
+
+@dataclass(slots=True)
+class ArchivePackageResult:
+    """The one-file package handed to an artist."""
+
+    package_path: Path
+    files: dict[str, str] = field(default_factory=dict)
+    complaints: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "package_path": str(self.package_path),
+            "files": dict(self.files),
+            "complaints": list(self.complaints),
+        }
+
+
+def write_atlas_archive(
+    solve: Any,
+    destination: str | Path,
+    *,
+    scene_id: str | None = None,
+    name: str | None = None,
+    plate_path: str | Path | None = None,
+    geometry_path: str | Path | None = None,
+    entity_id: str = "relief",
+    solve_path: str | Path | None = None,
+    observation_id: str | None = None,
+    write_mattes: bool = True,
+) -> ArchivePackageResult:
+    """Build, validate, and atomically write one portable ``.atlas`` file.
+
+    ``write_atlas_package`` remains the compatibility directory writer.  Both
+    routes use exactly the same tree builder, so their documents and adopted
+    asset bytes cannot drift.
+    """
+
+    target = Path(destination)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f".{target.stem}-", dir=target.parent) as staging:
+        tree = Path(staging) / "package"
+        result = write_atlas_package(
+            solve,
+            tree,
+            scene_id=scene_id or target.stem,
+            name=name,
+            plate_path=plate_path,
+            geometry_path=geometry_path,
+            entity_id=entity_id,
+            solve_path=solve_path,
+            observation_id=observation_id,
+            write_mattes=write_mattes,
+        )
+        members = {
+            key: path.relative_to(result.package_dir).as_posix()
+            for key, path in result.files.items()
+        }
+        pack_archive(tree, target)
+        return ArchivePackageResult(
+            package_path=target,
+            files=members,
+            complaints=list(result.complaints),
+        )
 
 
 def write_atlas_package(
