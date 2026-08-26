@@ -482,6 +482,46 @@ def test_the_artist_facing_writer_produces_one_portable_file(tmp_path):
     assert result.complaints == []
 
 
+def test_a_layered_package_keeps_foreground_and_cleanplate_separate(tmp_path):
+    foreground = tmp_path / "source.exr"
+    foreground.write_bytes(b"foreground exr")
+    cleanplate = tmp_path / "source-clean.exr"
+    cleanplate.write_bytes(b"cleanplate exr")
+    foreground_mesh = tmp_path / "foreground.glb"
+    foreground_mesh.write_bytes(b"foreground gltf")
+    cleanplate_mesh = tmp_path / "cleanplate.glb"
+    cleanplate_mesh.write_bytes(b"cleanplate gltf")
+
+    result = write_atlas_package(
+        solve_with(wall(), image_path=str(foreground)),
+        tmp_path / "street.atlas",
+        geometry_path=foreground_mesh,
+        observation_id="obs_foreground",
+        cleanplate_path=cleanplate,
+        cleanplate_geometry_path=cleanplate_mesh,
+        cleanplate_observation_id="obs_cleanplate",
+    )
+
+    document = json.loads(result.document.read_text(encoding="utf-8"))
+    foreground_entity, cleanplate_entity = document["entities"]
+    assert foreground_entity["entity_id"] == "relief"
+    assert cleanplate_entity["entity_id"] == "cleanplate_relief"
+    assert foreground_entity["material"]["projection"] == {
+        "plate_path": "imagery/source.exr",
+        "observation_id": "obs_foreground",
+        "role": "foreground",
+    }
+    assert cleanplate_entity["material"]["projection"] == {
+        "plate_path": "imagery/cleanplate_source-clean.exr",
+        "observation_id": "obs_cleanplate",
+        "role": "cleanplate_background",
+    }
+    assert cleanplate_entity["geometry"]["path"] == "geometry/cleanplate_cleanplate.glb"
+    assert (result.package_dir / "imagery" / "source.exr").read_bytes() == foreground.read_bytes()
+    assert (result.package_dir / "imagery" / "cleanplate_source-clean.exr").read_bytes() == cleanplate.read_bytes()
+    validate_document(document)
+
+
 # -- the node ----------------------------------------------------------------
 
 

@@ -90,9 +90,21 @@ class AtlasExportScenePackage:
                     "default": "",
                     "tooltip": "The GLB from AtlasExportReliefMesh. Without it the package has a camera and planes but no geometry to edit.",
                 }),
+                "cleanplate_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Optional scene-linear cleanplate EXR. When paired with cleanplate_mesh_path, Atlas Camera writes a separately editable cleanplate_relief behind the foreground relief.",
+                }),
+                "cleanplate_mesh_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Optional GLB from a second AtlasExportReliefMesh run using the cleanplate/depth branch. Both cleanplate inputs are required together.",
+                }),
                 "observation_id": ("STRING", {
                     "default": "",
                     "tooltip": "Which photograph this is. Part of every plane's identity, so the same wall shot twice stays two pieces of evidence.",
+                }),
+                "cleanplate_observation_id": ("STRING", {
+                    "default": "obs_cleanplate",
+                    "tooltip": "Evidence identity for the cleanplate projection. Defaults to obs_cleanplate when left blank.",
                 }),
                 "project": ("ATLAS_PROJECT", {
                     "tooltip": "Optional delivery project from AtlasProject — routes this export into the project tree's scenes/ lane and supersedes output_dir.",
@@ -101,7 +113,8 @@ class AtlasExportScenePackage:
         }
 
     def export(self, solve, output_dir, scene_id, plate_path="", relief_mesh_path="",
-               observation_id="", project=None):
+               cleanplate_path="", cleanplate_mesh_path="", observation_id="",
+               cleanplate_observation_id="obs_cleanplate", project=None):
         output_dir = _project_routed_dir(project, output_dir, "scenes")
         name = (scene_id or "scene").strip() or "scene"
         package = Path(output_dir) / f"{name}.atlas"
@@ -118,6 +131,9 @@ class AtlasExportScenePackage:
             plate_path=(plate_path or "").strip() or None,
             geometry_path=mesh or None,
             observation_id=(observation_id or "").strip() or None,
+            cleanplate_path=(cleanplate_path or "").strip() or None,
+            cleanplate_geometry_path=(cleanplate_mesh_path or "").strip() or None,
+            cleanplate_observation_id=(cleanplate_observation_id or "").strip() or None,
         )
 
         # What could not be done, on the node, where the artist is looking. An

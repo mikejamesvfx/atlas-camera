@@ -35,6 +35,7 @@ COMPLETION_POLICIES = (
 SCALE_STATUSES = ("measured", "manual", "assumed", "unknown")
 
 ALPHA_MODES = ("straight", "associated")
+PROJECTION_ROLES = ("foreground", "cleanplate_background")
 
 
 class FormatError(ValueError):
@@ -180,6 +181,23 @@ def _check_entities(document: dict[str, Any], problems: list[str]) -> None:
         if isinstance(geometry, dict) and geometry.get("path"):
             if _is_absolute(str(geometry["path"])):
                 problems.append(f"{where} geometry.path is absolute")
+        material = entity.get("material") or {}
+        projection = material.get("projection") if isinstance(material, dict) else None
+        if projection is not None:
+            if not isinstance(projection, dict):
+                problems.append(f"{where} material.projection is not an object")
+                continue
+            plate_path = projection.get("plate_path")
+            if not isinstance(plate_path, str) or not plate_path:
+                problems.append(f"{where} material.projection has no plate_path")
+            elif _is_absolute(plate_path):
+                problems.append(f"{where} material.projection.plate_path is absolute")
+            if not isinstance(projection.get("observation_id"), str) or not projection["observation_id"]:
+                problems.append(f"{where} material.projection has no observation_id")
+            if projection.get("role") not in PROJECTION_ROLES:
+                problems.append(
+                    f"{where} material.projection role {projection.get('role')!r} is not one of {list(PROJECTION_ROLES)}"
+                )
 
     for entity_id in parents:
         if _has_cycle(entity_id, parents):

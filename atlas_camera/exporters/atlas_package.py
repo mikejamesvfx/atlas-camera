@@ -94,8 +94,12 @@ def write_atlas_archive(
     plate_path: str | Path | None = None,
     geometry_path: str | Path | None = None,
     entity_id: str = "relief",
+    cleanplate_path: str | Path | None = None,
+    cleanplate_geometry_path: str | Path | None = None,
+    cleanplate_entity_id: str = "cleanplate_relief",
     solve_path: str | Path | None = None,
     observation_id: str | None = None,
+    cleanplate_observation_id: str | None = None,
     write_mattes: bool = True,
 ) -> ArchivePackageResult:
     """Build, validate, and atomically write one portable ``.atlas`` file.
@@ -117,8 +121,12 @@ def write_atlas_archive(
             plate_path=plate_path,
             geometry_path=geometry_path,
             entity_id=entity_id,
+            cleanplate_path=cleanplate_path,
+            cleanplate_geometry_path=cleanplate_geometry_path,
+            cleanplate_entity_id=cleanplate_entity_id,
             solve_path=solve_path,
             observation_id=observation_id,
+            cleanplate_observation_id=cleanplate_observation_id,
             write_mattes=write_mattes,
         )
         members = {
@@ -142,8 +150,12 @@ def write_atlas_package(
     plate_path: str | Path | None = None,
     geometry_path: str | Path | None = None,
     entity_id: str = "relief",
+    cleanplate_path: str | Path | None = None,
+    cleanplate_geometry_path: str | Path | None = None,
+    cleanplate_entity_id: str = "cleanplate_relief",
     solve_path: str | Path | None = None,
     observation_id: str | None = None,
+    cleanplate_observation_id: str | None = None,
     write_mattes: bool = True,
 ) -> PackageResult:
     """Write `solve` as a `.atlas` package at `destination`.
@@ -162,13 +174,54 @@ def write_atlas_package(
 
     relative_plate = _adopt_plate(package, solve, plate_path, complaints, files)
     relative_geometry = _adopt_geometry(package, geometry_path, complaints, files)
+    relative_cleanplate = _adopt_plate(
+        package,
+        solve,
+        cleanplate_path,
+        complaints,
+        files,
+        key="cleanplate",
+        prefix="cleanplate_",
+        required=False,
+    )
+    relative_cleanplate_geometry = _adopt_geometry(
+        package,
+        cleanplate_geometry_path,
+        complaints,
+        files,
+        key="cleanplate_geometry",
+        prefix="cleanplate_",
+        required=False,
+    )
     relative_solve = _adopt_solve(package, solve, solve_path, files)
 
-    entities = (
-        [_entity_document(entity_id, relative_geometry, observation_id)]
-        if relative_geometry
-        else []
-    )
+    entities: list[dict[str, Any]] = []
+    if relative_geometry:
+        entities.append(
+            _entity_document(
+                entity_id,
+                relative_geometry,
+                observation_id,
+                plate_path=relative_plate,
+                role="foreground",
+            )
+        )
+    if relative_cleanplate or relative_cleanplate_geometry:
+        if not relative_cleanplate or not relative_cleanplate_geometry:
+            complaints.append(
+                "cleanplate delivery needs both cleanplate_path and "
+                "cleanplate_mesh_path; the incomplete cleanplate was not written"
+            )
+        else:
+            entities.append(
+                _entity_document(
+                    cleanplate_entity_id,
+                    relative_cleanplate_geometry,
+                    cleanplate_observation_id,
+                    plate_path=relative_cleanplate,
+                    role="cleanplate_background",
+                )
+            )
 
     document = scene_document(
         solve,
@@ -208,9 +261,15 @@ def _adopt_plate(
     override: str | Path | None,
     complaints: list[str],
     files: dict[str, Path],
+    *,
+    key: str = "plate",
+    prefix: str = "",
+    required: bool = True,
 ) -> str | None:
-    candidate = override or getattr(solve, "image_path", None)
+    candidate = override if override else (getattr(solve, "image_path", None) if required else None)
     if not candidate:
+        if not required:
+            return None
         # ABSENT is as load-bearing as EXPIRED and just as invisible: a package
         # with no plate opens as an inert scene, and without a note the artist
         # has nothing to read but the silence.
@@ -230,11 +289,11 @@ def _adopt_plate(
         )
         return None
 
-    relative = f"{IMAGERY_DIR}/{source.name}"
+    relative = f"{IMAGERY_DIR}/{prefix}{source.name}"
     destination = package / relative
     if source.resolve() != destination.resolve():
         shutil.copy2(source, destination)
-    files["plate"] = destination
+    files[key] = destination
     return relative
 
 
@@ -243,8 +302,14 @@ def _adopt_geometry(
     candidate: str | Path | None,
     complaints: list[str],
     files: dict[str, Path],
+    *,
+    key: str = "geometry",
+    prefix: str = "",
+    required: bool = True,
 ) -> str | None:
     if not candidate:
+        if not required:
+            return None
         complaints.append(
             "no geometry was given, so the package carries a camera and planes "
             "but nothing to edit. Connect relief_mesh_path from "
@@ -255,11 +320,11 @@ def _adopt_geometry(
     if not source.is_file():
         complaints.append(f"the geometry {source} is not there; no entity was written")
         return None
-    relative = f"{GEOMETRY_DIR}/{source.name}"
+    relative = f"{GEOMETRY_DIR}/{prefix}{source.name}"
     destination = package / relative
     if source.resolve() != destination.resolve():
         shutil.copy2(source, destination)
-    files["geometry"] = destination
+    files[key] = destination
     return relative
 
 
@@ -381,7 +446,12 @@ def _matte_bytes(value: Any) -> bytes | None:
 
 
 def _entity_document(
-    entity_id: str, geometry_path: str, observation_id: str | None
+    entity_id: str,
+    geometry_path: str,
+    observation_id: str | None,
+    *,
+    plate_path: str | None = None,
+    role: str | None = None,
 ) -> dict[str, Any]:
     """The relief mesh, as the thing a depth solve OBSERVED.
 
@@ -412,7 +482,17 @@ def _entity_document(
             "format": Path(geometry_path).suffix.lstrip(".").lower() or "glb",
             "metadata": {},
         },
-        "material": {},
+        "material": (
+            {
+                "projection": {
+                    "plate_path": plate_path,
+                    "observation_id": observation_id or f"obs_{entity_id}",
+                    "role": role,
+                }
+            }
+            if plate_path and role
+            else {}
+        ),
         "visible": True,
         "observation_state": "OBSERVED",
         "semantic_class": None,
