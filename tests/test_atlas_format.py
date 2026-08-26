@@ -553,6 +553,35 @@ def test_the_export_node_writes_a_package_an_editor_can_open(tmp_path):
     validate_document(document)
 
 
+def test_the_export_node_forwards_a_complete_cleanplate_pair(tmp_path):
+    from atlas_camera.comfy.nodes_export import AtlasExportScenePackage
+
+    plate = tmp_path / "source.exr"
+    plate.write_bytes(b"foreground")
+    mesh = tmp_path / "relief.glb"
+    mesh.write_bytes(b"foreground mesh")
+    cleanplate = tmp_path / "cleanplate.exr"
+    cleanplate.write_bytes(b"cleanplate")
+    cleanplate_mesh = tmp_path / "cleanplate.glb"
+    cleanplate_mesh.write_bytes(b"cleanplate mesh")
+
+    outcome = AtlasExportScenePackage().export(
+        solve_with(wall(), image_path=str(plate)),
+        str(tmp_path),
+        "street_001",
+        relief_mesh_path=str(mesh),
+        cleanplate_path=str(cleanplate),
+        cleanplate_mesh_path=str(cleanplate_mesh),
+    )
+
+    package = Path(outcome[0] if isinstance(outcome, tuple) else outcome["result"][0])
+    with zipfile.ZipFile(package) as archive:
+        document = json.loads(archive.read("scene.json"))
+    assert [entity["entity_id"] for entity in document["entities"]] == [
+        "relief", "cleanplate_relief"
+    ]
+
+
 def test_the_node_says_what_it_could_not_do(tmp_path):
     """A missing plate on the node, where the artist is looking."""
 
