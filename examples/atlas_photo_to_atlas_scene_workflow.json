@@ -1723,7 +1723,10 @@
         "street_001",
         "input/example.png",
         "",
-        "obs_001"
+        "obs_001",
+        "",
+        "",
+        "obs_cleanplate"
       ],
       "title": "10b \u00b7 .atlas PACKAGE \u00b7 the whole scene, meant to come back"
     },

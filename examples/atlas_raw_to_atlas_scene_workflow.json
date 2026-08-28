@@ -1931,7 +1931,10 @@
         "raw_001",
         "",
         "",
-        "obs_001"
+        "obs_001",
+        "",
+        "",
+        "obs_cleanplate"
       ],
       "title": "12b \u00b7 .atlas PACKAGE \u00b7 plate_path comes from the EXR"
     },

@@ -1515,7 +1515,10 @@
         "measured_001",
         "input/example.png",
         "",
-        "obs_001"
+        "obs_001",
+        "",
+        "",
+        "obs_cleanplate"
       ],
       "title": "10b \u00b7 .atlas PACKAGE"
     },
