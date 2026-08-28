@@ -504,13 +504,10 @@ def build_preset_camera_path(
 
         def dolly_pan(fraction_of_angle: float, travel: float):
             a = a_full * fraction_of_angle
-            # Sign matched to the JS, deliberately, and NOT to the pan_left
-            # branch below. Measured on a camera at (0,1.6,10) looking down -Z:
-            # the JS puts pan_left's target at x = -2.59 (camera-left, correct)
-            # and this module's pan branch puts it at +2.59. The two rotate in
-            # opposite directions -- the sin terms are transposed -- so a baked
-            # pan travels the other way to the previewed one. That is a
-            # pre-existing fault in pan/orbit; it is not inherited here.
+            # Same handedness as the JS and as the pan branch below. Both
+            # were checked against it: on a camera at (0,1.6,10) looking down
+            # -Z, a left move puts the target at x = -2.59, which is
+            # camera-left.
             rotated = (off[0] * math.cos(a) - off[2] * math.sin(a), off[1],
                        off[0] * math.sin(a) + off[2] * math.cos(a))
             length = math.sqrt(sum(c * c for c in rotated)) or 1.0
@@ -538,13 +535,23 @@ def build_preset_camera_path(
         keyframes = [kf(0, eye, pivot, easing),
                      kf(last, risen, pivot, "linear")]
     elif move in ("pan_left", "pan_right"):
-        # Swivel in place: rotate the eye->pivot ray about world +Y. Same
-        # rotation algebra as the JS, applied to the TARGET offset.
+        # Swivel in place: rotate the eye->pivot ray about world +Y.
+        #
+        # The sin terms were transposed here, so this rotated the OPPOSITE way
+        # to the JS preview and a baked pan_left travelled right. Measured on a
+        # camera at (0,1.6,10) looking down -Z: the JS puts pan_left's target at
+        # x = -2.59 (camera-left, correct) and this branch put it at +2.59.
+        #
+        # Only pan was affected. Orbit goes through `pose_at` and agrees with
+        # the JS to the centimetre; this branch hand-rolls its rotation and got
+        # the handedness wrong. The frontend-mirror test could not catch it
+        # because it compares the move NAMES, not the geometry they produce --
+        # `test_pan_matches_the_js_handedness` now does.
         end_delta = (0.0, 0.0, 1.0)     # not expressible as an orbit delta
         a = math.radians(angle_deg) * sign
         off = (pivot[0] - eye[0], pivot[1] - eye[1], pivot[2] - eye[2])
-        rotated = (off[0] * math.cos(a) + off[2] * math.sin(a), off[1],
-                   -off[0] * math.sin(a) + off[2] * math.cos(a))
+        rotated = (off[0] * math.cos(a) - off[2] * math.sin(a), off[1],
+                   off[0] * math.sin(a) + off[2] * math.cos(a))
         new_target = (eye[0] + rotated[0], eye[1] + rotated[1],
                       eye[2] + rotated[2])
         keyframes = [kf(0, eye, pivot, easing),

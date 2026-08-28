@@ -8,8 +8,13 @@ interpolated path away from the middle-t point compared to linear.
 
 import pytest
 
-from atlas_camera.core.camera_path import sample_camera_path, sample_camera_path_fov_deg
+from atlas_camera.core.camera_path import (
+    build_preset_camera_path,
+    sample_camera_path,
+    sample_camera_path_fov_deg,
+)
 from atlas_camera.core.schema import AtlasCameraKeyframe, AtlasCameraPath
+from atlas_camera.core.camera_path import AtlasExtrinsics
 
 
 def _kf(frame_index, position, target, easing="linear", fov_deg=None):
@@ -340,3 +345,83 @@ def test_shake_fields_survive_dict_round_trip_and_default_off():
     assert legacy.shake_enabled is False
     assert legacy.shake_intensity == pytest.approx(1.0)
     assert legacy.shake_seed == 1
+
+
+# -- handedness: which way "left" actually goes ------------------------------
+
+
+def _level_camera():
+    """Eye 10 m back from a pivot, looking down -Z, no roll.
+
+    In that frame the camera's right is world +X, so "left" is unambiguous and
+    a sign error cannot hide behind a rotation nobody can read.
+    """
+    import numpy as np
+
+    return AtlasExtrinsics(
+        camera_position=(0.0, 1.6, 10.0),
+        camera_rotation_matrix=np.eye(3).tolist(),
+    ), (0.0, 1.6, 0.0)
+
+
+def test_pan_matches_the_js_handedness():
+    """A baked pan_left used to travel RIGHT.
+
+    The sin terms in the pan branch were transposed, so this module rotated the
+    opposite way to `atlas_blockout.js` and a bake disagreed with the preview it
+    came from. The frontend-mirror test could not see it: it compares the move
+    NAMES, not the geometry they produce.
+
+    Measured against the JS algebra on the camera below: pan_left's target
+    lands at x = -2.59 and pan_right's at +2.59.
+    """
+    extrinsics, pivot = _level_camera()
+
+    left = build_preset_camera_path(extrinsics, "pan_left", pivot=pivot)[0]
+    right = build_preset_camera_path(extrinsics, "pan_right", pivot=pivot)[0]
+
+    assert left.keyframes[-1].target[0] < 0, "pan_left turned toward camera-right"
+    assert right.keyframes[-1].target[0] > 0, "pan_right turned toward camera-left"
+    assert left.keyframes[-1].target[0] == pytest.approx(-2.588, abs=0.01)
+    assert right.keyframes[-1].target[0] == pytest.approx(2.588, abs=0.01)
+
+
+def test_orbit_and_pan_turn_the_same_way():
+    """Orbit was always right; the point is that pan now agrees with it.
+
+    Orbit goes through `pose_at`, pan hand-rolls its rotation. Two spellings of
+    the same turn is exactly how they drifted apart, so this pins them together.
+    """
+    extrinsics, pivot = _level_camera()
+
+    orbit = build_preset_camera_path(extrinsics, "orbit_left", pivot=pivot)[0]
+    pan = build_preset_camera_path(extrinsics, "pan_left", pivot=pivot)[0]
+
+    # Orbit moves the EYE left; pan moves the TARGET left. Both negative in x.
+    assert orbit.keyframes[-1].position[0] < 0
+    assert pan.keyframes[-1].target[0] < 0
+
+
+def test_the_compound_moves_turn_the_same_way_as_the_simple_ones():
+    extrinsics, pivot = _level_camera()
+
+    for simple, compound in (("pan_left", "dolly_pan_left"),
+                             ("pan_right", "dolly_pan_right")):
+        a = build_preset_camera_path(extrinsics, simple, pivot=pivot)[0]
+        b = build_preset_camera_path(extrinsics, compound, pivot=pivot)[0]
+        assert (a.keyframes[-1].target[0] > 0) == (b.keyframes[-1].target[0] > 0), (
+            f"{compound} turns the opposite way to {simple}"
+        )
+
+
+def test_crane_up_rises_and_holds_the_pivot():
+    extrinsics, pivot = _level_camera()
+    path = build_preset_camera_path(extrinsics, "crane_up", pivot=pivot)[0]
+    start, end = path.keyframes[0], path.keyframes[-1]
+
+    assert end.position[1] > start.position[1], "crane_up did not rise"
+    assert end.position[0] == pytest.approx(start.position[0])
+    assert end.position[2] == pytest.approx(start.position[2]), "crane drifted sideways"
+    # 25% of a 10 m throw, and the pivot is held so the tilt is geometric.
+    assert end.position[1] - start.position[1] == pytest.approx(2.5, abs=0.01)
+    assert tuple(end.target) == pytest.approx(tuple(pivot))
