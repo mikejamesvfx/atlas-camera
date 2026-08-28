@@ -6332,6 +6332,15 @@ function buildNodeUI(node, containerEl) {
       const rotated = { x: off.x * cos + off.z * sin, y: off.y, z: -off.x * sin + off.z * cos };
       return { position: { x: T.x + rotated.x, y: T.y + rotated.y, z: T.z + rotated.z }, target: { ...T } };
     }
+    if (presetKey === "crane_up" || presetKey === "crane_down") {
+      // The body rises; the head keeps looking at the same point, so the tilt
+      // comes out of the geometry rather than being animated separately. World
+      // Y, not camera up: a crane arm is vertical even when the camera is
+      // rolled, and using the rolled up would slide the move sideways on any
+      // plate with roll.
+      const rise = dist * distanceFrac * (presetKey === "crane_up" ? 1 : -1);
+      return { position: { x: E.x, y: E.y + rise, z: E.z }, target: { ...T } };
+    }
     // dolly_in / dolly_out — move along the view axis toward/away from the fixed target.
     const scale = presetKey === "dolly_in" ? Math.max(0.05, 1 - distanceFrac) : 1 + distanceFrac;
     const newDist = dist * scale;
@@ -6438,6 +6447,8 @@ function buildNodeUI(node, containerEl) {
   const MOVE_DOLLY_FRAC = 0.2;  // dolly-in travel as a fraction of cam→pivot
   const PUSH_IN_FRAC = 0.35;    // ⭆ Push In — a stronger, ease-shaped dolly
   const ARC_DOLLY_FRAC = 0.15;  // ⤴/⤵ Arc — dolly component of the combined move
+  const DOLLY_PAN_FRAC = 0.18;  // ⭢⇠/⭢⇢ Dolly+Pan — travel while the head turns
+  const CRANE_FRAC = 0.25;      // ⭡ Crane Up — rise as a fraction of cam→pivot
   // Easing applied to a move's FIRST keyframe (the whole 2-keyframe move, or
   // the opening segment of a 3-keyframe arc). Values must be exactly the four
   // curves camera_path.py understands — this selector adds no new easing
@@ -6448,9 +6459,16 @@ function buildNodeUI(node, containerEl) {
     if (!basis) return; // no solve yet — nothing to move around
     const { position: E, quaternion, pivot: P } = basis;
     const v3o = (v) => ({ x: v.x, y: v.y, z: v.z });
+    // The RECOVERED up, not world up. GeoCalib solves include roll — measured
+    // 6.58° on BurningPalms sh001, whose horizon_angle_deg reads -6.535 — and
+    // hardcoding (0,1,0) here meant frame 0 of any preview snapped the camera
+    // level, so the whole scene appeared to rotate about Z the instant playback
+    // started (artist-reported, 2026-08-28). The orbit controller already
+    // measures and re-applies this roll; the path presets never did.
+    const recoveredUp = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
     const kfAt = (frame, pose, easing) => ({
       frame_index: frame, position: pose.position, target: pose.target,
-      up: { x: 0, y: 1, z: 0 }, easing,
+      up: { x: recoveredUp.x, y: recoveredUp.y, z: recoveredUp.z }, easing,
     });
     let newKeyframes;
     if (kind === "dolly_in" || kind === "push_in" || kind === "vertigo") {
@@ -6481,6 +6499,37 @@ function buildNodeUI(node, containerEl) {
         kfAt(60, arcPose(MOVE_ANGLE_DEG / 2, ARC_DOLLY_FRAC / 2), "linear"),
         kfAt(PATH_FRAME_COUNT - 1, arcPose(MOVE_ANGLE_DEG, ARC_DOLLY_FRAC), "linear"),
       ];
+    } else if (kind === "dolly_pan_left" || kind === "dolly_pan_right") {
+      // A dolly and a pan are two different bodies moving: the base rolls
+      // forward along the track it started on, and the head turns on top of it.
+      // So the eye travels the ORIGINAL view axis while the look direction
+      // swivels — not a curve toward a moved target, which is what Arc does.
+      // Three keyframes so the Catmull-Rom follows the turn instead of cutting
+      // the chord.
+      const d = E.distanceTo(P) || 1;
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion);
+      const T0 = E.clone().addScaledVector(fwd, d); // target ON the view axis
+      const startPose = { position: v3o(E), target: v3o(T0) };
+      const panKind = kind === "dolly_pan_left" ? "pan_left" : "pan_right";
+      const pose = (angleDeg, frac) => {
+        const panned = computePresetEndPose(startPose, panKind, angleDeg, 0);
+        const dir = new THREE.Vector3(
+          panned.target.x - E.x, panned.target.y - E.y, panned.target.z - E.z,
+        ).normalize();
+        const eye = E.clone().addScaledVector(fwd, d * frac);
+        const look = eye.clone().addScaledVector(dir, d);
+        return { position: v3o(eye), target: v3o(look) };
+      };
+      newKeyframes = [
+        kfAt(0, startPose, moveEasing),
+        kfAt(60, pose(MOVE_ANGLE_DEG / 2, DOLLY_PAN_FRAC / 2), "linear"),
+        kfAt(PATH_FRAME_COUNT - 1, pose(MOVE_ANGLE_DEG, DOLLY_PAN_FRAC), "linear"),
+      ];
+    } else if (kind === "crane_up") {
+      const startPose = { position: v3o(E), target: v3o(P) };
+      const endPose = computePresetEndPose(startPose, "crane_up", 0, CRANE_FRAC);
+      newKeyframes = [kfAt(0, startPose, moveEasing),
+                      kfAt(PATH_FRAME_COUNT - 1, endPose, "linear")];
     } else {
       const startPose = { position: v3o(E), target: v3o(P) }; // locked at the recovered eye
       const endPose = computePresetEndPose(startPose, kind, MOVE_ANGLE_DEG, 0);
@@ -6524,6 +6573,9 @@ function buildNodeUI(node, containerEl) {
     ["arc_right", "⤵ Arc R", "Combined move: orbit 15° right WHILE pushing in 15% — 3 keyframes so the path genuinely curves"],
     ["push_in", "⭆ Push In", "Stronger 35% push toward the mesh centre, shaped by the easing selector"],
     ["vertigo", "🌀 Vertigo", "Dolly-zoom: push in 20% while the lens widens to hold the pivot-plane framing — background recedes"],
+    ["dolly_pan_left", "⭢⇠ Dolly+Pan L", "Push in 18% along the original view axis WHILE swivelling 15° left — the base tracks forward, the head turns"],
+    ["dolly_pan_right", "⭢⇢ Dolly+Pan R", "Push in 18% along the original view axis WHILE swivelling 15° right — the base tracks forward, the head turns"],
+    ["crane_up", "⭡ Crane Up", "Rise 25% of the camera→pivot distance on world Y, holding the pivot — the tilt falls out of the geometry"],
   ];
   const moveWrap = document.createElement("span");
   moveWrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";

@@ -416,8 +416,11 @@ PRESET_PUSH_IN_FRAC = 0.35     # JS PUSH_IN_FRAC
 PRESET_ARC_DOLLY_FRAC = 0.15   # JS ARC_DOLLY_FRAC
 PRESET_FRAME_COUNT = 100       # JS PATH_FRAME_COUNT
 PRESET_FPS = 24.0              # JS PATH_FPS
+PRESET_DOLLY_PAN_FRAC = 0.18   # JS DOLLY_PAN_FRAC
+PRESET_CRANE_FRAC = 0.25       # JS CRANE_FRAC
 PRESET_MOVES = ("orbit_left", "orbit_right", "pan_left", "pan_right",
-                "dolly_in", "arc_left", "arc_right", "push_in", "vertigo")
+                "dolly_in", "arc_left", "arc_right", "push_in", "vertigo",
+                "dolly_pan_left", "dolly_pan_right", "crane_up")
 
 
 def build_preset_camera_path(
@@ -489,6 +492,51 @@ def build_preset_camera_path(
         end_delta = (sign * angle_deg, 0.0, 1.0)
         keyframes = [kf(0, eye, pivot, easing),
                      kf(last, pose_at(end_delta), pivot, "linear")]
+    elif move in ("dolly_pan_left", "dolly_pan_right"):
+        # A dolly and a pan are two bodies: the base rolls forward along the
+        # track it started on, the head turns on top of it. So the eye travels
+        # the ORIGINAL view axis while the look direction swivels -- not a
+        # curve toward a moved target, which is what arc does.
+        a_full = math.radians(angle_deg) * sign
+        off = (pivot[0] - eye[0], pivot[1] - eye[1], pivot[2] - eye[2])
+        dist = math.sqrt(sum(c * c for c in off)) or 1.0
+        fwd = tuple(c / dist for c in off)
+
+        def dolly_pan(fraction_of_angle: float, travel: float):
+            a = a_full * fraction_of_angle
+            # Sign matched to the JS, deliberately, and NOT to the pan_left
+            # branch below. Measured on a camera at (0,1.6,10) looking down -Z:
+            # the JS puts pan_left's target at x = -2.59 (camera-left, correct)
+            # and this module's pan branch puts it at +2.59. The two rotate in
+            # opposite directions -- the sin terms are transposed -- so a baked
+            # pan travels the other way to the previewed one. That is a
+            # pre-existing fault in pan/orbit; it is not inherited here.
+            rotated = (off[0] * math.cos(a) - off[2] * math.sin(a), off[1],
+                       off[0] * math.sin(a) + off[2] * math.cos(a))
+            length = math.sqrt(sum(c * c for c in rotated)) or 1.0
+            direction = tuple(c / length for c in rotated)
+            moved_eye = tuple(eye[i] + fwd[i] * dist * travel for i in range(3))
+            target = tuple(moved_eye[i] + direction[i] * dist for i in range(3))
+            return moved_eye, target
+
+        mid_eye, mid_target = dolly_pan(0.5, PRESET_DOLLY_PAN_FRAC / 2.0)
+        end_eye, end_target = dolly_pan(1.0, PRESET_DOLLY_PAN_FRAC)
+        end_delta = (sign * angle_deg, 0.0, 1.0 - PRESET_DOLLY_PAN_FRAC)
+        keyframes = [
+            kf(0, eye, pivot, easing),
+            kf(int(round(last * 0.6)), mid_eye, mid_target, "linear"),
+            kf(last, end_eye, end_target, "linear"),
+        ]
+    elif move == "crane_up":
+        # The body rises, the head keeps looking at the same point, so the tilt
+        # comes out of the geometry. World +Y, not camera up: a crane arm is
+        # vertical even when the camera is rolled.
+        off = (pivot[0] - eye[0], pivot[1] - eye[1], pivot[2] - eye[2])
+        dist = math.sqrt(sum(c * c for c in off)) or 1.0
+        risen = (eye[0], eye[1] + dist * PRESET_CRANE_FRAC, eye[2])
+        end_delta = (0.0, 0.0, 1.0)
+        keyframes = [kf(0, eye, pivot, easing),
+                     kf(last, risen, pivot, "linear")]
     elif move in ("pan_left", "pan_right"):
         # Swivel in place: rotate the eye->pivot ray about world +Y. Same
         # rotation algebra as the JS, applied to the TARGET offset.
