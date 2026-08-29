@@ -705,3 +705,262 @@ class AtlasAnchorDepth:
         ]
         return ({"depth": torch.from_numpy(out), "mask": mask_t, "intrinsics": K},
                 "\n".join(lines))
+
+
+#: Unreal's camera actor looks down +X; a USD camera looks down -Z. Exporting a
+#: Level Sequence writes the ACTOR's transform, so this fixed 90 degrees about Y
+#: is the difference between the two — measured, not assumed: applied to Epic's
+#: own Y-up export it reproduces the Atlas camera to 4.5e-15 m and 4.9e-14 on
+#: the quaternion across 674 frames of a recorded take.
+_ACTOR_TO_CAMERA = ((0.0, 0.0, -1.0),
+                    (0.0, 1.0, 0.0),
+                    (1.0, 0.0, 0.0))
+
+
+class AtlasUnrealCameraPath:
+    """🎥 An Unreal Level Sequence camera, as a CrossView-Warp pose path.
+
+    The Unreal-side twin of Atlas Load Camera Path. That node reads what
+    Director wrote; this one reads what Unreal wrote, for a shot whose move was
+    operated in Sequencer and never went through Atlas at all.
+
+    IT WILL NOT CONVERT AXES ITSELF, AND THAT IS THE POINT. Unreal is
+    centimetres, Z-up and left-handed; the warp wants metres, Y-up, right-handed
+    looking down -Z. Hand-rolling that conversion was tried and measured against
+    a take whose Atlas values were known exactly: the textbook mapping was 11.3 m
+    out over an 8 m move and the best hand-written candidate was still 0.217 m
+    out. Both would have produced a camera that matches on frame one and drifts,
+    which is the failure nothing downstream detects.
+
+    So the conversion is Epic's. Export the sequence with
+    LevelSequenceExporterUsd and stage options set to metersPerUnit 1 and upAxis
+    Y, and this reads the result. Those are NOT the exporter's defaults — it
+    ships Z-up centimetres, which looks identical in the file and is Unreal's own
+    frame. This refuses a stage that is not Y-up metres rather than quietly
+    reading it, because that mistake is invisible in the output.
+
+    Two more things the export does that a reader has to know. With
+    export_level off the file is a sparse `over` layer carrying no typed Camera
+    prim, so a search for UsdGeom.Camera finds nothing and an `over` is not
+    Xformable — the transform is read straight off the xformOp:transform
+    attribute. And the poses are rebased onto the first frame, which is what
+    makes frame 1 the source clip's own view, warped by nothing.
+    """
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("camera_path", "report")
+    FUNCTION = "build"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "usd_path": ("STRING", {"default": "",
+                    "tooltip": "The .usda written by LevelSequenceExporterUsd with "
+                               "metersPerUnit 1 and upAxis Y. Epic's defaults are cm and "
+                               "Z-up; this refuses those rather than misreading them."}),
+            },
+            "optional": {
+                "prim_path": ("STRING", {"default": "",
+                    "tooltip": "Which prim carries the camera. Blank picks the one with "
+                               "the most animated transform samples, which is the camera "
+                               "in a sequence export of a single camera."}),
+                "start_frame": ("INT", {"default": 0, "min": 0, "max": 100000,
+                    "tooltip": "First timecode to read. 0 uses the stage's own start."}),
+                "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096,
+                    "tooltip": "How many frames to emit. 0 reads to the stage's end. Must "
+                               "be at least the length of the clip being warped."}),
+                "focal_mm": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000.0, "step": 0.1,
+                    "tooltip": "Fallback focal length, used only if the export carries no "
+                               "lens. 0 means require it from the file."}),
+                "sensor_height_mm": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 200.0,
+                    "step": 0.1,
+                    "tooltip": "Fallback filmback HEIGHT — the pose path carries a vertical "
+                               "field of view, so height is the one that matters."}),
+            },
+        }
+
+    def build(self, usd_path: str, prim_path: str = "", start_frame: int = 0,
+              frame_count: int = 0, focal_mm: float = 0.0, sensor_height_mm: float = 0.0):
+        import json as _json
+
+        import numpy as np
+
+        src = Path(str(usd_path).strip().strip('"'))
+        if not src.is_file():
+            raise ValueError(
+                f"Atlas Unreal camera path: no USD at {src}. Export the Level Sequence "
+                "with LevelSequenceExporterUsd first."
+            )
+        try:
+            from pxr import Usd, UsdGeom
+        except ImportError as exc:
+            raise RuntimeError(
+                "Reading USD needs the optional usd-core package: pip install usd-core"
+            ) from exc
+
+        stage = Usd.Stage.Open(str(src))
+        if stage is None:
+            raise RuntimeError(f"Atlas Unreal camera path: cannot open {src}")
+
+        up = str(UsdGeom.GetStageUpAxis(stage))
+        mpu = float(UsdGeom.GetStageMetersPerUnit(stage))
+        if up != "Y" or abs(mpu - 1.0) > 1e-9:
+            raise ValueError(
+                f"Atlas Unreal camera path: {src.name} is upAxis {up}, metersPerUnit {mpu}. "
+                "This wants Y and 1 — set stage_options on LevelSequenceExporterUsdOptions "
+                "before exporting. Reading Unreal's own Z-up centimetres as if it were "
+                "Atlas's frame produces a camera that matches on frame one and drifts, so "
+                "it is refused here rather than converted on a guess."
+            )
+
+        def _samples(prim):
+            a = prim.GetAttribute("xformOp:transform")
+            if not a or not a.HasValue():
+                return None, 0
+            return a, len(a.GetTimeSamples())
+
+        if prim_path.strip():
+            prim = stage.GetPrimAtPath(prim_path.strip())
+            if not prim or not prim.IsValid():
+                raise ValueError(f"Atlas Unreal camera path: no prim at {prim_path!r}")
+            attr, n_samples = _samples(prim)
+            if attr is None:
+                raise ValueError(
+                    f"Atlas Unreal camera path: {prim_path!r} carries no xformOp:transform.")
+        else:
+            # TraverseAll, not Traverse: the default predicate visits DEFINED prims
+            # only, and a sequence exported with export_level off is entirely
+            # `over`s — so Traverse walks straight past the camera.
+            best = (None, None, -1)
+            for p in stage.TraverseAll():
+                a, n = _samples(p)
+                if a is not None and n > best[2]:
+                    best = (p, a, n)
+            prim, attr, n_samples = best
+            if prim is None:
+                raise ValueError(
+                    f"Atlas Unreal camera path: nothing in {src.name} carries an animated "
+                    "xformOp:transform. With export_level off the file is a sparse over "
+                    "layer; check the export actually contains the camera."
+                )
+
+        # any ancestor transform would have to compose in, so say so rather than
+        # silently ignoring one
+        parented = []
+        walk = prim.GetParent()
+        while walk and walk.GetPath().pathString != "/":
+            a = walk.GetAttribute("xformOp:transform")
+            if a and a.HasValue():
+                parented.append(walk.GetPath().pathString)
+            walk = walk.GetParent()
+        if parented:
+            raise ValueError(
+                "Atlas Unreal camera path: ancestors carry transforms too (%s). This reads "
+                "the camera's own xformOp and would silently drop theirs." % ", ".join(parented)
+            )
+
+        s0 = int(start_frame) if start_frame else int(stage.GetStartTimeCode())
+        last = int(stage.GetEndTimeCode())
+        count = int(frame_count) if frame_count else (last - s0 + 1)
+        A2C = np.array(_ACTOR_TO_CAMERA, dtype=float)
+
+        # the lens lives on the camera component, a child of the actor prim
+        lens = None
+        # GetAllChildren for the same reason as TraverseAll: the CameraComponent
+        # that carries the lens is an `over` too.
+        for p in [prim] + list(prim.GetAllChildren()):
+            fa, va = p.GetAttribute("focalLength"), p.GetAttribute("verticalAperture")
+            if fa and fa.HasValue() and va and va.HasValue():
+                lens = (fa, va)
+                break
+
+        mats, vfovs = [], []
+        for i in range(count):
+            t = Usd.TimeCode(s0 + i)
+            M = np.array(attr.Get(t), dtype=float)
+            R = M[:3, :3].T
+            norms = np.linalg.norm(R, axis=0)
+            if np.any(norms < 1e-9):
+                raise ValueError(
+                    f"Atlas Unreal camera path: degenerate transform at frame {s0 + i}.")
+            mats.append((R / norms, M[3, :3]))
+            if lens is not None:
+                f_mm, ap = float(lens[0].Get(t)), float(lens[1].Get(t))
+            elif focal_mm > 0 and sensor_height_mm > 0:
+                f_mm, ap = float(focal_mm), float(sensor_height_mm)
+            else:
+                raise ValueError(
+                    "Atlas Unreal camera path: the export carries no focalLength / "
+                    "verticalAperture, and no fallback lens was given. The pose path "
+                    "carries a field of view per frame; it cannot be invented."
+                )
+            vfovs.append(float(np.degrees(2.0 * np.arctan(ap / (2.0 * f_mm)))))
+
+        R1, p1 = mats[0][0] @ A2C, mats[0][1]
+        poses = []
+        for i, (R, p) in enumerate(mats):
+            R_rel = R1.T @ (R @ A2C)
+            p_rel = R1.T @ (p - p1)
+            poses.append({
+                "f": i + 1,
+                "p": [round(float(v), 6) for v in p_rel],
+                "q": [round(float(v), 9) for v in _quat_xyzw(R_rel)],
+                "vfov": round(vfovs[i], 6),
+            })
+
+        doc = {
+            "format": "atlas.ltx.crossview_warp.pose",
+            "version": 1,
+            "frameCount": len(poses),
+            "frame": "right-handed, Y-up, looking down -Z; relative to frame 1",
+            "poses": poses,
+            "carries": ["position", "rotation including roll", "per-frame field of view"],
+            "source": {"usd": src.name, "prim": prim.GetPath().pathString,
+                       "startTimeCode": s0},
+        }
+
+        travel = float(np.linalg.norm(np.array(poses[-1]["p"])))
+        path_m = float(sum(
+            np.linalg.norm(np.array(poses[i + 1]["p"]) - np.array(poses[i]["p"]))
+            for i in range(len(poses) - 1)))
+        lines = [
+            "Atlas Unreal camera path — Epic's conversion, not a hand-rolled one",
+            f"  source      {src.name}",
+            f"  prim        {prim.GetPath().pathString}  ({n_samples} transform samples)",
+            f"  stage       upAxis {up}, metersPerUnit {mpu:g}",
+            f"  frames      {len(poses)} from timecode {s0}",
+            f"  travel      {travel:.2f} m net, {path_m:.2f} m along the path",
+            f"  lens        vfov {min(vfovs):.3f} to {max(vfovs):.3f} deg"
+            + ("" if lens is not None else "   (from the fallback widgets, not the file)"),
+            "  frame 1     identity — the source clip's own view, warped by nothing",
+            "",
+            "Wire this into the warp's `camera_path`, not `keyframes`: it carries a pose "
+            "per frame with roll and a breathing lens, none of which an orbit can express.",
+        ]
+        if path_m > travel * 1.5:
+            lines.insert(-2, f"  NOTE        the path is {path_m / max(travel, 1e-6):.1f}x "
+                             "the net travel, so the move doubles back on itself.")
+        return (_json.dumps(doc), "\n".join(lines))
+
+
+def _quat_xyzw(m):
+    """Rotation matrix -> quaternion (x, y, z, w), Atlas's ordering."""
+    import numpy as np
+
+    t = m[0][0] + m[1][1] + m[2][2]
+    if t > 0:
+        s = np.sqrt(t + 1.0) * 2
+        q = [(m[2][1] - m[1][2]) / s, (m[0][2] - m[2][0]) / s, (m[1][0] - m[0][1]) / s, 0.25 * s]
+    elif m[0][0] > m[1][1] and m[0][0] > m[2][2]:
+        s = np.sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]) * 2
+        q = [0.25 * s, (m[0][1] + m[1][0]) / s, (m[0][2] + m[2][0]) / s, (m[2][1] - m[1][2]) / s]
+    elif m[1][1] > m[2][2]:
+        s = np.sqrt(1.0 + m[1][1] - m[0][0] - m[2][2]) * 2
+        q = [(m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s, (m[0][2] - m[2][0]) / s]
+    else:
+        s = np.sqrt(1.0 + m[2][2] - m[0][0] - m[1][1]) * 2
+        q = [(m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s, (m[1][0] - m[0][1]) / s]
+    q = np.array(q, dtype=float)
+    return q / np.linalg.norm(q)

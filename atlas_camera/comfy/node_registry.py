@@ -37,7 +37,7 @@ from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasPathFrameIndex)
 from atlas_camera.comfy.nodes_ltx import (
     AtlasAnchorDepth, AtlasLoadCameraPath, AtlasReliefGeometry,
-    AtlasUnrealDepthGeometry)
+    AtlasUnrealCameraPath, AtlasUnrealDepthGeometry)
 from atlas_camera.comfy.nodes_project import AtlasProject
 from atlas_camera.comfy.nodes_multiview import (
     AtlasMultiViewSolve,
@@ -173,6 +173,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasReliefGeometry":        AtlasReliefGeometry,
     "AtlasUnrealDepthGeometry":   AtlasUnrealDepthGeometry,
     "AtlasAnchorDepth":           AtlasAnchorDepth,
+    "AtlasUnrealCameraPath":      AtlasUnrealCameraPath,
     "AtlasRegisterPlate":         AtlasRegisterPlate,
     "AtlasDeband":                AtlasDeband,
     "AtlasGrade":                 AtlasGrade,
@@ -293,6 +294,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasReliefGeometry":        "Atlas Relief Geometry (MoGe-shaped) 🗺",
     "AtlasUnrealDepthGeometry":   "Atlas Unreal Depth Geometry (MoGe-shaped) 🗺",
     "AtlasAnchorDepth":           "Atlas Anchor Depth to Render 🪢",
+    "AtlasUnrealCameraPath":      "Atlas Unreal Camera Path (LTX) 🎥",
     "AtlasLoadPlate":             "Atlas Load Plate 🎞",
     "AtlasRegisterPlate":         "Atlas Register Plate (Float-Safe) 🎞",
     "AtlasDeband":                "Atlas Deband 🎚",
@@ -592,7 +594,7 @@ _MENU_FOLDERS = {
         "AtlasLearnedSolveFromImage", "AtlasConstrainedSolve", "AtlasSplitEquirect",
         "AtlasEquirectMultiView", "AtlasUSDCameraLoader", "AtlasLoadSolveJSON",
         "AtlasLoadCameraPath", "AtlasReliefGeometry", "AtlasUnrealDepthGeometry",
-        "AtlasAnchorDepth",
+        "AtlasAnchorDepth", "AtlasUnrealCameraPath",
         "AtlasDecomposeCamera", "AtlasDecomposeSolve",
     ),
     "Atlas/02 \u00b7 Orient & Scale": (
