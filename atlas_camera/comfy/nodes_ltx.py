@@ -329,3 +329,379 @@ class AtlasReliefGeometry:
             "cannot disagree with the geometry it moves through.",
         ])
         return ({"depth": depth_t, "mask": mask_t, "intrinsics": intrinsics}, report)
+
+
+class AtlasUnrealDepthGeometry:
+    """🗺 A rendered Unreal depth pass, as MoGe-shaped metric depth.
+
+    The sibling of `AtlasReliefGeometry`, for the case that node cannot cover.
+    The relief mesh is the SOLVE's geometry — the terrain that was photographed.
+    A dressed frame carries what was built on top of it in Unreal, and none of
+    that is in the relief: a castle added in the build rasterises at the hill's
+    depth, so it warps as paint on the hillside rather than a thing standing on
+    it. This reads the depth Unreal itself rendered, which has both.
+
+    The pairing argument is the same one, and it is the whole point. Depth
+    rendered through the Unreal camera and a pose path recorded in the same
+    scene are one measurement, so they cannot disagree about scale or lens. A
+    monocular estimate of the same frame is a second opinion with its own scale
+    and its own recovered focal, and nothing downstream checks the two against
+    each other.
+
+    Feed it Movie Render Queue's `SceneDepthWorldUnits` post-process pass, as
+    32-bit EXR. That material divides Unreal's centimetres down, so the values
+    arrive in metres — `depth_scale` is there for the day that stops being true,
+    not because it is expected to be needed. Verify once against something whose
+    distance you know rather than trusting the name of the channel.
+
+    `far_clip_m` exists for backplates. An ImagePlate standing in for sky is real
+    geometry to the renderer and comes back at the card's distance, which the
+    warp will happily parallax like a wall. Clipping beyond it puts the sky back
+    where it belongs: masked out, magenta, for the LoRA to fill.
+    """
+
+    RETURN_TYPES = ("MOGE_GEOMETRY", "STRING")
+    RETURN_NAMES = ("moge_geometry", "report")
+    FUNCTION = "build"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "exr_path": ("STRING", {"default": "",
+                    "tooltip": "The EXR Movie Render Queue wrote. Point at the file, "
+                               "not the directory."}),
+                "focal_mm": ("FLOAT", {"default": 35.0, "min": 1.0, "max": 1000.0, "step": 0.1,
+                    "tooltip": "The RENDERING camera's focal length, off the CineCamera "
+                               "component. Not the take's lens unless they are the same "
+                               "camera."}),
+                "sensor_width_mm": ("FLOAT", {"default": 23.5, "min": 1.0, "max": 200.0, "step": 0.1,
+                    "tooltip": "That camera's filmback width. Focal and filmback together "
+                               "give the horizontal field of view; either one alone does "
+                               "not."}),
+                "width": ("INT", {"default": 960, "min": 64, "max": 4096, "step": 8,
+                    "tooltip": "Raster width. Match the frames you feed the warp."}),
+                "height": ("INT", {"default": 640, "min": 64, "max": 4096, "step": 8,
+                    "tooltip": "Raster height. Match the frames you feed the warp."}),
+            },
+            "optional": {
+                "frames": ("INT", {"default": 1, "min": 1, "max": 2048,
+                    "tooltip": "How many frames to emit. A still plate warped by a "
+                               "camera path needs one per frame of the clip."}),
+                "channel": ("STRING", {"default": "FinalImageSceneDepthWorldUnits",
+                    "tooltip": "Layer name inside the EXR. MRQ names it after the "
+                               "post-process material, so renaming the material "
+                               "renames this."}),
+                "depth_scale": ("FLOAT", {"default": 1.0, "min": 1e-6, "max": 1e6, "step": 0.01,
+                    "tooltip": "Multiplied onto the channel to reach metres. 1.0 for "
+                               "SceneDepthWorldUnits; 0.01 if you ever hand it raw "
+                               "centimetres."}),
+                "far_clip_m": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 1.0,
+                    "tooltip": "Mask out anything at or beyond this depth, in metres. "
+                               "0 keeps everything. Use it to drop a backplate card "
+                               "standing in for sky."}),
+            },
+        }
+
+    def build(self, exr_path: str, focal_mm: float, sensor_width_mm: float,
+              width: int, height: int, frames: int = 1,
+              channel: str = "FinalImageSceneDepthWorldUnits",
+              depth_scale: float = 1.0, far_clip_m: float = 0.0):
+        import numpy as np
+        import torch
+
+        src = Path(str(exr_path).strip().strip('"'))
+        if not src.is_file():
+            raise ValueError(
+                f"Atlas Unreal depth: no EXR at {src}. Render Movie Render Queue's "
+                "SceneDepthWorldUnits post-process pass and point this at the file."
+            )
+        try:
+            import OpenEXR
+        except ImportError as exc:
+            raise RuntimeError(
+                "Reading a multipart EXR needs the OpenEXR package: pip install OpenEXR"
+            ) from exc
+
+        with OpenEXR.File(str(src)) as handle:
+            channels = handle.parts[0].channels
+            if channel not in channels:
+                raise ValueError(
+                    f"Atlas Unreal depth: {src.name} has no channel {channel!r}. "
+                    f"It carries {sorted(channels)}. MRQ names the layer after the "
+                    "post-process material, so a renamed material renames this."
+                )
+            raw = np.asarray(channels[channel].pixels, dtype=np.float64)
+
+        d = raw[..., 0] if raw.ndim == 3 else raw
+        src_h, src_w = d.shape
+        d = d * float(depth_scale)
+
+        # Nearest, never bilinear: averaging across a depth discontinuity invents
+        # a surface at a distance nothing in the scene occupies, and the warp
+        # would smear the silhouette across it.
+        yi = np.clip((np.arange(height) + 0.5) * src_h / height, 0, src_h - 1).astype(int)
+        xi = np.clip((np.arange(width) + 0.5) * src_w / width, 0, src_w - 1).astype(int)
+        z = d[np.ix_(yi, xi)]
+
+        valid = np.isfinite(z) & (z > 0.0)
+        clipped = 0
+        if far_clip_m > 0.0:
+            beyond = valid & (z >= float(far_clip_m))
+            clipped = int(beyond.sum())
+            valid &= ~beyond
+        z = np.where(valid, z, np.nan)
+
+        depth_t = torch.from_numpy(np.repeat(z[None].astype(np.float32), int(frames), axis=0))
+        mask_t = torch.from_numpy(np.repeat(valid[None], int(frames), axis=0))
+
+        # Normalised by width, which is how the warp reads it back:
+        # `fx = float(K[0][0, 0]) * W`.
+        hfov = _hfov_deg(focal_mm, sensor_width_mm)
+        fx_px = width / (2.0 * np.tan(np.radians(hfov) / 2.0))
+        k = np.eye(3, dtype=np.float32)
+        k[0, 0] = fx_px / width
+        k[1, 1] = fx_px / height
+        k[0, 2] = 0.5
+        k[1, 2] = 0.5
+        intrinsics = torch.from_numpy(np.repeat(k[None], int(frames), axis=0))
+
+        finite = z[np.isfinite(z)]
+        near = float(finite.min()) if finite.size else float("nan")
+        far = float(finite.max()) if finite.size else float("nan")
+        src_aspect, dst_aspect = src_w / src_h, width / height
+        lines = [
+            "Atlas Unreal depth — rendered, not inferred",
+            f"  source      {src.name}, channel {channel}",
+            f"  raster      {width}x{height} from {src_w}x{src_h}",
+            f"  depth       {near:.2f}m to {far:.2f}m (metric, Unreal world)",
+            f"  covered     {valid.mean() * 100:.1f}% of frame; the rest is NaN and "
+            f"renders as magenta",
+            f"  lens        {focal_mm:.1f}mm on {sensor_width_mm:.1f}mm "
+            f"= {hfov:.2f} deg horizontal, fx {fx_px:.1f}px",
+            f"  frames      {frames}",
+        ]
+        if clipped:
+            lines.append(
+                f"  far_clip    {clipped} px at or beyond {far_clip_m:.0f}m masked out")
+        if abs(src_aspect - dst_aspect) > 1e-3:
+            lines.append(
+                f"  MISMATCH    EXR is {src_aspect:.4f}, raster is {dst_aspect:.4f}. "
+                "The depth was rendered for a different frame shape than the one being "
+                "warped, so it does not line up with the image."
+            )
+        lines += [
+            "",
+            "Depth and camera come from one render, so a metric camera_path cannot "
+            "disagree with the geometry it moves through — provided this EXR was "
+            "rendered through the camera that made the source frame.",
+        ]
+        return ({"depth": depth_t, "mask": mask_t, "intrinsics": intrinsics},
+                "\n".join(lines))
+
+
+def _hfov_deg(focal_mm: float, sensor_width_mm: float) -> float:
+    """Horizontal field of view, in degrees, from a lens and a filmback."""
+    import numpy as np
+
+    return float(np.degrees(
+        2.0 * np.arctan(float(sensor_width_mm) / (2.0 * float(focal_mm)))))
+
+
+class AtlasAnchorDepth:
+    """🪢 A per-frame depth estimate, put on the render's scale.
+
+    Neither depth source covers a dressed shot on its own, and the split is not
+    a matter of quality. A rendered depth pass is exact for everything the build
+    contains and has no opinion at all about anything it does not — a figure the
+    generator invented, walking, is simply absent from it, so a still render
+    repeated across a clip warps that figure with the depth of whatever it has
+    walked away from. A monocular estimate tracks the figure because it looks at
+    each frame, and pays for that by re-deriving scale and focal length every
+    time, which is what puts a move at the wrong depth with nothing raising.
+
+    This takes the tracking from one and the scale from the other. The estimate
+    supplies per-frame depth and its own mask; the render supplies the scale,
+    the shift and the intrinsics. A single least-squares fit of `z_render ≈
+    s·z_est + t` on the frame the two share, trimmed once against its own
+    residual, carries onto every frame of the estimate.
+
+    The trim is what makes it work rather than a refinement. The two sources
+    disagree in exactly two places: where the render is missing something the
+    estimate can see (the invented figures), and where the render is a backplate
+    card standing in for distance. Both are minorities of the frame and both are
+    large residuals, so trimming removes them from the FIT while leaving them in
+    the OUTPUT — which is the whole point, since those pixels are the reason the
+    estimate is here.
+
+    `s` and `t` are reported, not hidden. A scale far from 1 means the estimate
+    disagreed with the render about the size of the scene, and that number is
+    the honest measure of how much a run driven by the estimate alone was out.
+    """
+
+    RETURN_TYPES = ("MOGE_GEOMETRY", "STRING")
+    RETURN_NAMES = ("moge_geometry", "report")
+    FUNCTION = "anchor"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "estimated": ("MOGE_GEOMETRY", {
+                    "tooltip": "Per-frame geometry from Run MoGe Inference. Supplies the "
+                               "depth that tracks what moves, and its own mask."}),
+                "anchor": ("MOGE_GEOMETRY", {
+                    "tooltip": "Rendered geometry — Atlas Unreal Depth Geometry, or the "
+                               "relief. Supplies scale, shift and the true intrinsics; "
+                               "its depth is not carried through."}),
+            },
+            "optional": {
+                "anchor_frame": ("INT", {"default": 0, "min": 0, "max": 4096,
+                    "tooltip": "Which frame of the anchor to fit against. A still render "
+                               "repeated across the clip has only frame 0."}),
+                "estimated_frame": ("INT", {"default": 0, "min": 0, "max": 4096,
+                    "tooltip": "The frame of the estimate that lines up with it. Normally "
+                               "0: the frame the clip and the render share."}),
+                "fit_space": (["depth", "disparity"], {"default": "depth",
+                    "tooltip": "Where the fit is solved. DEPTH by measurement, not by "
+                               "theory: disparity (1/z) is the textbook alignment for a "
+                               "RELATIVE estimate, but MoGe v2 returns metric depth, so a "
+                               "linear relation in metres holds and fits better. Measured "
+                               "against a rendered pass on a 5m-1.2km coastal scene, "
+                               "depth-space median error was 3.6% mid-field and 9.1% far "
+                               "against disparity's 8.2% and 25.6%; disparity won only "
+                               "under 15m, 6.6% to 7.5%. Try disparity if your estimator "
+                               "is relative rather than metric."}),
+                "fit_shift": ("BOOLEAN", {"default": True,
+                    "tooltip": "Fit an offset as well as a scale. Off forces the fit "
+                               "through the origin, which is right when the estimate is "
+                               "truly metric and wrong when it carries a near-plane bias."}),
+                "trim_sigma": ("FLOAT", {"default": 3.0, "min": 0.5, "max": 20.0, "step": 0.5,
+                    "tooltip": "Residuals beyond this many robust deviations are dropped "
+                               "and the fit repeated once. Lower excludes more of the "
+                               "disagreement; 0.5-2 if invented content fills the frame."}),
+            },
+        }
+
+    def anchor(self, estimated, anchor, anchor_frame: int = 0, estimated_frame: int = 0,
+               fit_space: str = "disparity", fit_shift: bool = True, trim_sigma: float = 3.0):
+        import numpy as np
+        import torch
+
+        def _np(x):
+            return x.detach().float().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
+
+        est_d = _np(estimated.get("depth"))
+        anc_d = _np(anchor.get("depth"))
+        if est_d is None or anc_d is None:
+            raise ValueError("Atlas anchor depth: both inputs need a `depth` array.")
+        if est_d.ndim == 2:
+            est_d = est_d[None]
+        if anc_d.ndim == 2:
+            anc_d = anc_d[None]
+        if est_d.shape[1:] != anc_d.shape[1:]:
+            raise ValueError(
+                f"Atlas anchor depth: the estimate is {est_d.shape[2]}x{est_d.shape[1]} and "
+                f"the anchor is {anc_d.shape[2]}x{anc_d.shape[1]}. Fitting one onto the other "
+                "pixel by pixel needs them rasterised at the same size."
+            )
+        ai = min(int(anchor_frame), anc_d.shape[0] - 1)
+        ei = min(int(estimated_frame), est_d.shape[0] - 1)
+
+        def _mask(g, arr, i):
+            m = g.get("mask")
+            m = _np(m).astype(bool) if m is not None else np.ones(arr.shape, bool)
+            if m.ndim == 2:
+                m = m[None]
+            return m[min(i, m.shape[0] - 1)]
+
+        e0, a0 = est_d[ei], anc_d[ai]
+        both = (_mask(estimated, est_d, ei) & _mask(anchor, anc_d, ai)
+                & np.isfinite(e0) & np.isfinite(a0) & (e0 > 0) & (a0 > 0))
+        if int(both.sum()) < 64:
+            raise ValueError(
+                "Atlas anchor depth: the two sources overlap on fewer than 64 valid pixels, "
+                "which is not enough to fit anything. Check they are the same view."
+            )
+
+        disparity = str(fit_space) == "disparity"
+
+        def _to(v):
+            """Into the space the fit is solved in."""
+            return 1.0 / np.maximum(v, 1e-6) if disparity else v
+
+        def _from(v):
+            """And back to metres."""
+            return 1.0 / np.maximum(v, 1e-9) if disparity else v
+
+        def _fit(sel):
+            x, y = _to(e0[sel]), _to(a0[sel])
+            if fit_shift:
+                A = np.stack([x, np.ones_like(x)], 1)
+                s, t = np.linalg.lstsq(A, y, rcond=None)[0]
+            else:
+                s, t = float((x * y).sum() / max((x * x).sum(), 1e-12)), 0.0
+            return float(s), float(t)
+
+        def _apply(v):
+            return _from(s * _to(v) + t)
+
+        s, t = _fit(both)
+        resid = np.abs(_apply(e0) - a0)
+        mad = float(np.median(resid[both])) or 1e-6
+        keep = both & (resid <= trim_sigma * 1.4826 * mad)
+        trimmed = int(both.sum() - keep.sum())
+        if int(keep.sum()) >= 64:
+            s, t = _fit(keep)
+            resid = np.abs(_apply(e0) - a0)
+
+        out = _apply(est_d)
+        out = np.where(np.isfinite(out) & (out > 0), out, np.nan).astype(np.float32)
+        mask_src = estimated.get("mask")
+        mask_t = (torch.as_tensor(_np(mask_src)).bool() if mask_src is not None
+                  else torch.from_numpy(np.isfinite(out)))
+        # The anchor's intrinsics, always: a recovered focal is the other half of
+        # what the estimate gets wrong, and the render's is measured.
+        K = anchor.get("intrinsics")
+        if K is None:
+            raise ValueError("Atlas anchor depth: the anchor carries no intrinsics to adopt.")
+        K = torch.as_tensor(_np(K)).float()
+        if K.ndim == 2:
+            K = K[None]
+        if K.shape[0] != out.shape[0]:
+            K = K[:1].repeat(out.shape[0], 1, 1)
+
+        keep_r = resid[keep] if int(keep.sum()) else resid[both]
+        before = float(np.nanmedian(e0[both]))
+        after = float(np.nanmedian(_apply(e0)[both]))
+        target = float(np.nanmedian(a0[both]))
+        lines = [
+            "Atlas anchor depth — the estimate's tracking, the render's scale",
+            (f"  fit         1/z_render = {s:.4f} x 1/z_est {t:+.6f}   (disparity)"
+             if disparity else
+             f"  fit         z_render = {s:.4f} x z_est {t:+.3f} m   (depth)")
+            + ("" if fit_shift else "   [shift held at 0]"),
+            f"  fitted on   {int(keep.sum()):,} px "
+            f"({100.0 * keep.sum() / keep.size:.1f}% of frame), "
+            f"{trimmed:,} trimmed beyond {trim_sigma:.1f} sigma",
+            f"  residual    median {np.median(keep_r):.3f} m, p95 {np.percentile(keep_r, 95):.3f} m",
+            f"  median depth  estimate {before:.2f} m -> {after:.2f} m, render says {target:.2f} m",
+            f"  frames      {out.shape[0]} (estimate), anchored to frame {ai} of the render",
+            f"  intrinsics  taken from the anchor, not the estimate",
+        ]
+        off = abs(after - before) / max(before, 1e-6) * 100.0
+        if off > 5.0:
+            lines.append(
+                f"  NOTE        the estimate sat {off:.0f}% off the render at the median. "
+                "A run driven by it alone put the move at that error."
+            )
+        lines += [
+            "",
+            "The trimmed pixels stay in the output. They are where the render has nothing "
+            "to say — invented content, and any backplate standing in for distance — which "
+            "is the reason the estimate is in this graph at all.",
+        ]
+        return ({"depth": torch.from_numpy(out), "mask": mask_t, "intrinsics": K},
+                "\n".join(lines))

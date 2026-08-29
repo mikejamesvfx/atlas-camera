@@ -35,7 +35,9 @@ from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasInterpassGate,
                                            AtlasMembraneComposite,
                                            AtlasPathFrameIndex)
-from atlas_camera.comfy.nodes_ltx import AtlasLoadCameraPath, AtlasReliefGeometry
+from atlas_camera.comfy.nodes_ltx import (
+    AtlasAnchorDepth, AtlasLoadCameraPath, AtlasReliefGeometry,
+    AtlasUnrealDepthGeometry)
 from atlas_camera.comfy.nodes_project import AtlasProject
 from atlas_camera.comfy.nodes_multiview import (
     AtlasMultiViewSolve,
@@ -169,6 +171,8 @@ NODE_CLASS_MAPPINGS = {
     "AtlasUSDCameraLoader":       AtlasUSDCameraLoader,
     "AtlasLoadCameraPath":        AtlasLoadCameraPath,
     "AtlasReliefGeometry":        AtlasReliefGeometry,
+    "AtlasUnrealDepthGeometry":   AtlasUnrealDepthGeometry,
+    "AtlasAnchorDepth":           AtlasAnchorDepth,
     "AtlasRegisterPlate":         AtlasRegisterPlate,
     "AtlasDeband":                AtlasDeband,
     "AtlasGrade":                 AtlasGrade,
@@ -287,6 +291,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasUSDCameraLoader":       "Atlas USD Camera Loader",
     "AtlasLoadCameraPath":        "Atlas Load Camera Path (LTX) 🎥",
     "AtlasReliefGeometry":        "Atlas Relief Geometry (MoGe-shaped) 🗺",
+    "AtlasUnrealDepthGeometry":   "Atlas Unreal Depth Geometry (MoGe-shaped) 🗺",
+    "AtlasAnchorDepth":           "Atlas Anchor Depth to Render 🪢",
     "AtlasLoadPlate":             "Atlas Load Plate 🎞",
     "AtlasRegisterPlate":         "Atlas Register Plate (Float-Safe) 🎞",
     "AtlasDeband":                "Atlas Deband 🎚",
@@ -585,7 +591,8 @@ _MENU_FOLDERS = {
         "AtlasAttachSourcePlate", "AtlasSolveFromImage",
         "AtlasLearnedSolveFromImage", "AtlasConstrainedSolve", "AtlasSplitEquirect",
         "AtlasEquirectMultiView", "AtlasUSDCameraLoader", "AtlasLoadSolveJSON",
-        "AtlasLoadCameraPath", "AtlasReliefGeometry",
+        "AtlasLoadCameraPath", "AtlasReliefGeometry", "AtlasUnrealDepthGeometry",
+        "AtlasAnchorDepth",
         "AtlasDecomposeCamera", "AtlasDecomposeSolve",
     ),
     "Atlas/02 \u00b7 Orient & Scale": (
