@@ -30,6 +30,7 @@ import atlas_camera.comfy.nodes as nodes
 FACADE_PUBLIC = {
     "AtlasProject",
     "AtlasLoadCameraPath",
+    "AtlasReliefGeometry",
     "AtlasMultiViewSolve",
     "AtlasMultiViewSolveBurst",
     "AtlasSolveBurstPatchCrops",

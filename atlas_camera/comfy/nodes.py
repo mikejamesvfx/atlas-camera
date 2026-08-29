@@ -14,7 +14,8 @@ here rather than per line, so a genuinely dead import elsewhere still shows up.
 # ruff: noqa: F401
 from __future__ import annotations
 
-from atlas_camera.comfy.nodes_ltx import AtlasLoadCameraPath  # noqa: F401
+from atlas_camera.comfy.nodes_ltx import (  # noqa: F401
+    AtlasLoadCameraPath, AtlasReliefGeometry)
 from atlas_camera.comfy.nodes_project import AtlasProject  # noqa: F401
 from atlas_camera.comfy.nodes_multiview import (  # noqa: F401
     AtlasMultiViewSolve,

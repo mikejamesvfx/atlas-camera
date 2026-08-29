@@ -29,15 +29,15 @@ relative to itself, so a worktree silently audits a different tree.
 
 ## Counts
 
-* standard: **114**
+* standard: **115**
 * experimental: **10**
 * legacy: **2**
-* total registered: **128**
+* total registered: **129**
 * standard nodes with no product evidence: **0**
 
 | Verdict | Nodes |
 |---|---:|
-| `KEEP_CORE` | 114 |
+| `KEEP_CORE` | 115 |
 | `KEEP_EXPERIMENTAL` | 10 |
 | `LEGACY_GATE` | 2 |
 | `IOS_GATE` | 2 |
@@ -165,6 +165,7 @@ relative to itself, so a worktree silently audits a different tree.
 | `AtlasReferenceScaleSolve` | atlas_camera/comfy/nodes_solve.py | standard | 1 | 2 | ok | ok | 1 | 7 | — | — | — | **KEEP_CORE** | — |
 | `AtlasRefineOcclusionSeams` | atlas_camera/comfy/nodes_geometry.py | experimental | 0 | 2 | not_attempted | not_attempted | 0 | 3 | — | — | — | **KEEP_EXPERIMENTAL** | — |
 | `AtlasRegisterPlate` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 2 | not_attempted | not_attempted | 0 | 6 | — | — | — | **KEEP_CORE** | — |
+| `AtlasReliefGeometry` | atlas_camera/comfy/nodes_ltx.py | standard | 0 | 1 | not_attempted | not_attempted | 0 | 1 | — | — | — | **KEEP_CORE** | — |
 | `AtlasRetopologizeLayer` | atlas_camera/comfy/nodes_geometry.py | standard | 5 | 8 | not_attempted | not_attempted | 0 | 4 | — | — | — | **KEEP_CORE** | — |
 | `AtlasRollTrim` | atlas_camera/comfy/nodes_solve.py | standard | 0 | 1 | not_attempted | not_attempted | 1 | 2 | — | — | — | **KEEP_CORE** | — |
 | `AtlasSAM3Mask` | atlas_camera/comfy/nodes_inpaint.py | standard | 5 | 5 | not_attempted | not_attempted | 1 | 3 | — | — | — | **KEEP_CORE** | — |

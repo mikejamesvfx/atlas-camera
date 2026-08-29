@@ -149,3 +149,32 @@ def test_the_pose_report_states_what_it_carries_and_what_it_cannot_fix():
     assert "rotation including roll" in report
     # The honest half: a pose removes Atlas's approximations, not the model's.
     assert "training range" in report
+
+
+# --- AtlasReliefGeometry -----------------------------------------------------
+
+from atlas_camera.comfy.nodes_ltx import AtlasReliefGeometry  # noqa: E402
+
+
+def test_relief_geometry_refuses_a_solve_with_no_relief():
+    """Refusing beats inventing.
+
+    The whole reason to take geometry from the solve is that it agrees with the
+    camera. A solve carrying no relief has no such geometry, and falling back to
+    an inference here would silently reintroduce exactly the disagreement this
+    node exists to remove.
+    """
+    class Bare:
+        projection_scene = None
+
+    with pytest.raises(ValueError, match="carries no relief mesh"):
+        AtlasReliefGeometry().build(Bare(), 64, 64)
+
+
+def test_relief_geometry_declares_the_moge_contract():
+    # The warp reads exactly these three keys off moge_geometry.
+    assert AtlasReliefGeometry.RETURN_TYPES[0] == "MOGE_GEOMETRY"
+    assert AtlasReliefGeometry.RETURN_NAMES == ("moge_geometry", "report")
+    spec = AtlasReliefGeometry.INPUT_TYPES()
+    assert spec["required"]["solve"][0] == "ATLAS_SOLVE"
+    assert "frames" in spec["optional"]

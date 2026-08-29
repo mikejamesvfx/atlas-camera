@@ -2,15 +2,15 @@
  "schema_version": 1,
  "generated_utc": "2026-08-29",
  "counts": {
-  "standard": 114,
+  "standard": 115,
   "experimental": 10,
   "legacy": 2,
   "ios": 2,
-  "total": 128,
+  "total": 129,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 114,
+  "KEEP_CORE": 115,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
@@ -2842,6 +2842,31 @@
    "evidence_kinds": [
     "dedicated_test",
     "repo_tool",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasReliefGeometry": {
+   "module": "atlas_camera/comfy/nodes_ltx.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
     "docs"
    ],
    "live_execution": "not_attempted",

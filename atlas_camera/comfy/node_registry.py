@@ -35,7 +35,7 @@ from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasInterpassGate,
                                            AtlasMembraneComposite,
                                            AtlasPathFrameIndex)
-from atlas_camera.comfy.nodes_ltx import AtlasLoadCameraPath
+from atlas_camera.comfy.nodes_ltx import AtlasLoadCameraPath, AtlasReliefGeometry
 from atlas_camera.comfy.nodes_project import AtlasProject
 from atlas_camera.comfy.nodes_multiview import (
     AtlasMultiViewSolve,
@@ -168,6 +168,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasExportMayaReviewScene": AtlasExportMayaReviewScene,
     "AtlasUSDCameraLoader":       AtlasUSDCameraLoader,
     "AtlasLoadCameraPath":        AtlasLoadCameraPath,
+    "AtlasReliefGeometry":        AtlasReliefGeometry,
     "AtlasRegisterPlate":         AtlasRegisterPlate,
     "AtlasDeband":                AtlasDeband,
     "AtlasGrade":                 AtlasGrade,
@@ -285,6 +286,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasExportMayaReviewScene": "Atlas Export Maya Review Scene",
     "AtlasUSDCameraLoader":       "Atlas USD Camera Loader",
     "AtlasLoadCameraPath":        "Atlas Load Camera Path (LTX) 🎥",
+    "AtlasReliefGeometry":        "Atlas Relief Geometry (MoGe-shaped) 🗺",
     "AtlasLoadPlate":             "Atlas Load Plate 🎞",
     "AtlasRegisterPlate":         "Atlas Register Plate (Float-Safe) 🎞",
     "AtlasDeband":                "Atlas Deband 🎚",
@@ -583,7 +585,7 @@ _MENU_FOLDERS = {
         "AtlasAttachSourcePlate", "AtlasSolveFromImage",
         "AtlasLearnedSolveFromImage", "AtlasConstrainedSolve", "AtlasSplitEquirect",
         "AtlasEquirectMultiView", "AtlasUSDCameraLoader", "AtlasLoadSolveJSON",
-        "AtlasLoadCameraPath",
+        "AtlasLoadCameraPath", "AtlasReliefGeometry",
         "AtlasDecomposeCamera", "AtlasDecomposeSolve",
     ),
     "Atlas/02 \u00b7 Orient & Scale": (

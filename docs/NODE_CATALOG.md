@@ -14,9 +14,9 @@
 
 
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 128
+The former 9,110-line `nodes.py` was split into responsibility modules; the 129
 
-node classes (114 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
+node classes (115 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -243,7 +243,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (114 standard + 10 experimental + 2 legacy + 2 iOS = 128 registered)
+### Node catalog (115 standard + 10 experimental + 2 legacy + 2 iOS = 129 registered)
 
 
 
@@ -433,6 +433,7 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 
 | `AtlasUSDCameraLoader` | usd_path | ATLAS_CAMERA | Load camera from USD |
 | `AtlasLoadCameraPath` | path, segment | STRING, STRING, INT | Atlas Director take as a CrossView-Warp / LTX camera path |
+| `AtlasReliefGeometry` | solve, width, height, frames | MOGE_GEOMETRY, STRING | The solve's relief as metric depth, for the CrossView warp |
 
 
 

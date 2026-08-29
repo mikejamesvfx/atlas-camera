@@ -217,3 +217,115 @@ class AtlasLoadCameraPath:
             return (json.dumps(document), _report(document, None, 1), 1)
 
         return (document["keyframes"], _report(document, None, 1), 1)
+
+
+class AtlasReliefGeometry:
+    """🗺 The solve's own geometry, as MoGe-shaped metric depth.
+
+    CrossView Warp wants `moge_geometry`: metric depth per pixel, a validity
+    mask, and intrinsics. Running MoGe inside the graph produces all three, and
+    for a pose path that is a hazard rather than a convenience — the camera
+    arrives in METRES from an Atlas solve while the depth is a separate estimate
+    of the same scene, made by a different model with its own scale and its own
+    recovered lens. Nothing checks that the two agree, and when they disagree
+    the move renders at the wrong depth with no error anywhere.
+
+    This takes the geometry from the solve the camera came from. The relief mesh
+    is already in Atlas world metres, already tuned by whatever edge settings
+    built it, and it is rasterised through the solve's own intrinsics — so depth
+    and pose cannot disagree, because they are the same measurement.
+
+    The holes are the mesh's real tears, not a model's guess at sky. Where the
+    relief has no triangle the depth is NaN and the mask is False, which the
+    warp renders as magenta for the LoRA to fill. That is the honest answer to
+    "what was never photographed", and it is the same answer 📽 Project draws.
+    """
+
+    RETURN_TYPES = ("MOGE_GEOMETRY", "STRING")
+    RETURN_NAMES = ("moge_geometry", "report")
+    FUNCTION = "build"
+    CATEGORY = "Atlas/advanced"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE", {}),
+                "width": ("INT", {"default": 768, "min": 64, "max": 4096, "step": 8,
+                    "tooltip": "Raster width. Match the frames you feed the warp."}),
+                "height": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 8,
+                    "tooltip": "Raster height. Match the frames you feed the warp."}),
+            },
+            "optional": {
+                "frames": ("INT", {"default": 1, "min": 1, "max": 2048,
+                    "tooltip": "How many frames to emit. A still plate warped by "
+                               "a camera path needs one per frame of the clip."}),
+            },
+        }
+
+    def build(self, solve, width: int, height: int, frames: int = 1):
+        import numpy as np
+        import torch
+
+        from atlas_camera.core.camera_spec import CameraSpec
+        from atlas_camera.core.mesh_voxel import render_depth_grid
+        from atlas_camera.core.relief_mesh import _relief_mesh_from_solve
+
+        mesh = _relief_mesh_from_solve(solve)
+        if mesh is None:
+            raise ValueError(
+                "AtlasReliefGeometry: this solve carries no relief mesh. Derive one "
+                "first (AtlasDeriveReliefMesh / AtlasInput) — there is no geometry "
+                "here to rasterise, and inventing one would defeat the point of "
+                "using the solve's own.")
+
+        # Intrinsics scale with the raster, exactly as voxel_remesh does: the
+        # solve's fx is in source-image pixels and means nothing at another size.
+        cam = CameraSpec.from_solve(solve)
+        src_w = int(getattr(cam, "width", 0) or solve.camera.intrinsics.width)
+        src_h = int(getattr(cam, "height", 0) or solve.camera.intrinsics.height)
+        sx, sy = width / float(src_w), height / float(src_h)
+
+        depth = render_depth_grid(
+            np.asarray(mesh.vertices, dtype=np.float64),
+            np.asarray(mesh.faces, dtype=np.int64),
+            cam.view_matrix,
+            float(cam.fx) * sx, float(cam.fy) * sy,
+            float(cam.cx) * sx, float(cam.cy) * sy,
+            int(width), int(height),
+        )
+        valid = np.isfinite(depth) & (depth > 0)
+        if not valid.any():
+            raise ValueError(
+                "AtlasReliefGeometry: the relief covers no pixel from the recovered "
+                "camera. The mesh and the camera are not in the same space.")
+
+        # The warp reads depth[i] per frame and reprojects it, so a still plate
+        # needs the same geometry repeated rather than broadcast — matching how
+        # its frames were repeated.
+        d = np.where(valid, depth, np.nan).astype(np.float32)
+        depth_t = torch.from_numpy(np.repeat(d[None], int(frames), axis=0))
+        mask_t = torch.from_numpy(np.repeat(valid[None], int(frames), axis=0))
+        # Normalised, which is how the warp reads it back: fx = K[0][0,0] * W.
+        k = np.eye(3, dtype=np.float32)
+        k[0, 0] = float(cam.fx) * sx / width
+        k[1, 1] = float(cam.fy) * sy / height
+        k[0, 2] = float(cam.cx) * sx / width
+        k[1, 2] = float(cam.cy) * sy / height
+        intrinsics = torch.from_numpy(np.repeat(k[None], int(frames), axis=0))
+
+        near, far = float(np.nanmin(d)), float(np.nanmax(d))
+        report = "\n".join([
+            "Atlas relief geometry — from the solve, not inferred",
+            f"  raster      {width}x{height} from a {src_w}x{src_h} plate",
+            f"  depth       {near:.2f}m to {far:.2f}m (metric, Atlas world)",
+            f"  covered     {valid.mean()*100:.1f}% of frame; the rest is the "
+            f"mesh's own tears and renders as magenta",
+            f"  lens        fx {float(cam.fx)*sx:.1f}px "
+            f"({np.degrees(2*np.arctan(width/(2*float(cam.fx)*sx))):.1f} deg horizontal)",
+            f"  frames      {frames}",
+            "",
+            "Depth and camera come from one measurement, so a metric camera_path "
+            "cannot disagree with the geometry it moves through.",
+        ])
+        return ({"depth": depth_t, "mask": mask_t, "intrinsics": intrinsics}, report)
