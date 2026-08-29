@@ -22,6 +22,7 @@ FORMATS = {
     "atlas.ltx.crossview_warp": "single path",
     "atlas.ltx.crossview_warp.chain": "chain of segments",
     "atlas.ltx.crossview_warp.compressed": "compressed (previz)",
+    "atlas.ltx.crossview_warp.pose": "per-frame pose",
 }
 
 
@@ -67,6 +68,23 @@ def _report(document: dict, segment: dict | None, segment_count: int) -> str:
                 "not the plate. Re-derive geometry from that frame, and expect this "
                 "segment's error to ride on the one before it."
             )
+
+    if document.get("format") == "atlas.ltx.crossview_warp.pose":
+        focal = document.get("focalLengthMm", {})
+        return "\n".join([
+            "Atlas camera path — per-frame pose",
+            "",
+            "Wire into CrossView Warp's `camera_path`. It outranks camera_info "
+            "and the keyframes, so no orbit widget applies and none needs setting.",
+            "",
+            f"frames {document.get('frameCount')}, "
+            f"focal {focal.get('min')}-{focal.get('max')}mm",
+            f"frame: {document.get('frame')}",
+            "",
+            "Carries: " + ", ".join(document.get("carries", [])) + ".",
+            "Nothing is approximated here — but the LoRA still only saw its "
+            "training range, so a pose outside it renders as extrapolation.",
+        ])
 
     compression = document.get("compression")
     if compression:
@@ -118,12 +136,18 @@ class AtlasLoadCameraPath:
     of a camera that was operated, and a marker dragged in the graph would show
     a move that is not the one being rendered.
 
-    Reads all three things Director can write, and says which it got. A take too
+    Reads all four things Director can write, and says which it got. A take too
     long for one generation is exported as a CHAIN — pick the segment with
     `segment`, generate it, then feed its final frame back as the source clip
     for the next. A COMPRESSED file is previz: the timing is the take's and the
     parallax is not, and the report says so rather than letting a third-depth
     push pass for the shot.
+
+    A POSE path goes into `camera_path` instead, on the extended node. That
+    input outranks both `camera_info` and the keyframes and carries the pose per
+    frame — roll and a breathing lens included — so none of the orbit widgets
+    apply and none needs setting. It is the same output slot either way; the
+    report says which input the file belongs in.
 
     The report output is worth wiring to a PreviewText at least once per graph.
     It carries the three node settings the knots depend on, and getting those
@@ -185,5 +209,11 @@ class AtlasLoadCameraPath:
                 )
             chosen = segments[segment - 1]
             return (chosen["keyframes"], _report(document, chosen, count), count)
+
+        if fmt == "atlas.ltx.crossview_warp.pose":
+            # The whole document, not a knot list: `camera_path` parses the
+            # poses itself. Sent on the same slot so one node serves both, and
+            # the report says which input to wire it into.
+            return (json.dumps(document), _report(document, None, 1), 1)
 
         return (document["keyframes"], _report(document, None, 1), 1)

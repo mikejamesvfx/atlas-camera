@@ -125,3 +125,27 @@ def test_a_quoted_windows_path_is_accepted():
 def test_the_node_declares_what_it_returns():
     assert AtlasLoadCameraPath.RETURN_NAMES == ("keyframes", "report", "segment_count")
     assert AtlasLoadCameraPath.FUNCTION == "load"
+
+
+POSE = FIXTURES / "atlas_ltx_pose.json"
+
+
+def test_a_pose_path_is_handed_over_whole():
+    """`camera_path` parses the document itself, so the node does not unwrap it.
+
+    Sent on the same output slot as the keyframes so one loader serves both
+    formats; the report says which input it belongs in.
+    """
+    payload, report, count = load(POSE)
+    document = json.loads(payload)
+    assert count == 1
+    assert document["format"] == "atlas.ltx.crossview_warp.pose"
+    assert len(document["poses"]) == document["frameCount"]
+    assert "camera_path" in report
+
+
+def test_the_pose_report_states_what_it_carries_and_what_it_cannot_fix():
+    _, report, _ = load(POSE)
+    assert "rotation including roll" in report
+    # The honest half: a pose removes Atlas's approximations, not the model's.
+    assert "training range" in report
