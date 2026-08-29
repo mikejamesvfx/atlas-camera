@@ -14,9 +14,9 @@
 
 
 
-The former 9,110-line `nodes.py` was split into responsibility modules; the 127
+The former 9,110-line `nodes.py` was split into responsibility modules; the 128
 
-node classes (113 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
+node classes (114 standard + 10 experimental + 2 legacy + 2 iOS) now live in the
 group modules, and
 
 `nodes.py` is a thin **compatibility façade** (≈180 lines) that re-exports every
@@ -243,7 +243,7 @@ Both loads hit the same file, causing the aiohttp route `GET /atlas/camera_data/
 
 
 
-### Node catalog (113 standard + 10 experimental + 2 legacy + 2 iOS = 127 registered)
+### Node catalog (114 standard + 10 experimental + 2 legacy + 2 iOS = 128 registered)
 
 
 
@@ -432,6 +432,7 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 | `AtlasExportMayaReviewScene` | ATLAS_SOLVE, output_dir, ±relief_mesh_obj_path | STRING | Maya scene + image card. Box/cylinder/plane proxies get real dimensions + transforms; wire `AtlasExportReliefMesh`'s `obj_path` into `relief_mesh_obj_path` to also import the real relief mesh (otherwise it's silently omitted, not placeholder-cubed) |
 
 | `AtlasUSDCameraLoader` | usd_path | ATLAS_CAMERA | Load camera from USD |
+| `AtlasLoadCameraPath` | path, segment | STRING, STRING, INT | Atlas Director take as a CrossView-Warp / LTX camera path |
 
 
 

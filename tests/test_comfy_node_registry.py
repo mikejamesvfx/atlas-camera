@@ -21,6 +21,7 @@ import atlas_camera.comfy.nodes as nodes
 # detail.
 NORMAL_KEYS = {
     "AtlasProject",
+    "AtlasLoadCameraPath",
     "AtlasMultiViewSolve",
     "AtlasMultiViewSolveBurst",
     "AtlasSolveBurstPatchCrops",
@@ -113,7 +114,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 113
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 114
 
 
 def test_experimental_registry_keys_exact():

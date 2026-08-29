@@ -29,6 +29,7 @@ import atlas_camera.comfy.nodes as nodes
 #: Public surface — node classes, registry mappings, shared constants.
 FACADE_PUBLIC = {
     "AtlasProject",
+    "AtlasLoadCameraPath",
     "AtlasMultiViewSolve",
     "AtlasMultiViewSolveBurst",
     "AtlasSolveBurstPatchCrops",

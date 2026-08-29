@@ -1,16 +1,16 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-08-28",
+ "generated_utc": "2026-08-29",
  "counts": {
-  "standard": 113,
+  "standard": 114,
   "experimental": 10,
   "legacy": 2,
   "ios": 2,
-  "total": 127,
+  "total": 128,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 113,
+  "KEEP_CORE": 114,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
@@ -2060,6 +2060,34 @@
    ],
    "migration_action": "boundary smoothing migrated to AtlasRetopologizeLayer; rewire workflows to the hole-patch chain; gate the node",
    "notes": "Gating removes the only caller of repair_relief_mesh_grid_cuda and remove_stretched_faces. What is genuinely lost is the CUDA grid repair, the harmonic enclosed-hole cap and the post-hoc stretch cull applied downstream on an already-built solve. What survives: CPU hole-fill + sawtooth via apply_live_mesh_repair (still called by AtlasDeriveReliefMesh and AtlasDeriveProjectionGeometry) and apply_interior_hole_fill in the relief-mesh exporter."
+  },
+  "AtlasLoadCameraPath": {
+   "module": "atlas_camera/comfy/nodes_ltx.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "dedicated tests: tests/test_ltx_camera_path_node.py \u2014 all three formats, segment selection and bounds, the compressed scale being surfaced, and an unknown format id being refused",
+    "fixtures are real output from Atlas Scene's writer (app/director/export/ltx.ts), not hand-written JSON"
+   ],
+   "migration_action": "none; keep",
+   "notes": "Reads the camera_ltx.json an Atlas Director take exports and hands ComfyUI-CrossViewWarp the keyframes string it wants, so an operated take can drive an LTX generation instead of the move being re-authored by hand on the node's orbit sphere. Lives here rather than in the fork of that node because Atlas owns the Atlas format; the fork stays close to upstream and therefore mergeable. The report output carries the three CrossView Warp settings the knots depend on \u2014 pivot_override, keep_source_aim, use_keyframes \u2014 because getting those wrong raises nothing and simply renders a different move."
   },
   "AtlasLoadDynamicPlate": {
    "module": "atlas_camera/comfy/nodes_dynamic.py",

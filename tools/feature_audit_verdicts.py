@@ -143,6 +143,29 @@ VERDICTS: dict[str, dict] = {
         }
         for name in ("AtlasOcclusionGraph", "AtlasMoveBudget", "AtlasLayerPlan")
     },
+    "AtlasLoadCameraPath": {
+        "verdict": "KEEP_CORE",
+        "compatibility_risk": "low — new this cycle, nothing to migrate",
+        "migration_action": "none; keep",
+        "evidence": [
+            "dedicated tests: tests/test_ltx_camera_path_node.py — all three "
+            "formats, segment selection and bounds, the compressed scale being "
+            "surfaced, and an unknown format id being refused",
+            "fixtures are real output from Atlas Scene's writer "
+            "(app/director/export/ltx.ts), not hand-written JSON",
+        ],
+        "notes":
+            "Reads the camera_ltx.json an Atlas Director take exports and hands "
+            "ComfyUI-CrossViewWarp the keyframes string it wants, so an operated "
+            "take can drive an LTX generation instead of the move being "
+            "re-authored by hand on the node's orbit sphere. Lives here rather "
+            "than in the fork of that node because Atlas owns the Atlas format; "
+            "the fork stays close to upstream and therefore mergeable. The "
+            "report output carries the three CrossView Warp settings the knots "
+            "depend on — pivot_override, keep_source_aim, use_keyframes — "
+            "because getting those wrong raises nothing and simply renders a "
+            "different move.",
+    },
     "AtlasEquirectMultiView": {
         "verdict": "KEEP_CORE",
         "compatibility_risk": "low — new this cycle, nothing to migrate",
