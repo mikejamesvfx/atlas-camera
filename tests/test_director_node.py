@@ -396,7 +396,9 @@ def test_read_returns_all_four_outputs_and_never_mutates_sessions(
         "session_id": "shot_012",
         "package": str(package_path),
         "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
-        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
+        # frames="4" matches real_playblast_take's 4 rendered frames --
+        # _ensure_frame_count_matches_frames_widget now requires this.
+        "timebase": {"width": 16, "height": 9, "frames": 4, "fps": 24},
         "slate": "sc/sh/a_take01",
         "take_dir": str(real_playblast_take),
     }
@@ -404,7 +406,7 @@ def test_read_returns_all_four_outputs_and_never_mutates_sessions(
 
     node = AtlasDirectorTake()
     out = node.read(
-        session_id="shot_012", width=16, height=9, frames="121", fps=24,
+        session_id="shot_012", width=16, height=9, frames="4", fps=24,
         colour_lane="png",
     )
     result = out["result"] if isinstance(out, dict) else out
@@ -484,13 +486,13 @@ def test_matching_dimensions_pass(real_playblast_take, package_path, monkeypatch
         "session_id": "shot_012",
         "package": str(package_path),
         "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
-        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
+        "timebase": {"width": 16, "height": 9, "frames": 4, "fps": 24},
         "slate": "sc/sh/a_take01",
         "take_dir": str(real_playblast_take),
     }
     node = AtlasDirectorTake()
-    # real_playblast_take renders real 16x9 PNGs -- must not raise.
-    node.read(session_id="shot_012", width=16, height=9, frames="121",
+    # real_playblast_take renders real 16x9 PNGs, 4 of them -- must not raise.
+    node.read(session_id="shot_012", width=16, height=9, frames="4",
                fps=24, colour_lane="png")
     SESSIONS.clear()
 
@@ -545,7 +547,9 @@ def marked_range_take(tmp_path):
 def test_marked_range_aligns_to_the_marked_samples_not_the_head(marked_range_take):
     node = AtlasDirectorTake()
     frame_paths = node.frame_files(str(marked_range_take))
-    start, stop = node._aligned_sample_range(str(marked_range_take), frame_paths)
+    start, stop = node._aligned_sample_range(
+        str(marked_range_take), frame_paths, sample_count=8,
+    )
     assert (start, stop) == (3, 7)
 
     all_samples = json.loads((marked_range_take / "samples.json").read_text())
@@ -565,7 +569,9 @@ def test_unmarked_range_still_reads_the_head(take_dir):
     # `_write_take`'s default), 4 rendered frames of 8 samples -- the head.
     node = AtlasDirectorTake()
     frame_paths = node.frame_files(str(take_dir))
-    start, stop = node._aligned_sample_range(str(take_dir), frame_paths)
+    start, stop = node._aligned_sample_range(
+        str(take_dir), frame_paths, sample_count=8,
+    )
     assert (start, stop) == (0, 4)
 
 
@@ -577,7 +583,7 @@ def test_sidecar_disagreeing_with_disk_refuses_and_names_both_counts(tmp_path):
     node = AtlasDirectorTake()
     frame_paths = node.frame_files(str(directory))
     with pytest.raises(StaleTakeError) as raised:
-        node._aligned_sample_range(str(directory), frame_paths)
+        node._aligned_sample_range(str(directory), frame_paths, sample_count=8)
     message = str(raised.value)
     assert "6" in message
     assert "4" in message
@@ -589,4 +595,79 @@ def test_missing_sidecar_refuses(tmp_path):
     node = AtlasDirectorTake()
     frame_paths = node.frame_files(str(directory))
     with pytest.raises(StaleTakeError, match="predates the marks record"):
-        node._aligned_sample_range(str(directory), frame_paths)
+        node._aligned_sample_range(str(directory), frame_paths, sample_count=8)
+
+
+# --- coordinator fix-round-1: bounds, negative marks, contradictions,
+# --- frame count vs the frames widget -----------------------------------
+
+
+def test_marked_range_beyond_the_takes_samples_refuses(tmp_path):
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    # 8 samples on the take, 4 real frames on disk -- but the sidecar
+    # claims those 4 frames are marked in=6..out=9, which the width check
+    # alone cannot catch (9+1-6 == 4, matching the on-disk count) even
+    # though frame 9 does not exist in an 8-sample take.
+    _write_take(directory, n_frames=4, n_samples=8, write_marks=False)
+    _write_marks(directory, frame_count=4, marked=True, mark_in=6, mark_out=9)
+    node = AtlasDirectorTake()
+    frame_paths = node.frame_files(str(directory))
+    with pytest.raises(StaleTakeError) as raised:
+        node._aligned_sample_range(str(directory), frame_paths, sample_count=8)
+    message = str(raised.value)
+    assert "[6, 10)" in message
+    assert "8" in message
+
+
+def test_negative_mark_in_refuses(tmp_path):
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    # in=-5, out=-2 satisfies the width check on its own (-2+1-(-5) == 4,
+    # matching the 4 on-disk frames) via Python negative-index arithmetic
+    # -- must be refused by name, not left to the bounds check alone.
+    _write_take(directory, n_frames=4, n_samples=8, write_marks=False)
+    _write_marks(directory, frame_count=4, marked=True, mark_in=-5, mark_out=-2)
+    node = AtlasDirectorTake()
+    frame_paths = node.frame_files(str(directory))
+    with pytest.raises(StaleTakeError, match="negative mark"):
+        node._aligned_sample_range(str(directory), frame_paths, sample_count=8)
+
+
+def test_marked_false_with_non_null_marks_refuses(tmp_path):
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    _write_take(directory, n_frames=4, n_samples=8, write_marks=False)
+    # Two contradictory claims in one sidecar: marked=false, but in/out
+    # are present anyway. Neither claim should be trusted.
+    (directory / "playblast" / "playblast.json").write_text(json.dumps({
+        "frame_count": 4, "marked": False, "in": 0, "out": 3,
+    }))
+    node = AtlasDirectorTake()
+    frame_paths = node.frame_files(str(directory))
+    with pytest.raises(StaleTakeError, match="marked=false"):
+        node._aligned_sample_range(str(directory), frame_paths, sample_count=8)
+
+
+def test_rendered_frame_count_disagreeing_with_frames_widget_refuses(
+        real_playblast_take, package_path, monkeypatch):
+    import atlas_camera.plate.oiio_io as oiio_io
+    monkeypatch.setattr(oiio_io, "oiio_available", lambda: False)
+
+    SESSIONS.clear()
+    SESSIONS["shot_012"] = {
+        "session_id": "shot_012",
+        "package": str(package_path),
+        "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
+        # Widget and session timebase agree with EACH OTHER (5), so
+        # `_ensure_timebase_matches` passes -- but real_playblast_take only
+        # rendered 4 real frames, so the actual count disagrees with both.
+        "timebase": {"width": 16, "height": 9, "frames": 5, "fps": 24},
+        "slate": "sc/sh/a_take01",
+        "take_dir": str(real_playblast_take),
+    }
+    node = AtlasDirectorTake()
+    with pytest.raises(StaleTakeError) as raised:
+        node.read(session_id="shot_012", width=16, height=9, frames="5",
+                   fps=24, colour_lane="png")
+    message = str(raised.value)
+    assert "4" in message  # actual rendered count
+    assert "5" in message  # the frames widget
+    SESSIONS.clear()

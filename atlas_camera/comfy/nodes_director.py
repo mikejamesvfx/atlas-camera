@@ -325,8 +325,8 @@ class AtlasDirectorTake:
             )
         return json.loads(marks_path.read_text())
 
-    def _aligned_sample_range(self, take_dir: str,
-                               frame_paths: list[Path]) -> tuple[int, int]:
+    def _aligned_sample_range(self, take_dir: str, frame_paths: list[Path],
+                               *, sample_count: int) -> tuple[int, int]:
         """The `[start, stop)` slice into `samples.json` the rendered frames cover.
 
         `capturePlayblast` stages the deck's marked range from frame-file
@@ -338,17 +338,32 @@ class AtlasDirectorTake:
         Reads `playblast.json`'s `marked` / `in` / `out` / `frame_count`.
         `marked=true` means the pixels are take frames `in..out` inclusive,
         so the sample slice is `[in, out+1)`; `marked=false` means the
-        frames are the head of the take, so `[0, frame_count)`. Either way
-        this is checked against BOTH the sidecar's own `frame_count` and
-        the number of frame files actually on disk -- disagreement in
-        either pair means the sidecar and the directory describe different
-        renders, refused rather than trusted. This is also the frame-count
-        check `read()` needs (Finding 3): comparing the rendered count to
-        the `frames` widget instead would be a false alarm on every
-        ordinary marked take shorter than the full clip, so the widget
-        stays checked only against the session's recorded timebase (see
-        `_ensure_timebase_matches`), and disk/sidecar agreement is checked
-        here.
+        frames are the head of the take, so `[0, frame_count)` -- and a
+        `marked=false` sidecar recording a non-null `in`/`out` is a
+        contradiction, refused rather than one of the two claims being
+        silently preferred. `frame_count` is checked against the number of
+        frame files actually on disk unconditionally; the derived range's
+        WIDTH (`stop - start`) is checked against that same on-disk count
+        too, which is a real, non-redundant check for a marked range (a
+        sidecar can misdescribe `in`/`out` while still reporting a correct
+        `frame_count`) and is merely restating the same fact for an
+        unmarked one (there `stop - start` reduces to `frame_count`
+        itself).
+
+        `caller-round-1 CRITICAL fix`: none of the above proves `start` and
+        `stop` are valid indices into `samples.json` -- a sidecar naming
+        frames past the end of the take (or a negative `in`, which can
+        satisfy the width check on its own via Python's negative-index
+        arithmetic, e.g. `in=-5, out=-2` on a 4-frame render) would
+        otherwise slice `samples[start:stop]` into something shorter than
+        the playblast, or the wrong tail of the list, with no error at
+        all -- the exact silent-wrong-answer class this whole method
+        exists to remove, reproduced inside its own fix. So `start` and
+        `stop` are bounds-checked against `sample_count`
+        (`len(samples.json)`, supplied by the caller so this function need
+        not load the file itself) before being returned: `0 <= start <
+        stop <= sample_count` is required, and a negative `in` is refused
+        by name rather than relying on that bounds check alone to catch it.
         """
         marks = self._load_playblast_marks(take_dir)
         on_disk = len(frame_paths)
@@ -372,9 +387,24 @@ class AtlasDirectorTake:
                     f"but in={mark_in!r}/out={mark_out!r} -- a marked range "
                     "must record both. Re-render this take."
                 )
-            start, stop = int(mark_in), int(mark_out) + 1
+            mark_in, mark_out = int(mark_in), int(mark_out)
+            if mark_in < 0 or mark_out < 0:
+                raise StaleTakeError(
+                    f"playblast.json under {take_dir!r} records a negative "
+                    f"mark (in={mark_in}, out={mark_out}) -- a marked range "
+                    "cannot start or end before take frame 0. Re-render "
+                    "this take."
+                )
+            start, stop = mark_in, mark_out + 1
             range_desc = f"marked in={mark_in} out={mark_out}"
         else:
+            if mark_in is not None or mark_out is not None:
+                raise StaleTakeError(
+                    f"playblast.json under {take_dir!r} says marked=false "
+                    f"but records in={mark_in!r}/out={mark_out!r} -- an "
+                    "unmarked sidecar must not also carry a mark range. "
+                    "Re-render this take."
+                )
             start, stop = 0, int(frame_count)
             range_desc = "unmarked head"
 
@@ -385,6 +415,15 @@ class AtlasDirectorTake:
                 f"{on_disk} frame file(s) actually exist under playblast/ "
                 "-- the sidecar and the directory describe different "
                 "renders. Re-render this take."
+            )
+
+        if start < 0 or stop <= start or stop > sample_count:
+            raise StaleTakeError(
+                f"playblast.json under {take_dir!r} describes take-sample "
+                f"range [{start}, {stop}) ({range_desc}), but samples.json "
+                f"only has {sample_count} sample(s) recorded -- the "
+                "sidecar names frames the take does not have. Re-render "
+                "this take."
             )
         return start, stop
 
@@ -424,6 +463,35 @@ class AtlasDirectorTake:
                 "actual rendered size, or re-render the take at that size."
             )
 
+    def _ensure_frame_count_matches_frames_widget(self, take_dir: str,
+                                                    frame_paths: list[Path],
+                                                    *, frames: str) -> None:
+        """Refuse when the rendered frame count disagrees with the `frames`
+        widget (Finding 3, corrected in coordinator fix-round-1).
+
+        `_aligned_sample_range` proves the sidecar describes the directory
+        it lives in -- it says nothing about whether that many frames is a
+        length the model will accept. `ALLOWED_FRAMES` is a constrained
+        combo precisely because LTX rejects arbitrary lengths, and
+        `_ensure_timebase_matches` only compares this widget against the
+        value that same widget wrote into the session at launch -- a value
+        checked against itself, not against what was actually rendered. In
+        this pipeline a rendered sub-range of a non-model-valid length is
+        an operator mistake (marked the wrong range), not a legitimate
+        variation, so it is refused here, naming both numbers, so the
+        failure lands at the mark instead of surfacing later inside the
+        LTX call.
+        """
+        actual = len(frame_paths)
+        expected = int(frames)
+        if actual != expected:
+            raise StaleTakeError(
+                f"playblast under {take_dir!r} has {actual} rendered "
+                f"frame(s), but this node's frames widget says {expected}. "
+                "Match the marked range to the frames widget, or change "
+                "the widget to the number of frames actually rendered."
+            )
+
     def read_rays(self, take_dir: str, width: int, height: int):
         """Ray origins/directions per rendered frame -- `ray_map`, untouched.
 
@@ -437,9 +505,11 @@ class AtlasDirectorTake:
         index 0 regardless of where in the take they came from (Finding 2).
         """
         frame_paths = self.frame_files(take_dir)
-        start, stop = self._aligned_sample_range(take_dir, frame_paths)
-        samples = self._load_samples(take_dir)[start:stop]
-        return ray_map(samples, width, height)
+        all_samples = self._load_samples(take_dir)
+        start, stop = self._aligned_sample_range(
+            take_dir, frame_paths, sample_count=len(all_samples),
+        )
+        return ray_map(all_samples[start:stop], width, height)
 
     def embed_rays(self, rays):
         """Full-precision Plücker embedding: `(o x d, d)`, 6 channels."""
@@ -591,8 +661,14 @@ class AtlasDirectorTake:
         self._ensure_frame_dimensions_match(
             take_dir, frame_paths, width=width, height=height,
         )
-        start, stop = self._aligned_sample_range(take_dir, frame_paths)
-        samples = self._load_samples(take_dir)[start:stop]
+        self._ensure_frame_count_matches_frames_widget(
+            take_dir, frame_paths, frames=frames,
+        )
+        all_samples = self._load_samples(take_dir)
+        start, stop = self._aligned_sample_range(
+            take_dir, frame_paths, sample_count=len(all_samples),
+        )
+        samples = all_samples[start:stop]
 
         playblast = self.load_playblast(take_dir, colour_lane)
         rays = ray_map(samples, width, height)
