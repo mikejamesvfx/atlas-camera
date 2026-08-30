@@ -109,6 +109,7 @@ from atlas_camera.comfy.nodes_geometry import (
     AtlasDeriveRoofsFacades,
     AtlasDeriveInteriorRoom,
     AtlasGroundPlane,
+    AtlasSceneScale,
     AtlasMergeGeometry,
     AtlasDefineShotCam,
     AtlasBlockoutMassing,
@@ -245,6 +246,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasDeriveInteriorRoom":    AtlasDeriveInteriorRoom,
     "AtlasMergeGeometry":         AtlasMergeGeometry,
     "AtlasGroundPlane":           AtlasGroundPlane,
+    "AtlasSceneScale":            AtlasSceneScale,
     # Track 6 — shot format
     "AtlasDefineShotCam":         AtlasDefineShotCam,
     # Track 7 — inpaint layers
@@ -365,6 +367,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasDeriveInteriorRoom":    "Atlas Derive Interior Room 🛋",
     "AtlasMergeGeometry":         "Atlas Merge Geometry 🔀",
     "AtlasGroundPlane":           "Atlas Ground Plane 🟫",
+    "AtlasSceneScale":            "Atlas Scene Scale 📏",
     # Track 6 — shot format
     "AtlasDefineShotCam":         "Atlas Define Shot Cam 🎬",
     # Track 7 — inpaint layers

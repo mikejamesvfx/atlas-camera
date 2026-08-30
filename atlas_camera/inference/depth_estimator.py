@@ -191,6 +191,14 @@ def _require_torch() -> Any:
 _DA3_EXPORT_ONLY_ROOTS = (
     "gsplat", "open3d", "e3nn", "pycolmap", "trimesh",
     "plyfile", "pillow_heif", "evo", "matplotlib",
+    # depth_anything_3.utils.export.gs does `import moviepy.editor` at module
+    # scope for gaussian-splat VIDEO export, and depth_anything_3.api imports
+    # that module transitively — so a depth-only install dies on an import it
+    # will never call. Same class as the others here: export-only, absent by
+    # design, stubbed rather than installed. Found 2026-08-30 on a --no-deps
+    # install, where the alternative was dragging moviepy (and a numpy
+    # downgrade) into a working ComfyUI to satisfy an unused code path.
+    "moviepy",
 )
 _DA3_STUBS_INSTALLED = False
 

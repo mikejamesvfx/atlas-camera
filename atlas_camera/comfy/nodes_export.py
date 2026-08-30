@@ -869,11 +869,26 @@ class AtlasExportCameraPathUSD:
         from atlas_camera.exporters.usd_exporter import USDExporter
         output_dir = _project_routed_dir(project, output_dir, "usd")
         if camera_path is None or not camera_path.keyframes:
-            raise ValueError(
-                "No camera path yet — open AtlasBlockoutViewport, use 🎥 Camera Path "
-                "to add at least one keyframe, then click ⏺ Bake Proxy Path before queuing "
-                "this export node."
+            # A no-op, not a failure. The path is authored in the BROWSER, so on
+            # the queue that opens the viewport there is nothing to export yet —
+            # and with AtlasBlockoutViewport's auto_preset that is EVERY first
+            # queue, because Python runs before Three.js has baked. Raising here
+            # aborted the whole prompt (ComfyUI stops at the first failing node),
+            # taking the video and the approval stills with it, on a run that was
+            # only ever going to produce a path for the NEXT one.
+            #
+            # The bake re-queues automatically, so the second pass finds the
+            # keyframes and writes the USD. Saying so and returning is the
+            # honest answer: nothing was asked for that could have been given.
+            # An EMPTY path string, not the explanation: this output is a file
+            # path and downstream nodes read it as one, so a sentence here would
+            # be a lie in the shape of a location. The reason goes to the log.
+            print(
+                "[Atlas] AtlasExportCameraPathUSD: no camera path yet, nothing "
+                "exported. Author one in the viewport (Camera Path, or set "
+                "auto_preset); the bake re-queues and this node writes then."
             )
+            return ("",)
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
         dest = out / "camera_path.usda"

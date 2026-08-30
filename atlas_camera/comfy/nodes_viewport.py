@@ -38,6 +38,7 @@ from atlas_camera.comfy.node_helpers import (
     build_segmentation_cascade,
 )
 from atlas_camera.comfy.gate import Gate, solve_fingerprint as _solve_fingerprint
+from atlas_camera.core.camera_path import PRESET_MOVES as AUTO_PRESET_MOVES
 from atlas_camera.inference.depth_estimator import is_moge_model
 
 
@@ -729,13 +730,35 @@ class AtlasBlockoutViewport:
                                "the clean background through the same registered "
                                "projector. Drawn/wand fills patch the foreground's "
                                "own tears and keep the drawn_fill_px smear."}),
+                # APPENDED last. Agent/MCP drive-through for the camera path.
+                # Python only carries these to the browser: the bake renders
+                # through Three.js, so the frontend is the only thing that can
+                # author a path or capture a frame, and a headless queue makes
+                # nothing however these are set. Said in the tooltip too, because
+                # "it queued and produced no video" is otherwise a silent failure.
+                "auto_preset": (["off"] + list(AUTO_PRESET_MOVES), {
+                    "default": "off",
+                    "tooltip": "Author this camera-move preset and BAKE it when the node "
+                               "executes, instead of clicking 🎥 Camera Path and ⏺ Bake "
+                               "Full Path by hand. NEEDS A BROWSER with this graph open — "
+                               "the bake renders in Three.js, so a headless queue produces "
+                               "no frames however this is set. Baking re-queues the prompt, "
+                               "so the frontend fingerprints (solve, preset, frames, "
+                               "resolution) and re-bakes only when one changes; without "
+                               "that guard the re-queue would bake forever."}),
+                "auto_frames": ("INT", {"default": 0, "min": 0, "max": 2048, "step": 1,
+                    "tooltip": "Frame count for auto_preset. 0 leaves the preset's own "
+                               "length (100) alone. LTX wants frames % 8 == 1 — 81, 97, "
+                               "121 — and a count that violates it bakes fine here and is "
+                               "refused downstream."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     def render(self, solve, source_image, resolution, client_data, primary_depth=None, preview_expand=1.0, controls=None,
                shot_cam=None, output_profile=None, debug_matte=None, patch_mask=None,
-               drawn_fill_px=96, clean_plate=None, unique_id=None):
+               drawn_fill_px=96, clean_plate=None, auto_preset="off", auto_frames=0,
+               unique_id=None):
         torch = _require_torch()
         if output_profile is not None:
             solve = _clone_solve_with_metadata(solve, output_profile=output_profile)

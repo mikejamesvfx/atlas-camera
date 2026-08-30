@@ -5739,3 +5739,112 @@ class AtlasGroundPlane:
             "AtlasMergeGeometry before the viewport" % (len(prims) - 1),
         ]
         return (out, "\n".join(report))
+
+
+class AtlasSceneScale:
+    """Measure a scene from its depth map and emit support-geometry sizes.
+
+    A ground plane and a sky card are the only things filling the hole that sky
+    exclusion leaves behind, and their sizes are in METRES — so a set of numbers
+    tuned on one plate is wrong on the next. Measured across a 31-plate sweep,
+    median scene distance ran from 0.95 to 586: the same 50 x 100 m ground is a
+    wall in front of one subject and a postage stamp under another.
+
+    The ratios are not invented. An artist tuned a ground by eye on a plate
+    whose median distance was 17.0 m and arrived at 50 x 100 with the plane
+    pushed 25 back, and a sky card at 300. Expressed against what the scene
+    actually measures, those are 2.94x, 5.88x, -1.47x median and 1.79x p99 —
+    so the defaults here are that judgement, generalised, and any plate large
+    or small gets a plane in the same proportion.
+
+    Depth, not geometry, is the measurement: primitives carry dimensions and a
+    transform but no vertices, while the depth map is per-pixel forward distance
+    and is what "how far away is this scene" means.
+
+    Non-metric depth is reported and still used. A relative model's numbers are
+    up to scale, so the RATIOS remain right even though the metres are
+    arbitrary — and a plane in the right proportion to a scene of unknown scale
+    is exactly as useful as the scene is.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "depth": ("ATLAS_DEPTH_MAP",),
+            },
+            "optional": {
+                "ground_width_x": ("FLOAT", {"default": 3.0, "min": 0.1, "max": 50.0, "step": 0.1,
+                    "tooltip": "Ground width as a multiple of MEDIAN scene distance. "
+                               "3.0 reproduces the hand-tuned 50 m on a plate measuring 17 m."}),
+                "ground_depth_x": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 100.0, "step": 0.1,
+                    "tooltip": "Ground depth as a multiple of median scene distance. 6.0 "
+                               "reproduces the hand-tuned 100 m. Deeper than wide on purpose: "
+                               "the plane exists to be travelled INTO."}),
+                "ground_offset_x": ("FLOAT", {"default": -1.5, "min": -20.0, "max": 20.0, "step": 0.1,
+                    "tooltip": "Ground offset_z as a multiple of median distance. NEGATIVE "
+                               "pushes the plane away from camera; -1.5 reproduces the "
+                               "hand-tuned -25 m."}),
+                "sky_distance_x": ("FLOAT", {"default": 1.8, "min": 0.1, "max": 20.0, "step": 0.1,
+                    "tooltip": "Sky card distance as a multiple of the P99 depth, so the card "
+                               "sits beyond essentially all real geometry rather than through "
+                               "it. 1.8 reproduces the hand-tuned 300 m."}),
+                "min_spread": ("FLOAT", {"default": 0.15, "min": 0.0, "max": 5.0, "step": 0.01,
+                    "tooltip": "Refuse to derive sizes when the scene has less relative depth "
+                               "spread than this. A failed solve puts everything at one "
+                               "distance — measured 0.05 on one plate — and a median taken "
+                               "from that is a confident number describing nothing. 0 = never "
+                               "refuse."}),
+            },
+        }
+
+    RETURN_TYPES = ("FLOAT", "FLOAT", "FLOAT", "FLOAT", "FLOAT", "FLOAT", "STRING")
+    RETURN_NAMES = ("ground_width_m", "ground_depth_m", "ground_offset_z",
+                    "sky_distance_m", "median_m", "p99_m", "report")
+    FUNCTION = "measure"
+    CATEGORY = "Atlas"
+
+    def measure(self, depth, ground_width_x=3.0, ground_depth_x=6.0,
+                ground_offset_x=-1.5, sky_distance_x=1.8, min_spread=0.15):
+        import numpy as np
+
+        d = np.asarray(getattr(depth, "depth", depth), dtype=np.float64).ravel()
+        d = d[np.isfinite(d)]
+        d = d[d > 0]
+        if d.size == 0:
+            raise ValueError(
+                "depth map has no finite positive samples, so the scene has no "
+                "measurable scale. Check the depth model actually produced a map."
+            )
+
+        median = float(np.median(d))
+        p99 = float(np.percentile(d, 99))
+        p10, p90 = float(np.percentile(d, 10)), float(np.percentile(d, 90))
+        spread = (p90 - p10) / median if median else 0.0
+        metric = bool(getattr(depth, "is_metric", True))
+
+        if min_spread > 0 and spread < min_spread:
+            raise ValueError(
+                "scene depth spread is %.3f (p90-p10 over median), below "
+                "min_spread=%.3f — everything sits at one distance, which is a "
+                "failed or flat solve rather than a deep scene. Sizes derived "
+                "from it would be confident and wrong. Lower min_spread to "
+                "override, or fix the depth first." % (spread, min_spread)
+            )
+
+        sizes = (median * ground_width_x, median * ground_depth_x,
+                 median * ground_offset_x, p99 * sky_distance_x)
+        report = [
+            "scene: median %.2f  p99 %.2f  spread %.2f  (%s)"
+            % (median, p99, spread, "metric" if metric else "RELATIVE — units arbitrary"),
+            "ground %.1f x %.1f at offset_z %.1f; sky at %.1f"
+            % (sizes[0], sizes[1], sizes[2], sizes[3]),
+            "ratios %.2fx / %.2fx / %.2fx median, %.2fx p99"
+            % (ground_width_x, ground_depth_x, ground_offset_x, sky_distance_x),
+        ]
+        if not metric:
+            report.append(
+                "depth is up-to-scale, so these metres are arbitrary — the "
+                "PROPORTIONS still hold, which is what the planes need"
+            )
+        return sizes + (median, p99, "\n".join(report))

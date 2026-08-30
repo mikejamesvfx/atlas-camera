@@ -1776,6 +1776,22 @@ function atlasRenderSceneToBase64(renderer, scene, camera, width, height, option
   const renderTarget = options.renderTarget
     || new THREE.WebGLRenderTarget(width, height, { samples: 4 });
   const ownsRenderTarget = !options.renderTarget;
+  // `srgb` matters for anything a HUMAN or an image model will look at, and it
+  // was never set. renderer.outputColorSpace = SRGBColorSpace only applies when
+  // drawing to the default framebuffer; a WebGLRenderTarget's texture defaults
+  // to linear, so every OFFSCREEN render came back linear while the visible
+  // canvas was sRGB — the same class of bug as the missing `samples` above, and
+  // it looks like an underexposed render rather than a colour-space error.
+  // Measured on baked path frames: mean 26-53 of 255 where sRGB would put the
+  // same mid-grey near 123.
+  //
+  // Opt-in, never blanket: this helper also renders the depth, normal and mask
+  // passes, and those are DATA. Encoding them would shift every value and move
+  // a 0.5 mask threshold, exactly what the NoColorSpace tagging elsewhere in
+  // this file exists to prevent.
+  if (options.srgb && renderTarget.texture) {
+    renderTarget.texture.colorSpace = THREE.SRGBColorSpace;
+  }
   const hasOverrideMaterial = Object.prototype.hasOwnProperty.call(options, "overrideMaterial");
   const prevOverrideMaterial = scene.overrideMaterial;
 
@@ -6454,9 +6470,14 @@ function buildNodeUI(node, containerEl) {
   // curves camera_path.py understands — this selector adds no new easing
   // functions, so the JS/Python mirror pin is untouched.
   let moveEasing = "ease_in_out";
-  function applyMovePreset(kind) {
+  // `preview` is false only for the auto_preset drive-through: the preview plays
+  // the move through the viewport camera and a bake starting in the same tick
+  // fights it for that camera, so the automated path authors and bakes without
+  // previewing. Returns whether a path was actually authored — the caller needs
+  // to know, because "no solve yet" must not be recorded as a completed bake.
+  function applyMovePreset(kind, { preview = true } = {}) {
     const basis = recoveredMoveBasis();
-    if (!basis) return; // no solve yet — nothing to move around
+    if (!basis) return false; // no solve yet — nothing to move around
     const { position: E, quaternion, pivot: P } = basis;
     const v3o = (v) => ({ x: v.x, y: v.y, z: v.z });
     // The RECOVERED up, not world up. GeoCalib solves include roll — measured
@@ -6558,7 +6579,54 @@ function buildNodeUI(node, containerEl) {
     }
     rebuildPathVisualization();
     persistPathToClientData();
-    playBtn.onclick(); // auto-preview once; snaps back to the recovered view on done
+    if (preview) playBtn.onclick(); // auto-preview once; snaps back on done
+    return true;
+  }
+
+  /**
+   * auto_preset / auto_frames: author a move and bake it without a click.
+   *
+   * The bake itself cannot leave the browser — bakeProxyPathFrames renders every
+   * frame through Three.js — so this removes the CLICK, not the browser. A
+   * headless queue with auto_preset set produces no frames, which is why the
+   * widget tooltip says so rather than leaving it to be discovered.
+   *
+   * The fingerprint is the whole trick. Baking ends in app.queuePrompt, which
+   * re-executes this node, which lands back here — so without a record of what
+   * was already baked this would bake forever. Fingerprinting the solve, preset,
+   * frame count and render size means a re-queue is a no-op while any real
+   * change (new plate, different preset) bakes again.
+   */
+  function maybeAutoBake() {
+    const presetW = node.widgets?.find((w) => w.name === "auto_preset");
+    const kind = presetW?.value;
+    if (!kind || kind === "off") return;
+    const basis = recoveredMoveBasis();
+    if (!basis) return; // solve not in yet; a later refresh will call back
+    if (bakeInProgress) return;
+
+    const framesW = node.widgets?.find((w) => w.name === "auto_frames");
+    const frames = Math.max(0, Math.floor(Number(framesW?.value) || 0));
+    const at = (v) => [v.x, v.y, v.z].map((n) => n.toFixed(3)).join(",");
+    const fingerprint = [at(basis.position), at(basis.pivot), kind, frames, W, H].join("|");
+    if (node._atlasAutoBaked === fingerprint) return;
+
+    if (!applyMovePreset(kind, { preview: false })) return;
+    if (frames > 0) {
+      // AFTER the preset: applyMovePreset resets pathFrameCount to its own
+      // default, so setting the count first would be silently discarded.
+      pathFrameCount = frames;
+      const last = pathKeyframes[pathKeyframes.length - 1];
+      if (last) last.frame_index = frames - 1;
+      rebuildPathVisualization();
+      persistPathToClientData();
+    }
+    node._atlasAutoBaked = fingerprint;
+    bakeProxyPathFrames(
+      Array.from({ length: Math.max(0, pathFrameCount) }, (_, i) => i),
+      bakeBtn,
+      "Auto-baking " + kind + "...",
+    );
   }
 
   // APPEND-ONLY: the kind strings serialize into client_data camera_path (and
@@ -6755,8 +6823,11 @@ function buildNodeUI(node, containerEl) {
         // lossless PNG is pure waste — JPEG is ~5–10× smaller and stops the
         // whole clip's base64 from OOM-ing the JS heap when it's all stringified
         // into one client_data blob (the reported bake OOM at 1280×100 frames).
+        // srgb: these frames are a picture, not data — they go to a video
+        // encoder and from there to an image model trained on sRGB. Left
+        // linear they arrive roughly a stop and a half dark.
         frames.push(atlasRenderSceneToBase64(renderer, scene, camera, W, H,
-          { renderTarget: outputRt, mime: "image/jpeg", quality: 0.9 }));
+          { renderTarget: outputRt, mime: "image/jpeg", quality: 0.9, srgb: true }));
         bakedFrameIndices.push(frame);
       }
       const widget = node.widgets?.find((w) => w.name === "client_data");
@@ -7300,12 +7371,15 @@ function buildNodeUI(node, containerEl) {
         const wasOn = projectionOn;
         let projected = null, geometry = null;
         try {
+          // srgb on both: these are review stills, not passes. Without it they
+          // are the same stop-and-a-half dark as the baked path frames were,
+          // which reads as a lighting problem rather than an encoding one.
           if (projMaterial) {
             applyProjection(true);
-            projected = atlasRenderSceneToBase64(renderer, scene, snapCam, sw, sh);
+            projected = atlasRenderSceneToBase64(renderer, scene, snapCam, sw, sh, { srgb: true });
           }
           applyProjection(false);
-          geometry = atlasRenderSceneToBase64(renderer, scene, snapCam, sw, sh);
+          geometry = atlasRenderSceneToBase64(renderer, scene, snapCam, sw, sh, { srgb: true });
         } finally {
           applyProjection(wasOn && !!projMaterial);
           for (const c of hidden) c.visible = true;
@@ -7797,6 +7871,10 @@ function buildNodeUI(node, containerEl) {
   return {
     mountControls,
     captureSnapshots: captureViewportSnapshots,
+    // Exposed so the node's executed hook can drive auto_preset. Kept out of
+    // the toolbar deliberately: there is no button for this, because a human
+    // with the viewport open already has ⏺ Bake Full Path.
+    maybeAutoBake,
     applyCamera(data) {
       applyRecoveredView(data);
     },
@@ -8367,6 +8445,12 @@ app.registerExtension({
       // restore below, and single-flight so the two "executed" hooks firing
       // for one run produce one pair of files.
       if (opts.snapshot) ui?.captureSnapshots?.("executed");
+      // auto_preset drive-through. Only after a REAL execution, and only after
+      // the camera above has been applied: the presets are computed from the
+      // recovered eye, so authoring before the solve lands would move a camera
+      // that is still at its default. The fingerprint inside makes the bake's
+      // own re-queue a no-op rather than a loop.
+      if (opts.snapshot) ui?.maybeAutoBake?.();
     };
     node.onExecuted = () => refreshFromSolve({ snapshot: true });
 
