@@ -20,6 +20,7 @@ enforced here:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -193,9 +194,15 @@ def launch_session(body: dict, *, spawn=_default_spawn) -> dict:
         "frames": int(body["frames"]),
         "fps": int(body["fps"]),
     }
+    # Recorded now, while the package is known to exist and to be what
+    # Director is about to open on. Task 6 (AtlasDirectorTake) recomputes
+    # this digest at read time and refuses the take if it no longer
+    # matches -- "the package changed since Director opened it".
+    package_digest = hashlib.sha256(package.read_bytes()).hexdigest()
     session = {
         "session_id": session_id,
         "package": str(package),
+        "package_digest": package_digest,
         "timebase": timebase,
         "slate": None,
         "take_dir": None,

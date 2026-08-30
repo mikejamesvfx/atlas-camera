@@ -458,6 +458,15 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasLoadDynamicPlate"] = "Atlas Load Dynamic Plate 
 NODE_CLASS_MAPPINGS["AtlasPathFrameIndex"] = AtlasPathFrameIndex
 NODE_DISPLAY_NAME_MAPPINGS["AtlasPathFrameIndex"] = "Atlas Path Frame Index 🔢"
 
+# comfy-director-launch Task 6: the take a director shot, read back as graph
+# inputs (rays/rays_preview/samples), a pure read of director_session.SESSIONS.
+# The .atlas package Director was launched onto is written upstream by
+# AtlasExportScenePackage, never by this node.
+from atlas_camera.comfy.nodes_director import AtlasDirectorTake
+
+NODE_CLASS_MAPPINGS["AtlasDirectorTake"] = AtlasDirectorTake
+NODE_DISPLAY_NAME_MAPPINGS["AtlasDirectorTake"] = "Atlas Director Take 🎬"
+
 
 from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume
 from atlas_camera.comfy.nodes_agent import AtlasAgentHandoff
@@ -647,6 +656,7 @@ _MENU_FOLDERS = {
         "AtlasExportCameraPathUSD", "AtlasExportReliefMesh", "AtlasExportPlateEXR",
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
         "AtlasExportScenePackage", "AtlasExportPlateHandoff",
+        "AtlasDirectorTake",
     ),
     "Atlas/11 · Evidence Plate": (
         "AtlasOpenRealPlate", "AtlasReadLockedPlatePlan", "AtlasRecordPlateAttempt",
