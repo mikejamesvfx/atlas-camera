@@ -12,11 +12,16 @@ anywhere in this file -- samples arrive in Atlas canonical space
 
 The graph -- not this node -- writes the ``.atlas`` session package.
 ``AtlasExportScenePackage`` writes it; its ``scene_id`` must equal this
-node's ``session_id``, and its ``output_dir`` must be the configured
-``ATLAS_DIRECTOR_ROOT``. Nothing here enforces that mapping in code:
-``director_session.launch_session`` already refuses to spawn Director when
-the package is absent, naming the fix, so a mismatch fails loudly at launch
--- before anyone shoots a take.
+node's ``session_id``, and its ``output_dir`` must be the ``scenes``
+subdirectory of the configured ``ATLAS_DIRECTOR_ROOT``, given as an
+absolute path (the export node's own default, ``atlas_scenes``, is
+relative to ComfyUI's working directory and will not do --
+``AtlasExportScenePackage`` writes to ``<output_dir>/<name>.atlas``
+directly, while ``launch_session`` looks for
+``<root>/scenes/<name>.atlas``). Nothing here enforces that mapping in
+code: ``director_session.launch_session`` already refuses to spawn
+Director when the package is absent, naming the fix, so a mismatch fails
+loudly at launch -- before anyone shoots a take.
 """
 from __future__ import annotations
 
@@ -116,7 +121,12 @@ class AtlasDirectorTake:
                                "playblast directory is what decides frame "
                                "count (see `frame_files`) -- it exists so a "
                                "downstream LTX node reads a value that "
-                               "matches what was actually launched with.",
+                               "matches what was actually launched with. "
+                               "`read()` separately refuses, naming both "
+                               "numbers, when playblast.json's own "
+                               "frame_count disagrees with the number of "
+                               "frame files actually on disk -- see "
+                               "`_aligned_sample_range`.",
                 }),
                 "fps": ("INT", {"default": 24, "min": 1, "max": 120}),
                 "colour_lane": (COLOUR_LANES, {
@@ -171,8 +181,12 @@ class AtlasDirectorTake:
             name = slate or package_path
             raise StaleTakeError(
                 f"the playblast for {name} no longer matches the session "
-                "package it was launched from. Re-push the take from the "
-                "deck to re-render it."
+                "package it was launched from. Re-pushing the same take will "
+                "not fix this -- the recorded digest was taken when Director "
+                "was launched, so re-pushing re-delivers the same slate "
+                "against the same stale digest. Relaunch Director from this "
+                "node (the package changed since it was opened, for example "
+                "from a Save in Director)."
             )
         return True
 
@@ -235,6 +249,11 @@ class AtlasDirectorTake:
 
     # -- frames -----------------------------------------------------------
 
+    #: The marks sidecar `capturePlayblast` writes beside the frames
+    #: (Finding 2). Lives inside `playblast/` alongside the frame files, so
+    #: `frame_files` must exclude it by name -- it is not a rendered frame.
+    PLAYBLAST_MARKS_NAME = "playblast.json"
+
     def frame_files(self, take_dir: str) -> list[Path]:
         """The frames that exist, in order.
 
@@ -242,7 +261,8 @@ class AtlasDirectorTake:
         in/out points decide what was rendered, and the manifest counts the
         whole take. Reading the manifest would claim frames nobody rendered.
 
-        This sorts lexically and accepts any file under `playblast/`, unlike
+        This sorts lexically and accepts any file under `playblast/` other
+        than `playblast.json` (the marks sidecar, not a frame), unlike
         `atlas_scene.operations.playblast_ops.frame_files`, which enforces
         the `frame_%06d.png` naming. Harmless only because the producer on
         the other side (`playblast_ops.copy_exr_sequence`) always zero-pads
@@ -268,10 +288,141 @@ class AtlasDirectorTake:
             raise ValueError(
                 f"no playblast/ directory found under {take_dir!r}."
             )
-        return sorted(p for p in playblast.iterdir() if p.is_file())
+        return sorted(
+            p for p in playblast.iterdir()
+            if p.is_file() and p.name != self.PLAYBLAST_MARKS_NAME
+        )
 
     def _load_samples(self, take_dir: str) -> list[dict]:
         return json.loads((Path(take_dir) / "samples.json").read_text())
+
+    # -- marked-range alignment (Finding 2) --------------------------------
+
+    def _load_playblast_marks(self, take_dir: str) -> dict:
+        """Read `<take_dir>/playblast/playblast.json`, the marked-range
+        record the Director renderer writes beside the frames it staged.
+
+        Required, never optional, and never a silent fallback to "assume
+        the head": `capturePlayblast` stages a marked range starting at
+        frame file index 0 regardless of where in the take those frames
+        actually came from (`frame_000000.png` upward either way), so
+        without this sidecar there is no way to tell "the whole take" from
+        "marked in at frame 100" -- and guessing wrong produces a ray map
+        that describes the wrong frames with no error at all (the exact
+        failure this file exists to remove). Nothing shipped before this
+        sidecar existed, so its absence means the playblast predates the
+        marks record, not "this is an old-style unmarked take".
+        """
+        marks_path = Path(take_dir) / "playblast" / self.PLAYBLAST_MARKS_NAME
+        if not marks_path.exists():
+            raise StaleTakeError(
+                f"no {self.PLAYBLAST_MARKS_NAME} found under "
+                f"{take_dir!r}/playblast -- this playblast predates the "
+                "marks record and cannot be safely aligned to samples.json "
+                "(a marked range's pixels do not start at take frame 0, and "
+                "there is no way to tell without this file). Re-render this "
+                "take."
+            )
+        return json.loads(marks_path.read_text())
+
+    def _aligned_sample_range(self, take_dir: str,
+                               frame_paths: list[Path]) -> tuple[int, int]:
+        """The `[start, stop)` slice into `samples.json` the rendered frames cover.
+
+        `capturePlayblast` stages the deck's marked range from frame-file
+        index 0, so `playblast/frame_000000.png` upward exists regardless
+        of where in the take those frames came from -- `samples[:rendered]`
+        alone would describe take frames `0..rendered-1` even when the
+        pixels are actually frames `in..out` of a marked range (Finding 2).
+
+        Reads `playblast.json`'s `marked` / `in` / `out` / `frame_count`.
+        `marked=true` means the pixels are take frames `in..out` inclusive,
+        so the sample slice is `[in, out+1)`; `marked=false` means the
+        frames are the head of the take, so `[0, frame_count)`. Either way
+        this is checked against BOTH the sidecar's own `frame_count` and
+        the number of frame files actually on disk -- disagreement in
+        either pair means the sidecar and the directory describe different
+        renders, refused rather than trusted. This is also the frame-count
+        check `read()` needs (Finding 3): comparing the rendered count to
+        the `frames` widget instead would be a false alarm on every
+        ordinary marked take shorter than the full clip, so the widget
+        stays checked only against the session's recorded timebase (see
+        `_ensure_timebase_matches`), and disk/sidecar agreement is checked
+        here.
+        """
+        marks = self._load_playblast_marks(take_dir)
+        on_disk = len(frame_paths)
+        frame_count = marks.get("frame_count")
+        marked = bool(marks.get("marked"))
+        mark_in = marks.get("in")
+        mark_out = marks.get("out")
+
+        if frame_count != on_disk:
+            raise StaleTakeError(
+                f"playblast.json under {take_dir!r} records frame_count="
+                f"{frame_count!r}, but {on_disk} frame file(s) actually "
+                "exist under playblast/ -- the sidecar and the directory "
+                "describe different renders. Re-render this take."
+            )
+
+        if marked:
+            if mark_in is None or mark_out is None:
+                raise StaleTakeError(
+                    f"playblast.json under {take_dir!r} says marked=true "
+                    f"but in={mark_in!r}/out={mark_out!r} -- a marked range "
+                    "must record both. Re-render this take."
+                )
+            start, stop = int(mark_in), int(mark_out) + 1
+            range_desc = f"marked in={mark_in} out={mark_out}"
+        else:
+            start, stop = 0, int(frame_count)
+            range_desc = "unmarked head"
+
+        if stop - start != on_disk:
+            raise StaleTakeError(
+                f"playblast.json under {take_dir!r} describes a "
+                f"{range_desc} range of {stop - start} frame(s), but "
+                f"{on_disk} frame file(s) actually exist under playblast/ "
+                "-- the sidecar and the directory describe different "
+                "renders. Re-render this take."
+            )
+        return start, stop
+
+    def _ensure_frame_dimensions_match(self, take_dir: str,
+                                        frame_paths: list[Path], *,
+                                        width: int, height: int) -> None:
+        """Refuse when the playblast's actual pixel size doesn't match the
+        node's width/height widgets (Finding 3).
+
+        `nodes_director.py` builds the ray map at the node's width/height
+        widgets. The playblast frames, however, are whatever size the
+        Director window's canvas happened to be when they were rendered --
+        nothing carries this node's timebase into that renderer, so the two
+        can disagree freely. `_ensure_timebase_matches` cannot catch it: it
+        compares the node's widgets against the session body those same
+        widgets produced, which is comparing a value to itself. Forcing the
+        renderer to a target resolution is out of scope (deferred); this
+        only verifies after the fact, against the first rendered frame's
+        actual pixels, and refuses loudly rather than silently building a
+        ray map that does not correspond to the shipped frames.
+        """
+        if not frame_paths:
+            return
+        PILImage = _require_pil()
+        first = frame_paths[0]
+        with PILImage.open(first) as image:
+            actual_width, actual_height = image.size
+        expected_width, expected_height = int(width), int(height)
+        if (actual_width, actual_height) != (expected_width, expected_height):
+            raise StaleTakeError(
+                f"playblast frame {first.name!r} under {take_dir!r} is "
+                f"{actual_width}x{actual_height} pixels, but this node's "
+                f"width/height widgets are "
+                f"{expected_width}x{expected_height}. The ray map is built "
+                "at the widget size, so a mismatched playblast would not "
+                "correspond to it -- match the width/height widgets to the "
+                "actual rendered size, or re-render the take at that size."
+            )
 
     def read_rays(self, take_dir: str, width: int, height: int):
         """Ray origins/directions per rendered frame -- `ray_map`, untouched.
@@ -279,10 +430,16 @@ class AtlasDirectorTake:
         NO coordinate conversion happens here, or anywhere downstream in
         this node: samples arrive in Atlas canonical space already, and
         `ray_map` encodes them exactly as given.
+
+        Aligned to the rendered frames via `_aligned_sample_range`, NOT a
+        plain `samples[:rendered]` head-slice: a playblast is frequently a
+        marked sub-range (`in..out`), and the frame files always start at
+        index 0 regardless of where in the take they came from (Finding 2).
         """
-        samples = self._load_samples(take_dir)
-        rendered = len(self.frame_files(take_dir))
-        return ray_map(samples[:rendered], width, height)
+        frame_paths = self.frame_files(take_dir)
+        start, stop = self._aligned_sample_range(take_dir, frame_paths)
+        samples = self._load_samples(take_dir)[start:stop]
+        return ray_map(samples, width, height)
 
     def embed_rays(self, rays):
         """Full-precision Plücker embedding: `(o x d, d)`, 6 channels."""
@@ -430,8 +587,12 @@ class AtlasDirectorTake:
             frames=frames, fps=fps,
         )
 
-        rendered = len(self.frame_files(take_dir))
-        samples = self._load_samples(take_dir)[:rendered]
+        frame_paths = self.frame_files(take_dir)
+        self._ensure_frame_dimensions_match(
+            take_dir, frame_paths, width=width, height=height,
+        )
+        start, stop = self._aligned_sample_range(take_dir, frame_paths)
+        samples = self._load_samples(take_dir)[start:stop]
 
         playblast = self.load_playblast(take_dir, colour_lane)
         rays = ray_map(samples, width, height)

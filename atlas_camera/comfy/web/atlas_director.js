@@ -95,7 +95,8 @@ app.registerExtension({
             data?.error ||
             "no session package found — export it first with " +
               "AtlasExportScenePackage (scene_id must match session_id, " +
-              "output_dir must be the configured Director root)";
+              "output_dir must be the 'scenes' subdirectory of the " +
+              "configured Director root, given as an absolute path)";
           console.error("[AtlasCamera.DirectorLaunch] 404:", msg);
           showStatus(`⚠ ${msg}`);
           return;

@@ -6,10 +6,30 @@ import pytest
 
 from atlas_camera.comfy.director_session import SESSIONS
 from atlas_camera.comfy.nodes_director import AtlasDirectorTake, StaleTakeError
+from atlas_camera.comfy.plucker import ray_map
+
+
+def _write_marks(directory: Path, *, frame_count: int, marked: bool = False,
+                  mark_in: "int | None" = None, mark_out: "int | None" = None) -> None:
+    """`<take_dir>/playblast/playblast.json` -- same schema `capturePlayblast`
+    writes (Finding 2): `in`/`out` always present, null when unmarked.
+    """
+    marks = {
+        "frame_count": frame_count,
+        "in": mark_in if marked else None,
+        "out": mark_out if marked else None,
+        "marked": marked,
+    }
+    (directory / "playblast" / "playblast.json").write_text(
+        json.dumps(marks, sort_keys=True, separators=(",", ":"))
+    )
 
 
 def _write_take(directory: Path, *, n_frames: int, n_samples: int,
-                 frame_count: int = 999, pretty: bool = False) -> None:
+                 frame_count: int = 999, pretty: bool = False,
+                 write_marks: bool = True, marked: bool = False,
+                 mark_in: "int | None" = None,
+                 mark_out: "int | None" = None) -> None:
     (directory / "playblast").mkdir(parents=True)
     for index in range(n_frames):
         (directory / "playblast" / f"frame.{index:04d}.png").write_bytes(b"")
@@ -23,6 +43,12 @@ def _write_take(directory: Path, *, n_frames: int, n_samples: int,
     manifest = {"schemaVersion": 1, "slate": "sc/sh/a_take01", "frameCount": frame_count}
     text = json.dumps(manifest, indent=2) if pretty else json.dumps(manifest)
     (directory / "manifest.json").write_text(text)
+    if write_marks:
+        # Default: unmarked, frame_count equal to what was actually
+        # rendered -- matches every existing fixture's real behaviour
+        # (frames staged from index 0 of the take).
+        _write_marks(directory, frame_count=n_frames, marked=marked,
+                     mark_in=mark_in, mark_out=mark_out)
 
 
 @pytest.fixture()
@@ -130,13 +156,21 @@ def test_return_types_and_names_pin_the_atlas_rays_socket():
 def test_a_stale_playblast_refuses_and_names_the_fix(package_path):
     # Addendum Ruling P8: freshness compares the PACKAGE digest recorded at
     # launch, never a samples digest -- the node has no scene document.
+    #
+    # Finding 5: re-pushing the same take cannot fix this -- the recorded
+    # digest was taken when Director was launched, so re-pushing the same
+    # slate re-delivers it against the same stale digest. Only relaunching
+    # Director re-records the digest, so that is the advice the message
+    # must give, and it must say why re-pushing will not work.
     node = AtlasDirectorTake()
     with pytest.raises(StaleTakeError) as raised:
         node.check_fresh(str(package_path), recorded_digest="not-the-digest",
                           slate="sc/sh/a_take01")
     message = str(raised.value)
     assert "sc/sh/a_take01" in message
-    assert "re-push" in message.lower()
+    assert "relaunch director" in message.lower()
+    assert "re-pushing" in message.lower()
+    assert "will not fix" in message.lower() or "will not" in message.lower()
 
 
 def test_a_matching_digest_passes(package_path):
@@ -348,6 +382,7 @@ def real_playblast_take(tmp_path):
     (directory / "manifest.json").write_text(json.dumps({
         "schemaVersion": 1, "slate": "sc/sh/a_take01", "frameCount": 999,
     }))
+    _write_marks(directory, frame_count=4, marked=False)
     return directory
 
 
@@ -435,3 +470,123 @@ def test_read_refuses_when_the_nodes_timebase_does_not_match_the_session(
         node.read(session_id="shot_012", width=16, height=9, frames="121",
                    fps=24, colour_lane="png")
     SESSIONS.clear()
+
+
+# --- Finding 3: playblast pixel size / frame count vs the node's widgets ----
+
+
+def test_matching_dimensions_pass(real_playblast_take, package_path, monkeypatch):
+    import atlas_camera.plate.oiio_io as oiio_io
+    monkeypatch.setattr(oiio_io, "oiio_available", lambda: False)
+
+    SESSIONS.clear()
+    SESSIONS["shot_012"] = {
+        "session_id": "shot_012",
+        "package": str(package_path),
+        "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
+        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
+        "slate": "sc/sh/a_take01",
+        "take_dir": str(real_playblast_take),
+    }
+    node = AtlasDirectorTake()
+    # real_playblast_take renders real 16x9 PNGs -- must not raise.
+    node.read(session_id="shot_012", width=16, height=9, frames="121",
+               fps=24, colour_lane="png")
+    SESSIONS.clear()
+
+
+def test_a_mismatched_frame_width_refuses_and_names_both_sizes(
+        real_playblast_take, package_path, monkeypatch):
+    import atlas_camera.plate.oiio_io as oiio_io
+    monkeypatch.setattr(oiio_io, "oiio_available", lambda: False)
+
+    SESSIONS.clear()
+    SESSIONS["shot_012"] = {
+        "session_id": "shot_012",
+        "package": str(package_path),
+        "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
+        # The node's own widgets must match the session's recorded timebase
+        # (`_ensure_timebase_matches`), so the timebase is set to the SAME
+        # (wrong) width the widgets below use -- what's under test here is
+        # that the *rendered pixels* (still 16x9) disagree with widget/
+        # timebase width (32), not a timebase mismatch.
+        "timebase": {"width": 32, "height": 9, "frames": 121, "fps": 24},
+        "slate": "sc/sh/a_take01",
+        "take_dir": str(real_playblast_take),
+    }
+    node = AtlasDirectorTake()
+    with pytest.raises(StaleTakeError) as raised:
+        node.read(session_id="shot_012", width=32, height=9, frames="121",
+                   fps=24, colour_lane="png")
+    message = str(raised.value)
+    assert "16x9" in message  # the frame's real size
+    assert "32x9" in message  # the widget values
+    SESSIONS.clear()
+
+
+# --- Finding 2: aligning samples to a marked (not head) rendered range -----
+
+
+@pytest.fixture()
+def marked_range_take(tmp_path):
+    """8 samples on the full take; the rendered playblast is a MARKED
+    sub-range (frames 3..6), not the head. `capturePlayblast` always stages
+    rendered frames starting at file index 0 regardless of where in the
+    take they came from, so a head-slice (`samples[:4]`) would silently
+    describe take frames 0..3 instead of the actual 3..6 -- exactly the
+    defect Finding 2 exists to catch.
+    """
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    _write_take(directory, n_frames=4, n_samples=8,
+                marked=True, mark_in=3, mark_out=6)
+    return directory
+
+
+def test_marked_range_aligns_to_the_marked_samples_not_the_head(marked_range_take):
+    node = AtlasDirectorTake()
+    frame_paths = node.frame_files(str(marked_range_take))
+    start, stop = node._aligned_sample_range(str(marked_range_take), frame_paths)
+    assert (start, stop) == (3, 7)
+
+    all_samples = json.loads((marked_range_take / "samples.json").read_text())
+    rays = node.read_rays(str(marked_range_take), width=16, height=9)
+
+    correct = ray_map(all_samples[3:7], 16, 9)
+    head_slice_wrong = ray_map(all_samples[0:4], 16, 9)
+
+    np.testing.assert_allclose(rays, correct)
+    # The point of this test: a regression back to a plain head-slice must
+    # fail it, because the two ranges give different rays here.
+    assert not np.allclose(rays, head_slice_wrong)
+
+
+def test_unmarked_range_still_reads_the_head(take_dir):
+    # `take_dir` is unmarked (playblast.json written with marked=False by
+    # `_write_take`'s default), 4 rendered frames of 8 samples -- the head.
+    node = AtlasDirectorTake()
+    frame_paths = node.frame_files(str(take_dir))
+    start, stop = node._aligned_sample_range(str(take_dir), frame_paths)
+    assert (start, stop) == (0, 4)
+
+
+def test_sidecar_disagreeing_with_disk_refuses_and_names_both_counts(tmp_path):
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    # 4 real frames on disk, but the sidecar claims 6.
+    _write_take(directory, n_frames=4, n_samples=8, write_marks=False)
+    _write_marks(directory, frame_count=6, marked=False)
+    node = AtlasDirectorTake()
+    frame_paths = node.frame_files(str(directory))
+    with pytest.raises(StaleTakeError) as raised:
+        node._aligned_sample_range(str(directory), frame_paths)
+    message = str(raised.value)
+    assert "6" in message
+    assert "4" in message
+
+
+def test_missing_sidecar_refuses(tmp_path):
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    _write_take(directory, n_frames=4, n_samples=8, write_marks=False)
+    node = AtlasDirectorTake()
+    frame_paths = node.frame_files(str(directory))
+    with pytest.raises(StaleTakeError, match="predates the marks record"):
+        node._aligned_sample_range(str(directory), frame_paths)

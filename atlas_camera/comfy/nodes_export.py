@@ -78,7 +78,18 @@ class AtlasExportScenePackage:
         return {
             "required": {
                 "solve": ("ATLAS_SOLVE",),
-                "output_dir": ("STRING", {"default": "atlas_scenes"}),
+                "output_dir": ("STRING", {
+                    "default": "atlas_scenes",
+                    "tooltip": "Writes to <output_dir>/<scene_id>.atlas "
+                               "directly. To launch Atlas Director on this "
+                               "package, set this to the 'scenes' "
+                               "subdirectory of the configured Director "
+                               "root (ATLAS_DIRECTOR_ROOT), given as an "
+                               "absolute path -- launch_session looks for "
+                               "<root>/scenes/<scene_id>.atlas, so the "
+                               "default 'atlas_scenes' here (relative to "
+                               "ComfyUI's working directory) will not do.",
+                }),
                 "scene_id": ("STRING", {"default": "street_001"}),
             },
             "optional": {
