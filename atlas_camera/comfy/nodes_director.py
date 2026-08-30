@@ -1,12 +1,14 @@
 """AtlasDirectorTake -- the take a director shot, as graph inputs.
 
 Launching Director happens on a widget button, outside execution, so a
-queued prompt never waits on a human (spec 3.4). Execution here is a pure
-READ of what the session already holds: it never mutates ``SESSIONS``, the
-take directory, or any scene document, and it performs no coordinate
-conversion -- samples arrive in Atlas canonical space (right-handed, Y-up,
-metres, camera down -Z) and are handed to ``plucker.ray_map`` /
-``plucker.plucker_embedding`` exactly as they are.
+queued prompt never waits on a human (spec 3.4). Execution here READS what
+the session already holds and never mutates ``SESSIONS`` or any scene
+document. It DOES write two things beside the take, both intended and
+described where they happen: `write_ray_exr` creates `<take_dir>/rays/` and
+records `manifest.json["rayChannels"]`. No coordinate conversion happens
+anywhere in this file -- samples arrive in Atlas canonical space
+(right-handed, Y-up, metres, camera down -Z) and are handed to
+``plucker.ray_map`` / ``plucker.plucker_embedding`` exactly as they are.
 
 The graph -- not this node -- writes the ``.atlas`` session package.
 ``AtlasExportScenePackage`` writes it; its ``scene_id`` must equal this
@@ -33,7 +35,9 @@ from atlas_camera.comfy.plucker import plucker_embedding, ray_map
 
 
 class StaleTakeError(RuntimeError):
-    """The session package changed since Director was launched onto it.
+    """The session package changed since Director was launched onto it,
+    or freshness cannot be checked at all because launch never recorded a
+    digest to check against.
 
     Always a hard refusal, never a warning that continues: a stale grey
     guide produces a plausible photoreal result built on the wrong world,
@@ -49,13 +53,18 @@ ALLOWED_FRAMES = ("121",)
 #: Whether `read()` loads the 8-bit playblast PNGs or the float colour lane
 #: (spec 3.9). "exr" reads floats as-is -- no divide-by-255, no colour
 #: convert; these are numbers a downstream model conditions on, not colour
-#: for a human to look at.
+#: for a human to look at. Whether a take actually HAS an exr lane is a
+#: property of the take directory, not of this widget -- see
+#: `load_playblast`, which refuses rather than silently substituting.
 COLOUR_LANES = ("png", "exr")
 
 #: Channel naming for the ray-map EXR sidecar, recorded into the take
 #: manifest. No consumer exists yet, so the manifest is what a future
 #: consumer checks its expectation against, instead of re-deriving it from
-#: pixel order.
+#: pixel order. Matches `ray_map`'s own channel order (origin, direction) --
+#: NOT `plucker_embedding`'s (moment, direction). `write_ray_exr` must only
+#: ever be called with a `ray_map`-shaped array, never an embedded one, or
+#: this naming lies.
 RAY_CHANNEL_NAMES = ["O.X", "O.Y", "O.Z", "D.X", "D.Y", "D.Z"]
 
 
@@ -102,14 +111,21 @@ class AtlasDirectorTake:
                                "a take is shot. One value until the real set "
                                "is confirmed against the model (spec open "
                                "question 7); refusing everything else is the "
-                               "correct failure direction.",
+                               "correct failure direction. Not used to slice "
+                               "this node's own outputs -- the rendered "
+                               "playblast directory is what decides frame "
+                               "count (see `frame_files`) -- it exists so a "
+                               "downstream LTX node reads a value that "
+                               "matches what was actually launched with.",
                 }),
                 "fps": ("INT", {"default": 24, "min": 1, "max": 120}),
                 "colour_lane": (COLOUR_LANES, {
                     "tooltip": "png (default): the 8-bit playblast frames. "
                                "exr: the float colour lane, when the take "
-                               "carries one -- read as data, no divide-by-255, "
-                               "no colour convert.",
+                               "actually carries one -- read as data, no "
+                               "divide-by-255, no colour convert. Refuses "
+                               "loudly on a mismatch rather than silently "
+                               "reading the wrong lane.",
                 }),
             },
         }
@@ -160,6 +176,28 @@ class AtlasDirectorTake:
             )
         return True
 
+    def _ensure_fresh(self, session_id: str, session: dict) -> None:
+        """Refuse, never silently skip, when there is nothing to check freshness against.
+
+        `package` / `package_digest` being absent is not "no session to
+        worry about" -- a take is already pushed (`_session` guaranteed
+        that) -- it is "this session was never launched through the path
+        that records a digest to check". Skipping the check in that case is
+        warn-and-continue wearing a guard's clothes; refuse instead, and
+        name what is missing.
+        """
+        package = session.get("package")
+        recorded_digest = session.get("package_digest")
+        if not package or not recorded_digest:
+            missing = "package" if not package else "package_digest"
+            raise StaleTakeError(
+                f"session {session_id!r} has a take pushed but no {missing} "
+                "recorded from launch, so freshness cannot be checked. "
+                "Re-launch Director from the graph (AtlasExportScenePackage "
+                "-> launch) so a digest is recorded to check against."
+            )
+        self.check_fresh(package, recorded_digest, session.get("slate") or "")
+
     # -- frames -----------------------------------------------------------
 
     def frame_files(self, take_dir: str) -> list[Path]:
@@ -168,9 +206,30 @@ class AtlasDirectorTake:
         NOT `manifest.frameCount`. A playblast is a marked range: the deck's
         in/out points decide what was rendered, and the manifest counts the
         whole take. Reading the manifest would claim frames nobody rendered.
+
+        Refuses, naming the cause, rather than raising a bare
+        `FileNotFoundError` when there is no `playblast/` directory at all --
+        which happens for real when a take was rendered to `playblast.mp4`
+        instead of a frame sequence (this node needs a sequence; it does not
+        decode video).
         """
         playblast = Path(take_dir) / "playblast"
+        if not playblast.is_dir():
+            mp4 = Path(take_dir) / "playblast.mp4"
+            if mp4.exists():
+                raise ValueError(
+                    f"{take_dir} was rendered as playblast.mp4 (a video "
+                    "file), not a frame sequence. AtlasDirectorTake needs a "
+                    "rendered image sequence under playblast/ -- re-render "
+                    "this take with a PNG or EXR sequence output."
+                )
+            raise ValueError(
+                f"no playblast/ directory found under {take_dir!r}."
+            )
         return sorted(p for p in playblast.iterdir() if p.is_file())
+
+    def _load_samples(self, take_dir: str) -> list[dict]:
+        return json.loads((Path(take_dir) / "samples.json").read_text())
 
     def read_rays(self, take_dir: str, width: int, height: int):
         """Ray origins/directions per rendered frame -- `ray_map`, untouched.
@@ -179,7 +238,7 @@ class AtlasDirectorTake:
         this node: samples arrive in Atlas canonical space already, and
         `ray_map` encodes them exactly as given.
         """
-        samples = json.loads((Path(take_dir) / "samples.json").read_text())
+        samples = self._load_samples(take_dir)
         rendered = len(self.frame_files(take_dir))
         return ray_map(samples[:rendered], width, height)
 
@@ -225,22 +284,61 @@ class AtlasDirectorTake:
         return torch.from_numpy(batch)
 
     def load_playblast(self, take_dir: str, colour_lane: str):
+        """Load the rendered frames, refusing rather than silently coercing
+        when `colour_lane` does not match what is actually on disk.
+
+        The upstream playblast operation
+        (`atlas_scene.operations.playblast_ops.copy_exr_sequence`) delivers
+        8-bit sRGB PNG today -- its own docstring says so -- there is no
+        real scene-linear EXR lane yet. Detecting the real extension and
+        refusing a mismatch keeps that honest instead of feeding PNG bytes
+        through the float/data path (or vice versa) and calling it EXR.
+        """
         frame_paths = self.frame_files(take_dir)
+        extensions = {path.suffix.lower() for path in frame_paths}
+        if len(extensions) != 1:
+            raise ValueError(
+                f"mixed frame formats in {take_dir}/playblast: "
+                f"{sorted(extensions)}. A take must render one format."
+            )
+        extension = next(iter(extensions))
+
         if colour_lane == "exr":
+            if extension != ".exr":
+                raise ValueError(
+                    "colour_lane='exr' was requested, but this take's "
+                    f"playblast frames are {extension} -- the upstream "
+                    "playblast lane (playblast_ops.copy_exr_sequence) "
+                    "delivers 8-bit sRGB PNG today, not scene-linear EXR; a "
+                    "real EXR lane does not exist yet. Use colour_lane="
+                    "'png'."
+                )
             return self._load_exr_frames(frame_paths)
+
+        if extension == ".exr":
+            raise ValueError(
+                "colour_lane='png' was requested, but this take's "
+                "playblast frames are EXR. Use colour_lane='exr'."
+            )
         return self._load_png_frames(frame_paths)
 
     # -- optional ray-map EXR sidecar (addendum Ruling P7) -----------------
 
-    def write_ray_exr(self, take_dir: str, embedded) -> str:
+    def write_ray_exr(self, take_dir: str, rays) -> str:
         """Write the ray map as a float32 EXR sequence beside the take.
 
-        `<take_dir>/rays/rays.####.exr`. `bit_depth="float"` is mandatory
-        and explicit: `write_exr` defaults to `bit_depth="half"`, whose
-        mantissa step near 1.0 (~0.056 degrees) already spends a third of
-        the whole Plücker fidelity budget, and is 16x coarser again at
-        moment magnitudes around 10. No colour conversion -- these are
-        numbers, not colour.
+        `<take_dir>/rays/rays.####.exr`. `rays` must be `ray_map`'s output
+        shape -- (origin, direction) -- to match `RAY_CHANNEL_NAMES`
+        ("O.*", "D.*"). Passing the Plücker EMBEDDING here (moment,
+        direction) would write moments under channel names that say
+        "origin", which is exactly the silent, plausible-looking error the
+        channel naming exists to prevent -- do not do that.
+
+        `bit_depth="float"` is mandatory and explicit: `write_exr` defaults
+        to `bit_depth="half"`, whose mantissa step near 1.0 (~0.056 degrees)
+        already spends a third of the whole Plücker fidelity budget, and is
+        16x coarser again at moment magnitudes around 10. No colour
+        conversion is passed -- these are numbers, not colour.
 
         Skipped, not failed, when OpenImageIO is unavailable: the sockets
         are the primary product, and OIIO is an optional dependency in this
@@ -253,7 +351,7 @@ class AtlasDirectorTake:
         np = _require_numpy()
         rays_dir = Path(take_dir) / "rays"
         rays_dir.mkdir(parents=True, exist_ok=True)
-        arr = np.asarray(embedded)
+        arr = np.asarray(rays)
         for index in range(arr.shape[0]):
             path = rays_dir / f"rays.{index:04d}.exr"
             write_exr(str(path), arr[index], bit_depth="float")
@@ -261,10 +359,22 @@ class AtlasDirectorTake:
         return str(rays_dir)
 
     def _record_channel_naming(self, take_dir: str) -> None:
+        """Add `rayChannels` to the take's manifest, preserving everything
+        else about it: the deck owns this file's format and key order, and
+        this node adds exactly one key rather than re-authoring the whole
+        document in its own style. Python's `json.loads` already preserves
+        key order as insertion order, so the only thing left to preserve is
+        whether the file was pretty-printed or compact -- detected from the
+        raw text rather than assumed.
+        """
         manifest_path = Path(take_dir) / "manifest.json"
-        manifest = json.loads(manifest_path.read_text())
+        raw = manifest_path.read_text()
+        manifest = json.loads(raw)
         manifest["rayChannels"] = list(RAY_CHANNEL_NAMES)
-        manifest_path.write_text(json.dumps(manifest, indent=2))
+        if "\n" in raw:
+            manifest_path.write_text(json.dumps(manifest, indent=2))
+        else:
+            manifest_path.write_text(json.dumps(manifest, separators=(",", ":")))
 
     # -- execution ----------------------------------------------------------
 
@@ -272,27 +382,19 @@ class AtlasDirectorTake:
               fps: int, colour_lane: str) -> dict[str, Any]:
         session = self._session(session_id)
         take_dir = session["take_dir"]
-        package = session.get("package")
-        recorded_digest = session.get("package_digest")
-        if package and recorded_digest:
-            self.check_fresh(package, recorded_digest, session.get("slate") or "")
-
-        # frames is one of ALLOWED_FRAMES already (a combo widget), int()
-        # only converts it for any caller that wants the numeric value.
-        int(frames)
+        self._ensure_fresh(session_id, session)
 
         rendered = len(self.frame_files(take_dir))
-        all_samples = json.loads((Path(take_dir) / "samples.json").read_text())
-        samples = all_samples[:rendered]
+        samples = self._load_samples(take_dir)[:rendered]
 
         playblast = self.load_playblast(take_dir, colour_lane)
-        rays = self.read_rays(take_dir, width, height)
+        rays = ray_map(samples, width, height)
         embedded = self.embed_rays(rays)
         preview_np = self.rays_to_preview(rays)
         torch = _require_torch()
         rays_preview = torch.from_numpy(preview_np)
 
-        rays_dir = self.write_ray_exr(take_dir, embedded)
+        rays_dir = self.write_ray_exr(take_dir, rays)
         note = (f"ray map EXR written to {rays_dir}" if rays_dir else
                 "OpenImageIO unavailable -- ray-map EXR sidecar skipped "
                 "(sockets are unaffected).")
