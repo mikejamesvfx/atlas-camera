@@ -17,6 +17,18 @@
  * an API-format export must never see a bogus extra input on the prompt.
  * This file failing to load must never block the pipeline -- widget lookups
  * are optional-chained and the fetch is wrapped in try/catch.
+ *
+ * Delivery address: once Director opens, it pushes the finished take back
+ * by calling `deliverTake` against `ATLAS_COMFY_URL` or, absent that,
+ * `http://127.0.0.1:8188`. This launch endpoint never tells Director where
+ * THIS ComfyUI actually is -- doing that would put a request-influenced
+ * value on Director's spawn command line, which director_session.py
+ * deliberately never does (see its module docstring). If this ComfyUI is
+ * not on the default host/port, set ATLAS_COMFY_URL in ComfyUI's own
+ * process environment before launching -- Director inherits it from the
+ * process that spawns it. Nothing below can detect or warn about this
+ * misconfiguration: a launch here can succeed (200) while the take still
+ * has nowhere to land.
  */
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
@@ -64,8 +76,15 @@ app.registerExtension({
             body: JSON.stringify({ session_id, width, height, frames, fps }),
           });
         } catch (error) {
+          // This is a failure to reach THIS ComfyUI's own launch endpoint,
+          // not the separate delivery leg Director runs later (see the
+          // file header's "Delivery address" note) -- but it's the natural
+          // place an operator looks first, so say both: check this
+          // ComfyUI's address, and remember that a Director launched
+          // against a non-default ComfyUI still needs ATLAS_COMFY_URL set
+          // in ComfyUI's own environment or its take has nowhere to land.
           console.error("[AtlasCamera.DirectorLaunch]", error);
-          showStatus("⚠ network error — see console");
+          showStatus("⚠ network error reaching ComfyUI — see console");
           return;
         }
 
@@ -84,20 +103,24 @@ app.registerExtension({
         }
 
         if (resp.status === 400) {
-          const msg = data?.error || "request refused";
+          // Every launch failure this server can raise for a bad request --
+          // a missing session package included -- lands here as 400, never
+          // 404 (launch_session raises ValueError/KeyError; the route maps
+          // both to 400; nothing in the launch path returns 404). Assemble
+          // the guidance once: keep the server's own message, which is what
+          // distinguishes a bad session id from a genuinely missing
+          // package, and append the one fact it doesn't say -- where the
+          // package has to come from and go.
+          const guidance =
+            "the session package must exist before launching — export it " +
+            "first with AtlasExportScenePackage. That node's scene_id must " +
+            "equal this node's session_id, and its output_dir must be the " +
+            "'scenes' subdirectory of the configured ATLAS_DIRECTOR_ROOT, " +
+            "given as an absolute path (the export node's default " +
+            "'atlas_scenes' is relative to ComfyUI's working directory and " +
+            "will not do).";
+          const msg = data?.error ? `${data.error} — ${guidance}` : guidance;
           console.error("[AtlasCamera.DirectorLaunch] 400:", msg);
-          showStatus(`⚠ ${msg}`);
-          return;
-        }
-
-        if (resp.status === 404) {
-          const msg =
-            data?.error ||
-            "no session package found — export it first with " +
-              "AtlasExportScenePackage (scene_id must match session_id, " +
-              "output_dir must be the 'scenes' subdirectory of the " +
-              "configured Director root, given as an absolute path)";
-          console.error("[AtlasCamera.DirectorLaunch] 404:", msg);
           showStatus(`⚠ ${msg}`);
           return;
         }

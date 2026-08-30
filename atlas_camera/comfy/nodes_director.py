@@ -91,6 +91,18 @@ class AtlasDirectorTake:
       preview widget; the moment is not represented here at all.
     * ``samples`` -- the raw per-frame camera samples for the rendered
       range, tagged ``ATLAS_CAMERA``.
+
+    Delivery address: after the "Launch Director" button opens Director on
+    a session, Director pushes the finished take back by calling
+    ``deliverTake`` against ``ATLAS_COMFY_URL``, falling back to
+    ``http://127.0.0.1:8188`` when that is unset. The launch request never
+    carries this ComfyUI's own address to Director -- doing so would put a
+    request-influenced value on Director's spawn command line, which
+    ``director_session.py`` deliberately never does. If this ComfyUI is not
+    on the default host/port, set ``ATLAS_COMFY_URL`` in ComfyUI's own
+    process environment before launching: Director inherits it from the
+    process that spawns it. A misconfigured address is silent -- the launch
+    itself can still succeed with nowhere for the take to land.
     """
 
     RETURN_TYPES = ("IMAGE", "ATLAS_RAYS", "IMAGE", "ATLAS_CAMERA")
