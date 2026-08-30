@@ -217,10 +217,28 @@ def director_extra_args() -> list[str]:
     as a single argv element -- but leaves backslashes alone. Non-POSIX mode
     leaves the quote characters themselves in each token, so they are
     stripped here once splitting is done.
+
+    A value containing whitespace MUST be quoted (`"C:/Program Files/My
+    App"`). An unquoted value with a space in it is refused, not repaired --
+    same posture as the rest of this module (a bad session id is refused,
+    not sanitised; a missing package is refused, not created). Left
+    unrefused, `shlex.split` would silently cut an unquoted
+    `C:\\Program Files\\My App` into three argv elements, and Electron would
+    be handed `C:\\Program` as its app directory: a wrong value that runs
+    instead of failing loudly.
     """
     configured = os.environ.get("ATLAS_DIRECTOR_ARGS", "").strip()
     if not configured:
         return []
+    if any(ch.isspace() for ch in configured) and not any(
+        ch in configured for ch in ("'", '"')
+    ):
+        raise ValueError(
+            f"ATLAS_DIRECTOR_ARGS contains whitespace but no quotes, so it "
+            f"is ambiguous whether it names one argument or several: "
+            f"{configured!r}. Quote it, e.g. "
+            f'ATLAS_DIRECTOR_ARGS="C:/Program Files/My App".'
+        )
     parts = shlex.split(configured, posix=False)
     stripped = []
     for part in parts:

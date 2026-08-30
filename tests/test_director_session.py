@@ -5,6 +5,7 @@ import pytest
 
 from atlas_camera.comfy.director_session import (
     SESSIONS,
+    director_extra_args,
     launch_session,
     record_delivery,
     session_package_path,
@@ -248,6 +249,31 @@ def test_launch_keeps_a_quoted_path_with_spaces_as_one_argv_element(
     )
     assert spawned["argv"][1] == "C:/Users/mike/atlas director"
     assert len(spawned["argv"]) == 4
+
+
+def test_an_unquoted_director_args_value_with_spaces_is_refused(monkeypatch):
+    # Refused, not repaired -- same posture as session id / root validation
+    # elsewhere in this module. An unquoted space is ambiguous: is it one
+    # path or two arguments? Silently picking "split on whitespace" hands
+    # Electron a truncated app directory and fails in a confusing way.
+    monkeypatch.setenv("ATLAS_DIRECTOR_ARGS", r"C:\Program Files\My App")
+    with pytest.raises(ValueError, match="ATLAS_DIRECTOR_ARGS"):
+        director_extra_args()
+
+
+def test_a_quoted_director_args_value_with_spaces_is_one_element(monkeypatch):
+    monkeypatch.setenv("ATLAS_DIRECTOR_ARGS", '"C:/Program Files/My App"')
+    assert director_extra_args() == ["C:/Program Files/My App"]
+
+
+def test_a_plain_director_args_path_with_no_spaces_is_unaffected(monkeypatch):
+    monkeypatch.setenv("ATLAS_DIRECTOR_ARGS", "C:/repo/atlas-director")
+    assert director_extra_args() == ["C:/repo/atlas-director"]
+
+
+def test_two_quoted_director_args_are_two_elements(monkeypatch):
+    monkeypatch.setenv("ATLAS_DIRECTOR_ARGS", '"C:/repo/atlas director" "--extra flag"')
+    assert director_extra_args() == ["C:/repo/atlas director", "--extra flag"]
 
 
 def test_a_request_cannot_supply_director_args(director_root, monkeypatch):
