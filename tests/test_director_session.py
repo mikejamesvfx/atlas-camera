@@ -26,6 +26,21 @@ def director_root(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture()
+def director_take_root(tmp_path, monkeypatch):
+    """Configure the SECOND root take_dir validates against.
+
+    Deliberately a different directory from `director_root` -- takes live
+    under Atlas Scene's workspace cache, not under ComfyUI's output
+    directory, and this fixture exists to prove the two are validated
+    independently.
+    """
+    root = tmp_path / "workspace_cache"
+    root.mkdir()
+    monkeypatch.setenv("ATLAS_DIRECTOR_TAKE_ROOT", str(root))
+    return root
+
+
 def _touch_package(root: Path, session_id: str, output_dir: str | None = None) -> Path:
     """Create the .atlas package launch_session now insists must pre-exist."""
     base = root / output_dir / "scenes" if output_dir else root / "scenes"
@@ -193,8 +208,8 @@ def test_a_request_output_dir_cannot_relocate_the_root(director_root, monkeypatc
 # --- record_delivery --------------------------------------------------------
 
 
-def test_a_delivery_is_idempotent(director_root):
-    take = director_root / "takes" / "sc" / "sh" / "a_take01"
+def test_a_delivery_is_idempotent(director_take_root):
+    take = director_take_root / "takes" / "sc" / "sh" / "a_take01"
     take.mkdir(parents=True)
     SESSIONS["shot_012"] = {"session_id": "shot_012"}
     first = record_delivery("shot_012", "sc/sh/a_take01", str(take))
@@ -203,9 +218,9 @@ def test_a_delivery_is_idempotent(director_root):
     assert SESSIONS["shot_012"]["slate"] == "sc/sh/a_take01"
 
 
-def test_a_second_delivery_wins(director_root):
-    take01 = director_root / "takes" / "sc" / "sh" / "a_take01"
-    take02 = director_root / "takes" / "sc" / "sh" / "a_take02"
+def test_a_second_delivery_wins(director_take_root):
+    take01 = director_take_root / "takes" / "sc" / "sh" / "a_take01"
+    take02 = director_take_root / "takes" / "sc" / "sh" / "a_take02"
     take01.mkdir(parents=True)
     take02.mkdir(parents=True)
     SESSIONS["shot_012"] = {"session_id": "shot_012"}
@@ -219,18 +234,49 @@ def test_a_delivery_to_an_unknown_session_is_refused():
         record_delivery("never_launched", "sc/sh/a_take01", "C:/p")
 
 
-def test_a_delivery_with_a_non_slug_slate_part_is_refused(director_root):
-    take = director_root / "takes" / "evil"
+def test_a_delivery_with_a_non_slug_slate_part_is_refused(director_take_root):
+    take = director_take_root / "takes" / "evil"
     take.mkdir(parents=True)
     SESSIONS["shot_012"] = {"session_id": "shot_012"}
     with pytest.raises(ValueError):
         record_delivery("shot_012", "../escape/a_take01", str(take))
 
 
-def test_a_delivery_with_a_take_dir_outside_the_root_is_refused(director_root):
+def test_a_delivery_with_a_take_dir_outside_the_root_is_refused(director_take_root):
     SESSIONS["shot_012"] = {"session_id": "shot_012"}
     with pytest.raises(ValueError):
         record_delivery("shot_012", "sc/sh/a_take01", "C:/somewhere/else")
+
+
+# --- CRITICAL: take_dir validates against ATLAS_DIRECTOR_TAKE_ROOT, a ------
+# --- SECOND root distinct from ATLAS_DIRECTOR_ROOT -------------------------
+
+
+def test_a_take_dir_under_the_workspace_cache_root_is_the_real_shape(
+        director_root, director_take_root):
+    """The realistic case this finding exists for: Atlas Scene's workspace
+    cache is validated only against the take root, never against
+    director_root -- a real push must be accepted even when the two roots
+    are unrelated directories (both fixtures happen to nest under the same
+    tmp_path here only because that is pytest's isolation mechanism)."""
+    take = director_take_root / "workspaces" / "abc123" / "package" / "takes" / "sc" / "sh" / "a_take01"
+    take.mkdir(parents=True)
+    SESSIONS["shot_012"] = {"session_id": "shot_012"}
+    session = record_delivery("shot_012", "sc/sh/a_take01", str(take))
+    assert session["take_dir"] == str(take)
+
+
+def test_a_take_dir_outside_the_take_root_is_refused(director_take_root):
+    SESSIONS["shot_012"] = {"session_id": "shot_012"}
+    with pytest.raises(ValueError):
+        record_delivery("shot_012", "sc/sh/a_take01", str(director_take_root.parent / "elsewhere"))
+
+
+def test_take_dir_validation_fails_closed_when_the_take_root_is_unset(monkeypatch):
+    monkeypatch.delenv("ATLAS_DIRECTOR_TAKE_ROOT", raising=False)
+    SESSIONS["shot_012"] = {"session_id": "shot_012"}
+    with pytest.raises(RuntimeError, match="ATLAS_DIRECTOR_TAKE_ROOT"):
+        record_delivery("shot_012", "sc/sh/a_take01", "C:/anywhere")
 
 
 # --- MINOR: SESSIONS is capped -----------------------------------------------

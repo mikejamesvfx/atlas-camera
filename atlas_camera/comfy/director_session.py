@@ -11,7 +11,12 @@ enforced here:
   * every path this module touches (the session package, a delivered take
     directory) must resolve inside a configured root, never a root taken
     from the request -- a request may only supply a *relative* subpath
-    under that root, and is refused (not repaired) if it tries to leave it
+    under that root, and is refused (not repaired) if it tries to leave it.
+    The session package and the delivered take directory live under TWO
+    different configured roots (`ATLAS_DIRECTOR_ROOT`, ComfyUI's output
+    directory, and `ATLAS_DIRECTOR_TAKE_ROOT`, Atlas Scene's workspace
+    cache) because Atlas Scene never writes takes under ComfyUI's output
+    directory -- see `director_take_root()`
   * the session id, and each part of a slate, is allowlisted before it
     touches a path, and refused, not sanitised, when it does not match
   * a package must already exist on disk before Director is launched onto
@@ -92,6 +97,38 @@ def director_root() -> Path:
             "run inside ComfyUI where folder_paths.get_output_directory() is "
             "available. It is deliberately not taken from the request."
         ) from exc
+
+
+def director_take_root() -> Path:
+    """The root every delivered `take_dir` must resolve inside.
+
+    Deliberately a SECOND root, distinct from `director_root()`. Atlas Scene
+    writes takes under its own workspace cache -- `%LOCALAPPDATA%\\...\\
+    workspaces\\<id>\\package\\takes\\...` (`atlas_scene/workspace.py`,
+    `atlas_scene/preferences.py`) -- never under ComfyUI's output directory,
+    so validating `take_dir` against `director_root()` refuses every real
+    push. Environment only, exactly the same posture as `director_root()`:
+    never taken from the request, and never derived from `director_root()`
+    either -- deriving it would silently narrow back to the same wrong root
+    the moment `ATLAS_DIRECTOR_ROOT` is set without also setting this one.
+
+    Fails closed when unset: no ComfyUI fallback exists for this root (there
+    is no ComfyUI-provided notion of "where Atlas Scene keeps its workspace
+    cache"), so an unset `ATLAS_DIRECTOR_TAKE_ROOT` refuses outright rather
+    than silently falling back to `director_root()` and being wrong for
+    every real take.
+    """
+    configured = os.environ.get("ATLAS_DIRECTOR_TAKE_ROOT", "").strip()
+    if not configured:
+        raise RuntimeError(
+            "no Atlas Director take root configured. Set "
+            "ATLAS_DIRECTOR_TAKE_ROOT to the root Atlas Scene writes takes "
+            "under (its workspace cache, e.g. %LOCALAPPDATA%\\...\\"
+            "workspaces\\<id>\\package\\takes) -- this is deliberately a "
+            "different root from ATLAS_DIRECTOR_ROOT (ComfyUI's output "
+            "directory), because Atlas Scene never writes takes there."
+        )
+    return Path(configured).resolve()
 
 
 def _validate_relative_subdir(value) -> Path:
@@ -240,8 +277,11 @@ def _validate_take_dir(value) -> str:
     text = str(value or "").strip()
     if not text:
         raise ValueError("take_dir is required")
-    root = director_root()
+    root = director_take_root()
     resolved = Path(text).resolve()
     if not resolved.is_relative_to(root):
-        raise ValueError(f"take_dir must resolve under the configured root: {text!r}")
+        raise ValueError(
+            f"take_dir must resolve under the configured take root "
+            f"(ATLAS_DIRECTOR_TAKE_ROOT={root}): {text!r}"
+        )
     return text

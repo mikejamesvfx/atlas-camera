@@ -361,6 +361,7 @@ def test_read_returns_all_four_outputs_and_never_mutates_sessions(
         "session_id": "shot_012",
         "package": str(package_path),
         "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
+        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
         "slate": "sc/sh/a_take01",
         "take_dir": str(real_playblast_take),
     }
@@ -409,6 +410,28 @@ def test_read_refuses_when_no_digest_was_ever_recorded(real_playblast_take, pack
     }
     node = AtlasDirectorTake()
     with pytest.raises(StaleTakeError, match="package_digest"):
+        node.read(session_id="shot_012", width=16, height=9, frames="121",
+                   fps=24, colour_lane="png")
+    SESSIONS.clear()
+
+
+def test_read_refuses_when_the_nodes_timebase_does_not_match_the_session(
+        real_playblast_take, package_path, monkeypatch):
+    import atlas_camera.plate.oiio_io as oiio_io
+    monkeypatch.setattr(oiio_io, "oiio_available", lambda: False)
+
+    SESSIONS.clear()
+    SESSIONS["shot_012"] = {
+        "session_id": "shot_012",
+        "package": str(package_path),
+        "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
+        # Launched at a different width/height than the node below reads with.
+        "timebase": {"width": 768, "height": 512, "frames": 121, "fps": 24},
+        "slate": "sc/sh/a_take01",
+        "take_dir": str(real_playblast_take),
+    }
+    node = AtlasDirectorTake()
+    with pytest.raises(ValueError, match="timebase"):
         node.read(session_id="shot_012", width=16, height=9, frames="121",
                    fps=24, colour_lane="png")
     SESSIONS.clear()

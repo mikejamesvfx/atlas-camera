@@ -176,6 +176,41 @@ class AtlasDirectorTake:
             )
         return True
 
+    def _ensure_timebase_matches(self, session_id: str, session: dict, *,
+                                  width: int, height: int, frames: str,
+                                  fps: int) -> None:
+        """Refuse when this node's widgets do not match the session's timebase.
+
+        `launch_session` records width/height/frames/fps as the timebase
+        Director opened with -- the ray map and the playblast frames shipped
+        beside it are only meaningful together at that resolution and frame
+        count. A silently mismatched width/height still *runs*: it just
+        produces a ray map that does not correspond to the rendered frames.
+        Refused, not warned about, and naming both values so the fix is
+        obvious.
+        """
+        requested = {
+            "width": int(width), "height": int(height),
+            "frames": int(frames), "fps": int(fps),
+        }
+        timebase = session.get("timebase")
+        if not timebase:
+            raise ValueError(
+                f"session {session_id!r} has no timebase recorded from "
+                "launch, so this node's width/height/frames/fps cannot be "
+                "checked against it. Re-launch Director from the graph so a "
+                "timebase is recorded to check against."
+            )
+        if timebase != requested:
+            raise ValueError(
+                f"this node's timebase {requested} does not match session "
+                f"{session_id!r}'s recorded timebase {timebase} -- Director "
+                "was launched with different width/height/frames/fps than "
+                "this node is reading with, so the ray map would not "
+                "correspond to the shipped playblast frames. Match this "
+                "node's widgets to the session's timebase."
+            )
+
     def _ensure_fresh(self, session_id: str, session: dict) -> None:
         """Refuse, never silently skip, when there is nothing to check freshness against.
 
@@ -206,6 +241,13 @@ class AtlasDirectorTake:
         NOT `manifest.frameCount`. A playblast is a marked range: the deck's
         in/out points decide what was rendered, and the manifest counts the
         whole take. Reading the manifest would claim frames nobody rendered.
+
+        This sorts lexically and accepts any file under `playblast/`, unlike
+        `atlas_scene.operations.playblast_ops.frame_files`, which enforces
+        the `frame_%06d.png` naming. Harmless only because the producer on
+        the other side (`playblast_ops.copy_exr_sequence`) always zero-pads
+        -- if that assumption ever stops holding, this function's lexical
+        sort silently reorders frames instead of refusing.
 
         Refuses, naming the cause, rather than raising a bare
         `FileNotFoundError` when there is no `playblast/` directory at all --
@@ -383,6 +425,10 @@ class AtlasDirectorTake:
         session = self._session(session_id)
         take_dir = session["take_dir"]
         self._ensure_fresh(session_id, session)
+        self._ensure_timebase_matches(
+            session_id, session, width=width, height=height,
+            frames=frames, fps=fps,
+        )
 
         rendered = len(self.frame_files(take_dir))
         samples = self._load_samples(take_dir)[:rendered]

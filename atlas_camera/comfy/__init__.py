@@ -252,9 +252,16 @@ try:
                 return aiohttp_web.json_response({"error": "invalid JSON body"}, status=400)
 
             try:
-                session = record_delivery(
-                    body["session_id"], body["slate"], body["take_dir"]
+                session_id = body["session_id"]
+                slate = body["slate"]
+                take_dir = body["take_dir"]
+            except KeyError as error:
+                return aiohttp_web.json_response(
+                    {"error": f"missing required field: {error}"}, status=400,
                 )
+
+            try:
+                session = record_delivery(session_id, slate, take_dir)
             except KeyError:
                 return aiohttp_web.json_response(
                     {"error": "unknown session; re-launch or read the slate directly"},
