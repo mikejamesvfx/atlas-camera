@@ -11,7 +11,11 @@
  * an argv, or an output/root path -- the server takes those from its own
  * configuration (ATLAS_DIRECTOR_BIN, ATLAS_DIRECTOR_ROOT). That is a security
  * property established after a Critical finding, not an oversight to work
- * around from the browser.
+ * around from the browser. A packaged install needs only ATLAS_DIRECTOR_BIN;
+ * a development install, where the only binary is Electron itself and it
+ * requires the app directory as its first argument, also sets
+ * ATLAS_DIRECTOR_ARGS to that directory (see director_session.py's
+ * `director_extra_args()`) -- still environment-only, never request-supplied.
  *
  * Button widget is serialize=false, same reason as every other Atlas button:
  * an API-format export must never see a bogus extra input on the prompt.
@@ -126,7 +130,12 @@ app.registerExtension({
         }
 
         if (resp.status === 503) {
-          const msg = data?.error || "no Director executable configured — set ATLAS_DIRECTOR_BIN";
+          const msg =
+            data?.error ||
+            "no Director executable configured — set ATLAS_DIRECTOR_BIN " +
+              "(a development install, where the executable is Electron " +
+              "itself, also needs ATLAS_DIRECTOR_ARGS set to the app " +
+              "directory)";
           console.error("[AtlasCamera.DirectorLaunch] 503:", msg);
           showStatus(`⚠ ${msg}`);
           return;

@@ -167,6 +167,116 @@ def test_a_request_cannot_name_the_executable(director_root, monkeypatch):
     assert len(spawned["argv"]) == 3
 
 
+# --- ATLAS_DIRECTOR_ARGS: dev-install argv insertion, env-only -------------
+
+
+def test_launch_with_no_director_args_env_is_unchanged(director_root, monkeypatch):
+    monkeypatch.setenv("ATLAS_DIRECTOR_BIN", "C:/fake/electron.exe")
+    monkeypatch.delenv("ATLAS_DIRECTOR_ARGS", raising=False)
+    _touch_package(director_root, "shot_012")
+    spawned = {}
+
+    def spawn(argv):
+        spawned["argv"] = argv
+
+    launch_session(
+        {"session_id": "shot_012",
+         "width": 768, "height": 512, "frames": 121, "fps": 24},
+        spawn=spawn,
+    )
+    assert spawned["argv"] == [
+        "C:/fake/electron.exe", "--director-session",
+        spawned["argv"][2],
+    ]
+    assert len(spawned["argv"]) == 3
+
+
+def test_launch_with_empty_director_args_env_is_unchanged(director_root, monkeypatch):
+    monkeypatch.setenv("ATLAS_DIRECTOR_BIN", "C:/fake/electron.exe")
+    monkeypatch.setenv("ATLAS_DIRECTOR_ARGS", "")
+    _touch_package(director_root, "shot_012")
+    spawned = {}
+
+    def spawn(argv):
+        spawned["argv"] = argv
+
+    launch_session(
+        {"session_id": "shot_012",
+         "width": 768, "height": 512, "frames": 121, "fps": 24},
+        spawn=spawn,
+    )
+    assert len(spawned["argv"]) == 3
+    assert spawned["argv"][0] == "C:/fake/electron.exe"
+    assert spawned["argv"][1] == "--director-session"
+
+
+def test_launch_inserts_a_plain_path_from_director_args_env(director_root, monkeypatch):
+    monkeypatch.setenv("ATLAS_DIRECTOR_BIN", "C:/fake/electron.exe")
+    monkeypatch.setenv("ATLAS_DIRECTOR_ARGS", "C:/repo/atlas-director")
+    _touch_package(director_root, "shot_012")
+    spawned = {}
+
+    def spawn(argv):
+        spawned["argv"] = argv
+
+    launch_session(
+        {"session_id": "shot_012",
+         "width": 768, "height": 512, "frames": 121, "fps": 24},
+        spawn=spawn,
+    )
+    assert spawned["argv"][0] == "C:/fake/electron.exe"
+    assert spawned["argv"][1] == "C:/repo/atlas-director"
+    assert spawned["argv"][2] == "--director-session"
+    assert len(spawned["argv"]) == 4
+
+
+def test_launch_keeps_a_quoted_path_with_spaces_as_one_argv_element(
+    director_root, monkeypatch
+):
+    monkeypatch.setenv("ATLAS_DIRECTOR_BIN", "C:/fake/electron.exe")
+    monkeypatch.setenv("ATLAS_DIRECTOR_ARGS", '"C:/Users/mike/atlas director"')
+    _touch_package(director_root, "shot_012")
+    spawned = {}
+
+    def spawn(argv):
+        spawned["argv"] = argv
+
+    launch_session(
+        {"session_id": "shot_012",
+         "width": 768, "height": 512, "frames": 121, "fps": 24},
+        spawn=spawn,
+    )
+    assert spawned["argv"][1] == "C:/Users/mike/atlas director"
+    assert len(spawned["argv"]) == 4
+
+
+def test_a_request_cannot_supply_director_args(director_root, monkeypatch):
+    # Mirrors test_a_request_cannot_name_the_executable: ATLAS_DIRECTOR_ARGS
+    # comes ONLY from the environment, never from the request body -- a
+    # hostile page can POST here, so 'args'/'argv'/'executable' keys in the
+    # body must have zero effect on the composed argv.
+    monkeypatch.setenv("ATLAS_DIRECTOR_BIN", "C:/fake/electron.exe")
+    monkeypatch.delenv("ATLAS_DIRECTOR_ARGS", raising=False)
+    _touch_package(director_root, "shot_012")
+    spawned = {}
+
+    def spawn(argv):
+        spawned["argv"] = argv
+
+    launch_session(
+        {"session_id": "shot_012",
+         "executable": "C:/evil.exe",
+         "args": "C:/evil-repo",
+         "argv": ["--do-harm"],
+         "width": 768, "height": 512, "frames": 121, "fps": 24},
+        spawn=spawn,
+    )
+    assert spawned["argv"][0] == "C:/fake/electron.exe"
+    assert "C:/evil-repo" not in spawned["argv"]
+    assert "--do-harm" not in spawned["argv"]
+    assert len(spawned["argv"]) == 3
+
+
 def test_launch_refuses_when_no_executable_is_configured(director_root, monkeypatch):
     monkeypatch.delenv("ATLAS_DIRECTOR_BIN", raising=False)
     _touch_package(director_root, "shot_012")

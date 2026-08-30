@@ -22,6 +22,13 @@ directly, while ``launch_session`` looks for
 code: ``director_session.launch_session`` already refuses to spawn
 Director when the package is absent, naming the fix, so a mismatch fails
 loudly at launch -- before anyone shoots a take.
+
+Launching Director itself needs ``ATLAS_DIRECTOR_BIN`` set to the Director
+binary. A packaged install needs nothing more. A development install, where
+the only binary is Electron itself and it requires the app directory as its
+first argument, also needs ``ATLAS_DIRECTOR_ARGS`` set to that directory --
+see ``director_session.director_extra_args()``. Both are configuration,
+read from the environment only, never from this node or the launch request.
 """
 from __future__ import annotations
 

@@ -22,6 +22,9 @@ enforced here:
   * a package must already exist on disk before Director is launched onto
     it -- this module writes the session manifest, never the .atlas itself;
     the graph writes that via AtlasExportScenePackage first
+  * `ATLAS_DIRECTOR_ARGS` (optional, dev-install only -- see
+    `director_extra_args()`) is configuration exactly like the executable
+    and the roots: read from the environment only, never from the request
 """
 from __future__ import annotations
 
@@ -29,6 +32,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -190,6 +194,42 @@ def director_executable() -> str:
     return configured
 
 
+def director_extra_args() -> list[str]:
+    """Extra argv elements inserted between the executable and the flag.
+
+    For a development install, where the only binary is Electron itself
+    (`node_modules/electron/dist/electron.exe`) and Electron requires the
+    app directory as its first argument -- `electron.exe --director-session
+    foo.atlas` does not load the app. A dev install sets `ATLAS_DIRECTOR_BIN`
+    to `electron.exe` and this variable to the repo path; a packaged install
+    leaves this unset and is unaffected.
+
+    Configuration only, exactly like `director_executable()` and
+    `director_root()`: read from `ATLAS_DIRECTOR_ARGS` and NEVER from the
+    request body -- this module's whole reason for existing is that a
+    hostile page can POST to the launch route, so nothing request-supplied
+    may reach this argv.
+
+    Parsed with `shlex.split(..., posix=False)`, not the POSIX default:
+    posix mode strips backslashes as escape characters, which mangles a bare
+    Windows path (`C:\\repo\\atlas-director` -> `C:repoatlas-director`).
+    Non-POSIX mode still honours quotes -- a path containing spaces survives
+    as a single argv element -- but leaves backslashes alone. Non-POSIX mode
+    leaves the quote characters themselves in each token, so they are
+    stripped here once splitting is done.
+    """
+    configured = os.environ.get("ATLAS_DIRECTOR_ARGS", "").strip()
+    if not configured:
+        return []
+    parts = shlex.split(configured, posix=False)
+    stripped = []
+    for part in parts:
+        if len(part) >= 2 and part[0] == part[-1] and part[0] in ("'", '"'):
+            part = part[1:-1]
+        stripped.append(part)
+    return stripped
+
+
 def _default_spawn(argv: list[str]) -> None:
     subprocess.Popen(argv)  # noqa: S603 - argv is composed here, never supplied
 
@@ -209,9 +249,14 @@ def launch_session(body: dict, *, spawn=_default_spawn) -> dict:
     `body` supplies a session id, an optional relative `output_dir` and the
     timebase. It supplies nothing else that reaches a command line --
     `executable` and `argv` keys, if present, are ignored rather than
-    honoured. The `.atlas` package is never written here: the graph writes
-    it via `AtlasExportScenePackage` first, and this function only verifies
-    it exists before launching Director onto it -- verify, don't create.
+    honoured, and the same is true of any `args` key: the extra argv
+    elements inserted before `--director-session` (see
+    `director_extra_args()`, for a development install where the executable
+    is Electron and the app directory must precede the flag) come ONLY from
+    `ATLAS_DIRECTOR_ARGS`. The `.atlas` package is never written here: the
+    graph writes it via `AtlasExportScenePackage` first, and this function
+    only verifies it exists before launching Director onto it -- verify,
+    don't create.
     """
 
     session_id = validate_session_id(body.get("session_id"))
@@ -249,7 +294,7 @@ def launch_session(body: dict, *, spawn=_default_spawn) -> dict:
     )
 
     _remember(session_id, session)
-    spawn([executable, "--director-session", str(package)])
+    spawn([executable, *director_extra_args(), "--director-session", str(package)])
     return session
 
 
