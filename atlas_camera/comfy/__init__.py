@@ -207,14 +207,34 @@ try:
 
         @_routes.post(_ATLAS_DIRECTOR_LAUNCH)
         async def _atlas_director_launch(request: aiohttp_web.Request):
+            import logging as _logging
+
             from atlas_camera.comfy.director_session import launch_session
 
             try:
-                session = launch_session(await request.json())
+                body = await request.json()
+            except Exception:  # noqa: BLE001 - malformed body, not our fault
+                return aiohttp_web.json_response({"error": "invalid JSON body"}, status=400)
+
+            # An HTTP caller has no ATLAS_PROJECT object to legitimately
+            # supply -- a non-null `project` here is either a confused client
+            # or a probe, and letting it through used to reach
+            # `project.subdir(...)` on a JSON value and raise unhandled.
+            if body.get("project") is not None:
+                return aiohttp_web.json_response(
+                    {"error": "project is not accepted over HTTP; launch without it"},
+                    status=400,
+                )
+
+            try:
+                session = launch_session(body)
             except (ValueError, KeyError) as error:
                 return aiohttp_web.json_response({"error": str(error)}, status=400)
             except RuntimeError as error:
                 return aiohttp_web.json_response({"error": str(error)}, status=503)
+            except Exception:  # noqa: BLE001 - never leak the raw exception
+                _logging.getLogger(__name__).exception("atlas director launch failed")
+                return aiohttp_web.json_response({"error": "internal error"}, status=500)
             return aiohttp_web.json_response(session)
 
     _ATLAS_DIRECTOR_TAKE = "/atlas/director/take"
@@ -222,9 +242,15 @@ try:
 
         @_routes.post(_ATLAS_DIRECTOR_TAKE)
         async def _atlas_director_take(request: aiohttp_web.Request):
+            import logging as _logging
+
             from atlas_camera.comfy.director_session import record_delivery
 
-            body = await request.json()
+            try:
+                body = await request.json()
+            except Exception:  # noqa: BLE001 - malformed body, not our fault
+                return aiohttp_web.json_response({"error": "invalid JSON body"}, status=400)
+
             try:
                 session = record_delivery(
                     body["session_id"], body["slate"], body["take_dir"]
@@ -234,6 +260,11 @@ try:
                     {"error": "unknown session; re-launch or read the slate directly"},
                     status=404,
                 )
+            except ValueError as error:
+                return aiohttp_web.json_response({"error": str(error)}, status=400)
+            except Exception:  # noqa: BLE001 - never leak the raw exception
+                _logging.getLogger(__name__).exception("atlas director take failed")
+                return aiohttp_web.json_response({"error": "internal error"}, status=500)
             return aiohttp_web.json_response(session)
 
 except Exception:

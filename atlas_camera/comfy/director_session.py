@@ -8,9 +8,15 @@ enforced here:
 
   * the executable comes from configuration, never from the request
   * the request carries no argv -- the command line is composed server-side
-  * the session path must resolve inside the configured output root
-  * the session id is allowlisted before it touches a path, and refused, not
-    sanitised, when it does not match
+  * every path this module touches (the session package, a delivered take
+    directory) must resolve inside a configured root, never a root taken
+    from the request -- a request may only supply a *relative* subpath
+    under that root, and is refused (not repaired) if it tries to leave it
+  * the session id, and each part of a slate, is allowlisted before it
+    touches a path, and refused, not sanitised, when it does not match
+  * a package must already exist on disk before Director is launched onto
+    it -- this module writes the session manifest, never the .atlas itself;
+    the graph writes that via AtlasExportScenePackage first
 """
 from __future__ import annotations
 
@@ -23,14 +29,19 @@ from pathlib import Path
 from atlas_camera.comfy.nodes_export import _project_routed_dir
 
 #: Mirrors take_ops.py's SLATE_PART. Kept identical on purpose: a session id
-#: becomes part of a path in one repo and part of a slate in the other, and two
-#: allowlists that drift are one allowlist that does not work.
+#: (and each '/'-separated part of a slate) becomes part of a path in one
+#: repo and part of a slate in the other, and two allowlists that drift are
+#: one allowlist that does not work.
 SESSION_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 #: session_id -> {"session_id", "package", "timebase", "slate", "take_dir"}.
 #: In-memory: a ComfyUI restart drops it, and the node treats an unknown
 #: session as "re-push, or read this slate directly" rather than as an error.
 SESSIONS: dict[str, dict] = {}
+
+#: Small cap so an unauthenticated caller spamming /atlas/director/launch
+#: cannot grow this dict without bound. Oldest session evicted past the cap.
+_SESSION_LIMIT = 50
 
 
 def validate_session_id(value) -> str:
@@ -43,25 +54,89 @@ def validate_session_id(value) -> str:
     return text
 
 
-def session_package_path(project, output_dir: str, session_id: str) -> Path:
-    """Where a session's package goes: the project tree's scenes/ lane."""
+def _validate_slate(value) -> str:
+    """A slate is `<scene>/<shot>/<setup>_takeNN` -- validate each part.
+
+    Refused, not sanitised, same posture as a session id: a slate that fails
+    the allowlist tells a downstream reader (Task 6) nothing safe to open.
+    """
+    text = str(value or "")
+    parts = text.split("/")
+    if not parts or any(not SESSION_ID.match(part) for part in parts):
+        raise ValueError(
+            f"slate is not usable as a path: {text!r}. Each '/'-separated "
+            "part must match letters, digits, underscore, hyphen."
+        )
+    return text
+
+
+def director_root() -> Path:
+    """The root every session package and delivered take must resolve inside.
+
+    Configuration only, exactly like the executable: `ATLAS_DIRECTOR_ROOT`
+    if set, else ComfyUI's own output directory when this runs inside a
+    ComfyUI process. Never taken from the request -- a request-controlled
+    root makes any containment check downstream decorative.
+    """
+    configured = os.environ.get("ATLAS_DIRECTOR_ROOT", "").strip()
+    if configured:
+        return Path(configured).resolve()
+    try:
+        import folder_paths  # type: ignore[import]  # ComfyUI-provided
+
+        return Path(folder_paths.get_output_directory()).resolve()
+    except Exception as exc:  # noqa: BLE001 - any failure means "unconfigured"
+        raise RuntimeError(
+            "no Atlas Director root configured. Set ATLAS_DIRECTOR_ROOT, or "
+            "run inside ComfyUI where folder_paths.get_output_directory() is "
+            "available. It is deliberately not taken from the request."
+        ) from exc
+
+
+def _validate_relative_subdir(value) -> Path:
+    """A request-supplied `output_dir`, usable only as a relative subpath.
+
+    Refused -- never repaired -- if absolute or if any component is `..`:
+    an attacker gets no path arithmetic to work with, only a name under the
+    configured root.
+    """
+    text = str(value or "").strip()
+    candidate = Path(text) if text else Path()
+    if candidate.is_absolute():
+        raise ValueError(
+            f"output_dir must be relative to the configured root, not absolute: {text!r}"
+        )
+    if ".." in candidate.parts:
+        raise ValueError(f"output_dir may not contain '..': {text!r}")
+    return candidate
+
+
+def session_package_path(project, output_dir, session_id: str) -> Path:
+    """Where a session's package goes: <configured root>/[output_dir/]scenes/<id>.atlas.
+
+    `output_dir`, when given, is a relative subpath under the configured
+    root (see `_validate_relative_subdir`) -- it is never itself the root.
+    """
 
     session_id = validate_session_id(session_id)
-    routed = _project_routed_dir(project, output_dir, "scenes")
-    # _project_routed_dir only appends the "scenes" lane when a project is
-    # connected (<root>/<project>/<shot>/scenes); with no project it passes
-    # output_dir through untouched (nodes_export's callers pass an output_dir
-    # that is already the scenes folder). A Director session always wants an
-    # actual scenes/ subfolder under whatever root it was handed, project or
-    # not, so add the lane ourselves in the no-project case.
-    root = Path(routed) if project is not None else Path(output_dir) / "scenes"
-    root = root.resolve()
-    package = (root / f"{session_id}.atlas").resolve()
-    # Belt and braces behind the allowlist, the same posture as
-    # take_ops.py::take_directory. If the allowlist ever fails, a session must
-    # still refuse to write outside the root it was handed.
-    if not str(package).startswith(str(root)):
-        raise ValueError(f"session path escapes the project root: {session_id!r}")
+    root = director_root()
+
+    if project is not None:
+        # Reachable only from an in-process caller with a real ATLAS_PROJECT
+        # object -- the HTTP route refuses a non-null `project` outright
+        # before it ever calls launch_session, because an HTTP caller has no
+        # such object to legitimately supply (see __init__.py).
+        base = Path(_project_routed_dir(project, str(root), "scenes")).resolve()
+    else:
+        subdir = _validate_relative_subdir(output_dir)
+        base = (root / subdir / "scenes").resolve()
+
+    package = (base / f"{session_id}.atlas").resolve()
+    # is_relative_to, not a string prefix check: a sibling directory whose
+    # name merely starts with the root's name (root ".../scenes", target
+    # ".../scenes-evil") must not pass, and this is exact-boundary safe.
+    if not package.is_relative_to(root):
+        raise ValueError(f"session path escapes the configured root: {session_id!r}")
     return package
 
 
@@ -81,20 +156,36 @@ def _default_spawn(argv: list[str]) -> None:
     subprocess.Popen(argv)  # noqa: S603 - argv is composed here, never supplied
 
 
-def launch_session(body: dict, *, spawn=_default_spawn) -> dict:
-    """Write a session package and open Director on it.
+def _remember(session_id: str, session: dict) -> None:
+    SESSIONS[session_id] = session
+    while len(SESSIONS) > _SESSION_LIMIT:
+        oldest = next(iter(SESSIONS))
+        if oldest == session_id:
+            break
+        del SESSIONS[oldest]
 
-    `body` supplies a session id, an output directory and the timebase. It
-    supplies nothing else that reaches a command line -- `executable` and
-    `argv` keys, if present, are ignored rather than honoured.
+
+def launch_session(body: dict, *, spawn=_default_spawn) -> dict:
+    """Open Director on a session package the graph has already exported.
+
+    `body` supplies a session id, an optional relative `output_dir` and the
+    timebase. It supplies nothing else that reaches a command line --
+    `executable` and `argv` keys, if present, are ignored rather than
+    honoured. The `.atlas` package is never written here: the graph writes
+    it via `AtlasExportScenePackage` first, and this function only verifies
+    it exists before launching Director onto it -- verify, don't create.
     """
 
     session_id = validate_session_id(body.get("session_id"))
     executable = director_executable()
     package = session_package_path(
-        body.get("project"), body.get("output_dir") or "atlas_scenes", session_id
+        body.get("project"), body.get("output_dir"), session_id
     )
-    package.parent.mkdir(parents=True, exist_ok=True)
+    if not package.exists():
+        raise ValueError(
+            f"no session package for {session_id!r}; export it from the graph "
+            "first (AtlasExportScenePackage) before launching Director"
+        )
 
     timebase = {
         "width": int(body["width"]),
@@ -113,7 +204,7 @@ def launch_session(body: dict, *, spawn=_default_spawn) -> dict:
         json.dumps(session, indent=2), encoding="utf-8"
     )
 
-    SESSIONS[session_id] = session
+    _remember(session_id, session)
     spawn([executable, "--director-session", str(package)])
     return session
 
@@ -123,10 +214,27 @@ def record_delivery(session_id: str, slate: str, take_dir: str) -> dict:
 
     Idempotent on (session_id, slate) so a retry after a failed push is safe,
     and last-write-wins on a different slate, because the node's promise is
-    that what you pushed is what renders.
+    that what you pushed is what renders. `session_id` lookup happens before
+    validation so an unknown session still refuses with KeyError, matching
+    the route's 404; `slate` and `take_dir` are validated so a caller who
+    merely guesses a live session id cannot plant an arbitrary path for
+    whatever later reads `SESSIONS` (Task 6).
     """
 
     session = SESSIONS[session_id]
+    slate = _validate_slate(slate)
+    take_dir = _validate_take_dir(take_dir)
     session["slate"] = slate
     session["take_dir"] = take_dir
     return dict(session)
+
+
+def _validate_take_dir(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("take_dir is required")
+    root = director_root()
+    resolved = Path(text).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"take_dir must resolve under the configured root: {text!r}")
+    return text
