@@ -196,6 +196,46 @@ try:
                 return aiohttp_web.json_response({"error": str(exc)}, status=500)
             return aiohttp_web.json_response(rec)
 
+    # Atlas Director launch/delivery (2026-08-30): starts Director on a
+    # session package and remembers the take it pushes back. See
+    # atlas_camera/comfy/director_session.py for the security posture -- the
+    # executable is configuration-only, the request carries no argv, the
+    # session path is checked against the output root, and the session id is
+    # refused rather than sanitised when it isn't a plain slug.
+    _ATLAS_DIRECTOR_LAUNCH = "/atlas/director/launch"
+    if not any(getattr(r, "path", None) == _ATLAS_DIRECTOR_LAUNCH for r in _routes):
+
+        @_routes.post(_ATLAS_DIRECTOR_LAUNCH)
+        async def _atlas_director_launch(request: aiohttp_web.Request):
+            from atlas_camera.comfy.director_session import launch_session
+
+            try:
+                session = launch_session(await request.json())
+            except (ValueError, KeyError) as error:
+                return aiohttp_web.json_response({"error": str(error)}, status=400)
+            except RuntimeError as error:
+                return aiohttp_web.json_response({"error": str(error)}, status=503)
+            return aiohttp_web.json_response(session)
+
+    _ATLAS_DIRECTOR_TAKE = "/atlas/director/take"
+    if not any(getattr(r, "path", None) == _ATLAS_DIRECTOR_TAKE for r in _routes):
+
+        @_routes.post(_ATLAS_DIRECTOR_TAKE)
+        async def _atlas_director_take(request: aiohttp_web.Request):
+            from atlas_camera.comfy.director_session import record_delivery
+
+            body = await request.json()
+            try:
+                session = record_delivery(
+                    body["session_id"], body["slate"], body["take_dir"]
+                )
+            except KeyError:
+                return aiohttp_web.json_response(
+                    {"error": "unknown session; re-launch or read the slate directly"},
+                    status=404,
+                )
+            return aiohttp_web.json_response(session)
+
 except Exception:
     # Running outside ComfyUI (tests, standalone import) — routes not needed.
     pass
