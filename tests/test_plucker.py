@@ -82,3 +82,33 @@ def test_rejects_a_sample_missing_its_filmback():
     del bad["filmback"]
     with pytest.raises(KeyError):
         ray_map([bad], width=4, height=4)
+
+
+def test_vertical_orientation_top_row_points_upward():
+    # Guard against a full vertical mirror (ys negation). Top row must have
+    # positive Y component in world space, bottom row negative, for identity
+    # rotation. Use non-square resolution to distinguish rows from columns.
+    rays = ray_map([sample()], width=8, height=10)
+    top_row_directions = rays[0, 0, :, 3:]
+    bottom_row_directions = rays[0, -1, :, 3:]
+    # Top row: all pixels point upward (positive Y)
+    assert np.all(top_row_directions[:, 1] > 0.0)
+    # Bottom row: all pixels point downward (negative Y)
+    assert np.all(bottom_row_directions[:, 1] < 0.0)
+
+
+def test_cross_product_order_in_plucker_embedding():
+    # Verify the moment is o × d by comparing against a hand-computed value
+    # at a known off-origin camera position.
+    position = (2.0, 1.0, -3.0)
+    rays = ray_map([sample(position=position)], width=5, height=5)
+    # Extract centre pixel
+    ray = rays[0, 2, 2]
+    origin = ray[:3]
+    direction = ray[3:]
+    # Compute moment manually: o × d
+    expected_moment = np.cross(origin, direction)
+    # Get moment from embedding
+    embedding = plucker_embedding(rays)
+    embedded_moment = embedding[0, 2, 2, :3]
+    assert np.allclose(embedded_moment, expected_moment, atol=1e-6)
