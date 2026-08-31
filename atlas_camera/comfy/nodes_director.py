@@ -179,6 +179,24 @@ class AtlasDirectorTake:
       shot. `rays`/`rays_preview` are built at this derived resolution, not
       the widgets', so they cannot drift from `playblast`'s actual pixels --
       see `read()`.
+    * ``projected`` -- the same marked span as `playblast`, but the plate
+      projected onto the geometry instead of a grey flat-shaded render.
+      Loaded through the exact same code path as `playblast`
+      (`_load_frame_batch` / `_load_png_frames` / `_load_exr_frames`) so the
+      two batches cannot diverge in dtype, channel order or normalisation.
+    * ``first_frame`` -- `projected`'s frame 0 as a batch of size 1: the
+      marked IN-point, photoreal. This is deliberately not left for the
+      graph to slice out of `projected` itself -- the video model's
+      contract wants exactly one frame, and an operator-wired "index 0"
+      node is a mistake waiting to happen.
+
+    `projected` is refused, naming the take as needing a re-push, when the
+    take predates the second sequence (no `projected/` directory), or when
+    its `playblast.json` sidecar or frame count disagrees with
+    `playblast/`'s -- a projected batch that does not correspond
+    frame-for-frame with the grey guide is worse than none: it looks usable
+    and is silently misaligned. See `projected_frame_files`,
+    `_ensure_projected_matches_playblast`.
 
     Delivery address: after the "Launch Director" button opens Director on
     a session, Director pushes the finished take back by calling
@@ -194,9 +212,10 @@ class AtlasDirectorTake:
     """
 
     RETURN_TYPES = ("IMAGE", "ATLAS_RAYS", "IMAGE", "ATLAS_CAMERA",
-                     "INT", "INT", "INT")
+                     "INT", "INT", "INT", "IMAGE", "IMAGE")
     RETURN_NAMES = ("playblast", "rays", "rays_preview", "samples",
-                     "frame_count", "width", "height")
+                     "frame_count", "width", "height",
+                     "projected", "first_frame")
     FUNCTION = "read"
     CATEGORY = "Atlas"
 
@@ -407,6 +426,108 @@ class AtlasDirectorTake:
             p for p in playblast.iterdir()
             if p.is_file() and p.name != self.PLAYBLAST_MARKS_NAME
         )
+
+    # -- the projected (photoreal) sequence --------------------------------
+
+    #: `<take_dir>/projected/` -- the same marked span as `playblast/`, the
+    #: plate projected onto the geometry instead of a grey flat-shaded
+    #: render. Written alongside `playblast/` by the same take push; a take
+    #: pushed before this existed has no such directory at all.
+    PROJECTED_DIR_NAME = "projected"
+
+    def projected_frame_files(self, take_dir: str) -> list[Path]:
+        """The `projected/` frames, in the same order `frame_files` returns
+        `playblast/`'s.
+
+        A take pushed before the second sequence existed has no
+        `projected/` directory -- refused by name, in the same posture
+        already used for a missing marks sidecar (`_load_playblast_marks`):
+        this is "predates the feature", not an error to warn past. Unlike
+        `frame_files`, there is no `.mp4` fallback case to detect here --
+        `projected/` either exists as a frame sequence or the take predates
+        it.
+        """
+        projected = Path(take_dir) / self.PROJECTED_DIR_NAME
+        if not projected.is_dir():
+            raise StaleTakeError(
+                f"no {self.PROJECTED_DIR_NAME}/ directory found under "
+                f"{take_dir!r} -- this take predates the second (projected) "
+                "sequence and must be re-pushed. Re-push this take from "
+                "Director so both playblast/ and projected/ are written."
+            )
+        return sorted(
+            p for p in projected.iterdir()
+            if p.is_file() and p.name != self.PLAYBLAST_MARKS_NAME
+        )
+
+    def _load_projected_marks(self, take_dir: str) -> dict:
+        """Read `<take_dir>/projected/playblast.json`, the same marks
+        sidecar schema `_load_playblast_marks` reads from `playblast/`
+        (identical contents, by contract -- see `_ensure_projected_matches_
+        playblast`).
+        """
+        marks_path = (
+            Path(take_dir) / self.PROJECTED_DIR_NAME / self.PLAYBLAST_MARKS_NAME
+        )
+        if not marks_path.exists():
+            raise StaleTakeError(
+                f"no {self.PLAYBLAST_MARKS_NAME} found under "
+                f"{take_dir!r}/{self.PROJECTED_DIR_NAME} -- this take "
+                "predates the second (projected) sequence and must be "
+                "re-pushed."
+            )
+        return json.loads(marks_path.read_text())
+
+    def _ensure_projected_matches_playblast(
+        self, take_dir: str, *, playblast_frame_paths: list[Path],
+        projected_frame_paths: list[Path],
+    ) -> None:
+        """Refuse when `projected/` does not correspond frame-for-frame with
+        `playblast/`.
+
+        A projected batch that does not line up with the grey guide is
+        worse than none: it looks usable and is silently misaligned. Checks
+        two independent things, either one enough to refuse on its own: the
+        marks sidecars must be byte-identical in content (both directories
+        cover the same marked span), and the two directories must hold the
+        same number of frames.
+        """
+        playblast_marks = self._load_playblast_marks(take_dir)
+        projected_marks = self._load_projected_marks(take_dir)
+        if projected_marks != playblast_marks:
+            raise StaleTakeError(
+                f"projected/{self.PLAYBLAST_MARKS_NAME} under {take_dir!r} "
+                f"disagrees with playblast/{self.PLAYBLAST_MARKS_NAME}: "
+                f"{projected_marks!r} != {playblast_marks!r} -- the two "
+                "sequences must describe the same marked range. Re-push "
+                "this take."
+            )
+        n_playblast = len(playblast_frame_paths)
+        n_projected = len(projected_frame_paths)
+        if n_playblast != n_projected:
+            raise StaleTakeError(
+                f"projected/ under {take_dir!r} has {n_projected} frame(s) "
+                f"but playblast/ has {n_playblast} -- the two sequences "
+                "must cover the same marked span frame-for-frame. Re-push "
+                "this take."
+            )
+
+    def _ensure_projected_dimensions_match(
+        self, take_dir: str, *, playblast_size: tuple[int, int],
+        projected_size: tuple[int, int],
+    ) -> None:
+        """Refuse when `projected/`'s pixel size disagrees with
+        `playblast/`'s. Both come from the same canvas, so they should
+        already agree -- verified rather than assumed.
+        """
+        if playblast_size != projected_size:
+            pb_w, pb_h = playblast_size
+            pj_w, pj_h = projected_size
+            raise StaleTakeError(
+                f"projected/ frames under {take_dir!r} are {pj_w}x{pj_h} "
+                f"but playblast/ frames are {pb_w}x{pb_h} -- both come "
+                "from the same canvas and must match. Re-push this take."
+            )
 
     def _load_samples(self, take_dir: str) -> list[dict]:
         return json.loads((Path(take_dir) / "samples.json").read_text())
@@ -678,22 +799,26 @@ class AtlasDirectorTake:
         batch = np.stack(frames, axis=0)
         return torch.from_numpy(batch)
 
-    def load_playblast(self, take_dir: str, colour_lane: str):
-        """Load the rendered frames, refusing rather than silently coercing
-        when `colour_lane` does not match what is actually on disk.
+    def _load_frame_batch(self, take_dir: str, frame_paths: list[Path],
+                           colour_lane: str, *, directory_name: str):
+        """The shared loading path: frames listed, format-checked, read and
+        stacked into a tensor -- used by both `load_playblast` and
+        `load_projected` so the two batches cannot diverge in dtype,
+        channel order or normalisation. `directory_name` only changes the
+        wording of a refusal message; it does not change behaviour.
 
-        The upstream playblast operation
+        Refuses rather than silently coercing when `colour_lane` does not
+        match what is actually on disk. The upstream playblast operation
         (`atlas_scene.operations.playblast_ops.copy_exr_sequence`) delivers
         8-bit sRGB PNG today -- its own docstring says so -- there is no
         real scene-linear EXR lane yet. Detecting the real extension and
         refusing a mismatch keeps that honest instead of feeding PNG bytes
         through the float/data path (or vice versa) and calling it EXR.
         """
-        frame_paths = self.frame_files(take_dir)
         extensions = {path.suffix.lower() for path in frame_paths}
         if len(extensions) != 1:
             raise ValueError(
-                f"mixed frame formats in {take_dir}/playblast: "
+                f"mixed frame formats in {take_dir}/{directory_name}: "
                 f"{sorted(extensions)}. A take must render one format."
             )
         extension = next(iter(extensions))
@@ -702,20 +827,40 @@ class AtlasDirectorTake:
             if extension != ".exr":
                 raise ValueError(
                     "colour_lane='exr' was requested, but this take's "
-                    f"playblast frames are {extension} -- the upstream "
-                    "playblast lane (playblast_ops.copy_exr_sequence) "
-                    "delivers 8-bit sRGB PNG today, not scene-linear EXR; a "
-                    "real EXR lane does not exist yet. Use colour_lane="
-                    "'png'."
+                    f"{directory_name} frames are {extension} -- the "
+                    "upstream playblast lane (playblast_ops."
+                    "copy_exr_sequence) delivers 8-bit sRGB PNG today, not "
+                    "scene-linear EXR; a real EXR lane does not exist yet. "
+                    "Use colour_lane='png'."
                 )
             return self._load_exr_frames(frame_paths)
 
         if extension == ".exr":
             raise ValueError(
                 "colour_lane='png' was requested, but this take's "
-                "playblast frames are EXR. Use colour_lane='exr'."
+                f"{directory_name} frames are EXR. Use colour_lane='exr'."
             )
         return self._load_png_frames(frame_paths)
+
+    def load_playblast(self, take_dir: str, colour_lane: str):
+        """Load the grey/flat-shaded rendered frames. See
+        `_load_frame_batch` -- the shared loading path with `load_projected`.
+        """
+        frame_paths = self.frame_files(take_dir)
+        return self._load_frame_batch(
+            take_dir, frame_paths, colour_lane, directory_name="playblast",
+        )
+
+    def load_projected(self, take_dir: str, colour_lane: str):
+        """Load the plate-projected rendered frames. See
+        `_load_frame_batch` -- the shared loading path with `load_playblast`,
+        so the two batches cannot diverge in dtype, channel order or
+        normalisation.
+        """
+        frame_paths = self.projected_frame_files(take_dir)
+        return self._load_frame_batch(
+            take_dir, frame_paths, colour_lane, directory_name="projected",
+        )
 
     # -- optional ray-map EXR sidecar (addendum Ruling P7) -----------------
 
@@ -790,6 +935,24 @@ class AtlasDirectorTake:
             take_dir, frame_paths,
         )
         actual_frame_count = len(frame_paths)
+
+        # projected/ must correspond frame-for-frame with playblast/ --
+        # refuses (naming what disagreed) rather than silently reading a
+        # misaligned batch. See AtlasDirectorTake's class docstring.
+        projected_frame_paths = self.projected_frame_files(take_dir)
+        self._ensure_projected_matches_playblast(
+            take_dir, playblast_frame_paths=frame_paths,
+            projected_frame_paths=projected_frame_paths,
+        )
+        projected_width, projected_height = self._read_frame_dimensions(
+            take_dir, projected_frame_paths,
+        )
+        self._ensure_projected_dimensions_match(
+            take_dir,
+            playblast_size=(actual_width, actual_height),
+            projected_size=(projected_width, projected_height),
+        )
+
         all_samples = self._load_samples(take_dir)
         start, stop = self._aligned_sample_range(
             take_dir, frame_paths, sample_count=len(all_samples),
@@ -797,6 +960,11 @@ class AtlasDirectorTake:
         samples = all_samples[start:stop]
 
         playblast = self.load_playblast(take_dir, colour_lane)
+        projected = self.load_projected(take_dir, colour_lane)
+        # `projected` frame 0 as a batch of size 1 -- the marked IN-point,
+        # the model's photoreal first frame. Sliced here, not left for the
+        # graph to derive from `projected` by index (see class docstring).
+        first_frame = projected[0:1]
         # Built at the frames' ACTUAL resolution (`actual_width`/
         # `actual_height`, read off the first frame above), NOT the
         # width/height widgets: those are launch targets set before any
@@ -831,6 +999,7 @@ class AtlasDirectorTake:
 
         return {
             "result": (playblast, embedded, rays_preview, samples,
-                       actual_frame_count, actual_width, actual_height),
+                       actual_frame_count, actual_width, actual_height,
+                       projected, first_frame),
             "ui": {"text": [" ".join(notes)]},
         }

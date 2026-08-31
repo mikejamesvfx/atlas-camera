@@ -9,10 +9,13 @@ from atlas_camera.comfy.nodes_director import AtlasDirectorTake, StaleTakeError
 from atlas_camera.comfy.plucker import ray_map
 
 
-def _write_marks(directory: Path, *, frame_count: int, marked: bool = False,
-                  mark_in: "int | None" = None, mark_out: "int | None" = None) -> None:
-    """`<take_dir>/playblast/playblast.json` -- same schema `capturePlayblast`
-    writes (Finding 2): `in`/`out` always present, null when unmarked.
+def _write_marks_at(subdirectory: Path, *, frame_count: int, marked: bool = False,
+                     mark_in: "int | None" = None,
+                     mark_out: "int | None" = None) -> None:
+    """`<subdirectory>/playblast.json` -- same schema `capturePlayblast`
+    writes (Finding 2): `in`/`out` always present, null when unmarked. Used
+    for both `<take_dir>/playblast/` and `<take_dir>/projected/` -- the two
+    sequences carry sidecars of identical schema.
     """
     marks = {
         "frame_count": frame_count,
@@ -20,16 +23,26 @@ def _write_marks(directory: Path, *, frame_count: int, marked: bool = False,
         "out": mark_out if marked else None,
         "marked": marked,
     }
-    (directory / "playblast" / "playblast.json").write_text(
+    subdirectory.mkdir(parents=True, exist_ok=True)
+    (subdirectory / "playblast.json").write_text(
         json.dumps(marks, sort_keys=True, separators=(",", ":"))
     )
+
+
+def _write_marks(directory: Path, *, frame_count: int, marked: bool = False,
+                  mark_in: "int | None" = None, mark_out: "int | None" = None) -> None:
+    """`<take_dir>/playblast/playblast.json` -- see `_write_marks_at`."""
+    _write_marks_at(directory / "playblast", frame_count=frame_count,
+                     marked=marked, mark_in=mark_in, mark_out=mark_out)
 
 
 def _write_take(directory: Path, *, n_frames: int, n_samples: int,
                  frame_count: int = 999, pretty: bool = False,
                  write_marks: bool = True, marked: bool = False,
                  mark_in: "int | None" = None,
-                 mark_out: "int | None" = None) -> None:
+                 mark_out: "int | None" = None,
+                 write_projected: bool = True,
+                 projected_n_frames: "int | None" = None) -> None:
     (directory / "playblast").mkdir(parents=True)
     for index in range(n_frames):
         (directory / "playblast" / f"frame.{index:04d}.png").write_bytes(b"")
@@ -49,6 +62,19 @@ def _write_take(directory: Path, *, n_frames: int, n_samples: int,
         # (frames staged from index 0 of the take).
         _write_marks(directory, frame_count=n_frames, marked=marked,
                      mark_in=mark_in, mark_out=mark_out)
+    if write_projected:
+        # `projected/` mirrors `playblast/` exactly by default -- same
+        # frame count, same marks sidecar contents -- so tests that don't
+        # care about the projected sequence still get a `read()` that
+        # succeeds. Tests exercising the disagreement refusals pass
+        # `write_projected=False` and build `projected/` by hand instead.
+        n_proj = n_frames if projected_n_frames is None else projected_n_frames
+        (directory / "projected").mkdir(parents=True)
+        for index in range(n_proj):
+            (directory / "projected" / f"frame.{index:04d}.png").write_bytes(b"")
+        if write_marks:
+            _write_marks_at(directory / "projected", frame_count=n_frames,
+                             marked=marked, mark_in=mark_in, mark_out=mark_out)
 
 
 @pytest.fixture()
@@ -149,12 +175,17 @@ def test_return_types_and_names_pin_the_atlas_rays_socket():
     # Regression guard for review finding I3: reverting `rays` to plain
     # IMAGE (the brief's original, non-implementable version) must fail
     # this test even though every other test still passes unchanged.
+    #
+    # `projected`/`first_frame` are appended at the end so existing slot
+    # indices (0-6) do not move.
     assert AtlasDirectorTake.RETURN_TYPES == (
         "IMAGE", "ATLAS_RAYS", "IMAGE", "ATLAS_CAMERA", "INT", "INT", "INT",
+        "IMAGE", "IMAGE",
     )
     assert AtlasDirectorTake.RETURN_NAMES == (
         "playblast", "rays", "rays_preview", "samples",
         "frame_count", "width", "height",
+        "projected", "first_frame",
     )
 
 
@@ -397,9 +428,17 @@ def real_playblast_take(tmp_path):
 
     directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
     (directory / "playblast").mkdir(parents=True)
+    (directory / "projected").mkdir(parents=True)
     for index in range(73):
         img = Image.new("RGB", (16, 9), color=(index % 256, 0, 0))
         img.save(directory / "playblast" / f"frame.{index:04d}.png")
+        # projected/ mirrors playblast/'s span exactly -- same frame count,
+        # same marked range -- distinct pixel content (a different colour
+        # channel) so a projected/playblast mixup in the loading path is
+        # visible if it ever happens, even though nothing here asserts on
+        # colour today.
+        proj = Image.new("RGB", (16, 9), color=(0, index % 256, 0))
+        proj.save(directory / "projected" / f"frame.{index:04d}.png")
     samples = [
         {"position": [0.0, 1.6, float(index)], "rotation": [0, 0, 0, 1],
          "focalLengthMm": 35.0, "focusDistanceM": 4.0, "tStop": 2.8,
@@ -411,6 +450,7 @@ def real_playblast_take(tmp_path):
         "schemaVersion": 1, "slate": "sc/sh/a_take01", "frameCount": 999,
     }))
     _write_marks(directory, frame_count=73, marked=False)
+    _write_marks_at(directory / "projected", frame_count=73, marked=False)
     return directory
 
 
@@ -441,7 +481,8 @@ def test_read_returns_all_four_outputs_and_never_mutates_sessions(
         colour_lane="png",
     )
     result = out["result"] if isinstance(out, dict) else out
-    playblast, rays, rays_preview, samples, frame_count, width, height = result
+    (playblast, rays, rays_preview, samples, frame_count, width, height,
+     projected, first_frame) = result
 
     assert tuple(playblast.shape) == (73, 9, 16, 3)
     assert tuple(rays.shape) == (73, 9, 16, 6)
@@ -452,6 +493,8 @@ def test_read_returns_all_four_outputs_and_never_mutates_sessions(
     assert frame_count == 73
     assert width == 16
     assert height == 9
+    assert tuple(projected.shape) == (73, 9, 16, 3)
+    assert tuple(first_frame.shape) == (1, 9, 16, 3)
     assert SESSIONS["shot_012"] == before
     SESSIONS.clear()
 
@@ -564,7 +607,8 @@ def test_a_mismatched_frame_width_succeeds_and_outputs_the_real_size(
     out = node.read(session_id="shot_012", width=32, height=9, frames=121,
                      fps=24, colour_lane="png")
     result = out["result"] if isinstance(out, dict) else out
-    playblast, rays, rays_preview, samples, frame_count, width, height = result
+    (playblast, rays, rays_preview, samples, frame_count, width, height,
+     projected, first_frame) = result
 
     # Outputs carry the REAL, rendered size -- not the widget's 32.
     assert width == 16
@@ -574,6 +618,8 @@ def test_a_mismatched_frame_width_succeeds_and_outputs_the_real_size(
     # The ray map follows the frames on disk (16x9), not the widget (32x9).
     assert tuple(rays.shape) == (73, 9, 16, 6)
     assert tuple(rays_preview.shape) == (73, 9, 16, 3)
+    assert tuple(projected.shape) == (73, 9, 16, 3)
+    assert tuple(first_frame.shape) == (1, 9, 16, 3)
 
     # The disagreement is surfaced in the text output, not as a refusal.
     note = " ".join(out["ui"]["text"]) if isinstance(out, dict) else ""
@@ -812,3 +858,209 @@ def test_rendered_count_74_refuses_and_names_nearest_valid_counts(tmp_path):
     assert "% 8 == 1" in message  # the rule
     assert "73" in message  # nearest valid count below
     assert "81" in message  # nearest valid count above
+
+
+# --- the projected (photoreal) sequence: both batches, first_frame,
+# --- and the disagreement refusals --------------------------------------
+
+
+#: `both_sequences_take`'s frame count -- 9, an LTX-valid length
+#: (9 % 8 == 1) so this fixture can also be read end-to-end through
+#: `read()`, not just through the lower-level loading methods.
+BOTH_SEQUENCES_N_FRAMES = 9
+
+
+@pytest.fixture()
+def both_sequences_take(tmp_path):
+    """9 rendered frames on BOTH `playblast/` and `projected/`, 9 samples on
+    the full take -- real, openable PNGs, non-square 16x9 (Ruling P2) so a
+    width/height transposition anywhere in the projected path fails these
+    tests instead of hiding behind a square fixture. 9 is an LTX-valid
+    frame count (9 % 8 == 1) so this fixture also survives a full `read()`.
+
+    `playblast/` and `projected/` frames are given different colour
+    channels so a mixup between the two loading paths would show up in the
+    pixel values (nothing here asserts on colour, but a future test could).
+    """
+    from PIL import Image
+
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    (directory / "playblast").mkdir(parents=True)
+    (directory / "projected").mkdir(parents=True)
+    n = BOTH_SEQUENCES_N_FRAMES
+    for index in range(n):
+        Image.new("RGB", (16, 9), color=(index * 10, 0, 0)).save(
+            directory / "playblast" / f"frame.{index:04d}.png"
+        )
+        Image.new("RGB", (16, 9), color=(0, index * 10, 0)).save(
+            directory / "projected" / f"frame.{index:04d}.png"
+        )
+    samples = [
+        {"position": [0.0, 1.6, float(index)], "rotation": [0, 0, 0, 1],
+         "focalLengthMm": 35.0, "focusDistanceM": 4.0, "tStop": 2.8,
+         "filmback": {"name": "S35", "widthMm": 24.89, "heightMm": 18.66}}
+        for index in range(n)
+    ]
+    (directory / "samples.json").write_text(json.dumps(samples))
+    (directory / "manifest.json").write_text(json.dumps({
+        "schemaVersion": 1, "slate": "sc/sh/a_take01", "frameCount": 999,
+    }))
+    _write_marks(directory, frame_count=n, marked=False)
+    _write_marks_at(directory / "projected", frame_count=n, marked=False)
+    return directory
+
+
+def test_both_batches_load_with_expected_shapes(both_sequences_take):
+    node = AtlasDirectorTake()
+    playblast = node.load_playblast(str(both_sequences_take), "png")
+    projected = node.load_projected(str(both_sequences_take), "png")
+    n = BOTH_SEQUENCES_N_FRAMES
+    assert tuple(playblast.shape) == (n, 9, 16, 3)
+    assert tuple(projected.shape) == (n, 9, 16, 3)
+    # Distinct pixel content proves `load_projected` actually read
+    # projected/, not a second copy of playblast/.
+    assert not np.allclose(np.asarray(playblast), np.asarray(projected))
+
+
+def test_first_frame_is_exactly_projected_frame_zero_with_batch_size_one(
+        both_sequences_take):
+    node = AtlasDirectorTake()
+    projected = node.load_projected(str(both_sequences_take), "png")
+    first_frame = projected[0:1]
+    assert tuple(first_frame.shape) == (1, 9, 16, 3)
+    np.testing.assert_array_equal(
+        np.asarray(first_frame[0]), np.asarray(projected[0]),
+    )
+
+
+def test_missing_projected_directory_refuses_and_names_re_push(tmp_path):
+    # A take that predates the second sequence: playblast/ only, no
+    # projected/ at all.
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    _write_take(directory, n_frames=4, n_samples=8, write_projected=False)
+    node = AtlasDirectorTake()
+    with pytest.raises(StaleTakeError) as raised:
+        node.projected_frame_files(str(directory))
+    message = str(raised.value).lower()
+    assert "projected" in message
+    assert "re-push" in message
+
+
+def test_projected_frame_count_mismatch_refuses_and_names_both_counts(
+        both_sequences_take):
+    # projected/ has one extra frame beyond playblast/'s 9, but its marks
+    # sidecar still claims frame_count=9 (matching playblast/'s sidecar) so
+    # the sidecar-agreement check passes and the frame-count check is the
+    # one that catches this.
+    from PIL import Image
+
+    n = BOTH_SEQUENCES_N_FRAMES
+    Image.new("RGB", (16, 9), color=(0, 99, 0)).save(
+        both_sequences_take / "projected" / f"frame.{n:04d}.png"
+    )
+    node = AtlasDirectorTake()
+    playblast_paths = node.frame_files(str(both_sequences_take))
+    projected_paths = node.projected_frame_files(str(both_sequences_take))
+    with pytest.raises(StaleTakeError) as raised:
+        node._ensure_projected_matches_playblast(
+            str(both_sequences_take),
+            playblast_frame_paths=playblast_paths,
+            projected_frame_paths=projected_paths,
+        )
+    message = str(raised.value)
+    assert str(n + 1) in message  # projected/'s on-disk count
+    assert str(n) in message  # playblast/'s on-disk count
+
+
+def test_projected_dimension_mismatch_refuses_and_names_both_sizes(
+        both_sequences_take):
+    from PIL import Image
+
+    # Replace one projected/ frame with a different, still non-square size.
+    bad = both_sequences_take / "projected" / "frame.0000.png"
+    Image.new("RGB", (8, 20), color=(0, 5, 0)).save(bad)
+
+    node = AtlasDirectorTake()
+    with pytest.raises(StaleTakeError) as raised:
+        node._ensure_projected_dimensions_match(
+            str(both_sequences_take),
+            playblast_size=(16, 9),
+            projected_size=(8, 20),
+        )
+    message = str(raised.value)
+    assert "16x9" in message
+    assert "8x20" in message
+
+
+def test_read_wires_projected_and_first_frame_end_to_end(
+        both_sequences_take, package_path, monkeypatch):
+    import atlas_camera.plate.oiio_io as oiio_io
+    monkeypatch.setattr(oiio_io, "oiio_available", lambda: False)
+
+    SESSIONS.clear()
+    SESSIONS["shot_012"] = {
+        "session_id": "shot_012",
+        "package": str(package_path),
+        "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
+        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
+        "slate": "sc/sh/a_take01",
+        "take_dir": str(both_sequences_take),
+    }
+    node = AtlasDirectorTake()
+    out = node.read(session_id="shot_012", width=16, height=9, frames=121,
+                     fps=24, colour_lane="png")
+    result = out["result"] if isinstance(out, dict) else out
+    (playblast, rays, rays_preview, samples, frame_count, width, height,
+     projected, first_frame) = result
+
+    assert tuple(projected.shape) == (BOTH_SEQUENCES_N_FRAMES, 9, 16, 3)
+    assert tuple(first_frame.shape) == (1, 9, 16, 3)
+    np.testing.assert_array_equal(
+        np.asarray(first_frame[0]), np.asarray(projected[0]),
+    )
+    SESSIONS.clear()
+
+
+def test_read_refuses_when_projected_is_missing(tmp_path, package_path):
+    # A take that predates the second sequence: playblast/ only, no
+    # projected/ at all. 9 real, openable frames -- an LTX-valid count
+    # (9 % 8 == 1) -- so both the LTX check and the pixel-dimension read
+    # (which opens frame 0) pass, and this exercises the projected refusal
+    # itself, not an unrelated failure.
+    from PIL import Image
+
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    (directory / "playblast").mkdir(parents=True)
+    for index in range(9):
+        Image.new("RGB", (16, 9), color=(index * 10, 0, 0)).save(
+            directory / "playblast" / f"frame.{index:04d}.png"
+        )
+    samples = [
+        {"position": [0.0, 1.6, float(index)], "rotation": [0, 0, 0, 1],
+         "focalLengthMm": 35.0, "focusDistanceM": 4.0, "tStop": 2.8,
+         "filmback": {"name": "S35", "widthMm": 24.89, "heightMm": 18.66}}
+        for index in range(9)
+    ]
+    (directory / "samples.json").write_text(json.dumps(samples))
+    (directory / "manifest.json").write_text(json.dumps({
+        "schemaVersion": 1, "slate": "sc/sh/a_take01", "frameCount": 999,
+    }))
+    _write_marks(directory, frame_count=9, marked=False)
+
+    SESSIONS.clear()
+    SESSIONS["shot_012"] = {
+        "session_id": "shot_012",
+        "package": str(package_path),
+        "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
+        "timebase": {"width": 16, "height": 9, "frames": 9, "fps": 24},
+        "slate": "sc/sh/a_take01",
+        "take_dir": str(directory),
+    }
+    node = AtlasDirectorTake()
+    with pytest.raises(StaleTakeError) as raised:
+        node.read(session_id="shot_012", width=16, height=9, frames=9,
+                   fps=24, colour_lane="png")
+    message = str(raised.value).lower()
+    assert "projected" in message
+    assert "re-push" in message
+    SESSIONS.clear()
