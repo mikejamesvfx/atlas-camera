@@ -222,10 +222,26 @@ def test_a_pushed_session_with_a_package_but_no_digest_also_refuses(tmp_path, pa
     SESSIONS.clear()
 
 
-def test_allowed_frames_is_a_single_entry_tuple_for_now():
-    from atlas_camera.comfy.nodes_director import ALLOWED_FRAMES
+def test_ltx_frame_count_rule():
+    from atlas_camera.comfy.nodes_director import (
+        is_ltx_valid_frame_count,
+        nearest_ltx_valid_frame_counts,
+    )
 
-    assert ALLOWED_FRAMES == ("121",)
+    # The real case that used to be broken: a take marked to 73 frames.
+    assert is_ltx_valid_frame_count(73)
+    assert is_ltx_valid_frame_count(121)
+    assert is_ltx_valid_frame_count(1)  # smallest valid value
+    assert not is_ltx_valid_frame_count(74)
+    assert nearest_ltx_valid_frame_counts(74) == (73, 81)
+
+
+def test_frames_widget_value_failing_the_rule_is_refused():
+    node = AtlasDirectorTake()
+    with pytest.raises(ValueError, match="frames=74"):
+        node._ensure_frames_widget_is_valid(74)
+    with pytest.raises(ValueError, match="% 8 == 1"):
+        node._ensure_frames_widget_is_valid(74)
 
 
 # --- the ray-map EXR sidecar (Ruling P7) ------------------------------------
@@ -363,26 +379,33 @@ def test_no_playblast_directory_and_no_mp4_refuses_generically(tmp_path):
 
 @pytest.fixture()
 def real_playblast_take(tmp_path):
-    """Same shape as `take_dir`, but with real (openable) PNG frames."""
+    """Same shape as `take_dir`, but with real (openable) PNG frames.
+
+    73 frames, not 4 -- 73 % 8 == 1, a valid LTX length, and it is the real
+    case from the field this rule fixes: a take marked to 73 frames while
+    the `frames` widget (launched at the shot's own timebase) sits at a
+    different, also-valid value. The rendered count no longer has to equal
+    the widget, so these deliberately differ in the tests below.
+    """
 
     from PIL import Image
 
     directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
     (directory / "playblast").mkdir(parents=True)
-    for index in range(4):
-        img = Image.new("RGB", (16, 9), color=(index * 10, 0, 0))
+    for index in range(73):
+        img = Image.new("RGB", (16, 9), color=(index % 256, 0, 0))
         img.save(directory / "playblast" / f"frame.{index:04d}.png")
     samples = [
         {"position": [0.0, 1.6, float(index)], "rotation": [0, 0, 0, 1],
          "focalLengthMm": 35.0, "focusDistanceM": 4.0, "tStop": 2.8,
          "filmback": {"name": "S35", "widthMm": 24.89, "heightMm": 18.66}}
-        for index in range(8)
+        for index in range(73)
     ]
     (directory / "samples.json").write_text(json.dumps(samples))
     (directory / "manifest.json").write_text(json.dumps({
         "schemaVersion": 1, "slate": "sc/sh/a_take01", "frameCount": 999,
     }))
-    _write_marks(directory, frame_count=4, marked=False)
+    _write_marks(directory, frame_count=73, marked=False)
     return directory
 
 
@@ -396,9 +419,12 @@ def test_read_returns_all_four_outputs_and_never_mutates_sessions(
         "session_id": "shot_012",
         "package": str(package_path),
         "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
-        # frames="4" matches real_playblast_take's 4 rendered frames --
-        # _ensure_frame_count_matches_frames_widget now requires this.
-        "timebase": {"width": 16, "height": 9, "frames": 4, "fps": 24},
+        # frames=121 -- the shot's launch timebase -- deliberately does NOT
+        # match real_playblast_take's 73 rendered frames. The rendered
+        # count no longer has to equal the frames widget (see
+        # `_ensure_frame_count_is_ltx_valid`); both are independently valid
+        # LTX lengths (121 % 8 == 1, 73 % 8 == 1), so this must succeed.
+        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
         "slate": "sc/sh/a_take01",
         "take_dir": str(real_playblast_take),
     }
@@ -406,16 +432,16 @@ def test_read_returns_all_four_outputs_and_never_mutates_sessions(
 
     node = AtlasDirectorTake()
     out = node.read(
-        session_id="shot_012", width=16, height=9, frames="4", fps=24,
+        session_id="shot_012", width=16, height=9, frames=121, fps=24,
         colour_lane="png",
     )
     result = out["result"] if isinstance(out, dict) else out
     playblast, rays, rays_preview, samples = result
 
-    assert tuple(playblast.shape) == (4, 9, 16, 3)
-    assert tuple(rays.shape) == (4, 9, 16, 6)
-    assert tuple(rays_preview.shape) == (4, 9, 16, 3)
-    assert len(samples) == 4  # 8 samples on the take, 4 frames rendered
+    assert tuple(playblast.shape) == (73, 9, 16, 3)
+    assert tuple(rays.shape) == (73, 9, 16, 6)
+    assert tuple(rays_preview.shape) == (73, 9, 16, 3)
+    assert len(samples) == 73  # 73 samples on the take, 73 frames rendered
     assert SESSIONS["shot_012"] == before
     SESSIONS.clear()
 
@@ -431,7 +457,7 @@ def test_read_refuses_a_stale_package(real_playblast_take, package_path):
     }
     node = AtlasDirectorTake()
     with pytest.raises(StaleTakeError):
-        node.read(session_id="shot_012", width=16, height=9, frames="121",
+        node.read(session_id="shot_012", width=16, height=9, frames=121,
                    fps=24, colour_lane="png")
     SESSIONS.clear()
 
@@ -447,7 +473,7 @@ def test_read_refuses_when_no_digest_was_ever_recorded(real_playblast_take, pack
     }
     node = AtlasDirectorTake()
     with pytest.raises(StaleTakeError, match="package_digest"):
-        node.read(session_id="shot_012", width=16, height=9, frames="121",
+        node.read(session_id="shot_012", width=16, height=9, frames=121,
                    fps=24, colour_lane="png")
     SESSIONS.clear()
 
@@ -469,7 +495,7 @@ def test_read_refuses_when_the_nodes_timebase_does_not_match_the_session(
     }
     node = AtlasDirectorTake()
     with pytest.raises(ValueError, match="timebase"):
-        node.read(session_id="shot_012", width=16, height=9, frames="121",
+        node.read(session_id="shot_012", width=16, height=9, frames=121,
                    fps=24, colour_lane="png")
     SESSIONS.clear()
 
@@ -486,13 +512,14 @@ def test_matching_dimensions_pass(real_playblast_take, package_path, monkeypatch
         "session_id": "shot_012",
         "package": str(package_path),
         "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
-        "timebase": {"width": 16, "height": 9, "frames": 4, "fps": 24},
+        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
         "slate": "sc/sh/a_take01",
         "take_dir": str(real_playblast_take),
     }
     node = AtlasDirectorTake()
-    # real_playblast_take renders real 16x9 PNGs, 4 of them -- must not raise.
-    node.read(session_id="shot_012", width=16, height=9, frames="4",
+    # real_playblast_take renders real 16x9 PNGs, 73 of them -- must not
+    # raise, even though the frames widget (121) disagrees with that count.
+    node.read(session_id="shot_012", width=16, height=9, frames=121,
                fps=24, colour_lane="png")
     SESSIONS.clear()
 
@@ -646,8 +673,13 @@ def test_marked_false_with_non_null_marks_refuses(tmp_path):
         node._aligned_sample_range(str(directory), frame_paths, sample_count=8)
 
 
-def test_rendered_frame_count_disagreeing_with_frames_widget_refuses(
+def test_rendered_count_need_not_equal_frames_widget(
         real_playblast_take, package_path, monkeypatch):
+    """The real case this rule fixes: a take marked to 73 frames, with the
+    `frames` widget left at the shot's launch timebase (121). Both are
+    independently valid LTX lengths (73 % 8 == 1, 121 % 8 == 1) -- forcing
+    them to be equal bought no safety and blocked exactly this take.
+    """
     import atlas_camera.plate.oiio_io as oiio_io
     monkeypatch.setattr(oiio_io, "oiio_available", lambda: False)
 
@@ -656,18 +688,51 @@ def test_rendered_frame_count_disagreeing_with_frames_widget_refuses(
         "session_id": "shot_012",
         "package": str(package_path),
         "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
-        # Widget and session timebase agree with EACH OTHER (5), so
-        # `_ensure_timebase_matches` passes -- but real_playblast_take only
-        # rendered 4 real frames, so the actual count disagrees with both.
-        "timebase": {"width": 16, "height": 9, "frames": 5, "fps": 24},
+        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
         "slate": "sc/sh/a_take01",
         "take_dir": str(real_playblast_take),
     }
     node = AtlasDirectorTake()
-    with pytest.raises(StaleTakeError) as raised:
-        node.read(session_id="shot_012", width=16, height=9, frames="5",
-                   fps=24, colour_lane="png")
-    message = str(raised.value)
-    assert "4" in message  # actual rendered count
-    assert "5" in message  # the frames widget
+    # Must NOT raise: real_playblast_take rendered 73 frames, the widget
+    # says 121, and that mismatch is no longer a refusal.
+    out = node.read(session_id="shot_012", width=16, height=9, frames=121,
+                     fps=24, colour_lane="png")
+    result = out["result"] if isinstance(out, dict) else out
+    playblast = result[0]
+    assert tuple(playblast.shape)[0] == 73
     SESSIONS.clear()
+
+
+# --- the real LTX rule: n % 8 == 1, replacing the old equality-with-widget
+# --- proxy ------------------------------------------------------------------
+
+
+def test_rendered_count_73_is_ltx_valid(tmp_path):
+    node = AtlasDirectorTake()
+    frame_paths = [tmp_path / f"frame.{i:04d}.png" for i in range(73)]
+    node._ensure_frame_count_is_ltx_valid(str(tmp_path), frame_paths)  # no raise
+
+
+def test_rendered_count_121_is_ltx_valid(tmp_path):
+    node = AtlasDirectorTake()
+    frame_paths = [tmp_path / f"frame.{i:04d}.png" for i in range(121)]
+    node._ensure_frame_count_is_ltx_valid(str(tmp_path), frame_paths)  # no raise
+
+
+def test_rendered_count_1_is_ltx_valid(tmp_path):
+    # The smallest valid value.
+    node = AtlasDirectorTake()
+    frame_paths = [tmp_path / "frame.0000.png"]
+    node._ensure_frame_count_is_ltx_valid(str(tmp_path), frame_paths)  # no raise
+
+
+def test_rendered_count_74_refuses_and_names_nearest_valid_counts(tmp_path):
+    node = AtlasDirectorTake()
+    frame_paths = [tmp_path / f"frame.{i:04d}.png" for i in range(74)]
+    with pytest.raises(StaleTakeError) as raised:
+        node._ensure_frame_count_is_ltx_valid(str(tmp_path), frame_paths)
+    message = str(raised.value)
+    assert "74" in message  # the rendered count
+    assert "% 8 == 1" in message  # the rule
+    assert "73" in message  # nearest valid count below
+    assert "81" in message  # nearest valid count above

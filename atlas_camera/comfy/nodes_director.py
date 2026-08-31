@@ -57,10 +57,51 @@ class StaleTakeError(RuntimeError):
     """
 
 
-#: LTX rejects arbitrary lengths, and rejects them AFTER a take is shot. One
-#: value until the real set is confirmed against the model (spec open
-#: question 7): refusing everything else is the correct failure direction.
-ALLOWED_FRAMES = ("121",)
+#: The official LTX frame-count constraint, confirmed by the user: LTX only
+#: accepts a frame count `n` satisfying `n % LTX_FRAME_MODULUS ==
+#: LTX_FRAME_REMAINDER` (1, 9, 17, 25, ..., 121, 129, ...). This replaces the
+#: `ALLOWED_FRAMES = ("121",)` placeholder that stood in for the real rule
+#: while it was unknown (spec open question 7) -- refusing everything but
+#: one known-valid value was the safe direction until the rule itself could
+#: be stated exactly.
+LTX_FRAME_MODULUS = 8
+LTX_FRAME_REMAINDER = 1
+
+#: Default for the `frames` INT widget -- the same value the old
+#: `ALLOWED_FRAMES` placeholder's single entry used, still a valid length.
+DEFAULT_FRAMES = 121
+
+#: Read at the widget so the operator sees the rule where they set the
+#: value, not just when a take later gets refused for violating it.
+FRAMES_TOOLTIP = (
+    "LTX only accepts frame counts n where n % 8 == 1 (1, 9, 17, 25, ..., "
+    "121, 129, ...). Pushed to Director at launch as the shot's timebase "
+    "-- the operator marks take ranges against it. Not used to slice this "
+    "node's own outputs; the rendered playblast directory decides frame "
+    "count (see `frame_files`). `read()` separately refuses, naming the "
+    "nearest valid counts, when the rendered frame count itself violates "
+    "this rule -- see `_ensure_frame_count_is_ltx_valid`. The rendered "
+    "count no longer has to equal this widget's value."
+)
+
+
+def is_ltx_valid_frame_count(n: int) -> bool:
+    """The official LTX constraint: `n % 8 == 1`."""
+    return n % LTX_FRAME_MODULUS == LTX_FRAME_REMAINDER
+
+
+def nearest_ltx_valid_frame_counts(n: int) -> tuple[int, int]:
+    """The nearest valid frame counts either side of an invalid `n`.
+
+    Valid counts are spaced `LTX_FRAME_MODULUS` apart starting at
+    `LTX_FRAME_REMAINDER` (1, 9, 17, ...). Clamped at 1 -- there is no valid
+    count below the smallest one.
+    """
+    lower = n - ((n - LTX_FRAME_REMAINDER) % LTX_FRAME_MODULUS)
+    if lower < LTX_FRAME_REMAINDER:
+        lower = LTX_FRAME_REMAINDER
+    upper = lower + LTX_FRAME_MODULUS
+    return lower, upper
 
 #: Whether `read()` loads the 8-bit playblast PNGs or the float colour lane
 #: (spec 3.9). "exr" reads floats as-is -- no divide-by-255, no colour
@@ -130,22 +171,12 @@ class AtlasDirectorTake:
                 }),
                 "width": ("INT", {"default": 768, "min": 16, "max": 4096}),
                 "height": ("INT", {"default": 512, "min": 16, "max": 4096}),
-                "frames": (ALLOWED_FRAMES, {
-                    "tooltip": "LTX rejects arbitrary lengths, and only after "
-                               "a take is shot. One value until the real set "
-                               "is confirmed against the model (spec open "
-                               "question 7); refusing everything else is the "
-                               "correct failure direction. Not used to slice "
-                               "this node's own outputs -- the rendered "
-                               "playblast directory is what decides frame "
-                               "count (see `frame_files`) -- it exists so a "
-                               "downstream LTX node reads a value that "
-                               "matches what was actually launched with. "
-                               "`read()` separately refuses, naming both "
-                               "numbers, when playblast.json's own "
-                               "frame_count disagrees with the number of "
-                               "frame files actually on disk -- see "
-                               "`_aligned_sample_range`.",
+                "frames": ("INT", {
+                    "default": DEFAULT_FRAMES,
+                    "min": 1,
+                    "max": 4096,
+                    "step": LTX_FRAME_MODULUS,
+                    "tooltip": FRAMES_TOOLTIP,
                 }),
                 "fps": ("INT", {"default": 24, "min": 1, "max": 120}),
                 "colour_lane": (COLOUR_LANES, {
@@ -158,6 +189,20 @@ class AtlasDirectorTake:
                 }),
             },
         }
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, frames: int) -> "bool | str":
+        """ComfyUI's graph-validation hook: catches an invalid `frames`
+        widget value before the graph is even queued, not just when
+        `read()` runs. Mirrors `_ensure_frames_widget_is_valid`'s rule.
+        """
+        if is_ltx_valid_frame_count(int(frames)):
+            return True
+        return (
+            f"frames={frames} is not a length LTX accepts -- LTX only "
+            "takes frame counts n where n % 8 == 1 (1, 9, 17, 25, ..., "
+            "121, 129, ...)."
+        )
 
     # -- session --------------------------------------------------------
 
@@ -210,7 +255,7 @@ class AtlasDirectorTake:
         return True
 
     def _ensure_timebase_matches(self, session_id: str, session: dict, *,
-                                  width: int, height: int, frames: str,
+                                  width: int, height: int, frames: int,
                                   fps: int) -> None:
         """Refuse when this node's widgets do not match the session's timebase.
 
@@ -482,33 +527,54 @@ class AtlasDirectorTake:
                 "actual rendered size, or re-render the take at that size."
             )
 
-    def _ensure_frame_count_matches_frames_widget(self, take_dir: str,
-                                                    frame_paths: list[Path],
-                                                    *, frames: str) -> None:
-        """Refuse when the rendered frame count disagrees with the `frames`
-        widget (Finding 3, corrected in coordinator fix-round-1).
+    def _ensure_frames_widget_is_valid(self, frames: int) -> None:
+        """Refuse when the `frames` widget itself violates the LTX rule.
+
+        The widget is an INT with `step=LTX_FRAME_MODULUS`, which keeps the
+        UI slider on valid values, but a typed-in value can still bypass
+        that -- and this method is also what tests exercise directly,
+        without going through ComfyUI's own `VALIDATE_INPUTS` path. Checked
+        independently of the rendered take: this is about the widget's own
+        value, not about what got shot.
+        """
+        if not is_ltx_valid_frame_count(int(frames)):
+            raise ValueError(
+                f"frames={frames} is not a length LTX accepts -- LTX only "
+                "takes frame counts n where n % 8 == 1 (1, 9, 17, 25, ..., "
+                "121, 129, ...). Set frames to a value satisfying that "
+                "rule."
+            )
+
+    def _ensure_frame_count_is_ltx_valid(self, take_dir: str,
+                                          frame_paths: list[Path]) -> None:
+        """Refuse when the rendered frame count is not a length LTX accepts
+        (Finding 3, corrected: the real rule replaces the
+        rendered-equals-`frames`-widget proxy).
 
         `_aligned_sample_range` proves the sidecar describes the directory
         it lives in -- it says nothing about whether that many frames is a
-        length the model will accept. `ALLOWED_FRAMES` is a constrained
-        combo precisely because LTX rejects arbitrary lengths, and
-        `_ensure_timebase_matches` only compares this widget against the
-        value that same widget wrote into the session at launch -- a value
-        checked against itself, not against what was actually rendered. In
-        this pipeline a rendered sub-range of a non-model-valid length is
-        an operator mistake (marked the wrong range), not a legitimate
-        variation, so it is refused here, naming both numbers, so the
-        failure lands at the mark instead of surfacing later inside the
-        LTX call.
+        length the model will accept. That question now has an exact
+        answer (`is_ltx_valid_frame_count`), so it is checked directly
+        against the rendered count instead of via equality with the
+        `frames` widget: the widget records what Director was launched
+        with, but a take marked to a different, still-valid length (say 73
+        frames from a shot launched at 121) is a legitimate take, not an
+        operator mistake, and forcing the widget to match it for every take
+        bought no real safety. A rendered length that fails the LTX rule
+        itself, however, is refused here -- naming the count and the
+        nearest valid counts either side -- so the failure lands at the
+        mark instead of surfacing later as a confusing model error inside
+        the LTX call.
         """
         actual = len(frame_paths)
-        expected = int(frames)
-        if actual != expected:
+        if not is_ltx_valid_frame_count(actual):
+            lower, upper = nearest_ltx_valid_frame_counts(actual)
             raise StaleTakeError(
                 f"playblast under {take_dir!r} has {actual} rendered "
-                f"frame(s), but this node's frames widget says {expected}. "
-                "Match the marked range to the frames widget, or change "
-                "the widget to the number of frames actually rendered."
+                f"frame(s), which LTX will not accept -- LTX only takes "
+                "frame counts n where n % 8 == 1. "
+                f"{actual} frames is not valid; nearest are {lower} and "
+                f"{upper}. Re-mark the take to a valid length."
             )
 
     def read_rays(self, take_dir: str, width: int, height: int):
@@ -666,8 +732,9 @@ class AtlasDirectorTake:
 
     # -- execution ----------------------------------------------------------
 
-    def read(self, session_id: str, width: int, height: int, frames: str,
+    def read(self, session_id: str, width: int, height: int, frames: int,
               fps: int, colour_lane: str) -> dict[str, Any]:
+        self._ensure_frames_widget_is_valid(frames)
         session = self._session(session_id)
         take_dir = session["take_dir"]
         self._ensure_fresh(session_id, session)
@@ -680,9 +747,7 @@ class AtlasDirectorTake:
         self._ensure_frame_dimensions_match(
             take_dir, frame_paths, width=width, height=height,
         )
-        self._ensure_frame_count_matches_frames_widget(
-            take_dir, frame_paths, frames=frames,
-        )
+        self._ensure_frame_count_is_ltx_valid(take_dir, frame_paths)
         all_samples = self._load_samples(take_dir)
         start, stop = self._aligned_sample_range(
             take_dir, frame_paths, sample_count=len(all_samples),
