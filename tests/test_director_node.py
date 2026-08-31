@@ -149,8 +149,13 @@ def test_return_types_and_names_pin_the_atlas_rays_socket():
     # Regression guard for review finding I3: reverting `rays` to plain
     # IMAGE (the brief's original, non-implementable version) must fail
     # this test even though every other test still passes unchanged.
-    assert AtlasDirectorTake.RETURN_TYPES == ("IMAGE", "ATLAS_RAYS", "IMAGE", "ATLAS_CAMERA")
-    assert AtlasDirectorTake.RETURN_NAMES == ("playblast", "rays", "rays_preview", "samples")
+    assert AtlasDirectorTake.RETURN_TYPES == (
+        "IMAGE", "ATLAS_RAYS", "IMAGE", "ATLAS_CAMERA", "INT", "INT", "INT",
+    )
+    assert AtlasDirectorTake.RETURN_NAMES == (
+        "playblast", "rays", "rays_preview", "samples",
+        "frame_count", "width", "height",
+    )
 
 
 def test_a_stale_playblast_refuses_and_names_the_fix(package_path):
@@ -436,12 +441,17 @@ def test_read_returns_all_four_outputs_and_never_mutates_sessions(
         colour_lane="png",
     )
     result = out["result"] if isinstance(out, dict) else out
-    playblast, rays, rays_preview, samples = result
+    playblast, rays, rays_preview, samples, frame_count, width, height = result
 
     assert tuple(playblast.shape) == (73, 9, 16, 3)
     assert tuple(rays.shape) == (73, 9, 16, 6)
     assert tuple(rays_preview.shape) == (73, 9, 16, 3)
     assert len(samples) == 73  # 73 samples on the take, 73 frames rendered
+    # The batch's REAL shape, read off the playblast directory -- not the
+    # frames=121 widget above.
+    assert frame_count == 73
+    assert width == 16
+    assert height == 9
     assert SESSIONS["shot_012"] == before
     SESSIONS.clear()
 
@@ -524,8 +534,15 @@ def test_matching_dimensions_pass(real_playblast_take, package_path, monkeypatch
     SESSIONS.clear()
 
 
-def test_a_mismatched_frame_width_refuses_and_names_both_sizes(
+def test_a_mismatched_frame_width_succeeds_and_outputs_the_real_size(
         real_playblast_take, package_path, monkeypatch):
+    """width/height are launch targets only. A widget that disagrees with
+    what actually got rendered (32 vs the real 16x9) is normal operator
+    behaviour, not an error -- `read()` must succeed, and the `width`/
+    `height` outputs must carry the REAL, derived size, not the widget's.
+    Non-square (16x9, and a widget of 32x9) so a width/height transposition
+    in the derivation would fail this test.
+    """
     import atlas_camera.plate.oiio_io as oiio_io
     monkeypatch.setattr(oiio_io, "oiio_available", lambda: False)
 
@@ -536,20 +553,79 @@ def test_a_mismatched_frame_width_refuses_and_names_both_sizes(
         "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
         # The node's own widgets must match the session's recorded timebase
         # (`_ensure_timebase_matches`), so the timebase is set to the SAME
-        # (wrong) width the widgets below use -- what's under test here is
-        # that the *rendered pixels* (still 16x9) disagree with widget/
-        # timebase width (32), not a timebase mismatch.
+        # (launch-target) width the widgets below use -- what's under test
+        # here is that the *rendered pixels* (still 16x9) disagree with
+        # widget/timebase width (32), not a timebase mismatch.
         "timebase": {"width": 32, "height": 9, "frames": 121, "fps": 24},
         "slate": "sc/sh/a_take01",
         "take_dir": str(real_playblast_take),
     }
     node = AtlasDirectorTake()
+    out = node.read(session_id="shot_012", width=32, height=9, frames=121,
+                     fps=24, colour_lane="png")
+    result = out["result"] if isinstance(out, dict) else out
+    playblast, rays, rays_preview, samples, frame_count, width, height = result
+
+    # Outputs carry the REAL, rendered size -- not the widget's 32.
+    assert width == 16
+    assert height == 9
+    assert frame_count == 73
+    assert tuple(playblast.shape) == (73, 9, 16, 3)
+    # The ray map follows the frames on disk (16x9), not the widget (32x9).
+    assert tuple(rays.shape) == (73, 9, 16, 6)
+    assert tuple(rays_preview.shape) == (73, 9, 16, 3)
+
+    # The disagreement is surfaced in the text output, not as a refusal.
+    note = " ".join(out["ui"]["text"]) if isinstance(out, dict) else ""
+    assert "32x9" in note
+    assert "16x9" in note
+    SESSIONS.clear()
+
+
+def test_read_still_refuses_an_invalid_rendered_count(
+        package_path, tmp_path, monkeypatch):
+    """The `% 8 == 1` rule is a real LTX constraint, not a sync problem
+    between widgets -- deriving width/height from the rendered frames must
+    not have also removed this refusal.
+    """
+    import atlas_camera.plate.oiio_io as oiio_io
+    from PIL import Image
+
+    monkeypatch.setattr(oiio_io, "oiio_available", lambda: False)
+
+    directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
+    (directory / "playblast").mkdir(parents=True)
+    for index in range(74):  # 74 % 8 != 1 -- invalid
+        img = Image.new("RGB", (16, 9), color=(index % 256, 0, 0))
+        img.save(directory / "playblast" / f"frame.{index:04d}.png")
+    samples = [
+        {"position": [0.0, 1.6, float(index)], "rotation": [0, 0, 0, 1],
+         "focalLengthMm": 35.0, "focusDistanceM": 4.0, "tStop": 2.8,
+         "filmback": {"name": "S35", "widthMm": 24.89, "heightMm": 18.66}}
+        for index in range(74)
+    ]
+    (directory / "samples.json").write_text(json.dumps(samples))
+    (directory / "manifest.json").write_text(json.dumps({
+        "schemaVersion": 1, "slate": "sc/sh/a_take01", "frameCount": 999,
+    }))
+    _write_marks(directory, frame_count=74, marked=False)
+
+    SESSIONS.clear()
+    SESSIONS["shot_012"] = {
+        "session_id": "shot_012",
+        "package": str(package_path),
+        "package_digest": AtlasDirectorTake().package_digest(str(package_path)),
+        "timebase": {"width": 16, "height": 9, "frames": 121, "fps": 24},
+        "slate": "sc/sh/a_take01",
+        "take_dir": str(directory),
+    }
+    node = AtlasDirectorTake()
     with pytest.raises(StaleTakeError) as raised:
-        node.read(session_id="shot_012", width=32, height=9, frames="121",
+        node.read(session_id="shot_012", width=16, height=9, frames=121,
                    fps=24, colour_lane="png")
     message = str(raised.value)
-    assert "16x9" in message  # the frame's real size
-    assert "32x9" in message  # the widget values
+    assert "74" in message
+    assert "% 8 == 1" in message
     SESSIONS.clear()
 
 

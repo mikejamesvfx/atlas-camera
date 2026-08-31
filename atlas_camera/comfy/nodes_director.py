@@ -71,17 +71,49 @@ LTX_FRAME_REMAINDER = 1
 #: `ALLOWED_FRAMES` placeholder's single entry used, still a valid length.
 DEFAULT_FRAMES = 121
 
+#: width/height/frames/fps are LAUNCH TARGETS ONLY -- pushed to Director
+#: before any take exists, so Director has a timebase to draw frame-lines
+#: against. None of the four describes what actually got rendered: that is
+#: a property of the take directory, read back through this node's
+#: `frame_count`/`width`/`height` OUTPUTS instead (derived from the frame
+#: files themselves -- see `_read_frame_dimensions`). A take marked to a
+#: different length or shot at a different canvas size than these widgets
+#: is normal operator behaviour, not an error; `read()` no longer refuses
+#: on that disagreement, only notes it in its text output.
+WIDTH_TOOLTIP = (
+    "Launch target only: part of the timebase pushed to Director before "
+    "any take exists, for drawing frame-lines. NOT the rendered "
+    "playblast's actual pixel width -- read that off this node's `width` "
+    "OUTPUT, derived from the first rendered frame. A mismatch between "
+    "this widget and the rendered take is normal, not an error."
+)
+HEIGHT_TOOLTIP = (
+    "Launch target only: part of the timebase pushed to Director before "
+    "any take exists, for drawing frame-lines. NOT the rendered "
+    "playblast's actual pixel height -- read that off this node's "
+    "`height` OUTPUT, derived from the first rendered frame. A mismatch "
+    "between this widget and the rendered take is normal, not an error."
+)
+FPS_TOOLTIP = (
+    "Launch target only: part of the timebase pushed to Director before "
+    "any take exists. This node has no per-frame timing to derive an "
+    "actual fps from, so there is no `fps` output -- unlike width/height/"
+    "frames, this widget has nothing on the take to disagree with."
+)
+
 #: Read at the widget so the operator sees the rule where they set the
 #: value, not just when a take later gets refused for violating it.
 FRAMES_TOOLTIP = (
-    "LTX only accepts frame counts n where n % 8 == 1 (1, 9, 17, 25, ..., "
-    "121, 129, ...). Pushed to Director at launch as the shot's timebase "
-    "-- the operator marks take ranges against it. Not used to slice this "
-    "node's own outputs; the rendered playblast directory decides frame "
-    "count (see `frame_files`). `read()` separately refuses, naming the "
-    "nearest valid counts, when the rendered frame count itself violates "
-    "this rule -- see `_ensure_frame_count_is_ltx_valid`. The rendered "
-    "count no longer has to equal this widget's value."
+    "Launch target only: part of the timebase pushed to Director before "
+    "any take exists, for drawing frame-lines. NOT a description of the "
+    "rendered take -- read the actual rendered length off this node's "
+    "`frame_count` OUTPUT, derived from the frame files on disk (see "
+    "`frame_files`). A take marked to a different length than this widget "
+    "is normal, not an error. LTX only accepts frame counts n where "
+    "n % 8 == 1 (1, 9, 17, 25, ..., 121, 129, ...) -- enforced on this "
+    "widget too, so frame-lines land on valid marks; `read()` separately "
+    "refuses, naming the nearest valid counts, when the RENDERED count "
+    "violates this rule -- see `_ensure_frame_count_is_ltx_valid`."
 )
 
 
@@ -124,7 +156,7 @@ RAY_CHANNEL_NAMES = ["O.X", "O.Y", "O.Z", "D.X", "D.Y", "D.Z"]
 class AtlasDirectorTake:
     """Reads a take a director already shot as ComfyUI graph inputs.
 
-    Returns four sockets:
+    Returns seven sockets:
 
     * ``playblast`` -- the rendered frames as a standard ``IMAGE`` tensor.
     * ``rays`` -- the full-precision 6-channel Plücker embedding
@@ -139,6 +171,14 @@ class AtlasDirectorTake:
       preview widget; the moment is not represented here at all.
     * ``samples`` -- the raw per-frame camera samples for the rendered
       range, tagged ``ATLAS_CAMERA``.
+    * ``frame_count``, ``width``, ``height`` -- the batch's REAL shape, read
+      off the playblast directory itself (frame count from `frame_files`,
+      pixel size from the first rendered frame) rather than from the
+      `frames`/`width`/`height` widgets, which are launch targets set
+      before any take existed and can legitimately disagree with what got
+      shot. `rays`/`rays_preview` are built at this derived resolution, not
+      the widgets', so they cannot drift from `playblast`'s actual pixels --
+      see `read()`.
 
     Delivery address: after the "Launch Director" button opens Director on
     a session, Director pushes the finished take back by calling
@@ -153,8 +193,10 @@ class AtlasDirectorTake:
     itself can still succeed with nowhere for the take to land.
     """
 
-    RETURN_TYPES = ("IMAGE", "ATLAS_RAYS", "IMAGE", "ATLAS_CAMERA")
-    RETURN_NAMES = ("playblast", "rays", "rays_preview", "samples")
+    RETURN_TYPES = ("IMAGE", "ATLAS_RAYS", "IMAGE", "ATLAS_CAMERA",
+                     "INT", "INT", "INT")
+    RETURN_NAMES = ("playblast", "rays", "rays_preview", "samples",
+                     "frame_count", "width", "height")
     FUNCTION = "read"
     CATEGORY = "Atlas"
 
@@ -169,8 +211,14 @@ class AtlasDirectorTake:
                                "execution -- this node only reads what a "
                                "director already pushed for it.",
                 }),
-                "width": ("INT", {"default": 768, "min": 16, "max": 4096}),
-                "height": ("INT", {"default": 512, "min": 16, "max": 4096}),
+                "width": ("INT", {
+                    "default": 768, "min": 16, "max": 4096,
+                    "tooltip": WIDTH_TOOLTIP,
+                }),
+                "height": ("INT", {
+                    "default": 512, "min": 16, "max": 4096,
+                    "tooltip": HEIGHT_TOOLTIP,
+                }),
                 "frames": ("INT", {
                     "default": DEFAULT_FRAMES,
                     "min": 1,
@@ -178,7 +226,10 @@ class AtlasDirectorTake:
                     "step": LTX_FRAME_MODULUS,
                     "tooltip": FRAMES_TOOLTIP,
                 }),
-                "fps": ("INT", {"default": 24, "min": 1, "max": 120}),
+                "fps": ("INT", {
+                    "default": 24, "min": 1, "max": 120,
+                    "tooltip": FPS_TOOLTIP,
+                }),
                 "colour_lane": (COLOUR_LANES, {
                     "tooltip": "png (default): the 8-bit playblast frames. "
                                "exr: the float colour lane, when the take "
@@ -491,41 +542,31 @@ class AtlasDirectorTake:
             )
         return start, stop
 
-    def _ensure_frame_dimensions_match(self, take_dir: str,
-                                        frame_paths: list[Path], *,
-                                        width: int, height: int) -> None:
-        """Refuse when the playblast's actual pixel size doesn't match the
-        node's width/height widgets (Finding 3).
+    def _read_frame_dimensions(self, take_dir: str,
+                                frame_paths: list[Path]) -> tuple[int, int]:
+        """The playblast's actual pixel size, read off the first rendered
+        frame (Finding 3, corrected).
 
-        `nodes_director.py` builds the ray map at the node's width/height
-        widgets. The playblast frames, however, are whatever size the
-        Director window's canvas happened to be when they were rendered --
-        nothing carries this node's timebase into that renderer, so the two
-        can disagree freely. `_ensure_timebase_matches` cannot catch it: it
-        compares the node's widgets against the session body those same
-        widgets produced, which is comparing a value to itself. Forcing the
-        renderer to a target resolution is out of scope (deferred); this
-        only verifies after the fact, against the first rendered frame's
-        actual pixels, and refuses loudly rather than silently building a
-        ray map that does not correspond to the shipped frames.
+        `width`/`height` widgets are launch targets only -- pushed to
+        Director before any take exists, so nothing carries them into the
+        Director canvas that actually rendered the frames, and the two can
+        disagree freely. Previously that gap needed a check
+        (`_ensure_frame_dimensions_match`, refusing on disagreement) because
+        `read()` built the ray map at the WIDGET size regardless -- two
+        sources of truth for one fact, one of them wrong whenever they
+        disagreed. Deriving the ray map's resolution from these frames
+        instead (see `read()`) removes the second source of truth rather
+        than continuing to guard it: there is nothing left to mismatch, so
+        this only reads, never refuses.
         """
         if not frame_paths:
-            return
-        PILImage = _require_pil()
-        first = frame_paths[0]
-        with PILImage.open(first) as image:
-            actual_width, actual_height = image.size
-        expected_width, expected_height = int(width), int(height)
-        if (actual_width, actual_height) != (expected_width, expected_height):
-            raise StaleTakeError(
-                f"playblast frame {first.name!r} under {take_dir!r} is "
-                f"{actual_width}x{actual_height} pixels, but this node's "
-                f"width/height widgets are "
-                f"{expected_width}x{expected_height}. The ray map is built "
-                "at the widget size, so a mismatched playblast would not "
-                "correspond to it -- match the width/height widgets to the "
-                "actual rendered size, or re-render the take at that size."
+            raise ValueError(
+                f"no rendered frames under {take_dir!r}/playblast to read "
+                "dimensions from."
             )
+        PILImage = _require_pil()
+        with PILImage.open(frame_paths[0]) as image:
+            return image.size  # (width, height)
 
     def _ensure_frames_widget_is_valid(self, frames: int) -> None:
         """Refuse when the `frames` widget itself violates the LTX rule.
@@ -744,10 +785,11 @@ class AtlasDirectorTake:
         )
 
         frame_paths = self.frame_files(take_dir)
-        self._ensure_frame_dimensions_match(
-            take_dir, frame_paths, width=width, height=height,
-        )
         self._ensure_frame_count_is_ltx_valid(take_dir, frame_paths)
+        actual_width, actual_height = self._read_frame_dimensions(
+            take_dir, frame_paths,
+        )
+        actual_frame_count = len(frame_paths)
         all_samples = self._load_samples(take_dir)
         start, stop = self._aligned_sample_range(
             take_dir, frame_paths, sample_count=len(all_samples),
@@ -755,18 +797,40 @@ class AtlasDirectorTake:
         samples = all_samples[start:stop]
 
         playblast = self.load_playblast(take_dir, colour_lane)
-        rays = ray_map(samples, width, height)
+        # Built at the frames' ACTUAL resolution (`actual_width`/
+        # `actual_height`, read off the first frame above), NOT the
+        # width/height widgets: those are launch targets set before any
+        # take existed (see WIDTH_TOOLTIP/HEIGHT_TOOLTIP) and can
+        # legitimately disagree with what got rendered. Deriving the ray
+        # map from the same frames the batch came from means the rays and
+        # the pixels cannot disagree -- do not put a widget value back in
+        # here, or the mismatch this replaces comes back with it.
+        rays = ray_map(samples, actual_width, actual_height)
         embedded = self.embed_rays(rays)
         preview_np = self.rays_to_preview(rays)
         torch = _require_torch()
         rays_preview = torch.from_numpy(preview_np)
 
         rays_dir = self.write_ray_exr(take_dir, rays)
-        note = (f"ray map EXR written to {rays_dir}" if rays_dir else
-                "OpenImageIO unavailable -- ray-map EXR sidecar skipped "
-                "(sockets are unaffected).")
+        notes = [f"ray map EXR written to {rays_dir}" if rays_dir else
+                 "OpenImageIO unavailable -- ray-map EXR sidecar skipped "
+                 "(sockets are unaffected)."]
+        # A launch-target/rendered disagreement is normal -- the operator
+        # marked a different range, or Director's canvas was a different
+        # size, than the shot was launched at -- not an error. Noted in the
+        # text output, cheap since the values are already in hand, rather
+        # than added as a new failure path.
+        launched = (int(width), int(height), int(frames))
+        rendered = (actual_width, actual_height, actual_frame_count)
+        if launched != rendered:
+            notes.append(
+                f"launch target was {width}x{height}, {frames} frame(s); "
+                f"this take rendered {actual_width}x{actual_height}, "
+                f"{actual_frame_count} frame(s)."
+            )
 
         return {
-            "result": (playblast, embedded, rays_preview, samples),
-            "ui": {"text": [note]},
+            "result": (playblast, embedded, rays_preview, samples,
+                       actual_frame_count, actual_width, actual_height),
+            "ui": {"text": [" ".join(notes)]},
         }
