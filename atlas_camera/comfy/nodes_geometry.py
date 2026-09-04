@@ -3252,6 +3252,36 @@ def _derive_report(node_name: str, out, hole_t) -> str:
             f"(hole_mask is the uncovered remainder)")
 
 
+def _summarize_matte(np, terms, unseen, region):
+    """Flat scalars naming what the unseen matte did, and why.
+
+    `region` is the patch's own hole (the pixels it was generated to fill);
+    None means score the whole frame. Everything is a plain int/float because
+    ProjectionSource metadata is filtered to scalars.
+    """
+    where = (np.asarray(region, dtype=bool) if region is not None
+             else np.ones(unseen.shape, dtype=bool))
+    n = int(where.sum())
+    out = {"matte_region_px": n,
+           "matte_paint_fraction": (float((unseen & where).sum()) / n) if n else 0.0}
+    for key in ("behind", "out_of_frame", "grazing", "shadowed",
+                "invalid_depth", "invalid_normal"):
+        out[f"matte_{key}_px"] = int((terms[key] & where).sum())
+    ratio = terms.get("depth_ratio")
+    if ratio is not None:
+        vals = np.asarray(ratio)[where]
+        vals = vals[np.isfinite(vals)]
+        if vals.size:
+            # Clustered just under 1.0 => the two depths disagree about SCALE.
+            # Bimodal => the source's depth invented near content in the hole.
+            out["matte_depth_ratio_median"] = round(float(np.median(vals)), 4)
+            out["matte_depth_ratio_p10"] = round(float(np.percentile(vals, 10)), 4)
+            out["matte_depth_ratio_p90"] = round(float(np.percentile(vals, 90)), 4)
+            out["matte_depth_ratio_under_1_frac"] = round(
+                float((vals < 1.0).mean()), 4)
+    return out
+
+
 def _crop_handle_roi(crop, image_width, image_height):
     """An ``ATLAS_CROP`` handle as a ``RegionROI``, or None when unwired/empty.
 
@@ -3326,6 +3356,28 @@ def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,
     else:
         lines.append("camera from the declared orbit (camera_source="
                      f"{src}); no measurement was attempted")
+    if metadata.get("matte_region_px"):
+        lines.append(
+            "matte painted {:.0%} of the hole; matted out by "
+            "shadowed {:,} / behind {:,} / out-of-frame {:,} / grazing {:,} / "
+            "invalid depth {:,} / invalid normal {:,}".format(
+                metadata.get("matte_paint_fraction", 0.0),
+                metadata.get("matte_shadowed_px", 0),
+                metadata.get("matte_behind_px", 0),
+                metadata.get("matte_out_of_frame_px", 0),
+                metadata.get("matte_grazing_px", 0),
+                metadata.get("matte_invalid_depth_px", 0),
+                metadata.get("matte_invalid_normal_px", 0)))
+        if "matte_depth_ratio_median" in metadata:
+            lines.append(
+                "  depth ratio (point/primary) median {} p10 {} p90 {}, "
+                "{:.0%} under 1.0 — near 1.0 across the board means the two "
+                "depths disagree about SCALE; bimodal means the fill invented "
+                "near content".format(
+                    metadata["matte_depth_ratio_median"],
+                    metadata.get("matte_depth_ratio_p10"),
+                    metadata.get("matte_depth_ratio_p90"),
+                    metadata.get("matte_depth_ratio_under_1_frac", 0.0)))
     if scale_source:
         lines.append(f"scale {float(scale):.4f} from {scale_source}"
                      + (f" (fallback: {fallback_reason})" if fallback_reason else ""))
@@ -4725,13 +4777,23 @@ class AtlasAddPatchView:
             bp = back_project_normals(
                 depth_map * float(scale), view_matrix=patch_extr.camera_view_matrix,
                 fx=pfx, fy=pfy, cx=pcx, cy=pcy)
-            unseen = primary_camera_validity_mask(
+            unseen, _matte_terms = primary_camera_validity_mask(
                 bp.pts_world, bp.valid_depth, bp.normals, bp.valid_normal,
                 primary_view_matrix=extr.camera_view_matrix,
                 primary_fx=fx, primary_fy=fy, primary_cx=cx, primary_cy=cy,
                 primary_width=p_w, primary_height=p_h,
                 angle_threshold_deg=90.0,
-                primary_depth_map=primary_metric_map)
+                primary_depth_map=primary_metric_map, return_terms=True)
+            # WHY the matte matted, counted where it matters. Six tests collapse
+            # into one boolean, so a patch that comes back with a hole in the
+            # middle of its own fill otherwise says nothing about which test did
+            # it -- narrowing that on the sea-cliff castle took reading the
+            # source and eliminating five terms by hand, and still needed depth
+            # maps nothing saves. Restricted to the region the patch was
+            # generated for; the rest of the frame is meant to be matted out.
+            registration_meta.update(_summarize_matte(
+                np, _matte_terms, unseen,
+                patch_hole if patch_hole is not None else None))
             for _ in range(int(unseen_dilate_px)):
                 up = np.zeros_like(unseen)
                 up[:-1, :] = unseen[1:, :]

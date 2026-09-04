@@ -155,6 +155,7 @@ def primary_camera_validity_mask(
     angle_threshold_deg: float = 90.0,
     primary_depth_map: Any = None,
     depth_bias_rel: float = 0.05,
+    return_terms: bool = False,
 ) -> Any:
     """Test a field of world points against a SECOND ("primary") camera's
     projection validity — behind-camera, outside-frame, too-grazing, or
@@ -188,6 +189,16 @@ def primary_camera_validity_mask(
 
     Returns an ``(H, W)`` bool array — ``True`` where the primary camera's
     projection is INVALID at that point (should be filled by another source).
+
+    ``return_terms=True`` additionally returns the per-term masks that were
+    OR-ed to produce it, plus ``depth_ratio`` — ``point_depth / sampled`` for
+    the shadow test, NaN where it could not be sampled. Six tests collapse into
+    one boolean here, so a patch that comes back matted where it should have
+    painted says nothing about which test did it: narrowing that on the
+    sea-cliff castle (2026-09-04) took reading this function and eliminating
+    five terms by hand. ``depth_ratio`` is the one that separates the two
+    remaining causes — clustered just under 1.0 means the two depths disagree
+    about SCALE, bimodal means the source's depth invented near content.
     """
     np = _require_numpy()
     vm = np.asarray(primary_view_matrix, dtype=np.float64)
@@ -220,6 +231,7 @@ def primary_camera_validity_mask(
     grazing = facing < threshold_cos
 
     shadowed = np.zeros(behind.shape, dtype=bool)
+    depth_ratio = np.full(behind.shape, np.nan, dtype=np.float64)
     if primary_depth_map is not None:
         dm = np.asarray(primary_depth_map, dtype=np.float64)
         can_sample = ~behind & ~out_of_frame
@@ -234,9 +246,25 @@ def primary_camera_validity_mask(
         point_depth = -cam_z
         shadowed = can_sample & (
             sample_invalid | (point_depth > sampled * (1.0 + depth_bias_rel)))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            depth_ratio = np.where(can_sample & ~sample_invalid,
+                                   point_depth / sampled, np.nan)
 
-    return behind | out_of_frame | grazing | shadowed \
-        | ~np.asarray(valid_depth, dtype=bool) | ~np.asarray(valid_normal, dtype=bool)
+    invalid_depth = ~np.asarray(valid_depth, dtype=bool)
+    invalid_normal = ~np.asarray(valid_normal, dtype=bool)
+    mask = (behind | out_of_frame | grazing | shadowed
+            | invalid_depth | invalid_normal)
+    if not return_terms:
+        return mask
+    return mask, {
+        "behind": behind,
+        "out_of_frame": out_of_frame,
+        "grazing": grazing,
+        "shadowed": shadowed,
+        "invalid_depth": invalid_depth,
+        "invalid_normal": invalid_normal,
+        "depth_ratio": depth_ratio,
+    }
 
 
 @dataclass(slots=True)
