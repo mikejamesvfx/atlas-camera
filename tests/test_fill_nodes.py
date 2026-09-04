@@ -1008,6 +1008,47 @@ def test_fill_occluded_refuses_to_run_unmeasured_without_primary_depth():
     assert "constructed" in result3[2].lower()
 
 
+def test_the_docstring_states_the_bounds_it_actually_ships_with():
+    """The spec must not promise more than the defaults deliver.
+
+    It used to open with "Fill EVERY move-revealed hole" and "every accepted
+    fill is appended as a MEASURED ProjectionSource". Neither survived contact
+    with the shipped defaults: `min_area_px` is a floor, `max_rois` a budget
+    (5 of 18 clusters on the castle), and `camera_source=declared_orbit` means
+    nothing is measured and nothing is gated. An operator who reads "every" and
+    sees residual hole concludes the node is broken; one who reads "measured"
+    believes a gate exists that does not run.
+
+    So the prose has to name the bounds it ships with, and this fails if either
+    the prose or the default moves without the other.
+    """
+    from atlas_camera.comfy.nodes_fill import AtlasFillOccluded
+
+    doc = AtlasFillOccluded.__doc__
+    opt = AtlasFillOccluded.INPUT_TYPES()["optional"]
+
+    assert opt["min_area_px"][1]["default"] == 1024
+    assert opt["max_rois"][1]["default"] == 8
+    # No explicit default on the combo, so ComfyUI takes the first entry.
+    assert opt["camera_source"][0][0] == "declared_orbit"
+
+    assert "min_area_px" in doc and "max_rois" in doc
+    assert 'NOT "every"' in doc, "the scope bound must be stated, not implied"
+    assert "declared_orbit" in doc and 'NOR "measured"' in doc
+    assert "measured ``ProjectionSource``" not in doc, "the retracted claim is back"
+
+
+def test_the_docstring_points_at_the_fillable_metric_not_the_reported_one():
+    """`peak hole` counts sky -- 86% of it after a fill -- so a reader who
+    scores the node on the number it prints will read 72% success as 29%."""
+    from atlas_camera.comfy.nodes_fill import AtlasFillOccluded
+
+    doc = AtlasFillOccluded.__doc__
+    assert "FILLABLE" in doc
+    assert "peak hole" in doc
+    assert "sky" in doc
+
+
 def test_fill_occluded_reports_when_the_move_opens_nothing():
     """No move, no disocclusion: a pass-through with a reason, not an empty
     expansion."""

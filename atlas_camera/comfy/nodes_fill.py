@@ -913,14 +913,42 @@ _FILL_NEUTRAL_RGB = 0x808080
 
 
 class AtlasFillOccluded:
-    """Fill EVERY move-revealed hole and register each fill back as GEOMETRY.
+    """Fill the move-revealed holes worth filling, and register each back as
+    GEOMETRY.
 
     The whole-frame fill graphs answer the wrong question. They fill a hole in
     a RENDER: the result is valid only for the camera path it was generated
     against, and nothing comes back into the solve. Change ``angle_deg`` and it
-    is worthless. This node fills a hole in the SCENE -- every accepted fill is
-    appended as a measured ``ProjectionSource``, so it exports to the DCC and
-    every LATER move reuses it instead of re-inventing it.
+    is worthless. This node fills a hole in the SCENE -- each fill is appended
+    as a ``ProjectionSource``, so it exports to the DCC and every LATER move
+    reuses it instead of re-inventing it.
+
+    NOT "every" hole, and the bounds are the defaults, not fine print.
+    ``min_area_px`` (1024) is a floor and ``max_rois`` (8) is a budget: measured
+    on the sea-cliff castle, 18 clusters exist at a 64 px floor, 5 clear 1024,
+    and all 5 are filled. What is left under the floor is speckle at the rim of
+    a tear, which the viewport wand or a band layer handles far more cheaply
+    than a diffusion pass each. Residual hole after a defaults run is therefore
+    EXPECTED, and is not evidence the node failed -- see the measurement note
+    below for what "worked" looks like as a number.
+
+    NOR "measured", under the default. ``camera_source`` defaults to
+    ``declared_orbit``, where the patch camera is the move's CONSTRUCTED end
+    pose: exact because Atlas built it, and so nothing is measured and nothing
+    is gated -- every fill is appended. That is deliberate (see below: a
+    measurement of this camera was demonstrably worse than constructing it),
+    but it means "accepted" has no independent meaning here. Only
+    ``camera_source=register_to_primary`` measures, and only there does
+    ``on_registration_failure`` have anything to decide.
+
+    WHAT "WORKED" LOOKS LIKE. Score against the FILLABLE hole, never the
+    reported ``peak hole``: that figure comes off the raw render before
+    ``survey_hole_rois`` subtracts the exclude mask and the move-revealed test,
+    so it counts sky and off-plate -- 64.8% of the hole before a fill and 86.1%
+    after, on the castle. Measured at these defaults, fillable hole went 4.56%
+    -> 1.28% of frame (26,869 -> 7,565 px): 72% of the real disocclusion closed,
+    0 px opened. The raw figure for the same run moved 12.93% -> 9.21% and would
+    have read as a near-failure.
 
     THE LOOP, once per move-revealed cluster::
 
@@ -965,13 +993,16 @@ class AtlasFillOccluded:
     output, the repaired frame the artist wanted -- it is just no longer what
     the geometry is derived from.
 
-    REGISTRATION FAILURE IS NOT A FALLBACK HERE. ``AtlasAddPatchView`` falls
-    back to the declared orbit when the measurement gates fail, which is right
-    for an artist placing one considered patch. For an UNATTENDED loop it is
-    wrong: it would append geometry the pixels do not support, silently, N
-    times. ``on_registration_failure='skip'`` (the default) drops the ROI and
-    names it in the report instead; ``'declared_orbit'`` restores the artist
-    behaviour.
+    REGISTRATION FAILURE IS NOT A FALLBACK HERE -- in the mode that measures.
+    ``AtlasAddPatchView`` falls back to the declared orbit when the measurement
+    gates fail, which is right for an artist placing one considered patch. For
+    an UNATTENDED loop it is wrong: it would append geometry the pixels do not
+    support, silently, N times. ``on_registration_failure='skip'`` (the
+    default) drops the ROI and names it in the report instead;
+    ``'declared_orbit'`` restores the artist behaviour. None of this fires
+    under ``camera_source=declared_orbit``, which is itself the default: there
+    is no measurement to fail, so this setting decides nothing until you turn
+    measurement on.
 
     The sky failsafe is inherited, not re-implemented: auto ROI selection runs
     ``move_revealed_only``, so a matte-carried sky and anything outside the
