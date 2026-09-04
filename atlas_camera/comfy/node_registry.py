@@ -31,6 +31,7 @@ from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasCompositeCrop,
                                            AtlasCropROI,
+                                           AtlasFillOccluded,
                                            AtlasCropSourcePhoto,
                                            AtlasInterpassGate,
                                            AtlasMembraneComposite,
@@ -431,11 +432,13 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasLayerPlan"] = "Atlas Layer Plan 🥞"
 NODE_CLASS_MAPPINGS["AtlasInterpassGate"] = AtlasInterpassGate
 NODE_CLASS_MAPPINGS["AtlasMembraneComposite"] = AtlasMembraneComposite
 NODE_CLASS_MAPPINGS["AtlasCropROI"] = AtlasCropROI
+NODE_CLASS_MAPPINGS["AtlasFillOccluded"] = AtlasFillOccluded
 NODE_CLASS_MAPPINGS["AtlasCompositeCrop"] = AtlasCompositeCrop
 NODE_CLASS_MAPPINGS["AtlasCameraMovePreset"] = AtlasCameraMovePreset
 NODE_DISPLAY_NAME_MAPPINGS["AtlasInterpassGate"] = "Atlas Interpass Gate 🚦"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasMembraneComposite"] = "Atlas Membrane Composite 🩹"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCropROI"] = "Atlas Crop ROI ✂️"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasFillOccluded"] = "Atlas Fill Occluded 🕳️‍🩹"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCompositeCrop"] = "Atlas Composite Crop 📌"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 🎬"
 # 2026-08-16: pristine photo crop for subject-centric novel-view models (the
@@ -677,6 +680,7 @@ _MENU_FOLDERS = {
         "AtlasLoadRecord3D", "AtlasStreamRecord3D", "AtlasLoadDynamicPlate",
         "AtlasInterpassGate", "AtlasMembraneComposite", "AtlasPathFrameIndex",
         "AtlasCropROI", "AtlasCompositeCrop", "AtlasCameraMovePreset",
+        "AtlasFillOccluded",
         "AtlasCropSourcePhoto",
         "AtlasLoadHiddenVolume", "AtlasBlenderMassing", "AtlasBlenderImportMeshes",
         "AtlasAgentHandoff",

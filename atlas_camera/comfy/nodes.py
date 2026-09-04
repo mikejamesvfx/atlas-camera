@@ -127,6 +127,7 @@ from atlas_camera.comfy.nodes_agent import AtlasAgentHandoff  # noqa: F401
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasCompositeCrop,
                                            AtlasCropROI,
+                                           AtlasFillOccluded,
                                            AtlasCropSourcePhoto,
                                            AtlasInterpassGate,
                                            AtlasMembraneComposite,

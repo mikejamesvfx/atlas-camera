@@ -823,7 +823,8 @@
         4,
         1280,
         "auto_largest",
-        1024
+        1024,
+        0
       ],
       "title": "5 · CROP ROI · largest hole cluster"
     },

@@ -67,6 +67,7 @@ NORMAL_KEYS = {
     "AtlasVPVisualization", "AtlasViewportControls",
     # Promoted from the experimental tier 2026-08-14 (two-pass fill engine):
     "AtlasInterpassGate", "AtlasMembraneComposite", "AtlasCropROI",
+    "AtlasFillOccluded",
     "AtlasCompositeCrop", "AtlasCameraMovePreset",
     # 2026-08-16: photo crop for the Qwen ROI loop.
     "AtlasCropSourcePhoto",

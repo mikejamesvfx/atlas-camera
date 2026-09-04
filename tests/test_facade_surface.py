@@ -71,6 +71,7 @@ FACADE_PUBLIC = {
     "AtlasMembraneComposite",
     "AtlasPathFrameIndex",
     "AtlasCropROI",
+    "AtlasFillOccluded",
     "AtlasCompositeCrop",
     "AtlasCropSourcePhoto",
     "AtlasCameraMovePreset",
