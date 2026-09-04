@@ -59,7 +59,9 @@ def test_widgets_are_appended_after_patch_mask():
     i = opt.index("patch_mask")
     assert opt[i + 1:] == ["camera_source", "primary_image", "registration_min_inliers",
                            "registration_max_residual_m", "registration_max_deviation_deg",
-                           "auto_flip_azimuth"]
+                           "auto_flip_azimuth",
+                           # 2026-09-04: the ATLAS_CROP handle, appended last.
+                           "crop"]
     spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["camera_source"]
     assert spec[0] == ["declared_orbit", "register_to_primary"]
     assert spec[1]["default"] == "declared_orbit"
@@ -201,3 +203,82 @@ def test_declared_orbit_report_says_no_measurement_was_attempted(monkeypatch):
         solve, img, patch_azimuth_view="right side view", relief_grid=48)
     assert "no measurement was attempted" in report
     assert "REFUSED" not in report
+
+
+# --- the crop handle: a crop's camera is KNOWN, so MoGe must not guess it ---
+
+def test_crop_handle_beats_moge_prediction_for_the_registered_camera(monkeypatch):
+    """MoGe predicts a free focal with a CENTRED principal point. A crop of
+    the primary's own photograph has neither an unknown focal nor a centred
+    centre, so the handle's intrinsics are the camera the accepted patch is
+    stored with — MoGe's number stays only as a cross-check.
+    """
+    _fake_moge(monkeypatch)
+    import atlas_camera.core.patch_camera_registration as pcr
+    from atlas_camera.core.camera_math import look_at_view_matrix
+
+    solve, pivot, _eye = _synthetic_primary()
+    measured_eye = (4.0, 2.5, 3.0)
+    view, _, _ = look_at_view_matrix(measured_eye, pivot)
+    view = np.asarray(view)
+    seen = {}
+
+    def fake_register(**kw):
+        seen["K"] = dict(kw["patch_intrinsics"])
+        return PatchCameraRegistration(
+            accepted=True, reason="registered", view_matrix=view,
+            camera_position=np.array(measured_eye), scale=1.0, n_matches=200,
+            n_candidates=180, n_inliers=90, rms_m=0.1, reproj_rms_px=1.1,
+            deviation_deg=3.0, deviation_m=0.4, flip_resolved=False)
+    monkeypatch.setattr(pcr, "register_patch_camera", fake_register)
+
+    img = torch.rand(1, 192, 256, 3)
+    out, _report = AtlasAddPatchView().add_patch(
+        solve, img, patch_azimuth_view="right side view", relief_grid=48,
+        crop={"empty": False, "x": 128, "y": 64, "width": 256, "height": 192,
+              "gen_w": 256, "gen_h": 192},
+        camera_source="register_to_primary",
+        primary_image=torch.rand(1, 512, 512, 3),
+        primary_depth=_fake_primary_depth())
+
+    # The core got the CROP's camera for its reprojection diagnostic, not
+    # MoGe's centred 480px guess.
+    assert seen["K"]["fx"] == pytest.approx(500.0)
+    assert seen["K"]["cx"] == pytest.approx(128.0)
+    assert seen["K"]["cy"] == pytest.approx(192.0)
+    m = out.projection_sources[0].metadata
+    assert m["patch_intrinsics_source"] == "crop_handle"
+    assert m["patch_focal_px_predicted"] == pytest.approx(480.0)   # cross-check kept
+    got = out.projection_sources[0].camera.intrinsics
+    assert got.fx_px == pytest.approx(500.0)
+    assert got.cx_px == pytest.approx(128.0)
+    assert got.cy_px == pytest.approx(192.0)
+
+
+def test_without_the_crop_handle_moge_still_supplies_the_camera(monkeypatch):
+    """The crop path must not change the full-frame novel-view behaviour: an
+    unknown generated camera still takes MoGe's prediction."""
+    _fake_moge(monkeypatch)
+    import atlas_camera.core.patch_camera_registration as pcr
+    from atlas_camera.core.camera_math import look_at_view_matrix
+
+    solve, pivot, _eye = _synthetic_primary()
+    view, _, _ = look_at_view_matrix((4.0, 2.5, 3.0), pivot)
+    view = np.asarray(view)
+
+    def fake_register(**kw):
+        return PatchCameraRegistration(
+            accepted=True, reason="registered", view_matrix=view,
+            camera_position=np.array((4.0, 2.5, 3.0)), scale=1.0, n_matches=200,
+            n_candidates=180, n_inliers=90, rms_m=0.1, reproj_rms_px=1.1,
+            deviation_deg=3.0, deviation_m=0.4, flip_resolved=False)
+    monkeypatch.setattr(pcr, "register_patch_camera", fake_register)
+
+    out, _report = AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), patch_azimuth_view="right side view",
+        relief_grid=48, camera_source="register_to_primary",
+        primary_image=torch.rand(1, 512, 512, 3),
+        primary_depth=_fake_primary_depth())
+    m = out.projection_sources[0].metadata
+    assert m["patch_intrinsics_source"] == "moge_predicted"
+    assert out.projection_sources[0].camera.intrinsics.fx_px == pytest.approx(480.0)

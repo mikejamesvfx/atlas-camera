@@ -467,3 +467,142 @@ def test_reuse_scene_splat_matte_scales_with_orbit(monkeypatch):
     m_back = _decode_matte(back.projection_sources[0].mask_b64)
     assert m_same.mean() < 0.2
     assert m_back.mean() > 2 * m_same.mean()
+
+
+# --------------------------------------------------------------- crop handle
+# The ATLAS_CROP handle (2026-09-04): a crop of the plate is the SAME lens with
+# a shifted principal point and a smaller raster, so pairing it with the
+# centred full-frame camera the node builds by default places the patch off by
+# the crop origin. These pin that the handle produces crop_intrinsics ->
+# scale_intrinsics exactly, and that an empty handle changes nothing.
+
+
+def _crop_handle(x, y, w, h, gen_w=None, gen_h=None):
+    return {"empty": False, "x": x, "y": y, "width": w, "height": h,
+            "gen_w": gen_w if gen_w is not None else w,
+            "gen_h": gen_h if gen_h is not None else h}
+
+
+def test_crop_handle_gives_the_patch_the_crops_own_intrinsics(monkeypatch):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    # A 256x192 window at (128,64) of the 512x512 plate, at its NATIVE raster.
+    patch_img = torch.rand(1, 192, 256, 3, dtype=torch.float32)
+
+    out, report = AtlasAddPatchView().add_patch(
+        solve, patch_img, crop=_crop_handle(128, 64, 256, 192),
+        name="crop_patch", relief_grid=48,
+    )
+
+    pintr = out.projection_sources[0].camera.intrinsics
+    assert (pintr.image_width, pintr.image_height) == (256, 192)
+    # Focal untouched by a crop; principal point shifted by the crop origin.
+    assert pintr.fx_px == pytest.approx(500.0)
+    assert pintr.fy_px == pytest.approx(500.0)
+    assert pintr.cx_px == pytest.approx(256.0 - 128.0)
+    assert pintr.cy_px == pytest.approx(256.0 - 64.0)
+    meta = out.projection_sources[0].metadata
+    assert meta["patch_intrinsics_source"] == "crop_handle"
+    assert (meta["crop_x"], meta["crop_y"]) == (128, 64)
+    assert (meta["crop_width"], meta["crop_height"]) == (256, 192)
+    assert "CROP handle" in report
+
+
+def test_crop_handle_scales_with_the_generation_raster(monkeypatch):
+    """The crop comes back at max_gen_long_edge, not its native rect — the
+    intrinsics have to ride that resize too (scale_intrinsics), or the patch
+    is placed with a focal for a raster it is not at."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    # Native 256x192, generated at half that.
+    patch_img = torch.rand(1, 96, 128, 3, dtype=torch.float32)
+
+    out, _report = AtlasAddPatchView().add_patch(
+        solve, patch_img, crop=_crop_handle(128, 64, 256, 192, 128, 96),
+        name="crop_patch_small", relief_grid=48,
+    )
+
+    pintr = out.projection_sources[0].camera.intrinsics
+    assert (pintr.image_width, pintr.image_height) == (128, 96)
+    assert pintr.fx_px == pytest.approx(250.0)
+    assert pintr.fy_px == pytest.approx(250.0)
+    assert pintr.cx_px == pytest.approx(64.0)
+    assert pintr.cy_px == pytest.approx(96.0)
+
+
+def test_crop_handle_matches_camera_crop_directly(monkeypatch):
+    """The node must not re-derive the crop camera by hand — same numbers as
+    core.camera_crop, which is what the CLI and dynamic plates already use."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+    from atlas_camera.core.camera_crop import (RegionROI, crop_intrinsics,
+                                               scale_intrinsics)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    roi = RegionROI(x=64, y=128, width=320, height=256)
+    expect = scale_intrinsics(crop_intrinsics(solve.camera.intrinsics, roi),
+                              160, 128)
+    patch_img = torch.rand(1, 128, 160, 3, dtype=torch.float32)
+
+    out, _report = AtlasAddPatchView().add_patch(
+        solve, patch_img, crop=_crop_handle(64, 128, 320, 256, 160, 128),
+        relief_grid=48,
+    )
+    got = out.projection_sources[0].camera.intrinsics
+    for field in ("fx_px", "fy_px", "cx_px", "cy_px"):
+        assert getattr(got, field) == pytest.approx(getattr(expect, field))
+
+
+def test_empty_crop_handle_is_the_full_frame_no_op(monkeypatch):
+    """An unused AtlasCropROI slot emits {'empty': True}; every node in the
+    crop family degrades to a pass-through, and here that means the
+    full-frame camera every saved graph already has."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    patch_img = torch.rand(1, 256, 256, 3, dtype=torch.float32)
+
+    plain, _r1 = AtlasAddPatchView().add_patch(solve, patch_img, relief_grid=48)
+    empty, _r2 = AtlasAddPatchView().add_patch(
+        solve, patch_img, crop={"empty": True}, relief_grid=48)
+
+    a = plain.projection_sources[0].camera.intrinsics
+    b = empty.projection_sources[0].camera.intrinsics
+    for field in ("image_width", "image_height", "fx_px", "fy_px", "cx_px", "cy_px"):
+        assert getattr(b, field) == pytest.approx(getattr(a, field))
+    # Centred principal point — the full-frame assumption, not a crop's.
+    assert b.cx_px == pytest.approx(128.0)
+    assert "patch_intrinsics_source" not in empty.projection_sources[0].metadata
+
+
+def test_crop_handle_off_the_plate_raises(monkeypatch):
+    """A rect that does not fit this plate came from a different solve.
+    Silently placing the patch at the wrong principal point is the one
+    outcome worse than stopping."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    patch_img = torch.rand(1, 192, 256, 3, dtype=torch.float32)
+
+    with pytest.raises(ValueError, match="does not lie within"):
+        AtlasAddPatchView().add_patch(
+            solve, patch_img, crop=_crop_handle(400, 400, 256, 192),
+            relief_grid=48)
+
+
+def test_crop_handle_is_an_optional_socket_not_a_widget():
+    spec = AtlasAddPatchView.INPUT_TYPES()
+    assert spec["optional"]["crop"][0] == "ATLAS_CROP"
+    # Appended last: positional widgets_values in saved graphs are untouched.
+    assert list(spec["optional"])[-1] == "crop"

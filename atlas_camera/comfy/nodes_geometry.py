@@ -3252,6 +3252,41 @@ def _derive_report(node_name: str, out, hole_t) -> str:
             f"(hole_mask is the uncovered remainder)")
 
 
+def _crop_handle_roi(crop, image_width, image_height):
+    """An ``ATLAS_CROP`` handle as a ``RegionROI``, or None when unwired/empty.
+
+    The crop family's whole no-op contract is that an unused slot emits
+    ``{"empty": True}`` and every downstream node degrades to a pass-through
+    (AtlasCompositeCrop returns its frame, AtlasCropSourcePhoto a 64x64 black).
+    Here the degradation is "treat the patch image as an ordinary full-frame
+    novel view", which is exactly the behaviour every saved graph already has.
+
+    A rect that does not lie inside the primary's raster is NOT a degradation —
+    it means the handle came from a different solve, and pairing it with this
+    camera would silently place the patch at the wrong principal point. That
+    raises.
+    """
+    if not isinstance(crop, dict) or crop.get("empty", True):
+        return None
+    from atlas_camera.core.camera_crop import RegionROI
+
+    try:
+        roi = RegionROI(x=int(crop["x"]), y=int(crop["y"]),
+                        width=int(crop["width"]), height=int(crop["height"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"crop handle {crop!r} is not an AtlasCropROI rect "
+            f"(needs x/y/width/height): {exc}") from exc
+    iw, ih = int(image_width), int(image_height)
+    if (roi.x < 0 or roi.y < 0 or roi.x + roi.width > iw
+            or roi.y + roi.height > ih):
+        raise ValueError(
+            f"crop rect ({roi.x},{roi.y}) {roi.width}x{roi.height} does not lie "
+            f"within the {iw}x{ih} primary plate — the handle must come from an "
+            "AtlasCropROI run against THIS solve, or be disconnected.")
+    return roi
+
+
 def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,
                        d_azimuth, d_elevation) -> str:
     """What AtlasAddPatchView actually did, in the artist's own report.
@@ -3264,6 +3299,13 @@ def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,
     """
     lines = [f"patch '{name}': orbit {float(d_azimuth):+.1f}deg az, "
              f"{float(d_elevation):+.1f}deg el"]
+    if metadata.get("patch_intrinsics_source") == "crop_handle":
+        lines.append(
+            "camera from the CROP handle: rect "
+            f"({metadata.get('crop_x')},{metadata.get('crop_y')}) "
+            f"{metadata.get('crop_width')}x{metadata.get('crop_height')} of the "
+            "plate — same lens, principal point shifted by the crop origin "
+            "(crop_intrinsics + scale_intrinsics), not a centred full frame")
     src = str(metadata.get("camera_source") or "declared_orbit")
     if src == "register_to_primary":
         if metadata.get("registration_accepted"):
@@ -4227,6 +4269,22 @@ class AtlasAddPatchView:
                     "tooltip": "register_to_primary: accept whichever handedness (flip on/off) "
                                "the measurement lands on and record it. Off = a closer FLIPPED "
                                "pose counts as a disagreement with your flip_azimuth."}),
+                # APPENDED 2026-09-04: the crop family's handle, so a CROP can
+                # be the patch image. Optional input socket, no widget — the
+                # positional widgets_values contract is untouched.
+                "crop": ("ATLAS_CROP", {
+                    "tooltip": "AtlasCropROI's crop handle, when patch_image is that CROP "
+                               "rather than a full-frame novel view. A crop of the plate is "
+                               "the SAME lens with a SHIFTED principal point and a smaller "
+                               "raster (core.camera_crop.crop_intrinsics + scale_intrinsics), "
+                               "so without this the node builds a centred full-frame camera "
+                               "the crop was never shot through and the patch lands off by the "
+                               "crop origin. With it wired the patch camera is the crop camera, "
+                               "exactly — and register_to_primary stops guessing the focal from "
+                               "MoGe, because a crop of the primary's own photograph has a "
+                               "KNOWN camera (MoGe's prediction is kept as a cross-check in the "
+                               "metadata). An empty handle (an unused slot) is a no-op: the "
+                               "full-frame behaviour every saved graph already has."}),
             },
         }
 
@@ -4244,7 +4302,8 @@ class AtlasAddPatchView:
                   primary_depth=None, exclude_mask=None, geometry_source="reuse_scene",
                   patch_mask=None, camera_source="declared_orbit", primary_image=None,
                   registration_min_inliers=40, registration_max_residual_m=0.35,
-                  registration_max_deviation_deg=25.0, auto_flip_azimuth=True):
+                  registration_max_deviation_deg=25.0, auto_flip_azimuth=True,
+                  crop=None):
         exact_delta = None
         exact_pivot = None
         if exact_view_override and exact_view_override.strip():
@@ -4320,22 +4379,44 @@ class AtlasAddPatchView:
             distance_scale=float(distance_scale),
         )
 
-        # Patch image dimensions + intrinsics (same angular FOV as the primary,
-        # scaled to the patch resolution; principal point centered).
+        # Patch image dimensions + intrinsics.
         patch_h = int(patch_image.shape[1])
         patch_w = int(patch_image.shape[2])
-        pfx = fx * (patch_w / p_w)
-        pfy = fy * (patch_h / p_h)
-        pcx = patch_w / 2.0
-        pcy = patch_h / 2.0
-        patch_intr = AtlasIntrinsics(
-            image_width=patch_w,
-            image_height=patch_h,
-            focal_length_mm=intr.focal_length_mm,
-            sensor_width_mm=intr.sensor_width_mm,
-            fx_px=pfx, fy_px=pfy, cx_px=pcx, cy_px=pcy,
-            lens_model=intr.lens_model,
-        )
+        crop_roi = _crop_handle_roi(crop, p_w, p_h)
+        if crop_roi is not None:
+            # THE PATCH IMAGE IS A CROP of the primary's raster. A crop is not
+            # a new camera: same lens, principal point shifted by the crop
+            # origin, smaller raster — and then scaled by whatever generation
+            # raster the crop came back at (core.camera_crop, the CLI's crop
+            # economy). Building the centred full-frame camera below for a
+            # crop describes a camera the image was never shot through, so the
+            # patch projects offset by the crop origin; the fill loop worked
+            # around it by pasting every crop back into a FULL frame and
+            # projecting that (2026-09-03). With the handle wired the crop
+            # pairs with its own intrinsics and needs no whole-frame detour.
+            from atlas_camera.core.camera_crop import (crop_intrinsics,
+                                                       scale_intrinsics)
+            patch_intr = scale_intrinsics(
+                crop_intrinsics(intr, crop_roi), patch_w, patch_h)
+            pfx = float(patch_intr.fx_px)
+            pfy = float(patch_intr.fy_px or pfx)
+            pcx = float(patch_intr.cx_px)
+            pcy = float(patch_intr.cy_px)
+        else:
+            # Full-frame novel view: same angular FOV as the primary, scaled
+            # to the patch resolution; principal point centered.
+            pfx = fx * (patch_w / p_w)
+            pfy = fy * (patch_h / p_h)
+            pcx = patch_w / 2.0
+            pcy = patch_h / 2.0
+            patch_intr = AtlasIntrinsics(
+                image_width=patch_w,
+                image_height=patch_h,
+                focal_length_mm=intr.focal_length_mm,
+                sensor_width_mm=intr.sensor_width_mm,
+                fx_px=pfx, fy_px=pfy, cx_px=pcx, cy_px=pcy,
+                lens_model=intr.lens_model,
+            )
 
         # The patch camera is constructed (orbited), not solved, so it carries
         # no solve.horizon_line of its own. Derive its real horizon row exactly
@@ -4417,11 +4498,22 @@ class AtlasAddPatchView:
         # touched. On any refusal the declared orbit stands and the numbers
         # ride along in the source metadata.
         registration_meta: dict[str, Any] = {"camera_source": str(camera_source)}
+        if crop_roi is not None:
+            # Flat scalars only — _finish_patch copies exactly those into the
+            # ProjectionSource metadata, so the rect that defined this camera
+            # travels with the patch (and into the solve JSON contract).
+            registration_meta.update({
+                "patch_intrinsics_source": "crop_handle",
+                "crop_x": int(crop_roi.x), "crop_y": int(crop_roi.y),
+                "crop_width": int(crop_roi.width),
+                "crop_height": int(crop_roi.height),
+            })
         if camera_source == "register_to_primary":
             (patch_extr, patch_intr, pfx, pfy, pcx, pcy, patch_horizon_y,
              registration_meta) = self._register_patch_camera(
                 solve, patch_image, primary_image, primary_metric_map,
                 patch_extr, patch_intr, pfx, pfy, pcx, pcy, patch_horizon_y,
+                crop_roi=crop_roi,
                 exact_delta=exact_delta,
                 declared_views=(patch_azimuth_view, patch_elevation_view, patch_distance,
                                 source_azimuth_view, source_elevation_view),
@@ -4594,7 +4686,8 @@ class AtlasAddPatchView:
 
     def _register_patch_camera(self, solve, patch_image, primary_image, primary_metric_map,
                                patch_extr, patch_intr, pfx, pfy, pcx, pcy, patch_horizon_y,
-                               *, exact_delta, declared_views, pivot, depth_model, device,
+                               *, crop_roi=None,
+                               exact_delta, declared_views, pivot, depth_model, device,
                                min_inliers, max_residual_m, max_deviation_deg, auto_flip,
                                registration_meta):
         """register_to_primary: measure the patch camera; fall back with reasons.
@@ -4678,11 +4771,24 @@ class AtlasAddPatchView:
             xi = (np.arange(patch_w) * (pts.shape[1] / patch_w)).astype(int).clip(0, pts.shape[1] - 1)
             pts = pts[yi][:, xi]
         rm = res.metadata or {}
-        K = {"fx": float(rm.get("predicted_focal_px") or pfx),
-             "fy": float(rm.get("predicted_fy_px") or rm.get("predicted_focal_px") or pfy),
-             "cx": float(rm.get("predicted_cx_px") or pcx),
-             "cy": float(rm.get("predicted_cy_px") or pcy)}
-        meta["patch_focal_px_predicted"] = round(K["fx"], 2)
+        moge_K = {"fx": float(rm.get("predicted_focal_px") or pfx),
+                  "fy": float(rm.get("predicted_fy_px") or rm.get("predicted_focal_px") or pfy),
+                  "cx": float(rm.get("predicted_cx_px") or pcx),
+                  "cy": float(rm.get("predicted_cy_px") or pcy)}
+        if crop_roi is not None:
+            # A CROP of the primary's own photograph has a KNOWN camera — the
+            # primary's lens with the principal point shifted by the crop
+            # origin. MoGe predicts a free focal with a CENTRED principal
+            # point, which a crop by definition does not have, so its
+            # prediction stays a cross-check and never becomes the camera the
+            # accepted patch is stored with.
+            K = {"fx": float(pfx), "fy": float(pfy),
+                 "cx": float(pcx), "cy": float(pcy)}
+            meta["patch_intrinsics_source"] = "crop_handle"
+        else:
+            K = moge_K
+            meta["patch_intrinsics_source"] = "moge_predicted"
+        meta["patch_focal_px_predicted"] = round(moge_K["fx"], 2)
         meta["patch_focal_px_declared"] = round(float(pfx), 2)
         meta["registration_depth_model"] = moge_id
 
