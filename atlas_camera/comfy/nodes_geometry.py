@@ -3356,6 +3356,12 @@ def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,
     else:
         lines.append("camera from the declared orbit (camera_source="
                      f"{src}); no measurement was attempted")
+    if metadata.get("scale_rel_iqr") is not None:
+        lines.append(
+            "scale fit: {:,} samples, quartile spread {} of the median".format(
+                metadata.get("scale_n_samples", 0), metadata["scale_rel_iqr"])
+            + (" — REFUSED, fell back to the ground fit"
+               if "scale_refused_rel_iqr" in metadata else ""))
     if metadata.get("matte_region_px"):
         lines.append(
             "matte painted {:.0%} of the hole; matted out by "
@@ -4374,6 +4380,36 @@ class AtlasAddPatchView:
                                "hole rather than slightly wrong depth. An "
                                "explicit exclude_mask still applies either "
                                "way; this only governs the internal guess."}),
+                # APPENDED 2026-09-04: the gate covered the POSE and never the
+                # SCALE, which was accepted whenever the solver returned a
+                # number at all.
+                "scale_max_rel_iqr": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 10.0, "step": 0.05,
+                    "tooltip": "Refuse a registered scale whose samples "
+                               "disagree more than this, measured as the "
+                               "quartile spread over the median (0 disables "
+                               "the gate). The fit is a MEDIAN, so it returns "
+                               "a confident number whatever the agreement "
+                               "behind it: on the sea-cliff castle two "
+                               "adjacent ground patches, same size and "
+                               "distance, fitted 0.645 and 0.273 -- the second "
+                               "put its ground 0.78 m in the air and painted "
+                               "5% of its own hole. 1.0 is measured, not "
+                               "guessed (tests/test_patch_scale_occlusion_"
+                               "bias): on a synthetic of known truth the "
+                               "spread reaches 0.75 while the fit is still "
+                               "EXACT, and 1.2 at the first wrong one, so the "
+                               "only threshold that refuses no good fit and "
+                               "catches the first bad one is between. A "
+                               "refusal falls back to the ground fit and says "
+                               "so in scale_source and in the report. Note "
+                               "what this CANNOT see: past ~78% occluded "
+                               "samples the spread returns to 0.000 while the "
+                               "scale is 75% wrong, because a single "
+                               "population that has won outright agrees with "
+                               "itself. That case is the exclude mask's job "
+                               "(the fit is given the hole to drop) and "
+                               "min_samples', not this gate's."}),
                 "crop": ("ATLAS_CROP", {
                     "tooltip": "AtlasCropROI's crop handle, when patch_image is that CROP "
                                "rather than a full-frame novel view. A crop of the plate is "
@@ -4406,7 +4442,7 @@ class AtlasAddPatchView:
                   registration_min_inliers=40, registration_max_residual_m=0.35,
                   registration_max_deviation_deg=25.0, auto_flip_azimuth=True,
                   depth_edge_rel=0.5, max_edge_factor=12.0,
-                  sky_heuristic=True, crop=None):
+                  sky_heuristic=True, scale_max_rel_iqr=1.0, crop=None):
         exact_delta = None
         exact_pivot = None
         if exact_view_override and exact_view_override.strip():
@@ -4729,7 +4765,7 @@ class AtlasAddPatchView:
             if patch_hole is not None:
                 scale_exclude = (patch_hole if scale_exclude is None
                                  else (scale_exclude | patch_hole))
-            scale, _reg_info = solve_scale_from_primary(
+            scale, reg_info = solve_scale_from_primary(
                 depth_map,
                 patch_camera={"view_matrix": patch_extr.camera_view_matrix,
                               "fx": pfx, "fy": pfy, "cx": pcx, "cy": pcy,
@@ -4744,6 +4780,25 @@ class AtlasAddPatchView:
                 scale_source = ("primary_registration_visible"
                                 if patch_hole is not None
                                 else "primary_registration")
+            # How well conditioned that fit was, not just what it returned.
+            for key in ("n_samples", "scale_p25", "scale_p75", "scale_rel_mad",
+                        "scale_rel_iqr"):
+                if key in (reg_info or {}):
+                    registration_meta["scale_" + key.removeprefix("scale_")] = (
+                        round(float(reg_info[key]), 4)
+                        if key != "n_samples" else int(reg_info[key]))
+            # THE SCALE GATE. The pose has had one since register_to_primary
+            # landed; the scale never did, so a median over samples agreeing
+            # about nothing was adopted as readily as one over samples that
+            # agreed exactly. Refusing falls through to the ground fit below --
+            # a worse estimator on average, and a much better one when the
+            # registration is this badly conditioned.
+            _iqr = float((reg_info or {}).get("scale_rel_iqr") or 0.0)
+            if (scale is not None and float(scale_max_rel_iqr) > 0.0
+                    and _iqr > float(scale_max_rel_iqr)):
+                registration_meta["scale_refused_rel_iqr"] = round(_iqr, 4)
+                scale = None
+                scale_source = "ground_fit"
 
         if scale is None:
             scale, _scale_info = estimate_ground_scale(

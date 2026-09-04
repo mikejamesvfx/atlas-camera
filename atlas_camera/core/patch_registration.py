@@ -144,4 +144,24 @@ def solve_scale_from_primary(
         info["accepted"] = False
         return None, info
     info["accepted"] = True
-    return float(np.median(samples[ok])), info
+    # The MEDIAN is only as good as the agreement behind it. Two adjacent
+    # ground patches on the castle fitted 0.645 and 0.273 -- a 2.4x
+    # disagreement on the same scene at the same distance -- and nothing said
+    # the second fit was worse conditioned than the first, because only the
+    # median came back. Report the spread so a caller can tell a converged fit
+    # from a coin toss: `scale_rel_mad` is the median absolute deviation over
+    # the median, i.e. 0 for perfect agreement and ~1 for none.
+    chosen = samples[ok]
+    med = float(np.median(chosen))
+    mad = float(np.median(np.abs(chosen - med)))
+    p25 = float(np.percentile(chosen, 25))
+    p75 = float(np.percentile(chosen, 75))
+    info["scale_p25"] = p25
+    info["scale_p75"] = p75
+    info["scale_rel_mad"] = float(mad / med) if med > 1e-9 else float("inf")
+    # The IQR is the one to read. `rel_mad` is a median of medians and so
+    # inherits the same 50% breakdown as the estimate it is describing -- on a
+    # third of samples disagreeing it still reports 0. The quartile spread moves
+    # at a quarter, which is where a fit starts being worth doubting.
+    info["scale_rel_iqr"] = float((p75 - p25) / med) if med > 1e-9 else float("inf")
+    return med, info

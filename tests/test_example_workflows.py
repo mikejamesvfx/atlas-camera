@@ -299,6 +299,9 @@ def test_multiview_raw_workflow_preserves_positional_widget_order():
             "depth_edge_rel", "max_edge_factor",
             # APPENDED 2026-09-04: the internal sky guess, made explicit.
             "sky_heuristic",
+            # APPENDED 2026-09-04: the scale gate. `crop` follows it in
+            # INPUT_TYPES but is a link input and serializes no widget.
+            "scale_max_rel_iqr",
         ],
         "AtlasBlockoutViewport": [
             "resolution", "client_data", "preview_expand", "drawn_fill_px",

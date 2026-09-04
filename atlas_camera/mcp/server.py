@@ -100,7 +100,9 @@ mcp = _MCPServer(
         "Tools for driving Atlas Camera (single-image camera recovery + "
         "matte-painting projection) on a local ComfyUI. Start with "
         "atlas_health; read the atlas://calibration resource before choosing "
-        "depth models or band settings. Read atlas://path-repair before "
+        "depth models or band settings. Read atlas://occlusion-fill before "
+        "running AtlasFillOccluded or judging a fill result. "
+        "Read atlas://path-repair before "
         "automating planar or path-guided tear repair. Shipped workflows "
         "close their solve gates — atlas_run_workflow opens them by default."
     ),
@@ -488,6 +490,103 @@ X-RAY (experimental): always wire restrict_mask (a SAM3 segment of the
   covered 50%+ of frame. Architecture is LaRI's strong domain.
 """
 
+_OCCLUSION_FILL = """\
+Atlas occlusion fill -- AtlasFillOccluded / AtlasAddPatchView playbook.
+
+Every number here was measured on ONE scene (a sea-cliff castle photograph,
+arc_left 12 deg, defaults max_rois=8 min_area_px=1024) unless said otherwise.
+Calibration, not a promise about another plate.
+
+WHAT THE NODE DOES
+  Surveys the moved camera for disocclusion holes, crops to each hole cluster
+  at native resolution, generates into the crop with FLUX Fill, and returns it
+  through AtlasAddPatchView as a patch view. FLUX Fill beats Qwen here because
+  noise_mask masks the LATENT. Pair the crop with the `crop` ATLAS_CROP handle
+  so the patch camera IS the crop camera (crop_intrinsics + scale_intrinsics);
+  without it the node builds a centred full-frame camera the crop was never
+  shot through, and the patch lands off by the crop origin.
+
+MEASURE THE RIGHT HOLE
+  Raw "peak hole" counts SKY and is useless as a score: 64.8% before a fill and
+  86.1% after, on a run that visibly improved. Score the FILLABLE hole -- raw
+  hole AND NOT the not-disocclusion mask (sky, off-plate). Likewise
+  torn_fraction = 1 - faces/FULL grid conflates a deliberate mask bound with
+  real tearing; read excluded_fraction and torn_fraction_eligible. Scoring
+  tearing needs tear_metrics.score_tears(render_depth=...) -- alpha alone reads
+  a closed coverage gap as a missed edge.
+
+A FILL PATCH IS THE BACKMOST LAYER, SO IT MUST NOT TEAR
+  Both silhouette guards are wrong for it and the node sets them explicitly:
+  depth_edge_rel=1e9, max_edge_factor=40, sky_heuristic=False. A fill patch's
+  depth is an estimate over INVENTED content and so is rough by construction;
+  the sky heuristic removed 35% of the faces INSIDE the hole, in a layer with
+  nothing behind it, turning slightly-wrong depth into a hole. Do NOT set
+  max_edge_factor=0 ("off") -- shipped that way once, unmeasured, and it made
+  11.13 m triangles. 40 came off a sweep; the budget scales with depth, so it
+  is not a promise about any metre size.
+
+THE SCALE FIT IS THE FAILURE MODE, NOT THE DEPTH
+  solve_scale_from_primary is a correct ONE-PARAMETER scale about the patch
+  camera, z(s) = z_cam + s*(z_p - z_cam). It is NOT a MiDaS affine and wants no
+  shift term. Its problem is its SAMPLE SET: it accepts any sample landing in
+  frame with a finite primary depth, including every point the patch shows
+  THROUGH an occluder, where the sampled primary depth is the occluder's. It
+  takes a median, so the failure is a breakdown not a drift -- exact up to 50%
+  contaminated, then a cliff to 0.25x. AtlasFillOccluded crops TO a hole, so
+  its patches are majority-hole by construction (five castle ROIs: 31.5-67.7%).
+  Fix: hand the fit the hole as an exclude mask so it sees mutually VISIBLE
+  points only.
+
+    change                          fillable hole   closed   worst edge
+    max_edge_factor 0, sky on         7,565 px       72%      11.13 m
+    max_edge_factor 40, sky on        9,241 px       66%       2.02 m
+    sky heuristic off                 9,241 px       66%       2.02 m
+    visible-only scale fit            5,425 px       80%       2.63 m
+
+  Row 3 matters: turning the sky heuristic off changed NOTHING. The hypothesis
+  that "65% of the residual is the sky floor" was tested and REFUTED.
+
+THE SCALE GATE (AtlasAddPatchView scale_max_rel_iqr, default 1.0)
+  A median returns a confident number whatever the agreement behind it, so the
+  conditioning is reported separately: scale_n_samples, scale_p25/p75,
+  scale_rel_mad, scale_rel_iqr. Read the IQR, NOT the MAD -- rel_mad is a
+  median of medians and inherits the same 50% breakdown as the estimate it
+  describes, still reporting 0.000 at 33% contamination. Swept against known
+  truth:
+
+    occluded    scale err    rel_iqr
+    0-19%          0.0%       0.000
+    26-41%         0.0%       0.750    <- still EXACT, already spread
+    48%           37.5%       1.200    <- first wrong fit
+    56-70%        75.0%       3.000
+    >=78%         75.0%       0.000    <- BLIND SPOT
+
+  Hence 1.0: above every exact fit, below the first broken one. The blind spot
+  cannot be tuned away -- once the occluded samples win outright they agree
+  with each other perfectly and dispersion sees nothing. That case belongs to
+  the exclude mask and to min_samples. A refusal falls back to the ground fit
+  and says so in scale_source and in the node report.
+
+  The live symptom behind it: two adjacent 192x64 ROIs on the same plate row,
+  near-identical unscaled depth (4.68 m vs 5.05 m), fitted 0.645 and 0.273 --
+  2.4x apart. The second floated its ground 0.78 m and painted 5% of its own
+  hole. A too-small scale pulls the patch NEARER, so the depth-shadow matte
+  judges it visible and cuts it out of the hole it was generated for.
+
+CACHE TRAP -- read before concluding a change did nothing
+  ComfyUI caches on a node's DECLARED inputs. AtlasFillOccluded builds patches
+  by expansion, so a value hard-coded in the expansion body changes no declared
+  input and the executor serves the previous solve BYTE-IDENTICALLY. A "no
+  change" result from such an edit is not evidence. Bust it by changing a
+  declared input, and prefer exposing the knob as a widget anyway.
+
+IDENTITY AND REPEATS
+  Patches APPEND per move, each carrying the move identity
+  fill_<6 hex of the end-frame view matrix>_roi<i>. A different move adds; the
+  SAME move overwrites its own patches instead of stacking duplicates.
+"""
+
+
 _PATH_REPAIR = """\
 Atlas path-guided relief repair (agent/headless playbook):
 
@@ -534,6 +633,15 @@ AGENT LOOP:
 def calibration() -> str:
     """The per-scene-type settings doctrine, distilled from live runs."""
     return _CALIBRATION
+
+
+@mcp.resource("atlas://occlusion-fill")
+def occlusion_fill() -> str:
+    """AtlasFillOccluded/AtlasAddPatchView: the measured playbook --
+    which hole to score, why a fill patch must not tear, how the scale
+    fit breaks down, and the executor cache trap that makes a real
+    change look like a null result."""
+    return _OCCLUSION_FILL
 
 
 @mcp.resource("atlas://gates")

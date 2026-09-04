@@ -901,6 +901,14 @@
           "widget": {
             "name": "sky_heuristic"
           }
+        },
+        {
+          "name": "scale_max_rel_iqr",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "scale_max_rel_iqr"
+          }
         }
       ],
       "outputs": [
@@ -938,7 +946,8 @@
         true,
         0.5,
         12.0,
-        true
+        true,
+        1.0
       ],
       "title": "OPTIONAL PATCH · BYPASSED · enable only after supplying Qwen image"
     },

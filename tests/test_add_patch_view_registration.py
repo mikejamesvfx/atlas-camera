@@ -64,7 +64,12 @@ def test_widgets_are_appended_after_patch_mask():
                            # silhouette-tear thresholds a backmost layer needs
                            # to switch off. Appended last, defaults unchanged.
                            "depth_edge_rel", "max_edge_factor",
-                           "sky_heuristic", "crop"]
+                           "sky_heuristic",
+                           # 2026-09-04: the scale gate. After the BOOLEAN
+                           # it follows and before `crop`, a link input
+                           # that occupies no widget slot -- positionally
+                           # this is still an append.
+                           "scale_max_rel_iqr", "crop"]
     spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["camera_source"]
     assert spec[0] == ["declared_orbit", "register_to_primary"]
     assert spec[1]["default"] == "declared_orbit"
@@ -285,3 +290,72 @@ def test_without_the_crop_handle_moge_still_supplies_the_camera(monkeypatch):
     m = out.projection_sources[0].metadata
     assert m["patch_intrinsics_source"] == "moge_predicted"
     assert out.projection_sources[0].camera.intrinsics.fx_px == pytest.approx(480.0)
+
+
+# --- the SCALE gate -----------------------------------------------------
+# The pose has been gated since register_to_primary landed. The scale never
+# was: solve_scale_from_primary takes a median, so it hands back a confident
+# number whether its samples agreed exactly or not at all, and the node adopted
+# it either way. Castle ROI 5 is the case -- 0.273 against its neighbour's
+# 0.645 on the same row at the same distance, ground floating 0.78 m, 5% of its
+# own hole painted.
+
+def _run_with_fit(monkeypatch, scale, rel_iqr, **kw):
+    _patch_estimate_depth(monkeypatch)
+    import atlas_camera.comfy.nodes_geometry as ng
+    monkeypatch.setattr(
+        ng, "solve_scale_from_primary",
+        lambda *a, **k: (scale, {"n_samples": 400, "scale_rel_iqr": rel_iqr,
+                                 "scale_rel_mad": 0.0}))
+    solve, _p, _e = _synthetic_primary()
+    out, report = AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), patch_azimuth_view="right side view",
+        relief_grid=48, geometry_source="own_depth",
+        primary_depth=_fake_primary_depth(), **kw)
+    return out.projection_sources[0].metadata, report
+
+
+def test_the_gate_is_armed_by_default_at_the_measured_threshold():
+    """1.0 comes off the sweep in test_patch_scale_occlusion_bias: the spread
+    reaches 0.75 on fits that are still exact, and 1.2 on the first wrong one.
+    Anything at or below 0.75 refuses good fits; anything above 1.2 lets the
+    first bad one through."""
+    spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["scale_max_rel_iqr"]
+    assert spec[1]["default"] == 1.0
+
+
+def test_a_broken_fit_is_refused_without_anyone_asking(monkeypatch):
+    meta, report = _run_with_fit(monkeypatch, 0.3, rel_iqr=9.0)
+    assert meta["scale_source"] == "ground_fit"
+    assert meta["scale_refused_rel_iqr"] == 9.0
+    assert "REFUSED" in report
+
+
+def test_zero_disables_the_gate(monkeypatch):
+    meta, _r = _run_with_fit(monkeypatch, 0.3, rel_iqr=9.0,
+                             scale_max_rel_iqr=0.0)
+    assert meta["scale_source"].startswith("primary_registration")
+    assert "scale_refused_rel_iqr" not in meta
+    assert meta["scale_rel_iqr"] == 9.0
+
+
+def test_armed_gate_refuses_a_fit_whose_samples_disagree(monkeypatch):
+    meta, report = _run_with_fit(monkeypatch, 0.3, rel_iqr=9.0,
+                                 scale_max_rel_iqr=0.5)
+    assert meta["scale_refused_rel_iqr"] == 9.0
+    assert meta["scale_source"] == "ground_fit"
+    assert "REFUSED" in report
+
+
+def test_armed_gate_keeps_a_well_conditioned_fit(monkeypatch):
+    meta, _r = _run_with_fit(monkeypatch, 0.3, rel_iqr=0.1,
+                             scale_max_rel_iqr=0.5)
+    assert meta["scale_source"].startswith("primary_registration")
+    assert "scale_refused_rel_iqr" not in meta
+
+
+def test_the_conditioning_is_reported_whether_or_not_the_gate_is_armed(monkeypatch):
+    """A threshold can only be chosen off numbers from a real run, so the
+    spread is reported even when nothing acts on it."""
+    _meta, report = _run_with_fit(monkeypatch, 0.3, rel_iqr=1.25)
+    assert "quartile spread 1.25" in report
