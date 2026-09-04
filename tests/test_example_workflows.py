@@ -304,6 +304,8 @@ def test_multiview_raw_workflow_preserves_positional_widget_order():
             "scale_max_rel_iqr",
             # APPENDED 2026-09-04: the ground cross-check.
             "scale_max_ground_disagreement",
+            # APPENDED 2026-09-05: the sibling check.
+            "scale_max_sibling_disagreement", "scale_min_siblings",
         ],
         "AtlasBlockoutViewport": [
             "resolution", "client_data", "preview_expand", "drawn_fill_px",

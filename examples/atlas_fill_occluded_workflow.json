@@ -874,6 +874,14 @@
           "widget": {
             "name": "scale_max_ground_disagreement"
           }
+        },
+        {
+          "name": "scale_max_sibling_disagreement",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "scale_max_sibling_disagreement"
+          }
         }
       ],
       "outputs": [
@@ -931,6 +939,7 @@
         0.35,
         25.0,
         1024,
+        0.0,
         0.0
       ],
       "title": "4 - FILL THE HOLES WORTH FILLING, AS GEOMETRY"

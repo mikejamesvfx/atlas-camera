@@ -3252,6 +3252,39 @@ def _derive_report(node_name: str, out, hole_t) -> str:
             f"(hole_mask is the uncovered remainder)")
 
 
+def _comparable_sibling_scales(solve, *, depth_model, depth_is_metric):
+    """Scales of patches already on this solve that mean the SAME THING.
+
+    Comparable means: a generated patch (not the plate, not a hand-placed
+    plane), the same depth model, that model METRIC -- a relative model
+    normalises each crop on its own, so two of its scales are unrelated numbers
+    -- and a scale that was itself MEASURED. A patch that already fell back to
+    a ground fit, or was replaced by an earlier sibling median, is not
+    independent evidence, and letting those back in would let one failure
+    propagate through the median into every later patch.
+    """
+    if not depth_is_metric:
+        return []
+    out = []
+    for src in getattr(solve, "projection_sources", None) or []:
+        m = getattr(src, "metadata", None) or {}
+        if m.get("evidence_type") != "generated":
+            continue
+        if m.get("depth_model") != depth_model:
+            continue
+        if not m.get("depth_is_metric"):
+            continue
+        if not str(m.get("scale_source", "")).startswith("primary_registration"):
+            continue
+        try:
+            value = float(m["scale"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if value > 1e-9:
+            out.append(value)
+    return out
+
+
 def _summarize_matte(np, terms, unseen, region):
     """Flat scalars naming what the unseen matte did, and why.
 
@@ -3362,6 +3395,19 @@ def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,
                 metadata.get("scale_n_samples", 0), metadata["scale_rel_iqr"])
             + (" — REFUSED, fell back to the ground fit"
                if "scale_refused_rel_iqr" in metadata else ""))
+    if "scale_sibling_disagreement" in metadata:
+        lines.append(
+            "sibling check: {} comparable patches, median {} — this one is {}x "
+            "off".format(metadata.get("scale_sibling_n", 0),
+                         metadata["scale_sibling_median"],
+                         metadata["scale_sibling_disagreement"])
+            + (" — REFUSED, took the sibling median (was {})".format(
+                metadata["scale_replaced_from"])
+               if "scale_refused_sibling_disagreement" in metadata else ""))
+    elif metadata.get("scale_sibling_n") is not None:
+        lines.append(
+            "sibling check ABSTAINED: {} comparable patches on the solve"
+            .format(metadata["scale_sibling_n"]))
     if "scale_ground_disagreement" in metadata:
         lines.append(
             "ground cross-check: registered {} vs ground fit {} = {}x apart"
@@ -4455,6 +4501,43 @@ class AtlasAddPatchView:
                                "a net 10% MORE fillable hole. It is a real "
                                "instrument and a poor automatic gate; read it "
                                "before arming it."}),
+                # APPENDED 2026-09-05: the third scale gate, and the first
+                # that judges a patch against anything OTHER than itself.
+                "scale_max_sibling_disagreement": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 100.0, "step": 0.05,
+                    "tooltip": "Refuse a patch scale that disagrees with the "
+                               "MEDIAN of the patches already on this solve by "
+                               "more than this factor, and adopt that median "
+                               "instead (0 = never refuse). The other two "
+                               "gates ask a fit whether it agrees with itself "
+                               "or with one other estimator on the same patch, "
+                               "and a confidently-wrong fit passes both -- "
+                               "measured on the sea-cliff castle, the ROI that "
+                               "painted 5% of its hole had a TIGHTER spread "
+                               "than the two that painted 69%, and disagreed "
+                               "with its ground fit by exactly as much as a "
+                               "good one. Its siblings caught it: scales ran "
+                               "0.830 / 0.611 / 0.381 / 0.645 / 0.273 and the "
+                               "failure is the lone 0.45x outlier. Requires "
+                               "the SAME depth model and a METRIC one -- a "
+                               "relative model normalises each crop on its "
+                               "own, so the numbers would not be comparable -- "
+                               "and at least scale_min_siblings of them, so "
+                               "the first patches on a solve are never judged "
+                               "against nothing. Unlike the other gates this "
+                               "one supplies a REPLACEMENT rather than a veto: "
+                               "the siblings are measurements of the same "
+                               "world."}),
+                "scale_min_siblings": ("INT", {
+                    "default": 3, "min": 2, "max": 32,
+                    "tooltip": "How many comparable sibling patches must "
+                               "already be on the solve before the sibling "
+                               "check will act. A median needs a population; "
+                               "below this the check abstains and only "
+                               "reports. Note the ORDER dependence this "
+                               "implies -- patches are added one at a time, so "
+                               "the first few are never judged and the last "
+                               "is judged against the most."}),
                 "crop": ("ATLAS_CROP", {
                     "tooltip": "AtlasCropROI's crop handle, when patch_image is that CROP "
                                "rather than a full-frame novel view. A crop of the plate is "
@@ -4488,7 +4571,9 @@ class AtlasAddPatchView:
                   registration_max_deviation_deg=25.0, auto_flip_azimuth=True,
                   depth_edge_rel=0.5, max_edge_factor=12.0,
                   sky_heuristic=True, scale_max_rel_iqr=1.0,
-                  scale_max_ground_disagreement=0.0, crop=None):
+                  scale_max_ground_disagreement=0.0,
+                  scale_max_sibling_disagreement=0.0, scale_min_siblings=3,
+                  crop=None):
         exact_delta = None
         exact_pivot = None
         if exact_view_override and exact_view_override.strip():
@@ -4738,6 +4823,12 @@ class AtlasAddPatchView:
             finally:
                 os.unlink(tmp)
             depth_map = result.depth
+            # Comparability, for the sibling check below: two patches' scales
+            # only mean the same thing if both depths are in the same units. A
+            # relative model normalises every crop on its own, so its scales
+            # are not comparable even between two crops of one plate.
+            depth_is_metric = bool(getattr(result, "is_metric", False))
+            registration_meta["depth_is_metric"] = depth_is_metric
             if depth_map.shape != (patch_h, patch_w):
                 depth_map = _resize_depth(depth_map, patch_w, patch_h)
 
@@ -4895,6 +4986,42 @@ class AtlasAddPatchView:
                     # than refusing on a measurement that was never made.
                     registration_meta["scale_ground_fit_reason"] = str(
                         ground_info.get("reason", "no ground fit"))
+
+            # THE SIBLING CHECK. Both gates above judge a patch against itself:
+            # one asks whether the fit's own samples agree, the other asks one
+            # more estimator about the same pixels. A fit that is confidently
+            # and uniformly wrong passes both -- measured, the castle ROI that
+            # painted 5% of its hole had a TIGHTER sample spread than the two
+            # that painted 69%, and disagreed with its ground fit by exactly as
+            # much as a good one did. What it could not do was agree with the
+            # OTHER patches, which are measurements of the same world by the
+            # same model: 0.830 / 0.611 / 0.381 / 0.645 / 0.273, and the
+            # failure is the lone 0.45x outlier.
+            #
+            # So this one can hand back an ANSWER, not just a veto. The
+            # siblings are not a second opinion about this patch, they are
+            # direct measurements of the scale it is trying to recover.
+            if scale is not None:
+                siblings = _comparable_sibling_scales(
+                    solve, depth_model=depth_model,
+                    depth_is_metric=registration_meta.get("depth_is_metric"))
+                registration_meta["scale_sibling_n"] = len(siblings)
+                if len(siblings) >= max(2, int(scale_min_siblings)):
+                    med = float(np.median(np.asarray(siblings, dtype=np.float64)))
+                    ratio = float(scale) / med if med > 1e-9 else float("inf")
+                    disagreement = (max(ratio, 1.0 / ratio) if ratio > 0
+                                    else float("inf"))
+                    registration_meta["scale_sibling_median"] = round(med, 4)
+                    registration_meta["scale_sibling_disagreement"] = round(
+                        disagreement, 4)
+                    if (float(scale_max_sibling_disagreement) > 0.0
+                            and disagreement > float(scale_max_sibling_disagreement)):
+                        registration_meta["scale_refused_sibling_disagreement"] = (
+                            round(disagreement, 4))
+                        registration_meta["scale_replaced_from"] = round(
+                            float(scale), 4)
+                        scale = med
+                        scale_source = "sibling_median"
 
         if scale is None:
             scale, _scale_info = _ground_scale_once()

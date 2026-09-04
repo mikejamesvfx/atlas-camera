@@ -1222,6 +1222,22 @@
           "widget": {
             "name": "scale_max_ground_disagreement"
           }
+        },
+        {
+          "name": "scale_max_sibling_disagreement",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "scale_max_sibling_disagreement"
+          }
+        },
+        {
+          "name": "scale_min_siblings",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "scale_min_siblings"
+          }
         }
       ],
       "outputs": [
@@ -1268,7 +1284,9 @@
         12.0,
         true,
         1.0,
-        0.0
+        0.0,
+        0.0,
+        3
       ],
       "title": "PATCH \u00b7 MEASURED against the primary (start BYPASSED)"
     },

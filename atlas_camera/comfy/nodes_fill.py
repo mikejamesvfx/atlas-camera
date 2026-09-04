@@ -1179,6 +1179,23 @@ class AtlasFillOccluded:
                                "it only per-scene, having read the "
                                "disagreements. See AtlasAddPatchView's own "
                                "tooltip."}),
+                # APPENDED 2026-09-05: the sibling check. This node is where it
+                # has something to work with -- it generates a whole FAMILY of
+                # patches against one plate in one pass, which is exactly the
+                # population the check needs; the patch node placed by hand
+                # usually has none.
+                "scale_max_sibling_disagreement": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 100.0, "step": 0.05,
+                    "tooltip": "Refuse a patch scale that disagrees with the "
+                               "median of this run's EARLIER patches by more "
+                               "than this factor, and adopt that median. The "
+                               "only gate that saw the castle failure: its "
+                               "sample spread was tighter than two good "
+                               "patches' and its ground disagreement equal to "
+                               "one, but its scale was 0.45x what its four "
+                               "siblings measured. Order matters -- patches "
+                               "are added one at a time, so early ROIs are "
+                               "judged against few or none. 0 = off."}),
             },
         }
 
@@ -1260,7 +1277,8 @@ class AtlasFillOccluded:
              on_registration_failure="skip",
              registration_min_inliers=40, registration_max_residual_m=0.35,
              registration_max_deviation_deg=25.0, min_gen_long_edge=1024,
-             scale_max_ground_disagreement=0.0):
+             scale_max_ground_disagreement=0.0,
+             scale_max_sibling_disagreement=0.0):
         from atlas_camera.comfy.node_helpers import (_comfy_registry,
                                                      _graph_builder)
 
@@ -1485,6 +1503,8 @@ class AtlasFillOccluded:
                     registration_max_deviation_deg),
                 "scale_max_ground_disagreement": float(
                     scale_max_ground_disagreement),
+                "scale_max_sibling_disagreement": float(
+                    scale_max_sibling_disagreement),
             }
             if primary_depth is not None:
                 patch_kwargs["primary_depth"] = primary_depth

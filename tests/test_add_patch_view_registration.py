@@ -72,7 +72,12 @@ def test_widgets_are_appended_after_patch_mask():
                            "scale_max_rel_iqr",
                            # 2026-09-04: the ground cross-check, the gate
                            # that sees what dispersion cannot.
-                           "scale_max_ground_disagreement", "crop"]
+                           "scale_max_ground_disagreement",
+                           # 2026-09-05: the sibling check, the first gate
+                           # that judges a patch against anything but
+                           # itself.
+                           "scale_max_sibling_disagreement",
+                           "scale_min_siblings", "crop"]
     spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["camera_source"]
     assert spec[0] == ["declared_orbit", "register_to_primary"]
     assert spec[1]["default"] == "declared_orbit"
@@ -470,3 +475,112 @@ def test_a_cross_check_that_throws_never_fails_the_patch(monkeypatch):
     meta = out.projection_sources[0].metadata
     assert meta["scale_source"].startswith("primary_registration")
     assert "ground fit failed" in meta["scale_ground_fit_reason"]
+
+
+# --- the SIBLING check ---------------------------------------------------
+# The first gate that judges a patch against something other than itself. Both
+# others passed the castle's broken ROI: its samples agreed tightly (spread
+# 0.386, tighter than the two ROIs painting 69%) and it disagreed with its
+# ground fit by exactly as much as a good patch did (2.15x, both). What it could
+# not do was agree with the other patches, which measure the same world.
+
+from atlas_camera.comfy.nodes_geometry import _comparable_sibling_scales  # noqa: E402
+
+
+def _sib(scale, *, model="m", metric=True, source="primary_registration_visible",
+         evidence="generated"):
+    from types import SimpleNamespace
+    return SimpleNamespace(metadata={
+        "scale": scale, "depth_model": model, "depth_is_metric": metric,
+        "scale_source": source, "evidence_type": evidence})
+
+
+def _solve_of(*sources):
+    from types import SimpleNamespace
+    return SimpleNamespace(projection_sources=list(sources))
+
+
+def test_siblings_need_the_same_model_and_a_metric_one():
+    """A relative model normalises each crop on its own, so two of its scales
+    are unrelated numbers however similar the crops were."""
+    solve = _solve_of(_sib(0.6), _sib(0.7, model="other"), _sib(0.8, metric=False))
+    assert _comparable_sibling_scales(
+        solve, depth_model="m", depth_is_metric=True) == [0.6]
+    # And this patch's own depth being relative disqualifies the comparison
+    # entirely, however many comparable-looking siblings are on the solve.
+    assert _comparable_sibling_scales(
+        solve, depth_model="m", depth_is_metric=False) == []
+
+
+def test_a_patch_that_already_fell_back_is_NOT_evidence():
+    """Otherwise one failure propagates: a ground-fit fallback, or a scale this
+    very check already replaced, would enter the median and drag every later
+    patch toward it."""
+    solve = _solve_of(_sib(0.6), _sib(0.2, source="ground_fit"),
+                      _sib(0.2, source="sibling_median"),
+                      _sib(0.9, evidence="photographed"))
+    assert _comparable_sibling_scales(
+        solve, depth_model="m", depth_is_metric=True) == [0.6]
+
+
+def _run_with_siblings(monkeypatch, scale, sibling_scales, **kw):
+    _patch_estimate_depth(monkeypatch)
+    import atlas_camera.comfy.nodes_geometry as ng
+    monkeypatch.setattr(
+        ng, "solve_scale_from_primary",
+        lambda *a, **k: (scale, {"n_samples": 400, "scale_rel_iqr": 0.1}))
+    solve, _p, _e = _synthetic_primary()
+    model = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
+    for value in sibling_scales:
+        solve.projection_sources.append(_sib(value, model=model))
+    out, report = AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), patch_azimuth_view="right side view",
+        relief_grid=48, geometry_source="own_depth", depth_model=model,
+        primary_depth=_fake_primary_depth(), **kw)
+    return out.projection_sources[-1].metadata, report
+
+
+def test_the_castle_outlier_is_caught_where_both_other_gates_passed(monkeypatch):
+    """ROI 5's real numbers: 0.273 against siblings 0.830/0.611/0.381/0.645,
+    median 0.628 — a 2.3x outlier, and the only gate that sees it."""
+    meta, report = _run_with_siblings(
+        monkeypatch, 0.273, [0.830, 0.611, 0.381, 0.645],
+        scale_max_sibling_disagreement=1.8)
+    assert meta["scale_sibling_median"] == pytest.approx(0.628)
+    assert meta["scale_refused_sibling_disagreement"] == pytest.approx(2.301,
+                                                                      rel=1e-2)
+    assert meta["scale_replaced_from"] == 0.273
+    # It hands back an ANSWER, not just a veto — the siblings measured the same
+    # world, so their median IS an estimate of this patch's scale.
+    assert meta["scale"] == pytest.approx(0.628)
+    assert meta["scale_source"] == "sibling_median"
+    assert "REFUSED" in report
+
+
+def test_the_castle_good_patch_survives_where_the_ground_gate_refused_it(monkeypatch):
+    """ROI 2 is the control: 0.611 sits ON the sibling median, and arming the
+    GROUND gate hard enough to catch ROI 5 refused this one too."""
+    meta, _r = _run_with_siblings(
+        monkeypatch, 0.611, [0.830, 0.381, 0.645, 0.273],
+        scale_max_sibling_disagreement=1.8)
+    assert "scale_refused_sibling_disagreement" not in meta
+    assert meta["scale_source"].startswith("primary_registration")
+
+
+def test_too_few_siblings_ABSTAINS_rather_than_trusting_a_thin_median(monkeypatch):
+    meta, report = _run_with_siblings(monkeypatch, 0.273, [0.830, 0.611],
+                                      scale_max_sibling_disagreement=1.8,
+                                      scale_min_siblings=3)
+    assert meta["scale_sibling_n"] == 2
+    assert "scale_sibling_median" not in meta
+    assert meta["scale_source"].startswith("primary_registration")
+    assert "ABSTAINED" in report
+
+
+def test_it_measures_and_reports_without_a_threshold(monkeypatch):
+    meta, report = _run_with_siblings(monkeypatch, 0.273,
+                                      [0.830, 0.611, 0.381, 0.645])
+    assert meta["scale_sibling_disagreement"] == pytest.approx(2.301, rel=1e-2)
+    assert "scale_refused_sibling_disagreement" not in meta
+    assert meta["scale_source"].startswith("primary_registration")
+    assert "sibling check" in report
