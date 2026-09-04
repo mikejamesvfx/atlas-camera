@@ -1723,6 +1723,30 @@
           "type": "ATLAS_PROJECT",
           "link": 24,
           "shape": 7
+        },
+        {
+          "name": "cleanplate_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "cleanplate_path"
+          }
+        },
+        {
+          "name": "cleanplate_mesh_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "cleanplate_mesh_path"
+          }
+        },
+        {
+          "name": "cleanplate_observation_id",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "cleanplate_observation_id"
+          }
         }
       ],
       "outputs": [

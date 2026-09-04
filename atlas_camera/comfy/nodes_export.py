@@ -101,6 +101,19 @@ class AtlasExportScenePackage:
                     "default": "",
                     "tooltip": "The GLB from AtlasExportReliefMesh. Without it the package has a camera and planes but no geometry to edit.",
                 }),
+                "observation_id": ("STRING", {
+                    "default": "",
+                    "tooltip": "Which photograph this is. Part of every plane's identity, so the same wall shot twice stays two pieces of evidence.",
+                }),
+                # APPENDED, and appended is the operative word. These two
+                # went in BEFORE observation_id on 2026-08-26 (cf76682),
+                # which re-pointed every widgets_values slot after them in
+                # every graph already saved. Nothing raised, because they
+                # are all strings: three shipped workflows silently began
+                # exporting with no observation id and a cleanplate_path
+                # holding "obs_001". Moving them back to the end is what an
+                # append-only history would have produced, so every save
+                # made before the insert decodes correctly again.
                 "cleanplate_path": ("STRING", {
                     "default": "",
                     "tooltip": "Optional scene-linear cleanplate EXR. When paired with cleanplate_mesh_path, Atlas Camera writes a separately editable cleanplate_relief behind the foreground relief.",
@@ -108,10 +121,6 @@ class AtlasExportScenePackage:
                 "cleanplate_mesh_path": ("STRING", {
                     "default": "",
                     "tooltip": "Optional GLB from a second AtlasExportReliefMesh run using the cleanplate/depth branch. Both cleanplate inputs are required together.",
-                }),
-                "observation_id": ("STRING", {
-                    "default": "",
-                    "tooltip": "Which photograph this is. Part of every plane's identity, so the same wall shot twice stays two pieces of evidence.",
                 }),
                 "cleanplate_observation_id": ("STRING", {
                     "default": "obs_cleanplate",
@@ -124,7 +133,7 @@ class AtlasExportScenePackage:
         }
 
     def export(self, solve, output_dir, scene_id, plate_path="", relief_mesh_path="",
-               cleanplate_path="", cleanplate_mesh_path="", observation_id="",
+               observation_id="", cleanplate_path="", cleanplate_mesh_path="",
                cleanplate_observation_id="obs_cleanplate", project=None):
         output_dir = _project_routed_dir(project, output_dir, "scenes")
         name = (scene_id or "scene").strip() or "scene"
