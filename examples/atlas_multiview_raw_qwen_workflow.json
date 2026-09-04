@@ -909,6 +909,14 @@
           "widget": {
             "name": "scale_max_rel_iqr"
           }
+        },
+        {
+          "name": "scale_max_ground_disagreement",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "scale_max_ground_disagreement"
+          }
         }
       ],
       "outputs": [
@@ -947,7 +955,8 @@
         0.5,
         12.0,
         true,
-        1.0
+        1.0,
+        0.0
       ],
       "title": "OPTIONAL PATCH · BYPASSED · enable only after supplying Qwen image"
     },

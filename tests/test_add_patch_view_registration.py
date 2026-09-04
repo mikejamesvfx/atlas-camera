@@ -69,7 +69,10 @@ def test_widgets_are_appended_after_patch_mask():
                            # it follows and before `crop`, a link input
                            # that occupies no widget slot -- positionally
                            # this is still an append.
-                           "scale_max_rel_iqr", "crop"]
+                           "scale_max_rel_iqr",
+                           # 2026-09-04: the ground cross-check, the gate
+                           # that sees what dispersion cannot.
+                           "scale_max_ground_disagreement", "crop"]
     spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["camera_source"]
     assert spec[0] == ["declared_orbit", "register_to_primary"]
     assert spec[1]["default"] == "declared_orbit"
@@ -359,3 +362,111 @@ def test_the_conditioning_is_reported_whether_or_not_the_gate_is_armed(monkeypat
     spread is reported even when nothing acts on it."""
     _meta, report = _run_with_fit(monkeypatch, 0.3, rel_iqr=1.25)
     assert "quartile spread 1.25" in report
+
+
+# --- the GROUND cross-check ---------------------------------------------
+# The dispersion gate reads the fit arguing with itself, and the failure that
+# matters does not argue: on the castle the one broken ROI had a TIGHTER spread
+# (0.386) than the two good ones (0.518, 0.704). So ask an estimator that
+# shares no evidence -- the patch's own ground, landed on Y=0.
+
+def _run_with_both_fits(monkeypatch, scale, ground, ground_info=None, **kw):
+    _patch_estimate_depth(monkeypatch)
+    import atlas_camera.comfy.nodes_geometry as ng
+    monkeypatch.setattr(
+        ng, "solve_scale_from_primary",
+        lambda *a, **k: (scale, {"n_samples": 400, "scale_rel_iqr": 0.1,
+                                 "scale_rel_mad": 0.05}))
+    # Imported IN-METHOD, so the module that OWNS it is what to patch.
+    import atlas_camera.core.relief_mesh as rm
+    monkeypatch.setattr(
+        rm, "estimate_ground_scale",
+        lambda *a, **k: (ground, ground_info
+                         if ground_info is not None else {"inliers": 900,
+                                                          "plane_y": 0.0}))
+    solve, _p, _e = _synthetic_primary()
+    out, report = AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), patch_azimuth_view="right side view",
+        relief_grid=48, geometry_source="own_depth",
+        primary_depth=_fake_primary_depth(), **kw)
+    return out.projection_sources[0].metadata, report
+
+
+def test_the_disagreement_is_measured_and_reported_by_default(monkeypatch):
+    meta, report = _run_with_both_fits(monkeypatch, 0.273, 0.645)
+    assert meta["scale_ground_fit"] == 0.645
+    assert meta["scale_ground_disagreement"] == pytest.approx(0.645 / 0.273,
+                                                              rel=1e-3)
+    assert "ground cross-check" in report
+    # Measured, but not acted on until a threshold is set.
+    assert "scale_refused_ground_disagreement" not in meta
+    assert meta["scale_source"].startswith("primary_registration")
+
+
+def test_it_is_symmetric_so_too_large_is_caught_like_too_small(monkeypatch):
+    small, _r = _run_with_both_fits(monkeypatch, 0.273, 0.645)
+    large, _r2 = _run_with_both_fits(monkeypatch, 0.645, 0.273)
+    assert small["scale_ground_disagreement"] == pytest.approx(
+        large["scale_ground_disagreement"])
+
+
+def test_an_armed_threshold_refuses_the_castle_failure(monkeypatch):
+    """ROI 5's numbers: registered 0.273 against a ground fit near its
+    neighbour's 0.645 -- 2.36x apart, and it painted 5% of its own hole."""
+    meta, report = _run_with_both_fits(monkeypatch, 0.273, 0.645,
+                                       scale_max_ground_disagreement=1.5)
+    assert meta["scale_refused_ground_disagreement"] == pytest.approx(2.363,
+                                                                     rel=1e-2)
+    assert meta["scale_source"] == "ground_fit"
+    assert "REFUSED" in report
+
+
+def test_an_armed_threshold_keeps_two_estimators_that_agree(monkeypatch):
+    meta, _r = _run_with_both_fits(monkeypatch, 0.645, 0.620,
+                                   scale_max_ground_disagreement=1.5)
+    assert meta["scale_source"].startswith("primary_registration")
+    assert "scale_refused_ground_disagreement" not in meta
+
+
+def test_no_usable_ground_ABSTAINS_rather_than_refusing(monkeypatch):
+    """A patch can legitimately be all sky or all facade. Absence of a ground
+    fit is not evidence against the registration, and treating it as evidence
+    would refuse exactly the patches with the least to check against."""
+    meta, report = _run_with_both_fits(
+        monkeypatch, 0.273, 1.0,
+        ground_info={"reason": "insufficient ground candidates"},
+        scale_max_ground_disagreement=1.5)
+    assert meta["scale_source"].startswith("primary_registration")
+    assert "scale_refused_ground_disagreement" not in meta
+    assert meta["scale_ground_fit_reason"] == "insufficient ground candidates"
+    assert "ABSTAINED" in report
+
+
+def test_a_cross_check_that_throws_never_fails_the_patch(monkeypatch):
+    # The PRIMARY's own ground fit runs first and is not the cross-check, so
+    # only the second call -- the patch's -- is made to throw. Patching both
+    # tests nothing about this gate.
+    calls = []
+
+    def boom(*a, **k):
+        calls.append(1)
+        if len(calls) > 1:
+            raise RuntimeError("no")
+        return 1.0, {"inliers": 900, "plane_y": 0.0}
+
+    _patch_estimate_depth(monkeypatch)
+    import atlas_camera.comfy.nodes_geometry as ng
+    monkeypatch.setattr(ng, "solve_scale_from_primary",
+                        lambda *a, **k: (0.3, {"n_samples": 400,
+                                               "scale_rel_iqr": 0.1}))
+    import atlas_camera.core.relief_mesh as rm
+    monkeypatch.setattr(rm, "estimate_ground_scale", boom)
+    solve, _p, _e = _synthetic_primary()
+    out, _report = AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), patch_azimuth_view="right side view",
+        relief_grid=48, geometry_source="own_depth",
+        primary_depth=_fake_primary_depth(),
+        scale_max_ground_disagreement=1.5)
+    meta = out.projection_sources[0].metadata
+    assert meta["scale_source"].startswith("primary_registration")
+    assert "ground fit failed" in meta["scale_ground_fit_reason"]

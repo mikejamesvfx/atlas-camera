@@ -3362,6 +3362,16 @@ def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,
                 metadata.get("scale_n_samples", 0), metadata["scale_rel_iqr"])
             + (" — REFUSED, fell back to the ground fit"
                if "scale_refused_rel_iqr" in metadata else ""))
+    if "scale_ground_disagreement" in metadata:
+        lines.append(
+            "ground cross-check: registered {} vs ground fit {} = {}x apart"
+            .format(metadata.get("scale"), metadata["scale_ground_fit"],
+                    metadata["scale_ground_disagreement"])
+            + (" — REFUSED, took the ground fit"
+               if "scale_refused_ground_disagreement" in metadata else ""))
+    elif "scale_ground_fit_reason" in metadata:
+        lines.append("ground cross-check ABSTAINED: "
+                     + metadata["scale_ground_fit_reason"])
     if metadata.get("matte_region_px"):
         lines.append(
             "matte painted {:.0%} of the hole; matted out by "
@@ -4410,6 +4420,32 @@ class AtlasAddPatchView:
                                "itself. That case is the exclude mask's job "
                                "(the fit is given the hole to drop) and "
                                "min_samples', not this gate's."}),
+                # APPENDED 2026-09-04: the second scale gate. The first
+                # (scale_max_rel_iqr) reads the fit's INTERNAL agreement, which
+                # measured inert on real fills -- the broken castle ROI's
+                # samples agreed tightly and were uniformly wrong. This one
+                # asks an INDEPENDENT estimator instead.
+                "scale_max_ground_disagreement": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 100.0, "step": 0.05,
+                    "tooltip": "Refuse a registered scale that disagrees with "
+                               "the patch's OWN ground fit by more than this "
+                               "factor, either way (0 = never refuse). The two "
+                               "estimators share no evidence: the "
+                               "registration fits depth ratios against the "
+                               "primary's map, the ground fit lands the "
+                               "patch's own near-horizontal surfaces on Y=0. "
+                               "So they only agree when both are right, which "
+                               "is what makes the cross-check see failures "
+                               "dispersion cannot -- on the castle the broken "
+                               "ROI put its ground 0.78 m in the air with the "
+                               "camera at 1.6 m, and 1.6*(1-0.51)=0.78 "
+                               "recovers its fitted ratio exactly. Skipped "
+                               "when the patch shows no usable ground (the "
+                               "fit says so, and a patch that is all sky or "
+                               "all facade legitimately has none), so this "
+                               "gate abstains rather than guessing. A refusal "
+                               "falls back to that same ground fit and says "
+                               "so in scale_source."}),
                 "crop": ("ATLAS_CROP", {
                     "tooltip": "AtlasCropROI's crop handle, when patch_image is that CROP "
                                "rather than a full-frame novel view. A crop of the plate is "
@@ -4442,7 +4478,8 @@ class AtlasAddPatchView:
                   registration_min_inliers=40, registration_max_residual_m=0.35,
                   registration_max_deviation_deg=25.0, auto_flip_azimuth=True,
                   depth_edge_rel=0.5, max_edge_factor=12.0,
-                  sky_heuristic=True, scale_max_rel_iqr=1.0, crop=None):
+                  sky_heuristic=True, scale_max_rel_iqr=1.0,
+                  scale_max_ground_disagreement=0.0, crop=None):
         exact_delta = None
         exact_pivot = None
         if exact_view_override and exact_view_override.strip():
@@ -4742,6 +4779,23 @@ class AtlasAddPatchView:
 
         scale = None
         scale_source = "ground_fit"
+        # One ground fit per call, whoever asks first: the cross-check below
+        # wants it as an independent opinion, the fallback wants it as an
+        # answer, and it is the same fit either way.
+        _ground_memo: list = []
+
+        def _ground_scale_once():
+            if not _ground_memo:
+                try:
+                    _ground_memo.append(estimate_ground_scale(
+                        depth_map, view_matrix=patch_extr.camera_view_matrix,
+                        fx=pfx, fy=pfy, cx=pcx, cy=pcy,
+                        horizon_y=patch_horizon_y,
+                    ))
+                except Exception as exc:      # a cross-check must never fail a patch
+                    _ground_memo.append((None, {"reason": f"ground fit failed: {exc}"}))
+            return _ground_memo[0]
+
         if primary_metric_map is not None:
             # The fit must see MUTUALLY VISIBLE points only. solve_scale_from_primary
             # accepts any sample that lands in frame with a finite primary depth,
@@ -4800,12 +4854,41 @@ class AtlasAddPatchView:
                 scale = None
                 scale_source = "ground_fit"
 
+            # THE GROUND CROSS-CHECK. Dispersion can only see a fit arguing
+            # with ITSELF, and the failure that matters does not: once the
+            # occluded samples are the whole population they agree perfectly
+            # and are perfectly wrong (measured -- past ~78% contaminated the
+            # quartile spread returns to 0.000 while the scale is 75% out, and
+            # on the castle the one broken ROI had a TIGHTER spread than the
+            # two good ones). So ask a second estimator that shares no evidence
+            # with the first: the patch's own ground, landed on Y=0. Both being
+            # right is the only ordinary way for them to agree.
+            if scale is not None:
+                ground_scale, ground_info = _ground_scale_once()
+                if ground_scale is not None and "inliers" in ground_info:
+                    ratio = float(scale) / float(ground_scale)
+                    disagreement = max(ratio, 1.0 / ratio) if ratio > 0 else float("inf")
+                    registration_meta["scale_ground_fit"] = round(
+                        float(ground_scale), 4)
+                    registration_meta["scale_ground_inliers"] = int(
+                        ground_info["inliers"])
+                    registration_meta["scale_ground_disagreement"] = round(
+                        disagreement, 4)
+                    if (float(scale_max_ground_disagreement) > 0.0
+                            and disagreement > float(scale_max_ground_disagreement)):
+                        registration_meta["scale_refused_ground_disagreement"] = (
+                            round(disagreement, 4))
+                        scale = None
+                        scale_source = "ground_fit"
+                else:
+                    # No usable ground is not evidence against the fit: a patch
+                    # can be all sky or all facade. Abstain, and say so, rather
+                    # than refusing on a measurement that was never made.
+                    registration_meta["scale_ground_fit_reason"] = str(
+                        ground_info.get("reason", "no ground fit"))
+
         if scale is None:
-            scale, _scale_info = estimate_ground_scale(
-                depth_map, view_matrix=patch_extr.camera_view_matrix,
-                fx=pfx, fy=pfy, cx=pcx, cy=pcy,
-                horizon_y=patch_horizon_y,
-            )
+            scale, _scale_info = _ground_scale_once()
 
         # `patch_mask` bounds the GEOMETRY, not just the paint. Without this the
         # own_depth path built a relief mesh over the WHOLE patch frame: a

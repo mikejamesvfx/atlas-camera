@@ -302,6 +302,8 @@ def test_multiview_raw_workflow_preserves_positional_widget_order():
             # APPENDED 2026-09-04: the scale gate. `crop` follows it in
             # INPUT_TYPES but is a link input and serializes no widget.
             "scale_max_rel_iqr",
+            # APPENDED 2026-09-04: the ground cross-check.
+            "scale_max_ground_disagreement",
         ],
         "AtlasBlockoutViewport": [
             "resolution", "client_data", "preview_expand", "drawn_fill_px",
