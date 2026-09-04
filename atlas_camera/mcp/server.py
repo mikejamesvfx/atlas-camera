@@ -573,6 +573,46 @@ THE SCALE GATE (AtlasAddPatchView scale_max_rel_iqr, default 1.0)
   hole. A too-small scale pulls the patch NEARER, so the depth-shadow matte
   judges it visible and cuts it out of the hole it was generated for.
 
+THE GROUND CROSS-CHECK (scale_max_ground_disagreement, default 0 = OFF)
+  A second estimator that shares no evidence with the registration: the patch's
+  own near-horizontal surfaces landed on Y=0. Always measured and reported
+  (scale_ground_fit, scale_ground_inliers, scale_ground_disagreement); it
+  ABSTAINS when the patch shows no usable ground, because a patch can
+  legitimately be all sky or all facade and a missing measurement is not
+  evidence. Exposed on AtlasFillOccluded too, since the patch node is built by
+  expansion and that is the only place an artist can reach it.
+
+  OFF is a measurement, not caution. Castle, all five fill ROIs:
+
+    ROI  registered  ground  inliers  disagr  painted
+      1     0.830     1.177     822    1.42     69%
+      2     0.611     0.285     990    2.15     69%
+      3     0.381     0.461     144    1.21     30%
+      4     0.645     0.739     210    1.15     90%
+      5     0.273     0.586     277    2.15      5%
+
+  The good ROI and the broken one read the SAME 2.15, and the good one has the
+  MOST ground inliers behind the fit that turns out wrong. Armed at 1.5 and
+  scored: ROI 5 repaired almost exactly (5% -> 63% painted, ground +0.783 m ->
+  +0.002) and ROI 2 broken the same way (69% -> 16%, 0.000 -> +0.800), net
+  fillable hole 5,425 -> 5,965 px, 10% WORSE, because ROI 2's hole is 14,111 px
+  against ROI 5's 5,123. Read the disagreements per scene; arm it per scene.
+
+  MEASUREMENT TRAP that cost an experiment: the fillable-hole metric is
+  INVARIANT to this refusal when measured at the move's END FRAME. A fill
+  patch's camera IS that frame, and scaling about a camera leaves that camera's
+  projection unchanged -- so applying the refusal to a saved solve and
+  re-rendering reports exactly 0 at every threshold. Scale reaches the outcome
+  only through the unseen matte, computed at build time. Re-run live.
+
+NEXT LEVER, not built: SIBLING AGREEMENT
+  Registered scales above are 0.830 / 0.611 / 0.381 / 0.645 / 0.273, median
+  0.611. ROI 2 sits exactly at the median; ROI 5 is 0.45x it and the lone
+  outlier. Patches from one move over one plate should share a world scale, and
+  that check needs neither a ground nor a second estimator -- only the siblings
+  the node already generates. It is the first candidate whose discriminating
+  power is visible in data already collected.
+
 CACHE TRAP -- read before concluding a change did nothing
   ComfyUI caches on a node's DECLARED inputs. AtlasFillOccluded builds patches
   by expansion, so a value hard-coded in the expansion body changes no declared
