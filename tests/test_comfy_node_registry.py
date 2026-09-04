@@ -71,6 +71,11 @@ NORMAL_KEYS = {
     "AtlasCompositeCrop", "AtlasCameraMovePreset",
     # 2026-08-16: photo crop for the Qwen ROI loop.
     "AtlasCropSourcePhoto",
+    # The rendered-depth / Director arc (2026-08/09): an Unreal depth pass and
+    # camera as MoGe-shaped inputs, the render-anchored depth fit, the scene
+    # measurement behind support-geometry sizes, and the Director take reader.
+    "AtlasUnrealDepthGeometry", "AtlasUnrealCameraPath", "AtlasAnchorDepth",
+    "AtlasSceneScale", "AtlasDirectorTake",
     # Promoted 2026-08-14 (Dynamic Plates: the CLI half was never gated):
     "AtlasLoadDynamicPlate",
     # Promoted 2026-08-14 (serves the standard two-pass fill engine):
@@ -116,7 +121,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 115
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 121
 
 
 def test_experimental_registry_keys_exact():

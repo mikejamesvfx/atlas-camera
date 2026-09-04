@@ -616,6 +616,7 @@ _MENU_FOLDERS = {
         "AtlasGravityCompass", "AtlasGravityOverride", "AtlasRollTrim",
         "AtlasScaleOverride", "AtlasReferenceScaleSolve", "AtlasFaceScaleReference",
         "AtlasVLMScaleCues", "AtlasApplyScaleReferences",
+        "AtlasSceneScale",
     ),
     "Atlas/03 \u00b7 Depth": (
         "AtlasDepthAnything", "AtlasDepthMap", "AtlasMogeNormals",

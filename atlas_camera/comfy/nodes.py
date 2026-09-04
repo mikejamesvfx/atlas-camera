@@ -15,7 +15,8 @@ here rather than per line, so a genuinely dead import elsewhere still shows up.
 from __future__ import annotations
 
 from atlas_camera.comfy.nodes_ltx import (  # noqa: F401
-    AtlasLoadCameraPath, AtlasReliefGeometry)
+    AtlasAnchorDepth, AtlasLoadCameraPath, AtlasReliefGeometry,
+    AtlasUnrealCameraPath, AtlasUnrealDepthGeometry)
 from atlas_camera.comfy.nodes_project import AtlasProject  # noqa: F401
 from atlas_camera.comfy.nodes_multiview import (  # noqa: F401
     AtlasMultiViewSolve,
@@ -124,6 +125,7 @@ from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume  # noqa: F401
 from atlas_camera.comfy.nodes_agent import AtlasAgentHandoff  # noqa: F401
+from atlas_camera.comfy.nodes_director import AtlasDirectorTake  # noqa: F401
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasCompositeCrop,
                                            AtlasCropROI,
@@ -183,6 +185,7 @@ from atlas_camera.comfy.nodes_depth import (
     AtlasApplyDepthCalibration,
 )
 from atlas_camera.comfy.nodes_geometry import (
+    AtlasSceneScale,
     AtlasDeriveProjectionGeometry,
     AtlasDeriveReliefMesh,
     AtlasLiveMeshRepair,
