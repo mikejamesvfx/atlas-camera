@@ -849,11 +849,34 @@ _FILL_SCHEDULERS = ("beta57", "normal", "karras", "simple", "beta",
 #: (tests/test_comfy_node_registry.py::test_signature_defaults_match_declared_defaults
 #: pins that they agree).
 _FILL_SEED = 990112233
-#: `depth_edge_rel` high enough that no real depth ratio reaches it, paired
-#: with `max_edge_factor` 0 (which disables the edge-length test outright).
-#: A fill patch has nothing behind it, so it must not tear -- see the wiring
-#: comment in AtlasFillOccluded.fill.
+#: A fill patch's two silhouette settings. They are a PAIR and only make sense
+#: together -- see the wiring comment in AtlasFillOccluded.fill.
+#:
+#: The RATIO test is relaxed out of the way: it tears at a depth jump across one
+#: grid step, which is a real silhouette on a novel view and a re-opened hole on
+#: a fill, because a fill is the backmost layer.
+#:
+#: The EDGE-LENGTH test is LOOSENED, never disabled. It is the only thing
+#: between a hallucinated far-depth corner and a metres-long shard, and a shard
+#: is not a lesser evil than a hole: it exports to the DCC as real geometry an
+#: artist will believe. Shipping it at 0 was a mistake, caught in review and
+#: measured on the sea-cliff castle by dropping exactly the faces each candidate
+#: would tear and re-rendering against the FILLABLE hole (sky and off-plate
+#: removed -- the raw `peak hole` figure is 86% sky after a fill and cannot
+#: answer this):
+#:
+#:     max_edge_factor   fillable closed   worst edge
+#:     0 (disabled)          72%            11.13 m
+#:     100                   69%             5.56 m
+#:     60                    67%             3.61 m
+#:     40                    66%             2.39 m
+#:     12 (relief default)   61%             0.72 m
+#:
+#: The coverage curve is nearly flat and the shard curve is not, so 0 bought six
+#: points over 40 and licensed an 11 m triangle in a scene about 20 m deep. 40
+#: keeps 94.7% of the faces.
 _FILL_NO_TEAR_DEPTH_EDGE_REL = 1e9
+_FILL_MAX_EDGE_FACTOR = 40.0
 
 _FILL_PROMPT = ("Reconstruct the masked region so it matches the surrounding "
                 "lighting direction, materials, palette and camera "
@@ -1329,9 +1352,13 @@ class AtlasFillOccluded:
                 # The cost is a stretched triangle bridging a genuine cliff
                 # inside the fill rather than a hole, which is the seam
                 # doctrine's own trade: the smear belongs on the layers
-                # BEHIND, and only the frontmost band keeps a clean cut.
+                # BEHIND, and only the frontmost band keeps a clean cut. That
+                # trade is only defensible while the smear stays BOUNDED, which
+                # is what _FILL_MAX_EDGE_FACTOR is for -- see its table. The
+                # first version of this disabled the length test too and shipped
+                # 11 m triangles.
                 "depth_edge_rel": _FILL_NO_TEAR_DEPTH_EDGE_REL,
-                "max_edge_factor": 0.0,
+                "max_edge_factor": _FILL_MAX_EDGE_FACTOR,
                 "registration_min_inliers": int(registration_min_inliers),
                 "registration_max_residual_m": float(
                     registration_max_residual_m),

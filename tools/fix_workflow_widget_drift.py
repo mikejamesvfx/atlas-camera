@@ -115,35 +115,46 @@ def widget_defaults(cls) -> list:
     return [slot.default for slot in widget_slots(cls)]
 
 
-def _fix_widget_sockets(node: dict, slots: list[WidgetSlot]) -> tuple[bool, str]:
-    """Append the missing converted-widget sockets. Returns (changed, error)."""
+def _plan_widget_sockets(node: dict, slots: list[WidgetSlot]) -> tuple[list, str]:
+    """The converted-widget sockets to append. Returns (to_append, error).
+
+    A PLANNER, deliberately: it decides and returns, it never mutates. Both
+    repairs have to be decided before either is applied, or a node the socket
+    check refuses still gets its widgets_values extended — which is the exact
+    silent rewiring this tool exists to prevent (see fix_graph)."""
     named = [s for s in slots if s.name is not None]
     inputs = node.get("inputs")
     if not isinstance(inputs, list):
-        return False, ""
+        return [], ""
     have = [i["widget"]["name"] for i in inputs
             if isinstance(i, dict) and isinstance(i.get("widget"), dict)
             and "name" in i["widget"]]
     if not have:
         # Zero sockets is a valid compact save, not drift (see module docstring).
-        return False, ""
+        return [], ""
     if len(have) > len(named):
-        return False, (f"{len(have)} widget sockets > {len(named)} widgets")
+        return [], (f"{len(have)} widget sockets > {len(named)} widgets")
     if have != [s.name for s in named[:len(have)]]:
-        return False, ("widget sockets are not a prefix of the class's widget "
-                       "order — NOT append-only, needs a manual re-save")
-    if len(have) == len(named):
-        return False, ""
-    for slot in named[len(have):]:
-        inputs.append({"name": slot.name, "type": slot.litegraph_type,
-                       "link": None, "widget": {"name": slot.name}})
-    return True, ""
+        return [], ("widget sockets are not a prefix of the class's widget "
+                    "order — NOT append-only, needs a manual re-save")
+    return [{"name": slot.name, "type": slot.litegraph_type,
+             "link": None, "widget": {"name": slot.name}}
+            for slot in named[len(have):]], ""
 
 
 def fix_graph(graph: dict) -> tuple[int, list[str]]:
     """Append missing tail widgets in place, in BOTH representations. Returns
-    (nodes_fixed, hard_errors). A node longer than its signature is a
-    non-append-only drift and is reported, not touched."""
+    (nodes_fixed, hard_errors).
+
+    ALL-OR-NOTHING PER NODE. Both repairs are planned first and applied only if
+    NEITHER refuses. A node whose widget ORDER mutated is reported and left
+    exactly as found — because the values top-up is append-only and a mutated
+    order is not, so applying it re-seats every value past the mutation. That is
+    how AtlasExportScenePackage's three shipped workflows came to export with no
+    observation id: a loud "needs a manual re-save" printed while the file was
+    quietly rewritten anyway, since it is written whenever any OTHER node in it
+    was repairable. Refusing one node must still repair the rest of the file,
+    which is why this is per-node and not per-file."""
     fixed, errors = 0, []
     for node in graph.get("nodes", []):
         cls = ATLAS.get(node.get("type"))
@@ -152,24 +163,30 @@ def fix_graph(graph: dict) -> tuple[int, list[str]]:
         slots = widget_slots(cls)
         want = [s.default for s in slots]
         got = node.get("widgets_values")
-        changed = False
 
+        # --- plan both repairs, mutate nothing yet
+        new_values, values_error = None, ""
         if isinstance(got, list):          # some nodes serialize a dict; leave alone
             if len(got) > len(want):
-                errors.append(
-                    f"{node['type']} id{node['id']}: {len(got)} > {len(want)} "
-                    f"widgets — NOT append-only, needs a manual re-save")
-                continue
-            if len(got) < len(want):
-                node["widgets_values"] = got + want[len(got):]
-                changed = True
+                values_error = (f"{len(got)} > {len(want)} widgets — NOT "
+                                f"append-only, needs a manual re-save")
+            elif len(got) < len(want):
+                new_values = got + want[len(got):]
+        new_sockets, socket_error = _plan_widget_sockets(node, slots)
 
-        sockets_changed, err = _fix_widget_sockets(node, slots)
-        if err:
-            errors.append(f"{node['type']} id{node['id']}: {err}")
+        error = values_error or socket_error
+        if error:
+            errors.append(f"{node['type']} id{node['id']}: {error}")
+            continue                       # leave this node EXACTLY as found
+
+        # --- both repairs agreed; now apply
+        if new_values is None and not new_sockets:
             continue
-        if sockets_changed or changed:
-            fixed += 1
+        if new_values is not None:
+            node["widgets_values"] = new_values
+        if new_sockets:
+            node["inputs"].extend(new_sockets)
+        fixed += 1
     return fixed, errors
 
 

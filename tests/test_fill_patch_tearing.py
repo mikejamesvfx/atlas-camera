@@ -166,5 +166,32 @@ def test_fill_occluded_wires_the_no_tear_thresholds_into_every_patch():
                if n["class_type"] == "AtlasAddPatchView"]
     assert patches, "the fixture must expand at least one patch"
     for p in patches:
-        assert p["inputs"]["max_edge_factor"] == 0.0
+        # The RATIO test is relaxed: that is the one that tears at a legitimate
+        # cliff inside a fill, and a fill has nothing behind it.
         assert p["inputs"]["depth_edge_rel"] >= 1e6
+        # The EDGE-LENGTH test is NOT disabled, it is loosened. It is the only
+        # thing standing between a hallucinated far-depth corner and a
+        # metres-long shard, and a shard exports to the DCC as real geometry.
+        assert 0.0 < p["inputs"]["max_edge_factor"] < 12.0 * 10
+
+
+def test_the_edge_length_guard_is_loosened_but_never_disabled():
+    """Measured 2026-09-04 on the sea-cliff castle by dropping exactly the faces
+    each candidate would tear and re-rendering against the FILLABLE hole:
+
+        max_edge_factor   fillable closed   worst edge
+        0 (disabled)          72%            11.13 m
+        100                   69%             5.56 m
+        40                    66%             2.39 m
+        12 (relief default)   61%             0.72 m
+
+    The coverage curve is nearly flat and the shard curve is not, so disabling
+    it bought 6 points over 40 and licensed an 11 m triangle in a scene ~20 m
+    deep. A hole is honest; an 11 m smear across a depth gap is geometry an
+    artist takes into Maya believing it.
+    """
+    from atlas_camera.comfy.nodes_fill import (_FILL_NO_TEAR_DEPTH_EDGE_REL,
+                                               _FILL_MAX_EDGE_FACTOR)
+
+    assert _FILL_NO_TEAR_DEPTH_EDGE_REL >= 1e6
+    assert 12.0 < _FILL_MAX_EDGE_FACTOR <= 100.0

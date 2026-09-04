@@ -601,6 +601,51 @@ def test_crop_handle_off_the_plate_raises(monkeypatch):
             relief_grid=48)
 
 
+def test_crop_handle_refuses_an_image_of_the_wrong_aspect(monkeypatch):
+    """A crop's camera is derived by scaling fx and fy INDEPENDENTLY (patch_w /
+    roi.width, patch_h / roi.height). Hand it an image whose aspect does not
+    match the rect and those factors diverge, producing a non-uniform
+    pixel-aspect camera the projection is silently wrong through.
+
+    The handle already carries the raster it emitted (gen_w/gen_h), so this is
+    an EXACT check, not a guess: a uniform rescale of that raster passes, a
+    different shape does not. Same doctrine as the off-plate rect -- placing a
+    patch through a camera the image was never shot through is the failure that
+    hides, so it raises.
+    """
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    square = torch.rand(1, 256, 256, 3, dtype=torch.float32)   # 1:1
+
+    with pytest.raises(ValueError, match="aspect"):
+        AtlasAddPatchView().add_patch(
+            solve, square, crop=_crop_handle(128, 64, 256, 192, 256, 192),
+            relief_grid=48)
+
+
+def test_a_uniform_rescale_of_the_crop_raster_is_accepted(monkeypatch):
+    """The artist may legitimately upscale the generated crop; only the SHAPE
+    has to agree."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    _patch_estimate_depth(monkeypatch)
+
+    solve, _pivot, _eye = _synthetic_primary()
+    doubled = torch.rand(1, 384, 512, 3, dtype=torch.float32)   # 2x of 256x192
+
+    out, _report = AtlasAddPatchView().add_patch(
+        solve, doubled, crop=_crop_handle(128, 64, 256, 192, 256, 192),
+        relief_grid=48)
+
+    pintr = out.projection_sources[0].camera.intrinsics
+    # fx and fy scaled by the SAME factor, which is the property at stake.
+    assert pintr.fx_px == pytest.approx(pintr.fy_px)
+    assert pintr.fx_px == pytest.approx(500.0 * 2.0)
+
+
 def test_crop_handle_is_an_optional_socket_not_a_widget():
     spec = AtlasAddPatchView.INPUT_TYPES()
     assert spec["optional"]["crop"][0] == "ATLAS_CROP"

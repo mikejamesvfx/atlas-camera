@@ -121,6 +121,39 @@ def test_sockets_out_of_class_order_are_reported_not_rewritten():
     assert errors and "NOT append-only" in errors[0]
 
 
+def test_a_reported_node_is_NOT_quietly_topped_up_anyway():
+    """The values repair must not run on a node the socket check refuses.
+
+    This is the exact mechanism that corrupted AtlasExportScenePackage: an
+    append-only top-up applied to a node whose widget ORDER had mutated, which
+    re-seated every value after the mutation. The tool reports such a node and
+    tells a human to re-save it -- and then, before this test, went ahead and
+    extended its widgets_values anyway. The file was written whenever any OTHER
+    node in it was repairable, so the silent rewiring shipped under a loud
+    warning saying it had not.
+    """
+    slots = _named_slots()
+    # Node 1: BOTH values drift AND a socket list that is not a prefix.
+    bad = _graph(n_values=4, n_sockets=4)["nodes"][0]
+    bad["inputs"][-1]["widget"]["name"] = "ghost_widget"
+    # Node 2: ordinary appendable drift, so the file would be written.
+    ok = _graph(n_values=5, n_sockets=len(slots))["nodes"][0]
+    ok["id"] = 2
+    g = {"nodes": [bad, ok]}
+    before = list(bad["widgets_values"])
+
+    fixed, errors = fix_graph(g)
+
+    assert errors and "NOT append-only" in errors[0]
+    assert bad["widgets_values"] == before, (
+        "a node the tool refuses to repair must be left EXACTLY as found")
+    assert _sockets(bad)[-1] == "ghost_widget"
+    # The healthy sibling is still repaired -- refusing one node must not
+    # abandon the rest of the file.
+    assert fixed == 1
+    assert len(ok["widgets_values"]) == len(widget_slots(ATLAS[NODE]))
+
+
 def test_more_sockets_than_the_class_has_is_reported():
     slots = _named_slots()
     g = _graph(n_values=len(slots), n_sockets=len(slots))

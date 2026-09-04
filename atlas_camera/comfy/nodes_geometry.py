@@ -4287,8 +4287,10 @@ class AtlasAddPatchView:
                                "patch existed to close: measured 2026-09-04, "
                                "a fill came back 40% torn and left the "
                                "interior of its own ROI still holed. Raise it "
-                               "(with max_edge_factor 0) for a backmost "
-                               "layer; the cost is a stretched triangle "
+                               "for a backmost layer, but LOOSEN "
+                               "max_edge_factor rather than disabling it -- "
+                               "measured, 0 shipped 11 m triangles; the cost "
+                               "is a stretched triangle "
                                "bridging a genuine cliff instead of a hole, "
                                "which is the seam doctrine's own trade -- the "
                                "smear belongs on the layers behind."}),
@@ -4426,6 +4428,24 @@ class AtlasAddPatchView:
             # pairs with its own intrinsics and needs no whole-frame detour.
             from atlas_camera.core.camera_crop import (crop_intrinsics,
                                                        scale_intrinsics)
+            # scale_intrinsics scales fx and fy INDEPENDENTLY, so an image whose
+            # shape disagrees with the rect silently yields a non-uniform
+            # pixel-aspect camera -- wrong projection, nothing raised. The
+            # handle carries the raster it emitted, so the check is exact
+            # rather than a tolerance guess: a uniform rescale of that raster
+            # passes and a different shape does not. Refused for the same
+            # reason as an off-plate rect, which is that a camera the image was
+            # never shot through is a failure that hides.
+            gen_w = int(crop.get("gen_w") or crop_roi.width)
+            gen_h = int(crop.get("gen_h") or crop_roi.height)
+            if abs(patch_w / patch_h - gen_w / gen_h) > 0.02 * (gen_w / gen_h):
+                raise ValueError(
+                    f"patch_image is {patch_w}x{patch_h} but the crop handle "
+                    f"emitted {gen_w}x{gen_h} — the aspect does not match, so "
+                    "fx and fy would scale by different factors and the patch "
+                    "would project through a camera it was never rendered "
+                    "through. Feed AtlasCropROI's own raster (or a uniform "
+                    "rescale of it), or disconnect the crop input.")
             patch_intr = scale_intrinsics(
                 crop_intrinsics(intr, crop_roi), patch_w, patch_h)
             pfx = float(patch_intr.fx_px)
