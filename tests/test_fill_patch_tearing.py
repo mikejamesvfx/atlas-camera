@@ -295,3 +295,26 @@ def test_fill_occluded_turns_the_sky_heuristic_off_on_its_patches():
     assert patches
     for p in patches:
         assert p["inputs"]["sky_heuristic"] is False
+
+
+def test_the_new_stats_reach_the_solve_not_just_the_mesh():
+    """`relief_mesh_primitive`'s metadata is a CURATED list, so a stat added to
+    build_relief_mesh does not reach the ProjectionSource unless it is named
+    there too. Added after a live run reported n/a for both of these."""
+    np_ = pytest.importorskip("numpy")
+    from atlas_camera.core.proxy_geometry import relief_mesh_primitive
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    H = W = 96
+    hole = np_.zeros((H, W), bool)
+    hole[20:70, 20:70] = True
+    mesh = build_relief_mesh(
+        np_.full((H, W), 10.0),
+        view_matrix=((1, 0, 0, 0), (0, 1, 0, -1.6), (0, 0, 1, 0), (0, 0, 0, 1)),
+        fx=200.0, fy=200.0, cx=W / 2, cy=H / 2, grid_long_edge=48, scale=1.0,
+        horizon_y=H * 0.45, apply_sky_heuristic=False, exclude_mask=~hole,
+        depth_edge_rel=1e9, max_edge_factor=0.0)
+
+    meta = relief_mesh_primitive(mesh).metadata
+    assert "excluded_fraction" in meta and "torn_fraction_eligible" in meta
+    assert meta["excluded_fraction"] > 0.5

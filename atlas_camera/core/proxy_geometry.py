@@ -1341,6 +1341,19 @@ def relief_mesh_primitive(mesh: Any, *, name: str = "projection_relief_mesh") ->
             **({"torn_fraction_whole_quad":
                 float((mesh.stats or {})["torn_fraction_whole_quad"])}
                if "torn_fraction_whole_quad" in (mesh.stats or {}) else {}),
+            # torn_fraction counts faces against the FULL grid, so on a mesh
+            # bounded by exclude_mask -- every fill patch, clipped to its hole --
+            # most of it is the BOUND. These two split it: what the bound
+            # removed, and what tore of what remained. Carried here because the
+            # metadata is a CURATED list, so a stat that is not named simply
+            # never reaches the solve (found 2026-09-04, after adding them to
+            # build_relief_mesh and reading n/a off a live run).
+            **({"excluded_fraction":
+                float((mesh.stats or {})["excluded_fraction"])}
+               if "excluded_fraction" in (mesh.stats or {}) else {}),
+            **({"torn_fraction_eligible":
+                float((mesh.stats or {})["torn_fraction_eligible"])}
+               if "torn_fraction_eligible" in (mesh.stats or {}) else {}),
             "quad_coherence": bool((mesh.stats or {}).get("quad_coherence", False)),
             "stretch_ratio_p95": float((mesh.stats or {}).get("stretch_ratio_p95", 0.0)),
             "stretch_fraction_gt12": float((mesh.stats or {}).get("stretch_fraction_gt12", 0.0)),

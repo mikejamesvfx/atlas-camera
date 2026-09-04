@@ -1440,6 +1440,14 @@ class AtlasFillOccluded:
                 # sky never reaches here anyway -- auto ROI selection runs
                 # move_revealed_only, which drops sky and off-plate before a
                 # cluster can rank.
+                #
+                # CACHE TRAP: a constant written into an expansion body is
+                # invisible to the executor, whose cache key is this node's
+                # DECLARED inputs. Changing one of these and re-queueing serves
+                # the previous result -- measured 2026-09-04, a run after
+                # flipping this flag came back byte-identical (49,631 faces,
+                # 2.02 m) because AtlasFillOccluded's own inputs had not moved.
+                # Change a widget, or restart, to force the loop to rebuild.
                 "sky_heuristic": False,
                 "registration_min_inliers": int(registration_min_inliers),
                 "registration_max_residual_m": float(
