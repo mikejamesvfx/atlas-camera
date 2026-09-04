@@ -145,14 +145,18 @@ raw-lens = [
 # exposing a running ComfyUI to MCP-capable assistants. Stdlib + the mcp SDK
 # only; never imports torch/numpy (ComfyUI stays the execution engine).
 mcp = [
-    # Upper bound is load-bearing, not caution. `mcp>=1.2` resolved to 2.0.0 on
-    # 2026-08-17 and `mcp.server.fastmcp` — the only symbol server.py imports —
-    # is not there, so `pip install atlas-camera[mcp]` produced an MCP server
-    # that could not start. It went unnoticed because the machine that
-    # developed it had 1.27.1 pinned by an earlier install, and CI did not
-    # install the extra at all. Raise the bound only after checking where
-    # FastMCP lives in the newer SDK.
-    "mcp>=1.2,<2",
+    # The <2 bound was load-bearing until 2026-09-04 and is now LIFTED, because
+    # the reason for it is gone. It was added when `mcp>=1.2` resolved to 2.0.0
+    # and `mcp.server.fastmcp` — then the only symbol server.py imported — was
+    # not there, so `pip install atlas-camera[mcp]` produced an MCP server that
+    # could not start. (It went unnoticed because the machine that developed it
+    # had 1.27.1 pinned by an earlier install, and CI did not install the extra
+    # at all.) The rename was checked, as that comment asked: 2.x moved
+    # FastMCP to `mcp.server.mcpserver.MCPServer` with the same `.tool()` /
+    # `.resource()` / `.run()` surface server.py uses, and server.py now
+    # imports whichever is present. Pinning below a major the code supports
+    # only forces a downgrade on an assistant that already ships 2.x.
+    "mcp>=1.2",
 ]
 # Record3D `.r3d` iPhone/iPad capture import (AtlasLoadRecord3D 📱): measured
 # ARKit intrinsics + gravity-aligned metric pose + LiDAR sceneDepth.

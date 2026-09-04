@@ -586,7 +586,7 @@ class AtlasAnchorDepth:
         }
 
     def anchor(self, estimated, anchor, anchor_frame: int = 0, estimated_frame: int = 0,
-               fit_space: str = "disparity", fit_shift: bool = True, trim_sigma: float = 3.0):
+               fit_space: str = "depth", fit_shift: bool = True, trim_sigma: float = 3.0):
         import numpy as np
         import torch
 

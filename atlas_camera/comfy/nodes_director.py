@@ -43,7 +43,13 @@ from atlas_camera.comfy.node_helpers import (
     _require_pil,
     _require_torch,
 )
-from atlas_camera.comfy.plucker import plucker_embedding, ray_map
+# `plucker` imports numpy at module level, and this module is imported by
+# node_registry at STARTUP -- so importing it here made the whole node
+# registry hard-require numpy, which the layering contract forbids (the
+# facade must import with no optional dependency installed and report the
+# missing one at EXECUTION time; pinned by
+# tests/test_multiview_node.py's fresh-process boundary check). Imported
+# inside the two methods that use it instead.
 
 
 class StaleTakeError(RuntimeError):
@@ -756,10 +762,14 @@ class AtlasDirectorTake:
         start, stop = self._aligned_sample_range(
             take_dir, frame_paths, sample_count=len(all_samples),
         )
+        from atlas_camera.comfy.plucker import ray_map
+
         return ray_map(all_samples[start:stop], width, height)
 
     def embed_rays(self, rays):
         """Full-precision Plücker embedding: `(o x d, d)`, 6 channels."""
+        from atlas_camera.comfy.plucker import plucker_embedding
+
         return plucker_embedding(rays)
 
     def rays_to_preview(self, rays):
@@ -973,6 +983,8 @@ class AtlasDirectorTake:
         # map from the same frames the batch came from means the rays and
         # the pixels cannot disagree -- do not put a widget value back in
         # here, or the mismatch this replaces comes back with it.
+        from atlas_camera.comfy.plucker import ray_map
+
         rays = ray_map(samples, actual_width, actual_height)
         embedded = self.embed_rays(rays)
         preview_np = self.rays_to_preview(rays)

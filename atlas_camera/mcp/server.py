@@ -21,13 +21,24 @@ import json
 import os
 import pathlib
 
-try:
-    from mcp.server.fastmcp import FastMCP
-except ImportError as exc:  # pragma: no cover - environment-dependent
-    raise ImportError(
-        "The Atlas MCP server needs the 'mcp' package.\n"
-        "Install it with:  pip install atlas-camera[mcp]   (or: pip install mcp)"
-    ) from exc
+# The SDK renamed the server class in 2.0 (FastMCP -> MCPServer) and moved
+# its module. Both are the same surface for everything used here
+# (`.tool()`, `.resource()`, `.run()`, `name` + `instructions`), so support
+# both rather than pinning one: an install carrying whichever SDK the
+# assistant shipped with is the normal case, and a version error that reads
+# "needs the 'mcp' package" while mcp is plainly installed is the worst
+# kind of message -- it sends you to reinstall something you already have.
+try:  # mcp SDK 1.x
+    from mcp.server.fastmcp import FastMCP as _MCPServer
+except ImportError:
+    try:  # mcp SDK 2.x
+        from mcp.server.mcpserver import MCPServer as _MCPServer
+    except ImportError as exc:  # pragma: no cover - environment-dependent
+        raise ImportError(
+            "The Atlas MCP server needs the 'mcp' package.\n"
+            "Install it with:  pip install atlas-camera[mcp]   "
+            "(or: pip install mcp)"
+        ) from exc
 
 from . import comfy_http as C
 
@@ -83,7 +94,7 @@ _LICENCES = {
     },
 }
 
-mcp = FastMCP(
+mcp = _MCPServer(
     "atlas-camera",
     instructions=(
         "Tools for driving Atlas Camera (single-image camera recovery + "
