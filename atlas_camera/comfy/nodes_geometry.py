@@ -4707,6 +4707,28 @@ class AtlasAddPatchView:
         scale = None
         scale_source = "ground_fit"
         if primary_metric_map is not None:
+            # The fit must see MUTUALLY VISIBLE points only. solve_scale_from_primary
+            # accepts any sample that lands in frame with a finite primary depth,
+            # including every point this patch shows THROUGH an occluder -- and for
+            # those the sampled primary depth is the OCCLUDER's, not the surface's,
+            # so each one solves for a scale smaller than the truth. It takes a
+            # median, so the failure is a breakdown rather than a drift: exact while
+            # the occluded samples are a minority, then a cliff to a quarter of the
+            # true scale past 50% (measured, tests/test_patch_scale_occlusion_bias).
+            #
+            # AtlasFillOccluded crops TO a hole, so its patches are majority-hole by
+            # construction -- the five castle ROIs ran 31.5-67.7% -- and a too-small
+            # scale pulls the patch NEARER, which makes the depth-shadow matte judge
+            # it visible and cut it out of the very hole it was generated for.
+            #
+            # The solver cannot detect this itself: deciding which samples are
+            # occluded from depth needs the scale it is solving for. The caller has
+            # the answer independently -- `patch_hole` IS the region the primary
+            # cannot see -- so it says so here.
+            scale_exclude = resolved_exclude
+            if patch_hole is not None:
+                scale_exclude = (patch_hole if scale_exclude is None
+                                 else (scale_exclude | patch_hole))
             scale, _reg_info = solve_scale_from_primary(
                 depth_map,
                 patch_camera={"view_matrix": patch_extr.camera_view_matrix,
@@ -4717,9 +4739,11 @@ class AtlasAddPatchView:
                 primary_camera={"view_matrix": extr.camera_view_matrix,
                                 "fx": fx, "fy": fy, "cx": cx, "cy": cy,
                                 "width": p_w, "height": p_h},
-                exclude_mask=resolved_exclude)
+                exclude_mask=scale_exclude)
             if scale is not None:
-                scale_source = "primary_registration"
+                scale_source = ("primary_registration_visible"
+                                if patch_hole is not None
+                                else "primary_registration")
 
         if scale is None:
             scale, _scale_info = estimate_ground_scale(

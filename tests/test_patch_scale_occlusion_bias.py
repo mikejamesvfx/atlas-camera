@@ -164,3 +164,87 @@ def test_a_patch_that_is_mostly_hole_is_where_this_bites():
     assert below > above * 2.0, (
         "crossing the breakdown point must be visible as a step, not noise: "
         f"{below:.3f} -> {above:.3f}")
+
+
+# ------------------------------------------- the caller must supply the mask
+
+def test_the_patch_node_excludes_its_own_hole_from_the_scale_fit(monkeypatch):
+    """The fix, at the call site.
+
+    The solver cannot discover which samples are occluded on its own -- deciding
+    that from depth needs the scale, which is what is being solved. The caller
+    HAS the answer independently: `patch_hole` is the region the patch was
+    generated to fill, which is by construction what the primary cannot see.
+    """
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    from types import SimpleNamespace
+
+    import atlas_camera.comfy.nodes_geometry as ng
+    from atlas_camera.comfy.nodes import AtlasAddPatchView
+
+    from test_add_patch_view import _patch_estimate_depth, _synthetic_primary
+
+    _patch_estimate_depth(monkeypatch)
+    seen = {}
+
+    real = ng.solve_scale_from_primary
+
+    def spy(*a, **kw):
+        seen["exclude_mask"] = kw.get("exclude_mask")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(ng, "solve_scale_from_primary", spy)
+
+    solve, _p, _e = _synthetic_primary()
+    ramp = np.linspace(30.0, 5.0, 512)[:, None] * np.ones((1, 512))
+    depth = SimpleNamespace(depth=ramp.astype(np.float32), is_metric=True,
+                            image_width=512, image_height=512, metadata={})
+    hole = np.zeros((512, 512), np.float32)
+    hole[100:400, 100:400] = 1.0
+
+    AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), patch_azimuth_view="right side view",
+        geometry_source="own_depth", relief_grid=48, primary_depth=depth,
+        patch_mask=torch.from_numpy(hole))
+
+    mask = seen.get("exclude_mask")
+    assert mask is not None, "the hole must reach the scale fit"
+    mask = np.asarray(mask, dtype=bool)
+    assert mask[250, 250], "inside the hole must be excluded from the fit"
+    assert not mask[10, 10], "outside the hole must still be sampled"
+
+
+def test_a_patch_with_no_hole_mask_is_unchanged(monkeypatch):
+    """A hand-placed novel view carries no patch_mask, so its registration must
+    behave exactly as before -- this solver is shared with AtlasOcclusionMask
+    and the artist path."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("PIL")
+    from types import SimpleNamespace
+
+    import atlas_camera.comfy.nodes_geometry as ng
+    from atlas_camera.comfy.nodes import AtlasAddPatchView
+
+    from test_add_patch_view import _patch_estimate_depth, _synthetic_primary
+
+    _patch_estimate_depth(monkeypatch)
+    seen = {}
+    real = ng.solve_scale_from_primary
+
+    def spy(*a, **kw):
+        seen["exclude_mask"] = kw.get("exclude_mask")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(ng, "solve_scale_from_primary", spy)
+
+    solve, _p, _e = _synthetic_primary()
+    ramp = np.linspace(30.0, 5.0, 512)[:, None] * np.ones((1, 512))
+    depth = SimpleNamespace(depth=ramp.astype(np.float32), is_metric=True,
+                            image_width=512, image_height=512, metadata={})
+
+    AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), patch_azimuth_view="right side view",
+        geometry_source="own_depth", relief_grid=48, primary_depth=depth)
+
+    assert seen.get("exclude_mask") is None
