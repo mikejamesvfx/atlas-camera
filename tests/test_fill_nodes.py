@@ -1008,6 +1008,107 @@ def test_fill_occluded_refuses_to_run_unmeasured_without_primary_depth():
     assert "constructed" in result3[2].lower()
 
 
+def test_a_second_move_appends_under_its_own_name(monkeypatch=None):
+    """Chaining a second fill for a DIFFERENT move must not collide.
+
+    APPEND, not clobber, and the survey is why: it renders
+    `gather_scene_meshes(solve)`, which includes prior projection_sources, so a
+    second run SEES the first move's geometry and targets only what is still
+    open. That is the node's advertised story -- "every LATER move reuses it
+    instead of re-inventing it" -- and clobbering would delete exactly the
+    geometry that makes it true. A second run of the SAME move is self-limiting
+    for the same reason: nothing is left to find, so it passes through.
+
+    What was broken is identity, not policy: both runs named their patches
+    `fill_roi1..N`, so two moves produced duplicate names on one solve.
+    """
+    import pytest as _pytest
+
+    mp = _pytest.MonkeyPatch()
+    try:
+        from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
+
+        node = _fill_node(mp)
+        solve = _wall_solve_with_two_occluders()
+        source = _img(np.full((96, 128, 3), 120, np.uint8))
+        left, _e1, _r1 = AtlasCameraMovePreset().build(solve, "arc_left",
+                                                       angle_deg=35.0)
+        right, _e2, _r2 = AtlasCameraMovePreset().build(solve, "arc_right",
+                                                        angle_deg=35.0)
+        kw = dict(model="M", clip="C", vae="V", primary_depth=_FakeDepth(),
+                  min_area_px=16, snap=16, max_rois=4)
+        a = node.fill(solve, source, camera_path=left, **kw)
+        b = node.fill(solve, source, camera_path=right, **kw)
+    finally:
+        mp.undo()
+
+    def names(out):
+        return sorted(n["inputs"]["name"] for n in out["expand"].values()
+                      if n["class_type"] == "AtlasAddPatchView")
+
+    na, nb = names(a), names(b)
+    assert na and nb
+    assert not set(na) & set(nb), (
+        f"two moves must not produce colliding patch names: {na} vs {nb}")
+
+
+def test_the_same_move_names_its_patches_identically_every_time():
+    """The tag is the MOVE, so a re-run is stable rather than accumulating a
+    new set of names for geometry that is already there."""
+    import pytest as _pytest
+
+    mp = _pytest.MonkeyPatch()
+    try:
+        from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
+
+        node = _fill_node(mp)
+        solve = _wall_solve_with_two_occluders()
+        source = _img(np.full((96, 128, 3), 120, np.uint8))
+        path, _e, _r = AtlasCameraMovePreset().build(solve, "arc_left",
+                                                     angle_deg=35.0)
+        kw = dict(model="M", clip="C", vae="V", primary_depth=_FakeDepth(),
+                  min_area_px=16, snap=16, max_rois=4)
+        one = node.fill(solve, source, camera_path=path, **kw)
+        two = node.fill(solve, source, camera_path=path, **kw)
+    finally:
+        mp.undo()
+
+    def names(out):
+        return sorted(n["inputs"]["name"] for n in out["expand"].values()
+                      if n["class_type"] == "AtlasAddPatchView")
+
+    assert names(one) == names(two)
+
+
+def test_patch_names_carry_the_move_and_the_roi():
+    """A name an artist reads in the viewport layer list has to say which move
+    and which cluster it came from, or a two-move solve is unreadable."""
+    import re
+
+    import pytest as _pytest
+
+    mp = _pytest.MonkeyPatch()
+    try:
+        from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
+
+        node = _fill_node(mp)
+        solve = _wall_solve_with_two_occluders()
+        source = _img(np.full((96, 128, 3), 120, np.uint8))
+        path, _e, _r = AtlasCameraMovePreset().build(solve, "arc_left",
+                                                     angle_deg=35.0)
+        out = node.fill(solve, source, camera_path=path, model="M", clip="C",
+                        vae="V", primary_depth=_FakeDepth(), min_area_px=16,
+                        snap=16, max_rois=4)
+    finally:
+        mp.undo()
+
+    names = [n["inputs"]["name"] for n in out["expand"].values()
+             if n["class_type"] == "AtlasAddPatchView"]
+    assert names
+    for n in names:
+        assert re.fullmatch(r"fill_[0-9a-f]{6}_roi\d+", n), n
+
+
 def test_the_docstring_states_the_bounds_it_actually_ships_with():
     """The spec must not promise more than the defaults deliver.
 
@@ -1078,7 +1179,7 @@ def test_fill_occluded_survey_agrees_with_crop_roi_slot_for_slot():
     from atlas_camera.comfy.nodes_fill import AtlasCropROI, AtlasFillOccluded
 
     solve, source, path, _exact = _fill_scene()
-    rois, _peak = AtlasFillOccluded._survey(
+    rois, _peak, _view = AtlasFillOccluded._survey(
         solve, source, path, None, pad_frac=0.10, min_area_px=16, snap=16)
     assert rois, "fixture no longer opens a cluster"
 

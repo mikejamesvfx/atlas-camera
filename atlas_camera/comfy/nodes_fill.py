@@ -24,6 +24,8 @@ report when handed more.
 """
 from __future__ import annotations
 
+import hashlib
+
 from atlas_camera.comfy.node_helpers import _require_numpy, _require_torch
 
 
@@ -1004,6 +1006,23 @@ class AtlasFillOccluded:
     is no measurement to fail, so this setting decides nothing until you turn
     measurement on.
 
+    APPEND, NEVER CLOBBER -- and per-MOVE, which is the part that matters.
+    Atlas's rule is that derive nodes clobber prior PROXY_ROLE geometry while
+    viewport-drawn planes append; this node had taken no position, and the
+    answer is not the one its "derive" shape suggests. The survey renders
+    ``gather_scene_meshes(solve)``, which includes prior projection sources, so
+    a second run SEES the first move's geometry and targets only what is still
+    open. Clobbering would delete exactly the geometry that makes "every LATER
+    move reuses it" true. Running the SAME move twice is self-limiting for the
+    same reason: nothing is left to find, so it reports and passes through.
+
+    Appending needs identity, which is what was actually broken: both runs named
+    their patches ``fill_roi1..N``, so two moves put duplicate names on one
+    solve -- indistinguishable in the viewport layer list, and no way for later
+    tooling to say which move a fill belongs to. Patches are now
+    ``fill_<move>_roi<i>``, where ``<move>`` is six hex of the end-frame view
+    matrix: stable for a given move, distinct between moves.
+
     The sky failsafe is inherited, not re-implemented: auto ROI selection runs
     ``move_revealed_only``, so a matte-carried sky and anything outside the
     plate's frame never rank as holes to fill.
@@ -1142,7 +1161,8 @@ class AtlasFillOccluded:
         """The ROI list, taken with AtlasCropROI's EXACT recipe.
 
         Both call ``survey_hole_rois`` with the same arguments, so slot i here
-        and slot i there are the same cluster. Returns ``(rois, peak)``.
+        and slot i there are the same cluster. Returns ``(rois, peak, view)`` --
+        the view because the patches are NAMED after the move (see _move_tag).
         """
         from PIL import Image as PILImage
 
@@ -1177,7 +1197,29 @@ class AtlasFillOccluded:
             solve, src, [view], survey_resolution=1024,
             pad_frac=float(pad_frac), min_area_px=int(min_area_px),
             snap=int(snap), exclude_mask=exclude, move_revealed_only=True)
-        return rois, peak
+        return rois, peak, view
+
+    @staticmethod
+    def _move_tag(view) -> str:
+        """Six hex chars identifying the MOVE these fills were generated for.
+
+        APPEND, not clobber -- and this is what makes appending safe. The survey
+        renders `gather_scene_meshes(solve)`, which includes prior projection
+        sources, so a second run SEES the first move's geometry and targets only
+        what is still open. That is the node's whole story ("every LATER move
+        reuses it"), and clobbering would delete exactly the geometry that makes
+        it true. A second run of the SAME move is self-limiting for the same
+        reason: nothing left to find, so it passes through.
+
+        What appending needs is IDENTITY. Both runs used to name their patches
+        `fill_roi1..N`, so two moves put duplicate names on one solve -- two
+        meshes an artist cannot tell apart in the viewport layer list, and no
+        way for later tooling to say which move a fill belongs to. The tag is
+        the end-frame view matrix, so the same move names its patches the same
+        way every time and two moves cannot collide.
+        """
+        flat = ",".join(f"{float(v):.4f}" for row in view for v in row)
+        return hashlib.sha1(flat.encode("ascii")).hexdigest()[:6]
 
     # ------------------------------------------------------------- expansion
     def fill(self, solve, source_image, model, clip, vae, camera_path=None,
@@ -1199,7 +1241,7 @@ class AtlasFillOccluded:
             return (solve, source_image,
                     "ATLAS FILL OCCLUDED - nothing expanded\n  . " + reason)
 
-        rois, peak = self._survey(
+        rois, peak, end_view = self._survey(
             solve, source_image, camera_path, exclude_mask,
             pad_frac=pad_frac, min_area_px=min_area_px, snap=snap)
         if not rois:
@@ -1229,6 +1271,7 @@ class AtlasFillOccluded:
                 "on_registration_failure='declared_orbit' to place patches at "
                 "the declared orbit instead.".format(len(rois)))
 
+        move_tag = self._move_tag(end_view)
         count = min(int(max_rois), len(rois))
         notes.append("{} move-revealed cluster(s) (peak hole {:.1%}); filling "
                      "the largest {} with {}".format(
@@ -1366,7 +1409,7 @@ class AtlasFillOccluded:
                 "crop": crop.out(4),
                 "primary_image": source_image,
                 "camera_source": str(camera_source),
-                "name": "fill_roi{}".format(i),
+                "name": "fill_{}_roi{}".format(move_tag, i),
                 "relief_grid": int(relief_grid),
                 "geometry_source": "own_depth",
                 # NO SILHOUETTE TEARING. build_relief_mesh tears a cell whose
