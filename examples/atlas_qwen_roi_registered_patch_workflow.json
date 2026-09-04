@@ -771,6 +771,14 @@
           "type": "MASK",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "min_gen_long_edge",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "min_gen_long_edge"
+          }
         }
       ],
       "outputs": [
@@ -1227,6 +1235,22 @@
           "widget": {
             "name": "auto_flip_azimuth"
           }
+        },
+        {
+          "name": "depth_edge_rel",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "depth_edge_rel"
+          }
+        },
+        {
+          "name": "max_edge_factor",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "max_edge_factor"
+          }
         }
       ],
       "outputs": [
@@ -1262,7 +1286,9 @@
         40,
         0.35,
         25.0,
-        true
+        true,
+        0.5,
+        12.0
       ],
       "title": "8 · ADD PATCH · register_to_primary"
     },

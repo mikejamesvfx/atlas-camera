@@ -291,6 +291,9 @@ def test_multiview_raw_workflow_preserves_positional_widget_order():
             # APPENDED 2026-08-16: measured patch camera (register_to_primary).
             "camera_source", "registration_min_inliers", "registration_max_residual_m",
             "registration_max_deviation_deg", "auto_flip_azimuth",
+            # APPENDED 2026-09-04: the silhouette-tear thresholds, so a layer
+            # with nothing behind it can decline to tear.
+            "depth_edge_rel", "max_edge_factor",
         ],
         "AtlasBlockoutViewport": [
             "resolution", "client_data", "preview_expand", "drawn_fill_px",

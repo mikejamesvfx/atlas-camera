@@ -342,6 +342,14 @@
           "type": "ATLAS_RAW_META",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "sub_quad_boundary",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "sub_quad_boundary"
+          }
         }
       ],
       "outputs": [
@@ -970,6 +978,62 @@
           "widget": {
             "name": "geometry_source"
           }
+        },
+        {
+          "name": "camera_source",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "camera_source"
+          }
+        },
+        {
+          "name": "registration_min_inliers",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "registration_min_inliers"
+          }
+        },
+        {
+          "name": "registration_max_residual_m",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "registration_max_residual_m"
+          }
+        },
+        {
+          "name": "registration_max_deviation_deg",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "registration_max_deviation_deg"
+          }
+        },
+        {
+          "name": "auto_flip_azimuth",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "auto_flip_azimuth"
+          }
+        },
+        {
+          "name": "depth_edge_rel",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "depth_edge_rel"
+          }
+        },
+        {
+          "name": "max_edge_factor",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "max_edge_factor"
+          }
         }
       ],
       "outputs": [
@@ -1004,7 +1068,9 @@
         40,
         0.35,
         25.0,
-        true
+        true,
+        0.5,
+        12.0
       ],
       "title": "16 · CONSTRUCTED PATCH CAMERA & GEOMETRY REUSE 🩹"
     },
@@ -1302,6 +1368,14 @@
           "type": "ATLAS_PROJECT",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "write_redistort_stmap",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "write_redistort_stmap"
+          }
         }
       ],
       "outputs": [
@@ -1457,6 +1531,22 @@
           "shape": 7,
           "widget": {
             "name": "boundary_smooth_iterations"
+          }
+        },
+        {
+          "name": "rebuild_transition_ribbon",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "rebuild_transition_ribbon"
+          }
+        },
+        {
+          "name": "merge_volume_primitives",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "merge_volume_primitives"
           }
         }
       ],

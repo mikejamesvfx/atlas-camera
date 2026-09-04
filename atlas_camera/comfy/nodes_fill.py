@@ -849,6 +849,12 @@ _FILL_SCHEDULERS = ("beta57", "normal", "karras", "simple", "beta",
 #: (tests/test_comfy_node_registry.py::test_signature_defaults_match_declared_defaults
 #: pins that they agree).
 _FILL_SEED = 990112233
+#: `depth_edge_rel` high enough that no real depth ratio reaches it, paired
+#: with `max_edge_factor` 0 (which disables the edge-length test outright).
+#: A fill patch has nothing behind it, so it must not tear -- see the wiring
+#: comment in AtlasFillOccluded.fill.
+_FILL_NO_TEAR_DEPTH_EDGE_REL = 1e9
+
 _FILL_PROMPT = ("Reconstruct the masked region so it matches the surrounding "
                 "lighting direction, materials, palette and camera "
                 "perspective. The masked pixels are geometry the original "
@@ -1309,6 +1315,23 @@ class AtlasFillOccluded:
                 "name": "fill_roi{}".format(i),
                 "relief_grid": int(relief_grid),
                 "geometry_source": "own_depth",
+                # NO SILHOUETTE TEARING. build_relief_mesh tears a cell whose
+                # depth jumps across one grid step, and on a novel view that is
+                # load-bearing: the tear IS the silhouette, and the layer
+                # behind reveals through it. A fill patch is that behind-layer
+                # -- nothing is further back -- so a torn cell re-opens the
+                # hole this patch was generated to close. Measured 2026-09-04
+                # on the sea-cliff castle: fill_roi1 came back torn_fraction
+                # 0.404, and the ROI's own interior was still holed after its
+                # fill, ringed by the mesh that survived, with a patch vertex
+                # within 2 px of 88% of the residual and ZERO orphaned
+                # vertices -- the geometry was there, its faces were not.
+                # The cost is a stretched triangle bridging a genuine cliff
+                # inside the fill rather than a hole, which is the seam
+                # doctrine's own trade: the smear belongs on the layers
+                # BEHIND, and only the frontmost band keeps a clean cut.
+                "depth_edge_rel": _FILL_NO_TEAR_DEPTH_EDGE_REL,
+                "max_edge_factor": 0.0,
                 "registration_min_inliers": int(registration_min_inliers),
                 "registration_max_residual_m": float(
                     registration_max_residual_m),

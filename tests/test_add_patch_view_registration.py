@@ -60,8 +60,10 @@ def test_widgets_are_appended_after_patch_mask():
     assert opt[i + 1:] == ["camera_source", "primary_image", "registration_min_inliers",
                            "registration_max_residual_m", "registration_max_deviation_deg",
                            "auto_flip_azimuth",
-                           # 2026-09-04: the ATLAS_CROP handle, appended last.
-                           "crop"]
+                           # 2026-09-04: the ATLAS_CROP handle, and the two
+                           # silhouette-tear thresholds a backmost layer needs
+                           # to switch off. Appended last, defaults unchanged.
+                           "depth_edge_rel", "max_edge_factor", "crop"]
     spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["camera_source"]
     assert spec[0] == ["declared_orbit", "register_to_primary"]
     assert spec[1]["default"] == "declared_orbit"

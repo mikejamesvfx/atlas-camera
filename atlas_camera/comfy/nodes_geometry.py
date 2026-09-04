@@ -4272,6 +4272,36 @@ class AtlasAddPatchView:
                 # APPENDED 2026-09-04: the crop family's handle, so a CROP can
                 # be the patch image. Optional input socket, no widget — the
                 # positional widgets_values contract is untouched.
+                # APPENDED 2026-09-04: silhouette tearing, for a layer that has
+                # NOTHING BEHIND IT. Defaults are build_relief_mesh's own, so a
+                # hand-placed patch is byte-identical to before.
+                "depth_edge_rel": ("FLOAT", {
+                    "default": 0.5, "min": 0.0, "max": 1e9, "step": 0.05,
+                    "tooltip": "Tear a cell whose depth jumps more than this "
+                               "RATIO across one grid step. On a novel view "
+                               "that is right -- the tear is a real "
+                               "silhouette and whatever is behind reveals "
+                               "through it. A patch generated to FILL a "
+                               "disocclusion is itself the thing behind, so "
+                               "there every torn cell re-opens the hole the "
+                               "patch existed to close: measured 2026-09-04, "
+                               "a fill came back 40% torn and left the "
+                               "interior of its own ROI still holed. Raise it "
+                               "(with max_edge_factor 0) for a backmost "
+                               "layer; the cost is a stretched triangle "
+                               "bridging a genuine cliff instead of a hole, "
+                               "which is the seam doctrine's own trade -- the "
+                               "smear belongs on the layers behind."}),
+                "max_edge_factor": ("FLOAT", {
+                    "default": 12.0, "min": 0.0, "max": 1000.0, "step": 0.5,
+                    "tooltip": "Tear a triangle whose world edge exceeds this "
+                               "multiple of the expected local sample "
+                               "spacing -- the second silhouette test, which "
+                               "catches metres-long shards a depth RATIO just "
+                               "under threshold still produces. 0 disables "
+                               "it. Set to 0 alongside a raised "
+                               "depth_edge_rel to stop a fill patch tearing "
+                               "at all."}),
                 "crop": ("ATLAS_CROP", {
                     "tooltip": "AtlasCropROI's crop handle, when patch_image is that CROP "
                                "rather than a full-frame novel view. A crop of the plate is "
@@ -4303,7 +4333,7 @@ class AtlasAddPatchView:
                   patch_mask=None, camera_source="declared_orbit", primary_image=None,
                   registration_min_inliers=40, registration_max_residual_m=0.35,
                   registration_max_deviation_deg=25.0, auto_flip_azimuth=True,
-                  crop=None):
+                  depth_edge_rel=0.5, max_edge_factor=12.0, crop=None):
         exact_delta = None
         exact_pivot = None
         if exact_view_override and exact_view_override.strip():
@@ -4630,6 +4660,10 @@ class AtlasAddPatchView:
             horizon_y=patch_horizon_y,
             grid_long_edge=int(relief_grid),
             scale=scale,
+            # The silhouette tests, passed through rather than defaulted, so a
+            # caller that knows this layer has nothing behind it can say so.
+            depth_edge_rel=float(depth_edge_rel),
+            max_edge_factor=float(max_edge_factor),
             exclude_mask=mesh_exclude,
             # The heuristic is keyed on the ARTIST's exclude mask, not the hole
             # trim: a patch_hole-only trim leaves the sky heuristic on, which is
