@@ -427,9 +427,10 @@ def test_shipping_workflows_flatten_against_recorded_shapes():
     # (2026-08-21: RAW cleanplate, multi-view painted patch, street declutter,
     # night burst), and 17 with the photograph -> .atlas scene package
     # (2026-08-22), and 19 with the measured-scale and colour-managed RAW
-    # variants (2026-08-23). Bump as each new workflow lands so a silent
-    # disappearance still fails loudly.
-    assert checked == 19
+    # variants (2026-08-23), and 20 with the occlusion-fill loop (2026-09-04).
+    # Bump as each new workflow lands so a silent disappearance still fails
+    # loudly.
+    assert checked == 20
 
 
 def test_frontend_only_rgthree_nodes_are_virtual():
@@ -478,6 +479,9 @@ def test_every_shipped_workflow_node_is_resolvable():
         "LoadImage", "SaveImage", "PreviewImage", "ImagePadForOutpaint",
         "ShowText|pysssss", "LoadImageMask", "ImageScale", "MaskToImage",
         "InvertMask", "ImageInvert", "PrimitiveNode",
+        # 2026-09-04, with atlas_fill_occluded_workflow: core ComfyUI loaders
+        # for the FLUX Fill stack it drives, plus core's any-type preview.
+        "UNETLoader", "DualCLIPLoader", "VAELoader", "PreviewAny",
     }
     known = set(reg.NODE_CLASS_MAPPINGS) | set(reg.EXPERIMENTAL_NODE_CLASS_MAPPINGS)
     known |= VIRTUAL | THIRD_PARTY

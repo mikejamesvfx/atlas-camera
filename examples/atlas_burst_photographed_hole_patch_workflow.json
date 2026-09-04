@@ -266,6 +266,54 @@
           "widget": {
             "name": "device"
           }
+        },
+        {
+          "name": "moge_resolution_level",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "moge_resolution_level"
+          }
+        },
+        {
+          "name": "moge_max_side",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "moge_max_side"
+          }
+        },
+        {
+          "name": "moge_checkpoint_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "moge_checkpoint_path"
+          }
+        },
+        {
+          "name": "moge_tile_side",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "moge_tile_side"
+          }
+        },
+        {
+          "name": "moge_tile_overlap",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "moge_tile_overlap"
+          }
+        },
+        {
+          "name": "moge_report_free_focal",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "moge_report_free_focal"
+          }
         }
       ],
       "outputs": [
@@ -918,6 +966,22 @@
           "shape": 7,
           "widget": {
             "name": "boundary_smooth_iterations"
+          }
+        },
+        {
+          "name": "rebuild_transition_ribbon",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "rebuild_transition_ribbon"
+          }
+        },
+        {
+          "name": "merge_volume_primitives",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "merge_volume_primitives"
           }
         }
       ],

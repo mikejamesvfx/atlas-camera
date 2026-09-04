@@ -118,6 +118,9 @@ def test_examples_directory_has_ui_workflows():
                      "atlas_burst_photographed_hole_patch_workflow.json",
                      "atlas_cleanplate_depth_layer_workflow.json",
                      "atlas_export_fanout_workflow.json",
+                     # 2026-09-04: the occlusion-fill loop. Needs a local FLUX
+                     # Fill stack, like the two Qwen workflows already here.
+                     "atlas_fill_occluded_workflow.json",
                      "atlas_hero_02_photo_to_editable_scene_workflow.json",
                      "atlas_input_quickstart_workflow.json",
                      "atlas_layered_projection_workflow.json",

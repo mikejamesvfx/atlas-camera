@@ -342,6 +342,14 @@
           "type": "ATLAS_RAW_META",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "sub_quad_boundary",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "sub_quad_boundary"
+          }
         }
       ],
       "outputs": [
@@ -1283,6 +1291,14 @@
           "type": "ATLAS_PROJECT",
           "link": 12,
           "shape": 7
+        },
+        {
+          "name": "write_redistort_stmap",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "write_redistort_stmap"
+          }
         }
       ],
       "outputs": [
