@@ -893,6 +893,14 @@
           "widget": {
             "name": "max_edge_factor"
           }
+        },
+        {
+          "name": "sky_heuristic",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "sky_heuristic"
+          }
         }
       ],
       "outputs": [
@@ -929,7 +937,8 @@
         25.0,
         true,
         0.5,
-        12.0
+        12.0,
+        true
       ],
       "title": "OPTIONAL PATCH · BYPASSED · enable only after supplying Qwen image"
     },

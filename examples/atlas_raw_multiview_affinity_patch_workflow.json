@@ -1198,6 +1198,14 @@
           "widget": {
             "name": "max_edge_factor"
           }
+        },
+        {
+          "name": "sky_heuristic",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "sky_heuristic"
+          }
         }
       ],
       "outputs": [
@@ -1241,7 +1249,8 @@
         25.0,
         true,
         0.5,
-        12.0
+        12.0,
+        true
       ],
       "title": "PATCH \u00b7 MEASURED against the primary (start BYPASSED)"
     },

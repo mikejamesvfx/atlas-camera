@@ -4304,6 +4304,24 @@ class AtlasAddPatchView:
                                "it. Set to 0 alongside a raised "
                                "depth_edge_rel to stop a fill patch tearing "
                                "at all."}),
+                # APPENDED 2026-09-04. Was implicit: the heuristic ran unless
+                # an exclude_mask happened to be wired, so a caller could only
+                # turn it off by passing a mask it did not want.
+                "sky_heuristic": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Drop pixels above the horizon whose depth is "
+                               "far or ROUGH, before meshing. Right for a "
+                               "novel view: monocular depth has no cue on sky "
+                               "and hallucinates noise there, which "
+                               "triangulates into geometry bulging at the "
+                               "camera. Wrong for a FILL patch, whose depth is "
+                               "an estimate over INVENTED content and so is "
+                               "rough by construction -- measured, it removed "
+                               "35% of the faces inside the hole, in a layer "
+                               "with nothing behind it, so what it leaves is a "
+                               "hole rather than slightly wrong depth. An "
+                               "explicit exclude_mask still applies either "
+                               "way; this only governs the internal guess."}),
                 "crop": ("ATLAS_CROP", {
                     "tooltip": "AtlasCropROI's crop handle, when patch_image is that CROP "
                                "rather than a full-frame novel view. A crop of the plate is "
@@ -4335,7 +4353,8 @@ class AtlasAddPatchView:
                   patch_mask=None, camera_source="declared_orbit", primary_image=None,
                   registration_min_inliers=40, registration_max_residual_m=0.35,
                   registration_max_deviation_deg=25.0, auto_flip_azimuth=True,
-                  depth_edge_rel=0.5, max_edge_factor=12.0, crop=None):
+                  depth_edge_rel=0.5, max_edge_factor=12.0,
+                  sky_heuristic=True, crop=None):
         exact_delta = None
         exact_pivot = None
         if exact_view_override and exact_view_override.strip():
@@ -4685,10 +4704,11 @@ class AtlasAddPatchView:
             depth_edge_rel=float(depth_edge_rel),
             max_edge_factor=float(max_edge_factor),
             exclude_mask=mesh_exclude,
-            # The heuristic is keyed on the ARTIST's exclude mask, not the hole
-            # trim: a patch_hole-only trim leaves the sky heuristic on, which is
-            # what should carry any sky still inside the fill region.
-            apply_sky_heuristic=resolved_exclude is None,
+            # Explicitly controlled now. It used to be keyed on whether an
+            # exclude_mask happened to be wired, which conflated "the artist
+            # named the sky" with "run the internal guess" and left a caller no
+            # way to decline the guess without inventing a mask.
+            apply_sky_heuristic=bool(sky_heuristic),
         )
         patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
 

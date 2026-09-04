@@ -297,6 +297,8 @@ def test_multiview_raw_workflow_preserves_positional_widget_order():
             # APPENDED 2026-09-04: the silhouette-tear thresholds, so a layer
             # with nothing behind it can decline to tear.
             "depth_edge_rel", "max_edge_factor",
+            # APPENDED 2026-09-04: the internal sky guess, made explicit.
+            "sky_heuristic",
         ],
         "AtlasBlockoutViewport": [
             "resolution", "client_data", "preview_expand", "drawn_fill_px",

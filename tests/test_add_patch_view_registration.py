@@ -63,7 +63,8 @@ def test_widgets_are_appended_after_patch_mask():
                            # 2026-09-04: the ATLAS_CROP handle, and the two
                            # silhouette-tear thresholds a backmost layer needs
                            # to switch off. Appended last, defaults unchanged.
-                           "depth_edge_rel", "max_edge_factor", "crop"]
+                           "depth_edge_rel", "max_edge_factor",
+                           "sky_heuristic", "crop"]
     spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["camera_source"]
     assert spec[0] == ["declared_orbit", "register_to_primary"]
     assert spec[1]["default"] == "declared_orbit"

@@ -1433,6 +1433,14 @@ class AtlasFillOccluded:
                 # 11 m triangles.
                 "depth_edge_rel": _FILL_NO_TEAR_DEPTH_EDGE_REL,
                 "max_edge_factor": _FILL_MAX_EDGE_FACTOR,
+                # And no internal sky guess, for the same reason. A fill's
+                # depth is a monocular estimate over INVENTED content, so it is
+                # rough by construction and the heuristic reads it as sky:
+                # measured, it removed 35% of the faces inside the hole. Real
+                # sky never reaches here anyway -- auto ROI selection runs
+                # move_revealed_only, which drops sky and off-plate before a
+                # cluster can rank.
+                "sky_heuristic": False,
                 "registration_min_inliers": int(registration_min_inliers),
                 "registration_max_residual_m": float(
                     registration_max_residual_m),

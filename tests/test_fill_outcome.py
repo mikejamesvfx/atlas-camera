@@ -70,16 +70,9 @@ def _scene_solve():
     return solve
 
 
-def _no_sky_heuristic(shape=(256, 256)):
-    """An all-False exclude mask.
-
-    `AtlasAddPatchView` keys `apply_sky_heuristic` on whether an exclude mask
-    was given, so passing an empty one turns the heuristic OFF without
-    excluding anything. That heuristic invalidates vertices by horizon row and
-    is a SEPARATE mechanism with its own pinned test; leaving it on here would
-    tear half the patch and this file would be measuring it instead.
-    """
-    return torch.zeros(1, *shape, dtype=torch.float32)
+# The sky heuristic is a SEPARATE mechanism with its own pinned tests; leaving
+# it on here would fold its cost into every coverage number in this file. It is
+# an explicit flag now, so this no longer needs an empty exclude_mask to say so.
 
 
 def _end_view(solve, angle_deg=35.0):
@@ -199,8 +192,7 @@ def _patched(solve, plate_t, view, monkeypatch, *, depth=None, **patch_kw):
     out, _r2 = AtlasAddPatchView().add_patch(
         solve, guide, crop=crop, patch_mask=mask, geometry_source="own_depth",
         mask_unseen_only=False, relief_grid=48, name="fill_test_roi1",
-        exact_view_override=exact,
-        exclude_mask=_no_sky_heuristic((int(gh), int(gw))), **patch_kw)
+        exact_view_override=exact, sky_heuristic=False, **patch_kw)
     return out, crop
 
 

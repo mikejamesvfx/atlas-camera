@@ -195,3 +195,103 @@ def test_the_edge_length_guard_is_loosened_but_never_disabled():
 
     assert _FILL_NO_TEAR_DEPTH_EDGE_REL >= 1e6
     assert 12.0 < _FILL_MAX_EDGE_FACTOR <= 100.0
+
+
+# ------------------------------------------------ the sky heuristic on a fill
+
+def test_torn_fraction_separates_the_mask_bound_from_real_tearing():
+    """`torn_fraction` is 1 - faces/FULL grid, and a fill patch's mesh is
+    deliberately bounded to the hole -- so most of that number is the bound,
+    not tearing.
+
+    Measured on a 34% hole: mask-bounded with every silhouette test off still
+    reports 0.658, which is just 1 - 0.342. Quoting it as a tearing figure (as
+    every note about these patches did until 2026-09-04) overstates tearing by
+    whatever the mask excluded. `excluded_fraction` and
+    `torn_fraction_eligible` split the two.
+    """
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    H = W = 128
+    depth = np.full((H, W), 10.0)
+    hole = np.zeros((H, W), bool)
+    hole[20:100, 25:95] = True                    # 34.2% of the rect
+    K = dict(view_matrix=((1, 0, 0, 0), (0, 1, 0, -1.6), (0, 0, 1, 0),
+                          (0, 0, 0, 1)),
+             fx=200.0, fy=200.0, cx=W / 2, cy=H / 2, grid_long_edge=64,
+             scale=1.0, horizon_y=H * 0.45, apply_sky_heuristic=False,
+             depth_edge_rel=1e9, max_edge_factor=0.0)
+
+    unbounded = build_relief_mesh(depth, **K).stats
+    bounded = build_relief_mesh(depth, exclude_mask=~hole, **K).stats
+
+    # Nothing tears in either: the silhouette tests are off and depth is flat.
+    assert unbounded["torn_fraction"] < 0.01
+    assert bounded["torn_fraction"] > 0.5, "the bound must dominate the old figure"
+    assert bounded["excluded_fraction"] > 0.5
+    assert bounded["torn_fraction_eligible"] < 0.05, (
+        "with the bound accounted for, nothing was actually torn")
+
+
+def test_the_sky_heuristic_costs_a_fill_patch_a_third_of_its_geometry():
+    """Why a fill turns it off, in the same measurement that justifies it.
+
+    The heuristic kills pixels above the horizon whose depth is far or ROUGH,
+    and a fill's depth is a monocular estimate over INVENTED content, which is
+    rough by construction. Measured on a fill-shaped mesh it removed 35% of the
+    faces inside the hole -- geometry the patch exists to supply, in a layer
+    with nothing behind it, so what it leaves is a hole rather than slightly
+    wrong depth. Same trade as the tearing fix.
+    """
+    from atlas_camera.core.relief_mesh import build_relief_mesh
+
+    H = W = 128
+    rng = np.random.default_rng(5)
+    blocks = rng.uniform(0, 1, size=(8, 8)) < 0.45
+    f = np.repeat(np.repeat(np.where(blocks, 1.0, 1.9), H // 8, 0), W // 8, 1)
+    depth = np.full((H, W), 10.0) * f
+    hole = np.zeros((H, W), bool)
+    hole[20:100, 25:95] = True
+    K = dict(view_matrix=((1, 0, 0, 0), (0, 1, 0, -1.6), (0, 0, 1, 0),
+                          (0, 0, 0, 1)),
+             fx=200.0, fy=200.0, cx=W / 2, cy=H / 2, grid_long_edge=64,
+             scale=1.0, horizon_y=H * 0.45, exclude_mask=~hole,
+             depth_edge_rel=1e9, max_edge_factor=0.0)
+
+    on = build_relief_mesh(depth, apply_sky_heuristic=True, **K).stats
+    off = build_relief_mesh(depth, apply_sky_heuristic=False, **K).stats
+
+    assert off["n_faces"] > on["n_faces"] * 1.3
+    # It EXCLUDES cells rather than tearing them, so the eligible-tear figure
+    # stays ~0 either way and the cost shows up as exclusion. Asserting it the
+    # other way round would be asserting the wrong mechanism.
+    assert on["excluded_fraction"] > off["excluded_fraction"] + 0.05
+    assert on["torn_fraction_eligible"] < 0.05
+
+
+def test_fill_occluded_turns_the_sky_heuristic_off_on_its_patches():
+    import pytest as _pytest
+
+    mp = _pytest.MonkeyPatch()
+    try:
+        from test_fill_nodes import (_fill_node, _img,
+                                     _wall_solve_with_two_occluders,
+                                     _FakeDepth as _FD)
+        from atlas_camera.comfy.nodes_fill import AtlasCameraMovePreset
+
+        node = _fill_node(mp)
+        solve = _wall_solve_with_two_occluders()
+        source = _img(np.full((96, 128, 3), 120, np.uint8))
+        path, _e, _r = AtlasCameraMovePreset().build(solve, "arc_left",
+                                                     angle_deg=35.0)
+        out = node.fill(solve, source, model="M", clip="C", vae="V",
+                        camera_path=path, primary_depth=_FD(),
+                        min_area_px=16, snap=16, max_rois=4)
+    finally:
+        mp.undo()
+
+    patches = [n for n in out["expand"].values()
+               if n["class_type"] == "AtlasAddPatchView"]
+    assert patches
+    for p in patches:
+        assert p["inputs"]["sky_heuristic"] is False

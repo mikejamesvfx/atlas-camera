@@ -1087,6 +1087,17 @@ def build_relief_mesh(
                 else None)
 
     n_quads = 2 * (nr - 1) * (nc - 1)
+    # `torn_fraction` counts emitted faces against the FULL grid, so on a mesh
+    # that was deliberately bounded -- a fill patch's is clipped to the hole via
+    # exclude_mask -- most of it is the BOUND, not tearing. Measured on a 34%
+    # hole with every silhouette test off, the figure still reads 0.658, which
+    # is just 1 - 0.342; every note about fill-patch tearing before 2026-09-04
+    # quoted it as though it were tearing. Split the two so the number can be
+    # read: a quad is ELIGIBLE when all four of its corners survived validity,
+    # the sky heuristic, exclude_mask and the band clip.
+    _eligible = (vgrid[:-1, :-1] & vgrid[:-1, 1:]
+                 & vgrid[1:, :-1] & vgrid[1:, 1:])
+    n_eligible = 2 * int(_eligible.sum())
     stats = {
         "n_vertices": int(len(verts)),
         "n_faces": int(len(faces)),
@@ -1097,6 +1108,11 @@ def build_relief_mesh(
         "stretch_ratio_p95": stretch_ratio_p95,
         "stretch_fraction_gt12": stretch_fraction_gt12,
         "n_filled_cells": int(filled_grid.sum()) if filled_grid is not None else 0,
+        # What the bound removed, and what tore of what remained. Read these
+        # two rather than torn_fraction whenever a mesh was masked.
+        "excluded_fraction": float(1.0 - n_eligible / max(n_quads, 1)),
+        "torn_fraction_eligible": float(
+            1.0 - len(faces) / n_eligible) if n_eligible else 0.0,
     }
     if live_grid_repair_info is not None:
         stats["live_grid_repair"] = live_grid_repair_info
