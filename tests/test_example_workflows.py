@@ -294,6 +294,13 @@ def test_multiview_raw_workflow_preserves_positional_widget_order():
         ],
         "AtlasBlockoutViewport": [
             "resolution", "client_data", "preview_expand", "drawn_fill_px",
+            # APPENDED with the viewport's auto-bake: a LiteGraph save carries
+            # the widget list TWICE -- positionally in widgets_values, and as
+            # converted-widget sockets here -- and both are kept in class
+            # order. tools/fix_workflow_widget_drift.py tops up only the
+            # former, so the two disagreed until this pair was added back
+            # (2026-09-04).
+            "auto_preset", "auto_frames",
         ],
         "AtlasDebugReport": ["file_path"],
     }

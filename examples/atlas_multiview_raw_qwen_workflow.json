@@ -1013,6 +1013,22 @@
           "type": "IMAGE",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "auto_preset",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "auto_preset"
+          }
+        },
+        {
+          "name": "auto_frames",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "auto_frames"
+          }
         }
       ],
       "outputs": [
@@ -1099,7 +1115,9 @@
         1024,
         "",
         1.0,
-        96
+        96,
+        "off",
+        0
       ],
       "title": "REGISTERED MULTI-VIEW · photo 1 projection and camera rig"
     },
