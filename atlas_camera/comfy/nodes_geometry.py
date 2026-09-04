@@ -4445,7 +4445,16 @@ class AtlasAddPatchView:
                                "all facade legitimately has none), so this "
                                "gate abstains rather than guessing. A refusal "
                                "falls back to that same ground fit and says "
-                               "so in scale_source."}),
+                               "so in scale_source. DEFAULT OFF, and that is a "
+                               "measurement: on the castle the disagreement "
+                               "did not separate outcomes -- the ROI painting "
+                               "69% of its hole and the one painting 5% both "
+                               "read 2.15x -- and arming at 1.5 fixed the bad "
+                               "one (5% -> 63%, ground +0.783 m -> +0.002) "
+                               "while breaking the good one (69% -> 16%), for "
+                               "a net 10% MORE fillable hole. It is a real "
+                               "instrument and a poor automatic gate; read it "
+                               "before arming it."}),
                 "crop": ("ATLAS_CROP", {
                     "tooltip": "AtlasCropROI's crop handle, when patch_image is that CROP "
                                "rather than a full-frame novel view. A crop of the plate is "

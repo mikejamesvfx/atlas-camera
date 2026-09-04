@@ -866,6 +866,14 @@
           "widget": {
             "name": "min_gen_long_edge"
           }
+        },
+        {
+          "name": "scale_max_ground_disagreement",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "scale_max_ground_disagreement"
+          }
         }
       ],
       "outputs": [
@@ -922,7 +930,8 @@
         40,
         0.35,
         25.0,
-        1024
+        1024,
+        0.0
       ],
       "title": "4 - FILL THE HOLES WORTH FILLING, AS GEOMETRY"
     },

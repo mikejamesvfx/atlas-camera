@@ -1151,6 +1151,34 @@ class AtlasFillOccluded:
                                "Nothing downstream sees the working raster -- "
                                "the fill is resampled to the crop rect before "
                                "the composite and before the patch camera."}),
+                # APPENDED 2026-09-05: the patch scale gates, forwarded.
+                # A fill patch is the worst case for the scale fit -- the node
+                # crops TO a hole, so its samples are majority-occluded by
+                # construction -- which makes this the node that most needs to
+                # be able to refuse one, and the only place an artist can reach
+                # the knob (the patch node is built by expansion).
+                "scale_max_ground_disagreement": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 100.0, "step": 0.05,
+                    "tooltip": "Refuse a patch scale that disagrees with that "
+                               "patch's own ground fit by more than this "
+                               "factor (0 = never refuse), falling back to the "
+                               "ground fit. Off by default because the "
+                               "threshold is not yet measured: on the "
+                               "sea-cliff castle the disagreement did NOT "
+                               "separate a good patch from a bad one -- the "
+                               "ROI that painted 69% of its hole and the one "
+                               "that painted 5% both disagreed by 2.15x -- so "
+                               "any threshold catching the bad one also "
+                               "refuses the good one. RUN AT 1.5 and scored: "
+                               "the bad ROI went 5% -> 63% painted and put its "
+                               "ground back on Y=0 (+0.783 m -> +0.002), and "
+                               "the good one went 69% -> 16% and floated to "
+                               "+0.800 -- net 5,425 -> 5,965 px of fillable "
+                               "hole, 10% WORSE, because the good ROI's hole "
+                               "is 14,111 px against the bad one's 5,123. Arm "
+                               "it only per-scene, having read the "
+                               "disagreements. See AtlasAddPatchView's own "
+                               "tooltip."}),
             },
         }
 
@@ -1231,7 +1259,8 @@ class AtlasFillOccluded:
              denoise=1.0, relief_grid=96, camera_source="declared_orbit",
              on_registration_failure="skip",
              registration_min_inliers=40, registration_max_residual_m=0.35,
-             registration_max_deviation_deg=25.0, min_gen_long_edge=1024):
+             registration_max_deviation_deg=25.0, min_gen_long_edge=1024,
+             scale_max_ground_disagreement=0.0):
         from atlas_camera.comfy.node_helpers import (_comfy_registry,
                                                      _graph_builder)
 
@@ -1454,6 +1483,8 @@ class AtlasFillOccluded:
                     registration_max_residual_m),
                 "registration_max_deviation_deg": float(
                     registration_max_deviation_deg),
+                "scale_max_ground_disagreement": float(
+                    scale_max_ground_disagreement),
             }
             if primary_depth is not None:
                 patch_kwargs["primary_depth"] = primary_depth
