@@ -77,7 +77,11 @@ def test_widgets_are_appended_after_patch_mask():
                            # that judges a patch against anything but
                            # itself.
                            "scale_max_sibling_disagreement",
-                           "scale_min_siblings", "crop"]
+                           "scale_min_siblings",
+                           # 2026-09-05: the never-behind check, the only
+                           # scale gate that needs neither a second
+                           # estimator nor any siblings.
+                           "scale_refuse_never_behind", "crop"]
     spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["camera_source"]
     assert spec[0] == ["declared_orbit", "register_to_primary"]
     assert spec[1]["default"] == "declared_orbit"
@@ -599,3 +603,130 @@ def test_zero_disables_the_sibling_check(monkeypatch):
     assert meta["scale_sibling_disagreement"] == pytest.approx(2.301, rel=1e-2)
     assert "scale_refused_sibling_disagreement" not in meta
     assert meta["scale_source"].startswith("primary_registration")
+
+
+# --- THE NEVER-BEHIND CHECK --------------------------------------------------
+# A disocclusion hole is a view of what lies BEHIND what the primary can see.
+# A fill for one whose every pixel lands in FRONT of the primary's surface
+# contradicts the reason it exists, and the unseen matte throws nearly all of it
+# away. Measured on the castle: the ROI that painted 5% of its own hole was the
+# only one of five with matte_depth_ratio_under_1_frac == 1.0, next-lowest 30%.
+#
+# It is not a better catch than the sibling check -- on that scene the siblings
+# caught the same patch and gave a better answer. It is COVER: the sibling check
+# abstains below scale_min_siblings, so 3 of those 5 patches were judged by
+# nothing at all, the first one included.
+
+def _run_never_behind(monkeypatch, scale, sibling_scales=(), *, hole=True, **kw):
+    _patch_estimate_depth(monkeypatch)
+    import atlas_camera.comfy.nodes_geometry as ng
+    monkeypatch.setattr(
+        ng, "solve_scale_from_primary",
+        lambda *a, **k: (scale, {"n_samples": 400, "scale_rel_iqr": 0.1}))
+    solve, _p, _e = _synthetic_primary()
+    model = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
+    for value in sibling_scales:
+        solve.projection_sources.append(_sib(value, model=model))
+    # The SIBLING gate is armed by default and would refuse these scales first
+    # (0.3 against a 0.611 median is a 2x disagreement), so it is disarmed
+    # here to isolate the check under test. Its precedence is pinned below.
+    # A 12 degree arc, like the move the castle was measured on. "right side
+    # view" would throw most of the patch out of the primary's frustum, and an
+    # out-of-frame pixel has no depth ratio to read at all.
+    kwargs = dict(patch_azimuth_view="front view", relief_grid=48,
+                  exact_view_override=(
+                      "azimuth_deg=-12.0000 elevation_deg=0.0000 "
+                      "distance_scale=1.0000"),
+                  geometry_source="own_depth", depth_model=model,
+                  scale_max_sibling_disagreement=0.0,
+                  primary_depth=_fake_primary_depth())
+    if hole:
+        kwargs["patch_mask"] = torch.ones(1, 512, 512)
+    kwargs.update(kw)
+    out, report = AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), **kwargs)
+    return out.projection_sources[-1].metadata, report
+
+
+def test_a_scale_that_puts_the_ENTIRE_fill_in_front_is_refused(monkeypatch):
+    """0.3 against a 30..5 m primary leaves not one pixel behind it."""
+    meta, report = _run_never_behind(monkeypatch, 0.3,
+                                     [0.830, 0.611, 0.381, 0.645])
+    assert meta["scale_refused_never_behind"] is True
+    assert meta["scale_replaced_from"] == 0.3
+    # An ANSWER, not a veto — and the siblings are the better one when present.
+    assert meta["scale"] == pytest.approx(0.628)
+    assert meta["scale_source"] == "sibling_median"
+    assert "never-behind" in report
+
+
+def test_with_NO_siblings_it_still_fires_and_takes_the_ground_fit(monkeypatch):
+    """The whole point of this check: it covers the patches the sibling check
+    abstains on, which on the castle was 3 of 5 including the first."""
+    meta, _r = _run_never_behind(monkeypatch, 0.3)
+    assert meta["scale_refused_never_behind"] is True
+    assert meta["scale_source"] == "ground_fit"
+    assert meta["scale"] != 0.3
+
+
+def test_a_scale_with_geometry_behind_the_primary_is_left_alone(monkeypatch):
+    meta, _r = _run_never_behind(monkeypatch, 0.9, [0.830, 0.611, 0.381])
+    assert "scale_refused_never_behind" not in meta
+    assert meta["scale_source"].startswith("primary_registration")
+
+
+def test_a_patch_with_no_hole_is_NOT_judged(monkeypatch):
+    """The contradiction is specific to a fill generated FOR a disocclusion.
+    A patch with no hole to fill makes no such claim, so there is nothing to
+    contradict — and every pre-existing caller passes no patch_mask."""
+    meta, _r = _run_never_behind(monkeypatch, 0.3, [0.830, 0.611, 0.381],
+                                 hole=False)
+    assert "scale_refused_never_behind" not in meta
+
+
+def test_it_never_re_refuses_a_FALLBACK_scale(monkeypatch):
+    """A scale that is already a fallback IS the answer, so re-refusing it
+    would only loop. Guarded on scale_source, not on a retry counter."""
+    _patch_estimate_depth(monkeypatch)
+    import atlas_camera.comfy.nodes_geometry as ng
+    monkeypatch.setattr(ng, "solve_scale_from_primary",
+                        lambda *a, **k: (None, {"reason": "no samples"}))
+    solve, _p, _e = _synthetic_primary()
+    out, _report = AtlasAddPatchView().add_patch(
+        solve, torch.rand(1, 512, 512, 3), patch_mask=torch.ones(1, 512, 512),
+        patch_azimuth_view="right side view", relief_grid=48,
+        geometry_source="own_depth",
+        depth_model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+        primary_depth=_fake_primary_depth())
+    meta = out.projection_sources[-1].metadata
+    assert meta["scale_source"] == "ground_fit"
+    assert "scale_refused_never_behind" not in meta
+
+
+def test_disarming_it_keeps_the_impossible_scale(monkeypatch):
+    meta, _r = _run_never_behind(monkeypatch, 0.3, [0.830, 0.611, 0.381],
+                                 scale_refuse_never_behind=False)
+    assert "scale_refused_never_behind" not in meta
+    assert meta["scale"] == pytest.approx(0.3)
+
+
+def test_it_is_a_BOOLEAN_and_armed_by_default(monkeypatch):
+    """A boolean because the trigger is a contradiction, not a tuned cutoff:
+    'not one pixel of this disocclusion fill is behind the primary' needs no
+    threshold, and there is no number here fitted to one failure."""
+    spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["scale_refuse_never_behind"]
+    assert spec[0] == "BOOLEAN"
+    assert spec[1]["default"] is True
+
+
+def test_the_SIBLING_check_gets_there_first_when_both_would_fire(monkeypatch):
+    """Precedence, pinned. The sibling check runs before the geometry is built
+    and hands back a measured median; the never-behind check can only run once
+    the matte exists. When both would refuse the same patch the sibling answer
+    wins, and on the castle that was the better one (84.5% of the hole painted
+    against the ground fit's 74.5%)."""
+    meta, _r = _run_never_behind(monkeypatch, 0.3, [0.830, 0.611, 0.381],
+                                 scale_max_sibling_disagreement=1.8)
+    assert meta["scale_source"] == "sibling_median"
+    assert "scale_refused_sibling_disagreement" in meta
+    assert "scale_refused_never_behind" not in meta

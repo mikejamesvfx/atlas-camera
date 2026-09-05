@@ -640,6 +640,55 @@ THE SIBLING CHECK (scale_max_sibling_disagreement, + scale_min_siblings)
   read at the move's END FRAME, where a scale error is largely invisible (see
   the measurement trap above), while a DCC export sees the floating slab.
 
+THE NEVER-BEHIND CHECK (scale_refuse_never_behind, BOOLEAN, default ON)
+  The only scale check needing neither a second estimator nor any siblings, and
+  the only one that is a contradiction rather than a threshold. A disocclusion
+  hole is a view of what lies BEHIND what the primary can see. So a fill
+  generated for one whose every pixel lands in FRONT of the primary's surface
+  contradicts its own reason to exist -- and the unseen matte agrees, throwing
+  all but a few grazing pixels away. Read straight off
+  matte_depth_ratio_under_1_frac == 1.0, which the node already computed.
+
+  Castle, all five ROIs: under_1_frac was 0.318 / 0.295 / 0.690 / 0.051 / 1.000
+  and painted 69% / 69% / 30% / 90% / 5%. Only the failure is at 1.0, and the
+  next-lowest painter is 6x above it.
+
+  On a refusal it rebuilds ONCE at the sibling median if one exists, else the
+  ground fit; with neither it ABSTAINS. One extra mesh + matte build on a patch
+  that fires, and no depth re-run. It never judges a scale that is already a
+  fallback (that would loop), and never judges a patch with no hole -- a patch
+  making no disocclusion claim has nothing to contradict.
+
+  PRECEDENCE: the sibling check runs first (before the geometry is built) and
+  wins when both would fire; measured, its answer was the better one anyway
+  (84.5% of the hole painted against the ground fit's 74.5%). This check is
+  therefore COVER, not extra catch: the sibling check abstains below
+  scale_min_siblings, so on the castle 3 of 5 patches -- the first included --
+  were judged by nothing at all.
+
+WHY THERE IS NO SCALE SEARCH (measured 2026-09-05, do not rebuild this)
+  The obvious next step is to stop gating and start SEARCHING: score the fill at
+  the arc's end frame and pick the scale that minimises the hole. The end frame
+  alone is a fair objective (arc_left is monotonic, so it opens every hole an
+  earlier frame opens, and wider) and it is cheap, since the solve already
+  stores each fill's generated image as image_b64 -- only build_relief_mesh and
+  the matte need redoing, and depth is scale-independent.
+
+  It does not work, because the objective SATURATES. Sweeping ROI 5 with the
+  rest of the solve frozen (fillable hole at the end frame, lower better):
+
+    0.2729 -> 5,432   its own broken fit
+    0.4500 -> 5,513   worse than broken; not even monotone on the ramp
+    0.6278 -> 5,336   the sibling median
+    0.8000 -> 5,251   knee
+    1.5 / 4.0 / 20.0 -> 5,251 / 5,251 / 5,251   byte-identical
+
+  The minimiser is an unbounded plateau containing s=20, where the patch sits
+  ~30x too far away. Coverage only answers "is this patch far enough back to be
+  painted at all" -- a LOWER BOUND -- and it overshoots, because the correct
+  answer sits BELOW the knee. Whole-sweep range is 262 px, ~1% of the residual.
+  Before optimising a metric here, sweep it to the absurd end first.
+
 CACHE TRAP -- read before concluding a change did nothing
   ComfyUI caches on a node's DECLARED inputs. AtlasFillOccluded builds patches
   by expansion, so a value hard-coded in the expansion body changes no declared

@@ -1201,6 +1201,26 @@ class AtlasFillOccluded:
                                "only gate setting of the three that improved "
                                "the outcome: 5,425 -> 5,285 px of fillable "
                                "hole, against the ground gate's 5,965."}),
+                # APPENDED 2026-09-05: the never-behind check. Forwarded for
+                # the same reason as the others -- the patch node is built by
+                # expansion, so this is the only place an artist can reach it --
+                # but this one matters MOST here, because it is the check that
+                # covers the early ROIs the sibling check abstains on, and a
+                # fill run is exactly where those exist.
+                "scale_refuse_never_behind": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Refuse a patch scale under which not one pixel "
+                               "of the fill sits behind the primary's surface, "
+                               "and rebuild at the sibling median or the ground "
+                               "fit. A disocclusion hole is a view of what lies "
+                               "BEHIND what the primary can see, so a fill for "
+                               "one that is entirely in FRONT contradicts its "
+                               "own reason to exist -- a contradiction, not a "
+                               "tuned threshold, which is why it is a boolean. "
+                               "Measured on the sea-cliff castle: the ROI that "
+                               "painted 5% of its hole was the only one of five "
+                               "with every pixel in front, and the next-lowest "
+                               "painted 30%. See AtlasAddPatchView's tooltip."}),
             },
         }
 
@@ -1283,7 +1303,8 @@ class AtlasFillOccluded:
              registration_min_inliers=40, registration_max_residual_m=0.35,
              registration_max_deviation_deg=25.0, min_gen_long_edge=1024,
              scale_max_ground_disagreement=0.0,
-             scale_max_sibling_disagreement=1.8):
+             scale_max_sibling_disagreement=1.8,
+             scale_refuse_never_behind=True):
         from atlas_camera.comfy.node_helpers import (_comfy_registry,
                                                      _graph_builder)
 
@@ -1510,6 +1531,7 @@ class AtlasFillOccluded:
                     scale_max_ground_disagreement),
                 "scale_max_sibling_disagreement": float(
                     scale_max_sibling_disagreement),
+                "scale_refuse_never_behind": bool(scale_refuse_never_behind),
             }
             if primary_depth is not None:
                 patch_kwargs["primary_depth"] = primary_depth

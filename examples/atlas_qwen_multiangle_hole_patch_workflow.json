@@ -1074,6 +1074,14 @@
           "widget": {
             "name": "scale_min_siblings"
           }
+        },
+        {
+          "name": "scale_refuse_never_behind",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "scale_refuse_never_behind"
+          }
         }
       ],
       "outputs": [
@@ -1115,7 +1123,8 @@
         1.0,
         0.0,
         1.8,
-        3
+        3,
+        true
       ],
       "title": "16 · CONSTRUCTED PATCH CAMERA & GEOMETRY REUSE 🩹"
     },

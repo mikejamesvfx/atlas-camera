@@ -882,6 +882,14 @@
           "widget": {
             "name": "scale_max_sibling_disagreement"
           }
+        },
+        {
+          "name": "scale_refuse_never_behind",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "scale_refuse_never_behind"
+          }
         }
       ],
       "outputs": [
@@ -940,7 +948,8 @@
         25.0,
         1024,
         0.0,
-        1.8
+        1.8,
+        true
       ],
       "title": "4 - FILL THE HOLES WORTH FILLING, AS GEOMETRY"
     },

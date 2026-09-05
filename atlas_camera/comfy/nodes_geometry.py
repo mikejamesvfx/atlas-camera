@@ -3395,6 +3395,20 @@ def _patch_view_report(name, metadata, scale_source, scale, fallback_reason,
                 metadata.get("scale_n_samples", 0), metadata["scale_rel_iqr"])
             + (" — REFUSED, fell back to the ground fit"
                if "scale_refused_rel_iqr" in metadata else ""))
+    if metadata.get("scale_refused_never_behind"):
+        lines.append(
+            "never-behind check: EVERY pixel of this patch sat in front of the "
+            "primary at scale {} — impossible for a disocclusion fill — "
+            "rebuilt at {:.4f} from {}".format(
+                metadata.get("scale_replaced_from"),
+                float(metadata.get("scale") or 0.0),
+                scale_source or "?")
+            + (" (still entirely in front; kept anyway)"
+               if metadata.get("scale_never_behind_still_front") else ""))
+    elif "scale_never_behind_abstained" in metadata:
+        lines.append(
+            "never-behind check ABSTAINED: {}".format(
+                metadata["scale_never_behind_abstained"]))
     if "scale_sibling_disagreement" in metadata:
         lines.append(
             "sibling check: {} comparable patches, median {} — this one is {}x "
@@ -4549,6 +4563,30 @@ class AtlasAddPatchView:
                                "implies -- patches are added one at a time, so "
                                "the first few are never judged and the last "
                                "is judged against the most."}),
+                # APPENDED 2026-09-05: the fourth scale check, and the only
+                # one that needs no second estimator and no siblings.
+                "scale_refuse_never_behind": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Refuse a patch scale under which NOT ONE pixel "
+                               "of the patch sits behind the primary's "
+                               "surface, and rebuild at the sibling median (or "
+                               "the ground fit) instead. This is a "
+                               "contradiction rather than a tuned threshold: a "
+                               "disocclusion hole is by definition a view of "
+                               "what lies BEHIND what the primary can see, so "
+                               "a fill for it that is entirely in FRONT of the "
+                               "primary cannot be at the right scale, and the "
+                               "unseen matte duly throws nearly all of it "
+                               "away. Measured on the sea-cliff castle: the "
+                               "ROI that painted 5% of its own hole was the "
+                               "only one of five with "
+                               "matte_depth_ratio_under_1_frac == 1.0, and the "
+                               "next-lowest painted 30%. Its value is COVER: "
+                               "the sibling check abstains until 3 comparable "
+                               "patches exist, so on that scene 3 of 5 patches "
+                               "were judged by nothing at all, the first one "
+                               "included. Costs one extra mesh + matte build "
+                               "on a patch that fires, and no depth re-run."}),
                 "crop": ("ATLAS_CROP", {
                     "tooltip": "AtlasCropROI's crop handle, when patch_image is that CROP "
                                "rather than a full-frame novel view. A crop of the plate is "
@@ -4584,7 +4622,7 @@ class AtlasAddPatchView:
                   sky_heuristic=True, scale_max_rel_iqr=1.0,
                   scale_max_ground_disagreement=0.0,
                   scale_max_sibling_disagreement=1.8, scale_min_siblings=3,
-                  crop=None):
+                  scale_refuse_never_behind=True, crop=None):
         exact_delta = None
         exact_pivot = None
         if exact_view_override and exact_view_override.strip():
@@ -4890,6 +4928,9 @@ class AtlasAddPatchView:
 
         scale = None
         scale_source = "ground_fit"
+        # Measured once, read twice: the sibling check judges against these,
+        # and the never-behind check below takes their median as its answer.
+        siblings: list = []
         # One ground fit per call, whoever asks first: the cross-check below
         # wants it as an independent opinion, the fallback wants it as an
         # answer, and it is the same fit either way.
@@ -5013,7 +5054,7 @@ class AtlasAddPatchView:
             # siblings are not a second opinion about this patch, they are
             # direct measurements of the scale it is trying to recover.
             if scale is not None:
-                siblings = _comparable_sibling_scales(
+                siblings[:] = _comparable_sibling_scales(
                     solve, depth_model=depth_model,
                     depth_is_metric=registration_meta.get("depth_is_metric"))
                 registration_meta["scale_sibling_n"] = len(siblings)
@@ -5049,76 +5090,142 @@ class AtlasAddPatchView:
         # 2026-08-15: the mesh has no business existing outside the hole it was
         # generated to fill. Same dilation as the matte, so mesh and paint end
         # at the same rim with the same overlap.
-        mesh_exclude = resolved_exclude
-        if patch_hole is not None:
-            outside = ~dilate(patch_hole, int(unseen_dilate_px))
-            mesh_exclude = (outside if mesh_exclude is None
-                            else (mesh_exclude | outside))
-        mesh = build_relief_mesh(
-            depth_map, view_matrix=patch_extr.camera_view_matrix,
-            fx=pfx, fy=pfy, cx=pcx, cy=pcy,
-            horizon_y=patch_horizon_y,
-            grid_long_edge=int(relief_grid),
-            scale=scale,
-            # The silhouette tests, passed through rather than defaulted, so a
-            # caller that knows this layer has nothing behind it can say so.
-            depth_edge_rel=float(depth_edge_rel),
-            max_edge_factor=float(max_edge_factor),
-            exclude_mask=mesh_exclude,
-            # Explicitly controlled now. It used to be keyed on whether an
-            # exclude_mask happened to be wired, which conflated "the artist
-            # named the sky" with "run the internal guess" and left a caller no
-            # way to decline the guess without inventing a mask.
-            apply_sky_heuristic=bool(sky_heuristic),
-        )
-        patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
-
-        # Unseen-areas matte: the patch should only paint where the PRIMARY
-        # camera's projection is invalid at this patch view — everywhere the
-        # primary CAN see keeps its real photographed pixels, and the AI
-        # novel view fills only genuine gaps. Same math as AtlasOcclusionMask
-        # (frustum/frame + optional depth-shadow), embedded directly as this
-        # source's per-pixel edge matte instead of a separate composite step.
-        # Uses the REGISTERED scale so the depth-shadow comparison happens in
-        # the same metric world the mesh lives in.
-        mask_b64 = None
-        if mask_unseen_only:
-            bp = back_project_normals(
-                depth_map * float(scale), view_matrix=patch_extr.camera_view_matrix,
-                fx=pfx, fy=pfy, cx=pcx, cy=pcy)
-            unseen, _matte_terms = primary_camera_validity_mask(
-                bp.pts_world, bp.valid_depth, bp.normals, bp.valid_normal,
-                primary_view_matrix=extr.camera_view_matrix,
-                primary_fx=fx, primary_fy=fy, primary_cx=cx, primary_cy=cy,
-                primary_width=p_w, primary_height=p_h,
-                angle_threshold_deg=90.0,
-                primary_depth_map=primary_metric_map, return_terms=True)
-            # WHY the matte matted, counted where it matters. Six tests collapse
-            # into one boolean, so a patch that comes back with a hole in the
-            # middle of its own fill otherwise says nothing about which test did
-            # it -- narrowing that on the sea-cliff castle took reading the
-            # source and eliminating five terms by hand, and still needed depth
-            # maps nothing saves. Restricted to the region the patch was
-            # generated for; the rest of the frame is meant to be matted out.
-            registration_meta.update(_summarize_matte(
-                np, _matte_terms, unseen,
-                patch_hole if patch_hole is not None else None))
-            for _ in range(int(unseen_dilate_px)):
-                up = np.zeros_like(unseen)
-                up[:-1, :] = unseen[1:, :]
-                dn = np.zeros_like(unseen)
-                dn[1:, :] = unseen[:-1, :]
-                lf = np.zeros_like(unseen)
-                lf[:, :-1] = unseen[:, 1:]
-                rt = np.zeros_like(unseen)
-                rt[:, 1:] = unseen[:, :-1]
-                unseen = unseen | up | dn | lf | rt
+        # Everything downstream of `scale`, in one callable. It is a
+        # closure and not a straight line because the never-behind check
+        # below can only be evaluated once the matte exists, and its
+        # remedy is to build the whole thing again at a different scale.
+        def _build_at(scale):
+            matte_stats = {}
+            mesh_exclude = resolved_exclude
             if patch_hole is not None:
-                unseen &= dilate(patch_hole, int(unseen_dilate_px))
-            mask_b64 = _mask_to_b64_png(unseen) or None
-        if mask_b64 is None and patch_hole is not None:
-            mask_b64 = _mask_to_b64_png(
-                dilate(patch_hole, int(unseen_dilate_px))) or None
+                outside = ~dilate(patch_hole, int(unseen_dilate_px))
+                mesh_exclude = (outside if mesh_exclude is None
+                                else (mesh_exclude | outside))
+            mesh = build_relief_mesh(
+                depth_map, view_matrix=patch_extr.camera_view_matrix,
+                fx=pfx, fy=pfy, cx=pcx, cy=pcy,
+                horizon_y=patch_horizon_y,
+                grid_long_edge=int(relief_grid),
+                scale=scale,
+                # The silhouette tests, passed through rather than defaulted, so a
+                # caller that knows this layer has nothing behind it can say so.
+                depth_edge_rel=float(depth_edge_rel),
+                max_edge_factor=float(max_edge_factor),
+                exclude_mask=mesh_exclude,
+                # Explicitly controlled now. It used to be keyed on whether an
+                # exclude_mask happened to be wired, which conflated "the artist
+                # named the sky" with "run the internal guess" and left a caller no
+                # way to decline the guess without inventing a mask.
+                apply_sky_heuristic=bool(sky_heuristic),
+            )
+            patch_geom = [relief_mesh_primitive(mesh, name=f"{name}_relief_mesh")]
+
+            # Unseen-areas matte: the patch should only paint where the PRIMARY
+            # camera's projection is invalid at this patch view — everywhere the
+            # primary CAN see keeps its real photographed pixels, and the AI
+            # novel view fills only genuine gaps. Same math as AtlasOcclusionMask
+            # (frustum/frame + optional depth-shadow), embedded directly as this
+            # source's per-pixel edge matte instead of a separate composite step.
+            # Uses the REGISTERED scale so the depth-shadow comparison happens in
+            # the same metric world the mesh lives in.
+            mask_b64 = None
+            if mask_unseen_only:
+                bp = back_project_normals(
+                    depth_map * float(scale), view_matrix=patch_extr.camera_view_matrix,
+                    fx=pfx, fy=pfy, cx=pcx, cy=pcy)
+                unseen, _matte_terms = primary_camera_validity_mask(
+                    bp.pts_world, bp.valid_depth, bp.normals, bp.valid_normal,
+                    primary_view_matrix=extr.camera_view_matrix,
+                    primary_fx=fx, primary_fy=fy, primary_cx=cx, primary_cy=cy,
+                    primary_width=p_w, primary_height=p_h,
+                    angle_threshold_deg=90.0,
+                    primary_depth_map=primary_metric_map, return_terms=True)
+                # WHY the matte matted, counted where it matters. Six tests collapse
+                # into one boolean, so a patch that comes back with a hole in the
+                # middle of its own fill otherwise says nothing about which test did
+                # it -- narrowing that on the sea-cliff castle took reading the
+                # source and eliminating five terms by hand, and still needed depth
+                # maps nothing saves. Restricted to the region the patch was
+                # generated for; the rest of the frame is meant to be matted out.
+                matte_stats = _summarize_matte(
+                    np, _matte_terms, unseen,
+                    patch_hole if patch_hole is not None else None)
+                for _ in range(int(unseen_dilate_px)):
+                    up = np.zeros_like(unseen)
+                    up[:-1, :] = unseen[1:, :]
+                    dn = np.zeros_like(unseen)
+                    dn[1:, :] = unseen[:-1, :]
+                    lf = np.zeros_like(unseen)
+                    lf[:, :-1] = unseen[:, 1:]
+                    rt = np.zeros_like(unseen)
+                    rt[:, 1:] = unseen[:, :-1]
+                    unseen = unseen | up | dn | lf | rt
+                if patch_hole is not None:
+                    unseen &= dilate(patch_hole, int(unseen_dilate_px))
+                mask_b64 = _mask_to_b64_png(unseen) or None
+            if mask_b64 is None and patch_hole is not None:
+                mask_b64 = _mask_to_b64_png(
+                    dilate(patch_hole, int(unseen_dilate_px))) or None
+
+            return patch_geom, mesh, mask_b64, matte_stats
+
+        patch_geom, mesh, mask_b64, matte_stats = _build_at(scale)
+        registration_meta.update(matte_stats)
+
+        # THE NEVER-BEHIND CHECK. A disocclusion hole is a view of what
+        # lies BEHIND what the primary can see. So a fill generated for
+        # one, whose every pixel lands in FRONT of the primary's surface,
+        # contradicts the reason it exists -- and the unseen matte agrees,
+        # throwing away all but a few grazing pixels. That is a structural
+        # impossibility, not a tuned threshold, which is why this one is
+        # a boolean.
+        #
+        # It exists for COVER rather than for extra catch: on the castle
+        # the sibling check already caught this patch and gave a better
+        # answer (84.5% painted vs 74.5%), but it abstains below
+        # scale_min_siblings, so 3 of that scene's 5 patches -- the first
+        # one included -- were judged by nothing at all. This check needs
+        # no siblings and no second estimator, so it covers all of them.
+        #
+        # Guarded to a MEASURED scale: a scale that is already a fallback
+        # is the answer, so re-refusing it would only loop.
+        if (bool(scale_refuse_never_behind)
+                and patch_hole is not None
+                and str(scale_source).startswith("primary_registration")
+                and int(matte_stats.get("matte_region_px") or 0) > 0
+                and float(matte_stats.get(
+                    "matte_depth_ratio_under_1_frac") or 0.0) >= 0.9999):
+            replacement = None
+            if len(siblings) >= 2:
+                replacement = float(np.median(
+                    np.asarray(siblings, dtype=np.float64)))
+                replacement_source = "sibling_median"
+            else:
+                ground_scale, ground_info = _ground_scale_once()
+                if ground_scale is not None and float(ground_scale) > 1e-9:
+                    replacement = float(ground_scale)
+                    replacement_source = "ground_fit"
+                else:
+                    # Nothing to offer. A check with no answer ABSTAINS --
+                    # refusing to a scale we do not have would be worse
+                    # than the one we measured.
+                    registration_meta["scale_never_behind_abstained"] = str(
+                        (ground_info or {}).get("reason", "no fallback scale"))
+            if replacement is not None:
+                registration_meta["scale_refused_never_behind"] = True
+                registration_meta["scale_replaced_from"] = round(
+                    float(scale), 4)
+                scale = replacement
+                scale_source = replacement_source
+                # ONE retry. If the fallback is also entirely in front we
+                # keep it and say so, rather than searching -- the reward
+                # this would search on saturates (2026-09-05), so a search
+                # would run off to an arbitrarily large scale.
+                patch_geom, mesh, mask_b64, matte_stats = _build_at(scale)
+                registration_meta.update(matte_stats)
+                registration_meta["scale_never_behind_still_front"] = bool(
+                    float(matte_stats.get(
+                        "matte_depth_ratio_under_1_frac") or 0.0) >= 0.9999)
 
         return self._finish_patch(
             solve, patch_image, patch_intr, patch_extr, patch_geom, mesh,
