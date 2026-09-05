@@ -240,10 +240,15 @@ def main() -> None:
             # are set below from the same measurement — belt and braces, and
             # visible on the node face where an artist can check them.
             b.link(f"img{i}", "raw_meta", f"solve{i}", "raw_meta")
-        b.link(f"solve{i}", "ATLAS_SOLVE", f"vol{i}", "solve")
+        # By OUTPUT NAME, not by type: AtlasLearnedSolveFromImage's first
+        # output is named "solve". It was written here as "ATLAS_SOLVE" (the
+        # type) and every run of this script died on the first link, which is
+        # how a research builder rots quietly — nothing imports it, so no test
+        # catches it. `Builder.link` prints the real names on a miss.
+        b.link(f"solve{i}", "solve", f"vol{i}", "solve")
         b.link(f"img{i}", img_out, f"depth{i}", "image")
-        b.link(f"solve{i}", "ATLAS_SOLVE", f"depth{i}", "solve")
-        b.link(f"solve{i}", "ATLAS_SOLVE", f"band{i}", "solve")
+        b.link(f"solve{i}", "solve", f"depth{i}", "solve")
+        b.link(f"solve{i}", "solve", f"band{i}", "solve")
         b.link(f"depth{i}", "depth", f"band{i}", "depth")
         b.link(f"depth{i}", "depth", f"vol{i}", "depth")
         b.link(f"band{i}", "layer_mask", f"vol{i}", "restrict_mask")
