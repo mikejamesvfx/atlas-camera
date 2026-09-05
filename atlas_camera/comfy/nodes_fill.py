@@ -1185,7 +1185,7 @@ class AtlasFillOccluded:
                 # population the check needs; the patch node placed by hand
                 # usually has none.
                 "scale_max_sibling_disagreement": ("FLOAT", {
-                    "default": 0.0, "min": 0.0, "max": 100.0, "step": 0.05,
+                    "default": 1.8, "min": 0.0, "max": 100.0, "step": 0.05,
                     "tooltip": "Refuse a patch scale that disagrees with the "
                                "median of this run's EARLIER patches by more "
                                "than this factor, and adopt that median. The "
@@ -1283,7 +1283,7 @@ class AtlasFillOccluded:
              registration_min_inliers=40, registration_max_residual_m=0.35,
              registration_max_deviation_deg=25.0, min_gen_long_edge=1024,
              scale_max_ground_disagreement=0.0,
-             scale_max_sibling_disagreement=0.0):
+             scale_max_sibling_disagreement=1.8):
         from atlas_camera.comfy.node_helpers import (_comfy_registry,
                                                      _graph_builder)
 

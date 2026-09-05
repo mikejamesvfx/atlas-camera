@@ -973,7 +973,7 @@
         true,
         1.0,
         0.0,
-        0.0,
+        1.8,
         3
       ],
       "title": "OPTIONAL PATCH · BYPASSED · enable only after supplying Qwen image"

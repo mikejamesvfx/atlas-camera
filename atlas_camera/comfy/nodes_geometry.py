@@ -4504,7 +4504,7 @@ class AtlasAddPatchView:
                 # APPENDED 2026-09-05: the third scale gate, and the first
                 # that judges a patch against anything OTHER than itself.
                 "scale_max_sibling_disagreement": ("FLOAT", {
-                    "default": 0.0, "min": 0.0, "max": 100.0, "step": 0.05,
+                    "default": 1.8, "min": 0.0, "max": 100.0, "step": 0.05,
                     "tooltip": "Refuse a patch scale that disagrees with the "
                                "MEDIAN of the patches already on this solve by "
                                "more than this factor, and adopt that median "
@@ -4583,7 +4583,7 @@ class AtlasAddPatchView:
                   depth_edge_rel=0.5, max_edge_factor=12.0,
                   sky_heuristic=True, scale_max_rel_iqr=1.0,
                   scale_max_ground_disagreement=0.0,
-                  scale_max_sibling_disagreement=0.0, scale_min_siblings=3,
+                  scale_max_sibling_disagreement=1.8, scale_min_siblings=3,
                   crop=None):
         exact_delta = None
         exact_pivot = None

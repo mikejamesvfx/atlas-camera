@@ -577,10 +577,25 @@ def test_too_few_siblings_ABSTAINS_rather_than_trusting_a_thin_median(monkeypatc
     assert "ABSTAINED" in report
 
 
-def test_it_measures_and_reports_without_a_threshold(monkeypatch):
+def test_it_is_ARMED_by_default_at_the_measured_threshold(monkeypatch):
+    """1.8 comes off the castle run: ROI 4 read 1.06x and ROI 5 read 2.30x, so
+    the gap is wide and 1.8 sits in it. This is the one gate of the three whose
+    default is on, because it is the one that measured an improvement -- 5,425
+    -> 5,285 px of fillable hole, against the ground gate's 5,965."""
+    spec = AtlasAddPatchView.INPUT_TYPES()["optional"]["scale_max_sibling_disagreement"]
+    assert spec[1]["default"] == 1.8
+
     meta, report = _run_with_siblings(monkeypatch, 0.273,
                                       [0.830, 0.611, 0.381, 0.645])
     assert meta["scale_sibling_disagreement"] == pytest.approx(2.301, rel=1e-2)
+    assert meta["scale_source"] == "sibling_median"
+    assert "sibling check" in report
+
+
+def test_zero_disables_the_sibling_check(monkeypatch):
+    meta, _r = _run_with_siblings(monkeypatch, 0.273,
+                                  [0.830, 0.611, 0.381, 0.645],
+                                  scale_max_sibling_disagreement=0.0)
+    assert meta["scale_sibling_disagreement"] == pytest.approx(2.301, rel=1e-2)
     assert "scale_refused_sibling_disagreement" not in meta
     assert meta["scale_source"].startswith("primary_registration")
-    assert "sibling check" in report
