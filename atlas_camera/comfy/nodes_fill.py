@@ -1195,7 +1195,12 @@ class AtlasFillOccluded:
                                "one, but its scale was 0.45x what its four "
                                "siblings measured. Order matters -- patches "
                                "are added one at a time, so early ROIs are "
-                               "judged against few or none. 0 = off."}),
+                               "judged against few or none. 0 = off; 1.8 is "
+                               "the measured castle value (ROI 4 read 1.06x "
+                               "and ROI 5 2.30x, so the gap is wide) and the "
+                               "only gate setting of the three that improved "
+                               "the outcome: 5,425 -> 5,285 px of fillable "
+                               "hole, against the ground gate's 5,965."}),
             },
         }
 

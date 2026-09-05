@@ -605,13 +605,40 @@ THE GROUND CROSS-CHECK (scale_max_ground_disagreement, default 0 = OFF)
   re-rendering reports exactly 0 at every threshold. Scale reaches the outcome
   only through the unseen matte, computed at build time. Re-run live.
 
-NEXT LEVER, not built: SIBLING AGREEMENT
-  Registered scales above are 0.830 / 0.611 / 0.381 / 0.645 / 0.273, median
-  0.611. ROI 2 sits exactly at the median; ROI 5 is 0.45x it and the lone
-  outlier. Patches from one move over one plate should share a world scale, and
-  that check needs neither a ground nor a second estimator -- only the siblings
-  the node already generates. It is the first candidate whose discriminating
-  power is visible in data already collected.
+THE SIBLING CHECK (scale_max_sibling_disagreement, + scale_min_siblings)
+  The one gate of the three that helps, and the only one that judges a patch
+  against something other than itself. The other two ask a fit whether it agrees
+  with itself, or with one more estimator on the same pixels; a confidently and
+  uniformly wrong fit passes both. The siblings are not a second opinion, they
+  are direct measurements of the same world by the same model, so a scale that
+  disagrees with them is wrong by definition -- one plate, one move, one metric
+  depth model means every patch should recover the SAME world scale.
+
+  On a refusal it adopts the sibling median (scale_source=sibling_median): it
+  supplies an ANSWER, not a veto. Vetoing would fall back to the ground fit,
+  which is the estimator that already proved unable to separate these patches.
+
+  Comparability is enforced: same depth model, that model METRIC (a relative
+  model normalises each crop on its own, so its scales are unrelated numbers),
+  and the sibling's own scale MEASURED -- a ground-fit fallback or an earlier
+  sibling-median replacement is not independent evidence, and admitting those is
+  how one failure would propagate through the median into every later patch.
+
+  ORDER DEPENDENCE is real: patches are added one at a time, so early ROIs are
+  judged against few or none and abstain below scale_min_siblings (default 3).
+
+  Castle at 1.8 -- ROI 4 read 1.06x, ROI 5 read 2.30x, so the gap is wide:
+
+    gate            fillable hole   vs off   what it did
+    off                 5,425 px      --     ROI 5 floats 0.78 m, paints 5%
+    ground 1.5          5,965 px    -10.0%   fixes ROI 5, BREAKS ROI 2
+    sibling 1.8         5,285 px    +2.6%    fixes ROI 5, leaves ROI 2 alone
+
+  ROI 5 refused at 2.30x and given the median 0.628: 78% of its hole painted
+  instead of 5% (better than the ground fit's 63%), ground back to -0.10 m from
+  +0.78. ROI 2 untouched. The pixel gain understates the fix -- the metric is
+  read at the move's END FRAME, where a scale error is largely invisible (see
+  the measurement trap above), while a DCC export sees the floating slab.
 
 CACHE TRAP -- read before concluding a change did nothing
   ComfyUI caches on a node's DECLARED inputs. AtlasFillOccluded builds patches

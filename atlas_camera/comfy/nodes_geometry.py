@@ -4527,7 +4527,18 @@ class AtlasAddPatchView:
                                "against nothing. Unlike the other gates this "
                                "one supplies a REPLACEMENT rather than a veto: "
                                "the siblings are measurements of the same "
-                               "world."}),
+                               "world. MEASURED at 1.8 on the castle, the only "
+                               "one of the three gates that helps: ROI 5 "
+                               "refused at 2.30x and given the median 0.628, "
+                               "painting 78% of its hole instead of 5% with "
+                               "its ground back at -0.10 m instead of +0.78, "
+                               "ROI 2 untouched at 69%, and 5,425 -> 5,285 px "
+                               "of fillable hole. Compare the ground gate, "
+                               "which fixed the same ROI and cost 10%. The "
+                               "pixel gain understates it -- the metric is "
+                               "read at the move's end frame, where a scale "
+                               "error is largely invisible, while a DCC export "
+                               "sees the floating slab."}),
                 "scale_min_siblings": ("INT", {
                     "default": 3, "min": 2, "max": 32,
                     "tooltip": "How many comparable sibling patches must "
