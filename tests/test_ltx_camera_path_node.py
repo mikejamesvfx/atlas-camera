@@ -157,6 +157,9 @@ from atlas_camera.comfy.nodes_ltx import AtlasReliefGeometry  # noqa: E402
 
 
 def test_relief_geometry_refuses_a_solve_with_no_relief():
+    # AtlasReliefGeometry needs torch; CI has none. The other 14 tests in
+    # this file are torch-free and must keep running there.
+    pytest.importorskip("torch")
     """Refusing beats inventing.
 
     The whole reason to take geometry from the solve is that it agrees with the

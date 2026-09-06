@@ -423,6 +423,10 @@ def real_playblast_take(tmp_path):
     different, also-valid value. The rendered count no longer has to equal
     the widget, so these deliberately differ in the tests below.
     """
+    # The node loads these frames as torch tensors. CI installs no torch,
+    # so the seven tests that reach a real sequence SKIP there rather than
+    # failing -- everything else in this file is torch-free and still runs.
+    pytest.importorskip("torch")
 
     from PIL import Image
 
@@ -882,6 +886,10 @@ def both_sequences_take(tmp_path):
     channels so a mixup between the two loading paths would show up in the
     pixel values (nothing here asserts on colour, but a future test could).
     """
+    # The node loads these frames as torch tensors. CI installs no torch,
+    # so the seven tests that reach a real sequence SKIP there rather than
+    # failing -- everything else in this file is torch-free and still runs.
+    pytest.importorskip("torch")
     from PIL import Image
 
     directory = tmp_path / "takes" / "sc" / "sh" / "a_take01"
