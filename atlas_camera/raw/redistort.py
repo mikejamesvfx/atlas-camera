@@ -49,13 +49,23 @@ def _require_numpy():
 
 
 def invert_remap(coords: Any, *, iterations: int = 12,
-                 tolerance: float = 1e-3) -> Any:
+                 tolerance: float = 1e-3,
+                 plate_size: tuple[int, int] | None = None,
+                 plate_origin: tuple[int, int] = (0, 0)) -> Any:
     """Invert an (H, W, 2) remap grid by fixed-point iteration.
 
     ``coords[y, x] = (sx, sy)`` means output pixel (x, y) samples input (sx, sy).
     Returns ``(inv, residual)`` where ``inv[y, x] = (ux, uy)`` is the output
     pixel that lands on input pixel (x, y) — i.e. the inverse mapping — and
     ``residual`` is the PER-PIXEL error magnitude, not a scalar.
+
+    ``plate_size`` / ``plate_origin`` are for a grid that is LARGER than the
+    plate it samples: the render frame of :func:`extend_undistort_map`, where
+    the plate's top-left sits at ``plate_origin`` inside the grid. The inverse
+    is then solved for the ``plate_size`` distorted pixels (that is the domain
+    a redistort map lives on) and ``inv`` holds GRID pixel coordinates, so an
+    answer in the overscan band is a legitimate one rather than "outside".
+    Left at the defaults, the grid IS the plate and nothing changes.
 
     Per-pixel matters. A real lens correction samples from an INSET region (a
     5178-wide plate had coords spanning x in [25.9, 3849]), so distorted pixels
@@ -70,10 +80,17 @@ def invert_remap(coords: Any, *, iterations: int = 12,
     if coords.ndim != 3 or coords.shape[2] != 2:
         raise ValueError(f"coords must be (H, W, 2), got {coords.shape}")
     h, w = coords.shape[:2]
+    pw, ph = (int(plate_size[0]), int(plate_size[1])) if plate_size else (w, h)
+    ox, oy = (int(plate_origin[0]), int(plate_origin[1]))
+    if ox < 0 or oy < 0 or ox + pw > w or oy + ph > h:
+        raise ValueError(
+            f"plate {pw}x{ph} at {plate_origin} does not fit in grid {w}x{h}")
 
-    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    yy, xx = np.mgrid[0:ph, 0:pw].astype(np.float32)
     target = np.stack([xx, yy], axis=-1)          # the distorted pixel we want
     guess = target.copy()                          # near-identity start
+    guess[..., 0] += ox                            # ...in GRID coordinates
+    guess[..., 1] += oy
 
     def sample(grid, pts):
         """Bilinear sample of an (H, W, 2) grid at float (…, 2) positions."""
@@ -113,7 +130,10 @@ def invert_remap(coords: Any, *, iterations: int = 12,
 
 
 def build_redistort_stmap(coords: Any, *, with_alpha: bool = True,
-                          iterations: int = 12) -> tuple[Any, dict[str, Any]]:
+                          iterations: int = 12,
+                          plate_size: tuple[int, int] | None = None,
+                          plate_origin: tuple[int, int] = (0, 0)
+                          ) -> tuple[Any, dict[str, Any]]:
     """``coords`` -> a Nuke STMap that RE-DISTORTS a rectilinear render.
 
     Returns ``(stmap, info)``. ``stmap`` is (H, W, 3) or (H, W, 4) float32 with
@@ -124,22 +144,52 @@ def build_redistort_stmap(coords: Any, *, with_alpha: bool = True,
     Wire it in Nuke as::
 
         Read(render, rectilinear) -> STMap(uv = Read(this_exr)) -> distorted
+
+    The map's DOMAIN is always the distorted plate. What it SAMPLES is the
+    grid's frame: the plate itself by default, or the padded, overscanned
+    render when ``coords`` came from :func:`extend_undistort_map` and
+    ``plate_size`` / ``plate_origin`` say where the plate sits in it. In that
+    case the UVs are normalised over the render, the comp feeds the whole
+    render to STMap without cropping, and ``outside_fraction`` becomes the
+    test that the overscan was enough: it should be zero.
+
+    ``info["excursion_px"]`` is how far the inverse reaches beyond the plate
+    per edge, in undistorted pixels, measured on the converged pixels. With a
+    plate-sized grid the corners that need overscan cannot converge (their
+    answer is outside the grid), so the number is a lower bound there; with
+    an extended grid it is the measurement. :func:`undistort.measure_excursion`
+    is the way to size the overscan before building the grid.
     """
     np = _require_numpy()
-    inv, residual_map = invert_remap(coords, iterations=iterations)
-    h, w = inv.shape[:2]
+    inv, residual_map = invert_remap(coords, iterations=iterations,
+                                     plate_size=plate_size,
+                                     plate_origin=plate_origin)
+    gh, gw = np.asarray(coords).shape[:2]          # the frame being sampled
+    ph, pw = inv.shape[:2]                         # the distorted plate
+    ox, oy = int(plate_origin[0]), int(plate_origin[1])
+    extended = (gw, gh) != (pw, ph)
 
-    outside = ((inv[..., 0] < 0) | (inv[..., 0] > w - 1) |
-               (inv[..., 1] < 0) | (inv[..., 1] > h - 1))
+    outside = ((inv[..., 0] < 0) | (inv[..., 0] > gw - 1) |
+               (inv[..., 1] < 0) | (inv[..., 1] > gh - 1))
     # Convergence is only meaningful where a solution EXISTS.
     solvable = ~outside
     residual = (float(residual_map[solvable].max()) if solvable.any()
                 else float("inf"))
     residual_p999 = (float(np.percentile(residual_map[solvable], 99.9))
                      if solvable.any() else float("inf"))
+    converged = residual_map < 1e-2
+    if converged.any():
+        cx_ = inv[..., 0][converged] - ox
+        cy_ = inv[..., 1][converged] - oy
+        excursion = {"left": float(max(0.0, -cx_.min())),
+                     "top": float(max(0.0, -cy_.min())),
+                     "right": float(max(0.0, cx_.max() - (pw - 1))),
+                     "bottom": float(max(0.0, cy_.max() - (ph - 1)))}
+    else:
+        excursion = {"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0}
 
-    u = inv[..., 0] / max(w - 1, 1)
-    v = inv[..., 1] / max(h - 1, 1)
+    u = inv[..., 0] / max(gw - 1, 1)
+    v = inv[..., 1] / max(gh - 1, 1)
     v = 1.0 - v                                   # top-left array -> bottom-left Nuke
 
     chans = [u, v, np.zeros_like(u)]
@@ -148,11 +198,64 @@ def build_redistort_stmap(coords: Any, *, with_alpha: bool = True,
     stmap = np.stack(chans, axis=-1).astype(np.float32)
 
     info = {
+        "direction": "redistort",
         "inversion_residual_px": residual,
         "inversion_residual_p999_px": residual_p999,
         "converged": bool(residual < 1e-2),
         "outside_fraction": float(outside.mean()),
-        "width": int(w), "height": int(h),
+        "width": int(pw), "height": int(ph),
+        "domain": "plate",
+        "samples": "render" if extended else "plate",
+        "samples_size": [int(gw), int(gh)],
+        "plate_origin": [ox, oy],
+        "excursion_px": excursion,
+        "origin": "bottom-left (Nuke)",
+        "channels": "u,v,0" + (",alpha" if with_alpha else ""),
+    }
+    return stmap, info
+
+
+def build_undistort_stmap(coords: Any, *, with_alpha: bool = True,
+                          plate_size: tuple[int, int] | None = None
+                          ) -> tuple[Any, dict[str, Any]]:
+    """``coords`` -> a Nuke STMap that UNDISTORTS the plate. The forward map.
+
+    Wire it in Nuke as::
+
+        Read(plate, distorted) -> STMap(uv = Read(this_exr)) -> rectilinear
+
+    This is the same grid ``apply_undistort`` remaps with, written out in the
+    STMap conventions (normalised over the plate's ``width-1`` / ``height-1``,
+    V flipped, alpha 1 where the sample lies inside the plate). Its DOMAIN is
+    the grid's frame: the plate itself, or the padded render when ``coords``
+    came from :func:`extend_undistort_map` — in which case applying it to the
+    plate places the plate in render space with the overscan band filled by
+    the pixels the lens actually saw beyond the rectilinear frame. It SAMPLES
+    the distorted plate either way; ``plate_size`` says how big that is when
+    the grid is bigger than it.
+    """
+    np = _require_numpy()
+    coords = np.asarray(coords, dtype=np.float32)
+    if coords.ndim != 3 or coords.shape[2] != 2:
+        raise ValueError(f"coords must be (H, W, 2), got {coords.shape}")
+    gh, gw = coords.shape[:2]
+    pw, ph = (int(plate_size[0]), int(plate_size[1])) if plate_size else (gw, gh)
+
+    outside = ((coords[..., 0] < 0) | (coords[..., 0] > pw - 1) |
+               (coords[..., 1] < 0) | (coords[..., 1] > ph - 1))
+    u = coords[..., 0] / max(pw - 1, 1)
+    v = 1.0 - coords[..., 1] / max(ph - 1, 1)
+    chans = [u, v, np.zeros_like(u)]
+    if with_alpha:
+        chans.append((~outside).astype(np.float32))
+    stmap = np.stack(chans, axis=-1).astype(np.float32)
+    info = {
+        "direction": "undistort",
+        "outside_fraction": float(outside.mean()),
+        "width": int(gw), "height": int(gh),
+        "domain": "render" if (gw, gh) != (pw, ph) else "plate",
+        "samples": "plate",
+        "samples_size": [pw, ph],
         "origin": "bottom-left (Nuke)",
         "channels": "u,v,0" + (",alpha" if with_alpha else ""),
     }
@@ -224,7 +327,8 @@ def redistort_stmap_for_import(result: Any) -> tuple[Any, dict[str, Any]]:
     return stmap, info
 
 
-def write_stmap_exr(stmap: Any, path: str) -> str:
+def write_stmap_exr(stmap: Any, path: str, *,
+                    content: str = "redistort_stmap") -> str:
     """Write a float32 ST map EXR (no colour transform — this is DATA, not pixels).
 
     An ST map must never pass through a colour pipeline: the channels are
@@ -252,7 +356,7 @@ def write_stmap_exr(stmap: Any, path: str) -> str:
     # a DCT codec on coordinate channels reintroduces exactly the error
     # float32 was chosen to avoid. Do not "standardise" this to dwab.
     spec.attribute("compression", "zip")
-    spec.attribute("atlas:content", "redistort_stmap")
+    spec.attribute("atlas:content", str(content))
     spec.attribute("atlas:origin", "bottom-left")
     out = oiio.ImageOutput.create(path)
     if out is None:  # pragma: no cover

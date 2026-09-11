@@ -1,8 +1,8 @@
 {
   "_comment": "Atlas evaluation plate set for the VolFill investigation. Categories follow the brief. 'truth' marks plates with real photographed hidden-geometry truth via the G5 rig (sh001, measured 14.6 m baseline). Paths are machine-local by necessity (source plates are not in the repo); regenerate with the same categories on another box.",
-  "scratchpad": "C:/Users/miike/AppData/Local/Temp/claude/C--Users-miike-Desktop-AtlasCamera-Claude/95656247-c586-4fdf-91ef-055be69d66cc/scratchpad",
-  "comfy_input": "C:/Users/miike/Desktop/ComfyUI_V102_4/ComfyUI/input",
-  "portable_input": "C:/Users/miike/Desktop/ComfyUI_windows_portable/ComfyUI/input",
+  "scratchpad": "<set ATLAS_PLATES_ROOT>",
+  "comfy_input": "<your ComfyUI input dir>",
+  "portable_input": "<your ComfyUI input dir>",
   "plates": [
     {
       "name": "sh001_street",

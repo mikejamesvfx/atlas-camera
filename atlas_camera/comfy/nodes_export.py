@@ -661,6 +661,7 @@ class AtlasExportNuke:
                 from atlas_camera.raw.redistort import (
                     redistort_stmap_for_import, write_stmap_exr)
                 stmap, info = redistort_stmap_for_import(raw_meta)
+                precomputed = None
                 if stmap is None:
                     stmap_note = (
                         f"\nredistort ST map: skipped ({info.get('reason')})")
@@ -668,6 +669,7 @@ class AtlasExportNuke:
                     dest = out / "redistort_stmap.exr"
                     write_stmap_exr(stmap, str(dest))
                     stmap_entries.append(("redistort_stmap", str(dest)))
+                    precomputed = (stmap, info, dest.name)
                     stmap_note = (
                         f"\nredistort ST map: {dest.name} "
                         f"({info['width']}x{info['height']}, residual "
@@ -675,6 +677,28 @@ class AtlasExportNuke:
                         f"{info['outside_fraction']*100:.1f}% outside frame)"
                         f"\n  Nuke: Read(render) -> STMap(uv = Read({dest.name})) "
                         f"-> distorted plate space")
+                # LENS BLOCK: the matrixZone/1.2 record of what the lens did to
+                # this plate (status, space, excursion, the maps). Atlas Camera
+                # owns the lens, so this is the one place it gets written;
+                # Bridge's Prep Shot inlines the file rather than re-deriving
+                # any of it. Written for every status, because "the plate was
+                # never corrected" is a fact a downstream comp needs to read
+                # just as much as the map is.
+                from atlas_camera.raw.lens_block import (
+                    build_lens_block, write_lens_block_json)
+                block, _ = build_lens_block(
+                    raw_meta, str(out), write_undistort=False,
+                    redistort_precomputed=precomputed)
+                lens_dest = out / "lens_block.json"
+                write_lens_block_json(block, str(lens_dest))
+                stmap_entries.append(("lens_block", str(lens_dest)))
+                exc_px = block.get("excursionPx")
+                stmap_note += (
+                    f"\nlens block: {lens_dest.name} ({block['undistortStatus']}, "
+                    f"{block['space']}"
+                    + (f", excursion L{exc_px['left']:.0f} T{exc_px['top']:.0f} "
+                       f"R{exc_px['right']:.0f} B{exc_px['bottom']:.0f} px"
+                       if exc_px else "") + ")")
             except Exception as exc:      # never fail an export for a sidecar
                 stmap_note = (
                     f"\nredistort ST map: FAILED ({type(exc).__name__}: {exc})")
