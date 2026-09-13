@@ -15,19 +15,31 @@ from __future__ import annotations
 
 #: What this build WRITES. Bumped by a change to the document's shape.
 #:
-#: Deliberately still 0.6 while the reader below reads 0.7. ADR-001 sequences
-#: the two: the reader widens first, round-trip and preservation fixtures prove
-#: Atlas Camera does not damage a document it did not author, and only then is
-#: the writer promoted. A build that wrote a version before it could read one
-#: back safely would have no way to discover it was wrong.
-SCHEMA_VERSION = "0.6"
+#: 0.7 since 2026-09-13, ADR-001 step 4.4, and last of the four: the reader
+#: widened first, preservation was proved in both directions, the shared
+#: vocabulary was made tolerant, and the Camera<->Scene conformance check was
+#: made unable to skip itself. Only then the writer, because a build that wrote
+#: a version before it could read one back safely would have no way to discover
+#: it was wrong.
+#:
+#: What this does NOT mean is that every document written here carries 0.7's
+#: additions. `environment` and the camera's `capture_location` /
+#: `capture_time` are optional and default correctly by their absence -- an
+#: Atlas Camera package is plate-based, which is exactly what a missing
+#: `environment` block asserts. The version says which rules the document is to
+#: be read under, not which optional constructs it happens to use. Writing the
+#: defaults explicitly would be new serialisation behaviour, and 4.4 is a
+#: version promotion, not a format change.
+SCHEMA_VERSION = "0.7"
 
 #: What this build may READ. Every version listed here only ever ADDED fields,
 #: and the defaults for those fields are the correct reading of a document that
 #: predates them — `none` for a completion policy, `null` for a confidence —
 #: not a fallback standing in for a value somebody forgot to write.
 #:
-#: 0.7 is Atlas Scene's writer and the canonical version (ADR-001). It adds a
+#: 0.7 is now what BOTH producers write, and the canonical version (ADR-001).
+#: 0.6 stays readable: retired as a producer version, not as a readable one, so
+#: every package written before 2026-09-13 still opens. It adds a
 #: first-class top-level `environment` and provenance-bearing capture metadata
 #: on the camera (`capture_location`, `capture_time`). Atlas Camera interprets
 #: none of the three, which is precisely why reading them is safe: nothing here

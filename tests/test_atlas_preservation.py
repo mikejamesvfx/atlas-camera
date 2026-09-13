@@ -238,10 +238,43 @@ def test_the_reader_accepts_0_7():
     assert check_readable("0.7") == "0.7"
 
 
-def test_the_writer_has_not_been_promoted_yet():
-    """ADR-001 promotes the writer only after this file passes. Not yet."""
+def test_the_writer_has_been_promoted():
+    """ADR-001 step 4.4, landed 2026-09-13 once 4.1 to 4.3 were green."""
 
-    assert SCHEMA_VERSION == "0.6"
+    assert SCHEMA_VERSION == "0.7"
+
+
+def test_historical_versions_are_still_readable():
+    """Promotion retires 0.6 as a PRODUCER version, not as a readable one.
+
+    Every package written before the promotion is still openable, which is the
+    whole reason the readable set and the writer are separate constants.
+    """
+
+    for version in ("0.2", "0.3", "0.4", "0.5", "0.6"):
+        assert check_readable(version) == version
+
+
+def test_a_written_document_does_not_claim_content_it_lacks(loaded: Path, tmp_path: Path):
+    """0.7 is a reading contract, not a promise to use every optional field.
+
+    This build writes 0.7 and still does not emit `environment` or the camera's
+    capture provenance, because those default correctly by their absence: an
+    Atlas Camera package is plate-based, which is what a missing `environment`
+    asserts. Writing them would be new serialisation behaviour. The test exists
+    so that stays a decision rather than drift.
+    """
+
+    fresh = tmp_path / "fresh.atlas"
+    write_atlas_archive(_minimal_solve(), fresh)
+
+    extracted = tmp_path / "fresh_out"
+    unpack_archive(fresh, extracted)
+    document = read_document(extracted)
+
+    assert document["schema_version"] == "0.7"
+    assert "environment" not in document
+    assert "capture_location" not in document["camera"]
 
 
 def test_an_unknown_version_is_still_refused():
