@@ -1,7 +1,7 @@
 # Proposal — a public "photograph to relief world" facade
 
 - Date: 2026-09-13
-- Status: **PROPOSED. Not accepted, not implemented.** For the Atlas Camera owner to decide.
+- Status: **ACCEPTED WITH REVISIONS and implemented 2026-09-13** — `atlas_camera/relief_world.py`, exported through `import atlas`. See *Review* below.
 - From: the `capability.showcase.bake_world` consumer (atlas-showcase), registered in Atlas Nexus
   with `depends.apps[atlas-camera].surface: internal`
 - Record of the debt: atlas-showcase `docs/CAMERA_DEPENDENCY_DEBT.md`
@@ -90,6 +90,39 @@ Names, return type and module placement are Camera's decision. The requirements 
 `tools/bake_showcase.py` imports only the public facade; atlas-showcase's
 `docs/CAMERA_DEPENDENCY_DEBT.md` is closed with the Camera commit that introduced it; and the
 Nexus manifest changes `surface: internal` to `surface: public`.
+
+## Review (2026-09-13, before implementation)
+
+The proposal was written by the same agent that implemented it, so it was reviewed
+adversarially against Atlas doctrine before anything shipped. Verdict: **good, with five
+revisions**, all applied.
+
+1. **Do not publish the mesh type.** The sketch exposed `world.mesh` as a `ReliefMesh`.
+   `ReliefMesh` carries a dozen implementation fields (hole masks, silhouette alpha,
+   ribbon parameters); returning it as part of a public result would freeze all of them.
+   Revised: the consumer-facing facts are `mesh_stats` (grid, faces, torn fraction);
+   `mesh` stays on the result as an explicitly **opaque** handle, excluded from `repr` and
+   equality, whose only supported use is export.
+2. **Export as a function with an explicit texture, not a method with web options.** The
+   sketch put `texture_max` on `world.export_glb`. Texture resizing for web delivery is the
+   Showcase's concern. Revised: `export_relief_world_glb(world, out_dir, *, texture, name,
+   texture_format)`; the consumer prepares the texture.
+3. **Name it as a recovery, like `atlas.recover`.** `relief_world(...)` read as a
+   constructor. Revised: `recover_relief_world`.
+4. **Behaviour-preserving, not a redesign.** Folding this into the tier-2 depth cascade of
+   `solve_still_image_learned` would remove Camera-internal duplication but change the
+   camera and scale the consumer records. Revised: the sequence moves to its owner
+   unchanged, proven by a byte-identical Showcase bake; consolidation is recorded as a
+   Camera-internal follow-up, not part of this surface.
+5. **Typed, ordered, JSON-safe results.** `ReliefWorldCamera`, `ReliefWorldScale`,
+   `ReliefWorldMeshStats` are frozen dataclasses with `to_dict()` in the field order the
+   consumer already publishes, and a test pins that the returned camera actually
+   describes the mesh (vertices reproject onto their UVs), which is what makes those
+   fields a contract rather than a bag of numbers.
+
+Rejected alternatives: making the eleven symbols public individually (freezes internals,
+leaves orchestration in the consumer); a CLI or MCP tool instead of a Python API (a
+transport over a missing API — the missing piece was the API).
 
 ## Not proposed
 

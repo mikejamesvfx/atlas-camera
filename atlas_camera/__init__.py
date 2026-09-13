@@ -22,6 +22,15 @@ from atlas_camera.core.schema import (
 )
 from atlas_camera.core.confidence import ConfidenceModel
 from atlas_camera.core.solver import solve_still_image
+from atlas_camera.relief_world import (
+    RELIEF_WORLD_INPUT_SUFFIXES,
+    ReliefWorld,
+    ReliefWorldCamera,
+    ReliefWorldMeshStats,
+    ReliefWorldScale,
+    export_relief_world_glb,
+    recover_relief_world,
+)
 
 
 def recover(
@@ -96,7 +105,14 @@ __all__ = [
     "LatentComponent",
     "LatentScene",
     "ProjectionSource",
+    "RELIEF_WORLD_INPUT_SUFFIXES",
+    "ReliefWorld",
+    "ReliefWorldCamera",
+    "ReliefWorldMeshStats",
+    "ReliefWorldScale",
+    "export_relief_world_glb",
     "recover",
+    "recover_relief_world",
 ]
 
 __version__ = "0.8.1"
