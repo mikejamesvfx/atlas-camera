@@ -85,6 +85,43 @@ class ArchivePackageResult:
         }
 
 
+class PackageExists(FileExistsError):
+    """Raised when a create-only writer is aimed at an existing package.
+
+    Its own class rather than a bare `FileExistsError` so a caller can tell
+    "you meant to edit, not create" apart from any other collision on the way
+    to disk, and answer it by reaching for `open_package` instead of by adding
+    a flag.
+    """
+
+
+def _refuse_existing(target: Path, *, overwrite: bool) -> None:
+    """Create-only writers refuse a destination that already holds a package.
+
+    The distinction that matters is create versus edit, not file versus
+    directory. For an archive the test is that the file exists at all; for a
+    directory tree it is that `scene.json` is already there, so the archive
+    writer's fresh temporary tree and an empty output directory both pass.
+    """
+
+    if overwrite:
+        return
+
+    occupied = target.is_file() or (target.is_dir() and (target / SCENE_DOCUMENT).is_file())
+    if not occupied:
+        return
+
+    raise PackageExists(
+        f"{target} already exists. This writer CREATES a package: it would "
+        f"rebuild the document from the solve and drop every field it does not "
+        f"itself write, which for a Scene-authored 0.7 package means the "
+        f"environment block and the camera's capture provenance. To change an "
+        f"existing package use atlas_camera.format.open_package, which "
+        f"preserves what it does not understand. To genuinely replace this one, "
+        f"pass overwrite=True."
+    )
+
+
 def write_atlas_archive(
     solve: Any,
     destination: str | Path,
@@ -101,15 +138,30 @@ def write_atlas_archive(
     observation_id: str | None = None,
     cleanplate_observation_id: str | None = None,
     write_mattes: bool = True,
+    overwrite: bool = False,
 ) -> ArchivePackageResult:
     """Build, validate, and atomically write one portable ``.atlas`` file.
 
     ``write_atlas_package`` remains the compatibility directory writer.  Both
     routes use exactly the same tree builder, so their documents and adopted
     asset bytes cannot drift.
+
+    **This CREATES a package. It cannot update one.** The document is built
+    from the solve, from scratch, into a fresh temporary tree — so every field
+    this build does not write is absent from the result, including the whole of
+    what schema 0.7 added. Aimed at a path where a Scene-authored package
+    already sits, it does not merge with it, it replaces it, and the
+    environment block and capture provenance do not survive.
+
+    So an existing destination is refused. ``overwrite=True`` says the caller
+    means a destructive replace and not an update; there is no argument that
+    turns this into an update, because updating is
+    ``atlas_camera.format.open_package``'s job and it preserves what this
+    function cannot.
     """
 
     target = Path(destination)
+    _refuse_existing(target, overwrite=overwrite)
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f".{target.stem}-", dir=target.parent) as staging:
         tree = Path(staging) / "package"
@@ -157,15 +209,24 @@ def write_atlas_package(
     observation_id: str | None = None,
     cleanplate_observation_id: str | None = None,
     write_mattes: bool = True,
+    overwrite: bool = False,
 ) -> PackageResult:
     """Write `solve` as a `.atlas` package at `destination`.
 
     `plate_path` overrides the solve's own `image_path`, which names wherever
     the plate was when the solve ran and is routinely a temporary file that has
     since gone.
+
+    Like `write_atlas_archive`, this CREATES. Pointed at a directory that is
+    already a package it would overwrite `scene.json` with a document rebuilt
+    from the solve, losing every field this build does not itself write, so a
+    destination that already holds one is refused unless `overwrite=True`
+    declares the replacement deliberate. An empty or not-yet-a-package
+    directory is fine, which is what the archive writer's temporary tree is.
     """
 
     package = Path(destination)
+    _refuse_existing(package, overwrite=overwrite)
     for directory in (package, *(package / name_ for name_ in PACKAGE_DIRS)):
         directory.mkdir(parents=True, exist_ok=True)
 

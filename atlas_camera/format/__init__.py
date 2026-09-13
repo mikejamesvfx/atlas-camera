@@ -43,6 +43,14 @@ from atlas_camera.format.document import (
     scene_document,
 )
 from atlas_camera.format.identity import PLANE_NORMAL_PLACES, PLANE_OFFSET_PLACES, plane_id_for
+from atlas_camera.format.package import (
+    AtlasPackage,
+    PackageError,
+    UncommittedChanges,
+    open_package,
+    read_document,
+    write_document,
+)
 from atlas_camera.format.layout import (
     ATLAS_DIR,
     GEOMETRY_DIR,
@@ -63,8 +71,11 @@ from atlas_camera.format.version import (
 __all__ = [
     "ATLAS_MIMETYPE",
     "ATLAS_DIR",
+    "AtlasPackage",
     "FormatError",
     "ContainerError",
+    "PackageError",
+    "UncommittedChanges",
     "GEOMETRY_DIR",
     "HISTORY_DIR",
     "IMAGERY_DIR",
@@ -80,6 +91,9 @@ __all__ = [
     "check_readable",
     "digest_bytes",
     "digest_json",
+    "open_package",
+    "read_document",
+    "write_document",
     "plane_documents",
     "plane_id_for",
     "scene_document",
