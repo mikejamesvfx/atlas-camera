@@ -18,7 +18,10 @@ from atlas_camera.exporters.review_package import ReviewPackageResult, build_rev
 from atlas_camera.inference import create_multimodal_provider, provider_models_response
 from atlas_camera.reference_data import list_categories, search_scale_references
 
-PROJECT_META = "atlas_project.json"
+#: The workbench session file. Named ``atlas_project.json`` until ADR-005 (atlas-nexus), when that
+#: name was reserved for the delivery-project record; the legacy name is read as a fallback only.
+PROJECT_META = "atlas_workbench_session.json"
+LEGACY_PROJECT_META = "atlas_project.json"
 CONSTRAINTS_FILE = "constraints.json"
 UI_STATE_FILE = "ui_state.json"
 SOLVE_FILE = "atlas_solve.json"
@@ -72,8 +75,29 @@ def _image_size(image_path: Path) -> tuple[int, int]:
         return image.size
 
 
+def _is_session_meta(data: object) -> bool:
+    """A workbench session, by content — never a delivery-project record or an export manifest."""
+    return (isinstance(data, dict) and "project_dir" in data
+            and not any(key in data for key in ("schema", "shots", "colour")))
+
+
+def _read_session_meta(project_dir: Path) -> dict[str, Any]:
+    current = project_dir / PROJECT_META
+    if current.is_file():
+        return _read_json(current)
+    legacy = project_dir / LEGACY_PROJECT_META
+    if legacy.is_file():
+        try:
+            data = _read_json(legacy)
+        except ValueError:
+            return {}
+        if _is_session_meta(data):
+            return data
+    return {}
+
+
 def _project_from_meta(project_dir: Path) -> AtlasUiProject:
-    meta = _read_json(project_dir / PROJECT_META)
+    meta = _read_session_meta(project_dir)
     source = meta.get("source_image")
     source_image = Path(source) if source else None
     return AtlasUiProject(
@@ -90,7 +114,10 @@ def open_project(project_dir: str | Path) -> AtlasUiProject:
     path = Path(project_dir).expanduser().resolve()
     path.mkdir(parents=True, exist_ok=True)
     if not (path / PROJECT_META).is_file():
-        _write_json(path / PROJECT_META, {"project_dir": str(path), "source_image": None})
+        # A legacy session carries over; anything else under the legacy name is left untouched.
+        legacy = _read_session_meta(path)
+        _write_json(path / PROJECT_META,
+                    legacy or {"project_dir": str(path), "source_image": None})
     return _project_from_meta(path)
 
 

@@ -1,4 +1,9 @@
-"""atlas_project.json — the versioned reproducibility manifest.
+"""atlas_export.json — the versioned reproducibility manifest.
+
+Named ``atlas_project.json`` until ADR-005 (atlas-nexus, 2026-09-13). That name now means only the
+delivery-project record written by ``core/project.py``; three different Camera files shared it, and
+co-located writers overwrote each other. The legacy name is still READ, discriminated by content
+(an integer ``schema``), and never written or modified.
 
 One JSON per export directory bundling everything needed to trace an artifact
 back to what produced it: plate checksum, solve fingerprint, model
@@ -25,7 +30,18 @@ from pathlib import Path
 from typing import Any, Iterable
 
 MANIFEST_SCHEMA_VERSION = 1
-MANIFEST_FILENAME = "atlas_project.json"
+MANIFEST_FILENAME = "atlas_export.json"
+#: The pre-ADR-005 name. A read-only fallback for exports made before the rename; never written.
+LEGACY_MANIFEST_FILENAME = "atlas_project.json"
+
+
+class ForeignManifestError(ValueError):
+    """A file under the export-manifest name that is not an export manifest this build can read.
+
+    Raised instead of overwriting it: a delivery-project record, a workbench session, a corrupt file
+    or a manifest from a newer Atlas all deserve to survive. Export callers already turn any manifest
+    exception into a reported "manifest skipped" note, so the export itself still succeeds.
+    """
 
 # The identity core: the manifest keys hashed into manifest_identity_hash.
 # FROZEN for schema v1 — extending or reordering this list is a schema bump.
@@ -162,34 +178,70 @@ def manifest_identity_hash(solve: Any) -> str:
     return build_project_manifest(solve)["identity_hash"]
 
 
+def find_export_manifest(output_dir: str | Path) -> Path | None:
+    """The export manifest in ``output_dir``: ``atlas_export.json``, else a legacy
+    ``atlas_project.json`` that really is one (integer ``schema``). ``None`` otherwise —
+    a delivery-project record or workbench session under the legacy name is not ours."""
+    out_dir = Path(output_dir)
+    current = out_dir / MANIFEST_FILENAME
+    if current.is_file():
+        return current
+    legacy = out_dir / LEGACY_MANIFEST_FILENAME
+    if legacy.is_file():
+        try:
+            load_project_manifest(legacy)
+        except Exception:  # noqa: BLE001 - not an export manifest
+            return None
+        return legacy
+    return None
+
+
 def write_project_manifest(solve: Any, output_dir: str | Path, *,
                            artifacts: Iterable[ManifestArtifact] = (),
                            extra: dict[str, Any] | None = None) -> Path:
-    """Write (or merge-append into) ``atlas_project.json`` in ``output_dir``.
+    """Write (or merge-append into) ``atlas_export.json`` in ``output_dir``.
 
     Same solve fingerprint in the existing manifest -> extend its artifact
     list (deduped by kind+path) and bump ``updated_at``; a different
     fingerprint means a new solve owns the directory -> overwrite.
+
+    ADR-005: only ``atlas_export.json`` is written. A legacy ``atlas_project.json``
+    export manifest in the directory is merged FROM but never modified, and a legacy
+    file of any other kind is left untouched. A file under ``atlas_export.json`` that
+    cannot be read as an export manifest raises :class:`ForeignManifestError` rather
+    than being overwritten.
     """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / MANIFEST_FILENAME
     manifest = build_project_manifest(solve, artifacts=artifacts, extra=extra)
 
+    existing = None
     if path.is_file():
         try:
             existing = load_project_manifest(path)
-        except Exception:  # noqa: BLE001 — corrupt manifest: overwrite
-            existing = None
-        if existing and existing.get("solve_fingerprint") == manifest["solve_fingerprint"]:
-            seen = {(a.get("kind"), a.get("path"))
-                    for a in existing.get("artifacts", [])}
-            merged = list(existing.get("artifacts", []))
-            merged.extend(a for a in manifest["artifacts"]
-                          if (a["kind"], a["path"]) not in seen)
-            manifest["artifacts"] = merged
-            manifest["generated_at"] = existing.get("generated_at",
-                                                    manifest["generated_at"])
+        except Exception as exc:  # noqa: BLE001 - refuse rather than destroy
+            raise ForeignManifestError(
+                f"{path} exists but is not an export manifest this build can read ({exc}); "
+                f"refusing to overwrite it"
+            ) from exc
+    else:
+        legacy = out_dir / LEGACY_MANIFEST_FILENAME
+        if legacy.is_file():
+            try:
+                existing = load_project_manifest(legacy)
+            except Exception:  # noqa: BLE001 - a delivery record or session: not ours
+                existing = None
+    if existing:
+        if existing.get("solve_fingerprint") == manifest["solve_fingerprint"]:
+                seen = {(a.get("kind"), a.get("path"))
+                        for a in existing.get("artifacts", [])}
+                merged = list(existing.get("artifacts", []))
+                merged.extend(a for a in manifest["artifacts"]
+                              if (a["kind"], a["path"]) not in seen)
+                manifest["artifacts"] = merged
+                manifest["generated_at"] = existing.get("generated_at",
+                                                        manifest["generated_at"])
 
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False),
                     encoding="utf-8")

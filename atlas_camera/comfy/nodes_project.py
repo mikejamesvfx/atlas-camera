@@ -77,5 +77,14 @@ class AtlasProject:
         )
         if create_tree:
             proj.ensure_tree()
-            proj.write_manifest()
+            try:
+                proj.write_manifest()
+            except _project.ForeignProjectFileError as exc:
+                # Refused, not overwritten (ADR-005). The project context is still valid, so
+                # exports keep routing; the artist is told why the record was not updated.
+                import logging
+
+                logging.warning("atlas_project.json not updated: %s", exc)
+                return {"ui": {"text": [f"atlas_project.json not updated: {exc}"]},
+                        "result": (proj,)}
         return (proj,)

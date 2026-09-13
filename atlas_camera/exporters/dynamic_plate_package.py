@@ -19,7 +19,7 @@ Package layout (Dynamic Plates v0.1 spec §24)::
 
 The IMAGE SEQUENCE in ``generated/`` is authoritative; any preview video is a
 derivative artifact. ``manifest.json`` IS the artifact contract here, so it
-must succeed — unlike the side-car ``atlas_project.json`` convention where a
+must succeed — unlike the side-car ``atlas_export.json`` convention where a
 manifest failure never fails an export.
 
 Needs Pillow + numpy (``pip install -e .[image,vision]``).

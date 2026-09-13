@@ -97,7 +97,7 @@ module.
 
 - `node_reports.py` — on-node report suffixes (scale trust, scene health) and the
 
-  `atlas_project.json` manifest writer. Rule: a manifest failure must NEVER fail
+  `atlas_export.json` manifest writer. Rule: a manifest failure must NEVER fail
 
   an export.
 
