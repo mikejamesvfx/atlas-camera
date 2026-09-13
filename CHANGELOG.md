@@ -14,6 +14,20 @@ Registry goes **93 → 100 standard**, total stays **110**. Every key is
 byte-identical, so saved graphs still load; what changed is which nodes are
 registered without a flag.
 
+### Exporter: optional JPEG texture in relief-mesh GLBs
+
+- `export_relief_mesh_glb(..., texture_format="PNG")` gains a keyword-only
+  `texture_format`: `"PNG"` (default, unchanged, lossless) or `"JPEG"` (quality
+  90, for web delivery of an already camera-processed photograph). Case-insensitive;
+  any other value raises `ValueError`.
+- JPEG never silently drops alpha. Texture alpha is live in these GLBs (the textured
+  material is `alphaMode: BLEND` whenever the transition ribbon emits vertex
+  colours), so a texture with any transparent pixel is refused; a fully opaque
+  alpha channel is dropped. 16-bit and float textures are refused for JPEG.
+- Validation and encoding happen before anything is written. The ribbon's baked
+  vertex colours and every geometry buffer are byte-identical across codecs.
+- First consumer: Atlas Showcase's web bake. No node widget exposes it yet.
+
 ### Seven nodes promoted out of the experimental gate
 
 - The **two-pass occlusion-fill engine** — `AtlasInterpassGate`,
