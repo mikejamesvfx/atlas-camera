@@ -33,7 +33,7 @@ def _with_manifest_note(result: tuple, note: str):
 
     ComfyUI renders `{"ui": {"text": [...]}}` on an OUTPUT_NODE, which is how
     AtlasExportReliefMesh already shows its report. Using it here means an
-    export whose atlas_project.json was skipped SAYS so where the artist is
+    export whose atlas_export.json was skipped SAYS so where the artist is
     looking, without adding an output slot — the returned tuple is unchanged,
     so every saved graph keeps its wires.
     """

@@ -14,6 +14,24 @@ Registry goes **93 → 100 standard**, total stays **110**. Every key is
 byte-identical, so saved graphs still load; what changed is which nodes are
 registered without a flag.
 
+### `atlas_project.json` names the delivery project only (ADR-005)
+
+Three Camera files shared `atlas_project.json`, with different meanings, and co-located writers
+overwrote each other. Now:
+
+- **Delivery-project record** (`core/project.py`, project root) keeps `atlas_project.json`.
+- **Per-export reproducibility manifest** is written as **`atlas_export.json`**. A legacy
+  `atlas_project.json` export manifest is still read and merged from (identified by its integer
+  `schema`) but never modified. `find_export_manifest(dir)` locates either.
+- **Workbench session** is written as **`atlas_workbench_session.json`**; a legacy session file is read
+  as a fallback.
+- **No writer overwrites another's file.** The export writer raises `ForeignManifestError` (reported as
+  "manifest skipped", the export still succeeds); the project record writer raises
+  `ForeignProjectFileError` and the `AtlasProject` node shows the reason instead of overwriting; the
+  workbench never treats a delivery record as its session.
+- The `atlas_project_identity:` header embedded in `.nk` / `.py` / `.ma` exports is unchanged, so
+  artifacts already shipped stay valid.
+
 ### Public API: photograph to relief world
 
 - `atlas.recover_relief_world(image, *, depth_model, device, grid_long_edge)` recovers

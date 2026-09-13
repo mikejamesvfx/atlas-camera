@@ -4,7 +4,7 @@ Split out of `node_helpers.py` in phase 3 of
 `docs/dev/node_helpers_layering_plan.md`.
 
 Two related jobs: the human-readable suffixes a node appends to its report
-(scale trust, scene health), and `atlas_project.json` — the versioned
+(scale trust, scene health), and `atlas_export.json` — the versioned
 reproducibility manifest every exporter writes beside its artifacts.
 
 The manifest rule that matters: a manifest failure must NEVER fail an export.
@@ -88,14 +88,14 @@ def _health_summary_suffix(solve) -> str:
 def _write_export_manifest(
     solve, output_dir, kind_paths, exporter: str, *, extra=None,
 ) -> str:
-    """Write/merge atlas_project.json beside an export + embed the identity
+    """Write/merge atlas_export.json beside an export + embed the identity
     hash as a leading comment in text artifacts that tolerate one (.nk/.py/.ma).
 
     A manifest failure must NEVER fail the export — everything degrades to a
     log line. Called with [(kind, path), ...]; empty paths are skipped.
 
     Returns "" on success, else a one-line note for the caller's REPORT. The
-    log line alone was not enough: atlas_project.json is the P0 trust artifact
+    log line alone was not enough: atlas_export.json is the P0 trust artifact
     (scale_health, the confidence vector, export provenance), so an export that
     ships without one looks exactly like a complete delivery — and a headless
     or agent-driven run never sees ComfyUI's console at all.
@@ -135,8 +135,8 @@ def _write_export_manifest(
                     + ", ".join(unstamped))
         return ""
     except Exception as exc:  # noqa: BLE001
-        logging.warning("atlas_project.json manifest skipped: %s", exc)
-        return f"atlas_project.json manifest SKIPPED: {exc}"
+        logging.warning("atlas_export.json manifest skipped: %s", exc)
+        return f"atlas_export.json manifest SKIPPED: {exc}"
 def _format_hole_fill_report(enabled, n_filled, filled, faces_added, loops_left,
                              max_hole_edges, near_m, far_m):
     """Human-readable summary of an interior hole fill, for the export node.
