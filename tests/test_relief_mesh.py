@@ -799,3 +799,149 @@ def test_build_relief_mesh_with_camera_spec():
     assert mesh_spec.stats["n_vertices"] == mesh_kw.stats["n_vertices"]
     assert mesh_spec.stats["n_faces"] == mesh_kw.stats["n_faces"]
 
+
+# --- embedded texture codec (texture_format) ---------------------------------
+# Every assertion reads the embedded bytes back. The 2026-08 offset bug survived a
+# suite that checked only that each bufferView stayed inside the BIN chunk.
+
+def _glb(path):
+    import json
+    import struct
+
+    raw = open(path, "rb").read()
+    magic, version, total = struct.unpack_from("<III", raw, 0)
+    assert (magic, version, total) == (0x46546C67, 2, len(raw))
+    json_len, json_type = struct.unpack_from("<II", raw, 12)
+    assert json_type == 0x4E4F534A
+    gltf = json.loads(raw[20:20 + json_len])
+    bin_len, bin_type = struct.unpack_from("<II", raw, 20 + json_len)
+    assert bin_type == 0x004E4942 and 20 + json_len + 8 + bin_len == len(raw)
+    return gltf, raw[20 + json_len + 8:]
+
+
+def _image_bytes(gltf, binary):
+    view = gltf["bufferViews"][gltf["images"][0]["bufferView"]]
+    assert view["byteOffset"] + view["byteLength"] <= len(binary)
+    return binary[view["byteOffset"]:view["byteOffset"] + view["byteLength"]]
+
+
+def _photo_like(w=160, h=120, mode="RGB", seed=7):
+    from PIL import Image
+
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:h, 0:w]
+    base = np.dstack([xx * 255.0 / w, yy * 255.0 / h, np.full((h, w), 110.0)])
+    arr = np.clip(base + rng.normal(0, 6, (h, w, 3)), 0, 255).astype(np.uint8)
+    return Image.fromarray(arr, "RGB").convert(mode)
+
+
+def test_glb_default_texture_is_lossless_png(tmp_path):
+    import io
+
+    from PIL import Image
+
+    mesh = _build(_scene_depth(wall_z=-10.0), grid_long_edge=32)
+    texture = _photo_like()
+    gltf, binary = _glb(export_relief_mesh_glb(mesh, tmp_path, texture=texture)["glb"])
+
+    assert gltf["images"][0]["mimeType"] == "image/png"
+    blob = _image_bytes(gltf, binary)
+    assert blob[:8] == b"\x89PNG\r\n\x1a\n"
+    decoded = Image.open(io.BytesIO(blob))
+    assert decoded.format == "PNG"
+    assert np.array_equal(np.asarray(decoded), np.asarray(texture)), "PNG must be lossless"
+
+
+def test_glb_jpeg_texture_embeds_real_jpeg_bytes(tmp_path):
+    import io
+
+    from PIL import Image
+
+    mesh = _build(_scene_depth(wall_z=-10.0), grid_long_edge=32)
+    texture = _photo_like()
+    png_gltf, png_bin = _glb(export_relief_mesh_glb(
+        mesh, tmp_path / "png", texture=texture)["glb"])
+    gltf, binary = _glb(export_relief_mesh_glb(
+        mesh, tmp_path / "jpeg", texture=texture, texture_format="JPEG")["glb"])
+
+    assert gltf["images"][0]["mimeType"] == "image/jpeg"
+    blob = _image_bytes(gltf, binary)
+    assert blob[:3] == b"\xff\xd8\xff", "the image bufferView must start at the JPEG SOI"
+    assert blob[-2:] == b"\xff\xd9", "and end at the JPEG EOI: byteLength is exact"
+    decoded = Image.open(io.BytesIO(blob))
+    decoded.load()
+    assert decoded.format == "JPEG" and decoded.size == texture.size and decoded.mode == "RGB"
+    error = np.abs(np.asarray(decoded, dtype=float) - np.asarray(texture, dtype=float)).mean()
+    assert error < 6.0, f"decoded texture drifted {error:.2f} levels from the source"
+
+    # The image stays the last part of the buffer; geometry is byte-identical.
+    assert gltf["images"][0]["bufferView"] == len(gltf["bufferViews"]) - 1
+    for index in range(3):
+        a, b = png_gltf["bufferViews"][index], gltf["bufferViews"][index]
+        assert png_bin[a["byteOffset"]:a["byteOffset"] + a["byteLength"]] == \
+            binary[b["byteOffset"]:b["byteOffset"] + b["byteLength"]]
+    assert len(blob) < len(_image_bytes(png_gltf, png_bin))
+
+
+def test_glb_texture_format_is_case_insensitive_and_closed(tmp_path):
+    mesh = _build(_scene_depth(wall_z=-10.0), grid_long_edge=32)
+    gltf, _ = _glb(export_relief_mesh_glb(
+        mesh, tmp_path / "lower", texture=_photo_like(), texture_format="jpeg")["glb"])
+    assert gltf["images"][0]["mimeType"] == "image/jpeg"
+
+    for index, bad in enumerate(("webp", "", None, 1)):
+        out = tmp_path / f"bad_{index}"
+        with pytest.raises(ValueError, match="texture_format"):
+            export_relief_mesh_glb(mesh, out, texture=_photo_like(), texture_format=bad)
+        assert not out.exists(), "a refused export must write nothing"
+    with pytest.raises(ValueError):
+        export_relief_mesh_glb(mesh, tmp_path / "none", texture=None, texture_format="webp")
+
+
+def test_glb_jpeg_refuses_texture_alpha_instead_of_discarding_it(tmp_path):
+    import io
+
+    from PIL import Image
+
+    mesh = _build(_scene_depth(wall_z=-10.0), grid_long_edge=32)
+    rgba = _photo_like(mode="RGBA")
+    alpha = np.full((rgba.size[1], rgba.size[0]), 255, dtype=np.uint8)
+    alpha[:10, :10] = 128
+    rgba.putalpha(Image.fromarray(alpha, "L"))
+
+    out = tmp_path / "refused"
+    with pytest.raises(ValueError, match="alpha"):
+        export_relief_mesh_glb(mesh, out, texture=rgba, texture_format="JPEG")
+    assert not out.exists()
+
+    # PNG keeps that alpha exactly.
+    gltf, binary = _glb(export_relief_mesh_glb(mesh, tmp_path / "png", texture=rgba)["glb"])
+    decoded = Image.open(io.BytesIO(_image_bytes(gltf, binary)))
+    assert decoded.mode == "RGBA"
+    assert np.array_equal(np.asarray(decoded)[..., 3], alpha)
+
+
+def test_glb_jpeg_accepts_fully_opaque_alpha(tmp_path):
+    import io
+
+    from PIL import Image
+
+    mesh = _build(_scene_depth(wall_z=-10.0), grid_long_edge=32)
+    rgb = _photo_like()
+    rgba = rgb.convert("RGBA")  # alpha channel present, every pixel opaque
+    gltf, binary = _glb(export_relief_mesh_glb(
+        mesh, tmp_path, texture=rgba, texture_format="JPEG")["glb"])
+    decoded = Image.open(io.BytesIO(_image_bytes(gltf, binary)))
+    assert decoded.format == "JPEG" and decoded.mode == "RGB"
+    assert np.abs(np.asarray(decoded, dtype=float) - np.asarray(rgb, dtype=float)).mean() < 6.0
+
+
+def test_glb_jpeg_refuses_textures_it_cannot_hold(tmp_path):
+    from PIL import Image
+
+    mesh = _build(_scene_depth(wall_z=-10.0), grid_long_edge=32)
+    deep = Image.fromarray(np.full((48, 64), 40000, dtype=np.uint16)).convert("I;16")
+    assert deep.mode == "I;16"
+    with pytest.raises(ValueError, match="mode"):
+        export_relief_mesh_glb(mesh, tmp_path / "deep", texture=deep, texture_format="JPEG")
+    assert not (tmp_path / "deep").exists()
