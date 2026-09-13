@@ -14,6 +14,23 @@ Registry goes **93 → 100 standard**, total stays **110**. Every key is
 byte-identical, so saved graphs still load; what changed is which nodes are
 registered without a flag.
 
+### Public API: photograph to relief world
+
+- `atlas.recover_relief_world(image, *, depth_model, device, grid_long_edge)` recovers
+  one photograph (RAW, or JPEG/PNG; EXIF focal and sensor honoured) as a metric relief
+  world: learned solve, metric depth at the solve's resolution, ground scale, relief
+  mesh. Returns a frozen `ReliefWorld` with a stable `camera` (`ReliefWorldCamera`),
+  `scale` (`ReliefWorldScale`: `ScaleHealth` plus the measured ground fit),
+  `mesh_stats`, `capture` and `display_image`. `ReliefWorld.mesh` is opaque.
+- `atlas.export_relief_world_glb(world, out_dir, *, texture, name, texture_format)`
+  writes the self-contained GLB; `texture` defaults to the solved frame.
+- Unsupported inputs raise `ValueError` before any model loads
+  (`atlas.RELIEF_WORLD_INPUT_SUFFIXES`).
+- First consumer: Atlas Showcase, which previously reached into eleven internal symbols
+  (one private) to do this. The sequence moved unchanged; the Showcase bake is
+  byte-identical before and after. Proposal and review:
+  `docs/proposals/2026-09-13-relief-world-facade.md`.
+
 ### Exporter: optional JPEG texture in relief-mesh GLBs
 
 - `export_relief_mesh_glb(..., texture_format="PNG")` gains a keyword-only
