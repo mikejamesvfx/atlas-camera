@@ -963,6 +963,16 @@ def test_glb_bakes_the_smudge_as_vertex_colour_on_its_own_material(cliff, tmp_pa
         "outer rings look like point samples, not an along-rim average")
     assert np.allclose(rgba[t == 0.0][:, :3], 1.0), "surface must stay white"
 
+    # The ribbon adds a COLOR_0 part to the binary buffer, which moves the image
+    # one slot further along. The exporter used to derive the image's offset from
+    # its bufferView index instead of its part position, so with a ribbon present
+    # the texture pointed at the colours and the plate decoded as garbage. Read
+    # the signature rather than trusting the offset.
+    img_bv = gltf["bufferViews"][gltf["images"][0]["bufferView"]]
+    img_start = 20 + json_len + 8 + img_bv["byteOffset"]
+    assert blob[img_start:img_start + 8] == b"\x89PNG\r\n\x1a\n", (
+        "the embedded texture bufferView does not land on a PNG")
+
 
 def test_glb_without_a_ribbon_is_unchanged(cliff, tmp_path):
     from atlas_camera.exporters.relief_mesh_exporter import export_relief_mesh_glb

@@ -468,7 +468,16 @@ def export_relief_mesh_glb(
         "buffers": [{"byteLength": len(bin_chunk)}],
     }
     if png_bytes:
-        buffer_views.append({"buffer": 0, "byteOffset": offsets[image_view - 1],
+        # The image is always the LAST part of the binary buffer, so its offset
+        # is offsets[-1]. `offsets` is indexed by PART position; `image_view` is
+        # a bufferView index. Conflating the two pointed the image one part too
+        # early every time -- at the faces block with no colors, at the colors
+        # block with them -- so every embedded texture in a GLB this exporter
+        # wrote was corrupt. It went unseen because the test asserted only that
+        # each bufferView stayed inside the BIN chunk, which a wrong-but-in-range
+        # offset satisfies. Found 2026-08-20 by decoding the bytes back; the
+        # regression test now reads the PNG signature at that offset.
+        buffer_views.append({"buffer": 0, "byteOffset": offsets[len(parts) - 1],
                              "byteLength": len(png_bytes)})
         gltf["images"] = [{"bufferView": image_view, "mimeType": "image/png"}]
         gltf["samplers"] = [{"magFilter": 9729, "minFilter": 9987,
