@@ -119,7 +119,7 @@ def build_review_package(
                                                artifacts=artifacts)
         result.files["manifest"] = manifest_path
     except Exception as exc:  # noqa: BLE001
-        result.warnings.append(f"atlas_project.json manifest skipped: {exc}")
+        result.warnings.append(f"atlas_export.json manifest skipped: {exc}")
 
     report_path = package_dir / "report.md"
     report_path.write_text(_report_markdown(solve, result), encoding="utf-8")

@@ -1,6 +1,6 @@
 """A skipped manifest must reach the artist, not just ComfyUI's console.
 
-atlas_project.json is the P0 trust artifact — scale_health, the confidence
+atlas_export.json is the P0 trust artifact — scale_health, the confidence
 vector, export provenance. The rule that a manifest failure must never fail an
 export is correct and stays; what was missing is that the failure only went to
 `logging.warning`, so an export that shipped without one looked exactly like a

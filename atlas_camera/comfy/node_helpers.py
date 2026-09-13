@@ -30,7 +30,7 @@ WHAT LEFT, and where to look for it now:
 * ``core/normals.py``            normal-field resampling (phase 2)
 * ``raw/metadata.py``            RAW hint precedence + provenance (phase 2)
 * ``comfy/view_prompts.py``      named-view vocabulary + parsers (phase 3)
-* ``comfy/node_reports.py``      report suffixes + atlas_project.json (phase 3)
+* ``comfy/node_reports.py``      report suffixes + atlas_export.json (phase 3)
 * ``comfy/fingerprints.py``      gate identity hashes (phase 3)
 
 Everything moved is RE-EXPORTED below, so ``from ...node_helpers import X``
