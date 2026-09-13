@@ -4,7 +4,7 @@
 - Status: **ACCEPTED WITH REVISIONS and implemented 2026-09-13** — `atlas_camera/relief_world.py`, exported through `import atlas`. See *Review* below.
 - From: the `capability.showcase.bake_world` consumer (atlas-showcase), registered in Atlas Nexus
   with `depends.apps[atlas-camera].surface: internal`
-- Record of the debt: atlas-showcase `docs/CAMERA_DEPENDENCY_DEBT.md`
+- Record of the debt: atlas-showcase `CAMERA_DEPENDENCY_DEBT.md`
 
 ## Problem
 
@@ -87,8 +87,8 @@ Names, return type and module placement are Camera's decision. The requirements 
 
 ## Closing condition
 
-`tools/bake_showcase.py` imports only the public facade; atlas-showcase's
-`docs/CAMERA_DEPENDENCY_DEBT.md` is closed with the Camera commit that introduced it; and the
+`bake_showcase.py` imports only the public facade; atlas-showcase's
+`CAMERA_DEPENDENCY_DEBT.md` is closed with the Camera commit that introduced it; and the
 Nexus manifest changes `surface: internal` to `surface: public`.
 
 ## Review (2026-09-13, before implementation)
