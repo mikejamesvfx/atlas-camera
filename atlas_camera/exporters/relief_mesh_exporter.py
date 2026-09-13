@@ -305,12 +305,66 @@ def export_relief_mesh(
     return result
 
 
+_GLB_TEXTURE_MIME = {"PNG": "image/png", "JPEG": "image/jpeg"}
+#: Fixed, documented JPEG quality. Not a parameter until a second consumer needs one.
+GLB_JPEG_QUALITY = 90
+
+
+def _jpeg_ready_texture(texture: Any) -> Any:
+    """The texture as an 8-bit RGB or greyscale image JPEG can hold, or ValueError.
+
+    JPEG has no alpha channel, and texture alpha is live in these GLBs: when the
+    transition ribbon emits COLOR_0 the textured material is ``alphaMode: BLEND``,
+    and glTF multiplies baseColorTexture alpha into the result. So alpha is never
+    silently discarded -- a fully opaque alpha channel carries nothing and is
+    dropped; any transparency is refused.
+    """
+    mode = texture.mode
+    if mode in ("RGB", "L"):
+        return texture
+    if mode == "P":
+        texture = texture.convert("RGBA" if "transparency" in texture.info else "RGB")
+        mode = texture.mode
+        if mode == "RGB":
+            return texture
+    if mode in ("RGBA", "LA", "PA"):
+        low, _high = texture.getchannel("A").getextrema()
+        if low < 255:
+            raise ValueError(
+                "texture_format='JPEG' cannot carry texture alpha, and this texture has "
+                "transparent pixels; export with texture_format='PNG'"
+            )
+        return texture.convert("L" if mode == "LA" else "RGB")
+    raise ValueError(
+        f"texture_format='JPEG' supports 8-bit RGB or greyscale textures (and fully "
+        f"opaque RGBA/LA/palette); got mode {mode!r}; export with texture_format='PNG'"
+    )
+
+
+def _encode_glb_texture(texture: Any | None, texture_format: Any) -> tuple[bytes, str | None]:
+    """Validate ``texture_format`` and encode the texture: ``(bytes, mimeType)``."""
+    import io
+
+    fmt = texture_format.upper() if isinstance(texture_format, str) else None
+    if fmt not in _GLB_TEXTURE_MIME:
+        raise ValueError(f"texture_format must be 'PNG' or 'JPEG', got {texture_format!r}")
+    if texture is None:
+        return b"", None
+    buf = io.BytesIO()
+    if fmt == "JPEG":
+        _jpeg_ready_texture(texture).save(buf, format="JPEG", quality=GLB_JPEG_QUALITY)
+    else:
+        texture.save(buf, format="PNG")
+    return buf.getvalue(), _GLB_TEXTURE_MIME[fmt]
+
+
 def export_relief_mesh_glb(
     mesh: ReliefMesh,
     output_dir: str | Path,
     *,
     texture: Any | None = None,
     name: str = "atlas_relief_mesh",
+    texture_format: str = "PNG",
 ) -> dict[str, str]:
     """Write a self-contained ``{name}.glb`` (glTF 2.0 binary, texture embedded).
 
@@ -319,12 +373,25 @@ def export_relief_mesh_glb(
     The material is tagged ``KHR_materials_unlit`` so the projected photo renders
     exactly as-is (no lighting), with a PBR fallback for viewers without the
     extension. Zero dependencies beyond numpy (+ Pillow when embedding texture).
+
+    ``texture_format`` selects the embedded image codec, case-insensitively:
+
+    - ``"PNG"`` (default) — lossless, alpha preserved. The DCC/preview path, and
+      what every existing reader of these GLBs assumes.
+    - ``"JPEG"`` — lossy, quality :data:`GLB_JPEG_QUALITY`, for web delivery of an
+      already camera-processed photograph. JPEG has no alpha: a texture with any
+      transparent pixel raises ``ValueError`` rather than losing it.
+
+    Any other value raises ``ValueError``. Validation and encoding happen before
+    anything is written, so a refused export leaves no file or directory behind.
+    Without a texture the format has no effect.
     """
-    import io
     import json as _json
     import struct
 
     import numpy as np
+
+    image_bytes, image_mime = _encode_glb_texture(texture, texture_format)
 
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -373,12 +440,6 @@ def export_relief_mesh_glb(
     else:
         ribbon_face_mask = None
 
-    png_bytes = b""
-    if texture is not None:
-        buf = io.BytesIO()
-        texture.save(buf, format="PNG")
-        png_bytes = buf.getvalue()
-
     def _pad4(data: bytes, pad: bytes = b"\x00") -> bytes:
         return data + pad * ((4 - len(data) % 4) % 4)
 
@@ -386,8 +447,8 @@ def export_relief_mesh_glb(
     parts = [_pad4(verts.tobytes()), _pad4(uvs.tobytes()), _pad4(faces.tobytes())]
     if colors is not None:
         parts.append(_pad4(colors.tobytes()))
-    if png_bytes:
-        parts.append(_pad4(png_bytes))
+    if image_bytes:
+        parts.append(_pad4(image_bytes))
     offsets = []
     off = 0
     for part in parts:
@@ -467,7 +528,7 @@ def export_relief_mesh_glb(
         "bufferViews": buffer_views,
         "buffers": [{"byteLength": len(bin_chunk)}],
     }
-    if png_bytes:
+    if image_bytes:
         # The image is always the LAST part of the binary buffer, so its offset
         # is offsets[-1]. `offsets` is indexed by PART position; `image_view` is
         # a bufferView index. Conflating the two pointed the image one part too
@@ -478,8 +539,8 @@ def export_relief_mesh_glb(
         # offset satisfies. Found 2026-08-20 by decoding the bytes back; the
         # regression test now reads the PNG signature at that offset.
         buffer_views.append({"buffer": 0, "byteOffset": offsets[len(parts) - 1],
-                             "byteLength": len(png_bytes)})
-        gltf["images"] = [{"bufferView": image_view, "mimeType": "image/png"}]
+                             "byteLength": len(image_bytes)})
+        gltf["images"] = [{"bufferView": image_view, "mimeType": image_mime}]
         gltf["samplers"] = [{"magFilter": 9729, "minFilter": 9987,
                              "wrapS": 33071, "wrapT": 33071}]
         gltf["textures"] = [{"source": 0, "sampler": 0}]
