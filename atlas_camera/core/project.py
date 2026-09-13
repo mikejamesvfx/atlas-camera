@@ -17,7 +17,29 @@ import os
 from pathlib import Path
 import re
 
+#: The delivery-project record. ADR-005 (atlas-nexus): this name means this file and nothing else.
 PROJECT_MANIFEST = "atlas_project.json"
+
+
+class ForeignProjectFileError(ValueError):
+    """``atlas_project.json`` exists at the project level but is not a delivery-project record.
+
+    Before ADR-005 two other Camera files used the name: the per-export reproducibility manifest
+    (now ``atlas_export.json``) and the workbench session (now ``atlas_workbench_session.json``).
+    A legacy one of those, or an unreadable file, is refused rather than overwritten.
+    """
+
+
+def is_project_record(data: object) -> bool:
+    """True for a delivery-project record, by content: never an export manifest (integer
+    ``schema``) or a workbench session (``project_dir`` / ``source_image``)."""
+    if not isinstance(data, dict):
+        return False
+    if isinstance(data.get("schema"), int):
+        return False
+    if ("project_dir" in data or "source_image" in data) and not ("shots" in data or "colour" in data):
+        return False
+    return True
 
 # --- Colour modes -----------------------------------------------------------
 # The one explicit choice that separates the two audiences. Default is the
@@ -170,8 +192,14 @@ class AtlasProject:
         if self.manifest_path.is_file():
             try:
                 data = json.loads(self.manifest_path.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                data = {}
+            except (ValueError, OSError) as exc:
+                raise ForeignProjectFileError(
+                    f"{self.manifest_path} exists but cannot be read ({exc}); refusing to "
+                    f"overwrite it") from exc
+            if not is_project_record(data):
+                raise ForeignProjectFileError(
+                    f"{self.manifest_path} is not a delivery-project record (a pre-ADR-005 export "
+                    f"manifest or workbench session?); refusing to overwrite it")
         shots = set(data.get("shots") or [])
         shots.add(self.shot)
         payload = {
