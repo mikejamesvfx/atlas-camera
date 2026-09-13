@@ -431,6 +431,15 @@ def test_glb_export_is_valid_gltf2(tmp_path):
     for bv in gltf["bufferViews"]:
         assert bv["byteOffset"] + bv["byteLength"] <= bin_len
 
+    # ...and the image bufferView lands on an actual PNG. Staying inside the BIN
+    # chunk is not the same as pointing at the right part of it: for weeks this
+    # offset was one part early and every embedded texture was corrupt, while the
+    # in-range assertion above passed. Read the bytes.
+    img_bv = gltf["bufferViews"][gltf["images"][0]["bufferView"]]
+    img_bytes = raw[bin_off + 8 + img_bv["byteOffset"]:
+                    bin_off + 8 + img_bv["byteOffset"] + img_bv["byteLength"]]
+    assert img_bytes[:8] == b"\x89PNG\r\n\x1a\n"
+
     # glTF V origin is top-left — flipped from the mesh's OBJ-convention UVs.
     uv_bv = gltf["bufferViews"][acc[1]["bufferView"]]
     uv_bytes = raw[bin_off + 8 + uv_bv["byteOffset"]:
