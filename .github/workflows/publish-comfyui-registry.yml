@@ -1,17 +1,24 @@
 name: Publish to Comfy registry
 
-# Publishes to registry.comfy.org whenever the version field in pyproject.toml
-# changes on main. To ship a release: bump `version` in pyproject.toml, commit,
-# push to main. Requires a repo secret named exactly REGISTRY_ACCESS_TOKEN
-# (Settings -> Secrets and variables -> Actions), set to a publisher API key
-# generated at registry.comfy.org.
+# Publication is an explicit act, never a side effect of merging (atlas-nexus ADR-006).
+#
+# Merging to main -- including a change to `version` in pyproject.toml -- publishes nothing. To
+# publish a release:
+#   1. bump `version` in pyproject.toml and merge to main;
+#   2. publish a GitHub Release whose tag is that version (`v0.8.3` or `0.8.3`), or run this workflow
+#      by hand with `version` set to the same value.
+#
+# The job refuses unless the requested version equals pyproject.toml's `version`, and unless the commit
+# being published is on main. Requires a repo secret named exactly REGISTRY_ACCESS_TOKEN
+# (Settings -> Secrets and variables -> Actions), set to a publisher API key from registry.comfy.org.
 on:
+  release:
+    types: [published]
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "pyproject.toml"
+    inputs:
+      version:
+        description: "Version to publish. Must equal `version` in pyproject.toml."
+        required: true
 
 jobs:
   publish-node:
@@ -22,25 +29,28 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # The paths filter above fires on ANY pyproject.toml edit (e.g. adding
-      # an extra), and the registry 400s on a duplicate version — so gate the
-      # publish on the `version = ` line actually changing in this push.
-      # workflow_dispatch always publishes (the manual escape hatch).
-      - name: Did the version change?
-        id: version_changed
+
+      - name: Refuse unless the requested version is the declared one
+        env:
+          REQUESTED: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.version }}
         run: |
-          BASE="${{ github.event.before }}"
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
-            BASE="HEAD^"
+          DECLARED=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          REQUESTED="${REQUESTED#v}"
+          echo "requested=$REQUESTED declared=$DECLARED commit=$GITHUB_SHA"
+          if [ "$REQUESTED" != "$DECLARED" ]; then
+            echo "::error::Requested version $REQUESTED does not match pyproject.toml ($DECLARED); nothing was published."
+            exit 1
           fi
-          if git diff "$BASE" HEAD -- pyproject.toml | grep -qE '^\+version\s*='; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "pyproject.toml changed but not its version line — skipping publish."
+
+      - name: Refuse unless the commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Commit $GITHUB_SHA is not on main; only a commit on main can be published."
+            exit 1
           fi
+
       - name: Publish Custom Node
-        if: steps.version_changed.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: Comfy-Org/publish-node-action@main
         with:
           personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}

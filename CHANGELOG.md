@@ -14,6 +14,14 @@ Registry goes **93 → 100 standard**, total stays **110**. Every key is
 byte-identical, so saved graphs still load; what changed is which nodes are
 registered without a flag.
 
+### Publishing is explicit (ADR-006)
+
+- Merging to `main` no longer publishes to the ComfyUI Registry, even when it changes `version` in
+  `pyproject.toml`. Previously any such push to `main` auto-published.
+- Publish by releasing a GitHub Release tagged with the version (`v0.8.3` or `0.8.3`), or by running
+  the publish workflow by hand with `version` set. The workflow refuses if the requested version is not
+  `pyproject.toml`'s, or if the commit is not on `main`.
+
 ### `atlas_project.json` names the delivery project only (ADR-005)
 
 Three Camera files shared `atlas_project.json`, with different meanings, and co-located writers
