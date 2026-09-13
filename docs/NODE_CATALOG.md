@@ -220,6 +220,11 @@ worked only because os.path.join discards the left side for absolute right
 sides). pyproject carries `[tool.comfy]` (PublisherId `miikejamesburns`) for
 
 `comfy node publish`; the publisher must exist on registry.comfy.org first.
+Publication is explicit (atlas-nexus ADR-006): merging to `main` never publishes.
+Publish by releasing a GitHub Release tagged with `pyproject.toml`'s version, or by
+running `publish-comfyui-registry.yml` by hand with that version; the workflow refuses
+a version mismatch and any commit not on `main`. Pinned by
+`tests/test_registry_publish_policy.py`.
 
 Pinned by `tests/test_node_pack_entrypoint.py`, which loads the root file the
 
