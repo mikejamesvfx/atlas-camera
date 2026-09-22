@@ -14,6 +14,7 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasViewportControls,
     AtlasBlockoutViewport,
     AtlasDisocclusionGuide,
+    AtlasGhostPixelMap,
     AtlasStereoRender,
     AtlasDebugReport,
     AtlasLayerPreview,
@@ -26,7 +27,9 @@ from atlas_camera.comfy.nodes_completion import (
     AtlasOcclusionGraph,
     AtlasShootList,
 )
-from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
+from atlas_camera.comfy.nodes_qa import AtlasAdherenceScore, AtlasAssessOutput
+from atlas_camera.comfy.nodes_conditioning import (AtlasConditioningBundle,
+                                                   AtlasWriteConditioningEXR)
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasCompositeCrop,
@@ -193,6 +196,9 @@ NODE_CLASS_MAPPINGS = {
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
     "AtlasAssessImage":           AtlasAssessImage,
     "AtlasAssessOutput":          AtlasAssessOutput,
+    "AtlasConditioningBundle":    AtlasConditioningBundle,
+    "AtlasWriteConditioningEXR":  AtlasWriteConditioningEXR,
+    "AtlasAdherenceScore":        AtlasAdherenceScore,
     "AtlasSolveGate":             AtlasSolveGate,
     "AtlasSceneHealthGate":       AtlasSceneHealthGate,
     "AtlasGravityOverride":       AtlasGravityOverride,
@@ -226,6 +232,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasViewportControls":      AtlasViewportControls,
     "AtlasBlockoutViewport":      AtlasBlockoutViewport,
     "AtlasDisocclusionGuide":     AtlasDisocclusionGuide,
+    "AtlasGhostPixelMap":         AtlasGhostPixelMap,
     "AtlasStereoRender":          AtlasStereoRender,
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   AtlasExportCameraPathUSD,
@@ -314,6 +321,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasReferenceScaleSolve":   "Atlas Reference-Object Scale 📏",
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
     "AtlasAssessOutput":          "Atlas Assess Output 🧪",
+    "AtlasConditioningBundle":    "Atlas Conditioning Bundle 🎛",
+    "AtlasWriteConditioningEXR":  "Atlas Conditioning EXR 💾",
+    "AtlasAdherenceScore":        "Atlas Adherence Score 📐",
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
     "AtlasSceneHealthGate":       "Atlas Scene Health Gate 🩺",
     "AtlasGravityOverride":       "Atlas Gravity Override 🎚",
@@ -348,6 +358,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasViewportControls":      "Atlas Output Desk 🎛",
     "AtlasBlockoutViewport":      "Atlas Viewport 🧊",
     "AtlasDisocclusionGuide":     "Atlas Disocclusion Guide 🟣",
+    "AtlasGhostPixelMap":         "Atlas Ghost Pixels 👻",
     "AtlasStereoRender":          "Atlas Stereo Render 👓",
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
@@ -639,6 +650,7 @@ _MENU_FOLDERS = {
         "AtlasAddPatchView", "AtlasSolvePatchViews", "AtlasPlanarHolePatch",
         "AtlasPathGuidedHoleRepair", "AtlasOcclusionGraph", "AtlasLayerPlan",
         "AtlasShootList", "AtlasDisocclusionGuide", "AtlasSolveBurstPatchCrops",
+        "AtlasGhostPixelMap",
     ),
     "Atlas/07 \u00b7 Clean Plate & Inpaint": (
         "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasPlateLayer", "AtlasLayerPreview",
@@ -649,10 +661,11 @@ _MENU_FOLDERS = {
         "AtlasBlockoutViewport", "AtlasViewportControls", "AtlasVPVisualization",
         "AtlasStereoRender", "AtlasMoveBudget", "AtlasDebugReport", "AtlasGrade",
         "AtlasDeband", "AtlasDefocus", "AtlasApplyLUT",
+        "AtlasConditioningBundle",
     ),
     "Atlas/09 \u00b7 QA & Gates": (
         "AtlasAssessImage", "AtlasAssessOutput", "AtlasSceneHealthGate",
-        "AtlasSolveGate",
+        "AtlasSolveGate", "AtlasAdherenceScore",
     ),
     "Atlas/10 \u00b7 Export": (
         "AtlasExportNuke", "AtlasExportNukeLayers", "AtlasExportMayaLayers",
@@ -660,7 +673,7 @@ _MENU_FOLDERS = {
         "AtlasExportCameraPathUSD", "AtlasExportReliefMesh", "AtlasExportPlateEXR",
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
         "AtlasExportScenePackage", "AtlasExportPlateHandoff",
-        "AtlasDirectorTake",
+        "AtlasDirectorTake", "AtlasWriteConditioningEXR",
     ),
     "Atlas/11 · Evidence Plate": (
         "AtlasOpenRealPlate", "AtlasReadLockedPlatePlan", "AtlasRecordPlateAttempt",

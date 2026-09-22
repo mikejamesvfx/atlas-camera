@@ -166,6 +166,111 @@ VERDICTS: dict[str, dict] = {
             "because getting those wrong raises nothing and simply renders a "
             "different move.",
     },
+    "AtlasConditioningBundle": {
+        "verdict": "KEEP_CORE",
+        "compatibility_risk": "low — new this cycle, nothing to migrate",
+        "migration_action": "none; keep",
+        "evidence": [
+            "dedicated tests: tests/test_conditioning_bundle.py (the core "
+            "maths against CLOSED FORMS — lateral flow equals -fx*t/Z at "
+            "0.0e+00 error, inverse-depth scaling, zero flow on a static "
+            "camera, purely radial flow under a zoom, the occlusion flag "
+            "matching a blocker's swept rectangle to 5%, XYZ self-"
+            "reprojection, unit normals, NaN holes) and "
+            "tests/test_conditioning_node.py (socket arity, the bundle not "
+            "being an IMAGE socket, preview range + declared normalisation, "
+            "per-frame focal under a keyed zoom, stride reporting, the "
+            "no-geometry refusal)",
+        ],
+        "notes":
+            "The geometric half of generative camera control. Renders each "
+            "view of a move ONCE and reads depth, normals, world position, "
+            "analytic optical flow, per-frame K and the ghost class map off "
+            "the SAME z-buffer that chose the colours, so no two passes can "
+            "disagree about the geometry. Absorbed AtlasGhostPixelMap's "
+            "per-frame loop into core/conditioning.py, which is what lets the "
+            "adherence scorer reach it — core may not import comfy, so a "
+            "scorer built on those frames could not have called a node "
+            "method. The refactor was verified byte-identical against the "
+            "pre-refactor node across five configurations (dilation, zoom, "
+            "punched plate hole, exclude mask).",
+    },
+    "AtlasWriteConditioningEXR": {
+        "verdict": "KEEP_CORE",
+        "compatibility_risk": "low — new this cycle, nothing to migrate",
+        "migration_action": "none; keep",
+        "evidence": [
+            "dedicated tests: tests/test_conditioning_node.py (skipped-not-"
+            "failed without OpenImageIO, the no-bundle report, float32 bit "
+            "depth, per-pass channel naming recorded in the manifest, "
+            "per-frame K carried alongside)",
+        ],
+        "notes":
+            "Separate from the bundle node because a disk write is a side "
+            "effect that must be opted into and OIIO is optional while the "
+            "sockets are not. bit_depth='float' is mandatory: half quantises "
+            "tens-of-metres depth to decimetres and loses sub-pixel flow "
+            "precision the measurement actually has. Channel names live in "
+            "the sidecar manifest rather than being inferred from pixel "
+            "order, the same doctrine as the Director take's rayChannels.",
+    },
+    "AtlasAdherenceScore": {
+        "verdict": "KEEP_CORE",
+        "compatibility_risk": "low — new this cycle, nothing to migrate",
+        "migration_action": "none; keep",
+        "evidence": [
+            "dedicated tests: tests/test_adherence.py (known answers on a "
+            "constructed scene — identical frames score exactly 1.0, a graded "
+            "clip still scores ~1.0 while raw MAE does not, the fitted grade "
+            "recovers the injected gain/offset, noise dumped in GHOST cannot "
+            "move adherence, a flat grey fill scores no ghost coverage, a "
+            "match-then-freeze clip shows negative drift, a frozen clip is "
+            "REFUSED despite scoring well, a zero-parallax move is refused, "
+            "the control arm is mandatory, the bootstrap is seeded) and "
+            "tests/test_adherence_node.py (control as a required socket, "
+            "arity, FLOAT outputs, the refusal at the node boundary)",
+        ],
+        "notes":
+            "Answers 'did the generator obey the camera' without registering "
+            "anything, which is the only route left: measured 2026-09-03, the "
+            "real plate registers against the primary at 1022 SIFT inliers "
+            "while every frame of an LTX CrossView move collapses to 12-20 "
+            "and is refused. Scores VALID pixels only, where Atlas knows the "
+            "true appearance by reprojection. Two design choices carry the "
+            "whole node: the control arm is a REQUIRED socket (a lone "
+            "adherence number supports no claim), and parallax_response "
+            "refuses a frozen clip that would otherwise score near-perfect. "
+            "Headline is gradient ZNCC because generated frames come back "
+            "sRGB and often graded; SSIM and MAE stay diagnostics so two "
+            "correlated headlines cannot be cherry-picked.",
+    },
+    "AtlasGhostPixelMap": {
+        "verdict": "KEEP_CORE",
+        "compatibility_risk": "low — new this cycle, nothing to migrate",
+        "migration_action": "none; keep",
+        "evidence": [
+            "dedicated tests: tests/test_ghost_pixels.py (classification "
+            "algebra, numpy-only so CI runs it) and "
+            "tests/test_ghost_pixel_node.py (identity, flat-plane shift, "
+            "depth-cliff reveal, never-derived geometry, large move, zoom vs "
+            "dolly, exclude mask, and the partition invariant against "
+            "AtlasDisocclusionGuide)",
+        ],
+        "notes":
+            "Turns the three-way split AtlasDisocclusionGuide already reported "
+            "in PROSE into a per-pixel map and a JSON count. The distinction is "
+            "load-bearing, not cosmetic: the occlusion-fill doctrine records a "
+            "raw 'peak hole' figure climbing 64.8% -> 86.1% ON AN IMPROVING RUN "
+            "because it counted sky, and the G5 field run measured the auto-ROI "
+            "ranking a sky cluster first. GHOST is the only class a generative "
+            "filler should be aimed at; INVALID is geometry never derived and "
+            "OUT_OF_BOUNDS is outpainting. Shares the guide's rasteriser and "
+            "raster deliberately, so ghost|invalid|out_of_bounds partitions that "
+            "node's hole_mask exactly — it reclassifies the hole rather than "
+            "finding a different one. Applies the camera path's fov_deg channel "
+            "the guide ignores, so a zoom renders as a zoom and correctly "
+            "reveals nothing. Does not handle lens distortion.",
+    },
     "AtlasEquirectMultiView": {
         "verdict": "KEEP_CORE",
         "compatibility_risk": "low — new this cycle, nothing to migrate",

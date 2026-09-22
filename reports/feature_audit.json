@@ -1,16 +1,16 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-09-13",
+ "generated_utc": "2026-09-22",
  "counts": {
-  "standard": 121,
+  "standard": 125,
   "experimental": 10,
   "legacy": 2,
   "ios": 2,
-  "total": 135,
+  "total": 139,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 121,
+  "KEEP_CORE": 125,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
@@ -52,6 +52,33 @@
    "evidence": [],
    "migration_action": null,
    "notes": null
+  },
+  "AtlasAdherenceScore": {
+   "module": "atlas_camera/comfy/nodes_qa.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 2,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "dedicated tests: tests/test_adherence.py (known answers on a constructed scene \u2014 identical frames score exactly 1.0, a graded clip still scores ~1.0 while raw MAE does not, the fitted grade recovers the injected gain/offset, noise dumped in GHOST cannot move adherence, a flat grey fill scores no ghost coverage, a match-then-freeze clip shows negative drift, a frozen clip is REFUSED despite scoring well, a zero-parallax move is refused, the control arm is mandatory, the bootstrap is seeded) and tests/test_adherence_node.py (control as a required socket, arity, FLOAT outputs, the refusal at the node boundary)"
+   ],
+   "migration_action": "none; keep",
+   "notes": "Answers 'did the generator obey the camera' without registering anything, which is the only route left: measured 2026-09-03, the real plate registers against the primary at 1022 SIFT inliers while every frame of an LTX CrossView move collapses to 12-20 and is refused. Scores VALID pixels only, where Atlas knows the true appearance by reprojection. Two design choices carry the whole node: the control arm is a REQUIRED socket (a lone adherence number supports no claim), and parallax_response refuses a frozen clip that would otherwise score near-perfect. Headline is gradient ZNCC because generated frames come back sRGB and often graded; SSIM and MAE stay diagnostics so two correlated headlines cannot be cherry-picked."
   },
   "AtlasAgentHandoff": {
    "module": "atlas_camera/comfy/nodes_agent.py",
@@ -407,7 +434,7 @@
    "tests": 6,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 3,
+   "docs": 4,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -554,6 +581,33 @@
    "evidence": [],
    "migration_action": null,
    "notes": null
+  },
+  "AtlasConditioningBundle": {
+   "module": "atlas_camera/comfy/nodes_conditioning.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 2,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "dedicated tests: tests/test_conditioning_bundle.py (the core maths against CLOSED FORMS \u2014 lateral flow equals -fx*t/Z at 0.0e+00 error, inverse-depth scaling, zero flow on a static camera, purely radial flow under a zoom, the occlusion flag matching a blocker's swept rectangle to 5%, XYZ self-reprojection, unit normals, NaN holes) and tests/test_conditioning_node.py (socket arity, the bundle not being an IMAGE socket, preview range + declared normalisation, per-frame focal under a keyed zoom, stride reporting, the no-geometry refusal)"
+   ],
+   "migration_action": "none; keep",
+   "notes": "The geometric half of generative camera control. Renders each view of a move ONCE and reads depth, normals, world position, analytic optical flow, per-frame K and the ghost class map off the SAME z-buffer that chose the colours, so no two passes can disagree about the geometry. Absorbed AtlasGhostPixelMap's per-frame loop into core/conditioning.py, which is what lets the adherence scorer reach it \u2014 core may not import comfy, so a scorer built on those frames could not have called a node method. The refactor was verified byte-identical against the pre-refactor node across five configurations (dilation, zoom, punched plate hole, exclude mask)."
   },
   "AtlasConstrainedSolve": {
    "module": "atlas_camera/comfy/nodes_solve.py",
@@ -1036,8 +1090,8 @@
    "module": "atlas_camera/comfy/nodes_geometry.py",
    "tier": "standard",
    "example_workflows": 8,
-   "dedicated_tests": 15,
-   "tests": 17,
+   "dedicated_tests": 17,
+   "tests": 19,
    "mcp_tools": 0,
    "repo_tools": 3,
    "docs": 5,
@@ -1165,11 +1219,11 @@
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": 0,
-   "dedicated_tests": 3,
-   "tests": 5,
+   "dedicated_tests": 5,
+   "tests": 7,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 4,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -1250,7 +1304,7 @@
    "tests": 4,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 4,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1671,6 +1725,33 @@
    "evidence": [],
    "migration_action": null,
    "notes": null
+  },
+  "AtlasGhostPixelMap": {
+   "module": "atlas_camera/comfy/nodes_viewport.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 2,
+   "tests": 4,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 3,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "dedicated tests: tests/test_ghost_pixels.py (classification algebra, numpy-only so CI runs it) and tests/test_ghost_pixel_node.py (identity, flat-plane shift, depth-cliff reveal, never-derived geometry, large move, zoom vs dolly, exclude mask, and the partition invariant against AtlasDisocclusionGuide)"
+   ],
+   "migration_action": "none; keep",
+   "notes": "Turns the three-way split AtlasDisocclusionGuide already reported in PROSE into a per-pixel map and a JSON count. The distinction is load-bearing, not cosmetic: the occlusion-fill doctrine records a raw 'peak hole' figure climbing 64.8% -> 86.1% ON AN IMPROVING RUN because it counted sky, and the G5 field run measured the auto-ROI ranking a sky cluster first. GHOST is the only class a generative filler should be aimed at; INVALID is geometry never derived and OUT_OF_BOUNDS is outpainting. Shares the guide's rasteriser and raster deliberately, so ghost|invalid|out_of_bounds partitions that node's hole_mask exactly \u2014 it reclassifies the hole rather than finding a different one. Applies the camera path's fov_deg channel the guide ignores, so a zoom renders as a zoom and correctly reveals nothing. Does not handle lens distortion."
   },
   "AtlasGrade": {
    "module": "atlas_camera/comfy/nodes_solve.py",
@@ -2433,7 +2514,7 @@
    "tests": 6,
    "mcp_tools": 1,
    "repo_tools": 2,
-   "docs": 2,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -2752,8 +2833,8 @@
    "module": "atlas_camera/comfy/nodes_project.py",
    "tier": "standard",
    "example_workflows": 4,
-   "dedicated_tests": 2,
-   "tests": 4,
+   "dedicated_tests": 3,
+   "tests": 5,
    "mcp_tools": 0,
    "repo_tools": 1,
    "docs": 2,
@@ -2941,7 +3022,7 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 1,
+   "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -3619,6 +3700,33 @@
    "evidence": [],
    "migration_action": null,
    "notes": null
+  },
+  "AtlasWriteConditioningEXR": {
+   "module": "atlas_camera/comfy/nodes_conditioning.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": "low \u2014 new this cycle, nothing to migrate",
+   "verdict": "KEEP_CORE",
+   "evidence": [
+    "dedicated tests: tests/test_conditioning_node.py (skipped-not-failed without OpenImageIO, the no-bundle report, float32 bit depth, per-pass channel naming recorded in the manifest, per-frame K carried alongside)"
+   ],
+   "migration_action": "none; keep",
+   "notes": "Separate from the bundle node because a disk write is a side effect that must be opted into and OIIO is optional while the sockets are not. bit_depth='float' is mandatory: half quantises tens-of-metres depth to decimetres and loses sub-pixel flow precision the measurement actually has. Channel names live in the sidecar manifest rather than being inferred from pixel order, the same doctrine as the Director take's rayChannels."
   }
  }
 }

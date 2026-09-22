@@ -14,6 +14,96 @@ Registry goes **93 → 100 standard**, total stays **110**. Every key is
 byte-identical, so saved graphs still load; what changed is which nodes are
 registered without a flag.
 
+### Geometric camera conditioning, and a way to prove it worked
+
+Three new nodes, **+3 standard (122 → 125, total 139)**. Every existing key is
+byte-identical; saved graphs load unchanged.
+
+- **`AtlasConditioningBundle` 🎛** — every per-frame signal a generative video model
+  could consume, measured from the recovered projection instead of described in words:
+  metric depth, world normals, world position, forward/backward optical flow, per-frame
+  K, and the ghost class map. All of it is read off **the same z-buffer that chose the
+  render's colours**, so no two passes can disagree with each other or with the RGB.
+- **`AtlasWriteConditioningEXR` 💾** — writes that bundle as float32 EXR sequences with
+  a sidecar manifest naming every channel. Skipped, not failed, without OpenImageIO.
+- **`AtlasAdherenceScore` 📐** — measures whether the model actually *obeyed* the camera.
+
+**Flow is derived, never estimated.** With depth and two calibrated cameras the
+displacement of every pixel is closed-form, so running a flow network over the render
+would be guessing at something Atlas already knows exactly. Pinned against `-fx·t/Z`,
+which lands at **0.0e+00** error. The occlusion flag tests the target frame's own depth
+rather than inferring occlusion from flow inconsistency — it *knows* which pixels became
+occluded, which no learned flow does.
+
+**Why the scorer exists, and why it refuses.** Asking whether a generated move obeyed a
+camera by solving the result is a dead end: measured 2026-09-03, the real plate registers
+against the primary at 1022 SIFT inliers while *every* frame of an LTX CrossView move
+collapses to 12–20 and is refused, because video diffusion re-synthesises the fine
+texture feature matching depends on. So adherence is scored only in **VALID** pixels —
+the ones Atlas knows the true appearance of by reprojection — needing no registration at
+all. That opens one hole, and closing it is the design: a clip that simply repeats its
+first frame agrees with the reprojection wherever the move is small, and **measured above
+0.5 adherence with no camera motion in it whatsoever**. The node therefore measures
+`parallax_response` (agreement against frame *i* minus agreement against frame 0), which
+a frozen clip cannot score positive, and **raises instead of reporting** when it is not.
+A `static` arm is synthesised internally so the headline is always a margin over that
+cheat's ceiling, and the **control arm is a required socket** — an adherence figure with
+nothing to compare against supports no claim in either direction.
+
+The headline is gradient ZNCC, chosen against the *generator's grade* rather than against
+noise: generated frames come back sRGB and often re-toned, so a raw-intensity score
+measures the grade. Injecting a 0.55 gain and 0.22 offset leaves the headline at 1.0 while
+raw MAE exceeds 0.05, and the fitted grade is reported as a measured number instead of
+being left as a confound. GHOST coverage is a separate question with a separate answer and
+is never folded in. Comparisons carry a seeded paired bootstrap interval and a sign test,
+because two means with no interval is not evidence.
+
+**Under the hood:** `AtlasGhostPixelMap`'s per-frame loop moved into
+`core/conditioning.py` — verified **byte-identical** across five configurations, not just
+test-green — which is what lets the scorer reach those frames at all, since `core` may not
+import `comfy`. `render_scene` was already returning its z-buffer, so the depth pass cost
+one dict key rather than a second rasteriser. `AtlasReliefGeometry`'s `np.repeat` was
+**left alone**: CrossView Warp applies the camera move itself, so per-frame moved depth
+would double-apply it.
+
+### Ghost pixels: the hole, classified (`AtlasGhostPixelMap` 👻)
+
+- **New node, +1 standard.** Renders a move through the same z-buffered rasterizer as
+  `AtlasDisocclusionGuide` and classifies every pixel: **VALID** (observed), **GHOST**
+  (revealed by the move, never observed — the only class a generative filler should be
+  aimed at), **INVALID** (geometry that was never derived: sky, partial relief mesh) and
+  **OUT_OF_BOUNDS** (the camera swung past the edge of the photograph — that is
+  outpainting, a different job).
+- **The invariant:** `ghost | invalid | out_of_bounds` equals the guide's `hole_mask`
+  exactly. This reclassifies the existing hole; it does not find a different one.
+- **Why it exists.** The guide already separated these three causes — in prose, in a
+  STRING. Prose does not subtract, which is how the occlusion-fill doctrine came to
+  record a raw "peak hole" that climbed 64.8% → 86.1% *on an improving run* by counting
+  sky. `report` is now JSON with per-frame counts, fractions, `ghost_region_count` and
+  `largest_ghost_region_px`.
+- Excluded pixels (`exclude_mask`) classify `LOW_CONFIDENCE` and leave the fractions from
+  both numerator and denominator — an artist declaration is intent, not evidence, and must
+  never be reported as a factual disocclusion.
+- Unlike the guide, this node **applies the camera path's `fov_deg` channel**, so a zoom
+  renders as a zoom — and correctly yields no ghosts, because a focal change moves no eye
+  and therefore reveals nothing. The guide samples poses only and ignores that channel.
+- Lens distortion is **not** handled (Atlas solves a pinhole camera); stated in the node
+  docstring rather than implied.
+- Classification lives in `atlas_camera/core/ghost_pixels.py` — numpy only, no torch, so
+  CI exercises it for real rather than skipping it.
+
+### Project record schema and the delivery/workbench boundary (ADR-005 Amendment 1)
+
+- `atlas_project.json` now carries `"schema": "atlas-project/1"` — a string, never confused with the
+  export manifest's integer schema. Records without one are upgraded on the next write; a record from a
+  newer Atlas (`atlas-project/2`) or with another family's schema is refused, not overwritten.
+- Updating the record **preserves keys it does not own**. It used to rebuild the file and delete anything
+  a production or a person had added.
+- The standalone workbench refuses to open anywhere inside a delivery project
+  (`WorkbenchInDeliveryProjectError`), before creating anything; a delivery project refuses to write its
+  record into a workbench session directory. `find_delivery_project_root(path)` finds the enclosing
+  delivery project.
+
 ### Publishing is explicit (ADR-006)
 
 - Merging to `main` no longer publishes to the ComfyUI Registry, even when it changes `version` in

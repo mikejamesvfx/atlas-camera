@@ -378,6 +378,68 @@ def sample_camera_path_fov_deg(path: AtlasCameraPath) -> list[float] | None:
     return out
 
 
+def sample_camera_path_intrinsics(
+    path: AtlasCameraPath,
+    *,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    height: int,
+) -> list[list[list[float]]]:
+    """Sample a 3x3 K per frame. FOCAL IS THE ONLY CHANNEL THAT VARIES.
+
+    ``fx, fy, cx, cy`` are the intrinsics ALREADY SCALED to the raster the
+    frames will be rendered at, and ``height`` is that raster's height. The
+    caller scales once rather than passing a base raster to scale from here: a
+    second copy of the scale factor is a second chance for the two to disagree,
+    and every existing caller (`AtlasGhostPixelMap._path_focals`, the viewport
+    decode) already holds the scaled values.
+
+    Built ON ``sample_camera_path_fov_deg`` rather than interpolating a second
+    channel of its own. That channel has a hand-synced JS mirror
+    (``sampleFovChannel``) pinned by ``tests/test_frontend_mirrors.py``; a
+    second interpolator would need a second mirror, and the pair would drift
+    exactly the way ``test_pan_matches_the_js_handedness`` exists to catch.
+
+    WHAT THIS CANNOT EXPRESS, deliberately. ``AtlasCameraKeyframe`` carries a
+    vertical fov and nothing else, so the principal point, pixel aspect, skew
+    and distortion are CONSTANT over the path. A caller reporting these
+    intrinsics must say ``principal_point: static`` rather than let a reader
+    infer that a shifted-sensor or breathing-lens channel exists. Adding one
+    means a schema field plus a JS mirror plus a ``from_dict`` — out of scope.
+
+    ``path.lens_scale`` is NOT applied: it is a single global reframing scalar
+    used by the baked-frame path (``_warp_frame_for_lens``), nothing else in
+    the codebase applies it to intrinsics, and silently folding it in here
+    would double-apply it for those callers. Report it, do not multiply by it.
+
+    Pixel aspect is preserved through ``fx = fy * (fx0/fy0)`` so a non-square
+    solved pixel survives a zoom instead of being quietly squared up.
+    """
+    frame_count = max(0, int(path.frame_count))
+    if frame_count == 0:
+        return []
+
+    fx, fy, cx, cy = float(fx), float(fy), float(cx), float(cy)
+    aspect = fx / fy if fy else 1.0
+    half_h = float(height) / 2.0
+
+    fovs = sample_camera_path_fov_deg(path)
+    if fovs is None:
+        return [[[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]]
+                for _ in range(frame_count)]
+
+    out: list[list[list[float]]] = []
+    for fov_deg in fovs:
+        half_fov = math.radians(float(fov_deg)) / 2.0
+        t = math.tan(half_fov)
+        fy_t = half_h / t if abs(t) > 1e-12 else fy
+        fx_t = fy_t * aspect
+        out.append([[fx_t, 0.0, cx], [0.0, fy_t, cy], [0.0, 0.0, 1.0]])
+    return out
+
+
 # ---------------------------------------------------------------------------
 # One-click move presets, server-side. Mirrors atlas_blockout.js
 # applyMovePreset / computePresetEndPose (hand-sync duplication, pinned by

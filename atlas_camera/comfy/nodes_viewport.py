@@ -2197,3 +2197,274 @@ class AtlasDisocclusionGuide:
             for dx in range(-radius, radius + 1):
                 out |= np.roll(np.roll(padded, dy, axis=0), dx, axis=1)
         return out[radius:radius + h, radius:radius + w]
+
+
+class AtlasGhostPixelMap:
+    """👻 Classify every pixel of a rendered move: VALID / GHOST / INVALID.
+
+    `AtlasDisocclusionGuide` already says in prose that an uncovered pixel has
+    three unrelated causes. This node says it PER PIXEL, and returns the counts
+    as JSON instead of a sentence. Same renderer, same z-buffer, same holes —
+    what is new is that the holes are separated, measured and coloured.
+
+    A GHOST PIXEL is a target-view sample whose scene location becomes visible
+    after a camera change but whose appearance was never directly observed in
+    the source image. Something opaque was standing in front of it. That is the
+    only class a generative filler should ever be pointed at.
+
+    The other two holes are NOT that, and treating them as such is a measured
+    failure mode, not a hypothetical:
+
+      INVALID — the plate has no geometry there either: sky, or a partial
+        relief mesh. Nothing was occluding it, so there is nothing to
+        dis-occlude; a filler aimed here paints over an upstream gap. The G5
+        field run measured the auto-ROI ranking a SKY cluster first before this
+        test existed, and the arc-left patch came back with a sky-textured
+        sheet above the roofline.
+      OUT_OF_BOUNDS — the move swung the camera past the edge of the
+        photograph. No plate counterpart exists, so no comparison can classify
+        it. That is OUTPAINTING, a different job with different nodes, and it
+        must not consume a fill budget.
+
+    The sky test runs THROUGH THE CAMERAS AT INFINITY rather than
+    pixel-for-pixel, because two views differing by a rotation do not see the
+    sky at the same pixels — the straight subtraction it replaced left a
+    crescent of skyline ranking as genuine hole (found live 2026-08-15 on an
+    arc). Translation, the whole source of real disocclusion, cancels at
+    infinity, which is exactly what makes the test safe.
+
+    WHAT THIS NODE DOES NOT DO. It never invents appearance. It discovers where
+    appearance is missing and what kind of missing it is. Geometry discovers
+    what is absent; generation decides what it looks like.
+
+    INVARIANT worth checking against the guide: on the same solve and the same
+    path, ghost | invalid | out_of_bounds equals `AtlasDisocclusionGuide`'s
+    `hole_mask` exactly. This node reclassifies that hole — it does not find a
+    different one.
+
+    LIMITATIONS, stated rather than implied:
+    - Everything rests on the depth that built the projection geometry. A wrong
+      depth edge is a wrong ghost boundary, and the node cannot know.
+    - Thin structures (railings, foliage, wires) tear badly at any raster and
+      will over-report ghost along their silhouettes.
+    - Monocular depth is up to scale unless a metric model or a reference set
+      it; classification is scale-free but the geometry feeding it is not.
+    - DISTORTION IS NOT HANDLED. Atlas solves a pinhole camera and RAW lens
+      undistortion happens at import; a plate with residual distortion will
+      misplace the classification near the frame edge.
+    - A single view cannot know the true hidden texture. That is the point.
+    """
+
+    RETURN_TYPES = ("IMAGE", "MASK", "MASK", "MASK", "IMAGE", "STRING")
+    RETURN_NAMES = ("guide", "valid", "ghost", "invalid", "debug_overlay",
+                    "report")
+    FUNCTION = "classify"
+    CATEGORY = "Atlas"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "source_image": ("IMAGE",),
+            },
+            "optional": {
+                "camera_path": ("ATLAS_CAMERA_PATH", {
+                    "tooltip": "The move to classify. Every sampled frame becomes "
+                               "one image in the output batch. Without it you get "
+                               "the solved camera itself, which by definition has "
+                               "almost no ghosts — that is the identity sanity "
+                               "check, not a useful result."}),
+                "resolution": ("INT", {
+                    "default": 1024, "min": 256, "max": 4096,
+                    "tooltip": "Long edge. The pure-numpy rasterizer is O(faces x "
+                               "pixels) and renders EVERY path frame; keep it "
+                               "moderate for long moves on dense relief meshes."}),
+                "hole_dilate_px": ("INT", {
+                    "default": 0, "min": 0, "max": 64,
+                    "tooltip": "Grow the hole before classifying, matching "
+                               "AtlasDisocclusionGuide so the two agree pixel for "
+                               "pixel. NOTE this moves the reported fractions: "
+                               "dilation only ever marks MORE as unseen. Leave at "
+                               "0 when you are measuring rather than conditioning."}),
+                "exclude_mask": ("MASK", {
+                    "tooltip": "Region carried by something other than geometry — "
+                               "sky on a matte or a SkyDome. Excluded pixels "
+                               "classify as LOW_CONFIDENCE and leave the fractions "
+                               "from BOTH numerator and denominator. An artist "
+                               "declaration is intent, not evidence, so it can "
+                               "never be reported as a factual disocclusion."}),
+                "last_n": ("INT", {
+                    "default": 0, "min": 0, "max": 4096,
+                    "tooltip": "Classify only the move's LAST N frames (0 = every "
+                               "frame). The end of a move holds a superset of every "
+                               "earlier frame's holes, so rendering 100 frames to "
+                               "read 1 is waste. Batch indices become RELATIVE to "
+                               "the window."}),
+                "overlay_alpha": ("FLOAT", {
+                    "default": 0.55, "min": 0.0, "max": 1.0, "step": 0.05,
+                    "tooltip": "Overlay tint strength. Below 1.0 keeps the "
+                               "reprojected RGB readable underneath, which is what "
+                               "makes the overlay useful for judging whether the "
+                               "geometry is right."}),
+            },
+        }
+
+    def classify(self, solve, source_image, camera_path=None, resolution=1024,
+                 hole_dilate_px=0, exclude_mask=None, last_n=0,
+                 overlay_alpha=0.55):
+        import json
+
+        from atlas_camera.comfy.headless_evidence import (
+            _decode_mask, _decode_rgba, _fit_long_edge, _tensor_rgba,
+        )
+        from atlas_camera.core.ghost_pixels import (
+            GhostClass, build_debug_overlay, class_masks,
+            classify_target_coverage, ghost_stats,
+        )
+        from atlas_camera.core.conditioning import render_conditioning_sequence
+        from atlas_camera.core.projection_render import gather_scene_meshes
+        np = _require_numpy()
+        torch = _require_torch()
+
+        sh, sw = int(source_image.shape[1]), int(source_image.shape[2])
+        meshes = gather_scene_meshes(solve, with_uvs=True)
+        if not meshes:
+            # Same refusal as AtlasDisocclusionGuide: claiming the whole frame
+            # is ghost would send a model off inventing an entire image.
+            report = json.dumps({
+                "node": "AtlasGhostPixelMap",
+                "error": "no serialized projection meshes on this solve",
+                "remedy": "run AtlasDeriveProjectionGeometry (or clean-plate "
+                          "layers) upstream first",
+                "warning": "source returned unchanged and NOTHING is "
+                           "classified; do not read the empty ghost mask as "
+                           "'no disocclusion'",
+            }, indent=2)
+            empty = torch.zeros(1, sh, sw, dtype=torch.float32)
+            return (source_image, empty, empty, empty, source_image, report)
+
+        width, height = _fit_long_edge(sw, sh, int(resolution))
+        intr = solve.camera.intrinsics
+        sx = float(width) / float(intr.image_width or width)
+        sy = float(height) / float(intr.image_height or height)
+        fx, fy = float(intr.fx_px) * sx, float(intr.fy_px) * sy
+        cx, cy = float(intr.cx_px) * sx, float(intr.cy_px) * sy
+
+        textures = {"primary": _tensor_rgba(source_image, width, height)}
+        for source in getattr(solve, "projection_sources", None) or []:
+            name = str(getattr(source, "name", "") or "layer")
+            rgba = _decode_rgba(getattr(source, "image_b64", None) or "",
+                                width, height)
+            if rgba is None:
+                continue
+            mask = _decode_mask(getattr(source, "mask_b64", None), width, height)
+            rgba = np.array(rgba, dtype=np.float64, copy=True)
+            rgba[..., 3] = rgba[..., 3] * mask
+            textures[name] = rgba
+
+        # THE PLATE BASELINE and the per-frame loop both live in
+        # `core.conditioning.render_conditioning_sequence` now. This node was
+        # where that loop was written, and moving it down is what lets the
+        # SCORER reach it: core may not import comfy, so a scorer built on
+        # these same rendered frames could not have called a node's method.
+        # The class algebra, the plate baseline raster and the dilation
+        # direction are unchanged, so this node's outputs are unchanged.
+        guide_cls = AtlasDisocclusionGuide
+        exclude = guide_cls._exclude(exclude_mask, width, height, np)
+        views, view_source = guide_cls._views(solve, camera_path)
+
+        # ZOOM IS NOT A DOLLY, so the two must not render alike. A camera path
+        # keyframes `fov_deg` on its own channel, sampled by a DIFFERENT
+        # function than the poses — `AtlasDisocclusionGuide` only calls the
+        # pose one, so a zoom silently renders as no change at all there. A
+        # focal change moves every pixel without changing the eye point, and
+        # therefore reveals NOTHING: it cannot disocclude. Rendering it at the
+        # solved focal would hide that fact behind an identical frame instead
+        # of demonstrating it.
+        focals = self._path_focals(camera_path, fy, height)
+
+        total_views = len(views)
+        if int(last_n) > 0 and total_views > int(last_n):
+            views = views[-int(last_n):]
+            focals = focals[-int(last_n):] if focals else focals
+            view_source += (f", last {len(views)} of {total_views} frames "
+                            f"(last_n)")
+
+        # One K per view. An empty `focals` is the documented "no keyframe
+        # carried a fov" case, which means the solved focal throughout — NOT
+        # fov zero, and not a reason to let the core function guess.
+        intrinsics = []
+        for index in range(len(views)):
+            f_y = focals[index] if focals else fy
+            f_x = f_y * (fx / fy) if fy else fx
+            intrinsics.append([[f_x, 0.0, cx], [0.0, f_y, cy], [0.0, 0.0, 1.0]])
+
+        plate_k = [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]]
+        seq = render_conditioning_sequence(
+            meshes, textures, views=views, intrinsics=intrinsics,
+            plate_view=solve.camera.extrinsics.camera_view_matrix,
+            plate_k=plate_k, width=width, height=height, exclude=exclude,
+            hole_dilate_px=int(hole_dilate_px),
+            want_flow=False, want_normals=False, want_position=False)
+
+        skipped = set(seq.meta["skipped_meshes"])
+        per_frame = seq.per_frame
+        frames, valids, ghosts, invalids, overlays = [], [], [], [], []
+        for index in range(seq.frames):
+            rgb = seq.rgb[index]
+            masks = class_masks(seq.class_map[index])
+            frames.append(rgb)
+            valids.append(masks["valid"].astype(np.float32))
+            ghosts.append(masks["ghost"].astype(np.float32))
+            invalids.append(masks["invalid"].astype(np.float32))
+            overlays.append(build_debug_overlay(
+                rgb, seq.class_map[index], alpha=float(overlay_alpha)))
+
+        def _batch(arrays):
+            return torch.from_numpy(np.stack(arrays)).float()
+
+        worst = max(range(len(per_frame)),
+                    key=lambda i: per_frame[i]["ghost_fraction"])
+        report = json.dumps({
+            "node": "AtlasGhostPixelMap",
+            "frames": len(views),
+            "raster": [width, height],
+            "view_source": view_source,
+            "hole_dilate_px": int(hole_dilate_px),
+            "class_values": {c.name: int(c) for c in GhostClass},
+            "worst_ghost_frame": worst,
+            "worst_frame": per_frame[worst],
+            "per_frame": per_frame,
+            "skipped_meshes": sorted(skipped),
+            "note": "ghost is the only class a filler should be aimed at; "
+                    "invalid is geometry that was never derived and "
+                    "out_of_bounds is outpainting. Fractions exclude "
+                    "exclude_mask pixels from numerator and denominator.",
+        }, indent=2)
+        return (_batch(frames), _batch(valids), _batch(ghosts),
+                _batch(invalids), _batch(overlays), report)
+
+    @staticmethod
+    def _path_focals(camera_path, fy, height):
+        """Per-frame fy from the path's `fov_deg` channel, or [] if unkeyed.
+
+        Returns pixel focals for the render raster. `None` from
+        `sample_camera_path_fov_deg` means NO keyframe carried a fov, which is
+        the common case and means "use the solved focal throughout" — not
+        "fov zero". The distinction is the function's documented contract.
+        """
+        if camera_path is None:
+            return []
+        from atlas_camera.core.camera_path import sample_camera_path_fov_deg
+        import math
+
+        fovs = sample_camera_path_fov_deg(camera_path)
+        if not fovs:
+            return []
+        half = float(height) * 0.5
+        out = []
+        for fov in fovs:
+            t = math.tan(math.radians(float(fov)) * 0.5)
+            out.append(half / t if t > 1e-9 else fy)
+        return out

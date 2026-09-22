@@ -680,3 +680,150 @@ class AtlasAssessOutput:
             "result": (report, serialized, path, overall, provenance,
                        selected, evidence_path),
         }
+
+
+class AtlasAdherenceScore:
+    """Did the generator obey the camera? Measured, with a required control.
+
+    Scores a generated frame sequence against the deterministic reprojection in
+    an `ATLAS_CONDITIONING` bundle, in VALID pixels ONLY -- the pixels Atlas
+    knows the true appearance of. That is what makes the measurement possible at
+    all: a generated move cannot be solved (measured 2026-09-03, every frame of
+    an LTX CrossView move collapses to 12-20 SIFT inliers against the plate's
+    1022 and is refused), so any metric that needs registration on generated
+    frames is dead on arrival. This one needs none.
+
+    THE CONTROL ARM IS A REQUIRED INPUT, not an optional one. An adherence
+    figure with nothing to compare it against cannot support a claim in either
+    direction, so the socket enforces at graph level what a report could only
+    ask for politely. Feed it the same prompt, seed, step count and frame count
+    with the geometric conditioning removed.
+
+    IT REFUSES RATHER THAN FLATTERING YOU. A clip that simply repeats its first
+    frame scores near-perfect adherence in VALID, because a static plate agrees
+    with Atlas's reprojection wherever the move is small. The scorer therefore
+    measures `parallax_response` -- agreement against frame i minus agreement
+    against frame 0 -- and raises when it is not positive. A frozen or
+    near-frozen result gets no headline number, because the number would be
+    measuring nothing.
+
+    The headline is gradient ZNCC over VALID, chosen because generated frames
+    come back sRGB and often graded: gradients remove the exposure offset,
+    normalisation removes the gain, and what survives is whether the structure
+    is where Atlas said it would be. The fitted grade is reported as a measured
+    number beside it. Masked SSIM and raw MAE/PSNR are diagnostics only.
+    """
+
+    CATEGORY = "Atlas/09 · QA & Gates"
+    FUNCTION = "score"
+    RETURN_TYPES = ("FLOAT", "FLOAT", "IMAGE", "STRING")
+    RETURN_NAMES = ("adherence", "margin_over_control", "drift_plot", "report")
+    OUTPUT_NODE = True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "bundle": ("ATLAS_CONDITIONING", {
+                    "tooltip": "From AtlasConditioningBundle — carries the "
+                               "deterministic reprojection and the class map "
+                               "this is scored against."}),
+                "generated": ("IMAGE", {
+                    "tooltip": "The arm under test: frames generated WITH Atlas "
+                               "conditioning. One frame per bundle frame."}),
+                "control": ("IMAGE", {
+                    "tooltip": "The prompt-only arm: same prompt, seed, steps "
+                               "and frame count, no geometric conditioning. "
+                               "REQUIRED — without it the headline number "
+                               "cannot support a claim either way."}),
+            },
+            "optional": {
+                "min_parallax_px": ("FLOAT", {
+                    "default": 1.5, "min": 0.0, "max": 64.0, "step": 0.1,
+                    "tooltip": "Frames whose median measured parallax is below "
+                               "this are reported but excluded from the "
+                               "aggregate. A zoom sits here by definition: it "
+                               "moves pixels without moving the eye, so there "
+                               "is nothing for a camera to get right."}),
+                "bootstrap_seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1}),
+                "refuse_degenerate": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Raise when parallax_response is not positive. "
+                               "Turn this off ONLY to inspect why a run is "
+                               "degenerate — the number it then reports is not "
+                               "evidence of anything."}),
+            },
+        }
+
+    def score(self, bundle, generated, control, min_parallax_px=1.5,
+              bootstrap_seed=0, refuse_degenerate=True):
+        from atlas_camera.comfy.node_helpers import _require_numpy, _require_torch
+        from atlas_camera.core.adherence import (
+            ATLAS_ARM, CONTROL_ARM, score_arms,
+        )
+
+        np = _require_numpy()
+        torch = _require_torch()
+        if bundle is None:
+            raise ValueError(
+                "AtlasAdherenceScore: no bundle. The upstream "
+                "AtlasConditioningBundle refused (no projection geometry on the "
+                "solve) or was bypassed; there is nothing to score against.")
+
+        def to_numpy(frames):
+            arr = (frames.detach().cpu().numpy()
+                   if hasattr(frames, "detach") else np.asarray(frames))
+            return np.asarray(arr, dtype=np.float64)[..., :3]
+
+        result = score_arms(
+            {ATLAS_ARM: to_numpy(generated), CONTROL_ARM: to_numpy(control)},
+            bundle=bundle, min_parallax_px=float(min_parallax_px),
+            bootstrap_seed=int(bootstrap_seed),
+            refuse_degenerate=bool(refuse_degenerate))
+
+        plot = self._drift_plot(np, result)
+        adherence = result["adherence"]
+        margin = result["margin_over_control"]
+        return (float(adherence) if adherence is not None else 0.0,
+                float(margin) if margin is not None else 0.0,
+                torch.from_numpy(plot).float()[None], json.dumps(result, indent=2))
+
+    @staticmethod
+    def _drift_plot(np, result, width: int = 512, height: int = 256):
+        """Per-frame headline for both arms, drawn without a plotting library.
+
+        A number and a slope do not show a reader WHERE a generator lost the
+        camera; the curve does. Deliberately dependency-free — matplotlib is not
+        an Atlas dependency and a 30-line scatter does not justify making it one.
+        """
+        img = np.ones((height, width, 3), dtype=np.float32) * 0.08
+        arms = result.get("arms", {})
+        colours = {"atlas": (0.2, 1.0, 0.4), "prompt_only": (1.0, 0.5, 0.2),
+                   "static": (0.45, 0.45, 0.5)}
+        series = {label: [f["gradient_zncc"] for f in arm["per_frame"]]
+                  for label, arm in arms.items()}
+        finite = [v for vals in series.values() for v in vals
+                  if v is not None and np.isfinite(v)]
+        if not finite:
+            return img
+        lo, hi = min(finite), max(finite)
+        span = max(hi - lo, 1e-6)
+
+        # Gridlines first, so the curves draw over them.
+        for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+            row = int((1.0 - frac) * (height - 1))
+            img[row, :, :] = 0.18
+
+        for label, vals in series.items():
+            colour = np.asarray(colours.get(label, (0.7, 0.7, 0.7)),
+                                dtype=np.float32)
+            n = max(len(vals) - 1, 1)
+            for index, value in enumerate(vals):
+                if value is None or not np.isfinite(value):
+                    continue
+                col = int(index * (width - 1) / n)
+                row = int((1.0 - (value - lo) / span) * (height - 1))
+                r0, r1 = max(row - 2, 0), min(row + 3, height)
+                c0, c1 = max(col - 2, 0), min(col + 3, width)
+                img[r0:r1, c0:c1] = colour
+        return img

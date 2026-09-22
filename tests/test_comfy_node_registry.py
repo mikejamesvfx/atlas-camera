@@ -30,12 +30,15 @@ NORMAL_KEYS = {
     "AtlasExportPlateHandoff", "AtlasRealPlateToScene",
     "AtlasAddPatchView", "AtlasApplyScaleReferences", "AtlasAssessImage",
     "AtlasAssessOutput",
+    "AtlasConditioningBundle", "AtlasWriteConditioningEXR",
+    "AtlasAdherenceScore",
     "AtlasLayerPlan",
     "AtlasMoveBudget",
     "AtlasOcclusionGraph",
     "AtlasAttachSourcePlate", "AtlasBlockoutViewport", "AtlasBoundedBand",
     "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasPlateLayer", "AtlasConstrainedSolve",
     "AtlasDeband", "AtlasDisocclusionGuide", "AtlasSolvePatchViews",
+    "AtlasGhostPixelMap",
     "AtlasApplyLUT", "AtlasDefocus", "AtlasGrade",
     "AtlasDebugReport", "AtlasDecomposeCamera", "AtlasDecomposeSolve",
     "AtlasDefineShotCam", "AtlasDepthAnything", "AtlasDepthBandSplit",
@@ -121,7 +124,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 121
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 125
 
 
 def test_experimental_registry_keys_exact():

@@ -113,6 +113,7 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasLayerPreview,
     AtlasInput,
     AtlasDisocclusionGuide,
+    AtlasGhostPixelMap,
 )
 from atlas_camera.comfy.nodes_completion import (
     AtlasCompleteDepth,
@@ -121,7 +122,9 @@ from atlas_camera.comfy.nodes_completion import (
     AtlasOcclusionGraph,
     AtlasShootList,
 )
-from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
+from atlas_camera.comfy.nodes_qa import AtlasAdherenceScore, AtlasAssessOutput
+from atlas_camera.comfy.nodes_conditioning import (AtlasConditioningBundle,
+                                                   AtlasWriteConditioningEXR)
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume  # noqa: F401
 from atlas_camera.comfy.nodes_agent import AtlasAgentHandoff  # noqa: F401
