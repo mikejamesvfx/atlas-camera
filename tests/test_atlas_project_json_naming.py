@@ -166,17 +166,17 @@ def test_the_project_node_reports_a_refusal_instead_of_failing(tmp_path):
 
 # ------------------------------------------------------------------ workbench session
 def test_the_workbench_never_treats_a_delivery_record_as_its_session(tmp_path):
-    from atlas_camera.ui.project import open_project
+    """Amendment 1 made this a refusal: the workbench does not open inside a delivery tree at all."""
+    from atlas_camera.ui.project import WorkbenchInDeliveryProjectError, open_project
 
     record = _delivery_record(tmp_path)
     before = record.read_bytes()
 
-    project = open_project(record.parent)
+    with pytest.raises(WorkbenchInDeliveryProjectError):
+        open_project(record.parent)
 
     assert record.read_bytes() == before
-    assert project.source_image is None
-    session = json.loads((record.parent / "atlas_workbench_session.json").read_text(encoding="utf-8"))
-    assert Path(session["project_dir"]) == record.parent.resolve()
+    assert not (record.parent / "atlas_workbench_session.json").exists()
 
 
 def test_a_legacy_workbench_session_is_read_and_carried_over(tmp_path):

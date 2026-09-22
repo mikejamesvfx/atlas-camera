@@ -20,8 +20,17 @@ from atlas_camera.reference_data import list_categories, search_scale_references
 
 #: The workbench session file. Named ``atlas_project.json`` until ADR-005 (atlas-nexus), when that
 #: name was reserved for the delivery-project record; the legacy name is read as a fallback only.
-PROJECT_META = "atlas_workbench_session.json"
+from atlas_camera.core.project import WORKBENCH_SESSION_FILENAME as PROJECT_META  # noqa: E402
 LEGACY_PROJECT_META = "atlas_project.json"
+
+
+class WorkbenchInDeliveryProjectError(ValueError):
+    """The workbench was pointed inside a delivery-project tree (ADR-005 Amendment 1).
+
+    A workbench session and a delivery project are different trees with different owners; a session
+    directory inside a delivery project would mix a per-solve scratch space into a production's
+    deliverables. Refused before anything is created.
+    """
 CONSTRAINTS_FILE = "constraints.json"
 UI_STATE_FILE = "ui_state.json"
 SOLVE_FILE = "atlas_solve.json"
@@ -112,6 +121,13 @@ def _project_from_meta(project_dir: Path) -> AtlasUiProject:
 
 def open_project(project_dir: str | Path) -> AtlasUiProject:
     path = Path(project_dir).expanduser().resolve()
+    from atlas_camera.core.project import find_delivery_project_root
+
+    delivery = find_delivery_project_root(path)
+    if delivery is not None:
+        raise WorkbenchInDeliveryProjectError(
+            f"{path} is inside the delivery project at {delivery}; open the workbench on a separate "
+            f"session directory (ADR-005 Amendment 1)")
     path.mkdir(parents=True, exist_ok=True)
     if not (path / PROJECT_META).is_file():
         # A legacy session carries over; anything else under the legacy name is left untouched.
