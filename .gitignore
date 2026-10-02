@@ -183,3 +183,7 @@ research/blender/
 # lists, prompt packs. Content production, not app code — the same reason
 # docs/brand/ is ignored above.
 atlas_field_guides/
+
+# AtlasSceneTo3D / AtlasMatrixZoneStitch fall back to ./output/ when run outside
+# ComfyUI (CLI, tests without the output folder): GLBs, EXR/PLY sidecars, HDR plates.
+/output/
