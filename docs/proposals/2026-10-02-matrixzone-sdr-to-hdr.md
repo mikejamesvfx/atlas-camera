@@ -158,6 +158,14 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
   invisible to the band pass (it measures unclipped pixels, one profile per band).
   Per overlapping 256-row window, from flat pixels only, weighted by SDR flatness:
   correction p99 0.10 stops, max 0.73 (unweighted it reached 2.6 on the machine).
+- **Detail from SDR** (`sdr_detail_transfer`, the fix that held in Nuke): band + local
+  destripe still left visible lines (thin, and wider ones across cloud texture). The SDR has
+  the same content and no stripes, so it guides: per channel the log ratio hdr/sdr is
+  smoothed by a guided filter (r 64, eps 0.01) on SDR log luminance and the plate rebuilt as
+  sdr x 2^ratio; clipped highlights (SDR max > 0.85-0.97, feathered) keep the HDR. Rejected
+  on the way: a thin-line column pass (invented streaks beside bright clouds) and a 6 px
+  base/detail split (left the wider lines, softened texture until the slope was an
+  amplitude ratio). 16 sampling steps instead of 8: no change in stripes, +28% runtime.
 - **Outpaint ring smear** (clean-plate / sky layers): edge replication across a
   1024 px frame-outpaint ring read as stripes; ring ripple **5.70% -> 0.22%** live,
   real plate unchanged at 0.55%.

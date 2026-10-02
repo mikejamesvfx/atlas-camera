@@ -475,6 +475,82 @@ def destripe_local(hdr: Any, sdr_linear: Any, *, rows: int = 256, window: int = 
     return out, rep
 
 
+#: SDR detail transfer: guided-filter radius (px) and regulariser, and the SDR
+#: display level (max channel) over which the HDR's own pixels are kept.
+SDR_TRANSFER_RADIUS = 64
+SDR_TRANSFER_EPS = 0.01
+SDR_TRANSFER_CLIP = (0.85, 0.97)
+
+
+def _box_mean(np, a, r: int):
+    """Separable box mean of radius ``r`` (edge-padded), via cumulative sums."""
+    k = 2 * r + 1
+    for axis in (0, 1):
+        pad = [(0, 0)] * a.ndim
+        pad[axis] = (r + 1, r)
+        c = np.cumsum(np.pad(a, pad, mode="edge"), axis=axis, dtype=np.float64)
+        n = a.shape[axis]
+        a = ((np.take(c, np.arange(k, k + n), axis=axis)
+              - np.take(c, np.arange(n), axis=axis)) / k).astype(np.float32)
+    return a
+
+
+def sdr_detail_transfer(hdr: Any, sdr_display: Any, *, radius: int = SDR_TRANSFER_RADIUS,
+                        eps: float = SDR_TRANSFER_EPS,
+                        clip: tuple[float, float] = SDR_TRANSFER_CLIP) -> tuple[Any, dict[str, Any]]:
+    """Keep the conversion's RADIANCE, take the picture's structure from the SDR.
+
+    The model's stripes are thin to ~100 px wide and as fine as real texture,
+    so no column filter separates them everywhere (found live 2026-10-02 in
+    Nuke: three destripe passes left visible lines). The SDR has the same
+    content and none of the stripes, so it is the guide: per channel, the log
+    ratio ``log2(hdr) - log2(sdr)`` -- what the conversion did -- is smoothed
+    with a guided filter (He et al.) on the SDR's log luminance. Anything in
+    the ratio the SDR cannot explain linearly within ``radius`` (the stripes,
+    at any width up to the window) is dropped; real edges and the local tone
+    slope pass through, so there is no halo at the object's silhouette. The
+    result is ``sdr * 2**ratio_smooth``. Where the SDR clipped (max channel
+    over ``clip``, feathered) it has no structure to give and the HDR's own
+    pixels are kept.
+
+    ``sdr_display`` is the display-referred plate (0..1, sRGB) the split got.
+    Cost: fine detail the model reconstructed in UNclipped areas (it smooths
+    JPEG blocking) is replaced by the SDR's.
+    """
+    np = _require_numpy()
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+
+    h = np.asarray(hdr, dtype=np.float32)[..., :3]
+    sd = np.clip(np.asarray(sdr_display, dtype=np.float32)[..., :3], 0.0, 1.0)
+    if h.shape[:2] != sd.shape[:2]:
+        raise ValueError(f"hdr {h.shape[:2]} and sdr {sd.shape[:2]} differ")
+    floor = 1e-4
+    ls = np.log2(np.maximum(srgb_to_linear(sd), floor))
+    lh = np.log2(np.maximum(h, floor))
+    guide = (ls * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(-1)
+    r = max(1, int(radius))
+    mg = _box_mean(np, guide, r)
+    vg = _box_mean(np, guide * guide, r) - mg * mg
+    c = _box_mean(np, sd.max(-1), 4)
+    lo, hi = float(clip[0]), float(clip[1])
+    keep = np.clip((c - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+    keep = keep * keep * (3 - 2 * keep)
+    out = np.empty_like(h)
+    for ch in range(3):
+        ratio = lh[..., ch] - ls[..., ch]
+        mr = _box_mean(np, ratio, r)
+        a = (_box_mean(np, guide * ratio, r) - mg * mr) / (vg + float(eps))
+        b = mr - a * mg
+        smooth = _box_mean(np, a, r) * guide + _box_mean(np, b, r)
+        out[..., ch] = np.exp2((ls[..., ch] + smooth) * (1 - keep) + lh[..., ch] * keep)
+    out = np.where(h < 0, h, out)          # the few negatives stay as the model made them
+    d = np.abs(np.log2(np.maximum(out, floor)) - lh)
+    rep = {"radius_px": r, "eps": float(eps), "kept_hdr_fraction": float((keep > 0.5).mean()),
+           "change_p50_stops": float(np.percentile(d, 50)),
+           "change_p99_stops": float(np.percentile(d, 99))}
+    return out, rep
+
+
 #: Destripe bands are at most this fraction of the plate height. The stripes
 #: drift down a tall zone: on a 2x2 8K plate (2256-row zones) one band per zone
 #: row left 0.085 stops at quarter-height granularity; quarter-height bands took

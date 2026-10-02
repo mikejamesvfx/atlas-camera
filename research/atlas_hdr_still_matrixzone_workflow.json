@@ -1613,6 +1613,7 @@
     0,
     "ACEScg",
     "atlas/hdr_plate",
+    true,
     true
    ],
    "title": "matrixZone STITCH -> full-res ACEScg EXR (radiance anchor on)"

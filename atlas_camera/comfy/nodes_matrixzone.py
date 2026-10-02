@@ -158,11 +158,21 @@ class AtlasMatrixZoneStitch:
                                          "tooltip": "Remove vertical stripes the conversion "
                                                     "added (needs sdr_plate)."}),
                 "sdr_plate": ("IMAGE", {"tooltip": "The SDR plate the split was given."}),
+                # APPENDED: keep the conversion's radiance, take structure from the
+                # SDR (guided filter on the log ratio). Removes the model's
+                # stripes at every width; needs sdr_plate. Clipped highlights
+                # keep the HDR's own pixels.
+                "detail_from_sdr": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Rebuild unclipped areas as SDR x the conversion's smoothed "
+                               "(edge-aware) radiance ratio: no model stripes, no halos. "
+                               "Clipped highlights keep the HDR's pixels. Needs sdr_plate."}),
             },
         }
 
     def stitch(self, hdr, matrixzone, anchor=True, split_px=0, colorspace="ACEScg",
-               filename_prefix="atlas/hdr_plate", destripe=True, sdr_plate=None):
+               filename_prefix="atlas/hdr_plate", destripe=True, sdr_plate=None,
+               detail_from_sdr=True):
         # INPUT_IS_LIST: ComfyUI hands every input as a list; tests and direct
         # callers may pass scalars. first() accepts both.
         np = _require_numpy()
@@ -193,7 +203,7 @@ class AtlasMatrixZoneStitch:
                                split_px=split_px or None)
         destripe = bool(first(destripe))
         sdr = first(sdr_plate) if sdr_plate is not None else None
-        stripe_rep, sdr_lin = None, None
+        stripe_rep, sdr_lin, s_disp = None, None, None
         if sdr is not None:
             from atlas_camera.core.generated_mesh import srgb_to_linear
             from atlas_camera.core.matrixzone import resize_bilinear
@@ -201,6 +211,7 @@ class AtlasMatrixZoneStitch:
                               else sdr[0], dtype=np.float32)[..., :3]
             if s_np.shape[:2] != plate.shape[:2]:
                 s_np = resize_bilinear(s_np, plate.shape[0], plate.shape[1])
+            s_disp = s_np
             sdr_lin = srgb_to_linear(s_np)
         local_rep = None
         if destripe and sdr_lin is not None:
@@ -211,6 +222,10 @@ class AtlasMatrixZoneStitch:
             )
             plate, stripe_rep = destripe_columns(plate, sdr_lin, bands=zone_row_bands(plan))
             plate, local_rep = destripe_local(plate, sdr_lin)
+        xfer_rep = None
+        if bool(first(detail_from_sdr)) and s_disp is not None:
+            from atlas_camera.core.matrixzone import sdr_detail_transfer
+            plate, xfer_rep = sdr_detail_transfer(plate, s_disp)
 
         exr_path, exr_note = "", ""
         try:
@@ -291,6 +306,13 @@ class AtlasMatrixZoneStitch:
                          "the plate flat enough to measure")
         elif destripe:
             lines.append("destripe skipped: wire sdr_plate (the plate the split got)")
+        if xfer_rep:
+            lines.append(f"detail from SDR (guided filter r{xfer_rep['radius_px']}): structure from "
+                         f"the SDR, radiance from the conversion; HDR pixels kept on "
+                         f"{xfer_rep['kept_hdr_fraction']:.0%} (clipped highlights); change p50 "
+                         f"{xfer_rep['change_p50_stops']:.3f} / p99 {xfer_rep['change_p99_stops']:.3f} stops")
+        elif bool(first(detail_from_sdr)):
+            lines.append("detail from SDR skipped: wire sdr_plate")
         if step["seams"]:
             base = sorted({f"{s['orientation']} {s['baseline_stops']:.3f}" for s in step["seams"]
                            if s["baseline_stops"] is not None})

@@ -253,3 +253,31 @@ def test_local_destripe_removes_partial_stripes_on_flat_and_spares_structure():
     obj = (yy > 340) & (xx > 720)
     assert np.max(np.abs(lum(out)[obj] - lum(hdr)[obj])) < 0.02             # structure untouched
     assert rep["field_max_stops"] < 1.0
+
+
+def test_sdr_detail_transfer_drops_stripes_keeps_edges_and_clipped_hdr():
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+    from atlas_camera.core.matrixzone import sdr_detail_transfer
+    H, W = 256, 384
+    rng = np.random.default_rng(5)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    disp = (0.55 + 0.05 * rng.random((H, W))).astype(np.float32)        # textured sky
+    disp = np.where(xx > 250, 0.12, disp)                                 # dark object, hard edge
+    disp = np.where((yy < 60) & (xx < 120), 1.0, disp)                    # clipped highlight
+    disp = np.repeat(disp[..., None], 3, -1)
+    lin = srgb_to_linear(disp)
+    tone = 1.6 * lin ** 1.2                                              # the conversion's (smooth) curve
+    stripes = np.exp2(0.12 * np.sin(xx / 2.0) + 0.1 * np.sin(xx / 12.0))  # 13 px and 75 px periods
+    hdr = (tone * stripes[..., None]).astype(np.float32)
+    hdr[:60, :120] = 6.0 + rng.random((60, 120, 3)) * 0.5                 # reconstructed highlight
+    out, rep = sdr_detail_transfer(hdr, disp, radius=48)
+    lg = lambda a: np.log2(np.maximum((a * [0.2126, 0.7152, 0.0722]).sum(-1), 1e-4))  # noqa: E731
+    sky = (slice(80, 250), slice(20, 230))
+    true = lg(tone)
+    err_before = np.std((lg(hdr) - true)[sky])
+    err_after = np.std((lg(out) - true)[sky])
+    assert err_before > 0.08 and err_after < 0.3 * err_before
+    edge = (slice(80, 250), slice(240, 262))                              # no halo at the silhouette
+    assert np.max(np.abs((lg(out) - true)[edge])) < 0.25
+    assert np.allclose(out[5:50, 5:110], hdr[5:50, 5:110], rtol=1e-3)     # clipped: HDR kept
+    assert 0.0 < rep["kept_hdr_fraction"] < 0.2
