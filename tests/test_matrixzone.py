@@ -220,3 +220,12 @@ def test_seam_step_test_sdr_control_separates_structure_from_a_tonal_seam():
     seamed = hdr.copy()
     seamed[:, 550:] *= 1.5                              # now a tonal seam on top of it
     assert seam_step_test(seamed, p, sdr_linear=sdr)["flagged"] == ["z00|z01"]
+
+
+def test_destripe_bands_are_capped_at_a_quarter_plate():
+    from atlas_camera.core.matrixzone import zone_row_bands
+    b4 = zone_row_bands(plan_still(7680, 4512, (4, 4)))
+    b2 = zone_row_bands(plan_still(7680, 4512, (2, 2)))
+    assert b4 == [(0, 1128), (1128, 2256), (2256, 3384), (3384, 4512)]   # unchanged
+    assert b2 == b4                                                       # 2x2 rows split in two
+    assert zone_row_bands(plan_still(7680, 4512, (2, 2)), max_fraction=0) == [(0, 2256), (2256, 4512)]

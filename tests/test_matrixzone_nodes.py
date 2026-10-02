@@ -66,5 +66,6 @@ def test_stitch_refuses_a_mismatched_list(monkeypatch, tmp_path):
 
 def test_stitch_report_carries_the_seam_step_gate(monkeypatch, tmp_path):
     _, _, (_, _, report) = _run("per_zone_clip", monkeypatch, tmp_path)
-    assert "seam step test (stitched plate, 48 px strips, NOT SDR-controlled" in report
+    assert "48 px strips, NOT SDR-controlled" in report
+    assert ("seam step test (delivered EXR" in report) or ("seam step test (in-memory plate" in report)
     assert "pass <= 1.5x random-line p90" in report

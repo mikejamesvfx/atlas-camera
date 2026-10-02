@@ -110,7 +110,7 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
 |---|---|---|
 | 1 split -> stitch identity, no model | max rel. error < 1e-5 | **pass** (test) |
 | 2 planner parity with `atlas_bridge` | numbers identical on the UHD worked case | **pass** (test) |
-| 3 VRAM / tier | 2x2 (4K-tier zones) completes on the target GPU | **open** — only 4x4 run |
+| 3 VRAM / tier | 2x2 (4K-tier zones) completes on the target GPU | **pass**: 2x2 on a 32 GB RTX 5090, 14 min 27 s cold; seam step test PASS (worst 1.20x, 4 seams); **2x2 is the default** |
 | 4 end to end | every seam segment <= 1.5x the random-line p90, AND no visible seam at the worst-scoring junction | **pass with one flagged junction**: SDR-controlled, 3 of 24 segments flagged (worst `z22\|z23` 2.34x), all at or next to x=5760 / y=3384, visually clean (structure continuous, no ghosting); recorded as content |
 | 5 mode shoot-out | the mode with the lower worst seam step wins; tie -> `per_zone_clip` | **open** — `per_zone_clip` is the provisional default |
 | 6 anchor on/off | anchor kept only if it lowers the worst stitched-plate step | **pass**: sky seams 0.29 -> 0.04 stops pre-blend; kept |
@@ -132,7 +132,7 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
 ## Budgets and failure behaviour
 
 - **Runtime.** 4x4 = 17 LTX clips (global + 16 zones): **22 min 48 s** cold on the
-  V135 box (~80 s per clip incl. model load). 2x2 = 5 clips of ~4x the pixels: unmeasured.
+  V135 box (~80 s per clip incl. model load). 2x2 = 5 clips of ~4x the pixels: **14 min 27 s** cold.
 - **A zone fails or comes back wrong.** The stitch refuses — naming the zone — when a
   zone result is empty, non-finite, or the list length does not match the split; it
   never stitches around a hole. A zone returned at the wrong size is resampled and
@@ -170,7 +170,8 @@ doctrine as the generated-object hidden side.
 
 ## Open (the user's calls)
 
-- Grid / zone tier for 8K: 2x2 at the 4K tier (matrixZone default, if VRAM
-  allows) vs 4x4 at the 1080p tier.
+- ~~Grid / zone tier for 8K~~ — decided 2026-10-02: **2x2 at the 4K tier** (fits, faster,
+  4 seams all passing). Destripe bands are capped at a quarter of the plate height:
+  the stripes drift down a 2256-row zone, and one band per zone row left 0.085 stops.
 - Default sequence mode — decided by gate 5's numbers (provisional: `per_zone_clip`).
 - Whether the anchor's split frequency is exposed or fixed.

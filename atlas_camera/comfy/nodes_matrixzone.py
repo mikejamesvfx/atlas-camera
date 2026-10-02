@@ -206,9 +206,6 @@ class AtlasMatrixZoneStitch:
             from atlas_camera.core.matrixzone import destripe_columns, zone_row_bands
             plate, stripe_rep = destripe_columns(plate, sdr_lin, bands=zone_row_bands(plan))
 
-        from atlas_camera.core.matrixzone import seam_step_test
-        step = seam_step_test(plate, plan, sdr_linear=sdr_lin)
-
         exr_path, exr_note = "", ""
         try:
             from atlas_camera.comfy.nodes_scene3d import _output_paths
@@ -221,6 +218,47 @@ class AtlasMatrixZoneStitch:
                       extra_attribs={"atlas:content": "matrixZone SDR->HDR model reconstruction"})
         except Exception as exc:  # noqa: BLE001 - still return the preview + report
             exr_note = f"EXR not written: {type(exc).__name__}: {exc}"
+
+        # Gate on what SHIPS: the decoded EXR (half + lossy DWAB), not the float
+        # in memory. Found live 2026-10-02: the two scored the worst seam 3.78x
+        # vs 2.34x on one plate. When they disagree the report carries the diff
+        # so the cause can be bisected from the report alone.
+        from atlas_camera.core.matrixzone import seam_step_test
+        step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
+        step, delivered, diff_note = step_mem, None, ""
+        if exr_path:
+            try:
+                from atlas_camera.plate.oiio_io import _require_oiio
+                oiio = _require_oiio()
+                delivered = np.asarray(oiio.ImageBuf(exr_path).get_pixels(oiio.FLOAT),
+                                       dtype=np.float32)[..., :3]
+                if delivered.shape != plate.shape[:2] + (3,):
+                    diff_note = (f"decoded EXR is {delivered.shape[:2]}, plate "
+                                 f"{plate.shape[:2]} - scored in memory")
+                    delivered = None
+                else:
+                    step = seam_step_test(delivered, plan, sdr_linear=sdr_lin)
+            except Exception as exc:  # noqa: BLE001 - fall back to the in-memory score
+                diff_note = f"EXR read-back failed ({type(exc).__name__}) - scored in memory"
+                delivered = None
+        if delivered is not None:
+            wm, wd = step_mem["worst"], step["worst"]
+            if wm and wd and (abs(wm["ratio"] - wd["ratio"]) > 0.25
+                              or step_mem["flagged"] != step["flagged"]):
+                mem3 = np.asarray(plate, dtype=np.float32)[..., :3]
+                lr = np.log2(np.maximum(np.abs(delivered), 1e-6)) - \
+                    np.log2(np.maximum(np.abs(mem3), 1e-6))
+                x = wm["at_px"]
+                band = (slice(None), slice(max(0, x - 100), x + 100)) if wm["orientation"] == "v" \
+                    else (slice(max(0, x - 100), x + 100), slice(None))
+                diff_note = (
+                    f"in-memory vs delivered DISAGREE: worst {wm['seam']} {wm['ratio']:.2f}x in memory, "
+                    f"{wd['seam']} {wd['ratio']:.2f}x in the file; flags {step_mem['flagged']} vs "
+                    f"{step['flagged']}. diff: max |log2| {float(np.nanmax(np.abs(lr))):.3f}, "
+                    f"mean log2 {float(np.nanmean(lr)):+.4f} (band at {x} px: "
+                    f"{float(np.nanmean(lr[band])):+.4f}); memory nan {int(np.isnan(mem3).sum())} "
+                    f"neg {int((mem3 < 0).sum())} dtype {np.asarray(plate).dtype}; file nan "
+                    f"{int(np.isnan(delivered).sum())} neg {int((delivered < 0).sum())}")
 
         def fmt(seams):
             return ", ".join(f"{s['seam']} {s['median_stops']:.3f}/{s['p95_stops']:.3f}"
@@ -238,7 +276,7 @@ class AtlasMatrixZoneStitch:
             lines.append(f"destripe: vertical ripple the conversion added "
                          f"{stripe_rep['ripple_before_stops']:.4f} -> "
                          f"{stripe_rep['ripple_after_stops']:.4f} stops rms "
-                         f"({stripe_rep['bands']} zone-row band(s), {stripe_rep['window_px']} px)")
+                         f"({stripe_rep['bands']} band(s) of <= 1/4 plate height, {stripe_rep['window_px']} px)")
         elif destripe:
             lines.append("destripe skipped: wire sdr_plate (the plate the split got)")
         if step["seams"]:
@@ -246,7 +284,8 @@ class AtlasMatrixZoneStitch:
                            if s["baseline_stops"] is not None})
             w = step["worst"]
             lines.append(
-                f"seam step test (stitched plate, {step['strip_px']} px strips, "
+                f"seam step test ({'delivered EXR' if delivered is not None else 'in-memory plate'}, "
+                f"{step['strip_px']} px strips, "
                 + ("SDR-controlled" if step["sdr_controlled"] else
                    "NOT SDR-controlled - wire sdr_plate, structure on a line scores too")
                 + f", pass <= {step['ratio_max']:.1f}x random-line p{step['baseline_percentile']} "
@@ -258,6 +297,8 @@ class AtlasMatrixZoneStitch:
             if step["flagged"]:
                 lines.append("  a flagged seam is either a tonal seam or real structure that "
                              "happens to sit on the line -- look at it before trusting the plate")
+        if diff_note:
+            lines.append(f"  {diff_note}")
         if rep.get("resized_zones"):
             lines.append(f"warning: {rep['resized_zones']} zone result(s) came back at a "
                          "different size and were resampled to their renderRect")

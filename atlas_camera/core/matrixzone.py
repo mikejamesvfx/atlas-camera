@@ -402,13 +402,31 @@ def destripe_columns(hdr: Any, sdr_linear: Any, *, bands: list[tuple[int, int]] 
     return out, rep
 
 
-def zone_row_bands(plan: dict[str, Any]) -> list[tuple[int, int]]:
-    """Each zone row's plate-space row span (for per-run destriping)."""
+#: Destripe bands are at most this fraction of the plate height. The stripes
+#: drift down a tall zone: on a 2x2 8K plate (2256-row zones) one band per zone
+#: row left 0.085 stops at quarter-height granularity; quarter-height bands took
+#: it to 0.016, the 4x4 figure. Eighth-height bands get noisier (too few rows
+#: per column median).
+DESTRIPE_MAX_BAND_FRACTION = 0.25
+
+
+def zone_row_bands(plan: dict[str, Any], *,
+                   max_fraction: float = DESTRIPE_MAX_BAND_FRACTION) -> list[tuple[int, int]]:
+    """Each zone row's plate-space row span (for per-run destriping), split
+    evenly so no band is taller than ``max_fraction`` of the plate."""
+    import math
     L, T = plan["render"]["plateOrigin"]
     ph = plan["plate"]["height"]
     spans = sorted({(z["plateRect"][1] - T, z["plateRect"][1] - T + z["plateRect"][3])
                     for z in plan["zones"]})
-    return [(max(0, a), min(ph, b)) for a, b in spans]
+    cap = max(1, int(math.ceil(ph * float(max_fraction)))) if max_fraction else ph
+    out = []
+    for a, b in spans:
+        a, b = max(0, a), min(ph, b)
+        n = max(1, int(math.ceil((b - a) / cap)))
+        edges = [a + round(i * (b - a) / n) for i in range(n + 1)]
+        out.extend(zip(edges[:-1], edges[1:]))
+    return out
 
 
 def seam_metrics(zone_logs: list[Any], plan: dict[str, Any]) -> list[dict[str, Any]]:

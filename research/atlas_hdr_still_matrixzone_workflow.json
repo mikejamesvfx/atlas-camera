@@ -593,13 +593,13 @@
     "Node name for S&R": "AtlasMatrixZoneSplit"
    },
    "widgets_values": [
-    4,
-    4,
+    2,
+    2,
     64,
     "per_zone_clip",
     9
    ],
-   "title": "matrixZone SPLIT - grid 4x4 (1080p tier); 2x2 = 4K tier if VRAM allows"
+   "title": "matrixZone SPLIT - grid 2x2 (4K tier, default); 4x4 = 1080p tier"
   },
   {
    "id": 3102,
@@ -1692,7 +1692,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "9 \u00b7 matrixZone SDR -> HDR at FULL resolution. The plate is split into exact crops (atlas-unreal matrixZone rules: padded 128-clean render, 64-clean zones, 128 px feathered interior seams). The split emits a LIST - a quarter-res global clip, then each zone - so this chain runs once per element. The stitch takes each zone's LOW frequencies from the global pass (radiance anchor), feathers in log2 space and writes one ACEScg half EXR at plate resolution.\n\nGrid 4x4 = ~2K zones (safe). 2x2 = the 4K tier: try it once VRAM is measured. mode zones_as_frames = the zones as ONE frame sequence (compare its seam report against per_zone_clip)."
+    "9 \u00b7 matrixZone SDR -> HDR at FULL resolution. The plate is split into exact crops (atlas-unreal matrixZone rules: padded 128-clean render, 64-clean zones, 128 px feathered interior seams). The split emits a LIST - a quarter-res global clip, then each zone - so this chain runs once per element. The stitch takes each zone's LOW frequencies from the global pass (radiance anchor), feathers in log2 space and writes one ACEScg half EXR at plate resolution.\n\nGrid 2x2 = the 4K tier (default: fits a 32 GB RTX 5090, 14.5 min cold, 4 seams). 4x4 = ~2K zones (22.8 min, 24 seams). mode zones_as_frames = the zones as ONE frame sequence (compare its seam report against per_zone_clip)."
    ]
   }
  ],
