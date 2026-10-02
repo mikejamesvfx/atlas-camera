@@ -503,6 +503,46 @@ optional external pieces — each fails soft or has a documented placeholder:
   branch stays paused (ExecutionBlocker) until 📐 Extract Angle runs, so the
   rest of the workflow works without these models installed.
 
+## Optional: generated objects and HDR plates (ComfyUI V135+)
+
+Two research lanes drive models that run as ComfyUI's own nodes rather than as
+Atlas extras, so there is nothing to `pip install`. You need ComfyUI V135 or later
+and the model files below in ComfyUI's model folders. Read the licence notes in
+[THIRD_PARTY.md](THIRD_PARTY.md#comfyui-core-models-driven-by-atlas-nodes-user-downloaded)
+before any paid work.
+
+### Pixal3D: an object's hidden sides
+
+Workflow: the Pixal3D object research workflow under `research/` (not yet
+benchmark-green).
+
+| File | Folder | Loaded by |
+|---|---|---|
+| `pixal3d_int8_convrot.safetensors` | `models/diffusion_models/pixal3D/` | `UNETLoader` |
+| `trellis_2_shape_vae_bf16.safetensors` | `models/vae/` | `VAELoader` |
+| `trellis_2_texture_vae_bf16.safetensors` | `models/vae/` | `VAELoader` |
+| `dino_v3_L_naf_fp32.safetensors` | `models/clip_vision/` | `CLIPVisionLoader` |
+
+All four come from the Comfy-Org/Pixal3D repack on Hugging Face; the workflow's
+loader nodes carry the download links.
+
+### LTX-2.5 SDR→HDR: full-resolution HDR plates
+
+Workflows: the two HDR research workflows under `research/`, one for a still
+(zoned with matrixZone) and one for a clip or the viewport's baked camera move. They use the `LTXV*` nodes; if any load red,
+install ComfyUI-LTXVideo and mind the kornia note above.
+
+| File | Loaded by |
+|---|---|
+| `ltx-2.5-22b-distilled-transformer-bf16.safetensors` | `UNETLoader` |
+| `ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors` | `LTXICLoRALoaderModelOnly` |
+| `ltx-2.5-22b-ic-lora-sdr-to-hdr-scene-emb.safetensors` | `LTXVLoadConditioning` |
+| `ltx-2.5-video-vae-conv-bf16.safetensors`, `ltx-2.5-audio-vae-bf16.safetensors` | `VAELoader` |
+
+The still workflow defaults to a 2x2 grid at the 4K tier: on an 8K plate it fits
+a 32 GB GPU and runs in about 14.5 minutes cold. On a smaller card, drop to 4x4
+(1080p-tier zones), which takes about 23 minutes.
+
 ## ComfyUI Adapter
 
 The `atlas_camera.comfy` package is scaffolded, but this first pass does not yet

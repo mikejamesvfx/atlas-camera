@@ -158,6 +158,25 @@ plate with `python -m atlas_camera.dynamic`, then load it into the viewport with
 `Atlas Load Dynamic Plate` 🌊 — see
 **[docs/DYNAMIC_PLATES.md](docs/DYNAMIC_PLATES.md)**.
 
+**Hidden sides, HDR plates, and ComfyUI's own 3D tools.** Three newer lanes, wired
+in research workflows under [`research/`](research/) for now:
+
+- *Walk around an object.* `AtlasObjectCrop` 🎯 and `AtlasImportGeneratedMesh` 🧩
+  lift one foreground object into a 3D body with core ComfyUI's Pixal3D, scaled
+  against the scene's metric depth and checked against the plate before it is
+  trusted. The photo paints what the camera saw; the far side is the model's
+  inference, and it is labelled that way.
+- *HDR at plate resolution.* `AtlasMatrixZoneSplit` / `AtlasMatrixZoneStitch` 🔲 run
+  the LTX-2.5 SDR→HDR conversion over an 8K plate in zones and restitch one ACEScg
+  EXR, with a whole-frame pass setting the brightness so neighbouring zones cannot
+  disagree. Highlights above 1.0 are inferred, not photographed.
+- *Hand the scene to ComfyUI.* `AtlasSceneTo3D` 🧊 writes the whole layered scene as
+  one GLB plus the solve camera, straight into Save 3D (Advanced) or Preview 3D,
+  with a float EXR beside every layer.
+
+These need ComfyUI V135+ and their model files: see
+**[INSTALL.md](INSTALL.md#optional-generated-objects-and-hdr-plates-comfyui-v135)**.
+
 Experimental nodes stay hidden unless you set `ATLAS_EXPERIMENTAL=1` before
 launching ComfyUI (`ATLAS_LEGACY_NODES` and `ATLAS_IOS` gate the other two
 tiers). Nothing in the default pack needs Docker or a user-cloned research
@@ -182,11 +201,19 @@ Atlas Camera is **[MIT](LICENSE)** — free for commercial use. It vendors nothi
 restrictive; every optional model or package is installed by the user, and its
 node fails soft with an informative message when absent.
 
-**No node Atlas registers depends on a non-commercial model.** One caveat
-remains and it is yours to choose: Depth Anything V2's **large** weights are
-CC BY-NC 4.0, while its small/base weights are Apache 2.0 — pick the variant
-that suits your use. Everything else — the solve, geometry, layer stack,
-viewport, and the full OpenColorIO output path — is unrestricted. Full map in
+A few nodes are built to drive a model you install yourself, and that model's
+terms are yours to check:
+
+- **Depth Anything V2**: the **large** weights are CC BY-NC 4.0; small/base are
+  Apache 2.0. Pick the variant that suits your use.
+- **LTX-2.5** (the matrixZone HDR nodes): the LTX-2.x Community License, free for
+  commercial use by an organisation under US$10M annual revenue, with a paid
+  licence above that.
+- **Pixal3D** (the generated-object nodes): the code is MIT, but the weights'
+  commercial status has not been confirmed upstream yet.
+
+Everything else (the solve, geometry, layer stack, viewport, and the full
+OpenColorIO output path) is unrestricted. Full map in
 **[THIRD_PARTY.md](THIRD_PARTY.md)**.
 
 ---

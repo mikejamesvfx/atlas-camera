@@ -14,6 +14,95 @@ Registry goes **93 → 100 standard**, total stays **110**. Every key is
 byte-identical, so saved graphs still load; what changed is which nodes are
 registered without a flag.
 
+### Objects with hidden sides, HDR at plate resolution, and the scene in ComfyUI's own 3D tools
+
+Six new nodes, **+6 standard (125 → 131, total 145)**. Every existing key is
+byte-identical, and the one new widget on an existing node (`sam3_checkpoint`) is
+appended last, so saved graphs load unchanged.
+
+**A foreground object you can walk around.** On an orbit, a relief sheet shows a
+stretched smear where an object's back should be. Two nodes lift one object into a
+real 3D body with core ComfyUI's Pixal3D and place it back in the solved world.
+
+- **`AtlasObjectCrop` 🎯** re-renders the object through a virtual camera that
+  shares the solve's centre and is rotated to look straight at it. Pixal3D assumes
+  a centred pinhole, and this makes that true for an off-centre object, with the
+  field of view taken from the solve rather than a depth model. Pixal3D's own
+  projection is reproduced to 0.01 px.
+- **`AtlasImportGeneratedMesh` 🧩** maps the mesh back through that camera and
+  measures its one unknown, scale along the rays, against the shared metric depth.
+  It then checks the result against the plate: wrong depth order, or a mesh poking
+  into the sky, is refused; a weak silhouette match is flagged for inspection. The
+  mesh is appended and never clobbers. The photo paints wherever the solved camera
+  saw the surface and the model's vertex colour covers the rest, through the
+  viewport and the GLB/OBJ/USD exporters. The far side is the model's inference,
+  and the report says so.
+
+**Full-resolution HDR plates from LTX-2.5.** The LTX-2.5 SDR→HDR IC-LoRA runs at
+whatever size it is fed, and a 22B video model will not take an 8K frame, so the
+HDR used to come out around 1280 px wide: a preview, not a plate.
+
+- **`AtlasMatrixZoneSplit` 🔲** applies matrixZone to a still: exact crops at sizes
+  the model was trained on, planned by a port of the Atlas Bridge planner and
+  pinned to its worked numbers so the two cannot drift.
+- **`AtlasMatrixZoneStitch` 🔲** puts the converted zones back as one half-float
+  ACEScg EXR at plate resolution. A conversion's seam risk is tonal (each zone
+  guesses its own highlight brightness), so a quarter-res pass over the whole frame
+  sets every zone's broad radiance and the zones only add detail. On the first live
+  8K run that took sky seams from **0.29 to 0.04 stops**. Any seam that fails the
+  step test, scored on the decoded EXR as delivered, is named in the report, never
+  blended away.
+- **Stripes are the model's, so the stitch cleans them up.** The conversion adds
+  faint vertical lines on its own: they show with no zones at all, and grid size,
+  an untiled VAE decode, more steps and wider overlap all leave them unchanged.
+  Three passes run after the stitch: a band destripe (bands capped at a quarter of
+  the plate height, since the stripes drift down a zone), a local destripe in
+  256-row windows that reaches flat and clipped sky, and **`detail_from_sdr`**
+  (appended last, default on), which keeps the conversion's brightness but takes
+  the picture's structure from the SDR through a guided filter. Clipped highlights
+  keep their HDR pixels. The cost is deliberate: in unclipped textured areas the
+  model's own fine detail and glints give way to the SDR's, about 10% dimmer in the
+  0.5 to 0.8 range. Switch it off to keep them, and the stripes with them.
+- **`AtlasHDRVertexTransfer` 🌗** carries the HDR onto a generated object's hidden
+  side, which the conversion never sees: it fits the plate's own SDR→HDR curve from
+  the aligned pair and applies it to the vertex colours.
+- **2x2 at the 4K tier is the default**: on the 8K plate it fits a 32 GB GPU, runs
+  in about **14.5 minutes** cold (4x4 took about 23), and its worst seam scores
+  **1.20x**, a pass. Which sequence mode wins is still unmeasured, so
+  `per_zone_clip` stays the default until it is.
+- Known limits: the occasional soft dark blotch (about 30 px) on flat sky, made by
+  the model, and a faint highlight ripple inside SDR-clipped areas, where the HDR is
+  kept on purpose. Paint the blotch out in comp.
+
+The EXR is labelled a model inference of highlight radiance from a display-referred
+plate, not photographed HDR. Same doctrine as the hidden side.
+
+**The layered scene in ComfyUI's native 3D tools.**
+
+- **`AtlasSceneTo3D` 🧊** emits the three sockets core ComfyUI's Save 3D
+  (Advanced) and Preview 3D take. One GLB holds every projection layer as its own
+  unlit mesh (relief, generated objects, clean-plate bands, sky domes), each painted
+  with its own full-res plate, plus a half-float EXR sidecar per layer, since glTF
+  has no EXR image. The camera is the recovered solve camera; Atlas and Load3D share
+  the same Y-up, −Z convention, so nothing is converted, and a test reprojects it to
+  within 0.01 px of the solve. An 8K plate with six layers makes a GLB of about
+  **235 MB**: the report warns above 200 MB and the node refuses above `max_glb_mb`
+  (1 GB default), naming the measured size. Runs headless through the MCP runner as
+  well as in the GUI.
+
+**Also**
+
+- `AtlasSAM3Mask` / `AtlasInput`: appended `sam3_checkpoint` runs core ComfyUI's
+  SAM 3.1 (`sam3.1_multiplex_fp16`) instead of the gated Hugging Face repo.
+- A scene-referred IMAGE (linear EXR, HDR, ACEScct) is now warned about instead of
+  silently clipped.
+- Clean-plate and sky layers carry past the frame edge, with a softened outpaint
+  ring (ring ripple **5.70% → 0.22%**).
+- Three research workflows live under `research/`: the Pixal3D object, the HDR
+  still (matrixZone) and the HDR clip. They need ComfyUI V135+ and are not
+  shipping examples yet. Model files are listed in INSTALL.md.
+- LTX-2.5 and Pixal3D terms are now mapped in THIRD_PARTY.md.
+
 ### Geometric camera conditioning, and a way to prove it worked
 
 Three new nodes, **+3 standard (122 → 125, total 139)**. Every existing key is

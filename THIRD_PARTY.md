@@ -48,6 +48,20 @@ and the whole `[neural]` tier are permissive (Apache / BSD / MIT).
 | big-lama.pt weights | LaMa inpaint weights | Apache-2.0 | ✅ |
 | three.js r185 | Blockout viewport | MIT | **vendored** (`atlas_camera/comfy/web/lib/atlas-three.bundle.js`, built from `ui/`'s pinned dependency) |
 
+## ComfyUI core models (driven by Atlas nodes, user-downloaded)
+
+These run through ComfyUI's own nodes (V135+), not through Atlas code: Atlas nodes
+prepare their inputs and read their outputs, and you download the weights yourself.
+The weights' terms govern what you make with them.
+
+| Model | Driven by | License | Commercial note |
+|---|---|---|---|
+| **LTX-2.x** (2.5 22B distilled + SDR→HDR IC-LoRA, `Lightricks/LTX-2.5`; also the optional Dynamic Plates generator) | `AtlasMatrixZoneSplit` / `AtlasMatrixZoneStitch` (HDR research workflows) | **LTX-2.x Community License** | free commercial use for an organisation under **US$10M annual revenue**, counted across affiliates; a paid licence above that. Use restrictions in its Attachment A. Lightricks claims no rights in outputs; fine-tunes or LoRAs you distribute go out under the same agreement |
+| **Pixal3D** (`TencentARC/Pixal3D`, via the Comfy-Org repack) | `AtlasObjectCrop` → `AtlasImportGeneratedMesh` | code **MIT**; the Comfy-Org repack is tagged MIT | **weights' commercial status unconfirmed upstream** (an open question on TencentARC/Pixal3D, issue #33). Treat as unconfirmed for paid work |
+| TRELLIS.2 shape + texture VAEs | Pixal3D's decoder | MIT | ✅ |
+| DINOv3 ViT-L (`dino_v3_L_naf`) | Pixal3D's image encoder | **Meta DINOv3 License** | commercial use permitted, with use restrictions (same shape as SAM) |
+| SAM 3.1 (`sam3.1_multiplex_fp16`) | `AtlasSAM3Mask` / `AtlasInput` `sam3_checkpoint` | Meta SAM License (see the model card) | as the `[sam3]` row above |
+
 ## Research / non-commercial tier (user-cloned, NOT vendored)
 
 These are **not installed by Atlas** — you clone the upstream repo and point a
@@ -106,3 +120,6 @@ authoritative.
   experimental/eval tiers.
 - **GPL (inpaint)** is graph-level composition, not linking — it does not
   relicense Atlas, but the LaMa/MAT node's own terms govern its use.
+- **Check before paid work**: LTX-2.x (free under US$10M organisation revenue, a
+  paid licence above) and Pixal3D's weights (commercial status unconfirmed
+  upstream). Atlas's own code is unaffected either way.
