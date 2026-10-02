@@ -1,5 +1,5 @@
 {
- "id": "b5e9c9e7-7c93-451a-b242-60e9d56ba23e",
+ "id": "a56cd8f6-0772-427c-8abb-6ad47de0f8bd",
  "revision": 0,
  "last_node_id": 3060,
  "last_link_id": 150,
@@ -2090,7 +2090,7 @@
     "sky_from_clean_plate",
     -9.0,
     48,
-    64,
+    1024,
     0.0
    ],
    "title": "Sky dome from the CLEAN plate (fills the sky behind the object)"
@@ -3269,7 +3269,7 @@
     false,
     0,
     0.0,
-    0,
+    1024,
     2,
     "manual",
     "relief",
@@ -4069,7 +4069,7 @@
     false,
     48,
     0.0,
-    0,
+    1024,
     2,
     "manual",
     "card",
