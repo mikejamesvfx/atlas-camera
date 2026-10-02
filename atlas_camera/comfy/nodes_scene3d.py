@@ -71,6 +71,11 @@ def _output_paths(filename_prefix: str) -> tuple[Path, str]:
         return out, f"{stem}_{n:05}"
 
 
+#: Default GLB size budget and the size above which the report warns (MB).
+GLB_BUDGET_MB = 1024
+GLB_WARN_MB = 200
+
+
 class AtlasSceneTo3D:
     """🧊 Layered Atlas scene -> model_3d + model_3d_info + camera_info.
 
@@ -103,10 +108,18 @@ class AtlasSceneTo3D:
                                "(named in each material's extras). GLB itself cannot "
                                "hold EXR textures."}),
                 "filename_prefix": ("STRING", {"default": "atlas/scene"}),
+                # APPENDED: size budget. Full-res plates x layers grow fast (8K,
+                # 6 layers = ~235 MB); past this the GLB is refused, not handed
+                # to a browser viewer that cannot load it.
+                "max_glb_mb": ("INT", {
+                    "default": GLB_BUDGET_MB, "min": 0, "max": 16384, "step": 64,
+                    "tooltip": "Refuse a GLB larger than this (MB), naming its size. "
+                               "0 = no budget."}),
             },
         }
 
-    def export(self, solve, source_image, write_exr=True, filename_prefix="atlas/scene"):
+    def export(self, solve, source_image, write_exr=True, filename_prefix="atlas/scene",
+               max_glb_mb=GLB_BUDGET_MB):
         np = _require_numpy()
         from atlas_camera.core.camera_math import ground_lookat_pivot
         from atlas_camera.core.load3d_camera import identity_model_info, load3d_camera_info
@@ -124,6 +137,13 @@ class AtlasSceneTo3D:
             solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem)
         glb_path = folder / f"{stem}.glb"
         written = write_scene_glb(layers, glb_path)
+        mb = written["bytes"] / 1e6
+        if int(max_glb_mb or 0) > 0 and mb > int(max_glb_mb):
+            glb_path.unlink(missing_ok=True)
+            raise ValueError(
+                f"AtlasSceneTo3D: the GLB would be {mb:.0f} MB, over the {int(max_glb_mb)} MB "
+                f"budget ({len(written['layers'])} layers at full plate resolution) - feed a "
+                "smaller plate or fewer layers, or raise max_glb_mb (0 = no budget)")
 
         view = np.asarray(extr.camera_view_matrix, dtype=np.float64)
         c2w = np.linalg.inv(view)
@@ -150,7 +170,6 @@ class AtlasSceneTo3D:
         except Exception as exc:  # noqa: BLE001 - a manifest never fails an export
             manifest_note = f"manifest skipped: {exc}"
 
-        mb = written["bytes"] / 1e6
         lines = [f"AtlasSceneTo3D: {len(written['layers'])} layer mesh(es) -> {glb_path} "
                  f"({mb:.1f} MB)"]
         for s in written["layers"]:
@@ -176,7 +195,7 @@ class AtlasSceneTo3D:
                          "perspective camera is centred, so its view is approximate")
         if manifest_note:
             lines.append(manifest_note)
-        if mb > 200:
+        if mb > GLB_WARN_MB:
             lines.append("warning: large GLB - the browser 3D viewer may be slow to load it")
         report = "\n".join(lines)
         return {"ui": {"text": [report]},

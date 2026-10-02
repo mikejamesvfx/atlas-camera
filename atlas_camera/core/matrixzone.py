@@ -283,6 +283,16 @@ def stitch(zone_hdr: list[Any], plan: dict[str, Any], *, global_hdr: Any = None,
     if global_hdr is not None:
         glog = to_log2(resize_bilinear(np.asarray(global_hdr, dtype=np.float32), rh, rw))
 
+    for z, img in zip(plan["zones"], zone_hdr):
+        a = np.asarray(img)
+        if a.size == 0 or a.ndim < 2 or 0 in a.shape[:2]:
+            raise ValueError(f"zone {z['id']} came back empty {tuple(a.shape)}: refusing to "
+                             "stitch around a hole -- re-run that zone")
+        bad = int(a.size - np.isfinite(a).sum())
+        if bad:
+            raise ValueError(f"zone {z['id']} has {bad} non-finite value(s): refusing to "
+                             "stitch around a hole -- re-run that zone")
+
     acc = np.zeros((rh, rw, c), dtype=np.float64)
     wsum = np.zeros((rh, rw, 1), dtype=np.float64)
     logs = []
@@ -433,3 +443,110 @@ def seam_metrics(zone_logs: list[Any], plan: dict[str, Any]) -> list[dict[str, A
                         "median_stops": float(np.median(d)),
                         "p95_stops": float(np.percentile(d, 95))})
     return out
+
+
+#: Stitched-plate step test: strip width either side of a seam line, and the
+#: flag threshold as a multiple of the random-line baseline (its p90).
+SEAM_STRIP_PX = 48
+SEAM_STEP_RATIO_MAX = 1.5
+SEAM_BASELINE_PERCENTILE = 90
+
+
+def _log2_lum(np, a):
+    a = np.asarray(a, dtype=np.float32)
+    if a.ndim == 3 and a.shape[-1] >= 3:
+        a = (a[..., :3] * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(-1)
+    return np.log2(np.maximum(a.reshape(a.shape[:2]), LOG_EPS))
+
+
+def seam_step_test(plate: Any, plan: dict[str, Any], *, sdr_linear: Any = None,
+                   strip_px: int = SEAM_STRIP_PX, ratio_max: float = SEAM_STEP_RATIO_MAX,
+                   n_random: int = 64, seed: int = 0) -> dict[str, Any]:
+    """The gate a viewer actually sees, on the STITCHED plate.
+
+    Per interior seam segment: the per-row (per-column) log2-luminance step
+    between the means of the ``strip_px`` strips either side. With
+    ``sdr_linear`` (the linearised plate the split was given, same size) the
+    SDR's own step on the same line is subtracted first and the score is
+    |median(step_hdr - step_sdr)|: the SDR has the same structure and no
+    seams, so structure cancels and a tonal seam (a constant offset) remains.
+    Without it the score is median |step_hdr| and structure on the line scores
+    too; the report says so. The baseline is the p90 of the same score on
+    random lines of that orientation and length away from the seams.
+
+    Against a MEDIAN baseline the plain step flagged 11 of 24 segments of the
+    8K machine plate (4x4) -- structure, not seams -- hence the p90. At p90:
+    plain flags 2, SDR-controlled 3 (worst 2.34x), every one at or next to the
+    x=5760 / y=3384 junction already judged visually clean. A ratio above
+    ``ratio_max`` FLAGS a seam for a look -- never refused, never blended away.
+    """
+    np = _require_numpy()
+    lg = _log2_lum(np, plate)
+    ls = None
+    if sdr_linear is not None:
+        ls = _log2_lum(np, sdr_linear)
+        if ls.shape != lg.shape:
+            ls = None
+    ph, pw = lg.shape
+    k = int(strip_px)
+    L, T = plan["render"]["plateOrigin"]
+    idx = {tuple(z["index"]): z for z in plan["zones"]}
+
+    def diff(a, orient, pos, s0, s1):
+        if orient == "v":
+            return a[s0:s1, pos - k:pos].mean(1) - a[s0:s1, pos:pos + k].mean(1)
+        return a[pos - k:pos, s0:s1].mean(0) - a[pos:pos + k, s0:s1].mean(0)
+
+    def score(orient, pos, s0, s1):
+        n = pw if orient == "v" else ph
+        if pos - k < 0 or pos + k > n or s1 <= s0:
+            return None
+        d = diff(lg, orient, pos, s0, s1)
+        if ls is not None:
+            return float(abs(np.median(d - diff(ls, orient, pos, s0, s1))))
+        return float(np.median(np.abs(d)))
+
+    segs = []
+    for (c, r), z in idx.items():
+        px, py, zw, zh = z["plateRect"]
+        px, py = px - L, py - T
+        right, below = idx.get((c + 1, r)), idx.get((c, r + 1))
+        if right is not None:
+            segs.append(("v", f"{z['id']}|{right['id']}", px + zw, py, py + zh))
+        if below is not None:
+            segs.append(("h", f"{z['id']}|{below['id']}", py + zh, px, px + zw))
+    avoid = {"v": {s[2] for s in segs if s[0] == "v"}, "h": {s[2] for s in segs if s[0] == "h"}}
+    rng = np.random.default_rng(seed)
+
+    def baseline(orient, length):
+        n, extent = (pw, ph) if orient == "v" else (ph, pw)
+        vals = []
+        for _ in range(n_random * 8):
+            if len(vals) >= n_random or n <= 2 * k + 1:
+                break
+            pos = int(rng.integers(k, n - k))
+            if any(abs(pos - q) < 2 * k for q in avoid[orient]):
+                continue
+            s0 = int(rng.integers(0, max(1, extent - length + 1)))
+            v = score(orient, pos, s0, min(extent, s0 + length))
+            if v is not None:
+                vals.append(v)
+        return float(np.percentile(vals, SEAM_BASELINE_PERCENTILE)) if vals else None
+
+    seams, base_cache = [], {}
+    for orient, name, pos, s0, s1 in segs:
+        step = score(orient, pos, s0, s1)
+        key = (orient, s1 - s0)
+        if key not in base_cache:
+            base_cache[key] = baseline(orient, s1 - s0)
+        base = base_cache[key]
+        ratio = None if step is None or base is None else step / max(base, 1e-4)
+        seams.append({"seam": name, "orientation": orient, "at_px": int(pos),
+                      "step_stops": step, "baseline_stops": base, "ratio": ratio,
+                      "flagged": ratio is not None and ratio > ratio_max})
+    scored = [s for s in seams if s["ratio"] is not None]
+    worst = max(scored, key=lambda s: s["ratio"]) if scored else None
+    return {"strip_px": k, "ratio_max": float(ratio_max), "sdr_controlled": ls is not None,
+            "baseline_percentile": SEAM_BASELINE_PERCENTILE, "seams": seams, "worst": worst,
+            "flagged": [s["seam"] for s in seams if s["flagged"]],
+            "pass": (not any(s["flagged"] for s in seams)) if scored else None}

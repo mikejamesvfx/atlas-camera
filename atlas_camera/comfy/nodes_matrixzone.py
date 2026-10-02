@@ -193,20 +193,21 @@ class AtlasMatrixZoneStitch:
                                split_px=split_px or None)
         destripe = bool(first(destripe))
         sdr = first(sdr_plate) if sdr_plate is not None else None
-        stripe_rep = None
-        if destripe and sdr is not None:
+        stripe_rep, sdr_lin = None, None
+        if sdr is not None:
             from atlas_camera.core.generated_mesh import srgb_to_linear
-            from atlas_camera.core.matrixzone import (
-                destripe_columns,
-                resize_bilinear,
-                zone_row_bands,
-            )
+            from atlas_camera.core.matrixzone import resize_bilinear
             s_np = np.asarray(sdr[0].detach().cpu().float().numpy() if hasattr(sdr, "detach")
                               else sdr[0], dtype=np.float32)[..., :3]
             if s_np.shape[:2] != plate.shape[:2]:
                 s_np = resize_bilinear(s_np, plate.shape[0], plate.shape[1])
-            plate, stripe_rep = destripe_columns(plate, srgb_to_linear(s_np),
-                                                 bands=zone_row_bands(plan))
+            sdr_lin = srgb_to_linear(s_np)
+        if destripe and sdr_lin is not None:
+            from atlas_camera.core.matrixzone import destripe_columns, zone_row_bands
+            plate, stripe_rep = destripe_columns(plate, sdr_lin, bands=zone_row_bands(plan))
+
+        from atlas_camera.core.matrixzone import seam_step_test
+        step = seam_step_test(plate, plan, sdr_linear=sdr_lin)
 
         exr_path, exr_note = "", ""
         try:
@@ -240,6 +241,23 @@ class AtlasMatrixZoneStitch:
                          f"({stripe_rep['bands']} zone-row band(s), {stripe_rep['window_px']} px)")
         elif destripe:
             lines.append("destripe skipped: wire sdr_plate (the plate the split got)")
+        if step["seams"]:
+            base = sorted({f"{s['orientation']} {s['baseline_stops']:.3f}" for s in step["seams"]
+                           if s["baseline_stops"] is not None})
+            w = step["worst"]
+            lines.append(
+                f"seam step test (stitched plate, {step['strip_px']} px strips, "
+                + ("SDR-controlled" if step["sdr_controlled"] else
+                   "NOT SDR-controlled - wire sdr_plate, structure on a line scores too")
+                + f", pass <= {step['ratio_max']:.1f}x random-line p{step['baseline_percentile']} "
+                f"[{', '.join(base)} stops]): "
+                + ("PASS" if step["pass"] else
+                   f"{len(step['flagged'])} seam(s) FLAGGED: {', '.join(step['flagged'])}")
+                + (f"; worst {w['seam']} at {w['at_px']} px, {w['step_stops']:.3f} stops = "
+                   f"{w['ratio']:.2f}x" if w else ""))
+            if step["flagged"]:
+                lines.append("  a flagged seam is either a tonal seam or real structure that "
+                             "happens to sit on the line -- look at it before trusting the plate")
         if rep.get("resized_zones"):
             lines.append(f"warning: {rep['resized_zones']} zone result(s) came back at a "
                          "different size and were resampled to their renderRect")

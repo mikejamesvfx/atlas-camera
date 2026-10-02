@@ -31,6 +31,12 @@ import urllib.request
 import uuid
 
 PRIMS = {"INT", "FLOAT", "STRING", "BOOLEAN"}
+# Input types the FRONTEND renders as a widget (they own a positional slot in
+# ``widgets_values`` though object_info gives them no primitive type). Found
+# live 2026-10-02: Save 3D (Advanced)'s ``viewport_state`` (LOAD_3D) holds the
+# "" slot before width/height; skipping it shifted width <- "" and the node was
+# rejected and silently dropped from the run.
+FRONTEND_WIDGET_TYPES = {"LOAD_3D", "LOAD_3D_ANIMATION"}
 
 #: Frontend-only nodes: they exist in a saved graph but have NO server-side
 #: implementation, so they never appear in ``/object_info`` and must be dropped
@@ -108,7 +114,7 @@ def is_widget(spec) -> bool:
         return True
     if t == "COMBO" or t in PRIMS:
         return not cfg.get("forceInput")
-    return False
+    return t in FRONTEND_WIDGET_TYPES
 
 
 def spec_items(oi, type_):
@@ -516,12 +522,32 @@ def collect_output_reports(outputs: dict) -> dict:
     return reports
 
 
+def format_node_errors(node_errors) -> list[str]:
+    """ComfyUI's ``/prompt`` ``node_errors`` as one line per failing input.
+
+    When SOME output nodes fail validation ComfyUI still queues the rest and
+    reports the failures only here, never in ``/history``; a run that drops
+    its Save node then reads as a clean success. Found live 2026-10-02.
+    """
+    out = []
+    for nid, rec in (node_errors or {}).items():
+        rec = rec if isinstance(rec, dict) else {}
+        cls = rec.get("class_type", "?")
+        for e in rec.get("errors") or [{}]:
+            e = e if isinstance(e, dict) else {"message": str(e)}
+            msg = e.get("message") or e.get("type") or "invalid"
+            det = e.get("details")
+            out.append(f"NOT RUN {cls} (node {nid}): {msg}" + (f": {det}" if det else ""))
+    return out
+
+
 def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                    timeout: int = 1800, poll_s: float = 5.0) -> dict:
     """POST the API graph and poll ``/history`` until it finishes.
 
     Returns ``{completed, prompt_id, errors, output_nodes, reports}`` — node
-    errors carry the verbatim exception message, while ``reports`` contains
+    errors carry the verbatim exception message (and any output node ComfyUI
+    refused at queue time, ``NOT RUN ...``), while ``reports`` contains
     bounded STRING diagnostics and AtlasAssessOutput text/JSON (never
     image/base64 payloads).
     """
@@ -533,6 +559,7 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                 "errors": [json.dumps(resp, default=str)[:4000]],
                 "output_nodes": [], "reports": {}}
     pid = resp["prompt_id"]
+    rejected = format_node_errors(resp.get("node_errors"))
     t0 = time.time()
     missing_not_live_polls = 0
     while time.time() - t0 < timeout:
@@ -550,7 +577,7 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                 missing_not_live_polls += 1
                 if missing_not_live_polls >= 3:
                     return {"completed": False, "prompt_id": pid,
-                            "errors": ["prompt vanished from queue with no history entry"],
+                            "errors": rejected + ["prompt vanished from queue with no history entry"],
                             "output_nodes": [], "reports": {}}
             else:
                 missing_not_live_polls = 0
@@ -558,7 +585,7 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
         missing_not_live_polls = 0
         rec = hist[pid]
         status = rec.get("status", {})
-        errors = []
+        errors = list(rejected)
         for ev in status.get("messages", []):
             if ev[0] == "execution_error":
                 d = ev[1]
@@ -571,7 +598,7 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                                        key=lambda x: int(x) if x.isdigit() else 0),
                 "reports": collect_output_reports(outputs)}
     return {"completed": False, "prompt_id": pid,
-            "errors": [f"timeout after {timeout}s"], "output_nodes": [],
+            "errors": rejected + [f"timeout after {timeout}s"], "output_nodes": [],
             "reports": {}}
 
 

@@ -10,6 +10,7 @@ from atlas_camera.core.matrixzone import (
     pad_to_render,
     plan_still,
     seam_metrics,
+    seam_step_test,
     stitch,
     to_log2,
     zones_as_frames,
@@ -155,3 +156,67 @@ def test_destripe_per_band_interpolates_without_a_row_edge():
     assert rep["bands"] == 2
     row_jump = np.abs(np.log2(out[200, 50:550, 0]) - np.log2(out[199, 50:550, 0])).max()
     assert row_jump < 0.01
+
+
+def _textured(w, h, seed=1):
+    rng = np.random.default_rng(seed)
+    # stationary texture: a ramp's log-gradient varies across the frame, so
+    # the seam line and the random lines would not see the same content
+    return (0.4 * (1 + 0.3 * rng.random((h, w, 1))) * np.ones((1, 1, 3))).astype(np.float32)
+
+
+def test_seam_step_test_passes_a_clean_stitch():
+    plate = _textured(1100, 620)
+    p = plan_still(1100, 620, (2, 2))
+    out, _ = stitch(crop_zones(pad_to_render(plate, p), p), p)
+    rep = seam_step_test(out, p)
+    assert len(rep["seams"]) == 4 and rep["pass"] is True
+    assert rep["worst"]["ratio"] < 1.5
+
+
+def test_seam_step_test_flags_a_tonal_seam_and_names_it():
+    plate = _textured(1100, 620)
+    p = plan_still(1100, 620, (2, 1))
+    out, _ = stitch(crop_zones(pad_to_render(plate, p), p), p)
+    out = out.copy()
+    out[:, 550:] *= 1.5                                 # a half-stop step on the seam line
+    rep = seam_step_test(out, p)
+    assert rep["pass"] is False
+    assert rep["flagged"] == ["z00|z01"]
+    assert rep["worst"]["at_px"] == 550 and rep["worst"]["ratio"] > 1.5
+
+
+def test_seam_step_test_has_no_verdict_without_seams():
+    p = plan_still(1024, 576, (1, 1))
+    rep = seam_step_test(np.ones((576, 1024, 3), np.float32), p)
+    assert rep["seams"] == [] and rep["pass"] is None
+
+
+@pytest.mark.parametrize("bad", ["empty", "nan"])
+def test_stitch_refuses_a_failed_zone_and_names_it(bad):
+    plate = _ramp_plate(1100, 620)
+    p = plan_still(1100, 620, (2, 2))
+    zones = crop_zones(pad_to_render(plate, p), p)
+    if bad == "empty":
+        zones[2] = np.zeros((0, 0, 3), np.float32)
+    else:
+        zones[2] = zones[2].copy()
+        zones[2][5, 5, 0] = np.nan
+    with pytest.raises(ValueError, match=f"zone {p['zones'][2]['id']}.*hole"):
+        stitch(zones, p)
+
+
+def test_seam_step_test_sdr_control_separates_structure_from_a_tonal_seam():
+    # A real vertical edge sits exactly on the seam line. The plain step cannot
+    # tell it from a seam; subtracting the SDR's own step on the line can.
+    sdr = _textured(1100, 620)
+    sdr[:, 550:] *= 3.0                                 # structure, present in the SDR too
+    p = plan_still(1100, 620, (2, 1))
+    hdr, _ = stitch(crop_zones(pad_to_render(sdr, p), p), p)
+    plain = seam_step_test(hdr, p)
+    ctrl = seam_step_test(hdr, p, sdr_linear=sdr)
+    assert plain["flagged"] == ["z00|z01"] and plain["sdr_controlled"] is False
+    assert ctrl["pass"] is True and ctrl["sdr_controlled"] is True
+    seamed = hdr.copy()
+    seamed[:, 550:] *= 1.5                              # now a tonal seam on top of it
+    assert seam_step_test(seamed, p, sdr_linear=sdr)["flagged"] == ["z00|z01"]

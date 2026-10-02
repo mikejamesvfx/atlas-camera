@@ -2159,7 +2159,8 @@
    },
    "widgets_values": [
     true,
-    "atlas/pixal3d_scene"
+    "atlas/pixal3d_scene",
+    1024
    ],
    "title": "Atlas Scene To 3D - layered GLB + EXR sidecars"
   },

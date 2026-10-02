@@ -62,3 +62,9 @@ def test_stitch_refuses_a_mismatched_list(monkeypatch, tmp_path):
     clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
     with pytest.raises(ValueError, match="clip"):
         AtlasMatrixZoneStitch().stitch(clips[:3], [handle])
+
+
+def test_stitch_report_carries_the_seam_step_gate(monkeypatch, tmp_path):
+    _, _, (_, _, report) = _run("per_zone_clip", monkeypatch, tmp_path)
+    assert "seam step test (stitched plate, 48 px strips, NOT SDR-controlled" in report
+    assert "pass <= 1.5x random-line p90" in report

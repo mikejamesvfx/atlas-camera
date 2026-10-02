@@ -486,7 +486,7 @@
    "tests": 13,
    "mcp_tools": 1,
    "repo_tools": 4,
-   "docs": 5,
+   "docs": 6,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
@@ -1925,7 +1925,7 @@
    "tests": 3,
    "mcp_tools": 0,
    "repo_tools": 0,
-   "docs": 1,
+   "docs": 3,
    "product_evidence": true,
    "evidence_kinds": [
     "dedicated_test",
@@ -3489,7 +3489,7 @@
    "tests": 6,
    "mcp_tools": 0,
    "repo_tools": 2,
-   "docs": 4,
+   "docs": 5,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",

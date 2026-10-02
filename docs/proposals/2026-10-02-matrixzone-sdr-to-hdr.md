@@ -1,6 +1,8 @@
 # matrixZone SDR -> HDR — full-resolution HDR plates from LTX-2.5
 
-Status: proposal (scoped 2026-10-02, not built)
+Status: **built** 2026-10-02 (`505137f`, destripe / ring / vertex transfer `d3887a1`,
+separate workflows `db3b18e`); first live run on the 8K machine plate the same day.
+Sections below the gates record what was built and measured.
 
 ## Why
 
@@ -72,8 +74,8 @@ metric, so the spike runs both and the numbers decide the default.
   zone IMAGE (LIST for `per_zone_clip`, one 8k+1 batch for `zones_as_frames`),
   the global low-tier IMAGE, and an `ATLAS_MATRIXZONE` handle (the plan:
   render size, plateOrigin, zone renderRects/plateRects, scan order, mode).
-- the existing LTX SDR->HDR chain (group 7), minus its 0.9 MP cap, run on the
-  zones and once on the global image. Its `hdr_linear` output (ACEScg linear,
+- the LTX SDR->HDR chain, minus its 0.9 MP cap, run on the zones and once on the
+  global image (as built: its own workflow, see *Architecture as built*). Its `hdr_linear` output (ACEScg linear,
   unbounded) is what gets stitched — not the preview, not the per-frame EXRs.
 - **`AtlasMatrixZoneStitch`** — zone HDR (list or batch) + global HDR + handle ->
   full-resolution ACEScg EXR (half, via `plate/oiio_io.write_exr`), a tonemapped
@@ -89,7 +91,29 @@ zones over their shared overlap, BEFORE the anchor and blend. Reported per seam
 and gated: a seam above a threshold is named in the report, never silently
 blended away. The same metric compares `per_zone_clip` vs `zones_as_frames`.
 
-## Gates, in order
+## Gates, in order (with pass thresholds)
+
+The pre-blend seam metric (per-seam |log2 luminance| disagreement between the two
+zones' raw results) is a DIAGNOSTIC, not a gate: in textured regions each zone
+re-renders fine detail differently and the metric reports that, while the 128 px
+log-space feather hides it (live: textured seams 0.2-0.55 stops pre-blend, no visible
+seam at the worst junction). What a viewer sees is the stitched plate, so the gates
+use the **stitched-plate step test**: per seam segment, the per-row log2-luminance step
+between 48 px strips either side; with the SDR input wired, the SDR's own step on the same
+line is subtracted first (same structure, no seams, so structure cancels and a tonal offset
+remains). Divided by the p90 of the same score on random lines of that plate (the content
+baseline; a median baseline flagged 11 of 24 segments on structure). Built as `core.matrixzone.seam_step_test` and printed in
+every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never refused
+(structure on the line scores high too, so the visual check stays the deciding half).
+
+| gate | pass threshold | status (8K machine plate, 4x4) |
+|---|---|---|
+| 1 split -> stitch identity, no model | max rel. error < 1e-5 | **pass** (test) |
+| 2 planner parity with `atlas_bridge` | numbers identical on the UHD worked case | **pass** (test) |
+| 3 VRAM / tier | 2x2 (4K-tier zones) completes on the target GPU | **open** — only 4x4 run |
+| 4 end to end | every seam segment <= 1.5x the random-line p90, AND no visible seam at the worst-scoring junction | **pass with one flagged junction**: SDR-controlled, 3 of 24 segments flagged (worst `z22\|z23` 2.34x), all at or next to x=5760 / y=3384, visually clean (structure continuous, no ghosting); recorded as content |
+| 5 mode shoot-out | the mode with the lower worst seam step wins; tie -> `per_zone_clip` | **open** — `per_zone_clip` is the provisional default |
+| 6 anchor on/off | anchor kept only if it lowers the worst stitched-plate step | **pass**: sky seams 0.29 -> 0.04 stops pre-blend; kept |
 
 1. **Split -> stitch identity, no model.** Feed the SDR zones straight to the
    stitcher: zero difference outside overlap bands, identical inside them (the
@@ -105,6 +129,39 @@ blended away. The same metric compares `per_zone_clip` vs `zones_as_frames`.
 6. **Anchor on/off**: same zones, with and without the global low-frequency
    anchor. If the anchor does not lower the seam metric it is not kept.
 
+## Budgets and failure behaviour
+
+- **Runtime.** 4x4 = 17 LTX clips (global + 16 zones): **22 min 48 s** cold on the
+  V135 box (~80 s per clip incl. model load). 2x2 = 5 clips of ~4x the pixels: unmeasured.
+- **A zone fails or comes back wrong.** The stitch refuses — naming the zone — when a
+  zone result is empty, non-finite, or the list length does not match the split; it
+  never stitches around a hole. A zone returned at the wrong size is resampled and
+  reported.
+- **Re-runs.** ComfyUI caches every completed clip, so changing only the stitch
+  settings (anchor, split, destripe) re-runs the stitch alone.
+- **Interrupt.** ComfyUI interrupts between steps; a long LTX step completes first
+  (observed: 73 s from Stop to "Processing interrupted").
+
+## Architecture as built
+
+- **Separate workflows** (user decision): SDR->HDR is not part of building a scene; it
+  runs on a plate BEFORE the solve or on renders AFTER it.
+  Two research workflows under `research/`: the HDR **still** workflow (still -> matrixZone ->
+  EXR) and the HDR **clip** workflow (video -> EXR sequence + HLG). The Pixal3D
+  scene workflow carries no LTX nodes.
+- **Destripe** (`AtlasMatrixZoneStitch` `sdr_plate` + `destripe`): LTX-2.5 adds faint
+  vertical stripes in every zone (~0.018 stops; also present with no zones, so the
+  model, not the tiling). Measured against the SDR input per zone row, high-passed at
+  257 px, divided out in two passes: **0.085 -> 0.016 stops** live.
+- **Outpaint ring smear** (clean-plate / sky layers): edge replication across a
+  1024 px frame-outpaint ring read as stripes; ring ripple **5.70% -> 0.22%** live,
+  real plate unchanged at 0.55%.
+- **Hidden side "after" the solve** — `AtlasHDRVertexTransfer`. Generated objects'
+  hidden sides are vertex colour; the model cannot see them, and laying them out in
+  UVs would give it a texture atlas with no scene context to judge highlights by. The
+  plate's own SDR->HDR curve is fitted from the pixel-aligned pair (ACEScg, log-binned,
+  monotone) and applied to the vertex colours; live: 23,331 vertices, 184 above 1.0.
+
 ## Honesty in the output
 
 The EXR is tagged ACEScg and labelled in the report as a MODEL RECONSTRUCTION of
@@ -115,5 +172,5 @@ doctrine as the generated-object hidden side.
 
 - Grid / zone tier for 8K: 2x2 at the 4K tier (matrixZone default, if VRAM
   allows) vs 4x4 at the 1080p tier.
-- Default sequence mode — decided by gate 5's numbers.
+- Default sequence mode — decided by gate 5's numbers (provisional: `per_zone_clip`).
 - Whether the anchor's split frequency is exposed or fixed.

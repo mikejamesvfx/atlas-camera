@@ -203,3 +203,29 @@ def test_node_writes_glb_and_returns_the_three_sockets(tmp_path, monkeypatch):
     g = read_glb_json(glb_path)
     assert len(g["nodes"]) == 2
     assert "EXR scene_00001_primary.exr" in report and "NOT scene-referred" in report
+
+
+@pytest.mark.parametrize("budget, refused", [(1024, True), (0, False), (4096, False)])
+def test_node_refuses_a_glb_over_the_size_budget(tmp_path, monkeypatch, budget, refused):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("OpenImageIO")
+    from atlas_camera.comfy import nodes_scene3d
+    from atlas_camera.exporters import scene_glb
+
+    real = scene_glb.write_scene_glb
+
+    def inflated(layers, path):          # pretend the plates made a 1.5 GB file
+        out = real(layers, path)
+        return {**out, "bytes": 1_500_000_000}
+
+    monkeypatch.setattr(scene_glb, "write_scene_glb", inflated)
+    monkeypatch.setattr(nodes_scene3d, "_output_paths",
+                        lambda prefix: (tmp_path, "scene_00001"))
+    node = nodes_scene3d.AtlasSceneTo3D()
+    if refused:
+        with pytest.raises(ValueError, match=r"1500 MB, over the 1024 MB budget"):
+            node.export(_solve(), torch.rand(1, H, W, 3), max_glb_mb=budget)
+        assert not (tmp_path / "scene_00001.glb").exists()
+    else:
+        report = node.export(_solve(), torch.rand(1, H, W, 3), max_glb_mb=budget)["result"][4]
+        assert "warning: large GLB" in report

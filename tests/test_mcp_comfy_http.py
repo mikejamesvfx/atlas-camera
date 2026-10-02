@@ -503,3 +503,42 @@ def test_every_shipped_workflow_node_is_resolvable():
     assert not unknown, (
         "shipped workflows reference node types the flattener cannot place:\n  "
         + "\n  ".join(f"{k}: {v}" for k, v in unknown.items()))
+
+
+def test_load3d_viewport_state_owns_a_widget_slot():
+    # Save 3D (Advanced): widgets_values ["3d/x", "", 1024, 1024] where "" is
+    # viewport_state (LOAD_3D). Skipping that slot shifted width <- "".
+    oi = {"Save3DAdvanced": {"input": {
+        "required": {"model_3d": ["FILE_3D_GLB", {}],
+                     "filename_prefix": ["STRING", {"default": "3d/ComfyUI"}],
+                     "viewport_state": ["LOAD_3D", {}],
+                     "width": ["INT", {"default": 1024}],
+                     "height": ["INT", {"default": 1024}]},
+        "optional": {"camera_info": ["LOAD3D_CAMERA", {}]}}}}
+    got = C.widget_inputs(oi, "Save3DAdvanced", ["3d/atlas_scene", "", 1024, 768])
+    assert got == {"filename_prefix": "3d/atlas_scene", "viewport_state": "",
+                   "width": 1024, "height": 768}
+    assert not C.is_widget(["LOAD3D_CAMERA", {}])
+
+
+def test_queue_time_node_errors_are_reported(monkeypatch):
+    def fake_http(url, *_args, **_kwargs):
+        if url.endswith("/prompt"):
+            return {"prompt_id": "p1", "node_errors": {"1014": {
+                "class_type": "Save3DAdvanced",
+                "errors": [{"type": "invalid_input_type",
+                            "message": "Failed to convert an input value to a INT value",
+                            "details": "width, , invalid literal"}],
+                "dependent_outputs": ["1014"]}}}
+        if url.endswith("/history/p1"):
+            return {"p1": {"status": {"completed": True, "messages": []},
+                           "outputs": {"7": {}}}}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(C, "http_json", fake_http)
+    monkeypatch.setattr(C.time, "sleep", lambda _seconds: None)
+    result = C.queue_and_wait({}, timeout=10, poll_s=0)
+    assert result["completed"] is True
+    assert len(result["errors"]) == 1
+    assert result["errors"][0].startswith("NOT RUN Save3DAdvanced (node 1014): Failed")
+    assert "width" in result["errors"][0]
