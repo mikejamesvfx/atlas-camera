@@ -153,6 +153,11 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
   vertical stripes in every zone (~0.018 stops; also present with no zones, so the
   model, not the tiling). Measured against the SDR input per zone row, high-passed at
   257 px, divided out in two passes: **0.085 -> 0.016 stops** live.
+- **Local destripe** (second pass, `destripe_local`): seen in Nuke on the 2x2 plate —
+  streaks in the SDR-clipped bright sky and thin lines in part of the lower sky, both
+  invisible to the band pass (it measures unclipped pixels, one profile per band).
+  Per overlapping 256-row window, from flat pixels only, weighted by SDR flatness:
+  correction p99 0.10 stops, max 0.73 (unweighted it reached 2.6 on the machine).
 - **Outpaint ring smear** (clean-plate / sky layers): edge replication across a
   1024 px frame-outpaint ring read as stripes; ring ripple **5.70% -> 0.22%** live,
   real plate unchanged at 0.55%.

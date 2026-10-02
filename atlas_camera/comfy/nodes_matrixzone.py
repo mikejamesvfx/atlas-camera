@@ -202,9 +202,15 @@ class AtlasMatrixZoneStitch:
             if s_np.shape[:2] != plate.shape[:2]:
                 s_np = resize_bilinear(s_np, plate.shape[0], plate.shape[1])
             sdr_lin = srgb_to_linear(s_np)
+        local_rep = None
         if destripe and sdr_lin is not None:
-            from atlas_camera.core.matrixzone import destripe_columns, zone_row_bands
+            from atlas_camera.core.matrixzone import (
+                destripe_columns,
+                destripe_local,
+                zone_row_bands,
+            )
             plate, stripe_rep = destripe_columns(plate, sdr_lin, bands=zone_row_bands(plan))
+            plate, local_rep = destripe_local(plate, sdr_lin)
 
         exr_path, exr_note = "", ""
         try:
@@ -277,6 +283,12 @@ class AtlasMatrixZoneStitch:
                          f"{stripe_rep['ripple_before_stops']:.4f} -> "
                          f"{stripe_rep['ripple_after_stops']:.4f} stops rms "
                          f"({stripe_rep['bands']} band(s) of <= 1/4 plate height, {stripe_rep['window_px']} px)")
+        if local_rep:
+            lines.append(f"local destripe (flat regions incl. clipped highlights, "
+                         f"{local_rep['rows']}-row windows): correction p99 "
+                         f"{local_rep['field_p99_stops']:.3f} stops, max "
+                         f"{local_rep['field_max_stops']:.3f}; {local_rep['flat_fraction']:.0%} of "
+                         "the plate flat enough to measure")
         elif destripe:
             lines.append("destripe skipped: wire sdr_plate (the plate the split got)")
         if step["seams"]:

@@ -402,6 +402,79 @@ def destripe_columns(hdr: Any, sdr_linear: Any, *, bands: list[tuple[int, int]] 
     return out, rep
 
 
+#: Local destripe: SDR log2-luminance gradient (stops/px, smoothed) above which
+#: a pixel is "structure" and the correction fades out. Sky reads ~0.01-0.03.
+LOCAL_DESTRIPE_FLAT_GRAD = 0.04
+
+
+def destripe_local(hdr: Any, sdr_linear: Any, *, rows: int = 256, window: int = 257,
+                   flat_grad: float = LOCAL_DESTRIPE_FLAT_GRAD,
+                   min_flat_rows: int = 64) -> tuple[Any, dict[str, Any]]:
+    """Second destripe pass for stripes that are LOCAL and sit on flat regions.
+
+    The band pass (``destripe_columns``) takes one column profile per band from
+    UNCLIPPED pixels, so it cannot see stripes that live in part of a band or in
+    the highlights the SDR clipped -- found live 2026-10-02 in Nuke: streaks in
+    the bright sky above the machine and thin lines in the lower sky survived
+    the band pass. Here the profile of ``log2(hdr / sdr)`` is taken per
+    overlapping ``rows`` window (half-step, linearly blended), from FLAT pixels
+    only (smoothed SDR gradient below ``flat_grad``; clipped highlights are
+    flat in the SDR, so they count), high-passed at ``window`` px, and applied
+    weighted by flatness. Structure (the object, rocks, grass) carries real
+    vertical detail in that ratio and gets a weight near 0; a stripe shows on
+    flat sky and texture hides it anyway. Measured on the 8K 2x2 plate: |field|
+    p99 0.10 stops, p99.9 0.25; without the flat weighting the same field
+    reached 2.6 stops on the machine.
+    """
+    np = _require_numpy()
+    h_img = np.asarray(hdr, dtype=np.float32)
+    s_img = np.asarray(sdr_linear, dtype=np.float32)
+    if h_img.shape[:2] != s_img.shape[:2]:
+        raise ValueError(f"hdr {h_img.shape[:2]} and sdr {s_img.shape[:2]} differ")
+    H, W = h_img.shape[:2]
+    lum_w = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    ls = np.log2(np.maximum((np.maximum(s_img[..., :3], 0) * lum_w).sum(-1), 1e-4))
+    ratio = np.log2(np.maximum((np.maximum(h_img[..., :3], 0) * lum_w).sum(-1), 1e-4)) - ls
+    gy, gx = np.gradient(ls)
+    grad = lowpass(np.sqrt(gx * gx + gy * gy), 16)
+    flat = np.exp(-(grad / float(flat_grad)) ** 2).astype(np.float32)
+    rows = max(2, min(int(rows), H))
+    step = max(1, rows // 2)
+    centres, profs = [], []
+    for y0 in range(0, max(1, H - step), step):
+        y1 = min(H, y0 + rows)
+        f = flat[y0:y1] > 0.5
+        enough = f.sum(0) >= min(int(min_flat_rows), y1 - y0)
+        if not enough.any():
+            profs.append(np.zeros(W, dtype=np.float64))
+        else:
+            r = np.where(f, ratio[y0:y1], np.nan)
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)   # all-NaN columns: filled below
+                prof = np.nanmedian(np.where(enough[None, :], r, np.nan), 0)
+            base = float(np.nanmedian(prof[enough]))
+            prof = np.where(enough & np.isfinite(prof), prof, base)
+            profs.append(np.where(enough, _column_highpass(np, prof, window), 0.0))
+        centres.append((y0 + y1) / 2.0)
+    if len(centres) == 1:
+        field = np.broadcast_to(profs[0][None, :], (H, W))
+    else:
+        c = np.asarray(centres)
+        P = np.stack(profs)
+        rr = np.arange(H, dtype=np.float32)
+        idx = np.clip(np.searchsorted(c, rr) - 1, 0, len(c) - 2)
+        t = np.clip((rr - c[idx]) / (c[idx + 1] - c[idx]), 0, 1)[:, None]
+        field = P[idx] * (1 - t) + P[idx + 1] * t
+    field = (field * flat).astype(np.float32)
+    out = h_img * np.exp2(-field)[..., None]
+    a = np.abs(field)
+    rep = {"flat_fraction": float((flat > 0.5).mean()), "rows": rows, "window_px": int(window),
+           "field_p99_stops": float(np.percentile(a, 99)),
+           "field_max_stops": float(a.max())}
+    return out, rep
+
+
 #: Destripe bands are at most this fraction of the plate height. The stripes
 #: drift down a tall zone: on a 2x2 8K plate (2256-row zones) one band per zone
 #: row left 0.085 stops at quarter-height granularity; quarter-height bands took

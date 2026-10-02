@@ -229,3 +229,27 @@ def test_destripe_bands_are_capped_at_a_quarter_plate():
     assert b4 == [(0, 1128), (1128, 2256), (2256, 3384), (3384, 4512)]   # unchanged
     assert b2 == b4                                                       # 2x2 rows split in two
     assert zone_row_bands(plan_still(7680, 4512, (2, 2)), max_fraction=0) == [(0, 2256), (2256, 4512)]
+
+
+def test_local_destripe_removes_partial_stripes_on_flat_and_spares_structure():
+    from atlas_camera.core.matrixzone import destripe_local
+    H, W = 768, 1024
+    rng = np.random.default_rng(3)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    sdr = (0.4 + 0.1 * yy / H)[..., None] * np.ones((1, 1, 3), np.float32)   # flat sky ramp
+    # an object with real vertical structure (a picket of bars) on the right
+    bars = ((xx // 6) % 2 == 0) & (xx > 700) & (yy > 300)
+    sdr = np.where(bars[..., None], 0.05, sdr).astype(np.float32)
+    hdr = sdr * 2.0
+    # the conversion adds thin vertical stripes in the UPPER sky only
+    stripes = np.exp2(0.15 * rng.standard_normal(W).astype(np.float32))
+    upper = yy < 300
+    hdr = np.where(upper[..., None], hdr * stripes[None, :, None], hdr).astype(np.float32)
+    out, rep = destripe_local(hdr, sdr, rows=128)
+    lum = lambda a: np.log2((a * [0.2126, 0.7152, 0.0722]).sum(-1))  # noqa: E731
+    before = np.std(np.median(lum(hdr[40:260, :650]) - lum(sdr[40:260, :650]), 0))
+    after = np.std(np.median(lum(out[40:260, :650]) - lum(sdr[40:260, :650]), 0))
+    assert before > 0.1 and after < 0.3 * before
+    obj = (yy > 340) & (xx > 720)
+    assert np.max(np.abs(lum(out)[obj] - lum(hdr)[obj])) < 0.02             # structure untouched
+    assert rep["field_max_stops"] < 1.0
