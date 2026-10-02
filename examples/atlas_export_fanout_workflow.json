@@ -350,6 +350,14 @@
           "widget": {
             "name": "sub_quad_boundary"
           }
+        },
+        {
+          "name": "sam3_checkpoint",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint"
+          }
         }
       ],
       "outputs": [
@@ -429,7 +437,8 @@
         "off",
         2000,
         8,
-        true
+        true,
+        "hf:facebook/sam3"
       ],
       "title": "2 · SOLVE + RELIEF"
     },

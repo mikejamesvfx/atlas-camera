@@ -1273,6 +1273,13 @@ def serialize_proxy_geometry(
             # as edge_risk: an array left in `metadata` is dropped by the scalar
             # filter above.
             entry["ribbon_t"] = md.get("ribbon_t", [])
+            # Generated-object colour (AtlasImportGeneratedMesh): flat sRGB
+            # per-vertex RGB for the side the camera never saw, and the
+            # per-vertex photo_weight choosing photo vs vertex colour. Empty
+            # on every other mesh; the shader's photo_weight default is 1.0,
+            # so ordinary meshes stay photo-painted.
+            entry["vertex_colors"] = md.get("vertex_colors", [])
+            entry["photo_weight"] = md.get("photo_weight", [])
             # Full-resolution silhouette matte (PNG data URI). Lifted to the top
             # level beside edge_risk because it is the same KIND of thing — a
             # viewport-only coverage field the geometry does not encode — and the

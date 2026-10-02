@@ -945,9 +945,13 @@ class AtlasExportCameraPathUSD:
 class AtlasExportPlateEXR:
     """📤 File-to-file OCIO plate conversion — the ACEScg EXR handoff.
 
-    ComfyUI's IMAGE tensors are display-referred and effectively 8-bit, so
-    "saving an EXR from Comfy" through the tensor path can never produce a real
-    scene-linear ACEScg plate. This node never touches the tensor: it takes the
+    ComfyUI's IMAGE tensors carry no colourspace tag. Core now ships float EXR
+    save and `ImageColorSpace` (linear Rec.709 / HDR / ACEScct), but its EXR
+    save takes only sRGB / HDR / linear Rec.709 input — never AP1 — so the
+    tensor path still cannot deliver a real scene-linear ACEScg plate, and
+    Atlas's own tensor-consuming nodes read IMAGE as display sRGB (see
+    ``node_helpers._scene_referred_input_warning``). This node never touches
+    the tensor: it takes the
     ``plate_ref`` of an on-disk plate (typically ``AtlasLoadRAW``'s scene-linear
     ``Linear Rec.709 (sRGB)`` sidecar — deliberately NEVER tagged ACEScg at the
     demosaic, per the colourspace-honesty doctrine) and converts the FILE

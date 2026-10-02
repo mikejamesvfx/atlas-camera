@@ -472,6 +472,14 @@
           "type": "ATLAS_RAW_META",
           "link": 2,
           "shape": 7
+        },
+        {
+          "name": "sam3_checkpoint",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint"
+          }
         }
       ],
       "outputs": [
@@ -548,7 +556,8 @@
         "off",
         2000,
         0,
-        true
+        true,
+        "hf:facebook/sam3"
       ],
       "title": "SOLVE \u00b7 intrinsics PINNED by raw_meta"
     },
@@ -629,6 +638,14 @@
           "type": "STRING",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "sam3_checkpoint",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint"
+          }
         }
       ],
       "outputs": [
@@ -655,7 +672,8 @@
         0.4,
         "auto",
         "merged",
-        0
+        0,
+        "hf:facebook/sam3"
       ],
       "title": "SAM3 \u00b7 the hero object"
     },

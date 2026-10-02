@@ -142,6 +142,12 @@ class ReliefMesh:
     edge_risk: Any = None
     silhouette_alpha: Any = None
     ribbon_t: Any = None
+    # Generated-object colour (AtlasImportGeneratedMesh): (N, 3) sRGB vertex
+    # colour for the side the camera never saw, and (N,) photo_weight (>= the
+    # split: photo paints; below: vertex colour). Both None on every
+    # photographed mesh; exporters write vertex colour only when present.
+    vertex_colors: Any = None
+    photo_weight: Any = None
 
 
 def estimate_ground_scale(

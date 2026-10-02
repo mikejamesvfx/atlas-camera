@@ -353,7 +353,8 @@
         0.5,
         "auto",
         "merged",
-        0
+        0,
+        "hf:facebook/sam3"
       ]
     },
     {
@@ -803,7 +804,8 @@
         0.5,
         "auto",
         "merged",
-        0
+        0,
+        "hf:facebook/sam3"
       ]
     },
     {

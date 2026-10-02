@@ -390,7 +390,10 @@ def test_retopo_widgets_appended_last_with_combo_subset():
             "boundary_smooth_iterations"]
     start = widget_names.index(trio[0])
     assert widget_names[start:start + 3] == trio
-    assert widget_names[-1] == "sub_quad_boundary"
+    # sub_quad_boundary followed the trio (2026-08-10), then sam3_checkpoint
+    # (2026-10-02); both are appended after it, never inserted before.
+    assert widget_names.index("sub_quad_boundary") > start + 2
+    assert widget_names[-1] == "sam3_checkpoint"
     assert it["sub_quad_boundary"][1]["default"] is False
     assert it["retopo_method"][0] == ["off", "quad", "decimate", "voxel_remesh"]
     assert it["retopo_method"][1]["default"] == "off"

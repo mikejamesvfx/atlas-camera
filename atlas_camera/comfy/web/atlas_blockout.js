@@ -583,6 +583,15 @@ const RIBBON_FADE_START = 0.15;
 // does not change exported appearance.
 const RIBBON_SMUDGE_TEXELS = 12.0;
 
+// Generated-object meshes (AtlasImportGeneratedMesh): per-vertex photo_weight
+// above this paints from the photo, below from the model's vertex colour.
+// MIRRORS atlas_camera/core/generated_mesh.py PHOTO_WEIGHT_SPLIT; pinned by
+// tests/test_frontend_mirrors.py. A mesh with no vertex colours uploads
+// photo_weight 1.0 everywhere (PHOTO_WEIGHT_DEFAULT), so every ordinary mesh
+// renders exactly as before.
+const PHOTO_WEIGHT_SPLIT = 0.5;
+const PHOTO_WEIGHT_DEFAULT = 1.0;
+
 const PROJECTION_VERTEX_SHADER = `
   uniform mat4 uAtlasViewMatrix;
   uniform float uFx;
@@ -598,12 +607,21 @@ const PROJECTION_VERTEX_SHADER = `
   attribute float atlasRibbonT;
   varying float vAtlasRibbonT;
   varying vec2 vAtlasBakedUv;
+  // sRGB rgb + a = 2 when the mesh carries colour. NOT 1: a geometry that never
+  // uploads this attribute reads WebGL's constant default (0,0,0,1), and must
+  // not be mistaken for a black vertex-coloured mesh.
+  attribute vec4 atlasVertexColor;
+  attribute float atlasPhotoWeight;
+  varying vec4 vAtlasVertexColor;
+  varying float vAtlasPhotoWeight;
   void main() {
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vWorldPos = worldPos.xyz;
     vWorldNormal = normalize(mat3(modelMatrix) * normal);
     vAtlasEdgeRisk = atlasEdgeRisk;
     vAtlasRibbonT = atlasRibbonT;
+    vAtlasVertexColor = atlasVertexColor;
+    vAtlasPhotoWeight = atlasPhotoWeight;
     // The mesh's BAKED uv, which for a transition-ribbon vertex is the frozen
     // silhouette texel. Everything else here re-derives its texel by projecting
     // the world position (vImagePx), and that is exactly wrong for a skirt: it
@@ -717,6 +735,12 @@ const PROJECTION_FRAGMENT_SHADER = `
   varying float vAtlasEdgeRisk;
   varying float vAtlasRibbonT;
   varying vec2 vAtlasBakedUv;
+  varying vec4 vAtlasVertexColor;
+  varying float vAtlasPhotoWeight;
+  vec3 atlasSRGBToLinear(vec3 value) {
+    return mix(pow((value + vec3(0.055)) / 1.055, vec3(2.4)), value / 12.92,
+               vec3(lessThanEqual(value, vec3(0.04045))));
+  }
   float atlasRelightTerm(vec3 lightPos, vec3 lightColor, float intensity, vec3 worldPos, vec3 worldNormal) {
     if (intensity <= 0.0) return 0.0;
     vec3 toLight = lightPos - worldPos;
@@ -783,10 +807,16 @@ const PROJECTION_FRAGMENT_SHADER = `
     return abs(sampleZ - centerZ) / max(min(sampleZ, centerZ), 0.001);
   }
   void main() {
+    // Generated-object fragment: carries its own vertex colour for the side the
+    // camera never saw, so "the photo cannot reach here" (behind the projector,
+    // off the frame, too grazing) turns into "paint the vertex colour" instead
+    // of a discard. photo_weight feather taken here, in uniform control flow.
+    bool hasVC = vAtlasVertexColor.a > 1.5;
+    float pwFeather = max(fwidth(vAtlasPhotoWeight), 1e-3);
     vec4 fragCam = uAtlasViewMatrix * vec4(vWorldPos, 1.0);
     float fragCamZ = fragCam.z;
-    if (fragCamZ >= -1e-5) discard;               // behind the projector camera
-    float fragDepth = -fragCamZ;
+    if (fragCamZ >= -1e-5 && !hasVC) discard;     // behind the projector camera
+    float fragDepth = max(-fragCamZ, 1e-5);
     vec2 fragImagePx = vec2(uCx + uFx * fragCam.x / fragDepth,
                             uCy - uFy * fragCam.y / fragDepth);
     vec2 uv = fragImagePx / uImageSize;
@@ -804,7 +834,10 @@ const PROJECTION_FRAGMENT_SHADER = `
     vec2 bakedGx = dFdx(vAtlasBakedUv);
     vec2 bakedGy = dFdy(vAtlasBakedUv);
     if (isRibbon) uv = vec2(vAtlasBakedUv.x, 1.0 - vAtlasBakedUv.y);
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+    bool photoUnreachable = fragCamZ >= -1e-5
+      || uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
+    if (photoUnreachable && !hasVC) discard;
+    uv = clamp(uv, 0.0, 1.0);
     float coverage = 1.0;
     float depthEdge = 0.0;
     vec2 texelDx = dFdx(uv) * uImageSize;
@@ -964,7 +997,7 @@ const PROJECTION_FRAGMENT_SHADER = `
       float frameFeather = max(1.5 * fwidth(frameEdge), 1.0 / max(uImageSize.x, uImageSize.y));
       coverage *= smoothstep(0.0, frameFeather, frameEdge);
 
-    } else if (facing < uFacingThreshold) {
+    } else if (facing < uFacingThreshold && !hasVC) {
       discard;                                    // too grazing for this projector
     }
     vec4 col = texture2D(uTexture, uv);
@@ -991,6 +1024,22 @@ const PROJECTION_FRAGMENT_SHADER = `
                    + texture2D(uTexture, uv + stepUv)
                    + texture2D(uTexture, uv + 2.0 * stepUv));
       }
+    }
+    // Generated object: photo where the solved camera SAW the surface
+    // (photo_weight, decided per vertex in core/generated_mesh.py), the
+    // model's vertex colour everywhere else. Every coverage term above is a
+    // statement about the PHOTO, so here it only gates the photo's share; the
+    // vertex colour fills the rest at full coverage. Mixed in LINEAR, before
+    // the relight and the single sRGB encode below.
+    if (hasVC) {
+      float photoMix = smoothstep(${PHOTO_WEIGHT_SPLIT.toFixed(4)} - pwFeather,
+                                  ${PHOTO_WEIGHT_SPLIT.toFixed(4)} + pwFeather,
+                                  clamp(vAtlasPhotoWeight, 0.0, 1.0));
+      if (photoUnreachable) photoMix = 0.0;
+      photoMix *= clamp(coverage, 0.0, 1.0);
+      col = vec4(mix(atlasSRGBToLinear(clamp(vAtlasVertexColor.rgb, 0.0, 1.0)),
+                     col.rgb, photoMix), 1.0);
+      coverage = 1.0;
     }
     // Relight normal: the model's predicted WORLD normal (uNormalMap, already
     // aligned to the recovered frame — image-resolution, cleaner than the coarse
@@ -1332,6 +1381,31 @@ function attachAtlasRibbonT(geo, entry) {
     ? new Float32Array(source)
     : new Float32Array(count);
   geo.setAttribute("atlasRibbonT", new THREE.BufferAttribute(values, 1));
+  return attachAtlasVertexColor(geo, entry);
+}
+
+// Generated-object colour (AtlasImportGeneratedMesh), same upload path. Both
+// attributes are declared unconditionally by the shader, so the fallbacks are
+// load-bearing: alpha 0 means "no vertex colour" (every photo-can't-reach test
+// still discards), and photo_weight PHOTO_WEIGHT_DEFAULT keeps the photo.
+function attachAtlasVertexColor(geo, entry) {
+  const count = geo?.attributes?.position?.count || 0;
+  const rgb = entry?.vertex_colors;
+  const pw = entry?.photo_weight;
+  const colours = new Float32Array(count * 4);
+  if (Array.isArray(rgb) && rgb.length === count * 3) {
+    for (let i = 0; i < count; i++) {
+      colours[i * 4] = rgb[i * 3];
+      colours[i * 4 + 1] = rgb[i * 3 + 1];
+      colours[i * 4 + 2] = rgb[i * 3 + 2];
+      colours[i * 4 + 3] = 2.0;   // > 1.5 = has colour (see the shader)
+    }
+  }
+  const weights = Array.isArray(pw) && pw.length === count
+    ? new Float32Array(pw)
+    : new Float32Array(count).fill(PHOTO_WEIGHT_DEFAULT);
+  geo.setAttribute("atlasVertexColor", new THREE.BufferAttribute(colours, 4));
+  geo.setAttribute("atlasPhotoWeight", new THREE.BufferAttribute(weights, 1));
   return geo;
 }
 

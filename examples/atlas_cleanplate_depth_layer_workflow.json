@@ -407,6 +407,14 @@
           "type": "ATLAS_RAW_META",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "sam3_checkpoint",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint"
+          }
         }
       ],
       "outputs": [
@@ -477,7 +485,8 @@
         "off",
         2000,
         0,
-        false
+        false,
+        "hf:facebook/sam3"
       ],
       "title": "1b · SOLVE (once — the clean plate reuses it)"
     },
@@ -827,6 +836,14 @@
           "type": "STRING",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "sam3_checkpoint",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint"
+          }
         }
       ],
       "outputs": [
@@ -853,7 +870,8 @@
         0.5,
         "auto",
         "merged",
-        0
+        0,
+        "hf:facebook/sam3"
       ],
       "title": "3 · OBJECT MASK · SAM3 'machine' · bypassed (needs [sam3])"
     },

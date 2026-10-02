@@ -164,6 +164,16 @@ def mesh_from_primitive(prim):
         np.asarray(ribbon_t_raw, dtype=np.float32).reshape(-1)
         if len(ribbon_t_raw) == len(verts) else None
     )
+    vc_raw = meta.get("vertex_colors") or []
+    vertex_colors = (
+        np.asarray(vc_raw, dtype=np.float32).reshape(-1, 3)
+        if len(vc_raw) == 3 * len(verts) else None
+    )
+    pw_raw = meta.get("photo_weight") or []
+    photo_weight = (
+        np.asarray(pw_raw, dtype=np.float32).reshape(-1)
+        if vertex_colors is not None and len(pw_raw) == len(verts) else None
+    )
     stats = {
         key: meta[key]
         for key in (
@@ -184,6 +194,7 @@ def mesh_from_primitive(prim):
     return ReliefMesh(
         vertices=verts, faces=faces, uvs=uvs,
         stats=stats, edge_risk=edge_risk, ribbon_t=ribbon_t,
+        vertex_colors=vertex_colors, photo_weight=photo_weight,
     )
 
 

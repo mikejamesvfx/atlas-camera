@@ -400,6 +400,14 @@
           "type": "ATLAS_RAW_META",
           "link": null,
           "shape": 7
+        },
+        {
+          "name": "sam3_checkpoint",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint"
+          }
         }
       ],
       "outputs": [
@@ -470,7 +478,8 @@
         "off",
         2000,
         0,
-        true
+        true,
+        "hf:facebook/sam3"
       ],
       "title": "SOLVE \u00b7 NO raw_meta \u2014 sensor is ESTIMATED"
     },

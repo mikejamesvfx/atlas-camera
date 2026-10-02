@@ -927,3 +927,26 @@ def test_move_preset_orbit_matches_js_rotation_algebra():
                     pivot[2] + rot[2] * k)
         assert max(abs(x - y) for x, y in zip(end, expected)) < 1e-9, move
         assert delta[0] == sign * 15.0 and delta[2] == 0.85
+
+
+# --- Generated-object photo/vertex-colour split (atlas_blockout.js <-> generated_mesh.py)
+
+
+def test_photo_weight_split_mirrors_python():
+    """photo_weight is decided per vertex in Python and split in the shader;
+    a hand-slip would paint the photo onto the hidden side (or the vertex
+    colour over what the camera saw). The default must stay 1.0: every
+    ordinary mesh uploads it, and anything lower would hand ordinary meshes
+    to the vertex-colour path.
+    """
+    from atlas_camera.core.generated_mesh import PHOTO_WEIGHT_SPLIT
+
+    src = _read("atlas_blockout.js")
+    found = re.search(r"const PHOTO_WEIGHT_SPLIT = ([0-9.]+);", src)
+    assert found, "PHOTO_WEIGHT_SPLIT missing from atlas_blockout.js"
+    assert float(found.group(1)) == pytest.approx(PHOTO_WEIGHT_SPLIT)
+    default = re.search(r"const PHOTO_WEIGHT_DEFAULT = ([0-9.]+);", src)
+    assert default and float(default.group(1)) == 1.0
+    # The has-colour flag must not be satisfiable by WebGL's missing-attribute
+    # default (0,0,0,1).
+    assert "vAtlasVertexColor.a > 1.5" in src

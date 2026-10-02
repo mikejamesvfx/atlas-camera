@@ -223,9 +223,46 @@ def _require_pil():
         ) from exc
 
 
+#: Headroom above 1.0 before an IMAGE reads as scene-referred: float noise and
+#: resampling overshoot on a display-referred plate stay well inside it.
+_SCENE_REFERRED_MAX = 1.01
+
+
+def _scene_referred_input_warning(image_tensor) -> str:
+    """A warning when an IMAGE looks scene-referred (linear / log / HDR), else "".
+
+    Atlas reads IMAGE tensors as display-referred sRGB in 0..1, which is what
+    LoadImage gave for an 8-bit file. Core ComfyUI now loads EXR into
+    LoadImage as raw linear float and ships `ImageColorSpace` (linear Rec.709,
+    HLG, PQ, LogC3, ACEScct). Fed such a tensor, every path through
+    `_image_tensor_to_pil` clips highlights and treats linear values as gamma,
+    so the solve, depth and preview are wrong WITHOUT any error. Values above
+    1.0 or below 0 are the one cheap tell; a linear plate entirely under 1.0
+    cannot be detected, which the message also says.
+    """
+    try:
+        t = image_tensor[0] if getattr(image_tensor, "ndim", 0) == 4 else image_tensor
+        hi = float(t.max())
+        lo = float(t.min())
+    except Exception:  # noqa: BLE001 - never fail a node over a warning
+        return ""
+    if hi <= _SCENE_REFERRED_MAX and lo >= -0.01:
+        return ""
+    return (f"WARNING: input IMAGE spans {lo:.3f}..{hi:.3f}, outside display 0..1 — it looks "
+            "scene-referred (linear EXR, HDR, LogC/ACEScct). Atlas reads IMAGE as display "
+            "sRGB, so highlights are clipped and the solve/depth see the wrong tone curve. "
+            "Convert to sRGB first (core 'Convert Image Color Space' -> sRGB, or "
+            "AtlasLoadPlate with an sRGB display output). A linear plate that stays under "
+            "1.0 is not detectable here.")
+
+
 def _image_tensor_to_pil(image_tensor):
     """Convert ComfyUI IMAGE tensor (1×H×W×3 float32) to a PIL Image (RGB)."""
     PILImage = _require_pil()
+    warning = _scene_referred_input_warning(image_tensor)
+    if warning:
+        import logging
+        logging.getLogger("atlas_camera").warning(warning)
     arr = (image_tensor[0].cpu().numpy() * 255).clip(0, 255).astype("uint8")
     return PILImage.fromarray(arr, mode="RGB")
 
@@ -879,6 +916,7 @@ def build_segmentation_cascade(
     confidence_threshold: float = 0.5,
     have_native_sam3: bool | None = None,
     registry: dict | None = None,
+    sam3_checkpoint: str | None = None,
 ) -> tuple[Any | None, str]:
     """Unified segmentation cascade helper for adapter layer call sites.
 
@@ -890,10 +928,18 @@ def build_segmentation_cascade(
       Native SAM3 (AtlasSAM3Mask, out(0)) -> SAM3Segment (third-party Triton/CUDA, out(1)).
       Returns (instances_ref, path_fired: str)
     """
+    from atlas_camera.comfy.sam3_core_backend import HF_BACKEND, is_core_checkpoint
+    core = is_core_checkpoint(sam3_checkpoint)
     if have_native_sam3 is None:
         have_native_sam3 = _native_sam3_available()
+    # A core ComfyUI SAM3 checkpoint needs neither transformers nor [sam3].
+    have_native_sam3 = bool(have_native_sam3 or core)
+    sam3_extra = {"sam3_checkpoint": str(sam3_checkpoint)} if core else {}
+    sam3_label = (f"AtlasSAM3Mask (core {sam3_checkpoint})" if core
+                  else "AtlasSAM3Mask (native)")
     if registry is None:
         registry = _comfy_registry()
+    _ = HF_BACKEND
 
     if policy == "separate":
         if have_native_sam3:
@@ -905,8 +951,9 @@ def build_segmentation_cascade(
                 device="auto",
                 output_mode="separate",
                 max_instances=int(max_instances),
+                **sam3_extra,
             )
-            return sam.out(0), "AtlasSAM3Mask (native)"
+            return sam.out(0), sam3_label
         else:
             sam = g.node(
                 "SAM3Segment",
@@ -927,7 +974,8 @@ def build_segmentation_cascade(
             return sam.out(1), "SAM3Segment (triton)"
     else:
         if have_native_sam3:
-            return g.node("AtlasSAM3Mask", image=image_ref, concepts=prompt_value).out(0), "AtlasSAM3Mask (native)"
+            return (g.node("AtlasSAM3Mask", image=image_ref, concepts=prompt_value,
+                           **sam3_extra).out(0), sam3_label)
         if "AtlasSemanticMask" in registry:
             return g.node("AtlasSemanticMask", image=image_ref, classes=prompt_value).out(0), "AtlasSemanticMask (SegFormer)"
         return None, "none"

@@ -90,6 +90,27 @@ def _define_ground_plane(stage: Any, path: str, Gf: Any, Sdf: Any, UsdGeom: Any,
     return plane
 
 
+def _define_generated_mesh(stage: Any, path: str, meta: dict, Gf: Any, Sdf: Any,
+                           UsdGeom: Any, Vt: Any) -> Any:
+    """World-space triangle mesh with ``primvars:displayColor`` (vertex, linear)."""
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+
+    pts = [float(v) for v in meta["vertices"]]
+    idx = [int(i) for i in meta["faces"]]
+    mesh = UsdGeom.Mesh.Define(stage, path)
+    mesh.CreatePointsAttr().Set(Vt.Vec3fArray(
+        [Gf.Vec3f(pts[i], pts[i + 1], pts[i + 2]) for i in range(0, len(pts), 3)]))
+    mesh.CreateFaceVertexCountsAttr().Set(Vt.IntArray([3] * (len(idx) // 3)))
+    mesh.CreateFaceVertexIndicesAttr().Set(Vt.IntArray(idx))
+    mesh.CreateSubdivisionSchemeAttr().Set("none")
+    cols = meta.get("vertex_colors") or []
+    if len(cols) == len(pts):
+        lin = srgb_to_linear([cols[i:i + 3] for i in range(0, len(cols), 3)])
+        dc = mesh.CreateDisplayColorPrimvar(UsdGeom.Tokens.vertex)
+        dc.Set(Vt.Vec3fArray([Gf.Vec3f(*map(float, c)) for c in lin]))
+    return mesh
+
+
 def _define_projection_material(
     stage: Any,
     mat_path: str,
@@ -243,8 +264,16 @@ class USDExporter:
         for index, primitive in enumerate(solve.projection_scene.proxy_geometry):
             prim_name = (primitive.name or f"proxy_{index}").replace(" ", "_").replace("-", "_")
             prim_path = f"/AtlasProjectionScene/{prim_name}"
+            meta = primitive.metadata or {}
             if primitive.primitive_type == "plane":
                 prim = _define_ground_plane(stage, prim_path, Gf, Sdf, UsdGeom, Vt)
+            elif (primitive.primitive_type == "mesh" and meta.get("source") == "pixal3d"
+                  and meta.get("vertices") and meta.get("faces")):
+                # Generated object (AtlasImportGeneratedMesh): real geometry,
+                # world-space, with the model's colour as displayColor so a DCC
+                # shows the hidden side. Other mesh primitives keep their
+                # historical stand-in below.
+                prim = _define_generated_mesh(stage, prim_path, meta, Gf, Sdf, UsdGeom, Vt)
             else:
                 prim = UsdGeom.Cube.Define(stage, prim_path)
                 dx, dy, dz = primitive.dimensions

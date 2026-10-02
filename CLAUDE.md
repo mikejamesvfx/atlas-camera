@@ -153,7 +153,7 @@ atlas_camera.exporters  � Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  � Atlas JSON, USD camera, and Record3D (.r3d ARKit
                           capture) loaders
 
-atlas_camera.comfy      � ComfyUI node library (125 standard + 10 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
+atlas_camera.comfy      � ComfyUI node library (127 standard + 10 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
 
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
 
@@ -201,7 +201,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ## ComfyUI integration — see docs/NODE_CATALOG.md
 
-The full node catalog (125 standard + 10 experimental + 2 legacy + 2 iOS = 139
+The full node catalog (127 standard + 10 experimental + 2 legacy + 2 iOS = 141
 registered), `comfy/` module layout,
 setup/symlink instructions, double-import guard, `atlas_blockout.js` frontend
 reference, `/atlas/camera_data` endpoint, and the example-workflow catalog all
@@ -213,7 +213,7 @@ Quick facts that must never drift (details in the catalog):
   `nodes_*` responsibility modules; import from the specific module in new
   code. `tests/test_facade_surface.py` pins all facade names.
 - Registered node keys + display names are a saved-workflow contract
-  (`tests/test_comfy_node_registry.py` pins the surface; currently 125 standard
+  (`tests/test_comfy_node_registry.py` pins the surface; currently 127 standard
   + 10 experimental + 2 legacy + 2 iOS).
 - `comfy/__init__.py` loads twice at startup — route registration sits behind
   a double-import guard; keep it there.
@@ -381,6 +381,11 @@ Geometry & projection
 - Export-node transforms (interior hole fill, retopo widgets) never touch the
   live projection mesh — live retopo happens ONLY via `AtlasRetopologizeLayer`,
   which regenerates projective UVs (DESIGN_RULES 2026-07-24 revision).
+- Generated object meshes (Pixal3D via `AtlasObjectCrop` -> `AtlasImportGeneratedMesh`):
+  the crop is a ROTATED virtual camera (centred pinhole, FOV from the solve,
+  never MoGe); scale along rays is MEASURED against metric depth; photo paints
+  where seen (`photo_weight`), vertex colour elsewhere; hidden side is a
+  hypothesis. Full rule in design-rules.md.
 - Depth model doctrine: exterior -> V2-Metric-Outdoor, interior -> MoGe (or
   V2-Indoor); DA3 installs with `pip --no-deps`. Depth is SHARED via
   `ATLAS_DEPTH_MAP` so branches agree on metric scale.

@@ -77,6 +77,8 @@ FACADE_PUBLIC = {
     "AtlasFillOccluded",
     "AtlasCompositeCrop",
     "AtlasCropSourcePhoto",
+    "AtlasObjectCrop",
+    "AtlasImportGeneratedMesh",
     "AtlasUnrealDepthGeometry",
     "AtlasUnrealCameraPath",
     "AtlasAnchorDepth",

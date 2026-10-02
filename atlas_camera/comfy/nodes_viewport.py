@@ -1249,6 +1249,11 @@ class AtlasLayerPreview:
         return (out,)
 
 
+def _sam3_checkpoint_choices():
+    from atlas_camera.comfy.sam3_core_backend import sam3_checkpoint_choices
+    return sam3_checkpoint_choices()
+
+
 class AtlasInput:
     """🎬 The all-in-one entry point — one node between LoadImage and the
     viewport that wraps the staged master's logic via NODE EXPANSION: at
@@ -1435,6 +1440,14 @@ class AtlasInput:
                 # guess a focal it did not have to guess (found live 2026-08-07
                 # wiring AtlasLoadRAW into the export-fanout example).
                 "raw_meta": ("ATLAS_RAW_META",),
+                # APPENDED 2026-10-02 (positional rule): which SAM3 the sky/scope
+                # cascade runs — the gated HF repo (default, unchanged) or a core
+                # ComfyUI checkpoint such as sam3.1_multiplex_fp16.
+                "sam3_checkpoint": (_sam3_checkpoint_choices(), {
+                    "default": "hf:facebook/sam3",
+                    "tooltip": "SAM3 for the sky/scope masks. hf:facebook/sam3 = transformers "
+                               "+ gated HF repo. A *sam3* checkpoint (sam3.1_multiplex_fp16) = "
+                               "ComfyUI's core SAM3: no HF login, no [sam3] extra."}),
             },
         }
 
@@ -1453,7 +1466,7 @@ class AtlasInput:
               sky_sdxl_seed=0,
               retopo_method="off", retopo_target_vertex_count=2000,
               boundary_smooth_iterations=0, sub_quad_boundary=False,
-              raw_meta=None, **_extra):
+              raw_meta=None, sam3_checkpoint="hf:facebook/sam3", **_extra):
 
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
@@ -1462,7 +1475,9 @@ class AtlasInput:
         # preferring the triton-locked node is better. AtlasSemanticMask
         # (SegFormer/ADE20K, [neural], no triton) remains the learned fallback
         # for transformers<5.5.4 / [sam3] not installed.
-        have_native_sam3 = _native_sam3_available()
+        from atlas_camera.comfy.sam3_core_backend import is_core_checkpoint
+        have_native_sam3 = (_native_sam3_available()
+                            or is_core_checkpoint(sam3_checkpoint))
         have_semantic = "AtlasSemanticMask" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry
                         and "INPAINT_LoadInpaintModel" in registry
@@ -1479,6 +1494,7 @@ class AtlasInput:
             mask_ref, _ = build_segmentation_cascade(
                 g, image_ref, prompt_value, policy="semantic",
                 have_native_sam3=have_native_sam3, registry=registry,
+                sam3_checkpoint=sam3_checkpoint,
             )
             return mask_ref
 

@@ -456,6 +456,16 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 
 # Qwen ROI loop); pairs with AtlasCropROI's handle.
 NODE_CLASS_MAPPINGS["AtlasCropSourcePhoto"] = AtlasCropSourcePhoto
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCropSourcePhoto"] = "Atlas Crop Source Photo 📷✂️"
+# 2026-10-02: generated object meshes -- a pixel-aligned image-to-3D model
+# (core Pixal3D) gives a foreground object its hidden sides. The crop node
+# re-renders the object for the model's centred pinhole with the SOLVE's FOV;
+# the import node maps the mesh back, measures its scale, gates it, appends.
+from atlas_camera.comfy.nodes_object_mesh import AtlasImportGeneratedMesh, AtlasObjectCrop
+
+NODE_CLASS_MAPPINGS["AtlasObjectCrop"] = AtlasObjectCrop
+NODE_CLASS_MAPPINGS["AtlasImportGeneratedMesh"] = AtlasImportGeneratedMesh
+NODE_DISPLAY_NAME_MAPPINGS["AtlasObjectCrop"] = "Atlas Object Crop 🎯"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasImportGeneratedMesh"] = "Atlas Import Generated Mesh 🧩"
 
 # Promoted from the experimental tier 2026-08-14 (Dynamic Plates): the CLI half
 # (`python -m atlas_camera.dynamic`) was never gated, so gating only the VIEWER
@@ -696,6 +706,7 @@ _MENU_FOLDERS = {
         "AtlasCropROI", "AtlasCompositeCrop", "AtlasCameraMovePreset",
         "AtlasFillOccluded",
         "AtlasCropSourcePhoto",
+        "AtlasObjectCrop", "AtlasImportGeneratedMesh",
         "AtlasLoadHiddenVolume", "AtlasBlenderMassing", "AtlasBlenderImportMeshes",
         "AtlasAgentHandoff",
     ),

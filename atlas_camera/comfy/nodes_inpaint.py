@@ -278,6 +278,14 @@ class AtlasSemanticMask:
         return (mask, report)
 
 
+def _sam3_checkpoint_choices():
+    from atlas_camera.comfy.sam3_core_backend import sam3_checkpoint_choices
+    return sam3_checkpoint_choices()
+
+
+_SAM3_HF_BACKEND = "hf:facebook/sam3"
+
+
 class AtlasSAM3Mask:
     """🪄 Native SAM3 concept mask via transformers — no triton/comfyui-rmbg
     dependency.
@@ -345,14 +353,30 @@ class AtlasSAM3Mask:
                 "concepts_extra": ("STRING", {"forceInput": True,
                     "tooltip": "Additional comma-separated concepts, unioned with "
                                "`concepts`. Wire a second sam_prompt output here."}),
+                # APPENDED 2026-10-02 (positional rule): run SAM3 through
+                # ComfyUI's OWN model stack from a checkpoint (Comfy-Org's
+                # sam3.1_multiplex_fp16) instead of the gated HF repo. The HF
+                # value stays first and default, so saved graphs are unchanged.
+                "sam3_checkpoint": (_sam3_checkpoint_choices(), {
+                    "default": _SAM3_HF_BACKEND,
+                    "tooltip": "hf:facebook/sam3 = transformers + gated Hugging Face repo "
+                               "(the original path). Any *sam3* file in models/checkpoints "
+                               "(e.g. sam3.1_multiplex_fp16) = ComfyUI's core SAM3 "
+                               "(SAM3_Detect): no HF login, no [sam3] extra. `device` "
+                               "is ignored on that path (ComfyUI manages it)."}),
             },
         }
 
     def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto",
-                output_mode="merged", max_instances=0, concepts_extra="", **_extra):
+                output_mode="merged", max_instances=0, concepts_extra="",
+                sam3_checkpoint=None, **_extra):
         extra = (concepts_extra or "").strip()
         if extra:
             concepts = f"{concepts}, {extra}" if (concepts or "").strip() else extra
+        from atlas_camera.comfy.sam3_core_backend import is_core_checkpoint
+        if is_core_checkpoint(sam3_checkpoint):
+            return self._segment_core(image, concepts, confidence_threshold,
+                                      output_mode, max_instances, str(sam3_checkpoint))
         from atlas_camera.inference.sam3_segmenter import (
             DEFAULT_SAM3_MODEL, Sam3GatedRepoError, sam3_concept_mask,
             sam3_instance_masks)
@@ -394,6 +418,35 @@ class AtlasSAM3Mask:
         else:
             report = f"NO MATCH for '{concepts}' — mask is empty ({DEFAULT_SAM3_MODEL})."
         return (mask, report)
+
+    def _segment_core(self, image, concepts, confidence_threshold, output_mode,
+                      max_instances, ckpt_name):
+        """Same outputs and report shape as the HF path, via core SAM3_Detect."""
+        import numpy as np
+
+        from atlas_camera.comfy.sam3_core_backend import core_sam3_instances
+        torch = _require_torch()
+        h, w = int(image.shape[1]), int(image.shape[2])
+        empty = torch.zeros((1, h, w), dtype=torch.float32)
+        try:
+            instances, matched = core_sam3_instances(
+                image, concepts, ckpt_name=ckpt_name,
+                confidence_threshold=float(confidence_threshold))
+        except Exception as exc:  # noqa: BLE001 - report, never break the graph
+            return (empty, f"core SAM3 ({ckpt_name}) FAILED — {type(exc).__name__}: {exc}")
+        if not instances:
+            return (empty, f"NO MATCH for '{concepts}' — mask is empty ({ckpt_name}).")
+        if str(output_mode) == "separate":
+            if int(max_instances) > 0:
+                instances = instances[: int(max_instances)]
+            stack = torch.from_numpy(np.stack(instances).astype("float32"))
+            sizes = ", ".join(f"{float(m.mean()):.1%}" for m in instances[:8])
+            return (stack, f"matched {sorted(set(matched))} -> {len(instances)} "
+                           f"instance(s), largest first [{sizes}] ({ckpt_name})")
+        union = np.any(np.stack(instances), axis=0)
+        mask = torch.from_numpy(union.astype("float32")).unsqueeze(0)
+        return (mask, f"matched {sorted(set(matched))} -> {float(union.mean()):.1%} "
+                      f"of frame ({ckpt_name})")
 
 
 def _align_span(lo: int, hi: int, limit: int, mult: int) -> tuple[int, int]:

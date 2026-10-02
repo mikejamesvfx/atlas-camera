@@ -74,6 +74,8 @@ NORMAL_KEYS = {
     "AtlasCompositeCrop", "AtlasCameraMovePreset",
     # 2026-08-16: photo crop for the Qwen ROI loop.
     "AtlasCropSourcePhoto",
+    # 2026-10-02: Pixal3D generated object meshes (hidden sides).
+    "AtlasObjectCrop", "AtlasImportGeneratedMesh",
     # The rendered-depth / Director arc (2026-08/09): an Unreal depth pass and
     # camera as MoGe-shaped inputs, the render-anchored depth fit, the scene
     # measurement behind support-geometry sizes, and the Director take reader.
@@ -124,7 +126,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 125
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 127
 
 
 def test_experimental_registry_keys_exact():

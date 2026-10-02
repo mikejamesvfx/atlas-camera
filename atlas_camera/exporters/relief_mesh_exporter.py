@@ -175,6 +175,47 @@ def _obj_ribbon_colors(mesh: ReliefMesh, texture: Any,
         return None
 
 
+def _generated_split(mesh: ReliefMesh, faces: Any) -> dict[str, Any] | None:
+    """Split a generated-object mesh into PHOTO faces and VERTEX-COLOUR faces.
+
+    A face touching any vertex below ``PHOTO_WEIGHT_SPLIT`` paints from the
+    model's vertex colour (the side the camera never saw); the rest keep the
+    projected plate. The two sets must not share a vertex: the textured side
+    needs white vertex colour (so the plate is not tinted) and the hidden side
+    needs the model's, so every vertex a vertex-colour face uses is duplicated.
+    Returns None for an ordinary mesh (no vertex colours, or none needed).
+    """
+    import numpy as np
+
+    vc = getattr(mesh, "vertex_colors", None)
+    if vc is None:
+        return None
+    from atlas_camera.core.generated_mesh import PHOTO_WEIGHT_SPLIT
+
+    verts = np.asarray(mesh.vertices, dtype=np.float32).reshape(-1, 3)
+    vc = np.asarray(vc, dtype=np.float32).reshape(-1, 3)
+    if len(vc) != len(verts):
+        return None
+    pw = getattr(mesh, "photo_weight", None)
+    pw = (np.ones(len(verts), dtype=np.float32) if pw is None
+          else np.asarray(pw, dtype=np.float32).reshape(-1))
+    faces = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+    vc_face = (pw < PHOTO_WEIGHT_SPLIT)[faces].any(axis=1)
+    if not vc_face.any():
+        return None
+    used = np.unique(faces[vc_face])
+    remap = np.full(len(verts), -1, dtype=np.int64)
+    remap[used] = len(verts) + np.arange(len(used))
+    uvs = np.asarray(mesh.uvs, dtype=np.float32).reshape(-1, 2)
+    return {
+        "vertices": np.concatenate([verts, verts[used]]),
+        "uvs": np.concatenate([uvs, uvs[used]]),
+        "colors_srgb": np.concatenate([np.ones((len(verts), 3), np.float32), vc[used]]),
+        "photo_faces": faces[~vc_face],
+        "vc_faces": remap[faces[vc_face]],
+    }
+
+
 def export_relief_mesh(
     mesh: ReliefMesh,
     output_dir: str | Path,
@@ -220,6 +261,10 @@ def export_relief_mesh(
     # primitive, and OBJ has no per-vertex colour channel in the base format.
     # What is left is the widely-implemented `v x y z r g b` extension.
     ribbon_colors = _obj_ribbon_colors(mesh, texture, texture_path)
+    gen = _generated_split(mesh, mesh.faces) if ribbon_colors is None else None
+    if gen is not None:
+        return _write_generated_obj(gen, lines, obj_path, mtl_path, material,
+                                    tex_path, tex_written, len(mesh.vertices))
     if ribbon_colors is None:
         lines.extend(
             f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}" for v in mesh.vertices
@@ -297,6 +342,48 @@ def export_relief_mesh(
                 _material_block(ribbon_material, textured=False, kd=mean_kd))
     mtl_path.write_text("\n".join(mtl_lines) + "\n", encoding="utf-8")
 
+    result = {"obj": str(obj_path), "mtl": str(mtl_path)}
+    if tex_path is not None:
+        result["texture"] = str(tex_path)
+        if not tex_written:
+            result["texture_external"] = "true"
+    return result
+
+
+def _write_generated_obj(gen: dict[str, Any], lines: list[str], obj_path: Path,
+                         mtl_path: Path, material: str, tex_path: Path | None,
+                         tex_written: bool, n_original: int) -> dict[str, str]:
+    """OBJ for a generated object: photo faces keep the plate under the main
+    material (white vertex colour, so a multiplying reader does not tint it);
+    the hidden side goes under its own UNTEXTURED material carrying the model's
+    colour as ``v x y z r g b`` (sRGB, like the plate)."""
+    import numpy as np
+
+    gen_material = f"{material}_generated"
+    lines.insert(3, "# vertex colours (v x y z r g b): generated hidden side")
+    lines.extend(
+        f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f} {c[0]:.4f} {c[1]:.4f} {c[2]:.4f}"
+        for v, c in zip(gen["vertices"], gen["colors_srgb"]))
+    lines.extend(f"vt {t[0]:.6f} {t[1]:.6f}" for t in gen["uvs"])
+
+    def _face(tri: Any) -> str:
+        a, b, c = (int(i) + 1 for i in tri)
+        return f"f {a}/{a} {b}/{b} {c}/{c}"
+
+    lines.append(f"usemtl {material}")
+    lines.extend(_face(t) for t in gen["photo_faces"])
+    lines.append(f"usemtl {gen_material}")
+    lines.extend(_face(t) for t in gen["vc_faces"])
+    obj_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    mtl = [f"newmtl {material}", "Kd 1.000 1.000 1.000", "Ka 0.000 0.000 0.000",
+           "Ks 0.000 0.000 0.000", "illum 1"]
+    if tex_path is not None:
+        mtl.append(f"map_Kd {tex_path.name if tex_written else tex_path.as_posix()}")
+    kd = np.asarray(gen["colors_srgb"][n_original:], dtype=np.float64).mean(axis=0)
+    mtl += [f"newmtl {gen_material}", f"Kd {kd[0]:.3f} {kd[1]:.3f} {kd[2]:.3f}",
+            "Ka 0.000 0.000 0.000", "Ks 0.000 0.000 0.000", "illum 1"]
+    mtl_path.write_text("\n".join(mtl) + "\n", encoding="utf-8")
     result = {"obj": str(obj_path), "mtl": str(mtl_path)}
     if tex_path is not None:
         result["texture"] = str(tex_path)
@@ -400,6 +487,16 @@ def export_relief_mesh_glb(
     verts = np.asarray(mesh.vertices, dtype=np.float32)
     faces = _topology_safe_faces(mesh.vertices, mesh.faces)
     uvs = np.asarray(mesh.uvs, dtype=np.float32).copy()
+    # Generated object (vertex-coloured hidden side). Never combined with a
+    # transition ribbon: a generated mesh has none, and the two would compete
+    # for COLOR_0 and the second primitive.
+    gen = None
+    rt = getattr(mesh, "ribbon_t", None)
+    if rt is None or not bool((np.asarray(rt) > 0).any()):
+        gen = _generated_split(mesh, faces)
+    if gen is not None:
+        verts = gen["vertices"].astype(np.float32)
+        uvs = gen["uvs"].astype(np.float32).copy()
     uvs[:, 1] = 1.0 - uvs[:, 1]  # OBJ bottom-left → glTF top-left
 
     # Transition ribbon: bake the EVALUATED fade, not the raw parameter. The
@@ -429,10 +526,23 @@ def export_relief_mesh_glb(
                 colors[:, :3] = _ribbon_smudged_colors(mesh, texture, smudge)
                 ribbon_face_mask = (t > 0.0)[faces].any(axis=1)
 
+    if gen is not None:
+        from atlas_camera.core.generated_mesh import srgb_to_linear
+
+        # glTF COLOR_0 is LINEAR. White on the photo side (multiplies the
+        # plate by 1); the model's colour, linearised, on the hidden side.
+        colors = np.ones((len(verts), 4), dtype=np.float32)
+        colors[:, :3] = np.asarray(srgb_to_linear(gen["colors_srgb"]), dtype=np.float32)
+        faces = np.concatenate([gen["photo_faces"], gen["vc_faces"]]).astype(faces.dtype)
+        ribbon_face_mask = np.zeros(len(faces), dtype=bool)
+        ribbon_face_mask[len(gen["photo_faces"]):] = True
+
     # Group the ribbon's triangles at the END of the index buffer so the two
     # primitives are contiguous ranges of one accessor rather than two buffers.
     n_surface_faces = len(faces)
-    if ribbon_face_mask is not None and ribbon_face_mask.any():
+    if gen is not None:
+        n_surface_faces = len(gen["photo_faces"])
+    elif ribbon_face_mask is not None and ribbon_face_mask.any():
         order = np.concatenate([np.nonzero(~ribbon_face_mask)[0],
                                 np.nonzero(ribbon_face_mask)[0]])
         faces = faces[order]
@@ -483,7 +593,7 @@ def export_relief_mesh_glb(
         "extensions": {"KHR_materials_unlit": {}},
         "pbrMetallicRoughness": {"metallicFactor": 0.0, "roughnessFactor": 1.0},
     }
-    if colors is not None:
+    if colors is not None and gen is None:
         # Without BLEND the alpha channel is ignored and the skirt reads as an
         # opaque lip — the exact defect this whole feature exists to remove.
         material["alphaMode"] = "BLEND"
@@ -506,7 +616,7 @@ def export_relief_mesh_glb(
             "bufferView": 2, "byteOffset": int(n_surface_faces * 3 * 4),
             "componentType": 5125,
             "count": int(faces.size - n_surface_faces * 3), "type": "SCALAR"})
-        materials.append({
+        second: dict[str, Any] = {
             "name": "atlas_relief_transition_ribbon",
             "doubleSided": True,
             "alphaMode": "BLEND",
@@ -514,7 +624,15 @@ def export_relief_mesh_glb(
             "pbrMetallicRoughness": {
                 "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
                 "metallicFactor": 0.0, "roughnessFactor": 1.0},
-        })
+        }
+        if gen is not None:
+            # Opaque: the hidden side is a surface, not a fade.
+            second["name"] = "atlas_generated_vertex_colour"
+            second.pop("alphaMode")
+        materials.append(second)
+        if n_surface_faces == 0:
+            # Every face is hidden-side: a zero-count accessor is invalid glTF.
+            primitives.pop(0)
 
     gltf: dict[str, Any] = {
         "asset": {"version": "2.0", "generator": "AtlasCamera relief mesh"},

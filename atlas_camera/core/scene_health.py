@@ -236,6 +236,9 @@ _FLAG_SEVERITY = {
     # focal (Depth Pro) disagrees with the solve's fx beyond the ratio band.
     "focal_mismatch": "warn",
     "mixed_projection_evidence": "warn",
+    # A generated object mesh (Pixal3D via AtlasImportGeneratedMesh) whose
+    # placement gates did not pass cleanly but was appended anyway.
+    "generated_object_unverified": "warn",
 }
 
 # Acceptable ratio band for depth-model focal vs solve fx (~±0.4 stop of FOV).
@@ -549,6 +552,25 @@ def evaluate_scene_health(
         flags.append(_flag(
             "scale_unverified",
             f"scale {scale.status.upper()} — not verified: {scale.detail}"))
+
+    # Generated object meshes: the import node grades its own placement
+    # (scale registration + reprojection gates); the VERDICT is made here.
+    # Only a non-"ok" grade flags -- the hidden side is a hypothesis on every
+    # generated mesh, which the node's report states; flagging all of them
+    # would make the flag carry no information.
+    scene = getattr(solve, "projection_scene", None)
+    for prim in (getattr(scene, "proxy_geometry", None) or []):
+        meta = getattr(prim, "metadata", None) or {}
+        if meta.get("source") != "pixal3d":
+            continue
+        grade = str(meta.get("generated_grade") or "unknown")
+        if grade != "ok":
+            flags.append(_flag(
+                "generated_object_unverified",
+                f"generated object {getattr(prim, 'name', '?')}: placement graded "
+                f"{grade.upper()} ({meta.get('generated_issues') or 'no detail'}) — "
+                "review it in the viewport before export",
+                layer=str(getattr(prim, "name", "") or None)))
 
     level = "pass"
     if any(f.severity == "fail" for f in flags):

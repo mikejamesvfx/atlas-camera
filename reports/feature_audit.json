@@ -1,16 +1,16 @@
 {
  "schema_version": 1,
- "generated_utc": "2026-09-22",
+ "generated_utc": "2026-10-01",
  "counts": {
-  "standard": 125,
+  "standard": 127,
   "experimental": 10,
   "legacy": 2,
   "ios": 2,
-  "total": 139,
+  "total": 141,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 125,
+  "KEEP_CORE": 127,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
@@ -1972,6 +1972,31 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasImportGeneratedMesh": {
+   "module": "atlas_camera/comfy/nodes_object_mesh.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 2,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasInpaintCrop": {
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
@@ -2030,8 +2055,8 @@
    "module": "atlas_camera/comfy/nodes_viewport.py",
    "tier": "standard",
    "example_workflows": 10,
-   "dedicated_tests": 7,
-   "tests": 9,
+   "dedicated_tests": 8,
+   "tests": 10,
    "mcp_tools": 0,
    "repo_tools": 5,
    "docs": 5,
@@ -2590,6 +2615,31 @@
    "migration_action": null,
    "notes": null
   },
+  "AtlasObjectCrop": {
+   "module": "atlas_camera/comfy/nodes_object_mesh.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 2,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
   "AtlasOcclusionGraph": {
    "module": "atlas_camera/comfy/nodes_completion.py",
    "tier": "standard",
@@ -3096,8 +3146,8 @@
    "module": "atlas_camera/comfy/nodes_inpaint.py",
    "tier": "standard",
    "example_workflows": 5,
-   "dedicated_tests": 5,
-   "tests": 7,
+   "dedicated_tests": 6,
+   "tests": 8,
    "mcp_tools": 1,
    "repo_tools": 7,
    "docs": 3,

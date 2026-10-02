@@ -787,7 +787,8 @@ class AtlasSolveFromImage:
             solve = solve_still_image(tmp, intrinsics_hint=hints or None,
                                       detect_vanishing_points=detect_vanishing_points)
             _stamp_raw_provenance(solve, raw_meta)
-            return (solve, _solve_summary(solve, node_name="AtlasSolveFromImage"))
+            return (solve, _with_input_warning(
+                image, _solve_summary(solve, node_name="AtlasSolveFromImage")))
         finally:
             os.unlink(tmp)
 
@@ -901,10 +902,17 @@ class AtlasLearnedSolveFromImage:
                 device=None if device == "auto" else device,
             )
             _stamp_raw_provenance(solve, raw_meta)
-            return (solve,
-                    _solve_summary(solve, node_name="AtlasLearnedSolveFromImage"))
+            return (solve, _with_input_warning(
+                image, _solve_summary(solve, node_name="AtlasLearnedSolveFromImage")))
         finally:
             os.unlink(tmp)
+
+
+def _with_input_warning(image, report: str) -> str:
+    """Put a scene-referred-input warning at the TOP of a solve report."""
+    from atlas_camera.comfy.node_helpers import _scene_referred_input_warning
+    warning = _scene_referred_input_warning(image)
+    return f"{warning}\n{report}" if warning else report
 
 
 class AtlasScaleOverride:
