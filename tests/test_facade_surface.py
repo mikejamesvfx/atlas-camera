@@ -79,6 +79,7 @@ FACADE_PUBLIC = {
     "AtlasCropSourcePhoto",
     "AtlasObjectCrop",
     "AtlasImportGeneratedMesh",
+    "AtlasSceneTo3D",
     "AtlasUnrealDepthGeometry",
     "AtlasUnrealCameraPath",
     "AtlasAnchorDepth",

@@ -466,6 +466,11 @@ NODE_CLASS_MAPPINGS["AtlasObjectCrop"] = AtlasObjectCrop
 NODE_CLASS_MAPPINGS["AtlasImportGeneratedMesh"] = AtlasImportGeneratedMesh
 NODE_DISPLAY_NAME_MAPPINGS["AtlasObjectCrop"] = "Atlas Object Crop 🎯"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasImportGeneratedMesh"] = "Atlas Import Generated Mesh 🧩"
+# 2026-10-02: the layered scene as ComfyUI's native 3D sockets (Save 3D Advanced).
+from atlas_camera.comfy.nodes_scene3d import AtlasSceneTo3D
+
+NODE_CLASS_MAPPINGS["AtlasSceneTo3D"] = AtlasSceneTo3D
+NODE_DISPLAY_NAME_MAPPINGS["AtlasSceneTo3D"] = "Atlas Scene To 3D 🧊"
 
 # Promoted from the experimental tier 2026-08-14 (Dynamic Plates): the CLI half
 # (`python -m atlas_camera.dynamic`) was never gated, so gating only the VIEWER
@@ -684,6 +689,7 @@ _MENU_FOLDERS = {
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
         "AtlasExportScenePackage", "AtlasExportPlateHandoff",
         "AtlasDirectorTake", "AtlasWriteConditioningEXR",
+        "AtlasSceneTo3D",
     ),
     "Atlas/11 · Evidence Plate": (
         "AtlasOpenRealPlate", "AtlasReadLockedPlatePlan", "AtlasRecordPlateAttempt",

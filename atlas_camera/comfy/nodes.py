@@ -129,6 +129,7 @@ from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_hidden_volume import AtlasLoadHiddenVolume  # noqa: F401
 from atlas_camera.comfy.nodes_object_mesh import (AtlasImportGeneratedMesh,  # noqa: F401
                                                   AtlasObjectCrop)
+from atlas_camera.comfy.nodes_scene3d import AtlasSceneTo3D  # noqa: F401
 from atlas_camera.comfy.nodes_agent import AtlasAgentHandoff  # noqa: F401
 from atlas_camera.comfy.nodes_director import AtlasDirectorTake  # noqa: F401
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
