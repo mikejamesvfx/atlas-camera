@@ -1,8 +1,8 @@
 {
- "id": "f5458959-efee-4069-ba15-4b153b94edbb",
+ "id": "3efea684-bf53-4326-872a-ff44af705b64",
  "revision": 0,
- "last_node_id": 3060,
- "last_link_id": 155,
+ "last_node_id": 3120,
+ "last_link_id": 195,
  "nodes": [
   {
    "id": 3,
@@ -2280,7 +2280,8 @@
       87,
       92,
       98,
-      102
+      102,
+      156
      ]
     },
     {
@@ -4752,7 +4753,8 @@
       118,
       133,
       152,
-      154
+      154,
+      174
      ]
     }
    ],
@@ -4855,14 +4857,16 @@
      "name": "model",
      "type": "MODEL",
      "links": [
-      136
+      136,
+      177
      ]
     },
     {
      "name": "latent_downscale_factor",
      "type": "FLOAT",
      "links": [
-      130
+      130,
+      171
      ]
     }
    ],
@@ -4944,7 +4948,8 @@
      "name": "VAE",
      "type": "VAE",
      "links": [
-      131
+      131,
+      172
      ]
     }
    ],
@@ -4984,7 +4989,10 @@
      "links": [
       122,
       127,
-      149
+      149,
+      163,
+      168,
+      190
      ]
     }
    ],
@@ -5083,14 +5091,16 @@
      "name": "positive",
      "type": "CONDITIONING",
      "links": [
-      125
+      125,
+      166
      ]
     },
     {
      "name": "negative",
      "type": "CONDITIONING",
      "links": [
-      126
+      126,
+      167
      ]
     }
    ],
@@ -5548,7 +5558,8 @@
      "name": "NOISE",
      "type": "NOISE",
      "links": [
-      139
+      139,
+      180
      ]
     }
    ],
@@ -5644,7 +5655,8 @@
      "name": "SAMPLER",
      "type": "SAMPLER",
      "links": [
-      141
+      141,
+      182
      ]
     }
    ],
@@ -5684,7 +5696,8 @@
      "name": "SIGMAS",
      "type": "SIGMAS",
      "links": [
-      142
+      142,
+      183
      ]
     }
    ],
@@ -6231,6 +6244,1147 @@
    },
    "widgets_values": [
     "7 \u00b7 SDR -> HDR (LTX-2.5 IC-LoRA). Runs AFTER the Atlas scene: the frames are either the viewport's baked camera move (toggle USE CAMERA MOVE = true; bake the move in the viewport first, re-run) or the source plate repeated 25x.\n\nNo prompt: fixed scene embeddings, cfg 1, 8 distilled steps (upstream example 3bf3ca6). Frames trimmed to 8k+1; capped to ~0.9 MP and a multiple of 32.\n\nOUTPUT: ACEScg scene-linear EXR (half) per frame in output/atlas_hdr_exr (diffuse white ~1.0, highlights above 1 are the model's reconstruction), an HLG master, and a tone-mapped preview MP4. The HDR is a model hypothesis of the highlights the SDR plate clipped, not recovered data.\n\nModels: transformer bf16 + IC-LoRA in V135 models; scene-emb copied to models/embeddings; video VAE uses the conv decoder (ltx-2.5-video-vae-bf16 is the best-quality option, not downloaded). Long or big batches can OOM in decode: shorten the move."
+   ]
+  },
+  {
+   "id": 3101,
+   "type": "AtlasMatrixZoneSplit",
+   "pos": [
+    9600,
+    2500
+   ],
+   "size": [
+    360,
+    230
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 156
+    }
+   ],
+   "outputs": [
+    {
+     "name": "clips",
+     "type": "IMAGE",
+     "links": [
+      157
+     ]
+    },
+    {
+     "name": "matrixzone",
+     "type": "ATLAS_MATRIXZONE",
+     "links": [
+      193
+     ]
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasMatrixZoneSplit"
+   },
+   "widgets_values": [
+    4,
+    4,
+    64,
+    "per_zone_clip",
+    9
+   ],
+   "title": "matrixZone SPLIT - grid 4x4 (1080p tier); 2x2 = 4K tier if VRAM allows"
+  },
+  {
+   "id": 3102,
+   "type": "LTXVSDRToHDRWorkingSpace",
+   "pos": [
+    10000,
+    2500
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 157
+    },
+    {
+     "name": "color_space",
+     "type": "COMBO",
+     "widget": {
+      "name": "color_space"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "acescct",
+     "type": "IMAGE",
+     "links": [
+      158
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXVSDRToHDRWorkingSpace"
+   },
+   "widgets_values": [
+    "srgb_gamma"
+   ]
+  },
+  {
+   "id": 3103,
+   "type": "ResizeImageMaskNode",
+   "pos": [
+    10000,
+    2660
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "input",
+     "name": "input",
+     "type": "IMAGE,MASK",
+     "link": 158
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "resized",
+     "name": "resized",
+     "type": "IMAGE",
+     "links": [
+      159,
+      170
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ResizeImageMaskNode"
+   },
+   "widgets_values": [
+    "scale to multiple",
+    32,
+    "lanczos"
+   ],
+   "widgets_values_named": {
+    "resize_type": "scale to multiple",
+    "resize_type.multiple": 32,
+    "scale_method": "lanczos"
+   }
+  },
+  {
+   "id": 3104,
+   "type": "GetImageSize",
+   "pos": [
+    10000,
+    2820
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 159
+    }
+   ],
+   "outputs": [
+    {
+     "name": "width",
+     "type": "INT",
+     "links": [
+      160
+     ]
+    },
+    {
+     "name": "height",
+     "type": "INT",
+     "links": [
+      161
+     ]
+    },
+    {
+     "name": "batch_size",
+     "type": "INT",
+     "links": [
+      162,
+      173
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetImageSize"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 3105,
+   "type": "EmptyLTXVLatentVideo",
+   "pos": [
+    10380,
+    2500
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "width",
+     "type": "INT",
+     "widget": {
+      "name": "width"
+     },
+     "link": 160
+    },
+    {
+     "name": "height",
+     "type": "INT",
+     "widget": {
+      "name": "height"
+     },
+     "link": 161
+    },
+    {
+     "name": "length",
+     "type": "INT",
+     "widget": {
+      "name": "length"
+     },
+     "link": 162
+    },
+    {
+     "name": "batch_size",
+     "type": "INT",
+     "widget": {
+      "name": "batch_size"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      165
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "EmptyLTXVLatentVideo"
+   },
+   "widgets_values": [
+    768,
+    512,
+    97,
+    1
+   ]
+  },
+  {
+   "id": 3106,
+   "type": "EmptyImage",
+   "pos": [
+    10380,
+    2700
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      164
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "EmptyImage"
+   },
+   "widgets_values": [
+    64,
+    9,
+    57,
+    0
+   ]
+  },
+  {
+   "id": 3107,
+   "type": "LTXVImgToVideoInplace",
+   "pos": [
+    10380,
+    2860
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": 163
+    },
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 164
+    },
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "link": 165
+    },
+    {
+     "name": "strength",
+     "type": "FLOAT",
+     "widget": {
+      "name": "strength"
+     },
+     "link": null
+    },
+    {
+     "name": "bypass",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "bypass"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "links": [
+      169
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXVImgToVideoInplace"
+   },
+   "widgets_values": [
+    0.7,
+    true
+   ]
+  },
+  {
+   "id": 3108,
+   "type": "LTXAddVideoICLoRAGuide",
+   "pos": [
+    10760,
+    2500
+   ],
+   "size": [
+    340,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 166
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 167
+    },
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": 168
+    },
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "link": 169
+    },
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 170
+    },
+    {
+     "name": "frame_idx",
+     "type": "INT",
+     "widget": {
+      "name": "frame_idx"
+     },
+     "link": null
+    },
+    {
+     "name": "strength",
+     "type": "FLOAT",
+     "widget": {
+      "name": "strength"
+     },
+     "link": null
+    },
+    {
+     "name": "latent_downscale_factor",
+     "type": "FLOAT",
+     "widget": {
+      "name": "latent_downscale_factor"
+     },
+     "link": 171
+    },
+    {
+     "name": "crop",
+     "type": "COMBO",
+     "widget": {
+      "name": "crop"
+     },
+     "link": null
+    },
+    {
+     "name": "use_tiled_encode",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "use_tiled_encode"
+     },
+     "link": null
+    },
+    {
+     "name": "tile_size",
+     "type": "INT",
+     "widget": {
+      "name": "tile_size"
+     },
+     "link": null
+    },
+    {
+     "name": "tile_overlap",
+     "type": "INT",
+     "widget": {
+      "name": "tile_overlap"
+     },
+     "link": null
+    },
+    {
+     "name": "use_streaming",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "use_streaming"
+     },
+     "link": null
+    },
+    {
+     "name": "tile_frames",
+     "type": "INT",
+     "widget": {
+      "name": "tile_frames"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "links": [
+      178,
+      186
+     ]
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "links": [
+      179,
+      187
+     ]
+    },
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "links": [
+      175
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXAddVideoICLoRAGuide"
+   },
+   "widgets_values": [
+    0,
+    1.0,
+    1.0,
+    "disabled",
+    false,
+    256,
+    64,
+    false,
+    97
+   ]
+  },
+  {
+   "id": 3109,
+   "type": "LTXVEmptyLatentAudio",
+   "pos": [
+    10760,
+    2860
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "frames_number",
+     "type": "INT",
+     "widget": {
+      "name": "frames_number"
+     },
+     "link": 173
+    },
+    {
+     "name": "frame_rate",
+     "type": "FLOAT,INT",
+     "link": 174
+    },
+    {
+     "name": "batch_size",
+     "type": "INT",
+     "widget": {
+      "name": "batch_size"
+     },
+     "link": null
+    },
+    {
+     "name": "audio_vae",
+     "type": "VAE",
+     "link": 172
+    }
+   ],
+   "outputs": [
+    {
+     "name": "Latent",
+     "type": "LATENT",
+     "links": [
+      176
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXVEmptyLatentAudio"
+   },
+   "widgets_values": [
+    97,
+    1
+   ]
+  },
+  {
+   "id": 3110,
+   "type": "LTXVConcatAVLatent",
+   "pos": [
+    11140,
+    2500
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "video_latent",
+     "type": "LATENT",
+     "link": 175
+    },
+    {
+     "name": "audio_latent",
+     "type": "LATENT",
+     "link": 176
+    }
+   ],
+   "outputs": [
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "links": [
+      184
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXVConcatAVLatent"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 3111,
+   "type": "CFGGuider",
+   "pos": [
+    11140,
+    2660
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "link": 177
+    },
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 178
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 179
+    },
+    {
+     "name": "cfg",
+     "type": "FLOAT",
+     "widget": {
+      "name": "cfg"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "GUIDER",
+     "type": "GUIDER",
+     "links": [
+      181
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CFGGuider"
+   },
+   "widgets_values": [
+    1.0
+   ]
+  },
+  {
+   "id": 3112,
+   "type": "SamplerCustomAdvanced",
+   "pos": [
+    11520,
+    2500
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "noise",
+     "type": "NOISE",
+     "link": 180
+    },
+    {
+     "name": "guider",
+     "type": "GUIDER",
+     "link": 181
+    },
+    {
+     "name": "sampler",
+     "type": "SAMPLER",
+     "link": 182
+    },
+    {
+     "name": "sigmas",
+     "type": "SIGMAS",
+     "link": 183
+    },
+    {
+     "name": "latent_image",
+     "type": "LATENT",
+     "link": 184
+    }
+   ],
+   "outputs": [
+    {
+     "name": "output",
+     "type": "LATENT",
+     "links": [
+      185
+     ]
+    },
+    {
+     "name": "denoised_output",
+     "type": "LATENT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SamplerCustomAdvanced"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 3113,
+   "type": "LTXVSeparateAVLatent",
+   "pos": [
+    11520,
+    2720
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "av_latent",
+     "type": "LATENT",
+     "link": 185
+    }
+   ],
+   "outputs": [
+    {
+     "name": "video_latent",
+     "type": "LATENT",
+     "links": [
+      188
+     ]
+    },
+    {
+     "name": "audio_latent",
+     "type": "LATENT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXVSeparateAVLatent"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 3114,
+   "type": "LTXVCropGuides",
+   "pos": [
+    11520,
+    2860
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 186
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 187
+    },
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "link": 188
+    }
+   ],
+   "outputs": [
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "links": []
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "links": []
+    },
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "links": [
+      189
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXVCropGuides"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 3115,
+   "type": "VAEDecodeTiled",
+   "pos": [
+    11900,
+    2500
+   ],
+   "size": [
+    300,
+    120
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "samples",
+     "type": "LATENT",
+     "link": 189
+    },
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": 190
+    },
+    {
+     "name": "tile_size",
+     "type": "INT",
+     "widget": {
+      "name": "tile_size"
+     },
+     "link": null
+    },
+    {
+     "name": "overlap",
+     "type": "INT",
+     "widget": {
+      "name": "overlap"
+     },
+     "link": null
+    },
+    {
+     "name": "temporal_size",
+     "type": "INT",
+     "widget": {
+      "name": "temporal_size"
+     },
+     "link": null
+    },
+    {
+     "name": "temporal_overlap",
+     "type": "INT",
+     "widget": {
+      "name": "temporal_overlap"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      191
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAEDecodeTiled"
+   },
+   "widgets_values": [
+    512,
+    64,
+    64,
+    8
+   ]
+  },
+  {
+   "id": 3116,
+   "type": "LTXVHDRDecodePostprocess",
+   "pos": [
+    11900,
+    2720
+   ],
+   "size": [
+    340,
+    260
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 191
+    },
+    {
+     "name": "transfer",
+     "type": "COMBO",
+     "widget": {
+      "name": "transfer"
+     },
+     "link": null
+    },
+    {
+     "name": "exposure",
+     "type": "FLOAT",
+     "widget": {
+      "name": "exposure"
+     },
+     "link": null
+    },
+    {
+     "name": "save_exr",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_exr"
+     },
+     "link": null
+    },
+    {
+     "name": "exr_color_space",
+     "type": "COMBO",
+     "widget": {
+      "name": "exr_color_space"
+     },
+     "link": null
+    },
+    {
+     "name": "output_dir",
+     "type": "STRING",
+     "widget": {
+      "name": "output_dir"
+     },
+     "link": null
+    },
+    {
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "name": "half_precision",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "half_precision"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "tonemapped",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "name": "hdr_linear",
+     "type": "IMAGE",
+     "links": [
+      192
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXVHDRDecodePostprocess"
+   },
+   "widgets_values": [
+    "acescct",
+    0.0,
+    false,
+    "acescg",
+    "output/hdr_exr",
+    "frame",
+    true
+   ],
+   "title": "HDR decode (hdr_linear feeds the stitch; no per-clip EXRs)"
+  },
+  {
+   "id": 3117,
+   "type": "AtlasMatrixZoneStitch",
+   "pos": [
+    12300,
+    2500
+   ],
+   "size": [
+    380,
+    230
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "hdr",
+     "type": "IMAGE",
+     "link": 192
+    },
+    {
+     "name": "matrixzone",
+     "type": "ATLAS_MATRIXZONE",
+     "link": 193
+    }
+   ],
+   "outputs": [
+    {
+     "name": "preview",
+     "type": "IMAGE",
+     "links": [
+      195
+     ]
+    },
+    {
+     "name": "exr_path",
+     "type": "STRING",
+     "links": []
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": [
+      194
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasMatrixZoneStitch"
+   },
+   "widgets_values": [
+    true,
+    0,
+    "ACEScg",
+    "atlas/hdr_plate"
+   ],
+   "title": "matrixZone STITCH -> full-res ACEScg EXR (radiance anchor on)"
+  },
+  {
+   "id": 3118,
+   "type": "PreviewAny",
+   "pos": [
+    12720,
+    2500
+   ],
+   "size": [
+    520,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "source",
+     "type": "*",
+     "link": 194
+    }
+   ],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "PreviewAny"
+   },
+   "widgets_values": [],
+   "title": "matrixZone REPORT - seams before/after the anchor"
+  },
+  {
+   "id": 3119,
+   "type": "PreviewImage",
+   "pos": [
+    12300,
+    2780
+   ],
+   "size": [
+    380,
+    260
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 195
+    }
+   ],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "PreviewImage"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 3120,
+   "type": "Note",
+   "pos": [
+    9600,
+    2800
+   ],
+   "size": [
+    360,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "Note"
+   },
+   "widgets_values": [
+    "9 \u00b7 matrixZone SDR -> HDR at FULL resolution. The plate is split into exact crops (atlas-unreal matrixZone rules: padded 128-clean render, 64-clean zones, 128 px feathered interior seams). The split emits a LIST - a quarter-res global clip, then each zone - so this chain runs once per element. The stitch takes each zone's LOW frequencies from the global pass (radiance anchor), feathers in log2 space and writes one ACEScg half EXR at plate resolution.\n\nGrid 4x4 = ~2K zones (safe). 2x2 = the 4K tier: try it once VRAM is measured. mode zones_as_frames = the zones as ONE frame sequence (compare its seam report against per_zone_clip)."
    ]
   }
  ],
@@ -7474,6 +8628,326 @@
    3054,
    0,
    "VIDEO"
+  ],
+  [
+   156,
+   2001,
+   0,
+   3101,
+   0,
+   "IMAGE"
+  ],
+  [
+   157,
+   3101,
+   0,
+   3102,
+   0,
+   "IMAGE"
+  ],
+  [
+   158,
+   3102,
+   0,
+   3103,
+   0,
+   "IMAGE"
+  ],
+  [
+   159,
+   3103,
+   0,
+   3104,
+   0,
+   "IMAGE"
+  ],
+  [
+   160,
+   3104,
+   0,
+   3105,
+   0,
+   "INT"
+  ],
+  [
+   161,
+   3104,
+   1,
+   3105,
+   1,
+   "INT"
+  ],
+  [
+   162,
+   3104,
+   2,
+   3105,
+   2,
+   "INT"
+  ],
+  [
+   163,
+   3024,
+   0,
+   3107,
+   0,
+   "VAE"
+  ],
+  [
+   164,
+   3106,
+   0,
+   3107,
+   1,
+   "IMAGE"
+  ],
+  [
+   165,
+   3105,
+   0,
+   3107,
+   2,
+   "LATENT"
+  ],
+  [
+   166,
+   3026,
+   0,
+   3108,
+   0,
+   "CONDITIONING"
+  ],
+  [
+   167,
+   3026,
+   1,
+   3108,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   168,
+   3024,
+   0,
+   3108,
+   2,
+   "VAE"
+  ],
+  [
+   169,
+   3107,
+   0,
+   3108,
+   3,
+   "LATENT"
+  ],
+  [
+   170,
+   3103,
+   0,
+   3108,
+   4,
+   "IMAGE"
+  ],
+  [
+   171,
+   3021,
+   1,
+   3108,
+   7,
+   "FLOAT"
+  ],
+  [
+   172,
+   3023,
+   0,
+   3109,
+   3,
+   "VAE"
+  ],
+  [
+   173,
+   3104,
+   2,
+   3109,
+   0,
+   "INT"
+  ],
+  [
+   174,
+   3011,
+   0,
+   3109,
+   1,
+   "FLOAT"
+  ],
+  [
+   175,
+   3108,
+   2,
+   3110,
+   0,
+   "LATENT"
+  ],
+  [
+   176,
+   3109,
+   0,
+   3110,
+   1,
+   "LATENT"
+  ],
+  [
+   177,
+   3021,
+   0,
+   3111,
+   0,
+   "MODEL"
+  ],
+  [
+   178,
+   3108,
+   0,
+   3111,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   179,
+   3108,
+   1,
+   3111,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   180,
+   3040,
+   0,
+   3112,
+   0,
+   "NOISE"
+  ],
+  [
+   181,
+   3111,
+   0,
+   3112,
+   1,
+   "GUIDER"
+  ],
+  [
+   182,
+   3042,
+   0,
+   3112,
+   2,
+   "SAMPLER"
+  ],
+  [
+   183,
+   3043,
+   0,
+   3112,
+   3,
+   "SIGMAS"
+  ],
+  [
+   184,
+   3110,
+   0,
+   3112,
+   4,
+   "LATENT"
+  ],
+  [
+   185,
+   3112,
+   0,
+   3113,
+   0,
+   "LATENT"
+  ],
+  [
+   186,
+   3108,
+   0,
+   3114,
+   0,
+   "CONDITIONING"
+  ],
+  [
+   187,
+   3108,
+   1,
+   3114,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   188,
+   3113,
+   0,
+   3114,
+   2,
+   "LATENT"
+  ],
+  [
+   189,
+   3114,
+   2,
+   3115,
+   0,
+   "LATENT"
+  ],
+  [
+   190,
+   3024,
+   0,
+   3115,
+   1,
+   "VAE"
+  ],
+  [
+   191,
+   3115,
+   0,
+   3116,
+   0,
+   "IMAGE"
+  ],
+  [
+   192,
+   3116,
+   1,
+   3117,
+   0,
+   "IMAGE"
+  ],
+  [
+   193,
+   3101,
+   1,
+   3117,
+   1,
+   "ATLAS_MATRIXZONE"
+  ],
+  [
+   194,
+   3117,
+   2,
+   3118,
+   0,
+   "STRING"
+  ],
+  [
+   195,
+   3117,
+   0,
+   3119,
+   0,
+   "IMAGE"
   ]
  ],
  "groups": [
@@ -7552,6 +9026,17 @@
     1420,
     1280,
     880
+   ]
+  },
+  {
+   "title": "9 \u00b7 matrixZone SDR -> HDR (full-res ACEScg EXR)",
+   "color": "#c86",
+   "font_size": 24,
+   "bounding": [
+    9560,
+    2420,
+    3720,
+    720
    ]
   },
   {

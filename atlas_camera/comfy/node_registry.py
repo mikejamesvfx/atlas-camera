@@ -471,6 +471,13 @@ from atlas_camera.comfy.nodes_scene3d import AtlasSceneTo3D
 
 NODE_CLASS_MAPPINGS["AtlasSceneTo3D"] = AtlasSceneTo3D
 NODE_DISPLAY_NAME_MAPPINGS["AtlasSceneTo3D"] = "Atlas Scene To 3D 🧊"
+# 2026-10-02: matrixZone SDR->HDR - full-resolution HDR plates from LTX-2.5.
+from atlas_camera.comfy.nodes_matrixzone import AtlasMatrixZoneSplit, AtlasMatrixZoneStitch
+
+NODE_CLASS_MAPPINGS["AtlasMatrixZoneSplit"] = AtlasMatrixZoneSplit
+NODE_CLASS_MAPPINGS["AtlasMatrixZoneStitch"] = AtlasMatrixZoneStitch
+NODE_DISPLAY_NAME_MAPPINGS["AtlasMatrixZoneSplit"] = "Atlas matrixZone Split 🔲"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasMatrixZoneStitch"] = "Atlas matrixZone Stitch 🔲"
 
 # Promoted from the experimental tier 2026-08-14 (Dynamic Plates): the CLI half
 # (`python -m atlas_camera.dynamic`) was never gated, so gating only the VIEWER
@@ -689,7 +696,7 @@ _MENU_FOLDERS = {
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
         "AtlasExportScenePackage", "AtlasExportPlateHandoff",
         "AtlasDirectorTake", "AtlasWriteConditioningEXR",
-        "AtlasSceneTo3D",
+        "AtlasSceneTo3D", "AtlasMatrixZoneSplit", "AtlasMatrixZoneStitch",
     ),
     "Atlas/11 · Evidence Plate": (
         "AtlasOpenRealPlate", "AtlasReadLockedPlatePlan", "AtlasRecordPlateAttempt",

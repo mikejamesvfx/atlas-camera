@@ -80,6 +80,8 @@ FACADE_PUBLIC = {
     "AtlasObjectCrop",
     "AtlasImportGeneratedMesh",
     "AtlasSceneTo3D",
+    "AtlasMatrixZoneSplit",
+    "AtlasMatrixZoneStitch",
     "AtlasUnrealDepthGeometry",
     "AtlasUnrealCameraPath",
     "AtlasAnchorDepth",
