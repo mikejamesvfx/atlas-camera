@@ -244,6 +244,42 @@ def _write_exr_sidecar(path: Path, pil: Any, plate_ref: Any) -> dict[str, Any]:
             "exr_origin": "linearised_display_plate", "scene_referred": False}
 
 
+def write_float_ply(path: Path, vertices: Any, faces: Any, colors: Any) -> str:
+    """Binary little-endian PLY with FLOAT vertex colour (r, g, b may exceed 1).
+
+    glTF COLOR_0 is a 0..1 quantity, so HDR vertex colour (ACEScg linear from
+    AtlasHDRVertexTransfer) rides beside the GLB in a format DCCs read with
+    float colour attributes (Houdini, Blender's PLY importer, Open3D).
+    """
+    import numpy as np
+
+    v = np.asarray(vertices, dtype="<f4").reshape(-1, 3)
+    c = np.asarray(colors, dtype="<f4").reshape(-1, 3)
+    f = np.asarray(faces, dtype="<i4").reshape(-1, 3)
+    header = "\n".join([
+        "ply",
+        "format binary_little_endian 1.0",
+        "comment Atlas Camera generated object - vertex colour is ACEScg linear",
+        f"element vertex {len(v)}",
+        "property float x", "property float y", "property float z",
+        "property float red", "property float green", "property float blue",
+        f"element face {len(f)}",
+        "property list uchar int vertex_indices",
+        "end_header",
+    ]) + "\n"
+    rows = np.empty(len(v), dtype=[("p", "<f4", 3), ("c", "<f4", 3)])
+    rows["p"], rows["c"] = v, c
+    tris = np.empty(len(f), dtype=[("n", "u1"), ("i", "<i4", 3)])
+    tris["n"], tris["i"] = 3, f
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as fh:
+        fh.write(header.encode("ascii"))
+        fh.write(rows.tobytes())
+        fh.write(tris.tobytes())
+    return str(path)
+
+
 def build_scene_layers(
     solve: Any,
     primary_plate: Any,
@@ -291,11 +327,28 @@ def build_scene_layers(
             if mesh is None:
                 continue
             uvs = mesh.uvs if getattr(mesh.uvs, "size", 0) else None
+            layer_extras = {**extras, "atlas_layer": f"{prefix}{prim.name}"}
+            hdr_vc = (prim.metadata or {}).get("vertex_colors_hdr")
+            if hdr_vc and exr_root is not None and len(hdr_vc) == 3 * len(mesh.vertices):
+                try:
+                    ply = write_float_ply(
+                        exr_root / f"{exr_prefix}_{prim.name}_vertex_hdr.ply",
+                        mesh.vertices, mesh.faces, hdr_vc)
+                    layer_extras.update(vertex_colors_hdr_ply=Path(ply).name,
+                                        vertex_colors_hdr_space=(prim.metadata or {}).get(
+                                            "vertex_colors_hdr_space", "ACEScg"))
+                    sidecars.append({"plate": f"{prim.name} vertex colour",
+                                     "exr": Path(ply).name,
+                                     "exr_colorspace": "ACEScg (float PLY vertex colour)",
+                                     "exr_origin": "AtlasHDRVertexTransfer",
+                                     "scene_referred": False})
+                except Exception as exc:  # noqa: BLE001
+                    notes.append(f"HDR vertex-colour PLY for {prim.name} skipped: {exc}")
             layers.append(SceneLayer(
                 name=f"{prefix}{prim.name}", vertices=mesh.vertices, faces=mesh.faces,
                 uvs=uvs, image_bytes=png, vertex_colors=mesh.vertex_colors,
                 photo_weight=mesh.photo_weight,
-                extras={**extras, "atlas_layer": f"{prefix}{prim.name}"}))
+                extras=layer_extras))
 
     scene = solve.projection_scene
     primary = [p for p in (scene.proxy_geometry or [])

@@ -478,6 +478,11 @@ NODE_CLASS_MAPPINGS["AtlasMatrixZoneSplit"] = AtlasMatrixZoneSplit
 NODE_CLASS_MAPPINGS["AtlasMatrixZoneStitch"] = AtlasMatrixZoneStitch
 NODE_DISPLAY_NAME_MAPPINGS["AtlasMatrixZoneSplit"] = "Atlas matrixZone Split 🔲"
 NODE_DISPLAY_NAME_MAPPINGS["AtlasMatrixZoneStitch"] = "Atlas matrixZone Stitch 🔲"
+# 2026-10-02: the plate's SDR->HDR tone curve onto generated hidden-side vertex colour.
+from atlas_camera.comfy.nodes_object_mesh import AtlasHDRVertexTransfer
+
+NODE_CLASS_MAPPINGS["AtlasHDRVertexTransfer"] = AtlasHDRVertexTransfer
+NODE_DISPLAY_NAME_MAPPINGS["AtlasHDRVertexTransfer"] = "Atlas HDR Vertex Transfer 🌗"
 
 # Promoted from the experimental tier 2026-08-14 (Dynamic Plates): the CLI half
 # (`python -m atlas_camera.dynamic`) was never gated, so gating only the VIEWER
@@ -719,7 +724,7 @@ _MENU_FOLDERS = {
         "AtlasCropROI", "AtlasCompositeCrop", "AtlasCameraMovePreset",
         "AtlasFillOccluded",
         "AtlasCropSourcePhoto",
-        "AtlasObjectCrop", "AtlasImportGeneratedMesh",
+        "AtlasObjectCrop", "AtlasImportGeneratedMesh", "AtlasHDRVertexTransfer",
         "AtlasLoadHiddenVolume", "AtlasBlenderMassing", "AtlasBlenderImportMeshes",
         "AtlasAgentHandoff",
     ),

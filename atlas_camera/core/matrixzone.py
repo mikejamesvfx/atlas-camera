@@ -315,6 +315,92 @@ def stitch(zone_hdr: list[Any], plan: dict[str, Any], *, global_hdr: Any = None,
     return plate, report
 
 
+#: Highlights the SDR plate clipped are where the conversion SHOULD change the
+#: picture; they are excluded when measuring stripes the model added.
+DESTRIPE_SDR_CLIP = 0.9
+
+
+def _column_highpass(np, profile, window: int):
+    k = max(3, int(window) | 1)
+    pad = np.pad(profile, k // 2, mode="edge")
+    trend = np.convolve(pad, np.ones(k) / k, mode="valid")
+    return profile - trend
+
+
+def destripe_columns(hdr: Any, sdr_linear: Any, *, bands: list[tuple[int, int]] | None = None,
+                     window: int = 257, clip: float = DESTRIPE_SDR_CLIP,
+                     iterations: int = 2) -> tuple[Any, dict[str, Any]]:
+    """Remove VERTICAL stripes the conversion added, measured against its input.
+
+    ``hdr`` and ``sdr_linear`` are (H, W, C) linear and pixel-aligned. Per
+    horizontal band (default: the whole frame; pass the zone rows so each
+    model run is measured on its own), the column profile of
+    ``log2(hdr / sdr)`` -- a median over the band's unclipped rows -- is
+    high-passed horizontally (anything wider than ``window`` px -- default 257, ~3x the
+    64-111 px stripe periods measured on LTX-2.5 output -- is real tone
+    change and kept) and divided out. Band profiles are interpolated between
+    band centres so the correction has no horizontal edge. The SDR plate's
+    OWN stripes are untouched: only what the conversion added is removed.
+    """
+    np = _require_numpy()
+    h_img = np.asarray(hdr, dtype=np.float32)
+    s_img = np.asarray(sdr_linear, dtype=np.float32)
+    if h_img.shape[:2] != s_img.shape[:2]:
+        raise ValueError(f"hdr {h_img.shape[:2]} and sdr {s_img.shape[:2]} differ")
+    H, W = h_img.shape[:2]
+    lum_w = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    hl = (np.maximum(h_img[..., :3], LOG_EPS) * lum_w).sum(-1)
+    sl = (np.maximum(s_img[..., :3], LOG_EPS) * lum_w).sum(-1)
+    ratio = np.log2(np.maximum(hl, LOG_EPS)) - np.log2(np.maximum(sl, LOG_EPS))
+    usable = s_img[..., :3].max(-1) < clip
+    bands = bands or [(0, H)]
+    centres, profiles = [], []
+    for y0, y1 in bands:
+        r = np.where(usable[y0:y1], ratio[y0:y1], np.nan)
+        prof = np.nanmedian(r, axis=0)
+        prof = np.where(np.isfinite(prof), prof, np.nanmedian(prof) if np.isfinite(prof).any() else 0)
+        profiles.append(_column_highpass(np, prof, window))
+        centres.append((y0 + y1) / 2.0)
+    order = np.argsort(centres)
+    centres = np.asarray(centres)[order]
+    profiles = np.stack([profiles[i] for i in order])
+    if len(centres) == 1:
+        field = np.broadcast_to(profiles[0][None, :], (H, W))
+    else:
+        rows = np.arange(H, dtype=np.float32)
+        idx = np.clip(np.searchsorted(centres, rows) - 1, 0, len(centres) - 2)
+        t = np.clip((rows - centres[idx]) / (centres[idx + 1] - centres[idx]), 0, 1)[:, None]
+        field = profiles[idx] * (1 - t) + profiles[idx + 1] * t
+    out = h_img * np.exp2(-field)[..., None].astype(np.float32)
+    before = float(np.nanstd([_column_highpass(np, np.nanmedian(np.where(usable, ratio, np.nan)[y0:y1], 0), window)
+                              for y0, y1 in bands]))
+    r2 = np.log2(np.maximum((np.maximum(out[..., :3], LOG_EPS) * lum_w).sum(-1), LOG_EPS)) - \
+        np.log2(np.maximum(sl, LOG_EPS))
+    after = float(np.nanstd([_column_highpass(np, np.nanmedian(np.where(usable, r2, np.nan)[y0:y1], 0), window)
+                             for y0, y1 in bands]))
+    rep = {"ripple_before_stops": before, "ripple_after_stops": after,
+           "bands": len(bands), "window_px": int(window), "iterations": 1}
+    if iterations > 1:
+        # Band profiles are interpolated between band centres, so one pass only
+        # approximates each band's own profile; a second pass closes most of the
+        # remainder (measured on an 8K LTX plate: 0.084 -> 0.028 -> 0.016 stops),
+        # a third buys little because what is left is real content.
+        out, nxt = destripe_columns(out, sdr_linear, bands=bands, window=window, clip=clip,
+                                    iterations=iterations - 1)
+        rep.update(ripple_after_stops=nxt["ripple_after_stops"],
+                   iterations=1 + nxt["iterations"])
+    return out, rep
+
+
+def zone_row_bands(plan: dict[str, Any]) -> list[tuple[int, int]]:
+    """Each zone row's plate-space row span (for per-run destriping)."""
+    L, T = plan["render"]["plateOrigin"]
+    ph = plan["plate"]["height"]
+    spans = sorted({(z["plateRect"][1] - T, z["plateRect"][1] - T + z["plateRect"][3])
+                    for z in plan["zones"]})
+    return [(max(0, a), min(ph, b)) for a, b in spans]
+
+
 def seam_metrics(zone_logs: list[Any], plan: dict[str, Any]) -> list[dict[str, Any]]:
     """Per interior seam: |log2 luminance| disagreement between the two zones
     over their shared overlap (median, p95). 0 = the neighbours agree."""

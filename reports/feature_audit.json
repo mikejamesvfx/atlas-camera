@@ -2,15 +2,15 @@
  "schema_version": 1,
  "generated_utc": "2026-10-02",
  "counts": {
-  "standard": 130,
+  "standard": 131,
   "experimental": 10,
   "legacy": 2,
   "ios": 2,
-  "total": 144,
+  "total": 145,
   "no_product_evidence": 0
  },
  "verdict_counts": {
-  "KEEP_CORE": 130,
+  "KEEP_CORE": 131,
   "KEEP_EXPERIMENTAL": 10,
   "LEGACY_GATE": 2,
   "IOS_GATE": 2
@@ -1894,6 +1894,31 @@
   },
   "AtlasGroundPlane": {
    "module": "atlas_camera/comfy/nodes_geometry.py",
+   "tier": "standard",
+   "example_workflows": 0,
+   "dedicated_tests": 1,
+   "tests": 3,
+   "mcp_tools": 0,
+   "repo_tools": 0,
+   "docs": 1,
+   "product_evidence": true,
+   "evidence_kinds": [
+    "dedicated_test",
+    "docs"
+   ],
+   "live_execution": "not_attempted",
+   "live_output": "not_attempted",
+   "live_note": null,
+   "overlapping_replacement": null,
+   "known_defect": null,
+   "compatibility_risk": null,
+   "verdict": "KEEP_CORE",
+   "evidence": [],
+   "migration_action": null,
+   "notes": null
+  },
+  "AtlasHDRVertexTransfer": {
+   "module": "atlas_camera/comfy/nodes_object_mesh.py",
    "tier": "standard",
    "example_workflows": 0,
    "dedicated_tests": 1,

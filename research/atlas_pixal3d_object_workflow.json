@@ -1,8 +1,8 @@
 {
- "id": "803a25b6-63b5-4f30-99f6-8b8e51f885f5",
+ "id": "a1162498-e8e4-482d-8e10-948e1c7a6fe7",
  "revision": 0,
  "last_node_id": 2017,
- "last_link_id": 101,
+ "last_link_id": 103,
  "nodes": [
   {
    "id": 3,
@@ -1555,7 +1555,7 @@
      "name": "report",
      "type": "STRING",
      "links": [
-      97
+      99
      ]
     }
    ],
@@ -1626,15 +1626,14 @@
      "name": "solve",
      "type": "ATLAS_SOLVE",
      "links": [
-      90,
-      91
+      90
      ]
     },
     {
      "name": "report",
      "type": "STRING",
      "links": [
-      96
+      98
      ]
     },
     {
@@ -1931,7 +1930,7 @@
     {
      "name": "source",
      "type": "*",
-     "link": 96
+     "link": 98
     }
    ],
    "outputs": [],
@@ -1959,7 +1958,7 @@
     {
      "name": "source",
      "type": "*",
-     "link": 97
+     "link": 99
     }
    ],
    "outputs": [],
@@ -2114,12 +2113,12 @@
     {
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 91
+     "link": 93
     },
     {
      "name": "source_image",
      "type": "IMAGE",
-     "link": 92
+     "link": 94
     }
    ],
    "outputs": [
@@ -2127,21 +2126,21 @@
      "name": "model_3d",
      "type": "FILE_3D_GLB",
      "links": [
-      93
+      95
      ]
     },
     {
      "name": "model_3d_info",
      "type": "LOAD3D_MODEL_INFO",
      "links": [
-      94
+      96
      ]
     },
     {
      "name": "camera_info",
      "type": "LOAD3D_CAMERA",
      "links": [
-      95
+      97
      ]
     },
     {
@@ -2182,19 +2181,19 @@
     {
      "name": "model_3d",
      "type": "FILE_3D_GLB,FILE_3D_GLTF,FILE_3D_FBX,FILE_3D_OBJ,FILE_3D_STL,FILE_3D_USDZ,FILE_3D",
-     "link": 93
+     "link": 95
     },
     {
      "name": "model_3d_info",
      "shape": 7,
      "type": "LOAD3D_MODEL_INFO",
-     "link": 94
+     "link": 96
     },
     {
      "name": "camera_info",
      "shape": 7,
      "type": "LOAD3D_CAMERA",
-     "link": 95
+     "link": 97
     }
    ],
    "outputs": [
@@ -2243,6 +2242,60 @@
    }
   },
   {
+   "id": 1015,
+   "type": "AtlasHDRVertexTransfer",
+   "pos": [
+    8100,
+    1500
+   ],
+   "size": [
+    420,
+    200
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "link": 90
+    },
+    {
+     "name": "source_image",
+     "type": "IMAGE",
+     "link": 91
+    },
+    {
+     "name": "hdr_image",
+     "type": "IMAGE",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "solve",
+     "type": "ATLAS_SOLVE",
+     "links": [
+      92,
+      93
+     ]
+    },
+    {
+     "name": "report",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AtlasHDRVertexTransfer"
+   },
+   "widgets_values": [
+    ""
+   ],
+   "title": "HDR vertex transfer - set hdr_exr_path to the matrixZone still workflow's EXR (empty = pass through)"
+  },
+  {
    "id": 2001,
    "type": "LoadImage",
    "pos": [
@@ -2278,8 +2331,9 @@
       2,
       11,
       87,
-      92,
-      98
+      91,
+      94,
+      100
      ]
     },
     {
@@ -2688,7 +2742,7 @@
       72,
       79,
       86,
-      99
+      101
      ]
     },
     {
@@ -3529,7 +3583,7 @@
      "name": "controls",
      "type": "ATLAS_VIEWPORT_LINK",
      "links": [
-      100
+      102
      ]
     },
     {
@@ -3537,7 +3591,7 @@
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
      "links": [
-      101
+      103
      ]
     }
    ],
@@ -3574,13 +3628,13 @@
      "localized_name": "solve",
      "name": "solve",
      "type": "ATLAS_SOLVE",
-     "link": 90
+     "link": 92
     },
     {
      "localized_name": "source_image",
      "name": "source_image",
      "type": "IMAGE",
-     "link": 98
+     "link": 100
     },
     {
      "localized_name": "resolution",
@@ -3606,7 +3660,7 @@
      "localized_name": "primary_depth",
      "name": "primary_depth",
      "type": "ATLAS_DEPTH_MAP",
-     "link": 99,
+     "link": 101,
      "shape": 7
     },
     {
@@ -3623,7 +3677,7 @@
      "localized_name": "controls",
      "name": "controls",
      "type": "ATLAS_VIEWPORT_LINK",
-     "link": 100,
+     "link": 102,
      "shape": 7
     },
     {
@@ -3637,7 +3691,7 @@
      "localized_name": "output_profile",
      "name": "output_profile",
      "type": "ATLAS_OUTPUT_PROFILE",
-     "link": 101,
+     "link": 103,
      "shape": 7
     },
     {
@@ -4953,20 +5007,36 @@
    90,
    1002,
    0,
-   2009,
+   1015,
    0,
    "ATLAS_SOLVE"
   ],
   [
    91,
-   1002,
+   2001,
+   0,
+   1015,
+   1,
+   "IMAGE"
+  ],
+  [
+   92,
+   1015,
+   0,
+   2009,
+   0,
+   "ATLAS_SOLVE"
+  ],
+  [
+   93,
+   1015,
    0,
    1013,
    0,
    "ATLAS_SOLVE"
   ],
   [
-   92,
+   94,
    2001,
    0,
    1013,
@@ -4974,7 +5044,7 @@
    "IMAGE"
   ],
   [
-   93,
+   95,
    1013,
    0,
    1014,
@@ -4982,7 +5052,7 @@
    "FILE_3D_GLB"
   ],
   [
-   94,
+   96,
    1013,
    1,
    1014,
@@ -4990,7 +5060,7 @@
    "LOAD3D_MODEL_INFO"
   ],
   [
-   95,
+   97,
    1013,
    2,
    1014,
@@ -4998,7 +5068,7 @@
    "LOAD3D_CAMERA"
   ],
   [
-   96,
+   98,
    1002,
    1,
    1009,
@@ -5006,7 +5076,7 @@
    "STRING"
   ],
   [
-   97,
+   99,
    1001,
    4,
    1010,
@@ -5014,7 +5084,7 @@
    "STRING"
   ],
   [
-   98,
+   100,
    2001,
    0,
    2009,
@@ -5022,7 +5092,7 @@
    "IMAGE"
   ],
   [
-   99,
+   101,
    2003,
    2,
    2009,
@@ -5030,7 +5100,7 @@
    "ATLAS_DEPTH_MAP"
   ],
   [
-   100,
+   102,
    2008,
    0,
    2009,
@@ -5038,7 +5108,7 @@
    "ATLAS_VIEWPORT_LINK"
   ],
   [
-   101,
+   103,
    2008,
    1,
    2009,
@@ -5118,9 +5188,9 @@
    "color": "#5a8",
    "font_size": 24,
    "bounding": [
-    8560,
+    8060,
     1420,
-    1280,
+    1780,
     880
    ]
   }

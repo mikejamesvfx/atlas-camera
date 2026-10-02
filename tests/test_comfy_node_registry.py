@@ -80,6 +80,8 @@ NORMAL_KEYS = {
     "AtlasSceneTo3D",
     # 2026-10-02: matrixZone SDR->HDR split / stitch.
     "AtlasMatrixZoneSplit", "AtlasMatrixZoneStitch",
+    # 2026-10-02: HDR tone curve onto generated vertex colour.
+    "AtlasHDRVertexTransfer",
     # The rendered-depth / Director arc (2026-08/09): an Unreal depth pass and
     # camera as MoGe-shaped inputs, the render-anchored depth fit, the scene
     # measurement behind support-geometry sizes, and the Director take reader.
@@ -130,7 +132,7 @@ FACADE_HELPER_NAMES = (
 
 def test_normal_registry_keys_exact():
     assert set(nodes.NODE_CLASS_MAPPINGS) == NORMAL_KEYS
-    assert len(nodes.NODE_CLASS_MAPPINGS) == 130
+    assert len(nodes.NODE_CLASS_MAPPINGS) == 131
 
 
 def test_experimental_registry_keys_exact():

@@ -413,3 +413,102 @@ class AtlasImportGeneratedMesh:
                       f"(photo paints {wstats['photo_fraction'] * 100:.0f}% of vertices)",
                 colour_note, *lines, *report_tail]
         return (solve_out, "\n".join(body), coverage)
+
+
+def _resolve_output_path(path: str) -> str:
+    """Absolute, or relative to ComfyUI's output directory (where the HDR
+    workflow writes), or relative to the current directory."""
+    from pathlib import Path
+    p = Path(str(path or "").strip().strip('"'))
+    if not str(p):
+        return ""
+    if p.is_absolute() and p.is_file():
+        return str(p)
+    try:
+        import folder_paths  # type: ignore[import-not-found]
+        cand = Path(folder_paths.get_output_directory()) / p
+        if cand.is_file():
+            return str(cand)
+    except Exception:  # noqa: BLE001 - not inside ComfyUI
+        pass
+    return str(p) if p.is_file() else ""
+
+
+class AtlasHDRVertexTransfer:
+    """🌗 Give generated objects' hidden sides HDR colour, from the plate's own conversion.
+
+    Run SDR->HDR on the plate in its own workflow (matrixZone still), then wire
+    that EXR's path here. The model never saw a generated object's hidden side
+    (it is vertex colour, not an image), so the plate's SDR/HDR pixel pairs are
+    used to measure the model's own per-channel tone curve, which is applied to
+    every generated object's vertex colours. Stores ACEScg linear
+    ``vertex_colors_hdr`` on each primitive (AtlasSceneTo3D writes them as a
+    float PLY sidecar). The SDR ``vertex_colors`` are left as they are.
+    """
+
+    RETURN_TYPES = ("ATLAS_SOLVE", "STRING")
+    RETURN_NAMES = ("solve", "report")
+    FUNCTION = "transfer"
+    CATEGORY = "Atlas Camera"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "solve": ("ATLAS_SOLVE",),
+                "source_image": ("IMAGE", {"tooltip": "The SDR plate the HDR was converted from."}),
+            },
+            "optional": {
+                "hdr_exr_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "The HDR plate EXR from the matrixZone still workflow "
+                               "(absolute, or relative to ComfyUI's output folder, e.g. "
+                               "atlas/hdr_plate_00001.exr). Empty = pass through."}),
+                "hdr_image": ("IMAGE", {"tooltip": "Alternative to the path: a float HDR "
+                                                   "IMAGE (ACEScg linear)."}),
+            },
+        }
+
+    def transfer(self, solve, source_image, hdr_exr_path="", hdr_image=None):
+        np = _require_numpy()
+        from atlas_camera.core.hdr_transfer import apply_curve, fit_sdr_to_hdr_curve
+        from atlas_camera.core.matrixzone import resize_bilinear
+
+        solve_out = copy.deepcopy(solve)
+        gens = [p for p in solve_out.projection_scene.proxy_geometry
+                if (p.metadata or {}).get("source") == GENERATED_SOURCE
+                and (p.metadata or {}).get("vertex_colors")]
+        if not gens:
+            return (solve_out, "AtlasHDRVertexTransfer: no generated object with vertex "
+                               "colours in the solve - passed through")
+        hdr, origin = None, ""
+        if hdr_image is not None:
+            hdr = hdr_image[0].detach().cpu().float().numpy()[..., :3]
+            origin = "hdr_image input"
+        else:
+            path = _resolve_output_path(hdr_exr_path)
+            if not path:
+                return (solve_out, "AtlasHDRVertexTransfer: no HDR plate (set hdr_exr_path to "
+                                   "the matrixZone still workflow's EXR) - passed through")
+            from atlas_camera.plate.oiio_io import read_plate
+            hdr = np.asarray(read_plate(path, output_colorspace=None).pixels,
+                             dtype=np.float32)[..., :3]
+            origin = path
+        sdr = source_image[0].detach().cpu().float().numpy()[..., :3]
+        if sdr.shape[:2] != hdr.shape[:2]:
+            sdr = resize_bilinear(sdr, hdr.shape[0], hdr.shape[1])
+        curve = fit_sdr_to_hdr_curve(sdr, hdr)
+        lines = [f"AtlasHDRVertexTransfer: tone curve fitted from {origin} "
+                 f"({curve['samples']} px, {curve['bins']} bins, ACEScg); one global curve "
+                 f"explains the plate's conversion to {curve['residual_stops']:.3f} stops median"]
+        for p in gens:
+            vc = np.asarray(p.metadata["vertex_colors"], dtype=np.float32).reshape(-1, 3)
+            hdr_vc = apply_curve(curve, vc)
+            p.metadata["vertex_colors_hdr"] = np.round(hdr_vc.reshape(-1), 4).tolist()
+            p.metadata["vertex_colors_hdr_space"] = "ACEScg"
+            p.metadata["vertex_colors_hdr_residual_stops"] = round(curve["residual_stops"], 4)
+            lines.append(f"- {p.name}: {len(vc)} vertex colours -> ACEScg linear, max "
+                         f"{float(hdr_vc.max()):.2f}, {int((hdr_vc.max(-1) > 1).sum())} above 1.0")
+        lines.append("the hidden side's HDR is the plate's conversion curve applied to a "
+                     "model-guessed colour: a reconstruction of a reconstruction")
+        return (solve_out, "\n".join(lines))

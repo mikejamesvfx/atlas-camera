@@ -82,6 +82,7 @@ FACADE_PUBLIC = {
     "AtlasSceneTo3D",
     "AtlasMatrixZoneSplit",
     "AtlasMatrixZoneStitch",
+    "AtlasHDRVertexTransfer",
     "AtlasUnrealDepthGeometry",
     "AtlasUnrealCameraPath",
     "AtlasAnchorDepth",

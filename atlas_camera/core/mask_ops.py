@@ -85,3 +85,54 @@ def box_blur(field: Any, radius: int, *, wrap: bool = False) -> Any:
             total += _shift(src, dr, dc, wrap=wrap)
             count += _shift(ones, dr, dc, wrap=wrap)
     return total / np.where(count > 0, count, 1.0)
+
+
+def _box_1d(np: Any, line: Any, radius: int) -> Any:
+    """Edge-clamped box blur of a (N, C) line, via a cumulative sum."""
+    if radius <= 0:
+        return line
+    padded = np.pad(line, ((radius, radius), (0, 0)), mode="edge")
+    c = np.cumsum(np.vstack([np.zeros((1, line.shape[1]), padded.dtype), padded]), axis=0)
+    return (c[2 * radius + 1:] - c[:-2 * radius - 1]) / (2 * radius + 1)
+
+
+def smear_outpaint_ring(img: Any, pad: int, *, growth: float = 0.5,
+                        max_radius: int = 256) -> Any:
+    """Soften an edge-replicated frame-outpaint ring so it is not stripes.
+
+    ``np.pad(mode="edge")`` copies each border pixel straight outward, which in
+    a wide ring (frame_outpaint_px 1024 on an 8K plate) reads as hard stripes
+    perpendicular to the frame edge -- measured 5.7% column ripple in the ring
+    against 0.55% inside the plate. Each ring row (top/bottom) or column
+    (left/right) at distance ``d`` from the real plate is box-blurred ALONG the
+    frame edge with radius ``min(max_radius, growth * d)``: zero at the plate
+    edge (continuous with the real pixels), wider as the invented content gets
+    further from evidence. The real plate (``[pad:-pad, pad:-pad]``) is never
+    touched. Corners receive both passes. Float in, float out.
+    """
+    np = _require_numpy()
+    a = np.asarray(img, dtype=np.float32).copy()
+    pad = int(pad)
+    if pad <= 0:
+        return a
+    squeeze = a.ndim == 2
+    if squeeze:
+        a = a[..., None]
+    H, W = a.shape[:2]
+
+    def radius(d: int) -> int:
+        return int(min(max_radius, round(growth * d)))
+
+    for d in range(1, pad + 1):                    # top / bottom rows
+        r = radius(d)
+        if r < 1:
+            continue
+        for y in (pad - d, H - pad - 1 + d):
+            a[y] = _box_1d(np, a[y], r)
+    for d in range(1, pad + 1):                    # left / right columns
+        r = radius(d)
+        if r < 1:
+            continue
+        for x in (pad - d, W - pad - 1 + d):
+            a[:, x] = _box_1d(np, a[:, x], r)
+    return a[..., 0] if squeeze else a

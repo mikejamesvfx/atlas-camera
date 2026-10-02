@@ -150,11 +150,19 @@ class AtlasMatrixZoneStitch:
                                           "tooltip": "Tag for the EXR (LTX hdr_linear is "
                                                      "ACEScg linear)."}),
                 "filename_prefix": ("STRING", {"default": "atlas/hdr_plate"}),
+                # APPENDED: destripe against the SDR input (wire the same plate
+                # the split got). The conversion adds faint vertical stripes in
+                # every zone; measured against its own input they can be divided
+                # out without touching the highlights it reconstructed.
+                "destripe": ("BOOLEAN", {"default": True,
+                                         "tooltip": "Remove vertical stripes the conversion "
+                                                    "added (needs sdr_plate)."}),
+                "sdr_plate": ("IMAGE", {"tooltip": "The SDR plate the split was given."}),
             },
         }
 
     def stitch(self, hdr, matrixzone, anchor=True, split_px=0, colorspace="ACEScg",
-               filename_prefix="atlas/hdr_plate"):
+               filename_prefix="atlas/hdr_plate", destripe=True, sdr_plate=None):
         # INPUT_IS_LIST: ComfyUI hands every input as a list; tests and direct
         # callers may pass scalars. first() accepts both.
         np = _require_numpy()
@@ -183,6 +191,22 @@ class AtlasMatrixZoneStitch:
         zones = [z[..., :3] for z in zones]
         plate, rep = mz_stitch(zones, plan, global_hdr=None if glob is None else glob[..., :3],
                                split_px=split_px or None)
+        destripe = bool(first(destripe))
+        sdr = first(sdr_plate) if sdr_plate is not None else None
+        stripe_rep = None
+        if destripe and sdr is not None:
+            from atlas_camera.core.generated_mesh import srgb_to_linear
+            from atlas_camera.core.matrixzone import (
+                destripe_columns,
+                resize_bilinear,
+                zone_row_bands,
+            )
+            s_np = np.asarray(sdr[0].detach().cpu().float().numpy() if hasattr(sdr, "detach")
+                              else sdr[0], dtype=np.float32)[..., :3]
+            if s_np.shape[:2] != plate.shape[:2]:
+                s_np = resize_bilinear(s_np, plate.shape[0], plate.shape[1])
+            plate, stripe_rep = destripe_columns(plate, srgb_to_linear(s_np),
+                                                 bands=zone_row_bands(plan))
 
         exr_path, exr_note = "", ""
         try:
@@ -209,6 +233,13 @@ class AtlasMatrixZoneStitch:
                          f"{fmt(rep['seams_after_anchor'])}")
         else:
             lines.append("radiance anchor OFF: zones keep their own low frequencies")
+        if stripe_rep:
+            lines.append(f"destripe: vertical ripple the conversion added "
+                         f"{stripe_rep['ripple_before_stops']:.4f} -> "
+                         f"{stripe_rep['ripple_after_stops']:.4f} stops rms "
+                         f"({stripe_rep['bands']} zone-row band(s), {stripe_rep['window_px']} px)")
+        elif destripe:
+            lines.append("destripe skipped: wire sdr_plate (the plate the split got)")
         if rep.get("resized_zones"):
             lines.append(f"warning: {rep['resized_zones']} zone result(s) came back at a "
                          "different size and were resampled to their renderRect")

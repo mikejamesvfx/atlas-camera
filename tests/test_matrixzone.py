@@ -120,3 +120,38 @@ def test_wrong_zone_count_raises():
     p = plan_still(1024, 576, (2, 2))
     with pytest.raises(ValueError, match="zone results"):
         stitch([np.ones((4, 4, 3))], p)
+
+
+def _striped_conversion(seed=0):
+    """An SDR plate with its OWN faint stripes, and an 'HDR conversion' that
+    adds different, stronger ones plus a real highlight expansion."""
+    rng = np.random.default_rng(seed)
+    h, w = 400, 900
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    own = 1 + 0.008 * np.sin(2 * np.pi * xx / 48)                 # the plate's own banding
+    sdr = (0.2 + 0.5 * xx / w)[..., None] * own[..., None] * np.ones(3, np.float32)
+    sdr[50:90, 600:700] = 0.97                                      # a clipped highlight
+    added = np.exp2(0.03 * np.sin(2 * np.pi * xx / 90 + rng.random()))  # model stripes
+    hdr = sdr * added[..., None]
+    hdr[50:90, 600:700] = 6.0                                       # expansion the model made
+    return sdr, hdr, added
+
+
+def test_destripe_removes_added_stripes_and_keeps_highlights():
+    from atlas_camera.core.matrixzone import destripe_columns
+    sdr, hdr, added = _striped_conversion()
+    out, rep = destripe_columns(hdr, sdr)
+    assert rep["ripple_before_stops"] > 0.015 and rep["ripple_after_stops"] < 0.003
+    # the plate's own 48 px banding survives (it is not the conversion's)
+    np.testing.assert_allclose(out[200:300, 100:500], sdr[200:300, 100:500], rtol=0.01)
+    # the reconstructed highlight stays reconstructed
+    assert out[60:80, 620:680].mean() > 5.0
+
+
+def test_destripe_per_band_interpolates_without_a_row_edge():
+    from atlas_camera.core.matrixzone import destripe_columns
+    sdr, hdr, _ = _striped_conversion()
+    out, rep = destripe_columns(hdr, sdr, bands=[(0, 200), (200, 400)])
+    assert rep["bands"] == 2
+    row_jump = np.abs(np.log2(out[200, 50:550, 0]) - np.log2(out[199, 50:550, 0])).max()
+    assert row_jump < 0.01

@@ -1,8 +1,8 @@
 {
- "id": "b31f5f9f-b802-447f-b3c0-bb8bd64de109",
+ "id": "62b4cccc-1f3e-40e7-a908-f290389c65ba",
  "revision": 0,
  "last_node_id": 3120,
- "last_link_id": 88,
+ "last_link_id": 89,
  "nodes": [
   {
    "id": 2001,
@@ -36,7 +36,8 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      49
+      49,
+      87
      ]
     },
     {
@@ -1560,7 +1561,7 @@
    ],
    "size": [
     380,
-    230
+    260
    ],
    "flags": {},
    "order": 0,
@@ -1575,6 +1576,12 @@
      "name": "matrixzone",
      "type": "ATLAS_MATRIXZONE",
      "link": 86
+    },
+    {
+     "name": "sdr_plate",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": 87
     }
    ],
    "outputs": [
@@ -1582,7 +1589,7 @@
      "name": "preview",
      "type": "IMAGE",
      "links": [
-      88
+      89
      ]
     },
     {
@@ -1594,7 +1601,7 @@
      "name": "report",
      "type": "STRING",
      "links": [
-      87
+      88
      ]
     }
    ],
@@ -1605,7 +1612,8 @@
     true,
     0,
     "ACEScg",
-    "atlas/hdr_plate"
+    "atlas/hdr_plate",
+    true
    ],
    "title": "matrixZone STITCH -> full-res ACEScg EXR (radiance anchor on)"
   },
@@ -1627,7 +1635,7 @@
     {
      "name": "source",
      "type": "*",
-     "link": 87
+     "link": 88
     }
    ],
    "outputs": [],
@@ -1655,7 +1663,7 @@
     {
      "name": "images",
      "type": "IMAGE",
-     "link": 88
+     "link": 89
     }
    ],
    "outputs": [],
@@ -2035,6 +2043,14 @@
   ],
   [
    87,
+   2001,
+   0,
+   3117,
+   2,
+   "IMAGE"
+  ],
+  [
+   88,
    3117,
    2,
    3118,
@@ -2042,7 +2058,7 @@
    "STRING"
   ],
   [
-   88,
+   89,
    3117,
    0,
    3119,

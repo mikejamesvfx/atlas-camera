@@ -158,6 +158,9 @@ class AtlasSceneTo3D:
                          + (", textured" if s["textured"] else ", UNTEXTURED")
                          + (", vertex-colour hidden side" if s["vertex_colour"] else ""))
         for s in sidecars:
+            if s["exr"].endswith(".ply"):
+                lines.append(f"- PLY {s['exr']}: HDR vertex colour, {s['exr_colorspace']}")
+                continue
             lines.append(f"- EXR {s['exr']}: {s['exr_colorspace']}"
                          + ("" if s["scene_referred"] else
                             " (linearised display plate, NOT scene-referred)"))

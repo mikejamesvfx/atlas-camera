@@ -1466,7 +1466,12 @@ class AtlasCleanPlateLayer:
                     plate_np0 = np.asarray(
                         PILImage.fromarray(plate_np0.astype("uint8")).resize(
                             (setup.width, setup.height)), dtype=np.float32)
-                plate_padded = np.pad(plate_np0, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+                from atlas_camera.core.mask_ops import smear_outpaint_ring
+                # Edge replication alone reads as stripes across a wide ring
+                # (measured 5.7% column ripple at 1024 px); smear along the
+                # frame edge, widening with distance. Real pixels untouched.
+                plate_padded = smear_outpaint_ring(
+                    np.pad(plate_np0, ((pad, pad), (pad, pad), (0, 0)), mode="edge"), pad)
                 PILImage = _require_pil()
                 pil = PILImage.fromarray(plate_padded.clip(0, 255).astype("uint8"), mode="RGB")
             else:
@@ -2096,7 +2101,9 @@ class AtlasSkyDomeLayer:
                 size_pad = min(size_pad, max(Hp, Wp) // 2)
                 pad += size_pad
         if pad:
-            plate_np = np.pad(plate_np, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+            from atlas_camera.core.mask_ops import smear_outpaint_ring
+            plate_np = smear_outpaint_ring(
+                np.pad(plate_np, ((pad, pad), (pad, pad), (0, 0)), mode="edge"), pad)
             m = np.pad(m, pad, mode="edge")
             cx_p += pad
             cy_p += pad

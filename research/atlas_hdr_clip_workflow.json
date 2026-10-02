@@ -1,5 +1,5 @@
 {
- "id": "d350047e-8896-4c4d-a1fd-a768d81a07c7",
+ "id": "4f51c90f-4fa1-4804-8e6a-393b574c8943",
  "revision": 0,
  "last_node_id": 3060,
  "last_link_id": 51,
@@ -2385,17 +2385,6 @@
  ],
  "groups": [
   {
-   "title": "Models (shared: LTX-2.5 22B distilled + SDR->HDR IC-LoRA, scene embeddings)",
-   "color": "#668",
-   "font_size": 24,
-   "bounding": [
-    360,
-    80,
-    2780,
-    1240
-   ]
-  },
-  {
    "title": "Clip -> SDR->HDR -> ACEScg EXR sequence + HLG master",
    "color": "#a88",
    "font_size": 24,
@@ -2403,7 +2392,7 @@
     -40,
     -640,
     4280,
-    1228
+    1960
    ]
   }
  ],
