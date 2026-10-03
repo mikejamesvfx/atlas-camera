@@ -132,6 +132,38 @@ def test_ground_contact_scale_lands_base_on_ground():
     assert s == pytest.approx(4.0, rel=1e-9)
 
 
+def test_ground_contact_scale_none_when_camera_below_ground():
+    view = _view_matrix([0.0, -0.5, 0.0])        # camera under Y=0
+    verts, _ = box_mesh((2.0, -2.0, -6.0), (1.0, 1.0, 1.0))
+    cam = world_to_source_camera(verts, view_matrix=view)
+    assert ground_contact_scale(cam, view_matrix=view) is None
+
+
+def test_ground_contact_scale_none_when_every_ray_rises():
+    view = _view_matrix([0.0, 1.6, 0.0])
+    verts, _ = box_mesh((0.0, 6.0, -6.0), (1.0, 1.0, 1.0))   # all above the camera
+    cam = world_to_source_camera(verts, view_matrix=view)
+    assert ground_contact_scale(cam, view_matrix=view) is None
+
+
+def test_cluster_decimate_flags_a_missed_budget():
+    from atlas_camera.core.generated_mesh import cluster_decimate
+
+    verts, faces = _subdivided_box((0, 0, 0), (1, 1, 1), n=8)    # 768 faces
+    v, f, c, stats = cluster_decimate(verts, faces, max_faces=400, return_stats=True)
+    assert stats["met_budget"] and len(f) <= 400 and stats["faces_in"] == 768
+    v, f, c, stats = cluster_decimate(verts, faces, max_faces=4, max_rounds=1,
+                                      return_stats=True)
+    assert not stats["met_budget"] and stats["faces_out"] == len(f) > 4
+    assert stats["rounds"] == 1
+    # max_rounds=0 returns the input untouched (used to NameError), flagged.
+    v, f, c, stats = cluster_decimate(verts, faces, max_faces=4, max_rounds=0,
+                                      return_stats=True)
+    assert len(f) == 768 and not stats["met_budget"]
+    # Default call shape is unchanged: a 3-tuple.
+    assert len(cluster_decimate(verts, faces, max_faces=400)) == 3
+
+
 def test_ground_disagreement_is_inspect():
     v = scale_verdict(rel_mad=0.02, depth_scale=4.0, ground_scale=5.0)
     assert v["grade"] == "inspect"

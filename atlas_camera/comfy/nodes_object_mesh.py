@@ -155,8 +155,12 @@ class AtlasObjectCrop:
         return (rgb.cpu().float(), m.cpu().float(), float(cam.fov_deg), handle, report)
 
 
-def _mesh_item(np, mesh):
-    """Item 0 of a (possibly zero-padded) MESH batch as numpy arrays."""
+def _mesh_item(np, mesh, validate=False):
+    """Item 0 of a (possibly zero-padded) MESH batch as numpy arrays.
+
+    ``validate``: keep the face dtype (so non-integer indices can be refused
+    by the caller) instead of casting to int64 here.
+    """
     def arr(x):
         if x is None:
             return None
@@ -191,7 +195,8 @@ def _mesh_item(np, mesh):
         # plate, so undo that exact gamma. Found live 2026-10-02: read as sRGB,
         # the colours came in so dark the plate grade hit its 2.0 clamp.
         cols = np.power(np.clip(cols, 0.0, 1.0), 1.0 / 2.2)
-    return verts.astype(np.float64), faces.astype(np.int64), cols
+    return (verts.astype(np.float64), faces if validate else faces.astype(np.int64),
+            cols)
 
 
 class AtlasImportGeneratedMesh:
@@ -270,21 +275,35 @@ class AtlasImportGeneratedMesh:
         setup, crop, view, blank = _import_setup(torch, np, solve_out, depth, sky_mask,
                                                  object_crop, lines)
         w, h = int(setup.width), int(setup.height)
-        verts, faces, cols = _import_mesh_arrays(np, mesh, max_faces, lines)
+        # Validate the MESH before any decimation / rasterisation: a malformed
+        # mesh is a REFUSED report, never an IndexError from deep inside.
+        arrays, why = _import_mesh_arrays(np, mesh, max_faces, lines)
+        if arrays is None:
+            return (solve_out, "\n".join([
+                f"AtlasImportGeneratedMesh '{name}': REFUSED — malformed MESH: {why}; "
+                "solve passed through", *lines]), blank)
+        verts, faces, cols = arrays
 
         obj = _resolve_exclude_mask(object_mask, h, w)
         if obj is None or not bool(obj.any()):
             return (solve_out, "REFUSED — object_mask is empty; solve passed through", blank)
         sky = _resolve_exclude_mask(sky_mask, h, w) if sky_mask is not None else None
 
-        cam_pts, reg, s, s_ground, verdict, issues = _register_scale(
+        cam_pts, reg, s, s_ground = _register_scale(
             np, verts, faces, crop, view, setup, obj, rests_on_ground)
         alpha = reg["unit_alpha"]
-        score = _grade_placement(np, reg, s, sky, obj, setup, verdict, issues)
-        grade = verdict["grade"]
+        score = _score_placement(np, reg, s, sky, obj, setup)
+        grade, issues = _placement_grade(reg, s, s_ground, score)
 
         head, report_tail = _import_report_parts(name, verts, faces, s, s_ground, reg,
                                                  grade, issues, score)
+        if s is None:
+            # No measurable scale means no world placement exists to append:
+            # refused whatever on_gate_fail says (inspect cannot place it).
+            return (solve_out, "\n".join([
+                head, "REFUSED — scale unmeasurable (no usable scale registration: "
+                      f"{reg.get('reason') or 'unknown'}); refused regardless of "
+                      "on_gate_fail; solve passed through", *lines, *report_tail]), blank)
         if grade == "refuse" and on_gate_fail == "refuse":
             return (solve_out, "\n".join([head, "REFUSED — solve passed through", *lines,
                                           *report_tail]), blank)
@@ -328,30 +347,71 @@ def _import_setup(torch, np, solve_out, depth, sky_mask, object_crop, lines):
     return setup, crop, view, blank
 
 
+def _validate_mesh_arrays(np, verts, faces):
+    """Reason the MESH arrays cannot be placed, or ``""`` when they can."""
+    if verts.ndim != 2 or verts.shape[-1] != 3:
+        return f"vertices must be (N, 3), got shape {tuple(verts.shape)}"
+    if faces.ndim != 2 or faces.shape[-1] != 3:
+        return f"faces must be (M, 3) triangles, got shape {tuple(faces.shape)}"
+    if not len(verts) or not len(faces):
+        return f"{len(verts)} vertices / {len(faces)} faces — nothing to place"
+    bad_v = int((~np.isfinite(verts).all(axis=1)).sum())
+    if bad_v:
+        return f"{bad_v} of {len(verts)} vertices are non-finite (NaN/inf)"
+    if not np.issubdtype(faces.dtype, np.integer):
+        if not np.isfinite(faces).all() or not np.all(faces == np.round(faces)):
+            return "face indices are not integers"
+    lo, hi = int(faces.min()), int(faces.max())
+    if lo < 0 or hi >= len(verts):
+        return (f"face indices span {lo}..{hi} but the mesh has {len(verts)} vertices "
+                f"(valid 0..{len(verts) - 1})")
+    return ""
+
+
 def _import_mesh_arrays(np, mesh, max_faces, lines):
-    """The MESH as numpy, decimated to the face budget (noted in ``lines``)."""
+    """The MESH as numpy, VALIDATED, then decimated to the face budget.
+
+    Returns ``((verts, faces, cols), "")`` or ``(None, reason)`` for a MESH
+    that cannot be placed; decimation (and a missed budget) is noted in
+    ``lines``.
+    """
     from atlas_camera.core.generated_mesh import cluster_decimate
 
-    verts, faces, cols = _mesh_item(np, mesh)
+    try:
+        verts, faces, cols = _mesh_item(np, mesh, validate=True)
+    except (ValueError, IndexError, TypeError) as exc:
+        return None, (str(exc) if isinstance(exc, ValueError)
+                      else f"{type(exc).__name__}: {exc}")
+    why = _validate_mesh_arrays(np, verts, faces)
+    if why:
+        return None, why
+    faces = faces.astype(np.int64)
+    if cols is not None and (cols.ndim != 2 or len(cols) != len(verts)):
+        lines.append(f"warning: {len(cols)} vertex colours for {len(verts)} vertices — "
+                     "colours dropped (hidden side painted neutral grey)")
+        cols = None
     n_in = len(faces)
-    verts, faces, cols = cluster_decimate(verts, faces, max_faces=int(max_faces),
-                                          colours=cols)
+    verts, faces, cols, dstats = cluster_decimate(
+        verts, faces, max_faces=int(max_faces), colours=cols, return_stats=True)
     if len(faces) < n_in:
         lines.append(f"decimated {n_in} -> {len(faces)} faces (max_faces {int(max_faces)}; "
                      "decimate upstream with DecimateMesh for better quality)")
-    return verts, faces, cols
+    if not dstats["met_budget"]:
+        lines.append(f"warning: decimation MISSED the face budget — {len(faces)} faces > "
+                     f"max_faces {int(max_faces)} after {dstats['rounds']} rounds; the "
+                     "payload is larger than asked (decimate upstream with DecimateMesh)")
+    return (verts, faces, cols), ""
 
 
 def _register_scale(np, verts, faces, crop, view, setup, obj, rests_on_ground):
     """Compute: the mesh in the source camera and its one scale along the rays.
 
-    Returns ``(cam_pts, reg, scale, ground_scale, verdict, issues)``.
+    Returns ``(cam_pts, reg, scale, ground_scale)``.
     """
     from atlas_camera.core.generated_mesh import (
         ground_contact_scale,
         pixal_to_source_camera,
         register_object_scale,
-        scale_verdict,
     )
 
     w, h = int(setup.width), int(setup.height)
@@ -362,41 +422,30 @@ def _register_scale(np, verts, faces, crop, view, setup, obj, rests_on_ground):
         object_mask=obj, depth_valid=setup.valid)
     s = reg.get("scale")
     s_ground = ground_contact_scale(cam_pts, view_matrix=view) if rests_on_ground else None
-    verdict = scale_verdict(rel_mad=reg["rel_mad"], depth_scale=s, ground_scale=s_ground)
-    issues = list(verdict["issues"])
-    if reg.get("reason"):
-        issues.append(reg["reason"])
-    return cam_pts, reg, s, s_ground, verdict, issues
+    return cam_pts, reg, s, s_ground
 
 
-def _grade_placement(np, reg, s, sky, obj, setup, verdict, issues):
-    """Gate: score the placement against the plate; updates ``verdict`` /
-    ``issues`` in place and returns the score dict ({} when unscored)."""
+def _score_placement(np, reg, s, sky, obj, setup):
+    """Measure: score the placement against the plate ({} when unscored)."""
     from atlas_camera.core.plate_falsification import score_geometry_against_plate
 
     alpha = reg["unit_alpha"]
-    score: dict[str, Any] = {}
-    if bool(alpha.any()) and s is not None:
-        score = score_geometry_against_plate(
-            alpha=alpha, render_depth=reg["unit_depth"] * s, sky_mask=sky,
-            observed_mask=obj,
-            reference_depth=np.where(setup.valid, setup.metric, np.nan))
-        for key in ("depth_order_agreement", "sky_violation"):
-            m = score.get(key) or {}
-            if m.get("available") and m.get("pass") is False:
-                verdict["grade"] = "refuse"
-                issues.append(f"{key} {m['value']:.3f} fails its definitional gate "
-                              f"({m['threshold']})")
-        iou = score.get("silhouette_iou") or {}
-        if iou.get("available") and iou.get("pass") is False:
-            issues.append(f"silhouette IoU {iou['value']:.3f} < {iou['threshold']} "
-                          "(inspect; calibrated on another fixture)")
-            if verdict["grade"] == "ok":
-                verdict["grade"] = "inspect"
-    elif s is not None:
-        verdict["grade"] = "refuse"
-        issues.append("the mesh covers no pixel of the solve camera")
-    return score
+    if not (bool(alpha.any()) and s is not None):
+        return {}
+    return score_geometry_against_plate(
+        alpha=alpha, render_depth=reg["unit_depth"] * s, sky_mask=sky,
+        observed_mask=obj,
+        reference_depth=np.where(setup.valid, setup.metric, np.nan))
+
+
+def _placement_grade(reg, s, s_ground, score):
+    """Judge: the verdict comes from core.scene_health, never from here."""
+    from atlas_camera.core.scene_health import generated_object_grade
+
+    return generated_object_grade(
+        s, reg["rel_mad"], score, ground_scale=s_ground,
+        registration_note=reg.get("reason") or "",
+        coverage_px=int(reg.get("coverage_px", 0)))
 
 
 def _import_report_parts(name, verts, faces, s, s_ground, reg, grade, issues, score):
