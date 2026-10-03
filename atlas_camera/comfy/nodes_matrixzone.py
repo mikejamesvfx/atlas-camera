@@ -237,7 +237,15 @@ def _zone_images(np, clips, handle):
 
 
 def _sdr_reference(np, sdr, plate_shape):
-    """``(sdr_linear, sdr_display)`` at the plate's raster, or ``(None, None)``."""
+    """``(sdr_linear, sdr_display)`` at the plate's raster, or ``(None, None)``.
+
+    ``sdr_linear`` is linear REC.709 on purpose: every core pass that compares
+    it with the ACEScg HDR (destripe_columns/destripe_local/seam_step_test via
+    AP1 luminance of the Rec.709 pixel, sdr_detail_transfer via a full
+    Rec.709->ACEScg convert) moves it into ACEScg itself, and keeps the
+    clipped-highlight test on the SDR's own channels. Converting here as well
+    would apply the matrix twice.
+    """
     if sdr is None:
         return None, None
     from atlas_camera.core.generated_mesh import srgb_to_linear

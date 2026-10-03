@@ -338,3 +338,36 @@ def test_sdr_detail_transfer_drops_stripes_keeps_edges_and_clipped_hdr():
     assert np.max(np.abs((lg(out) - true)[edge])) < 0.25
     assert np.allclose(out[5:50, 5:110], hdr[5:50, 5:110], rtol=1e-3)     # clipped: HDR kept
     assert 0.0 < rep["kept_hdr_fraction"] < 0.2
+
+
+def test_sdr_detail_transfer_pure_colour_ramp_has_no_hue_shift():
+    # F-5: the HDR is ACEScg, the SDR Rec.709. Ratios taken across the two
+    # spaces gave saturated primaries a hue shift (chroma error 0.17 on this
+    # ramp before the fix). A pure exposure in ACEScg must come back exactly.
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+    from atlas_camera.core.matrixzone import rec709_linear_to_acescg, sdr_detail_transfer
+    H, W = 128, 192
+    xx = np.mgrid[0:H, 0:W][1].astype(np.float32)
+    pal = np.eye(3, dtype=np.float32)                          # pure R, G, B columns
+    disp = ((0.1 + 0.6 * (xx / W))[..., None] * pal[xx.astype(int) % 3]).astype(np.float32)
+    hdr = (rec709_linear_to_acescg(srgb_to_linear(disp)) * 2.0).astype(np.float32)
+    out, _ = sdr_detail_transfer(hdr, disp, radius=16)
+
+    def chroma(a):
+        a = np.maximum(a, 1e-6)
+        return a / a.sum(-1, keepdims=True)
+
+    assert np.abs(chroma(out) - chroma(hdr)).max() < 1e-4
+    assert np.abs(np.log2(np.maximum(out, 1e-6) / hdr)).max() < 1e-3
+
+
+def test_ap1_luma_of_rec709_matches_convert_then_weigh():
+    from atlas_camera.core.matrixzone import (
+        LUMA_AP1,
+        _luma_ap1_of_rec709,
+        rec709_linear_to_acescg,
+    )
+    rgb = np.random.default_rng(2).random((50, 3)).astype(np.float32)
+    direct = (rec709_linear_to_acescg(rgb) * np.asarray(LUMA_AP1, np.float32)).sum(-1)
+    np.testing.assert_allclose((rgb * _luma_ap1_of_rec709(np)).sum(-1), direct, rtol=1e-5)
+    assert sum(LUMA_AP1) == pytest.approx(1.0, abs=1e-6)

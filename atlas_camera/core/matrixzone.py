@@ -33,6 +33,11 @@ CLEAN = 128          # render axes: quarter-linear global stays 32-clean
 ZONE_CLEAN = 64      # zone sizes
 LOG_EPS = 1e-6       # radiance floor before log2
 
+#: Luminance weights for ACEScg (AP1) linear -- the space LTX-2.5 ``hdr_linear``
+#: and every stitched plate here are in. Rec.709 weights on AP1 data mis-weight
+#: saturated colours (F-5, 2026-10-03 review).
+LUMA_AP1 = (0.2722287168, 0.6740817658, 0.0536895174)
+
 
 def _require_numpy() -> Any:
     try:
@@ -40,6 +45,29 @@ def _require_numpy() -> Any:
         return np
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("matrixZone requires numpy.") from exc
+
+
+def _rec709_to_acescg_matrix(np):
+    # The same Bradford D65->D60 matrix core.hdr_transfer fits its curve in,
+    # so the SDR is compared with the HDR in ONE space everywhere.
+    from atlas_camera.core.hdr_transfer import REC709_TO_ACESCG
+    return np.asarray(REC709_TO_ACESCG, dtype=np.float32)
+
+
+def rec709_linear_to_acescg(a: Any) -> Any:
+    """Linear Rec.709/sRGB (D65) RGB -> ACEScg (AP1, D60) linear, float32."""
+    np = _require_numpy()
+    return np.asarray(a, dtype=np.float32)[..., :3] @ _rec709_to_acescg_matrix(np).T
+
+
+def _luma_ap1(np):
+    return np.asarray(LUMA_AP1, dtype=np.float32)
+
+
+def _luma_ap1_of_rec709(np):
+    """Weights giving the AP1 luminance of a Rec.709-linear pixel directly
+    (``LUMA_AP1 . M``), so luminance-only passes need no full-plate convert."""
+    return (_rec709_to_acescg_matrix(np).T @ _luma_ap1(np)).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +381,10 @@ def destripe_columns(hdr: Any, sdr_linear: Any, *, bands: list[tuple[int, int]] 
                      iterations: int = 2) -> tuple[Any, dict[str, Any]]:
     """Remove VERTICAL stripes the conversion added, measured against its input.
 
-    ``hdr`` and ``sdr_linear`` are (H, W, C) linear and pixel-aligned. Per
+    ``hdr`` is ACEScg linear (LTX ``hdr_linear``); ``sdr_linear`` is the
+    linearised SDR plate (Rec.709 primaries); pixel-aligned. Both are compared
+    as AP1 luminance -- the SDR moved to ACEScg first -- so a saturated colour
+    is not mis-weighted (F-5). Per
     horizontal band (default: the whole frame; pass the zone rows so each
     model run is measured on its own), the column profile of
     ``log2(hdr / sdr)`` -- a median over the band's unclipped rows -- is
@@ -369,9 +400,9 @@ def destripe_columns(hdr: Any, sdr_linear: Any, *, bands: list[tuple[int, int]] 
     if h_img.shape[:2] != s_img.shape[:2]:
         raise ValueError(f"hdr {h_img.shape[:2]} and sdr {s_img.shape[:2]} differ")
     H, W = h_img.shape[:2]
-    lum_w = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    lum_w = _luma_ap1(np)                       # on the ACEScg HDR
     hl = (np.maximum(h_img[..., :3], LOG_EPS) * lum_w).sum(-1)
-    sl = (np.maximum(s_img[..., :3], LOG_EPS) * lum_w).sum(-1)
+    sl = (np.maximum(s_img[..., :3], LOG_EPS) * _luma_ap1_of_rec709(np)).sum(-1)
     ratio = np.log2(np.maximum(hl, LOG_EPS)) - np.log2(np.maximum(sl, LOG_EPS))
     usable = s_img[..., :3].max(-1) < clip
     bands = bands or [(0, H)]
@@ -443,9 +474,10 @@ def destripe_local(hdr: Any, sdr_linear: Any, *, rows: int = 256, window: int = 
     if h_img.shape[:2] != s_img.shape[:2]:
         raise ValueError(f"hdr {h_img.shape[:2]} and sdr {s_img.shape[:2]} differ")
     H, W = h_img.shape[:2]
-    lum_w = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
-    ls = np.log2(np.maximum((np.maximum(s_img[..., :3], 0) * lum_w).sum(-1), 1e-4))
-    ratio = np.log2(np.maximum((np.maximum(h_img[..., :3], 0) * lum_w).sum(-1), 1e-4)) - ls
+    # AP1 luminance on both: the HDR is ACEScg, the Rec.709 SDR is weighted as
+    # if moved to ACEScg (F-5).
+    ls = np.log2(np.maximum((np.maximum(s_img[..., :3], 0) * _luma_ap1_of_rec709(np)).sum(-1), 1e-4))
+    ratio = np.log2(np.maximum((np.maximum(h_img[..., :3], 0) * _luma_ap1(np)).sum(-1), 1e-4)) - ls
     gy, gx = np.gradient(ls)
     grad = lowpass(np.sqrt(gx * gx + gy * gy), 16)
     flat = np.exp(-(grad / float(flat_grad)) ** 2).astype(np.float32)
@@ -524,7 +556,8 @@ def sdr_detail_transfer(hdr: Any, sdr_display: Any, *, radius: int = SDR_TRANSFE
     over ``clip``, feathered) it has no structure to give and the HDR's own
     pixels are kept.
 
-    ``sdr_display`` is the display-referred plate (0..1, sRGB) the split got.
+    ``sdr_display`` is the display-referred plate (0..1, sRGB) the split got;
+    ``hdr`` and the result are ACEScg linear.
     Cost: fine detail the model reconstructed in UNclipped areas (it smooths
     JPEG blocking) is replaced by the SDR's.
     """
@@ -536,9 +569,12 @@ def sdr_detail_transfer(hdr: Any, sdr_display: Any, *, radius: int = SDR_TRANSFE
     if h.shape[:2] != sd.shape[:2]:
         raise ValueError(f"hdr {h.shape[:2]} and sdr {sd.shape[:2]} differ")
     floor = 1e-4
-    ls = np.log2(np.maximum(srgb_to_linear(sd), floor))
+    # Per-channel ratios need ONE colour space: the SDR is linearised and moved
+    # to ACEScg (the HDR's space) before log2(hdr) - log2(sdr), else a pure
+    # colour picks up a hue shift from the primaries mismatch (F-5).
+    ls = np.log2(np.maximum(rec709_linear_to_acescg(srgb_to_linear(sd)), floor))
     lh = np.log2(np.maximum(h, floor))
-    guide = (ls * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(-1)
+    guide = (ls * _luma_ap1(np)).sum(-1)
     r = max(1, int(radius))
     mg = _box_mean(np, guide, r)
     vg = _box_mean(np, guide * guide, r) - mg * mg
@@ -596,7 +632,7 @@ def seam_metrics(zone_logs: list[Any], plan: dict[str, Any]) -> list[dict[str, A
     rects = [z["renderRect"] for z in plan["zones"]]
     idx = {tuple(z["index"]): i for i, z in enumerate(plan["zones"])}
     cols, rows = plan["grid"]
-    lum_w = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    lum_w = _luma_ap1(np)                       # zone results are ACEScg
     out = []
 
     def lum(lg):
@@ -640,10 +676,10 @@ def _windows(s0: int, s1: int, window: int = SEAM_WINDOW_PX) -> list[tuple[int, 
     return [(a, b) for a, b in zip(edges[:-1], edges[1:]) if b > a]
 
 
-def _log2_lum(np, a):
+def _log2_lum(np, a, weights=None):
     a = np.asarray(a, dtype=np.float32)
     if a.ndim == 3 and a.shape[-1] >= 3:
-        a = (a[..., :3] * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(-1)
+        a = (a[..., :3] * (_luma_ap1(np) if weights is None else weights)).sum(-1)
     return np.log2(np.maximum(a.reshape(a.shape[:2]), LOG_EPS))
 
 
@@ -655,7 +691,8 @@ def seam_step_test(plate: Any, plan: dict[str, Any], *, sdr_linear: Any = None,
 
     Per interior seam segment: the per-row (per-column) log2-luminance step
     between the means of the ``strip_px`` strips either side. With
-    ``sdr_linear`` (the linearised plate the split was given, same size) the
+    ``sdr_linear`` (the linearised plate the split was given, same size, Rec.709
+    primaries; ``plate`` is ACEScg, luminance is AP1 on both) the
     SDR's own step on the same line is subtracted first: the SDR has the same
     structure and no seams, so structure cancels and a tonal seam (an offset)
     remains. Without it structure on the line scores too; the report says so.
@@ -688,7 +725,7 @@ def seam_step_test(plate: Any, plan: dict[str, Any], *, sdr_linear: Any = None,
     lg = _log2_lum(np, plate)
     ls = None
     if sdr_linear is not None:
-        ls = _log2_lum(np, sdr_linear)
+        ls = _log2_lum(np, sdr_linear, _luma_ap1_of_rec709(np))   # Rec.709 SDR as AP1 Y
         if ls.shape != lg.shape:
             ls = None
     ph, pw = lg.shape
