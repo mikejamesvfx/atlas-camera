@@ -1278,9 +1278,13 @@ def output_paths(filename_prefix: str):
 def _next_counter(folder, stem: str) -> int:
     """1 + the highest ``<stem>_NNNNN`` counter already in ``folder`` (any
     extension), so a GLB, an EXR or a sidecar set never overwrites a sibling."""
+    import os
     import re
 
-    pat = re.compile(rf"^{re.escape(stem)}_(\d{{5}})(?:[._]|$)")
+    # Any number of digits (``:05`` grows past 99999), and case-insensitive on
+    # Windows, where ``Hero_00001.glb`` and ``hero_00001.glb`` are one file.
+    flags = re.IGNORECASE if os.name == "nt" else 0
+    pat = re.compile(rf"^{re.escape(stem)}_(\d{{5,}})(?:[._]|$)", flags)
     nums = [int(m.group(1)) for f in folder.iterdir() if (m := pat.match(f.name))]
     return 1 + max(nums, default=0)
 

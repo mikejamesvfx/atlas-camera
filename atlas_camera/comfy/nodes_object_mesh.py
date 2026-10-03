@@ -290,7 +290,7 @@ class AtlasImportGeneratedMesh:
         sky = _resolve_exclude_mask(sky_mask, h, w) if sky_mask is not None else None
 
         cam_pts, reg, s, s_ground = _register_scale(
-            np, verts, faces, crop, view, setup, obj, rests_on_ground)
+            verts, faces, crop, view, setup, obj, rests_on_ground)
         alpha = reg["unit_alpha"]
         score = _score_placement(np, reg, s, sky, obj, setup)
         grade, issues = _placement_grade(reg, s, s_ground, score)
@@ -403,7 +403,7 @@ def _import_mesh_arrays(np, mesh, max_faces, lines):
     return (verts, faces, cols), ""
 
 
-def _register_scale(np, verts, faces, crop, view, setup, obj, rests_on_ground):
+def _register_scale(verts, faces, crop, view, setup, obj, rests_on_ground):
     """Compute: the mesh in the source camera and its one scale along the rays.
 
     Returns ``(cam_pts, reg, scale, ground_scale)``.
@@ -589,11 +589,6 @@ def _resolve_read_path(path: str) -> tuple[str, str]:
         looked.append("relative paths resolve only under ComfyUI's output/input "
                       "directories (not running inside ComfyUI)")
     return "", "; ".join(looked)
-
-
-def _resolve_output_path(path: str) -> str:
-    """Back-compat name: the resolved read path or ``""``."""
-    return _resolve_read_path(path)[0]
 
 
 def hdr_path_fingerprint(hdr_exr_path: str) -> str:

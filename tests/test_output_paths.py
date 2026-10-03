@@ -63,3 +63,21 @@ def test_inside_comfyui_uses_folder_paths(monkeypatch, tmp_path):
                                                   prefix)
     monkeypatch.setitem(sys.modules, "folder_paths", fp)
     assert output_paths("atlas/scene") == (tmp_path / "atlas", "scene_00007")
+
+
+def test_counter_sees_every_extension_and_grows_past_five_digits(tmp_path):
+    from atlas_camera.comfy.node_helpers import _next_counter
+
+    (tmp_path / "scene_00003.exr").write_bytes(b"")
+    assert _next_counter(tmp_path, "scene") == 4          # an EXR counts, not only .glb
+    (tmp_path / "scene_99999.glb").write_bytes(b"")
+    (tmp_path / "scene_100000.glb").write_bytes(b"")
+    assert _next_counter(tmp_path, "scene") == 100001     # :05 grows; never reuse 100000
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="case-insensitive filesystem only")
+def test_counter_is_case_insensitive_on_windows(tmp_path):
+    from atlas_camera.comfy.node_helpers import _next_counter
+
+    (tmp_path / "hero_00001.glb").write_bytes(b"")
+    assert _next_counter(tmp_path, "Hero") == 2

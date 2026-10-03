@@ -103,3 +103,29 @@ def test_a_node_that_can_degrade_can_report(module, cls, helpers, return_types):
         "what all-zero CLAIMS: for a hole/coverage mask that is 'perfect result', "
         "so a failed run must return ones, not zeros."
     )
+
+
+#: Every node the guard covers today. A refactor that moves a node's helper
+#: call where the AST walk cannot see it (a ``self.`` method, another module)
+#: must fail here instead of silently shrinking coverage (found 2026-10-03:
+#: the T11 split dropped AtlasImportGeneratedMesh without a failure). Adding a
+#: node is fine; removing one needs an explicit edit to this set.
+EXPECTED_FLOOR = {
+    ("nodes_depth.py", "AtlasBoundedBand"),
+    ("nodes_depth.py", "AtlasDepthLayerMask"),
+    ("nodes_geometry.py", "AtlasDeriveInteriorRoom"),
+    ("nodes_geometry.py", "AtlasDeriveReliefMesh"),
+    ("nodes_geometry.py", "AtlasDeriveRoofsFacades"),
+    ("nodes_geometry.py", "AtlasDeriveTowersSpires"),
+    ("nodes_geometry.py", "AtlasDeriveWalls"),
+    ("nodes_geometry.py", "AtlasPlaneMattes"),
+    ("nodes_inpaint.py", "AtlasCleanPlateLayer"),
+    ("nodes_inpaint.py", "AtlasSkyDomeLayer"),
+    ("nodes_object_mesh.py", "AtlasImportGeneratedMesh"),
+}
+
+
+def test_the_guard_still_sees_every_node_it_covered():
+    got = {(m, c) for m, c, _, _ in _classes_calling_a_degrading_helper()}
+    missing = EXPECTED_FLOOR - got
+    assert not missing, f"guard lost coverage of {sorted(missing)}"

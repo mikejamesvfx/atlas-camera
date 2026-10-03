@@ -307,3 +307,14 @@ def test_cascade_threads_the_override():
 def test_cascade_hf_default_emits_no_checkpoint_inputs():
     ref, path, sams = _cascade_sams(sam3_checkpoint="hf:facebook/sam3")
     assert ref is None and path == "none"                # no native, no SegFormer
+
+
+def test_legacy_exact_file_choice_still_resolves(fake_comfy, monkeypatch):
+    """Graphs saved before the combo values were fixed carry a bare filename;
+    programmatic callers may too. The resolver accepts it when installed and
+    names it when not."""
+    _set_checkpoints(monkeypatch, ["sam3.1_multiplex_fp16.safetensors"])
+    assert backend.resolve_core_checkpoint(
+        "sam3.1_multiplex_fp16.safetensors") == "sam3.1_multiplex_fp16.safetensors"
+    with pytest.raises(backend.Sam3CheckpointMissing, match="gone.safetensors"):
+        backend.resolve_core_checkpoint("gone.safetensors")

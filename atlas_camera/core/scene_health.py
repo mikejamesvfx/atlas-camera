@@ -638,7 +638,11 @@ def generated_object_grade(
         mad = float(rel_mad)
     except (TypeError, ValueError):
         mad = float("nan")
-    if scale is None or not math.isfinite(mad):
+    try:
+        s_ok = scale is not None and math.isfinite(float(scale)) and float(scale) > 0
+    except (TypeError, ValueError):
+        s_ok = False
+    if not s_ok or not math.isfinite(mad):
         issues.append("no usable scale registration")
         if registration_note:
             issues.append(str(registration_note))

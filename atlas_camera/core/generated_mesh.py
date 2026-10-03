@@ -35,9 +35,6 @@ from typing import Any
 
 from atlas_camera.core.mask_ops import dilate
 from atlas_camera.core.scene_health import (
-    GENERATED_GROUND_SCALE_TOLERANCE,
-    GENERATED_REL_MAD_INSPECT,
-    GENERATED_REL_MAD_REFUSE,
     generated_object_grade,
 )
 
@@ -56,13 +53,6 @@ SELF_DEPTH_BIAS_REL = 0.02
 #: median, so its surface sits within rel_mad of the depth map; only content
 #: clearly IN FRONT (a pole across the object) should take the photo away.
 SCENE_DEPTH_BIAS_REL = 0.15
-
-#: Registration-quality thresholds and the ground-contact tolerance live with
-#: the verdict in :mod:`atlas_camera.core.scene_health` (verdicts come only
-#: from there); re-exported here under their historical names.
-REL_MAD_INSPECT = GENERATED_REL_MAD_INSPECT
-REL_MAD_REFUSE = GENERATED_REL_MAD_REFUSE
-GROUND_SCALE_TOLERANCE = GENERATED_GROUND_SCALE_TOLERANCE
 
 #: Vertex-colour gain is clamped; a gain outside this is a mismatch the
 #: report should show, not a correction to apply.

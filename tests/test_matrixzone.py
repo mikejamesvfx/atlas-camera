@@ -9,6 +9,7 @@ from atlas_camera.core.matrixzone import (
     lowpass,
     pad_to_render,
     plan_still,
+    resize_bilinear,
     seam_metrics,
     seam_step_test,
     stitch,
@@ -82,8 +83,39 @@ def test_plan_sweep_every_zone_inside_and_every_cell_covered(size):
                     assert x <= px and y <= py and px + pw <= x + zw and py + ph <= y + zh
                 checked += 1
     assert checked > 0
+
+
+def test_sweep_never_refuses_the_known_good_grids():
+    """The sweep above skips refused plans; pin that the configurations the
+    clamp exists for are clamped, not refused (a regression into a refusal
+    would otherwise pass the sweep vacuously)."""
+    for (w, h), grid, ov in [((3840, 2160), (1, 8), 512), ((7680, 4320), (2, 2), 64),
+                             ((7680, 4320), (3, 2), 64), ((1920, 1080), (1, 8), 384)]:
+        plan_still(w, h, grid, overlap_min=(ov, ov))
+
+
+def test_serpentine_scan_keeps_neighbours_adjacent():
     p = plan_still(7680, 4320, (3, 2))
     assert p["scan"] == [0, 1, 2, 5, 4, 3]
+
+
+def test_stitch_never_writes_into_the_callers_global_pass():
+    """Review 2026-10-03 (Codex, reproduced): a global pass already at render
+    size came back as its own log2 after each stitch, so repeated stitches
+    returned 4.0, 2.0, 1.0 for a constant plate."""
+    p = plan_still(1024, 576, (2, 2))
+    rw, rh = p["render"]["width"], p["render"]["height"]
+    zones = [z.copy() for z in crop_zones(pad_to_render(np.full((576, 1024, 3), 4.0, np.float32), p), p)]
+    g = np.full((rh, rw, 3), 4.0, np.float32)
+    for _ in range(3):
+        out, _ = stitch([z.copy() for z in zones], p, global_hdr=g)
+        assert np.allclose(out, 4.0, rtol=1e-4)
+    assert np.all(g == 4.0)
+
+
+def test_resize_bilinear_returns_a_fresh_array_at_the_same_size():
+    a = np.ones((8, 8, 3), np.float32)
+    assert not np.shares_memory(resize_bilinear(a, 8, 8), a)
 
 
 def test_zones_as_frames_is_8k_plus_1_and_maps_back():

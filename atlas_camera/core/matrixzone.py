@@ -262,16 +262,29 @@ def _resize_axis(np, a, n, axis):
     out = np.take(a, i0, axis=axis)
     out = out.astype(t.dtype, copy=False)
     out *= (1 - t)
-    hi = np.take(a, i1, axis=axis)
-    hi = hi * t
+    hi = np.take(a, i1, axis=axis).astype(t.dtype, copy=False)
+    hi *= t
     out += hi
+    del hi
     return out
 
 
 def resize_bilinear(a: Any, height: int, width: int) -> Any:
+    """Bilinear resize to ``height`` x ``width``; ALWAYS a fresh float32 array.
+
+    Callers (stitch's log2 anchor, zone tolerance) write into the result in
+    place. When no resize is needed the axis passes return their input, so an
+    already-float32 array of the target size would be the CALLER's buffer --
+    found by review 2026-10-03: a render-size global pass came back as its own
+    log2 after each stitch (4.0 -> 2.0 -> 1.0). Copy in that case.
+    """
     np = _require_numpy()
+    src = a
     a = np.asarray(a, dtype=np.float32)
-    return _resize_axis(np, _resize_axis(np, a, int(height), 0), int(width), 1)
+    out = _resize_axis(np, _resize_axis(np, a, int(height), 0), int(width), 1)
+    if isinstance(src, np.ndarray) and np.shares_memory(out, src):
+        out = out.copy()
+    return out
 
 
 def lowpass(a: Any, k: int) -> Any:

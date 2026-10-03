@@ -90,9 +90,6 @@ def wants_core(choice: str | None, override: str | None = None) -> bool:
     return bool(choice) and str(choice) != HF_BACKEND
 
 
-#: Back-compat name for :func:`wants_core`.
-is_core_checkpoint = wants_core
-
 
 def resolve_core_checkpoint(choice: str | None, override: str | None = None) -> str:
     """The exact checkpoint file the core path will load.

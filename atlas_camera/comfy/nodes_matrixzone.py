@@ -541,7 +541,7 @@ def _seam_step_report_lines(step, delivered):
     w = step["worst"]
     lines = [
         f"seam step test ({'delivered EXR' if delivered is not None else 'in-memory plate'}, "
-        f"{step['strip_px']} px strips, worst of ~{step.get('window_px', 256)} px windows, "
+        f"{step['strip_px']} px strips, worst of ~{step['window_px']} px windows, "
         + ("SDR-controlled" if step["sdr_controlled"] else
            "NOT SDR-controlled - wire sdr_plate, structure on a line scores too")
         + f", pass <= {step['ratio_max']:.1f}x random-line p{step['baseline_percentile']} "

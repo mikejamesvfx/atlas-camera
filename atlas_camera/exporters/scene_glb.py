@@ -148,9 +148,9 @@ def plan_scene_glb(layers: list[SceneLayer]) -> dict[str, Any]:
             dropped.append({"name": layer.name, "reason": "zero faces"})
             continue
 
-        geo = _pad_len(verts.astype(np.float32).nbytes)
+        geo = _pad_len(verts.astype(np.float32, copy=False).nbytes)
         if uvs is not None:
-            geo += _pad_len(uvs.astype(np.float32).nbytes)
+            geo += _pad_len(uvs.astype(np.float32, copy=False).nbytes)
         if colors is not None:
             geo += _pad_len(colors.nbytes)
         geo += sum(_pad_len(g.nbytes) for _, g in groups if g.size)
