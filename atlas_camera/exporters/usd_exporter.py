@@ -308,6 +308,9 @@ class USDExporter:
                 dx, dy, dz = primitive.dimensions
                 prim.GetSizeAttr().Set(float(max(dx, dy, dz)))
             prim.AddTransformOp().Set(_gf_mat4(primitive.transform_matrix, Gf))
+            # The prim name may be sanitised or suffixed (_2, _3); keep the
+            # solve's own name so a DCC re-import can map the prim back.
+            prim.GetPrim().SetCustomDataByKey("atlas:source_name", str(primitive.name))
 
         stage.GetRootLayer().Save()
         return destination

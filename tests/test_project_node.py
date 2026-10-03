@@ -23,6 +23,8 @@ def test_node_pipes_its_inputs_and_paths_out(tmp_path, monkeypatch):
     from atlas_camera.comfy import nodes_project
 
     monkeypatch.setattr(nodes_project, "_default_output_root", lambda: str(tmp_path))
+    from atlas_camera.comfy import node_helpers
+    monkeypatch.setattr(node_helpers, "output_root", lambda: tmp_path.resolve())
     proj, name, shot, mode, root, shot_dir, prefix = AtlasProject().build(
         "My Show", "sh010", "VFX (ACEScg / float)", project_root="", create_tree=False)
     assert (name, shot, mode) == (proj.project, "sh010", "VFX (ACEScg / float)")
@@ -36,6 +38,8 @@ def test_shot_prefix_is_empty_outside_the_output_folder(tmp_path, monkeypatch):
     from atlas_camera.comfy import nodes_project
 
     monkeypatch.setattr(nodes_project, "_default_output_root", lambda: str(tmp_path / "out"))
+    from atlas_camera.comfy import node_helpers
+    monkeypatch.setattr(node_helpers, "output_root", lambda: (tmp_path / "out").resolve())
     out = AtlasProject().build("P", "S", "Standard (sRGB)",
                                project_root=str(tmp_path / "elsewhere"), create_tree=False)
     assert out[-1] == "" and Path(out[-2]).is_absolute()

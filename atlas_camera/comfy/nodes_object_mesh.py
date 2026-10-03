@@ -638,7 +638,10 @@ class AtlasHDRVertexTransfer:
                     "default": "",
                     "tooltip": "The HDR plate EXR from the matrixZone still workflow "
                                "(absolute, or relative to ComfyUI's output or input folder, e.g. "
-                               "atlas/hdr_plate_00001.exr). Empty = pass through."}),
+                               "atlas/hdr_plate_00001.exr). Empty = pass through. A TYPED path "
+                               "re-runs the node when the file changes on disk; a LINKED path "
+                               "(e.g. from the stitch's exr_path) re-runs only when the upstream "
+                               "node does -- ComfyUI does not pass linked values to IS_CHANGED."}),
                 "hdr_image": ("IMAGE", {"tooltip": "Alternative to the path: a float HDR "
                                                    "IMAGE (ACEScg linear)."}),
             },

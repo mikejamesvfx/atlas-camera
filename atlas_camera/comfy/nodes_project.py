@@ -110,13 +110,12 @@ def _outputs(proj, colour_mode):
     """The node's result tuple: the project, then its pipe-friendly strings."""
     from pathlib import Path
 
+    from atlas_camera.comfy.node_helpers import output_root
+
     shot_dir = Path(proj.shot_dir).resolve()
-    prefix = ""
-    out_root = _default_output_root()
-    if out_root:
-        try:
-            prefix = shot_dir.relative_to(Path(out_root).resolve()).as_posix()
-        except ValueError:
-            prefix = ""
+    try:
+        prefix = shot_dir.relative_to(output_root()).as_posix()
+    except ValueError:
+        prefix = ""
     return (proj, str(proj.project), str(proj.shot), str(colour_mode),
             str(Path(proj.root).resolve()), str(shot_dir), prefix)

@@ -162,3 +162,7 @@ def test_usd_prim_names_are_valid_and_unique(tmp_path):
                      "_2nd_obj_v2", "proxy_3", "atlas_projection_plane_2"]
     for n in names[1:]:
         assert len(UsdGeom.Mesh(root.GetChild(n)).GetPointsAttr().Get()) == len(VERTS)
+    # every renamed prim keeps the solve's own name for re-import
+    sources = [root.GetChild(n).GetCustomDataByKey("atlas:source_name") for n in names[1:]]
+    assert sources == ["pixal3d_object", "pixal3d_object", "2nd obj.v2", "",
+                       "atlas_projection_plane"]
