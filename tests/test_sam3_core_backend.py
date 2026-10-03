@@ -318,3 +318,88 @@ def test_legacy_exact_file_choice_still_resolves(fake_comfy, monkeypatch):
         "sam3.1_multiplex_fp16.safetensors") == "sam3.1_multiplex_fp16.safetensors"
     with pytest.raises(backend.Sam3CheckpointMissing, match="gone.safetensors"):
         backend.resolve_core_checkpoint("gone.safetensors")
+
+
+# --- review fixes: legacy filename validation, cache token, shared label -----
+
+def _sam3_node_classes():
+    from atlas_camera.comfy.nodes_inpaint import AtlasSAM3Mask
+    from atlas_camera.comfy.nodes_viewport import AtlasInput
+    return (AtlasSAM3Mask, AtlasInput)
+
+
+def test_validate_inputs_names_only_sam3_checkpoint():
+    """ComfyUI skips its built-in list/min/max checks for every input
+    VALIDATE_INPUTS names, and for ALL inputs if it takes **kwargs -- so the
+    signature must name sam3_checkpoint and nothing else."""
+    import inspect
+    for cls in _sam3_node_classes():
+        spec = inspect.getfullargspec(cls.VALIDATE_INPUTS)
+        assert spec.args == ["cls", "sam3_checkpoint"], cls.__name__
+        assert spec.varkw is None, cls.__name__
+
+
+@pytest.mark.parametrize("value", ["hf:facebook/sam3", "core:auto", None])
+def test_validate_inputs_fixed_values_pass(fake_comfy, monkeypatch, value):
+    _set_checkpoints(monkeypatch, [])          # even with nothing installed
+    for cls in _sam3_node_classes():
+        assert cls.VALIDATE_INPUTS(sam3_checkpoint=value) is True
+
+
+def test_validate_inputs_legacy_installed_filename_validates_and_resolves(
+        fake_comfy, monkeypatch):
+    legacy = "sam3.1_multiplex_fp16.safetensors"
+    _set_checkpoints(monkeypatch, [legacy])
+    for cls in _sam3_node_classes():
+        assert cls.VALIDATE_INPUTS(sam3_checkpoint=legacy) is True
+    assert backend.resolve_core_checkpoint(legacy) == legacy
+    mask, report = _node().segment(torch.rand(1, H, W, 3), "machine",
+                                   sam3_checkpoint=legacy)
+    assert float(mask.sum()) > 0 and legacy in report and "core:auto" not in report
+
+
+def test_validate_inputs_unknown_filename_is_a_named_error(fake_comfy, monkeypatch):
+    _set_checkpoints(monkeypatch, ["sam3.1_multiplex_fp16.safetensors"])
+    for cls in _sam3_node_classes():
+        res = cls.VALIDATE_INPUTS(sam3_checkpoint="gone.safetensors")
+        assert isinstance(res, str) and "gone.safetensors" in res
+
+
+def test_is_changed_token_changes_when_checkpoint_appears(fake_comfy, monkeypatch,
+                                                          tmp_path):
+    name = "sam3.1_multiplex_fp16.safetensors"
+    fp = sys.modules["folder_paths"]
+    monkeypatch.setattr(fp, "get_full_path",
+                        lambda kind, n: str(tmp_path / n), raising=False)
+    _set_checkpoints(monkeypatch, [])
+    for cls in _sam3_node_classes():
+        before = cls.IS_CHANGED(sam3_checkpoint="core:auto")
+        before_ov = cls.IS_CHANGED(sam3_checkpoint="hf:facebook/sam3",
+                                   sam3_checkpoint_override=name)
+        assert before.startswith("missing:") and before_ov == f"missing:{name}"
+        (tmp_path / name).write_bytes(b"x")
+        _set_checkpoints(monkeypatch, [name])
+        after = cls.IS_CHANGED(sam3_checkpoint="core:auto", image=None,
+                               concepts="sky")            # other widgets ignored
+        assert after != before and after.startswith(f"{name}:")
+        assert after == f"{name}:{(tmp_path / name).stat().st_mtime_ns}"
+        assert cls.IS_CHANGED(sam3_checkpoint="hf:facebook/sam3",
+                              sam3_checkpoint_override=name) != before_ov
+        (tmp_path / name).unlink()
+        _set_checkpoints(monkeypatch, [])
+
+
+def test_is_changed_is_constant_on_the_hf_path(fake_comfy, monkeypatch):
+    for cls in _sam3_node_classes():
+        a = cls.IS_CHANGED(sam3_checkpoint="hf:facebook/sam3")
+        _set_checkpoints(monkeypatch, ["sam3_new.safetensors"])
+        b = cls.IS_CHANGED(sam3_checkpoint="hf:facebook/sam3",
+                           sam3_checkpoint_override="", concepts="tree")
+        assert a == b == backend.checkpoint_cache_token(None)
+        _set_checkpoints(monkeypatch, CHECKPOINTS)
+
+
+def test_core_checkpoint_label():
+    assert backend.core_checkpoint_label("core:auto", "", "a.st") == "core:auto -> a.st"
+    assert backend.core_checkpoint_label("core:auto", "a.st", "a.st") == "a.st"
+    assert backend.core_checkpoint_label("a.st", None, "a.st") == "a.st"

@@ -1461,6 +1461,25 @@ class AtlasInput:
             },
         }
 
+    # Names ONLY sam3_checkpoint, deliberately no **kwargs: ComfyUI's
+    # validate_inputs skips its built-in list/min/max checks for every input
+    # VALIDATE_INPUTS names -- and for ALL inputs if it takes **kwargs. Naming
+    # just this one lets a legacy saved filename through without unguarding
+    # any other widget.
+    @classmethod
+    def VALIDATE_INPUTS(cls, sam3_checkpoint=None):
+        from atlas_camera.comfy.sam3_core_backend import validate_checkpoint_choice
+        return validate_checkpoint_choice(sam3_checkpoint)
+
+    # Widget values only (linked inputs arrive as None). Constant on the HF
+    # path; on the core path it tracks the resolved file + mtime, so a
+    # checkpoint installed after an empty-mask run re-expands on re-queue.
+    @classmethod
+    def IS_CHANGED(cls, sam3_checkpoint="hf:facebook/sam3",
+                   sam3_checkpoint_override="", **_):
+        from atlas_camera.comfy.sam3_core_backend import checkpoint_cache_token
+        return checkpoint_cache_token(sam3_checkpoint, sam3_checkpoint_override)
+
     # --- assembly ---------------------------------------------------------
     def build(self, image, layers=0, mesh="relief", mesh_resolution=512,
               use_vlm=False, vlm_provider="lmstudio", vlm_model="",
@@ -1487,7 +1506,8 @@ class AtlasInput:
         # (SegFormer/ADE20K, [neural], no triton) remains the learned fallback
         # for transformers<5.5.4 / [sam3] not installed.
         from atlas_camera.comfy.sam3_core_backend import (
-            CORE_AUTO, Sam3CheckpointMissing, resolve_core_checkpoint, wants_core)
+            Sam3CheckpointMissing, core_checkpoint_label, resolve_core_checkpoint,
+            wants_core)
         core_sam3 = wants_core(sam3_checkpoint, sam3_checkpoint_override)
         have_native_sam3 = _native_sam3_available() or core_sam3
         have_semantic = "AtlasSemanticMask" in registry
@@ -1506,9 +1526,8 @@ class AtlasInput:
             try:
                 core_name = resolve_core_checkpoint(sam3_checkpoint,
                                                     sam3_checkpoint_override)
-                label = (f"{CORE_AUTO} -> {core_name}"
-                         if not (sam3_checkpoint_override or "").strip()
-                         and str(sam3_checkpoint) == CORE_AUTO else core_name)
+                label = core_checkpoint_label(sam3_checkpoint,
+                                              sam3_checkpoint_override, core_name)
                 notes.append(f"sky/scope segmenter: core SAM3 {label}")
             except Sam3CheckpointMissing as exc:
                 core_sam3_missing = str(exc)

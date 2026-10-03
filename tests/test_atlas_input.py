@@ -616,3 +616,18 @@ def test_core_sam3_load_error_raises_naming_the_checkpoint(monkeypatch, fake_cor
     with pytest.raises(RuntimeError,
                        match=r"sam3\.1_multiplex_fp16\.safetensors.*header too large"):
         AtlasSAM3Mask().segment(**inputs)
+
+
+def test_core_sam3_legacy_filename_choice_resolves_in_atlas_input(
+        monkeypatch, fake_core_sam3):
+    """A graph saved with a bare filename (pre-F-8 combo) validates and runs
+    like the override: the report names the file, no core:auto label."""
+    from atlas_camera.comfy.nodes_viewport import AtlasInput
+    legacy = "sam3.1_multiplex_fp16.safetensors"
+    assert AtlasInput.VALIDATE_INPUTS(sam3_checkpoint=legacy) is True
+    graph, result = _expand(monkeypatch, sky=True, sam3_checkpoint=legacy)
+    assert f"core SAM3 {legacy}" in result[4] and "MISSING" not in result[4]
+    sam = next(n for n in graph.values() if n["class_type"] == "AtlasSAM3Mask")
+    assert sam["inputs"]["sam3_checkpoint"] == legacy
+    assert isinstance(AtlasInput.VALIDATE_INPUTS(sam3_checkpoint="gone.safetensors"),
+                      str)

@@ -384,6 +384,24 @@ class AtlasSAM3Mask:
             },
         }
 
+    # Names ONLY sam3_checkpoint, deliberately no **kwargs: ComfyUI's
+    # validate_inputs skips its built-in list/min/max checks for every input
+    # VALIDATE_INPUTS names -- and for ALL inputs if it takes **kwargs. Naming
+    # just this one lets a legacy saved filename through without unguarding
+    # any other widget.
+    @classmethod
+    def VALIDATE_INPUTS(cls, sam3_checkpoint=None):
+        from atlas_camera.comfy.sam3_core_backend import validate_checkpoint_choice
+        return validate_checkpoint_choice(sam3_checkpoint)
+
+    # Widget values only (linked inputs arrive as None). Constant on the HF
+    # path; on the core path it tracks the resolved file + mtime, so a
+    # checkpoint installed after an empty-mask run re-executes on re-queue.
+    @classmethod
+    def IS_CHANGED(cls, sam3_checkpoint=None, sam3_checkpoint_override="", **_):
+        from atlas_camera.comfy.sam3_core_backend import checkpoint_cache_token
+        return checkpoint_cache_token(sam3_checkpoint, sam3_checkpoint_override)
+
     def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto",
                 output_mode="merged", max_instances=0, concepts_extra="",
                 sam3_checkpoint=None, sam3_checkpoint_override="", **_extra):
@@ -450,7 +468,7 @@ class AtlasSAM3Mask:
         import numpy as np
 
         from atlas_camera.comfy.sam3_core_backend import (
-            CORE_AUTO, Sam3CheckpointMissing, core_sam3_instances,
+            Sam3CheckpointMissing, core_checkpoint_label, core_sam3_instances,
             resolve_core_checkpoint)
         torch = _require_torch()
         h, w = int(image.shape[1]), int(image.shape[2])
@@ -460,9 +478,7 @@ class AtlasSAM3Mask:
         except Sam3CheckpointMissing as exc:
             return (empty, f"core SAM3 checkpoint MISSING — {exc}. Mask is empty; "
                            f"put the file in models/checkpoints or use hf:facebook/sam3.")
-        label = (f"{CORE_AUTO} -> {ckpt_name}"
-                 if not (override or "").strip() and str(choice) == CORE_AUTO
-                 else ckpt_name)
+        label = core_checkpoint_label(choice, override, ckpt_name)
         try:
             instances, matched = core_sam3_instances(
                 image, concepts, ckpt_name=ckpt_name,

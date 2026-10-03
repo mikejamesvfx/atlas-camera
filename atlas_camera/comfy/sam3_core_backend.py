@@ -122,6 +122,75 @@ def resolve_core_checkpoint(choice: str | None, override: str | None = None) -> 
     raise Sam3CheckpointMissing(f"core SAM3 checkpoint '{name}' not found in models/checkpoints")
 
 
+def core_checkpoint_label(choice: str | None, override: str | None,
+                          resolved: str) -> str:
+    """The report label for a resolved core checkpoint.
+
+    ``core:auto -> <file>`` when the auto pick chose it (so the report names
+    the file it landed on), otherwise just the file. One builder for
+    ``AtlasSAM3Mask`` and ``AtlasInput`` so their reports cannot drift.
+    """
+    if not (override or "").strip() and str(choice) == CORE_AUTO:
+        return f"{CORE_AUTO} -> {resolved}"
+    return resolved
+
+
+def validate_checkpoint_choice(choice: Any) -> bool | str:
+    """``VALIDATE_INPUTS`` body for the ``sam3_checkpoint`` combo.
+
+    Graphs saved before the combo values were fixed (F-8) carry a bare
+    checkpoint filename. ComfyUI's built-in list check would reject it as
+    "value not in list" before :func:`resolve_core_checkpoint`'s legacy branch
+    ever ran, so the nodes take over validation of THIS input: the fixed
+    values pass, an installed checkpoint filename passes (at run time it acts
+    exactly like ``sam3_checkpoint_override``), anything else is an error
+    string naming the value. ``None`` (linked / absent) passes.
+    """
+    if choice is None or str(choice) in SAM3_CHECKPOINT_CHOICES:
+        return True
+    name = str(choice)
+    want = name.replace("\\", "/")
+    if any(n == name or n.replace("\\", "/") == want for n in _all_checkpoints()):
+        return True
+    return (f"sam3_checkpoint '{name}' is neither {HF_BACKEND}, {CORE_AUTO} nor an "
+            f"installed file in models/checkpoints; pick a listed value, or put the "
+            f"exact file in sam3_checkpoint_override")
+
+
+def _checkpoint_mtime_ns(name: str) -> int | None:
+    try:
+        import os
+
+        import folder_paths  # type: ignore[import-not-found]
+        getter = (getattr(folder_paths, "get_full_path", None)
+                  or folder_paths.get_full_path_or_raise)
+        path = getter("checkpoints", name)
+        return os.stat(path).st_mtime_ns if path else None
+    except Exception:  # noqa: BLE001 - not inside ComfyUI / vanished mid-call
+        return None
+
+
+def checkpoint_cache_token(choice: str | None, override: str | None = None) -> str:
+    """``IS_CHANGED`` token: which core checkpoint a run would load, and when
+    it was written.
+
+    The HF path returns a constant, so its caching is unchanged. A core
+    request returns ``<file>:<mtime_ns>`` -- or ``missing:<what was asked>``
+    -- so installing (or replacing) the checkpoint after a run that degraded
+    to an empty mask invalidates ComfyUI's cached result. Stats only; never
+    hashes a multi-GB file.
+    """
+    if not wants_core(choice, override):
+        return "hf"
+    try:
+        name = resolve_core_checkpoint(choice, override)
+    except Sam3CheckpointMissing:
+        asked = (override or "").strip() or str(choice)
+        return f"missing:{asked}"
+    mtime = _checkpoint_mtime_ns(name)
+    return f"{name}:{mtime if mtime is not None else '?'}"
+
+
 def core_sam3_available() -> bool:
     """True when this ComfyUI has the core SAM3 node and at least one checkpoint."""
     try:
