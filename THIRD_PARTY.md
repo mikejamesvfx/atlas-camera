@@ -30,7 +30,8 @@ authoritative license text; the notes below are a map, not legal advice.
 | `[moge]` | MoGe-2 (`Ruicheng/MoGe`) | **MIT** | interior-specialist depth |
 | `[neural-da3]` | Depth Anything 3 | see upstream (GitHub-only) | selectable depth; **never the default**. `DA3NESTED-GIANT` weights are **CC BY-NC-ND (non-commercial)** |
 | `[record3d]` | Record3D `.r3d` import | see upstream | iPhone/iPad LiDAR capture (gated behind `ATLAS_IOS`) |
-| `[mcp]` | mcp SDK | MIT | optional stdio MCP server |
+| `[mcp]` | mcp SDK | MIT | optional stdio MCP server; needs PyJWT >= 2.10.1, so run it outside ComfyUI's venv if a node pack pins an older PyJWT (see docs/MCP_SERVER.md) |
+| `[retopo]` | trimesh, scipy, fast-simplification | MIT / BSD-3 / MIT | `AtlasRetopologizeLayer` smooth + decimate; CPU-only |
 
 Commercial-friendly by default: the shipping depth default (`V2-Metric-Outdoor`)
 and the whole `[neural]` tier are permissive (Apache / BSD / MIT).

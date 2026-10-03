@@ -93,6 +93,18 @@ SDK, pass it in `mcp_servers` exactly as you would any stdio server.
 > **Which `python`?** The one you type in the config must resolve
 > `atlas_camera` and `mcp`. If Atlas lives in a venv (e.g. ComfyUI's), use
 > that venv's full interpreter path as `command` instead of `python`.
+>
+> **ComfyUI's venv may not take the SDK.** `mcp` 2.x needs PyJWT 2.10.1 or
+> newer, and some node packs pin an older one (ComfyUI_LayerStyle_Advance, via
+> `zhipuai`, needs PyJWT below 2.9). Installing `mcp` there upgrades PyJWT and
+> breaks that pack. The server never imports torch or numpy and reaches ComfyUI
+> over HTTP, so in that case run it from a separate Python instead:
+> `pip install -e ".[mcp]"` from the repo into that Python, and point `command`
+> at it.
+>
+> **Keep machine paths out of the shared config.** The repo's `.mcp.json` sets
+> only `COMFY_HOST`. Add `COMFY_DIR` in your local copy, then run
+> `git update-index --skip-worktree .mcp.json` so the path is never committed.
 
 ## 4 · The tools
 

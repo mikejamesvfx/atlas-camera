@@ -12,6 +12,27 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
+### Running the tests inside a ComfyUI venv
+
+ComfyUI's venv ships torch, so tests that skip in a bare `.venv` actually run
+there, and a few need packages ComfyUI does not bring. Install them one by one
+rather than `[dev]`, whose `opencv-python` can fight the other `cv2` builds that
+node packs install:
+
+```powershell
+pip install pytest trimesh scipy fast-simplification
+# the JPEG/RAW import tests also need exifread, the web workbench tests
+# need fastapi + python-multipart:
+pip install exifread fastapi python-multipart
+```
+
+Without exifread or the workbench packages those tests fail rather than skip;
+to leave the workbench out instead, add
+`--ignore=tests/test_ui_api_error_handling.py --ignore=tests/test_ui_backend.py`.
+The MCP wiring test checks its routes everywhere and runs its MCP half only
+where the `mcp` SDK is installed, which may well not be ComfyUI's venv (see
+[docs/MCP_SERVER.md](docs/MCP_SERVER.md)).
+
 ## ComfyUI Node Pack Install
 
 **Clone-and-go (simplest — no pip install):** clone the repository straight
@@ -126,6 +147,10 @@ Notes:
   (OpenImageIO) — `pip install -e ".[raw,oiio]"`. It no longer touches OpenCV.
   If the write fails the node degrades gracefully: the plate_ref is marked
   proxy and the report names the real cause.
+- **Ordinary JPEGs go through the same importer.** `AtlasLoadRAW` reads a
+  JPEG's EXIF with `exifread` as well, so a JPEG import needs `[raw]` too.
+  Without it the import stops with a missing-module error rather than falling
+  back. Into an existing ComfyUI venv, `pip install exifread` is enough for this.
 
   > **`OPENCV_IO_ENABLE_OPENEXR=1` is no longer needed, and never could have
   > helped on opencv 5.** That variable only lifts a *runtime* disable of a
@@ -159,6 +184,21 @@ The development extra includes these dependencies for the test suite:
 ```powershell
 pip install -e ".[dev]"
 ```
+
+## Optional Mesh Retopology
+
+`AtlasRetopologizeLayer`'s `smooth` and `decimate` methods need three CPU-only
+packages: trimesh and scipy for Taubin smoothing, and fast-simplification for
+quadric decimation (MIT, BSD-3 and MIT):
+
+```powershell
+pip install -e ".[retopo]"
+# or, into an existing ComfyUI venv:
+pip install trimesh scipy fast-simplification
+```
+
+Without them that step does not run, and the node's report (or the error) names
+the package to install.
 
 ## Optional Local UI
 

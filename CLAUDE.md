@@ -109,7 +109,7 @@ cd ui && npm install && npm run dev
 
 
 
-- `dev` — numpy, opencv-python, pytest
+- `dev` — numpy, opencv-python, pytest, trimesh, scipy, fast-simplification
 
 - `vision` — numpy, opencv-python (runtime vision)
 
@@ -118,6 +118,7 @@ cd ui && npm install && npm run dev
 - `usd` — usd-core
 
 - `ui` — FastAPI, uvicorn, Pillow, python-multipart
+- `retopo` — trimesh + scipy (Taubin smooth) and fast-simplification (quadric decimate) for `AtlasRetopologizeLayer`. CPU-only, all permissive.
 
 - `neural` — torch + GeoCalib (learned single-image camera prior). GeoCalib is GitHub-only: `pip install "git+https://github.com/cvg/GeoCalib.git"`. torch is expected from the host env (e.g. ComfyUI's venv).
 

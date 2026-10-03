@@ -102,6 +102,11 @@ plate, not photographed HDR. Same doctrine as the hidden side.
   still (matrixZone) and the HDR clip. They need ComfyUI V135+ and are not
   shipping examples yet. Model files are listed in INSTALL.md.
 - LTX-2.5 and Pixal3D terms are now mapped in THIRD_PARTY.md.
+- New `[retopo]` extra (trimesh, scipy, fast-simplification) for
+  `AtlasRetopologizeLayer`'s smooth and decimate methods, and
+  `fast-simplification` joins `[dev]`. INSTALL now says what the test suite needs
+  inside a ComfyUI venv and that JPEG import needs `[raw]`; MCP_SERVER.md explains
+  when the MCP server needs its own Python (a PyJWT clash with some node packs).
 
 ### Geometric camera conditioning, and a way to prove it worked
 

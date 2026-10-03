@@ -318,7 +318,7 @@ def decimate_quadric(
     except ImportError as exc:  # pragma: no cover - environment-dependent
         raise ImportError(
             "Quadric decimation needs the 'fast-simplification' package "
-            "(BSD, CPU-only, macOS arm64 wheels).\n"
+            "(MIT, CPU-only, macOS arm64 wheels).\n"
             "Install it with:  pip install fast-simplification"
         ) from exc
     import trimesh
