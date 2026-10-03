@@ -1,20 +1,28 @@
+<p align="center"><img src="docs/images/plate_changelog.svg" width="100%" alt="Atlas Camera: Changelog"></p>
+
 # Changelog
 
 User-facing release notes for Atlas Camera. Dates are branch-cut dates; the
-full engineering narrative lives in CLAUDE.md's design rules and `docs/dev/`.
+full engineering narrative lives in `docs/development/design-rules.md`.
 
-## 0.8.3 — unreleased (branch cut 2026-08-14)
+## 1.0.0 (unreleased)
 
-> Stacks on top of the unshipped 0.8.2 below: neither has been published, so a
-> release carries both sets of notes. 0.8.2 is a pure menu/README pass and its
-> "no node was added, removed, renamed or rewired" holds for what it described.
-> The node-surface changes are all here.
+The first stable release. Two branch cuts (0.8.2, then 0.8.3) never went out on their own,
+so their notes ship together here. A foreground object becomes a body you can walk around
+(hidden side inferred, and labelled so), LTX-2.5 HDR comes out as a half-float ACEScg EXR at full 8K plate resolution, the
+layered scene opens in ComfyUI's own 3D tools, generated moves get measured conditioning and
+an adherence score a frozen clip can't game, and the menu reads as the pipeline. Registered
+surface: **131 standard + 10 experimental + 2 legacy + 2 iOS = 145**. Every existing node
+key is byte-identical, so saved graphs still load.
 
-Registry goes **93 → 100 standard**, total stays **110**. Every key is
-byte-identical, so saved graphs still load; what changed is which nodes are
-registered without a flag.
+### Landed as 0.8.3 (branch cut 2026-08-14, never published)
 
-### Objects with hidden sides, HDR at plate resolution, and the scene in ComfyUI's own 3D tools
+0.8.2 below was a pure menu/README pass; every node-surface change is in this cut.
+The seven promotions took the registry **93 → 100 standard**, total staying at
+**110**. Every key is byte-identical, so saved graphs still load; what changed is
+which nodes are registered without a flag.
+
+#### Objects with hidden sides, HDR at plate resolution, and the scene in ComfyUI's own 3D tools
 
 Six new nodes, **+6 standard (125 → 131, total 145)**. Every existing key is
 byte-identical, and the two new widgets on existing nodes (`sam3_checkpoint`,
@@ -103,6 +111,13 @@ plate, not photographed HDR. Same doctrine as the hidden side.
   do not depend on the machine, so shared graphs queue anywhere. A missing file
   gives an empty mask and a report; a checkpoint that fails to load stops the run
   with its name.
+- `AtlasSceneTo3D` and `AtlasMatrixZoneStitch` take an optional `project`: the GLB
+  with its EXR/PLY sidecars, and the HDR EXR, land in the shot's `geo/` and
+  `plates/` lanes. Without one, each sidecar reference also records its path
+  relative to ComfyUI's output folder, because Save 3D copies only the GLB.
+- `AtlasProject` gains appended STRING outputs for custom pipes: `project_name`,
+  `shot`, `colour_mode`, `project_root`, `shot_dir` and `shot_prefix` (the shot
+  folder relative to ComfyUI's output folder, a ready `filename_prefix` base).
 - A scene-referred IMAGE (linear EXR, HDR, ACEScct) is now warned about instead of
   silently clipped.
 - Clean-plate and sky layers carry past the frame edge, with a softened outpaint
@@ -118,40 +133,40 @@ plate, not photographed HDR. Same doctrine as the hidden side.
   inside a ComfyUI venv and that JPEG import needs `[raw]`; MCP_SERVER.md explains
   when the MCP server needs its own Python (a PyJWT clash with some node packs).
 
-### Geometric camera conditioning, and a way to prove it worked
+#### Geometric camera conditioning, and a way to prove it worked
 
 Three new nodes, **+3 standard (122 → 125, total 139)**. Every existing key is
 byte-identical; saved graphs load unchanged.
 
-- **`AtlasConditioningBundle` 🎛** — every per-frame signal a generative video model
+- **`AtlasConditioningBundle` 🎛**: every per-frame signal a generative video model
   could consume, measured from the recovered projection instead of described in words:
   metric depth, world normals, world position, forward/backward optical flow, per-frame
   K, and the ghost class map. All of it is read off **the same z-buffer that chose the
   render's colours**, so no two passes can disagree with each other or with the RGB.
-- **`AtlasWriteConditioningEXR` 💾** — writes that bundle as float32 EXR sequences with
+- **`AtlasWriteConditioningEXR` 💾**: writes that bundle as float32 EXR sequences with
   a sidecar manifest naming every channel. Skipped, not failed, without OpenImageIO.
-- **`AtlasAdherenceScore` 📐** — measures whether the model actually *obeyed* the camera.
+- **`AtlasAdherenceScore` 📐**: measures whether the model actually *obeyed* the camera.
 
 **Flow is derived, never estimated.** With depth and two calibrated cameras the
 displacement of every pixel is closed-form, so running a flow network over the render
 would be guessing at something Atlas already knows exactly. Pinned against `-fx·t/Z`,
 which lands at **0.0e+00** error. The occlusion flag tests the target frame's own depth
-rather than inferring occlusion from flow inconsistency — it *knows* which pixels became
+rather than inferring occlusion from flow inconsistency. It *knows* which pixels became
 occluded, which no learned flow does.
 
 **Why the scorer exists, and why it refuses.** Asking whether a generated move obeyed a
 camera by solving the result is a dead end: measured 2026-09-03, the real plate registers
 against the primary at 1022 SIFT inliers while *every* frame of an LTX CrossView move
 collapses to 12–20 and is refused, because video diffusion re-synthesises the fine
-texture feature matching depends on. So adherence is scored only in **VALID** pixels —
-the ones Atlas knows the true appearance of by reprojection — needing no registration at
-all. That opens one hole, and closing it is the design: a clip that simply repeats its
+texture feature matching depends on. So adherence is scored only in **VALID** pixels
+(the ones Atlas knows the true appearance of by reprojection), needing no registration at
+all. That opens one hole, and closing it is the design: a clip that only repeats its
 first frame agrees with the reprojection wherever the move is small, and **measured above
 0.5 adherence with no camera motion in it whatsoever**. The node therefore measures
 `parallax_response` (agreement against frame *i* minus agreement against frame 0), which
 a frozen clip cannot score positive, and **raises instead of reporting** when it is not.
 A `static` arm is synthesised internally so the headline is always a margin over that
-cheat's ceiling, and the **control arm is a required socket** — an adherence figure with
+cheat's ceiling, and the **control arm is a required socket**: an adherence figure with
 nothing to compare against supports no claim in either direction.
 
 The headline is gradient ZNCC, chosen against the *generator's grade* rather than against
@@ -163,42 +178,42 @@ is never folded in. Comparisons carry a seeded paired bootstrap interval and a s
 because two means with no interval is not evidence.
 
 **Under the hood:** `AtlasGhostPixelMap`'s per-frame loop moved into
-`core/conditioning.py` — verified **byte-identical** across five configurations, not just
-test-green — which is what lets the scorer reach those frames at all, since `core` may not
+`core/conditioning.py`, verified **byte-identical** across five configurations (not merely
+test-green), which is what lets the scorer reach those frames at all, since `core` may not
 import `comfy`. `render_scene` was already returning its z-buffer, so the depth pass cost
 one dict key rather than a second rasteriser. `AtlasReliefGeometry`'s `np.repeat` was
 **left alone**: CrossView Warp applies the camera move itself, so per-frame moved depth
 would double-apply it.
 
-### Ghost pixels: the hole, classified (`AtlasGhostPixelMap` 👻)
+#### Ghost pixels: the hole, classified (`AtlasGhostPixelMap` 👻)
 
 - **New node, +1 standard.** Renders a move through the same z-buffered rasterizer as
   `AtlasDisocclusionGuide` and classifies every pixel: **VALID** (observed), **GHOST**
-  (revealed by the move, never observed — the only class a generative filler should be
+  (revealed by the move, never observed: the only class a generative filler should be
   aimed at), **INVALID** (geometry that was never derived: sky, partial relief mesh) and
-  **OUT_OF_BOUNDS** (the camera swung past the edge of the photograph — that is
+  **OUT_OF_BOUNDS** (the camera swung past the edge of the photograph; that is
   outpainting, a different job).
 - **The invariant:** `ghost | invalid | out_of_bounds` equals the guide's `hole_mask`
   exactly. This reclassifies the existing hole; it does not find a different one.
-- **Why it exists.** The guide already separated these three causes — in prose, in a
+- **Why it exists.** The guide already separated these three causes, but in prose, in a
   STRING. Prose does not subtract, which is how the occlusion-fill doctrine came to
   record a raw "peak hole" that climbed 64.8% → 86.1% *on an improving run* by counting
   sky. `report` is now JSON with per-frame counts, fractions, `ghost_region_count` and
   `largest_ghost_region_px`.
 - Excluded pixels (`exclude_mask`) classify `LOW_CONFIDENCE` and leave the fractions from
-  both numerator and denominator — an artist declaration is intent, not evidence, and must
+  both numerator and denominator. An artist declaration is intent, not evidence, and must
   never be reported as a factual disocclusion.
 - Unlike the guide, this node **applies the camera path's `fov_deg` channel**, so a zoom
-  renders as a zoom — and correctly yields no ghosts, because a focal change moves no eye
+  renders as a zoom, and correctly yields no ghosts, because a focal change moves no eye
   and therefore reveals nothing. The guide samples poses only and ignores that channel.
 - Lens distortion is **not** handled (Atlas solves a pinhole camera); stated in the node
   docstring rather than implied.
-- Classification lives in `atlas_camera/core/ghost_pixels.py` — numpy only, no torch, so
+- Classification lives in `atlas_camera/core/ghost_pixels.py`: numpy only, no torch, so
   CI exercises it for real rather than skipping it.
 
-### Project record schema and the delivery/workbench boundary (ADR-005 Amendment 1)
+#### Project record schema and the delivery/workbench boundary (ADR-005 Amendment 1)
 
-- `atlas_project.json` now carries `"schema": "atlas-project/1"` — a string, never confused with the
+- `atlas_project.json` now carries `"schema": "atlas-project/1"`, a string, never confused with the
   export manifest's integer schema. Records without one are upgraded on the next write; a record from a
   newer Atlas (`atlas-project/2`) or with another family's schema is refused, not overwritten.
 - Updating the record **preserves keys it does not own**. It used to rebuild the file and delete anything
@@ -208,15 +223,15 @@ would double-apply it.
   record into a workbench session directory. `find_delivery_project_root(path)` finds the enclosing
   delivery project.
 
-### Publishing is explicit (ADR-006)
+#### Publishing is explicit (ADR-006)
 
 - Merging to `main` no longer publishes to the ComfyUI Registry, even when it changes `version` in
   `pyproject.toml`. Previously any such push to `main` auto-published.
-- Publish by releasing a GitHub Release tagged with the version (`v0.8.3` or `0.8.3`), or by running
+- Publish by releasing a GitHub Release tagged with the version (`v1.0.0` or `1.0.0`), or by running
   the publish workflow by hand with `version` set. The workflow refuses if the requested version is not
   `pyproject.toml`'s, or if the commit is not on `main`.
 
-### `atlas_project.json` names the delivery project only (ADR-005)
+#### `atlas_project.json` names the delivery project only (ADR-005)
 
 Three Camera files shared `atlas_project.json`, with different meanings, and co-located writers
 overwrote each other. Now:
@@ -234,7 +249,7 @@ overwrote each other. Now:
 - The `atlas_project_identity:` header embedded in `.nk` / `.py` / `.ma` exports is unchanged, so
   artifacts already shipped stay valid.
 
-### Public API: photograph to relief world
+#### Public API: photograph to relief world
 
 - `atlas.recover_relief_world(image, *, depth_model, device, grid_long_edge)` recovers
   one photograph (RAW, or JPEG/PNG; EXIF focal and sensor honoured) as a metric relief
@@ -251,7 +266,7 @@ overwrote each other. Now:
   byte-identical before and after. Proposal and review:
   `docs/proposals/2026-09-13-relief-world-facade.md`.
 
-### Exporter: optional JPEG texture in relief-mesh GLBs
+#### Exporter: optional JPEG texture in relief-mesh GLBs
 
 - `export_relief_mesh_glb(..., texture_format="PNG")` gains a keyword-only
   `texture_format`: `"PNG"` (default, unchanged, lossless) or `"JPEG"` (quality
@@ -265,15 +280,15 @@ overwrote each other. Now:
   vertex colours and every geometry buffer are byte-identical across codecs.
 - First consumer: Atlas Showcase's web bake. No node widget exposes it yet.
 
-### Seven nodes promoted out of the experimental gate
+#### Seven nodes promoted out of the experimental gate
 
-- The **two-pass occlusion-fill engine** — `AtlasInterpassGate`,
+- The **two-pass occlusion-fill engine** (`AtlasInterpassGate`,
   `AtlasMembraneComposite`, `AtlasCropROI`, `AtlasCompositeCrop`,
-  `AtlasCameraMovePreset` — field-tested and mutually dependent, so they ship
+  `AtlasCameraMovePreset`) is field-tested and mutually dependent, so they ship
   as a set.
 - **`AtlasPathFrameIndex`** serves that same engine: it computes the batch
   indices the in-graph fill would otherwise have hand-typed. Gated, a default
-  install rebuilt the bug it exists to prevent — a 30-frame arc run against
+  install rebuilt the bug it exists to prevent: a 30-frame arc run against
   indices left at the 5-frame default repaired frame 4 of the move's beginning.
 - **`AtlasLoadDynamicPlate`** was the only gated part of Dynamic Plates. The
   producer (`python -m atlas_camera.dynamic`) was never behind a flag, so the
@@ -281,16 +296,16 @@ overwrote each other. Now:
   `ATLAS_EXPERIMENTAL=1`.
 
 Display names drop only the `(experimental)` tag. Promoted nodes keep their
-`Atlas/advanced` menu folder — promotion changes whether a node registers by
+`Atlas/advanced` menu folder. Promotion changes whether a node registers by
 default, not how advanced it is.
 
-### Removed
+#### Removed
 
-- `AtlasRenderFix` and `AtlasBlenderOrganicFill` — deregistered on 2026-08-03,
-  the classes remained as 370 lines of node wrapper unreachable from ComfyUI.
+- `AtlasRenderFix` and `AtlasBlenderOrganicFill`: deregistered on 2026-08-03,
+  but the classes remained as 370 lines of node wrapper unreachable from ComfyUI.
   Their backends (`inference/fixer_render_fix.py`, `blender/organic_fill.py`)
   are untouched and still tested.
-- `core/fill_policy.py` — routed a hole to the organic or planar fill family.
+- `core/fill_policy.py`, which routed a hole to the organic or planar fill family.
   Its only caller for its whole life was `AtlasBlenderOrganicFill`, so the
   organic route left the product when that node was deregistered. The doctrine
   it encoded is kept in `docs/development/design-rules.md`; the two-pass fill is the live
@@ -298,34 +313,28 @@ default, not how advanced it is.
 - Ten `tools/build_*_workflow.py` generators whose output workflows all left
   `examples/` in the 0.8.1 trim.
 
-### Documentation
+#### Documentation
 
 - **`docs/development/design-rules.md` and `docs/IOS_APP_BOOTSTRAP.md` are tracked again.**
   A brand/design gitignore rule swept both in on the word DESIGN; the first is
   the engineering reference CLAUDE.md's routing index points at, and the second
   is pinned as must-be-tracked by a test that had been red since.
 - README and `docs/DYNAMIC_PLATES.md` now describe Dynamic Plates and reference
-  each other — the capability was previously invisible from the front door.
+  each other; the capability was previously invisible from the front door.
 - The `[lotus2]` depth backend has an install path in INSTALL.md.
 - New `tools/README.md` records which developer scripts are load-bearing.
 
-## 0.8.2 — unreleased (branch cut 2026-08-03)
-
-> Written but not shipped: `pyproject.toml` still declares **0.8.1**, so
-> nothing carrying these notes has been published. Bumping the version is
-> the release action — and it is not a tidy-up, because the publish
-> workflow fires on a push to `main` that touches `pyproject.toml` and
-> pushes the pack to the public ComfyUI registry.
+### Landed as 0.8.2 (branch cut 2026-08-03, never published)
 
 A **discoverability pass**. No node was added, removed, renamed or rewired, and
-no widget moved — this release changes where nodes appear in the menu and what
+no widget moved: this cut changes where nodes appear in the menu and what
 the README leads with. Saved graphs load byte-identical.
 
-### One front door instead of ninety-one
+#### One front door instead of ninety-one
 
 Typing `Atlas` into ComfyUI's node search returned 91 results spread across 13
 `Atlas Camera/<area>` sub-menus, with nothing marking where to begin. 53 of
-those 91 appeared in **no shipped example workflow at all** — present, tested
+those 91 appeared in **no shipped example workflow at all**: present, tested
 and documented, but with nothing showing a newcomer what they were for.
 
 - **Ten numbered pipeline folders** carry the 90 standard nodes in the order you
@@ -346,9 +355,9 @@ after, and all 4 shipped example workflows load with zero missing-node errors.
 `tests/test_comfy_node_registry.py` pins both the numbered folders and the
 `Atlas/advanced` rule for gated tiers, so neither can quietly drift back.
 
-### README leads with the job
+#### README leads with the job
 
-The node-count badge is gone — it advertised surface area, which was the
+The node-count badge is gone. It advertised surface area, which was the
 problem rather than the selling point. The page now opens with what Atlas does
 in one sentence (one photograph in; a metric pinhole camera and a colour-managed
 projection setup out, for Nuke, Maya, USD and Blender), then the front-door
@@ -356,14 +365,14 @@ workflow, then everything else behind a link to the node catalog rather than as
 an inline list.
 
 Three stale node counts (56, 58 and 60, none of them right) and two example
-workflows that no longer exist — `atlas_camera_staged_master_workflow.json` and
-`atlas_occlusion_cull_quickstart_workflow.json` — went with it.
+workflows that no longer exist (`atlas_camera_staged_master_workflow.json` and
+`atlas_occlusion_cull_quickstart_workflow.json`) went with it.
 
-### The wand fills the rims it used to refuse
+#### The wand fills the rims it used to refuse
 
 Where two tears of a torn relief mesh meet at a shared vertex, the boundary
 walk returned one figure-8 loop the backend rightly refused as
-self-intersecting — the "wand fill skipped" trail from 0.8.2's diagnosis
+self-intersecting: the "wand fill skipped" trail from 0.8.2's diagnosis
 commits, now fixed. Closed walks are split at repeated vertices into simple
 lobes at extraction, so one click fills whichever lobe was clicked, and a rim
 that merely touches itself fills the same way. Separately, the polygon mask
@@ -371,30 +380,30 @@ rasterizer is now bounded to each fill's own extent: a 600-vertex wand rim on
 a 2K plate dropped from ~17 s to ~0.07 s, which returns solves with many
 accumulated fills to their baseline time.
 
-### Artifacts say who made them
+#### Artifacts say who made them
 
 Machine-readable provenance for agents and pipelines (the deep-research
 report's month-one hygiene items):
 
 - **Solve JSON now carries `atlas_version`** beside its existing
-  `schema_version` — which build wrote it vs what the structure means.
+  `schema_version`: which build wrote it, vs what the structure means.
 - **Debug reports and output assessments add `registry_hash`**, a short
   digest of the full registered node surface, so a consumer can tell whether
   an artifact came from the registry it is talking to.
 - **`atlas_health` gains `capabilities` and `licences` blocks**: the exact
   MCP tool list (test-pinned against the decorated surface), DCC exporters,
   the explicit `camera_move_bake: "browser_only"` gap, and code licence
-  (MIT) separated from per-model weight licences — gated SAM3 and the
-  non-commercial DA3 giant weights are the two that bite commercial users.
+  (MIT) separated from per-model weight licences (gated SAM3 and the
+  non-commercial DA3 giant weights are the two that bite commercial users).
 - **README states the real dependency contract**: schema/JSON/export =
   dependency-free; numerical recovery = NumPy; line detection = NumPy +
   OpenCV. The old "zero required dependencies" absolute is gone, and a doc
   guard keeps it gone.
 
-## 0.8.1 — 2026-07-21
+## 0.8.1 · 2026-07-21
 
-Completes the arm64 story 0.8.0 started — the node pack no longer requires
-`triton` anywhere — and bundles the pre-beta cleanup: the node menu is
+Completes the arm64 story 0.8.0 started (the node pack no longer requires
+`triton` anywhere) and bundles the pre-beta cleanup: the node menu is
 foldered, three unused nodes are removed, and the shipping catalog is trimmed
 to three download-free example workflows.
 
@@ -402,8 +411,8 @@ to three download-free example workflows.
 
 - **`AtlasSAM3Mask` 🪄 gains `output_mode`** (`merged` default / `separate`)
   and `max_instances`. `separate` returns the `(N,H,W)` per-instance stack that
-  SAM3's `post_process_instance_segmentation` was always producing — 0.8.0
-  simply unioned it before anything could see it.
+  SAM3's `post_process_instance_segmentation` was always producing; 0.8.0
+  unioned it before anything could see it.
 - **`AtlasSegmentedSDXLInpaint` 🏢 now prefers the native node**, using the same
   availability cascade `AtlasInput` does, and falls back to the third-party
   `SAM3Segment` only when native SAM3 is unavailable. The report names which
@@ -418,17 +427,17 @@ to three download-free example workflows.
 
 ### Node menu + node removals
 
-- **Every node now lives in an `Atlas Camera/<folder>` submenu** — the flat
+- **Every node now lives in an `Atlas Camera/<folder>` submenu**; the flat
   top-level list (35 loose nodes) is gone. New folders: **Solve**, **Scale &
   Trim**, **Masks & Depth**, **Gates & QA**; the rest folded into the existing
   **Derive Geometry** / **Inpaint Layers** / **Patches** / **Export**. Menu
-  placement only — no node key changed, so saved workflows are unaffected.
+  placement only, no node key changed, so saved workflows are unaffected.
 - **Three nodes removed** (their keys are gone, so a saved workflow that uses
-  one will fail to load — recover from git history): `AtlasMegaPipeline` 🔬 (the
-  experimental monolith — unused, and it crashed on first queue),
+  one will fail to load; recover from git history): `AtlasMegaPipeline` 🔬 (the
+  experimental monolith: unused, and it crashed on first queue),
   `AtlasLoadImageSolveCamera` (long-deprecated file-path solve; use
   `AtlasSolveFromImage` / `AtlasLearnedSolveFromImage`), and `AtlasPitchTrim`
-  (the pitch/gravity-mirror dial — `AtlasGravityOverride` sets pitch absolutely).
+  (the pitch/gravity-mirror dial; `AtlasGravityOverride` sets pitch absolutely).
 
 ### Shipping catalog trimmed to three workflows
 
@@ -442,7 +451,7 @@ ComfyUI's bundled `example.png` with **nothing to download**:
   workflows), plus `examples/api_format/`, `examples/solves/`, and the workflow
   generators in `tools/` that built them. Those demonstrate the colour-managed
   float and camera-RAW paths, which need a float plate / RAW that is **not**
-  shipped — distributed as workflow + image bundles from the project website
+  shipped, so they're distributed as workflow + image bundles from the project website
   instead. Recover anything removed from git history (before the trim commit).
 - **New guards:** `tests/test_shipping_workflow_paths.py` forbids absolute
   machine paths in any shipped workflow, and every workflow (not a
@@ -455,7 +464,7 @@ ComfyUI's bundled `example.png` with **nothing to download**:
 - **INSTALL.md now warns that `[sam3]` forces a major `transformers` bump**
   (>=5.5.4) shared with every pack in the environment. Observed live:
   `ComfyUI-CoreMLSuite` fails on `ImportError: FLAX_WEIGHTS_NAME` (removed in
-  transformers 5) after installing it. Not an Atlas bug and not workaroundable —
+  transformers 5) after installing it. Not an Atlas bug and not workaroundable;
   the note documents the `--dry-run` pre-check, the skip path (the SegFormer
   fallback still segments), and venv isolation.
 
@@ -464,12 +473,12 @@ ComfyUI's bundled `example.png` with **nothing to download**:
 - **CI was red on `main` from the 0.8.0 merge.** Two hardcoded node counts in
   the test workflow (`==67`, `==71`) went stale when the pack grew. The numbers
   lived only in the workflow YAML, so no local `pytest -q` could reproduce it.
-  Those steps now assert invariants instead — torch-less import,
+  Those steps now assert invariants instead (torch-less import,
   display-name/class-mapping parity, no experimental leak into the default
-  tier, and that the gate registers every experimental node — which covers
+  tier, and that the gate registers every experimental node), which covers
   strictly more and cannot go stale as nodes are added.
 
-## 0.8.0 — 2026-07-20
+## 0.8.0 · 2026-07-20
 
 ### Apple Silicon / arm64
 
@@ -487,13 +496,13 @@ ComfyUI's bundled `example.png` with **nothing to download**:
 
 ### Colour-managed float I/O
 
-- **`AtlasLoadPlate` 🎞 and `atlas_camera.plate`** — Atlas's own OpenImageIO
+- **`AtlasLoadPlate` 🎞 and `atlas_camera.plate`**: Atlas's own OpenImageIO
   EXR/DPX reader and writer with OCIO conversion. The OCIO quickstart now needs
   **no third-party node pack at all**.
 - The RAW scene-linear EXR sidecar writes through OpenImageIO. It previously
   used opencv's EXR codec, which is disabled at runtime by default, absent from
   the opencv-python 5.x wheels, and shipped by three distributions that
-  overwrite each other — so it silently failed on machines where another pack
+  overwrite each other, so it silently failed on machines where another pack
   had pulled in a 5.x build.
 - OpenImageIO carries a built-in ACES OCIO config, so ACEScg/ACEScct/ACES2065-1
   work with no `opencolorio` install and no `$OCIO` to configure.
@@ -507,7 +516,7 @@ ComfyUI's bundled `example.png` with **nothing to download**:
   across runs.
 - Exporters no longer bake a deleted temp plate path into `.nk`/`.ma`
   artifacts.
-- `kornia` capped `<0.8.3` — 0.8.3 dropped a re-export that ComfyUI-LTXVideo
+- `kornia` capped `<0.8.3`: 0.8.3 dropped a re-export that ComfyUI-LTXVideo
   imports, so installing Atlas's neural extras broke LTXVideo entirely.
 - The obsolete opencv `<5` cap is removed; Atlas's remaining cv2 use (Canny,
   HoughLinesP, `remap`, LDR I/O) is verified on opencv 5.
@@ -524,14 +533,14 @@ ComfyUI's bundled `example.png` with **nothing to download**:
 
 ### Examples
 
-- Shipped workflows default `LoadImage` to `example.png` — the image ComfyUI
-  itself ships — so they RUN on first queue instead of erroring on a plate that
+- Shipped workflows default `LoadImage` to `example.png` (the image ComfyUI
+  itself ships), so they RUN on first queue instead of erroring on a plate that
   is a separate download. It is a placeholder; swap in a real plate.
 - Fourth shipped workflow: the ✂ Occlude / `primary_depth` demo.
 - `docs/dev/` and `docs/artifacts/` are local-only, trimming ~12 MB from the
   published archive.
 
-## 0.7.0 — 2026-07-19
+## 0.7.0 · 2026-07-19
 
 ### OCIO DCC workflows + cleanplate-derived hidden support
 
@@ -539,7 +548,7 @@ Three canonical ACEScg clean-plate/DCC workflows (ocean castle, space hangar,
 ghost town): OCIO input conversion, semantic foreground matte, localized SDXL
 or LaMa clean-plate with mask/plate approval previews, ACES Output Desk
 metadata, and matched per-layer retopology into Nuke/Maya. Their generator
-(`tools/generate_canonical_ocio_dcc_workflows.py`) is portable — repo-relative
+(`tools/generate_canonical_ocio_dcc_workflows.py`) is portable: repo-relative
 asset paths by default, `--asset-root`/`--output-root` for local marketing
 renders. New doctrine: for a removed foreground subject on a continuous
 surface, depth-solve the *approved clean-plate* and project it as a full-range
@@ -552,7 +561,7 @@ Documented across README/INSTALL/USER_GUIDE/DCC_EXPORTS/ECOSYSTEM/MCP.
 `AtlasSDXLInpaint` gains an optional (default-on) `preserve_perspective` that
 appends camera-geometry guidance (continue the source viewpoint, facade angle,
 foreshortening, vanishing directions) and negatively conditions straight-on /
-orthographic facades — large facade removals no longer collapse to front
+orthographic facades, so large facade removals no longer collapse to front
 elevations. Appended as an optional widget; old workflows stay executable.
 
 ### Layered-export retopology (Nuke + Maya)
@@ -583,35 +592,35 @@ Ported from the portable-clone session's worklog
 on top of the trust tier: reject bad geometry, measure the remaining risk,
 replace missing coverage with a deliberate layer.
 
-- **`AtlasDepthOutlierMask` 🛡** — local median/MAD depth-outlier detection;
+- **`AtlasDepthOutlierMask` 🛡**: local median/MAD depth-outlier detection;
   hallucinated samples become explicit holes (new `outlier_mask` input on the
   relief nodes) instead of stretched frame-spanning shards.
-- **Quad-coherent relief** — `quad_coherence` rejects both triangles of a
+- **Quad-coherent relief**: `quad_coherence` rejects both triangles of a
   grid quad when either fails (no surviving stretched-diagonal wedges);
   node defaults ON, core default OFF for compatibility. The world-edge
   budget now uses the triangle's MEDIAN depth, so one bad corner can't
   inflate it.
-- **Mesh QA metrics as health flags** — `torn_fraction` /
+- **Mesh QA metrics as health flags**: `torn_fraction` /
   `stretch_ratio_p95` / `stretch_fraction_gt12` ride relief metadata into
   the scene-health engine (and therefore the 🩺 gate + exports):
-  `stretch_excessive` and `torn_excessive` (band-scoped — global torn
+  `stretch_excessive` and `torn_excessive` (band-scoped, since global torn
   fraction is deliberate on clipped bands) trigger card/ground/inpaint
   fallbacks instead of global threshold raises.
-- **Segmented SDXL disocclusion inpainting** — `AtlasSDXLInpaint` ✨ (native
+- **Segmented SDXL disocclusion inpainting**: `AtlasSDXLInpaint` ✨ (native
   InpaintModelConditioning path) + `AtlasInstanceMask` 🎭 +
   `AtlasSegmentedSDXLInpaint` 🏢 (SAM3-separated instances ∩ LaRI paint
-  matte, per-crop, stitched) — avoids the single-mega-structure failure,
+  matte, per-crop, stitched) avoids the single-mega-structure failure,
   live-verified on the D810 NYC plate.
-- **`tools/orbit_stress_test.py`** — the worklog's final acceptance item:
+- **`tools/orbit_stress_test.py`**, the worklog's final acceptance item:
   headless ±3°/±6° orbit scoring (hole% + stretched-coverage% per pose via
-  rasterized mesh coverage; geometry-only floor — the browser 🧭 Safe Zone
+  rasterized mesh coverage; geometry-only floor, and the browser 🧭 Safe Zone
   stays the exact oracle). Acceptance run on the NYC bird's-eye (63.7 m
   counted-storey scale): 0.96% holes at the recovered pose → 7.4% at ±6°,
   0.00% stretched coverage (quad coherence + outlier mask), torn 1.3%.
-- **Gravity-flip guard (`camera_looks_up` health flag)** — found BY the
+- **Gravity-flip guard (`camera_looks_up` health flag)**, found BY the
   acceptance run: on a D810 window shot, bright window-reflection haze at
   the frame bottom read as sky and flipped GeoCalib's gravity (solve looked
-  UP 39° on an obvious bird's-eye; cropping the haze fixed it — the
+  UP 39° on an obvious bird's-eye; cropping the haze fixed it; the
   original "ground plane completely off" report was scale AND this). An
   up-looking solve now warns through the scene-health engine, 🩺 gate and
   every export report.
@@ -624,23 +633,23 @@ response note): trust made legible. The motivating incident: a D810
 bird's-eye plate whose projection looked perfect while the metric scale was
 silently ~30× off on the assumed-eye-height tier.
 
-- **Scale trust, surfaced everywhere** — `core/scene_health.scale_health()`
+- **Scale trust, surfaced everywhere**: `core/scene_health.scale_health()`
   maps recorded scale provenance to measured / manual / assumed / unknown
   with an explicit **safe-to-export** verdict, stamped into every solve JSON
   and shown as an orange ⚠ warning in the viewport ℹ HUD, a banner in the
   ✅ Solve Gate report, a suffix on Nuke/Maya export summaries, and a
   leading "Scale trust" section in review `report.md`.
-- **Confidence vector** — `scale` and `depth` join the camera confidence
+- **Confidence vector**: `scale` and `depth` join the camera confidence
   key set (append-only; old solve JSONs load unchanged), populated from the
   winning scale tier's own consistency and the ground fit's confidence.
-- **`AtlasSceneHealthGate` 🩺** — the acknowledgement gate before export:
-  the `AtlasDebugReport` red-flag engine (now shared in
+- **`AtlasSceneHealthGate` 🩺**, the acknowledgement gate before export.
+  The `AtlasDebugReport` red-flag engine (now shared in
   `core/scene_health.evaluate_scene_health`, refactored behavior-identical
   under a frozen parity test) holds the solve on warn/fail until
   ✅ Acknowledge & Continue; clean scenes flow with zero clicks. The health
-  report is stamped indelibly into the solve — an acknowledged warning
+  report is stamped indelibly into the solve, so an acknowledged warning
   survives into every artifact ("override a warning, never lose it").
-- **`atlas_project.json`** — a schema-versioned reproducibility manifest
+- **`atlas_project.json`**: a schema-versioned reproducibility manifest
   (plate checksum, solve fingerprint, model provenance, seeds, scale +
   health verdicts, settings, artifact list) written by the review package
   and all standalone export nodes; `.nk`/`.py`/`.ma` artifacts carry an
@@ -654,13 +663,13 @@ silently ~30× off on the assumed-eye-height tier.
 Native camera-RAW input, replacing the Adobe Camera Raw round-trip for
 solve-bound plates.
 
-- **`AtlasLoadRAW` 📷** (Atlas Camera/Color, `[raw]` extra) — decodes
+- **`AtlasLoadRAW` 📷** (Atlas Camera/Color, `[raw]` extra) decodes
   NEF / CR2 / CR3 / RAF / ARW via rawpy/libraw into a solve/preview tensor
-  AND a scene-linear EXR sidecar (one demosaic, one undistort grid — the two
+  AND a scene-linear EXR sidecar (one demosaic, one undistort grid, so the two
   can never disagree geometrically). The sidecar rides an `ATLAS_PLATE_REF`
   into the Output Desk / OCIO chain exactly where OCIORead sits, honestly
   tagged `Linear Rec.709 (sRGB)` (not ACEScg).
-- **EXIF-driven intrinsics** — focal length + a new camera-body sensor
+- **EXIF-driven intrinsics**: focal length + a new camera-body sensor
   registry (`reference_data/camera_bodies.json`, ~34 Nikon/Canon/Fujifilm/
   Sony bodies) flow into both solve nodes via a new `raw_meta` link input;
   sensor-size falls back EXIF FocalPlane arithmetic → 35mm-equivalent ratio →
@@ -669,7 +678,7 @@ solve-bound plates.
   (new appended `focal_length_mm` widget / wired `raw_meta`): trusted focal
   replaces the predicted one across the whole metric cascade, gravity stays
   GeoCalib's; disagreement recorded, warned above 25%.
-- **Lensfun undistortion** (`[raw-lens]` extra) — EXIF lens model → lensfun
+- **Lensfun undistortion** (`[raw-lens]` extra): EXIF lens model → lensfun
   profile → geometry correction on both outputs; every profile miss is a
   report status, never an error (Fuji X commonly `no_profile_lens`).
 - 31 new tests (registry/fallback math, focal override, mocked node,
@@ -680,42 +689,42 @@ solve-bound plates.
   lensfun profile named in the report), and the Lanczos undistort remap
   overshoots at hard edges (outputs now clamped). Full run in ComfyUI:
   `camera_db` sensor, EXIF focal adopted, undistort applied, EXR written.
-- **`examples/showcase/atlas_raw_quickstart_workflow.json`** — run-verified
+- **`examples/showcase/atlas_raw_quickstart_workflow.json`**, a run-verified
   quickstart: AtlasLoadRAW → learned solve (raw_meta) → 📐 camera-height
   dial → relief → viewport + Output Desk plate attach. The dial matters:
   elevated plates still fall back to the assumed 1.6 m scale tier (metric
-  scale is orthogonal to focal — the documented single-image ambiguity).
+  scale is orthogonal to focal: the documented single-image ambiguity).
 
 ### Stale-code cleanout (2026-07-18)
 
 Verified pass over `ATLAS_PROJECT_WIDE_ENGINEERING_REPORT.md` (most of its P0
 findings turned out to describe the ComfyUI-install clone's local untracked
-files, not the repo — see `docs/dev/stale_code_report_response.md` for the
+files, not the repo; see `docs/dev/stale_code_report_response.md` for the
 claim-by-claim verification).
 
-- **`AtlasLoadImageSolveCamera` deprecated** — `DEPRECATED = True` +
+- **`AtlasLoadImageSolveCamera` deprecated**: `DEPRECATED = True` +
   "(Deprecated)" display name + log warning; still registered so saved
   workflows load. Use `AtlasSolveFromImage` / `AtlasLearnedSolveFromImage`.
   Removal planned for a later release.
-- **`atlas_camera/gaussian` removed** — the 3DGS `NotImplementedError`
+- **`atlas_camera/gaussian` removed**: the 3DGS `NotImplementedError`
   placeholder package (and its placeholder test). One `git revert` away if
   3DGS work ever starts.
 - **`tools/generate_atlas_canonical_workflows.py` committed as guarded
-  provenance** — the bootstrap that produced the canonical workflows; refuses
+  provenance**: the bootstrap that produced the canonical workflows; refuses
   to overwrite the (since hand-calibrated) outputs without `--force`.
-- **`docs/dev/archive/`** — seven fully-superseded plan/research docs moved
+- **`docs/dev/archive/`**: seven fully-superseded plan/research docs moved
   there with `ARCHIVED` headers; repo links updated.
 
-## 0.6.0 — `release/beta-0.6` (2026-07-16)
+## 0.6.0 · `release/beta-0.6` (2026-07-16)
 
 ### Camera moves, reworked for film
 
-- **🎥 Camera Path is now five one-click moves** — Orbit L/R, Pan L/R, Dolly
-  In — always 24 fps / 100 frames, eased, computed deterministically from the
+- **🎥 Camera Path is now five one-click moves**: Orbit L/R, Pan L/R, Dolly
+  In, always 24 fps / 100 frames, eased, computed deterministically from the
   RECOVERED camera and the mesh centre (frame 0 is the exact recovered eye).
   The manual keyframe editor and free-fly controller are gone; 📥 FBX camera
   import remains the DCC escape hatch.
-- **🔭 Playback lens slider** — a display-only focal multiplier for playback
+- **🔭 Playback lens slider**: a display-only focal multiplier for playback
   and ⏺ Bake (wide end auto-fits the projection geometry; the solve, the
   projection and the USD export keep the recovered lens).
 - Clean playback for screen recording: the 🎯 pivot gizmo, path markers and
@@ -723,51 +732,51 @@ claim-by-claim verification).
 
 ### New nodes + geometry
 
-- **`AtlasRollTrim` 🎚** — manual roll override about the view axis (levels a
+- **`AtlasRollTrim` 🎚**: manual roll override about the view axis (levels a
   GeoCalib gravity drift on AI plates; position/framing invariant).
-- **Export-only retopology on `AtlasExportReliefMesh`** — `retopo_method`
+- **Export-only retopology on `AtlasExportReliefMesh`**: `retopo_method`
   quad (pyinstantmeshes) / decimate (fast-simplification) / smooth (trimesh),
   with projection UVs regenerated by inverting the relief bake. The live
   viewport mesh and its deliberate tears are never touched.
-- **`AtlasInput.vlm_scope`** — VLM band planning without per-band SAM scoping
+- **`AtlasInput.vlm_scope`**: VLM band planning without per-band SAM scoping
   (a partial segment match could gut a band's geometry); VLM band boundaries
   are now validated (a degenerate zero-width band plan resets to the fixed
   splits).
 
 ### Showcase + tooling
 
-- **`examples/showcase/` — eleven run-verified workflows**, one per scene
+- **`examples/showcase/`: eleven run-verified workflows**, one per scene
   type, together exercising **every node in the pack**, including the two
   classic-DMP-angle answers on a real aerial photo (ground-anchored facades /
   X-ray predicted building bases) and a full findings report.
-- `tools/run_ui_workflow.py` — headless UI→API runner (rails flattened,
+- `tools/run_ui_workflow.py`: headless UI→API runner (rails flattened,
   gates openable) and `tools/generate_showcase_workflows.py`.
-- `docs/dev/archive/atlas_mcp_server_plan.md` — the Atlas v1 MCP server design.
+- `docs/dev/archive/atlas_mcp_server_plan.md`: the Atlas v1 MCP server design.
 - Experimental example set (`examples/experimental/`) now fully run-verified;
   CI (pytest matrix, ubuntu+windows, py3.11/3.12).
 
-## 0.5.0 — `release/beta-0.4` (2026-07-13)
+## 0.5.0 · `release/beta-0.4` (2026-07-13)
 
 ### Depth backends
 
 - **New default depth model on `main` is `Depth-Anything-V2-Metric-Outdoor`**
-  (Apache, transformers-only — **no extra install**), with V2-Indoor as its
+  (Apache, transformers-only, **no extra install**), with V2-Indoor as its
   interior twin. DA3 remains a selectable choice and stays the default on the
   `experimental-da3-default` branch. Picked per shot: outdoor → V2-Outdoor,
   interior → MoGe or V2-Indoor.
-- **MoGe-2 backend added** (`Ruicheng/moge-*`, MIT, `[moge]` extra) — the
+- **MoGe-2 backend added** (`Ruicheng/moge-*`, MIT, `[moge]` extra): the
   interior specialist (cleanest on enclosed/no-sky shots; culls sky, so weak
   outdoors). Exposed in every depth-model dropdown.
 
 ### 2.5D matte painting + scale
 
-- **New `AtlasBoundedBand`** 📏 — measures a foreground subject's own metric
+- **New `AtlasBoundedBand`** 📏: measures a foreground subject's own metric
   depth extent `W` (P5–P95) from its mask and emits ONE cutoff at
   `near + extrude_multiplier·W` (default 2×). Wire it into both clean-plate
   layers' `band_split`: the foreground relief is clipped at the cutoff (no
   runaway extrusion past the guessed distance) and the background card falls
-  back behind it — one measured boundary, both layers, no hand-tuned distances.
-- **New `AtlasScaleOverride`** 📐 — the artist's manual metric-scale dial.
+  back behind it: one measured boundary, both layers, no hand-tuned distances.
+- **New `AtlasScaleOverride`** 📐: the artist's manual metric-scale dial.
   Single-image scale is ambiguous (no ground plane / reference →
   `assumed_default` ~1.6 m, often ~10× off on elevated vistas). Since scale ∝
   camera height, this rescales a solve by a `scale` multiplier (10.0 = the
@@ -777,12 +786,12 @@ claim-by-claim verification).
 
 ### Viewport
 
-- **🕳 See-through backdrop** — under 📽 Project, pixels the projection discards
+- **🕳 See-through backdrop**: under 📽 Project, pixels the projection discards
   (matte silhouettes, tears, out-of-frame) now reveal the source photo instead
   of black, so an orbit/dolly reads as the plate rather than holes. The
   background plane is enlarged and its edge softly fades to the photo's average
   colour (no streaking). Toggle on the toolbar; on by default.
-- **📏 Band Box overlay** — a toolbar toggle that draws a translucent box around
+- **📏 Band Box overlay**: a toolbar toggle that draws a translucent box around
   each bounded foreground layer, its back face pinned to the cutoff plane (in
   the recovered camera's frame, so it's correct at any pitch), with a
   `cutoff X.X m` distance label. Multiple layers each get a distinct colour by
@@ -793,18 +802,18 @@ claim-by-claim verification).
 - **VLM assess: large plates now actually get assessed.** `AtlasAssessImage`
   base64'd the raw image, so a 9K/37 MB plate made lmstudio reject the request
   (`Invalid image detected`) and the assessment silently never ran. It now
-  downscales the long edge to 1280 (JPEG) before sending — no quality loss
-  (VLMs downsample internally), fixes the rejection.
+  downscales the long edge to 1280 (JPEG) before sending. No quality loss
+  (VLMs downsample internally), and it fixes the rejection.
 - **Maya layers export: projection now lines up.** The cm→m ×100 on imported
   band meshes was scaling about the import group's pivot (geometry centre),
-  leaving every band collapsed ~1 m onto the camera — the projection tiled/
+  leaving every band collapsed ~1 m onto the camera, so the projection tiled/
   garbled. It now scales about the world origin (verified by a headless Maya
   re-render). Bands land at true depth; the projection is exact.
 - **Sky heuristic self-disarms on interiors.** `detect_sky_mask`'s roughness
   term ate detailed ceilings / far walls above the (sky-free) horizon, punching
   large scattered holes (measured: a hangar lost 39 % of its back wall). It now
   detects the fragmented, non-top-anchored signature of a false positive and
-  excludes nothing — real outdoor sky (one top-anchored region) is untouched.
+  excludes nothing; real outdoor sky (one top-anchored region) is untouched.
 - **Nuke layers export: the render camera is animatable.** `RenderCam` uses
   translate/rotate + `rot_order XYZ` instead of `useMatrix` (which greys out
   the channels), so you can keyframe a camera move. Each band also gets a
@@ -817,43 +826,43 @@ claim-by-claim verification).
 
 - **Automatic SAM3 → `AtlasSemanticMask` fallback.** SAM3Segment (comfyui-rmbg)
   hard-requires `triton`, which doesn't exist on Mac(MPS)/CPU/AMD. `AtlasInput`
-  now routes sky/scope segmentation through a cascade — SAM3 (GPU) → SegFormer
-  (`AtlasSemanticMask`, CPU/MPS, no triton) → numpy heuristic — so non-CUDA
+  now routes sky/scope segmentation through a cascade: SAM3 (GPU) → SegFormer
+  (`AtlasSemanticMask`, CPU/MPS, no triton) → numpy heuristic, so non-CUDA
   users get a *learned* mask with no rewiring; the report states which fired.
 - Windows/CUDA users who want SAM3 install `triton-windows` (see INSTALL.md).
 
 ### Exports + workflows
 
 - **Interior hole fill on exported relief meshes** (`AtlasExportReliefMesh`,
-  `fill_interior_holes`, default **off**) — caps the small interior tear holes
+  `fill_interior_holes`, default **off**) caps the small interior tear holes
   (depth noise, fine structure, band-clip seams) that block retopo, booleans and
   3D-print prep in Maya / ZBrush / Blender. **Export-only**: the live 📽
   projection mesh keeps its deliberate silhouette tears, and the solve is never
-  touched. Only interior enclosed loops fill — never the outer frame — scoped by
+  touched. Only interior enclosed loops fill, never the outer frame, scoped by
   `max_hole_edges` (64) and/or a **band box** (`fill_depth_near_m` /
   `fill_depth_far_m`, transcribed off `AtlasBoundedBand`'s `cutoff_m`; 0 = off).
   Fills reuse existing vertices only, so projection-baked UVs stay valid. This
   is the **main-branch** answer to filling mesh holes without the experimental
-  LaRI / World-Tracing branch — purely topological, no learned model, no extra
+  LaRI / World-Tracing branch: purely topological, no learned model, no extra
   deps, no Docker. It repairs what's there; it does not *predict* geometry behind
   occluders (`AtlasPredictHiddenGeometry` still does that). The node now **reports
   what it did on the node itself** (how many holes filled, how many boundary loops
-  are still open, and the scope applied — a disappointing fill is usually a
+  are still open, and the scope applied; a disappointing fill is usually a
   too-tight scope) and emits a **`preview_solve`** carrying the mesh actually
   written: wire it into an Atlas Viewport to tune the fill without a Maya/Nuke
   round-trip. The fill stays invisible in the *live* projection mesh by design.
   Guarantees, measured against a real export: a fill never adds a back-facing
-  face, a zero-area sliver, or a non-manifold edge — an unfillable hole is left
+  face, a zero-area sliver, or a non-manifold edge. An unfillable hole is left
   open instead.
 - **`AtlasExportReliefMesh` exports the tuned solve mesh** (`use_solve_mesh`,
-  default on) — the viewport's `max_edge_factor` / `normal_edge_deg` / band
+  default on): the viewport's `max_edge_factor` / `normal_edge_deg` / band
   near-clip / sky-heuristic edge tuning now carries into the OBJ/GLB verbatim.
 - **Relief-mesh tear knobs exposed**: `max_edge_factor` (the dominant lever on
-  deep/interior scenes — raise to 40-80 to stop comb-tearing), a new
+  deep/interior scenes; raise to 40-80 to stop comb-tearing), a new
   normal-bend tear test (`normal_edge_deg`), and `sky_heuristic`, on
   `AtlasDeriveReliefMesh` / `AtlasInput` / the band-layer nodes.
 - **OCIO / ACEScg float handoff**: a third shipping workflow
-  (`atlas_input_ocio_quickstart_workflow.json`) — `OCIORead` (.exr) →
+  (`atlas_input_ocio_quickstart_workflow.json`): `OCIORead` (.exr) →
   `AtlasRegisterPlate` → `AtlasInput` → `AtlasAttachSourcePlate` → Nuke/Maya/
   USD exporters reading the original EXR at `ACEScg`. Quickstart gained Nuke/
   Maya/USD exports + `AtlasExportReliefMesh`.
@@ -866,22 +875,22 @@ claim-by-claim verification).
 
 ### Docs
 
-- **New guide** [`docs/CAMERA_MOVES.md`](docs/CAMERA_MOVES.md) — single photo →
+- **New guide** [`docs/CAMERA_MOVES.md`](docs/CAMERA_MOVES.md): single photo →
   Nuke dolly with X-ray hidden-geometry fill (the marketing pipeline), incl.
   per-scene depth/sky settings and a performance/RAM note.
-- **New** [`THIRD_PARTY.md`](THIRD_PARTY.md) — license-boundary map
+- **New** [`THIRD_PARTY.md`](THIRD_PARTY.md): license-boundary map
   (Atlas MIT; extras Apache/BSD/MIT; GPL inpaint graph-level; research tier).
 - Full doc audit: propagated the DA3→V2 default reversal to README + all guides,
   fixed stale node/workflow counts, repaired the broken THIRD_PARTY link.
 
-## 0.4.0 — `release/beta-0.3` (2026-07-10 → 2026-07-12)
+## 0.4.0 · `release/beta-0.3` (2026-07-10 → 2026-07-12)
 
 ### Public-release preparation (2026-07-12)
 
 - **Shipping catalog trimmed to two workflows**: the 🎬 quickstart
   (`atlas_input_quickstart_workflow.json`) and the 🏗 staged master
   (`atlas_camera_staged_master_workflow.json`). The ~37 other examples and
-  the sample assets (4K test photos, proxy OBJs) left the repo — assets are
+  the sample assets (4K test photos, proxy OBJs) left the repo. Assets are
   distributed as a separate download; recover any removed workflow with
   `git show 10e600b:examples/<name>.json`.
 - **Packaging fix**: wheels built on a dev machine no longer sweep in
@@ -899,31 +908,31 @@ claim-by-claim verification).
   saved per queue); sky-mask roughness via integral image; CUDA freed on
   model-cache eviction; `tools/export_depth_v2_onnx.py` (parity-gated ONNX
   export, fixed-resolution contract).
-- **Viewport orbit preserves the solve's roll** — on tilted-gravity solves
+- **Viewport orbit preserves the solve's roll**: on tilted-gravity solves
   (ridge shots measured at 28°) the first drag no longer visibly rotates the
   projected scene; 📷 Camera View still restores the exact recovered pose.
-- **New nodes**: `AtlasSemanticMask` 🧩 (SegFormer/ADE20K named-class masks —
+- **New nodes**: `AtlasSemanticMask` 🧩 (SegFormer/ADE20K named-class masks:
   promptless sky/floor/building mattes, exact-first class matching) and a
   lazy `fallback_mask` on `AtlasScopeMask` 🎯 (geometry-prior fallback tried
   before band-only on a SAM no-match).
 - **DMP seam doctrine in the quickstart**: the frontmost band keeps a clean
   cut matte; every band behind gets the generous edge-extend/skirt/outpaint
   smear; band priorities are farthest-highest so the layer behind wins the
-  seam — no more black band lines or striped seams. Staged master v10 aligns
+  seam, so no more black band lines or striped seams. Staged master v10 aligns
   its priorities to the same convention.
 
 
 ### Output Desk slimmed: look/LUT/exposure/gamma widgets removed
 
 - `AtlasViewportControls` dropped its `look`, `lut_path`, `exposure`, and
-  `gamma` widgets (artist-requested: redundant — exposure duplicated the
+  `gamma` widgets (artist-requested: redundant, since exposure duplicated the
   viewport's own ☀ control, gamma was a crude CSS-filter preview, look/LUT
-  were inert metadata — and they crowded the Output Desk). `display_trim`
+  were inert metadata, and they crowded the Output Desk). `display_trim`
   stays. The `ATLAS_OUTPUT_PROFILE` schema still carries all four fields at
   neutral defaults, and `profile()` still accepts them as kwargs, so
   downstream exporters and old API prompts are unaffected. Every shipped
   example carrying the node was re-saved in the same commit (widgets_values
-  is positional — see CLAUDE.md's append-only rule; this is the one
+  is positional (see CLAUDE.md's append-only rule); this is the one
   sanctioned removal, done with a coordinated workflow repair).
 
 ### Staged master workflow v3
@@ -942,12 +951,12 @@ claim-by-claim verification).
   "SAM SCOPE" group with one row per band: `SAM3Segment` (prompt per shot) →
   `GrowMask(16)` → `InvertMask` → `MaskComposite(add)` with the sky mask → a
   `scope_*` rail feeding that stage's `exclude_mask` inputs. The layer's mesh
-  and auto paint matte then keep only band ∩ segment — the same
+  and auto paint matte then keep only band ∩ segment, the same
   mask-membership pattern as the X-ray layer, built entirely from existing
   nodes. Un-bypass a row's `MaskComposite` to activate it; bypassed rows fall
   back to sky-only (plain band) behavior. Ships with the far row active
   (prompt "rock formations", matching the shipped plate) as the worked
-  example. Note a prompt that matches nothing excludes the whole band —
+  example. Note a prompt that matches nothing excludes the whole band:
   the layer builds zero mesh and the DCC exports skip it with a
   "no mesh geometry" note rather than erroring.
 
@@ -963,7 +972,7 @@ claim-by-claim verification).
 
 - New `AtlasRenderFix` node: repairs projected-render artifacts (torn
   silhouettes, stretched texels, hard tear-holes) in an IMAGE batch with
-  NVIDIA **Fixer** (the Difix3D+ successor, single-step diffusion) —
+  NVIDIA **Fixer** (the Difix3D+ successor, single-step diffusion),
   typically between the viewport's baked `path_frames` and a Video Combine
   node. Spike-verified on this repo's own baked orbits: ~1/3 of hard black
   tear pixels filled on a bare relief mesh, no temporal flicker added,
@@ -978,7 +987,7 @@ claim-by-claim verification).
   `docker/fixer/Dockerfile`; setup in INSTALL.md ("Experimental: Fixer
   Render Repair").
 
-### Exact-angle patches — the render-conditioned patch loop 🔬
+### Exact-angle patches: the render-conditioned patch loop 🔬
 
 - `AtlasBlockoutViewport` gained a 5th appended patch output, `patch_exact`:
   📐 Extract Angle's RAW measured orbit floats
@@ -989,7 +998,7 @@ claim-by-claim verification).
   the patch/target camera at the artist's exact orbit (the 45° named-view
   grid would misregister a projected frame). `flip_azimuth` is ignored for
   exact overrides.
-- Together with `AtlasRenderFix` this enables the training-free loop —
+- Together with `AtlasRenderFix` this enables the training-free loop:
   orbit → render passes → 📐 → Fixer-repair the projected view → project it
   back from the identical pose onto the same geometry (`reuse_scene`,
   unseen-masked). Example: `atlas_camera_render_fix_v2_loop_workflow.json`.
@@ -997,7 +1006,7 @@ claim-by-claim verification).
 ### Recovered camera now faces DCC-default forward (−Z)
 
 - Both solve paths canonicalize the (unobservable) yaw so the recovered
-  camera looks down world −Z — Maya/Nuke default forward. Imported Atlas
+  camera looks down world −Z, Maya/Nuke default forward. Imported Atlas
   scenes no longer need the manual −180° Y rotation a real Maya lineup
   exposed. Gravity/pitch are provably untouched by the flip.
 
@@ -1011,7 +1020,7 @@ claim-by-claim verification).
   v2: KJ Get/Set rails replace the shared-signal wiring, every stage has
   its own preview viewport (the stack up to that layer), and the shipped
   gate is closed. Also requires ComfyUI-KJNodes.
-- Viewports now restore from the server payload cache on creation — no
+- Viewports now restore from the server payload cache on creation, so no
   more empty grid after a page reload or a fully-cached re-queue.
 
 ### Solve-confirm gate
@@ -1019,28 +1028,28 @@ claim-by-claim verification).
 - `AtlasSolveGate` ✅: pause the expensive graph until the artist approves
   the camera solve. First Queue costs the solve + a cheap ungated preview;
   the node renders a solve summary (focal/FOV/height/pitch/confidence);
-  ✅ Approve Solve re-queues with a fingerprint-scoped approval — a new
+  ✅ Approve Solve re-queues with a fingerprint-scoped approval; a new
   photo or a re-solve re-arms the gate.
 
 ### Ground-anchored extrusion + roofline segmentation
 
 - `ground_anchor` on both wall-derive nodes: building footprints from
-  ray-through-base-pixel x the analytic ground plane — pure geometry, immune
+  ray-through-base-pixel x the analytic ground plane: pure geometry, immune
   to monocular depth's "banana" warp; anchored buildings sit on the ground
   and get banana-immune heights (ray x anchored plane). Four safety gates
   (wide base pool, contact band, occlusion poison-gate, and a contamination
   gate so the anchor refines but never teleports to street clutter).
-  Assumes visible ground contact — inpaint occluders off the ground line
+  Assumes visible ground contact, so inpaint occluders off the ground line
   for best accuracy. Measured on a real street photo: rooftop heights
   130-140m -> 27-30m on anchored far facades.
-- `roofline_split` (Towers & Spires): one plane per silhouette step — a row
+- `roofline_split` (Towers & Spires): one plane per silhouette step, so a row
   of buildings stops sharing a single rectangle that spans sky above its
   shorter members; each segment re-anchors on its own base.
 
 ### Skyline walls: distance modes + mask-scoped derives
 
 - `AtlasDeriveWalls` / `AtlasDeriveTowersSpires` gained `distance_modes`
-  (split each facing direction into one wall per depth mode — a city grid
+  (split each facing direction into one wall per depth mode, so a city grid
   stops collapsing into two slabs; measured 2 → 7 walls on a 6K skyline
   plate) and `exclude_mask` (scope wall/object fitting to a SAM segment per
   branch and merge; ground fit stays full-frame so branches share one
@@ -1054,7 +1063,7 @@ claim-by-claim verification).
   `docs/dev/fixer_finetune_data_plan.md` holds the multi-view data recipe
   and pre-registered success criteria. No training run yet.
 
-## 0.3.0 — `release/beta-0.2` (2026-07-08 → 2026-07-09)
+## 0.3.0 · `release/beta-0.2` (2026-07-08 → 2026-07-09)
 
 ### Depth Anything 3 becomes the default depth model
 
@@ -1066,7 +1075,7 @@ claim-by-claim verification).
   scenes; a usable mesh on a pitched shot where V2 produced zero faces.
 - V2 remains selectable everywhere; core-library defaults stay V2 so
   `[neural]`-only installs keep working. Install notes: INSTALL.md
-  ("Optional Depth Anything 3 Backend" — `--no-deps` required).
+  ("Optional Depth Anything 3 Backend", `--no-deps` required).
 
 ### Experimental hidden-geometry track (research-only) 🔬
 
@@ -1076,17 +1085,17 @@ claim-by-claim verification).
   clearing margin, and outputs a patched depth map + provenance masks +
   a per-run registration-quality report (rel MAD, gate at 0.2).
 - Two swappable backends, one contract: **LaRI** (regression, ~0.2 s;
-  upstream has no license — user-cloned only) and **World Tracing** r69l
+  upstream has no license, so user-cloned only) and **World Tracing** r69l
   (diffusion, ~20–34 s; HF-gated, CC BY-NC-ND 4.0). Backend choice is
-  per-scene — the shipped workflows encode the measured winner per scene.
+  per-scene; the shipped workflows encode the measured winner per scene.
 - v2 layer architecture after 6 measured calibration rounds: mask-membership
   X-ray layers (depth bands lost 76–97% of near-field predictions), a
   coherence pass (`fill_gaps` diffusion + gaussian `smooth_px`), and a
   separate paint matte so geometry stays continuous while see-through gaps
   discard. Final hole-in-paint: hangar 0.07, canyon 0.19, jungle 0.26.
 - Six calibrated hero workflows in `examples/`
-  (`atlas_camera_hidden_geometry_*_workflow.json`) — cathedral, space
-  hangar, jungle temple, canyon, steep ridge, wide valley — each with the
+  (`atlas_camera_hidden_geometry_*_workflow.json`): cathedral, space
+  hangar, jungle temple, canyon, steep ridge, wide valley, each with the
   full five-layer stack (base + feathered clean-plate composite, matted
   foreground, X-ray, sky dome on outdoor scenes, SAM foreground mattes
   where band edges step) and a dolly-in video bake. Seeds ship pinned.
@@ -1110,7 +1119,7 @@ claim-by-claim verification).
   THIRD_PARTY notices; three published companion guides (build-up, examples
   catalog, technical measurements).
 
-## 0.2.0-beta — `release/beta-0.1` (2026-07-06 → 2026-07-08)
+## 0.2.0-beta · `release/beta-0.1` (2026-07-06 → 2026-07-08)
 
 - **Complete DMP pipeline**: mesh `hole_mask` outputs, SAM-driven
   `AtlasSkyDomeLayer` with deterministic edge-extend + frame outpaint,
@@ -1119,7 +1128,7 @@ claim-by-claim verification).
   📐 Extract Angle with ExecutionBlocker branch pauses, and all-in-one
   layer exports: `AtlasExportNukeLayers` (.nk) + `AtlasExportMayaLayers`
   (native .ma, verified live in Maya 2027).
-- **MVP pivot**: v1 ships without diffusion patches — 🧭 Safe Zone measures
+- **MVP pivot**: v1 ships without diffusion patches. 🧭 Safe Zone measures
   the scene's hole-free camera envelope and clamps the orbit to it; patches
   became texture projectors onto existing geometry (`reuse_scene`);
   per-layer edge extend with invented-pixels mattes; beveled occlusion
@@ -1133,7 +1142,7 @@ claim-by-claim verification).
   movable point lights; projection shader sRGB encode fix; 2.5D
   inpaint-layer nodes (`AtlasDepthLayerMask`/`AtlasCleanPlateLayer`).
 
-## 0.1.x — pre-beta (2026-06 → 2026-07-05)
+## 0.1.x · pre-beta (2026-06 → 2026-07-05)
 
 - Core solve (vanishing-point + learned GeoCalib), tiered metric scale,
   geometry derivation strategies, the Three.js blockout viewport with 📽

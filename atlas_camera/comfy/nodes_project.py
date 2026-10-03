@@ -60,8 +60,24 @@ class AtlasProject:
             },
         }
 
-    RETURN_TYPES = ("ATLAS_PROJECT",)
-    RETURN_NAMES = ("project",)
+    # `project` stays slot 0 (saved links are by slot). The STRING outputs are
+    # APPENDED for custom pipes: wire the names into any node, `shot_dir` into
+    # path inputs, `shot_prefix` as a filename_prefix base for core Save nodes.
+    RETURN_TYPES = ("ATLAS_PROJECT", "STRING", "STRING", "STRING", "STRING", "STRING",
+                    "STRING")
+    RETURN_NAMES = ("project", "project_name", "shot", "colour_mode", "project_root",
+                    "shot_dir", "shot_prefix")
+    OUTPUT_TOOLTIPS = (
+        "The delivery project; exporters with a `project` socket route into its lanes.",
+        "Project name as entered.",
+        "Shot name as entered.",
+        "Colour mode label as chosen.",
+        "Resolved project root (absolute).",
+        "Absolute path of <root>/<project>/<shot>.",
+        "Shot folder relative to ComfyUI's output folder (forward slashes), for a "
+        "core Save node's filename_prefix, e.g. <shot_prefix>/plates/beauty; empty "
+        "when the project lives outside the output folder.",
+    )
     FUNCTION = "build"
     # Stamped by the central MENU_CATEGORY map at import; placeholder only.
     CATEGORY = "Atlas"
@@ -86,5 +102,21 @@ class AtlasProject:
 
                 logging.warning("atlas_project.json not updated: %s", exc)
                 return {"ui": {"text": [f"atlas_project.json not updated: {exc}"]},
-                        "result": (proj,)}
-        return (proj,)
+                        "result": _outputs(proj, colour_mode)}
+        return _outputs(proj, colour_mode)
+
+
+def _outputs(proj, colour_mode):
+    """The node's result tuple: the project, then its pipe-friendly strings."""
+    from pathlib import Path
+
+    shot_dir = Path(proj.shot_dir).resolve()
+    prefix = ""
+    out_root = _default_output_root()
+    if out_root:
+        try:
+            prefix = shot_dir.relative_to(Path(out_root).resolve()).as_posix()
+        except ValueError:
+            prefix = ""
+    return (proj, str(proj.project), str(proj.shot), str(colour_mode),
+            str(Path(proj.root).resolve()), str(shot_dir), prefix)

@@ -270,7 +270,7 @@ This replaced the earlier two flat tiers (`Atlas` / `Atlas/advanced`, 0.8.0), wh
 
 |---|---|---|---|
 
-| `AtlasProject` | project, shot, colour_mode; opt project_root, create_tree | project (ATLAS_PROJECT) | Sets the delivery project once: routes every export into `<root>/<project>/<shot>/...` and pins the colour lane, Standard (sRGB, 8-bit) or VFX (ACEScg, float). |
+| `AtlasProject` | project, shot, colour_mode; opt project_root, create_tree | project (ATLAS_PROJECT), project_name, shot, colour_mode, project_root, shot_dir, shot_prefix (STRING, appended for custom pipes) | Sets the delivery project once: routes every export into `<root>/<project>/<shot>/...` and pins the colour lane, Standard (sRGB, 8-bit) or VFX (ACEScg, float). The STRING outputs pipe the names and resolved paths into any node: `shot_dir` is absolute; `shot_prefix` is the shot folder relative to ComfyUI's output folder (empty outside it), a ready `filename_prefix` base for core Save nodes, e.g. `<shot_prefix>/plates/beauty`. |
 
 | `AtlasSolveFromImage` | image (IMAGE), ±focal_mm, ±sensor_mm, ±detect_vanishing_points, ±raw_meta (ATLAS_RAW_META) | ATLAS_SOLVE, report (STRING) | Geometric VP solve; accepts ComfyUI tensor. VP detection defaults ON. `raw_meta` (from `AtlasLoadRAW` 📷) supplies EXIF focal + measured sensor when the widgets are at defaults, finally implements the "0 = auto-detect or EXIF" tooltip |
 
