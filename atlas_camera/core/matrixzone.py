@@ -78,14 +78,22 @@ def _axis(cells, origin, ext_before, ext_after, overlap_min):
         b = ext_after if i == n - 1 else half
         need = max(need, a + size + b)
     zsize = int(math.ceil(need / ZONE_CLEAN)) * ZONE_CLEAN
+    total = ext_before + sum(c[1] for c in cells) + ext_after
     out = []
     for i, (start, size) in enumerate(cells):
         if i == 0:
             zstart = 0
         elif i == n - 1:
-            zstart = ext_before + sum(c[1] for c in cells) + ext_after - zsize
+            zstart = total - zsize
         else:
+            # Centred on its cell, then clamped into the render: on a tall/narrow
+            # grid the 64-clean zone can be much larger than its cell, and the
+            # centred start then fell off the canvas (3840x2160, 1x8, overlap
+            # 512: z10 at y=-3, z60 ending at 2179 > 2176). Clamping keeps the
+            # cell covered -- the zone only slides away from the edge it crossed.
+            # Not mirrored in atlas_bridge yet (TODOS.md).
             zstart = origin + start - (zsize - size) // 2
+            zstart = min(max(zstart, 0), max(total - zsize, 0))
         out.append((zstart, zsize))
     return out, zsize
 
@@ -119,6 +127,9 @@ def plan_still(plate_width: int, plate_height: int, grid: tuple[int, int], *,
             y, h = yz[row]
             px, pw = xcells[col]
             py, ph = ycells[row]
+            if x < 0 or y < 0 or x + w > rw or y + h > rh:   # planner invariant
+                raise RuntimeError(f"matrixZone planner bug: zone z{row}{col} renderRect "
+                                   f"{[x, y, w, h]} leaves the render {rw}x{rh}")
             zones.append({"id": f"z{row}{col}", "index": [col, row],
                           "plateRect": [L + px, T + py, pw, ph],
                           "renderRect": [x, y, w, h]})

@@ -50,7 +50,38 @@ def test_render_and_zones_are_clean_and_tile():
     assert cover.all()
 
 
-def test_serpentine_scan_keeps_neighbours_adjacent():
+def test_tall_grid_interior_zones_stay_inside_the_render():
+    # F-3 repro: centred interior zones fell off the canvas (z10 y=-3, z60 ended 2179 > 2176).
+    p = plan_still(3840, 2160, (1, 8), overlap_min=(512, 512))
+    rh = p["render"]["height"]
+    rects = {z["id"]: z["renderRect"] for z in p["zones"]}
+    assert rects["z10"][1] == 0
+    assert rects["z60"][1] + rects["z60"][3] <= rh
+
+
+_SWEEP_SIZES = [(7680, 4320), (7680, 4512), (3840, 2160), (1920, 1080), (1100, 620),
+                (1001, 777), (4096, 2160), (640, 480), (2160, 3840)]
+
+
+@pytest.mark.parametrize("size", _SWEEP_SIZES)
+def test_plan_sweep_every_zone_inside_and_every_cell_covered(size):
+    w, h = size
+    checked = 0
+    for cols in range(1, 9):
+        for rows in range(1, 9):
+            for ov in (0, 64, 128, 256, 512):
+                try:
+                    p = plan_still(w, h, (cols, rows), overlap_min=(ov, ov))
+                except ValueError:
+                    continue                      # grid too fine for this plate: refused, fine
+                rw, rh = p["render"]["width"], p["render"]["height"]
+                for z in p["zones"]:
+                    x, y, zw, zh = z["renderRect"]
+                    assert x >= 0 and y >= 0 and x + zw <= rw and y + zh <= rh, (size, cols, rows, ov, z)
+                    px, py, pw, ph = z["plateRect"]
+                    assert x <= px and y <= py and px + pw <= x + zw and py + ph <= y + zh
+                checked += 1
+    assert checked > 0
     p = plan_still(7680, 4320, (3, 2))
     assert p["scan"] == [0, 1, 2, 5, 4, 3]
 
