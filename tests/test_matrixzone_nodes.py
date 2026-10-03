@@ -136,3 +136,13 @@ def test_split_warns_when_batch_frames_are_dropped():
     assert "warning: image batch has 3 frames; only the first was split, 2 dropped" in report
     _, _, single = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
     assert "dropped" not in single
+
+
+def test_per_zone_clips_are_zero_copy_expanded_views():
+    clips, _, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 17)
+    for c in clips:
+        assert c.shape[0] == 17 and c.stride(0) == 0            # one frame's storage
+        assert torch.equal(c[0], c[-1])
+        # what downstream consumers do (VAE encode: movedim, *2-1, .to()) works
+        x = (c.movedim(-1, 1) * 2.0 - 1.0).to(torch.float16)
+        assert x.stride(0) != 0 and x.shape[0] == 17          # materialised, own storage

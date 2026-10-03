@@ -79,7 +79,12 @@ class AtlasMatrixZoneSplit:
         gw, gh = plan["global"]["size"]
         glob = torch.nn.functional.interpolate(chw, size=(gh, gw), mode="area").permute(0, 2, 3, 1)
         n = frames_8k1(max(1, int(clip_frames)))
-        clips = [glob.repeat(n, 1, 1, 1)]
+        # A still repeated n times is the same frame n times: expand() is a
+        # zero-copy view (batch stride 0) where repeat() materialised n copies
+        # (2x2 8K, 9 frames: ~3.8 GB of zone clips -> ~0.4 GB). Every consumer
+        # that moves it to the GPU or reshapes it gets a real tensor anyway;
+        # an IN-PLACE write into a clip would raise, which is the right failure.
+        clips = [glob.expand(n, -1, -1, -1)]
         zones = []
         for z in plan["zones"]:
             x, y, zw, zh = z["renderRect"]
@@ -89,7 +94,7 @@ class AtlasMatrixZoneSplit:
             frames, frame_of_zone = zones_as_frames([zt[0].cpu().numpy() for zt in zones], plan)
             clips.append(torch.from_numpy(frames).to(render.dtype))
         else:
-            clips.extend(zt.repeat(n, 1, 1, 1) for zt in zones)
+            clips.extend(zt.expand(n, -1, -1, -1) for zt in zones)
         handle = {"kind": "atlas_matrixzone", "plan": plan, "mode": mode,
                   "clip_frames": n, "frame_of_zone": frame_of_zone, "n_global": 1}
         zw, zh = plan["zone_size"]
