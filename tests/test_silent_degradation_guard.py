@@ -35,12 +35,36 @@ def _classes_calling_a_degrading_helper():
             tree = ast.parse(py.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover
             continue
+        # A node whose body was split into module-level helpers still degrades
+        # through them: follow module functions transitively, or a refactor
+        # silently drops the node from this guard (found 2026-10-03, T11).
+        funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+
+        def _direct(node):
+            return {n.func.id for n in ast.walk(node)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+
+        reaches: dict[str, set[str]] = {}
+
+        def _reach(name, seen=()):
+            if name in reaches:
+                return reaches[name]
+            got = set()
+            for c in _direct(funcs[name]):
+                if c in DEGRADING_HELPERS:
+                    got.add(c)
+                elif c in funcs and c not in seen:
+                    got |= _reach(c, (*seen, name))
+            reaches[name] = got
+            return got
+
         for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
-            called = {
-                n.func.id for n in ast.walk(cls)
-                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                and n.func.id in DEGRADING_HELPERS
-            }
+            called = set()
+            for c in _direct(cls):
+                if c in DEGRADING_HELPERS:
+                    called.add(c)
+                elif c in funcs:
+                    called |= _reach(c)
             if not called:
                 continue
             rt = None
