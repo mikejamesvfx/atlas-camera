@@ -98,9 +98,10 @@ plate, not photographed HDR. Same doctrine as the hidden side.
   silently clipped.
 - Clean-plate and sky layers carry past the frame edge, with a softened outpaint
   ring (ring ripple **5.70% → 0.22%**).
-- Three research workflows live under `research/`: the Pixal3D object, the HDR
-  still (matrixZone) and the HDR clip. They need ComfyUI V135+ and are not
-  shipping examples yet. Model files are listed in INSTALL.md.
+- Three research workflows for `research/` (the Pixal3D object, the HDR still
+  with matrixZone, and the HDR clip) land in a follow-up PR, kept apart so this
+  code change stays reviewable. They need ComfyUI V135+ and are not shipping
+  examples yet. Model files are listed in INSTALL.md.
 - LTX-2.5 and Pixal3D terms are now mapped in THIRD_PARTY.md.
 - New `[retopo]` extra (trimesh, scipy, fast-simplification) for
   `AtlasRetopologizeLayer`'s smooth and decimate methods, and
