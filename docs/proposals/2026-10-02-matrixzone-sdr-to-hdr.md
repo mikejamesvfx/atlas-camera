@@ -177,6 +177,14 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
   plate's own SDR->HDR curve is fitted from the pixel-aligned pair (ACEScg, log-binned,
   monotone) and applied to the vertex colours; live: 23,331 vertices, 184 above 1.0.
 
+## Comp may need paint fixes
+
+The conversion occasionally invents soft dark/coloured spots (~30 px) on flat sky
+that are not in the SDR. They are rare and a generic detector mostly flags real
+content (surf, JPEG blocking the model cleaned up), so the stitch does not remove
+them: expect comp to paint them out. Stripes inside SDR-clipped highlights (~14 %
+of the plate) are only touched by the local destripe and may also need a comp pass.
+
 ## Honesty in the output
 
 The EXR is tagged ACEScg and labelled in the report as a MODEL RECONSTRUCTION of
