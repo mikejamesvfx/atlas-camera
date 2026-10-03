@@ -61,6 +61,8 @@ def test_anchor_fixes_zone_exposure_guesses(monkeypatch, tmp_path):
 
 
 def test_stitch_refuses_a_mismatched_list(monkeypatch, tmp_path):
+    from atlas_camera.comfy import nodes_matrixzone
+    monkeypatch.setattr(nodes_matrixzone, "output_paths", lambda p: (tmp_path, "hdr_00001"))
     clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
     with pytest.raises(ValueError, match="clip"):
         AtlasMatrixZoneStitch().stitch(clips[:3], [handle])
@@ -114,7 +116,73 @@ def test_exr_write_failure_is_report_line_one(monkeypatch, tmp_path):
     assert report.splitlines()[0] == "EXR NOT WRITTEN: OSError: disk full"
 
 
+def _no_compute(monkeypatch):
+    """Make the core stitch fail the test if the node ever reaches it."""
+    from atlas_camera.core import matrixzone
+
+    def forbidden(*a, **k):
+        pytest.fail("core stitch ran before the output was validated")
+    monkeypatch.setattr(matrixzone, "stitch", forbidden)
+
+
+def test_prefix_refusal_raises_before_any_compute(monkeypatch, tmp_path):
+    # A bad filename_prefix is a graph error: it must surface NOW, not after a
+    # 14-30 min 8K stitch (the output path used to be resolved at the end).
+    from atlas_camera.comfy import nodes_matrixzone
+    clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
+
+    def refuse(prefix):
+        raise ValueError(f"output prefix {prefix!r} escapes the output directory")
+    monkeypatch.setattr(nodes_matrixzone, "output_paths", refuse)
+    _no_compute(monkeypatch)
+    with pytest.raises(ValueError, match="escapes the output directory"):
+        AtlasMatrixZoneStitch().stitch(clips, [handle], filename_prefix=["../../evil"])
+
+
+def test_unwritable_project_lane_skips_the_exr_but_returns_report(monkeypatch, tmp_path):
+    # An OSError creating the lane must not throw the run away: preview and
+    # report come back, the EXR is skipped and says so on report line 1.
+    class ReadOnlyProject:
+        def subdir(self, lane, create=False):
+            raise PermissionError(f"cannot create lane {lane!r}")
+
+    clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
+    res = AtlasMatrixZoneStitch().stitch(clips, [handle], project=[ReadOnlyProject()])
+    preview, exr_path, report = res["result"]
+    assert exr_path == ""
+    assert preview.shape == (1, H, W, 3)
+    assert report.splitlines()[0] == \
+        "EXR NOT WRITTEN: PermissionError: cannot create lane 'plates'"
+    assert "(not written)" in report
+
+
+def test_non_acescg_colorspace_is_refused_before_compute(monkeypatch, tmp_path):
+    from atlas_camera.comfy import nodes_matrixzone
+    monkeypatch.setattr(nodes_matrixzone, "output_paths", lambda p: (tmp_path, "hdr_00001"))
+    clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
+    _no_compute(monkeypatch)
+    with pytest.raises(ValueError, match=r"'Linear Rec\.709 \(sRGB\)'.*only produces ACEScg"):
+        AtlasMatrixZoneStitch().stitch(clips, [handle], colorspace=["Linear Rec.709 (sRGB)"])
+
+
+@pytest.mark.parametrize("name", ["ACEScg", "acescg", "lin_ap1", "ACES - ACEScg",
+                                  "LIN_AP1_SCENE"])
+def test_acescg_spellings_are_accepted(name):
+    from atlas_camera.comfy.nodes_matrixzone import _check_colorspace
+    _check_colorspace(name)                              # no raise
+
+
+def test_default_colorspace_still_stitches(monkeypatch, tmp_path):
+    from atlas_camera.comfy import nodes_matrixzone
+    monkeypatch.setattr(nodes_matrixzone, "output_paths", lambda p: (tmp_path, "hdr_00001"))
+    clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
+    res = AtlasMatrixZoneStitch().stitch(clips, [handle])  # colorspace widget default
+    assert "ACEScg half EXR" in res["result"][2]
+
+
 def test_zones_as_frames_refuses_a_short_sequence(monkeypatch, tmp_path):
+    from atlas_camera.comfy import nodes_matrixzone
+    monkeypatch.setattr(nodes_matrixzone, "output_paths", lambda p: (tmp_path, "hdr_00001"))
     clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "zones_as_frames", 9)
     short = [clips[0], clips[1][:2]]                     # 4 zones need frames 0..3
     with pytest.raises(ValueError, match=r"2 frame\(s\); the split's 4 zones need at least 4"):

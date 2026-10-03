@@ -154,9 +154,15 @@ class AtlasMatrixZoneStitch:
                 "split_px": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8,
                                      "tooltip": "Anchor low-pass scale in render px. "
                                                 "0 = the seam overlap."}),
+                # Kept for saved graphs; the stitch maths is fixed to ACEScg, so
+                # anything else is refused (see _check_colorspace).
                 "colorspace": ("STRING", {"default": "ACEScg",
-                                          "tooltip": "Tag for the EXR (LTX hdr_linear is "
-                                                     "ACEScg linear)."}),
+                                          "tooltip": "EXR colorspace tag. Must be ACEScg "
+                                                     "(aliases: lin_ap1, ACES - ACEScg, "
+                                                     "lin_ap1_scene): LTX hdr_linear is "
+                                                     "ACEScg and the stitch only produces "
+                                                     "ACEScg, so any other value is "
+                                                     "refused rather than mis-tagged."}),
                 "filename_prefix": ("STRING", {"default": "atlas/hdr_plate"}),
                 # APPENDED: destripe against the SDR input (wire the same plate
                 # the split got). The conversion adds faint vertical stripes in
@@ -195,6 +201,13 @@ class AtlasMatrixZoneStitch:
         handle = matrixzone[0] if isinstance(matrixzone, list) else matrixzone
         anchor, split_px = bool(_first(anchor)), int(_first(split_px))
         colorspace, filename_prefix = str(_first(colorspace)), str(_first(filename_prefix))
+        # Everything that can refuse or fail about the OUTPUT is settled here,
+        # before 14-30 min of 8K stitch work: a non-ACEScg tag and a prefix
+        # refusal raise now (graph errors); an unwritable lane is recorded and
+        # the EXR skipped, but preview + report still come back.
+        _check_colorspace(colorspace)
+        project = _first(project) if project is not None else None
+        out_folder, out_stem, out_note = _resolve_output(filename_prefix, project)
         plan, mode = handle["plan"], handle["mode"]
         clips = _stitch_clips(np, hdr, handle)
         glob = np.median(clips[0], axis=0) if anchor else None
@@ -215,10 +228,11 @@ class AtlasMatrixZoneStitch:
         params = _provenance_params(handle, rep, anchor=anchor, destripe=destripe,
                                     detail_from_sdr=detail_from_sdr, sdr_wired=sdr is not None,
                                     local_rep=local_rep, xfer_rep=xfer_rep, stripe_rep=stripe_rep)
-        project = _first(project) if project is not None else None
-        exr_path, exr_note = _write_plate_exr(np, plate, colorspace, filename_prefix,
-                                              params=params, step_mem=step_mem,
-                                              project=project)
+        if out_note:
+            exr_path, exr_note = "", out_note
+        else:
+            exr_path, exr_note = _write_plate_exr(np, plate, colorspace, out_folder, out_stem,
+                                                  params=params, step_mem=step_mem)
         step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path,
                                                   step_mem=step_mem)
 
@@ -234,6 +248,40 @@ class AtlasMatrixZoneStitch:
 def _first(v):
     """Element 0 of an INPUT_IS_LIST list, or the scalar itself."""
     return v[0] if isinstance(v, list) else v
+
+
+# Spellings of ACEScg the colorspace widget accepts (compared case-insensitively).
+_ACESCG_NAMES = frozenset({"acescg", "lin_ap1", "aces - acescg", "lin_ap1_scene"})
+
+
+def _check_colorspace(colorspace):
+    """Refuse a ``colorspace`` tag that is not ACEScg.
+
+    The widget is only the EXR's tag; the stitch maths (and LTX hdr_linear) is
+    ACEScg, so another value would label ACEScg pixels as something they are
+    not. Kept as a widget for saved graphs; refused rather than honoured.
+    """
+    if str(colorspace).strip().lower() not in _ACESCG_NAMES:
+        raise ValueError(
+            f"AtlasMatrixZoneStitch: colorspace {colorspace!r} is not supported; the "
+            "stitch only produces ACEScg (LTX hdr_linear is ACEScg linear). Set it to "
+            "'ACEScg' and convert downstream if another space is needed.")
+
+
+def _resolve_output(filename_prefix, project):
+    """``(folder, stem, note)`` for the EXR, resolved BEFORE any stitch work.
+
+    A prefix refusal (ValueError, or ComfyUI's own exception for a prefix that
+    leaves the output dir) propagates: it is a graph error. An OSError creating
+    the project lane / output folder does NOT raise: it comes back as the
+    "EXR NOT WRITTEN" note (report line 1) and the write is skipped.
+    """
+    try:
+        folder, stem = (project_output_paths(project, "plates", filename_prefix)
+                        if project is not None else output_paths(filename_prefix))
+    except OSError as exc:
+        return None, None, f"EXR NOT WRITTEN: {type(exc).__name__}: {exc}"
+    return folder, stem, ""
 
 
 def _stitch_clips(np, hdr, handle):
@@ -381,20 +429,18 @@ def _seam_worst_attr(step_mem):
                        "scored_on": "in-memory plate before half/DWAB encode"})
 
 
-def _write_plate_exr(np, plate, colorspace, filename_prefix, *, params=None, step_mem=None,
-                     project=None):
+def _write_plate_exr(np, plate, colorspace, folder, stem, *, params=None, step_mem=None):
     """``(exr_path, note)``; a failed write leaves the path empty and says why.
 
     Provenance attributes: ``atlas:content`` (the model-reconstruction label),
     ``atlas:matrixzone_params`` (JSON, see _provenance_params),
     ``atlas:seam_worst`` (JSON) and ``atlas:version``.
 
-    The output-path refusal (a prefix leaving the output dir) is NOT caught:
-    it is a graph error, not a write failure (F-1). The note becomes report
-    line 1 (F-6): a 14-minute run must not bury "no file" at the bottom.
+    ``(folder, stem)`` come from _resolve_output, called at the top of
+    stitch() so a prefix refusal (a graph error, F-1) fails before the
+    compute, not after it. The note becomes report line 1 (F-6): a 14-minute
+    run must not bury "no file" at the bottom.
     """
-    folder, stem = (project_output_paths(project, "plates", filename_prefix)
-                    if project is not None else output_paths(filename_prefix))
     exr_path, exr_note = str(folder / f"{stem}.exr"), ""
     try:
         from atlas_camera.plate.oiio_io import write_exr
