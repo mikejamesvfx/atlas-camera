@@ -25,6 +25,7 @@ from atlas_camera.comfy.node_helpers import (
     _require_torch,
     output_paths,
     project_output_paths,
+    release_output_name,
 )
 
 MODES = ("per_zone_clip", "zones_as_frames")
@@ -217,42 +218,45 @@ class AtlasMatrixZoneStitch:
         _check_colorspace(colorspace)
         project = _first(project) if project is not None else None
         out_folder, out_stem, out_note = _resolve_output(filename_prefix, project)
-        plan, mode = handle["plan"], handle["mode"]
-        clips = _stitch_clips(np, hdr, handle)
-        glob = np.median(clips[0], axis=0) if anchor else None
-        zones = _zone_images(np, clips, handle)
-        plate, rep = mz_stitch(zones, plan, global_hdr=None if glob is None else glob[..., :3],
-                               split_px=split_px or None)
-        n_zones = len(zones)
-        del clips, glob, zones          # free the zone medians before the 8K post-passes
-        destripe = bool(_first(destripe))
-        detail_from_sdr = bool(_first(detail_from_sdr))
-        sdr = _first(sdr_plate) if sdr_plate is not None else None
-        sdr_lin, s_disp, sdr_note = _sdr_reference(np, sdr, plate.shape)
-        plate, stripe_rep, local_rep, xfer_rep = _clean_plate(
-            plate, plan, sdr_lin, s_disp, destripe=destripe, detail_from_sdr=detail_from_sdr)
-        del s_disp                      # only sdr_lin is used past the clean-up passes
+        try:
+            plan, mode = handle["plan"], handle["mode"]
+            clips = _stitch_clips(np, hdr, handle)
+            glob = np.median(clips[0], axis=0) if anchor else None
+            zones = _zone_images(np, clips, handle)
+            plate, rep = mz_stitch(zones, plan, global_hdr=None if glob is None else glob[..., :3],
+                                   split_px=split_px or None)
+            n_zones = len(zones)
+            del clips, glob, zones          # free the zone medians before the 8K post-passes
+            destripe = bool(_first(destripe))
+            detail_from_sdr = bool(_first(detail_from_sdr))
+            sdr = _first(sdr_plate) if sdr_plate is not None else None
+            sdr_lin, s_disp, sdr_note = _sdr_reference(np, sdr, plate.shape)
+            plate, stripe_rep, local_rep, xfer_rep = _clean_plate(
+                plate, plan, sdr_lin, s_disp, destripe=destripe, detail_from_sdr=detail_from_sdr)
+            del s_disp                      # only sdr_lin is used past the clean-up passes
 
-        from atlas_camera.core.matrixzone import seam_step_test
-        step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
-        params = _provenance_params(handle, rep, anchor=anchor, destripe=destripe,
-                                    detail_from_sdr=detail_from_sdr, sdr_wired=sdr is not None,
-                                    local_rep=local_rep, xfer_rep=xfer_rep, stripe_rep=stripe_rep)
-        if out_note:
-            exr_path, exr_note = "", out_note
-        else:
-            exr_path, exr_note = _write_plate_exr(np, plate, colorspace, out_folder, out_stem,
-                                                  params=params, step_mem=step_mem)
-        step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path,
-                                                  step_mem=step_mem)
+            from atlas_camera.core.matrixzone import seam_step_test
+            step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
+            params = _provenance_params(handle, rep, anchor=anchor, destripe=destripe,
+                                        detail_from_sdr=detail_from_sdr, sdr_wired=sdr is not None,
+                                        local_rep=local_rep, xfer_rep=xfer_rep, stripe_rep=stripe_rep)
+            if out_note:
+                exr_path, exr_note = "", out_note
+            else:
+                exr_path, exr_note = _write_plate_exr(np, plate, colorspace, out_folder, out_stem,
+                                                      params=params, step_mem=step_mem)
+            step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path,
+                                                      step_mem=step_mem)
 
-        report = _stitch_report(
-            np, plate, rep, step, n_zones=n_zones, mode=mode, colorspace=colorspace,
-            exr_path=exr_path, exr_note=exr_note, delivered=delivered, diff_note=diff_note,
-            stripe_rep=stripe_rep, local_rep=local_rep, xfer_rep=xfer_rep,
-            destripe=destripe, detail_from_sdr=detail_from_sdr, sdr_note=sdr_note)
-        preview = torch.from_numpy(_tonemap_preview(np, plate).astype(np.float32))[None]
-        return {"ui": {"text": [report]}, "result": (preview, exr_path, report)}
+            report = _stitch_report(
+                np, plate, rep, step, n_zones=n_zones, mode=mode, colorspace=colorspace,
+                exr_path=exr_path, exr_note=exr_note, delivered=delivered, diff_note=diff_note,
+                stripe_rep=stripe_rep, local_rep=local_rep, xfer_rep=xfer_rep,
+                destripe=destripe, detail_from_sdr=detail_from_sdr, sdr_note=sdr_note)
+            preview = torch.from_numpy(_tonemap_preview(np, plate).astype(np.float32))[None]
+            return {"ui": {"text": [report]}, "result": (preview, exr_path, report)}
+        finally:
+            release_output_name(out_folder, out_stem)
 
 
 def _first(v):

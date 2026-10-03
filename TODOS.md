@@ -36,7 +36,7 @@
     - `AtlasProject.project_root` accepts any absolute path, so the new project-routed GLB/EXR writes from `AtlasSceneTo3D` and `AtlasMatrixZoneStitch` can land anywhere.
     - Decide both together with the exporters.
 
-- [ ] **Reserve export names atomically across processes (P3, human: S / CC: S).**
+- [x] **Reserve export names atomically across processes (P3, human: S / CC: S).** RESOLVED 2026-10-03: `node_helpers._claim_name` takes each `<stem>_NNNNN` with an `O_EXCL` placeholder, and the writers release it in a `finally` block.
   - What: `node_helpers._next_counter` picks `<stem>_NNNNN` by scanning the folder, with no reservation.
   - Why: two ComfyUI processes exporting the same shot and prefix at once can choose the same number and overwrite each other. A budget refusal could also unlink a GLB the other job wrote.
   - Fix idea: create the file with `O_EXCL`, retrying on collision. Only delete files this invocation created.

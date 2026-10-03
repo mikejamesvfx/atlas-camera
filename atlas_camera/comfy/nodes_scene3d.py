@@ -29,6 +29,7 @@ from atlas_camera.comfy.node_helpers import (
     output_paths,
     output_root,
     project_output_paths,
+    release_output_name,
 )
 
 
@@ -137,37 +138,40 @@ class AtlasSceneTo3D:
             folder, stem = project_output_paths(project, "geo", filename_prefix)
         else:
             folder, stem = output_paths(filename_prefix)
-        folder.mkdir(parents=True, exist_ok=True)
-        primary = _image_tensor_to_pil(source_image)
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            primary = _image_tensor_to_pil(source_image)
 
-        # Plan first, write second: the layers are built and every sidecar
-        # NAMED, the GLB is sized (exact JSON + headroom for the sidecar
-        # references), and an over-budget scene is refused before ANY file
-        # (EXR, PLY or GLB) exists. Only then are the sidecars written.
-        scene = collect_scene_layers(
-            solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem,
-            output_root=output_root())
-        budget, clamp_note = _effective_budget_mb(max_glb_mb)
-        _refuse_over_budget_before_writing(scene, budget)
-        sidecars = scene.write_sidecars()
-        layers, notes = scene.layers, list(scene.notes)
-        if clamp_note:
-            notes.append(clamp_note)
-        if write_exr and sidecars:
-            notes = [*notes, _sidecar_location_note(folder, project)]
-        glb_path = folder / f"{stem}.glb"
-        written, mb = _write_glb_within_budget(layers, glb_path, budget, folder, sidecars)
+            # Plan first, write second: the layers are built and every sidecar
+            # NAMED, the GLB is sized (exact JSON + headroom for the sidecar
+            # references), and an over-budget scene is refused before ANY file
+            # (EXR, PLY or GLB) exists. Only then are the sidecars written.
+            scene = collect_scene_layers(
+                solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem,
+                output_root=output_root())
+            budget, clamp_note = _effective_budget_mb(max_glb_mb)
+            _refuse_over_budget_before_writing(scene, budget)
+            sidecars = scene.write_sidecars()
+            layers, notes = scene.layers, list(scene.notes)
+            if clamp_note:
+                notes.append(clamp_note)
+            if write_exr and sidecars:
+                notes = [*notes, _sidecar_location_note(folder, project)]
+            glb_path = folder / f"{stem}.glb"
+            written, mb = _write_glb_within_budget(layers, glb_path, budget, folder, sidecars)
 
-        camera_info, model_info = _load3d_sockets(np, layers, intr, extr)
-        manifest_note = _scene_manifest(solve, folder, glb_path, sidecars, written)
-        model_3d, file_note = _file3d(str(glb_path))
-        if file_note:
-            notes = [*notes, file_note]
+            camera_info, model_info = _load3d_sockets(np, layers, intr, extr)
+            manifest_note = _scene_manifest(solve, folder, glb_path, sidecars, written)
+            model_3d, file_note = _file3d(str(glb_path))
+            if file_note:
+                notes = [*notes, file_note]
 
-        report = _export_report(glb_path, mb, written, sidecars, notes, write_exr,
-                                camera_info, intr, manifest_note)
-        return {"ui": {"text": [report]},
-                "result": (model_3d, model_info, camera_info, str(glb_path), report)}
+            report = _export_report(glb_path, mb, written, sidecars, notes, write_exr,
+                                    camera_info, intr, manifest_note)
+            return {"ui": {"text": [report]},
+                    "result": (model_3d, model_info, camera_info, str(glb_path), report)}
+        finally:
+            release_output_name(folder, stem)
 
 
 def _sidecar_location_note(folder, project) -> str:

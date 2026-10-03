@@ -1259,7 +1259,10 @@ def output_paths(filename_prefix: str):
     if folder_paths is not None:
         folder, filename, counter, _sub, _ = folder_paths.get_save_image_path(
             prefix, folder_paths.get_output_directory())
-        return Path(folder), f"{filename}_{counter:05}"
+        folder = Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder, _claim_name(folder, filename,
+                                   max(int(counter), _next_counter(folder, filename)))
 
     rel = Path(prefix)
     if rel.is_absolute() or rel.anchor:
@@ -1272,7 +1275,7 @@ def output_paths(filename_prefix: str):
     out = Path("output") / rel.parent
     out.mkdir(parents=True, exist_ok=True)
     stem = rel.name
-    return out, f"{stem}_{_next_counter(out, stem):05}"
+    return out, _claim_name(out, stem, _next_counter(out, stem))
 
 
 def _next_counter(folder, stem: str) -> int:
@@ -1287,6 +1290,47 @@ def _next_counter(folder, stem: str) -> int:
     pat = re.compile(rf"^{re.escape(stem)}_(\d{{5,}})(?:[._]|$)", flags)
     nums = [int(m.group(1)) for f in folder.iterdir() if (m := pat.match(f.name))]
     return 1 + max(nums, default=0)
+
+
+#: Placeholder that claims ``<stem>`` while its files are being written.
+RESERVED_SUFFIX = ".reserved"
+
+
+def _claim_name(folder, base: str, n: int) -> str:
+    """Claim ``<base>_<n>`` (or the next free number) atomically.
+
+    The counter is chosen by scanning the folder, so two processes exporting
+    the same prefix at once could pick the same number and overwrite each
+    other's files. An ``O_EXCL`` placeholder makes the choice exclusive: the
+    loser moves on to the next number. The writer removes it with
+    :func:`release_output_name` once its files exist; a placeholder left by a
+    crash only makes the counter skip that number.
+    """
+    import os
+
+    n = max(1, int(n))
+    while True:
+        name = f"{base}_{n:05}"
+        try:
+            fd = os.open(os.path.join(str(folder), name + RESERVED_SUFFIX),
+                         os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            n += 1
+            continue
+        os.close(fd)
+        return name
+
+
+def release_output_name(folder, stem) -> None:
+    """Drop the placeholder :func:`_claim_name` created (no-op if absent)."""
+    from pathlib import Path
+
+    if folder is None or not stem:
+        return
+    try:
+        (Path(folder) / f"{stem}{RESERVED_SUFFIX}").unlink()
+    except FileNotFoundError:
+        pass
 
 
 def output_root():
@@ -1311,4 +1355,4 @@ def project_output_paths(project, lane: str, filename_prefix: str):
 
     folder = Path(project.subdir(lane, create=True))
     name = sanitize_name(Path(str(filename_prefix or "atlas").replace("\\", "/")).name) or "atlas"
-    return folder, f"{name}_{_next_counter(folder, name):05}"
+    return folder, _claim_name(folder, name, _next_counter(folder, name))

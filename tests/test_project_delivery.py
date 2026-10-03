@@ -162,3 +162,13 @@ def test_a_project_lane_inside_output_also_survives_a_save3d_copy(tmp_path, monk
     shutil.copy(glb, saved)
     refs = _sidecar_refs(saved)
     assert refs and all((tmp_path / r["exr_output_path"]).is_file() for r in refs)
+
+
+def test_exports_leave_no_reservation_placeholders(tmp_path):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("OpenImageIO")
+    from atlas_camera.comfy import nodes_scene3d
+
+    proj = _project(tmp_path)
+    nodes_scene3d.AtlasSceneTo3D().export(_solve(), torch.rand(1, H, W, 3), project=proj)
+    assert not list(proj.subdir("geo").glob("*.reserved"))

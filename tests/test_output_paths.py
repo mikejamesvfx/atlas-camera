@@ -81,3 +81,30 @@ def test_counter_is_case_insensitive_on_windows(tmp_path):
 
     (tmp_path / "hero_00001.glb").write_bytes(b"")
     assert _next_counter(tmp_path, "Hero") == 2
+
+
+def test_a_name_is_claimed_atomically_and_released(tmp_path):
+    """Two exports choosing the same counter at the same moment (two ComfyUI
+    processes, one shot) must not share a name: the claim is an O_EXCL
+    placeholder, the loser takes the next number."""
+    from atlas_camera.comfy.node_helpers import (
+        RESERVED_SUFFIX,
+        _claim_name,
+        release_output_name,
+    )
+
+    a = _claim_name(tmp_path, "scene", 1)
+    b = _claim_name(tmp_path, "scene", 1)         # same scan result, still distinct
+    assert (a, b) == ("scene_00001", "scene_00002")
+    assert (tmp_path / f"{a}{RESERVED_SUFFIX}").is_file()
+    release_output_name(tmp_path, a)
+    release_output_name(tmp_path, a)              # idempotent
+    assert not (tmp_path / f"{a}{RESERVED_SUFFIX}").exists()
+
+
+def test_a_stale_placeholder_only_skips_its_number(outside_comfy):
+    out = outside_comfy / "output" / "atlas"
+    out.mkdir(parents=True)
+    (out / "scene_00001.reserved").write_bytes(b"")   # left by a crash
+    folder, stem = output_paths("atlas/scene")
+    assert stem == "scene_00002"
