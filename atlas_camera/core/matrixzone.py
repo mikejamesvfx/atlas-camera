@@ -320,6 +320,11 @@ def stitch(zone_hdr: list[Any], plan: dict[str, Any], *, global_hdr: Any = None,
     split = int(split_px or max(plan["overlap"]["px"]) or 64)
     glog = None
     if global_hdr is not None:
+        g = np.asarray(global_hdr)
+        bad = int(g.size - np.isfinite(g).sum())
+        if bad:
+            raise ValueError(f"global pass has {bad} non-finite value(s): refusing to anchor "
+                             "every zone to it -- re-run the global clip or turn anchor off")
         glog = to_log2(resize_bilinear(np.asarray(global_hdr, dtype=np.float32), rh, rw))
 
     for z, img in zip(plan["zones"], zone_hdr):

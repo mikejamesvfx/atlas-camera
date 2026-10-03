@@ -371,3 +371,14 @@ def test_ap1_luma_of_rec709_matches_convert_then_weigh():
     direct = (rec709_linear_to_acescg(rgb) * np.asarray(LUMA_AP1, np.float32)).sum(-1)
     np.testing.assert_allclose((rgb * _luma_ap1_of_rec709(np)).sum(-1), direct, rtol=1e-5)
     assert sum(LUMA_AP1) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_stitch_refuses_a_non_finite_global_pass():
+    plate = _ramp_plate(1100, 620)
+    p = plan_still(1100, 620, (2, 2))
+    zones = crop_zones(pad_to_render(plate, p), p)
+    glob = pad_to_render(plate, p)[::4, ::4].copy()
+    glob[3, 7, 1] = np.inf
+    glob[9, 2, 0] = np.nan
+    with pytest.raises(ValueError, match="global pass has 2 non-finite"):
+        stitch(zones, p, global_hdr=glob)

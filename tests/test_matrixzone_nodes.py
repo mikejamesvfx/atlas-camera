@@ -99,3 +99,40 @@ def test_split_uses_core_frames_8k1():
     for n in (1, 2, 8, 9, 10, 17, 97):
         clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", n)
         assert handle["clip_frames"] == frames_8k1(n) == len(clips[0])
+
+
+def test_exr_write_failure_is_report_line_one(monkeypatch, tmp_path):
+    from atlas_camera.plate import oiio_io
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(oiio_io, "write_exr", boom)
+    _, _, (_, exr_path, report) = _run("per_zone_clip", monkeypatch, tmp_path)
+    assert exr_path == ""
+    assert report.splitlines()[0] == "EXR NOT WRITTEN: OSError: disk full"
+
+
+def test_zones_as_frames_refuses_a_short_sequence(monkeypatch, tmp_path):
+    clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "zones_as_frames", 9)
+    short = [clips[0], clips[1][:2]]                     # 4 zones need frames 0..3
+    with pytest.raises(ValueError, match=r"2 frame\(s\); the split's 4 zones need at least 4"):
+        AtlasMatrixZoneStitch().stitch(short, [handle])
+
+
+def test_sdr_resample_is_reported_with_sizes(monkeypatch, tmp_path):
+    from atlas_camera.comfy import nodes_matrixzone
+    monkeypatch.setattr(nodes_matrixzone, "output_paths", lambda p: (tmp_path, "hdr_00001"))
+    clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
+    small = torch.nn.functional.interpolate(_plate().permute(0, 3, 1, 2), size=(310, 550),
+                                            mode="area").permute(0, 2, 3, 1)
+    res = AtlasMatrixZoneStitch().stitch(clips, [handle], sdr_plate=[small])
+    report = res["result"][2]
+    assert "warning: sdr_plate is 550x310, the stitched plate 1100x620: SDR resampled" in report
+
+
+def test_split_warns_when_batch_frames_are_dropped():
+    batch = torch.cat([_plate(), _plate() * 0.5, _plate() * 0.25])
+    _, _, report = AtlasMatrixZoneSplit().split(batch, 2, 2, 64, "per_zone_clip", 9)
+    assert "warning: image batch has 3 frames; only the first was split, 2 dropped" in report
+    _, _, single = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
+    assert "dropped" not in single
