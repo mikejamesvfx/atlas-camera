@@ -405,15 +405,16 @@ def _seam_step_report_lines(step, delivered):
     w = step["worst"]
     lines = [
         f"seam step test ({'delivered EXR' if delivered is not None else 'in-memory plate'}, "
-        f"{step['strip_px']} px strips, "
+        f"{step['strip_px']} px strips, worst of ~{step.get('window_px', 256)} px windows, "
         + ("SDR-controlled" if step["sdr_controlled"] else
            "NOT SDR-controlled - wire sdr_plate, structure on a line scores too")
         + f", pass <= {step['ratio_max']:.1f}x random-line p{step['baseline_percentile']} "
         f"[{', '.join(base)} stops]): "
         + ("PASS" if step["pass"] else
            f"{len(step['flagged'])} seam(s) FLAGGED: {', '.join(step['flagged'])}")
-        + (f"; worst {w['seam']} at {w['at_px']} px, {w['step_stops']:.3f} stops = "
-           f"{w['ratio']:.2f}x" if w else "")]
+        + (f"; worst {w['seam']} at {w['at_px']} px (window {w.get('worst_window')}), "
+           f"{w['step_stops']:.3f} stops = {w['ratio']:.2f}x, window p95 "
+           f"{w.get('window_p95_stops') or 0.0:.3f}" if w else "")]
     if step["flagged"]:
         lines.append("  a flagged seam is either a tonal seam or real structure that "
                      "happens to sit on the line -- look at it before trusting the plate")

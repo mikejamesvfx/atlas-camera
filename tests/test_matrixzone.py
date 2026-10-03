@@ -217,6 +217,32 @@ def test_seam_step_test_flags_a_tonal_seam_and_names_it():
     assert rep["worst"]["at_px"] == 550 and rep["worst"]["ratio"] > 1.5
 
 
+def test_seam_step_test_opposite_sign_halves_do_not_cancel():
+    # OV-1: +2 stops on the upper half of the seam, -2 on the lower half. A
+    # whole-line |median| is ~0 (used to PASS 0.00x); the windowed score fails it.
+    sdr = _textured(1100, 620)
+    p = plan_still(1100, 620, (2, 1))
+    hdr, _ = stitch(crop_zones(pad_to_render(sdr, p), p), p)
+    seamed = hdr.copy()
+    seamed[:310, 550:] *= 4.0
+    seamed[310:, 550:] *= 0.25
+    for kw in ({"sdr_linear": sdr}, {}):
+        rep = seam_step_test(seamed, p, **kw)
+        assert rep["pass"] is False and rep["flagged"] == ["z00|z01"], kw
+        s = rep["seams"][0]
+        assert s["windows"] == 2 and s["step_stops"] > 1.5 and s["window_p95_stops"] > 1.5
+    # a uniform clean stitch still passes with the same windowing
+    assert seam_step_test(hdr, p, sdr_linear=sdr)["pass"] is True
+
+
+def test_seam_windows_cover_the_segment():
+    from atlas_camera.core.matrixzone import _windows
+    assert _windows(0, 620) == [(0, 310), (310, 620)]
+    assert _windows(10, 100) == [(10, 100)]
+    w = _windows(16, 2176)
+    assert w[0][0] == 16 and w[-1][1] == 2176 and all(a[1] == b[0] for a, b in zip(w, w[1:]))
+
+
 def test_seam_step_test_has_no_verdict_without_seams():
     p = plan_still(1024, 576, (1, 1))
     rep = seam_step_test(np.ones((576, 1024, 3), np.float32), p)

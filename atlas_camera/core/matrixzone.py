@@ -628,6 +628,16 @@ def seam_metrics(zone_logs: list[Any], plan: dict[str, Any]) -> list[dict[str, A
 SEAM_STRIP_PX = 48
 SEAM_STEP_RATIO_MAX = 1.5
 SEAM_BASELINE_PERCENTILE = 90
+#: Seam segments are scored in windows of about this many px along the line, so
+#: a seam bright on one half and dark on the other cannot cancel to zero.
+SEAM_WINDOW_PX = 256
+
+
+def _windows(s0: int, s1: int, window: int = SEAM_WINDOW_PX) -> list[tuple[int, int]]:
+    """``[s0, s1)`` split into ``round(len / window)`` (>= 1) near-equal windows."""
+    n = max(1, int(round((s1 - s0) / float(max(1, window)))))
+    edges = [s0 + int(round(i * (s1 - s0) / n)) for i in range(n + 1)]
+    return [(a, b) for a, b in zip(edges[:-1], edges[1:]) if b > a]
 
 
 def _log2_lum(np, a):
@@ -639,24 +649,40 @@ def _log2_lum(np, a):
 
 def seam_step_test(plate: Any, plan: dict[str, Any], *, sdr_linear: Any = None,
                    strip_px: int = SEAM_STRIP_PX, ratio_max: float = SEAM_STEP_RATIO_MAX,
-                   n_random: int = 64, seed: int = 0) -> dict[str, Any]:
+                   n_random: int = 64, seed: int = 0,
+                   window_px: int = SEAM_WINDOW_PX) -> dict[str, Any]:
     """The gate a viewer actually sees, on the STITCHED plate.
 
     Per interior seam segment: the per-row (per-column) log2-luminance step
     between the means of the ``strip_px`` strips either side. With
     ``sdr_linear`` (the linearised plate the split was given, same size) the
-    SDR's own step on the same line is subtracted first and the score is
-    |median(step_hdr - step_sdr)|: the SDR has the same structure and no
-    seams, so structure cancels and a tonal seam (a constant offset) remains.
-    Without it the score is median |step_hdr| and structure on the line scores
-    too; the report says so. The baseline is the p90 of the same score on
-    random lines of that orientation and length away from the seams.
+    SDR's own step on the same line is subtracted first: the SDR has the same
+    structure and no seams, so structure cancels and a tonal seam (an offset)
+    remains. Without it structure on the line scores too; the report says so.
 
-    Against a MEDIAN baseline the plain step flagged 11 of 24 segments of the
-    8K machine plate (4x4) -- structure, not seams -- hence the p90. At p90:
-    plain flags 2, SDR-controlled 3 (worst 2.34x), every one at or next to the
-    x=5760 / y=3384 junction already judged visually clean. A ratio above
-    ``ratio_max`` FLAGS a seam for a look -- never refused, never blended away.
+    The segment is scored in WINDOWS of ~``window_px`` along the line, never
+    as one median: a seam +2 stops on its upper half and -2 on its lower half
+    has a whole-line median of 0 and used to PASS (found by the 2026-10-03
+    outside review). Per window the score is ``|median(step_hdr - step_sdr)|``
+    (SDR-controlled) or ``median |step_hdr|`` (plain); the segment's score is
+    its WORST window, and the window p95 is reported beside it::
+
+        zone A | zone B            one vertical seam segment, s0..s1
+               |
+        -------+------- s0   w0 :  |median(d[w0])|   <- d = step_hdr - step_sdr
+         48|48 |                   per row, strips of strip_px either side
+        -------+-------      w1 :  |median(d[w1])|
+               |               ...                    windows ~window_px long
+        -------+------- s1   wN :  |median(d[wN])|
+                             score = max_w, also p95_w
+
+    The baseline is the p90 of the SAME score -- same length, same windows,
+    worst window -- on random lines of that orientation away from the seams,
+    so a long seam is not flagged just for having more windows to be unlucky
+    in. Against a MEDIAN baseline the plain step flagged 11 of 24 segments of
+    the 8K machine plate (4x4) -- structure, not seams -- hence the p90 (those
+    numbers predate windowing). A ratio above ``ratio_max`` FLAGS a seam for a
+    look -- never refused, never blended away.
     """
     np = _require_numpy()
     lg = _log2_lum(np, plate)
@@ -676,13 +702,21 @@ def seam_step_test(plate: Any, plan: dict[str, Any], *, sdr_linear: Any = None,
         return a[pos - k:pos, s0:s1].mean(0) - a[pos:pos + k, s0:s1].mean(0)
 
     def score(orient, pos, s0, s1):
+        """``(worst window, window p95, worst window span)`` or None."""
         n = pw if orient == "v" else ph
         if pos - k < 0 or pos + k > n or s1 <= s0:
             return None
         d = diff(lg, orient, pos, s0, s1)
         if ls is not None:
-            return float(abs(np.median(d - diff(ls, orient, pos, s0, s1))))
-        return float(np.median(np.abs(d)))
+            d = d - diff(ls, orient, pos, s0, s1)
+        vals, spans = [], []
+        for a, b in _windows(s0, s1, window_px):
+            w = d[a - s0:b - s0]
+            vals.append(float(abs(np.median(w))) if ls is not None
+                        else float(np.median(np.abs(w))))
+            spans.append((a, b))
+        i = int(np.argmax(vals))
+        return vals[i], float(np.percentile(vals, 95)), spans[i]
 
     segs = []
     for (c, r), z in idx.items():
@@ -708,23 +742,28 @@ def seam_step_test(plate: Any, plan: dict[str, Any], *, sdr_linear: Any = None,
             s0 = int(rng.integers(0, max(1, extent - length + 1)))
             v = score(orient, pos, s0, min(extent, s0 + length))
             if v is not None:
-                vals.append(v)
+                vals.append(v[0])
         return float(np.percentile(vals, SEAM_BASELINE_PERCENTILE)) if vals else None
 
     seams, base_cache = [], {}
     for orient, name, pos, s0, s1 in segs:
-        step = score(orient, pos, s0, s1)
+        sc = score(orient, pos, s0, s1)
+        step, p95, span = (None, None, None) if sc is None else sc
         key = (orient, s1 - s0)
         if key not in base_cache:
             base_cache[key] = baseline(orient, s1 - s0)
         base = base_cache[key]
         ratio = None if step is None or base is None else step / max(base, 1e-4)
         seams.append({"seam": name, "orientation": orient, "at_px": int(pos),
-                      "step_stops": step, "baseline_stops": base, "ratio": ratio,
+                      "step_stops": step, "window_p95_stops": p95,
+                      "windows": len(_windows(s0, s1, window_px)),
+                      "worst_window": None if span is None else [int(span[0]), int(span[1])],
+                      "baseline_stops": base, "ratio": ratio,
                       "flagged": ratio is not None and ratio > ratio_max})
     scored = [s for s in seams if s["ratio"] is not None]
     worst = max(scored, key=lambda s: s["ratio"]) if scored else None
     return {"strip_px": k, "ratio_max": float(ratio_max), "sdr_controlled": ls is not None,
+            "window_px": int(window_px),
             "baseline_percentile": SEAM_BASELINE_PERCENTILE, "seams": seams, "worst": worst,
             "flagged": [s["seam"] for s in seams if s["flagged"]],
             "pass": (not any(s["flagged"] for s in seams)) if scored else None}
