@@ -69,8 +69,11 @@ def _file3d(path: str) -> tuple[Any, str]:
 #: Default GLB size budget and the size above which the report warns (MB).
 GLB_BUDGET_MB = 1024
 GLB_WARN_MB = 200
-#: A GLB stores its length as uint32: the budget widget cannot exceed it.
-GLB_MAX_BUDGET_MB = 4095
+#: The budget widget's max. It stays 16384 (its original range) so saved
+#: graphs above the format limit keep validating; the runtime clamps instead.
+GLB_BUDGET_WIDGET_MAX_MB = 16384
+#: A GLB stores its length as uint32: budgets above this are clamped (MB).
+GLB_FORMAT_MAX_MB = 0xFFFFFFFF // 1_000_000
 
 
 class AtlasSceneTo3D:
@@ -109,10 +112,11 @@ class AtlasSceneTo3D:
                 # 6 layers = ~235 MB); past this the GLB is refused, not handed
                 # to a browser viewer that cannot load it.
                 "max_glb_mb": ("INT", {
-                    "default": GLB_BUDGET_MB, "min": 0, "max": GLB_MAX_BUDGET_MB, "step": 64,
+                    "default": GLB_BUDGET_MB, "min": 0, "max": GLB_BUDGET_WIDGET_MAX_MB,
+                    "step": 64,
                     "tooltip": "Refuse a GLB larger than this (MB), naming its size, "
-                               "BEFORE it is built. 0 = no budget (the GLB format's "
-                               "4 GiB limit still applies)."}),
+                               "BEFORE any file is written. 0 = no budget. Values past "
+                               "the GLB format's 4 GiB limit are clamped to it."}),
                 # APPENDED: delivery project. Save 3D copies only the GLB, so its
                 # EXR/PLY sidecars are left behind; with a project the GLB, every
                 # sidecar and the manifest land TOGETHER in the shot's geo lane.
@@ -126,7 +130,7 @@ class AtlasSceneTo3D:
     def export(self, solve, source_image, write_exr=True, filename_prefix="atlas/scene",
                max_glb_mb=GLB_BUDGET_MB, project=None):
         np = _require_numpy()
-        from atlas_camera.exporters.scene_glb import build_scene_layers
+        from atlas_camera.exporters.scene_glb import collect_scene_layers
 
         intr, extr = _usable_camera(solve)
         if project is not None:
@@ -136,13 +140,23 @@ class AtlasSceneTo3D:
         folder.mkdir(parents=True, exist_ok=True)
         primary = _image_tensor_to_pil(source_image)
 
-        layers, sidecars, notes = build_scene_layers(
+        # Plan first, write second: the layers are built and every sidecar
+        # NAMED, the GLB is sized (exact JSON + headroom for the sidecar
+        # references), and an over-budget scene is refused before ANY file
+        # (EXR, PLY or GLB) exists. Only then are the sidecars written.
+        scene = collect_scene_layers(
             solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem,
             output_root=output_root())
+        budget, clamp_note = _effective_budget_mb(max_glb_mb)
+        _refuse_over_budget_before_writing(scene, budget)
+        sidecars = scene.write_sidecars()
+        layers, notes = scene.layers, list(scene.notes)
+        if clamp_note:
+            notes.append(clamp_note)
         if write_exr and sidecars:
             notes = [*notes, _sidecar_location_note(folder, project)]
         glb_path = folder / f"{stem}.glb"
-        written, mb = _write_glb_within_budget(layers, glb_path, max_glb_mb, folder, sidecars)
+        written, mb = _write_glb_within_budget(layers, glb_path, budget, folder, sidecars)
 
         camera_info, model_info = _load3d_sockets(np, layers, intr, extr)
         manifest_note = _scene_manifest(solve, folder, glb_path, sidecars, written)
@@ -177,33 +191,72 @@ def _usable_camera(solve):
     return intr, extr
 
 
-def _write_glb_within_budget(layers, glb_path, max_glb_mb, folder=None, sidecars=()):
-    """Write the GLB; refuse past the size budget BEFORE building it.
+def _effective_budget_mb(max_glb_mb) -> tuple[int, str]:
+    """``(budget_mb, note)``: the widget value clamped to the GLB format's
+    4 GiB ceiling, with a report note when it was clamped (0 = no budget)."""
+    requested = int(max_glb_mb or 0)
+    if requested > GLB_FORMAT_MAX_MB:
+        return GLB_FORMAT_MAX_MB, (
+            f"note: max_glb_mb {requested} is past the GLB format's 4 GiB length limit - "
+            f"clamped to {GLB_FORMAT_MAX_MB} MB")
+    return max(requested, 0), ""
 
-    The size is planned from the layers' buffers (``scene_glb.plan_scene_glb``)
-    so an over-budget scene allocates nothing. On refusal the sidecars this
-    export already wrote are deleted (a refused export leaves no orphans) and
-    the error names them and breaks the size down per layer / per plate.
-    Returns ``(written, mb)``.
+
+def _budget_bytes(budget_mb: int):
+    return budget_mb * 1_000_000 if budget_mb > 0 else None
+
+
+def _budget_refusal(plan, budget_mb, removed=()) -> ValueError:
+    """The node's refusal: size, limit, per-layer / per-plate MB breakdown."""
+    from atlas_camera.exporters import scene_glb
+
+    limit = (f"the {budget_mb} MB budget" if budget_mb > 0
+             else "the GLB format's 4 GiB length limit")
+    return ValueError(
+        f"AtlasSceneTo3D: the GLB would be {scene_glb.format_mb(plan['bytes'])} MB, "
+        f"over {limit} "
+        f"({len(plan['layers'])} layers at full plate resolution, "
+        f"{len(plan['images'])} embedded plate(s)) - feed a smaller plate or fewer "
+        "layers, or raise max_glb_mb (0 = no budget). Per layer: "
+        f"{scene_glb.describe_glb_plan(plan)}."
+        + (f" Removed the sidecars already written: {', '.join(removed)}." if removed
+           else ""))
+
+
+def _refuse_over_budget_before_writing(scene, budget_mb: int) -> None:
+    """Size the GLB from the collected layers and refuse BEFORE any file is
+    written. The plan's JSON is exact; ``extras_headroom`` bounds what the
+    sidecar references (not written yet) will add to it."""
+    from atlas_camera.exporters import scene_glb
+
+    plan = scene_glb.plan_scene_glb(scene.layers)
+    if not plan["prepared"]:
+        return  # write_scene_glb raises its own "no layer had geometry" error
+    try:
+        scene_glb.check_glb_budget(plan, _budget_bytes(budget_mb),
+                                   headroom=scene.extras_headroom())
+    except scene_glb.GLBBudgetError as exc:
+        raise _budget_refusal(exc.plan, budget_mb) from None
+
+
+def _write_glb_within_budget(layers, glb_path, budget_mb, folder=None, sidecars=()):
+    """Write the GLB, enforcing ``budget_mb`` (already clamped) again.
+
+    ``write_scene_glb`` checks the exact plan before writing and the FINAL
+    file size after. The node already refused over-budget scenes before any
+    sidecar existed, so this only fires if the sidecar references outgrew
+    their headroom; then the sidecars are deleted too (a refused export leaves
+    no orphans) and named. Returns ``(written, mb)``.
     """
     from atlas_camera.exporters import scene_glb
 
-    budget = min(int(max_glb_mb or 0), GLB_MAX_BUDGET_MB)
     try:
-        written = scene_glb.write_scene_glb(
-            layers, glb_path, max_bytes=budget * 1_000_000 if budget > 0 else None)
+        written = scene_glb.write_scene_glb(layers, glb_path,
+                                            max_bytes=_budget_bytes(budget_mb))
     except scene_glb.GLBBudgetError as exc:
         glb_path.unlink(missing_ok=True)
         removed = _remove_sidecars(folder, sidecars)
-        plan = exc.plan
-        raise ValueError(
-            f"AtlasSceneTo3D: the GLB would be {plan['bytes'] / 1e6:.0f} MB, over the "
-            f"{budget} MB budget ({len(plan['layers'])} layers at full plate resolution, "
-            f"{len(plan['images'])} embedded plate(s)) - feed a smaller plate or fewer "
-            "layers, or raise max_glb_mb (0 = no budget). Per layer: "
-            f"{scene_glb.describe_glb_plan(plan)}."
-            + (f" Removed the sidecars already written: {', '.join(removed)}." if removed
-               else "")) from None
+        raise _budget_refusal(exc.plan, budget_mb, removed) from None
     mb = written["bytes"] / 1e6
     return written, mb
 

@@ -212,8 +212,8 @@ def _inflate_plan(monkeypatch, nbytes):
     real = scene_glb.plan_scene_glb
     calls = []
 
-    def inflated(layers):
-        plan = real(layers)
+    def inflated(layers, **kwargs):
+        plan = real(layers, **kwargs)
         calls.append(plan)
         return {**plan, "bytes": int(nbytes)}
 
@@ -221,7 +221,21 @@ def _inflate_plan(monkeypatch, nbytes):
     return calls
 
 
-@pytest.mark.parametrize("budget, refused", [(1024, True), (0, False), (4096, False)])
+def _spy_sidecar_writes(monkeypatch):
+    """Record every EXR / PLY sidecar write the export attempts."""
+    from atlas_camera.exporters import scene_glb
+
+    calls = []
+    real_exr, real_ply = scene_glb._write_exr_sidecar, scene_glb.write_float_ply
+    monkeypatch.setattr(scene_glb, "_write_exr_sidecar",
+                        lambda path, *a: calls.append(path) or real_exr(path, *a))
+    monkeypatch.setattr(scene_glb, "write_float_ply",
+                        lambda path, *a: calls.append(path) or real_ply(path, *a))
+    return calls
+
+
+@pytest.mark.parametrize("budget, refused", [(1024, True), (0, False), (4096, False),
+                                             (16384, False)])
 def test_node_refuses_a_glb_over_the_size_budget(tmp_path, monkeypatch, budget, refused):
     torch = pytest.importorskip("torch")
     pytest.importorskip("OpenImageIO")
@@ -229,6 +243,7 @@ def test_node_refuses_a_glb_over_the_size_budget(tmp_path, monkeypatch, budget, 
     from atlas_camera.exporters import scene_glb
 
     _inflate_plan(monkeypatch, 1_500_000_000)
+    sidecar_writes = _spy_sidecar_writes(monkeypatch)
     built = []
     real_write = scene_glb.write_scene_glb
     monkeypatch.setattr(scene_glb, "write_scene_glb",
@@ -240,30 +255,48 @@ def test_node_refuses_a_glb_over_the_size_budget(tmp_path, monkeypatch, budget, 
         with pytest.raises(ValueError, match=r"1500 MB, over the 1024 MB budget") as exc:
             node.export(_solve(), torch.rand(1, H, W, 3), max_glb_mb=budget)
         msg = str(exc.value)
-        assert not (tmp_path / "scene_00001.glb").exists()
-        # Per-layer / per-plate MB breakdown, and the orphan sidecars removed + named.
+        assert not (tmp_path / "scene_00001.glb").exists() and not built
+        # Per-layer / per-plate MB breakdown ...
         assert "Per layer:" in msg and "projection_relief_mesh" in msg
         assert "plate primary" in msg and "plate clean_plate_geo" in msg
-        assert "scene_00001_primary.exr" in msg and "scene_00001_clean_plate_geo.exr" in msg
-        assert not list(tmp_path.glob("*.exr"))
+        # ... and refused BEFORE any sidecar was written: none to clean up.
+        assert sidecar_writes == [] and "Removed the sidecars" not in msg
+        assert not list(tmp_path.iterdir())
     else:
-        # 4096 is past the uint32 GLB ceiling: clamped to 4095 MB, 1.5 GB fits.
-        node.export(_solve(), torch.rand(1, H, W, 3), max_glb_mb=budget)
+        report = node.export(_solve(), torch.rand(1, H, W, 3),
+                             max_glb_mb=budget)["result"][4]
         assert (tmp_path / "scene_00001.glb").is_file() and built
+        assert sidecar_writes
+        # 16384 is past the uint32 GLB ceiling: clamped to 4294 MB, 1.5 GB fits.
+        clamped = "max_glb_mb 16384 is past the GLB format's 4 GiB length limit"
+        assert (clamped in report) == (budget == 16384)
+        if budget == 16384:
+            assert "clamped to 4294 MB" in report
 
 
-def test_budget_widget_is_capped_below_the_glb_uint32_limit():
-    from atlas_camera.comfy.nodes_scene3d import AtlasSceneTo3D
+def test_budget_widget_keeps_its_16384_range_and_runtime_clamps():
+    from atlas_camera.comfy.nodes_scene3d import (
+        AtlasSceneTo3D,
+        GLB_FORMAT_MAX_MB,
+        _effective_budget_mb,
+    )
 
     opt = AtlasSceneTo3D.INPUT_TYPES()["optional"]["max_glb_mb"][1]
-    assert opt["max"] == 4095 and opt["max"] * 1_000_000 < 2 ** 32
+    assert opt["max"] == 16384           # saved graphs up to 16384 keep validating
+    assert GLB_FORMAT_MAX_MB * 1_000_000 < 2 ** 32
+    budget, note = _effective_budget_mb(16384)
+    assert budget == GLB_FORMAT_MAX_MB and "clamped to 4294 MB" in note
+    assert _effective_budget_mb(1024) == (1024, "")
+    assert _effective_budget_mb(0) == (0, "")
 
 
-def test_over_budget_is_refused_before_the_blob_is_built(tmp_path, monkeypatch):
+def test_over_budget_is_refused_before_anything_is_written(tmp_path, monkeypatch):
     from atlas_camera.exporters import scene_glb
 
     _inflate_plan(monkeypatch, 5_000_000_000)          # past uint32, no budget set
-    monkeypatch.setattr(scene_glb, "_pad4", lambda *a: pytest.fail("blob was built"))
+    monkeypatch.setattr(scene_glb, "open",
+                        lambda *a, **k: pytest.fail("the GLB was opened for writing"),
+                        raising=False)
     layers = [SceneLayer("relief", QUAD_V, QUAD_F, QUAD_UV, _png())]
     with pytest.raises(scene_glb.GLBBudgetError, match="4 GiB") as exc:
         scene_glb.write_scene_glb(layers, tmp_path / "big.glb")
@@ -271,6 +304,110 @@ def test_over_budget_is_refused_before_the_blob_is_built(tmp_path, monkeypatch):
     assert exc.value.plan["layers"][0]["name"] == "relief"
     with pytest.raises(scene_glb.GLBBudgetError, match="1 MB budget"):
         scene_glb.write_scene_glb(layers, tmp_path / "big.glb", max_bytes=1_000_000)
+
+
+# --- review (b): the size plan is EXACT, and the final size is enforced -------
+
+def test_a_huge_layer_name_is_counted_and_refused(tmp_path):
+    """Codex repro: the old JSON estimate ignored names, so one triangle with a
+    400,000-char name planned 2,636 B and wrote 1,200,872 B past a 1 MB limit."""
+    from atlas_camera.exporters import scene_glb
+
+    name = "n" * 400_000
+    layers = [SceneLayer(name, QUAD_V[:3], QUAD_F[:1])]
+    plan = scene_glb.plan_scene_glb(layers)
+    assert plan["bytes"] > 1_000_000 and plan["json_bytes"] > 1_000_000
+    with pytest.raises(scene_glb.GLBBudgetError, match="1 MB budget") as exc:
+        scene_glb.write_scene_glb(layers, tmp_path / "n.glb", max_bytes=1_000_000)
+    assert not (tmp_path / "n.glb").exists()
+    msg = str(exc.value)
+    assert "glTF JSON 1.2 MB" in msg and len(msg) < 2000    # the name is clipped
+    # Unbudgeted it writes, and the plan was the real size to the byte.
+    out = scene_glb.write_scene_glb(layers, tmp_path / "n.glb")
+    assert out["bytes"] == plan["bytes"] == (tmp_path / "n.glb").stat().st_size
+
+
+def _plan_cases():
+    png, other = _png(), _png((1, 2, 3), (16, 16))
+    return {
+        "textured": [SceneLayer("relief", QUAD_V, QUAD_F, QUAD_UV, png,
+                                extras={"exr": "a.exr", "atlas_plate": "primary"})],
+        "vertex_coloured": [SceneLayer("pixal3d_object", QUAD_V, QUAD_F, QUAD_UV, png,
+                                       vertex_colors=np.full((4, 3), 0.4),
+                                       photo_weight=np.array([1, 1, 1, 0.0]))],
+        "shared_image": [SceneLayer("a", QUAD_V, QUAD_F, QUAD_UV, png),
+                         SceneLayer("b", QUAD_V + [0, 0, 1], QUAD_F, QUAD_UV, png),
+                         SceneLayer("c", QUAD_V - [0, 0, 1], QUAD_F, QUAD_UV, other),
+                         SceneLayer("untextured", QUAD_V, QUAD_F)],
+    }
+
+
+@pytest.mark.parametrize("case", ["textured", "vertex_coloured", "shared_image"])
+def test_plan_bytes_cover_the_written_file(tmp_path, case):
+    from atlas_camera.exporters import scene_glb
+
+    layers = _plan_cases()[case]
+    plan = scene_glb.plan_scene_glb(layers)
+    path = tmp_path / f"{case}.glb"
+    out = scene_glb.write_scene_glb(layers, path)
+    size = path.stat().st_size
+    assert plan["bytes"] >= size and out["bytes"] == size
+    assert plan["bytes"] == size              # exact, not merely conservative
+    _check_glb_structure(path)
+
+
+def test_the_final_written_size_is_enforced_too(tmp_path, monkeypatch):
+    """A plan that under-counts (simulated) cannot sneak a GLB past the
+    budget: the written file is measured, deleted, and its real size named."""
+    from atlas_camera.exporters import scene_glb
+
+    _inflate_plan(monkeypatch, 10)
+    layers = [SceneLayer("n" * 50_000, QUAD_V[:3], QUAD_F[:1])]
+    with pytest.raises(scene_glb.GLBBudgetError,
+                       match=r"written GLB is .* bytes\), over the 1000 byte budget") as exc:
+        scene_glb.write_scene_glb(layers, tmp_path / "x.glb", max_bytes=1000)
+    assert not (tmp_path / "x.glb").exists()
+    assert exc.value.plan["bytes"] > 50_000
+
+
+def test_a_real_over_budget_scene_writes_no_sidecar(tmp_path, monkeypatch):
+    """No monkeypatched plan: a 1.5M-char mesh name makes the GLB really
+    exceed 1 MB; the node refuses before any EXR / PLY / GLB is written."""
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy import nodes_scene3d
+
+    solve = _solve()
+    solve.projection_scene.proxy_geometry[0].name = "x" * 1_500_000
+    sidecar_writes = _spy_sidecar_writes(monkeypatch)
+    folder = tmp_path / "out"
+    monkeypatch.setattr(nodes_scene3d, "output_paths",
+                        lambda prefix: (folder, "scene_00001"))
+    with pytest.raises(ValueError, match=r"over the 1 MB budget") as exc:
+        nodes_scene3d.AtlasSceneTo3D().export(solve, torch.rand(1, H, W, 3), max_glb_mb=1)
+    assert sidecar_writes == []
+    assert not list(folder.iterdir())
+    assert "Per layer:" in str(exc.value) and "glTF JSON" in str(exc.value)
+
+
+def test_large_glb_report_warns(tmp_path, monkeypatch):
+    """Not refused (no budget), but past GLB_WARN_MB: the report says so."""
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy import nodes_scene3d
+    from atlas_camera.exporters import scene_glb
+
+    real_write = scene_glb.write_scene_glb
+
+    def inflated_write(*a, **k):
+        out = real_write(*a, **k)
+        return {**out, "bytes": (nodes_scene3d.GLB_WARN_MB + 100) * 1_000_000}
+
+    monkeypatch.setattr(scene_glb, "write_scene_glb", inflated_write)
+    monkeypatch.setattr(nodes_scene3d, "output_paths",
+                        lambda prefix: (tmp_path, "scene_00001"))
+    report = nodes_scene3d.AtlasSceneTo3D().export(
+        _solve(), torch.rand(1, H, W, 3), write_exr=False, max_glb_mb=0)["result"][4]
+    assert "(300.0 MB," in report
+    assert "warning: large GLB - the browser 3D viewer may be slow to load it" in report
 
 
 # --- F-4: one embedded image per source --------------------------------------

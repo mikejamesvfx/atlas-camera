@@ -103,6 +103,26 @@ def test_scene_with_a_project_delivers_glb_and_sidecars_together(tmp_path, monke
     assert Path(res2["result"][3]).name == "scene_00002.glb"
 
 
+def test_an_over_budget_scene_leaves_the_project_lane_empty(tmp_path, monkeypatch):
+    """The budget is planned BEFORE the sidecars: a refused export writes no
+    EXR, PLY or GLB into the shot's geo lane (nothing to clean up)."""
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy import nodes_scene3d
+    from atlas_camera.exporters import scene_glb
+
+    monkeypatch.setattr(nodes_scene3d, "output_root", lambda: tmp_path / "comfy_output")
+    monkeypatch.setattr(scene_glb, "_write_exr_sidecar",
+                        lambda *a: pytest.fail("a sidecar was written before the refusal"))
+    proj = _project(tmp_path)
+    solve = _solve()
+    solve.projection_scene.proxy_geometry[0].name = "x" * 1_500_000   # GLB JSON > 1 MB
+    with pytest.raises(ValueError, match=r"over the 1 MB budget"):
+        nodes_scene3d.AtlasSceneTo3D().export(solve, torch.rand(1, H, W, 3),
+                                              max_glb_mb=1, project=proj)
+    lane = proj.subdir("geo")
+    assert not lane.exists() or not list(lane.iterdir())
+
+
 def test_stitch_with_a_project_writes_the_plate_into_the_plates_lane(tmp_path):
     pytest.importorskip("OpenImageIO")
     from atlas_camera.comfy.nodes_matrixzone import AtlasMatrixZoneSplit, AtlasMatrixZoneStitch
