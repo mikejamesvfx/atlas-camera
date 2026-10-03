@@ -80,11 +80,13 @@ def test_a_save3d_copy_in_output_3d_resolves_every_sidecar(tmp_path, monkeypatch
     assert "exr_output_path" in report and "Save 3D copy" in report
 
 
-def test_scene_with_a_project_delivers_glb_and_sidecars_together(tmp_path):
+def test_scene_with_a_project_delivers_glb_and_sidecars_together(tmp_path, monkeypatch):
     torch = pytest.importorskip("torch")
     pytest.importorskip("OpenImageIO")
     from atlas_camera.comfy import nodes_scene3d
 
+    # the project lives OUTSIDE the output folder here: bare names only
+    monkeypatch.setattr(nodes_scene3d, "output_root", lambda: tmp_path / "comfy_output")
     proj = _project(tmp_path)
     res = nodes_scene3d.AtlasSceneTo3D().export(_solve(), torch.rand(1, H, W, 3),
                                                 filename_prefix="atlas/scene", project=proj)
@@ -122,3 +124,21 @@ def test_project_sockets_are_appended_last():
     for cls in (AtlasSceneTo3D, AtlasMatrixZoneStitch):
         opt = list(cls.INPUT_TYPES()["optional"])
         assert opt[-1] == "project" and cls.INPUT_TYPES()["optional"]["project"][0] == "ATLAS_PROJECT"
+
+
+def test_a_project_lane_inside_output_also_survives_a_save3d_copy(tmp_path, monkeypatch):
+    """Found live: the default project root IS ComfyUI's output folder, and a
+    Save 3D copy of a project-routed GLB resolved 0 of 6 sidecars."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("OpenImageIO")
+    from atlas_camera.comfy import nodes_scene3d
+
+    monkeypatch.setattr(nodes_scene3d, "output_root", lambda: tmp_path)
+    proj = _project(tmp_path)                      # project root == output root
+    res = nodes_scene3d.AtlasSceneTo3D().export(_solve(), torch.rand(1, H, W, 3), project=proj)
+    glb = Path(res["result"][3])
+    saved = tmp_path / "3d" / "copy.glb"
+    saved.parent.mkdir()
+    shutil.copy(glb, saved)
+    refs = _sidecar_refs(saved)
+    assert refs and all((tmp_path / r["exr_output_path"]).is_file() for r in refs)

@@ -138,7 +138,7 @@ class AtlasSceneTo3D:
 
         layers, sidecars, notes = build_scene_layers(
             solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem,
-            output_root=None if project is not None else output_root())
+            output_root=output_root())
         if write_exr and sidecars:
             notes = [*notes, _sidecar_location_note(folder, project)]
         glb_path = folder / f"{stem}.glb"
@@ -160,7 +160,8 @@ def _sidecar_location_note(folder, project) -> str:
     """Where the sidecars live and what travels with a copied GLB."""
     if project is not None:
         return (f"sidecars: in the project lane {folder} beside the GLB -- "
-                "deliver the folder, not the GLB alone")
+                "deliver the folder, not the GLB alone (a lane inside ComfyUI's output "
+                "folder also records exr_output_path, so a Save 3D copy finds them)")
     return (f"sidecars: in {folder}; each reference also records its path relative "
             "to ComfyUI's output folder (exr_output_path), so a Save 3D copy in "
             "output/3d still finds them. Outside ComfyUI, copy them with the GLB "
