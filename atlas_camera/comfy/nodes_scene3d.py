@@ -23,7 +23,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from atlas_camera.comfy.node_helpers import _image_tensor_to_pil, _require_numpy, output_paths
+from atlas_camera.comfy.node_helpers import (
+    _image_tensor_to_pil,
+    _require_numpy,
+    output_paths,
+    output_root,
+    project_output_paths,
+)
 
 
 class _FileRef:
@@ -107,21 +113,34 @@ class AtlasSceneTo3D:
                     "tooltip": "Refuse a GLB larger than this (MB), naming its size, "
                                "BEFORE it is built. 0 = no budget (the GLB format's "
                                "4 GiB limit still applies)."}),
+                # APPENDED: delivery project. Save 3D copies only the GLB, so its
+                # EXR/PLY sidecars are left behind; with a project the GLB, every
+                # sidecar and the manifest land TOGETHER in the shot's geo lane.
+                "project": ("ATLAS_PROJECT", {
+                    "tooltip": "Optional delivery project from AtlasProject: writes the "
+                               "GLB + EXR/PLY sidecars + manifest together into the "
+                               "shot's geo/ lane (supersedes filename_prefix's folder)."}),
             },
         }
 
     def export(self, solve, source_image, write_exr=True, filename_prefix="atlas/scene",
-               max_glb_mb=GLB_BUDGET_MB):
+               max_glb_mb=GLB_BUDGET_MB, project=None):
         np = _require_numpy()
         from atlas_camera.exporters.scene_glb import build_scene_layers
 
         intr, extr = _usable_camera(solve)
-        folder, stem = output_paths(filename_prefix)
+        if project is not None:
+            folder, stem = project_output_paths(project, "geo", filename_prefix)
+        else:
+            folder, stem = output_paths(filename_prefix)
         folder.mkdir(parents=True, exist_ok=True)
         primary = _image_tensor_to_pil(source_image)
 
         layers, sidecars, notes = build_scene_layers(
-            solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem)
+            solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem,
+            output_root=None if project is not None else output_root())
+        if write_exr and sidecars:
+            notes = [*notes, _sidecar_location_note(folder, project)]
         glb_path = folder / f"{stem}.glb"
         written, mb = _write_glb_within_budget(layers, glb_path, max_glb_mb, folder, sidecars)
 
@@ -135,6 +154,17 @@ class AtlasSceneTo3D:
                                 camera_info, intr, manifest_note)
         return {"ui": {"text": [report]},
                 "result": (model_3d, model_info, camera_info, str(glb_path), report)}
+
+
+def _sidecar_location_note(folder, project) -> str:
+    """Where the sidecars live and what travels with a copied GLB."""
+    if project is not None:
+        return (f"sidecars: in the project lane {folder} beside the GLB -- "
+                "deliver the folder, not the GLB alone")
+    return (f"sidecars: in {folder}; each reference also records its path relative "
+            "to ComfyUI's output folder (exr_output_path), so a Save 3D copy in "
+            "output/3d still finds them. Outside ComfyUI, copy them with the GLB "
+            "(or connect an AtlasProject to deliver them together)")
 
 
 def _usable_camera(solve):

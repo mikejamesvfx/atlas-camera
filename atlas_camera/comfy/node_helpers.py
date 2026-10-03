@@ -1272,5 +1272,39 @@ def output_paths(filename_prefix: str):
     out = Path("output") / rel.parent
     out.mkdir(parents=True, exist_ok=True)
     stem = rel.name
-    n = 1 + len(list(out.glob(f"{stem}_*.glb")))
-    return out, f"{stem}_{n:05}"
+    return out, f"{stem}_{_next_counter(out, stem):05}"
+
+
+def _next_counter(folder, stem: str) -> int:
+    """1 + the highest ``<stem>_NNNNN`` counter already in ``folder`` (any
+    extension), so a GLB, an EXR or a sidecar set never overwrites a sibling."""
+    import re
+
+    pat = re.compile(rf"^{re.escape(stem)}_(\d{{5}})(?:[._]|$)")
+    nums = [int(m.group(1)) for f in folder.iterdir() if (m := pat.match(f.name))]
+    return 1 + max(nums, default=0)
+
+
+def output_root():
+    """ComfyUI's output directory (``./output`` outside ComfyUI), resolved."""
+    from pathlib import Path
+
+    try:
+        import folder_paths  # type: ignore[import-not-found]
+    except ImportError:
+        return Path("output").resolve()
+    return Path(folder_paths.get_output_directory()).resolve()
+
+
+def project_output_paths(project, lane: str, filename_prefix: str):
+    """``(folder, stem)`` inside an AtlasProject shot lane: the delivery
+    location, where a file and its sidecars land TOGETHER. The prefix's last
+    part names the file (sanitised); its directories are ignored -- the lane is
+    the directory. Counter-suffixed like :func:`output_paths`."""
+    from pathlib import Path
+
+    from atlas_camera.exporters.scene_glb import sanitize_name
+
+    folder = Path(project.subdir(lane, create=True))
+    name = sanitize_name(Path(str(filename_prefix or "atlas").replace("\\", "/")).name) or "atlas"
+    return folder, f"{name}_{_next_counter(folder, name):05}"

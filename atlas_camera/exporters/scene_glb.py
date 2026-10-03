@@ -425,6 +425,7 @@ def build_scene_layers(
     *,
     exr_dir: str | Path | None = None,
     exr_prefix: str = "atlas_scene",
+    output_root: str | Path | None = None,
 ) -> tuple[list[SceneLayer], list[dict[str, Any]], list[str]]:
     """Every projection layer of ``solve`` as a ``SceneLayer``.
 
@@ -434,7 +435,11 @@ def build_scene_layers(
     edge-extended where the layer asked for it, so its baked UVs line up).
     Analytic primitives (the backdrop plane) carry no mesh and are skipped.
     ``exr_dir`` set -> one EXR sidecar per plate, named in each material's
-    ``extras``. Returns ``(layers, sidecars, notes)``.
+    ``extras``. With ``output_root`` (ComfyUI's output directory) each
+    sidecar reference also records ``*_output_path``: its path relative to that
+    root, so a COPY of the GLB elsewhere in the output tree (Save 3D puts one in
+    ``3d/``) can still find the plates; a bare name only resolves beside the
+    original. Returns ``(layers, sidecars, notes)``.
     """
     from atlas_camera.core.proxy_geometry import PROXY_ROLE
     from atlas_camera.exporters._layers import mesh_from_primitive
@@ -444,6 +449,16 @@ def build_scene_layers(
     notes: list[str] = []
     exr_root = Path(exr_dir) if exr_dir else None
     used_names: set[str] = set()
+    out_root = Path(output_root).resolve() if output_root else None
+
+    def output_rel(path: Path) -> str | None:
+        """``path`` relative to the output root (posix), or None outside it."""
+        if out_root is None:
+            return None
+        try:
+            return Path(path).resolve().relative_to(out_root).as_posix()
+        except ValueError:
+            return None
 
     def sidecar_name(key: str, suffix: str) -> str:
         """``<prefix>_<key><suffix>`` with ``key`` sanitised to [A-Za-z0-9_-]
@@ -463,7 +478,11 @@ def build_scene_layers(
             return extras
         try:
             exr_root.mkdir(parents=True, exist_ok=True)
-            info = _write_exr_sidecar(exr_root / sidecar_name(key, ".exr"), pil, plate_ref)
+            exr_path = exr_root / sidecar_name(key, ".exr")
+            info = _write_exr_sidecar(exr_path, pil, plate_ref)
+            rel = output_rel(exr_path)
+            if rel:
+                info["exr_output_path"] = rel
             extras.update(info)
             sidecars.append({"plate": key, **info})
         except Exception as exc:  # noqa: BLE001 - a sidecar never fails the GLB
@@ -488,6 +507,9 @@ def build_scene_layers(
                     ply = write_float_ply(
                         exr_root / sidecar_name(prim.name, "_vertex_hdr.ply"),
                         mesh.vertices, mesh.faces, hdr_vc)
+                    rel = output_rel(Path(ply))
+                    if rel:
+                        layer_extras["vertex_colors_hdr_ply_output_path"] = rel
                     layer_extras.update(vertex_colors_hdr_ply=Path(ply).name,
                                         vertex_colors_hdr_space=(prim.metadata or {}).get(
                                             "vertex_colors_hdr_space", "ACEScg"))

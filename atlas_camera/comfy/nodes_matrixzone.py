@@ -20,7 +20,12 @@ Two sequence modes (the proposal's gate 5 decides the default):
 from __future__ import annotations
 
 
-from atlas_camera.comfy.node_helpers import _require_numpy, _require_torch, output_paths
+from atlas_camera.comfy.node_helpers import (
+    _require_numpy,
+    _require_torch,
+    output_paths,
+    project_output_paths,
+)
 
 MODES = ("per_zone_clip", "zones_as_frames")
 
@@ -170,12 +175,17 @@ class AtlasMatrixZoneStitch:
                     "tooltip": "Rebuild unclipped areas as SDR x the conversion's smoothed "
                                "(edge-aware) radiance ratio: no model stripes, no halos. "
                                "Clipped highlights keep the HDR's pixels. Needs sdr_plate."}),
+                # APPENDED: delivery project -> the EXR lands in the shot's plates lane.
+                "project": ("ATLAS_PROJECT", {
+                    "tooltip": "Optional delivery project from AtlasProject: writes the "
+                               "EXR into the shot's plates/ lane (supersedes "
+                               "filename_prefix's folder)."}),
             },
         }
 
     def stitch(self, hdr, matrixzone, anchor=True, split_px=0, colorspace="ACEScg",
                filename_prefix="atlas/hdr_plate", destripe=True, sdr_plate=None,
-               detail_from_sdr=True):
+               detail_from_sdr=True, project=None):
         # INPUT_IS_LIST: ComfyUI hands every input as a list; tests and direct
         # callers may pass scalars. _first() accepts both.
         np = _require_numpy()
@@ -205,8 +215,10 @@ class AtlasMatrixZoneStitch:
         params = _provenance_params(handle, rep, anchor=anchor, destripe=destripe,
                                     detail_from_sdr=detail_from_sdr, sdr_wired=sdr is not None,
                                     local_rep=local_rep, xfer_rep=xfer_rep, stripe_rep=stripe_rep)
+        project = _first(project) if project is not None else None
         exr_path, exr_note = _write_plate_exr(np, plate, colorspace, filename_prefix,
-                                              params=params, step_mem=step_mem)
+                                              params=params, step_mem=step_mem,
+                                              project=project)
         step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path,
                                                   step_mem=step_mem)
 
@@ -369,7 +381,8 @@ def _seam_worst_attr(step_mem):
                        "scored_on": "in-memory plate before half/DWAB encode"})
 
 
-def _write_plate_exr(np, plate, colorspace, filename_prefix, *, params=None, step_mem=None):
+def _write_plate_exr(np, plate, colorspace, filename_prefix, *, params=None, step_mem=None,
+                     project=None):
     """``(exr_path, note)``; a failed write leaves the path empty and says why.
 
     Provenance attributes: ``atlas:content`` (the model-reconstruction label),
@@ -380,7 +393,8 @@ def _write_plate_exr(np, plate, colorspace, filename_prefix, *, params=None, ste
     it is a graph error, not a write failure (F-1). The note becomes report
     line 1 (F-6): a 14-minute run must not bury "no file" at the bottom.
     """
-    folder, stem = output_paths(filename_prefix)
+    folder, stem = (project_output_paths(project, "plates", filename_prefix)
+                    if project is not None else output_paths(filename_prefix))
     exr_path, exr_note = str(folder / f"{stem}.exr"), ""
     try:
         from atlas_camera.plate.oiio_io import write_exr
