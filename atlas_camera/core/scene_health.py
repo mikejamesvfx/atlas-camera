@@ -558,10 +558,13 @@ def evaluate_scene_health(
     # Only a non-"ok" grade flags -- the hidden side is a hypothesis on every
     # generated mesh, which the node's report states; flagging all of them
     # would make the flag carry no information.
+    # Function-local: generated_mesh imports this module at load time.
+    from atlas_camera.core.generated_mesh import GENERATED_SOURCE
+
     scene = getattr(solve, "projection_scene", None)
     for prim in (getattr(scene, "proxy_geometry", None) or []):
         meta = getattr(prim, "metadata", None) or {}
-        if meta.get("source") != "pixal3d":
+        if meta.get("source") != GENERATED_SOURCE:
             continue
         grade = str(meta.get("generated_grade") or "unknown")
         if grade != "ok":

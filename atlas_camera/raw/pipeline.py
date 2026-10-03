@@ -192,11 +192,9 @@ def _import_processed_jpeg(path: str, *, half_size: bool = False) -> RawImportRe
             )
         display = np.asarray(oriented, dtype=np.float32) / 255.0
     display = np.clip(display, 0.0, 1.0)
-    linear = np.where(
-        display <= 0.04045,
-        display / 12.92,
-        np.power((display + 0.055) / 1.055, 2.4),
-    ).astype(np.float32)
+    # float32 sRGB EOTF; bit-identical to the float32 inline form it replaced.
+    from atlas_camera.core.srgb import srgb_to_linear_f32
+    linear = srgb_to_linear_f32(display)
     height, width = display.shape[:2]
 
     meta_width = width * 2 if half_size else width

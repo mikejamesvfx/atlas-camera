@@ -65,6 +65,19 @@ def dilate(mask: Any, iterations: int = 1, *, connectivity: int = 4,
     return out
 
 
+def erode(mask: Any, iterations: int = 1, *, connectivity: int = 4,
+          wrap: bool = False) -> Any:
+    """Shrink `mask` by `iterations` steps: the dual of :func:`dilate`.
+
+    Same borders and connectivity rules as :func:`dilate` (a border pixel
+    sees CLAMPED neighbours, so the frame edge does not erode in). Returns a
+    new array; the input is never mutated.
+    """
+    np = _require_numpy()
+    return ~dilate(~np.asarray(mask, dtype=bool), iterations,
+                   connectivity=connectivity, wrap=wrap)
+
+
 def box_blur(field: Any, radius: int, *, wrap: bool = False) -> Any:
     """Separable box blur over a float field, normalized per pixel.
 

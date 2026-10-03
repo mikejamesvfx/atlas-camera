@@ -254,10 +254,9 @@ def raw_error(np: Any, generated: Any, reference: Any, mask: Any) -> dict:
 
 
 def _erode(np: Any, mask: Any, iterations: int = 1) -> Any:
-    """Erosion as the dual of dilation, reusing the one implementation."""
-    from atlas_camera.core.mask_ops import dilate
-    return ~dilate(~np.asarray(mask, dtype=bool), iterations=iterations,
-                   connectivity=8)
+    """8-connected erosion (``core.mask_ops.erode``)."""
+    from atlas_camera.core.mask_ops import erode
+    return erode(mask, iterations, connectivity=8)
 
 
 def _nearest_resize(np: Any, arr: Any, height: int, width: int) -> Any:

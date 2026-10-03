@@ -474,9 +474,11 @@ def export_relief_mesh_glb(
     Without a texture the format has no effect.
     """
     import json as _json
-    import struct
 
     import numpy as np
+
+    from atlas_camera.exporters._glb import pad4 as _pad4
+    from atlas_camera.exporters._glb import write_glb_header
 
     image_bytes, image_mime = _encode_glb_texture(texture, texture_format)
 
@@ -549,9 +551,6 @@ def export_relief_mesh_glb(
         n_surface_faces = int((~ribbon_face_mask).sum())
     else:
         ribbon_face_mask = None
-
-    def _pad4(data: bytes, pad: bytes = b"\x00") -> bytes:
-        return data + pad * ((4 - len(data) % 4) % 4)
 
     # Binary buffer layout: positions | uvs | indices | (colors) | (image)
     parts = [_pad4(verts.tobytes()), _pad4(uvs.tobytes()), _pad4(faces.tobytes())]
@@ -667,12 +666,8 @@ def export_relief_mesh_glb(
         material["pbrMetallicRoughness"]["baseColorFactor"] = [0.6, 0.6, 0.6, 1.0]
 
     json_chunk = _pad4(_json.dumps(gltf, separators=(",", ":")).encode("utf-8"), b" ")
-    total = 12 + 8 + len(json_chunk) + 8 + len(bin_chunk)
     with open(glb_path, "wb") as fh:
-        fh.write(struct.pack("<III", 0x46546C67, 2, total))          # glTF header
-        fh.write(struct.pack("<II", len(json_chunk), 0x4E4F534A))    # JSON chunk
-        fh.write(json_chunk)
-        fh.write(struct.pack("<II", len(bin_chunk), 0x004E4942))     # BIN chunk
+        write_glb_header(fh, json_chunk, len(bin_chunk))
         fh.write(bin_chunk)
 
     return {"glb": str(glb_path)}

@@ -29,6 +29,9 @@ from __future__ import annotations
 import math
 from typing import Any
 
+# Re-exported: nodes_matrixzone and tests import it from here.
+from atlas_camera.core.srgb import srgb_to_linear_f32  # noqa: F401
+
 CLEAN = 128          # render axes: quarter-linear global stays 32-clean
 ZONE_CLEAN = 64      # zone sizes
 LOG_EPS = 1e-6       # radiance floor before log2
@@ -58,25 +61,6 @@ def rec709_linear_to_acescg(a: Any) -> Any:
     """Linear Rec.709/sRGB (D65) RGB -> ACEScg (AP1, D60) linear, float32."""
     np = _require_numpy()
     return np.asarray(a, dtype=np.float32)[..., :3] @ _rec709_to_acescg_matrix(np).T
-
-
-def srgb_to_linear_f32(srgb: Any) -> Any:
-    """sRGB display (clipped to 0..1) -> linear, float32, built in place.
-
-    Same curve as ``core.generated_mesh.srgb_to_linear``, which works in
-    float64 with ~6 full-size temporaries: on an 8K plate that one call was
-    the stitch's memory peak, and its float64 result was held for the whole
-    post-pass. Agrees with it to float32 precision.
-    """
-    np = _require_numpy()
-    c = np.clip(np.asarray(srgb, dtype=np.float32), 0.0, 1.0)
-    low = c <= 0.04045
-    lin = c / np.float32(12.92)
-    c += np.float32(0.055)
-    c /= np.float32(1.055)
-    np.power(c, np.float32(2.4), out=c)
-    np.copyto(c, lin, where=low)
-    return c
 
 
 def _luma_ap1(np):

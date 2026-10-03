@@ -4,19 +4,21 @@
 
 - [ ] **Land the research workflows in a follow-up PR.** These four files were deferred out of
   the code merge so the code diff (~6.6k lines) fits /ultrareview's 8,000-line limit:
-  `research/atlas_pixal3d_object_workflow.json`, `research/3d_pixal3d_trellis2_image_to_model.json`,
-  `research/atlas_hdr_still_matrixzone_workflow.json` and `research/atlas_hdr_clip_workflow.json`
-  (14,011 lines in all). They need ComfyUI V135+, are not shipping examples, and no test pins them.
+  the Pixal3D object, Pixal3D/TRELLIS.2 image-to-model, HDR still (matrixZone) and HDR clip
+  research workflows (14,011 lines in all), kept on branch `feat/research-workflows`
+  (their Pixal3D graph already carries the appended SAM3 override widget). They need ComfyUI V135+, are not shipping examples, and no test pins them.
   CHANGELOG, README, INSTALL, NODE_CATALOG and USER_GUIDE mention `research/`, so the code PR must
   forward-reference or drop those lines. Decision: CEO review D16.
 
-- [ ] **Consolidate duplicated helpers (P3, human: M / CC: S).** The same code exists in several places:
-  - `srgb_to_linear`/`linear_to_srgb` in 4 places: `core/generated_mesh.py`, `raw/pipeline.py`, `core/preview_codec.py`, `comfy/nodes_matrixzone.py`.
-  - `matrixzone._box_mean` duplicates `plate/deband._box_blur_2d`.
-  - `generated_mesh._erode` duplicates `core/adherence._erode`; it should move to `core/mask_ops`.
-  - The GLB chunk writer and `_pad4` exist in both `exporters/scene_glb.py` and `relief_mesh_exporter.export_relief_mesh_glb`.
-  - String constants: `"pixal3d"` in 3 places (move `GENERATED_SOURCE` into core), the SAM3 HF backend string in 2, and the Rec.709 luma tuple 5 times in `matrixzone.py`.
-  Why: copies drift; a fix lands in one and not the others. Kept out of the feature merge to avoid touching older modules. Decision: CEO review D25.
+- [x] **Consolidate duplicated helpers (P3, human: M / CC: S).** DONE 2026-10-03 where the copies were truly equal. Each moved copy was checked byte for byte (values, dtype, shape) against the old code on random inputs, and every test still passes. Two pairs are left as they are, on purpose (see below).
+  - DONE: the sRGB curve now lives once, in the new `core/srgb.py`. It has a float64 `srgb_to_linear`/`linear_to_srgb` (copies, clipped) and a float32 `srgb_to_linear_f32` (built in place). `generated_mesh` and `matrixzone` re-export the old names. `preview_codec` and `raw/pipeline` (the JPEG path) call it now. The float32 inline form in `raw/pipeline` matches `srgb_to_linear_f32` bit for bit on numpy 1.26 and 2.4.
+  - KEPT: `raw/decode.srgb_encode` works in the input's dtype and returns float32. Routing it through the float64 curve would change the last bit. `comfy/nodes_matrixzone._tonemap_preview` applies a Reinhard tonemap first and does not clip, so it is a different function.
+  - DONE: `mask_ops.erode(mask, iterations, connectivity=, wrap=)`. `generated_mesh._erode` (4-connected) and `adherence._erode` (8-connected) are now thin wrappers that pass their own connectivity.
+  - KEPT: `matrixzone._box_mean` and `plate/deband._box_blur_2d` differ. `_box_mean` casts to float32 between the two passes and returns float32, which is the memory fix for 8K plates. `_box_blur_2d` stays float64 throughout and returns a copy when `r <= 0`. One shared version would change one caller's numbers or memory use.
+  - DONE: the GLB framing (`pad4` plus the header and chunk headers) now lives in the new `exporters/_glb.py`, and both writers use it. `scene_glb._pad4` stays as an alias. Each writer still builds its own JSON and buffers: one builds them in memory, the other streams them and deletes a partial file on failure. GLB sha256 hashes match before and after for all 24 deterministic GLBs the five GLB test files write: all 14 from `export_relief_mesh_glb` and 10 from `write_scene_glb`. The other 6 are `AtlasSceneTo3D` node outputs, which differ from run to run even without this change.
+  - DONE: `GENERATED_SOURCE` now lives in `core/generated_mesh.py`. `nodes_object_mesh` (which re-exports it), `scene_health` (imports it inside the function, to avoid an import cycle) and `usd_exporter` all use it. `nodes_inpaint._SAM3_HF_BACKEND` is now an alias of `sam3_core_backend.HF_BACKEND`.
+  - Already fixed before this pass: the Rec.709 luma tuple in `matrixzone.py`. F-5 (b819044) replaced it with the single constant `LUMA_AP1`.
+  Why: copies drift; a fix lands in one and not the others. Decision: CEO review D25.
 
 - [x] **Mirror the F-3 planner clamp in atlas_bridge (P2, human: S / CC: S).** DONE 2026-10-03: the bridge had the same bug, with identical numbers. Fixed on `atlas-unreal` branch `fix/matrixzone-interior-clamp`, off `main`, with a sweep test. It is NOT merged into atlas-unreal's main or into `raf-anchored-camera-solves`; merging is your call.
   - What: if `atlas_bridge.matrixzone.plan()` has the same unclamped interior zone start, apply the same clamp and sweep test there.

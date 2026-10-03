@@ -33,10 +33,17 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from atlas_camera.core.mask_ops import dilate
+from atlas_camera.core.mask_ops import erode
 from atlas_camera.core.scene_health import (
     generated_object_grade,
 )
+# Re-exported: callers and tests import the curve from here.
+from atlas_camera.core.srgb import linear_to_srgb, srgb_to_linear  # noqa: F401
+
+#: ``metadata["source"]`` of every generated object mesh (Pixal3D import).
+#: The import node writes it; scene_health, the USD exporter and the viewport
+#: payload select generated meshes by it. One value, here.
+GENERATED_SOURCE = "pixal3d"
 
 #: Per-vertex ``photo_weight`` above this paints from the photo, below from
 #: the model's vertex colour. Mirrored in atlas_blockout.js
@@ -172,10 +179,8 @@ def cluster_decimate(vertices: Any, faces: Any, *, max_faces: int,
 # ---------------------------------------------------------------------------
 
 def _erode(np: Any, mask: Any, px: int) -> Any:
-    m = np.asarray(mask, dtype=bool)
-    if px <= 0:
-        return m
-    return ~dilate(~m, int(px))
+    """4-connected erosion by ``px`` steps (``px <= 0``: unchanged)."""
+    return erode(mask, int(px), connectivity=4)
 
 
 def register_object_scale(
@@ -391,18 +396,6 @@ def photo_visibility_weights(
         "grazing": int((in_frame & ~facing_ok).sum()),
     }
     return weight, stats
-
-
-def srgb_to_linear(c: Any) -> Any:
-    np = _require_numpy()
-    c = np.clip(np.asarray(c, dtype=np.float64), 0.0, 1.0)
-    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
-
-
-def linear_to_srgb(c: Any) -> Any:
-    np = _require_numpy()
-    c = np.clip(np.asarray(c, dtype=np.float64), 0.0, 1.0)
-    return np.where(c <= 0.0031308, c * 12.92, 1.055 * np.power(c, 1.0 / 2.4) - 0.055)
 
 
 def match_vertex_colours(

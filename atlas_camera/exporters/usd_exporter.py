@@ -15,6 +15,7 @@ import math
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm
 from atlas_camera.core.camera_path import sample_camera_path, sample_camera_path_fov_deg
+from atlas_camera.core.generated_mesh import GENERATED_SOURCE
 from atlas_camera.core.schema import AtlasCameraPath, AtlasIntrinsics, AtlasSolve
 from atlas_camera.exporters.dcc_transform import row_vector_flat
 
@@ -296,7 +297,7 @@ class USDExporter:
             meta = primitive.metadata or {}
             if primitive.primitive_type == "plane":
                 prim = _define_ground_plane(stage, prim_path, Gf, Sdf, UsdGeom, Vt)
-            elif (primitive.primitive_type == "mesh" and meta.get("source") == "pixal3d"
+            elif (primitive.primitive_type == "mesh" and meta.get("source") == GENERATED_SOURCE
                   and meta.get("vertices") and meta.get("faces")):
                 # Generated object (AtlasImportGeneratedMesh): real geometry,
                 # world-space, with the model's colour as displayColor so a DCC

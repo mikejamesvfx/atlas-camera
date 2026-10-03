@@ -137,7 +137,7 @@ revisited after the first run.
 ### Code placement
 - `core/matrixzone.py` gains only the factored-out `keep` mask (shared with
   `sdr_detail_transfer`) and the dump hook it calls.
-- Region masks, variants, the cover and the metrics live in `tools/matrixzone_ablation.py`.
+- Region masks, variants, the cover and the metrics live in a new ablation script under `tools/` (not yet written).
 
 ### Tests (synthetic, numpy only)
 - V1 rebuilt from the dump equals the live stitch output (max rel. error < 1e-5).

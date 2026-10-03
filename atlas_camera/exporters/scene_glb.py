@@ -34,6 +34,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from atlas_camera.exporters._glb import pad4, write_glb_header
+
 _PNG_MIME = "image/png"
 _JPEG_MIME = "image/jpeg"
 
@@ -75,8 +77,7 @@ class SceneLayer:
     extras: dict[str, Any] = field(default_factory=dict)
 
 
-def _pad4(data: bytes, pad: bytes = b"\x00") -> bytes:
-    return data + pad * ((4 - len(data) % 4) % 4)
+_pad4 = pad4  # historical private name; the framing lives in exporters._glb
 
 
 def _pad_len(n: int) -> int:
@@ -381,15 +382,11 @@ def write_scene_glb(layers: list[SceneLayer], path: str | Path, *,
 
     layout, json_chunk = plan["_layout"], plan["_json_chunk"]
     bin_bytes = layout["bin_bytes"]
-    total = 12 + 8 + len(json_chunk) + 8 + bin_bytes
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(out, "wb") as fh:
-            fh.write(struct.pack("<III", 0x46546C67, 2, total))
-            fh.write(struct.pack("<II", len(json_chunk), 0x4E4F534A))
-            fh.write(json_chunk)
-            fh.write(struct.pack("<II", bin_bytes, 0x004E4942))
+            write_glb_header(fh, json_chunk, bin_bytes)
             for nbytes, producer in layout["chunks"]:
                 data = producer()
                 if isinstance(data, np.ndarray):  # a view, no tobytes() copy

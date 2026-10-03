@@ -32,7 +32,7 @@ from atlas_camera.comfy.node_helpers import (
     _seg_coverage,
     build_segmentation_cascade,
 )
-
+from atlas_camera.comfy.sam3_core_backend import HF_BACKEND as _SAM3_HF_BACKEND
 
 
 
@@ -287,9 +287,6 @@ def _is_oom(exc: BaseException) -> bool:
 def _sam3_checkpoint_choices():
     from atlas_camera.comfy.sam3_core_backend import sam3_checkpoint_choices
     return sam3_checkpoint_choices()
-
-
-_SAM3_HF_BACKEND = "hf:facebook/sam3"
 
 
 class AtlasSAM3Mask:

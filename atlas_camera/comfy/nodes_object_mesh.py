@@ -32,8 +32,8 @@ from atlas_camera.comfy.node_helpers import (
     _require_torch,
     _resolve_exclude_mask,
 )
+from atlas_camera.core.generated_mesh import GENERATED_SOURCE
 
-GENERATED_SOURCE = "pixal3d"
 _BACKGROUNDS = ("black", "white", "gray", "photo")
 _BG_RGB = {"black": (0.0, 0.0, 0.0), "white": (1.0, 1.0, 1.0), "gray": (0.5, 0.5, 0.5)}
 
