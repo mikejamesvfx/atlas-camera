@@ -19,7 +19,6 @@ Two sequence modes (the proposal's gate 5 decides the default):
 
 from __future__ import annotations
 
-from typing import Any
 
 from atlas_camera.comfy.node_helpers import _require_numpy, _require_torch, output_paths
 
