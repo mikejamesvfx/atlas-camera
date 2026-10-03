@@ -586,11 +586,15 @@ const RIBBON_SMUDGE_TEXELS = 12.0;
 // Generated-object meshes (AtlasImportGeneratedMesh): per-vertex photo_weight
 // above this paints from the photo, below from the model's vertex colour.
 // MIRRORS atlas_camera/core/generated_mesh.py PHOTO_WEIGHT_SPLIT; pinned by
-// tests/test_frontend_mirrors.py. A mesh with no vertex colours uploads
-// photo_weight 1.0 everywhere (PHOTO_WEIGHT_DEFAULT), so every ordinary mesh
-// renders exactly as before.
+// tests/test_frontend_mirrors.py. A mesh with no vertex colours uploads NO
+// colour/weight buffers at all: the projection material's
+// defaultAttributeValues (ATLAS_NO_VERTEX_COLOR, PHOTO_WEIGHT_DEFAULT) feed
+// the shader's constant attribute instead, alpha 0 = "no vertex colour", so
+// every ordinary mesh takes the photo-only path and renders exactly as before
+// without paying count*5 floats per mesh.
 const PHOTO_WEIGHT_SPLIT = 0.5;
 const PHOTO_WEIGHT_DEFAULT = 1.0;
+const ATLAS_NO_VERTEX_COLOR = [0.0, 0.0, 0.0, 0.0];
 
 const PROJECTION_VERTEX_SHADER = `
   uniform mat4 uAtlasViewMatrix;
@@ -607,9 +611,10 @@ const PROJECTION_VERTEX_SHADER = `
   attribute float atlasRibbonT;
   varying float vAtlasRibbonT;
   varying vec2 vAtlasBakedUv;
-  // sRGB rgb + a = 2 when the mesh carries colour. NOT 1: a geometry that never
-  // uploads this attribute reads WebGL's constant default (0,0,0,1), and must
-  // not be mistaken for a black vertex-coloured mesh.
+  // sRGB rgb + a = 2 when the mesh carries colour. NOT 1: a geometry with no
+  // vertex colour uploads NO buffer and reads a constant generic attribute
+  // (the material's ATLAS_NO_VERTEX_COLOR, or WebGL's (0,0,0,1) left behind by
+  // another draw), and must never be mistaken for a black vertex-coloured mesh.
   attribute vec4 atlasVertexColor;
   attribute float atlasPhotoWeight;
   varying vec4 vAtlasVertexColor;
@@ -1289,6 +1294,16 @@ function makeProjectionMaterial(data, texture, opts) {
     depthWrite: true,
     depthTest: true,
   });
+  // Constant values for the generated-object attributes on any geometry that
+  // carries no vertex colour (attachAtlasVertexColor skips the buffers): the
+  // shader reads alpha 0 -> hasVC false -> photo-only path. Set explicitly
+  // rather than trusting WebGL's (0,0,0,1) generic default, which is global
+  // context state another draw could have left behind.
+  mat.defaultAttributeValues = {
+    ...mat.defaultAttributeValues,
+    atlasVertexColor: ATLAS_NO_VERTEX_COLOR.slice(),
+    atlasPhotoWeight: [PHOTO_WEIGHT_DEFAULT],
+  };
   // Priority-driven depth bias (patches only — options.priority is unset for
   // the primary, which relies solely on its renderOrder sentinel instead).
   if (options.priority !== undefined) {
@@ -1384,22 +1399,29 @@ function attachAtlasRibbonT(geo, entry) {
   return attachAtlasVertexColor(geo, entry);
 }
 
-// Generated-object colour (AtlasImportGeneratedMesh), same upload path. Both
-// attributes are declared unconditionally by the shader, so the fallbacks are
-// load-bearing: alpha 0 means "no vertex colour" (every photo-can't-reach test
-// still discards), and photo_weight PHOTO_WEIGHT_DEFAULT keeps the photo.
+// Generated-object colour (AtlasImportGeneratedMesh), same upload path. The
+// buffers are allocated ONLY when the mesh really carries generated vertex
+// colours: a relief mesh is hundreds of thousands of vertices and count*5
+// floats of constant fallback per mesh bought nothing. Without them the shader
+// reads the projection material's defaultAttributeValues instead: alpha 0 =
+// "no vertex colour" (every photo-can't-reach test still discards) and
+// photo_weight PHOTO_WEIGHT_DEFAULT keeps the photo.
 function attachAtlasVertexColor(geo, entry) {
   const count = geo?.attributes?.position?.count || 0;
   const rgb = entry?.vertex_colors;
   const pw = entry?.photo_weight;
+  if (!(count > 0 && Array.isArray(rgb) && rgb.length === count * 3)) {
+    // Never leave a stale buffer from an earlier attach on a reused geometry.
+    if (geo?.attributes?.atlasVertexColor) geo.deleteAttribute("atlasVertexColor");
+    if (geo?.attributes?.atlasPhotoWeight) geo.deleteAttribute("atlasPhotoWeight");
+    return geo;
+  }
   const colours = new Float32Array(count * 4);
-  if (Array.isArray(rgb) && rgb.length === count * 3) {
-    for (let i = 0; i < count; i++) {
-      colours[i * 4] = rgb[i * 3];
-      colours[i * 4 + 1] = rgb[i * 3 + 1];
-      colours[i * 4 + 2] = rgb[i * 3 + 2];
-      colours[i * 4 + 3] = 2.0;   // > 1.5 = has colour (see the shader)
-    }
+  for (let i = 0; i < count; i++) {
+    colours[i * 4] = rgb[i * 3];
+    colours[i * 4 + 1] = rgb[i * 3 + 1];
+    colours[i * 4 + 2] = rgb[i * 3 + 2];
+    colours[i * 4 + 3] = 2.0;   // > 1.5 = has colour (see the shader)
   }
   const weights = Array.isArray(pw) && pw.length === count
     ? new Float32Array(pw)

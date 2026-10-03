@@ -31,6 +31,9 @@ REC709_TO_ACESCG = (
 
 _LOG_FLOOR = 2.0 ** -14
 
+#: A luminance bin needs at least this many pixels for its median to count.
+MIN_BIN_PIXELS = 16
+
 
 def _require_numpy() -> Any:
     try:
@@ -65,7 +68,11 @@ def fit_sdr_to_hdr_curve(sdr_srgb: Any, hdr_acescg: Any, *, bins: int = 64,
     if s.shape != h.shape:
         raise ValueError(f"SDR {s.shape} and HDR {h.shape} must be pixel-aligned")
     if len(s) > max_samples:
-        idx = np.random.default_rng(seed).choice(len(s), size=max_samples, replace=False)
+        # Seeded uniform draw WITH replacement: choice(replace=False) builds a
+        # full permutation of every pixel (~265 MB of int64 on an 8K plate) to
+        # keep 2M of them. Duplicates at 2M-of-33M are ~3% and harmless to a
+        # median-per-bin fit.
+        idx = np.random.default_rng(seed).integers(0, len(s), size=max_samples)
         s, h = s[idx], h[idx]
     x = np.maximum(srgb_to_acescg(s), _LOG_FLOOR)
     h = np.maximum(h, _LOG_FLOOR)
@@ -79,11 +86,15 @@ def fit_sdr_to_hdr_curve(sdr_srgb: Any, hdr_acescg: Any, *, bins: int = 64,
         ys = np.full(bins, np.nan)
         n = np.bincount(b, minlength=bins)
         for k in range(bins):
-            if n[k] >= 16:
+            if n[k] >= MIN_BIN_PIXELS:
                 ys[k] = np.median(np.log2(h[b == k, c]))
         ok = np.isfinite(ys)
         if not ok.any():
-            raise ValueError("no populated bins: is the HDR plate empty?")
+            raise ValueError(
+                f"cannot fit the SDR->HDR curve: channel {'RGB'[c]} has no luminance "
+                f"bin with >= {MIN_BIN_PIXELS} pixels (fullest bin {int(n.max())} px; "
+                f"{len(s)} px over {bins} bins). The plate is too small or too flat "
+                f"for a {bins}-bin fit: use a larger plate or fewer bins.")
         ys = np.interp(centres, centres[ok], ys[ok])
         curves.append(np.maximum.accumulate(ys))
         counts.append(n)
