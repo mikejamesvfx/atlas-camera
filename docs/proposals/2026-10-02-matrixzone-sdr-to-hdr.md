@@ -166,6 +166,8 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
   on the way: a thin-line column pass (invented streaks beside bright clouds) and a 6 px
   base/detail split (left the wider lines, softened texture until the slope was an
   amplitude ratio). 16 sampling steps instead of 8: no change in stripes, +28% runtime.
+  Live in ComfyUI (2026-10-03, default 2x2 workflow): seam step test worst 0.88x, matches
+  the offline reference to 0.004 stops median; confirmed in Nuke.
 - **Outpaint ring smear** (clean-plate / sky layers): edge replication across a
   1024 px frame-outpaint ring read as stripes; ring ripple **5.70% -> 0.22%** live,
   real plate unchanged at 0.55%.
