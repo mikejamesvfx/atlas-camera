@@ -538,23 +538,80 @@ def _append_generated_prim(np, solve_out, name, world, faces, cols, weight, *, g
     return prim, None
 
 
-def _resolve_output_path(path: str) -> str:
-    """Absolute, or relative to ComfyUI's output directory (where the HDR
-    workflow writes), or relative to the current directory."""
+def _comfy_read_roots() -> list[tuple[str, Any]]:
+    """``[(label, Path)]`` of ComfyUI's output and input directories (empty
+    outside ComfyUI)."""
     from pathlib import Path
-    p = Path(str(path or "").strip().strip('"'))
-    if not str(p):
-        return ""
-    if p.is_absolute() and p.is_file():
-        return str(p)
+    roots = []
     try:
         import folder_paths  # type: ignore[import-not-found]
-        cand = Path(folder_paths.get_output_directory()) / p
-        if cand.is_file():
-            return str(cand)
     except Exception:  # noqa: BLE001 - not inside ComfyUI
-        pass
-    return str(p) if p.is_file() else ""
+        return roots
+    for label, getter in (("output", "get_output_directory"),
+                          ("input", "get_input_directory")):
+        try:
+            roots.append((label, Path(getattr(folder_paths, getter)())))
+        except Exception:  # noqa: BLE001
+            continue
+    return roots
+
+
+def _resolve_read_path(path: str) -> tuple[str, str]:
+    """Resolve a READ path: ``(resolved, where_looked)``.
+
+    Only two kinds of path resolve (F-9): an ABSOLUTE path to an existing
+    file, or a path RELATIVE to ComfyUI's output then input directory that
+    stays inside that directory (``..`` cannot climb out). Never the process
+    working directory. ``resolved`` is ``""`` when nothing matched;
+    ``where_looked`` names the candidates for the report.
+    """
+    from pathlib import Path
+    raw = str(path or "").strip().strip('"').strip()
+    if not raw:
+        return "", ""
+    p = Path(raw)
+    if p.is_absolute():
+        return (str(p), "") if p.is_file() else ("", f"absolute path {p} does not exist")
+    looked = []
+    for label, root in _comfy_read_roots():
+        try:
+            base = root.resolve()
+            cand = (base / p).resolve()
+        except Exception:  # noqa: BLE001
+            continue
+        if cand != base and base not in cand.parents:
+            looked.append(f"{label}: escapes the {label} directory, ignored")
+            continue
+        if cand.is_file():
+            return str(cand), ""
+        looked.append(f"{label}: {cand}")
+    if not looked:
+        looked.append("relative paths resolve only under ComfyUI's output/input "
+                      "directories (not running inside ComfyUI)")
+    return "", "; ".join(looked)
+
+
+def _resolve_output_path(path: str) -> str:
+    """Back-compat name: the resolved read path or ``""``."""
+    return _resolve_read_path(path)[0]
+
+
+def hdr_path_fingerprint(hdr_exr_path: str) -> str:
+    """IS_CHANGED token for a path-gated read: resolved path + mtime_ns +
+    size (stat only, never a content hash). A missing file gets its own
+    token, so the file appearing later re-runs the node."""
+    import os
+    raw = str(hdr_exr_path or "").strip()
+    if not raw:
+        return "atlas-hdr:none"
+    resolved, _ = _resolve_read_path(raw)
+    if not resolved:
+        return f"atlas-hdr:missing:{raw}"
+    try:
+        st = os.stat(resolved)
+    except OSError:
+        return f"atlas-hdr:missing:{raw}"
+    return f"atlas-hdr:{resolved}|{st.st_mtime_ns}|{st.st_size}"
 
 
 class AtlasHDRVertexTransfer:
@@ -585,12 +642,18 @@ class AtlasHDRVertexTransfer:
                 "hdr_exr_path": ("STRING", {
                     "default": "",
                     "tooltip": "The HDR plate EXR from the matrixZone still workflow "
-                               "(absolute, or relative to ComfyUI's output folder, e.g. "
+                               "(absolute, or relative to ComfyUI's output or input folder, e.g. "
                                "atlas/hdr_plate_00001.exr). Empty = pass through."}),
                 "hdr_image": ("IMAGE", {"tooltip": "Alternative to the path: a float HDR "
                                                    "IMAGE (ACEScg linear)."}),
             },
         }
+
+    @classmethod
+    def IS_CHANGED(cls, hdr_exr_path="", **_kwargs):
+        """Gate doctrine: the EXR behind ``hdr_exr_path`` can be replaced at the
+        same path, so the cache key is its stat fingerprint, not the string."""
+        return hdr_path_fingerprint(hdr_exr_path)
 
     def transfer(self, solve, source_image, hdr_exr_path="", hdr_image=None):
         np = _require_numpy()
@@ -609,14 +672,16 @@ class AtlasHDRVertexTransfer:
             hdr = hdr_image[0].detach().cpu().float().numpy()[..., :3]
             origin = "hdr_image input"
         else:
-            path = _resolve_output_path(hdr_exr_path)
+            path, looked = _resolve_read_path(hdr_exr_path)
             if not path:
                 return (solve_out, "AtlasHDRVertexTransfer: no HDR plate (set hdr_exr_path to "
-                                   "the matrixZone still workflow's EXR) - passed through")
+                                   "the matrixZone still workflow's EXR) - passed through"
+                        + (f"\nhdr_exr_path {str(hdr_exr_path).strip()!r} not found ({looked})"
+                           if looked else ""))
             from atlas_camera.plate.oiio_io import read_plate
             hdr = np.asarray(read_plate(path, output_colorspace=None).pixels,
                              dtype=np.float32)[..., :3]
-            origin = path
+            origin = f"hdr_exr_path -> {path}"
         sdr = source_image[0].detach().cpu().float().numpy()[..., :3]
         if sdr.shape[:2] != hdr.shape[:2]:
             sdr = resize_bilinear(sdr, hdr.shape[0], hdr.shape[1])
