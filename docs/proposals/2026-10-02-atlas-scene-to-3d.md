@@ -92,13 +92,34 @@ full-res IMAGE lacks that padding and would misalign every outpainted layer, so
 **Sidecars** (named in each material's `extras`): one half EXR per plate; plus, when
 `AtlasHDRVertexTransfer` ran, a binary **float-colour PLY** per generated object
 (`…_vertex_hdr.ply`, ACEScg linear — glTF `COLOR_0` is a 0..1 quantity).
+Sidecar file names are `<prefix>_<layer>` with the layer name sanitised to
+`[A-Za-z0-9_-]` (layer names come from the solve and are never trusted as path
+parts) and made unique with `_2`, `_3` when two layers sanitise to the same name.
+
+**One embedded image per source** (2026-10-03, F-4). Every layer a plate paints
+shares ONE glTF image + texture (layers are deduplicated on the plate's PNG bytes
+object). Before this, each primary mesh — relief, every generated object — embedded
+its own copy of the primary plate, so the GLB carried N+1 copies of it.
 
 ## Budgets and failure behaviour
 
-- **Size.** Measured on the 8K machine plate, 6 layers: **230–239 MB** GLB. Above
-  `max_glb_mb` (default 1024) the node refuses with the measured size and the fix
-  (fewer layers / smaller plate) instead of handing the viewer a file it cannot load;
-  above 200 MB the report warns. 0 disables the budget.
+- **Size.** Measured on the 8K machine plate, 6 layers: **230–239 MB** GLB — these
+  figures are PRE-DEDUP (each primary mesh embedded its own copy of the primary
+  plate). Re-measure on the same plate after the image dedup (V-1 step 3) and
+  replace them here; expect a drop of one primary-plate PNG per extra primary mesh.
+- **Budget, checked before the build.** The GLB size is planned from its buffer
+  views (`scene_glb.plan_scene_glb`) BEFORE the binary blob is assembled, so an
+  over-budget scene allocates nothing. Above `max_glb_mb` (default 1024, widget max
+  4095 — a GLB stores its length as uint32, so 4 GiB is a hard ceiling even with the
+  budget off) the node refuses with the planned size, a per-layer geometry and
+  per-plate image MB breakdown, and the fix (fewer layers / smaller plate); the
+  sidecars that export had already written are deleted and named in the error, so a
+  refused export leaves no orphans. Above 200 MB the report warns. 0 disables the
+  budget (not the 4 GiB ceiling).
+- **Nothing is dropped silently.** Layers with no geometry (empty / zero faces after
+  topology cleanup) are listed as `DROPPED`, a UV-count mismatch says the layer was
+  written untextured and why, a source whose `image_b64` cannot be decoded exports
+  untextured with a note, and the report says when the `File3D` fallback was used.
 - **No camera / no geometry.** No usable camera raises; a solve with no mesh layer
   raises "no layer had geometry to write".
 - **A sidecar or the manifest failing never fails the GLB** — named in the report.
