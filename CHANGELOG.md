@@ -68,7 +68,7 @@ HDR used to come out around 1280 px wide: a preview, not a plate.
   the aligned pair and applies it to the vertex colours.
 - **2x2 at the 4K tier is the default**: on the 8K plate it fits a 32 GB GPU, runs
   in about **14.5 minutes** cold (4x4 took about 23), and its worst seam scores
-  **1.20x**, a pass. Which sequence mode wins is still unmeasured, so
+  **0.88x**, a pass. Which sequence mode wins is still unmeasured, so
   `per_zone_clip` stays the default until it is.
 - Known limits: the occasional soft dark blotch (about 30 px) on flat sky, made by
   the model, and a faint highlight ripple inside SDR-clipped areas, where the HDR is

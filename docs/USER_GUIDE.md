@@ -717,7 +717,7 @@ once, and each zone only adds fine detail. Leave `anchor` on.
 Reading the report: every seam is scored on the EXR as written, and anything over
 1.5x the plate's own texture baseline is named. A flagged seam is not automatically
 wrong, since strong structure on the seam line scores high too, so go and look at
-it. On the 8K test plate at the default 2x2 grid the worst seam scored 1.20x, a
+it. On the 8K test plate at the default 2x2 grid the worst seam scored 0.88x, a
 clean pass.
 
 **About the vertical lines.** If you have seen faint vertical stripes in an HDR
