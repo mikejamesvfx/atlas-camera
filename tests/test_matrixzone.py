@@ -382,3 +382,21 @@ def test_stitch_refuses_a_non_finite_global_pass():
     glob[9, 2, 0] = np.nan
     with pytest.raises(ValueError, match="global pass has 2 non-finite"):
         stitch(zones, p, global_hdr=glob)
+
+
+def test_srgb_to_linear_f32_matches_the_float64_curve():
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+    from atlas_camera.core.matrixzone import srgb_to_linear_f32
+    x = np.concatenate([np.linspace(-0.1, 1.1, 2001), [0.04045, 0.0404, 0.0405]]).astype(np.float32)
+    out = srgb_to_linear_f32(x)
+    assert out.dtype == np.float32
+    np.testing.assert_allclose(out, srgb_to_linear(x), rtol=2e-6, atol=1e-8)
+
+
+def test_resize_and_lowpass_stay_float32():
+    # P-1b: float64 weights used to promote every resize (and the 8K global
+    # upsample) to float64 at ~3x the memory.
+    from atlas_camera.core.matrixzone import resize_bilinear
+    a = np.random.default_rng(0).random((37, 53, 3)).astype(np.float32)
+    assert resize_bilinear(a, 80, 120).dtype == np.float32
+    assert lowpass(a, 8).dtype == np.float32

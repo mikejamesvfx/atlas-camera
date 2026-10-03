@@ -192,6 +192,8 @@ class AtlasMatrixZoneStitch:
         zones = _zone_images(np, clips, handle)
         plate, rep = mz_stitch(zones, plan, global_hdr=None if glob is None else glob[..., :3],
                                split_px=split_px or None)
+        n_zones = len(zones)
+        del clips, glob, zones          # free the zone medians before the 8K post-passes
         destripe = bool(_first(destripe))
         detail_from_sdr = bool(_first(detail_from_sdr))
         sdr = _first(sdr_plate) if sdr_plate is not None else None
@@ -203,7 +205,7 @@ class AtlasMatrixZoneStitch:
         step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path)
 
         report = _stitch_report(
-            np, plate, rep, step, zones=zones, mode=mode, colorspace=colorspace,
+            np, plate, rep, step, n_zones=n_zones, mode=mode, colorspace=colorspace,
             exr_path=exr_path, exr_note=exr_note, delivered=delivered, diff_note=diff_note,
             stripe_rep=stripe_rep, local_rep=local_rep, xfer_rep=xfer_rep,
             destripe=destripe, detail_from_sdr=detail_from_sdr, sdr_note=sdr_note)
@@ -262,8 +264,7 @@ def _sdr_reference(np, sdr, plate_shape):
     """
     if sdr is None:
         return None, None, ""
-    from atlas_camera.core.generated_mesh import srgb_to_linear
-    from atlas_camera.core.matrixzone import resize_bilinear
+    from atlas_camera.core.matrixzone import resize_bilinear, srgb_to_linear_f32
     s_np = np.asarray(sdr[0].detach().cpu().float().numpy() if hasattr(sdr, "detach")
                       else sdr[0], dtype=np.float32)[..., :3]
     note = ""
@@ -272,7 +273,7 @@ def _sdr_reference(np, sdr, plate_shape):
                 f"{plate_shape[1]}x{plate_shape[0]}: SDR resampled (bilinear) for destripe/"
                 "detail/seam control -- wire the plate the split got")
         s_np = resize_bilinear(s_np, plate_shape[0], plate_shape[1])
-    return srgb_to_linear(s_np), s_np, note
+    return srgb_to_linear_f32(s_np), s_np, note
 
 
 def _clean_plate(plate, plan, sdr_lin, s_disp, *, destripe, detail_from_sdr):
@@ -375,12 +376,12 @@ def _fmt_seams(seams):
                      for s in seams) or "(no interior seams)"
 
 
-def _stitch_report(np, plate, rep, step, *, zones, mode, colorspace, exr_path, exr_note,
+def _stitch_report(np, plate, rep, step, *, n_zones, mode, colorspace, exr_path, exr_note,
                    delivered, diff_note, stripe_rep, local_rep, xfer_rep, destripe,
                    detail_from_sdr, sdr_note=""):
     """The stitch node's multi-line report. A failed EXR write is line 1."""
     lines = [exr_note] if exr_note else []
-    lines += [f"AtlasMatrixZoneStitch: {len(zones)} zones ({mode}) -> "
+    lines += [f"AtlasMatrixZoneStitch: {n_zones} zones ({mode}) -> "
              f"{plate.shape[1]}x{plate.shape[0]} {colorspace} half EXR "
              f"{exr_path or '(not written)'}",
              f"seams before, log2 luminance median/p95 stops: {_fmt_seams(rep['seams_before'])}"]

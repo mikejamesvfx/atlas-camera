@@ -60,6 +60,25 @@ def rec709_linear_to_acescg(a: Any) -> Any:
     return np.asarray(a, dtype=np.float32)[..., :3] @ _rec709_to_acescg_matrix(np).T
 
 
+def srgb_to_linear_f32(srgb: Any) -> Any:
+    """sRGB display (clipped to 0..1) -> linear, float32, built in place.
+
+    Same curve as ``core.generated_mesh.srgb_to_linear``, which works in
+    float64 with ~6 full-size temporaries: on an 8K plate that one call was
+    the stitch's memory peak, and its float64 result was held for the whole
+    post-pass (P-1b). Agrees with it to float32 precision.
+    """
+    np = _require_numpy()
+    c = np.clip(np.asarray(srgb, dtype=np.float32), 0.0, 1.0)
+    low = c <= 0.04045
+    lin = c / np.float32(12.92)
+    c += np.float32(0.055)
+    c /= np.float32(1.055)
+    np.power(c, np.float32(2.4), out=c)
+    np.copyto(c, lin, where=low)
+    return c
+
+
 def _luma_ap1(np):
     return np.asarray(LUMA_AP1, dtype=np.float32)
 
@@ -236,8 +255,17 @@ def _resize_axis(np, a, n, axis):
     t = pos - i0
     shape = [1] * a.ndim
     shape[axis] = n
-    t = t.reshape(shape)
-    return np.take(a, i0, axis=axis) * (1 - t) + np.take(a, i1, axis=axis) * t
+    # Weights in the image's dtype: float64 weights silently promoted every
+    # resize (and lowpass, and the 8K global upsample) to float64 at ~3x the
+    # peak memory (P-1b). In place: one output buffer + one take.
+    t = t.reshape(shape).astype(a.dtype if a.dtype.kind == "f" else np.float32)
+    out = np.take(a, i0, axis=axis)
+    out = out.astype(t.dtype, copy=False)
+    out *= (1 - t)
+    hi = np.take(a, i1, axis=axis)
+    hi = hi * t
+    out += hi
+    return out
 
 
 def resize_bilinear(a: Any, height: int, width: int) -> Any:
@@ -325,7 +353,9 @@ def stitch(zone_hdr: list[Any], plan: dict[str, Any], *, global_hdr: Any = None,
         if bad:
             raise ValueError(f"global pass has {bad} non-finite value(s): refusing to anchor "
                              "every zone to it -- re-run the global clip or turn anchor off")
-        glog = to_log2(resize_bilinear(np.asarray(global_hdr, dtype=np.float32), rh, rw))
+        glog = resize_bilinear(np.asarray(global_hdr, dtype=np.float32), rh, rw)
+        np.maximum(glog, LOG_EPS, out=glog)     # to_log2, in place on the render-size buffer
+        np.log2(glog, out=glog)
 
     for z, img in zip(plan["zones"], zone_hdr):
         a = np.asarray(img)
@@ -337,41 +367,72 @@ def stitch(zone_hdr: list[Any], plan: dict[str, Any], *, global_hdr: Any = None,
             raise ValueError(f"zone {z['id']} has {bad} non-finite value(s): refusing to "
                              "stitch around a hole -- re-run that zone")
 
-    acc = np.zeros((rh, rw, c), dtype=np.float64)
-    wsum = np.zeros((rh, rw, 1), dtype=np.float64)
-    logs = []
+    # Memory (P-1b): float32 accumulators -- log2 radiance (|x| < ~30) times a
+    # weight <= 1, summed over at most 4 zones, keeps ~1e-6 stops; the anchor
+    # runs ONCE per zone (it ran twice: once to blend, once for the report);
+    # and only each zone's 2-D log2 luminance is kept for the seam metrics,
+    # not two full 3-channel log copies of every zone.
+    acc = np.zeros((rh, rw, c), dtype=np.float32)
+    wsum = np.zeros((rh, rw, 1), dtype=np.float32)
+    lum_w = _luma_ap1(np)
+    lums_before, lums_after = [], []
     for z, img, (ol, ot, orr, ob) in zip(plan["zones"], zone_hdr, _overlaps(plan)):
         x, y, w, h = z["renderRect"]
         a = np.asarray(img, dtype=np.float32)
         if a.shape[:2] != (h, w):
             a = resize_bilinear(a, h, w)   # tolerated, and reported
         lg = to_log2(a)
-        logs.append(lg)
+        lums_before.append(_log2_lum_of_log(np, lg, lum_w))
         if glog is not None:
             lg = anchor_zone(lg, glog, z["renderRect"], split)
+            lums_after.append(_log2_lum_of_log(np, lg, lum_w))
         wy = _feather(np, h, ot, ob)[:, None, None]
         wx = _feather(np, w, ol, orr)[None, :, None]
         wt = wy * wx
-        acc[y:y + h, x:x + w] += lg * wt
+        lg *= wt
+        acc[y:y + h, x:x + w] += lg
         wsum[y:y + h, x:x + w] += wt
-    out = np.exp2(acc / np.maximum(wsum, 1e-12)).astype(np.float32)
+        del a, lg, wt
+    del glog
     L, T = plan["render"]["plateOrigin"]
     pw, ph = plan["plate"]["width"], plan["plate"]["height"]
-    plate = out[T:T + ph, L:L + pw]
-    report = {"seams_before": seam_metrics(logs, plan),
-              "anchored": glog is not None, "split_px": split,
+    # Crop BEFORE dividing/exp2 (the padding ring is never needed), and copy so
+    # the returned plate does not pin the whole render's storage.
+    plate = acc[T:T + ph, L:L + pw] / np.maximum(wsum[T:T + ph, L:L + pw], 1e-12)
+    del acc, wsum
+    np.exp2(plate, out=plate)
+    report = {"seams_before": seam_metrics(lums_before, plan),
+              "anchored": global_hdr is not None, "split_px": split,
               "resized_zones": sum(1 for z, i in zip(plan["zones"], zone_hdr)
                                    if np.asarray(i).shape[:2] != tuple(z["renderRect"][3:1:-1]))}
-    if glog is not None:
-        anchored = [anchor_zone(lg, glog, z["renderRect"], split)
-                    for lg, z in zip(logs, plan["zones"])]
-        report["seams_after_anchor"] = seam_metrics(anchored, plan)
+    if global_hdr is not None:
+        report["seams_after_anchor"] = seam_metrics(lums_after, plan)
     return plate, report
+
+
+def _log2_lum_of_log(np, lg, lum_w):
+    """2-D log2 AP1 luminance of a 3-channel log2 image (what seam_metrics reads)."""
+    lin = np.exp2(lg[..., :3])
+    lin *= lum_w
+    return np.log2(np.maximum(lin.sum(-1), LOG_EPS))
 
 
 #: Highlights the SDR plate clipped are where the conversion SHOULD change the
 #: picture; they are excluded when measuring stripes the model added.
 DESTRIPE_SDR_CLIP = 0.9
+
+
+def _wlum(np, img, w, floor=None):
+    """Weighted channel sum of (H, W, >=3) built channel by channel: one 2-D
+    buffer instead of the two full 3-channel temporaries of ``(img * w).sum(-1)``
+    (P-1b). ``floor`` clamps each channel first, as ``np.maximum(img, floor)``."""
+    def ch(i):
+        c = img[..., i]
+        return c if floor is None else np.maximum(c, floor)
+    out = ch(0) * w[0]
+    out += ch(1) * w[1]
+    out += ch(2) * w[2]
+    return out
 
 
 def _column_highpass(np, profile, window: int):
@@ -406,18 +467,21 @@ def destripe_columns(hdr: Any, sdr_linear: Any, *, bands: list[tuple[int, int]] 
         raise ValueError(f"hdr {h_img.shape[:2]} and sdr {s_img.shape[:2]} differ")
     H, W = h_img.shape[:2]
     lum_w = _luma_ap1(np)                       # on the ACEScg HDR
-    hl = (np.maximum(h_img[..., :3], LOG_EPS) * lum_w).sum(-1)
-    sl = (np.maximum(s_img[..., :3], LOG_EPS) * _luma_ap1_of_rec709(np)).sum(-1)
-    ratio = np.log2(np.maximum(hl, LOG_EPS)) - np.log2(np.maximum(sl, LOG_EPS))
+    lsl = np.log2(np.maximum(_wlum(np, s_img, _luma_ap1_of_rec709(np), LOG_EPS), LOG_EPS))
+    ratio = np.log2(np.maximum(_wlum(np, h_img, lum_w, LOG_EPS), LOG_EPS))
+    ratio -= lsl
     usable = s_img[..., :3].max(-1) < clip
     bands = bands or [(0, H)]
-    centres, profiles = [], []
+    centres, profiles, raw_hp = [], [], []
     for y0, y1 in bands:
         r = np.where(usable[y0:y1], ratio[y0:y1], np.nan)
         prof = np.nanmedian(r, axis=0)
+        del r
+        raw_hp.append(_column_highpass(np, prof, window))   # the "before" ripple
         prof = np.where(np.isfinite(prof), prof, np.nanmedian(prof) if np.isfinite(prof).any() else 0)
         profiles.append(_column_highpass(np, prof, window))
         centres.append((y0 + y1) / 2.0)
+    del ratio
     order = np.argsort(centres)
     centres = np.asarray(centres)[order]
     profiles = np.stack([profiles[i] for i in order])
@@ -428,13 +492,15 @@ def destripe_columns(hdr: Any, sdr_linear: Any, *, bands: list[tuple[int, int]] 
         idx = np.clip(np.searchsorted(centres, rows) - 1, 0, len(centres) - 2)
         t = np.clip((rows - centres[idx]) / (centres[idx + 1] - centres[idx]), 0, 1)[:, None]
         field = profiles[idx] * (1 - t) + profiles[idx + 1] * t
-    out = h_img * np.exp2(-field)[..., None].astype(np.float32)
-    before = float(np.nanstd([_column_highpass(np, np.nanmedian(np.where(usable, ratio, np.nan)[y0:y1], 0), window)
-                              for y0, y1 in bands]))
-    r2 = np.log2(np.maximum((np.maximum(out[..., :3], LOG_EPS) * lum_w).sum(-1), LOG_EPS)) - \
-        np.log2(np.maximum(sl, LOG_EPS))
-    after = float(np.nanstd([_column_highpass(np, np.nanmedian(np.where(usable, r2, np.nan)[y0:y1], 0), window)
-                             for y0, y1 in bands]))
+    field = np.exp2(-np.asarray(field, dtype=np.float32))   # one (H, W) float32 gain, not float64
+    out = h_img * field[..., None]
+    del field
+    before = float(np.nanstd(raw_hp))
+    r2 = np.log2(np.maximum(_wlum(np, out, lum_w, LOG_EPS), LOG_EPS))
+    r2 -= lsl
+    after = float(np.nanstd([_column_highpass(np, np.nanmedian(np.where(usable[y0:y1], r2[y0:y1], np.nan), 0),
+                                              window) for y0, y1 in bands]))
+    del r2, lsl, usable                         # nothing 2-D held across the next pass
     rep = {"ripple_before_stops": before, "ripple_after_stops": after,
            "bands": len(bands), "window_px": int(window), "iterations": 1}
     if iterations > 1:
@@ -481,8 +547,9 @@ def destripe_local(hdr: Any, sdr_linear: Any, *, rows: int = 256, window: int = 
     H, W = h_img.shape[:2]
     # AP1 luminance on both: the HDR is ACEScg, the Rec.709 SDR is weighted as
     # if moved to ACEScg (F-5).
-    ls = np.log2(np.maximum((np.maximum(s_img[..., :3], 0) * _luma_ap1_of_rec709(np)).sum(-1), 1e-4))
-    ratio = np.log2(np.maximum((np.maximum(h_img[..., :3], 0) * _luma_ap1(np)).sum(-1), 1e-4)) - ls
+    ls = np.log2(np.maximum(_wlum(np, s_img, _luma_ap1_of_rec709(np), 0.0), 1e-4))
+    ratio = np.log2(np.maximum(_wlum(np, h_img, _luma_ap1(np), 0.0), 1e-4))
+    ratio -= ls
     gy, gx = np.gradient(ls)
     grad = lowpass(np.sqrt(gx * gx + gy * gy), 16)
     flat = np.exp(-(grad / float(flat_grad)) ** 2).astype(np.float32)
@@ -538,8 +605,14 @@ def _box_mean(np, a, r: int):
         pad[axis] = (r + 1, r)
         c = np.cumsum(np.pad(a, pad, mode="edge"), axis=axis, dtype=np.float64)
         n = a.shape[axis]
-        a = ((np.take(c, np.arange(k, k + n), axis=axis)
-              - np.take(c, np.arange(n), axis=axis)) / k).astype(np.float32)
+        hi, lo = [slice(None)] * a.ndim, [slice(None)] * a.ndim
+        hi[axis], lo[axis] = slice(k, k + n), slice(0, n)
+        # slice VIEWS, not np.take copies: one float64 difference buffer (P-1b)
+        d = c[tuple(hi)] - c[tuple(lo)]
+        del c
+        d /= k
+        a = d.astype(np.float32)
+        del d
     return a
 
 
@@ -567,8 +640,6 @@ def sdr_detail_transfer(hdr: Any, sdr_display: Any, *, radius: int = SDR_TRANSFE
     JPEG blocking) is replaced by the SDR's.
     """
     np = _require_numpy()
-    from atlas_camera.core.generated_mesh import srgb_to_linear
-
     h = np.asarray(hdr, dtype=np.float32)[..., :3]
     sd = np.clip(np.asarray(sdr_display, dtype=np.float32)[..., :3], 0.0, 1.0)
     if h.shape[:2] != sd.shape[:2]:
@@ -577,29 +648,46 @@ def sdr_detail_transfer(hdr: Any, sdr_display: Any, *, radius: int = SDR_TRANSFE
     # Per-channel ratios need ONE colour space: the SDR is linearised and moved
     # to ACEScg (the HDR's space) before log2(hdr) - log2(sdr), else a pure
     # colour picks up a hue shift from the primaries mismatch (F-5).
-    ls = np.log2(np.maximum(rec709_linear_to_acescg(srgb_to_linear(sd)), floor))
-    lh = np.log2(np.maximum(h, floor))
-    guide = (ls * _luma_ap1(np)).sum(-1)
+    # Memory (P-1b): the log planes are built in place and the SDR display
+    # copy is dropped as soon as the clip mask has it.
+    ls = srgb_to_linear_f32(sd)
+    ls = rec709_linear_to_acescg(ls)
+    np.maximum(ls, floor, out=ls)
+    np.log2(ls, out=ls)
+    lh = np.maximum(h, floor)
+    np.log2(lh, out=lh)
+    guide = _wlum(np, ls, _luma_ap1(np))
     r = max(1, int(radius))
     mg = _box_mean(np, guide, r)
     vg = _box_mean(np, guide * guide, r) - mg * mg
     c = _box_mean(np, sd.max(-1), 4)
+    del sd
     lo, hi = float(clip[0]), float(clip[1])
     keep = np.clip((c - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+    del c
     keep = keep * keep * (3 - 2 * keep)
     out = np.empty_like(h)
     for ch in range(3):
         ratio = lh[..., ch] - ls[..., ch]
         mr = _box_mean(np, ratio, r)
         a = (_box_mean(np, guide * ratio, r) - mg * mr) / (vg + float(eps))
+        del ratio
         b = mr - a * mg
+        del mr
         smooth = _box_mean(np, a, r) * guide + _box_mean(np, b, r)
+        del a, b
         out[..., ch] = np.exp2((ls[..., ch] + smooth) * (1 - keep) + lh[..., ch] * keep)
-    out = np.where(h < 0, h, out)          # the few negatives stay as the model made them
-    d = np.abs(np.log2(np.maximum(out, floor)) - lh)
+        del smooth
+    del ls, guide, mg, vg
+    np.copyto(out, h, where=h < 0)         # the few negatives stay as the model made them
+    d = np.maximum(out, floor)
+    np.log2(d, out=d)
+    d -= lh
+    np.abs(d, out=d)
+    del lh
+    p50, p99 = np.percentile(d, [50, 99])
     rep = {"radius_px": r, "eps": float(eps), "kept_hdr_fraction": float((keep > 0.5).mean()),
-           "change_p50_stops": float(np.percentile(d, 50)),
-           "change_p99_stops": float(np.percentile(d, 99))}
+           "change_p50_stops": float(p50), "change_p99_stops": float(p99)}
     return out, rep
 
 
@@ -632,17 +720,21 @@ def zone_row_bands(plan: dict[str, Any], *,
 
 def seam_metrics(zone_logs: list[Any], plan: dict[str, Any]) -> list[dict[str, Any]]:
     """Per interior seam: |log2 luminance| disagreement between the two zones
-    over their shared overlap (median, p95). 0 = the neighbours agree."""
+    over their shared overlap (median, p95). 0 = the neighbours agree.
+
+    ``zone_logs`` are each zone's log2 radiance (h, w, C), or already its 2-D
+    log2 luminance (h, w) -- what ``stitch`` keeps, to hold one channel per
+    zone instead of three."""
     np = _require_numpy()
     rects = [z["renderRect"] for z in plan["zones"]]
     idx = {tuple(z["index"]): i for i, z in enumerate(plan["zones"])}
-    cols, rows = plan["grid"]
     lum_w = _luma_ap1(np)                       # zone results are ACEScg
     out = []
 
     def lum(lg):
-        lin = np.exp2(lg[..., :3])
-        return np.log2(np.maximum((lin * lum_w).sum(-1), LOG_EPS))
+        if lg.ndim == 2:
+            return lg
+        return _log2_lum_of_log(np, lg, lum_w)
 
     for (c, r), i in idx.items():
         for dc, dr in ((1, 0), (0, 1)):
@@ -684,7 +776,7 @@ def _windows(s0: int, s1: int, window: int = SEAM_WINDOW_PX) -> list[tuple[int, 
 def _log2_lum(np, a, weights=None):
     a = np.asarray(a, dtype=np.float32)
     if a.ndim == 3 and a.shape[-1] >= 3:
-        a = (a[..., :3] * (_luma_ap1(np) if weights is None else weights)).sum(-1)
+        a = _wlum(np, a, _luma_ap1(np) if weights is None else weights)
     return np.log2(np.maximum(a.reshape(a.shape[:2]), LOG_EPS))
 
 
