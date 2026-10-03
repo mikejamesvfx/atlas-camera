@@ -68,7 +68,12 @@ class AtlasMatrixZoneSplit:
     def split(self, image, grid_cols=2, grid_rows=2, overlap_min_px=64,
               mode="per_zone_clip", clip_frames=9):
         torch = _require_torch()
-        from atlas_camera.core.matrixzone import frames_8k1, plan_still, zones_as_frames
+        from atlas_camera.core.matrixzone import (
+            frames_8k1,
+            narrowed_overlaps,
+            plan_still,
+            zones_as_frames,
+        )
 
         img = image[:1].float()
         _, h, w, _ = img.shape
@@ -109,6 +114,10 @@ class AtlasMatrixZoneSplit:
                   f"mode {mode}: {len(clips)} clip(s) -> "
                   + (f"{len(zones)} zones x {n} frames + global" if mode == "per_zone_clip"
                      else f"one {len(clips[1])}-frame zone sequence (scan {plan['scan']}) + global"))
+        narrowed = narrowed_overlaps(plan)
+        if narrowed:
+            report += ("\nwarning: clamp narrowed overlap: "
+                       + ", ".join(f"{zid} {ax} {a}/{r} px" for zid, ax, a, r in narrowed))
         if dropped > 0:
             report += (f"\nwarning: image batch has {dropped + 1} frames; only the first was "
                        f"split, {dropped} dropped (matrixZone converts one still plate)")
@@ -222,6 +231,7 @@ class AtlasMatrixZoneStitch:
         sdr_lin, s_disp, sdr_note = _sdr_reference(np, sdr, plate.shape)
         plate, stripe_rep, local_rep, xfer_rep = _clean_plate(
             plate, plan, sdr_lin, s_disp, destripe=destripe, detail_from_sdr=detail_from_sdr)
+        del s_disp                      # only sdr_lin is used past the clean-up passes
 
         from atlas_camera.core.matrixzone import seam_step_test
         step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
@@ -542,16 +552,29 @@ def _stitch_report(np, plate, rep, step, *, n_zones, mode, colorspace, exr_path,
     if rep.get("resized_zones"):
         lines.append(f"warning: {rep['resized_zones']} zone result(s) came back at a "
                      "different size and were resampled to their renderRect")
-    finite = np.isfinite(plate)
-    bad = int(plate.size - finite.sum())
-    vals = plate[finite] if bad else plate
-    lines.append(f"range: max {float(vals.max()) if vals.size else float('nan'):.2f}, p99 "
-                 f"{float(np.percentile(vals, 99)) if vals.size else float('nan'):.3f} (linear, "
+    vmax, vp99, bad = _range_stats(np, plate)
+    lines.append(f"range: max {vmax:.2f}, p99 {vp99:.3f} (linear, "
                  + (f"{bad} NON-FINITE pixel value(s) excluded -- inspect the plate" if bad
                     else "0 non-finite")
                  + "); a MODEL RECONSTRUCTION "
                  "of highlight radiance from a display-referred plate, not photographed HDR")
     return "\n".join(lines)
+
+
+def _range_stats(np, plate, *, step=4, chunk_rows=256):
+    """``(max, p99, non_finite_count)`` for the report's range line without an
+    8K-sized bool mask or boolean-indexed copy: the non-finite count is exact
+    (row-chunked), max/p99 come from a ``step``-strided subsample (finite only;
+    NaN when the subsample has no finite value)."""
+    bad = 0
+    for r0 in range(0, plate.shape[0], chunk_rows):
+        blk = plate[r0:r0 + chunk_rows]
+        bad += int(blk.size - np.count_nonzero(np.isfinite(blk)))
+    sub = plate[::step, ::step]
+    sub = np.where(np.isfinite(sub), sub, np.nan)
+    if not np.isfinite(sub).any():
+        return float("nan"), float("nan"), bad
+    return float(np.nanmax(sub)), float(np.nanpercentile(sub, 99)), bad
 
 
 def _cleanup_report_lines(stripe_rep, local_rep, xfer_rep, destripe, detail_from_sdr):

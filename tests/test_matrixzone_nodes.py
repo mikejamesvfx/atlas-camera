@@ -292,3 +292,38 @@ def test_range_line_counts_non_finite_pixels():
                           destripe=False, detail_from_sdr=False)
     line = [ln for ln in text.splitlines() if ln.startswith("range:")][0]
     assert "2 NON-FINITE pixel value(s)" in line and "max 0.50" in line
+
+
+def test_split_warns_when_the_clamp_narrowed_an_overlap(monkeypatch):
+    from atlas_camera.core import matrixzone as mz
+    real = mz.plan_still
+
+    def narrowed(*a, **k):
+        p = real(*a, **k)
+        p["overlap_actual"]["zones"]["z10"] = [32, 64]
+        return p
+
+    monkeypatch.setattr(mz, "plan_still", narrowed)
+    _, _, report = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
+    assert "warning: clamp narrowed overlap: z10 x 32/64 px" in report
+
+
+def test_split_default_reports_no_narrowed_overlap():
+    _, handle, report = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 9)
+    assert "clamp narrowed" not in report
+    assert handle["plan"]["overlap_actual"]["requested"] == [64, 64]
+
+
+def test_range_stats_count_is_exact_and_stats_use_a_subsample():
+    from atlas_camera.comfy.nodes_matrixzone import _range_stats
+    plate = np.full((600, 40, 3), 0.25, np.float32)
+    plate[::4, ::4] = 1.0                           # what the strided subsample sees
+    plate[1, 1, 0] = np.nan                         # off-grid: counted, not sampled
+    plate[300, 2, 2] = np.inf
+    plate[0, 0, 1] = np.inf                         # on-grid non-finite: excluded
+    vmax, p99, bad = _range_stats(np, plate, chunk_rows=7)
+    assert bad == 3
+    assert vmax == pytest.approx(1.0) and p99 == pytest.approx(1.0)
+    allbad = np.full((4, 4, 3), np.nan, np.float32)
+    vmax, p99, bad = _range_stats(np, allbad)
+    assert np.isnan(vmax) and np.isnan(p99) and bad == 48

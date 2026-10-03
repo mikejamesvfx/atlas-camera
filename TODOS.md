@@ -42,7 +42,7 @@
   - Fix idea: create the file with `O_EXCL`, retrying on collision. Only delete files this invocation created.
   - Context: one ComfyUI process runs prompts one at a time, so this needs multi-process or shared-folder setups. Found by the pre-landing review on 2026-10-03 (Codex).
 
-- [ ] **Report narrowed overlap when the planner clamps a zone (P3, human: S / CC: S).**
+- [x] **Report narrowed overlap when the planner clamps a zone (P3, human: S / CC: S).** RESOLVED 2026-10-03: a 181,280-plan sweep showed the clamp can only WIDEN an overlap (edge zones are pinned; a clamped interior zone slides toward its edge neighbour). `plan_still` now records `overlap_actual` and the split warns if any zone ever falls below the request, as a safety net.
   - What: `core.matrixzone._axis` clamps interior zones into the canvas (F-3). The clamp keeps every cell covered, but the overlap facing the next zone can fall below `overlap_min/2`, so the feather band is narrower, and nothing reports it.
   - Fix idea: add a per-zone `overlap_px` actual-vs-requested field to the plan, and a report line in the split node.
   - Depends on: pairs with the atlas_bridge clamp mirror TODO, since the two repos must agree on clamped grids. Found by the pre-landing review on 2026-10-03.

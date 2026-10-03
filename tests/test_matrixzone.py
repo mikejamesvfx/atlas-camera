@@ -432,3 +432,44 @@ def test_resize_and_lowpass_stay_float32():
     a = np.random.default_rng(0).random((37, 53, 3)).astype(np.float32)
     assert resize_bilinear(a, 80, 120).dtype == np.float32
     assert lowpass(a, 8).dtype == np.float32
+
+
+def test_overlap_actual_is_appended_without_touching_parity_keys():
+    p = plan_still(7680, 4320, (2, 2))
+    assert set(p) == {"schema", "grid", "plate", "render", "zone_size", "global",
+                      "overlap", "zones", "scan", "overlap_actual"}
+    assert all(set(z) == {"id", "index", "plateRect", "renderRect"} for z in p["zones"])
+    oa = p["overlap_actual"]
+    assert oa["requested"] == [64, 64]
+    assert oa["zones"] == {"z00": [128, 128], "z01": [128, 128],
+                           "z10": [128, 128], "z11": [128, 128]}
+    from atlas_camera.core.matrixzone import narrowed_overlaps
+    assert narrowed_overlaps(p) == []
+
+
+def test_overlap_actual_matches_the_zone_rects_on_a_clamped_grid():
+    # 1x8 / 512 is the F-3 clamp repro. The clamp is monotone and edge zones are
+    # pinned to the canvas ends, so a clamped zone only slides TOWARD its
+    # edge-side neighbour: overlap grows, it is never narrowed (also swept).
+    from atlas_camera.core.matrixzone import narrowed_overlaps
+    p = plan_still(3840, 2160, (1, 8), overlap_min=(512, 512))
+    rects = {z["id"]: z["renderRect"] for z in p["zones"]}
+    for r in range(8):
+        near = []
+        if r > 0:
+            a = rects[f"z{r - 1}0"]
+            near.append(a[1] + a[3] - rects[f"z{r}0"][1])
+        if r < 7:
+            b = rects[f"z{r + 1}0"]
+            near.append(rects[f"z{r}0"][1] + rects[f"z{r}0"][3] - b[1])
+        assert p["overlap_actual"]["zones"][f"z{r}0"] == [None, min(near)]
+    assert narrowed_overlaps(p) == []
+
+
+def test_narrowed_overlaps_names_a_zone_below_the_request():
+    from atlas_camera.core.matrixzone import narrowed_overlaps
+    p = plan_still(7680, 4320, (2, 2), overlap_min=(128, 128))
+    p["overlap_actual"]["zones"]["z10"] = [96, 128]
+    assert narrowed_overlaps(p) == [("z10", "x", 96, 128)]
+    del p["overlap_actual"]                        # an older handle: nothing to report
+    assert narrowed_overlaps(p) == []

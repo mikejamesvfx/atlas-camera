@@ -186,6 +186,7 @@ def plan_still(plate_width: int, plate_height: int, grid: tuple[int, int], *,
         scan.extend(row * cols + c for c in cols_order)
     seams_x = [xz[i][0] + xz[i][1] - xz[i + 1][0] for i in range(cols - 1)]
     seams_y = [yz[i][0] + yz[i][1] - yz[i + 1][0] for i in range(rows - 1)]
+    ax_x, ax_y = _axis_min_overlap(seams_x), _axis_min_overlap(seams_y)
     return {
         "schema": "atlasMatrixZoneStill/1",
         "grid": [cols, rows],
@@ -197,7 +198,47 @@ def plan_still(plate_width: int, plate_height: int, grid: tuple[int, int], *,
                     "edges": "interior", "blend": "feather-log2"},
         "zones": zones,
         "scan": scan,
+        # APPENDED (no existing key/value changes -- bridge parity): the clamp in
+        # _axis keeps every cell covered, but an interior zone slid away from the
+        # canvas edge can share LESS than overlap_min with the neighbour it slid
+        # toward (a narrower feather). Per zone, the minimum interior overlap on
+        # each axis (None = no interior neighbour on that axis), vs requested.
+        "overlap_actual": {
+            "requested": [int(overlap_min[0]), int(overlap_min[1])],
+            "zones": {f"z{row}{col}": [ax_x[col], ax_y[row]]
+                      for row in range(rows) for col in range(cols)},
+        },
     }
+
+
+def _axis_min_overlap(seams: list[int]) -> list[int | None]:
+    """Per cell along one axis: the smaller of the overlaps shared with its two
+    neighbours (``seams[i]`` is between cell i and i+1); None for a lone cell."""
+    n = len(seams) + 1
+    out: list[int | None] = []
+    for i in range(n):
+        near = ([seams[i - 1]] if i > 0 else []) + ([seams[i]] if i < n - 1 else [])
+        out.append(int(min(near)) if near else None)
+    return out
+
+
+def narrowed_overlaps(plan: dict[str, Any]) -> list[tuple[str, str, int, int]]:
+    """``(zone_id, axis, actual_px, requested_px)`` for every zone whose interior
+    overlap on an axis is below the requested minimum (the _axis clamp narrowed
+    it). Empty for plans without ``overlap_actual`` (older handles)."""
+    oa = plan.get("overlap_actual")
+    if not oa:
+        return []
+    req = oa["requested"]
+    out = []
+    for z in plan["zones"]:
+        actual = oa["zones"].get(z["id"])
+        if actual is None:
+            continue
+        for k, axis in enumerate("xy"):
+            if actual[k] is not None and actual[k] < req[k]:
+                out.append((z["id"], axis, int(actual[k]), int(req[k])))
+    return out
 
 
 # ---------------------------------------------------------------------------
