@@ -14,11 +14,20 @@ coloured by linear ``COLOR_0`` (``_generated_split``).
 
 glTF images are PNG/JPEG only -- there is no EXR image format -- so a layer's
 float plate rides beside the GLB and is named in its material ``extras``.
+
+One glTF image + texture per SOURCE plate: every layer a plate paints shares
+it (layers carrying the same ``image_bytes`` object are deduplicated), so a
+scene of N primary meshes embeds the primary plate once, not N times. The
+GLB's size is computed from the planned buffer views BEFORE the binary blob is
+assembled, so an over-budget scene is refused without allocating it
+(:class:`GLBBudgetError`); a GLB's length field is uint32, so 4 GiB is a hard
+ceiling regardless of budget.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +35,28 @@ from typing import Any
 
 _PNG_MIME = "image/png"
 _JPEG_MIME = "image/jpeg"
+
+#: A GLB header stores its total length as uint32.
+GLB_MAX_BYTES = 0xFFFFFFFF
+
+
+class GLBBudgetError(ValueError):
+    """The planned GLB exceeds a byte budget; nothing was assembled or written.
+
+    ``plan`` carries ``bytes`` (estimated file size), ``layers`` (per-layer
+    geometry bytes) and ``images`` (per-plate embedded bytes, each counted
+    once) so a caller can name what is large.
+    """
+
+    def __init__(self, message: str, plan: dict[str, Any]):
+        super().__init__(message)
+        self.plan = plan
+
+
+def sanitize_name(name: Any, default: str = "layer") -> str:
+    """A file-name-safe token: runs outside ``[A-Za-z0-9_-]`` become ``_``."""
+    out = re.sub(r"[^A-Za-z0-9_-]+", "_", str(name or "")).strip("_")
+    return out or default
 
 
 @dataclass
@@ -47,9 +78,21 @@ def _pad4(data: bytes, pad: bytes = b"\x00") -> bytes:
     return data + pad * ((4 - len(data) % 4) % 4)
 
 
-def write_scene_glb(layers: list[SceneLayer], path: str | Path, *,
-                    generator: str = "AtlasCamera scene") -> dict[str, Any]:
-    """Write ``layers`` into one GLB at ``path``; returns a summary dict."""
+def _pad_len(n: int) -> int:
+    return n + (4 - n % 4) % 4
+
+
+def plan_scene_glb(layers: list[SceneLayer]) -> dict[str, Any]:
+    """Prepare every layer's arrays and size the GLB, without assembling it.
+
+    Returns ``{"prepared", "dropped", "layers", "images", "bin_bytes",
+    "bytes"}``: ``prepared`` feeds :func:`write_scene_glb`; ``dropped`` lists
+    layers that carry no geometry (``{"name", "reason"}``); ``layers`` /
+    ``images`` are the per-layer geometry and per-plate image byte counts
+    (an image shared by several layers is counted ONCE, against its plate);
+    ``bytes`` is the estimated file size (binary chunk + headers; the JSON
+    chunk is small and estimated).
+    """
     import numpy as np
 
     from atlas_camera.core.generated_mesh import srgb_to_linear
@@ -59,59 +102,29 @@ def write_scene_glb(layers: list[SceneLayer], path: str | Path, *,
         _topology_safe_faces,
     )
 
-    blob = bytearray()
-    buffer_views: list[dict] = []
-    accessors: list[dict] = []
-    materials: list[dict] = []
-    meshes: list[dict] = []
-    nodes: list[dict] = []
-    images: list[dict] = []
-    textures: list[dict] = []
-    summary: list[dict] = []
-
-    def add_view(data: bytes, target: int | None = None) -> int:
-        offset = len(blob)
-        blob.extend(_pad4(data))
-        view = {"buffer": 0, "byteOffset": offset, "byteLength": len(data)}
-        if target is not None:
-            view["target"] = target
-        buffer_views.append(view)
-        return len(buffer_views) - 1
-
-    def add_accessor(arr: Any, kind: str, component: int, *, minmax: bool = False,
-                     target: int | None = 34962) -> int:
-        acc = {"bufferView": add_view(arr.tobytes(), target), "componentType": component,
-               "count": int(arr.shape[0]) if kind != "SCALAR" else int(arr.size), "type": kind}
-        if minmax:
-            acc["min"] = [float(v) for v in arr.min(axis=0)]
-            acc["max"] = [float(v) for v in arr.max(axis=0)]
-        accessors.append(acc)
-        return len(accessors) - 1
-
-    def unlit(name: str, *, texture: int | None, extras: dict, blend: bool = False) -> int:
-        pbr: dict[str, Any] = {"metallicFactor": 0.0, "roughnessFactor": 1.0}
-        if texture is not None:
-            pbr["baseColorTexture"] = {"index": texture}
-        else:
-            pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]
-        mat = {"name": name, "doubleSided": True, "pbrMetallicRoughness": pbr,
-               "extensions": {"KHR_materials_unlit": {}}}
-        if extras:
-            mat["extras"] = extras
-        materials.append(mat)
-        return len(materials) - 1
-
+    prepared: list[dict[str, Any]] = []
+    dropped: list[dict[str, str]] = []
+    layer_sizes: list[dict[str, Any]] = []
+    images: dict[int, dict[str, Any]] = {}
     for layer in layers:
         verts = np.asarray(layer.vertices, dtype=np.float32).reshape(-1, 3)
         if not len(verts):
+            dropped.append({"name": layer.name, "reason": "empty geometry (0 vertices)"})
             continue
         faces = _topology_safe_faces(verts, np.asarray(layer.faces).reshape(-1, 3))
         if not len(faces):
+            dropped.append({"name": layer.name,
+                            "reason": "zero faces after topology cleanup"})
             continue
         n = len(verts)
+        untextured_reason = ""
         uvs = None if layer.uvs is None else np.asarray(layer.uvs, dtype=np.float32).reshape(-1, 2)
         if uvs is not None and len(uvs) != n:
+            untextured_reason = (f"UV count {len(uvs)} != vertex count {n} - "
+                                 "written untextured")
             uvs = None
+        elif uvs is None and layer.image_bytes:
+            untextured_reason = "no UVs - written untextured"
 
         gen = None
         if layer.vertex_colors is not None and uvs is not None:
@@ -129,25 +142,150 @@ def write_scene_glb(layers: list[SceneLayer], path: str | Path, *,
             groups = [("photo", gen["photo_faces"]), ("generated", gen["vc_faces"])]
         else:
             groups = [("photo", faces)]
+        groups = [(k, np.ascontiguousarray(np.asarray(g, dtype=np.uint32).reshape(-1)))
+                  for k, g in groups]
+        if not any(g.size for _, g in groups):
+            dropped.append({"name": layer.name, "reason": "zero faces"})
+            continue
 
-        attrs = {"POSITION": add_accessor(np.ascontiguousarray(verts), "VEC3", 5126, minmax=True)}
+        geo = _pad_len(verts.astype(np.float32).nbytes)
+        if uvs is not None:
+            geo += _pad_len(uvs.astype(np.float32).nbytes)
+        if colors is not None:
+            geo += _pad_len(colors.nbytes)
+        geo += sum(_pad_len(g.nbytes) for _, g in groups if g.size)
+
+        image_key = None
+        if layer.image_bytes and uvs is not None:
+            image_key = id(layer.image_bytes)
+            if image_key not in images:
+                images[image_key] = {
+                    "name": str(layer.extras.get("atlas_plate") or layer.name),
+                    "bytes": _pad_len(len(layer.image_bytes)), "layers": 0,
+                    "data": layer.image_bytes, "mime": layer.image_mime}
+            images[image_key]["layers"] += 1
+        prepared.append({"layer": layer, "verts": verts, "uvs": uvs, "colors": colors,
+                         "groups": groups, "image_key": image_key, "gen": gen is not None,
+                         "untextured_reason": untextured_reason})
+        layer_sizes.append({"name": layer.name, "bytes": int(geo)})
+
+    bin_bytes = sum(x["bytes"] for x in layer_sizes) + sum(i["bytes"] for i in images.values())
+    # JSON chunk: a generous per-view estimate keeps the pre-check honest.
+    json_est = 2048 + 512 * len(prepared) + 256 * len(images)
+    return {"prepared": prepared, "dropped": dropped, "layers": layer_sizes,
+            "images": [{k: v for k, v in i.items() if k != "data"} for i in images.values()],
+            "_images": images, "bin_bytes": int(bin_bytes),
+            "bytes": int(12 + 8 + json_est + 8 + bin_bytes)}
+
+
+def describe_glb_plan(plan: dict[str, Any]) -> str:
+    """Per-layer and per-plate MB, largest first (for a refusal message)."""
+    parts = [f"{x['name']} {x['bytes'] / 1e6:.1f} MB geometry"
+             for x in sorted(plan["layers"], key=lambda x: -x["bytes"])]
+    parts += [f"plate {i['name']} {i['bytes'] / 1e6:.1f} MB "
+              f"(shared by {i['layers']} layer{'s' if i['layers'] != 1 else ''})"
+              for i in sorted(plan["images"], key=lambda x: -x["bytes"])]
+    return "; ".join(parts)
+
+
+def write_scene_glb(layers: list[SceneLayer], path: str | Path, *,
+                    generator: str = "AtlasCamera scene",
+                    max_bytes: int | None = None) -> dict[str, Any]:
+    """Write ``layers`` into one GLB at ``path``; returns a summary dict.
+
+    ``max_bytes`` (None/0 = no budget) is checked against the PLANNED size
+    before the binary blob is built; over it raises :class:`GLBBudgetError`
+    and nothing is written. The summary's ``dropped`` lists layers with no
+    geometry, and each layer's ``untextured_reason`` says why a layer that
+    had a plate was written untextured.
+    """
+    import numpy as np
+
+    plan = plan_scene_glb(layers)
+    if not plan["prepared"]:
+        raise ValueError("no layer had geometry to write"
+                         + (" (dropped: " + "; ".join(f"{d['name']}: {d['reason']}"
+                                                      for d in plan["dropped"]) + ")"
+                            if plan["dropped"] else ""))
+    limit = GLB_MAX_BYTES if not max_bytes else min(int(max_bytes), GLB_MAX_BYTES)
+    if plan["bytes"] > limit:
+        why = ("the GLB format's 4 GiB length limit" if limit == GLB_MAX_BYTES
+               else f"the {limit / 1e6:.0f} MB budget")
+        raise GLBBudgetError(
+            f"the GLB would be ~{plan['bytes'] / 1e6:.0f} MB, over {why} "
+            f"({len(plan['prepared'])} layers, {len(plan['images'])} embedded plate(s)): "
+            + describe_glb_plan(plan), plan)
+
+    blob = bytearray()
+    buffer_views: list[dict] = []
+    accessors: list[dict] = []
+    materials: list[dict] = []
+    meshes: list[dict] = []
+    nodes: list[dict] = []
+    images: list[dict] = []
+    textures: list[dict] = []
+    summary: list[dict] = []
+    texture_of: dict[int, int] = {}
+
+    def add_view(data: Any, target: int | None = None) -> int:
+        offset = len(blob)
+        blob.extend(data)
+        n = len(blob) - offset
+        blob.extend(b"\x00" * ((4 - n % 4) % 4))
+        view = {"buffer": 0, "byteOffset": offset, "byteLength": n}
+        if target is not None:
+            view["target"] = target
+        buffer_views.append(view)
+        return len(buffer_views) - 1
+
+    def add_accessor(arr: Any, kind: str, component: int, *, minmax: bool = False,
+                     target: int | None = 34962) -> int:
+        raw = np.ascontiguousarray(arr).reshape(-1).view(np.uint8)  # no tobytes() copy
+        acc = {"bufferView": add_view(raw, target),
+               "componentType": component,
+               "count": int(arr.shape[0]) if kind != "SCALAR" else int(arr.size), "type": kind}
+        if minmax:
+            acc["min"] = [float(v) for v in arr.min(axis=0)]
+            acc["max"] = [float(v) for v in arr.max(axis=0)]
+        accessors.append(acc)
+        return len(accessors) - 1
+
+    def unlit(name: str, *, texture: int | None, extras: dict) -> int:
+        pbr: dict[str, Any] = {"metallicFactor": 0.0, "roughnessFactor": 1.0}
+        if texture is not None:
+            pbr["baseColorTexture"] = {"index": texture}
+        else:
+            pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]
+        mat = {"name": name, "doubleSided": True, "pbrMetallicRoughness": pbr,
+               "extensions": {"KHR_materials_unlit": {}}}
+        if extras:
+            mat["extras"] = extras
+        materials.append(mat)
+        return len(materials) - 1
+
+    for item in plan["prepared"]:
+        layer, verts, uvs, colors = item["layer"], item["verts"], item["uvs"], item["colors"]
+        attrs = {"POSITION": add_accessor(verts, "VEC3", 5126, minmax=True)}
         if uvs is not None:
             st = uvs.copy()
             st[:, 1] = 1.0 - st[:, 1]  # OBJ bottom-left -> glTF top-left
-            attrs["TEXCOORD_0"] = add_accessor(np.ascontiguousarray(st), "VEC2", 5126)
+            attrs["TEXCOORD_0"] = add_accessor(st, "VEC2", 5126)
         if colors is not None:
-            attrs["COLOR_0"] = add_accessor(np.ascontiguousarray(colors), "VEC4", 5126)
+            attrs["COLOR_0"] = add_accessor(colors, "VEC4", 5126)
 
         texture = None
-        if layer.image_bytes and uvs is not None:
-            images.append({"bufferView": add_view(layer.image_bytes),
-                           "mimeType": layer.image_mime, "name": layer.name})
-            textures.append({"source": len(images) - 1, "sampler": 0})
-            texture = len(textures) - 1
+        key = item["image_key"]
+        if key is not None:
+            if key not in texture_of:
+                img = plan["_images"][key]
+                images.append({"bufferView": add_view(img["data"]),
+                               "mimeType": img["mime"], "name": img["name"]})
+                textures.append({"source": len(images) - 1, "sampler": 0})
+                texture_of[key] = len(textures) - 1
+            texture = texture_of[key]
 
         primitives = []
-        for kind, group in groups:
-            idx = np.ascontiguousarray(np.asarray(group, dtype=np.uint32).reshape(-1))
+        for kind, idx in item["groups"]:
             if not idx.size:
                 continue
             if kind == "photo":
@@ -158,16 +296,14 @@ def write_scene_glb(layers: list[SceneLayer], path: str | Path, *,
             primitives.append({"attributes": attrs,
                                "indices": add_accessor(idx, "SCALAR", 5125, target=34963),
                                "material": mat})
-        if not primitives:
-            continue
         meshes.append({"name": layer.name, "primitives": primitives})
         nodes.append({"mesh": len(meshes) - 1, "name": layer.name})
-        summary.append({"name": layer.name, "vertices": int(len(verts)),
-                        "faces": int(sum(len(np.asarray(g).reshape(-1, 3)) for _, g in groups)),
-                        "textured": texture is not None, "vertex_colour": gen is not None})
-
-    if not nodes:
-        raise ValueError("no layer had geometry to write")
+        entry = {"name": layer.name, "vertices": int(len(verts)),
+                 "faces": int(sum(g.size // 3 for _, g in item["groups"])),
+                 "textured": texture is not None, "vertex_colour": item["gen"]}
+        if item["untextured_reason"]:
+            entry["untextured_reason"] = item["untextured_reason"]
+        summary.append(entry)
 
     gltf: dict[str, Any] = {
         "asset": {"version": "2.0", "generator": generator},
@@ -185,17 +321,20 @@ def write_scene_glb(layers: list[SceneLayer], path: str | Path, *,
                              "wrapS": 33071, "wrapT": 33071}]
 
     json_chunk = _pad4(json.dumps(gltf, separators=(",", ":")).encode("utf-8"), b" ")
-    bin_chunk = bytes(blob)
-    total = 12 + 8 + len(json_chunk) + 8 + len(bin_chunk)
+    total = 12 + 8 + len(json_chunk) + 8 + len(blob)
+    if total > GLB_MAX_BYTES:  # the plan's JSON estimate was short (pathological)
+        raise GLBBudgetError(f"the GLB is {total / 1e6:.0f} MB, over the GLB format's "
+                             "4 GiB length limit", plan)
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "wb") as fh:
         fh.write(struct.pack("<III", 0x46546C67, 2, total))
         fh.write(struct.pack("<II", len(json_chunk), 0x4E4F534A))
         fh.write(json_chunk)
-        fh.write(struct.pack("<II", len(bin_chunk), 0x004E4942))
-        fh.write(bin_chunk)
-    return {"glb": str(out), "bytes": total, "layers": summary}
+        fh.write(struct.pack("<II", len(blob), 0x004E4942))
+        fh.write(blob)  # the bytearray itself: no bytes(blob) second copy
+    return {"glb": str(out), "bytes": total, "layers": summary,
+            "dropped": plan["dropped"], "images": len(images)}
 
 
 LINEAR_FROM_DISPLAY = "Linear Rec.709 (sRGB)"
@@ -304,6 +443,18 @@ def build_scene_layers(
     sidecars: list[dict[str, Any]] = []
     notes: list[str] = []
     exr_root = Path(exr_dir) if exr_dir else None
+    used_names: set[str] = set()
+
+    def sidecar_name(key: str, suffix: str) -> str:
+        """``<prefix>_<key><suffix>`` with ``key`` sanitised to [A-Za-z0-9_-]
+        (layer names come from the solve, never trusted as path parts) and
+        made unique (``_2``, ``_3``) so two layers never overwrite a file."""
+        stem = f"{exr_prefix}_{sanitize_name(key)}"
+        name, n = f"{stem}{suffix}", 2
+        while name.lower() in used_names:
+            name, n = f"{stem}_{n}{suffix}", n + 1
+        used_names.add(name.lower())
+        return name
 
     def plate_entry(key: str, pil: Any, plate_ref: Any) -> dict[str, Any]:
         extras: dict[str, Any] = {"atlas_plate": key,
@@ -311,7 +462,8 @@ def build_scene_layers(
         if exr_root is None:
             return extras
         try:
-            info = _write_exr_sidecar(exr_root / f"{exr_prefix}_{key}.exr", pil, plate_ref)
+            exr_root.mkdir(parents=True, exist_ok=True)
+            info = _write_exr_sidecar(exr_root / sidecar_name(key, ".exr"), pil, plate_ref)
             extras.update(info)
             sidecars.append({"plate": key, **info})
         except Exception as exc:  # noqa: BLE001 - a sidecar never fails the GLB
@@ -325,6 +477,8 @@ def build_scene_layers(
                 continue
             mesh = mesh_from_primitive(prim)
             if mesh is None:
+                notes.append(f"layer {prefix}{prim.name}: dropped - no mesh payload "
+                             "(vertices/faces) on the primitive")
                 continue
             uvs = mesh.uvs if getattr(mesh.uvs, "size", 0) else None
             layer_extras = {**extras, "atlas_layer": f"{prefix}{prim.name}"}
@@ -332,7 +486,7 @@ def build_scene_layers(
             if hdr_vc and exr_root is not None and len(hdr_vc) == 3 * len(mesh.vertices):
                 try:
                     ply = write_float_ply(
-                        exr_root / f"{exr_prefix}_{prim.name}_vertex_hdr.ply",
+                        exr_root / sidecar_name(prim.name, "_vertex_hdr.ply"),
                         mesh.vertices, mesh.faces, hdr_vc)
                     layer_extras.update(vertex_colors_hdr_ply=Path(ply).name,
                                         vertex_colors_hdr_space=(prim.metadata or {}).get(
@@ -357,9 +511,16 @@ def build_scene_layers(
         extras = plate_entry("primary", primary_plate, getattr(scene, "plate_ref", None))
         add_meshes(primary, primary_plate, extras, "")
     for src in getattr(solve, "projection_sources", None) or []:
-        pil = _decode_data_uri(src.image_b64)
+        try:
+            pil = _decode_data_uri(src.image_b64)
+        except Exception as exc:  # noqa: BLE001 - a bad plate never fails the scene
+            notes.append(f"layer {src.name}: plate image_b64 could not be decoded "
+                         f"({type(exc).__name__}: {exc}) - written untextured")
+            pil = None
+        else:
+            if pil is None:
+                notes.append(f"layer {src.name}: no plate image - written untextured")
         if pil is None:
-            notes.append(f"layer {src.name}: no plate image - written untextured")
             add_meshes(src.proxy_geometry or [], None, {"atlas_plate": None}, f"{src.name}/")
             continue
         extras = plate_entry(src.name, pil, src.plate_ref)

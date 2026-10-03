@@ -173,6 +173,32 @@ def test_empty_mask_raises():
                               image_width=W, image_height=H, mask=np.zeros((H, W)))
 
 
+def test_object_wider_than_a_hemisphere_raises():
+    # A U-shaped matte along three frame edges of a very wide lens: no single
+    # forward direction sees every ray in front of it.
+    m = np.zeros((H, W))
+    m[:, :3] = 1
+    m[:, -3:] = 1
+    m[:3, :] = 1
+    with pytest.raises(ValueError, match="hemisphere"):
+        virtual_object_camera(view_matrix=np.eye(4), fx=50.0, fy=50.0, cx=CX, cy=CY,
+                              image_width=W, image_height=H, mask=m)
+
+
+def test_crop_past_the_frame_edge_is_invalid_and_warps_to_fill():
+    view = _view_matrix([0.0, 1.6, 0.0])
+    m = np.zeros((H, W))
+    m[400:600, W - 40:] = 1                    # object cut by the right frame edge
+    crop = virtual_object_camera(view_matrix=view, fx=FX, fy=FY, cx=CX, cy=CY,
+                                 image_width=W, image_height=H, mask=m, size=128)
+    sx, sy, valid = crop_sample_grid(crop)
+    assert (~valid).any() and valid.any()
+    assert (sx[~valid] > W - 0.5).any()         # the invalid part is past the right edge
+    matte = warp_to_crop(crop, m, fill=0.0)
+    assert float(matte[~valid].max()) == 0.0
+    assert float(matte[valid].max()) > 0.5
+
+
 def test_rejects_3x3_view():
     with pytest.raises(ValueError, match="4x4"):
         virtual_object_camera(view_matrix=np.eye(3), fx=FX, fy=FY, cx=CX, cy=CY,

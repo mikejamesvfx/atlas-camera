@@ -34,6 +34,12 @@ import math
 from typing import Any
 
 from atlas_camera.core.mask_ops import dilate
+from atlas_camera.core.scene_health import (
+    GENERATED_GROUND_SCALE_TOLERANCE,
+    GENERATED_REL_MAD_INSPECT,
+    GENERATED_REL_MAD_REFUSE,
+    generated_object_grade,
+)
 
 #: Per-vertex ``photo_weight`` above this paints from the photo, below from
 #: the model's vertex colour. Mirrored in atlas_blockout.js
@@ -51,15 +57,12 @@ SELF_DEPTH_BIAS_REL = 0.02
 #: clearly IN FRONT (a pole across the object) should take the photo away.
 SCENE_DEPTH_BIAS_REL = 0.15
 
-#: Registration-quality thresholds on ``rel_mad``. UNCALIBRATED: provisional
-#: until a perturbation sweep (FOV +/-10 deg, mirrored X, scale x1.3) on real
-#: plates measures what broken placements read. Inspect-only until then.
-REL_MAD_INSPECT = 0.10
-REL_MAD_REFUSE = 0.25
-
-#: Ground-contact scale disagreeing with the depth scale by more than this
-#: fraction is reported for inspection.
-GROUND_SCALE_TOLERANCE = 0.15
+#: Registration-quality thresholds and the ground-contact tolerance live with
+#: the verdict in :mod:`atlas_camera.core.scene_health` (verdicts come only
+#: from there); re-exported here under their historical names.
+REL_MAD_INSPECT = GENERATED_REL_MAD_INSPECT
+REL_MAD_REFUSE = GENERATED_REL_MAD_REFUSE
+GROUND_SCALE_TOLERANCE = GENERATED_GROUND_SCALE_TOLERANCE
 
 #: Vertex-colour gain is clamped; a gain outside this is a mismatch the
 #: report should show, not a correction to apply.
@@ -118,24 +121,40 @@ def world_to_source_camera(points_world: Any, *, view_matrix: Any) -> Any:
 
 
 def cluster_decimate(vertices: Any, faces: Any, *, max_faces: int,
-                     colours: Any = None, max_rounds: int = 12) -> tuple[Any, Any, Any]:
+                     colours: Any = None, max_rounds: int = 12,
+                     return_stats: bool = False) -> tuple[Any, ...]:
     """Vertex-clustering decimation to at most ``max_faces`` triangles.
 
     The mesh rides the solve as JSON, so its size is a payload budget, not a
     quality knob; model-side DecimateMesh is the better tool and should run
     first. This is the backstop: quantize to a grid, merge each cell to its
     mean (colours averaged with it), drop collapsed and duplicate faces, and
-    coarsen the grid until under budget. Returns ``(v, f, colours|None)``.
+    coarsen the grid until under budget. Returns ``(v, f, colours|None)``;
+    with ``return_stats`` a fourth item ``{"met_budget", "rounds",
+    "faces_in", "faces_out"}`` -- ``met_budget`` is False when ``max_rounds``
+    ran out with the mesh still over budget (the caller must SAY so).
     """
     np = _require_numpy()
     v = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
     f = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
     c = None if colours is None else np.asarray(colours, dtype=np.float64)
+    n_in = int(len(f))
+
+    def done(nv, nf, nc, rounds):
+        if not return_stats:
+            return nv, nf, nc
+        return nv, nf, nc, {"met_budget": bool(len(nf) <= int(max_faces)),
+                            "rounds": int(rounds), "faces_in": n_in,
+                            "faces_out": int(len(nf))}
+
     if len(f) <= int(max_faces):
-        return v, f, c
+        return done(v, f, c, 0)
     extent = float(np.max(v.max(axis=0) - v.min(axis=0))) or 1.0
     cells = max(8, int(math.sqrt(max_faces / 2.0) * 1.5))
+    nv, nf, nc = v, f, c
+    rounds = 0
     for _ in range(int(max_rounds)):
+        rounds += 1
         q = np.floor((v - v.min(axis=0)) / (extent / cells)).astype(np.int64)
         _, inv = np.unique(q, axis=0, return_inverse=True)
         inv = inv.reshape(-1)
@@ -153,9 +172,9 @@ def cluster_decimate(vertices: Any, faces: Any, *, max_faces: int,
         if len(nf):
             nf = np.unique(nf, axis=0)
         if len(nf) <= int(max_faces):
-            return nv, nf, nc
+            return done(nv, nf, nc, rounds)
         cells = max(4, int(cells * 0.8))
-    return nv, nf, nc
+    return done(nv, nf, nc, rounds)
 
 
 # ---------------------------------------------------------------------------
@@ -256,23 +275,13 @@ def ground_contact_scale(points_cam: Any, *, view_matrix: Any, ground_y: float =
 
 def scale_verdict(*, rel_mad: float, depth_scale: float | None,
                   ground_scale: float | None) -> dict[str, Any]:
-    """Grade the placement. Thresholds are UNCALIBRATED (see constants)."""
-    issues: list[str] = []
-    refuse = False
-    if depth_scale is None or not math.isfinite(rel_mad):
-        return {"grade": "refuse", "issues": ["no usable scale registration"],
-                "calibrated": False}
-    if rel_mad > REL_MAD_REFUSE:
-        refuse = True
-        issues.append(f"rel_mad {rel_mad:.3f} > {REL_MAD_REFUSE} (refuse, uncalibrated)")
-    elif rel_mad > REL_MAD_INSPECT:
-        issues.append(f"rel_mad {rel_mad:.3f} > {REL_MAD_INSPECT} (inspect, uncalibrated)")
-    if ground_scale is not None and depth_scale > 0:
-        disagree = abs(ground_scale - depth_scale) / depth_scale
-        if disagree > GROUND_SCALE_TOLERANCE:
-            issues.append(f"ground-contact scale disagrees with depth scale by "
-                          f"{disagree * 100:.0f}% (> {GROUND_SCALE_TOLERANCE * 100:.0f}%)")
-    grade = "refuse" if refuse else ("inspect" if issues else "ok")
+    """Grade the scale registration alone (thin wrapper, kept for callers).
+
+    The verdict is :func:`atlas_camera.core.scene_health.generated_object_grade`
+    with no plate scores. Thresholds are UNCALIBRATED.
+    """
+    grade, issues = generated_object_grade(depth_scale, rel_mad, None,
+                                           ground_scale=ground_scale)
     return {"grade": grade, "issues": issues, "calibrated": False}
 
 

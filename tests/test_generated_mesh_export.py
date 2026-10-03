@@ -129,3 +129,36 @@ def test_usd_writes_generated_mesh_with_display_colour(tmp_path):
     dc = mesh.GetDisplayColorPrimvar()
     assert dc.GetInterpolation() == UsdGeom.Tokens.vertex
     assert len(dc.Get()) == len(VERTS)
+
+
+def test_usd_prim_names_are_valid_and_unique(tmp_path):
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+
+    from atlas_camera.core.schema import (
+        AtlasExtrinsics,
+        AtlasIntrinsics,
+        AtlasSolve,
+        LatentCamera,
+    )
+    from atlas_camera.exporters.usd_exporter import USDExporter
+
+    solve = AtlasSolve(camera=LatentCamera(
+        intrinsics=AtlasIntrinsics(image_width=64, image_height=48, focal_length_mm=35.0,
+                                   sensor_width_mm=36.0),
+        extrinsics=AtlasExtrinsics()))
+    # Two imports both named "object" -> the same primitive name, plus names
+    # that are not Sdf identifiers at all.
+    for name in ("pixal3d_object", "pixal3d_object", "2nd obj.v2", "", "atlas_projection_plane"):
+        p = _prim()
+        p.name = name
+        solve.projection_scene.proxy_geometry.append(p)
+    path = USDExporter().export_proxy_scene(solve, tmp_path / "scene.usda")
+    stage = Usd.Stage.Open(str(path))
+    root = stage.GetPrimAtPath("/AtlasProjectionScene")
+    names = [c.GetName() for c in root.GetChildren()]
+    # The built-in ground plane keeps its name; a primitive claiming it is suffixed.
+    assert names == ["atlas_projection_plane", "pixal3d_object", "pixal3d_object_2",
+                     "_2nd_obj_v2", "proxy_3", "atlas_projection_plane_2"]
+    for n in names[1:]:
+        assert len(UsdGeom.Mesh(root.GetChild(n)).GetPointsAttr().Get()) == len(VERTS)

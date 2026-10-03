@@ -172,3 +172,92 @@ def test_missing_vertex_colours_go_grey(scene):
 def test_empty_mask_raises(scene):
     with pytest.raises(ValueError, match="empty"):
         AtlasObjectCrop().crop(scene["solve"], scene["image"], torch.zeros(1, H, W))
+
+
+# --- F-2: refusals are reports, never crashes ----------------------------------
+
+def _nan_depth():
+    return DepthResult(depth=np.full((H, W), np.nan, dtype=np.float32), is_metric=True,
+                       model_id="fake", image_width=W, image_height=H, near=0.0, far=1.0)
+
+
+def _handle(scene):
+    return AtlasObjectCrop().crop(scene["solve"], scene["image"], scene["obj"], size=256)[3]
+
+
+def test_unmeasurable_scale_refuses_even_under_inspect(scene):
+    # on_gate_fail="inspect" used to reach float(None) and raise TypeError.
+    handle = _handle(scene)
+    solve_out, report, alpha = AtlasImportGeneratedMesh().import_mesh(
+        scene["solve"], _pixal_mesh(scene, handle), handle, _nan_depth(),
+        scene["image"], scene["obj"], on_gate_fail="inspect")
+    assert "REFUSED — scale unmeasurable" in report
+    assert "regardless of on_gate_fail" in report
+    assert not solve_out.projection_scene.proxy_geometry
+    assert float(alpha.sum()) == 0.0
+
+
+def test_out_of_range_faces_refuse_before_decimation(scene):
+    handle = _handle(scene)
+    mesh = _pixal_mesh(scene, handle)
+    bad = mesh.faces.clone()
+    bad[0, 0, 0] = int(mesh.vertices.shape[1]) + 5
+    mesh.faces = bad
+    # A budget below the face count would decimate first and hit IndexError.
+    solve_out, report, _ = AtlasImportGeneratedMesh().import_mesh(
+        scene["solve"], mesh, handle, scene["depth"], scene["image"], scene["obj"],
+        max_faces=100)
+    assert "REFUSED — malformed MESH" in report and "face indices" in report
+    assert not solve_out.projection_scene.proxy_geometry
+
+
+def test_negative_face_index_refuses(scene):
+    handle = _handle(scene)
+    mesh = _pixal_mesh(scene, handle)
+    mesh.faces[0, 3, 1] = -1
+    _, report, _ = AtlasImportGeneratedMesh().import_mesh(
+        scene["solve"], mesh, handle, scene["depth"], scene["image"], scene["obj"])
+    assert "REFUSED — malformed MESH" in report
+
+
+def test_nan_vertices_refuse(scene):
+    handle = _handle(scene)
+    mesh = _pixal_mesh(scene, handle)
+    mesh.vertices[0, 2, 1] = float("nan")
+    solve_out, report, _ = AtlasImportGeneratedMesh().import_mesh(
+        scene["solve"], mesh, handle, scene["depth"], scene["image"], scene["obj"],
+        on_gate_fail="inspect")
+    assert "REFUSED — malformed MESH" in report and "non-finite" in report
+    assert not solve_out.projection_scene.proxy_geometry
+
+
+def test_missed_face_budget_is_reported(scene, monkeypatch):
+    from atlas_camera.core import generated_mesh
+
+    real = generated_mesh.cluster_decimate
+    monkeypatch.setattr(generated_mesh, "cluster_decimate",
+                        lambda *a, **k: real(*a, **{**k, "max_rounds": 0}))
+    handle = _handle(scene)
+    _, report, _ = AtlasImportGeneratedMesh().import_mesh(
+        scene["solve"], _pixal_mesh(scene, handle), handle, scene["depth"],
+        scene["image"], scene["obj"], sky_mask=scene["sky"], max_faces=100)
+    assert "decimation MISSED the face budget" in report
+
+
+# --- T13c: the crop matte is zero where the crop sees outside the photo -----
+
+def test_frame_edge_crop_matte_is_zero_outside_the_photo(scene):
+    from atlas_camera.core.object_crop import crop_sample_grid
+
+    obj = torch.zeros(1, H, W)
+    obj[:, 60:140, W - 30:] = 1.0          # an object cut by the right frame edge
+    for background in ("black", "photo"):
+        crop, cmask, _, handle, report = AtlasObjectCrop().crop(
+            scene["solve"], scene["image"] + 0.5, obj, size=128, background=background)
+        _, _, valid = crop_sample_grid(ObjectCropCamera.from_dict(handle))
+        assert (~valid).any(), "fixture must put part of the crop outside the photo"
+        assert float(cmask[0].numpy()[~valid].max()) == 0.0
+        assert float(cmask[0].numpy()[valid].max()) > 0.5
+        if background == "photo":
+            assert float(crop[0].numpy()[~valid].max()) == 0.0
+        assert "outside the photo" in report
