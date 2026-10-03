@@ -602,6 +602,52 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
             "reports": {}}
 
 
+def _widget_walk(oi: dict, type_: str, values: list) -> tuple[list, int]:
+    """``([(name, spec, value), ...], expected_count)`` for one node's
+    ``widgets_values``, walking exactly as :func:`widget_inputs` maps them
+    (dynamic-combo sub-widgets of the chosen option, seed/upload phantoms).
+    Found live 2026-10-03: the validator counted DecimateMesh/RemeshMesh's
+    dynamic combos as single widgets and then range-checked the wrong values."""
+    items, vi, expected = [], 0, 0
+    for k, spec in spec_items(oi, type_):
+        cfg = spec[1] if len(spec) > 1 and isinstance(spec[1], dict) else {}
+        if spec[0] == "COMFY_DYNAMICCOMBO_V3":
+            option = values[vi] if vi < len(values) else None
+            if vi < len(values):
+                items.append((k, ["COMBO", {"options": [o.get("key") for o in cfg.get("options", [])]}],
+                              option))
+            vi += 1
+            expected += 1
+            chosen = next((o for o in cfg.get("options", []) if o.get("key") == option), None)
+            for sec in ("required", "optional"):
+                for sub, sub_spec in ((chosen or {}).get("inputs", {}).get(sec, {}).items()):
+                    if not is_widget(sub_spec):
+                        continue
+                    expected += 1
+                    if vi < len(values):
+                        items.append((f"{k}.{sub}", sub_spec, values[vi]))
+                    vi += 1
+            continue
+        if not is_widget(spec):
+            continue
+        expected += 1
+        if vi < len(values):
+            items.append((k, spec, values[vi]))
+        vi += 1
+        if k in ("seed", "noise_seed") or cfg.get("image_upload"):
+            expected += 1
+            vi += 1
+    return items, expected
+
+
+def _type_accepts(target: str, source: str) -> bool:
+    """ComfyUI input types may be a comma-separated union (Save 3D's
+    ``FILE_3D_GLB,FILE_3D_GLTF,...``); a link is valid if the types meet."""
+    t = {x.strip() for x in str(target).split(",")}
+    s_ = {x.strip() for x in str(source).split(",")}
+    return bool(t & s_) or "*" in t or "*" in s_ or "COMBO" in t
+
+
 def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:
     """The drift/link/range/rail checks from ``tools/validate_ui_workflow.py``
     as ``(errors, warnings)`` lists."""
@@ -609,22 +655,14 @@ def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:
     nodes = {n["id"]: n for n in ui["nodes"]}
     errs, warns = [], []
 
-    def wcount(t):
-        c = 0
-        for k, v in spec_items(oi, t):
-            if is_widget(v):
-                c += 1
-                if k in ("seed", "noise_seed"):
-                    c += 1
-        return c
-
     for n in ui["nodes"]:
         if n["type"] not in VIRTUAL and n["type"] not in oi:
             errs.append(f"type {n['type']} unknown")
     for n in ui["nodes"]:
         if n["type"] in VIRTUAL or n["type"] == "LoadImage" or n["type"] not in oi:
             continue
-        want, got = wcount(n["type"]), len(n.get("widgets_values") or [])
+        vals = n.get("widgets_values") or []
+        want, got = _widget_walk(oi, n["type"], vals)[1], len(vals)
         if want != got:
             errs.append(f"{n['type']} id{n['id']}: widgets_values {got} != {want}")
     for l in ui["links"]:
@@ -643,13 +681,13 @@ def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:
         st, tt = s["outputs"][sslot]["type"], t["inputs"][tslot]["type"]
         if s["type"] in VIRTUAL or t["type"] in VIRTUAL:
             continue
-        if st != tt and tt != "COMBO" and st != "*" and tt != "*":
+        if not _type_accepts(tt, st):
             errs.append(f"link {lid}: TYPE {s['type']}.{st} -> {t['type']}.{tt}")
     for n in ui["nodes"]:
         if n["type"] in VIRTUAL or n["type"] not in oi:
             continue
         for k, v in (oi[n["type"]]["input"].get("required") or {}).items():
-            if is_widget(v):
+            if is_widget(v) or v[0] == "COMFY_DYNAMICCOMBO_V3":
                 continue
             inp = next((i for i in n["inputs"] if i["name"] == k), None)
             if inp is None:
@@ -659,18 +697,8 @@ def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:
     for n in ui["nodes"]:
         if n["type"] in VIRTUAL or n["type"] not in oi:
             continue
-        vals = n.get("widgets_values") or []
-        vi = 0
-        for k, v in spec_items(oi, n["type"]):
-            if not is_widget(v):
-                continue
-            if vi >= len(vals):
-                break
-            val = vals[vi]
-            vi += 1
-            if k in ("seed", "noise_seed"):
-                vi += 1
-            cfg = v[1] if len(v) > 1 else {}
+        for k, v, val in _widget_walk(oi, n["type"], n.get("widgets_values") or [])[0]:
+            cfg = v[1] if len(v) > 1 and isinstance(v[1], dict) else {}
             if v[0] in ("INT", "FLOAT") and isinstance(val, (int, float)) and not isinstance(val, bool):
                 lo, hi = cfg.get("min"), cfg.get("max")
                 if lo is not None and val < lo:

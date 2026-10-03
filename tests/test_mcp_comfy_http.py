@@ -542,3 +542,32 @@ def test_queue_time_node_errors_are_reported(monkeypatch):
     assert len(result["errors"]) == 1
     assert result["errors"][0].startswith("NOT RUN Save3DAdvanced (node 1014): Failed")
     assert "width" in result["errors"][0]
+
+
+def _dyn_oi():
+    return {"DecimateMesh": {"input": {"required": {
+        "mesh": ["MESH", {}],
+        "target_faces": ["INT", {"default": 50000, "min": 1, "max": 10_000_000}],
+        "placement_mode": ["COMFY_DYNAMICCOMBO_V3", {"options": [
+            {"key": "midpoint", "inputs": {"required": {}}},
+            {"key": "qem", "inputs": {"required": {"weight": ["FLOAT", {"min": 0.0, "max": 0.5}]}}},
+        ]}],
+    }}}}
+
+
+def test_validator_counts_dynamic_combo_sub_widgets_and_checks_their_ranges():
+    oi = _dyn_oi()
+    items, want = C._widget_walk(oi, "DecimateMesh", [50000, "midpoint"])
+    assert want == 2 and [k for k, _, _ in items] == ["target_faces", "placement_mode"]
+    items, want = C._widget_walk(oi, "DecimateMesh", [50000, "qem", 0.9])
+    assert want == 3 and items[-1][0] == "placement_mode.weight"
+    ui = {"nodes": [{"id": 1, "type": "DecimateMesh", "inputs": [], "outputs": [],
+                     "widgets_values": [50000, "qem", 0.9]}], "links": []}
+    errs, _ = C.validate_ui(ui, oi)
+    assert "DecimateMesh id1: placement_mode.weight=0.9 ABOVE max 0.5" in errs
+    assert not any("widgets_values" in e or "placement_mode NOT" in e for e in errs)
+
+
+def test_validator_accepts_comma_union_input_types():
+    assert C._type_accepts("FILE_3D_GLB,FILE_3D_GLTF,FILE_3D", "FILE_3D_GLB")
+    assert not C._type_accepts("FILE_3D_GLB,FILE_3D_GLTF", "IMAGE")

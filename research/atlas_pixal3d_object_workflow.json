@@ -2011,7 +2011,6 @@
     "auto",
     "merged",
     0,
-    "",
     "hf:facebook/sam3"
    ],
    "title": "Clean-plate SKY mask (SAM3 'sky' on the clean plate)"
