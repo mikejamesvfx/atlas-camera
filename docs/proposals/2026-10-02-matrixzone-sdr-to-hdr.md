@@ -106,12 +106,33 @@ baseline; a median baseline flagged 11 of 24 segments on structure). Built as `c
 every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never refused
 (structure on the line scores high too, so the visual check stays the deciding half).
 
+**Windowed since 2026-10-03 (review OV-1).** The score was one |median| over a whole
+zone edge, so a seam +2 stops on its upper half and -2 on its lower half cancelled to
+0.00x and passed. Each segment is now scored in ~256 px windows along the line
+(`SEAM_WINDOW_PX`): per window |median(step_hdr - step_sdr)| (plain: median |step|), the
+segment scores its WORST window, and the report adds the window p95 and the worst
+window's span. The random-line baseline uses the same length, the same windows and the
+same worst-window score, so a long seam is not flagged for having more windows. On the
+synthetic uniform half-stop seam the ratio moved 36.8x -> 35.4x, so the 1.5x bar stands;
+**every live seam figure below (1.20x, 2.34x, 0.88x) is PRE-WINDOWING and must be
+re-measured on the live plates** (V-1). The worst windowed seam is also written into the
+EXR as `atlas:seam_worst`.
+
+**SDR compared in ACEScg (review F-5).** The post-passes used to compare the Rec.709-linear
+SDR with the ACEScg HDR and weigh ACEScg with Rec.709 luminance. Destripe, local
+destripe, the seam control and `seam_metrics` now use AP1 luminance (0.2723, 0.6741,
+0.0537), with the SDR weighted as if moved to ACEScg; `sdr_detail_transfer` converts the
+SDR to ACEScg (the same Bradford matrix as `core.hdr_transfer`) before its per-channel
+ratio, so a saturated colour no longer picks up a hue shift (synthetic R/G/B ramp: chroma
+error 0.17 -> 1e-7). Grey content is unchanged; the live 8K old-vs-new Nuke comparison is
+pending (V-1).
+
 | gate | pass threshold | status (8K machine plate, 4x4) |
 |---|---|---|
 | 1 split -> stitch identity, no model | max rel. error < 1e-5 | **pass** (test) |
-| 2 planner parity with `atlas_bridge` | numbers identical on the UHD worked case | **pass** (test) |
-| 3 VRAM / tier | 2x2 (4K-tier zones) completes on the target GPU | **pass**: 2x2 on a 32 GB RTX 5090, 14 min 27 s cold; seam step test PASS (worst 1.20x, 4 seams); **2x2 is the default** |
-| 4 end to end | every seam segment <= 1.5x the random-line p90, AND no visible seam at the worst-scoring junction | **pass with one flagged junction**: SDR-controlled, 3 of 24 segments flagged (worst `z22\|z23` 2.34x), all at or next to x=5760 / y=3384, visually clean (structure continuous, no ghosting); recorded as content |
+| 2 planner parity with `atlas_bridge` | numbers identical on the UHD worked case | **pass** (test); interior zones are now clamped into the render (see *Planner clamp*) — the UHD pins are byte-identical, `atlas_bridge` not yet mirrored |
+| 3 VRAM / tier | 2x2 (4K-tier zones) completes on the target GPU | **pass**: 2x2 on a 32 GB RTX 5090, 14 min 27 s cold; seam step test PASS (worst 1.20x pre-windowing, 4 seams; re-measure); **2x2 is the default** |
+| 4 end to end | every windowed seam segment <= 1.5x the random-line p90, AND no visible seam at the worst-scoring junction | **pass with one flagged junction (pre-windowing, re-measure)**: SDR-controlled, 3 of 24 segments flagged (worst `z22\|z23` 2.34x), all at or next to x=5760 / y=3384, visually clean (structure continuous, no ghosting); recorded as content |
 | 5 mode shoot-out | the mode with the lower worst seam step wins; tie -> `per_zone_clip` | **open** — `per_zone_clip` is the provisional default |
 | 6 anchor on/off | anchor kept only if it lowers the worst stitched-plate step | **pass**: sky seams 0.29 -> 0.04 stops pre-blend; kept |
 
@@ -120,6 +141,14 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
    matrixZone gate 2 for pixels instead of depth).
 2. **Planner parity.** `core/matrixzone.plan` reproduces `atlas_bridge` on its
    two worked cases, number for number.
+
+   *Planner clamp (2026-10-03, review F-3).* On a tall/narrow grid the 64-clean zone
+   can be far larger than its cell, and the centred start of an INTERIOR zone fell off
+   the render (3840x2160, 1x8, overlap 512: `z10` at y=-3, `z60` ending at 2179 >
+   2176). Interior starts are now clamped to [0, render - zone], which keeps the cell
+   covered, and `plan_still` raises if any renderRect still leaves the render. A
+   3200-plan sweep changed only the 316 plans that were off canvas; the UHD worked
+   cases are byte-identical. `atlas_bridge` still carries the old arithmetic (TODOS.md).
 3. **VRAM / tier.** Which zone tier the V135 box runs with 9 frames at 22B bf16:
    the zone renderRect tier (3904x2240) or only the 1080p tier (1920x1088,
    which means a 4x4 grid on 8K). Measured, not assumed.
@@ -135,8 +164,19 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
   V135 box (~80 s per clip incl. model load). 2x2 = 5 clips of ~4x the pixels: **14 min 27 s** cold.
 - **A zone fails or comes back wrong.** The stitch refuses — naming the zone — when a
   zone result is empty, non-finite, or the list length does not match the split; it
-  never stitches around a hole. A zone returned at the wrong size is resampled and
-  reported.
+  never stitches around a hole. It also refuses a non-finite global pass, and a
+  `zones_as_frames` sequence shorter than the split's zones need (naming both counts;
+  it used to clamp the index and stitch another zone's pixels). A zone returned at the
+  wrong size is resampled and reported; so is an `sdr_plate` at a different size than
+  the plate (both sizes named), and image-batch frames the split dropped.
+- **The EXR fails to write.** The failure is report line 1 (`EXR NOT WRITTEN: ...`) and
+  `exr_path` is empty; an output prefix that leaves the output directory is a node
+  error, not a note.
+- **Memory.** Synthetic 4K plate, 2x2: `core.stitch` peak 1012 -> 446 MiB and the
+  full stitch node with `sdr_plate` 1506 -> 986 MiB (tracemalloc; working set 2237 ->
+  1714 MiB) after the 2026-10-03 trims (anchor once per zone, float32 accumulators and
+  resizes, luminance-only seam state, float32 sRGB decode); identity gate unchanged.
+  Still clips are zero-copy expanded views (2x2 8K, 9 frames: ~3.8 GB -> ~0.4 GB).
 - **Re-runs.** ComfyUI caches every completed clip, so changing only the stitch
   settings (anchor, split, destripe) re-runs the stitch alone.
 - **Interrupt.** ComfyUI interrupts between steps; a long LTX step completes first
@@ -166,7 +206,8 @@ every `AtlasMatrixZoneStitch` report; a seam over 1.5x is flagged by name, never
   on the way: a thin-line column pass (invented streaks beside bright clouds) and a 6 px
   base/detail split (left the wider lines, softened texture until the slope was an
   amplitude ratio). 16 sampling steps instead of 8: no change in stripes, +28% runtime.
-  Live in ComfyUI (2026-10-03, default 2x2 workflow): seam step test worst 0.88x, matches
+  Live in ComfyUI (2026-10-03, default 2x2 workflow): seam step test worst 0.88x
+  (PRE-WINDOWING whole-edge score, before the ACEScg SDR comparison -- re-measure), matches
   the offline reference to 0.004 stops median; confirmed in Nuke.
 - **Outpaint ring smear** (clean-plate / sky layers): edge replication across a
   1024 px frame-outpaint ring read as stripes; ring ripple **5.70% -> 0.22%** live,
@@ -189,7 +230,13 @@ of the plate) are only touched by the local destripe and may also need a comp pa
 
 The EXR is tagged ACEScg and labelled in the report as a MODEL RECONSTRUCTION of
 highlight radiance from a display-referred plate — not photographed HDR. Same
-doctrine as the generated-object hidden side.
+doctrine as the generated-object hidden side. The file says so too: `atlas:content`
+carries the label, `atlas:matrixzone_params` (JSON) records how it was made (grid, zone
+size and tier, mode, clip frames, overlap, anchor and split, which clean-up passes RAN
+next to their widget values, SDR clip window, guided-filter radius and eps),
+`atlas:seam_worst` the worst windowed seam (scored in memory before the half encode)
+and `atlas:version` the Atlas version. The report's range line counts non-finite
+pixels instead of printing nan.
 
 ## Open (the user's calls)
 

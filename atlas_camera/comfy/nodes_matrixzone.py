@@ -19,16 +19,10 @@ Two sequence modes (the proposal's gate 5 decides the default):
 
 from __future__ import annotations
 
-from typing import Any
 
 from atlas_camera.comfy.node_helpers import _require_numpy, _require_torch, output_paths
 
 MODES = ("per_zone_clip", "zones_as_frames")
-
-
-def _frames_8k1(n: int) -> int:
-    from atlas_camera.core.matrixzone import frames_8k1
-    return frames_8k1(max(1, int(n)))
 
 
 class AtlasMatrixZoneSplit:
@@ -69,10 +63,11 @@ class AtlasMatrixZoneSplit:
     def split(self, image, grid_cols=2, grid_rows=2, overlap_min_px=64,
               mode="per_zone_clip", clip_frames=9):
         torch = _require_torch()
-        from atlas_camera.core.matrixzone import plan_still, zones_as_frames
+        from atlas_camera.core.matrixzone import frames_8k1, plan_still, zones_as_frames
 
         img = image[:1].float()
         _, h, w, _ = img.shape
+        dropped = int(image.shape[0]) - 1
         plan = plan_still(int(w), int(h), (int(grid_cols), int(grid_rows)),
                           overlap_min=(int(overlap_min_px), int(overlap_min_px)))
         L, T, R, B = plan["render"]["overscan"]
@@ -82,8 +77,13 @@ class AtlasMatrixZoneSplit:
         render = chw.permute(0, 2, 3, 1)
         gw, gh = plan["global"]["size"]
         glob = torch.nn.functional.interpolate(chw, size=(gh, gw), mode="area").permute(0, 2, 3, 1)
-        n = _frames_8k1(clip_frames)
-        clips = [glob.repeat(n, 1, 1, 1)]
+        n = frames_8k1(max(1, int(clip_frames)))
+        # A still repeated n times is the same frame n times: expand() is a
+        # zero-copy view (batch stride 0) where repeat() materialised n copies
+        # (2x2 8K, 9 frames: ~3.8 GB of zone clips -> ~0.4 GB). Every consumer
+        # that moves it to the GPU or reshapes it gets a real tensor anyway;
+        # an IN-PLACE write into a clip would raise, which is the right failure.
+        clips = [glob.expand(n, -1, -1, -1)]
         zones = []
         for z in plan["zones"]:
             x, y, zw, zh = z["renderRect"]
@@ -93,7 +93,7 @@ class AtlasMatrixZoneSplit:
             frames, frame_of_zone = zones_as_frames([zt[0].cpu().numpy() for zt in zones], plan)
             clips.append(torch.from_numpy(frames).to(render.dtype))
         else:
-            clips.extend(zt.repeat(n, 1, 1, 1) for zt in zones)
+            clips.extend(zt.expand(n, -1, -1, -1) for zt in zones)
         handle = {"kind": "atlas_matrixzone", "plan": plan, "mode": mode,
                   "clip_frames": n, "frame_of_zone": frame_of_zone, "n_global": 1}
         zw, zh = plan["zone_size"]
@@ -104,6 +104,9 @@ class AtlasMatrixZoneSplit:
                   f"mode {mode}: {len(clips)} clip(s) -> "
                   + (f"{len(zones)} zones x {n} frames + global" if mode == "per_zone_clip"
                      else f"one {len(clips[1])}-frame zone sequence (scan {plan['scan']}) + global"))
+        if dropped > 0:
+            report += (f"\nwarning: image batch has {dropped + 1} frames; only the first was "
+                       f"split, {dropped} dropped (matrixZone converts one still plate)")
         return (clips, handle, report)
 
 
@@ -188,21 +191,30 @@ class AtlasMatrixZoneStitch:
         zones = _zone_images(np, clips, handle)
         plate, rep = mz_stitch(zones, plan, global_hdr=None if glob is None else glob[..., :3],
                                split_px=split_px or None)
+        n_zones = len(zones)
+        del clips, glob, zones          # free the zone medians before the 8K post-passes
         destripe = bool(_first(destripe))
         detail_from_sdr = bool(_first(detail_from_sdr))
         sdr = _first(sdr_plate) if sdr_plate is not None else None
-        sdr_lin, s_disp = _sdr_reference(np, sdr, plate.shape)
+        sdr_lin, s_disp, sdr_note = _sdr_reference(np, sdr, plate.shape)
         plate, stripe_rep, local_rep, xfer_rep = _clean_plate(
             plate, plan, sdr_lin, s_disp, destripe=destripe, detail_from_sdr=detail_from_sdr)
 
-        exr_path, exr_note = _write_plate_exr(np, plate, colorspace, filename_prefix)
-        step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path)
+        from atlas_camera.core.matrixzone import seam_step_test
+        step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
+        params = _provenance_params(handle, rep, anchor=anchor, destripe=destripe,
+                                    detail_from_sdr=detail_from_sdr, sdr_wired=sdr is not None,
+                                    local_rep=local_rep, xfer_rep=xfer_rep, stripe_rep=stripe_rep)
+        exr_path, exr_note = _write_plate_exr(np, plate, colorspace, filename_prefix,
+                                              params=params, step_mem=step_mem)
+        step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path,
+                                                  step_mem=step_mem)
 
         report = _stitch_report(
-            np, plate, rep, step, zones=zones, mode=mode, colorspace=colorspace,
+            np, plate, rep, step, n_zones=n_zones, mode=mode, colorspace=colorspace,
             exr_path=exr_path, exr_note=exr_note, delivered=delivered, diff_note=diff_note,
             stripe_rep=stripe_rep, local_rep=local_rep, xfer_rep=xfer_rep,
-            destripe=destripe, detail_from_sdr=detail_from_sdr)
+            destripe=destripe, detail_from_sdr=detail_from_sdr, sdr_note=sdr_note)
         preview = torch.from_numpy(_tonemap_preview(np, plate).astype(np.float32))[None]
         return {"ui": {"text": [report]}, "result": (preview, exr_path, report)}
 
@@ -230,23 +242,44 @@ def _zone_images(np, clips, handle):
     if handle["mode"] == "zones_as_frames":
         seq = clips[1]
         frame_of_zone = handle["frame_of_zone"]
-        zones = [seq[min(f, len(seq) - 1)] for f in frame_of_zone]
+        need = max(frame_of_zone) + 1 if frame_of_zone else 0
+        if len(seq) < need:
+            # Never clamp: a clamped index silently stitches another zone's
+            # pixels into this zone's place.
+            raise ValueError(f"AtlasMatrixZoneStitch: the zone sequence came back with "
+                             f"{len(seq)} frame(s); the split's {len(frame_of_zone)} zones need "
+                             f"at least {need} (the split sent {handle.get('clip_frames', '?')}) "
+                             "-- did the LTX chain trim or subsample frames?")
+        zones = [seq[f] for f in frame_of_zone]
     else:
         zones = [np.median(c, axis=0) for c in clips[1:]]
     return [z[..., :3] for z in zones]
 
 
 def _sdr_reference(np, sdr, plate_shape):
-    """``(sdr_linear, sdr_display)`` at the plate's raster, or ``(None, None)``."""
+    """``(sdr_linear, sdr_display, note)`` at the plate's raster, or ``(None, None, "")``.
+
+    ``note`` is a warning line when the SDR had to be resampled to the plate.
+
+    ``sdr_linear`` is linear REC.709 on purpose: every core pass that compares
+    it with the ACEScg HDR (destripe_columns/destripe_local/seam_step_test via
+    AP1 luminance of the Rec.709 pixel, sdr_detail_transfer via a full
+    Rec.709->ACEScg convert) moves it into ACEScg itself, and keeps the
+    clipped-highlight test on the SDR's own channels. Converting here as well
+    would apply the matrix twice.
+    """
     if sdr is None:
-        return None, None
-    from atlas_camera.core.generated_mesh import srgb_to_linear
-    from atlas_camera.core.matrixzone import resize_bilinear
+        return None, None, ""
+    from atlas_camera.core.matrixzone import resize_bilinear, srgb_to_linear_f32
     s_np = np.asarray(sdr[0].detach().cpu().float().numpy() if hasattr(sdr, "detach")
                       else sdr[0], dtype=np.float32)[..., :3]
+    note = ""
     if s_np.shape[:2] != plate_shape[:2]:
+        note = (f"warning: sdr_plate is {s_np.shape[1]}x{s_np.shape[0]}, the stitched plate "
+                f"{plate_shape[1]}x{plate_shape[0]}: SDR resampled (bilinear) for destripe/"
+                "detail/seam control -- wire the plate the split got")
         s_np = resize_bilinear(s_np, plate_shape[0], plate_shape[1])
-    return srgb_to_linear(s_np), s_np
+    return srgb_to_linear_f32(s_np), s_np, note
 
 
 def _clean_plate(plate, plan, sdr_lin, s_disp, *, destripe, detail_from_sdr):
@@ -270,23 +303,104 @@ def _clean_plate(plate, plan, sdr_lin, s_disp, *, destripe, detail_from_sdr):
     return plate, stripe_rep, local_rep, xfer_rep
 
 
-def _write_plate_exr(np, plate, colorspace, filename_prefix):
-    """``(exr_path, note)``; a failed write leaves the path empty and says why."""
-    exr_path, exr_note = "", ""
+def _provenance_params(handle, rep, *, anchor, destripe, detail_from_sdr, sdr_wired,
+                       local_rep, xfer_rep, stripe_rep):
+    """Everything needed to say how this plate was made (EXR ``atlas:matrixzone_params``).
+
+    Booleans record what RAN, not just the widget: destripe with no sdr_plate
+    is ``false`` here, with the widget value beside it.
+    """
+    from atlas_camera.core.matrixzone import (
+        DESTRIPE_SDR_CLIP,
+        SDR_TRANSFER_CLIP,
+        SDR_TRANSFER_EPS,
+        SDR_TRANSFER_RADIUS,
+    )
+    plan = handle["plan"]
+    zw, zh = plan["zone_size"]
+    long_edge = max(zw, zh)
+    tier = "1080p" if long_edge <= 2048 else "4K" if long_edge <= 4096 else "8K"
+    return {
+        "schema": "atlasMatrixZoneParams/1",
+        "grid": list(plan["grid"]), "zone_size": [zw, zh], "zone_tier": tier,
+        "render": [plan["render"]["width"], plan["render"]["height"]],
+        "plate": [plan["plate"]["width"], plan["plate"]["height"]],
+        "mode": handle["mode"], "clip_frames": handle.get("clip_frames"),
+        "overlap_px": list(plan["overlap"]["px"]),
+        "anchor": bool(rep.get("anchored")), "anchor_widget": bool(anchor),
+        "split_px": rep.get("split_px"),
+        "sdr_plate": bool(sdr_wired),
+        "destripe": stripe_rep is not None, "destripe_widget": bool(destripe),
+        "destripe_iterations": None if stripe_rep is None else stripe_rep.get("iterations"),
+        "destripe_window_px": None if stripe_rep is None else stripe_rep.get("window_px"),
+        "destripe_sdr_clip": DESTRIPE_SDR_CLIP,
+        "destripe_local": local_rep is not None,
+        "detail_from_sdr": xfer_rep is not None, "detail_from_sdr_widget": bool(detail_from_sdr),
+        "sdr_clip_window": list(SDR_TRANSFER_CLIP),
+        "guided_radius_px": SDR_TRANSFER_RADIUS if xfer_rep is None else xfer_rep["radius_px"],
+        "guided_eps": SDR_TRANSFER_EPS if xfer_rep is None else xfer_rep["eps"],
+    }
+
+
+def _atlas_version():
+    try:
+        import atlas_camera
+        return str(atlas_camera.__version__)
+    except Exception:  # noqa: BLE001 - provenance must never fail the write
+        try:
+            from importlib.metadata import version
+            return version("atlas-camera")
+        except Exception:  # noqa: BLE001
+            return "unknown"
+
+
+def _seam_worst_attr(step_mem):
+    """JSON for ``atlas:seam_worst``: the in-memory score (the EXR cannot carry
+    a score of itself; the report has the delivered one)."""
+    import json
+    w = step_mem.get("worst") if step_mem else None
+    if not w:
+        return json.dumps({"seam": None, "pass": step_mem.get("pass") if step_mem else None})
+    return json.dumps({"seam": w["seam"], "ratio": round(float(w["ratio"]), 4),
+                       "step_stops": round(float(w["step_stops"]), 5),
+                       "window": w.get("worst_window"), "pass": step_mem["pass"],
+                       "sdr_controlled": step_mem["sdr_controlled"],
+                       "window_px": step_mem.get("window_px"),
+                       "scored_on": "in-memory plate before half/DWAB encode"})
+
+
+def _write_plate_exr(np, plate, colorspace, filename_prefix, *, params=None, step_mem=None):
+    """``(exr_path, note)``; a failed write leaves the path empty and says why.
+
+    Provenance attributes: ``atlas:content`` (the model-reconstruction label),
+    ``atlas:matrixzone_params`` (JSON, see _provenance_params),
+    ``atlas:seam_worst`` (JSON) and ``atlas:version``.
+
+    The output-path refusal (a prefix leaving the output dir) is NOT caught:
+    it is a graph error, not a write failure (F-1). The note becomes report
+    line 1 (F-6): a 14-minute run must not bury "no file" at the bottom.
+    """
+    folder, stem = output_paths(filename_prefix)
+    exr_path, exr_note = str(folder / f"{stem}.exr"), ""
     try:
         from atlas_camera.plate.oiio_io import write_exr
-        folder, stem = output_paths(filename_prefix)
         folder.mkdir(parents=True, exist_ok=True)
-        exr_path = str(folder / f"{stem}.exr")
-        write_exr(exr_path, plate.astype(np.float32), bit_depth="half",
-                  source_colorspace=colorspace,
-                  extra_attribs={"atlas:content": "matrixZone SDR->HDR model reconstruction"})
+        import json
+        attrs = {"atlas:content": "matrixZone SDR->HDR model reconstruction",
+                 "atlas:version": _atlas_version()}
+        if params is not None:
+            attrs["atlas:matrixzone_params"] = json.dumps(params, sort_keys=True)
+        if step_mem is not None:
+            attrs["atlas:seam_worst"] = _seam_worst_attr(step_mem)
+        write_exr(exr_path, plate.astype(np.float32, copy=False), bit_depth="half",
+                  source_colorspace=colorspace, extra_attribs=attrs)
     except Exception as exc:  # noqa: BLE001 - still return the preview + report
-        exr_note = f"EXR not written: {type(exc).__name__}: {exc}"
+        exr_note = f"EXR NOT WRITTEN: {type(exc).__name__}: {exc}"
+        exr_path = ""
     return exr_path, exr_note
 
 
-def _score_seams(np, plate, plan, sdr_lin, exr_path):
+def _score_seams(np, plate, plan, sdr_lin, exr_path, *, step_mem=None):
     """Seam step test on what SHIPS: ``(step, delivered, diff_note)``.
 
     Gate on the decoded EXR (half + lossy DWAB), not the float in memory.
@@ -295,7 +409,8 @@ def _score_seams(np, plate, plan, sdr_lin, exr_path):
     can be bisected from the report alone.
     """
     from atlas_camera.core.matrixzone import seam_step_test
-    step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
+    if step_mem is None:
+        step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
     step, delivered, diff_note = step_mem, None, ""
     if exr_path:
         try:
@@ -344,11 +459,12 @@ def _fmt_seams(seams):
                      for s in seams) or "(no interior seams)"
 
 
-def _stitch_report(np, plate, rep, step, *, zones, mode, colorspace, exr_path, exr_note,
+def _stitch_report(np, plate, rep, step, *, n_zones, mode, colorspace, exr_path, exr_note,
                    delivered, diff_note, stripe_rep, local_rep, xfer_rep, destripe,
-                   detail_from_sdr):
-    """The stitch node's multi-line report."""
-    lines = [f"AtlasMatrixZoneStitch: {len(zones)} zones ({mode}) -> "
+                   detail_from_sdr, sdr_note=""):
+    """The stitch node's multi-line report. A failed EXR write is line 1."""
+    lines = [exr_note] if exr_note else []
+    lines += [f"AtlasMatrixZoneStitch: {n_zones} zones ({mode}) -> "
              f"{plate.shape[1]}x{plate.shape[0]} {colorspace} half EXR "
              f"{exr_path or '(not written)'}",
              f"seams before, log2 luminance median/p95 stops: {_fmt_seams(rep['seams_before'])}"]
@@ -361,14 +477,20 @@ def _stitch_report(np, plate, rep, step, *, zones, mode, colorspace, exr_path, e
     lines += _seam_step_report_lines(step, delivered)
     if diff_note:
         lines.append(f"  {diff_note}")
+    if sdr_note:
+        lines.append(sdr_note)
     if rep.get("resized_zones"):
         lines.append(f"warning: {rep['resized_zones']} zone result(s) came back at a "
                      "different size and were resampled to their renderRect")
-    lines.append(f"range: max {float(plate.max()):.2f}, p99 "
-                 f"{float(np.percentile(plate, 99)):.3f} (linear); a MODEL RECONSTRUCTION "
+    finite = np.isfinite(plate)
+    bad = int(plate.size - finite.sum())
+    vals = plate[finite] if bad else plate
+    lines.append(f"range: max {float(vals.max()) if vals.size else float('nan'):.2f}, p99 "
+                 f"{float(np.percentile(vals, 99)) if vals.size else float('nan'):.3f} (linear, "
+                 + (f"{bad} NON-FINITE pixel value(s) excluded -- inspect the plate" if bad
+                    else "0 non-finite")
+                 + "); a MODEL RECONSTRUCTION "
                  "of highlight radiance from a display-referred plate, not photographed HDR")
-    if exr_note:
-        lines.append(exr_note)
     return "\n".join(lines)
 
 
@@ -405,15 +527,16 @@ def _seam_step_report_lines(step, delivered):
     w = step["worst"]
     lines = [
         f"seam step test ({'delivered EXR' if delivered is not None else 'in-memory plate'}, "
-        f"{step['strip_px']} px strips, "
+        f"{step['strip_px']} px strips, worst of ~{step.get('window_px', 256)} px windows, "
         + ("SDR-controlled" if step["sdr_controlled"] else
            "NOT SDR-controlled - wire sdr_plate, structure on a line scores too")
         + f", pass <= {step['ratio_max']:.1f}x random-line p{step['baseline_percentile']} "
         f"[{', '.join(base)} stops]): "
         + ("PASS" if step["pass"] else
            f"{len(step['flagged'])} seam(s) FLAGGED: {', '.join(step['flagged'])}")
-        + (f"; worst {w['seam']} at {w['at_px']} px, {w['step_stops']:.3f} stops = "
-           f"{w['ratio']:.2f}x" if w else "")]
+        + (f"; worst {w['seam']} at {w['at_px']} px (window {w.get('worst_window')}), "
+           f"{w['step_stops']:.3f} stops = {w['ratio']:.2f}x, window p95 "
+           f"{w.get('window_p95_stops') or 0.0:.3f}" if w else "")]
     if step["flagged"]:
         lines.append("  a flagged seam is either a tonal seam or real structure that "
                      "happens to sit on the line -- look at it before trusting the plate")
