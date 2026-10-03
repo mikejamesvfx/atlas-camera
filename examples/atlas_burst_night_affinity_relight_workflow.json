@@ -408,6 +408,14 @@
           "widget": {
             "name": "sam3_checkpoint"
           }
+        },
+        {
+          "name": "sam3_checkpoint_override",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint_override"
+          }
         }
       ],
       "outputs": [
@@ -479,7 +487,8 @@
         2000,
         0,
         true,
-        "hf:facebook/sam3"
+        "hf:facebook/sam3",
+        ""
       ],
       "title": "SOLVE \u00b7 NO raw_meta \u2014 sensor is ESTIMATED"
     },
