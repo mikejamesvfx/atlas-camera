@@ -104,10 +104,11 @@ def _fake_comfy_dirs(monkeypatch, tmp_path):
     return out, inp
 
 
-def test_is_changed_tracks_the_file_not_the_string(tmp_path):
+def test_is_changed_tracks_the_file_not_the_string(tmp_path, monkeypatch):
     from atlas_camera.comfy.nodes_object_mesh import AtlasHDRVertexTransfer
 
-    exr = tmp_path / "hdr.exr"
+    out, _ = _fake_comfy_dirs(monkeypatch, tmp_path)
+    exr = out / "hdr.exr"
     missing = AtlasHDRVertexTransfer.IS_CHANGED(hdr_exr_path=str(exr))
     assert "missing" in missing
     exr.write_bytes(b"one")
@@ -139,9 +140,96 @@ def test_relative_path_resolves_under_output_then_input_only(tmp_path, monkeypat
     assert got == "" and "escapes" in looked
     monkeypatch.chdir(tmp_path)
     assert _resolve_read_path("secret.exr")[0] == ""
-    # Absolute paths resolve only when the file exists.
-    assert _resolve_read_path(str(tmp_path / "secret.exr"))[0] == str(tmp_path / "secret.exr")
-    assert _resolve_read_path(str(tmp_path / "nope.exr"))[0] == ""
+    # Absolute paths inside output/input resolve only when the file exists.
+    assert _resolve_read_path(str(out / "plates" / "a.exr"))[0] == str(out / "plates" / "a.exr")
+    assert _resolve_read_path(str(out / "nope.exr"))[0] == ""
+
+
+# --- absolute reads are confined (no file-existence oracle on --listen) ------
+
+def test_absolute_inside_output_or_input_is_read(tmp_path, monkeypatch):
+    from atlas_camera.comfy.nodes_object_mesh import _resolve_read_path
+
+    monkeypatch.delenv("ATLAS_ALLOW_ABSOLUTE_READS", raising=False)
+    out, inp = _fake_comfy_dirs(monkeypatch, tmp_path)
+    for root in (out, inp):
+        f = root / "atlas" / "hdr.exr"
+        f.parent.mkdir()
+        f.write_bytes(b"x")
+        assert _resolve_read_path(str(f)) == (str(f), "")
+    # Not found INSIDE an allowed root may still say so.
+    got, looked = _resolve_read_path(str(out / "atlas" / "nope.exr"))
+    assert got == "" and "does not exist" in looked
+
+
+def test_absolute_outside_is_refused_without_revealing_existence(tmp_path, monkeypatch):
+    from atlas_camera.comfy import nodes_object_mesh as nom
+
+    monkeypatch.delenv("ATLAS_ALLOW_ABSOLUTE_READS", raising=False)
+    monkeypatch.delenv("ATLAS_PROJECT_ROOT", raising=False)
+    _fake_comfy_dirs(monkeypatch, tmp_path)
+    present = tmp_path / "secret.exr"
+    present.write_bytes(b"z")
+    absent = tmp_path / "nope.exr"
+    r_present = nom._resolve_read_path(str(present))
+    r_absent = nom._resolve_read_path(str(absent))
+    assert r_present == ("", nom.ABSOLUTE_READ_REFUSED) == r_absent
+    assert "output/input" in nom.ABSOLUTE_READ_REFUSED
+    assert "ATLAS_ALLOW_ABSOLUTE_READS=1" in nom.ABSOLUTE_READ_REFUSED
+    assert str(tmp_path) not in nom.ABSOLUTE_READ_REFUSED
+    # `..` through an allowed root cannot climb out either.
+    climb = tmp_path / "output" / ".." / "secret.exr"
+    assert nom._resolve_read_path(str(climb)) == ("", nom.ABSOLUTE_READ_REFUSED)
+    # IS_CHANGED: one constant token, never a stat of the refused file.
+    tok = nom.AtlasHDRVertexTransfer.IS_CHANGED(hdr_exr_path=str(present))
+    assert tok == "atlas-hdr:refused"
+    assert nom.AtlasHDRVertexTransfer.IS_CHANGED(hdr_exr_path=str(absent)) == tok
+
+
+def test_refused_report_is_identical_whether_or_not_the_file_exists(tmp_path, monkeypatch):
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy import nodes_object_mesh as nom
+    from atlas_camera.core.proxy_geometry import PROXY_ROLE
+    from atlas_camera.core.schema import (AtlasIntrinsics, AtlasProxyPrimitive, AtlasSolve,
+                                          LatentCamera)
+
+    monkeypatch.delenv("ATLAS_ALLOW_ABSOLUTE_READS", raising=False)
+    monkeypatch.delenv("ATLAS_PROJECT_ROOT", raising=False)
+    _fake_comfy_dirs(monkeypatch, tmp_path)
+    solve = AtlasSolve(camera=LatentCamera(intrinsics=AtlasIntrinsics(
+        image_width=4, image_height=4, focal_length_mm=35.0, sensor_width_mm=36.0)))
+    solve.projection_scene.proxy_geometry.append(AtlasProxyPrimitive(
+        name="pixal3d_object", primitive_type="mesh", dimensions=(0.0, 0.0, 0.0),
+        material="m", metadata={"role": PROXY_ROLE, "source": "pixal3d",
+                                "vertex_colors": [0.5, 0.5, 0.5]}))
+    (tmp_path / "secret.exr").write_bytes(b"z")
+    reports = [nom.AtlasHDRVertexTransfer().transfer(
+        solve, torch.zeros(1, 4, 4, 3), hdr_exr_path=str(tmp_path / name))[1]
+        for name in ("secret.exr", "nope.exr")]
+    assert reports[0] == reports[1]
+    assert "refused" in reports[0] and "passed through" in reports[0]
+    assert str(tmp_path) not in reports[0] and "not found" not in reports[0]
+
+
+def test_absolute_read_opt_ins(tmp_path, monkeypatch):
+    from atlas_camera.comfy import nodes_object_mesh as nom
+
+    monkeypatch.delenv("ATLAS_ALLOW_ABSOLUTE_READS", raising=False)
+    monkeypatch.delenv("ATLAS_PROJECT_ROOT", raising=False)
+    _fake_comfy_dirs(monkeypatch, tmp_path)
+    show = tmp_path / "show"
+    show.mkdir()
+    f = show / "hdr.exr"
+    f.write_bytes(b"z")
+    assert nom._resolve_read_path(str(f))[1] == nom.ABSOLUTE_READ_REFUSED
+    monkeypatch.setenv("ATLAS_PROJECT_ROOT", str(show))       # the project root is allowed
+    assert nom._resolve_read_path(str(f)) == (str(f), "")
+    monkeypatch.delenv("ATLAS_PROJECT_ROOT")
+    monkeypatch.setenv("ATLAS_ALLOW_ABSOLUTE_READS", "1")     # explicit opt-in: anywhere
+    assert nom._resolve_read_path(str(f)) == (str(f), "")
+    assert str(f) in nom.AtlasHDRVertexTransfer.IS_CHANGED(hdr_exr_path=str(f))
+    missing, looked = nom._resolve_read_path(str(tmp_path / "nope.exr"))
+    assert missing == "" and "does not exist" in looked
 
 
 def test_report_names_the_chosen_path_and_where_it_looked(tmp_path, monkeypatch):

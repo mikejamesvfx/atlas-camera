@@ -91,6 +91,7 @@ class AtlasProject:
             mode,
             default_root=_default_output_root(),
         )
+        notes = []
         if create_tree:
             proj.ensure_tree()
             try:
@@ -101,9 +102,35 @@ class AtlasProject:
                 import logging
 
                 logging.warning("atlas_project.json not updated: %s", exc)
-                return {"ui": {"text": [f"atlas_project.json not updated: {exc}"]},
-                        "result": _outputs(proj, colour_mode)}
-        return _outputs(proj, colour_mode)
+                notes.append(f"atlas_project.json not updated: {exc}")
+        # An absolute project_root is a feature (deliver to a show folder), so it is not
+        # confined -- but writing outside ComfyUI's output folder is made VISIBLE, so a
+        # shared workflow cannot quietly route files elsewhere on the host.
+        outside = _outside_output_note(proj)
+        if outside:
+            notes.append(outside)
+        result = _outputs(proj, colour_mode)
+        if notes:
+            return {"ui": {"text": notes}, "result": result}
+        return result
+
+
+def _outside_output_note(proj):
+    """A UI note when the project root resolves outside ComfyUI's output folder,
+    else ``""``."""
+    from pathlib import Path
+
+    from atlas_camera.comfy import node_helpers
+
+    root = Path(proj.root).resolve()
+    try:
+        base = Path(node_helpers.output_root()).resolve()
+    except Exception:  # noqa: BLE001 - no output dir to compare against
+        return ""
+    if root == base or base in root.parents:
+        return ""
+    return (f"AtlasProject: files will be written outside ComfyUI's output folder, "
+            f"to {root}")
 
 
 def _outputs(proj, colour_mode):

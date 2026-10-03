@@ -556,14 +556,55 @@ def _comfy_read_roots() -> list[tuple[str, Any]]:
     return roots
 
 
+ABSOLUTE_READ_REFUSED = (
+    "hdr_exr_path must be inside ComfyUI's output/input folder or $ATLAS_PROJECT_ROOT "
+    "(or set ATLAS_ALLOW_ABSOLUTE_READS=1 to read absolute paths anywhere)")
+
+
+def _absolute_read_roots() -> list[Any]:
+    """Roots an ABSOLUTE read path may resolve inside: ComfyUI's output and
+    input directories, plus ``$ATLAS_PROJECT_ROOT`` when set."""
+    import os
+    from pathlib import Path
+    roots = [root for _label, root in _comfy_read_roots()]
+    proj = (os.environ.get("ATLAS_PROJECT_ROOT") or "").strip()
+    if proj:
+        roots.append(Path(proj).expanduser())
+    return roots
+
+
+def _absolute_read_allowed(p: Any) -> bool:
+    """Is absolute path ``p`` readable? Decided WITHOUT touching the file, so
+    the answer (and the refusal message) never reveals whether it exists."""
+    import os
+    if os.environ.get("ATLAS_ALLOW_ABSOLUTE_READS", "").strip() == "1":
+        return True
+    try:
+        cand = p.resolve()
+    except Exception:  # noqa: BLE001
+        return False
+    for root in _absolute_read_roots():
+        try:
+            base = root.resolve()
+        except Exception:  # noqa: BLE001
+            continue
+        if cand == base or base in cand.parents:
+            return True
+    return False
+
+
 def _resolve_read_path(path: str) -> tuple[str, str]:
     """Resolve a READ path: ``(resolved, where_looked)``.
 
-    Only two kinds of path resolve (F-9): an ABSOLUTE path to an existing
-    file, or a path RELATIVE to ComfyUI's output then input directory that
-    stays inside that directory (``..`` cannot climb out). Never the process
-    working directory. ``resolved`` is ``""`` when nothing matched;
-    ``where_looked`` names the candidates for the report.
+    Only two kinds of path resolve (F-9): an ABSOLUTE path inside ComfyUI's
+    output/input directory or ``$ATLAS_PROJECT_ROOT`` (anywhere only with
+    ``ATLAS_ALLOW_ABSOLUTE_READS=1``), or a path RELATIVE to ComfyUI's output
+    then input directory that stays inside that directory (``..`` cannot climb
+    out). Never the process working directory. ``resolved`` is ``""`` when
+    nothing matched; ``where_looked`` names the candidates for the report, or
+    is exactly :data:`ABSOLUTE_READ_REFUSED` for an absolute path outside the
+    allowed roots -- identical whether or not that file exists, so a shared
+    workflow on a ``--listen`` server is not a file-existence oracle.
     """
     from pathlib import Path
     raw = str(path or "").strip().strip('"').strip()
@@ -571,6 +612,8 @@ def _resolve_read_path(path: str) -> tuple[str, str]:
         return "", ""
     p = Path(raw)
     if p.is_absolute():
+        if not _absolute_read_allowed(p):
+            return "", ABSOLUTE_READ_REFUSED
         return (str(p), "") if p.is_file() else ("", f"absolute path {p} does not exist")
     looked = []
     for label, root in _comfy_read_roots():
@@ -594,12 +637,15 @@ def _resolve_read_path(path: str) -> tuple[str, str]:
 def hdr_path_fingerprint(hdr_exr_path: str) -> str:
     """IS_CHANGED token for a path-gated read: resolved path + mtime_ns +
     size (stat only, never a content hash). A missing file gets its own
-    token, so the file appearing later re-runs the node."""
+    token, so the file appearing later re-runs the node. A REFUSED absolute
+    path gets one constant token (never stat'ed, never echoed)."""
     import os
     raw = str(hdr_exr_path or "").strip()
     if not raw:
         return "atlas-hdr:none"
-    resolved, _ = _resolve_read_path(raw)
+    resolved, looked = _resolve_read_path(raw)
+    if looked == ABSOLUTE_READ_REFUSED:
+        return "atlas-hdr:refused"
     if not resolved:
         return f"atlas-hdr:missing:{raw}"
     try:
@@ -636,9 +682,11 @@ class AtlasHDRVertexTransfer:
             "optional": {
                 "hdr_exr_path": ("STRING", {
                     "default": "",
-                    "tooltip": "The HDR plate EXR from the matrixZone still workflow "
-                               "(absolute, or relative to ComfyUI's output or input folder, e.g. "
-                               "atlas/hdr_plate_00001.exr). Empty = pass through. A TYPED path "
+                    "tooltip": "The HDR plate EXR from the matrixZone still workflow, "
+                               "relative to ComfyUI's output or input folder (e.g. "
+                               "atlas/hdr_plate_00001.exr), or absolute INSIDE the output/input "
+                               "folder or $ATLAS_PROJECT_ROOT; other absolute paths are refused "
+                               "unless ATLAS_ALLOW_ABSOLUTE_READS=1. Empty = pass through. A TYPED path "
                                "re-runs the node when the file changes on disk; a LINKED path "
                                "(e.g. from the stitch's exr_path) re-runs only when the upstream "
                                "node does -- ComfyUI does not pass linked values to IS_CHANGED."}),
@@ -671,6 +719,9 @@ class AtlasHDRVertexTransfer:
             origin = "hdr_image input"
         else:
             path, looked = _resolve_read_path(hdr_exr_path)
+            if looked == ABSOLUTE_READ_REFUSED:
+                return (solve_out, "AtlasHDRVertexTransfer: hdr_exr_path refused - "
+                                   + ABSOLUTE_READ_REFUSED + " - passed through")
             if not path:
                 return (solve_out, "AtlasHDRVertexTransfer: no HDR plate (set hdr_exr_path to "
                                    "the matrixZone still workflow's EXR) - passed through"
