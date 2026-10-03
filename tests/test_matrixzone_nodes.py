@@ -40,12 +40,14 @@ def test_round_trip_reproduces_the_plate(mode, monkeypatch, tmp_path):
     assert len(clips) == (5 if mode == "per_zone_clip" else 2)
     assert all(len(c) % 8 == 1 for c in clips)
     assert preview.shape == (1, H, W, 3)
-    if exr_path:
-        import OpenImageIO as oiio
-        px = oiio.ImageBuf(exr_path).get_pixels(oiio.FLOAT)
-        assert px.shape[:2] == (H, W)
-        assert np.median(np.abs(np.log2(px / _plate()[0].numpy()))) < 0.01
     assert "MODEL RECONSTRUCTION" in report
+    # The EXR half: an explicit skip without OIIO (an `if exr_path:` guard
+    # passed vacuously whenever the write failed).
+    oiio = pytest.importorskip("OpenImageIO", reason="OIIO not installed: EXR not checked")
+    assert exr_path, report
+    px = oiio.ImageBuf(exr_path).get_pixels(oiio.FLOAT)
+    assert px.shape[:2] == (H, W)
+    assert np.median(np.abs(np.log2(px / _plate()[0].numpy()))) < 0.01
 
 
 def test_anchor_fixes_zone_exposure_guesses(monkeypatch, tmp_path):
@@ -175,6 +177,39 @@ def test_exr_carries_provenance_attributes(monkeypatch, tmp_path):
     assert "in-memory" in worst["scored_on"]
     assert version == atlas_camera.__version__
     assert content == "matrixZone SDR->HDR model reconstruction"
+
+
+def test_stitch_with_sdr_plate_runs_cleanup_and_keeps_clipped_hdr(monkeypatch, tmp_path):
+    # T-1(b): sdr_plate wired -> destripe, local destripe and detail-from-SDR
+    # all run and report; a highlight the SDR clipped keeps the model's HDR.
+    from atlas_camera.comfy import nodes_matrixzone
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+    from atlas_camera.core.matrixzone import rec709_linear_to_acescg
+    monkeypatch.setattr(nodes_matrixzone, "output_paths", lambda p: (tmp_path, "hdr_00002"))
+    sdr = _plate().clone()
+    sdr[0, 100:220, 150:400] = 1.0                       # a clipped highlight
+    clips, handle, _ = AtlasMatrixZoneSplit().split(sdr, 2, 2, 64, "per_zone_clip", 9)
+
+    def fake_model(c):                                   # SDR -> ACEScg, clipped -> 8.0
+        a = c.numpy()
+        hdr = rec709_linear_to_acescg(srgb_to_linear(a)).astype(np.float32)
+        hdr[a.min(-1) >= 0.999] = 8.0
+        return torch.from_numpy(hdr)
+
+    out = [fake_model(c) for c in clips]
+    res = AtlasMatrixZoneStitch().stitch(out, [handle], sdr_plate=[sdr])
+    preview, exr_path, report = res["result"]
+    assert "destripe: vertical ripple the conversion added" in report
+    assert "local destripe (flat regions" in report
+    assert "detail from SDR (guided filter r64)" in report
+    assert "skipped" not in report
+    assert "SDR-controlled" in report and "NOT SDR-controlled" not in report
+    # tonemapped preview of 8.0 is ~0.95; the SDR's own 1.0 would be ~0.74
+    assert float(preview[0, 130:190, 200:350].min()) > 0.9
+    oiio = pytest.importorskip("OpenImageIO", reason="OIIO not installed: EXR not checked")
+    assert exr_path, report
+    px = oiio.ImageBuf(exr_path).get_pixels(oiio.FLOAT)
+    assert np.median(px[130:190, 200:350]) == pytest.approx(8.0, rel=0.02)
 
 
 def test_range_line_counts_non_finite_pixels():
