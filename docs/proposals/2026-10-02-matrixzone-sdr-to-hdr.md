@@ -176,7 +176,9 @@ pending (V-1).
   full stitch node with `sdr_plate` 1506 -> 986 MiB (tracemalloc; working set 2237 ->
   1714 MiB) after the 2026-10-03 trims (anchor once per zone, float32 accumulators and
   resizes, luminance-only seam state, float32 sRGB decode); identity gate unchanged.
-  Still clips are zero-copy expanded views (2x2 8K, 9 frames: ~3.8 GB -> ~0.4 GB).
+  Still clips are MATERIALISED (repeat). A zero-copy expand() was tried and reverted:
+  the LTX-2.5 VAE encode on a stride-0 batch measured 166.8 s vs 1.46 s at
+  1088x1920x9, and the live 2x2 8K run went 14.5 -> 30 min (2026-10-03).
 - **Re-runs.** ComfyUI caches every completed clip, so changing only the stitch
   settings (anchor, split, destripe) re-runs the stitch alone.
 - **Interrupt.** ComfyUI interrupts between steps; a long LTX step completes first

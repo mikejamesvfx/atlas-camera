@@ -140,14 +140,14 @@ def test_split_warns_when_batch_frames_are_dropped():
     assert "dropped" not in single
 
 
-def test_per_zone_clips_are_zero_copy_expanded_views():
+def test_per_zone_clips_are_materialised_not_stride0_views():
+    """A stride-0 expand() clip made the LTX-2.5 VAE encode ~100x slower live
+    (1088x1920x9: 1.46 s repeat vs 166.8 s expand, 2026-10-03), so every clip
+    must own its storage."""
     clips, _, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", 17)
     for c in clips:
-        assert c.shape[0] == 17 and c.stride(0) == 0            # one frame's storage
+        assert c.shape[0] == 17 and c.is_contiguous() and c.stride(0) != 0
         assert torch.equal(c[0], c[-1])
-        # what downstream consumers do (VAE encode: movedim, *2-1, .to()) works
-        x = (c.movedim(-1, 1) * 2.0 - 1.0).to(torch.float16)
-        assert x.stride(0) != 0 and x.shape[0] == 17          # materialised, own storage
 
 
 def test_exr_carries_provenance_attributes(monkeypatch, tmp_path):
