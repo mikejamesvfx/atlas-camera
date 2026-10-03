@@ -18,7 +18,7 @@
   - String constants: `"pixal3d"` in 3 places (move `GENERATED_SOURCE` into core), the SAM3 HF backend string in 2, and the Rec.709 luma tuple 5 times in `matrixzone.py`.
   Why: copies drift; a fix lands in one and not the others. Kept out of the feature merge to avoid touching older modules. Decision: CEO review D25.
 
-- [ ] **Mirror the F-3 planner clamp in atlas_bridge (P2, human: S / CC: S).**
+- [x] **Mirror the F-3 planner clamp in atlas_bridge (P2, human: S / CC: S).** DONE 2026-10-03: the bridge had the same bug, with identical numbers. Fixed on `atlas-unreal` branch `fix/matrixzone-interior-clamp`, off `main`, with a sweep test. It is NOT merged into atlas-unreal's main or into `raf-anchored-camera-solves`; merging is your call.
   - What: if `atlas_bridge.matrixzone.plan()` has the same unclamped interior zone start, apply the same clamp and sweep test there.
   - Why: `core/matrixzone.py` is a parity-pinned port. Fixing only Atlas lets the two planners drift on non-default grids.
   - Context: F-3 clamps Atlas's `_axis`. The parity pins cover only the UHD worked cases, which the bug doesn't affect.

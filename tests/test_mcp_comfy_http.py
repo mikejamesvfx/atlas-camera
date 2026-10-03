@@ -569,7 +569,7 @@ def test_validator_counts_dynamic_combo_sub_widgets_and_checks_their_ranges():
 
 
 def test_dynamic_combo_tolerates_bare_string_options():
-    """T13d: a dynamic-combo option list may mix bare strings (no sub-widgets)
+    """A dynamic-combo option list may mix bare strings (no sub-widgets)
     with {"key", "inputs"} dicts; o.get("key") on a string raised
     AttributeError and took the whole validate/run down."""
     oi = _dyn_oi()

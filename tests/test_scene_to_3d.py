@@ -410,7 +410,7 @@ def test_large_glb_report_warns(tmp_path, monkeypatch):
     assert "warning: large GLB - the browser 3D viewer may be slow to load it" in report
 
 
-# --- F-4: one embedded image per source --------------------------------------
+# --- one embedded image per source -------------------------------------------
 
 def test_layers_sharing_a_source_share_one_image(tmp_path):
     png = _png()
@@ -440,7 +440,7 @@ def test_scene_with_many_primary_meshes_embeds_the_primary_plate_once(tmp_path):
                                           len(layers[2].image_bytes)])
 
 
-# --- F-6(5) / F-9: dropped layers, corrupt plates, sidecar names --------------
+# --- dropped layers, corrupt plates, sidecar names ---------------------------
 
 def test_dropped_and_untextured_layers_are_listed(tmp_path):
     layers = [SceneLayer("empty", np.zeros((0, 3)), np.zeros((0, 3))),
@@ -506,7 +506,7 @@ def test_node_report_lists_drops_and_file3d_fallback(tmp_path, monkeypatch):
     assert "2 embedded plate image(s), one per source" in report
 
 
-# --- T13a: the GLB parses; a float plate_ref rides as a scene-referred EXR -----
+# --- the GLB parses; a float plate_ref rides as a scene-referred EXR -----
 
 def _check_glb_structure(path):
     import struct as _s

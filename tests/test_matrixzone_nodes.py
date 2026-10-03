@@ -79,7 +79,7 @@ def test_stitch_report_carries_the_seam_step_gate(monkeypatch, tmp_path):
                                        ((333, 517), (1, 3)), ((720, 1280), (4, 4)),
                                        ((401, 999), (2, 1))])
 def test_split_torch_pad_and_crop_match_core(size, grid):
-    # T10/R2: the node pads/crops in torch; core.pad_to_render/crop_zones is the
+    # The node pads/crops in torch; core.pad_to_render/crop_zones is the
     # reference the bridge parity pins test. Pin the two paths equal, exactly.
     from atlas_camera.core.matrixzone import crop_zones, pad_to_render
     h, w = size
@@ -248,7 +248,7 @@ def test_exr_carries_provenance_attributes(monkeypatch, tmp_path):
 
 
 def test_stitch_with_sdr_plate_runs_cleanup_and_keeps_clipped_hdr(monkeypatch, tmp_path):
-    # T-1(b): sdr_plate wired -> destripe, local destripe and detail-from-SDR
+    # sdr_plate wired -> destripe, local destripe and detail-from-SDR
     # all run and report; a highlight the SDR clipped keeps the model's HDR.
     from atlas_camera.comfy import nodes_matrixzone
     from atlas_camera.core.generated_mesh import srgb_to_linear

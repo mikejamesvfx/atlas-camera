@@ -451,8 +451,8 @@ def _write_plate_exr(np, plate, colorspace, folder, stem, *, params=None, step_m
     ``atlas:seam_worst`` (JSON) and ``atlas:version``.
 
     ``(folder, stem)`` come from _resolve_output, called at the top of
-    stitch() so a prefix refusal (a graph error, F-1) fails before the
-    compute, not after it. The note becomes report line 1 (F-6): a 14-minute
+    stitch() so a prefix refusal (a graph error) fails before the
+    compute, not after it. The note becomes report line 1: a 14-minute
     run must not bury "no file" at the bottom.
     """
     exr_path, exr_note = str(folder / f"{stem}.exr"), ""

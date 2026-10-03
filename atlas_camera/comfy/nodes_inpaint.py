@@ -363,7 +363,7 @@ class AtlasSAM3Mask:
                 # ComfyUI's OWN model stack from a checkpoint (Comfy-Org's
                 # sam3.1_multiplex_fp16) instead of the gated HF repo. The HF
                 # value stays first and default, so saved graphs are unchanged.
-                # Values are FIXED (F-8): a disk-listed combo failed validation
+                # Values are FIXED: a disk-listed combo failed validation
                 # on any machine without the same file. Append-only from here.
                 "sam3_checkpoint": (_sam3_checkpoint_choices(), {
                     "default": _SAM3_HF_BACKEND,
@@ -459,7 +459,7 @@ class AtlasSAM3Mask:
                       max_instances, choice, override=""):
         """Same outputs and report shape as the HF path, via core SAM3_Detect.
 
-        Failure contract (F-6 item 6, mirrors the HF path): a MISSING
+        Failure contract (mirrors the HF path): a MISSING
         checkpoint is a per-machine install gap -> empty mask + a report
         naming the file (as the HF gated repo is). ANY other failure -- load
         error, OOM, core API drift -- RAISES with the checkpoint named, never

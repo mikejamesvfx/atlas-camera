@@ -953,7 +953,7 @@ def test_photo_weight_split_mirrors_python():
 
 
 def test_vertex_colour_buffers_only_when_the_mesh_has_colours():
-    """P-1(a): a relief mesh must not pay count*5 floats of constant fallback.
+    """A relief mesh must not pay count*5 floats of constant fallback.
     Without the buffers the shader reads the material's defaultAttributeValues,
     which must keep it on the photo-only path (alpha well below the 1.5
     has-colour flag) with the photo kept (photo_weight PHOTO_WEIGHT_DEFAULT)."""

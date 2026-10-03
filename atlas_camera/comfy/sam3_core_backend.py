@@ -32,7 +32,7 @@ HF_BACKEND = "hf:facebook/sam3"
 #: named in the node report.
 CORE_AUTO = "core:auto"
 
-#: The FIXED combo values (F-8 / D30). They used to be read from disk, so a
+#: The FIXED combo values. They used to be read from disk, so a
 #: graph saved on one machine failed validation on another that lacked the
 #: same file. An exact file now goes in the ``sam3_checkpoint_override``
 #: STRING (ComfyUI rejects STRING->combo links, the ``*_override`` pattern).
@@ -138,7 +138,7 @@ def core_checkpoint_label(choice: str | None, override: str | None,
 def validate_checkpoint_choice(choice: Any) -> bool | str:
     """``VALIDATE_INPUTS`` body for the ``sam3_checkpoint`` combo.
 
-    Graphs saved before the combo values were fixed (F-8) carry a bare
+    Graphs saved before the combo values were fixed carry a bare
     checkpoint filename. ComfyUI's built-in list check would reject it as
     "value not in list" before :func:`resolve_core_checkpoint`'s legacy branch
     ever ran, so the nodes take over validation of THIS input: the fixed

@@ -78,7 +78,7 @@ def _set_checkpoints(monkeypatch, names):
                         lambda kind: list(names))
 
 
-# --- F-8 / D30: fixed combo values + override --------------------------------
+# --- fixed combo values + override -------------------------------------------
 
 def test_choices_are_fixed_values_not_read_from_disk(fake_comfy):
     # A disk-listed combo failed validation on any machine without the same
@@ -186,7 +186,7 @@ def test_node_core_auto_with_no_sam3_file_is_empty_with_report(fake_comfy, monke
     assert float(mask.sum()) == 0 and "MISSING" in report and "core:auto" in report
 
 
-# --- F-6 item 6 / D19: any non-missing core failure RAISES -------------------
+# --- any non-missing core failure RAISES ------------------------------------
 
 def test_node_core_load_failure_raises_naming_checkpoint(fake_comfy, monkeypatch):
     # Only a MISSING file degrades; a load error / API drift raises (as the HF
@@ -215,7 +215,7 @@ def test_node_core_oom_keeps_its_type(fake_comfy, monkeypatch):
         assert any("sam3.1_multiplex_fp16" in n for n in notes)
 
 
-# --- P-1(d): the module-global cache must be releasable ----------------------
+# --- the module-global cache must be releasable -----------------------------
 
 def test_switching_checkpoint_releases_the_previous_model_first(fake_comfy, monkeypatch):
     _set_checkpoints(monkeypatch, ["a_sam3.safetensors", "b_sam3.safetensors"])

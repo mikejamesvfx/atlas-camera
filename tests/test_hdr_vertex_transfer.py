@@ -77,7 +77,7 @@ def test_node_stores_hdr_vertex_colours_and_scene_writes_ply(tmp_path):
     assert ply.is_file() and ply.read_bytes().startswith(b"ply\nformat binary_little_endian")
     assert layers[0].extras["vertex_colors_hdr_ply"] == ply.name
 
-    # E5: the float colours read back equal the ACEScg values written.
+    # The float colours read back equal the ACEScg values written.
     data = ply.read_bytes()
     body = data[data.index(b"end_header\n") + len(b"end_header\n"):]
     rows = np.frombuffer(body[:3 * 24], dtype=[("p", "<f4", 3), ("c", "<f4", 3)])
@@ -88,7 +88,7 @@ def test_node_stores_hdr_vertex_colours_and_scene_writes_ply(tmp_path):
     assert tri["n"].tolist() == [3] and tri["i"].tolist() == [[0, 1, 2]]
 
 
-# --- OV-3 / F-9: hdr_exr_path resolution and the IS_CHANGED fingerprint -----
+# --- hdr_exr_path resolution and the IS_CHANGED fingerprint ---------------
 
 def _fake_comfy_dirs(monkeypatch, tmp_path):
     import sys

@@ -1,4 +1,4 @@
-"""fit_sdr_to_hdr_curve: bounded sampling and a truthful refusal (T13d / P-1c)."""
+"""fit_sdr_to_hdr_curve: bounded sampling and a truthful refusal."""
 
 import numpy as np
 import pytest

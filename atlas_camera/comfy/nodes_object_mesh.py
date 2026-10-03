@@ -596,8 +596,9 @@ def _absolute_read_allowed(p: Any) -> bool:
 def _resolve_read_path(path: str) -> tuple[str, str]:
     """Resolve a READ path: ``(resolved, where_looked)``.
 
-    Only two kinds of path resolve (F-9): an ABSOLUTE path inside ComfyUI's
-    output/input directory or ``$ATLAS_PROJECT_ROOT`` (anywhere only with
+    Only two kinds of path resolve, so a graph cannot read arbitrary files:
+    an ABSOLUTE path inside ComfyUI's output/input directory or
+    ``$ATLAS_PROJECT_ROOT`` (anywhere only with
     ``ATLAS_ALLOW_ABSOLUTE_READS=1``), or a path RELATIVE to ComfyUI's output
     then input directory that stays inside that directory (``..`` cannot climb
     out). Never the process working directory. ``resolved`` is ``""`` when

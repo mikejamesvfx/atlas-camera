@@ -174,7 +174,7 @@ def test_empty_mask_raises(scene):
         AtlasObjectCrop().crop(scene["solve"], scene["image"], torch.zeros(1, H, W))
 
 
-# --- F-2: refusals are reports, never crashes ----------------------------------
+# --- refusals are reports, never crashes ---------------------------------------
 
 def _nan_depth():
     return DepthResult(depth=np.full((H, W), np.nan, dtype=np.float32), is_metric=True,
@@ -244,7 +244,7 @@ def test_missed_face_budget_is_reported(scene, monkeypatch):
     assert "decimation MISSED the face budget" in report
 
 
-# --- T13c: the crop matte is zero where the crop sees outside the photo -----
+# --- the crop matte is zero where the crop sees outside the photo ----------
 
 def test_frame_edge_crop_matte_is_zero_outside_the_photo(scene):
     from atlas_camera.core.object_crop import crop_sample_grid

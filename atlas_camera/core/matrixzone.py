@@ -35,7 +35,7 @@ LOG_EPS = 1e-6       # radiance floor before log2
 
 #: Luminance weights for ACEScg (AP1) linear -- the space LTX-2.5 ``hdr_linear``
 #: and every stitched plate here are in. Rec.709 weights on AP1 data mis-weight
-#: saturated colours (F-5, 2026-10-03 review).
+#: saturated colours (found in the 2026-10-03 review).
 LUMA_AP1 = (0.2722287168, 0.6740817658, 0.0536895174)
 
 
@@ -66,7 +66,7 @@ def srgb_to_linear_f32(srgb: Any) -> Any:
     Same curve as ``core.generated_mesh.srgb_to_linear``, which works in
     float64 with ~6 full-size temporaries: on an 8K plate that one call was
     the stitch's memory peak, and its float64 result was held for the whole
-    post-pass (P-1b). Agrees with it to float32 precision.
+    post-pass. Agrees with it to float32 precision.
     """
     np = _require_numpy()
     c = np.clip(np.asarray(srgb, dtype=np.float32), 0.0, 1.0)
@@ -138,7 +138,8 @@ def _axis(cells, origin, ext_before, ext_after, overlap_min):
             # centred start then fell off the canvas (3840x2160, 1x8, overlap
             # 512: z10 at y=-3, z60 ending at 2179 > 2176). Clamping keeps the
             # cell covered -- the zone only slides away from the edge it crossed.
-            # Not mirrored in atlas_bridge yet (TODOS.md).
+            # Mirrored in atlas_bridge.matrixzone._axis (atlas-unreal,
+            # fix/matrixzone-interior-clamp) so the two planners stay in lockstep.
             zstart = origin + start - (zsize - size) // 2
             zstart = min(max(zstart, 0), max(total - zsize, 0))
         out.append((zstart, zsize))
@@ -298,7 +299,7 @@ def _resize_axis(np, a, n, axis):
     shape[axis] = n
     # Weights in the image's dtype: float64 weights silently promoted every
     # resize (and lowpass, and the 8K global upsample) to float64 at ~3x the
-    # peak memory (P-1b). In place: one output buffer + one take.
+    # peak memory. In place: one output buffer + one take.
     t = t.reshape(shape).astype(a.dtype if a.dtype.kind == "f" else np.float32)
     out = np.take(a, i0, axis=axis)
     out = out.astype(t.dtype, copy=False)
@@ -421,7 +422,7 @@ def stitch(zone_hdr: list[Any], plan: dict[str, Any], *, global_hdr: Any = None,
             raise ValueError(f"zone {z['id']} has {bad} non-finite value(s): refusing to "
                              "stitch around a hole -- re-run that zone")
 
-    # Memory (P-1b): float32 accumulators -- log2 radiance (|x| < ~30) times a
+    # Memory: float32 accumulators -- log2 radiance (|x| < ~30) times a
     # weight <= 1, summed over at most 4 zones, keeps ~1e-6 stops; the anchor
     # runs ONCE per zone (it ran twice: once to blend, once for the report);
     # and only each zone's 2-D log2 luminance is kept for the seam metrics,
@@ -478,8 +479,8 @@ DESTRIPE_SDR_CLIP = 0.9
 
 def _wlum(np, img, w, floor=None):
     """Weighted channel sum of (H, W, >=3) built channel by channel: one 2-D
-    buffer instead of the two full 3-channel temporaries of ``(img * w).sum(-1)``
-    (P-1b). ``floor`` clamps each channel first, as ``np.maximum(img, floor)``."""
+    buffer instead of the two full 3-channel temporaries of ``(img * w).sum(-1)``.
+    ``floor`` clamps each channel first, as ``np.maximum(img, floor)``."""
     def ch(i):
         c = img[..., i]
         return c if floor is None else np.maximum(c, floor)
@@ -504,7 +505,7 @@ def destripe_columns(hdr: Any, sdr_linear: Any, *, bands: list[tuple[int, int]] 
     ``hdr`` is ACEScg linear (LTX ``hdr_linear``); ``sdr_linear`` is the
     linearised SDR plate (Rec.709 primaries); pixel-aligned. Both are compared
     as AP1 luminance -- the SDR moved to ACEScg first -- so a saturated colour
-    is not mis-weighted (F-5). Per
+    is not mis-weighted. Per
     horizontal band (default: the whole frame; pass the zone rows so each
     model run is measured on its own), the column profile of
     ``log2(hdr / sdr)`` -- a median over the band's unclipped rows -- is
@@ -600,7 +601,7 @@ def destripe_local(hdr: Any, sdr_linear: Any, *, rows: int = 256, window: int = 
         raise ValueError(f"hdr {h_img.shape[:2]} and sdr {s_img.shape[:2]} differ")
     H, W = h_img.shape[:2]
     # AP1 luminance on both: the HDR is ACEScg, the Rec.709 SDR is weighted as
-    # if moved to ACEScg (F-5).
+    # if moved to ACEScg.
     ls = np.log2(np.maximum(_wlum(np, s_img, _luma_ap1_of_rec709(np), 0.0), 1e-4))
     ratio = np.log2(np.maximum(_wlum(np, h_img, _luma_ap1(np), 0.0), 1e-4))
     ratio -= ls
@@ -661,7 +662,7 @@ def _box_mean(np, a, r: int):
         n = a.shape[axis]
         hi, lo = [slice(None)] * a.ndim, [slice(None)] * a.ndim
         hi[axis], lo[axis] = slice(k, k + n), slice(0, n)
-        # slice VIEWS, not np.take copies: one float64 difference buffer (P-1b)
+        # slice VIEWS, not np.take copies: one float64 difference buffer
         d = c[tuple(hi)] - c[tuple(lo)]
         del c
         d /= k
@@ -701,8 +702,8 @@ def sdr_detail_transfer(hdr: Any, sdr_display: Any, *, radius: int = SDR_TRANSFE
     floor = 1e-4
     # Per-channel ratios need ONE colour space: the SDR is linearised and moved
     # to ACEScg (the HDR's space) before log2(hdr) - log2(sdr), else a pure
-    # colour picks up a hue shift from the primaries mismatch (F-5).
-    # Memory (P-1b): the log planes are built in place and the SDR display
+    # colour picks up a hue shift from the primaries mismatch.
+    # Memory: the log planes are built in place and the SDR display
     # copy is dropped as soon as the clip mask has it.
     ls = srgb_to_linear_f32(sd)
     ls = rec709_linear_to_acescg(ls)

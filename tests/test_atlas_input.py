@@ -526,7 +526,7 @@ def test_raw_meta_is_a_link_input_not_a_widget():
 
 
 # ---------------------------------------------------------------------------
-# R3 / D5: AtlasInput's contract when core SAM3 fails (F-6 item 6). The
+# AtlasInput's contract when core SAM3 fails. The
 # cascade has NO runtime fallback (build_segmentation_cascade), so the two
 # core failure kinds must behave distinctly and visibly:
 #   missing checkpoint -> AtlasInput completes, sky mask empty, report names it
@@ -620,8 +620,9 @@ def test_core_sam3_load_error_raises_naming_the_checkpoint(monkeypatch, fake_cor
 
 def test_core_sam3_legacy_filename_choice_resolves_in_atlas_input(
         monkeypatch, fake_core_sam3):
-    """A graph saved with a bare filename (pre-F-8 combo) validates and runs
-    like the override: the report names the file, no core:auto label."""
+    """A graph saved with a bare filename (before the combo was fixed)
+    validates and runs like the override: the report names the file, no
+    core:auto label."""
     from atlas_camera.comfy.nodes_viewport import AtlasInput
     legacy = "sam3.1_multiplex_fp16.safetensors"
     assert AtlasInput.VALIDATE_INPUTS(sam3_checkpoint=legacy) is True

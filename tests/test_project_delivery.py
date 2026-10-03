@@ -1,4 +1,4 @@
-"""OV-2 (found live 2026-10-03): Save 3D (Advanced) copies only the GLB into
+"""Found live 2026-10-03: Save 3D (Advanced) copies only the GLB into
 ``output/3d/``, so the bare-name EXR sidecar references in the saved copy
 resolved 0 of 5. Two fixes, both pinned here:
 

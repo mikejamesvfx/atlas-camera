@@ -52,7 +52,7 @@ def test_render_and_zones_are_clean_and_tile():
 
 
 def test_tall_grid_interior_zones_stay_inside_the_render():
-    # F-3 repro: centred interior zones fell off the canvas (z10 y=-3, z60 ended 2179 > 2176).
+    # Repro: centred interior zones fell off the canvas (z10 y=-3, z60 ended 2179 > 2176).
     p = plan_still(3840, 2160, (1, 8), overlap_min=(512, 512))
     rh = p["render"]["height"]
     rects = {z["id"]: z["renderRect"] for z in p["zones"]}
@@ -250,7 +250,7 @@ def test_seam_step_test_flags_a_tonal_seam_and_names_it():
 
 
 def test_seam_step_test_opposite_sign_halves_do_not_cancel():
-    # OV-1: +2 stops on the upper half of the seam, -2 on the lower half. A
+    # +2 stops on the upper half of the seam, -2 on the lower half. A
     # whole-line |median| is ~0 (used to PASS 0.00x); the windowed score fails it.
     sdr = _textured(1100, 620)
     p = plan_still(1100, 620, (2, 1))
@@ -373,7 +373,7 @@ def test_sdr_detail_transfer_drops_stripes_keeps_edges_and_clipped_hdr():
 
 
 def test_sdr_detail_transfer_pure_colour_ramp_has_no_hue_shift():
-    # F-5: the HDR is ACEScg, the SDR Rec.709. Ratios taken across the two
+    # The HDR is ACEScg, the SDR Rec.709. Ratios taken across the two
     # spaces gave saturated primaries a hue shift (chroma error 0.17 on this
     # ramp before the fix). A pure exposure in ACEScg must come back exactly.
     from atlas_camera.core.generated_mesh import srgb_to_linear
@@ -426,7 +426,7 @@ def test_srgb_to_linear_f32_matches_the_float64_curve():
 
 
 def test_resize_and_lowpass_stay_float32():
-    # P-1b: float64 weights used to promote every resize (and the 8K global
+    # Float64 weights used to promote every resize (and the 8K global
     # upsample) to float64 at ~3x the memory.
     from atlas_camera.core.matrixzone import resize_bilinear
     a = np.random.default_rng(0).random((37, 53, 3)).astype(np.float32)
@@ -448,7 +448,7 @@ def test_overlap_actual_is_appended_without_touching_parity_keys():
 
 
 def test_overlap_actual_matches_the_zone_rects_on_a_clamped_grid():
-    # 1x8 / 512 is the F-3 clamp repro. The clamp is monotone and edge zones are
+    # 1x8 / 512 is the zone-clamp repro. The clamp is monotone and edge zones are
     # pinned to the canvas ends, so a clamped zone only slides TOWARD its
     # edge-side neighbour: overlap grows, it is never narrowed (also swept).
     from atlas_camera.core.matrixzone import narrowed_overlaps

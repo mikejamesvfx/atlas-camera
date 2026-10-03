@@ -207,7 +207,7 @@ def test_a_solve_with_no_source_still_says_none_recorded():
     assert "No metric-scale provenance" in sh.detail
 
 
-# --- generated object placement grade (the verdict lives here, F-7) ---------
+# --- generated object placement grade (the verdict lives here) -------------
 
 def _score(value, ok, threshold=0.5):
     return {"available": True, "value": value, "pass": ok, "threshold": threshold}

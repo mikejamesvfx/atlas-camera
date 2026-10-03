@@ -1454,7 +1454,7 @@ class AtlasInput:
                                "*sam3* file in models/checkpoints, sorted "
                                "(sam3.1_multiplex_fp16): no HF login, no [sam3] extra."}),
                 # APPENDED 2026-10-03 (positional rule): an exact core SAM3 file.
-                # STRING, not combo (F-8): the combo values are fixed so a saved
+                # STRING, not combo: the combo values are fixed so a saved
                 # graph validates on any machine; a missing file degrades to an
                 # EMPTY sky/scope mask with the file named in the report.
                 "sam3_checkpoint_override": ("STRING", {"default": "",

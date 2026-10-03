@@ -37,7 +37,7 @@ def _classes_calling_a_degrading_helper():
             continue
         # A node whose body was split into module-level helpers still degrades
         # through them: follow module functions transitively, or a refactor
-        # silently drops the node from this guard (found 2026-10-03, T11).
+        # silently drops the node from this guard (found 2026-10-03).
         funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
 
         def _direct(node):
@@ -108,7 +108,7 @@ def test_a_node_that_can_degrade_can_report(module, cls, helpers, return_types):
 #: Every node the guard covers today. A refactor that moves a node's helper
 #: call where the AST walk cannot see it (a ``self.`` method, another module)
 #: must fail here instead of silently shrinking coverage (found 2026-10-03:
-#: the T11 split dropped AtlasImportGeneratedMesh without a failure). Adding a
+#: a helper split dropped AtlasImportGeneratedMesh without a failure). Adding a
 #: node is fine; removing one needs an explicit edit to this set.
 EXPECTED_FLOOR = {
     ("nodes_depth.py", "AtlasBoundedBand"),
