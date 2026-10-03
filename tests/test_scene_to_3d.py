@@ -205,6 +205,22 @@ def test_node_writes_glb_and_returns_the_three_sockets(tmp_path, monkeypatch):
     assert "EXR scene_00001_primary.exr" in report and "NOT scene-referred" in report
 
 
+def _inflate_plan(monkeypatch, nbytes):
+    """Pretend the planned GLB is ``nbytes`` (the pre-build size check)."""
+    from atlas_camera.exporters import scene_glb
+
+    real = scene_glb.plan_scene_glb
+    calls = []
+
+    def inflated(layers):
+        plan = real(layers)
+        calls.append(plan)
+        return {**plan, "bytes": int(nbytes)}
+
+    monkeypatch.setattr(scene_glb, "plan_scene_glb", inflated)
+    return calls
+
+
 @pytest.mark.parametrize("budget, refused", [(1024, True), (0, False), (4096, False)])
 def test_node_refuses_a_glb_over_the_size_budget(tmp_path, monkeypatch, budget, refused):
     torch = pytest.importorskip("torch")
@@ -212,20 +228,198 @@ def test_node_refuses_a_glb_over_the_size_budget(tmp_path, monkeypatch, budget, 
     from atlas_camera.comfy import nodes_scene3d
     from atlas_camera.exporters import scene_glb
 
-    real = scene_glb.write_scene_glb
-
-    def inflated(layers, path):          # pretend the plates made a 1.5 GB file
-        out = real(layers, path)
-        return {**out, "bytes": 1_500_000_000}
-
-    monkeypatch.setattr(scene_glb, "write_scene_glb", inflated)
+    _inflate_plan(monkeypatch, 1_500_000_000)
+    built = []
+    real_write = scene_glb.write_scene_glb
+    monkeypatch.setattr(scene_glb, "write_scene_glb",
+                        lambda *a, **k: built.append(1) or real_write(*a, **k))
     monkeypatch.setattr(nodes_scene3d, "output_paths",
                         lambda prefix: (tmp_path, "scene_00001"))
     node = nodes_scene3d.AtlasSceneTo3D()
     if refused:
-        with pytest.raises(ValueError, match=r"1500 MB, over the 1024 MB budget"):
+        with pytest.raises(ValueError, match=r"1500 MB, over the 1024 MB budget") as exc:
             node.export(_solve(), torch.rand(1, H, W, 3), max_glb_mb=budget)
+        msg = str(exc.value)
         assert not (tmp_path / "scene_00001.glb").exists()
+        # Per-layer / per-plate MB breakdown, and the orphan sidecars removed + named.
+        assert "Per layer:" in msg and "projection_relief_mesh" in msg
+        assert "plate primary" in msg and "plate clean_plate_geo" in msg
+        assert "scene_00001_primary.exr" in msg and "scene_00001_clean_plate_geo.exr" in msg
+        assert not list(tmp_path.glob("*.exr"))
     else:
-        report = node.export(_solve(), torch.rand(1, H, W, 3), max_glb_mb=budget)["result"][4]
-        assert "warning: large GLB" in report
+        # 4096 is past the uint32 GLB ceiling: clamped to 4095 MB, 1.5 GB fits.
+        node.export(_solve(), torch.rand(1, H, W, 3), max_glb_mb=budget)
+        assert (tmp_path / "scene_00001.glb").is_file() and built
+
+
+def test_budget_widget_is_capped_below_the_glb_uint32_limit():
+    from atlas_camera.comfy.nodes_scene3d import AtlasSceneTo3D
+
+    opt = AtlasSceneTo3D.INPUT_TYPES()["optional"]["max_glb_mb"][1]
+    assert opt["max"] == 4095 and opt["max"] * 1_000_000 < 2 ** 32
+
+
+def test_over_budget_is_refused_before_the_blob_is_built(tmp_path, monkeypatch):
+    from atlas_camera.exporters import scene_glb
+
+    _inflate_plan(monkeypatch, 5_000_000_000)          # past uint32, no budget set
+    monkeypatch.setattr(scene_glb, "_pad4", lambda *a: pytest.fail("blob was built"))
+    layers = [SceneLayer("relief", QUAD_V, QUAD_F, QUAD_UV, _png())]
+    with pytest.raises(scene_glb.GLBBudgetError, match="4 GiB") as exc:
+        scene_glb.write_scene_glb(layers, tmp_path / "big.glb")
+    assert not (tmp_path / "big.glb").exists()
+    assert exc.value.plan["layers"][0]["name"] == "relief"
+    with pytest.raises(scene_glb.GLBBudgetError, match="1 MB budget"):
+        scene_glb.write_scene_glb(layers, tmp_path / "big.glb", max_bytes=1_000_000)
+
+
+# --- F-4: one embedded image per source --------------------------------------
+
+def test_layers_sharing_a_source_share_one_image(tmp_path):
+    png = _png()
+    layers = [SceneLayer("a", QUAD_V, QUAD_F, QUAD_UV, png, extras={"atlas_plate": "primary"}),
+              SceneLayer("b", QUAD_V + [0, 0, 1], QUAD_F, QUAD_UV, png,
+                         extras={"atlas_plate": "primary"}),
+              SceneLayer("c", QUAD_V - [0, 0, 1], QUAD_F, QUAD_UV, _png((1, 2, 3)))]
+    out = write_scene_glb(layers, tmp_path / "s.glb")
+    g = read_glb_json(out["glb"])
+    assert len(g["images"]) == 2 and len(g["textures"]) == 2 and out["images"] == 2
+    tex = [g["materials"][m["primitives"][0]["material"]]["pbrMetallicRoughness"]
+           ["baseColorTexture"]["index"] for m in g["meshes"]]
+    assert tex[0] == tex[1] != tex[2]
+    assert g["images"][0]["name"] == "primary"
+
+
+def test_scene_with_many_primary_meshes_embeds_the_primary_plate_once(tmp_path):
+    solve = _solve()
+    solve.projection_scene.proxy_geometry.append(_prim("second_mesh", QUAD_V + [0, 0, 1]))
+    layers, _, _ = build_scene_layers(solve, _primary(), exr_dir=None)
+    out = write_scene_glb(layers, tmp_path / "s.glb")
+    g = read_glb_json(out["glb"])
+    assert len(layers) == 3 and len(g["images"]) == 2     # primary + clean plate
+    assert layers[0].image_bytes is layers[1].image_bytes
+    image_views = [g["bufferViews"][i["bufferView"]]["byteLength"] for i in g["images"]]
+    assert sorted(image_views) == sorted([len(layers[0].image_bytes),
+                                          len(layers[2].image_bytes)])
+
+
+# --- F-6(5) / F-9: dropped layers, corrupt plates, sidecar names --------------
+
+def test_dropped_and_untextured_layers_are_listed(tmp_path):
+    layers = [SceneLayer("empty", np.zeros((0, 3)), np.zeros((0, 3))),
+              SceneLayer("degenerate", QUAD_V, np.array([[0, 0, 0]]), QUAD_UV, _png()),
+              SceneLayer("bad_uvs", QUAD_V, QUAD_F, QUAD_UV[:3], _png()),
+              SceneLayer("ok", QUAD_V, QUAD_F, QUAD_UV, _png())]
+    out = write_scene_glb(layers, tmp_path / "s.glb")
+    assert {d["name"] for d in out["dropped"]} == {"empty", "degenerate"}
+    bad = next(x for x in out["layers"] if x["name"] == "bad_uvs")
+    assert not bad["textured"] and "UV count 3 != vertex count 4" in bad["untextured_reason"]
+
+
+def test_corrupt_image_b64_exports_untextured_with_a_note():
+    solve = _solve()
+    solve.projection_sources[0].image_b64 = "data:image/png;base64," + base64.b64encode(
+        b"\x89PNG not really a png").decode()
+    layers, _, notes = build_scene_layers(solve, _primary(), exr_dir=None)
+    src = [lay for lay in layers if lay.name.startswith("clean_plate_geo/")]
+    assert src and src[0].image_bytes is None
+    assert any("could not be decoded" in n and "untextured" in n for n in notes)
+
+
+def test_sidecar_names_are_sanitised_and_unique(tmp_path, monkeypatch):
+    from atlas_camera.exporters import scene_glb
+
+    written = []
+
+    def fake_exr(path, pil, plate_ref):
+        written.append(path)
+        return {"exr": path.name, "exr_colorspace": "x", "exr_origin": "test",
+                "scene_referred": False}
+
+    monkeypatch.setattr(scene_glb, "_write_exr_sidecar", fake_exr)
+    solve = _solve()
+    uri = solve.projection_sources[0].image_b64
+    for name in ("../../evil name", "evil/name"):
+        solve.projection_sources.append(ProjectionSource(
+            camera=solve.camera, name=name, image_b64=uri,
+            proxy_geometry=[_prim("m", QUAD_V)], metadata={}))
+    _, sidecars, _ = build_scene_layers(solve, _primary(), exr_dir=tmp_path, exr_prefix="t")
+    names = [p.name for p in written]
+    assert names == ["t_primary.exr", "t_clean_plate_geo.exr", "t_evil_name.exr",
+                     "t_evil_name_2.exr"]
+    assert all(p.parent == tmp_path for p in written)
+    import re
+    assert all(re.fullmatch(r"[A-Za-z0-9_.-]+", n) for n in names)
+
+
+def test_node_report_lists_drops_and_file3d_fallback(tmp_path, monkeypatch):
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy import nodes_scene3d
+
+    solve = _solve()
+    solve.projection_scene.proxy_geometry.append(AtlasProxyPrimitive(
+        name="no_payload", primitive_type="mesh", dimensions=(1.0, 1.0, 1.0),
+        material="m", metadata={"role": PROXY_ROLE}))
+    monkeypatch.setattr(nodes_scene3d, "output_paths",
+                        lambda prefix: (tmp_path, "scene_00001"))
+    report = nodes_scene3d.AtlasSceneTo3D().export(
+        solve, torch.rand(1, H, W, 3), write_exr=False)["result"][4]
+    assert "no_payload: dropped" in report
+    assert "File3D unavailable" in report      # no comfy_api in the test env
+    assert "2 embedded plate image(s), one per source" in report
+
+
+# --- T13a: the GLB parses; a float plate_ref rides as a scene-referred EXR -----
+
+def _check_glb_structure(path):
+    import struct as _s
+    data = path.read_bytes()
+    magic, version, total = _s.unpack_from("<III", data, 0)
+    assert (magic, version, total) == (0x46546C67, 2, len(data))
+    jlen, jtype = _s.unpack_from("<II", data, 12)
+    blen, btype = _s.unpack_from("<II", data, 20 + jlen)
+    assert jtype == 0x4E4F534A and btype == 0x004E4942 and jlen % 4 == 0
+    g = read_glb_json(path)
+    assert g["buffers"][0]["byteLength"] == blen
+    for v in g["bufferViews"]:
+        assert v["byteOffset"] % 4 == 0 and v["byteOffset"] + v["byteLength"] <= blen
+    return g
+
+
+def test_written_glb_parses(tmp_path):
+    layers, _, _ = build_scene_layers(_solve(), _primary(), exr_dir=None)
+    layers.append(SceneLayer("pixal3d_object", QUAD_V + [0, 0, 1], QUAD_F, QUAD_UV,
+                             layers[0].image_bytes, vertex_colors=np.full((4, 3), 0.4),
+                             photo_weight=np.array([1, 1, 1, 0.0])))
+    path = tmp_path / "s.glb"
+    write_scene_glb(layers, path)
+    _check_glb_structure(path)
+    trimesh = pytest.importorskip("trimesh")
+    scene = trimesh.load(str(path), force="scene")
+    assert len(scene.geometry) >= 3
+    verts = np.concatenate([np.asarray(g.vertices) for g in scene.geometry.values()])
+    assert np.isfinite(verts).all() and len(verts) >= 12
+
+
+def test_float_plate_ref_writes_a_scene_referred_exr(tmp_path):
+    pytest.importorskip("OpenImageIO")
+    from types import SimpleNamespace
+
+    from atlas_camera.plate.oiio_io import read_plate, write_exr
+
+    hdr = np.full((H, W, 3), 4.5, dtype=np.float32)                 # > 1: scene-linear
+    ref = tmp_path / "plate_acescg.exr"
+    write_exr(str(ref), hdr, bit_depth="float", source_colorspace="ACEScg")
+    solve = _solve()
+    # A layer's float plate_ref (ProjectionSource.plate_ref, e.g. a RAW/EXR
+    # registered source) is preferred over its 8-bit display plate.
+    solve.projection_sources[0].plate_ref = SimpleNamespace(
+        image_path=str(ref), is_proxy=False, colorspace="ACEScg")
+    out_dir = tmp_path / "out"
+    _, sidecars, notes = build_scene_layers(solve, _primary(), exr_dir=out_dir,
+                                            exr_prefix="t")
+    assert next(s for s in sidecars if s["plate"] == "primary")["scene_referred"] is False
+    prim = next(s for s in sidecars if s["plate"] == "clean_plate_geo")
+    assert prim["exr_origin"] == "plate_ref" and prim["scene_referred"] is True, notes
+    back = read_plate(str(out_dir / prim["exr"]), output_colorspace=None)
+    assert float(np.asarray(back.pixels)[..., :3].mean()) == pytest.approx(4.5, rel=1e-3)

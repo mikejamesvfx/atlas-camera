@@ -47,17 +47,24 @@ class _FileRef:
         return f"File3D(source={self._source!r}, format={self.format!r})"
 
 
-def _file3d(path: str) -> Any:
+def _file3d(path: str) -> tuple[Any, str]:
+    """``(file, note)``: core ComfyUI's File3D, or the duck-typed stand-in with
+    a note saying so (the fallback is never silent: an install that moved
+    File3D would otherwise hand Load3D an object it may not accept)."""
     try:
         from comfy_api.latest._util.geometry_types import File3D  # type: ignore[import-not-found]
-        return File3D(path, "glb")
-    except Exception:  # noqa: BLE001 - older ComfyUI / tests
-        return _FileRef(path, "glb")
+        return File3D(path, "glb"), ""
+    except Exception as exc:  # noqa: BLE001 - older ComfyUI / tests
+        return _FileRef(path, "glb"), (
+            f"note: core File3D unavailable ({type(exc).__name__}: {exc}) - model_3d is a "
+            "duck-typed file reference; glb_path is the GLB itself")
 
 
 #: Default GLB size budget and the size above which the report warns (MB).
 GLB_BUDGET_MB = 1024
 GLB_WARN_MB = 200
+#: A GLB stores its length as uint32: the budget widget cannot exceed it.
+GLB_MAX_BUDGET_MB = 4095
 
 
 class AtlasSceneTo3D:
@@ -96,9 +103,10 @@ class AtlasSceneTo3D:
                 # 6 layers = ~235 MB); past this the GLB is refused, not handed
                 # to a browser viewer that cannot load it.
                 "max_glb_mb": ("INT", {
-                    "default": GLB_BUDGET_MB, "min": 0, "max": 16384, "step": 64,
-                    "tooltip": "Refuse a GLB larger than this (MB), naming its size. "
-                               "0 = no budget."}),
+                    "default": GLB_BUDGET_MB, "min": 0, "max": GLB_MAX_BUDGET_MB, "step": 64,
+                    "tooltip": "Refuse a GLB larger than this (MB), naming its size, "
+                               "BEFORE it is built. 0 = no budget (the GLB format's "
+                               "4 GiB limit still applies)."}),
             },
         }
 
@@ -115,15 +123,18 @@ class AtlasSceneTo3D:
         layers, sidecars, notes = build_scene_layers(
             solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem)
         glb_path = folder / f"{stem}.glb"
-        written, mb = _write_glb_within_budget(layers, glb_path, max_glb_mb)
+        written, mb = _write_glb_within_budget(layers, glb_path, max_glb_mb, folder, sidecars)
 
         camera_info, model_info = _load3d_sockets(np, layers, intr, extr)
         manifest_note = _scene_manifest(solve, folder, glb_path, sidecars, written)
+        model_3d, file_note = _file3d(str(glb_path))
+        if file_note:
+            notes = [*notes, file_note]
 
         report = _export_report(glb_path, mb, written, sidecars, notes, write_exr,
                                 camera_info, intr, manifest_note)
         return {"ui": {"text": [report]},
-                "result": (_file3d(str(glb_path)), model_info, camera_info, str(glb_path), report)}
+                "result": (model_3d, model_info, camera_info, str(glb_path), report)}
 
 
 def _usable_camera(solve):
@@ -135,22 +146,54 @@ def _usable_camera(solve):
     return intr, extr
 
 
-def _write_glb_within_budget(layers, glb_path, max_glb_mb):
-    """Write the GLB; refuse (and delete it) past the size budget.
+def _write_glb_within_budget(layers, glb_path, max_glb_mb, folder=None, sidecars=()):
+    """Write the GLB; refuse past the size budget BEFORE building it.
 
+    The size is planned from the layers' buffers (``scene_glb.plan_scene_glb``)
+    so an over-budget scene allocates nothing. On refusal the sidecars this
+    export already wrote are deleted (a refused export leaves no orphans) and
+    the error names them and breaks the size down per layer / per plate.
     Returns ``(written, mb)``.
     """
-    from atlas_camera.exporters.scene_glb import write_scene_glb
+    from atlas_camera.exporters import scene_glb
 
-    written = write_scene_glb(layers, glb_path)
-    mb = written["bytes"] / 1e6
-    if int(max_glb_mb or 0) > 0 and mb > int(max_glb_mb):
+    budget = min(int(max_glb_mb or 0), GLB_MAX_BUDGET_MB)
+    try:
+        written = scene_glb.write_scene_glb(
+            layers, glb_path, max_bytes=budget * 1_000_000 if budget > 0 else None)
+    except scene_glb.GLBBudgetError as exc:
         glb_path.unlink(missing_ok=True)
+        removed = _remove_sidecars(folder, sidecars)
+        plan = exc.plan
         raise ValueError(
-            f"AtlasSceneTo3D: the GLB would be {mb:.0f} MB, over the {int(max_glb_mb)} MB "
-            f"budget ({len(written['layers'])} layers at full plate resolution) - feed a "
-            "smaller plate or fewer layers, or raise max_glb_mb (0 = no budget)")
+            f"AtlasSceneTo3D: the GLB would be {plan['bytes'] / 1e6:.0f} MB, over the "
+            f"{budget} MB budget ({len(plan['layers'])} layers at full plate resolution, "
+            f"{len(plan['images'])} embedded plate(s)) - feed a smaller plate or fewer "
+            "layers, or raise max_glb_mb (0 = no budget). Per layer: "
+            f"{scene_glb.describe_glb_plan(plan)}."
+            + (f" Removed the sidecars already written: {', '.join(removed)}." if removed
+               else "")) from None
+    mb = written["bytes"] / 1e6
     return written, mb
+
+
+def _remove_sidecars(folder, sidecars) -> list[str]:
+    """Delete the EXR/PLY sidecars an export wrote; returns their names."""
+    removed = []
+    if folder is None:
+        return removed
+    for s in sidecars or ():
+        name = s.get("exr")
+        if not name:
+            continue
+        path = Path(folder) / name
+        try:
+            if path.is_file():
+                path.unlink()
+                removed.append(name)
+        except OSError:
+            continue
+    return removed
 
 
 def _load3d_sockets(np, layers, intr, extr):
@@ -192,11 +235,15 @@ def _export_report(glb_path, mb, written, sidecars, notes, write_exr, camera_inf
                    manifest_note) -> str:
     """The scene export node's multi-line report."""
     lines = [f"AtlasSceneTo3D: {len(written['layers'])} layer mesh(es) -> {glb_path} "
-             f"({mb:.1f} MB)"]
+             f"({mb:.1f} MB, {written.get('images', 0)} embedded plate image(s), one per "
+             "source)"]
     for s in written["layers"]:
         lines.append(f"- {s['name']}: {s['vertices']} verts / {s['faces']} faces"
                      + (", textured" if s["textured"] else ", UNTEXTURED")
+                     + (f" ({s['untextured_reason']})" if s.get("untextured_reason") else "")
                      + (", vertex-colour hidden side" if s["vertex_colour"] else ""))
+    for d in written.get("dropped") or []:
+        lines.append(f"- DROPPED {d['name']}: {d['reason']}")
     for s in sidecars:
         if s["exr"].endswith(".ply"):
             lines.append(f"- PLY {s['exr']}: HDR vertex colour, {s['exr_colorspace']}")
