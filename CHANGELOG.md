@@ -17,8 +17,8 @@ registered without a flag.
 ### Objects with hidden sides, HDR at plate resolution, and the scene in ComfyUI's own 3D tools
 
 Six new nodes, **+6 standard (125 → 131, total 145)**. Every existing key is
-byte-identical, and the one new widget on an existing node (`sam3_checkpoint`) is
-appended last, so saved graphs load unchanged.
+byte-identical, and the two new widgets on existing nodes (`sam3_checkpoint`,
+`sam3_checkpoint_override`) are appended last, so saved graphs load unchanged.
 
 **A foreground object you can walk around.** On an orbit, a relief sheet shows a
 stretched smear where an object's back should be. Two nodes lift one object into a
@@ -67,8 +67,10 @@ HDR used to come out around 1280 px wide: a preview, not a plate.
   side, which the conversion never sees: it fits the plate's own SDR→HDR curve from
   the aligned pair and applies it to the vertex colours.
 - **2x2 at the 4K tier is the default**: on the 8K plate it fits a 32 GB GPU, runs
-  in about **14.5 minutes** cold (4x4 took about 23), and its worst seam scores
-  **0.88x**, a pass. Which sequence mode wins is still unmeasured, so
+  in about **14.5 minutes** cold (4x4 took about 23). Its worst seam scored
+  **0.88x** on the earlier whole-seam gate; the gate now scores ~256 px windows
+  (so opposite errors along one seam cannot cancel), and that figure is being
+  re-measured. Which sequence mode wins is still unmeasured, so
   `per_zone_clip` stays the default until it is.
 - Known limits: the occasional soft dark blotch (about 30 px) on flat sky, made by
   the model, and a faint highlight ripple inside SDR-clipped areas, where the HDR is
@@ -85,15 +87,22 @@ plate, not photographed HDR. Same doctrine as the hidden side.
   with its own full-res plate, plus a half-float EXR sidecar per layer, since glTF
   has no EXR image. The camera is the recovered solve camera; Atlas and Load3D share
   the same Y-up, −Z convention, so nothing is converted, and a test reprojects it to
-  within 0.01 px of the solve. An 8K plate with six layers makes a GLB of about
-  **235 MB**: the report warns above 200 MB and the node refuses above `max_glb_mb`
-  (1 GB default), naming the measured size. Runs headless through the MCP runner as
+  within 0.01 px of the solve. Each plate is embedded once per source (an earlier
+  build repeated it per mesh; the 235 MB measured on an 8K plate with six layers
+  predates that and is being re-measured). The report warns above 200 MB and the
+  node refuses above `max_glb_mb` (1 GB default, at most 4095), sized BEFORE the
+  file is built, with a per-layer breakdown. Runs headless through the MCP runner as
   well as in the GUI.
 
 **Also**
 
-- `AtlasSAM3Mask` / `AtlasInput`: appended `sam3_checkpoint` runs core ComfyUI's
-  SAM 3.1 (`sam3.1_multiplex_fp16`) instead of the gated Hugging Face repo.
+- `AtlasSAM3Mask` / `AtlasInput`: appended `sam3_checkpoint` (`hf:facebook/sam3`
+  or `core:auto`, the first SAM3 file in `checkpoints`) and
+  `sam3_checkpoint_override` (an exact file) run core ComfyUI's SAM 3.1
+  (`sam3.1_multiplex_fp16`) instead of the gated Hugging Face repo. The values
+  do not depend on the machine, so shared graphs queue anywhere. A missing file
+  gives an empty mask and a report; a checkpoint that fails to load stops the run
+  with its name.
 - A scene-referred IMAGE (linear EXR, HDR, ACEScct) is now warned about instead of
   silently clipped.
 - Clean-plate and sky layers carry past the frame edge, with a softened outpaint

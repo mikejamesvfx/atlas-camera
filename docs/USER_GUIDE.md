@@ -717,8 +717,9 @@ once, and each zone only adds fine detail. Leave `anchor` on.
 Reading the report: every seam is scored on the EXR as written, and anything over
 1.5x the plate's own texture baseline is named. A flagged seam is not automatically
 wrong, since strong structure on the seam line scores high too, so go and look at
-it. On the 8K test plate at the default 2x2 grid the worst seam scored 0.88x, a
-clean pass.
+it. The score is taken in short windows along each seam, so a seam that is too
+bright on one half and too dark on the other still fails. (The 8K test plate
+scored 0.88x on the earlier whole-seam score; it is being re-measured.)
 
 **About the vertical lines.** If you have seen faint vertical stripes in an HDR
 plate in Nuke, they come from the conversion model itself, not the zoning, so the
@@ -745,7 +746,8 @@ treatment, using the plate's own SDR→HDR curve.
 bands, sky domes) into one GLB with your solve camera, wired straight into Save 3D
 (Advanced) or Preview 3D. Every layer keeps its full-resolution plate, and a float
 EXR rides alongside each one, because a GLB cannot carry EXR. Expect a big file:
-about 235 MB for an 8K plate with six layers. Browser viewers struggle past a few
+about 235 MB for an 8K plate with six layers was measured before each plate was
+embedded only once, so expect less. Browser viewers struggle past a few
 hundred megabytes, so the node warns at 200 MB and stops at its `max_glb_mb`
 budget, telling you the size it measured.
 
