@@ -43,7 +43,7 @@ def test_sidecar_refs_carry_their_output_root_path(tmp_path):
     folder.mkdir(parents=True)
     layers, sidecars, _ = build_scene_layers(_solve(), _primary(), exr_dir=folder,
                                              exr_prefix="s", output_root=out_root)
-    exrs = [l.extras for l in layers if l.extras.get("exr")]
+    exrs = [layer.extras for layer in layers if layer.extras.get("exr")]
     assert exrs and all(e["exr_output_path"] == f"atlas/{e['exr']}" for e in exrs)
     assert all((out_root / e["exr_output_path"]).is_file() for e in exrs)
 
@@ -52,7 +52,7 @@ def test_no_output_root_path_outside_the_root(tmp_path):
     pytest.importorskip("OpenImageIO")
     layers, _, _ = build_scene_layers(_solve(), _primary(), exr_dir=tmp_path / "elsewhere",
                                       exr_prefix="s", output_root=tmp_path / "output")
-    assert all("exr_output_path" not in l.extras for l in layers)
+    assert all("exr_output_path" not in layer.extras for layer in layers)
 
 
 def test_a_save3d_copy_in_output_3d_resolves_every_sidecar(tmp_path, monkeypatch):

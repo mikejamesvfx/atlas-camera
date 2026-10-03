@@ -17,8 +17,8 @@ torch = pytest.importorskip("torch")
 # AtlasInput lives in nodes_viewport after the nodes.py modularization; its
 # node-expansion helpers (_comfy_registry, _native_sam3_available) resolve in
 # that module's namespace, so both probe monkeypatches must target it there.
-import atlas_camera.comfy.nodes_viewport as nodes_mod
-from atlas_camera.comfy.nodes import (
+import atlas_camera.comfy.nodes_viewport as nodes_mod  # noqa: E402 - after importorskip
+from atlas_camera.comfy.nodes import (  # noqa: E402
     NODE_CLASS_MAPPINGS,
     AtlasInput,
     _parse_band_override,

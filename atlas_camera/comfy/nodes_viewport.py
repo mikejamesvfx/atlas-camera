@@ -297,13 +297,17 @@ def _drawn_fill_plate_b64(source_image, mask_np, px, cache_key=None):
                 sub = mask[y0:y1, x0:x1]
                 grew = False
                 if y0 > 0 and sub[:guard].any():
-                    y0 = max(0, y0 - pad); grew = True
+                    y0 = max(0, y0 - pad)
+                    grew = True
                 if y1 < H and sub[-guard:].any():
-                    y1 = min(H, y1 + pad); grew = True
+                    y1 = min(H, y1 + pad)
+                    grew = True
                 if x0 > 0 and sub[:, :guard].any():
-                    x0 = max(0, x0 - pad); grew = True
+                    x0 = max(0, x0 - pad)
+                    grew = True
                 if x1 < W and sub[:, -guard:].any():
-                    x1 = min(W, x1 + pad); grew = True
+                    x1 = min(W, x1 + pad)
+                    grew = True
                 if not grew:
                     break
             if (y1 - y0) * (x1 - x0) <= 0.6 * mask.size:
@@ -391,7 +395,7 @@ def _apply_drawn_polygons(solve, data, *, fingerprint, width, height):
 
     cam_pos = _camera_position(out)
     lines, made = [], 0
-    fill_rois: list[dict[str, Any]] = []
+    fill_rois: list[dict[str, object]] = []
     mask = np.zeros((height, width), dtype=bool)
 
     for index, record in enumerate(records):
@@ -2391,7 +2395,6 @@ class AtlasGhostPixelMap:
         )
         from atlas_camera.core.ghost_pixels import (
             GhostClass, build_debug_overlay, class_masks,
-            classify_target_coverage, ghost_stats,
         )
         from atlas_camera.core.conditioning import render_conditioning_sequence
         from atlas_camera.core.projection_render import gather_scene_meshes

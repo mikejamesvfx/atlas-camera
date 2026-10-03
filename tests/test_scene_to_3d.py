@@ -165,9 +165,9 @@ def _primary():
 
 def test_layers_cover_primary_and_sources_and_skip_analytic(tmp_path):
     layers, sidecars, notes = build_scene_layers(_solve(), _primary(), exr_dir=None)
-    assert [l.name for l in layers] == ["projection_relief_mesh",
+    assert [layer.name for layer in layers] == ["projection_relief_mesh",
                                         "clean_plate_geo/clean_plate_geo_relief_mesh"]
-    assert all(l.image_bytes for l in layers) and not sidecars
+    assert all(layer.image_bytes for layer in layers) and not sidecars
 
 
 def test_exr_sidecars_are_tagged_and_named_in_extras(tmp_path):

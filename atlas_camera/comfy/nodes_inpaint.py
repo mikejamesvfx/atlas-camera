@@ -1933,7 +1933,8 @@ class AtlasPlateLayer:
         mask_b64 = None
         if mask is not None:
             try:
-                h = int(getattr(plate_image, "shape", [0, 0, 0])[1]); w = int(plate_image.shape[2])
+                h = int(getattr(plate_image, "shape", [0, 0, 0])[1])
+                w = int(plate_image.shape[2])
                 m = _resolve_exclude_mask(mask, h, w)
                 mask_b64 = _mask_to_b64_png(m) or None
             except Exception:  # noqa: BLE001
