@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from atlas_camera.comfy.node_helpers import _require_numpy, _require_torch
+from atlas_camera.comfy.node_helpers import _require_numpy, _require_torch, output_paths
 
 MODES = ("per_zone_clip", "zones_as_frames")
 
@@ -274,9 +274,8 @@ def _write_plate_exr(np, plate, colorspace, filename_prefix):
     """``(exr_path, note)``; a failed write leaves the path empty and says why."""
     exr_path, exr_note = "", ""
     try:
-        from atlas_camera.comfy.nodes_scene3d import _output_paths
         from atlas_camera.plate.oiio_io import write_exr
-        folder, stem = _output_paths(filename_prefix)
+        folder, stem = output_paths(filename_prefix)
         folder.mkdir(parents=True, exist_ok=True)
         exr_path = str(folder / f"{stem}.exr")
         write_exr(exr_path, plate.astype(np.float32), bit_depth="half",

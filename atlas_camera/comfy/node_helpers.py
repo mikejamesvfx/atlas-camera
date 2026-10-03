@@ -1224,3 +1224,42 @@ def _project_routed_dir(project, output_dir, lane):
     if project is None:
         return output_dir
     return str(project.subdir(lane, create=True))
+
+
+def output_paths(filename_prefix: str):
+    """``(folder, stem)`` for a file under ComfyUI's output dir, counter-suffixed.
+
+    Inside ComfyUI this is ``folder_paths.get_save_image_path``, and its
+    refusal of a prefix that leaves the output directory PROPAGATES: only an
+    ImportError (not inside ComfyUI) selects the local fallback. Catching
+    everything here once let ``../`` prefixes write anywhere.
+
+    The fallback writes under ``./output`` and enforces the same rule itself:
+    an absolute / anchored prefix, or one whose resolved path escapes
+    ``output/``, is a ValueError naming the prefix.
+    """
+    from pathlib import Path
+
+    prefix = str(filename_prefix or "atlas/scene").strip().replace("\\", "/")
+    try:
+        import folder_paths  # type: ignore[import-not-found]
+    except ImportError:
+        folder_paths = None
+    if folder_paths is not None:
+        folder, filename, counter, _sub, _ = folder_paths.get_save_image_path(
+            prefix, folder_paths.get_output_directory())
+        return Path(folder), f"{filename}_{counter:05}"
+
+    rel = Path(prefix)
+    if rel.is_absolute() or rel.anchor:
+        raise ValueError(f"output prefix {filename_prefix!r} is absolute; give a path "
+                         "relative to the output directory")
+    root = Path("output").resolve()
+    target = (root / rel).resolve()
+    if target == root or not target.is_relative_to(root) or rel.name in ("", ".", ".."):
+        raise ValueError(f"output prefix {filename_prefix!r} escapes the output directory")
+    out = Path("output") / rel.parent
+    out.mkdir(parents=True, exist_ok=True)
+    stem = rel.name
+    n = 1 + len(list(out.glob(f"{stem}_*.glb")))
+    return out, f"{stem}_{n:05}"

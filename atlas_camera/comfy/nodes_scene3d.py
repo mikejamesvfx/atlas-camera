@@ -23,7 +23,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from atlas_camera.comfy.node_helpers import _image_tensor_to_pil, _require_numpy
+from atlas_camera.comfy.node_helpers import _image_tensor_to_pil, _require_numpy, output_paths
 
 
 class _FileRef:
@@ -53,22 +53,6 @@ def _file3d(path: str) -> Any:
         return File3D(path, "glb")
     except Exception:  # noqa: BLE001 - older ComfyUI / tests
         return _FileRef(path, "glb")
-
-
-def _output_paths(filename_prefix: str) -> tuple[Path, str]:
-    """``(folder, stem)`` under ComfyUI's output dir, counter-suffixed."""
-    prefix = str(filename_prefix or "atlas/scene").strip().replace("\\", "/")
-    try:
-        import folder_paths  # type: ignore[import-not-found]
-        folder, filename, counter, _sub, _ = folder_paths.get_save_image_path(
-            prefix, folder_paths.get_output_directory())
-        return Path(folder), f"{filename}_{counter:05}"
-    except Exception:  # noqa: BLE001 - not inside ComfyUI
-        out = Path("output") / Path(prefix).parent
-        out.mkdir(parents=True, exist_ok=True)
-        stem = Path(prefix).name
-        n = 1 + len(list(out.glob(f"{stem}_*.glb")))
-        return out, f"{stem}_{n:05}"
 
 
 #: Default GLB size budget and the size above which the report warns (MB).
@@ -124,7 +108,7 @@ class AtlasSceneTo3D:
         from atlas_camera.exporters.scene_glb import build_scene_layers
 
         intr, extr = _usable_camera(solve)
-        folder, stem = _output_paths(filename_prefix)
+        folder, stem = output_paths(filename_prefix)
         folder.mkdir(parents=True, exist_ok=True)
         primary = _image_tensor_to_pil(source_image)
 

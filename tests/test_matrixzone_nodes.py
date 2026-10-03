@@ -20,8 +20,8 @@ def _plate():
 
 
 def _run(mode, monkeypatch, tmp_path, gains=None):
-    from atlas_camera.comfy import nodes_scene3d
-    monkeypatch.setattr(nodes_scene3d, "_output_paths", lambda p: (tmp_path, "hdr_00001"))
+    from atlas_camera.comfy import nodes_matrixzone
+    monkeypatch.setattr(nodes_matrixzone, "output_paths", lambda p: (tmp_path, "hdr_00001"))
     clips, handle, rep = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, mode, 9)
     # Stand-in for the LTX chain: an "HDR" that is the input, optionally with a
     # per-zone exposure guess (what a real model may do).

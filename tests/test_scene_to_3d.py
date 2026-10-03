@@ -190,7 +190,7 @@ def test_node_writes_glb_and_returns_the_three_sockets(tmp_path, monkeypatch):
     pytest.importorskip("OpenImageIO")
     from atlas_camera.comfy import nodes_scene3d
 
-    monkeypatch.setattr(nodes_scene3d, "_output_paths",
+    monkeypatch.setattr(nodes_scene3d, "output_paths",
                         lambda prefix: (tmp_path, "scene_00001"))
     img = torch.rand(1, H, W, 3)
     out = nodes_scene3d.AtlasSceneTo3D().export(_solve(), img)
@@ -219,7 +219,7 @@ def test_node_refuses_a_glb_over_the_size_budget(tmp_path, monkeypatch, budget, 
         return {**out, "bytes": 1_500_000_000}
 
     monkeypatch.setattr(scene_glb, "write_scene_glb", inflated)
-    monkeypatch.setattr(nodes_scene3d, "_output_paths",
+    monkeypatch.setattr(nodes_scene3d, "output_paths",
                         lambda prefix: (tmp_path, "scene_00001"))
     node = nodes_scene3d.AtlasSceneTo3D()
     if refused:
